@@ -4,6 +4,11 @@
  * Slim Framework 4 with Eloquent ORM
  */
 
+// Suppress PHP error output in HTTP responses — errors must not corrupt JSON bodies.
+// Slim's error middleware handles error logging separately.
+ini_set('display_errors', '0');
+ini_set('display_startup_errors', '0');
+
 // Only reset opcache in development (never in production — costs ~2ms per request)
 if (function_exists('opcache_reset') && getenv('APP_ENV') === 'development') {
     opcache_reset();
