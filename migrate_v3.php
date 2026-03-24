@@ -7,8 +7,8 @@ try {
     // 1. Update 'citas' table
     if (!Capsule::schema()->hasColumn('citas', 'tipo_carro')) {
         Capsule::schema()->table('citas', function ($table) {
-            $table->string('tipo_carro')->nullable()->after('placa');
-            $table->decimal('peso', 10, 2)->nullable()->after('tipo_carro');
+            $table->string('tipo_carro')->nullable();
+            $table->decimal('peso', 10, 2)->nullable();
         });
         echo "Tabla 'citas' actualizada con tipo_carro y peso.\n";
     }

@@ -13,6 +13,14 @@ function addIndexIfMissing($schema, string $table, string $indexName, array $col
 {
     if (!$schema->hasTable($table)) return;
 
+    // Check all requested columns exist before creating index
+    foreach ($cols as $col) {
+        if (!$schema->hasColumn($table, $col)) {
+            echo "  [SKIP] Índice $indexName omitido: columna '$col' no existe en $table.\n";
+            return;
+        }
+    }
+
     // Check by querying INFORMATION_SCHEMA
     $exists = DB::select(
         "SELECT COUNT(*) as cnt FROM information_schema.statistics
