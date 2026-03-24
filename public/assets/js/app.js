@@ -43,7 +43,9 @@ document.addEventListener('DOMContentLoaded', () => {
             { id: 'picking', name: 'Picking', icon: 'fa-cart-flatbed', reqPerm: 'picking', colorClass: 'color-picking' },
             { id: 'despacho', name: 'Despacho', icon: 'fa-truck-fast', reqPerm: 'despacho', colorClass: 'color-outbound' },
             { id: 'devoluciones', name: 'Devoluciones', icon: 'fa-rotate-left', reqPerm: 'recepcion', colorClass: 'color-return' },
-            { id: 'maestros', name: 'Maestros', icon: 'fa-database', reqPerm: 'admin', colorClass: 'color-admin' }
+            { id: 'maestros', name: 'Maestros', icon: 'fa-database', reqPerm: 'admin', colorClass: 'color-admin' },
+            { id: 'reportes', name: 'Reportes', icon: 'fa-chart-bar', reqPerm: 'reportes', colorClass: 'color-inventory' },
+            { id: 'dashboard_supervisor', name: 'Dashboard', icon: 'fa-gauge-high', reqPerm: 'supervisor', colorClass: 'color-picking' }
         ];
 
         let added = 0;
@@ -151,7 +153,9 @@ document.addEventListener('DOMContentLoaded', () => {
         'devoluciones': [
             { id: 'recepcion_devolucion', title: 'Nueva Devolución', icon: 'fa-rotate-left', colorClass: 'color-return' }
         ],
-        'alertas': [] // Specialized render
+        'alertas': [],         // Specialized render
+        'reportes': [],        // Handled by Reportes module
+        'dashboard_supervisor': [] // Handled by DashboardSupervisor module
     };
 
     window.openView = function(viewId, viewName) {
@@ -159,7 +163,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let contentHtml = '';
 
-        if (subMenus[viewId]) {
+        if (viewId === 'reportes') {
+            // Delegado al módulo Reportes
+            contentHtml = `<div id="reportes-root"></div>`;
+        } else if (viewId === 'dashboard_supervisor') {
+            contentHtml = `<div id="modules-container" style="padding:12px;"></div>`;
+        } else if (subMenus[viewId] && subMenus[viewId].length > 0) {
             // Render specific Submenu Grid identically to main dashboard
             let cardsHtml = '';
             subMenus[viewId].forEach((sub, idx) => {
@@ -175,23 +184,15 @@ document.addEventListener('DOMContentLoaded', () => {
             contentHtml = `<div class="module-grid">${cardsHtml}</div>`;
         } else if (viewId === 'alertas') {
             contentHtml = `
-                <div style="padding:10px;">
-                    <div style="background:white; border-radius:12px; padding:15px; border-left:4px solid #ef4444; margin-bottom:12px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                            <strong style="color:#0f172a;">Stock Crítico</strong>
-                            <small style="color:#64748b;">Hace 5 min</small>
-                        </div>
-                        <p style="margin:5px 0 0; font-size:0.85rem; color:#475569;">El producto "Aceite de Palma" está por debajo del stock mínimo en Bodega Principal.</p>
+                <div id="alertas-panel" style="padding:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <span style="font-weight:700; color:#0f172a;">Alertas Activas</span>
+                        <button onclick="window._loadAlertas()" style="padding:6px 12px; background:#f97316; color:white; border:none; border-radius:8px; font-size:0.8rem; cursor:pointer;">
+                            <i class="fa-solid fa-rotate"></i> Re-escanear
+                        </button>
                     </div>
-                    <div style="background:white; border-radius:12px; padding:15px; border-left:4px solid #f59e0b; margin-bottom:12px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                            <strong style="color:#0f172a;">Cita Retrasada</strong>
-                            <small style="color:#64748b;">Hace 1 hora</small>
-                        </div>
-                        <p style="margin:5px 0 0; font-size:0.85rem; color:#475569;">El proveedor "Distribuidora S.A." no ha llegado para su cita de las 08:00 AM.</p>
-                    </div>
-                </div>
-            `;
+                    <div id="alertas-list"><div style="text-align:center; padding:20px; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+                </div>`;
         } else {
             // Generic construction notice
             contentHtml = `<div style="text-align:center; padding:60px 20px; color:#94a3b8;">
@@ -215,6 +216,71 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         viewContainer.innerHTML = viewHtml;
+
+        // Post-render hooks
+        if (viewId === 'reportes' && window.Reportes) {
+            setTimeout(() => {
+                const root = document.getElementById('reportes-root');
+                if (root) {
+                    // Render reportes panel directly into the view
+                    const { ini, fin } = window.Reportes._defaultRange();
+                    root.innerHTML = window.Reportes._buildPanelHTML ? window.Reportes._buildPanelHTML(ini, fin) : '';
+                    // Fallback: delegate to Reportes.abrir-like logic inline
+                }
+                window.Reportes.abrir();
+            }, 100);
+        } else if (viewId === 'dashboard_supervisor' && window.DashboardSupervisor) {
+            setTimeout(() => window.DashboardSupervisor.init(), 100);
+        } else if (viewId === 'alertas') {
+            window._loadAlertas = async function() {
+                const list = document.getElementById('alertas-list');
+                if (!list) return;
+                list.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i></div>';
+                try {
+                    const data = await window.api.get('/alertas');
+                    const alertas = data?.alertas || [];
+                    const res = data?.resumen || {};
+                    const colorMap = { Vencido:'#dc2626', ProximoVencer:'#f59e0b', Agotado:'#ef4444', BajoMinimo:'#f97316', SobreMaximo:'#8b5cf6' };
+                    if (!alertas.length) {
+                        list.innerHTML = '<div style="text-align:center; padding:30px; color:#22c55e;"><i class="fa-solid fa-circle-check" style="font-size:2rem; margin-bottom:8px; display:block;"></i>Sin alertas activas</div>';
+                        return;
+                    }
+                    const summary = `<div style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:12px;">
+                        ${[['Vencidos', res.vencidos||0, '#dc2626'],['Próx. Vencer', res.proximos_vencer||0,'#f59e0b'],['Agotados',res.agotados||0,'#ef4444'],['Bajo Mínimo',res.bajo_minimo||0,'#f97316']]
+                        .map(([l,v,c]) => `<div style="background:white; border:1px solid #e2e8f0; border-left:3px solid ${c}; border-radius:8px; padding:10px; text-align:center;"><div style="font-size:1.4rem; font-weight:800; color:${c};">${v}</div><div style="font-size:0.72rem; color:#64748b;">${l}</div></div>`).join('')}
+                    </div>`;
+                    list.innerHTML = summary + alertas.map(a => {
+                        const color = colorMap[a.tipo] || '#64748b';
+                        return `<div style="background:white; border-radius:10px; padding:12px; border-left:3px solid ${color}; margin-bottom:8px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                <strong style="color:#0f172a; font-size:0.9rem;">${a.producto_nombre || 'Producto #'+a.producto_id}</strong>
+                                <span style="font-size:0.7rem; background:${color}20; color:${color}; border-radius:999px; padding:2px 8px; font-weight:700; white-space:nowrap;">${a.tipo}</span>
+                            </div>
+                            <p style="margin:4px 0 8px; font-size:0.8rem; color:#475569;">
+                                Stock: ${a.stock_actual ?? '—'}${a.stock_minimo ? ' / Mín: '+a.stock_minimo : ''}${a.fecha_vencimiento ? ' · Vence: '+a.fecha_vencimiento : ''}${a.dias_para_vencer != null ? ' ('+a.dias_para_vencer+' días)' : ''}
+                            </p>
+                            <div style="display:flex; gap:8px;">
+                                <button onclick="window._resolverAlerta(${a.id})" style="flex:1; padding:6px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; font-size:0.75rem; color:#166534; cursor:pointer; font-weight:600;">
+                                    <i class="fa-solid fa-check"></i> Resolver
+                                </button>
+                                <button onclick="window._ignorarAlerta(${a.id})" style="padding:6px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; font-size:0.75rem; color:#64748b; cursor:pointer;">
+                                    Ignorar
+                                </button>
+                            </div>
+                        </div>`;
+                    }).join('');
+                } catch (err) {
+                    list.innerHTML = `<div style="color:#ef4444; padding:20px; text-align:center;">${err.message || 'Error al cargar alertas'}</div>`;
+                }
+            };
+            window._resolverAlerta = async (id) => {
+                try { await window.api.post(`/alertas/${id}/resolver`, {}); window.Toast?.success('Resuelta'); window._loadAlertas(); } catch(e) { window.Toast?.error(e.message); }
+            };
+            window._ignorarAlerta = async (id) => {
+                try { await window.api.post(`/alertas/${id}/ignorar`, {}); window._loadAlertas(); } catch(e) { window.Toast?.error(e.message); }
+            };
+            setTimeout(() => window._loadAlertas(), 200);
+        }
     }
 
     window.closeView = function(elementId) {

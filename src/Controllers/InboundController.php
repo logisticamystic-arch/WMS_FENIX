@@ -8,17 +8,259 @@ use App\Models\OrdenCompra;
 use App\Models\OrdenCompraDetalle;
 use App\Models\Producto;
 use App\Models\ProductoEan;
+use App\Models\Proveedor;
 use Illuminate\Database\Capsule\Manager as Capsule;
 
-/** InboundController — WMS v2 */
-class InboundController {
-    public function getOrdenesCompra($req,$res):Response{ return $this->json($res,['error'=>false]); }
-    public function getODC($req,$res,$a):Response{ return $this->json($res,['error'=>false]); }
-    public function buscarProducto($req,$res):Response{ return $this->json($res,['error'=>false]); }
-    public function createOrdenCompra($req,$res):Response{ return $this->json($res,['error'=>false]); }
-    public function updateOrdenCompra($req,$res,$a):Response{ return $this->json($res,['error'=>false]); }
-    public function exportarODC($req,$res,$a):Response{ return $this->json($res,['error'=>false]); }
-    public function templateImportacion($req,$res):Response{ return $this->json($res,['error'=>false]); }
-    public function importarODC($req,$res):Response{ return $this->json($res,['error'=>false]); }
-    private function json($res,$d):Response{ $res->getBody()->write(json_encode($d)); return $res->withHeader('Content-Type','application/json'); }
+/**
+ * InboundController — Órdenes de Compra (ODC)
+ * Gestión completa del ciclo: Borrador → Confirmada → Cerrada
+ * Registro de auditoría en cada transición.
+ */
+class InboundController extends BaseController
+{
+    // ── GET /api/odc ─────────────────────────────────────────────────────────
+    public function getOrdenesCompra(Request $req, Response $res): Response
+    {
+        $user   = $req->getAttribute('user');
+        $params = $req->getQueryParams();
+        [$ini, $fin] = $this->getDateRange($params);
+
+        $q = OrdenCompra::where('empresa_id', $user->empresa_id)
+            ->whereBetween('created_at', [$ini, $fin])
+            ->with(['proveedor']);
+
+        if (!empty($params['estado'])) {
+            $q->where('estado', $params['estado']);
+        }
+        if (!empty($params['proveedor_id'])) {
+            $q->where('proveedor_id', $params['proveedor_id']);
+        }
+
+        $ordenes = $q->orderBy('created_at', 'desc')->get();
+
+        // Export Excel
+        if (($params['export'] ?? '') === 'excel') {
+            $headers = ['# ODC', 'Proveedor', 'Fecha', 'Estado', 'Observaciones'];
+            $rows = $ordenes->map(fn($o) => [
+                $o->numero_odc,
+                $o->proveedor->razon_social ?? '—',
+                $o->fecha,
+                $o->estado,
+                $o->observaciones ?? '',
+            ])->toArray();
+            return $this->exportCsv($res, $headers, $rows,
+                'odc_' . date('Y-m-d'));
+        }
+
+        return $this->ok($res, $ordenes);
+    }
+
+    // ── GET /api/odc/{id} ────────────────────────────────────────────────────
+    public function getODC(Request $req, Response $res, array $a): Response
+    {
+        $user = $req->getAttribute('user');
+        $odc  = OrdenCompra::where('empresa_id', $user->empresa_id)
+            ->with(['proveedor', 'detalles.producto'])
+            ->find($a['id']);
+
+        if (!$odc) return $this->notFound($res);
+        return $this->ok($res, $odc);
+    }
+
+    // ── POST /api/odc ────────────────────────────────────────────────────────
+    public function createOrdenCompra(Request $req, Response $res): Response
+    {
+        $user = $req->getAttribute('user');
+        $data = $req->getParsedBody() ?? [];
+
+        if (empty($data['proveedor_id'])) {
+            return $this->error($res, 'El proveedor es requerido');
+        }
+
+        try {
+            $odc = Capsule::transaction(function () use ($data, $user) {
+                $odc = OrdenCompra::create([
+                    'empresa_id'    => $user->empresa_id,
+                    'proveedor_id'  => $data['proveedor_id'],
+                    'numero_odc'    => 'ODC-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5)),
+                    'fecha'         => $data['fecha'] ?? date('Y-m-d'),
+                    'estado'        => 'Borrador',
+                    'observaciones' => $data['observaciones'] ?? null,
+                ]);
+
+                // Líneas de detalle
+                if (!empty($data['detalles']) && is_array($data['detalles'])) {
+                    foreach ($data['detalles'] as $det) {
+                        OrdenCompraDetalle::create([
+                            'orden_compra_id'    => $odc->id,
+                            'producto_id'        => $det['producto_id'],
+                            'cantidad_solicitada'=> $det['cantidad'] ?? 0,
+                            'cantidad_recibida'  => 0,
+                        ]);
+                    }
+                }
+
+                return $odc;
+            });
+
+            $this->audit($user, 'odc', 'crear', 'ordenes_compra', $odc->id,
+                null, $odc->toArray(), "ODC {$odc->numero_odc} creada");
+
+            return $this->created($res, $odc->load('detalles.producto'));
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error al crear ODC: ' . $e->getMessage());
+        }
+    }
+
+    // ── PUT /api/odc/{id} ────────────────────────────────────────────────────
+    public function updateOrdenCompra(Request $req, Response $res, array $a): Response
+    {
+        $user = $req->getAttribute('user');
+        $odc  = OrdenCompra::where('empresa_id', $user->empresa_id)->find($a['id']);
+        if (!$odc) return $this->notFound($res);
+        if ($odc->estado === 'Cerrada') {
+            return $this->error($res, 'No se puede modificar una ODC cerrada');
+        }
+
+        $data     = $req->getParsedBody() ?? [];
+        $anterior = $odc->toArray();
+
+        try {
+            Capsule::transaction(function () use ($odc, $data) {
+                if (isset($data['observaciones'])) $odc->observaciones = $data['observaciones'];
+                if (isset($data['fecha']))         $odc->fecha         = $data['fecha'];
+                if (isset($data['estado']) && in_array($data['estado'], ['Borrador', 'Confirmada', 'Cancelada'])) {
+                    $odc->estado = $data['estado'];
+                }
+                $odc->save();
+
+                // Reemplazar detalles si se envían
+                if (isset($data['detalles']) && is_array($data['detalles'])) {
+                    OrdenCompraDetalle::where('orden_compra_id', $odc->id)->delete();
+                    foreach ($data['detalles'] as $det) {
+                        OrdenCompraDetalle::create([
+                            'orden_compra_id'    => $odc->id,
+                            'producto_id'        => $det['producto_id'],
+                            'cantidad_solicitada'=> $det['cantidad'] ?? 0,
+                            'cantidad_recibida'  => $det['cantidad_recibida'] ?? 0,
+                        ]);
+                    }
+                }
+            });
+
+            $this->audit($user, 'odc', 'editar', 'ordenes_compra', $odc->id,
+                $anterior, $odc->fresh()->toArray(), "ODC {$odc->numero_odc} actualizada");
+
+            return $this->ok($res, $odc->load('detalles.producto'), 'ODC actualizada');
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error: ' . $e->getMessage());
+        }
+    }
+
+    // ── DELETE /api/odc/{id} — solo Admin ────────────────────────────────────
+    public function deleteOrdenCompra(Request $req, Response $res, array $a): Response
+    {
+        $user = $req->getAttribute('user');
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
+
+        $odc = OrdenCompra::where('empresa_id', $user->empresa_id)->find($a['id']);
+        if (!$odc) return $this->notFound($res);
+
+        $snapshot = $odc->toArray();
+        $odc->detalles()->delete();
+        $odc->delete();
+
+        $this->audit($user, 'odc', 'eliminar', 'ordenes_compra', $a['id'],
+            $snapshot, null, "ODC {$snapshot['numero_odc']} eliminada por Admin");
+
+        return $this->ok($res, null, 'ODC eliminada');
+    }
+
+    // ── POST /api/odc/{id}/confirmar ─────────────────────────────────────────
+    public function confirmarOrdenCompra(Request $req, Response $res, array $a): Response
+    {
+        $user = $req->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
+        $odc = OrdenCompra::where('empresa_id', $user->empresa_id)->find($a['id']);
+        if (!$odc) return $this->notFound($res);
+        if ($odc->estado !== 'Borrador') {
+            return $this->error($res, "La ODC ya está en estado {$odc->estado}");
+        }
+        if ($odc->detalles()->count() === 0) {
+            return $this->error($res, 'La ODC no tiene líneas de detalle');
+        }
+
+        $odc->estado = 'Confirmada';
+        $odc->save();
+
+        $this->audit($user, 'odc', 'confirmar', 'ordenes_compra', $odc->id,
+            ['estado' => 'Borrador'], ['estado' => 'Confirmada'],
+            "ODC {$odc->numero_odc} confirmada");
+
+        return $this->ok($res, $odc, 'ODC confirmada exitosamente');
+    }
+
+    // ── POST /api/odc/{id}/cerrar ────────────────────────────────────────────
+    public function cerrarOrdenCompra(Request $req, Response $res, array $a): Response
+    {
+        $user = $req->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
+        $odc = OrdenCompra::where('empresa_id', $user->empresa_id)->find($a['id']);
+        if (!$odc) return $this->notFound($res);
+
+        $odc->estado = 'Cerrada';
+        $odc->save();
+
+        $this->audit($user, 'odc', 'cerrar', 'ordenes_compra', $odc->id,
+            null, ['estado' => 'Cerrada'], "ODC {$odc->numero_odc} cerrada");
+
+        return $this->ok($res, $odc, 'ODC cerrada');
+    }
+
+    // ── GET /api/odc/buscar-producto?q= ──────────────────────────────────────
+    public function buscarProducto(Request $req, Response $res): Response
+    {
+        $user  = $req->getAttribute('user');
+        $q     = trim($req->getQueryParams()['q'] ?? '');
+
+        if (strlen($q) < 2) {
+            return $this->error($res, 'Ingrese al menos 2 caracteres');
+        }
+
+        $productos = Producto::where('empresa_id', $user->empresa_id)
+            ->where(function ($query) use ($q) {
+                $query->where('nombre', 'LIKE', "%{$q}%")
+                    ->orWhere('codigo_interno', 'LIKE', "%{$q}%")
+                    ->orWhereHas('eans', fn($eq) => $eq->where('codigo_ean', $q));
+            })
+            ->limit(15)
+            ->get(['id', 'nombre', 'codigo_interno', 'unidad_medida', 'peso_unitario']);
+
+        return $this->ok($res, $productos);
+    }
+
+    // ── GET /api/odc/export ──────────────────────────────────────────────────
+    public function exportarODC(Request $req, Response $res, array $a): Response
+    {
+        $user = $req->getAttribute('user');
+        $odc  = OrdenCompra::where('empresa_id', $user->empresa_id)
+            ->with(['proveedor', 'detalles.producto'])
+            ->find($a['id']);
+
+        if (!$odc) return $this->notFound($res);
+
+        $headers = ['Producto', 'Código', 'Cant. Solicitada', 'Cant. Recibida', 'Pendiente'];
+        $rows = $odc->detalles->map(fn($d) => [
+            $d->producto->nombre          ?? '—',
+            $d->producto->codigo_interno  ?? '—',
+            $d->cantidad_solicitada,
+            $d->cantidad_recibida,
+            $d->cantidad_solicitada - $d->cantidad_recibida,
+        ])->toArray();
+
+        return $this->exportCsv($res, $headers, $rows,
+            'odc_' . $odc->numero_odc);
+    }
 }
