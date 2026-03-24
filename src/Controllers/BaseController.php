@@ -124,7 +124,6 @@ abstract class BaseController
         $inicio = $params['fecha_inicio'] ?? date('Y-m-d', strtotime('-30 days'));
         $fin    = $params['fecha_fin']    ?? date('Y-m-d');
 
-        // Sanitizar
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $inicio)) {
             $inicio = date('Y-m-d', strtotime('-30 days'));
         }
@@ -133,5 +132,94 @@ abstract class BaseController
         }
 
         return [$inicio, $fin . ' 23:59:59'];
+    }
+
+    // ── Paginación ────────────────────────────────────────────────────────────
+
+    /**
+     * Returns pagination metadata array.
+     * Usage: $meta = $this->paginateMeta($total, $page, $perPage);
+     */
+    protected function paginateMeta(int $total, int $page, int $perPage): array
+    {
+        return [
+            'total'    => $total,
+            'page'     => $page,
+            'per_page' => $perPage,
+            'pages'    => $perPage > 0 ? (int)ceil($total / $perPage) : 1,
+        ];
+    }
+
+    /**
+     * Extract safe page/per_page from query params.
+     * Returns [page, perPage].
+     */
+    protected function getPagination(array $params, int $defaultPerPage = 50, int $maxPerPage = 500): array
+    {
+        $page    = max(1, (int)($params['page'] ?? 1));
+        $perPage = min($maxPerPage, max(1, (int)($params['per_page'] ?? $defaultPerPage)));
+        return [$page, $perPage];
+    }
+
+    // ── Validación ────────────────────────────────────────────────────────────
+
+    /**
+     * Check that all $required keys are present and non-empty in $data.
+     * Returns list of missing field names.
+     */
+    protected function missingFields(array $data, array $required): array
+    {
+        $missing = [];
+        foreach ($required as $field) {
+            if (!isset($data[$field]) || $data[$field] === '' || $data[$field] === null) {
+                $missing[] = $field;
+            }
+        }
+        return $missing;
+    }
+
+    /**
+     * Convenience: return 400 error if any required fields are missing.
+     * Usage: if ($deny = $this->requireFields($body, ['nombre','precio'], $response)) return $deny;
+     */
+    protected function requireFields(array $data, array $required, Response $response): ?Response
+    {
+        $missing = $this->missingFields($data, $required);
+        if (!empty($missing)) {
+            return $this->error($response, 'Campos requeridos: ' . implode(', ', $missing));
+        }
+        return null;
+    }
+
+    // ── Sanitización ─────────────────────────────────────────────────────────
+
+    /**
+     * Strip tags and trim a string value. Returns '' on null.
+     */
+    protected function sanitizeStr(?string $value): string
+    {
+        return trim(strip_tags((string)($value ?? '')));
+    }
+
+    /**
+     * Sanitize an entire flat array: strip tags + trim all string values.
+     * Non-string values are left untouched.
+     */
+    protected function sanitizeArray(array $data): array
+    {
+        $out = [];
+        foreach ($data as $k => $v) {
+            $out[$k] = is_string($v) ? $this->sanitizeStr($v) : $v;
+        }
+        return $out;
+    }
+
+    /**
+     * Cast value to positive integer, return null if invalid.
+     */
+    protected function posInt($value): ?int
+    {
+        $v = (int)$value;
+        return $v > 0 ? $v : null;
     }
 }

@@ -1,12 +1,12 @@
-const CACHE_NAME = 'prowms-v15';
+const CACHE_NAME = 'prowms-v16';
 const ASSETS = [
     '/Prooriente/public/',
     '/Prooriente/public/index.html',
     '/Prooriente/public/manifest.json',
     '/Prooriente/public/assets/css/app.css',
-    '/Prooriente/public/assets/js/app.js',
+    '/Prooriente/public/assets/js/api.js',
     '/Prooriente/public/assets/js/auth.js',
-    // add other JS files like scanner, api here
+    '/Prooriente/public/assets/js/app.js',
 ];
 
 // Instalar SW y cachear assets estáticos
