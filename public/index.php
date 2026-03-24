@@ -128,8 +128,10 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // Módulo: Orden de Compra (ODC)
     $group->get('/odc', [\App\Controllers\InboundController::class, 'getOrdenesCompra']);
     $group->post('/odc', [\App\Controllers\InboundController::class, 'createOrdenCompra']);
+    $group->post('/odc/importar', [\App\Controllers\InboundController::class, 'importarODC']);
     $group->get('/odc/buscar-producto', [\App\Controllers\InboundController::class, 'buscarProducto']);
     $group->get('/odc/{id}', [\App\Controllers\InboundController::class, 'getODC']);
+    $group->get('/odc/{id}/exportar', [\App\Controllers\InboundController::class, 'exportarODC']);
     $group->put('/odc/{id}', [\App\Controllers\InboundController::class, 'updateOrdenCompra']);
     $group->post('/odc/{id}/confirmar', [\App\Controllers\InboundController::class, 'confirmarOrdenCompra']);
     $group->post('/odc/{id}/cerrar', [\App\Controllers\InboundController::class, 'cerrarOrdenCompra']);
@@ -161,12 +163,15 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
 
     // Módulo: Picking (Outbound)
     $group->get('/picking', [\App\Controllers\PickingController::class, 'listar']);
-    $group->post('/picking', [\App\Controllers\PickingController::class, 'crear']);
+    $group->post('/picking', [\App\Controllers\PickingController::class, 'crearBatch']);
+    $group->post('/picking/importar', [\App\Controllers\PickingController::class, 'importarPedidos']);
     $group->get('/picking/dashboard', [\App\Controllers\PickingController::class, 'dashboard']);
-    $group->get('/picking/{id}', [\App\Controllers\PickingController::class, 'ver']);
+    $group->get('/picking/reabastecimientos', [\App\Controllers\PickingController::class, 'reabastecimientos']);
+    $group->get('/picking/{id}', [\App\Controllers\PickingController::class, 'detalle']);
     $group->post('/picking/{orden_id}/generar-ruta', [\App\Controllers\PickingController::class, 'generateRoute']);
     $group->post('/picking/{orden_id}/confirmar-linea', [\App\Controllers\PickingController::class, 'confirmLine']);
     $group->post('/picking/{id}/completar', [\App\Controllers\PickingController::class, 'completar']);
+    $group->post('/picking/{id}/marcar-faltante', [\App\Controllers\PickingController::class, 'marcarFaltante']);
     $group->post('/picking/reabast/{id}/completar', [\App\Controllers\PickingController::class, 'completarReabast']);
     $group->delete('/picking/{id}', [\App\Controllers\PickingController::class, 'eliminar']);
 
@@ -212,9 +217,14 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/param/marcas', [\App\Controllers\ParametrosController::class, 'getMarcas']);
     $group->post('/param/marcas', [\App\Controllers\ParametrosController::class, 'createMarca']);
     $group->get('/param/productos', [\App\Controllers\ParametrosController::class, 'getProductos']);
+    $group->get('/param/productos/buscar', [\App\Controllers\ParametrosController::class, 'buscarProductos']);
     $group->post('/param/productos', [\App\Controllers\ParametrosController::class, 'createProducto']);
     $group->put('/param/productos/{id}', [\App\Controllers\ParametrosController::class, 'editProducto']);
     $group->delete('/param/productos/{id}', [\App\Controllers\ParametrosController::class, 'deleteProducto']);
+    $group->get('/param/categorias', [\App\Controllers\ParametrosController::class, 'getCategorias']);
+    $group->post('/param/categorias', [\App\Controllers\ParametrosController::class, 'createCategoria']);
+    $group->put('/param/categorias/{id}', [\App\Controllers\ParametrosController::class, 'editCategoria']);
+    $group->delete('/param/categorias/{id}', [\App\Controllers\ParametrosController::class, 'deleteCategoria']);
     $group->get('/param/personal', [\App\Controllers\ParametrosController::class, 'getPersonal']);
     $group->post('/param/personal', [\App\Controllers\ParametrosController::class, 'createPersonal']);
     $group->put('/param/personal/{id}', [\App\Controllers\ParametrosController::class, 'editPersonal']);

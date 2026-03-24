@@ -147,12 +147,109 @@ class ParametrosController
     public function getProductos(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        // Join with marcas to get brand name
         $productos = \App\Models\Producto::where('empresa_id', $user->empresa_id)
-            ->with('marca')
+            ->with(['marca', 'categoria', 'eans' => fn($q) => $q->where('activo', 1)])
             ->where('activo', 1)->get();
 
         return $this->json($response, ['error' => false, 'data' => $productos]);
+    }
+
+    /**
+     * GET /api/param/productos/buscar?q=
+     */
+    public function buscarProductos(Request $request, Response $response): Response
+    {
+        $user = $request->getAttribute('user');
+        $q = trim($request->getQueryParams()['q'] ?? '');
+
+        if (strlen($q) < 2) {
+            return $this->json($response, ['error' => false, 'data' => []]);
+        }
+
+        $productos = \App\Models\Producto::where('empresa_id', $user->empresa_id)
+            ->where('activo', 1)
+            ->where(function ($query) use ($q) {
+                $query->where('nombre', 'LIKE', "%{$q}%")
+                    ->orWhere('codigo_interno', 'LIKE', "%{$q}%")
+                    ->orWhere('descripcion', 'LIKE', "%{$q}%")
+                    ->orWhereHas('eans', fn($eq) => $eq->where('codigo_ean', 'LIKE', "%{$q}%")->where('activo', 1));
+            })
+            ->with(['eans' => fn($q) => $q->where('activo', 1), 'marca', 'categoria'])
+            ->limit(20)
+            ->get();
+
+        return $this->json($response, ['error' => false, 'data' => $productos]);
+    }
+
+    /**
+     * GET /api/param/categorias
+     */
+    public function getCategorias(Request $request, Response $response): Response
+    {
+        $user = $request->getAttribute('user');
+        $cats = \App\Models\CategoriaProducto::where('empresa_id', $user->empresa_id)
+            ->orderBy('nombre')->get();
+        return $this->json($response, ['error' => false, 'data' => $cats]);
+    }
+
+    /**
+     * POST /api/param/categorias
+     */
+    public function createCategoria(Request $request, Response $response): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) {
+            return $this->json($response, ['error' => true, 'message' => 'Solo administradores'], 403);
+        }
+        $data = $request->getParsedBody();
+        if (empty($data['nombre'])) {
+            return $this->json($response, ['error' => true, 'message' => 'El nombre es requerido'], 400);
+        }
+        $cat = \App\Models\CategoriaProducto::create([
+            'empresa_id'               => $user->empresa_id,
+            'nombre'                   => $data['nombre'],
+            'descripcion'              => $data['descripcion'] ?? null,
+            'requiere_foto_vencimiento'=> isset($data['requiere_foto_vencimiento']) && $data['requiere_foto_vencimiento'] ? 1 : 0,
+        ]);
+        return $this->json($response, ['error' => false, 'data' => $cat]);
+    }
+
+    /**
+     * PUT /api/param/categorias/{id}
+     */
+    public function editCategoria(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) {
+            return $this->json($response, ['error' => true, 'message' => 'Solo administradores'], 403);
+        }
+        $cat = \App\Models\CategoriaProducto::where('empresa_id', $user->empresa_id)->find($args['id']);
+        if (!$cat) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
+        $data = $request->getParsedBody();
+        if (!empty($data['nombre'])) $cat->nombre = $data['nombre'];
+        if (array_key_exists('descripcion', $data)) $cat->descripcion = $data['descripcion'];
+        if (array_key_exists('requiere_foto_vencimiento', $data)) {
+            $cat->requiere_foto_vencimiento = $data['requiere_foto_vencimiento'] ? 1 : 0;
+        }
+        $cat->save();
+        return $this->json($response, ['error' => false, 'data' => $cat]);
+    }
+
+    /**
+     * DELETE /api/param/categorias/{id}
+     */
+    public function deleteCategoria(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) {
+            return $this->json($response, ['error' => true, 'message' => 'Solo administradores'], 403);
+        }
+        $cat = \App\Models\CategoriaProducto::where('empresa_id', $user->empresa_id)->find($args['id']);
+        if (!$cat) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
+        // Desasignar productos de esta categoría antes de eliminar
+        \App\Models\Producto::where('categoria_id', $cat->id)->update(['categoria_id' => null]);
+        $cat->delete();
+        return $this->json($response, ['error' => false, 'message' => 'Categoría eliminada']);
     }
 
     /**
@@ -181,6 +278,7 @@ class ParametrosController
              $prod->vida_util_dias = isset($data['vida_util_dias']) && $data['vida_util_dias'] !== '' ? (int)$data['vida_util_dias'] : null;
              $prod->temperatura_almacen = $data['temperatura_almacen'] ?? null;
              $prod->marca_id = $data['marca_id'] ?? null;
+             $prod->categoria_id = $data['categoria_id'] ?? null;
              $prod->controla_lote = isset($data['maneja_lotes']) && $data['maneja_lotes'] ? 1 : 0;
              $prod->controla_vencimiento = isset($data['controla_vencimiento']) && $data['controla_vencimiento'] ? 1 : 0;
              $prod->imagen_url = $data['imagen_url'] ?? null;
@@ -234,6 +332,7 @@ class ParametrosController
              if (isset($data['vida_util_dias'])) $prod->vida_util_dias = $data['vida_util_dias'] !== '' ? (int)$data['vida_util_dias'] : null;
              if (isset($data['temperatura_almacen'])) $prod->temperatura_almacen = $data['temperatura_almacen'];
              if (array_key_exists('marca_id', $data)) $prod->marca_id = $data['marca_id'] ?: null;
+             if (array_key_exists('categoria_id', $data)) $prod->categoria_id = $data['categoria_id'] ?: null;
              if (isset($data['maneja_lotes'])) $prod->controla_lote = $data['maneja_lotes'] ? 1 : 0;
              if (isset($data['controla_vencimiento'])) $prod->controla_vencimiento = $data['controla_vencimiento'] ? 1 : 0;
              if (isset($data['imagen_url'])) $prod->imagen_url = $data['imagen_url'];

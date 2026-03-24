@@ -409,6 +409,124 @@ class PickingController extends BaseController
         }
     }
 
+    // ── Alias para compatibilidad de rutas ────────────────────────────────────
+    public function crear(Request $r, Response $res): Response { return $this->crearBatch($r, $res); }
+    public function ver(Request $r, Response $res, array $a): Response { return $this->detalle($r, $res, $a); }
+
+    // ── POST /api/picking/importar — importar pedidos desde CSV ──────────────
+    public function importarPedidos(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $uploadedFiles = $r->getUploadedFiles();
+
+        if (empty($uploadedFiles['file'])) {
+            return $this->error($res, 'No se recibió ningún archivo');
+        }
+
+        $file = $uploadedFiles['file'];
+        if ($file->getError() !== UPLOAD_ERR_OK) {
+            return $this->error($res, 'Error al subir el archivo');
+        }
+
+        $stream = $file->getStream();
+        $stream->rewind();
+        $contents = $stream->getContents();
+
+        $lines = array_values(array_filter(explode("\n", $contents), fn($l) => trim($l) !== ''));
+        if (count($lines) < 2) {
+            return $this->error($res, 'El archivo está vacío o no tiene datos');
+        }
+
+        // Detectar separador (coma o punto y coma)
+        $sep = str_contains($lines[0], ';') ? ';' : ',';
+        $headers = array_map('trim', str_getcsv(array_shift($lines), $sep));
+
+        // Agrupar líneas por numero_pedido (o crear uno único si no existe esa columna)
+        $groups  = [];
+        $errors  = [];
+        $hasNumPedido = in_array('numero_pedido', $headers) || in_array('pedido', $headers);
+
+        foreach ($lines as $i => $line) {
+            $cols = array_map('trim', str_getcsv($line, $sep));
+            $row  = array_combine($headers, array_pad($cols, count($headers), ''));
+
+            $codigoRaw = $row['codigo'] ?? $row['codigo_interno'] ?? $row['producto'] ?? '';
+            $ean       = $row['ean'] ?? $row['ean13'] ?? '';
+            $cantidad  = max(1, (int)($row['cantidad'] ?? 1));
+            $pedidoKey = $hasNumPedido
+                ? ($row['numero_pedido'] ?? $row['pedido'] ?? 'IMPORT')
+                : 'IMPORT';
+
+            $producto = null;
+            if ($codigoRaw) {
+                $producto = \App\Models\Producto::where('empresa_id', $user->empresa_id)
+                    ->where('codigo_interno', $codigoRaw)->first();
+            }
+            if (!$producto && $ean) {
+                $producto = \App\Models\Producto::findByEan($ean);
+            }
+
+            if (!$producto) {
+                $errors[] = "Fila " . ($i + 2) . ": producto no encontrado (código=$codigoRaw, ean=$ean)";
+                continue;
+            }
+
+            if (!isset($groups[$pedidoKey])) {
+                $groups[$pedidoKey] = [
+                    'cliente'         => $row['cliente'] ?? null,
+                    'fecha_requerida' => $row['fecha_requerida'] ?? null,
+                    'prioridad'       => isset($row['prioridad']) ? max(1, (int)$row['prioridad']) : 5,
+                    'detalles'        => [],
+                ];
+            }
+            $groups[$pedidoKey]['detalles'][] = [
+                'producto_id' => $producto->id,
+                'cantidad'    => $cantidad,
+            ];
+        }
+
+        if (empty($groups)) {
+            return $this->error($res, 'No se encontraron productos válidos. ' . implode(' | ', $errors));
+        }
+
+        $ordenesCreadas = [];
+        try {
+            Capsule::transaction(function () use ($groups, $user, &$ordenesCreadas) {
+                foreach ($groups as $numPedido => $g) {
+                    $orden = OrdenPicking::create([
+                        'empresa_id'      => $user->empresa_id,
+                        'sucursal_id'     => $user->sucursal_id,
+                        'numero_orden'    => 'PK-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5)),
+                        'cliente'         => $g['cliente'] ?? $numPedido,
+                        'estado'          => 'Pendiente',
+                        'prioridad'       => $g['prioridad'],
+                        'fecha_movimiento'=> date('Y-m-d'),
+                        'hora_inicio'     => date('H:i:s'),
+                        'fecha_requerida' => $g['fecha_requerida'] ?? null,
+                    ]);
+                    foreach ($g['detalles'] as $det) {
+                        PickingDetalle::create([
+                            'orden_picking_id'   => $orden->id,
+                            'producto_id'        => $det['producto_id'],
+                            'ubicacion_id'       => 0,
+                            'cantidad_solicitada'=> $det['cantidad'],
+                            'cantidad_pickeada'  => 0,
+                            'estado'             => 'Pendiente',
+                        ]);
+                    }
+                    $ordenesCreadas[] = $orden->numero_orden;
+                }
+            });
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error al crear órdenes: ' . $e->getMessage());
+        }
+
+        return $this->ok($res, [
+            'ordenes_creadas' => $ordenesCreadas,
+            'advertencias'    => $errors,
+        ], count($ordenesCreadas) . ' orden(es) de picking creada(s)');
+    }
+
     // ── Marcar línea como faltante ────────────────────────────────────────────
     public function marcarFaltante(Request $r, Response $res, array $a): Response
     {

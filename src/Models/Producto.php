@@ -9,7 +9,7 @@ class Producto extends Model
     protected $table = 'productos';
 
     protected $fillable = [
-        'empresa_id', 'marca_id', 'codigo_interno', 'nombre', 'descripcion',
+        'empresa_id', 'marca_id', 'categoria_id', 'codigo_interno', 'nombre', 'descripcion',
         'imagen_url', 'unidad_medida', 'peso_unitario', 'volumen_unitario',
         'controla_lote', 'controla_vencimiento', 'vida_util_dias',
         'temperatura_almacen', 'activo',
@@ -31,6 +31,11 @@ class Producto extends Model
     public function marca()
     {
         return $this->belongsTo(Marca::class);
+    }
+
+    public function categoria()
+    {
+        return $this->belongsTo(CategoriaProducto::class, 'categoria_id');
     }
 
     public function eans()

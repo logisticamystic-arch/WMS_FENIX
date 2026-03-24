@@ -20,10 +20,16 @@ window.ODC = {
                     <span style="font-weight:700; color:#0f172a; font-size:1rem;">Órdenes de Compra</span>
                     <p style="color:#64748b; font-size:0.78rem; margin:2px 0 0;">Gestión ODC a proveedores</p>
                 </div>
-                <button onclick="window.ODC.abrirFormNueva()"
-                    style="padding:8px 14px; background:#0f172a; color:white; border:none; border-radius:8px; font-size:0.82rem; cursor:pointer; font-weight:600;">
-                    <i class="fa-solid fa-plus"></i> Nueva ODC
-                </button>
+                <div style="display:flex; gap:8px;">
+                    <button onclick="window.ODC.abrirImportarODC()"
+                        style="padding:8px 12px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; border-radius:8px; font-size:0.82rem; cursor:pointer; font-weight:600;">
+                        <i class="fa-solid fa-file-import"></i> Importar
+                    </button>
+                    <button onclick="window.ODC.abrirFormNueva()"
+                        style="padding:8px 14px; background:#0f172a; color:white; border:none; border-radius:8px; font-size:0.82rem; cursor:pointer; font-weight:600;">
+                        <i class="fa-solid fa-plus"></i> Nueva ODC
+                    </button>
+                </div>
             </div>
 
             <!-- Filtros -->
@@ -239,7 +245,7 @@ window.ODC = {
     async abrirFormNueva() {
         let proveedores = [];
         try {
-            const data = await window.api.get('/parametros/proveedores');
+            const data = await window.api.get('/param/proveedores');
             proveedores = Array.isArray(data) ? data : (data?.data || []);
         } catch (_) {}
 
@@ -560,6 +566,71 @@ window.ODC = {
             this.loadODCs();
         } catch (err) {
             window.Toast?.error(err.message || 'Error al eliminar');
+        }
+    },
+
+    // ── Importar ODC desde CSV ────────────────────────────────────────────────
+    abrirImportarODC() {
+        document.getElementById('odc-import-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'odc-import-modal';
+        modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9992; display:flex; align-items:center; justify-content:center; padding:16px;';
+        modal.innerHTML = `
+        <div style="background:white; border-radius:16px; width:100%; max-width:480px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+            <div style="padding:16px 20px; background:#0f172a; color:white; display:flex; align-items:center; justify-content:space-between;">
+                <h3 style="margin:0; font-size:1rem;"><i class="fa-solid fa-file-import"></i> Importar ODC desde CSV</h3>
+                <button onclick="document.getElementById('odc-import-modal').remove()"
+                    style="width:32px; height:32px; background:#374151; border:none; border-radius:8px; color:white; cursor:pointer; font-size:1rem;">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div style="padding:20px;">
+                <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:12px; margin-bottom:16px; font-size:0.82rem; color:#166534;">
+                    <strong><i class="fa-solid fa-circle-info"></i> Formato CSV requerido (separador ; o ,):</strong><br>
+                    <code style="display:block; margin-top:6px; font-size:0.78rem;">numero_odc;proveedor_id;fecha;codigo_interno;cantidad</code>
+                    <code style="display:block; font-size:0.78rem;">ODC-001;5;2026-03-24;PROD001;100</code>
+                </div>
+                <div style="margin-bottom:16px;">
+                    <label style="font-size:0.75rem; font-weight:700; color:#475569; display:block; margin-bottom:6px; text-transform:uppercase;">Archivo CSV *</label>
+                    <input type="file" id="odc-import-file" accept=".csv,.txt"
+                        style="width:100%; padding:10px 12px; border:2px dashed #cbd5e1; border-radius:8px; font-size:0.88rem; box-sizing:border-box; cursor:pointer; background:#f8fafc;">
+                </div>
+                <button onclick="window.ODC._subirImportarODC()"
+                    style="width:100%; padding:12px; background:#0f172a; color:white; border:none; border-radius:10px; font-size:0.92rem; cursor:pointer; font-weight:700;">
+                    <i class="fa-solid fa-upload"></i> Importar ODC
+                </button>
+            </div>
+        </div>`;
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+    },
+
+    async _subirImportarODC() {
+        const fileInput = document.getElementById('odc-import-file');
+        if (!fileInput?.files?.length) {
+            window.Toast?.error('Selecciona un archivo CSV');
+            return;
+        }
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        const token = localStorage.getItem('jwt_token') || localStorage.getItem('token');
+        const base  = window.api?.baseUrl || '/api';
+        try {
+            const r = await fetch(`${base}/odc/importar`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+            });
+            const data = await r.json();
+            if (data.error) throw new Error(data.message);
+            window.Toast?.success(data.message || 'Importación completada');
+            if (data.advertencias?.length) {
+                console.warn('Advertencias importación ODC:', data.advertencias);
+            }
+            document.getElementById('odc-import-modal')?.remove();
+            this.loadODCs();
+        } catch (err) {
+            window.Toast?.error(err.message || 'Error al importar');
         }
     },
 

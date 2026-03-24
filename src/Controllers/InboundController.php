@@ -241,6 +241,119 @@ class InboundController extends BaseController
         return $this->ok($res, $productos);
     }
 
+    // ── POST /api/odc/importar — importar ODCs desde CSV ─────────────────────
+    public function importarODC(Request $req, Response $res): Response
+    {
+        $user = $req->getAttribute('user');
+        $uploadedFiles = $req->getUploadedFiles();
+
+        if (empty($uploadedFiles['file'])) {
+            return $this->error($res, 'No se recibió ningún archivo');
+        }
+
+        $file = $uploadedFiles['file'];
+        if ($file->getError() !== UPLOAD_ERR_OK) {
+            return $this->error($res, 'Error al subir el archivo');
+        }
+
+        $stream = $file->getStream();
+        $stream->rewind();
+        $contents = $stream->getContents();
+
+        $lines = array_values(array_filter(explode("\n", $contents), fn($l) => trim($l) !== ''));
+        if (count($lines) < 2) {
+            return $this->error($res, 'El archivo está vacío');
+        }
+
+        $sep     = str_contains($lines[0], ';') ? ';' : ',';
+        $headers = array_map('trim', str_getcsv(array_shift($lines), $sep));
+        $groups  = [];
+        $errors  = [];
+
+        foreach ($lines as $i => $line) {
+            $cols = array_map('trim', str_getcsv($line, $sep));
+            $row  = array_combine($headers, array_pad($cols, count($headers), ''));
+
+            $odcKey    = $row['numero_odc'] ?? $row['numero'] ?? ('IMPORT-' . date('Ymd'));
+            $provId    = (int)($row['proveedor_id'] ?? 0);
+            $provCod   = $row['proveedor'] ?? '';
+            $codigo    = $row['codigo_interno'] ?? $row['codigo'] ?? $row['producto'] ?? '';
+            $ean       = $row['ean'] ?? '';
+            $cantidad  = max(1, (int)($row['cantidad'] ?? 1));
+            $fecha     = $row['fecha'] ?? date('Y-m-d');
+
+            // Buscar proveedor
+            if (!$provId && $provCod) {
+                $prov = Proveedor::where('empresa_id', $user->empresa_id)
+                    ->where(fn($q) => $q->where('razon_social', 'LIKE', "%$provCod%")
+                        ->orWhere('nit', $provCod))->first();
+                $provId = $prov?->id ?? 0;
+            }
+
+            // Buscar producto
+            $producto = null;
+            if ($codigo) {
+                $producto = Producto::where('empresa_id', $user->empresa_id)
+                    ->where('codigo_interno', $codigo)->first();
+            }
+            if (!$producto && $ean) {
+                $producto = Producto::findByEan($ean);
+            }
+
+            if (!$producto) {
+                $errors[] = "Fila " . ($i + 2) . ": producto no encontrado (código=$codigo)";
+                continue;
+            }
+
+            if (!isset($groups[$odcKey])) {
+                $groups[$odcKey] = [
+                    'proveedor_id' => $provId,
+                    'fecha'        => $fecha,
+                    'detalles'     => [],
+                ];
+            }
+            $groups[$odcKey]['detalles'][] = [
+                'producto_id'        => $producto->id,
+                'cantidad_solicitada'=> $cantidad,
+            ];
+        }
+
+        if (empty($groups)) {
+            return $this->error($res, 'No se encontraron datos válidos. ' . implode(' | ', $errors));
+        }
+
+        $creadas = [];
+        try {
+            Capsule::transaction(function () use ($groups, $user, &$creadas) {
+                foreach ($groups as $numOdc => $g) {
+                    $odc = OrdenCompra::create([
+                        'empresa_id'   => $user->empresa_id,
+                        'proveedor_id' => $g['proveedor_id'] ?: null,
+                        'numero_odc'   => $numOdc,
+                        'fecha'        => $g['fecha'],
+                        'estado'       => 'Borrador',
+                    ]);
+                    foreach ($g['detalles'] as $det) {
+                        OrdenCompraDetalle::create([
+                            'orden_compra_id'    => $odc->id,
+                            'producto_id'        => $det['producto_id'],
+                            'cantidad_solicitada'=> $det['cantidad_solicitada'],
+                            'cantidad_recibida'  => 0,
+                        ]);
+                    }
+                    $creadas[] = $numOdc;
+                }
+            });
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error al crear ODCs: ' . $e->getMessage());
+        }
+
+        return $this->ok($res, [
+            'odcs_creadas'  => $creadas,
+            'advertencias'  => $errors,
+        ], count($creadas) . ' ODC(s) creada(s) desde importación');
+    }
+
     // ── GET /api/odc/export ──────────────────────────────────────────────────
     public function exportarODC(Request $req, Response $res, array $a): Response
     {
