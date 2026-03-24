@@ -214,6 +214,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/param/productos', [\App\Controllers\ParametrosController::class, 'getProductos']);
     $group->post('/param/productos', [\App\Controllers\ParametrosController::class, 'createProducto']);
     $group->put('/param/productos/{id}', [\App\Controllers\ParametrosController::class, 'editProducto']);
+    $group->delete('/param/productos/{id}', [\App\Controllers\ParametrosController::class, 'deleteProducto']);
     $group->get('/param/personal', [\App\Controllers\ParametrosController::class, 'getPersonal']);
     $group->post('/param/personal', [\App\Controllers\ParametrosController::class, 'createPersonal']);
     $group->put('/param/personal/{id}', [\App\Controllers\ParametrosController::class, 'editPersonal']);

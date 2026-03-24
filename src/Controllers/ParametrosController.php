@@ -264,6 +264,27 @@ class ParametrosController
      }
 
     /**
+     * DELETE /api/param/productos/{id}
+     */
+    public function deleteProducto(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) {
+            return $this->json($response, ['error' => true, 'message' => 'Acceso denegado. Solo administradores.'], 403);
+        }
+
+        $prod = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($args['id']);
+        if (!$prod) {
+            return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
+        }
+
+        $prod->activo = 0;
+        $prod->save();
+
+        return $this->json($response, ['error' => false, 'message' => 'Producto desactivado correctamente']);
+    }
+
+    /**
      * GET /api/param/productos/{id}/eans
      */
     public function getProductoEans(Request $request, Response $response, array $args): Response

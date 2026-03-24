@@ -392,10 +392,19 @@ window.Maestros = {
         if(!tbody) return;
 
         try {
-            const res = await window.api.get('/param/productos'); 
+            const res = await window.api.get('/param/productos');
+            const userData = localStorage.getItem('user_data');
+            const currentUser = userData ? JSON.parse(userData) : null;
+            const isAdmin = currentUser && currentUser.rol && currentUser.rol.toLowerCase() === 'admin';
+
             if (res && res.data && res.data.length > 0) {
                 let html = '';
                 res.data.forEach(p => {
+                    const deleteBtn = isAdmin
+                        ? `<button onclick="window.Maestros.deleteProducto(${p.id}, '${p.nombre.replace(/'/g, "\\'")}')" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 10px; border-radius:4px; cursor:pointer;" title="Eliminar">
+                                <i class="fa-solid fa-trash"></i>
+                           </button>`
+                        : '';
                     html += `<tr style="border-bottom:1px solid #f1f5f9;">
                         <td style="padding:12px 8px; font-weight:600; color:#334155;">${p.codigo_interno}</td>
                         <td style="padding:12px 8px; color:#475569;">${p.nombre}</td>
@@ -407,6 +416,7 @@ window.Maestros = {
                             <button onclick="window.Maestros.showEanManager(${p.id}, '${p.nombre.replace(/'/g, "\\'")}')" style="background:#e0e7ff; color:#4338ca; border:none; padding:6px 10px; border-radius:4px; cursor:pointer;" title="EANs">
                                 <i class="fa-solid fa-barcode"></i>
                             </button>
+                            ${deleteBtn}
                         </td>
                     </tr>`;
                 });
@@ -416,6 +426,17 @@ window.Maestros = {
             }
         } catch (e) {
             tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#ef4444;">Error de conexión API.</td></tr>`;
+        }
+    },
+
+    deleteProducto: async function(id, nombre) {
+        if (!confirm(`¿Eliminar el producto "${nombre}"? Esta acción lo desactivará del sistema.`)) return;
+        try {
+            await window.api.delete(`/param/productos/${id}`);
+            window.showToast('Producto eliminado correctamente', 'success');
+            this.loadProductos();
+        } catch (e) {
+            window.showToast('Error: ' + e.message, 'error');
         }
     },
 
