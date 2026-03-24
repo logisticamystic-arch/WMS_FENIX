@@ -680,6 +680,9 @@ window.Maestros = {
             imagen_url: document.getElementById('prod-photo-base64').value || null
         };
 
+        const btn = document.getElementById('prod-save-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+
         try {
             if (id) {
                 // Edit
@@ -691,9 +694,10 @@ window.Maestros = {
                 window.showToast('Producto guardado con éxito', 'success');
             }
             this.hideProductoForm();
-            this.loadProductos(); 
+            this.loadProductos();
         } catch (e) {
             window.showToast('Error: ' + e.message, 'error');
+            if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
         }
     },
 

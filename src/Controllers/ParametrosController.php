@@ -202,7 +202,11 @@ class ParametrosController
              return $this->json($response, ['error' => false, 'message' => 'Producto creado con éxito', 'data' => $prod]);
          } catch (\Exception $e) {
              Capsule::rollBack();
-             return $this->json($response, ['error' => true, 'message' => 'Error al crear producto: ' . $e->getMessage()], 400);
+             $msg = $e->getMessage();
+             if (str_contains($msg, '1062') || str_contains($msg, 'Duplicate entry')) {
+                 $msg = "El código interno '{$interno}' ya está en uso. Por favor use otro código.";
+             }
+             return $this->json($response, ['error' => true, 'message' => $msg], 400);
          }
     }
 
