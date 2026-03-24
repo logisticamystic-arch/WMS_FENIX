@@ -167,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Delegado al módulo Reportes
             contentHtml = `<div id="reportes-root"></div>`;
         } else if (viewId === 'dashboard_supervisor') {
-            contentHtml = `<div id="modules-container" style="padding:12px;"></div>`;
+            contentHtml = `<div id="dashboard-sup-root" style="padding:12px;"></div>`;
         } else if (subMenus[viewId] && subMenus[viewId].length > 0) {
             // Render specific Submenu Grid identically to main dashboard
             let cardsHtml = '';
@@ -230,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.Reportes.abrir();
             }, 100);
         } else if (viewId === 'dashboard_supervisor' && window.DashboardSupervisor) {
-            setTimeout(() => window.DashboardSupervisor.init(), 100);
+            setTimeout(() => window.DashboardSupervisor.init('dashboard-sup-root'), 100);
         } else if (viewId === 'alertas') {
             window._loadAlertas = async function() {
                 const list = document.getElementById('alertas-list');

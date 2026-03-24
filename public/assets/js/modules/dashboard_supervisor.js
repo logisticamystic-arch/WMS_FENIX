@@ -7,7 +7,8 @@ window.DashboardSupervisor = {
     _timer: null,
 
     // ── Inicializar panel ─────────────────────────────────────────────────────
-    init() {
+    init(containerId = 'dashboard-sup-root') {
+        this._containerId = containerId;
         this.renderPanel();
         this.cargarKPIs();
         // Actualizar cada 60 segundos
@@ -20,7 +21,7 @@ window.DashboardSupervisor = {
 
     // ── Estructura HTML ───────────────────────────────────────────────────────
     renderPanel() {
-        const container = document.getElementById('modules-container');
+        const container = document.getElementById(this._containerId || 'dashboard-sup-root');
         if (!container) return;
 
         container.innerHTML = `

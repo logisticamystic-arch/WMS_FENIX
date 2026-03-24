@@ -163,8 +163,8 @@ window.Reportes = {
         const path = exportUrls[key];
         if (!path) return;
 
-        const token = localStorage.getItem('wms_token');
-        const base  = window.api?.baseURL || '/api';
+        const token = window.api?.getToken ? window.api.getToken() : localStorage.getItem('jwt_token');
+        const base  = window.api?.baseUrl || '/api';
         const a     = document.createElement('a');
         a.href      = `${base}${path}`;
         a.setAttribute('download', '');

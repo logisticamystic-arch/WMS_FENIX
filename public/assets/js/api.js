@@ -88,3 +88,10 @@ const api = {
 };
 
 window.api = api;
+
+// Shim window.Toast → usa window.showToast definido en auth.js
+window.Toast = {
+    success(msg) { if (window.showToast) window.showToast(msg, 'success'); },
+    error(msg)   { if (window.showToast) window.showToast(msg, 'error'); },
+    info(msg)    { if (window.showToast) window.showToast(msg, 'info'); },
+};
