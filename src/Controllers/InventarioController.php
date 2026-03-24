@@ -12,7 +12,7 @@ class InventarioController {
     public function traslado($r,$res):Response{ return $this->j($res,['error'=>false]); }
     public function ajuste($r,$res):Response{ return $this->j($res,['error'=>false]); }
     public function getStock($r,$res):Response{ return $this->j($res,['error'=>false]); }
-    public function crearConteo($r,$res):Response{ return $this->k($res,['error'=>false],201); }
+    public function crearConteo($r,$res):Response{ return $this->j($res,['error'=>false],201); }
     public function addLineaConteo($r,$res,$a):Response{ return $this->j($res,['error'=>false]); }
     public function finalizarConteo($r,$res,$a):Response{ return $this->j($res,['error'=>false]); }
     public function aprobarConteo($r,$res,$a):Response{ return $this->j($res,['error'=>false]); }

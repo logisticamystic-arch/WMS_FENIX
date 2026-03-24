@@ -11,7 +11,6 @@ document.addEventListener('DOMContentLoaded', () => {
         loginBtn: document.getElementById('btn-login'),
         pinDots: document.querySelectorAll('.pin-dot'),
         btnText: document.getElementById('btn-text'),
-        btnText: document.getElementById('btn-text'),
         spinner: document.getElementById('btn-spinner'),
         userAvatarInitials: document.getElementById('dash-user-initials'),
         userNameDisplay: document.getElementById('dash-user-name'),

@@ -4,6 +4,6 @@ window.ODC = {
         console.log('ODC inicializado');
     },
     buscarProducto(q) {
-        return fetch(`/api/odc/buscar-producto?q=${q}`).then(r=>r.json());
+        return window.api.get('/odc/buscar-producto?q=' + encodeURIComponent(q));
     }
 };
