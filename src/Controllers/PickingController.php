@@ -23,30 +23,235 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 class PickingController extends BaseController
 {
     // ── GET /api/picking ──────────────────────────────────────────────────────
+    // Parámetros de filtro: estado, auxiliar_id, pasillo, marca_id, ubicacion,
+    //                       planilla, sin_auxiliar, fecha_inicio, fecha_fin, limit
     public function listar(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
+        $limit = min((int)($params['limit'] ?? 100), 500);
 
-        $ordenes = OrdenPicking::where('empresa_id', $user->empresa_id)
-            ->where('sucursal_id', $user->sucursal_id)
-            ->whereBetween('created_at', [$ini, $fin])
-            ->when($params['estado'] ?? null, fn($q, $e) => $q->where('estado', $e))
-            ->orderBy('prioridad')
-            ->orderBy('created_at', 'desc')
+        $q = OrdenPicking::where('orden_pickings.empresa_id', $user->empresa_id)
+            ->where('orden_pickings.sucursal_id', $user->sucursal_id)
+            ->whereBetween('orden_pickings.created_at', [$ini, $fin])
+            ->when($params['estado']       ?? null, fn($q, $e) => $q->where('estado', $e))
+            ->when($params['auxiliar_id']  ?? null, fn($q, $v) => $q->where('auxiliar_id', (int)$v))
+            ->when($params['sin_auxiliar'] ?? null, fn($q)     => $q->whereNull('auxiliar_id'))
+            ->when($params['cliente']      ?? null, fn($q, $v) => $q->where('cliente', 'like', "%$v%"));
+
+        // Filtro por pasillo: requiere JOIN a detalles → ubicaciones
+        if (!empty($params['pasillo'])) {
+            $pasillo = $params['pasillo'];
+            $q->whereHas('detalles', fn($dq) => $dq
+                ->join('ubicaciones', 'picking_detalles.ubicacion_id', '=', 'ubicaciones.id')
+                ->where(fn($sq) => $sq
+                    ->where('ubicaciones.pasillo', $pasillo)
+                    ->orWhere('ubicaciones.codigo', 'like', "$pasillo%")
+                )
+            );
+        }
+
+        // Filtro por marca
+        if (!empty($params['marca_id'])) {
+            $marcaId = (int)$params['marca_id'];
+            $q->whereHas('detalles', fn($dq) => $dq
+                ->join('productos', 'picking_detalles.producto_id', '=', 'productos.id')
+                ->where('productos.marca_id', $marcaId)
+            );
+        }
+
+        // Filtro por ubicación (código)
+        if (!empty($params['ubicacion'])) {
+            $ubic = $params['ubicacion'];
+            $q->whereHas('detalles', fn($dq) => $dq
+                ->join('ubicaciones as ub2', 'picking_detalles.ubicacion_id', '=', 'ub2.id')
+                ->where('ub2.codigo', 'like', "%$ubic%")
+            );
+        }
+
+        // Filtro por número de planilla (cruzando con archivos de planilla)
+        if (!empty($params['planilla'])) {
+            $planilla = $params['planilla'];
+            $q->where(fn($sq) => $sq
+                ->where('orden_pickings.numero_planilla', $planilla)
+                ->orWhere('orden_pickings.cliente', 'like', "%$planilla%")
+            );
+        }
+
+        $ordenes = $q->with(['auxiliar:id,nombre', 'detalles'])
+            ->orderBy('orden_pickings.prioridad')
+            ->orderBy('orden_pickings.created_at', 'desc')
+            ->limit($limit)
             ->get();
 
         if (($params['export'] ?? '') === 'excel') {
-            $headers = ['# Orden', 'Cliente', 'Estado', 'Prioridad', 'Auxiliar', 'F.Requerida'];
+            $headers = ['# Orden', 'Cliente', 'Estado', 'Prioridad', 'Auxiliar', 'F.Requerida', 'Planilla'];
             $rows = $ordenes->map(fn($o) => [
                 $o->numero_orden, $o->cliente ?? '—', $o->estado,
-                $o->prioridad, $o->auxiliar_id ?? '—', $o->fecha_requerida ?? '—',
+                $o->prioridad, $o->auxiliar->nombre ?? '—',
+                $o->fecha_requerida ?? '—',
+                $o->numero_planilla ?? '—',
             ])->toArray();
             return $this->exportCsv($res, $headers, $rows, 'picking_' . date('Y-m-d'));
         }
 
         return $this->ok($res, $ordenes);
+    }
+
+    // ── GET /api/picking/consolidados ─────────────────────────────────────────
+    // Agrupa órdenes Pendientes/EnProceso por cliente para picking consolidado
+    public function consolidados(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+
+        $ordenes = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereIn('estado', ['Pendiente', 'EnProceso'])
+            ->with(['detalles.producto', 'auxiliar:id,nombre'])
+            ->orderBy('prioridad')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        // Agrupar por cliente
+        $grupos = [];
+        foreach ($ordenes as $o) {
+            $key = $o->cliente ?? 'Sin Cliente';
+            if (!isset($grupos[$key])) {
+                $grupos[$key] = [
+                    'cliente'          => $key,
+                    'total_ordenes'    => 0,
+                    'ordenes_pendientes' => 0,
+                    'ordenes_en_proceso' => 0,
+                    'prioridad_max'    => 9,
+                    'productos_unicos' => [],
+                    'ordenes'          => [],
+                ];
+            }
+            $grupos[$key]['total_ordenes']++;
+            if ($o->estado === 'Pendiente')  $grupos[$key]['ordenes_pendientes']++;
+            if ($o->estado === 'EnProceso')  $grupos[$key]['ordenes_en_proceso']++;
+            $grupos[$key]['prioridad_max'] = min($grupos[$key]['prioridad_max'], $o->prioridad ?? 9);
+            foreach ($o->detalles as $d) {
+                $grupos[$key]['productos_unicos'][$d->producto_id] = true;
+            }
+            $grupos[$key]['ordenes'][] = [
+                'id'            => $o->id,
+                'numero_orden'  => $o->numero_orden,
+                'estado'        => $o->estado,
+                'prioridad'     => $o->prioridad,
+                'auxiliar'      => $o->auxiliar->nombre ?? null,
+                'auxiliar_id'   => $o->auxiliar_id,
+                'fecha_requerida' => $o->fecha_requerida,
+                'total_lineas'  => count($o->detalles),
+            ];
+        }
+
+        // Transformar para respuesta
+        $result = array_values(array_map(function ($g) {
+            $g['total_productos_unicos'] = count($g['productos_unicos']);
+            unset($g['productos_unicos']);
+            return $g;
+        }, $grupos));
+
+        // Ordenar por prioridad_max
+        usort($result, fn($a, $b) => $a['prioridad_max'] <=> $b['prioridad_max']);
+
+        return $this->ok($res, $result);
+    }
+
+    // ── POST /api/picking/asignar-multiple ────────────────────────────────────
+    // Asigna auxiliar y/o genera rutas para múltiples órdenes en un solo POST
+    public function asignarMultiple(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $data = $r->getParsedBody() ?? [];
+
+        $ordenIds    = array_map('intval', $data['orden_ids']    ?? []);
+        $auxiliarId  = isset($data['auxiliar_id']) ? (int)$data['auxiliar_id'] : null;
+        $generarRuta = (bool)($data['generar_ruta'] ?? false);
+
+        if (empty($ordenIds)) {
+            return $this->error($res, 'Se requiere al menos una orden');
+        }
+
+        $ordenes = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->whereIn('id', $ordenIds)
+            ->get();
+
+        $resultados = ['asignadas' => 0, 'rutas_generadas' => 0, 'errores' => []];
+
+        foreach ($ordenes as $orden) {
+            try {
+                // Asignar auxiliar si se indicó
+                if ($auxiliarId !== null) {
+                    $orden->auxiliar_id = $auxiliarId;
+                    $orden->save();
+                    $resultados['asignadas']++;
+                }
+
+                // Generar ruta FEFO si se solicitó y la orden está Pendiente
+                if ($generarRuta && $orden->estado === 'Pendiente') {
+                    $this->_generarRutaFEFO($orden, $user);
+                    $resultados['rutas_generadas']++;
+                }
+            } catch (\Exception $e) {
+                $resultados['errores'][] = "Orden {$orden->numero_orden}: {$e->getMessage()}";
+            }
+        }
+
+        $this->audit($user, 'picking', 'asignar_multiple', 'orden_pickings', null,
+            null, $resultados, "Asignación masiva: {$resultados['asignadas']} órdenes");
+
+        return $this->ok($res, $resultados,
+            "{$resultados['asignadas']} asignadas, {$resultados['rutas_generadas']} rutas generadas");
+    }
+
+    // ── Método privado: lógica FEFO reutilizable ──────────────────────────────
+    private function _generarRutaFEFO(OrdenPicking $orden, $user): array
+    {
+        $alertas = [];
+        $orden->load('detalles');
+
+        Capsule::transaction(function () use ($orden, $user, &$alertas) {
+            foreach ($orden->detalles as $linea) {
+                $stocks = Inventario::where('empresa_id',  $user->empresa_id)
+                    ->where('sucursal_id',  $user->sucursal_id)
+                    ->where('producto_id',  $linea->producto_id)
+                    ->where('estado',       'Disponible')
+                    ->where('cantidad',     '>', 0)
+                    ->orderByRaw('fecha_vencimiento IS NULL ASC')
+                    ->orderBy('fecha_vencimiento')
+                    ->orderBy('ubicacion_id')
+                    ->get();
+
+                $totalDisponible = $stocks->sum('cantidad');
+
+                if ($totalDisponible < $linea->cantidad_solicitada) {
+                    $alertas[] = [
+                        'producto_id' => $linea->producto_id,
+                        'solicitado'  => $linea->cantidad_solicitada,
+                        'disponible'  => $totalDisponible,
+                        'faltante'    => $linea->cantidad_solicitada - $totalDisponible,
+                    ];
+                    $linea->estado = 'Faltante';
+                    $linea->save();
+                    continue;
+                }
+
+                $first = $stocks->first();
+                $linea->ubicacion_id      = $first->ubicacion_id;
+                $linea->lote              = $first->lote;
+                $linea->fecha_vencimiento = $first->fecha_vencimiento;
+                $linea->estado            = 'EnProceso';
+                $linea->save();
+            }
+
+            $orden->estado = 'EnProceso';
+            $orden->save();
+        });
+
+        return $alertas;
     }
 
     // ── GET /api/picking/{id} ─────────────────────────────────────────────────
@@ -110,10 +315,11 @@ class PickingController extends BaseController
     }
 
     // ── POST /api/picking/{orden_id}/generar-ruta ─────────────────────────────
-    // Asigna ubicaciones FEFO a cada línea de picking.
     public function generateRoute(Request $r, Response $res, array $a): Response
     {
         $user  = $r->getAttribute('user');
+        $data  = $r->getParsedBody() ?? [];
+
         $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
             ->with('detalles')
             ->find($a['orden_id']);
@@ -123,63 +329,25 @@ class PickingController extends BaseController
             return $this->error($res, "La orden ya está en estado {$orden->estado}");
         }
 
-        $lineasAsignadas = 0;
-        $alertas         = [];
+        // Asignar auxiliar si viene en el body
+        if (!empty($data['auxiliar_id'])) {
+            $orden->auxiliar_id = (int)$data['auxiliar_id'];
+            $orden->save();
+        }
 
         try {
-            Capsule::transaction(function () use ($orden, $user, &$lineasAsignadas, &$alertas) {
-                foreach ($orden->detalles as $linea) {
-                    // FEFO: inventario disponible, ordenado por fecha_vencimiento ASC
-                    $stocks = Inventario::where('empresa_id',  $user->empresa_id)
-                        ->where('sucursal_id',  $user->sucursal_id)
-                        ->where('producto_id',  $linea->producto_id)
-                        ->where('estado',       'Disponible')
-                        ->where('cantidad',     '>', 0)
-                        ->orderByRaw('fecha_vencimiento IS NULL ASC') // nulls al final
-                        ->orderBy('fecha_vencimiento')                // FEFO
-                        ->orderBy('ubicacion_id')                     // secuencia de pasillo
-                        ->get();
-
-                    $totalDisponible = $stocks->sum('cantidad');
-
-                    if ($totalDisponible < $linea->cantidad_solicitada) {
-                        $alertas[] = [
-                            'producto_id' => $linea->producto_id,
-                            'solicitado'  => $linea->cantidad_solicitada,
-                            'disponible'  => $totalDisponible,
-                            'faltante'    => $linea->cantidad_solicitada - $totalDisponible,
-                        ];
-                        $linea->estado = 'Faltante';
-                        $linea->save();
-                        continue;
-                    }
-
-                    // Asignar primera ubicación con stock suficiente (FEFO)
-                    $ubicacionAsignada = $stocks->first()->ubicacion_id;
-                    $loteAsignado      = $stocks->first()->lote;
-                    $fvencAsignada     = $stocks->first()->fecha_vencimiento;
-
-                    $linea->ubicacion_id       = $ubicacionAsignada;
-                    $linea->lote               = $loteAsignado;
-                    $linea->fecha_vencimiento  = $fvencAsignada;
-                    $linea->estado             = 'EnProceso';
-                    $linea->save();
-
-                    $lineasAsignadas++;
-                }
-
-                $orden->estado = 'EnProceso';
-                $orden->save();
-            });
+            $alertas = $this->_generarRutaFEFO($orden, $user);
 
             $this->audit($user, 'picking', 'generar_ruta', 'orden_pickings', $orden->id,
                 ['estado' => 'Pendiente'], ['estado' => 'EnProceso'],
                 "Ruta FEFO generada para {$orden->numero_orden}");
 
+            $lineasAsignadas = $orden->fresh()->detalles->where('estado', 'EnProceso')->count();
+
             return $this->ok($res, [
-                'orden'           => $orden->load('detalles.ubicacion'),
-                'lineas_asignadas'=> $lineasAsignadas,
-                'alertas_stock'   => $alertas,
+                'orden'            => $orden->load('detalles.ubicacion'),
+                'lineas_asignadas' => $lineasAsignadas,
+                'alertas_stock'    => $alertas,
             ], 'Ruta generada con FEFO');
         } catch (\Exception $e) {
             return $this->error($res, $e->getMessage());

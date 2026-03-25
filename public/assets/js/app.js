@@ -139,6 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
             { id: 'picking_ordenes', title: 'Gestionar Picking', icon: 'fa-cart-flatbed', colorClass: 'color-picking' },
             { id: 'picking_rutas', title: 'Rutas FEFO', icon: 'fa-route', colorClass: 'color-inbound' },
             { id: 'picking_asignacion', title: 'Asignación', icon: 'fa-users-gear', colorClass: 'color-almacen' },
+            { id: 'picking_consolidado', title: 'Picking Consolidado', icon: 'fa-layer-group', colorClass: 'color-picking' },
             { id: 'picking_planilla', title: 'Importar Planilla', icon: 'fa-file-arrow-up', colorClass: 'color-admin' },
             { id: 'certificacion_planilla', title: 'Certificación Planillas', icon: 'fa-clipboard-check', colorClass: 'color-outbound' },
             { id: 'picking_dashboard', title: 'Tablero de Control', icon: 'fa-gauge-high', colorClass: 'color-inventory' }
@@ -384,6 +385,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (subId === 'picking_asignacion' && window.Picking) {
             contentHtml = window.Picking.getAsignacionHTML();
             setTimeout(() => { window.Picking.loadAsignacion(); }, 400);
+        } else if (subId === 'picking_consolidado' && window.Picking) {
+            contentHtml = window.Picking.getConsolidadoHTML();
+            setTimeout(() => { window.Picking.loadConsolidados(); }, 400);
         } else if (subId === 'picking_planilla' && window.Picking) {
             setTimeout(() => { window.Picking.abrirImportarPlanilla(); }, 200);
             contentHtml = '<div style="text-align:center;padding:60px 20px;color:#94a3b8;"><i class="fa-solid fa-file-arrow-up" style="font-size:3rem;margin-bottom:16px;color:#6366f1;display:block;"></i><h4>Importar archivo de planilla desde el modal</h4></div>';

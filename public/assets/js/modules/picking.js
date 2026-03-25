@@ -580,53 +580,91 @@ window.Picking = {
     getAsignacionHTML() {
         return `
         <div style="padding:12px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
-                <div>
-                    <span style="font-weight:700;color:#0f172a;font-size:1rem;">Asignación de Picking</span>
-                    <p style="color:#64748b;font-size:0.78rem;margin:2px 0 0;">Asigne órdenes por auxiliar, pasillo, ubicación o marca</p>
-                </div>
+            <div style="margin-bottom:16px;">
+                <span style="font-weight:700;color:#0f172a;font-size:1rem;">Asignación de Picking</span>
+                <p style="color:#64748b;font-size:0.78rem;margin:4px 0 0;">Filtre, seleccione y asigne órdenes masivamente</p>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-                <div>
-                    <label style="font-size:0.72rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;text-transform:uppercase;">Tipo de Asignación</label>
-                    <select id="asig-tipo" onchange="window.Picking._cambiarTipoAsig()"
-                        style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;background:white;box-sizing:border-box;">
-                        <option value="auxiliar">Por Auxiliar</option>
-                        <option value="pasillo">Por Pasillo</option>
-                        <option value="ubicacion">Por Ubicación</option>
-                        <option value="marca">Por Marca</option>
-                        <option value="masivo">Masivo (Todas)</option>
-                    </select>
+
+            <!-- Filtros activos -->
+            <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:14px;">
+                <div style="font-size:0.72rem;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:10px;">
+                    <i class="fa-solid fa-filter"></i> Filtros de búsqueda
                 </div>
-                <div>
-                    <label style="font-size:0.72rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;text-transform:uppercase;">Filtro Estado</label>
-                    <select id="asig-estado" onchange="window.Picking.loadAsignacion()"
-                        style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;background:white;box-sizing:border-box;">
-                        <option value="Pendiente">Pendientes</option>
-                        <option value="EnProceso">En Proceso</option>
-                        <option value="">Todos</option>
-                    </select>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                    <div>
+                        <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Estado</label>
+                        <select id="asig-estado"
+                            style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;background:white;box-sizing:border-box;">
+                            <option value="Pendiente">Pendientes</option>
+                            <option value="EnProceso">En Proceso</option>
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Pasillo</label>
+                        <input type="text" id="asig-f-pasillo" placeholder="Ej: A, B, PA-01..."
+                            style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Ubicación (código)</label>
+                        <input type="text" id="asig-f-ubicacion" placeholder="Ej: A-01-01, B-02..."
+                            style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Marca</label>
+                        <select id="asig-f-marca"
+                            style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;background:white;box-sizing:border-box;">
+                            <option value="">Todas las marcas</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Sin auxiliar asignado</label>
+                        <select id="asig-f-sinaux"
+                            style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;background:white;box-sizing:border-box;">
+                            <option value="">Todas</option>
+                            <option value="1">Solo sin auxiliar</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Cliente / Planilla</label>
+                        <input type="text" id="asig-f-cliente" placeholder="Nombre cliente..."
+                            style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;box-sizing:border-box;">
+                    </div>
                 </div>
+                <button onclick="window.Picking.loadAsignacion()"
+                    style="width:100%;padding:8px;background:#0f172a;color:white;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;font-weight:600;">
+                    <i class="fa-solid fa-magnifying-glass"></i> Buscar Órdenes
+                </button>
             </div>
-            <div id="asig-filtro-extra" style="margin-bottom:12px;"></div>
-            <div id="asig-ordenes" style="margin-bottom:16px;"></div>
-            <div id="asig-acciones" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;">
+
+            <!-- Lista de órdenes -->
+            <div id="asig-ordenes" style="margin-bottom:14px;"></div>
+
+            <!-- Panel de acciones masivas -->
+            <div id="asig-acciones" style="display:none;position:sticky;bottom:0;background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;box-shadow:0 -4px 12px rgba(0,0,0,0.08);">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                    <span style="font-weight:700;color:#0f172a;font-size:0.9rem;">Asignar seleccionados</span>
-                    <span id="asig-count" style="font-size:0.78rem;color:#6366f1;font-weight:700;">0 seleccionados</span>
+                    <span style="font-weight:700;color:#0f172a;font-size:0.9rem;">Acciones masivas</span>
+                    <span id="asig-count" style="font-size:0.8rem;background:#6366f120;color:#6366f1;border-radius:999px;padding:3px 10px;font-weight:700;">0 seleccionadas</span>
                 </div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <div style="margin-bottom:10px;">
+                    <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Asignar auxiliar</label>
                     <select id="asig-auxiliar"
-                        style="flex:1;min-width:150px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;background:white;">
-                        <option value="">Seleccione auxiliar...</option>
+                        style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;background:white;">
+                        <option value="">Sin cambio de auxiliar</option>
                     </select>
-                    <button onclick="window.Picking._asignarSeleccionados()"
-                        style="padding:8px 16px;background:#6366f1;color:white;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;font-weight:600;">
-                        <i class="fa-solid fa-user-tag"></i> Asignar
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                    <button onclick="window.Picking._asignarSeleccionados(false)"
+                        style="padding:9px 6px;background:#6366f1;color:white;border:none;border-radius:8px;font-size:0.78rem;cursor:pointer;font-weight:600;text-align:center;">
+                        <i class="fa-solid fa-user-tag"></i><br>Solo Asignar
                     </button>
-                    <button onclick="window.Picking._generarRutasMasivas()"
-                        style="padding:8px 16px;background:#22c55e;color:white;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;font-weight:600;">
-                        <i class="fa-solid fa-route"></i> Generar Rutas FEFO
+                    <button onclick="window.Picking._asignarSeleccionados(true)"
+                        style="padding:9px 6px;background:#22c55e;color:white;border:none;border-radius:8px;font-size:0.78rem;cursor:pointer;font-weight:600;text-align:center;">
+                        <i class="fa-solid fa-route"></i><br>Asignar + Ruta FEFO
+                    </button>
+                    <button onclick="window.Picking._soloGenerarRutas()"
+                        style="padding:9px 6px;background:#f59e0b;color:white;border:none;border-radius:8px;font-size:0.78rem;cursor:pointer;font-weight:600;text-align:center;">
+                        <i class="fa-solid fa-bolt"></i><br>Solo FEFO
                     </button>
                 </div>
             </div>
@@ -634,61 +672,109 @@ window.Picking = {
     },
 
     _asigSelected: [],
+    _marcasCache: [],
 
     async loadAsignacion() {
         const lista = document.getElementById('asig-ordenes');
         if (!lista) return;
         this._asigSelected = [];
-        const estado = document.getElementById('asig-estado')?.value || 'Pendiente';
-        lista.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i></div>';
-        // Load auxiliares for assignment
+        lista.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;"></i></div>';
+
+        // Leer filtros
+        const estado    = document.getElementById('asig-estado')?.value || '';
+        const pasillo   = document.getElementById('asig-f-pasillo')?.value?.trim() || '';
+        const ubicacion = document.getElementById('asig-f-ubicacion')?.value?.trim() || '';
+        const marcaId   = document.getElementById('asig-f-marca')?.value || '';
+        const sinAux    = document.getElementById('asig-f-sinaux')?.value || '';
+        const cliente   = document.getElementById('asig-f-cliente')?.value?.trim() || '';
+
+        // Construir query string
+        const qp = new URLSearchParams({ limit: '200' });
+        if (estado)    qp.set('estado', estado);
+        if (pasillo)   qp.set('pasillo', pasillo);
+        if (ubicacion) qp.set('ubicacion', ubicacion);
+        if (marcaId)   qp.set('marca_id', marcaId);
+        if (sinAux)    qp.set('sin_auxiliar', '1');
+        if (cliente)   qp.set('cliente', cliente);
+
         try {
-            const [ordenesData, personalData] = await Promise.all([
-                window.api.get(`/picking?estado=${encodeURIComponent(estado)}&limit=100`),
-                window.api.get('/param/personal').catch(() => ({ data: [] }))
+            const [ordenesData, personalData, marcasData] = await Promise.all([
+                window.api.get('/picking?' + qp.toString()),
+                window.api.get('/param/personal').catch(() => ({ data: [] })),
+                this._marcasCache.length ? Promise.resolve({ data: this._marcasCache })
+                    : window.api.get('/param/marcas').catch(() => ({ data: [] })),
             ]);
-            const ordenes = ordenesData?.data || ordenesData || [];
+
+            const ordenes  = ordenesData?.data || ordenesData || [];
             const personal = personalData?.data || personalData || [];
-            // Fill auxiliar select
+            const marcas   = marcasData?.data || marcasData || [];
+            if (marcas.length) this._marcasCache = marcas;
+
+            // Llenar selects
+            const marcaSel = document.getElementById('asig-f-marca');
+            if (marcaSel && marcaSel.options.length <= 1 && marcas.length) {
+                marcaSel.innerHTML = '<option value="">Todas las marcas</option>' +
+                    marcas.map(m => `<option value="${parseInt(m.id)}">${escHTML(m.nombre)}</option>`).join('');
+            }
             const auxSel = document.getElementById('asig-auxiliar');
             if (auxSel) {
-                auxSel.innerHTML = '<option value="">Seleccione auxiliar...</option>' +
-                    personal.map(p => `<option value="${parseInt(p.id)}">${escHTML(p.nombre)} (${escHTML(p.cargo||p.rol||'')})</option>`).join('');
+                const cur = auxSel.value;
+                auxSel.innerHTML = '<option value="">Sin cambio de auxiliar</option>' +
+                    personal.map(p => `<option value="${parseInt(p.id)}">${escHTML(p.nombre)}${p.cargo ? ' — '+escHTML(p.cargo) : ''}</option>`).join('');
+                if (cur) auxSel.value = cur;
             }
+
             if (!ordenes.length) {
-                lista.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fa-solid fa-inbox" style="font-size:2rem;display:block;margin-bottom:10px;"></i>Sin órdenes para asignar</div>';
+                lista.innerHTML = `<div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:40px;text-align:center;color:#94a3b8;">
+                    <i class="fa-solid fa-inbox" style="font-size:2rem;display:block;margin-bottom:10px;"></i>
+                    Sin órdenes con los filtros aplicados</div>`;
                 document.getElementById('asig-acciones').style.display = 'none';
                 return;
             }
+
             document.getElementById('asig-acciones').style.display = 'block';
-            const sc = { Pendiente:'#f59e0b', EnProceso:'#3b82f6', Completada:'#22c55e' };
+            const sc = { Pendiente:'#f59e0b', EnProceso:'#3b82f6', Completada:'#22c55e', Cancelada:'#94a3b8' };
+
             lista.innerHTML = `
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                <input type="checkbox" id="asig-all" onchange="window.Picking._toggleAllAsig(this.checked)"
-                    style="width:16px;height:16px;cursor:pointer;">
-                <label for="asig-all" style="font-size:0.82rem;color:#475569;cursor:pointer;font-weight:600;">Seleccionar todas</label>
-            </div>` +
-            ordenes.map(o => {
-                const color = sc[o.estado]||'#64748b';
-                return `
-                <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;">
-                    <input type="checkbox" class="asig-chk" value="${parseInt(o.id)}"
-                        onchange="window.Picking._updateAsigCount()" style="width:16px;height:16px;flex-shrink:0;cursor:pointer;">
-                    <div style="flex:1;min-width:0;">
-                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-                            <span style="font-weight:700;color:#0f172a;font-size:0.88rem;">${escHTML(o.numero_orden)}</span>
-                            <span style="font-size:0.68rem;background:${color}20;color:${color};border-radius:999px;padding:2px 8px;font-weight:700;">${o.estado}</span>
-                            ${o.prioridad <= 3 ? '<span style="font-size:0.65rem;background:#fee2e2;color:#dc2626;border-radius:999px;padding:2px 6px;font-weight:700;">URGENTE</span>' : ''}
+            <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+                <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" id="asig-all" onchange="window.Picking._toggleAllAsig(this.checked)"
+                        style="width:16px;height:16px;cursor:pointer;">
+                    <label for="asig-all" style="font-size:0.82rem;color:#475569;cursor:pointer;font-weight:600;flex:1;">
+                        Seleccionar todo (${ordenes.length} órdenes)
+                    </label>
+                    <span style="font-size:0.75rem;color:#94a3b8;">Prioridad · Cliente · Auxiliar</span>
+                </div>
+                ${ordenes.map(o => {
+                    const color = sc[o.estado]||'#64748b';
+                    const auxNombre = o.auxiliar?.nombre || (o.auxiliar_id ? `#${o.auxiliar_id}` : null);
+                    const lineas = o.detalles?.length || 0;
+                    return `
+                    <div style="padding:11px 14px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:10px;">
+                        <input type="checkbox" class="asig-chk" value="${parseInt(o.id)}"
+                            onchange="window.Picking._updateAsigCount()"
+                            style="width:16px;height:16px;flex-shrink:0;cursor:pointer;">
+                        <div style="flex:1;min-width:0;">
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">
+                                <span style="font-weight:700;color:#0f172a;font-size:0.87rem;">${escHTML(o.numero_orden)}</span>
+                                <span style="font-size:0.67rem;background:${color}20;color:${color};border-radius:999px;padding:2px 7px;font-weight:700;">${o.estado}</span>
+                                ${(o.prioridad||5) <= 2 ? '<span style="font-size:0.65rem;background:#fee2e2;color:#dc2626;border-radius:999px;padding:2px 6px;font-weight:700;">URGENTE</span>' : ''}
+                            </div>
+                            <div style="font-size:0.77rem;color:#475569;display:flex;gap:10px;flex-wrap:wrap;">
+                                <span><i class="fa-solid fa-user" style="color:#cbd5e1;margin-right:3px;"></i>${escHTML(o.cliente||'Sin cliente')}</span>
+                                ${auxNombre ? `<span style="color:#6366f1;font-weight:600;"><i class="fa-solid fa-helmet-safety" style="margin-right:3px;"></i>${escHTML(auxNombre)}</span>` : '<span style="color:#f59e0b;font-style:italic;">Sin auxiliar</span>'}
+                                <span style="color:#94a3b8;">${lineas} línea${lineas!==1?'s':''}</span>
+                            </div>
                         </div>
-                        <div style="font-size:0.78rem;color:#475569;">${escHTML(o.cliente||'Sin cliente')} ${o.auxiliar_id ? '· Aux: #'+o.auxiliar_id : ''}</div>
-                    </div>
-                    <div style="text-align:right;flex-shrink:0;font-size:0.72rem;color:#94a3b8;">
-                        P: ${o.prioridad||5}<br>${o.fecha_requerida||'—'}
-                    </div>
-                </div>`;
-            }).join('');
+                        <div style="text-align:right;flex-shrink:0;">
+                            <div style="font-size:0.82rem;font-weight:700;color:#475569;">P${o.prioridad||5}</div>
+                            <div style="font-size:0.7rem;color:#94a3b8;">${o.fecha_requerida||'—'}</div>
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>`;
         } catch(e) {
-            lista.innerHTML = `<div style="color:#ef4444;padding:20px;text-align:center;">${escHTML(e.message)}</div>`;
+            lista.innerHTML = `<div style="color:#ef4444;padding:20px;text-align:center;background:white;border-radius:12px;">${escHTML(e.message)}</div>`;
         }
     },
 
@@ -701,54 +787,179 @@ window.Picking = {
         const checked = document.querySelectorAll('.asig-chk:checked');
         this._asigSelected = Array.from(checked).map(c => parseInt(c.value));
         const el = document.getElementById('asig-count');
-        if (el) el.textContent = `${this._asigSelected.length} seleccionados`;
+        if (el) el.textContent = `${this._asigSelected.length} seleccionadas`;
     },
 
-    _cambiarTipoAsig() {
-        const tipo = document.getElementById('asig-tipo')?.value;
-        const extra = document.getElementById('asig-filtro-extra');
-        if (!extra) return;
-        if (tipo === 'pasillo') {
-            extra.innerHTML = `<input type="text" id="asig-pasillo" placeholder="Filtrar por pasillo (ej: A, B, C)..."
-                style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;box-sizing:border-box;">`;
-        } else if (tipo === 'marca') {
-            extra.innerHTML = `<input type="text" id="asig-marca" placeholder="Filtrar por marca..."
-                style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;box-sizing:border-box;">`;
-        } else if (tipo === 'ubicacion') {
-            extra.innerHTML = `<input type="text" id="asig-ubicacion" placeholder="Filtrar por ubicación (código)..."
-                style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;box-sizing:border-box;">`;
-        } else {
-            extra.innerHTML = '';
-        }
-    },
-
-    async _asignarSeleccionados() {
+    async _asignarSeleccionados(generarRuta = false) {
         if (!this._asigSelected.length) return window.showToast('Seleccione al menos una orden','error');
         const auxId = document.getElementById('asig-auxiliar')?.value;
-        if (!auxId) return window.showToast('Seleccione un auxiliar','error');
-        let ok = 0, err = 0;
-        for (const id of this._asigSelected) {
-            try {
-                await window.api.post(`/picking/${id}/generar-ruta`, { auxiliar_id: parseInt(auxId) });
-                ok++;
-            } catch(e) { err++; }
-        }
-        window.showToast(`Asignados: ${ok}${err ? `, Errores: ${err}` : ''}`, ok ? 'success' : 'error');
-        this.loadAsignacion();
+        if (!auxId && !generarRuta) return window.showToast('Seleccione un auxiliar o use "Solo FEFO"','error');
+
+        const accion = generarRuta ? 'asignar + generar ruta FEFO' : 'asignar auxiliar';
+        if (!confirm(`¿${accion} a ${this._asigSelected.length} orden(es)?`)) return;
+
+        try {
+            const body = {
+                orden_ids:    this._asigSelected,
+                generar_ruta: generarRuta,
+            };
+            if (auxId) body.auxiliar_id = parseInt(auxId);
+
+            const data = await window.api.post('/picking/asignar-multiple', body);
+            const r = data?.data || data;
+            const msg = `Asignadas: ${r.asignadas||0} · Rutas: ${r.rutas_generadas||0}${r.errores?.length ? ` · Errores: ${r.errores.length}` : ''}`;
+            window.showToast(msg, (r.errores?.length && !r.asignadas) ? 'error' : 'success');
+            this.loadAsignacion();
+        } catch(e) { window.showToast(e.message,'error'); }
     },
 
-    async _generarRutasMasivas() {
+    async _soloGenerarRutas() {
         if (!this._asigSelected.length) return window.showToast('Seleccione al menos una orden','error');
-        if (!confirm(`Generar ruta FEFO para ${this._asigSelected.length} órdenes?`)) return;
-        let ok = 0, err = 0;
-        for (const id of this._asigSelected) {
-            try {
-                await window.api.post(`/picking/${id}/generar-ruta`, {});
-                ok++;
-            } catch(e) { err++; }
+        if (!confirm(`¿Generar ruta FEFO para ${this._asigSelected.length} orden(es) pendientes?`)) return;
+        try {
+            const data = await window.api.post('/picking/asignar-multiple', {
+                orden_ids: this._asigSelected,
+                generar_ruta: true,
+            });
+            const r = data?.data || data;
+            window.showToast(`Rutas generadas: ${r.rutas_generadas||0}`, 'success');
+            this.loadAsignacion();
+        } catch(e) { window.showToast(e.message,'error'); }
+    },
+
+    /* ── Vista Consolidado — agrupa órdenes por cliente ─────────────────── */
+    getConsolidadoHTML() {
+        return `
+        <div style="padding:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <div>
+                    <span style="font-weight:700;color:#0f172a;font-size:1rem;">Picking por Consolidado</span>
+                    <p style="color:#64748b;font-size:0.78rem;margin:4px 0 0;">Agrupa todas las órdenes de un cliente para separar en un solo proceso</p>
+                </div>
+                <button onclick="window.Picking.loadConsolidados()"
+                    style="padding:7px 12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;font-size:0.82rem;cursor:pointer;">
+                    <i class="fa-solid fa-rotate"></i>
+                </button>
+            </div>
+            <div id="consol-lista"></div>
+        </div>`;
+    },
+
+    async loadConsolidados() {
+        const lista = document.getElementById('consol-lista');
+        if (!lista) return;
+        lista.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;"></i></div>';
+        try {
+            const data = await window.api.get('/picking/consolidados');
+            const grupos = data?.data || data || [];
+            if (!grupos.length) {
+                lista.innerHTML = `<div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:40px;text-align:center;color:#94a3b8;">
+                    <i class="fa-solid fa-users" style="font-size:2rem;display:block;margin-bottom:10px;"></i>
+                    Sin órdenes pendientes para consolidar</div>`;
+                return;
+            }
+            lista.innerHTML = grupos.map(g => {
+                const pct = g.total_ordenes > 0
+                    ? Math.round(((g.ordenes_en_proceso) / g.total_ordenes) * 100) : 0;
+                const hayUrgentes = g.prioridad_max <= 2;
+                return `
+                <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+                        <div style="flex:1;min-width:0;">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                                <span style="font-weight:700;color:#0f172a;font-size:0.95rem;">${escHTML(g.cliente)}</span>
+                                ${hayUrgentes ? '<span style="font-size:0.68rem;background:#fee2e2;color:#dc2626;border-radius:999px;padding:2px 8px;font-weight:700;">URGENTE</span>' : ''}
+                            </div>
+                            <div style="font-size:0.78rem;color:#475569;display:flex;gap:12px;flex-wrap:wrap;">
+                                <span><i class="fa-solid fa-layer-group" style="color:#94a3b8;margin-right:3px;"></i>${g.total_ordenes} orden(es)</span>
+                                <span><i class="fa-solid fa-box" style="color:#94a3b8;margin-right:3px;"></i>${g.total_productos_unicos} producto(s) únicos</span>
+                                <span style="color:#f59e0b;">${g.ordenes_pendientes} pendiente(s)</span>
+                                <span style="color:#3b82f6;">${g.ordenes_en_proceso} en proceso</span>
+                            </div>
+                        </div>
+                        <div style="flex-shrink:0;text-align:right;">
+                            <div style="font-size:1.1rem;font-weight:800;color:#6366f1;">P${g.prioridad_max}</div>
+                        </div>
+                    </div>
+                    ${g.total_ordenes > 0 ? `
+                    <div style="margin-bottom:12px;">
+                        <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;">
+                            <div style="height:100%;width:${pct}%;background:#3b82f6;border-radius:3px;transition:width .3s;"></div>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:#94a3b8;margin-top:3px;">
+                            <span>En proceso: ${pct}%</span>
+                            <span>${g.ordenes_en_proceso}/${g.total_ordenes}</span>
+                        </div>
+                    </div>` : ''}
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button onclick="window.Picking._verOrdenesConsolidado('${escHTML(g.cliente)}')"
+                            style="flex:1;padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:0.8rem;cursor:pointer;font-weight:600;min-width:100px;">
+                            <i class="fa-solid fa-list"></i> Ver Órdenes
+                        </button>
+                        ${g.ordenes_pendientes > 0 ? `
+                        <button onclick="window.Picking._generarRutasConsolidado('${escHTML(g.cliente)}', ${JSON.stringify(g.ordenes.filter(o=>o.estado==='Pendiente').map(o=>o.id))})"
+                            style="flex:1;padding:8px;background:#22c55e;color:white;border:none;border-radius:8px;font-size:0.8rem;cursor:pointer;font-weight:600;min-width:120px;">
+                            <i class="fa-solid fa-route"></i> Generar Rutas FEFO
+                        </button>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        } catch(e) {
+            lista.innerHTML = `<div style="color:#ef4444;padding:20px;text-align:center;background:white;border-radius:12px;">${escHTML(e.message)}</div>`;
         }
-        window.showToast(`Rutas generadas: ${ok}${err ? `, Errores: ${err}` : ''}`, ok ? 'success' : 'error');
-        this.loadAsignacion();
+    },
+
+    async _verOrdenesConsolidado(cliente) {
+        // Abrir modal con órdenes del cliente
+        document.getElementById('pk-consol-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'pk-consol-modal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9990;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;';
+        modal.innerHTML = `<div style="background:white;border-radius:16px;width:100%;max-width:600px;margin:auto;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+            <div style="padding:16px 20px;background:#0f172a;color:white;display:flex;align-items:center;justify-content:space-between;">
+                <h3 style="margin:0;font-size:1rem;">${escHTML(cliente)}</h3>
+                <button onclick="document.getElementById('pk-consol-modal').remove()"
+                    style="width:32px;height:32px;background:#374151;border:none;border-radius:8px;color:white;cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="pk-consol-body" style="padding:16px 20px;max-height:70vh;overflow-y:auto;">
+                <div style="text-align:center;padding:20px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i></div>
+            </div>
+        </div>`;
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+        try {
+            const data = await window.api.get(`/picking?cliente=${encodeURIComponent(cliente)}&limit=100`);
+            const ordenes = data?.data || data || [];
+            const sc = { Pendiente:'#f59e0b', EnProceso:'#3b82f6', Completada:'#22c55e' };
+            document.getElementById('pk-consol-body').innerHTML = ordenes.map(o => {
+                const color = sc[o.estado]||'#64748b';
+                return `<div style="padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div style="font-weight:700;color:#0f172a;font-size:0.88rem;">${escHTML(o.numero_orden)}</div>
+                        <div style="font-size:0.75rem;color:#64748b;">${o.detalles?.length||0} líneas · P${o.prioridad||5}</div>
+                    </div>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <span style="font-size:0.7rem;background:${color}20;color:${color};border-radius:999px;padding:2px 8px;font-weight:700;">${o.estado}</span>
+                        <button onclick="document.getElementById('pk-consol-modal').remove();window.Picking.verDetalle(${parseInt(o.id)})"
+                            style="padding:5px 10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;font-size:0.75rem;cursor:pointer;">Ver</button>
+                    </div>
+                </div>`;
+            }).join('') || '<div style="text-align:center;color:#94a3b8;padding:20px;">Sin órdenes</div>';
+        } catch(e) { document.getElementById('pk-consol-body').innerHTML = `<div style="color:#ef4444;">${escHTML(e.message)}</div>`; }
+    },
+
+    async _generarRutasConsolidado(cliente, ordenIds) {
+        if (!ordenIds?.length) return;
+        if (!confirm(`¿Generar ruta FEFO para ${ordenIds.length} orden(es) pendientes de "${cliente}"?`)) return;
+        try {
+            const data = await window.api.post('/picking/asignar-multiple', {
+                orden_ids: ordenIds,
+                generar_ruta: true,
+            });
+            const r = data?.data || data;
+            window.showToast(`Rutas generadas: ${r.rutas_generadas||0}`, 'success');
+            this.loadConsolidados();
+        } catch(e) { window.showToast(e.message,'error'); }
     },
 
     /* ── Dashboard profesional de picking ────────────────────────────────── */

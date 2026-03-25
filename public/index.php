@@ -166,6 +166,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/picking', [\App\Controllers\PickingController::class, 'crearBatch']);
     $group->post('/picking/importar', [\App\Controllers\PickingController::class, 'importarPedidos']);
     $group->get('/picking/dashboard', [\App\Controllers\PickingController::class, 'dashboard']);
+    $group->get('/picking/consolidados', [\App\Controllers\PickingController::class, 'consolidados']);
+    $group->post('/picking/asignar-multiple', [\App\Controllers\PickingController::class, 'asignarMultiple']);
     $group->get('/picking/reabastecimientos', [\App\Controllers\PickingController::class, 'reabastecimientos']);
     $group->get('/picking/{id}', [\App\Controllers\PickingController::class, 'detalle']);
     $group->post('/picking/{orden_id}/generar-ruta', [\App\Controllers\PickingController::class, 'generateRoute']);
