@@ -331,6 +331,12 @@ window.Maestros = {
                             </select>
                         </div>
                         <div class="input-group">
+                            <label style="font-weight:600; color:#475569;">Categoría</label>
+                            <select id="prod-categoria" class="input-field" style="height:48px;">
+                                <option value="">Seleccione categoría...</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
                             <label style="font-weight:600; color:#475569;">Peso (Kg)</label>
                             <input type="number" step="0.001" id="prod-peso" class="input-field" placeholder="0.000">
                         </div>
@@ -588,14 +594,24 @@ window.Maestros = {
         document.getElementById('form-producto-container').style.display = 'block';
         window.scrollTo({ top: document.getElementById('form-producto-container').offsetTop, behavior: 'smooth' });
         
-        // Load marcas into select
+        // Load marcas y categorias into selects
         try {
-            const res = await window.api.get('/param/marcas');
+            const [resMarcas, resCats] = await Promise.all([
+                window.api.get('/param/marcas'),
+                window.api.get('/param/categorias'),
+            ]);
             const select = document.getElementById('prod-marca');
             select.innerHTML = '<option value="">Seleccione marca...</option>';
-            if(res.data) {
-                res.data.forEach(m => {
+            if(resMarcas.data) {
+                resMarcas.data.forEach(m => {
                     select.innerHTML += `<option value="${m.id}">${m.nombre}</option>`;
+                });
+            }
+            const selCat = document.getElementById('prod-categoria');
+            selCat.innerHTML = '<option value="">Seleccione categoría...</option>';
+            if(resCats.data) {
+                resCats.data.forEach(c => {
+                    selCat.innerHTML += `<option value="${c.id}">${c.nombre}</option>`;
                 });
             }
         } catch (e) {}
@@ -609,6 +625,7 @@ window.Maestros = {
         document.getElementById('prod-nombre').value = '';
         document.getElementById('prod-desc').value = '';
         document.getElementById('prod-marca').value = '';
+        document.getElementById('prod-categoria').value = '';
         document.getElementById('prod-um').value = 'UN';
         document.getElementById('prod-peso').value = '';
         document.getElementById('prod-vol').value = '';
@@ -646,6 +663,7 @@ window.Maestros = {
             document.getElementById('prod-nombre').value = prod.nombre || '';
             document.getElementById('prod-desc').value = prod.descripcion || '';
             document.getElementById('prod-marca').value = prod.marca_id || '';
+            document.getElementById('prod-categoria').value = prod.categoria_id || '';
             document.getElementById('prod-um').value = prod.unidad_medida || 'UN';
             document.getElementById('prod-peso').value = prod.peso_unitario || '';
             document.getElementById('prod-vol').value = prod.volumen_unitario || '';
@@ -691,6 +709,7 @@ window.Maestros = {
             nombre: nombre,
             descripcion: desc,
             marca_id: marca_id || null,
+            categoria_id: document.getElementById('prod-categoria').value || null,
             unidad_medida: um,
             peso_unitario: peso,
             volumen_unitario: vol,
