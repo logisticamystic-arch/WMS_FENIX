@@ -199,6 +199,34 @@ class ParametrosController
     }
 
     /**
+     * PUT /api/param/marcas/{id}
+     */
+    public function editMarca(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        $data = $request->getParsedBody() ?? [];
+        try {
+            $marca = \App\Models\Marca::where('empresa_id', $user->empresa_id)->find($args['id']);
+            if (!$marca) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
+            if (isset($data['nombre']) && !empty(trim($data['nombre']))) {
+                $nombre = trim($data['nombre']);
+                $existe = \App\Models\Marca::where('empresa_id', $user->empresa_id)
+                    ->whereRaw('LOWER(nombre) = ?', [strtolower($nombre)])
+                    ->where('id', '!=', $marca->id)
+                    ->exists();
+                if ($existe) return $this->json($response, ['error' => true, 'message' => "Ya existe una marca con el nombre '{$nombre}'."], 409);
+                $marca->nombre = $nombre;
+            }
+            if (array_key_exists('activo', $data)) $marca->activo = $data['activo'] ? 1 : 0;
+            if (array_key_exists('proveedor', $data)) $marca->proveedor = $data['proveedor'] ?: null;
+            $marca->save();
+            return $this->json($response, ['error' => false, 'message' => 'Marca actualizada', 'data' => $marca]);
+        } catch (\Exception $e) {
+            return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * GET /api/param/productos
      */
     public function getProductos(Request $request, Response $response): Response
@@ -207,7 +235,7 @@ class ParametrosController
         try {
             $productos = \App\Models\Producto::where('empresa_id', $user->empresa_id)
                 ->with(['marca', 'categoria', 'eans' => fn($q) => $q->where('activo', 1)])
-                ->where('activo', 1)->get();
+                ->get();
             return $this->json($response, ['error' => false, 'data' => $productos]);
         } catch (\Exception $e) {
             error_log('getProductos error: ' . $e->getMessage());

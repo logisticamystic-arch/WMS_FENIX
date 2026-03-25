@@ -159,6 +159,31 @@ window.Maestros = {
         }
     },
 
+    /* --- TOGGLE ACTIVO helper --- */
+    _toggleActivo: async function(endpoint, id, nuevoActivo, reloadFn) {
+        try {
+            await window.api.put(`${endpoint}/${id}`, { activo: nuevoActivo });
+            window.showToast(nuevoActivo ? 'Registro activado' : 'Registro desactivado', 'success');
+            if (reloadFn) reloadFn();
+        } catch(e) { window.showToast('Error: ' + e.message, 'error'); }
+    },
+
+    _activoBadge: function(activo) {
+        return activo
+            ? `<span style="background:#dcfce7;color:#16a34a;padding:3px 10px;border-radius:99px;font-size:0.72rem;font-weight:700;">Activo</span>`
+            : `<span style="background:#f1f5f9;color:#94a3b8;padding:3px 10px;border-radius:99px;font-size:0.72rem;font-weight:700;">Inactivo</span>`;
+    },
+
+    _toggleBtn: function(endpoint, id, activo, reloadFn) {
+        const icon  = activo ? 'fa-ban' : 'fa-circle-check';
+        const color = activo ? '#dc2626' : '#16a34a';
+        const bg    = activo ? '#fee2e2' : '#dcfce7';
+        const title = activo ? 'Desactivar' : 'Activar';
+        return `<button onclick="window.Maestros._toggleActivo('${endpoint}',${id},${activo?0:1},${reloadFn})"
+            title="${title}" style="background:${bg};color:${color};border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.82rem;">
+            <i class="fa-solid ${icon}"></i> ${title}</button>`;
+    },
+
     /* --- MARCAS --- */
     getMarcasHTML: function() {
         return `
@@ -175,10 +200,12 @@ window.Maestros = {
                             <tr style="border-bottom:2px solid #e2e8f0; color:#64748b;">
                                 <th style="padding:10px 8px;">ID</th>
                                 <th style="padding:10px 8px;">Nombre Marca</th>
+                                <th style="padding:10px 8px;">Estado</th>
+                                <th style="padding:10px 8px;">Acción</th>
                             </tr>
                         </thead>
                         <tbody id="marcas-tbody">
-                            <tr><td colspan="2" style="text-align:center; padding:20px; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</td></tr>
+                            <tr><td colspan="4" style="text-align:center; padding:20px; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -203,23 +230,23 @@ window.Maestros = {
     loadMarcas: async function() {
         const tbody = document.getElementById('marcas-tbody');
         if(!tbody) return;
-
         try {
-            const res = await window.api.get('/param/marcas'); 
+            const res = await window.api.get('/param/marcas');
             if (res && res.data && res.data.length > 0) {
-                let html = '';
-                res.data.forEach(m => {
-                    html += `<tr style="border-bottom:1px solid #f1f5f9;">
-                        <td style="padding:12px 8px; font-weight:600; color:#334155;">#${m.id}</td>
-                        <td style="padding:12px 8px; color:#475569;">${m.nombre}</td>
+                tbody.innerHTML = res.data.map(m => {
+                    const activo = parseInt(m.activo) === 1;
+                    return `<tr style="border-bottom:1px solid #f1f5f9; opacity:${activo?1:0.6};">
+                        <td style="padding:10px 8px; font-weight:600; color:#334155;">#${m.id}</td>
+                        <td style="padding:10px 8px; color:#475569;">${escHTML(m.nombre)}</td>
+                        <td style="padding:10px 8px;">${this._activoBadge(activo)}</td>
+                        <td style="padding:10px 8px;">${this._toggleBtn('/param/marcas', m.id, activo, '()=>window.Maestros.loadMarcas()')}</td>
                     </tr>`;
-                });
-                tbody.innerHTML = html;
+                }).join('');
             } else {
-                tbody.innerHTML = `<tr><td colspan="2" style="text-align:center; padding:20px; color:#94a3b8;">No hay marcas registradas.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#94a3b8;">No hay marcas registradas.</td></tr>`;
             }
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="2" style="text-align:center; padding:20px; color:#ef4444;">Error de conexión API.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#ef4444;">Error de conexión API.</td></tr>`;
         }
     },
 
@@ -267,6 +294,7 @@ window.Maestros = {
                                 <th style="padding:10px 8px;">Código Interno</th>
                                 <th style="padding:10px 8px;">Nombre</th>
                                 <th style="padding:10px 8px;">UM</th>
+                                <th style="padding:10px 8px;">Estado</th>
                                 <th style="padding:10px 8px;">Acciones</th>
                             </tr>
                         </thead>
@@ -404,31 +432,26 @@ window.Maestros = {
             const isAdmin = currentUser && currentUser.rol && currentUser.rol.toLowerCase() === 'admin';
 
             if (res && res.data && res.data.length > 0) {
-                let html = '';
-                res.data.forEach(p => {
+                tbody.innerHTML = res.data.map(p => {
+                    const activo = parseInt(p.activo) === 1;
                     const deleteBtn = isAdmin
-                        ? `<button onclick="window.Maestros.deleteProducto(${p.id}, '${p.nombre.replace(/'/g, "\\'")}')" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 10px; border-radius:4px; cursor:pointer;" title="Eliminar">
-                                <i class="fa-solid fa-trash"></i>
-                           </button>`
+                        ? `<button onclick="window.Maestros.deleteProducto(${p.id}, '${p.nombre.replace(/'/g, "\\'")}')" style="background:#fee2e2;color:#dc2626;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Eliminar"><i class="fa-solid fa-trash"></i></button>`
                         : '';
-                    html += `<tr style="border-bottom:1px solid #f1f5f9;">
-                        <td style="padding:12px 8px; font-weight:600; color:#334155;">${p.codigo_interno}</td>
-                        <td style="padding:12px 8px; color:#475569;">${p.nombre}</td>
-                        <td style="padding:12px 8px; color:#64748b;">${p.unidad_medida || 'UN'}</td>
-                        <td style="padding:12px 8px; display:flex; gap:5px;">
-                            <button onclick="window.Maestros.editProducto(${p.id})" style="background:#f1f5f9; color:#475569; border:none; padding:6px 10px; border-radius:4px; cursor:pointer;" title="Editar">
-                                <i class="fa-solid fa-pen-to-square"></i>
-                            </button>
-                            <button onclick="window.Maestros.showEanManager(${p.id}, '${p.nombre.replace(/'/g, "\\'")}')" style="background:#e0e7ff; color:#4338ca; border:none; padding:6px 10px; border-radius:4px; cursor:pointer;" title="EANs">
-                                <i class="fa-solid fa-barcode"></i>
-                            </button>
+                    return `<tr style="border-bottom:1px solid #f1f5f9; opacity:${activo?1:0.6};">
+                        <td style="padding:10px 8px; font-weight:600; color:#334155;">${escHTML(p.codigo_interno)}</td>
+                        <td style="padding:10px 8px; color:#475569;">${escHTML(p.nombre)}</td>
+                        <td style="padding:10px 8px; color:#64748b;">${p.unidad_medida || 'UN'}</td>
+                        <td style="padding:10px 8px;">${this._activoBadge(activo)}</td>
+                        <td style="padding:10px 8px; display:flex; gap:4px; flex-wrap:wrap;">
+                            <button onclick="window.Maestros.editProducto(${p.id})" style="background:#f1f5f9;color:#475569;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Editar"><i class="fa-solid fa-pen-to-square"></i></button>
+                            <button onclick="window.Maestros.showEanManager(${p.id}, '${p.nombre.replace(/'/g, "\\'")}')" style="background:#e0e7ff;color:#4338ca;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;" title="EANs"><i class="fa-solid fa-barcode"></i></button>
+                            ${this._toggleBtn('/param/productos', p.id, activo, '()=>window.Maestros.loadProductos()')}
                             ${deleteBtn}
                         </td>
                     </tr>`;
-                });
-                tbody.innerHTML = html;
+                }).join('');
             } else {
-                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#94a3b8;">No hay productos registrados.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">No hay productos registrados.</td></tr>`;
             }
         } catch (e) {
             tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#ef4444;">Error de conexión API.</td></tr>`;
@@ -1185,7 +1208,8 @@ window.Maestros = {
                                 <th style="padding:10px 8px;">Nombre Completo</th>
                                 <th style="padding:10px 8px;">Rol</th>
                                 <th style="padding:10px 8px;">Sede Asignada</th>
-                                <th style="padding:10px 8px; width:60px;"></th>
+                                <th style="padding:10px 8px;">Estado</th>
+                                <th style="padding:10px 8px;">Acciones</th>
                             </tr>
                         </thead>
                         <tbody id="personal-tbody">
@@ -1248,19 +1272,24 @@ window.Maestros = {
         if(!tbody) return;
         try {
             const res = await window.api.get('/param/personal');
-            let html = '';
-            res.data.forEach(p => {
-                html += `<tr style="border-bottom:1px solid #f1f5f9;">
-                    <td style="padding:12px 8px; font-weight:600; color:#334155;">${p.documento}</td>
-                    <td style="padding:12px 8px; color:#475569;">${p.nombre}</td>
-                    <td style="padding:12px 8px;"><span style="background:#f1f5f9; padding:4px 8px; border-radius:6px; font-size:0.8rem;">${p.rol}</span></td>
-                    <td style="padding:12px 8px; color:#64748b;">${p.sucursal_id || 'Global'}</td>
-                    <td style="padding:12px 8px; text-align:center;">
-                        <button onclick="window.Maestros.editPersonal(${p.id})" style="border:none; background:#f1f5f9; color:#475569; padding:6px 10px; border-radius:4px; cursor:pointer;" title="Editar"><i class="fa-solid fa-user-pen"></i></button>
-                    </td>
-                </tr>`;
-            });
-            tbody.innerHTML = html || '<tr><td colspan="5" style="text-align:center; padding:20px;">No hay personal registrado.</td></tr>';
+            if (res.data && res.data.length) {
+                tbody.innerHTML = res.data.map(p => {
+                    const activo = parseInt(p.activo) === 1;
+                    return `<tr style="border-bottom:1px solid #f1f5f9; opacity:${activo?1:0.6};">
+                        <td style="padding:10px 8px; font-weight:600; color:#334155;">${escHTML(p.documento)}</td>
+                        <td style="padding:10px 8px; color:#475569;">${escHTML(p.nombre)}</td>
+                        <td style="padding:10px 8px;"><span style="background:#f1f5f9;padding:4px 8px;border-radius:6px;font-size:0.8rem;">${escHTML(p.rol)}</span></td>
+                        <td style="padding:10px 8px; color:#64748b;">${p.sucursal_id || 'Global'}</td>
+                        <td style="padding:10px 8px;">${this._activoBadge(activo)}</td>
+                        <td style="padding:10px 8px; display:flex; gap:4px;">
+                            <button onclick="window.Maestros.editPersonal(${p.id})" style="border:none;background:#f1f5f9;color:#475569;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Editar"><i class="fa-solid fa-user-pen"></i></button>
+                            ${this._toggleBtn('/param/personal', p.id, activo, '()=>window.Maestros.loadPersonal()')}
+                        </td>
+                    </tr>`;
+                }).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px;">No hay personal registrado.</td></tr>';
+            }
         } catch (e) {}
     },
 
@@ -1345,7 +1374,8 @@ window.Maestros = {
                                 <th style="padding:10px 8px;">Razón Social</th>
                                 <th style="padding:10px 8px;">Contacto Principal</th>
                                 <th style="padding:10px 8px;">Teléfono</th>
-                                <th style="padding:10px 8px; width:60px;"></th>
+                                <th style="padding:10px 8px;">Estado</th>
+                                <th style="padding:10px 8px;">Acciones</th>
                             </tr>
                         </thead>
                         <tbody id="proveedores-tbody">
@@ -1404,19 +1434,24 @@ window.Maestros = {
         if(!tbody) return;
         try {
             const res = await window.api.get('/param/proveedores');
-            let html = '';
-            res.data.forEach(p => {
-                html += `<tr style="border-bottom:1px solid #f1f5f9;">
-                    <td style="padding:12px 8px; font-weight:600; color:#334155;">${p.nit}</td>
-                    <td style="padding:12px 8px; color:#475569;">${p.razon_social}</td>
-                    <td style="padding:12px 8px; color:#64748b;">${p.contacto_nombre || '-'}</td>
-                    <td style="padding:12px 8px; color:#64748b;">${p.telefono || '-'}</td>
-                    <td style="padding:12px 8px; text-align:center;">
-                        <button onclick="window.Maestros.editProveedor(${p.id})" style="border:none; background:#f1f5f9; color:#475569; padding:6px 10px; border-radius:4px; cursor:pointer;"><i class="fa-solid fa-pen-to-square"></i></button>
-                    </td>
-                </tr>`;
-            });
-            tbody.innerHTML = html || '<tr><td colspan="5" style="text-align:center; padding:20px;">No hay proveedores registrados.</td></tr>';
+            if (res.data && res.data.length) {
+                tbody.innerHTML = res.data.map(p => {
+                    const activo = parseInt(p.activo) === 1;
+                    return `<tr style="border-bottom:1px solid #f1f5f9; opacity:${activo?1:0.6};">
+                        <td style="padding:10px 8px; font-weight:600; color:#334155;">${escHTML(p.nit)}</td>
+                        <td style="padding:10px 8px; color:#475569;">${escHTML(p.razon_social)}</td>
+                        <td style="padding:10px 8px; color:#64748b;">${escHTML(p.contacto_nombre || '-')}</td>
+                        <td style="padding:10px 8px; color:#64748b;">${escHTML(p.telefono || '-')}</td>
+                        <td style="padding:10px 8px;">${this._activoBadge(activo)}</td>
+                        <td style="padding:10px 8px; display:flex; gap:4px;">
+                            <button onclick="window.Maestros.editProveedor(${p.id})" style="border:none;background:#f1f5f9;color:#475569;padding:6px 10px;border-radius:4px;cursor:pointer;"><i class="fa-solid fa-pen-to-square"></i></button>
+                            ${this._toggleBtn('/param/proveedores', p.id, activo, '()=>window.Maestros.loadProveedores()')}
+                        </td>
+                    </tr>`;
+                }).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px;">No hay proveedores registrados.</td></tr>';
+            }
         } catch (e) {}
     },
 

@@ -275,6 +275,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->put('/param/sucursales/{id}', [\App\Controllers\ParametrosController::class, 'editSucursal']);
     $group->get('/param/marcas', [\App\Controllers\ParametrosController::class, 'getMarcas']);
     $group->post('/param/marcas', [\App\Controllers\ParametrosController::class, 'createMarca']);
+    $group->put('/param/marcas/{id}', [\App\Controllers\ParametrosController::class, 'editMarca']);
     $group->get('/param/productos', [\App\Controllers\ParametrosController::class, 'getProductos']);
     $group->get('/param/productos/buscar', [\App\Controllers\ParametrosController::class, 'buscarProductos']);
     $group->post('/param/productos', [\App\Controllers\ParametrosController::class, 'createProducto']);
