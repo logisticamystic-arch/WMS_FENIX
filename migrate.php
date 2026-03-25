@@ -108,9 +108,12 @@ switch ($command) {
         // Drop all tables
         Capsule::schema()->disableForeignKeyConstraints();
         $tables = Capsule::select('SHOW TABLES');
-        $dbName = Capsule::connection()->getDatabaseName();
         foreach ($tables as $table) {
-            $tableName = $table->{"Tables_in_{$dbName}"};
+            // SHOW TABLES returns one column; its name varies by MySQL case config.
+            // Use array/object iteration to get the value safely.
+            $props = (array)$table;
+            $tableName = reset($props);
+            if (!$tableName) continue;
             Capsule::schema()->drop($tableName);
             echo "Dropped: {$tableName}\n";
         }
