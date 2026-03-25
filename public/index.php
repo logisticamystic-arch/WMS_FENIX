@@ -184,6 +184,13 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/despachos/{id}/cerrar', [\App\Controllers\DespachoController::class, 'close']);
     $group->delete('/despachos/{id}', [\App\Controllers\DespachoController::class, 'eliminar']);
 
+    // Módulo: Almacenamiento / Putaway
+    $group->get('/putaway/patio', [\App\Controllers\PutawayController::class, 'listarPatio']);
+    $group->get('/putaway/resolver-ean', [\App\Controllers\PutawayController::class, 'resolverEan']);
+    $group->get('/putaway/sugerir/{producto_id}', [\App\Controllers\PutawayController::class, 'sugerirUbicacion']);
+    $group->post('/putaway/ubicar', [\App\Controllers\PutawayController::class, 'ubicar']);
+    $group->post('/putaway/trasladar', [\App\Controllers\PutawayController::class, 'trasladar']);
+
     // Módulo: Alertas
     $group->get('/alertas', [\App\Controllers\AlertasController::class, 'index']);
     $group->get('/alertas/export', [\App\Controllers\AlertasController::class, 'export']);
