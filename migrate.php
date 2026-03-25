@@ -105,16 +105,17 @@ switch ($command) {
         break;
 
     case 'fresh':
-        // Drop all tables
+        // Drop all tables — use information_schema so column name is always 'table_name'
         Capsule::schema()->disableForeignKeyConstraints();
-        $tables = Capsule::select('SHOW TABLES');
+        $dbName = Capsule::connection()->getDatabaseName();
+        $tables = Capsule::select(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_type = 'BASE TABLE'",
+            [$dbName]
+        );
         foreach ($tables as $table) {
-            // SHOW TABLES returns one column; its name varies by MySQL case config.
-            // Use array/object iteration to get the value safely.
-            $props = (array)$table;
-            $tableName = reset($props);
+            $tableName = $table->table_name ?? $table->TABLE_NAME ?? null;
             if (!$tableName) continue;
-            Capsule::schema()->drop($tableName);
+            Capsule::connection()->statement("DROP TABLE IF EXISTS `{$tableName}`");
             echo "Dropped: {$tableName}\n";
         }
         Capsule::schema()->enableForeignKeyConstraints();
