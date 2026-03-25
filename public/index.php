@@ -23,7 +23,7 @@ use Slim\Factory\AppFactory;
 $app = AppFactory::create();
 
 // Set base path for XAMPP subdirectory
-$app->setBasePath('/Prooriente/public');
+$app->setBasePath('/WMS_PROORIENTE/public');
 
 // Add error middleware
 $app->addErrorMiddleware(
