@@ -176,6 +176,14 @@ class ParametrosController
             return $this->json($response, ['error' => true, 'message' => 'El nombre no puede superar 100 caracteres.'], 400);
         }
 
+        // Verificar duplicado (case-insensitive)
+        $existe = \App\Models\Marca::where('empresa_id', $user->empresa_id)
+            ->whereRaw('LOWER(nombre) = ?', [strtolower($nombre)])
+            ->exists();
+        if ($existe) {
+            return $this->json($response, ['error' => true, 'message' => "Ya existe una marca con el nombre '{$nombre}'."], 409);
+        }
+
         try {
             $marca = new \App\Models\Marca();
             $marca->empresa_id = $user->empresa_id;
@@ -186,7 +194,7 @@ class ParametrosController
             return $this->json($response, ['error' => false, 'message' => 'Marca creada con éxito', 'data' => $marca], 201);
         } catch (\Exception $e) {
             error_log('createMarca error: ' . $e->getMessage());
-            return $this->json($response, ['error' => true, 'message' => 'Error al crear marca.'], 500);
+            return $this->json($response, ['error' => true, 'message' => 'Error al crear marca: ' . $e->getMessage()], 500);
         }
     }
 

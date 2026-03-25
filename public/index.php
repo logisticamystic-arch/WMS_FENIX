@@ -228,6 +228,45 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // Módulo: Dashboard (Real-time Analytics)
     $group->get('/dashboard', [\App\Controllers\DashboardController::class, 'index']);
 
+    // Herramienta de desarrollo: Ejecutar migraciones pendientes (solo Admin)
+    $group->post('/system/migrate', function (Request $request, Response $response) {
+        $user = $request->getAttribute('user');
+        if (!$user || ($user->rol ?? '') !== 'Admin') {
+            $response->getBody()->write(json_encode(['error' => true, 'message' => 'Solo administradores']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+        $DB      = \Illuminate\Database\Capsule\Manager::class;
+        $migPath = __DIR__ . '/../database/migrations/';
+        $files   = glob($migPath . '*.php');
+        sort($files);
+        if (!\Illuminate\Database\Capsule\Manager::schema()->hasTable('migrations')) {
+            \Illuminate\Database\Capsule\Manager::schema()->create('migrations', function ($t) {
+                $t->increments('id');
+                $t->string('migration');
+                $t->integer('batch');
+                $t->timestamp('ran_at')->useCurrent();
+            });
+        }
+        $ran    = \Illuminate\Database\Capsule\Manager::table('migrations')->pluck('migration')->toArray();
+        $batch  = (int)(\Illuminate\Database\Capsule\Manager::table('migrations')->max('batch') ?? 0) + 1;
+        $done   = [];
+        $errors = [];
+        foreach ($files as $file) {
+            $name = basename($file, '.php');
+            if (in_array($name, $ran)) continue;
+            try {
+                $m = require $file;
+                if (is_array($m) && isset($m['up'])) $m['up']();
+                \Illuminate\Database\Capsule\Manager::table('migrations')->insert(['migration' => $name, 'batch' => $batch]);
+                $done[] = $name;
+            } catch (\Exception $e) {
+                $errors[] = "{$name}: " . $e->getMessage();
+            }
+        }
+        $response->getBody()->write(json_encode(['error' => false, 'migrated' => $done, 'errors' => $errors]));
+        return $response->withHeader('Content-Type', 'application/json');
+    });
+
     // Módulo: Parametrización (Maestros)
     $group->get('/param/empresas', [\App\Controllers\ParametrosController::class, 'getEmpresas']);
     $group->post('/param/empresas', [\App\Controllers\ParametrosController::class, 'createEmpresa']);

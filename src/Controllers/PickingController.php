@@ -404,11 +404,12 @@ class PickingController extends BaseController
                     'ubicacion_destino_id' => $linea->ubicacion_id,
                     'lote'                 => $linea->lote,
                     'fecha_vencimiento'    => $linea->fecha_vencimiento,
-                    'usuario_id'           => $user->id,
-                    'referencia'           => $orden->numero_orden,
+                    'auxiliar_id'          => $user->id,
+                    'referencia_tipo'      => 'OrdenPicking',
+                    'referencia_id'        => $orden->id,
                     'observaciones'        => "Picking orden {$orden->numero_orden}",
                     'fecha_movimiento'     => date('Y-m-d'),
-                    'hora_movimiento'      => date('H:i:s'),
+                    'hora_inicio'          => date('H:i:s'),
                 ]);
 
                 $linea->cantidad_pickeada = $cantidadTomada;
@@ -557,10 +558,11 @@ class PickingController extends BaseController
                     'cantidad'             => $tarea->cantidad,
                     'ubicacion_origen_id'  => $tarea->ubicacion_origen_id,
                     'ubicacion_destino_id' => $tarea->ubicacion_destino_id,
-                    'usuario_id'           => $user->id,
-                    'referencia'           => "REAB-{$tarea->id}",
+                    'auxiliar_id'          => $user->id,
+                    'referencia_tipo'      => 'TareaReabastecimiento',
+                    'referencia_id'        => $tarea->id,
                     'fecha_movimiento'     => date('Y-m-d'),
-                    'hora_movimiento'      => date('H:i:s'),
+                    'hora_inicio'          => date('H:i:s'),
                 ]);
 
                 $tarea->estado   = 'Completada';

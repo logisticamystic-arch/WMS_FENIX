@@ -60,14 +60,41 @@ window.Inventario = {
                 </button>
             </div>
 
-            <!-- Panel ubicación -->
+            <!-- Panel ubicación — selector didáctico con multi-selección y bloqueo -->
             <div id="conteo-ubicacion-form" style="display:none; border-top:2px dashed #e2e8f0; padding-top:20px; margin-bottom:20px;">
                 <h4 style="margin:0 0 12px; color:#8b5cf6;"><i class="fa-solid fa-location-dot"></i> Conteo por Ubicación</h4>
-                <div class="input-group" style="margin-bottom:12px;">
-                    <label>Zona / Pasillo (filtrar ubicaciones)</label>
-                    <input type="text" id="conteo-ubic-filtro" class="input-field" placeholder="Ej: A, B, Pasillo-3...">
+
+                <!-- Buscador de ubicaciones -->
+                <div style="margin-bottom:10px;">
+                    <label style="font-size:0.78rem; font-weight:600; color:#64748b; display:block; margin-bottom:4px;">
+                        <i class="fa-solid fa-magnifying-glass"></i> Buscar ubicación por código o pasillo
+                    </label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="ubic-search" placeholder="Ej: A-01, Pasillo B, CA-03..."
+                            oninput="window.Inventario._ubicSearch()"
+                            style="flex:1; padding:8px 12px; border:1px solid #e2e8f0; border-radius:8px; font-size:0.88rem;">
+                        <button onclick="window.Inventario._cargarTodasUbic()"
+                            style="padding:8px 12px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:8px; font-size:0.82rem; cursor:pointer; white-space:nowrap;">
+                            <i class="fa-solid fa-th"></i> Ver todas
+                        </button>
+                    </div>
                 </div>
-                <button class="btn-primary" style="background:#8b5cf6;" onclick="window.Inventario.startConteo('PorUbicacion', document.getElementById('conteo-ubic-filtro').value)">
+
+                <!-- Resultados de búsqueda de ubicaciones -->
+                <div id="ubic-search-results" style="display:none; border:1px solid #e2e8f0; border-radius:8px; background:white; max-height:160px; overflow-y:auto; margin-bottom:10px;"></div>
+
+                <!-- Ubicaciones seleccionadas (chips) -->
+                <div id="ubic-selected-area" style="display:none; margin-bottom:12px;">
+                    <label style="font-size:0.75rem; font-weight:700; color:#8b5cf6; display:block; margin-bottom:6px; text-transform:uppercase;">
+                        <i class="fa-solid fa-check-circle"></i> Ubicaciones seleccionadas
+                    </label>
+                    <div id="ubic-chips" style="display:flex; flex-wrap:wrap; gap:6px; padding:8px; background:#faf5ff; border:1px solid #e9d5ff; border-radius:8px; min-height:36px;"></div>
+                    <div style="margin-top:8px; padding:8px; background:#fef3c7; border:1px solid #fde68a; border-radius:8px; font-size:0.78rem; color:#92400e;">
+                        <i class="fa-solid fa-lock"></i> <strong>Las ubicaciones seleccionadas quedarán bloqueadas</strong> durante el conteo para evitar movimientos paralelos.
+                    </div>
+                </div>
+
+                <button class="btn-primary" style="background:#8b5cf6;" onclick="window.Inventario.startConteoUbicacion()">
                     <i class="fa-solid fa-play"></i> Iniciar Conteo por Ubicación
                 </button>
             </div>
@@ -167,6 +194,172 @@ window.Inventario = {
     showConteoReferenciaForm() {
         document.getElementById('conteo-referencia-form').style.display = 'block';
         document.getElementById('conteo-ubicacion-form').style.display = 'none';
+    },
+
+    /* ── Selector didáctico de ubicaciones ────────────────────────────── */
+    _ubicSelIds: [],    // ids seleccionados
+    _ubicSelNombres: {},// id → codigo
+    _ubicTimer: null,
+    _allUbics: [],      // caché de todas las ubicaciones
+
+    _ubicSearch() {
+        clearTimeout(this._ubicTimer);
+        this._ubicTimer = setTimeout(() => this._doUbicSearch(), 300);
+    },
+
+    async _doUbicSearch() {
+        const q = document.getElementById('ubic-search')?.value?.trim();
+        const el = document.getElementById('ubic-search-results');
+        if (!el) return;
+        if (!q || q.length < 1) { el.style.display = 'none'; return; }
+        el.style.display = 'block';
+        el.innerHTML = '<div style="padding:10px; text-align:center; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i></div>';
+        try {
+            if (!this._allUbics.length) {
+                const d = await window.api.get('/param/ubicaciones');
+                this._allUbics = d?.data || d || [];
+            }
+            const ql = q.toLowerCase();
+            const matches = this._allUbics.filter(u =>
+                (u.codigo||'').toLowerCase().includes(ql) ||
+                (u.pasillo||'').toLowerCase().includes(ql) ||
+                (u.modulo||'').toLowerCase().includes(ql) ||
+                (u.descripcion||'').toLowerCase().includes(ql)
+            ).slice(0, 30);
+            if (!matches.length) {
+                el.innerHTML = '<div style="padding:10px; color:#94a3b8; font-size:0.85rem; text-align:center;">Sin resultados</div>';
+                return;
+            }
+            el.innerHTML = matches.map(u => {
+                const ya = this._ubicSelIds.includes(u.id);
+                const bloq = u.bloqueada || u.estado === 'Bloqueada';
+                return `
+                <div style="padding:9px 14px; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between;
+                     ${bloq ? 'opacity:0.5;' : 'cursor:pointer;'}
+                     background:${ya ? '#faf5ff' : 'white'};"
+                     ${!bloq ? `onclick="window.Inventario._toggleUbic(${parseInt(u.id)}, '${escHTML(u.codigo)}')"
+                     onmouseover="this.style.background='${ya ? '#faf5ff' : '#f8fafc'}'"
+                     onmouseout="this.style.background='${ya ? '#faf5ff' : 'white'}'"` : ''}>
+                    <div>
+                        <div style="font-weight:600; font-size:0.85rem; color:${bloq ? '#94a3b8' : '#0f172a'};">
+                            ${escHTML(u.codigo)}
+                            ${bloq ? '<span style="font-size:0.68rem; color:#ef4444; margin-left:4px;">🔒 Bloqueada</span>' : ''}
+                        </div>
+                        <div style="font-size:0.72rem; color:#64748b;">
+                            ${u.pasillo ? 'Pasillo: ' + escHTML(u.pasillo) : ''}
+                            ${u.modulo  ? ' · Módulo: ' + escHTML(u.modulo) : ''}
+                            ${u.nivel   ? ' · Nivel: ' + escHTML(String(u.nivel)) : ''}
+                        </div>
+                    </div>
+                    <div style="font-size:0.8rem; color:${ya ? '#8b5cf6' : '#94a3b8'}; font-weight:700;">
+                        ${ya ? '<i class="fa-solid fa-check-circle"></i>' : '<i class="fa-regular fa-circle"></i>'}
+                    </div>
+                </div>`;
+            }).join('');
+        } catch(e) {
+            el.innerHTML = `<div style="padding:10px; color:#ef4444; font-size:0.85rem;">${escHTML(e.message)}</div>`;
+        }
+    },
+
+    async _cargarTodasUbic() {
+        document.getElementById('ubic-search').value = '';
+        if (!this._allUbics.length) {
+            const d = await window.api.get('/param/ubicaciones').catch(() => ({ data: [] }));
+            this._allUbics = d?.data || d || [];
+        }
+        // Agrupar por pasillo
+        const pasillos = {};
+        this._allUbics.forEach(u => {
+            const p = u.pasillo || 'Sin pasillo';
+            if (!pasillos[p]) pasillos[p] = [];
+            pasillos[p].push(u);
+        });
+        const el = document.getElementById('ubic-search-results');
+        if (!el) return;
+        el.style.display = 'block';
+        el.innerHTML = Object.entries(pasillos).map(([p, ubs]) => `
+        <div style="padding:6px 14px; background:#f8fafc; border-bottom:1px solid #f1f5f9;">
+            <span style="font-size:0.7rem; font-weight:700; color:#475569; text-transform:uppercase;">Pasillo ${escHTML(p)}</span>
+            <button onclick="window.Inventario._seleccionarPasillo('${escHTML(p)}')"
+                style="float:right; font-size:0.68rem; background:#8b5cf620; color:#8b5cf6; border:none; border-radius:4px; padding:2px 7px; cursor:pointer; font-weight:600;">
+                Seleccionar todo
+            </button>
+        </div>
+        ${ubs.map(u => {
+            const ya = this._ubicSelIds.includes(u.id);
+            const bloq = u.bloqueada || u.estado === 'Bloqueada';
+            return `<div style="padding:8px 14px 8px 22px; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between;
+                 ${bloq ? 'opacity:0.5;' : 'cursor:pointer;'} background:${ya ? '#faf5ff' : 'white'};"
+                 ${!bloq ? `onclick="window.Inventario._toggleUbic(${parseInt(u.id)}, '${escHTML(u.codigo)}')"` : ''}>
+                <div>
+                    <div style="font-size:0.84rem; font-weight:600; color:${bloq ? '#94a3b8' : '#0f172a'};">
+                        ${escHTML(u.codigo)}${bloq ? ' 🔒' : ''}
+                    </div>
+                    <div style="font-size:0.7rem; color:#94a3b8;">${u.modulo || ''} ${u.nivel ? '· N'+u.nivel : ''}</div>
+                </div>
+                <span style="color:${ya ? '#8b5cf6' : '#cbd5e1'}; font-size:1rem;">
+                    ${ya ? '<i class="fa-solid fa-check-circle"></i>' : '<i class="fa-regular fa-circle"></i>'}
+                </span>
+            </div>`;
+        }).join('')}`).join('');
+    },
+
+    _seleccionarPasillo(pasillo) {
+        const ubs = this._allUbics.filter(u =>
+            (u.pasillo || 'Sin pasillo') === pasillo &&
+            !u.bloqueada && u.estado !== 'Bloqueada'
+        );
+        ubs.forEach(u => {
+            if (!this._ubicSelIds.includes(u.id)) {
+                this._ubicSelIds.push(u.id);
+                this._ubicSelNombres[u.id] = u.codigo;
+            }
+        });
+        this._renderUbicChips();
+        this._doUbicSearch();
+        window.showToast(`${ubs.length} ubicaciones de Pasillo ${pasillo} agregadas`, 'success');
+    },
+
+    _toggleUbic(id, codigo) {
+        const idx = this._ubicSelIds.indexOf(id);
+        if (idx === -1) {
+            this._ubicSelIds.push(id);
+            this._ubicSelNombres[id] = codigo;
+        } else {
+            this._ubicSelIds.splice(idx, 1);
+            delete this._ubicSelNombres[id];
+        }
+        this._renderUbicChips();
+        // Refrescar resultados para actualizar los íconos de check
+        this._doUbicSearch();
+    },
+
+    _renderUbicChips() {
+        const area = document.getElementById('ubic-selected-area');
+        const chips = document.getElementById('ubic-chips');
+        if (!area || !chips) return;
+        if (!this._ubicSelIds.length) {
+            area.style.display = 'none';
+            return;
+        }
+        area.style.display = 'block';
+        chips.innerHTML = this._ubicSelIds.map(id => `
+        <span style="display:inline-flex; align-items:center; gap:5px; background:#ede9fe; color:#6d28d9; border:1px solid #c4b5fd; border-radius:999px; padding:4px 10px; font-size:0.78rem; font-weight:600;">
+            <i class="fa-solid fa-location-dot" style="font-size:0.7rem;"></i>
+            ${escHTML(this._ubicSelNombres[id] || '#'+id)}
+            <button data-id="${parseInt(id)}" onclick="window.Inventario._toggleUbic(parseInt(this.dataset.id), '')"
+                style="background:none; border:none; color:#7c3aed; cursor:pointer; padding:0; font-size:0.75rem; line-height:1;">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </span>`).join('');
+    },
+
+    async startConteoUbicacion() {
+        if (!this._ubicSelIds.length) {
+            return window.showToast('Seleccione al menos una ubicación', 'error');
+        }
+        const nombres = this._ubicSelIds.map(id => this._ubicSelNombres[id] || '#'+id).join(', ');
+        await this.startConteo('PorUbicacion', nombres, this._ubicSelIds);
     },
 
     /* ── Búsqueda para conteo por referencia ──────────────────────────── */

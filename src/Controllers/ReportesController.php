@@ -433,23 +433,24 @@ class ReportesController extends BaseController
         $eId = $user->empresa_id;
         $sId = $user->sucursal_id;
 
-        // Proveedores con al menos una ODC en el período
+        // Proveedores con al menos una ODC en el período.
+        // Recepciones se vinculan al proveedor a través de citas (rec.cita_id → cit → pv.razon_social)
         $proveedores = Capsule::table('proveedores as pv')
-            ->leftJoin('ordenes_compra as odc', function($j) use ($eId, $ini, $fin) {
+            ->leftJoin('ordenes_compra as odc', function ($j) use ($eId, $ini, $fin) {
                 $j->on('pv.id', '=', 'odc.proveedor_id')
                   ->where('odc.empresa_id', $eId)
                   ->whereBetween('odc.created_at', [$ini, $fin]);
             })
-            ->leftJoin('recepciones as rec', function($j) use ($eId, $ini, $fin) {
-                $j->on('pv.id', '=', 'rec.proveedor_id')
-                  ->where('rec.empresa_id', $eId)
-                  ->whereBetween('rec.created_at', [$ini, $fin]);
-            })
-            ->leftJoin('citas as cit', function($j) use ($eId, $sId, $ini, $fin) {
+            ->leftJoin('citas as cit', function ($j) use ($eId, $sId, $ini, $fin) {
                 $j->on(Capsule::raw("LOWER(pv.razon_social)"), '=', Capsule::raw("LOWER(cit.proveedor)"))
                   ->where('cit.empresa_id', $eId)
                   ->where('cit.sucursal_id', $sId)
                   ->whereBetween('cit.fecha', [substr($ini, 0, 10), substr($fin, 0, 10)]);
+            })
+            ->leftJoin('recepciones as rec', function ($j) use ($eId, $ini, $fin) {
+                $j->on('rec.cita_id', '=', 'cit.id')
+                  ->where('rec.empresa_id', $eId)
+                  ->whereBetween('rec.created_at', [$ini, $fin]);
             })
             ->where('pv.empresa_id', $eId)
             ->select(
@@ -468,14 +469,16 @@ class ReportesController extends BaseController
             ->orderByRaw('total_odc DESC, total_recepciones DESC')
             ->get();
 
-        // Agregar novedades de recepción por proveedor
+        // Novedades de recepción: detalles con estado distinto a BuenEstado, vinculados por cita → proveedor
         $novedades = Capsule::table('recepcion_detalles as rd')
             ->join('recepciones as rec', 'rd.recepcion_id', '=', 'rec.id')
+            ->join('citas as cit', 'rec.cita_id', '=', 'cit.id')
+            ->join('proveedores as pv2', Capsule::raw("LOWER(pv2.razon_social)"), '=', Capsule::raw("LOWER(cit.proveedor)"))
             ->where('rec.empresa_id', $eId)
             ->whereBetween('rec.created_at', [$ini, $fin])
-            ->whereNotIn('rd.estado_mercancia', ['Bueno', 'bueno', 'OK', 'ok'])
-            ->select('rec.proveedor_id', Capsule::raw('COUNT(*) as novedades'))
-            ->groupBy('rec.proveedor_id')
+            ->where('rd.estado_mercancia', '!=', 'BuenEstado')
+            ->select('pv2.id as proveedor_id', Capsule::raw('COUNT(*) as novedades'))
+            ->groupBy('pv2.id')
             ->get()
             ->keyBy('proveedor_id');
 

@@ -123,7 +123,8 @@ document.addEventListener('DOMContentLoaded', () => {
             { id: 'clientes', title: 'Clientes', icon: 'fa-users-rectangle', colorClass: 'color-inbound' },
             { id: 'ubicaciones', title: 'Ubicaciones', icon: 'fa-map-location-dot', colorClass: 'color-almacen' },
             { id: 'proveedores', title: 'Proveedores', icon: 'fa-truck-field', colorClass: 'color-picking' },
-            { id: 'rutas', title: 'Rutas', icon: 'fa-route', colorClass: 'color-inbound' }
+            { id: 'rutas', title: 'Rutas', icon: 'fa-route', colorClass: 'color-inbound' },
+            { id: 'sistema_migraciones', title: 'BD Migraciones', icon: 'fa-database', colorClass: 'color-admin' }
         ],
         'recepcion': [
             { id: 'citas', title: 'Gestión de Citas', icon: 'fa-calendar-check', colorClass: 'color-inbound' },
@@ -337,6 +338,47 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (subId === 'rutas' && window.Maestros) {
             contentHtml = window.Maestros.getRutasHTML();
             setTimeout(() => { window.Maestros.loadRutas(); }, 400);
+        } else if (subId === 'sistema_migraciones') {
+            contentHtml = `<div style="padding:24px; max-width:600px; margin:0 auto;">
+                <div style="background:white; border-radius:12px; padding:24px; box-shadow:0 2px 8px rgba(0,0,0,0.08); border-left:4px solid #6366f1;">
+                    <h3 style="margin:0 0 8px; color:#1e293b;"><i class="fa-solid fa-database" style="color:#6366f1; margin-right:8px;"></i>Base de Datos — Migraciones Pendientes</h3>
+                    <p style="color:#64748b; font-size:0.85rem; margin:0 0 20px;">Ejecuta todas las migraciones pendientes para crear/actualizar tablas en <strong>WMS_PROORIENTE</strong>. Incluye las tablas de planillas de certificación.</p>
+                    <button id="btn-run-migrate" onclick="window._runMigrations()" style="width:100%; padding:14px; background:#6366f1; color:white; border:none; border-radius:10px; font-size:1rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+                        <i class="fa-solid fa-play"></i> Ejecutar Migraciones Pendientes
+                    </button>
+                    <div id="migrate-result" style="margin-top:16px; display:none;"></div>
+                </div>
+            </div>`;
+            setTimeout(() => {
+                window._runMigrations = async function() {
+                    const btn = document.getElementById('btn-run-migrate');
+                    const result = document.getElementById('migrate-result');
+                    if (!btn || !result) return;
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Ejecutando...';
+                    result.style.display = 'none';
+                    try {
+                        const data = await window.api.post('/system/migrate', {});
+                        result.style.display = 'block';
+                        if (data.migrated && data.migrated.length > 0) {
+                            result.innerHTML = '<div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:16px;">' +
+                                '<div style="color:#166534; font-weight:700; margin-bottom:8px;"><i class="fa-solid fa-circle-check"></i> ' + data.migrated.length + ' migración(es) ejecutadas:</div>' +
+                                data.migrated.map(m => '<div style="color:#15803d; font-size:0.85rem; padding:2px 0;">✓ ' + m + '</div>').join('') +
+                                (data.errors && data.errors.length ? '<div style="color:#dc2626; margin-top:8px;">' + data.errors.join('<br>') + '</div>' : '') +
+                                '</div>';
+                        } else {
+                            result.innerHTML = '<div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px; color:#1d4ed8; font-size:0.9rem;"><i class="fa-solid fa-info-circle"></i> No hay migraciones pendientes. Todo está actualizado.</div>';
+                        }
+                        btn.innerHTML = '<i class="fa-solid fa-check"></i> Completado';
+                        btn.style.background = '#22c55e';
+                    } catch(e) {
+                        result.style.display = 'block';
+                        result.innerHTML = '<div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:12px; color:#dc2626; font-size:0.85rem;"><i class="fa-solid fa-triangle-exclamation"></i> Error: ' + e.message + '</div>';
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fa-solid fa-play"></i> Reintentar';
+                    }
+                };
+            }, 200);
         } else if (subId === 'odc' && window.ODC) {
             contentHtml = window.ODC.getODCHTML();
             setTimeout(() => { window.ODC.loadODCs(); }, 400);
