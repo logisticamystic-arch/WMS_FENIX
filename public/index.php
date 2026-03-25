@@ -175,6 +175,16 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/picking/reabast/{id}/completar', [\App\Controllers\PickingController::class, 'completarReabast']);
     $group->delete('/picking/{id}', [\App\Controllers\PickingController::class, 'eliminar']);
 
+    // Módulo: Planillas (Certificación por Cliente)
+    $group->get('/planillas', [\App\Controllers\PlanillaController::class, 'listar']);
+    $group->get('/planillas/cert/dashboard', [\App\Controllers\PlanillaController::class, 'dashboard']);
+    $group->post('/planillas/importar', [\App\Controllers\PlanillaController::class, 'importar']);
+    $group->post('/planillas/cert/iniciar', [\App\Controllers\PlanillaController::class, 'iniciarCertificacion']);
+    $group->get('/planillas/cert/{id}', [\App\Controllers\PlanillaController::class, 'verCertificacion']);
+    $group->post('/planillas/cert/{id}/linea', [\App\Controllers\PlanillaController::class, 'registrarLinea']);
+    $group->post('/planillas/cert/{id}/finalizar', [\App\Controllers\PlanillaController::class, 'finalizarCertificacion']);
+    $group->get('/planillas/{id}', [\App\Controllers\PlanillaController::class, 'ver']);
+
     // Módulo: Despachos (Outbound Certification)
     $group->get('/despachos', [\App\Controllers\DespachoController::class, 'listar']);
     $group->post('/despachos', [\App\Controllers\DespachoController::class, 'store']);
@@ -211,6 +221,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/reportes/agotados', [\App\Controllers\ReportesController::class, 'agotadosYBajoMinimo']);
     $group->get('/reportes/dashboard-gerencial', [\App\Controllers\ReportesController::class, 'dashboardGerencial']);
     $group->get('/reportes/audit-log', [\App\Controllers\ReportesController::class, 'auditLog']);
+    $group->get('/reportes/evaluacion-proveedores', [\App\Controllers\ReportesController::class, 'evaluacionProveedores']);
 
     // Módulo: Dashboard (Real-time Analytics)
     $group->get('/dashboard', [\App\Controllers\DashboardController::class, 'index']);

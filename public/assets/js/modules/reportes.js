@@ -63,6 +63,7 @@ window.Reportes = {
                 ${this._card('fa-file-invoice','#64748b','Órdenes de Compra','ODC emitidas a proveedores','odc')}
                 ${this._card('fa-triangle-exclamation','#f97316','Vencimientos','Productos próximos a vencer','vencimientos')}
                 ${this._card('fa-battery-empty','#dc2626','Agotados / Bajo Mínimo','Productos en riesgo de desabasto','agotados')}
+                ${this._card('fa-truck-field','#10b981','Evaluación Proveedores','Cumplimiento citas, ODC y novedades','evaluacionProveedores')}
                 ${this._card('fa-gauge-high','#0ea5e9','Dashboard Gerencial','KPIs consolidados de operación','dashboardGerencial', 'supervisor')}
                 ${this._card('fa-scroll','#6b7280','Log de Auditoría','Registro completo de cambios (Admin)','auditLog', 'admin')}
             </div>
@@ -127,6 +128,7 @@ window.Reportes = {
             odc:               `/reportes/odc${this._dateParams(ini, fin)}`,
             vencimientos:      `/reportes/vencimientos`,
             agotados:          `/reportes/agotados`,
+            evaluacionProveedores: `/reportes/evaluacion-proveedores${this._dateParams(ini, fin)}`,
             dashboardGerencial:`/reportes/dashboard-gerencial${this._dateParams(ini, fin)}`,
             auditLog:          `/reportes/audit-log${this._dateParams(ini, fin)}`,
         };
@@ -156,6 +158,7 @@ window.Reportes = {
             odc:               `/reportes/odc${this._dateParams(ini, fin, '&export=excel')}`,
             vencimientos:      `/reportes/vencimientos?export=excel`,
             agotados:          `/reportes/agotados?export=excel`,
+            evaluacionProveedores: `/reportes/evaluacion-proveedores${this._dateParams(ini, fin, '&export=excel')}`,
             dashboardGerencial:`/reportes/dashboard-gerencial${this._dateParams(ini, fin, '&export=excel')}`,
             auditLog:          `/reportes/audit-log${this._dateParams(ini, fin, '&export=excel')}`,
         };
@@ -202,6 +205,7 @@ window.Reportes = {
             odc:                'Órdenes de Compra',
             vencimientos:       'Productos por Vencer',
             agotados:           'Agotados / Bajo Mínimo',
+            evaluacionProveedores: 'Evaluación de Proveedores',
             dashboardGerencial: 'Dashboard Gerencial',
             auditLog:           'Log de Auditoría',
         };

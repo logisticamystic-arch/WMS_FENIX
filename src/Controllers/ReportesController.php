@@ -13,6 +13,7 @@ use App\Models\OrdenPicking;
 use App\Models\ConteoInventario;
 use App\Models\OrdenCompra;
 use App\Models\Devolucion;
+use App\Models\Cita;
 use Illuminate\Database\Capsule\Manager as Capsule;
 
 /**
@@ -421,6 +422,92 @@ class ReportesController extends BaseController
         }
 
         return $this->ok($res, $stock);
+    }
+
+    // ── 13. EVALUACIÓN DE PROVEEDORES ─────────────────────────────────────────
+    public function evaluacionProveedores(Request $r, Response $res): Response
+    {
+        $user   = $r->getAttribute('user');
+        $params = $r->getQueryParams();
+        [$ini, $fin] = $this->getDateRange($params);
+        $eId = $user->empresa_id;
+        $sId = $user->sucursal_id;
+
+        // Proveedores con al menos una ODC en el período
+        $proveedores = Capsule::table('proveedores as pv')
+            ->leftJoin('ordenes_compra as odc', function($j) use ($eId, $ini, $fin) {
+                $j->on('pv.id', '=', 'odc.proveedor_id')
+                  ->where('odc.empresa_id', $eId)
+                  ->whereBetween('odc.created_at', [$ini, $fin]);
+            })
+            ->leftJoin('recepciones as rec', function($j) use ($eId, $ini, $fin) {
+                $j->on('pv.id', '=', 'rec.proveedor_id')
+                  ->where('rec.empresa_id', $eId)
+                  ->whereBetween('rec.created_at', [$ini, $fin]);
+            })
+            ->leftJoin('citas as cit', function($j) use ($eId, $sId, $ini, $fin) {
+                $j->on(Capsule::raw("LOWER(pv.razon_social)"), '=', Capsule::raw("LOWER(cit.proveedor)"))
+                  ->where('cit.empresa_id', $eId)
+                  ->where('cit.sucursal_id', $sId)
+                  ->whereBetween('cit.fecha', [substr($ini, 0, 10), substr($fin, 0, 10)]);
+            })
+            ->where('pv.empresa_id', $eId)
+            ->select(
+                'pv.id',
+                'pv.razon_social as proveedor',
+                'pv.nit',
+                Capsule::raw('COUNT(DISTINCT odc.id) as total_odc'),
+                Capsule::raw('SUM(CASE WHEN odc.estado = "Cerrada" THEN 1 ELSE 0 END) as odc_completadas'),
+                Capsule::raw('COUNT(DISTINCT rec.id) as total_recepciones'),
+                Capsule::raw('SUM(CASE WHEN rec.estado = "Confirmada" THEN 1 ELSE 0 END) as rec_confirmadas'),
+                Capsule::raw('COUNT(DISTINCT cit.id) as total_citas'),
+                Capsule::raw('SUM(CASE WHEN cit.estado IN ("Completada","Confirmada") THEN 1 ELSE 0 END) as citas_cumplidas'),
+                Capsule::raw('SUM(CASE WHEN cit.estado = "Cancelada" THEN 1 ELSE 0 END) as citas_canceladas')
+            )
+            ->groupBy('pv.id', 'pv.razon_social', 'pv.nit')
+            ->orderByRaw('total_odc DESC, total_recepciones DESC')
+            ->get();
+
+        // Agregar novedades de recepción por proveedor
+        $novedades = Capsule::table('recepcion_detalles as rd')
+            ->join('recepciones as rec', 'rd.recepcion_id', '=', 'rec.id')
+            ->where('rec.empresa_id', $eId)
+            ->whereBetween('rec.created_at', [$ini, $fin])
+            ->whereNotIn('rd.estado_mercancia', ['Bueno', 'bueno', 'OK', 'ok'])
+            ->select('rec.proveedor_id', Capsule::raw('COUNT(*) as novedades'))
+            ->groupBy('rec.proveedor_id')
+            ->get()
+            ->keyBy('proveedor_id');
+
+        // Enriquecer con novedades y calcular tasa de cumplimiento
+        $result = $proveedores->map(function ($p) use ($novedades) {
+            $nov = $novedades->get($p->id);
+            $p->novedades_recepcion = $nov ? $nov->novedades : 0;
+            $p->pct_cumplimiento_citas = $p->total_citas > 0
+                ? round(($p->citas_cumplidas / $p->total_citas) * 100, 1) : null;
+            $p->pct_cumplimiento_odc = $p->total_odc > 0
+                ? round(($p->odc_completadas / $p->total_odc) * 100, 1) : null;
+            return $p;
+        });
+
+        if (($params['export'] ?? '') === 'excel') {
+            $headers = [
+                'Proveedor', 'NIT', 'Total ODC', 'ODC Completadas', '% Cumpl. ODC',
+                'Total Recepciones', 'Rec. Confirmadas', 'Total Citas', 'Citas Cumplidas',
+                '% Cumpl. Citas', 'Citas Canceladas', 'Novedades Recepción'
+            ];
+            $rows = $result->map(fn($p) => [
+                $p->proveedor, $p->nit ?? '—',
+                $p->total_odc, $p->odc_completadas, $p->pct_cumplimiento_odc !== null ? $p->pct_cumplimiento_odc . '%' : '—',
+                $p->total_recepciones, $p->rec_confirmadas,
+                $p->total_citas, $p->citas_cumplidas,
+                $p->pct_cumplimiento_citas !== null ? $p->pct_cumplimiento_citas . '%' : '—',
+                $p->citas_canceladas, $p->novedades_recepcion,
+            ])->toArray();
+            return $this->exportCsv($res, $headers, $rows, 'evaluacion_proveedores_' . date('Y-m-d'));
+        }
+
+        return $this->ok($res, $result);
     }
 
     // ── 12. REPORTE AGOTADOS / BAJO MÍNIMO ───────────────────────────────────

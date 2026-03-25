@@ -48,26 +48,40 @@ class CitaController
             return $this->json($response, ['error' => true, 'message' => 'Proveedor, Fecha y Hora son requeridos.'], 400);
         }
 
-        $cita = new Cita();
-        $cita->empresa_id = $user->empresa_id;
-        $cita->sucursal_id = $user->sucursal_id;
-        $cita->proveedor = $data['proveedor'];
-        $cita->fecha = $data['fecha'];
-        $cita->hora_programada = $data['hora_programada'];
-        $cita->cantidad_cajas = $data['cantidad_cajas'] ?? 0;
-        $cita->tipo_vehiculo = $data['tipo_vehiculo'] ?? null;
-        $cita->kilos = $data['kilos'] ?? 0;
-        $cita->odc = $data['odc'] ?? null;
-        $cita->estado = 'Programada';
-        $cita->notas = $data['notas'] ?? null;
+        try {
+            // Resolver nombre del proveedor: acepta nombre libre o proveedor_id
+            $nombreProv = trim($data['proveedor'] ?? '');
+            if (!empty($data['proveedor_id'])) {
+                $prov = \App\Models\Proveedor::where('empresa_id', $user->empresa_id)
+                    ->find((int)$data['proveedor_id']);
+                if ($prov) $nombreProv = $prov->nombre;
+            }
+            if (empty($nombreProv)) {
+                return $this->json($response, ['error' => true, 'message' => 'Proveedor es requerido.'], 400);
+            }
 
-        $cita->save();
+            $cita = new Cita();
+            $cita->empresa_id     = $user->empresa_id;
+            $cita->sucursal_id    = $user->sucursal_id;
+            $cita->proveedor      = $nombreProv;
+            $cita->fecha          = $data['fecha'];
+            $cita->hora_programada= $data['hora_programada'];
+            $cita->cantidad_cajas = (int)($data['cantidad_cajas'] ?? 0);
+            $cita->tipo_vehiculo  = $data['tipo_vehiculo'] ?? null;
+            $cita->kilos          = (float)($data['kilos'] ?? 0);
+            $cita->odc            = $data['odc'] ?? null;
+            $cita->estado         = 'Programada';
+            $cita->notas          = $data['notas'] ?? null;
+            $cita->save();
 
-        return $this->json($response, [
-            'error' => false,
-            'message' => 'Cita programada correctamente.',
-            'data' => $cita
-        ], 201);
+            return $this->json($response, [
+                'error'   => false,
+                'message' => 'Cita programada correctamente.',
+                'data'    => $cita
+            ], 201);
+        } catch (\Exception $e) {
+            return $this->json($response, ['error' => true, 'message' => 'Error al guardar: ' . $e->getMessage()], 500);
+        }
     }
 
     /**

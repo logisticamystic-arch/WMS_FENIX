@@ -241,7 +241,7 @@ class InventarioController extends BaseController
         $q = MovimientoInventario::where('movimiento_inventarios.empresa_id', $user->empresa_id)
             ->where('movimiento_inventarios.sucursal_id', $user->sucursal_id)
             ->join('productos', 'movimiento_inventarios.producto_id', '=', 'productos.id')
-            ->leftJoin('personal', 'movimiento_inventarios.usuario_id', '=', 'personal.id')
+            ->leftJoin('personal', 'movimiento_inventarios.auxiliar_id', '=', 'personal.id')
             ->leftJoin('ubicaciones as uo', 'movimiento_inventarios.ubicacion_origen_id', '=', 'uo.id')
             ->leftJoin('ubicaciones as ud', 'movimiento_inventarios.ubicacion_destino_id', '=', 'ud.id')
             ->whereBetween('movimiento_inventarios.fecha_movimiento', [
@@ -264,7 +264,7 @@ class InventarioController extends BaseController
         }
 
         $movimientos = $q->orderBy('movimiento_inventarios.fecha_movimiento', 'desc')
-                         ->orderBy('movimiento_inventarios.hora_movimiento', 'desc')
+                         ->orderBy('movimiento_inventarios.hora_inicio', 'desc')
                          ->get();
 
         if (($params['export'] ?? '') === 'excel') {
@@ -272,7 +272,7 @@ class InventarioController extends BaseController
                         'Lote', 'F.Vencimiento', 'Origen', 'Destino', 'Usuario', 'Ref.', 'Obs.'];
             $rows = $movimientos->map(fn($m) => [
                 $m->fecha_movimiento,
-                $m->hora_movimiento,
+                $m->hora_inicio,
                 $m->producto,
                 $m->codigo,
                 $m->tipo_movimiento,
@@ -300,19 +300,27 @@ class InventarioController extends BaseController
         $data = $req->getParsedBody() ?? [];
 
         try {
+            // Map tipo values from frontend to DB enum
+            $tipoMap = [
+                'General'       => 'General',
+                'PorUbicacion'  => 'PorUbicacion',
+                'PorReferencia' => 'PorReferencia',
+                'Total'         => 'General',   // legacy alias
+            ];
+            $tipo = $tipoMap[$data['tipo'] ?? 'General'] ?? 'General';
+
             $conteo = ConteoInventario::create([
-                'empresa_id'  => $user->empresa_id,
-                'sucursal_id' => $user->sucursal_id,
-                'numero'      => 'CNT-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4)),
-                'tipo'        => $data['tipo'] ?? 'Total',
-                'estado'      => 'EnProceso',
-                'iniciado_por'=> $user->id,
-                'fecha_inicio'=> date('Y-m-d H:i:s'),
-                'observaciones'=> $data['observaciones'] ?? null,
+                'empresa_id'      => $user->empresa_id,
+                'sucursal_id'     => $user->sucursal_id,
+                'tipo_conteo'     => $tipo,
+                'estado'          => 'EnConteo',
+                'auxiliar_id'     => $user->id,
+                'fecha_movimiento'=> date('Y-m-d'),
+                'hora_inicio'     => date('H:i:s'),
             ]);
 
             $this->audit($user, 'inventario', 'crear_conteo', 'conteo_inventarios', $conteo->id,
-                null, $conteo->toArray(), "Conteo {$conteo->numero} iniciado");
+                null, $conteo->toArray(), "Conteo #{$conteo->id} tipo {$conteo->tipo_conteo} iniciado");
 
             return $this->created($res, $conteo);
         } catch (\Exception $e) {
@@ -328,8 +336,8 @@ class InventarioController extends BaseController
         $conteo = ConteoInventario::where('empresa_id', $user->empresa_id)->find($a['id']);
 
         if (!$conteo) return $this->notFound($res);
-        if ($conteo->estado !== 'EnProceso') {
-            return $this->error($res, 'El conteo ya fue finalizado');
+        if ($conteo->estado !== 'EnConteo') {
+            return $this->error($res, 'El conteo no está activo (estado: ' . $conteo->estado . ')');
         }
 
         // Validaciones básicas
@@ -365,19 +373,39 @@ class InventarioController extends BaseController
             ->where('estado', 'Disponible')
             ->sum('cantidad');
 
+        // If ubicacion_id still null, resolve the first matching ubicacion from inventory
+        if (!$ubicacionId) {
+            $invRow = Inventario::where('empresa_id',  $user->empresa_id)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->where('producto_id', $productoId)
+                ->where('estado', 'Disponible')
+                ->orderBy('fecha_vencimiento')
+                ->first();
+            $ubicacionId = $invRow?->ubicacion_id;
+        }
+        // Still null — use the first available ubicacion
+        if (!$ubicacionId) {
+            $ubicacionId = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->value('id');
+        }
+        if (!$ubicacionId) {
+            return $this->error($res, 'No se encontró ubicación para registrar el conteo');
+        }
+
         try {
             $linea = ConteoDetalle::updateOrCreate(
                 [
-                    'conteo_inventario_id' => $conteo->id,
-                    'producto_id'          => $productoId,
-                    'ubicacion_id'         => $ubicacionId,
-                    'lote'                 => $data['lote'] ?? null,
+                    'conteo_id'   => $conteo->id,
+                    'producto_id' => $productoId,
+                    'ubicacion_id'=> $ubicacionId,
+                    'lote'        => $data['lote'] ?? null,
                 ],
                 [
-                    'cantidad_contada'  => $cantidadContada,
-                    'cantidad_sistema'  => $cantSistema,
-                    'fecha_vencimiento' => $data['fecha_vencimiento'] ?? null,
-                    'diferencia'        => $cantidadContada - $cantSistema,
+                    'cantidad_fisica'  => (int)$cantidadContada,
+                    'cantidad_sistema' => (int)$cantSistema,
+                    'diferencia'       => (int)($cantidadContada - $cantSistema),
+                    'estado'           => 'Contado',
                 ]
             );
 
@@ -397,8 +425,8 @@ class InventarioController extends BaseController
             ->with('detalles')
             ->find($a['id']);
 
-        if (!$conteo)                       return $this->notFound($res);
-        if ($conteo->estado !== 'EnProceso') return $this->error($res, 'Conteo no está en proceso');
+        if (!$conteo)                      return $this->notFound($res);
+        if ($conteo->estado !== 'EnConteo') return $this->error($res, 'Conteo no está activo');
 
         $data = $req->getParsedBody() ?? [];
 
@@ -420,55 +448,55 @@ class InventarioController extends BaseController
                         ])->first();
 
                         if ($inv) {
-                            $inv->cantidad = $linea->cantidad_contada;
+                            $inv->cantidad = $linea->cantidad_fisica;
                             if ($inv->cantidad <= 0) $inv->delete();
                             else $inv->save();
-                        } elseif ($linea->cantidad_contada > 0) {
+                        } elseif ($linea->cantidad_fisica > 0) {
                             Inventario::create([
-                                'empresa_id'       => $user->empresa_id,
-                                'sucursal_id'      => $user->sucursal_id,
-                                'producto_id'      => $linea->producto_id,
-                                'ubicacion_id'     => $linea->ubicacion_id,
-                                'lote'             => $linea->lote,
-                                'fecha_vencimiento'=> $linea->fecha_vencimiento,
-                                'cantidad'         => $linea->cantidad_contada,
-                                'estado'           => 'Disponible',
+                                'empresa_id'   => $user->empresa_id,
+                                'sucursal_id'  => $user->sucursal_id,
+                                'producto_id'  => $linea->producto_id,
+                                'ubicacion_id' => $linea->ubicacion_id,
+                                'lote'         => $linea->lote,
+                                'cantidad'     => $linea->cantidad_fisica,
+                                'estado'       => 'Disponible',
                             ]);
                         }
 
-                        // Movimiento de ajuste
-                        $tipo = $diferencia > 0 ? 'AjusteEntrada' : 'AjusteSalida';
+                        // Movimiento de ajuste — usa enum correcto AjustePositivo/AjusteNegativo
+                        $tipoMov = $diferencia > 0 ? 'AjustePositivo' : 'AjusteNegativo';
                         MovimientoInventario::create([
                             'empresa_id'           => $user->empresa_id,
                             'sucursal_id'          => $user->sucursal_id,
                             'producto_id'          => $linea->producto_id,
-                            'tipo_movimiento'      => $tipo,
+                            'tipo_movimiento'      => $tipoMov,
                             'cantidad'             => abs($diferencia),
                             'ubicacion_origen_id'  => $linea->ubicacion_id,
                             'ubicacion_destino_id' => $linea->ubicacion_id,
                             'lote'                 => $linea->lote,
-                            'usuario_id'           => $user->id,
-                            'referencia'           => $conteo->numero,
-                            'observaciones'        => "Ajuste por conteo {$conteo->numero}",
+                            'auxiliar_id'          => $user->id,
+                            'referencia_tipo'      => 'conteo',
+                            'referencia_id'        => $conteo->id,
+                            'observaciones'        => "Ajuste por conteo #{$conteo->id}",
                             'fecha_movimiento'     => date('Y-m-d'),
-                            'hora_movimiento'      => date('H:i:s'),
+                            'hora_inicio'          => date('H:i:s'),
                         ]);
                     }
 
                     $linea->diferencia = $diferencia;
+                    $linea->estado = 'Aprobado';
                     $linea->save();
                 }
 
-                $conteo->estado         = 'Finalizado';
-                $conteo->fecha_fin      = date('Y-m-d H:i:s');
-                $conteo->finalizado_por = $user->id;
-                $conteo->ajustes_aplicados = $ajustar;
+                // Cerrar el conteo
+                $conteo->estado   = 'PendienteAprobacion';
+                $conteo->hora_fin = date('H:i:s');
                 $conteo->save();
             });
 
             $this->audit($user, 'inventario', 'finalizar_conteo', 'conteo_inventarios', $conteo->id,
-                ['estado' => 'EnProceso'], ['estado' => 'Finalizado'],
-                "Conteo {$conteo->numero} finalizado");
+                ['estado' => 'EnConteo'], ['estado' => 'PendienteAprobacion'],
+                "Conteo #{$conteo->id} finalizado, pendiente aprobacion");
 
             return $this->ok($res, $conteo->load('detalles'), 'Conteo finalizado');
         } catch (\Exception $e) {
