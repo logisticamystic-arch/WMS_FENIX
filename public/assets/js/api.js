@@ -72,11 +72,11 @@ const api = {
     async request(endpoint, options = {}) {
         const url = `${this.baseUrl}${endpoint}`;
 
-        const headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...(options.headers || {}),
-        };
+        // For FormData uploads, let the browser set Content-Type (includes boundary)
+        const isMultipart = options.body instanceof FormData;
+        const headers = isMultipart
+            ? { 'Accept': 'application/json', ...(options.headers || {}) }
+            : { 'Content-Type': 'application/json', 'Accept': 'application/json', ...(options.headers || {}) };
 
         const token = this.getToken();
         if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -159,9 +159,10 @@ const api = {
     },
 
     async post(endpoint, data) {
+        const isFormData = data instanceof FormData;
         return this.request(endpoint, {
             method: 'POST',
-            body: JSON.stringify(data),
+            body: isFormData ? data : JSON.stringify(data),
         });
     },
 
