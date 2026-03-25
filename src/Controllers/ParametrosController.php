@@ -151,8 +151,8 @@ class ParametrosController
     {
         $user = $request->getAttribute('user');
         try {
-            $marcas = \App\Models\Marca::where('empresa_id', $user->empresa_id)
-                        ->where('activo', 1)->get();
+            // Mostrar todas las marcas en maestros (activas e inactivas)
+            $marcas = \App\Models\Marca::where('empresa_id', $user->empresa_id)->get();
             return $this->json($response, ['error' => false, 'data' => $marcas]);
         } catch (\Exception $e) {
             error_log('getMarcas error: ' . $e->getMessage());

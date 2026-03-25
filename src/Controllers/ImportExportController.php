@@ -130,6 +130,10 @@ class ImportExportController
                     $mappedData[$k] = is_string($v) ? strip_tags(trim($v)) : $v;
                 }
                 $mappedData['empresa_id'] = $user->empresa_id;
+                // Siempre activar registros importados a menos que el CSV lo indique explícitamente
+                if (!isset($mappedData['activo']) || $mappedData['activo'] === '') {
+                    $mappedData['activo'] = 1;
+                }
 
                 try {
                     $modelClass::create($mappedData);
