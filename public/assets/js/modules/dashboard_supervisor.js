@@ -158,10 +158,11 @@ window.DashboardSupervisor = {
             <div style="display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid #f1f5f9;">
                 <div style="width:8px; height:8px; background:${color}; border-radius:50%; flex-shrink:0;"></div>
                 <div style="flex:1; min-width:0;">
-                    <div style="font-size:0.82rem; font-weight:600; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${a.producto_nombre || a.producto_id}</div>
-                    <div style="font-size:0.72rem; color:#64748b;">${a.tipo} · Stock: ${a.stock_actual ?? '—'}${a.fecha_vencimiento ? ' · Vence: ' + a.fecha_vencimiento : ''}</div>
+                    <div style="font-size:0.82rem; font-weight:600; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHTML(a.producto_nombre || String(a.producto_id))}</div>
+                    <div style="font-size:0.72rem; color:#64748b;">${escHTML(a.tipo)} · Stock: ${escHTML(String(a.stock_actual ?? '—'))}${a.fecha_vencimiento ? ' · Vence: ' + escHTML(a.fecha_vencimiento) : ''}</div>
                 </div>
-                <button onclick="window.DashboardSupervisor.resolverAlerta(${a.id})"
+                <button data-alerta-id="${parseInt(a.id)}"
+                    onclick="window.DashboardSupervisor.resolverAlerta(parseInt(this.dataset.alertaId))"
                     style="padding:4px 8px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; font-size:0.7rem; color:#334155; cursor:pointer; white-space:nowrap;">
                     Resolver
                 </button>

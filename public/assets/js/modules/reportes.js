@@ -117,7 +117,7 @@ window.Reportes = {
     async ver(key) {
         const { ini, fin } = this._getFechas();
         const endpoints = {
-            stockActual:       `/inventario/stock`,
+            stockActual:       `/reportes/stock`,
             kardex:            `/reportes/kardex${this._dateParams(ini, fin)}`,
             recepciones:       `/reportes/recepciones${this._dateParams(ini, fin)}`,
             despachos:         `/reportes/despachos${this._dateParams(ini, fin)}`,
@@ -146,7 +146,7 @@ window.Reportes = {
     exportar(key) {
         const { ini, fin } = this._getFechas();
         const exportUrls = {
-            stockActual:       `/inventario/stock?export=excel`,
+            stockActual:       `/reportes/stock?export=excel`,
             kardex:            `/reportes/kardex${this._dateParams(ini, fin, '&export=excel')}`,
             recepciones:       `/reportes/recepciones${this._dateParams(ini, fin, '&export=excel')}`,
             despachos:         `/reportes/despachos${this._dateParams(ini, fin, '&export=excel')}`,
@@ -228,13 +228,13 @@ window.Reportes = {
                 <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
                     <thead>
                         <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0;">
-                            ${cols.map(c => `<th style="padding:10px 12px; text-align:left; font-weight:700; color:#475569; white-space:nowrap;">${c}</th>`).join('')}
+                            ${cols.map(c => `<th style="padding:10px 12px; text-align:left; font-weight:700; color:#475569; white-space:nowrap;">${escHTML(c)}</th>`).join('')}
                         </tr>
                     </thead>
                     <tbody>
                         ${rows.slice(0, 200).map((row, i) => `
                         <tr style="border-bottom:1px solid #f1f5f9; ${i % 2 === 1 ? 'background:#fafafa;' : ''}">
-                            ${cols.map(c => `<td style="padding:8px 12px; color:#334155; white-space:nowrap;">${row[c] ?? '—'}</td>`).join('')}
+                            ${cols.map(c => `<td style="padding:8px 12px; color:#334155; white-space:nowrap;">${row[c] != null ? escHTML(String(row[c])) : '—'}</td>`).join('')}
                         </tr>`).join('')}
                     </tbody>
                 </table>

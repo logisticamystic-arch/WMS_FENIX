@@ -152,7 +152,8 @@ document.addEventListener('DOMContentLoaded', () => {
             { id: 'conteos_historial', title: 'Historial Conteos', icon: 'fa-clock-rotate-left', colorClass: 'color-inventory' }
         ],
         'devoluciones': [
-            { id: 'recepcion_devolucion', title: 'Nueva Devolución', icon: 'fa-rotate-left', colorClass: 'color-return' }
+            { id: 'recepcion_devolucion', title: 'Nueva Devolución', icon: 'fa-rotate-left', colorClass: 'color-return' },
+            { id: 'devoluciones_historial', title: 'Historial', icon: 'fa-clock-rotate-left', colorClass: 'color-inventory' }
         ],
         'alertas': [],         // Specialized render
         'reportes': [],        // Handled by Reportes module
@@ -376,6 +377,9 @@ document.addEventListener('DOMContentLoaded', () => {
             contentHtml = window.Certificacion.getCertificacionHTML('Consolidado');
         } else if (subId === 'recepcion_devolucion' && window.Devoluciones) {
              contentHtml = window.Devoluciones.getDevolucionesHTML();
+        } else if (subId === 'devoluciones_historial' && window.Devoluciones) {
+             contentHtml = window.Devoluciones.getHistorialHTML();
+             setTimeout(() => { window.Devoluciones.loadHistorial(); }, 300);
         // Block removed (duplicated)
         /* } else if (subId === 'permisos' && window.Permisos) {
              contentHtml = window.Permisos.getPermisosHTML();
