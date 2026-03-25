@@ -49,9 +49,9 @@ class JwtMiddleware
             file_put_contents($logFile, date('Y-m-d H:i:s') . " - FAIL: ExpiredException\n", FILE_APPEND);
             return $this->unauthorized('Token expirado. Por favor inicie sesión nuevamente.');
         } catch (\Exception $e) {
-            file_put_contents($logFile, date('Y-m-d H:i:s') . " - FAIL: Exception - " . $e->getMessage() . "\n", FILE_APPEND);
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " - FAIL: Token decode error\n", FILE_APPEND);
             error_log('JWT ERROR: ' . $e->getMessage());
-            return $this->unauthorized('Token inválido: ' . $e->getMessage());
+            return $this->unauthorized('Token inválido.');
         }
 
         // --- Ejecutar el request en el controlador ---

@@ -189,9 +189,10 @@ window.Inventario = {
             resEl.innerHTML = prods.map(p => `
             <div style="padding:10px 14px; border-bottom:1px solid #f1f5f9; cursor:pointer;"
                  onmouseover="this.style.background='#fff7ed'" onmouseout="this.style.background=''"
-                 onclick="window.Inventario._selRefProducto(${p.id}, '${p.nombre.replace(/'/g, "\\'")}')">
-                <div style="font-weight:600; font-size:0.85rem; color:#0f172a;">${p.nombre}</div>
-                <div style="font-size:0.72rem; color:#64748b;">${p.codigo_interno} · ${p.unidad_medida || 'UN'}</div>
+                 data-prod-id="${parseInt(p.id)}" data-prod-nombre="${escHTML(p.nombre)}"
+                 onclick="window.Inventario._selRefProducto(parseInt(this.dataset.prodId), this.dataset.prodNombre)">
+                <div style="font-weight:600; font-size:0.85rem; color:#0f172a;">${escHTML(p.nombre)}</div>
+                <div style="font-size:0.72rem; color:#64748b;">${escHTML(p.codigo_interno)} · ${escHTML(p.unidad_medida) || 'UN'}</div>
             </div>`).join('');
         } catch (e) { resEl.innerHTML = '<div style="padding:12px; color:#ef4444; font-size:0.85rem;">Error</div>'; }
     },

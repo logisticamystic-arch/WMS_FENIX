@@ -103,8 +103,8 @@ window.Maestros = {
                 let html = '';
                 res.data.forEach(e => {
                     html += `<tr style="border-bottom:1px solid #f1f5f9;">
-                        <td style="padding:12px 8px; font-weight:600; color:#334155;">${e.nit || '-'}</td>
-                        <td style="padding:12px 8px; color:#475569;">${e.razon_social}</td>
+                        <td style="padding:12px 8px; font-weight:600; color:#334155;">${escHTML(e.nit) || '-'}</td>
+                        <td style="padding:12px 8px; color:#475569;">${escHTML(e.razon_social)}</td>
                         <td style="padding:12px 8px;"><span style="color:#10b981; font-weight:500;">Activo</span></td>
                     </tr>`;
                 });

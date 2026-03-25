@@ -13,6 +13,70 @@ use App\Models\Ubicacion;
 class DevolucionController
 {
     /**
+     * GET /api/devoluciones
+     */
+    public function index(Request $request, Response $response): Response
+    {
+        $user = $request->getAttribute('user');
+        try {
+            $devoluciones = Devolucion::where('empresa_id', $user->empresa_id)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->orderBy('created_at', 'desc')
+                ->limit(100)
+                ->get();
+            return $this->json($response, ['error' => false, 'data' => $devoluciones]);
+        } catch (\Exception $e) {
+            error_log('DevolucionController::index error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error al obtener devoluciones.'], 500);
+        }
+    }
+
+    /**
+     * GET /api/devoluciones/{id}
+     */
+    public function ver(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        $id = (int)($args['id'] ?? 0);
+        try {
+            $devolucion = Devolucion::with('detalles')
+                ->where('empresa_id', $user->empresa_id)
+                ->find($id);
+            if (!$devolucion) {
+                return $this->json($response, ['error' => true, 'message' => 'Devolución no encontrada.'], 404);
+            }
+            return $this->json($response, ['error' => false, 'data' => $devolucion]);
+        } catch (\Exception $e) {
+            error_log('DevolucionController::ver error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error al obtener devolución.'], 500);
+        }
+    }
+
+    /**
+     * DELETE /api/devoluciones/{id}
+     */
+    public function eliminar(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!($user->rol === 'Admin' || $user->rol === 'Supervisor')) {
+            return $this->json($response, ['error' => true, 'message' => 'No tienes permiso para eliminar devoluciones.'], 403);
+        }
+        $id = (int)($args['id'] ?? 0);
+        try {
+            $devolucion = Devolucion::where('empresa_id', $user->empresa_id)->find($id);
+            if (!$devolucion) {
+                return $this->json($response, ['error' => true, 'message' => 'Devolución no encontrada.'], 404);
+            }
+            DevolucionDetalle::where('devolucion_id', $devolucion->id)->delete();
+            $devolucion->delete();
+            return $this->json($response, ['error' => false, 'message' => 'Devolución eliminada.']);
+        } catch (\Exception $e) {
+            error_log('DevolucionController::eliminar error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error al eliminar devolución.'], 500);
+        }
+    }
+
+    /**
      * POST /api/devoluciones
      * Iniciar proceso de devolución (crear encabezado y líneas)
      */
@@ -56,16 +120,27 @@ class DevolucionController
             $ubicacion_obsoleto = Ubicacion::where('sucursal_id', $user->sucursal_id)->where('tipo_ubicacion', 'Patio')->where('codigo', 'OBSOLETO')->first();
             $ubicacion_patio = Ubicacion::where('sucursal_id', $user->sucursal_id)->where('tipo_ubicacion', 'Patio')->where('codigo', 'PATIO')->first();
 
-            foreach ($detalles as $linea) {
+            foreach ($detalles as $idx => $linea) {
+                $lineaNum = $idx + 1;
+                if (empty($linea['producto_id']) || !is_numeric($linea['producto_id'])) {
+                    \Illuminate\Database\Capsule\Manager::connection()->rollBack();
+                    return $this->json($response, ['error' => true, 'message' => "Línea {$lineaNum}: producto_id inválido."], 400);
+                }
+                $cantidad = (int)($linea['cantidad'] ?? 0);
+                if ($cantidad <= 0) {
+                    \Illuminate\Database\Capsule\Manager::connection()->rollBack();
+                    return $this->json($response, ['error' => true, 'message' => "Línea {$lineaNum}: la cantidad debe ser mayor a cero."], 400);
+                }
+
                 $destino = $linea['destino'] ?? 'InventarioObsoleto';
                 $ubicacion_destino_id = ($destino === 'InventarioObsoleto') ? ($ubicacion_obsoleto ? $ubicacion_obsoleto->id : null) : ($ubicacion_patio ? $ubicacion_patio->id : null);
 
                 $detalle = new DevolucionDetalle();
                 $detalle->devolucion_id = $devolucion->id;
-                $detalle->producto_id = $linea['producto_id'];
+                $detalle->producto_id = (int)$linea['producto_id'];
                 $detalle->lote = $linea['lote'] ?? null;
                 $detalle->fecha_vencimiento = $linea['fecha_vencimiento'] ?? null;
-                $detalle->cantidad = $linea['cantidad'];
+                $detalle->cantidad = $cantidad;
                 $detalle->motivo = $linea['motivo'] ?? 'Otro';
                 $detalle->detalle_motivo = $linea['detalle_motivo'] ?? null;
                 $detalle->destino = $destino;
@@ -80,7 +155,7 @@ class DevolucionController
                 $movimiento->ubicacion_origen_id = null; // Viene del usuario/proveedor o zona perdida
                 $movimiento->ubicacion_destino_id = $ubicacion_destino_id;
                 $movimiento->tipo_movimiento = 'Devolucion';
-                $movimiento->cantidad = $linea['cantidad'];
+                $movimiento->cantidad = $cantidad;
                 $movimiento->lote = $linea['lote'] ?? null;
                 $movimiento->fecha_vencimiento = $linea['fecha_vencimiento'] ?? null;
                 $movimiento->referencia_tipo = 'devolucion';
@@ -108,7 +183,7 @@ class DevolucionController
                     if (!empty($linea['fecha_vencimiento'])) {
                         $inventario->fecha_vencimiento = $linea['fecha_vencimiento'];
                     }
-                    $inventario->cantidad += $linea['cantidad'];
+                    $inventario->cantidad += $cantidad;
                     $inventario->save();
                 }
             }

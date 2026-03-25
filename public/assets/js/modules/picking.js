@@ -87,20 +87,20 @@ window.Picking = {
                 const color = sc[o.estado] || '#64748b';
                 return `
                 <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:10px;cursor:pointer;"
-                     onclick="window.Picking.verDetalle(${o.id})">
+                     onclick="window.Picking.verDetalle(${parseInt(o.id)})">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
-                        <span style="font-weight:700;color:#0f172a;font-size:0.92rem;">${o.numero_orden}</span>
-                        <span style="font-size:0.7rem;background:${color}20;color:${color};border-radius:999px;padding:2px 10px;font-weight:700;">${o.estado}</span>
+                        <span style="font-weight:700;color:#0f172a;font-size:0.92rem;">${escHTML(o.numero_orden)}</span>
+                        <span style="font-size:0.7rem;background:${color}20;color:${color};border-radius:999px;padding:2px 10px;font-weight:700;">${escHTML(o.estado)}</span>
                     </div>
-                    <div style="font-size:0.82rem;color:#475569;margin-bottom:6px;"><i class="fa-solid fa-user" style="color:#94a3b8;margin-right:4px;"></i>${o.cliente || '—'}</div>
+                    <div style="font-size:0.82rem;color:#475569;margin-bottom:6px;"><i class="fa-solid fa-user" style="color:#94a3b8;margin-right:4px;"></i>${escHTML(o.cliente) || '—'}</div>
                     <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#94a3b8;">
-                        <span>Prioridad: ${o.prioridad || 5}</span>
-                        <span>${o.fecha_requerida ? '📅 ' + o.fecha_requerida : ''}</span>
+                        <span>Prioridad: ${parseInt(o.prioridad) || 5}</span>
+                        <span>${o.fecha_requerida ? '📅 ' + escHTML(o.fecha_requerida) : ''}</span>
                         <i class="fa-solid fa-chevron-right"></i>
                     </div>
                 </div>`;
             }).join('');
-        } catch(e) { list.innerHTML = `<div style="color:#ef4444;padding:20px;text-align:center;">${e.message}</div>`; }
+        } catch(e) { list.innerHTML = `<div style="color:#ef4444;padding:20px;text-align:center;">Error al cargar las órdenes de picking.</div>`; }
     },
 
     async verDetalle(id) {

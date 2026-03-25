@@ -70,16 +70,40 @@ class ImportExportController
 
         $file = $uploadedFiles['file'];
         if ($file->getError() !== UPLOAD_ERR_OK) {
-             return $this->json($response, ['error' => true, 'message' => 'Error al subir el archivo'], 400);
+            return $this->json($response, ['error' => true, 'message' => 'Error al subir el archivo'], 400);
+        }
+
+        // Limit file size to 5 MB
+        $maxBytes = 5 * 1024 * 1024;
+        if ($file->getSize() > $maxBytes) {
+            return $this->json($response, ['error' => true, 'message' => 'El archivo supera el límite de 5 MB.'], 400);
+        }
+
+        // Validate MIME type
+        $clientMime = $file->getClientMediaType();
+        $allowedMimes = ['text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel'];
+        if ($clientMime && !in_array($clientMime, $allowedMimes, true)) {
+            return $this->json($response, ['error' => true, 'message' => 'Solo se permiten archivos CSV.'], 400);
         }
 
         $stream = $file->getStream();
         $stream->rewind();
         $contents = $stream->getContents();
-        
+
+        // Validate content is valid UTF-8
+        if (!mb_detect_encoding($contents, 'UTF-8', true)) {
+            $contents = mb_convert_encoding($contents, 'UTF-8', 'ISO-8859-1');
+        }
+
         $lines = explode("\n", $contents);
         if (count($lines) < 2) {
             return $this->json($response, ['error' => true, 'message' => 'El archivo está vacío o no tiene datos válidos'], 400);
+        }
+
+        // Limit to 1000 data rows
+        $maxRows = 1000;
+        if (count($lines) - 1 > $maxRows) {
+            return $this->json($response, ['error' => true, 'message' => "El archivo supera el límite de {$maxRows} filas."], 400);
         }
 
         $headers = str_getcsv(array_shift($lines), ';');
@@ -101,19 +125,29 @@ class ImportExportController
                 }
 
                 $mappedData = array_combine($headers, $data);
+                // Sanitize all string values
+                foreach ($mappedData as $k => $v) {
+                    $mappedData[$k] = is_string($v) ? strip_tags(trim($v)) : $v;
+                }
                 $mappedData['empresa_id'] = $user->empresa_id;
 
                 try {
                     $modelClass::create($mappedData);
                     $successCount++;
                 } catch (\Exception $e) {
-                    $errors[] = "Línea " . ($i + 2) . ": " . $e->getMessage();
+                    $msg = $e->getMessage();
+                    if (str_contains($msg, '1062') || str_contains($msg, 'Duplicate')) {
+                        $errors[] = "Línea " . ($i + 2) . ": Registro duplicado.";
+                    } else {
+                        $errors[] = "Línea " . ($i + 2) . ": Error al guardar registro.";
+                    }
                 }
             }
             DB::commit();
         } catch (\Exception $e) {
             DB::rollBack();
-            return $this->json($response, ['error' => true, 'message' => 'Error crítico al procesar datos: ' . $e->getMessage()], 500);
+            error_log('ImportExportController::uploadCSV critical error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error crítico al procesar el archivo. Verifique el formato e intente nuevamente.'], 500);
         }
 
         return $this->json($response, [

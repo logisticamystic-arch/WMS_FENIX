@@ -17,7 +17,6 @@ class AuthController
     public function login(Request $request, Response $response): Response
     {
         $data = $request->getParsedBody();
-        error_log("LOGIN ATTEMPT: " . json_encode($data));
         $documento = $data['documento'] ?? '';
         $pin = $data['pin'] ?? '';
         $nit = $data['nit'] ?? '900000001'; // Default = Prooriente nit
@@ -43,10 +42,9 @@ class AuthController
         }
 
         if (!$user->verifyPin($pin)) {
-            error_log("LOGIN FAIL: Invalid PIN for $documento");
+            error_log("LOGIN FAIL: authentication failed for user ID " . $user->id);
             return $this->json($response, ['error' => true, 'message' => 'Credenciales inválidas.'], 401);
         }
-        error_log("LOGIN SUCCESS: $documento validated");
 
         // Actualizar ultimo login
         $user->ultimo_login = date('Y-m-d H:i:s');

@@ -96,22 +96,22 @@ window.ODC = {
                 const proveedor = o.proveedor?.razon_social || o.proveedor?.nombre || o.proveedor_nombre || ('Prov. #' + o.proveedor_id);
                 return `
                 <div style="background:white; border:1px solid #e2e8f0; border-radius:10px; padding:14px; margin-bottom:10px; cursor:pointer; active:background:#f8fafc;"
-                    onclick="window.ODC.verDetalle(${o.id})">
+                    onclick="window.ODC.verDetalle(${parseInt(o.id)})">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
-                        <span style="font-weight:700; color:#0f172a; font-size:0.92rem;">${o.numero_odc || 'ODC-'+o.id}</span>
-                        <span style="font-size:0.7rem; background:${color}20; color:${color}; border-radius:999px; padding:2px 10px; font-weight:700;">${o.estado}</span>
+                        <span style="font-weight:700; color:#0f172a; font-size:0.92rem;">${escHTML(o.numero_odc) || 'ODC-'+parseInt(o.id)}</span>
+                        <span style="font-size:0.7rem; background:${color}20; color:${color}; border-radius:999px; padding:2px 10px; font-weight:700;">${escHTML(o.estado)}</span>
                     </div>
                     <p style="color:#475569; font-size:0.82rem; margin:0 0 8px;">
-                        <i class="fa-solid fa-truck-field" style="color:#94a3b8; margin-right:4px;"></i>${proveedor}
+                        <i class="fa-solid fa-truck-field" style="color:#94a3b8; margin-right:4px;"></i>${escHTML(proveedor)}
                     </p>
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:0.75rem; color:#94a3b8;">${o.fecha || ''}</span>
+                        <span style="font-size:0.75rem; color:#94a3b8;">${escHTML(o.fecha) || ''}</span>
                         <i class="fa-solid fa-chevron-right" style="color:#cbd5e1; font-size:0.85rem;"></i>
                     </div>
                 </div>`;
             }).join('');
         } catch (err) {
-            list.innerHTML = `<div style="color:#ef4444; padding:20px; text-align:center;">${err.message || 'Error al cargar ODCs'}</div>`;
+            list.innerHTML = `<div style="color:#ef4444; padding:20px; text-align:center;">Error al cargar las órdenes de compra.</div>`;
         }
     },
 
@@ -145,8 +145,8 @@ window.ODC = {
             <!-- Header -->
             <div style="padding:16px 20px; background:#0f172a; color:white; display:flex; align-items:center; justify-content:space-between;">
                 <div>
-                    <h3 style="margin:0 0 4px; font-size:1rem;">${odc.numero_odc || 'ODC-'+odc.id}</h3>
-                    <span style="font-size:0.7rem; background:${color}50; color:${color}; border-radius:999px; padding:2px 10px; font-weight:700;">${odc.estado}</span>
+                    <h3 style="margin:0 0 4px; font-size:1rem;">${escHTML(odc.numero_odc) || 'ODC-'+parseInt(odc.id)}</h3>
+                    <span style="font-size:0.7rem; background:${color}50; color:${color}; border-radius:999px; padding:2px 10px; font-weight:700;">${escHTML(odc.estado)}</span>
                 </div>
                 <button onclick="document.getElementById('odc-detalle-modal').remove()"
                     style="width:32px; height:32px; background:#374151; border:none; border-radius:8px; color:white; cursor:pointer; font-size:1rem;">

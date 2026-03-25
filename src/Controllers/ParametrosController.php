@@ -18,11 +18,13 @@ class ParametrosController
     public function getEmpresas(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        
-        // 1. Obtener datos (sin validación estricta para testing)
-        $empresas = \App\Models\Empresa::where('activo', 1)->get();
-
-        return $this->json($response, ['data' => $empresas]);
+        try {
+            $empresas = \App\Models\Empresa::where('activo', 1)->get();
+            return $this->json($response, ['error' => false, 'data' => $empresas]);
+        } catch (\Exception $e) {
+            error_log('getEmpresas error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error al obtener empresas.'], 500);
+        }
     }
 
     /**
@@ -30,18 +32,39 @@ class ParametrosController
      */
     public function createEmpresa(Request $request, Response $response): Response
     {
-         $user = $request->getAttribute('user');
-         $data = $request->getParsedBody();
-         
-         $empresa = new Empresa();
-         $empresa->nit = $data['nit'] ?? '';
-         $empresa->razon_social = $data['razon_social'] ?? '';
-         $empresa->direccion = $data['direccion'] ?? '';
-         $empresa->telefono = $data['telefono'] ?? '';
-         $empresa->activo = 1;
-         $empresa->save();
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) {
+            return $this->json($response, ['error' => true, 'message' => 'Acceso denegado. Solo administradores.'], 403);
+        }
 
-         return $this->json($response, ['error' => false, 'message' => 'Empresa creada con éxito', 'data' => $empresa]);
+        $data = $request->getParsedBody();
+        $nit = trim($data['nit'] ?? '');
+        $razonSocial = trim($data['razon_social'] ?? '');
+
+        if (empty($nit)) {
+            return $this->json($response, ['error' => true, 'message' => 'El NIT es requerido.'], 400);
+        }
+        if (empty($razonSocial)) {
+            return $this->json($response, ['error' => true, 'message' => 'La razón social es requerida.'], 400);
+        }
+        if (\App\Models\Empresa::where('nit', $nit)->exists()) {
+            return $this->json($response, ['error' => true, 'message' => 'Ya existe una empresa con ese NIT.'], 409);
+        }
+
+        try {
+            $empresa = new Empresa();
+            $empresa->nit = $nit;
+            $empresa->razon_social = $razonSocial;
+            $empresa->direccion = trim($data['direccion'] ?? '');
+            $empresa->telefono = trim($data['telefono'] ?? '');
+            $empresa->activo = 1;
+            $empresa->save();
+
+            return $this->json($response, ['error' => false, 'message' => 'Empresa creada con éxito', 'data' => $empresa], 201);
+        } catch (\Exception $e) {
+            error_log('createEmpresa error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error al crear empresa.'], 500);
+        }
     }
 
      /**
@@ -66,11 +89,20 @@ class ParametrosController
          $user = $request->getAttribute('user');
          $data = $request->getParsedBody();
          
+         $codigo = trim($data['codigo'] ?? '');
+         $nombre = trim($data['nombre'] ?? '');
+         if (empty($codigo)) {
+             return $this->json($response, ['error' => true, 'message' => 'El código de sucursal es requerido.'], 400);
+         }
+         if (empty($nombre)) {
+             return $this->json($response, ['error' => true, 'message' => 'El nombre de sucursal es requerido.'], 400);
+         }
+
          try {
              $suc = new \App\Models\Sucursal();
              $suc->empresa_id = $user->empresa_id;
-             $suc->codigo = $data['codigo'];
-             $suc->nombre = $data['nombre'];
+             $suc->codigo = $codigo;
+             $suc->nombre = $nombre;
              $suc->direccion = $data['direccion'] ?? null;
              $suc->ciudad = $data['ciudad'] ?? null;
              $suc->telefono = $data['telefono'] ?? null;
@@ -118,10 +150,14 @@ class ParametrosController
     public function getMarcas(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        $marcas = \App\Models\Marca::where('empresa_id', $user->empresa_id)
-                    ->where('activo', 1)->get();
-
-        return $this->json($response, ['error' => false, 'data' => $marcas]);
+        try {
+            $marcas = \App\Models\Marca::where('empresa_id', $user->empresa_id)
+                        ->where('activo', 1)->get();
+            return $this->json($response, ['error' => false, 'data' => $marcas]);
+        } catch (\Exception $e) {
+            error_log('getMarcas error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error al obtener marcas.'], 500);
+        }
     }
 
     /**
@@ -129,16 +165,29 @@ class ParametrosController
      */
     public function createMarca(Request $request, Response $response): Response
     {
-         $user = $request->getAttribute('user');
-         $data = $request->getParsedBody();
-         
-         $marca = new \App\Models\Marca();
-         $marca->empresa_id = $user->empresa_id;
-         $marca->nombre = $data['nombre'] ?? '';
-         $marca->activo = 1;
-         $marca->save();
+        $user = $request->getAttribute('user');
+        $data = $request->getParsedBody();
+        $nombre = trim($data['nombre'] ?? '');
 
-         return $this->json($response, ['error' => false, 'message' => 'Marca creada con éxito', 'data' => $marca]);
+        if (empty($nombre)) {
+            return $this->json($response, ['error' => true, 'message' => 'El nombre de la marca es requerido.'], 400);
+        }
+        if (strlen($nombre) > 100) {
+            return $this->json($response, ['error' => true, 'message' => 'El nombre no puede superar 100 caracteres.'], 400);
+        }
+
+        try {
+            $marca = new \App\Models\Marca();
+            $marca->empresa_id = $user->empresa_id;
+            $marca->nombre = $nombre;
+            $marca->activo = 1;
+            $marca->save();
+
+            return $this->json($response, ['error' => false, 'message' => 'Marca creada con éxito', 'data' => $marca], 201);
+        } catch (\Exception $e) {
+            error_log('createMarca error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error al crear marca.'], 500);
+        }
     }
 
     /**
@@ -147,11 +196,15 @@ class ParametrosController
     public function getProductos(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        $productos = \App\Models\Producto::where('empresa_id', $user->empresa_id)
-            ->with(['marca', 'categoria', 'eans' => fn($q) => $q->where('activo', 1)])
-            ->where('activo', 1)->get();
-
-        return $this->json($response, ['error' => false, 'data' => $productos]);
+        try {
+            $productos = \App\Models\Producto::where('empresa_id', $user->empresa_id)
+                ->with(['marca', 'categoria', 'eans' => fn($q) => $q->where('activo', 1)])
+                ->where('activo', 1)->get();
+            return $this->json($response, ['error' => false, 'data' => $productos]);
+        } catch (\Exception $e) {
+            error_log('getProductos error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error al obtener productos.'], 500);
+        }
     }
 
     /**
@@ -625,11 +678,19 @@ class ParametrosController
     {
         $user = $request->getAttribute('user');
         $data = $request->getParsedBody();
+        $nit = trim($data['nit'] ?? '');
+        $razonSocial = trim($data['razon_social'] ?? '');
+        if (empty($nit)) {
+            return $this->json($response, ['error' => true, 'message' => 'El NIT del proveedor es requerido.'], 400);
+        }
+        if (empty($razonSocial)) {
+            return $this->json($response, ['error' => true, 'message' => 'La razón social del proveedor es requerida.'], 400);
+        }
         try {
             $p = new \App\Models\Proveedor();
             $p->empresa_id = $user->empresa_id;
-            $p->nit = $data['nit'];
-            $p->razon_social = $data['razon_social'];
+            $p->nit = $nit;
+            $p->razon_social = $razonSocial;
             $p->telefono = $data['telefono'] ?? null;
             $p->email = $data['email'] ?? null;
             $p->contacto_nombre = $data['contacto_nombre'] ?? null;
@@ -767,16 +828,26 @@ class ParametrosController
     {
         $user = $request->getAttribute('user');
         $data = $request->getParsedBody();
-        
-        $ruta = new Ruta();
-        $ruta->empresa_id = $user->empresa_id;
-        $ruta->nombre = $data['nombre'] ?? '';
-        $ruta->comercial = $data['comercial'] ?? '';
-        $ruta->frecuencia = $data['frecuencia'] ?? '';
-        $ruta->activo = 1;
-        $ruta->save();
+        $nombre = trim($data['nombre'] ?? '');
 
-        return $this->json($response, ['error' => false, 'message' => 'Ruta creada', 'data' => $ruta]);
+        if (empty($nombre)) {
+            return $this->json($response, ['error' => true, 'message' => 'El nombre de la ruta es requerido.'], 400);
+        }
+
+        try {
+            $ruta = new Ruta();
+            $ruta->empresa_id = $user->empresa_id;
+            $ruta->nombre = $nombre;
+            $ruta->comercial = trim($data['comercial'] ?? '');
+            $ruta->frecuencia = trim($data['frecuencia'] ?? '');
+            $ruta->activo = 1;
+            $ruta->save();
+
+            return $this->json($response, ['error' => false, 'message' => 'Ruta creada', 'data' => $ruta], 201);
+        } catch (\Exception $e) {
+            error_log('createRuta error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error al crear ruta.'], 500);
+        }
     }
 
     /**
@@ -810,8 +881,13 @@ class ParametrosController
     public function getClientes(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        $clientes = Cliente::where('empresa_id', $user->empresa_id)->orderBy('razon_social')->get();
-        return $this->json($response, ['error' => false, 'data' => $clientes]);
+        try {
+            $clientes = Cliente::where('empresa_id', $user->empresa_id)->orderBy('razon_social')->get();
+            return $this->json($response, ['error' => false, 'data' => $clientes]);
+        } catch (\Exception $e) {
+            error_log('getClientes error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error al obtener clientes.'], 500);
+        }
     }
 
     /**
@@ -821,10 +897,29 @@ class ParametrosController
     {
         $user = $request->getAttribute('user');
         $data = $request->getParsedBody();
-        $data['empresa_id'] = $user->empresa_id;
-        
-        $cliente = Cliente::create($data);
-        return $this->json($response, ['error' => false, 'id' => $cliente->id]);
+
+        $razonSocial = trim($data['razon_social'] ?? '');
+        if (empty($razonSocial)) {
+            return $this->json($response, ['error' => true, 'message' => 'La razón social del cliente es requerida.'], 400);
+        }
+
+        try {
+            $cliente = new Cliente();
+            $cliente->empresa_id = $user->empresa_id;
+            $cliente->razon_social = $razonSocial;
+            if (isset($data['nit'])) $cliente->nit = trim($data['nit']);
+            if (isset($data['telefono'])) $cliente->telefono = trim($data['telefono']);
+            if (isset($data['email'])) $cliente->email = trim($data['email']);
+            if (isset($data['direccion'])) $cliente->direccion = trim($data['direccion']);
+            if (isset($data['ciudad'])) $cliente->ciudad = trim($data['ciudad']);
+            if (isset($data['contacto_nombre'])) $cliente->contacto_nombre = trim($data['contacto_nombre']);
+            $cliente->save();
+
+            return $this->json($response, ['error' => false, 'id' => $cliente->id], 201);
+        } catch (\Exception $e) {
+            error_log('createCliente error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error al crear cliente.'], 500);
+        }
     }
 
     /**
@@ -833,13 +928,26 @@ class ParametrosController
     public function updateCliente(Request $request, Response $response, array $args): Response
     {
         $user = $request->getAttribute('user');
-        $id = $args['id'];
+        $id = (int)($args['id'] ?? 0);
         $cliente = Cliente::where('id', $id)->where('empresa_id', $user->empresa_id)->first();
-        if (!$cliente) return $this->json($response, ['error' => true], 404);
+        if (!$cliente) return $this->json($response, ['error' => true, 'message' => 'Cliente no encontrado.'], 404);
 
         $data = $request->getParsedBody();
-        $cliente->update($data);
-        return $this->json($response, ['error' => false]);
+        try {
+            if (isset($data['razon_social'])) $cliente->razon_social = trim($data['razon_social']);
+            if (isset($data['nit'])) $cliente->nit = trim($data['nit']);
+            if (isset($data['telefono'])) $cliente->telefono = trim($data['telefono']);
+            if (isset($data['email'])) $cliente->email = trim($data['email']);
+            if (isset($data['direccion'])) $cliente->direccion = trim($data['direccion']);
+            if (isset($data['ciudad'])) $cliente->ciudad = trim($data['ciudad']);
+            if (isset($data['contacto_nombre'])) $cliente->contacto_nombre = trim($data['contacto_nombre']);
+            if (isset($data['activo'])) $cliente->activo = $data['activo'] ? 1 : 0;
+            $cliente->save();
+            return $this->json($response, ['error' => false, 'message' => 'Cliente actualizado.']);
+        } catch (\Exception $e) {
+            error_log('updateCliente error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error al actualizar cliente.'], 500);
+        }
     }
 
     private function isAdmin($user): bool

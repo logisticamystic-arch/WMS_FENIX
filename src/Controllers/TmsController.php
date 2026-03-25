@@ -24,44 +24,49 @@ class TmsController extends BaseController
         $page      = max(1, (int)($params['page'] ?? 1));
         $perPage   = min(500, max(10, (int)($params['per_page'] ?? 100)));
 
-        $query = DB::table('inventarios as i')
-            ->join('productos as p', 'p.id', '=', 'i.producto_id')
-            ->leftJoin('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
-            ->where('i.empresa_id', $empresaId)
-            ->where('i.cantidad', '>', 0)
-            ->select([
-                'i.id',
-                'i.producto_id',
-                'p.codigo',
-                'p.nombre as producto_nombre',
-                'p.unidad_medida',
-                'i.lote',
-                'i.fecha_vencimiento',
-                'i.cantidad',
-                'i.ubicacion_id',
-                'u.nombre as ubicacion',
-                'i.updated_at',
+        try {
+            $query = DB::table('inventarios as i')
+                ->join('productos as p', 'p.id', '=', 'i.producto_id')
+                ->leftJoin('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
+                ->where('i.empresa_id', $empresaId)
+                ->where('i.cantidad', '>', 0)
+                ->select([
+                    'i.id',
+                    'i.producto_id',
+                    'p.codigo',
+                    'p.nombre as producto_nombre',
+                    'p.unidad_medida',
+                    'i.lote',
+                    'i.fecha_vencimiento',
+                    'i.cantidad',
+                    'i.ubicacion_id',
+                    'u.nombre as ubicacion',
+                    'i.updated_at',
+                ]);
+
+            // Optional: filter by product code (already parameterized by QueryBuilder)
+            if (!empty($params['codigo'])) {
+                $query->where('p.codigo', 'like', '%' . $params['codigo'] . '%');
+            }
+
+            $total  = $query->count();
+            $items  = $query->orderBy('p.codigo')
+                            ->offset(($page - 1) * $perPage)
+                            ->limit($perPage)
+                            ->get()
+                            ->toArray();
+
+            return $this->tmsOk($response, $items, [
+                'empresa_id' => $empresaId,
+                'total'      => $total,
+                'page'       => $page,
+                'per_page'   => $perPage,
+                'pages'      => (int)ceil($total / $perPage),
             ]);
-
-        // Optional: filter by product code
-        if (!empty($params['codigo'])) {
-            $query->where('p.codigo', 'like', '%' . $params['codigo'] . '%');
+        } catch (\Exception $e) {
+            error_log('TmsController::stock error: ' . $e->getMessage());
+            return $this->error($response, 'Error al obtener stock.', 500);
         }
-
-        $total  = $query->count();
-        $items  = $query->orderBy('p.codigo')
-                        ->offset(($page - 1) * $perPage)
-                        ->limit($perPage)
-                        ->get()
-                        ->toArray();
-
-        return $this->tmsOk($response, $items, [
-            'empresa_id' => $empresaId,
-            'total'      => $total,
-            'page'       => $page,
-            'per_page'   => $perPage,
-            'pages'      => (int)ceil($total / $perPage),
-        ]);
     }
 
     // ── Active outbound orders for TMS ────────────────────────────────────────
@@ -72,6 +77,7 @@ class TmsController extends BaseController
         $params    = $request->getQueryParams();
         $estado    = $params['estado'] ?? 'En proceso';
 
+        try {
         $ordenes = DB::table('orden_pickings as op')
             ->leftJoin('personal as p', 'p.id', '=', 'op.operador_id')
             ->leftJoin('clientes as c', 'c.id', '=', 'op.cliente_id')
@@ -95,6 +101,10 @@ class TmsController extends BaseController
             ->toArray();
 
         return $this->tmsOk($response, $ordenes, ['empresa_id' => $empresaId]);
+        } catch (\Exception $e) {
+            error_log('TmsController::ordenes error: ' . $e->getMessage());
+            return $this->error($response, 'Error al obtener órdenes.', 500);
+        }
     }
 
     // ── Dispatched shipments ──────────────────────────────────────────────────
@@ -104,6 +114,7 @@ class TmsController extends BaseController
         $empresaId = $request->getAttribute('empresa_id');
         $params    = $request->getQueryParams();
 
+        try {
         [$inicio, $fin] = $this->getDateRange($params);
 
         $despachos = DB::table('despachos as d')
@@ -133,6 +144,10 @@ class TmsController extends BaseController
             'fecha_inicio' => $inicio,
             'fecha_fin'    => $fin,
         ]);
+        } catch (\Exception $e) {
+            error_log('TmsController::despachos error: ' . $e->getMessage());
+            return $this->error($response, 'Error al obtener despachos.', 500);
+        }
     }
 
     // ── TMS marks a despacho as En Tránsito ───────────────────────────────────
@@ -187,33 +202,41 @@ class TmsController extends BaseController
         $empresaId = $request->getAttribute('empresa_id');
         $body      = (array)($request->getParsedBody() ?? []);
 
-        $evento    = $body['evento'] ?? '';
-        $payload   = $body['payload'] ?? [];
+        $evento  = strip_tags(trim($body['evento'] ?? ''));
+        $payload = is_array($body['payload'] ?? null) ? $body['payload'] : [];
 
         if (empty($evento)) {
             return $this->error($response, 'Campo "evento" requerido.');
         }
-
-        // Log every incoming webhook
-        DB::table('tms_webhooks')->insert([
-            'empresa_id' => $empresaId,
-            'evento'     => $evento,
-            'payload'    => json_encode($payload),
-            'procesado'  => 0,
-            'created_at' => date('Y-m-d H:i:s'),
-        ]);
-
-        // Process known events
-        switch ($evento) {
-            case 'ENTREGA_CONFIRMADA':
-                $this->_procesarEntregaConfirmada($empresaId, $payload);
-                break;
-            case 'DEVOLUCION_TMS':
-                $this->_procesarDevolucionTms($empresaId, $payload);
-                break;
+        if (strlen($evento) > 50) {
+            return $this->error($response, 'Campo "evento" inválido.');
         }
 
-        return $this->tmsOk($response, ['evento' => $evento, 'recibido' => true]);
+        try {
+            // Log every incoming webhook
+            DB::table('tms_webhooks')->insert([
+                'empresa_id' => $empresaId,
+                'evento'     => $evento,
+                'payload'    => json_encode($payload),
+                'procesado'  => 0,
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+
+            // Process known events
+            switch ($evento) {
+                case 'ENTREGA_CONFIRMADA':
+                    $this->_procesarEntregaConfirmada($empresaId, $payload);
+                    break;
+                case 'DEVOLUCION_TMS':
+                    $this->_procesarDevolucionTms($empresaId, $payload);
+                    break;
+            }
+
+            return $this->tmsOk($response, ['evento' => $evento, 'recibido' => true]);
+        } catch (\Exception $e) {
+            error_log('TmsController::webhook error: ' . $e->getMessage());
+            return $this->error($response, 'Error al procesar webhook.', 500);
+        }
     }
 
     // ── API Key management ────────────────────────────────────────────────────

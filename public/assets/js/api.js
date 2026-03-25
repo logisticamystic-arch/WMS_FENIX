@@ -3,6 +3,23 @@
  * Features: JWT auth, smart cache for static data, retry on network failure,
  *           request deduplication (in-flight queue).
  */
+
+/**
+ * Escape HTML special characters to prevent XSS when rendering
+ * server data inside innerHTML / template literals.
+ * @param {*} s - Value to escape
+ * @returns {string}
+ */
+window.escHTML = function(s) {
+    if (s === null || s === undefined) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
 const api = {
     baseUrl: '/Prooriente/public/api',
 
