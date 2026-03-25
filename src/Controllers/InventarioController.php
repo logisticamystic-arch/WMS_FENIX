@@ -332,21 +332,59 @@ class InventarioController extends BaseController
             return $this->error($res, 'El conteo ya fue finalizado');
         }
 
-        $linea = ConteoDetalle::updateOrCreate(
-            [
-                'conteo_inventario_id' => $conteo->id,
-                'producto_id'          => $data['producto_id'],
-                'ubicacion_id'         => $data['ubicacion_id'],
-                'lote'                 => $data['lote'] ?? null,
-            ],
-            [
-                'cantidad_contada'  => $data['cantidad_contada'] ?? 0,
-                'cantidad_sistema'  => $data['cantidad_sistema'] ?? 0,
-                'fecha_vencimiento' => $data['fecha_vencimiento'] ?? null,
-            ]
-        );
+        // Validaciones básicas
+        $productoId = (int)($data['producto_id'] ?? 0);
+        if ($productoId <= 0) {
+            return $this->error($res, 'producto_id requerido');
+        }
+        $cantidadContada = (float)($data['cantidad_contada'] ?? 0);
+        if ($cantidadContada < 0) {
+            return $this->error($res, 'cantidad_contada no puede ser negativa');
+        }
 
-        return $this->ok($res, $linea);
+        // Resolver ubicacion_id: acepta ID numérico directo o código de texto
+        $ubicacionId = null;
+        if (!empty($data['ubicacion_id']) && is_numeric($data['ubicacion_id'])) {
+            $ubicacionId = (int)$data['ubicacion_id'];
+        } elseif (!empty($data['ubicacion_codigo'])) {
+            $ubic = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->where('codigo', trim($data['ubicacion_codigo']))
+                ->first();
+            if (!$ubic) {
+                return $this->error($res, "Ubicación '{$data['ubicacion_codigo']}' no encontrada");
+            }
+            $ubicacionId = $ubic->id;
+        }
+
+        // Cantidad actual en sistema para esa combinación
+        $cantSistema = (float)Inventario::where('empresa_id',  $user->empresa_id)
+            ->where('sucursal_id',  $user->sucursal_id)
+            ->where('producto_id',  $productoId)
+            ->when($ubicacionId, fn($q) => $q->where('ubicacion_id', $ubicacionId))
+            ->where('estado', 'Disponible')
+            ->sum('cantidad');
+
+        try {
+            $linea = ConteoDetalle::updateOrCreate(
+                [
+                    'conteo_inventario_id' => $conteo->id,
+                    'producto_id'          => $productoId,
+                    'ubicacion_id'         => $ubicacionId,
+                    'lote'                 => $data['lote'] ?? null,
+                ],
+                [
+                    'cantidad_contada'  => $cantidadContada,
+                    'cantidad_sistema'  => $cantSistema,
+                    'fecha_vencimiento' => $data['fecha_vencimiento'] ?? null,
+                    'diferencia'        => $cantidadContada - $cantSistema,
+                ]
+            );
+
+            return $this->ok($res, $linea);
+        } catch (\Exception $e) {
+            return $this->error($res, $e->getMessage());
+        }
     }
 
     // ── POST /api/inventario/conteo/{id}/finalizar ───────────────────────────

@@ -251,14 +251,15 @@ window.Inventario = {
             if (!prods.length) { resEl.innerHTML = '<div style="padding:12px; color:#94a3b8; font-size:0.85rem; text-align:center;">Sin coincidencias</div>'; return; }
 
             resEl.innerHTML = prods.map(p => {
-                const eans = (p.eans || []).map(e => `<code style="background:#f0fdf4; color:#16a34a; padding:1px 5px; border-radius:4px; font-size:0.68rem;">${e.codigo_ean}</code>`).join(' ');
+                const eans = (p.eans || []).map(e => `<code style="background:#f0fdf4; color:#16a34a; padding:1px 5px; border-radius:4px; font-size:0.68rem;">${escHTML(e.codigo_ean)}</code>`).join(' ');
                 return `
                 <div style="padding:10px 14px; border-bottom:1px solid #f1f5f9; cursor:pointer;"
                      onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background=''"
-                     onclick="window.Inventario._selConteoProducto(${p.id}, '${p.nombre.replace(/'/g, "\\'")}', '${p.codigo_interno}')">
-                    <div style="font-weight:700; color:#0f172a; font-size:0.88rem;">${p.nombre}</div>
+                     data-prod-id="${parseInt(p.id)}" data-prod-nombre="${escHTML(p.nombre)}" data-prod-codigo="${escHTML(p.codigo_interno)}"
+                     onclick="window.Inventario._selConteoProducto(parseInt(this.dataset.prodId), this.dataset.prodNombre, this.dataset.prodCodigo)">
+                    <div style="font-weight:700; color:#0f172a; font-size:0.88rem;">${escHTML(p.nombre)}</div>
                     <div style="margin-top:3px; display:flex; flex-wrap:wrap; gap:4px; align-items:center;">
-                        <span style="font-size:0.72rem; color:#64748b;">${p.codigo_interno} · ${p.unidad_medida || 'UN'}</span>
+                        <span style="font-size:0.72rem; color:#64748b;">${escHTML(p.codigo_interno)} · ${escHTML(p.unidad_medida) || 'UN'}</span>
                     </div>
                     ${eans ? `<div style="margin-top:3px;">${eans}</div>` : ''}
                 </div>`;
@@ -322,10 +323,10 @@ window.Inventario = {
         <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid #f1f5f9;">
             <div style="width:22px; height:22px; background:#22c55e20; color:#16a34a; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0;">${i + 1}</div>
             <div style="flex:1; min-width:0;">
-                <div style="font-weight:600; font-size:0.85rem; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.nombre}</div>
-                <div style="font-size:0.72rem; color:#64748b;">Ubic: ${item.ubicacion}</div>
+                <div style="font-weight:600; font-size:0.85rem; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHTML(item.nombre)}</div>
+                <div style="font-size:0.72rem; color:#64748b;">Ubic: ${escHTML(item.ubicacion)}</div>
             </div>
-            <div style="font-weight:700; color:#0f172a;">${item.cantidad}</div>
+            <div style="font-weight:700; color:#0f172a;">${parseFloat(item.cantidad)}</div>
         </div>`).join('');
     },
 

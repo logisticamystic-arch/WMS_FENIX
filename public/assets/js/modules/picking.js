@@ -291,9 +291,10 @@ window.Picking = {
             resEl.innerHTML = prods.map(p => `
             <div style="padding:9px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;"
                  onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background=''"
-                 onclick="window.Picking._selManualProducto(${p.id},'${p.nombre.replace(/'/g,"\\'")}')">
-                <div style="font-weight:600;font-size:0.85rem;color:#0f172a;">${p.nombre}</div>
-                <div style="font-size:0.72rem;color:#64748b;">${p.codigo_interno} · ${p.unidad_medida||'UN'}</div>
+                 data-prod-id="${parseInt(p.id)}" data-prod-nombre="${escHTML(p.nombre)}"
+                 onclick="window.Picking._selManualProducto(parseInt(this.dataset.prodId), this.dataset.prodNombre)">
+                <div style="font-weight:600;font-size:0.85rem;color:#0f172a;">${escHTML(p.nombre)}</div>
+                <div style="font-size:0.72rem;color:#64748b;">${escHTML(p.codigo_interno)} · ${escHTML(p.unidad_medida)||'UN'}</div>
             </div>`).join('');
         } catch(e) { resEl.innerHTML = '<div style="padding:10px;color:#ef4444;font-size:0.85rem;">Error</div>'; }
     },
@@ -325,9 +326,9 @@ window.Picking = {
         if (!this._manualItems.length) { el.innerHTML = '<div style="padding:16px;text-align:center;color:#94a3b8;font-size:0.85rem;">Sin productos</div>'; return; }
         el.innerHTML = this._manualItems.map((item, i) => `
         <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #f1f5f9;">
-            <div style="flex:1;font-size:0.85rem;color:#0f172a;font-weight:600;">${item.nombre}</div>
-            <div style="font-weight:700;color:#475569;">× ${item.cantidad}</div>
-            <button onclick="window.Picking._manualItems.splice(${i},1);window.Picking._renderManualLista();"
+            <div style="flex:1;font-size:0.85rem;color:#0f172a;font-weight:600;">${escHTML(item.nombre)}</div>
+            <div style="font-weight:700;color:#475569;">× ${parseInt(item.cantidad)}</div>
+            <button data-idx="${i}" onclick="window.Picking._manualItems.splice(parseInt(this.dataset.idx),1);window.Picking._renderManualLista();"
                 style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.85rem;"><i class="fa-solid fa-trash"></i></button>
         </div>`).join('');
     },
