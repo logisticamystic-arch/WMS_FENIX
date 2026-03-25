@@ -86,3 +86,5 @@ addIndexIfMissing($schema, 'personal', 'idx_personal_documento', ['documento']);
 addIndexIfMissing($schema, 'personal', 'idx_personal_empresa_rol',['empresa_id', 'rol']);
 
 echo "\n  [DONE] Migración 023 completada.\n";
+
+return ['up' => fn() => null, 'down' => fn() => null];

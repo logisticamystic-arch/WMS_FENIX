@@ -54,3 +54,5 @@ if ($schema->hasTable('despachos')) {
         echo "  [--] Columnas TMS ya existen en despachos.\n";
     }
 }
+
+return ['up' => fn() => null, 'down' => fn() => null];
