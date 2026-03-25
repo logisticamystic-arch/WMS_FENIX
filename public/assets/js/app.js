@@ -132,7 +132,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ],
         'almacenamiento': [
             { id: 'putaway', title: 'Putaway (Acomodo)', icon: 'fa-pallet', colorClass: 'color-almacen' },
-            { id: 'traslado', title: 'Traslado Interno', icon: 'fa-people-carry-box', colorClass: 'color-almacen' }
+            { id: 'traslado', title: 'Traslado Interno', icon: 'fa-people-carry-box', colorClass: 'color-almacen' },
+            { id: 'mapa_bodega', title: 'Mapa 3D Bodega', icon: 'fa-cubes', colorClass: 'color-inventory' }
         ],
         'picking': [
             { id: 'picking_rutas', title: 'Rutas Pendientes', icon: 'fa-route', colorClass: 'color-picking' }
@@ -356,8 +357,18 @@ document.addEventListener('DOMContentLoaded', () => {
             contentHtml = window.Recepcion.getRecepcionNuevaHTML();
         } else if (subId === 'putaway' && window.Almacenamiento) {
             contentHtml = window.Almacenamiento.getPutawayHTML();
+            setTimeout(() => { window.Almacenamiento.cargarPatio(); }, 400);
         } else if (subId === 'traslado' && window.Almacenamiento) {
             contentHtml = window.Almacenamiento.getTrasladoHTML();
+        } else if (subId === 'mapa_bodega' && window.MapaBodega) {
+            contentHtml = window.MapaBodega.getHTML();
+            setTimeout(() => { window.MapaBodega.init(); }, 300);
+        } else if (subId === 'certificacion_consolidada' && window.Despacho) {
+            contentHtml = window.Despacho.getCertificacionHTML();
+            setTimeout(() => { window.Despacho.loadDespachos(); }, 400);
+        } else if (subId === 'certificacion_detalle' && window.Despacho) {
+            contentHtml = window.Despacho.getCertificacionHTML();
+            setTimeout(() => { window.Despacho.loadDespachos(); }, 400);
         } else if (subId === 'picking_rutas' && window.Picking) {
             contentHtml = window.Picking.getPickingRutasHTML();
             setTimeout(() => { window.Picking.loadPickingRutas(); }, 400);
