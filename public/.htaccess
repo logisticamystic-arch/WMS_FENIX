@@ -1,4 +1,5 @@
 RewriteEngine On
+RewriteBase /WMS_PROORIENTE/public
 
 # Ensure Authorization header is passed to PHP
 RewriteCond %{HTTP:Authorization} ^(.*)

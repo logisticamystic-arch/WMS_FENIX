@@ -21,7 +21,7 @@ window.escHTML = function(s) {
 };
 
 const api = {
-    baseUrl: '/Prooriente/public/api',
+    baseUrl: '/WMS_PROORIENTE/public/api',
 
     // ── Auth helpers ──────────────────────────────────────────────────────────
 
