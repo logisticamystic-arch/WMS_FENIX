@@ -401,12 +401,19 @@ window.Inventario = {
     },
 
     /* ── Iniciar conteo ───────────────────────────────────────────────── */
-    async startConteo(tipo, filtro = null) {
+    async startConteo(tipo, filtro = null, ubicacionIds = null) {
         try {
             const payload = { tipo };
             if (filtro) payload.filtro = filtro;
             if (tipo === 'PorReferencia' && this._selRefProductoId) {
                 payload.producto_id = this._selRefProductoId;
+            }
+            if (ubicacionIds && ubicacionIds.length) {
+                payload.ubicacion_ids = ubicacionIds;
+                // Guardar para filtrar durante el conteo
+                this._conteoUbicIds = ubicacionIds;
+            } else {
+                this._conteoUbicIds = null;
             }
             const res = await window.api.post('/inventario/conteo/nuevo', payload);
             if (res.error) return window.showToast(res.message, 'error');
@@ -417,7 +424,10 @@ window.Inventario = {
             document.getElementById('conteo-referencia-form').style.display = 'none';
             document.getElementById('conteo-active-panel').style.display = 'block';
             document.getElementById('active-conteo-type').innerText = tipo.replace('Por', 'Por ').toUpperCase();
-            document.getElementById('active-conteo-meta').innerText = filtro ? `Zona: ${filtro}` : '';
+            const metaLabel = filtro
+                ? (tipo === 'PorUbicacion' ? `Ubic.: ${filtro}` : `Zona: ${filtro}`)
+                : '';
+            document.getElementById('active-conteo-meta').innerText = metaLabel;
             window.showToast('Conteo ' + tipo + ' iniciado', 'success');
             this.startTimer();
             document.getElementById('conteo-scan-field')?.focus();

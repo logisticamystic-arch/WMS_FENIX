@@ -11,7 +11,7 @@ class ConteoInventario extends Model
     protected $fillable = [
         'empresa_id', 'sucursal_id', 'tipo_conteo', 'estado',
         'auxiliar_id', 'aprobado_por',
-        'fecha_movimiento', 'hora_inicio', 'hora_fin',
+        'fecha_movimiento', 'hora_inicio', 'hora_fin', 'observaciones',
     ];
 
     protected $casts = [

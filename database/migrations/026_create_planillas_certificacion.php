@@ -96,13 +96,17 @@ if (!$schema->hasTable('cert_planilla_det')) {
 }
 
 // Nullable conteo_detalles.ubicacion_id (fix for conteo sin ubicacion especificada)
-if ($schema->hasTable('conteo_detalles') && !$schema->hasColumn('conteo_detalles', '_nullable_fixed')) {
-    // Check if the column allows null by trying to alter it
+if ($schema->hasTable('conteo_detalles')) {
     try {
         DB::connection()->statement('ALTER TABLE conteo_detalles MODIFY ubicacion_id BIGINT UNSIGNED NULL');
-    } catch (\Exception $e) {
-        // Already nullable or no change needed
-    }
+    } catch (\Exception $e) { /* already nullable */ }
+}
+
+// Agregar columna observaciones a conteo_inventarios para guardar filtro de ubicaciones
+if ($schema->hasTable('conteo_inventarios') && !$schema->hasColumn('conteo_inventarios', 'observaciones')) {
+    $schema->table('conteo_inventarios', function ($t) {
+        $t->text('observaciones')->nullable()->after('hora_fin');
+    });
 }
 
 return ['up' => fn() => null, 'down' => fn() => null];

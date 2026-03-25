@@ -309,6 +309,14 @@ class InventarioController extends BaseController
             ];
             $tipo = $tipoMap[$data['tipo'] ?? 'General'] ?? 'General';
 
+            // Guardar observaciones: filtro, producto_id y ubicacion_ids para PorUbicacion
+            $obs = [];
+            if (!empty($data['filtro']))       $obs['filtro']        = $data['filtro'];
+            if (!empty($data['producto_id']))  $obs['producto_id']   = (int)$data['producto_id'];
+            if (!empty($data['ubicacion_ids']) && is_array($data['ubicacion_ids'])) {
+                $obs['ubicacion_ids'] = array_map('intval', $data['ubicacion_ids']);
+            }
+
             $conteo = ConteoInventario::create([
                 'empresa_id'      => $user->empresa_id,
                 'sucursal_id'     => $user->sucursal_id,
@@ -317,6 +325,7 @@ class InventarioController extends BaseController
                 'auxiliar_id'     => $user->id,
                 'fecha_movimiento'=> date('Y-m-d'),
                 'hora_inicio'     => date('H:i:s'),
+                'observaciones'   => $obs ? json_encode($obs) : null,
             ]);
 
             $this->audit($user, 'inventario', 'crear_conteo', 'conteo_inventarios', $conteo->id,
