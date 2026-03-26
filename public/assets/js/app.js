@@ -145,8 +145,8 @@ document.addEventListener('DOMContentLoaded', () => {
             { id: 'certificacion_planilla',title: 'Certificación Planillas', icon: 'fa-clipboard-check', colorClass: 'color-outbound' },
         ],
         'despacho': [
-            { id: 'certificacion_consolidada', title: 'Certif. Consolidada', icon: 'fa-cubes-stacked', colorClass: 'color-outbound' },
-            { id: 'certificacion_detalle', title: 'Certif. por Cliente', icon: 'fa-clipboard-user', colorClass: 'color-inventory' }
+            { id: 'despacho_gestionar', title: 'Gestionar Despachos', icon: 'fa-truck-fast',      colorClass: 'color-outbound' },
+            { id: 'despacho_nuevo',     title: 'Nuevo Despacho',      icon: 'fa-plus-circle',     colorClass: 'color-inbound' },
         ],
         'ajustes': [
             { id: 'permisos', title: 'Gestión de Permisos', icon: 'fa-shield-halved', colorClass: 'color-admin' },
@@ -510,12 +510,12 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (subId === 'mapa_bodega' && window.MapaBodega) {
             contentHtml = window.MapaBodega.getHTML();
             setTimeout(() => { window.MapaBodega.init(); }, 300);
-        } else if (subId === 'certificacion_consolidada' && window.Despacho) {
-            contentHtml = window.Despacho.getCertificacionHTML();
-            setTimeout(() => { window.Despacho.loadDespachos(); }, 400);
-        } else if (subId === 'certificacion_detalle' && window.Despacho) {
-            contentHtml = window.Despacho.getCertificacionHTML();
-            setTimeout(() => { window.Despacho.loadDespachos(); }, 400);
+        } else if (subId === 'despacho_gestionar' && window.Despacho) {
+            contentHtml = window.Despacho.getGestionHTML();
+            setTimeout(() => { window.Despacho.initGestion(); }, 400);
+        } else if (subId === 'despacho_nuevo' && window.Despacho) {
+            contentHtml = window.Despacho.getGestionHTML();
+            setTimeout(() => { window.Despacho.initGestion(); window.Despacho.abrirCrear(); }, 500);
         } else if (subId === 'picking_ordenes' && window.Picking) {
             contentHtml = window.Picking.getPickingHTML();
             setTimeout(() => { window.Picking.init(); }, 400);

@@ -1,6 +1,6 @@
 /**
  * Prooriente WMS — Módulo de Despacho
- * Carga despachos reales desde la API y permite certificarlos y cerrarlos.
+ * Gestión completa: crear → certificar → cerrar → reportar
  */
 window.Despacho = {
 
@@ -9,257 +9,466 @@ window.Despacho = {
     _scaneados:      new Set(),
 
     /* ===================================================================
-       CERTIFICACIÓN DE DESPACHO
+       GESTIÓN DE DESPACHOS — Vista 360°
     =================================================================== */
-    getCertificacionHTML: function () {
+    getGestionHTML() {
         return `
-        <div style="background:white; border-radius:12px; padding:25px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0; max-width:620px; margin:0 auto;">
-            <div style="text-align:center; margin-bottom:24px;">
-                <div style="width:60px; height:60px; background:#fef2f2; color:#ef4444; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 15px; font-size:1.5rem;">
-                    <i class="fa-solid fa-clipboard-check"></i>
+        <div style="padding:12px; max-width:1100px; margin:0 auto;">
+            <!-- Header -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+                <div>
+                    <h3 style="margin:0;color:#0f172a;font-size:1.05rem;font-weight:800;">
+                        <i class="fa-solid fa-truck-fast" style="color:#06b6d4;margin-right:8px;"></i>Gestión de Despachos
+                    </h3>
+                    <p style="color:#64748b;font-size:0.78rem;margin:3px 0 0;">Control de salida de mercancía</p>
                 </div>
-                <h3 style="margin:0; color:#0f172a;">Certificación de Despacho</h3>
-                <p style="color:#64748b; font-size:0.9rem; margin-top:5px;">Auditoría final antes de la salida de mercancía</p>
-            </div>
-
-            <!-- Selector de despacho -->
-            <div class="input-group">
-                <label style="font-weight:700;">1. Seleccionar Despacho</label>
-                <div style="display:flex; gap:8px;">
-                    <select id="desp-active-sel" class="input-field" onchange="window.Despacho.cargarDespacho()" style="flex:1;">
-                        <option value="">Cargando despachos...</option>
-                    </select>
-                    <button onclick="window.Despacho.loadDespachos()"
-                        style="background:none; border:1px solid #e2e8f0; border-radius:8px; padding:0 14px; color:#64748b; cursor:pointer; font-size:0.85rem;">
-                        <i class="fa-solid fa-rotate-right"></i>
+                <div style="display:flex;gap:8px;">
+                    <button onclick="window.Despacho.initGestion()"
+                        style="padding:7px 12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;font-size:0.82rem;cursor:pointer;">
+                        <i class="fa-solid fa-rotate"></i>
+                    </button>
+                    <button onclick="window.Despacho.abrirCrear()"
+                        style="padding:8px 16px;background:#06b6d4;color:white;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;font-weight:700;">
+                        <i class="fa-solid fa-plus"></i> Nuevo Despacho
                     </button>
                 </div>
             </div>
 
-            <!-- Detalle del despacho -->
-            <div id="desp-detalle" style="display:none; margin-top:16px;">
-                <div id="desp-info-header" style="background:#0f172a; border-radius:10px; padding:14px 18px; color:white; margin-bottom:16px; font-size:0.85rem;">
-                    <div style="font-weight:700; font-size:1rem; margin-bottom:4px;" id="desp-info-numero">—</div>
-                    <div style="color:#94a3b8;" id="desp-info-cliente">—</div>
-                    <div style="color:#94a3b8; margin-top:2px;" id="desp-info-estado">—</div>
-                </div>
+            <!-- KPI Cards -->
+            <div id="desp-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px;"></div>
 
-                <!-- Líneas del despacho -->
-                <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; margin-bottom:16px;">
-                    <div style="padding:10px 14px; background:#f8fafc; border-bottom:1px solid #e2e8f0; font-size:0.78rem; font-weight:700; color:#475569; text-transform:uppercase;">
-                        Líneas del Despacho
-                    </div>
-                    <div id="desp-lineas-lista" style="max-height:220px; overflow-y:auto;">
-                        <div style="text-align:center; padding:20px; color:#94a3b8; font-size:0.85rem;">Seleccione un despacho</div>
-                    </div>
-                </div>
+            <!-- Filtros -->
+            <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+                <select id="desp-f-estado" onchange="window.Despacho.loadLista()"
+                    style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.84rem;background:white;min-width:140px;">
+                    <option value="">Todos los estados</option>
+                    <option value="Preparando">Preparando</option>
+                    <option value="Certificado">Certificado</option>
+                    <option value="Despachado">Despachado</option>
+                </select>
+                <input type="date" id="desp-f-ini"
+                    style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.84rem;"
+                    onchange="window.Despacho.loadLista()">
+                <input type="date" id="desp-f-fin"
+                    style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.84rem;"
+                    onchange="window.Despacho.loadLista()">
+                <input type="text" id="desp-f-buscar" placeholder="Buscar N° o cliente..."
+                    oninput="clearTimeout(window._despT);window._despT=setTimeout(()=>window.Despacho.loadLista(),400)"
+                    style="flex:1;min-width:160px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.84rem;">
+            </div>
 
-                <!-- Escáner de certificación -->
-                <div style="border-top:2px dashed #e2e8f0; padding-top:18px;">
-                    <label style="font-weight:700; color:#475569; display:block; margin-bottom:8px;">2. Escanear bultos para certificar</label>
-                    <div style="display:flex; gap:8px; margin-bottom:12px;">
-                        <input type="text" id="cert-scan" class="input-field" placeholder="Escanee EAN o LP del bulto"
-                            onkeydown="if(event.key==='Enter') window.Despacho.escanearBulto()"
-                            style="flex:1;">
-                        <button class="btn-primary" style="width:50px; padding:0; background:#475569;"
-                            onclick="window.Despacho.escanearBulto()">
-                            <i class="fa-solid fa-barcode"></i>
-                        </button>
-                    </div>
-
-                    <!-- Progreso -->
-                    <div id="cert-resumen" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:16px;">
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.85rem;">
-                            <span>Unidades certificadas:</span>
-                            <strong id="cert-count" style="color:#0f172a;">0 / 0</strong>
-                        </div>
-                        <div style="height:10px; background:#e2e8f0; border-radius:5px; overflow:hidden;">
-                            <div id="cert-progress-bar" style="width:0%; height:100%; background:#ef4444; border-radius:5px; transition:width 0.3s;"></div>
-                        </div>
-                        <div id="cert-estado-msg" style="font-size:0.78rem; color:#64748b; margin-top:6px; text-align:center;">
-                            Escanee los bultos para registrar la certificación
-                        </div>
-                    </div>
-
-                    <!-- Botón cerrar -->
-                    <button id="btn-cerrar-desp" class="btn-primary"
-                        style="background:#ef4444; opacity:0.5; cursor:not-allowed;"
-                        disabled onclick="window.Despacho.cerrarDespacho()">
-                        <i class="fa-solid fa-truck-fast"></i> Cerrar y Despachar
-                    </button>
-                    <p id="cert-aviso" style="font-size:0.75rem; color:#94a3b8; margin-top:6px; text-align:center;">
-                        Certifique el 100% de las unidades para habilitar el cierre
-                    </p>
+            <!-- Lista -->
+            <div id="desp-lista">
+                <div style="text-align:center;padding:40px;color:#94a3b8;">
+                    <i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;"></i>
                 </div>
             </div>
         </div>`;
     },
 
-    loadDespachos: async function () {
-        const sel = document.getElementById('desp-active-sel');
-        if (!sel) return;
-        sel.innerHTML = '<option value="">Cargando...</option>';
-        try {
-            const res      = await window.api.get('/despachos?estado=Abierto&limit=50');
-            const despachos = Array.isArray(res) ? res : (res.data || []);
+    async initGestion() {
+        // Set default date range (today)
+        const hoy = new Date().toISOString().slice(0, 10);
+        const ini = document.getElementById('desp-f-ini');
+        const fin = document.getElementById('desp-f-fin');
+        if (ini && !ini.value) ini.value = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+        if (fin && !fin.value) fin.value = hoy;
+        await Promise.all([this._loadKPIs(), this.loadLista()]);
+    },
 
-            if (!despachos.length) {
-                sel.innerHTML = '<option value="">Sin despachos pendientes</option>';
+    async _loadKPIs() {
+        const el = document.getElementById('desp-kpis');
+        if (!el) return;
+        try {
+            const hoy = new Date().toISOString().slice(0, 10);
+            const res = await window.api.get(`/despachos?ini=${hoy}&fin=${hoy}`);
+            const todos = res.data || res || [];
+            const prep  = todos.filter(d => d.estado === 'Preparando').length;
+            const cert  = todos.filter(d => d.estado === 'Certificado').length;
+            const desp  = todos.filter(d => d.estado === 'Despachado').length;
+            const bultos = todos.reduce((s, d) => s + (parseInt(d.total_bultos) || 0), 0);
+            el.innerHTML = [
+                { l:'Preparando', v:prep,  c:'#f59e0b', i:'fa-boxes-packing' },
+                { l:'Certificados', v:cert, c:'#3b82f6', i:'fa-clipboard-check' },
+                { l:'Despachados hoy', v:desp, c:'#22c55e', i:'fa-truck-fast' },
+                { l:'Bultos hoy', v:bultos, c:'#06b6d4', i:'fa-cube' },
+            ].map(c => `
+            <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center;">
+                <i class="fa-solid ${c.i}" style="color:${c.c};font-size:1rem;display:block;margin-bottom:6px;"></i>
+                <div style="font-size:1.6rem;font-weight:800;color:${c.c};">${c.v}</div>
+                <div style="font-size:0.7rem;color:#64748b;margin-top:2px;">${c.l}</div>
+            </div>`).join('');
+        } catch(e) { el.innerHTML = ''; }
+    },
+
+    async loadLista() {
+        const box = document.getElementById('desp-lista');
+        if (!box) return;
+        box.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i></div>';
+
+        const estado  = document.getElementById('desp-f-estado')?.value || '';
+        const ini     = document.getElementById('desp-f-ini')?.value || '';
+        const fin     = document.getElementById('desp-f-fin')?.value || '';
+        const buscar  = document.getElementById('desp-f-buscar')?.value?.trim() || '';
+
+        try {
+            let url = '/despachos?limit=100';
+            if (estado) url += `&estado=${encodeURIComponent(estado)}`;
+            if (ini)    url += `&ini=${ini}`;
+            if (fin)    url += `&fin=${fin}`;
+
+            const res = await window.api.get(url);
+            let lista = res.data || res || [];
+            if (buscar) {
+                const q = buscar.toLowerCase();
+                lista = lista.filter(d =>
+                    (d.numero_despacho || '').toLowerCase().includes(q) ||
+                    (d.cliente || '').toLowerCase().includes(q)
+                );
+            }
+
+            if (!lista.length) {
+                box.innerHTML = `<div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:40px;text-align:center;color:#94a3b8;">
+                    <i class="fa-solid fa-truck" style="font-size:2.5rem;display:block;margin-bottom:12px;color:#cbd5e1;"></i>
+                    No hay despachos con los filtros aplicados.</div>`;
                 return;
             }
 
-            sel.innerHTML = '<option value="">Seleccione un despacho...</option>' +
-                despachos.map(d => `<option value="${parseInt(d.id)}">${escHTML(d.numero_despacho)} — ${escHTML(d.cliente || d.cliente_nombre || 'Sin cliente')}</option>`).join('');
-        } catch (err) {
-            sel.innerHTML = '<option value="">Error al cargar despachos</option>';
+            const sc = { Preparando:'#f59e0b', Certificado:'#3b82f6', Despachado:'#22c55e' };
+            box.innerHTML = `
+            <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+                <table style="width:100%;border-collapse:collapse;font-size:0.84rem;">
+                    <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;color:#475569;font-size:0.75rem;font-weight:700;">
+                        <th style="padding:10px 12px;text-align:left;">N° Despacho</th>
+                        <th style="padding:10px 12px;text-align:left;">Cliente</th>
+                        <th style="padding:10px 12px;text-align:left;">Ruta</th>
+                        <th style="padding:10px 12px;text-align:center;">Bultos</th>
+                        <th style="padding:10px 12px;text-align:center;">Estado</th>
+                        <th style="padding:10px 12px;text-align:center;">Fecha</th>
+                        <th style="padding:10px 12px;text-align:center;">Acciones</th>
+                    </tr></thead>
+                    <tbody>${lista.map((d, i) => {
+                        const color = sc[d.estado] || '#64748b';
+                        return `<tr style="border-bottom:1px solid #f1f5f9;${i%2?'background:#fafafa;':''}">
+                            <td style="padding:10px 12px;font-weight:700;color:#0f172a;">${escHTML(d.numero_despacho)}</td>
+                            <td style="padding:10px 12px;color:#475569;">${escHTML(d.cliente || '—')}</td>
+                            <td style="padding:10px 12px;color:#64748b;">${escHTML(d.ruta || '—')}</td>
+                            <td style="padding:10px 12px;text-align:center;font-weight:600;">${d.total_bultos || 0}</td>
+                            <td style="padding:10px 12px;text-align:center;">
+                                <span style="font-size:0.72rem;background:${color}20;color:${color};border-radius:99px;padding:3px 10px;font-weight:700;">${d.estado}</span>
+                            </td>
+                            <td style="padding:10px 12px;text-align:center;color:#64748b;font-size:0.8rem;">${d.fecha_movimiento || '—'}</td>
+                            <td style="padding:10px 12px;text-align:center;">
+                                <div style="display:flex;gap:4px;justify-content:center;">
+                                    ${d.estado !== 'Despachado' ? `
+                                    <button onclick="window.Despacho.abrirCertificar(${parseInt(d.id)})"
+                                        style="padding:5px 10px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;font-weight:600;">
+                                        <i class="fa-solid fa-clipboard-check"></i> Certificar
+                                    </button>` : ''}
+                                    <button onclick="window.Despacho.verReporte(${parseInt(d.id)},'${escHTML(d.numero_despacho)}')"
+                                        style="padding:5px 10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;font-size:0.75rem;cursor:pointer;">
+                                        <i class="fa-solid fa-file-csv"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>`;
+                    }).join('')}</tbody>
+                </table>
+            </div>`;
+        } catch(e) {
+            box.innerHTML = `<div style="color:#ef4444;padding:20px;text-align:center;background:white;border-radius:12px;">${escHTML(e.message)}</div>`;
         }
     },
 
-    cargarDespacho: async function () {
-        const sel = document.getElementById('desp-active-sel');
-        const id  = parseInt(sel?.value || '0', 10);
-        const det = document.getElementById('desp-detalle');
-        if (!id) { if (det) det.style.display = 'none'; return; }
+    /* ===================================================================
+       CREAR DESPACHO
+    =================================================================== */
+    abrirCrear() {
+        document.getElementById('desp-crear-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'desp-crear-modal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9990;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;';
+        modal.innerHTML = `
+        <div style="background:white;border-radius:16px;width:100%;max-width:520px;margin:auto;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+            <div style="padding:16px 20px;background:#0f172a;color:white;display:flex;justify-content:space-between;align-items:center;">
+                <h3 style="margin:0;font-size:1rem;"><i class="fa-solid fa-plus"></i> Nuevo Despacho</h3>
+                <button onclick="document.getElementById('desp-crear-modal').remove()"
+                    style="width:32px;height:32px;background:#374151;border:none;border-radius:8px;color:white;cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div style="padding:20px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+                    <div style="grid-column:span 2;">
+                        <label style="font-size:0.72rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;text-transform:uppercase;">Cliente *</label>
+                        <input type="text" id="nc-cliente" placeholder="Nombre del cliente"
+                            style="width:100%;padding:9px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.88rem;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="font-size:0.72rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;text-transform:uppercase;">Ruta</label>
+                        <select id="nc-ruta" style="width:100%;padding:9px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.84rem;background:white;box-sizing:border-box;">
+                            <option value="">Sin ruta</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:0.72rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;text-transform:uppercase;">Fecha</label>
+                        <input type="date" id="nc-fecha" value="${new Date().toISOString().slice(0,10)}"
+                            style="width:100%;padding:9px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.84rem;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="font-size:0.72rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;text-transform:uppercase;">Auxiliar</label>
+                        <select id="nc-auxiliar" style="width:100%;padding:9px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.84rem;background:white;box-sizing:border-box;">
+                            <option value="">Sin asignar</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:0.72rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;text-transform:uppercase;">Total Bultos</label>
+                        <input type="number" id="nc-bultos" value="0" min="0"
+                            style="width:100%;padding:9px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.88rem;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="font-size:0.72rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;text-transform:uppercase;">Peso Total (kg)</label>
+                        <input type="number" id="nc-peso" value="0" min="0" step="0.1"
+                            style="width:100%;padding:9px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.88rem;box-sizing:border-box;">
+                    </div>
+                </div>
+                <button onclick="window.Despacho._guardarNuevo()"
+                    style="width:100%;padding:12px;background:#06b6d4;color:white;border:none;border-radius:10px;font-size:0.92rem;cursor:pointer;font-weight:700;">
+                    <i class="fa-solid fa-truck-fast"></i> Crear Despacho
+                </button>
+            </div>
+        </div>`;
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+        // Load rutas and personal
+        Promise.all([
+            window.api.get('/param/rutas').catch(() => ({ data: [] })),
+            window.api.get('/param/personal').catch(() => ({ data: [] })),
+        ]).then(([rutasRes, persRes]) => {
+            const rutaSel = document.getElementById('nc-ruta');
+            const persSel = document.getElementById('nc-auxiliar');
+            if (rutaSel) (rutasRes.data || []).forEach(r => {
+                rutaSel.innerHTML += `<option value="${escHTML(r.nombre)}">${escHTML(r.nombre)}</option>`;
+            });
+            if (persSel) (persRes.data || persRes || []).forEach(p => {
+                persSel.innerHTML += `<option value="${parseInt(p.id)}">${escHTML(p.nombre)}</option>`;
+            });
+        });
+    },
 
+    async _guardarNuevo() {
+        const cliente = document.getElementById('nc-cliente')?.value.trim();
+        if (!cliente) return window.showToast('El cliente es requerido', 'error');
+        const payload = {
+            cliente,
+            ruta:        document.getElementById('nc-ruta')?.value || null,
+            fecha:       document.getElementById('nc-fecha')?.value || null,
+            auxiliar_id: parseInt(document.getElementById('nc-auxiliar')?.value) || null,
+            total_bultos:parseFloat(document.getElementById('nc-bultos')?.value) || 0,
+            peso_total:  parseFloat(document.getElementById('nc-peso')?.value) || 0,
+        };
+        try {
+            const res = await window.api.post('/despachos', payload);
+            const d = res.data || res;
+            window.showToast(`Despacho ${d.numero_despacho} creado`, 'success');
+            document.getElementById('desp-crear-modal')?.remove();
+            this.loadLista();
+            this._loadKPIs();
+        } catch(e) { window.showToast(e.message, 'error'); }
+    },
+
+    /* ===================================================================
+       CERTIFICACIÓN DE DESPACHO — abrir desde gestión
+    =================================================================== */
+    async abrirCertificar(id) {
         try {
             const res = await window.api.get('/despachos/' + id);
             const d   = res.data || res;
             this._despachoActivo = d;
-            this._detalles       = d.detalles || d.lineas || [];
+            this._detalles       = d.detalles || d.lineas || d.certificaciones || [];
             this._scaneados      = new Set();
-
-            document.getElementById('desp-info-numero').textContent  = d.numero_despacho || ('DSP-' + d.id);
-            document.getElementById('desp-info-cliente').textContent  = d.cliente || d.cliente_nombre || 'Sin cliente';
-            document.getElementById('desp-info-estado').textContent   = 'Estado: ' + (d.estado || '—');
-
-            // Renderizar líneas
-            const listaEl = document.getElementById('desp-lineas-lista');
-            if (!this._detalles.length) {
-                listaEl.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8; font-size:0.85rem;">Sin líneas en este despacho.</div>';
-            } else {
-                listaEl.innerHTML = this._detalles.map(l => `
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-bottom:1px solid #f1f5f9; font-size:0.82rem;" id="linea-desp-${parseInt(l.id)}">
-                    <div>
-                        <div style="font-weight:700; color:#0f172a;">${escHTML(l.producto_nombre || l.producto?.nombre || '—')}</div>
-                        <div style="color:#64748b; font-size:0.75rem;">${escHTML(l.codigo_interno || l.producto?.codigo_interno || '')}</div>
-                    </div>
-                    <div style="text-align:right;">
-                        <span style="font-weight:700; color:#0f172a;">${l.cantidad_solicitada || l.cantidad || 0} uds.</span>
-                        <div id="cert-linea-${parseInt(l.id)}" style="font-size:0.72rem; color:#94a3b8;">Pendiente</div>
-                    </div>
-                </div>`).join('');
-            }
-
-            this._actualizarProgreso();
-            det.style.display = 'block';
-        } catch (err) {
-            window.showToast('Error al cargar despacho: ' + (err.message || ''), 'error');
-        }
+            this._mostrarModalCert(d);
+        } catch(e) { window.showToast(e.message, 'error'); }
     },
 
-    escanearBulto: function () {
-        const input = document.getElementById('cert-scan');
+    _mostrarModalCert(d) {
+        document.getElementById('desp-cert-modal')?.remove();
+        const total = this._detalles.length;
+        const modal = document.createElement('div');
+        modal.id = 'desp-cert-modal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9991;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;';
+        modal.innerHTML = `
+        <div style="background:white;border-radius:16px;width:100%;max-width:560px;margin:auto;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+            <div style="padding:16px 20px;background:#0f172a;color:white;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <div>
+                        <h3 style="margin:0;font-size:1rem;">${escHTML(d.numero_despacho)}</h3>
+                        <div style="font-size:0.75rem;color:#94a3b8;">${escHTML(d.cliente || '—')} · ${escHTML(d.ruta || 'Sin ruta')} · ${d.total_bultos || 0} bultos</div>
+                    </div>
+                    <button onclick="document.getElementById('desp-cert-modal').remove()"
+                        style="width:32px;height:32px;background:#374151;border:none;border-radius:8px;color:white;cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <!-- Barra de progreso -->
+                <div style="height:8px;background:#374151;border-radius:4px;overflow:hidden;">
+                    <div id="cert-bar" style="width:0%;height:100%;background:#22c55e;border-radius:4px;transition:width 0.3s;"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:#94a3b8;margin-top:4px;">
+                    <span id="cert-txt">0 / ${total} productos</span>
+                    <span id="cert-pct">0%</span>
+                </div>
+            </div>
+            <div style="padding:16px 20px;">
+                <!-- Escáner -->
+                <div style="display:flex;gap:8px;margin-bottom:14px;">
+                    <input type="text" id="cert-scan" placeholder="Escanear EAN o código interno..."
+                        onkeydown="if(event.key==='Enter')window.Despacho.escanearBulto()"
+                        style="flex:1;padding:10px;border:2px solid #e2e8f0;border-radius:8px;font-size:0.9rem;"
+                        autofocus>
+                    <button onclick="window.Despacho.escanearBulto()"
+                        style="padding:10px 16px;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;">
+                        <i class="fa-solid fa-barcode"></i>
+                    </button>
+                </div>
+                <!-- Líneas -->
+                <div id="cert-lineas" style="max-height:300px;overflow-y:auto;border:1px solid #f1f5f9;border-radius:8px;">
+                    ${total ? this._detalles.map(l => `
+                    <div id="cert-row-${parseInt(l.id)}" style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #f8fafc;">
+                        <div>
+                            <div style="font-weight:600;font-size:0.85rem;color:#0f172a;">${escHTML(l.producto_nombre || l.producto?.nombre || '—')}</div>
+                            <div style="font-size:0.72rem;color:#64748b;">${escHTML(l.codigo_interno || l.producto?.codigo_interno || '')}</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-weight:700;color:#0f172a;">${l.cantidad_solicitada || l.cantidad || 0} uds</div>
+                            <div id="cert-st-${parseInt(l.id)}" style="font-size:0.72rem;color:#94a3b8;">Pendiente</div>
+                        </div>
+                    </div>`).join('') : '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:0.85rem;">Sin líneas registradas — certificación libre</div>'}
+                </div>
+            </div>
+            <div style="padding:14px 20px;border-top:1px solid #e2e8f0;">
+                <button id="btn-cerrar-desp" onclick="window.Despacho.cerrarDespacho()"
+                    style="width:100%;padding:12px;background:#94a3b8;color:white;border:none;border-radius:10px;font-size:0.92rem;cursor:not-allowed;font-weight:700;" disabled>
+                    <i class="fa-solid fa-truck-fast"></i> Cerrar y Despachar
+                </button>
+                <p id="cert-aviso" style="font-size:0.75rem;color:#94a3b8;margin-top:6px;text-align:center;">
+                    ${total ? 'Certifique el 100% para habilitar el cierre' : 'Pulse el botón para cerrar el despacho'}
+                </p>
+            </div>
+        </div>`;
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+        if (!total) this._habilitarCierre();
+    },
+
+    getCertificacionHTML() {
+        return this.getGestionHTML();
+    },
+
+    loadDespachos: async function () {
+        await this.initGestion();
+    },
+
+    /* ===================================================================
+       ESCANEO Y PROGRESO
+    =================================================================== */
+    escanearBulto() {
+        const input  = document.getElementById('cert-scan');
         const codigo = (input?.value || '').trim();
         if (!codigo) return;
-        if (!this._despachoActivo) { window.showToast('Primero seleccione un despacho.', 'error'); return; }
+        if (!this._despachoActivo) { window.showToast('No hay despacho activo.', 'error'); return; }
 
-        // Buscar la línea que coincida por EAN o código interno
+        // Si no hay líneas, certificación libre: registrar directamente
+        if (!this._detalles.length) {
+            window.showToast('Código registrado: ' + codigo, 'success');
+            input.value = '';
+            this._habilitarCierre();
+            return;
+        }
+
         const linea = this._detalles.find(l => {
             const eans = l.eans || l.producto?.eans || [];
-            const codigoInterno = l.codigo_interno || l.producto?.codigo_interno || '';
-            return codigoInterno === codigo || eans.some(e => e.codigo_ean === codigo);
+            const cod  = l.codigo_interno || l.producto?.codigo_interno || '';
+            return cod === codigo || eans.some(e => e.codigo_ean === codigo);
         });
 
         if (!linea) {
-            window.showToast(`Código '${codigo}' no corresponde a ninguna línea del despacho.`, 'error');
-            input.value = '';
-            return;
+            window.showToast(`'${codigo}' no corresponde a ninguna línea.`, 'error');
+            input.value = ''; return;
         }
 
-        const lineaId = linea.id;
-        if (this._scaneados.has(lineaId)) {
+        if (this._scaneados.has(linea.id)) {
             window.showToast('Esta línea ya fue certificada.', 'error');
-            input.value = '';
-            return;
+            input.value = ''; return;
         }
 
-        this._scaneados.add(lineaId);
-        const certEl = document.getElementById('cert-linea-' + parseInt(lineaId));
-        const rowEl  = document.getElementById('linea-desp-' + parseInt(lineaId));
-        if (certEl) { certEl.textContent = '✓ Certificado'; certEl.style.color = '#22c55e'; }
-        if (rowEl)  { rowEl.style.background = '#f0fdf4'; }
-
-        window.showToast('Línea certificada: ' + (linea.producto_nombre || linea.producto?.nombre || codigo), 'success');
+        this._scaneados.add(linea.id);
+        const row = document.getElementById('cert-row-' + parseInt(linea.id));
+        const st  = document.getElementById('cert-st-' + parseInt(linea.id));
+        if (row) row.style.background = '#f0fdf4';
+        if (st)  { st.textContent = '✓ Certificado'; st.style.color = '#22c55e'; }
+        window.showToast('✓ ' + (linea.producto_nombre || linea.producto?.nombre || codigo), 'success');
         input.value = '';
         this._actualizarProgreso();
     },
 
-    _actualizarProgreso: function () {
-        const total      = this._detalles.length;
-        const certificados = this._scaneados.size;
-        const pct        = total > 0 ? Math.round((certificados / total) * 100) : 0;
+    _actualizarProgreso() {
+        const total = this._detalles.length;
+        const cert  = this._scaneados.size;
+        const pct   = total > 0 ? Math.round((cert / total) * 100) : 100;
 
-        const countEl = document.getElementById('cert-count');
-        const barEl   = document.getElementById('cert-progress-bar');
-        const msgEl   = document.getElementById('cert-estado-msg');
-        const btnEl   = document.getElementById('btn-cerrar-desp');
-        const avisoEl = document.getElementById('cert-aviso');
+        const bar = document.getElementById('cert-bar');
+        const txt = document.getElementById('cert-txt');
+        const pctEl = document.getElementById('cert-pct');
+        if (bar) bar.style.width = pct + '%';
+        if (txt) txt.textContent = `${cert} / ${total} productos`;
+        if (pctEl) pctEl.textContent = pct + '%';
 
-        if (countEl) countEl.textContent = `${certificados} / ${total}`;
-        if (barEl) {
-            barEl.style.width = pct + '%';
-            barEl.style.background = pct === 100 ? '#22c55e' : (pct >= 50 ? '#f59e0b' : '#ef4444');
-        }
-        if (msgEl) {
-            msgEl.textContent = pct === 100
-                ? '✓ Certificación completa — puede cerrar el despacho'
-                : `${pct}% certificado`;
-            msgEl.style.color = pct === 100 ? '#22c55e' : '#64748b';
-        }
-
-        // Habilitar botón solo al 100%
-        if (btnEl) {
-            const completo = (pct === 100 || total === 0);
-            btnEl.disabled = !completo;
-            btnEl.style.opacity = completo ? '1' : '0.5';
-            btnEl.style.cursor  = completo ? 'pointer' : 'not-allowed';
-        }
-        if (avisoEl) {
-            avisoEl.style.display = pct === 100 ? 'none' : 'block';
-        }
+        if (pct === 100) this._habilitarCierre();
     },
 
-    cerrarDespacho: async function () {
-        if (!this._despachoActivo) { window.showToast('No hay despacho activo.', 'error'); return; }
-        if (this._detalles.length > 0 && this._scaneados.size < this._detalles.length) {
-            window.showToast('Certifique todas las líneas antes de cerrar.', 'error');
-            return;
+    _habilitarCierre() {
+        const btn    = document.getElementById('btn-cerrar-desp');
+        const aviso  = document.getElementById('cert-aviso');
+        if (btn) {
+            btn.disabled = false;
+            btn.style.background = '#22c55e';
+            btn.style.cursor = 'pointer';
         }
+        if (aviso) aviso.style.display = 'none';
+    },
 
-        const numero = this._despachoActivo.numero_despacho || ('DSP-' + this._despachoActivo.id);
-        if (!confirm(`¿Confirma el cierre y despacho de ${numero}? Esta acción no se puede deshacer.`)) return;
+    /* ===================================================================
+       CERRAR DESPACHO
+    =================================================================== */
+    async cerrarDespacho() {
+        if (!this._despachoActivo) { window.showToast('No hay despacho activo.', 'error'); return; }
+        const num = this._despachoActivo.numero_despacho || ('DSP-' + this._despachoActivo.id);
+        if (!confirm(`¿Confirma el cierre de "${num}"? El despacho quedará marcado como DESPACHADO.`)) return;
 
-        const btnEl = document.getElementById('btn-cerrar-desp');
-        if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Procesando...'; }
+        const btn = document.getElementById('btn-cerrar-desp');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Procesando...'; }
 
         try {
             await window.api.post('/despachos/' + this._despachoActivo.id + '/cerrar', {
                 certificado: true,
                 lineas_certificadas: Array.from(this._scaneados),
             });
-            window.showToast(`Despacho ${numero} cerrado exitosamente.`, 'success');
+            window.showToast(`Despacho ${num} cerrado exitosamente.`, 'success');
+            document.getElementById('desp-cert-modal')?.remove();
             this._despachoActivo = null;
-            this._detalles       = [];
-            this._scaneados      = new Set();
-            document.getElementById('desp-detalle').style.display = 'none';
-            document.getElementById('desp-active-sel').value = '';
-            this.loadDespachos();
-        } catch (err) {
-            window.showToast(err.message || 'Error al cerrar despacho.', 'error');
-            if (btnEl) {
-                btnEl.disabled = false;
-                btnEl.innerHTML = '<i class="fa-solid fa-truck-fast"></i> Cerrar y Despachar';
-            }
+            this._detalles = [];
+            this._scaneados = new Set();
+            this.loadLista();
+            this._loadKPIs();
+        } catch(e) {
+            window.showToast(e.message || 'Error al cerrar.', 'error');
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-truck-fast"></i> Cerrar y Despachar'; }
         }
+    },
+
+    /* ===================================================================
+       REPORTE
+    =================================================================== */
+    verReporte(id, numero) {
+        const token = localStorage.getItem('jwt_token') || localStorage.getItem('token');
+        const base  = window.api?.baseUrl || '/api';
+        window.open(`${base}/despachos/${id}/reporte?token=${token}`, '_blank');
     },
 };

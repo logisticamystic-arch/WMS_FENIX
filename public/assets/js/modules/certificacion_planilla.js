@@ -116,16 +116,15 @@ window.CertificacionPlanilla = {
         el.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i></div>';
         try {
             const data = await window.api.get('/planillas');
-            const archivos = data?.data || data || [];
+            const todos = data?.data || data || [];
+            // Solo archivos con picking terminado (Separado o posteriores)
+            const archivos = todos.filter(a => ['Separado','EnCertificacion','Certificada'].includes(a.estado));
             if (!archivos.length) {
                 el.innerHTML = `
                 <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:40px;text-align:center;">
-                    <i class="fa-solid fa-file-import" style="font-size:2.5rem;color:#cbd5e1;display:block;margin-bottom:12px;"></i>
-                    <p style="color:#94a3b8;font-size:0.9rem;">No hay archivos de planilla importados.</p>
-                    <button onclick="window.Picking.abrirImportarPlanilla()"
-                        style="margin-top:12px;padding:10px 20px;background:#6366f1;color:white;border:none;border-radius:8px;font-size:0.88rem;cursor:pointer;font-weight:600;">
-                        <i class="fa-solid fa-file-arrow-up"></i> Importar Primer Archivo
-                    </button>
+                    <i class="fa-solid fa-clipboard-check" style="font-size:2.5rem;color:#cbd5e1;display:block;margin-bottom:12px;"></i>
+                    <p style="color:#94a3b8;font-size:0.9rem;margin:0;">No hay planillas listas para certificar.</p>
+                    <p style="color:#cbd5e1;font-size:0.8rem;margin:6px 0 0;">Solo aparecen archivos cuyo picking esté <strong>completamente terminado</strong> (estado: Separado).</p>
                 </div>`;
                 return;
             }
