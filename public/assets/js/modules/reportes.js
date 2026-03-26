@@ -66,6 +66,7 @@ window.Reportes = {
                 ${this._card('fa-truck-field','#10b981','Evaluación Proveedores','Cumplimiento citas, ODC y novedades','evaluacionProveedores')}
                 ${this._card('fa-gauge-high','#0ea5e9','Dashboard Gerencial','KPIs consolidados de operación','dashboardGerencial', 'supervisor')}
                 ${this._card('fa-scroll','#6b7280','Log de Auditoría','Registro completo de cambios (Admin)','auditLog', 'admin')}
+                ${this._card('fa-circle-exclamation','#b91c1c','Novedades Faltantes','Planillas con productos sin stock al momento de la asignación','faltantesPicking')}
             </div>
         </div>`;
 
@@ -131,6 +132,7 @@ window.Reportes = {
             evaluacionProveedores: `/reportes/evaluacion-proveedores${this._dateParams(ini, fin)}`,
             dashboardGerencial:`/reportes/dashboard-gerencial${this._dateParams(ini, fin)}`,
             auditLog:          `/reportes/audit-log${this._dateParams(ini, fin)}`,
+            faltantesPicking:  `/picking/novedades-stock${this._dateParams(ini, fin)}`,
         };
 
         const url = endpoints[key];
@@ -161,6 +163,7 @@ window.Reportes = {
             evaluacionProveedores: `/reportes/evaluacion-proveedores${this._dateParams(ini, fin, '&export=excel')}`,
             dashboardGerencial:`/reportes/dashboard-gerencial${this._dateParams(ini, fin, '&export=excel')}`,
             auditLog:          `/reportes/audit-log${this._dateParams(ini, fin, '&export=excel')}`,
+            faltantesPicking:  `/picking/novedades-stock${this._dateParams(ini, fin, '&export=excel')}`,
         };
 
         const path = exportUrls[key];
@@ -305,6 +308,17 @@ window.Reportes = {
             { key: 'citas_cumplidas',label: 'Cumplidas',  type: 'num' },
             { key: 'pct_citas',      label: '% Citas',    type: 'pct' },
             { key: 'novedades',      label: 'Novedades',  type: 'num' },
+        ],
+        faltantesPicking: [
+            { key: 'created_at',         label: 'Fecha',        type: 'datetime' },
+            { key: 'numero_planilla',     label: '# Planilla' },
+            { key: 'cliente',             label: 'Cliente' },
+            { key: 'asesor',              label: 'Asesor / Comercial' },
+            { key: 'producto_codigo',     label: 'Código' },
+            { key: 'producto_nombre',     label: 'Producto' },
+            { key: 'cantidad_solicitada', label: 'Solicitado',   type: 'num' },
+            { key: 'stock_disponible',    label: 'Disponible',   type: 'num' },
+            { key: 'cantidad_faltante',   label: 'Faltante',     type: 'num' },
         ],
         dashboardGerencial: [],  // objeto plano → se renderiza diferente
         auditLog: [

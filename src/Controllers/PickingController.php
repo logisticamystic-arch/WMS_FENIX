@@ -211,9 +211,21 @@ class PickingController extends BaseController
     private function _generarRutaFEFO(OrdenPicking $orden, $user): array
     {
         $alertas = [];
-        $orden->load('detalles');
+        $orden->load(['detalles.producto']);
 
-        Capsule::transaction(function () use ($orden, $user, &$alertas) {
+        // Obtener asesor comercial de la planilla para enriquecer el registro de novedades
+        $asesor = null;
+        if ($orden->archivo_id && $orden->planilla_numero) {
+            $asesor = Capsule::table('lineas_planilla')
+                ->where('archivo_id',       $orden->archivo_id)
+                ->where('numero_planilla',  $orden->planilla_numero)
+                ->whereNotNull('asesor')
+                ->value('asesor');
+        }
+
+        Capsule::transaction(function () use ($orden, $user, $asesor, &$alertas) {
+            $now = date('Y-m-d H:i:s');
+
             foreach ($orden->detalles as $linea) {
                 $stocks = Inventario::where('empresa_id',  $user->empresa_id)
                     ->where('sucursal_id',  $user->sucursal_id)
@@ -228,12 +240,39 @@ class PickingController extends BaseController
                 $totalDisponible = $stocks->sum('cantidad');
 
                 if ($totalDisponible < $linea->cantidad_solicitada) {
+                    $faltante = $linea->cantidad_solicitada - $totalDisponible;
+
                     $alertas[] = [
-                        'producto_id' => $linea->producto_id,
-                        'solicitado'  => $linea->cantidad_solicitada,
-                        'disponible'  => $totalDisponible,
-                        'faltante'    => $linea->cantidad_solicitada - $totalDisponible,
+                        'producto_id'    => $linea->producto_id,
+                        'producto_nombre'=> $linea->producto->nombre ?? null,
+                        'producto_codigo'=> $linea->producto->codigo_interno ?? null,
+                        'numero_planilla'=> $orden->planilla_numero,
+                        'cliente'        => $orden->cliente,
+                        'asesor'         => $asesor,
+                        'solicitado'     => $linea->cantidad_solicitada,
+                        'disponible'     => $totalDisponible,
+                        'faltante'       => $faltante,
                     ];
+
+                    // ── Persistir novedad en tabla dedicada ───────────────────
+                    Capsule::table('picking_novedades_stock')->insert([
+                        'empresa_id'          => $user->empresa_id,
+                        'sucursal_id'         => $user->sucursal_id,
+                        'archivo_id'          => $orden->archivo_id,
+                        'orden_picking_id'    => $orden->id,
+                        'numero_planilla'     => $orden->planilla_numero,
+                        'cliente'             => $orden->cliente,
+                        'asesor'              => $asesor,
+                        'producto_id'         => $linea->producto_id,
+                        'producto_nombre'     => $linea->producto->nombre ?? null,
+                        'producto_codigo'     => $linea->producto->codigo_interno ?? null,
+                        'cantidad_solicitada' => $linea->cantidad_solicitada,
+                        'stock_disponible'    => $totalDisponible,
+                        'cantidad_faltante'   => $faltante,
+                        'created_at'          => $now,
+                        'updated_at'          => $now,
+                    ]);
+
                     $linea->estado = 'Faltante';
                     $linea->save();
                     continue;
@@ -252,6 +291,44 @@ class PickingController extends BaseController
         });
 
         return $alertas;
+    }
+
+    // ── GET /api/picking/novedades-stock ──────────────────────────────────────
+    // Retorna faltantes de stock registrados durante la generación de rutas FEFO.
+    // Filtros: fecha_inicio, fecha_fin, archivo_id, numero_planilla, export=excel
+    public function novedadesStock(Request $r, Response $res): Response
+    {
+        $user   = $r->getAttribute('user');
+        $params = $r->getQueryParams();
+        [$ini, $fin] = $this->getDateRange($params);
+
+        $rows = Capsule::table('picking_novedades_stock')
+            ->where('empresa_id',  $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereBetween('created_at', [$ini . ' 00:00:00', $fin . ' 23:59:59'])
+            ->when($params['archivo_id']      ?? null, fn($q, $v) => $q->where('archivo_id', (int)$v))
+            ->when($params['numero_planilla'] ?? null, fn($q, $v) => $q->where('numero_planilla', $v))
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        if (($params['export'] ?? '') === 'excel') {
+            $headers = ['Fecha', 'Planilla', 'Cliente', 'Asesor/Comercial',
+                        'Código', 'Producto', 'Solicitado', 'Stock Disponible', 'Faltante'];
+            $data = $rows->map(fn($row) => [
+                substr($row->created_at, 0, 10),
+                $row->numero_planilla   ?? '—',
+                $row->cliente           ?? '—',
+                $row->asesor            ?? '—',
+                $row->producto_codigo   ?? '—',
+                $row->producto_nombre   ?? '—',
+                $row->cantidad_solicitada,
+                $row->stock_disponible,
+                $row->cantidad_faltante,
+            ])->toArray();
+            return $this->exportCsv($res, $headers, $data, 'faltantes_picking_' . date('Y-m-d'));
+        }
+
+        return $this->ok($res, $rows);
     }
 
     // ── GET /api/picking/{id} ─────────────────────────────────────────────────
@@ -295,7 +372,7 @@ class PickingController extends BaseController
                     PickingDetalle::create([
                         'orden_picking_id'  => $orden->id,
                         'producto_id'       => $det['producto_id'],
-                        'ubicacion_id'      => 0, // Se asignará en generateRoute
+                        'ubicacion_id'      => null, // Se asignará en generateRoute (FEFO)
                         'cantidad_solicitada'=> $det['cantidad'],
                         'cantidad_pickeada' => 0,
                         'estado'            => 'Pendiente',
@@ -757,7 +834,7 @@ class PickingController extends BaseController
                         PickingDetalle::create([
                             'orden_picking_id'   => $orden->id,
                             'producto_id'        => $det['producto_id'],
-                            'ubicacion_id'       => 0,
+                            'ubicacion_id'       => null,
                             'cantidad_solicitada'=> $det['cantidad'],
                             'cantidad_pickeada'  => 0,
                             'estado'             => 'Pendiente',

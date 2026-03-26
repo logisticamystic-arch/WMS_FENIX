@@ -700,7 +700,7 @@ class PlanillaController extends BaseController
                     DB::table('picking_detalles')->insert([
                         'orden_picking_id'    => $ordenId,
                         'producto_id'         => $productoId ?? 1,
-                        'ubicacion_id'        => 0,
+                        'ubicacion_id'        => null,
                         'cantidad_solicitada' => (int)ceil($item['cantidad']),
                         'cantidad_pickeada'   => 0,
                         'estado'              => 'Pendiente',
@@ -757,7 +757,7 @@ class PlanillaController extends BaseController
                         DB::table('picking_detalles')->insert([
                             'orden_picking_id'    => $ordenId,
                             'producto_id'         => $productoId ?? 1,
-                            'ubicacion_id'        => 0,
+                            'ubicacion_id'        => null,
                             'cantidad_solicitada' => (int)ceil($item['cantidad']),
                             'cantidad_pickeada'   => 0,
                             'estado'              => 'Pendiente',

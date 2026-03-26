@@ -1117,15 +1117,31 @@ window.Picking = {
                     <i class="fa-solid fa-circle-check"></i> <strong>${data.message || 'Asignado'}</strong>
                 </div>`;
             }
+
             if (conRuta) {
-                // Generate FEFO routes for created orders
-                for (const id of (data.data?.orden_ids || [])) {
-                    await window.api.post(`/picking/${id}/generar-ruta`, {}).catch(() => {});
+                // Generate FEFO routes for all created orders and collect faltantes
+                const ordenIds = data.data?.orden_ids || [];
+                if (result) result.innerHTML += `<div style="text-align:center;padding:8px;color:#6366f1;font-size:0.82rem;"><i class="fa-solid fa-spinner fa-spin"></i> Generando rutas FEFO (${ordenIds.length} órdenes)...</div>`;
+
+                const allFaltantes = [];
+                for (const id of ordenIds) {
+                    try {
+                        const r2 = await window.api.post(`/picking/${id}/generar-ruta`, {});
+                        const f = r2?.data?.alertas_stock || [];
+                        allFaltantes.push(...f);
+                    } catch(_) {}
                 }
-                window.showToast('Órdenes creadas y rutas FEFO generadas', 'success');
+
+                if (allFaltantes.length > 0) {
+                    this._mostrarReporteFaltantes(archivoId, allFaltantes);
+                    window.showToast(`Rutas generadas. ⚠ ${allFaltantes.length} faltante(s) de stock`, 'warning');
+                } else {
+                    window.showToast('Órdenes creadas y rutas FEFO generadas sin faltantes', 'success');
+                }
             } else {
                 window.showToast(data.message || 'Órdenes creadas', 'success');
             }
+            this.loadPlanillasProgreso();
         } catch(e) {
             if (result) {
                 result.innerHTML = `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;color:#dc2626;">
@@ -1133,6 +1149,92 @@ window.Picking = {
                 </div>`;
             }
         }
+    },
+
+    // ── Modal: reporte de faltantes de stock tras asignación FEFO ─────────────
+    async _mostrarReporteFaltantes(archivoId, faltantesInline) {
+        // Cargar faltantes guardados en BD (más completos: incluyen planilla, cliente, asesor)
+        let rows = faltantesInline || [];
+        try {
+            const r = await window.api.get(`/picking/novedades-stock?archivo_id=${archivoId}`);
+            if ((r?.data || r || []).length > 0) rows = r?.data || r;
+        } catch(_) {}
+
+        const token = localStorage.getItem('jwt_token') || localStorage.getItem('token');
+        const base  = window.api?.baseUrl || '/api';
+        const exportUrl = `${base}/picking/novedades-stock?archivo_id=${archivoId}&export=excel`;
+
+        const tbody = rows.map((f, i) => `
+        <tr style="border-bottom:1px solid #f1f5f9;${i%2?'background:#fffbeb;':''}">
+            <td style="padding:8px 10px;font-size:0.8rem;color:#0f172a;font-weight:600;">${escHTML(f.numero_planilla || f.planilla || '—')}</td>
+            <td style="padding:8px 10px;font-size:0.8rem;color:#475569;">${escHTML(f.cliente || '—')}</td>
+            <td style="padding:8px 10px;font-size:0.8rem;color:#475569;">${escHTML(f.asesor || '—')}</td>
+            <td style="padding:8px 10px;font-size:0.8rem;color:#0f172a;">${escHTML(f.producto_nombre || f.nombre || '—')}</td>
+            <td style="padding:8px 10px;font-size:0.78rem;color:#64748b;text-align:right;">${parseFloat(f.cantidad_solicitada || f.solicitado || 0).toLocaleString('es-CO')}</td>
+            <td style="padding:8px 10px;font-size:0.78rem;color:#22c55e;text-align:right;">${parseFloat(f.stock_disponible || f.disponible || 0).toLocaleString('es-CO')}</td>
+            <td style="padding:8px 10px;font-weight:700;color:#dc2626;text-align:right;">${parseFloat(f.cantidad_faltante || f.faltante || 0).toLocaleString('es-CO')}</td>
+        </tr>`).join('');
+
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;';
+        modal.innerHTML = `
+        <div style="background:white;border-radius:16px;width:100%;max-width:800px;margin:auto;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+            <div style="padding:16px 20px;background:#7f1d1d;color:white;display:flex;align-items:center;justify-content:space-between;">
+                <div>
+                    <h3 style="margin:0;font-size:1rem;"><i class="fa-solid fa-triangle-exclamation"></i> Novedades de Stock — Faltantes</h3>
+                    <p style="margin:0;font-size:0.75rem;color:#fca5a5;">${rows.length} producto(s) con inventario insuficiente para separar</p>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button onclick="window.Picking._exportarFaltantes('${exportUrl}')"
+                        style="padding:7px 14px;background:#22c55e;color:white;border:none;border-radius:8px;font-size:0.8rem;cursor:pointer;font-weight:600;">
+                        <i class="fa-solid fa-file-excel"></i> Exportar Excel
+                    </button>
+                    <button onclick="this.closest('[style*=fixed]').remove()"
+                        style="width:32px;height:32px;background:#991b1b;border:none;border-radius:8px;color:white;cursor:pointer;font-size:1rem;">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+            <div style="padding:16px;max-height:70vh;overflow-y:auto;">
+                <div style="overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                        <thead>
+                            <tr style="background:#fef2f2;border-bottom:2px solid #fecaca;">
+                                <th style="padding:10px;text-align:left;font-weight:700;color:#7f1d1d;">Planilla</th>
+                                <th style="padding:10px;text-align:left;font-weight:700;color:#7f1d1d;">Cliente</th>
+                                <th style="padding:10px;text-align:left;font-weight:700;color:#7f1d1d;">Asesor/Comercial</th>
+                                <th style="padding:10px;text-align:left;font-weight:700;color:#7f1d1d;">Producto</th>
+                                <th style="padding:10px;text-align:right;font-weight:700;color:#7f1d1d;">Solicitado</th>
+                                <th style="padding:10px;text-align:right;font-weight:700;color:#7f1d1d;">Disponible</th>
+                                <th style="padding:10px;text-align:right;font-weight:700;color:#dc2626;">Faltante</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tbody || '<tr><td colspan="7" style="text-align:center;padding:20px;color:#94a3b8;">Sin datos</td></tr>'}</tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+    },
+
+    _exportarFaltantes(url) {
+        const token = localStorage.getItem('jwt_token') || localStorage.getItem('token');
+        fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => {
+                const disp = r.headers.get('Content-Disposition') || '';
+                const m = disp.match(/filename="?([^"]+)"?/);
+                const fname = m ? m[1] : 'faltantes_picking.csv';
+                return r.blob().then(b => ({ b, fname }));
+            })
+            .then(({ b, fname }) => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(b);
+                a.download = fname;
+                a.click();
+                URL.revokeObjectURL(a.href);
+            })
+            .catch(() => window.showToast('Error al exportar', 'error'));
     },
 
     _asigSelected: [],
