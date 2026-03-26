@@ -153,6 +153,7 @@ class PlanillaController extends BaseController
         try {
             DB::beginTransaction();
 
+            $now2 = date('Y-m-d H:i:s');
             $archivo = DB::table('archivos_planilla')->insertGetId([
                 'empresa_id'      => $user->empresa_id,
                 'sucursal_id'     => $user->sucursal_id,
@@ -161,8 +162,8 @@ class PlanillaController extends BaseController
                 'total_planillas' => 0,
                 'estado'          => 'Importada',
                 'importado_por'   => $user->id,
-                'created_at'      => now(),
-                'updated_at'      => now(),
+                'created_at'      => $now2,
+                'updated_at'      => $now2,
             ]);
 
             $lineas = [];
