@@ -4,6 +4,9 @@
  * Slim Framework 4 with Eloquent ORM
  */
 
+// Buffer ALL output so stray PHP errors/notices never corrupt the JSON response.
+ob_start();
+
 // Suppress PHP error output in HTTP responses — errors must not corrupt JSON bodies.
 ini_set('display_errors', '0');
 ini_set('display_startup_errors', '0');
@@ -425,4 +428,6 @@ $app->group('/api/v1/tms', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->delete('/keys/{id}', [\App\Controllers\TmsController::class, 'revokeKey']);
 })->add(new \App\Middleware\ApiKeyMiddleware());
 
+// Discard any stray output buffered before Slim runs (notices, warnings, BOM…)
+ob_end_clean();
 $app->run();
