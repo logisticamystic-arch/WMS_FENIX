@@ -373,12 +373,16 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // Módulo: Parametrización (Maestros)
     $group->get('/param/empresas', [\App\Controllers\ParametrosController::class, 'getEmpresas']);
     $group->post('/param/empresas', [\App\Controllers\ParametrosController::class, 'createEmpresa']);
+    $group->put('/param/empresas/{id}', [\App\Controllers\ParametrosController::class, 'editEmpresa']);
+    $group->delete('/param/empresas/{id}', [\App\Controllers\ParametrosController::class, 'deleteEmpresa']);
     $group->get('/param/sucursales', [\App\Controllers\ParametrosController::class, 'getSucursales']);
     $group->post('/param/sucursales', [\App\Controllers\ParametrosController::class, 'createSucursal']);
     $group->put('/param/sucursales/{id}', [\App\Controllers\ParametrosController::class, 'editSucursal']);
+    $group->delete('/param/sucursales/{id}', [\App\Controllers\ParametrosController::class, 'deleteSucursal']);
     $group->get('/param/marcas', [\App\Controllers\ParametrosController::class, 'getMarcas']);
     $group->post('/param/marcas', [\App\Controllers\ParametrosController::class, 'createMarca']);
     $group->put('/param/marcas/{id}', [\App\Controllers\ParametrosController::class, 'editMarca']);
+    $group->delete('/param/marcas/{id}', [\App\Controllers\ParametrosController::class, 'deleteMarca']);
     $group->get('/param/productos', [\App\Controllers\ParametrosController::class, 'getProductos']);
     $group->get('/param/productos/buscar', [\App\Controllers\ParametrosController::class, 'buscarProductos']);
     $group->post('/param/productos', [\App\Controllers\ParametrosController::class, 'createProducto']);
@@ -391,12 +395,15 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/param/personal', [\App\Controllers\ParametrosController::class, 'getPersonal']);
     $group->post('/param/personal', [\App\Controllers\ParametrosController::class, 'createPersonal']);
     $group->put('/param/personal/{id}', [\App\Controllers\ParametrosController::class, 'editPersonal']);
+    $group->delete('/param/personal/{id}', [\App\Controllers\ParametrosController::class, 'deletePersonal']);
     $group->get('/param/ubicaciones', [\App\Controllers\ParametrosController::class, 'getUbicaciones']);
     $group->post('/param/ubicaciones', [\App\Controllers\ParametrosController::class, 'createUbicacion']);
     $group->put('/param/ubicaciones/{id}', [\App\Controllers\ParametrosController::class, 'editUbicacion']);
+    $group->delete('/param/ubicaciones/{id}', [\App\Controllers\ParametrosController::class, 'deleteUbicacion']);
     $group->get('/param/proveedores', [\App\Controllers\ParametrosController::class, 'getProveedores']);
     $group->post('/param/proveedores', [\App\Controllers\ParametrosController::class, 'createProveedor']);
     $group->put('/param/proveedores/{id}', [\App\Controllers\ParametrosController::class, 'editProveedor']);
+    $group->delete('/param/proveedores/{id}', [\App\Controllers\ParametrosController::class, 'deleteProveedor']);
     $group->get('/param/productos/{id}/eans', [\App\Controllers\ParametrosController::class, 'getProductoEans']);
     $group->post('/param/productos/{id}/eans', [\App\Controllers\ParametrosController::class, 'addProductoEan']);
     $group->put('/param/productos/{id}/eans/{ean_id}', [\App\Controllers\ParametrosController::class, 'updateProductoEan']);
@@ -404,12 +411,14 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/param/clientes', [\App\Controllers\ParametrosController::class, 'getClientes']);
     $group->post('/param/clientes', [\App\Controllers\ParametrosController::class, 'createCliente']);
     $group->put('/param/clientes/{id}', [\App\Controllers\ParametrosController::class, 'updateCliente']);
+    $group->delete('/param/clientes/{id}', [\App\Controllers\ParametrosController::class, 'deleteCliente']);
     $group->get('/param/roles', [\App\Controllers\ParametrosController::class, 'getRoles']);
     $group->get('/param/permisos-matriz/{rol}', [\App\Controllers\ParametrosController::class, 'getPermissionsMatrix']);
     $group->post('/param/permisos-toggle', [\App\Controllers\ParametrosController::class, 'togglePermission']);
     $group->get('/param/rutas', [\App\Controllers\ParametrosController::class, 'getRutas']);
     $group->post('/param/rutas', [\App\Controllers\ParametrosController::class, 'createRuta']);
     $group->put('/param/rutas/{id}', [\App\Controllers\ParametrosController::class, 'updateRuta']);
+    $group->delete('/param/rutas/{id}', [\App\Controllers\ParametrosController::class, 'deleteRuta']);
     $group->get('/param/import-export/template/{tipo}', [\App\Controllers\ImportExportController::class, 'getTemplate']);
     $group->post('/param/import-export/upload/{tipo}', [\App\Controllers\ImportExportController::class, 'uploadCSV']);
 

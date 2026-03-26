@@ -987,6 +987,111 @@ class ParametrosController
         }
     }
 
+    // ── PUT /api/param/empresas/{id} ─────────────────────────────────────────
+    public function editEmpresa(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
+        $e = \App\Models\Empresa::find($args['id']);
+        if (!$e) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
+        $data = $request->getParsedBody();
+        if (isset($data['nit'])) $e->nit = trim($data['nit']);
+        if (isset($data['razon_social'])) $e->razon_social = trim($data['razon_social']);
+        if (isset($data['direccion'])) $e->direccion = trim($data['direccion']);
+        if (isset($data['telefono'])) $e->telefono = trim($data['telefono']);
+        if (isset($data['activo'])) $e->activo = $data['activo'] ? 1 : 0;
+        $e->save();
+        return $this->json($response, ['error' => false, 'message' => 'Empresa actualizada']);
+    }
+
+    // ── DELETE /api/param/empresas/{id} ──────────────────────────────────────
+    public function deleteEmpresa(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
+        $e = \App\Models\Empresa::find($args['id']);
+        if (!$e) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
+        $e->activo = 0; $e->save();
+        return $this->json($response, ['error' => false, 'message' => 'Empresa desactivada']);
+    }
+
+    // ── DELETE /api/param/sucursales/{id} ────────────────────────────────────
+    public function deleteSucursal(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
+        $s = \App\Models\Sucursal::where('empresa_id', $user->empresa_id)->find($args['id']);
+        if (!$s) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
+        $s->activo = 0; $s->save();
+        return $this->json($response, ['error' => false, 'message' => 'Sucursal desactivada']);
+    }
+
+    // ── DELETE /api/param/marcas/{id} ────────────────────────────────────────
+    public function deleteMarca(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
+        $m = \App\Models\Marca::where('empresa_id', $user->empresa_id)->find($args['id']);
+        if (!$m) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
+        $m->activo = 0; $m->save();
+        return $this->json($response, ['error' => false, 'message' => 'Marca desactivada']);
+    }
+
+    // ── DELETE /api/param/personal/{id} ─────────────────────────────────────
+    public function deletePersonal(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
+        $p = \App\Models\Personal::where('empresa_id', $user->empresa_id)->find($args['id']);
+        if (!$p) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
+        $p->activo = 0; $p->save();
+        return $this->json($response, ['error' => false, 'message' => 'Colaborador desactivado']);
+    }
+
+    // ── DELETE /api/param/ubicaciones/{id} ──────────────────────────────────
+    public function deleteUbicacion(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
+        $u = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id)->find($args['id']);
+        if (!$u) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
+        $u->estado = 'Inactiva'; $u->save();
+        return $this->json($response, ['error' => false, 'message' => 'Ubicación desactivada']);
+    }
+
+    // ── DELETE /api/param/proveedores/{id} ──────────────────────────────────
+    public function deleteProveedor(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
+        $p = \App\Models\Proveedor::where('empresa_id', $user->empresa_id)->find($args['id']);
+        if (!$p) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
+        $p->activo = 0; $p->save();
+        return $this->json($response, ['error' => false, 'message' => 'Proveedor desactivado']);
+    }
+
+    // ── DELETE /api/param/clientes/{id} ─────────────────────────────────────
+    public function deleteCliente(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
+        $c = Cliente::where('empresa_id', $user->empresa_id)->find($args['id']);
+        if (!$c) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
+        $c->activo = 0; $c->save();
+        return $this->json($response, ['error' => false, 'message' => 'Cliente desactivado']);
+    }
+
+    // ── DELETE /api/param/rutas/{id} ─────────────────────────────────────────
+    public function deleteRuta(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
+        $r = Ruta::where('empresa_id', $user->empresa_id)->find($args['id']);
+        if (!$r) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
+        $r->activo = 0; $r->save();
+        return $this->json($response, ['error' => false, 'message' => 'Ruta desactivada']);
+    }
+
     private function isAdmin($user): bool
     {
         return isset($user->rol) && $user->rol === 'Admin';

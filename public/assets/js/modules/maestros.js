@@ -56,6 +56,7 @@ window.Maestros = {
                                 <th style="padding:10px 8px;">NIT</th>
                                 <th style="padding:10px 8px;">Razón Social</th>
                                 <th style="padding:10px 8px;">Estado</th>
+                                <th style="padding:10px 8px;">Acciones</th>
                             </tr>
                         </thead>
                         <tbody id="empresas-tbody">
@@ -100,15 +101,15 @@ window.Maestros = {
         try {
             const res = await window.api.get('/param/empresas'); 
             if (res && res.data && res.data.length > 0) {
-                let html = '';
-                res.data.forEach(e => {
-                    html += `<tr style="border-bottom:1px solid #f1f5f9;">
-                        <td style="padding:12px 8px; font-weight:600; color:#334155;">${escHTML(e.nit) || '-'}</td>
-                        <td style="padding:12px 8px; color:#475569;">${escHTML(e.razon_social)}</td>
-                        <td style="padding:12px 8px;"><span style="color:#10b981; font-weight:500;">Activo</span></td>
-                    </tr>`;
-                });
-                tbody.innerHTML = html;
+                tbody.innerHTML = res.data.map(e => `<tr style="border-bottom:1px solid #f1f5f9;">
+                    <td style="padding:12px 8px; font-weight:600; color:#334155;">${escHTML(e.nit) || '-'}</td>
+                    <td style="padding:12px 8px; color:#475569;">${escHTML(e.razon_social)}</td>
+                    <td style="padding:12px 8px;">${this._activoBadge(!!e.activo)}</td>
+                    <td style="padding:10px 8px; display:flex; gap:4px;">
+                        <button onclick="window.Maestros.editEmpresa(${e.id})" style="border:none;background:#f1f5f9;color:#475569;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Editar"><i class="fa-solid fa-pen-to-square"></i></button>
+                        <button onclick="window.Maestros.deleteEmpresa(${e.id},'${escHTML(e.razon_social)}')" style="border:none;background:#fee2e2;color:#dc2626;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Desactivar"><i class="fa-solid fa-ban"></i></button>
+                    </td>
+                </tr>`).join('');
             } else {
                 tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:20px; color:#94a3b8;">No hay empresas registradas.</td></tr>`;
             }
@@ -124,12 +125,11 @@ window.Maestros = {
 
     hideEmpresaForm: function() {
         document.getElementById('form-empresa-container').style.display = 'none';
-        
-        // Clear inputs
         document.getElementById('emp-nit').value = '';
         document.getElementById('emp-razon').value = '';
         document.getElementById('emp-dir').value = '';
         document.getElementById('emp-tel').value = '';
+        if (document.getElementById('emp-id')) document.getElementById('emp-id').value = '';
     },
 
     saveEmpresa: async function() {
@@ -144,16 +144,13 @@ window.Maestros = {
         }
 
         try {
-            const result = await window.api.post('/param/empresas', {
-                nit: nit,
-                razon_social: razon,
-                direccion: dir,
-                telefono: tel
-            });
-
+            const id = document.getElementById('emp-id')?.value || '';
+            const payload = { nit, razon_social: razon, direccion: dir, telefono: tel };
+            if (id) await window.api.put(`/param/empresas/${id}`, payload);
+            else await window.api.post('/param/empresas', payload);
             window.showToast('Empresa guardada con éxito', 'success');
             this.hideEmpresaForm();
-            this.loadEmpresas(); // Reload table
+            this.loadEmpresas();
         } catch (e) {
             window.showToast('Error: ' + e.message, 'error');
         }
@@ -385,7 +382,11 @@ window.Maestros = {
                         <td style="padding:10px 8px; font-weight:600; color:#334155;">#${m.id}</td>
                         <td style="padding:10px 8px; color:#475569;">${escHTML(m.nombre)}</td>
                         <td style="padding:10px 8px;">${this._activoBadge(activo)}</td>
-                        <td style="padding:10px 8px;">${this._toggleBtn('/param/marcas', m.id, activo, '()=>window.Maestros.loadMarcas()')}</td>
+                        <td style="padding:10px 8px; display:flex; gap:4px;">
+                            ${this._toggleBtn('/param/marcas', m.id, activo, '()=>window.Maestros.loadMarcas()')}
+                            <button onclick="window.Maestros.editMarca(${m.id},'${escHTML(m.nombre)}')" style="border:none;background:#f1f5f9;color:#475569;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Editar"><i class="fa-solid fa-pen-to-square"></i></button>
+                            <button onclick="window.Maestros.deleteMarca(${m.id},'${escHTML(m.nombre)}')" style="border:none;background:#fee2e2;color:#dc2626;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Desactivar"><i class="fa-solid fa-ban"></i></button>
+                        </td>
                     </tr>`;
                 }).join('');
             } else {
@@ -403,6 +404,7 @@ window.Maestros = {
     hideMarcaForm: function() {
         document.getElementById('form-marca-container').style.display = 'none';
         document.getElementById('marca-nombre').value = '';
+        if (document.getElementById('marca-id')) document.getElementById('marca-id').value = '';
     },
 
     saveMarca: async function() {
@@ -414,10 +416,12 @@ window.Maestros = {
         }
 
         try {
-            await window.api.post('/param/marcas', { nombre });
+            const id = document.getElementById('marca-id')?.value || '';
+            if (id) await window.api.put(`/param/marcas/${id}`, { nombre });
+            else await window.api.post('/param/marcas', { nombre });
             window.showToast('Marca guardada con éxito', 'success');
             this.hideMarcaForm();
-            this.loadMarcas(); 
+            this.loadMarcas();
         } catch (e) {
             window.showToast('Error: ' + e.message, 'error');
         }
@@ -1000,8 +1004,9 @@ window.Maestros = {
                     <td style="padding:12px 8px; color:#475569;">${s.nombre}</td>
                     <td style="padding:12px 8px; color:#64748b;">${s.ciudad || '-'}</td>
                     <td style="padding:12px 8px; color:#64748b;">${s.tipo}</td>
-                    <td style="padding:12px 8px; text-align:center;">
-                        <button onclick="window.Maestros.editSucursal(${s.id})" style="border:none; background:#f1f5f9; color:#475569; padding:6px 10px; border-radius:4px; cursor:pointer;" title="Editar"><i class="fa-solid fa-pen-to-square"></i></button>
+                    <td style="padding:10px 8px; display:flex; gap:4px;">
+                        <button onclick="window.Maestros.editSucursal(${s.id})" style="border:none;background:#f1f5f9;color:#475569;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Editar"><i class="fa-solid fa-pen-to-square"></i></button>
+                        <button onclick="window.Maestros.deleteSucursal(${s.id},'${escHTML(s.nombre)}')" style="border:none;background:#fee2e2;color:#dc2626;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Desactivar"><i class="fa-solid fa-ban"></i></button>
                     </td>
                 </tr>`;
             });
@@ -1162,9 +1167,9 @@ window.Maestros = {
                     <td style="padding:12px 8px; color:#64748b;">${u.zona || '-'}</td>
                     <td style="padding:12px 8px; color:#64748b;">${u.tipo_ubicacion}</td>
                     <td style="padding:12px 8px;"><span style="color:#10b981;">●</span> ${u.estado}</td>
-                    <td style="padding:12px 8px; text-align:center;">
-                        <!-- Edit placeholder -->
-                        <button style="border:none; background:#f1f5f9; color:#475569; padding:6px 10px; border-radius:4px; opacity:0.5; cursor:not-allowed;"><i class="fa-solid fa-pen"></i></button>
+                    <td style="padding:10px 8px; display:flex; gap:4px;">
+                        <button onclick="window.Maestros.editUbicacion(${u.id})" style="border:none;background:#f1f5f9;color:#475569;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Editar"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="window.Maestros.deleteUbicacion(${u.id},'${escHTML(u.codigo)}')" style="border:none;background:#fee2e2;color:#dc2626;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Desactivar"><i class="fa-solid fa-ban"></i></button>
                     </td>
                 </tr>`;
             });
@@ -1272,7 +1277,7 @@ window.Maestros = {
                 
                 <div style="display:flex; gap: 10px; margin-top:30px;">
                     <button id="ruta-save-btn" class="btn-primary" style="background:#0f172a; flex:1;" onclick="window.Maestros.saveRuta()">Guardar Ruta</button>
-                    <button class="btn-primary" style="background:#cbd5e1; flex:1; color:#334155" onclick="document.getElementById('form-ruta-container').style.display='none'">Cancelar</button>
+                    <button class="btn-primary" style="background:#cbd5e1; flex:1; color:#334155" onclick="window.Maestros.hideRutaForm()">Cancelar</button>
                 </div>
             </div>
         `;
@@ -1289,8 +1294,9 @@ window.Maestros = {
                     <td style="padding:12px 8px; font-weight:600; color:#334155;">${r.nombre}</td>
                     <td style="padding:12px 8px; color:#475569;">${r.comercial || '-'}</td>
                     <td style="padding:12px 8px; color:#64748b;">${r.frecuencia || '-'}</td>
-                    <td style="padding:12px 8px; text-align:center;">
-                        <button onclick="window.Maestros.editRuta(${r.id})" style="border:none; background:#f1f5f9; color:#475569; padding:6px 10px; border-radius:4px; cursor:pointer;"><i class="fa-solid fa-pen"></i></button>
+                    <td style="padding:10px 8px; display:flex; gap:4px;">
+                        <button onclick="window.Maestros.editRuta(${r.id})" style="border:none;background:#f1f5f9;color:#475569;padding:6px 10px;border-radius:4px;cursor:pointer;"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="window.Maestros.deleteRuta(${r.id},'${escHTML(r.nombre)}')" style="border:none;background:#fee2e2;color:#dc2626;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Desactivar"><i class="fa-solid fa-ban"></i></button>
                     </td>
                 </tr>`;
             });
@@ -1331,7 +1337,7 @@ window.Maestros = {
             if(id) await window.api.put(`/param/rutas/${id}`, payload);
             else await window.api.post('/param/rutas', payload);
             window.showToast('Ruta guardada');
-            document.getElementById('form-ruta-container').style.display='none';
+            this.hideRutaForm();
             this.loadRutas();
         } catch(e) { window.showToast(e.message, 'error'); }
     },
@@ -1430,6 +1436,7 @@ window.Maestros = {
                         <td style="padding:10px 8px; display:flex; gap:4px;">
                             <button onclick="window.Maestros.editPersonal(${p.id})" style="border:none;background:#f1f5f9;color:#475569;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Editar"><i class="fa-solid fa-user-pen"></i></button>
                             ${this._toggleBtn('/param/personal', p.id, activo, '()=>window.Maestros.loadPersonal()')}
+                            <button onclick="window.Maestros.deletePersonal(${p.id},'${escHTML(p.nombre)}')" style="border:none;background:#fee2e2;color:#dc2626;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Desactivar"><i class="fa-solid fa-user-slash"></i></button>
                         </td>
                     </tr>`;
                 }).join('');
@@ -1592,6 +1599,7 @@ window.Maestros = {
                         <td style="padding:10px 8px; display:flex; gap:4px;">
                             <button onclick="window.Maestros.editProveedor(${p.id})" style="border:none;background:#f1f5f9;color:#475569;padding:6px 10px;border-radius:4px;cursor:pointer;"><i class="fa-solid fa-pen-to-square"></i></button>
                             ${this._toggleBtn('/param/proveedores', p.id, activo, '()=>window.Maestros.loadProveedores()')}
+                            <button onclick="window.Maestros.deleteProveedor(${p.id},'${escHTML(p.razon_social)}')" style="border:none;background:#fee2e2;color:#dc2626;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Desactivar"><i class="fa-solid fa-ban"></i></button>
                         </td>
                     </tr>`;
                 }).join('');
@@ -1754,8 +1762,9 @@ window.Maestros = {
                     <td style="padding:12px 8px; color:#475569;">${c.razon_social}</td>
                     <td style="padding:12px 8px; color:#64748b;">${c.contacto_nombre || '-'}</td>
                     <td style="padding:12px 8px; color:#64748b;">${c.ciudad || '-'}</td>
-                    <td style="padding:12px 8px; text-align:center;">
-                        <button onclick="window.Maestros.editCliente(${c.id})" style="border:none; background:#f1f5f9; color:#475569; padding:6px 10px; border-radius:4px; cursor:pointer;"><i class="fa-solid fa-pen-to-square"></i></button>
+                    <td style="padding:10px 8px; display:flex; gap:4px;">
+                        <button onclick="window.Maestros.editCliente(${c.id})" style="border:none;background:#f1f5f9;color:#475569;padding:6px 10px;border-radius:4px;cursor:pointer;"><i class="fa-solid fa-pen-to-square"></i></button>
+                        <button onclick="window.Maestros.deleteCliente(${c.id},'${escHTML(c.razon_social)}')" style="border:none;background:#fee2e2;color:#dc2626;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Desactivar"><i class="fa-solid fa-ban"></i></button>
                     </td>
                 </tr>`;
             });
@@ -1831,6 +1840,97 @@ window.Maestros = {
             this.hideClienteForm();
             this.loadClientes();
         } catch(e) { window.showToast(e.message, 'error'); }
+    },
+
+    /* --- DELETE HELPERS --- */
+    _confirmarEliminar: async function(entidad, id, nombre, ruta, recargar) {
+        if (!confirm(`¿Desactivar "${nombre}"?\nEl registro quedará inactivo pero no se eliminará permanentemente.`)) return;
+        try {
+            await window.api.delete(`${ruta}/${id}`);
+            window.showToast(`${entidad} desactivado/a`, 'success');
+            recargar();
+        } catch(e) { window.showToast(e.message, 'error'); }
+    },
+
+    deleteEmpresa: function(id, nombre) {
+        this._confirmarEliminar('Empresa', id, nombre, '/param/empresas', () => this.loadEmpresas());
+    },
+    editEmpresa: async function(id) {
+        const res = await window.api.get('/param/empresas');
+        const e = res.data.find(x => x.id === id);
+        if (!e) return;
+        this.showEmpresaForm();
+        document.getElementById('emp-nit').value = e.nit || '';
+        document.getElementById('emp-razon').value = e.razon_social || '';
+        document.getElementById('emp-dir').value = e.direccion || '';
+        document.getElementById('emp-tel').value = e.telefono || '';
+        // Store id for save
+        if (!document.getElementById('emp-id')) {
+            const inp = document.createElement('input');
+            inp.type = 'hidden'; inp.id = 'emp-id';
+            document.getElementById('form-empresa-container').prepend(inp);
+        }
+        document.getElementById('emp-id').value = id;
+    },
+
+    deleteSucursal: function(id, nombre) {
+        this._confirmarEliminar('Sucursal', id, nombre, '/param/sucursales', () => this.loadSucursales());
+    },
+
+    editMarca: function(id, nombre) {
+        this.showMarcaForm();
+        document.getElementById('marca-nombre').value = nombre;
+        if (!document.getElementById('marca-id')) {
+            const inp = document.createElement('input');
+            inp.type = 'hidden'; inp.id = 'marca-id';
+            document.getElementById('form-marca-container').prepend(inp);
+        }
+        document.getElementById('marca-id').value = id;
+    },
+    deleteMarca: function(id, nombre) {
+        this._confirmarEliminar('Marca', id, nombre, '/param/marcas', () => this.loadMarcas());
+    },
+
+    deletePersonal: function(id, nombre) {
+        this._confirmarEliminar('Colaborador', id, nombre, '/param/personal', () => this.loadPersonal());
+    },
+
+    editUbicacion: async function(id) {
+        const res = await window.api.get('/param/ubicaciones');
+        const u = res.data.find(x => x.id === id);
+        if (!u) return;
+        await this.showUbicacionForm();
+        document.getElementById('ubic-id').value = u.id;
+        document.getElementById('ubic-suc').value = u.sucursal_id;
+        document.getElementById('ubic-zona').value = u.zona || '';
+        document.getElementById('ubic-pasillo').value = u.pasillo || '';
+        document.getElementById('ubic-modulo').value = u.modulo || '';
+        document.getElementById('ubic-nivel').value = u.nivel || '';
+        document.getElementById('ubic-tipo').value = u.tipo_ubicacion || 'Rack';
+        document.getElementById('ubic-cod').value = u.codigo || '';
+        window.scrollTo({ top: document.getElementById('form-ubic-container').offsetTop, behavior: 'smooth' });
+    },
+    deleteUbicacion: function(id, codigo) {
+        this._confirmarEliminar('Ubicación', id, codigo, '/param/ubicaciones', () => this.loadUbicaciones());
+    },
+
+    deleteProveedor: function(id, nombre) {
+        this._confirmarEliminar('Proveedor', id, nombre, '/param/proveedores', () => this.loadProveedores());
+    },
+
+    deleteCliente: function(id, nombre) {
+        this._confirmarEliminar('Cliente', id, nombre, '/param/clientes', () => this.loadClientes());
+    },
+
+    hideRutaForm: function() {
+        document.getElementById('form-ruta-container').style.display = 'none';
+        document.getElementById('ruta-id').value = '';
+        document.getElementById('ruta-nombre').value = '';
+        document.getElementById('ruta-comercial').value = '';
+        document.querySelectorAll('input[name="ruta-days"]').forEach(c => c.checked = false);
+    },
+    deleteRuta: function(id, nombre) {
+        this._confirmarEliminar('Ruta', id, nombre, '/param/rutas', () => this.loadRutas());
     },
 
     /* --- BULK IMPORT/EXPORT --- */
