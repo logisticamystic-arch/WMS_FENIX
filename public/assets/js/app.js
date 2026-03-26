@@ -117,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'maestros': [
             { id: 'empresas', title: 'Empresas', icon: 'fa-building', colorClass: 'color-admin' },
             { id: 'sucursales', title: 'Sucursales', icon: 'fa-warehouse', colorClass: 'color-picking' },
+            { id: 'categorias', title: 'Categorías', icon: 'fa-layer-group', colorClass: 'color-almacen' },
             { id: 'marcas', title: 'Marcas', icon: 'fa-tags', colorClass: 'color-inventory' },
             { id: 'productos', title: 'Productos', icon: 'fa-box', colorClass: 'color-inbound' },
             { id: 'personal', title: 'Personal', icon: 'fa-users', colorClass: 'color-outbound' },
@@ -317,6 +318,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (subId === 'sucursales' && window.Maestros) {
             contentHtml = window.Maestros.getSucursalesHTML();
             setTimeout(() => { window.Maestros.loadSucursales(); }, 400);
+        } else if (subId === 'categorias' && window.Maestros) {
+            contentHtml = window.Maestros.getCategoriasHTML();
+            setTimeout(() => { window.Maestros.loadCategorias(); }, 400);
         } else if (subId === 'marcas' && window.Maestros) {
             contentHtml = window.Maestros.getMarcasHTML();
             setTimeout(() => { window.Maestros.loadMarcas(); }, 400);

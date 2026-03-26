@@ -184,6 +184,152 @@ window.Maestros = {
             <i class="fa-solid ${icon}"></i> ${title}</button>`;
     },
 
+    /* --- CATEGORÍAS --- */
+    getCategoriasHTML: function() {
+        return `
+            <div style="background:white; border-radius:12px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0; margin-bottom:20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <h4 style="margin:0; color:#0f172a;">Categorías de Productos</h4>
+                    <button class="btn-primary" style="padding:8px 16px; width:auto; border-radius:8px; font-size:0.9rem;" onclick="window.Maestros.showCategoriaForm()"><i class="fa-solid fa-plus"></i> Añadir</button>
+                </div>
+                ${filterBarHTML('categorias-tbody', '🔍 Buscar categoría...')}
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; text-align:left; font-size:0.9rem;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #e2e8f0; color:#64748b;">
+                                <th style="padding:10px 8px;">ID</th>
+                                <th style="padding:10px 8px;">Nombre</th>
+                                <th style="padding:10px 8px;">Descripción</th>
+                                <th style="padding:10px 8px;">Foto Vencimiento</th>
+                                <th style="padding:10px 8px;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="categorias-tbody">
+                            <tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Form Template -->
+            <div id="form-categoria-container" style="display:none; background:white; border-radius:12px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0;">
+                <h4 id="cat-form-title" style="margin-top:0; color:#0f172a; margin-bottom:16px;">Nueva Categoría</h4>
+                <input type="hidden" id="cat-id" value="">
+                <div class="input-group">
+                    <label>Nombre de la Categoría *</label>
+                    <input type="text" id="cat-nombre" class="input-field" placeholder="Ej: Lácteos, Electrónica, Ropa...">
+                </div>
+                <div class="input-group" style="margin-top:14px;">
+                    <label>Descripción</label>
+                    <textarea id="cat-desc" class="input-field" rows="2" placeholder="Descripción opcional..."></textarea>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px; margin-top:14px;">
+                    <input type="checkbox" id="cat-foto-venc" style="width:20px; height:20px; cursor:pointer;">
+                    <label for="cat-foto-venc" style="cursor:pointer; font-weight:500; color:#334155;">Requiere foto de vencimiento en recepción</label>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:20px;">
+                    <button class="btn-primary" style="background:#0f172a; flex:1;" onclick="window.Maestros.saveCategoria()">Guardar</button>
+                    <button class="btn-primary" style="background:#cbd5e1; flex:1; color:#334155;" onclick="window.Maestros.hideCategoriaForm()">Cancelar</button>
+                </div>
+            </div>
+        `;
+    },
+
+    loadCategorias: async function() {
+        const tbody = document.getElementById('categorias-tbody');
+        if (!tbody) return;
+        try {
+            const res = await window.api.get('/param/categorias');
+            if (res && res.data && res.data.length > 0) {
+                tbody.innerHTML = res.data.map(c => {
+                    const fotoVenc = !!c.requiere_foto_vencimiento;
+                    return `<tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:10px 8px; font-weight:600; color:#334155;">#${c.id}</td>
+                        <td style="padding:10px 8px; color:#475569;">${escHTML(c.nombre)}</td>
+                        <td style="padding:10px 8px; color:#64748b;">${escHTML(c.descripcion || '—')}</td>
+                        <td style="padding:10px 8px;">
+                            ${fotoVenc
+                                ? '<span style="background:#dcfce7;color:#16a34a;padding:3px 10px;border-radius:99px;font-size:0.72rem;font-weight:700;">Sí</span>'
+                                : '<span style="background:#f1f5f9;color:#94a3b8;padding:3px 10px;border-radius:99px;font-size:0.72rem;font-weight:700;">No</span>'}
+                        </td>
+                        <td style="padding:10px 8px; display:flex; gap:6px;">
+                            <button onclick="window.Maestros.editCategoria(${c.id},'${escHTML(c.nombre)}','${escHTML(c.descripcion||'')}',${fotoVenc?1:0})"
+                                style="background:#e0f2fe;color:#0369a1;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.82rem;" title="Editar">
+                                <i class="fa-solid fa-pencil"></i>
+                            </button>
+                            <button onclick="window.Maestros.deleteCategoria(${c.id},'${escHTML(c.nombre)}')"
+                                style="background:#fee2e2;color:#dc2626;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.82rem;" title="Eliminar">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>`;
+                }).join('');
+            } else {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">No hay categorías registradas.</td></tr>`;
+            }
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px; color:#ef4444;">Error de conexión API.</td></tr>`;
+        }
+    },
+
+    showCategoriaForm: function() {
+        document.getElementById('cat-id').value = '';
+        document.getElementById('cat-nombre').value = '';
+        document.getElementById('cat-desc').value = '';
+        document.getElementById('cat-foto-venc').checked = false;
+        document.getElementById('cat-form-title').textContent = 'Nueva Categoría';
+        document.getElementById('form-categoria-container').style.display = 'block';
+    },
+
+    hideCategoriaForm: function() {
+        document.getElementById('form-categoria-container').style.display = 'none';
+    },
+
+    editCategoria: function(id, nombre, descripcion, fotoVenc) {
+        document.getElementById('cat-id').value = id;
+        document.getElementById('cat-nombre').value = nombre;
+        document.getElementById('cat-desc').value = descripcion;
+        document.getElementById('cat-foto-venc').checked = !!fotoVenc;
+        document.getElementById('cat-form-title').textContent = 'Editar Categoría';
+        document.getElementById('form-categoria-container').style.display = 'block';
+        document.getElementById('form-categoria-container').scrollIntoView({ behavior: 'smooth' });
+    },
+
+    saveCategoria: async function() {
+        const id = document.getElementById('cat-id').value;
+        const nombre = document.getElementById('cat-nombre').value.trim();
+        if (!nombre) { window.showToast('El nombre es requerido', 'error'); return; }
+        const payload = {
+            nombre,
+            descripcion: document.getElementById('cat-desc').value.trim() || null,
+            requiere_foto_vencimiento: document.getElementById('cat-foto-venc').checked ? 1 : 0,
+        };
+        try {
+            if (id) {
+                await window.api.put(`/param/categorias/${id}`, payload);
+                window.showToast('Categoría actualizada', 'success');
+            } else {
+                await window.api.post('/param/categorias', payload);
+                window.showToast('Categoría creada', 'success');
+            }
+            this.hideCategoriaForm();
+            this.loadCategorias();
+        } catch (e) {
+            window.showToast('Error: ' + e.message, 'error');
+        }
+    },
+
+    deleteCategoria: async function(id, nombre) {
+        if (!confirm(`¿Eliminar la categoría "${nombre}"?\nLos productos asignados quedarán sin categoría.`)) return;
+        try {
+            await window.api.delete(`/param/categorias/${id}`);
+            window.showToast('Categoría eliminada', 'success');
+            this.loadCategorias();
+        } catch (e) {
+            window.showToast('Error: ' + e.message, 'error');
+        }
+    },
+
     /* --- MARCAS --- */
     getMarcasHTML: function() {
         return `
