@@ -425,7 +425,8 @@ class ParametrosController
              if (isset($data['maneja_lotes'])) $prod->controla_lote = $data['maneja_lotes'] ? 1 : 0;
              if (isset($data['controla_vencimiento'])) $prod->controla_vencimiento = $data['controla_vencimiento'] ? 1 : 0;
              if (isset($data['imagen_url'])) $prod->imagen_url = $data['imagen_url'];
-             
+             if (isset($data['activo'])) $prod->activo = $data['activo'] ? 1 : 0;
+
              $prod->save();
 
              // Update Main EAN (if provided during edit)

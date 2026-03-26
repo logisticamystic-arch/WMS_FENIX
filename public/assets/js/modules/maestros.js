@@ -234,7 +234,7 @@ window.Maestros = {
             const res = await window.api.get('/param/marcas');
             if (res && res.data && res.data.length > 0) {
                 tbody.innerHTML = res.data.map(m => {
-                    const activo = parseInt(m.activo) === 1;
+                    const activo = !!m.activo;
                     return `<tr style="border-bottom:1px solid #f1f5f9; opacity:${activo?1:0.6};">
                         <td style="padding:10px 8px; font-weight:600; color:#334155;">#${m.id}</td>
                         <td style="padding:10px 8px; color:#475569;">${escHTML(m.nombre)}</td>
@@ -433,7 +433,7 @@ window.Maestros = {
 
             if (res && res.data && res.data.length > 0) {
                 tbody.innerHTML = res.data.map(p => {
-                    const activo = parseInt(p.activo) === 1;
+                    const activo = !!p.activo;
                     const deleteBtn = isAdmin
                         ? `<button onclick="window.Maestros.deleteProducto(${p.id}, '${p.nombre.replace(/'/g, "\\'")}')" style="background:#fee2e2;color:#dc2626;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;" title="Eliminar"><i class="fa-solid fa-trash"></i></button>`
                         : '';
@@ -1274,7 +1274,7 @@ window.Maestros = {
             const res = await window.api.get('/param/personal');
             if (res.data && res.data.length) {
                 tbody.innerHTML = res.data.map(p => {
-                    const activo = parseInt(p.activo) === 1;
+                    const activo = !!p.activo;
                     return `<tr style="border-bottom:1px solid #f1f5f9; opacity:${activo?1:0.6};">
                         <td style="padding:10px 8px; font-weight:600; color:#334155;">${escHTML(p.documento)}</td>
                         <td style="padding:10px 8px; color:#475569;">${escHTML(p.nombre)}</td>
@@ -1436,7 +1436,7 @@ window.Maestros = {
             const res = await window.api.get('/param/proveedores');
             if (res.data && res.data.length) {
                 tbody.innerHTML = res.data.map(p => {
-                    const activo = parseInt(p.activo) === 1;
+                    const activo = !!p.activo;
                     return `<tr style="border-bottom:1px solid #f1f5f9; opacity:${activo?1:0.6};">
                         <td style="padding:10px 8px; font-weight:600; color:#334155;">${escHTML(p.nit)}</td>
                         <td style="padding:10px 8px; color:#475569;">${escHTML(p.razon_social)}</td>
