@@ -580,7 +580,8 @@ window.Picking = {
                     box.style.display = 'block';
                     box.innerHTML = '<strong><i class="fa-solid fa-triangle-exclamation"></i> Error al importar:</strong><br>' +
                         (data.message || 'Error desconocido') +
-                        (data.detail ? '<br><small style="color:#94a3b8;">' + JSON.stringify(data.detail) + '</small>' : '');
+                        (data.detail ? '<br><small style="color:#991b1b; font-family:monospace;">'
+                            + data.detail.class + '<br>' + data.detail.file + '</small>' : '');
                 } else {
                     window.showToast(data.message || 'Error al importar', 'error');
                 }

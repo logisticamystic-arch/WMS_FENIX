@@ -65,19 +65,22 @@ $errorMiddleware->setDefaultErrorHandler(function (
         'file'  => $exception->getFile() . ':' . $exception->getLine(),
         'class' => get_class($exception),
     ]);
-    // Log full trace only in debug mode
-    if (filter_var(getenv('APP_DEBUG'), FILTER_VALIDATE_BOOLEAN)) {
-        wmsLog('TRACE', $trace);
-    }
+    wmsLog('TRACE', $trace);
+
+    // Dotenv uses $_ENV, not putenv — read from there
+    $isDebug = filter_var(
+        $_ENV['APP_DEBUG'] ?? $_SERVER['APP_DEBUG'] ?? getenv('APP_DEBUG') ?? 'false',
+        FILTER_VALIDATE_BOOLEAN
+    );
 
     $status  = 500;
     $payload = [
         'error'   => true,
-        'message' => $displayErrorDetails
+        'message' => $isDebug
             ? "Error interno: {$msg}"
             : 'Error interno del servidor. Revise logs/app.log para más detalles.',
     ];
-    if ($displayErrorDetails) {
+    if ($isDebug) {
         $payload['detail'] = [
             'class' => get_class($exception),
             'file'  => $exception->getFile() . ':' . $exception->getLine(),
