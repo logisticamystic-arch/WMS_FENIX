@@ -26,16 +26,22 @@ window.DashboardSupervisor = {
 
         container.innerHTML = `
         <div style="padding:0; width:100%;">
-            <!-- KPI Cards -->
-            <div id="kpi-grid" style="display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-bottom:20px;">
+            <!-- Sección Alertas de Inventario -->
+            <p style="font-size:0.7rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.06em; margin:0 0 8px;">Alertas de Inventario</p>
+            <div id="kpi-grid" style="display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px;">
                 ${this._kpiCard('kpi-alertas-vencidos','fa-skull-crossbones','#dc2626','Vencidos','—')}
                 ${this._kpiCard('kpi-alertas-proximos','fa-clock','#f59e0b','Próx. Vencer','—')}
                 ${this._kpiCard('kpi-alertas-agotados','fa-battery-empty','#ef4444','Agotados','—')}
                 ${this._kpiCard('kpi-alertas-bajo','fa-arrow-trend-down','#f97316','Bajo Mínimo','—')}
-                ${this._kpiCard('kpi-picking-pendientes','fa-hand-holding-box','#3b82f6','Pick Pendientes','—')}
-                ${this._kpiCard('kpi-picking-hoy','fa-check-circle','#22c55e','Pick Completados Hoy','—')}
-                ${this._kpiCard('kpi-recepciones-hoy','fa-truck-ramp-box','#8b5cf6','Recepciones Hoy','—')}
-                ${this._kpiCard('kpi-despachos-hoy','fa-truck','#06b6d4','Despachos Hoy','—')}
+            </div>
+
+            <!-- Sección Operaciones de Hoy -->
+            <p style="font-size:0.7rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.06em; margin:0 0 8px;">Operaciones Hoy</p>
+            <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px;">
+                ${this._kpiCard('kpi-picking-pendientes','fa-hand-holding-box','#3b82f6','Pick Abiertos','—')}
+                ${this._kpiCard('kpi-picking-hoy','fa-circle-check','#22c55e','Pick Cerrados','—')}
+                ${this._kpiCard('kpi-recepciones-hoy','fa-truck-ramp-box','#8b5cf6','Recepciones','—')}
+                ${this._kpiCard('kpi-despachos-hoy','fa-truck','#06b6d4','En Despacho','—')}
             </div>
 
             <!-- Accesos rápidos -->
@@ -117,12 +123,22 @@ window.DashboardSupervisor = {
         } catch (_) {}
 
         try {
-            // Dashboard general
+            // Dashboard general — response: { error, data: { inbound:{...}, outbound:{...}, alertas:{...} } }
             const dash = await window.api.get('/dashboard');
-            this._set('kpi-picking-pendientes', dash?.picking_pendientes ?? dash?.ordenes_pendientes ?? '—');
-            this._set('kpi-picking-hoy',        dash?.picking_completados_hoy ?? '—');
-            this._set('kpi-recepciones-hoy',    dash?.recepciones_hoy ?? '—');
-            this._set('kpi-despachos-hoy',      dash?.despachos_hoy ?? '—');
+            const d = dash?.data || {};
+            const inb = d.inbound  || {};
+            const out = d.outbound || {};
+
+            // Picking: pendiente + en proceso
+            const pickAbiertos = (out.picking_pendiente ?? 0) + (out.picking_en_proceso ?? 0);
+            this._set('kpi-picking-pendientes', pickAbiertos);
+            this._set('kpi-picking-hoy',        out.picking_completado_hoy        ?? 0);
+            this._set('kpi-recepciones-hoy',    inb.recepciones_completadas_hoy   ?? 0);
+            this._set('kpi-despachos-hoy',      out.despachos_preparando          ?? 0);
+
+            // Actualizar tooltip de citas si hay elemento
+            const elCitas = document.getElementById('kpi-citas-hoy');
+            if (elCitas) elCitas.textContent = inb.citas_programadas_hoy ?? 0;
         } catch (_) {}
     },
 

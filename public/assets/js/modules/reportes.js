@@ -193,6 +193,190 @@ window.Reportes = {
     },
 
     // ── Renderizar tabla de resultados ────────────────────────────────────────
+    // ── Definición de columnas por reporte ────────────────────────────────────
+    // Cada entrada: { key: 'api_field', label: 'Encabezado', type: 'text|date|num|badge', ... }
+    _colDefs: {
+        stockActual: [
+            { key: 'codigo_interno', label: 'Código' },
+            { key: 'producto',       label: 'Producto' },
+            { key: 'marca',          label: 'Marca' },
+            { key: 'ubicacion',      label: 'Ubicación' },
+            { key: 'lote',           label: 'Lote' },
+            { key: 'fecha_vencimiento', label: 'Vence',    type: 'date' },
+            { key: 'dias_vencer',    label: 'Días', type: 'dias_vencer' },
+            { key: 'cantidad',       label: 'Cantidad',   type: 'num' },
+            { key: 'estado',         label: 'Estado',     type: 'badge' },
+        ],
+        kardex: [
+            { key: 'fecha',          label: 'Fecha',      type: 'date' },
+            { key: 'tipo',           label: 'Tipo',       type: 'badge' },
+            { key: 'codigo_interno', label: 'Código' },
+            { key: 'producto',       label: 'Producto' },
+            { key: 'lote',           label: 'Lote' },
+            { key: 'entrada',        label: 'Entrada',    type: 'num' },
+            { key: 'salida',         label: 'Salida',     type: 'num' },
+            { key: 'saldo',          label: 'Saldo',      type: 'num' },
+            { key: 'referencia',     label: 'Referencia' },
+            { key: 'usuario',        label: 'Usuario' },
+        ],
+        recepciones: [
+            { key: 'fecha',          label: 'Fecha',      type: 'date' },
+            { key: 'numero_odc',     label: '# ODC' },
+            { key: 'proveedor',      label: 'Proveedor' },
+            { key: 'producto',       label: 'Producto' },
+            { key: 'cantidad_recibida', label: 'Recibido', type: 'num' },
+            { key: 'lote',           label: 'Lote' },
+            { key: 'fecha_vencimiento', label: 'Vence',   type: 'date' },
+            { key: 'estado_mercancia', label: 'Estado',   type: 'badge' },
+        ],
+        despachos: [
+            { key: 'numero_despacho',label: '# Despacho' },
+            { key: 'fecha',          label: 'Fecha',      type: 'date' },
+            { key: 'cliente',        label: 'Cliente' },
+            { key: 'ruta',           label: 'Ruta' },
+            { key: 'estado',         label: 'Estado',     type: 'badge' },
+            { key: 'bultos',         label: 'Bultos',     type: 'num' },
+            { key: 'peso_kg',        label: 'Peso (kg)',  type: 'num' },
+            { key: 'auxiliar',       label: 'Auxiliar' },
+        ],
+        devoluciones: [
+            { key: 'fecha',          label: 'Fecha',      type: 'date' },
+            { key: 'tipo',           label: 'Tipo',       type: 'badge' },
+            { key: 'proveedor',      label: 'Proveedor / Cliente' },
+            { key: 'producto',       label: 'Producto' },
+            { key: 'cantidad',       label: 'Cantidad',   type: 'num' },
+            { key: 'motivo',         label: 'Motivo' },
+            { key: 'destino',        label: 'Destino' },
+        ],
+        picking: [
+            { key: 'numero_orden',   label: '# Orden' },
+            { key: 'fecha',          label: 'Fecha',      type: 'date' },
+            { key: 'cliente',        label: 'Cliente' },
+            { key: 'estado',         label: 'Estado',     type: 'badge' },
+            { key: 'prioridad',      label: 'Prioridad',  type: 'badge' },
+            { key: 'producto',       label: 'Producto' },
+            { key: 'cantidad_solicitada', label: 'Solicitado', type: 'num' },
+            { key: 'cantidad_pickeada',   label: 'Pickeado',   type: 'num' },
+            { key: 'lote',           label: 'Lote' },
+        ],
+        conteos: [
+            { key: 'fecha',          label: 'Fecha',      type: 'date' },
+            { key: 'ubicacion',      label: 'Ubicación' },
+            { key: 'producto',       label: 'Producto' },
+            { key: 'lote',           label: 'Lote' },
+            { key: 'fecha_vencimiento', label: 'Vence',   type: 'date' },
+            { key: 'cantidad_sistema', label: 'Sistema',  type: 'num' },
+            { key: 'cantidad_fisica',  label: 'Físico',   type: 'num' },
+            { key: 'diferencia',       label: 'Dif.',     type: 'num' },
+        ],
+        odc: [
+            { key: 'numero_odc',     label: '# ODC' },
+            { key: 'fecha',          label: 'Fecha',      type: 'date' },
+            { key: 'proveedor',      label: 'Proveedor' },
+            { key: 'estado',         label: 'Estado',     type: 'badge' },
+            { key: 'producto',       label: 'Producto' },
+            { key: 'cantidad_solicitada', label: 'Pedido',   type: 'num' },
+            { key: 'cantidad_recibida',   label: 'Recibido', type: 'num' },
+            { key: 'cantidad_pendiente',  label: 'Pendiente',type: 'num' },
+        ],
+        vencimientos: [
+            { key: 'codigo_interno', label: 'Código' },
+            { key: 'producto',       label: 'Producto' },
+            { key: 'ubicacion',      label: 'Ubicación' },
+            { key: 'lote',           label: 'Lote' },
+            { key: 'fecha_vencimiento', label: 'Vence',   type: 'date' },
+            { key: 'dias_vencer',    label: 'Días',       type: 'dias_vencer' },
+            { key: 'cantidad',       label: 'Cantidad',   type: 'num' },
+        ],
+        agotados: [
+            { key: 'codigo_interno', label: 'Código' },
+            { key: 'producto',       label: 'Producto' },
+            { key: 'tipo_alerta',    label: 'Alerta',     type: 'badge' },
+            { key: 'stock_actual',   label: 'Stock',      type: 'num' },
+            { key: 'stock_minimo',   label: 'Mínimo',     type: 'num' },
+            { key: 'stock_maximo',   label: 'Máximo',     type: 'num' },
+        ],
+        evaluacionProveedores: [
+            { key: 'proveedor',      label: 'Proveedor' },
+            { key: 'total_odc',      label: 'Total ODC',  type: 'num' },
+            { key: 'odc_completadas',label: 'Completadas',type: 'num' },
+            { key: 'pct_cumplimiento_odc', label: '% ODC', type: 'pct' },
+            { key: 'total_citas',    label: 'Citas',      type: 'num' },
+            { key: 'citas_cumplidas',label: 'Cumplidas',  type: 'num' },
+            { key: 'pct_citas',      label: '% Citas',    type: 'pct' },
+            { key: 'novedades',      label: 'Novedades',  type: 'num' },
+        ],
+        dashboardGerencial: [],  // objeto plano → se renderiza diferente
+        auditLog: [
+            { key: 'created_at',     label: 'Fecha/Hora', type: 'datetime' },
+            { key: 'usuario',        label: 'Usuario' },
+            { key: 'modulo',         label: 'Módulo' },
+            { key: 'accion',         label: 'Acción',     type: 'badge' },
+            { key: 'tabla',          label: 'Tabla' },
+            { key: 'registro_id',    label: 'ID' },
+            { key: 'descripcion',    label: 'Descripción' },
+            { key: 'ip',             label: 'IP' },
+        ],
+    },
+
+    // ── Formatear celda según tipo ─────────────────────────────────────────────
+    _fmtCell(val, type) {
+        if (val == null || val === '') return '<span style="color:#cbd5e1;">—</span>';
+        const v = String(val);
+        if (type === 'date') {
+            // Mostrar solo YYYY-MM-DD
+            const d = v.substring(0, 10);
+            return `<span style="white-space:nowrap;">${escHTML(d)}</span>`;
+        }
+        if (type === 'datetime') {
+            return `<span style="white-space:nowrap; font-size:0.75rem;">${escHTML(v.replace('T', ' ').substring(0, 16))}</span>`;
+        }
+        if (type === 'num') {
+            const n = parseFloat(val);
+            if (isNaN(n)) return escHTML(v);
+            return `<span style="text-align:right; display:block; font-variant-numeric:tabular-nums;">${n.toLocaleString('es-CO')}</span>`;
+        }
+        if (type === 'pct') {
+            const n = parseFloat(val);
+            if (isNaN(n)) return escHTML(v);
+            const color = n >= 90 ? '#22c55e' : n >= 70 ? '#f59e0b' : '#ef4444';
+            return `<span style="font-weight:700; color:${color};">${n.toFixed(1)}%</span>`;
+        }
+        if (type === 'dias_vencer') {
+            const n = parseInt(val, 10);
+            if (isNaN(n)) return escHTML(v);
+            const color = n < 0 ? '#dc2626' : n <= 15 ? '#ef4444' : n <= 30 ? '#f59e0b' : '#22c55e';
+            return `<span style="font-weight:700; color:${color};">${n}</span>`;
+        }
+        if (type === 'badge') {
+            const badgeColors = {
+                // Inventory states
+                Disponible: '#22c55e', Reservado: '#3b82f6', Bloqueado: '#ef4444',
+                Vencido: '#dc2626', Cuarentena: '#f59e0b',
+                // Picking
+                Pendiente: '#f59e0b', EnProceso: '#3b82f6', Completada: '#22c55e', Cancelada: '#6b7280',
+                // Despacho
+                Preparando: '#f59e0b', Certificado: '#3b82f6', Despachado: '#22c55e',
+                // ODC
+                Abierta: '#3b82f6', Parcial: '#f59e0b', Recibida: '#22c55e', Cerrada: '#6b7280',
+                // Movimientos
+                Entrada: '#22c55e', Salida: '#ef4444', Ajuste: '#8b5cf6', Transferencia: '#06b6d4',
+                // Prioridad
+                Alta: '#ef4444', Media: '#f59e0b', Baja: '#22c55e',
+                // Acciones audit
+                Crear: '#22c55e', Editar: '#3b82f6', Eliminar: '#ef4444', Login: '#8b5cf6',
+                // Devolución
+                Proveedor: '#8b5cf6', Cliente: '#06b6d4',
+                // Alertas
+                Agotado: '#dc2626', BajoMinimo: '#f97316', ProximoVencer: '#f59e0b',
+            };
+            const color = badgeColors[v] || '#64748b';
+            return `<span style="display:inline-block; padding:2px 8px; background:${color}20; color:${color}; border-radius:999px; font-size:0.72rem; font-weight:700; white-space:nowrap;">${escHTML(v)}</span>`;
+        }
+        return escHTML(v);
+    },
+
+    // ── Renderizar tabla de resultados ────────────────────────────────────────
     _mostrarTabla(key, data, ini, fin) {
         const titles = {
             stockActual:        'Stock Actual',
@@ -212,44 +396,71 @@ window.Reportes = {
 
         // Normalizar datos a array
         let rows = [];
-        if (Array.isArray(data))                    rows = data;
+        if (Array.isArray(data))                        rows = data;
         else if (data?.data && Array.isArray(data.data)) rows = data.data;
         else if (data?.items && Array.isArray(data.items)) rows = data.items;
-        else if (typeof data === 'object')          rows = [data];
+        else if (typeof data === 'object')               rows = [data];
 
         const total = rows.length;
 
-        let tableHtml = '';
-        if (total === 0) {
-            tableHtml = `<div style="text-align:center; padding:40px; color:#94a3b8;">
-                <i class="fa-solid fa-inbox" style="font-size:2rem; margin-bottom:10px; display:block;"></i>
-                Sin registros para el período seleccionado.
-            </div>`;
-        } else {
-            const cols = Object.keys(rows[0]);
-            tableHtml = `
-            <div style="overflow-x:auto;">
-                <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
-                    <thead>
-                        <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0;">
-                            ${cols.map(c => `<th style="padding:10px 12px; text-align:left; font-weight:700; color:#475569; white-space:nowrap;">${escHTML(c)}</th>`).join('')}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rows.slice(0, 200).map((row, i) => `
-                        <tr style="border-bottom:1px solid #f1f5f9; ${i % 2 === 1 ? 'background:#fafafa;' : ''}">
-                            ${cols.map(c => `<td style="padding:8px 12px; color:#334155; white-space:nowrap;">${row[c] != null ? escHTML(String(row[c])) : '—'}</td>`).join('')}
-                        </tr>`).join('')}
-                    </tbody>
-                </table>
-                ${total > 200 ? `<p style="text-align:center; color:#94a3b8; font-size:0.8rem; padding:8px;">Mostrando 200 de ${total} registros. Exporta a Excel para ver todos.</p>` : ''}
-            </div>`;
+        // Dashboard gerencial: es un objeto de KPIs, no tabla
+        if (key === 'dashboardGerencial' && rows.length === 1 && typeof rows[0] === 'object') {
+            const d = rows[0];
+            const kpiList = Object.entries(d).map(([k, v]) =>
+                `<div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #f1f5f9;">
+                    <span style="font-size:0.85rem; color:#475569; text-transform:capitalize;">${escHTML(k.replace(/_/g,' '))}</span>
+                    <span style="font-size:0.9rem; font-weight:700; color:#0f172a;">${escHTML(String(v ?? '—'))}</span>
+                </div>`).join('');
+            rows = []; // no table
+            var kpiHtml = `<div style="padding:4px 8px;">${kpiList}</div>`;
+        }
+
+        let tableHtml = (typeof kpiHtml !== 'undefined') ? kpiHtml : '';
+        if (!tableHtml) {
+            if (total === 0) {
+                tableHtml = `<div style="text-align:center; padding:40px; color:#94a3b8;">
+                    <i class="fa-solid fa-inbox" style="font-size:2rem; margin-bottom:10px; display:block;"></i>
+                    Sin registros para el período seleccionado.
+                </div>`;
+            } else {
+                // Obtener definición de columnas (o fallback a columnas automáticas)
+                const defs = this._colDefs[key];
+                let cols, headers;
+                if (defs && defs.length > 0) {
+                    // Usar solo las columnas que existen en el primer row
+                    cols = defs.filter(d => d.key in rows[0]);
+                    headers = cols.map(d => d.label);
+                } else {
+                    // Fallback: columnas automáticas desde las keys del objeto
+                    const keys = Object.keys(rows[0]);
+                    cols = keys.map(k => ({ key: k, label: k }));
+                    headers = keys;
+                }
+
+                tableHtml = `
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+                        <thead>
+                            <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0;">
+                                ${headers.map(h => `<th style="padding:10px 12px; text-align:left; font-weight:700; color:#475569; white-space:nowrap;">${escHTML(h)}</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows.slice(0, 200).map((row, i) => `
+                            <tr style="border-bottom:1px solid #f1f5f9; ${i % 2 === 1 ? 'background:#fafafa;' : ''}">
+                                ${cols.map(c => `<td style="padding:8px 12px; color:#334155;">${this._fmtCell(row[c.key], c.type)}</td>`).join('')}
+                            </tr>`).join('')}
+                        </tbody>
+                    </table>
+                    ${total > 200 ? `<p style="text-align:center; color:#94a3b8; font-size:0.8rem; padding:8px;">Mostrando 200 de ${total} registros. Exporta a Excel para ver todos.</p>` : ''}
+                </div>`;
+            }
         }
 
         const modal = document.createElement('div');
         modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:flex-start; justify-content:center; padding:20px; overflow-y:auto;';
         modal.innerHTML = `
-        <div style="background:white; border-radius:16px; width:100%; max-width:900px; margin:auto; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div style="background:white; border-radius:16px; width:100%; max-width:960px; margin:auto; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
             <div style="padding:16px 20px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; background:#0f172a; color:white;">
                 <div>
                     <h3 style="margin:0; font-size:1rem;">${titles[key] || key}</h3>
