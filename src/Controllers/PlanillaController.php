@@ -127,9 +127,27 @@ class PlanillaController extends BaseController
             'pedido'          => $this->_findCol($header, ['pedido', 'nro pedido', 'order', 'orden']),
         ];
 
+        // Log detected headers for debugging
+        if (function_exists('wmsLog')) {
+            wmsLog('INFO', 'Planilla import: encabezados detectados', [
+                'archivo' => $originalName,
+                'delim'   => $delim === ';' ? 'punto_y_coma' : 'coma',
+                'headers' => $header,
+                'colMap'  => array_filter($colMap, fn($v) => $v !== null),
+                'missing' => array_keys(array_filter($colMap, fn($v) => $v === null)),
+            ]);
+        }
+
         // Require at minimum: planilla, producto, cantidad
         if ($colMap['numero_planilla'] === null || $colMap['producto_nombre'] === null || $colMap['cantidad'] === null) {
-            return $this->error($res, 'Columnas requeridas no encontradas: Planilla, Producto, Cantidad. Encabezados detectados: ' . implode(', ', $header));
+            $faltantes = [];
+            if ($colMap['numero_planilla'] === null) $faltantes[] = 'Planilla';
+            if ($colMap['producto_nombre']  === null) $faltantes[] = 'Producto';
+            if ($colMap['cantidad']         === null) $faltantes[] = 'Cantidad';
+            $errMsg = 'Columnas requeridas no encontradas: ' . implode(', ', $faltantes)
+                    . '. Encabezados detectados: ' . implode(' | ', $header);
+            if (function_exists('wmsLog')) wmsLog('WARN', 'Planilla import rechazado: ' . $errMsg);
+            return $this->error($res, $errMsg);
         }
 
         try {
@@ -211,6 +229,12 @@ class PlanillaController extends BaseController
 
         } catch (\Exception $e) {
             DB::rollBack();
+            if (function_exists('wmsLog')) {
+                wmsLog('ERROR', 'Planilla import falló: ' . $e->getMessage(), [
+                    'archivo' => $originalName,
+                    'file'    => $e->getFile() . ':' . $e->getLine(),
+                ]);
+            }
             return $this->error($res, 'Error al importar: ' . $e->getMessage());
         }
     }

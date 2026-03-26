@@ -5,11 +5,25 @@
  */
 
 // Suppress PHP error output in HTTP responses — errors must not corrupt JSON bodies.
-// Slim's error middleware handles error logging separately.
 ini_set('display_errors', '0');
 ini_set('display_startup_errors', '0');
 
-// Only reset opcache in development (never in production — costs ~2ms per request)
+// ── Log de errores en archivo ─────────────────────────────────────────────────
+$logFile = dirname(__DIR__) . '/logs/app.log';
+ini_set('log_errors', '1');
+ini_set('error_log', $logFile);
+error_reporting(E_ALL);
+
+// Helper global para escribir al log con contexto
+function wmsLog(string $level, string $message, array $context = []): void {
+    global $logFile;
+    $ts      = date('Y-m-d H:i:s');
+    $ctx     = empty($context) ? '' : ' | ' . json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $line    = "[{$ts}] [{$level}] {$message}{$ctx}" . PHP_EOL;
+    @file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
+}
+
+// Only reset opcache in development
 if (function_exists('opcache_reset') && getenv('APP_ENV') === 'development') {
     opcache_reset();
 }
@@ -19,18 +33,58 @@ require_once __DIR__ . '/../bootstrap.php';
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\Factory\AppFactory;
+use Slim\Exception\HttpNotFoundException;
 
 $app = AppFactory::create();
 
 // Set base path for XAMPP subdirectory
 $app->setBasePath('/WMS_PROORIENTE/public');
 
-// Add error middleware
-$app->addErrorMiddleware(
+// ── Custom error middleware: logs to file + returns JSON ──────────────────────
+$errorMiddleware = $app->addErrorMiddleware(
     filter_var(getenv('APP_DEBUG'), FILTER_VALIDATE_BOOLEAN),
     true,
     true
 );
+$errorMiddleware->setDefaultErrorHandler(function (
+    Request $request,
+    \Throwable $exception,
+    bool $displayErrorDetails,
+    bool $logErrors,
+    bool $logErrorDetails
+) use ($app) {
+    $method = $request->getMethod();
+    $uri    = (string)$request->getUri();
+    $msg    = $exception->getMessage();
+    $trace  = $exception->getTraceAsString();
+
+    wmsLog('ERROR', "{$method} {$uri} — {$msg}", [
+        'file'  => $exception->getFile() . ':' . $exception->getLine(),
+        'class' => get_class($exception),
+    ]);
+    // Log full trace only in debug mode
+    if (filter_var(getenv('APP_DEBUG'), FILTER_VALIDATE_BOOLEAN)) {
+        wmsLog('TRACE', $trace);
+    }
+
+    $status  = 500;
+    $payload = [
+        'error'   => true,
+        'message' => $displayErrorDetails
+            ? "Error interno: {$msg}"
+            : 'Error interno del servidor. Revise logs/app.log para más detalles.',
+    ];
+    if ($displayErrorDetails) {
+        $payload['detail'] = [
+            'class' => get_class($exception),
+            'file'  => $exception->getFile() . ':' . $exception->getLine(),
+        ];
+    }
+
+    $response = $app->getResponseFactory()->createResponse($status);
+    $response->getBody()->write(json_encode($payload, JSON_UNESCAPED_UNICODE));
+    return $response->withHeader('Content-Type', 'application/json');
+});
 
 // Add JSON body parsing middleware
 $app->addBodyParsingMiddleware();
@@ -264,6 +318,47 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
             }
         }
         $response->getBody()->write(json_encode(['error' => false, 'migrated' => $done, 'errors' => $errors]));
+        return $response->withHeader('Content-Type', 'application/json');
+    });
+
+    // ── Visor de logs (solo Admin) ────────────────────────────────────────────
+    $group->get('/system/logs', function (Request $request, Response $response) {
+        $user = $request->getAttribute('user');
+        if (!$user || ($user->rol ?? '') !== 'Admin') {
+            $response->getBody()->write(json_encode(['error' => true, 'message' => 'Solo administradores']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+        $logPath = __DIR__ . '/../logs/app.log';
+        $lines   = (int)($request->getQueryParams()['lines'] ?? 200);
+        $lines   = min(max($lines, 10), 2000);
+        if (!file_exists($logPath)) {
+            $response->getBody()->write(json_encode(['error' => false, 'data' => [], 'size' => 0]));
+            return $response->withHeader('Content-Type', 'application/json');
+        }
+        // Tail last N lines
+        $all     = file($logPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+        $tail    = array_slice($all, -$lines);
+        $size    = filesize($logPath);
+        $response->getBody()->write(json_encode([
+            'error' => false,
+            'data'  => array_reverse($tail),  // newest first
+            'total' => count($all),
+            'size'  => $size,
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    });
+
+    // ── Limpiar log (solo Admin) ──────────────────────────────────────────────
+    $group->post('/system/logs/clear', function (Request $request, Response $response) {
+        $user = $request->getAttribute('user');
+        if (!$user || ($user->rol ?? '') !== 'Admin') {
+            $response->getBody()->write(json_encode(['error' => true, 'message' => 'Solo administradores']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+        $logPath = __DIR__ . '/../logs/app.log';
+        file_put_contents($logPath, '');
+        wmsLog('INFO', "Log limpiado por admin id={$user->id}");
+        $response->getBody()->write(json_encode(['error' => false, 'message' => 'Log limpiado']));
         return $response->withHeader('Content-Type', 'application/json');
     });
 

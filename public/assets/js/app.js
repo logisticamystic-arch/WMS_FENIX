@@ -343,17 +343,76 @@ document.addEventListener('DOMContentLoaded', () => {
             contentHtml = window.Maestros.getRutasHTML();
             setTimeout(() => { window.Maestros.loadRutas(); }, 400);
         } else if (subId === 'sistema_migraciones') {
-            contentHtml = `<div style="padding:24px; max-width:600px; margin:0 auto;">
-                <div style="background:white; border-radius:12px; padding:24px; box-shadow:0 2px 8px rgba(0,0,0,0.08); border-left:4px solid #6366f1;">
-                    <h3 style="margin:0 0 8px; color:#1e293b;"><i class="fa-solid fa-database" style="color:#6366f1; margin-right:8px;"></i>Base de Datos — Migraciones Pendientes</h3>
-                    <p style="color:#64748b; font-size:0.85rem; margin:0 0 20px;">Ejecuta todas las migraciones pendientes para crear/actualizar tablas en <strong>WMS_PROORIENTE</strong>. Incluye las tablas de planillas de certificación.</p>
-                    <button id="btn-run-migrate" onclick="window._runMigrations()" style="width:100%; padding:14px; background:#6366f1; color:white; border:none; border-radius:10px; font-size:1rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
-                        <i class="fa-solid fa-play"></i> Ejecutar Migraciones Pendientes
+            contentHtml = `<div style="padding:16px; max-width:900px; margin:0 auto;">
+                <!-- Tabs -->
+                <div style="display:flex; gap:6px; margin-bottom:16px; border-bottom:2px solid #e2e8f0; padding-bottom:0;">
+                    <button onclick="window._sysTab('migraciones')" id="tab-mig"
+                        style="padding:8px 18px; border:none; background:none; font-weight:700; color:#6366f1; border-bottom:3px solid #6366f1; cursor:pointer; font-size:0.9rem;">
+                        <i class="fa-solid fa-database"></i> Migraciones
                     </button>
-                    <div id="migrate-result" style="margin-top:16px; display:none;"></div>
+                    <button onclick="window._sysTab('logs')" id="tab-logs"
+                        style="padding:8px 18px; border:none; background:none; font-weight:600; color:#94a3b8; border-bottom:3px solid transparent; cursor:pointer; font-size:0.9rem;">
+                        <i class="fa-solid fa-file-lines"></i> Log de Errores
+                    </button>
+                </div>
+
+                <!-- Panel Migraciones -->
+                <div id="panel-migraciones">
+                    <div style="background:white; border-radius:12px; padding:24px; box-shadow:0 2px 8px rgba(0,0,0,0.08); border-left:4px solid #6366f1;">
+                        <h3 style="margin:0 0 8px; color:#1e293b;"><i class="fa-solid fa-database" style="color:#6366f1; margin-right:8px;"></i>Base de Datos — Migraciones</h3>
+                        <p style="color:#64748b; font-size:0.85rem; margin:0 0 20px;">Ejecuta todas las migraciones pendientes para crear/actualizar tablas en <strong>WMS_PROORIENTE</strong>.</p>
+                        <button id="btn-run-migrate" onclick="window._runMigrations()"
+                            style="width:100%; padding:14px; background:#6366f1; color:white; border:none; border-radius:10px; font-size:1rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+                            <i class="fa-solid fa-play"></i> Ejecutar Migraciones Pendientes
+                        </button>
+                        <div id="migrate-result" style="margin-top:16px; display:none;"></div>
+                    </div>
+                </div>
+
+                <!-- Panel Log de Errores -->
+                <div id="panel-logs" style="display:none;">
+                    <div style="background:white; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+                            <div>
+                                <h3 style="margin:0; color:#1e293b; font-size:1rem;"><i class="fa-solid fa-file-lines" style="color:#ef4444; margin-right:6px;"></i>Log de Errores del Sistema</h3>
+                                <span id="log-meta" style="font-size:0.75rem; color:#94a3b8;">logs/app.log</span>
+                            </div>
+                            <div style="display:flex; gap:8px;">
+                                <select id="log-lines" onchange="window._loadLogs()" style="padding:6px 10px; border:1px solid #e2e8f0; border-radius:8px; font-size:0.82rem;">
+                                    <option value="100">Últimas 100</option>
+                                    <option value="200" selected>Últimas 200</option>
+                                    <option value="500">Últimas 500</option>
+                                </select>
+                                <button onclick="window._loadLogs()"
+                                    style="padding:6px 12px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:8px; font-size:0.82rem; cursor:pointer;" title="Refrescar">
+                                    <i class="fa-solid fa-rotate"></i>
+                                </button>
+                                <button onclick="window._clearLogs()"
+                                    style="padding:6px 12px; background:#fef2f2; color:#dc2626; border:1px solid #fecaca; border-radius:8px; font-size:0.82rem; cursor:pointer;" title="Limpiar log">
+                                    <i class="fa-solid fa-trash"></i> Limpiar
+                                </button>
+                            </div>
+                        </div>
+                        <div id="log-content"
+                            style="background:#0f172a; color:#e2e8f0; font-family:monospace; font-size:0.75rem; padding:14px; border-radius:8px; max-height:60vh; overflow-y:auto; line-height:1.6;">
+                            <span style="color:#64748b;">Cargando...</span>
+                        </div>
+                    </div>
                 </div>
             </div>`;
             setTimeout(() => {
+                window._sysTab = function(tab) {
+                    document.getElementById('panel-migraciones').style.display = tab === 'migraciones' ? 'block' : 'none';
+                    document.getElementById('panel-logs').style.display = tab === 'logs' ? 'block' : 'none';
+                    document.getElementById('tab-mig').style.cssText += tab === 'migraciones'
+                        ? ';color:#6366f1;border-bottom:3px solid #6366f1;font-weight:700;'
+                        : ';color:#94a3b8;border-bottom:3px solid transparent;font-weight:600;';
+                    document.getElementById('tab-logs').style.cssText += tab === 'logs'
+                        ? ';color:#ef4444;border-bottom:3px solid #ef4444;font-weight:700;'
+                        : ';color:#94a3b8;border-bottom:3px solid transparent;font-weight:600;';
+                    if (tab === 'logs') window._loadLogs();
+                };
+
                 window._runMigrations = async function() {
                     const btn = document.getElementById('btn-run-migrate');
                     const result = document.getElementById('migrate-result');
@@ -381,6 +440,43 @@ document.addEventListener('DOMContentLoaded', () => {
                         btn.disabled = false;
                         btn.innerHTML = '<i class="fa-solid fa-play"></i> Reintentar';
                     }
+                };
+
+                window._loadLogs = async function() {
+                    const box = document.getElementById('log-content');
+                    const meta = document.getElementById('log-meta');
+                    if (!box) return;
+                    const lines = document.getElementById('log-lines')?.value || 200;
+                    box.innerHTML = '<span style="color:#64748b;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</span>';
+                    try {
+                        const data = await window.api.get('/system/logs?lines=' + lines);
+                        if (!data.data || data.data.length === 0) {
+                            box.innerHTML = '<span style="color:#64748b;">No hay entradas en el log.</span>';
+                            return;
+                        }
+                        const kb = data.size ? (data.size / 1024).toFixed(1) + ' KB' : '';
+                        if (meta) meta.textContent = 'logs/app.log — ' + data.total + ' líneas totales · ' + kb;
+                        box.innerHTML = data.data.map(line => {
+                            let color = '#e2e8f0';
+                            if (line.includes('] [ERROR]')) color = '#fca5a5';
+                            else if (line.includes('] [WARN]')) color = '#fde68a';
+                            else if (line.includes('] [INFO]')) color = '#86efac';
+                            else if (line.includes('] [TRACE]')) color = '#94a3b8';
+                            return '<div style="color:' + color + '; border-bottom:1px solid #1e293b; padding:3px 0; word-break:break-all;">'
+                                + line.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+                        }).join('');
+                    } catch(e) {
+                        box.innerHTML = '<span style="color:#fca5a5;">Error al cargar logs: ' + e.message + '</span>';
+                    }
+                };
+
+                window._clearLogs = async function() {
+                    if (!confirm('¿Limpiar todo el log de errores?')) return;
+                    try {
+                        await window.api.post('/system/logs/clear', {});
+                        window.showToast('Log limpiado', 'success');
+                        window._loadLogs();
+                    } catch(e) { window.showToast('Error: ' + e.message, 'error'); }
                 };
             }, 200);
         } else if (subId === 'odc' && window.ODC) {

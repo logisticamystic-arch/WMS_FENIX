@@ -542,6 +542,7 @@ window.Picking = {
                 <input type="file" id="planilla-file-input" accept=".csv,.xlsx,.xls,.txt" style="display:none;"
                     onchange="document.getElementById('planilla-file-name').textContent=this.files[0]?.name||''">
                 <div id="planilla-file-name" style="font-size:0.82rem;color:#6366f1;text-align:center;margin-bottom:12px;font-weight:600;"></div>
+                <div id="pk-planilla-error" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-bottom:12px;font-size:0.82rem;color:#dc2626;line-height:1.5;"></div>
                 <button onclick="window.Picking._subirPlanilla()"
                     style="width:100%;padding:12px;background:#6366f1;color:white;border:none;border-radius:10px;font-size:0.92rem;cursor:pointer;font-weight:700;">
                     <i class="fa-solid fa-upload"></i> Importar Planilla
@@ -555,6 +556,12 @@ window.Picking = {
     async _subirPlanilla() {
         const input = document.getElementById('planilla-file-input');
         if (!input?.files?.length) return window.showToast('Selecciona un archivo', 'error');
+
+        const btn = document.querySelector('#pk-planilla-modal button[onclick*="_subirPlanilla"]');
+        const errBox = document.getElementById('pk-planilla-error');
+        if (errBox) errBox.style.display = 'none';
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Importando...'; }
+
         const formData = new FormData();
         formData.append('file', input.files[0]);
         const token = localStorage.getItem('jwt_token') || localStorage.getItem('token');
@@ -565,15 +572,37 @@ window.Picking = {
                 headers: { Authorization: `Bearer ${token}` },
                 body: formData,
             });
-            const data = await r.json();
-            if (data.error) throw new Error(data.message);
-            window.showToast(data.message || 'Planilla importada', 'success');
+            const data = await r.json().catch(() => ({ error: true, message: 'Respuesta inválida del servidor (status ' + r.status + ')' }));
+            if (data.error) {
+                // Show detailed error inside modal
+                const box = document.getElementById('pk-planilla-error');
+                if (box) {
+                    box.style.display = 'block';
+                    box.innerHTML = '<strong><i class="fa-solid fa-triangle-exclamation"></i> Error al importar:</strong><br>' +
+                        (data.message || 'Error desconocido') +
+                        (data.detail ? '<br><small style="color:#94a3b8;">' + JSON.stringify(data.detail) + '</small>' : '');
+                } else {
+                    window.showToast(data.message || 'Error al importar', 'error');
+                }
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-upload"></i> Importar Planilla'; }
+                return;
+            }
+            window.showToast('✓ ' + (data.message || 'Planilla importada'), 'success');
             document.getElementById('pk-planilla-modal')?.remove();
-            // Navigate to certification module
             if (typeof window.openSubView === 'function') {
                 window.openSubView('certificacion_planilla', 'Certificación por Planilla');
             }
-        } catch(e) { window.showToast(e.message || 'Error al importar', 'error'); }
+        } catch(e) {
+            const box = document.getElementById('pk-planilla-error');
+            const msg = e.message || 'Error de conexión con el servidor';
+            if (box) {
+                box.style.display = 'block';
+                box.innerHTML = '<strong><i class="fa-solid fa-triangle-exclamation"></i> Error:</strong> ' + msg;
+            } else {
+                window.showToast(msg, 'error');
+            }
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-upload"></i> Importar Planilla'; }
+        }
     },
 
     /* ── Asignación profesional ──────────────────────────────────────────── */
