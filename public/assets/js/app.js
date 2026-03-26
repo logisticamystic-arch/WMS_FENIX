@@ -497,6 +497,7 @@ document.addEventListener('DOMContentLoaded', () => {
             contentHtml = window.Ajustes.getProfileHTML();
         } else if (subId === 'empresa_config' && window.Ajustes) {
             contentHtml = window.Ajustes.getCompanyConfigHTML();
+            setTimeout(() => { window.Ajustes.initCompanyConfig(); }, 300);
         } else if (subId === 'citas' && window.Recepcion) {
             contentHtml = window.Recepcion.getCitasHTML();
             setTimeout(() => { window.Recepcion.loadCitas(); }, 400);

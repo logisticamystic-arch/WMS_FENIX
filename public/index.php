@@ -168,7 +168,8 @@ $app->post('/api/auth/login', [\App\Controllers\AuthController::class, 'login'])
 
 // ── Authenticated API routes ──────────────────────────────────────────────────
 $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
-    $group->get('/auth/me', [\App\Controllers\AuthController::class, 'me']);
+    $group->get('/auth/me',  [\App\Controllers\AuthController::class, 'me']);
+    $group->put('/auth/pin', [\App\Controllers\AuthController::class, 'cambiarPin']);
 
     // Módulo: Citas (Inbound)
     $group->get('/citas', [\App\Controllers\CitaController::class, 'index']);

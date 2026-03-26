@@ -123,6 +123,37 @@ class AuthController
         ]);
     }
 
+    /**
+     * PUT /api/auth/pin
+     * Cambia el PIN del usuario autenticado.
+     * Body: { pin_actual, pin_nuevo }
+     */
+    public function cambiarPin(Request $request, Response $response): Response
+    {
+        $userJwt = $request->getAttribute('user');
+        $data     = $request->getParsedBody() ?? [];
+
+        $pinActual = trim($data['pin_actual'] ?? '');
+        $pinNuevo  = trim($data['pin_nuevo']  ?? '');
+
+        if (empty($pinActual) || empty($pinNuevo)) {
+            return $this->json($response, ['error' => true, 'message' => 'PIN actual y nuevo son requeridos.'], 400);
+        }
+        if (strlen($pinNuevo) < 4) {
+            return $this->json($response, ['error' => true, 'message' => 'El PIN nuevo debe tener al menos 4 dígitos.'], 422);
+        }
+
+        $user = Personal::find($userJwt->id);
+        if (!$user || !$user->verifyPin($pinActual)) {
+            return $this->json($response, ['error' => true, 'message' => 'PIN actual incorrecto.'], 401);
+        }
+
+        $user->pin = Personal::hashPin($pinNuevo);
+        $user->save();
+
+        return $this->json($response, ['error' => false, 'message' => 'PIN actualizado correctamente.']);
+    }
+
     private function json(Response $response, array $data, int $status = 200): Response
     {
         $response->getBody()->write(json_encode($data));
