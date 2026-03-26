@@ -453,6 +453,20 @@ class PickingController extends BaseController
         $this->audit($user, 'picking', 'completar', 'orden_pickings', $orden->id,
             null, ['estado' => 'Completada'], "Orden picking {$orden->numero_orden} completada");
 
+        // If this order belongs to a planilla archivo, check if all orders are done
+        if ($orden->archivo_id) {
+            $totalOrdenes = \Illuminate\Database\Capsule\Manager::table('orden_pickings')
+                ->where('archivo_id', $orden->archivo_id)->count();
+            $completadas  = \Illuminate\Database\Capsule\Manager::table('orden_pickings')
+                ->where('archivo_id', $orden->archivo_id)
+                ->where('estado', 'Completada')->count();
+            if ($totalOrdenes > 0 && $completadas >= $totalOrdenes) {
+                \Illuminate\Database\Capsule\Manager::table('archivos_planilla')
+                    ->where('id', $orden->archivo_id)
+                    ->update(['estado' => 'Separado', 'updated_at' => date('Y-m-d H:i:s')]);
+            }
+        }
+
         return $this->ok($res, $orden, 'Orden de picking completada');
     }
 

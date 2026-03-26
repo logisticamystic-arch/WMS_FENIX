@@ -10,40 +10,186 @@ window.Picking = {
 
     getPickingHTML() {
         return `
-        <div style="padding:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+        <div style="padding:12px; max-width:1200px; margin:0 auto;">
+            <!-- Header -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
                 <div>
-                    <span style="font-weight:700; color:#0f172a; font-size:1rem;">Módulo de Picking</span>
-                    <p style="color:#64748b; font-size:0.78rem; margin:2px 0 0;">Separación y preparación de pedidos (FEFO)</p>
+                    <h3 style="margin:0;color:#0f172a;font-size:1.05rem;font-weight:800;">
+                        <i class="fa-solid fa-cart-flatbed" style="color:#6366f1;margin-right:8px;"></i>Gestionar Picking — Visión 360°
+                    </h3>
+                    <p style="color:#64748b;font-size:0.78rem;margin:3px 0 0;">Control total del proceso de separación por planillas</p>
                 </div>
-                <div style="display:flex; gap:8px;">
-                    <button onclick="window.Picking.abrirImportar()"
-                        style="padding:8px 12px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; border-radius:8px; font-size:0.82rem; cursor:pointer; font-weight:600;">
-                        <i class="fa-solid fa-file-import"></i> Importar
-                    </button>
-                    <button onclick="window.Picking.abrirCrearManual()"
-                        style="padding:8px 14px; background:#0f172a; color:white; border:none; border-radius:8px; font-size:0.82rem; cursor:pointer; font-weight:600;">
-                        <i class="fa-solid fa-plus"></i> Nuevo Pedido
-                    </button>
+                <button onclick="window.Picking.init()"
+                    style="padding:7px 14px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;font-size:0.82rem;cursor:pointer;">
+                    <i class="fa-solid fa-rotate"></i> Actualizar
+                </button>
+            </div>
+
+            <!-- KPI Cards -->
+            <div id="picking-dashboard" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:18px;"></div>
+
+            <!-- Tabs -->
+            <div style="display:flex;gap:4px;border-bottom:2px solid #e2e8f0;margin-bottom:16px;">
+                <button id="pk-tab-planillas" onclick="window.Picking._pkTab('planillas')"
+                    style="padding:8px 16px;border:none;background:none;font-weight:700;color:#6366f1;border-bottom:3px solid #6366f1;cursor:pointer;font-size:0.88rem;">
+                    <i class="fa-solid fa-file-lines"></i> Planillas
+                </button>
+                <button id="pk-tab-ordenes" onclick="window.Picking._pkTab('ordenes')"
+                    style="padding:8px 16px;border:none;background:none;font-weight:600;color:#94a3b8;border-bottom:3px solid transparent;cursor:pointer;font-size:0.88rem;">
+                    <i class="fa-solid fa-list-check"></i> Órdenes
+                </button>
+            </div>
+
+            <!-- Panel Planillas -->
+            <div id="pk-panel-planillas">
+                <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
+                    <select id="pk-filtro-archivo" onchange="window.Picking.loadPlanillasProgreso()"
+                        style="flex:2;min-width:200px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;background:white;">
+                        <option value="">Todos los archivos</option>
+                    </select>
+                    <span style="font-size:0.8rem;color:#64748b;font-style:italic;">* Solo archivos en proceso de picking</span>
+                </div>
+                <div id="pk-planillas-list">
+                    <div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;"></i></div>
                 </div>
             </div>
-            <div id="picking-dashboard" style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px;"></div>
-            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
-                <select id="pk-filtro-estado" onchange="window.Picking.loadOrdenes()"
-                    style="flex:1; min-width:130px; padding:8px 10px; border:1px solid #e2e8f0; border-radius:8px; font-size:0.85rem; background:white;">
-                    <option value="">Todos los estados</option>
-                    <option value="Pendiente">Pendiente</option>
-                    <option value="EnProceso">En Proceso</option>
-                    <option value="Completada">Completada</option>
-                </select>
-                <input type="text" id="pk-filtro-buscar" placeholder="Buscar cliente u orden..."
-                    oninput="window.Picking._debounce()"
-                    style="flex:2; min-width:150px; padding:8px 10px; border:1px solid #e2e8f0; border-radius:8px; font-size:0.85rem;">
-            </div>
-            <div id="picking-list">
-                <div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;"></i></div>
+
+            <!-- Panel Órdenes -->
+            <div id="pk-panel-ordenes" style="display:none;">
+                <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+                    <select id="pk-filtro-estado" onchange="window.Picking.loadOrdenes()"
+                        style="flex:1;min-width:120px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;background:white;">
+                        <option value="">Todos los estados</option>
+                        <option value="Pendiente">Pendiente</option>
+                        <option value="EnProceso">En Proceso</option>
+                        <option value="Completada">Completada</option>
+                    </select>
+                    <select id="pk-filtro-planilla-ord" onchange="window.Picking.loadOrdenes()"
+                        style="flex:1;min-width:120px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;background:white;">
+                        <option value="">Todas las planillas</option>
+                    </select>
+                    <input type="text" id="pk-filtro-buscar" placeholder="Buscar auxiliar u orden..."
+                        oninput="window.Picking._debounce()"
+                        style="flex:2;min-width:150px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;">
+                </div>
+                <div id="picking-list">
+                    <div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;"></i></div>
+                </div>
             </div>
         </div>`;
+    },
+
+    _pkTab(tab) {
+        ['planillas','ordenes'].forEach(t => {
+            const panel = document.getElementById('pk-panel-' + t);
+            const btn   = document.getElementById('pk-tab-' + t);
+            if (!panel || !btn) return;
+            const active = t === tab;
+            panel.style.display = active ? 'block' : 'none';
+            btn.style.color = active ? '#6366f1' : '#94a3b8';
+            btn.style.borderBottom = active ? '3px solid #6366f1' : '3px solid transparent';
+            btn.style.fontWeight = active ? '700' : '600';
+        });
+        if (tab === 'planillas') this.loadPlanillasProgreso();
+        if (tab === 'ordenes')   { this._populatePlanillaFiltro(); this.loadOrdenes(); }
+    },
+
+    async _populatePlanillaFiltro() {
+        const sel = document.getElementById('pk-filtro-planilla-ord');
+        if (!sel || sel.options.length > 1) return; // already populated
+        try {
+            const res = await window.api.get('/planillas').catch(() => ({ data: [] }));
+            const archivos = res?.data || [];
+            archivos.forEach(a => {
+                const opt = document.createElement('option');
+                opt.value = a.nombre_archivo;
+                opt.textContent = a.nombre_archivo;
+                sel.appendChild(opt);
+            });
+        } catch(e) { /* silent */ }
+    },
+
+    async loadPlanillasProgreso() {
+        const box = document.getElementById('pk-planillas-list');
+        if (!box) return;
+        box.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i></div>';
+        try {
+            const archivoId = document.getElementById('pk-filtro-archivo')?.value || '';
+            const res = await window.api.get('/planillas/progreso' + (archivoId ? '?archivo_id=' + archivoId : ''));
+            const archivos = res.data || [];
+
+            // Populate archivo selector
+            const sel = document.getElementById('pk-filtro-archivo');
+            if (sel && sel.options.length <= 1) {
+                archivos.forEach(a => {
+                    const opt = document.createElement('option');
+                    opt.value = a.archivo.id;
+                    opt.textContent = a.archivo.nombre_archivo + ' (' + a.archivo.estado + ')';
+                    sel.appendChild(opt);
+                });
+            }
+
+            if (!archivos.length) {
+                box.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fa-solid fa-file-circle-xmark" style="font-size:2rem;margin-bottom:10px;display:block;"></i>No hay archivos en proceso de picking.<br><small>Importe una planilla y asigne el picking desde "Asignación".</small></div>';
+                return;
+            }
+
+            box.innerHTML = archivos.map(a => {
+                const archivo = a.archivo;
+                const estadoColor = { Importada:'#f59e0b', EnPicking:'#3b82f6', Separado:'#22c55e', EnCertificacion:'#8b5cf6', Certificada:'#10b981', Anulada:'#ef4444' }[archivo.estado] || '#94a3b8';
+                const planillasRows = (a.planillas || []).map(p => {
+                    const pct = p.pct_completado || 0;
+                    const barColor = pct >= 100 ? '#22c55e' : pct > 0 ? '#3b82f6' : '#e2e8f0';
+                    return `<tr style="border-bottom:1px solid #f8fafc;">
+                        <td style="padding:8px 10px;font-weight:600;color:#334155;">${p.numero_planilla}</td>
+                        <td style="padding:8px 10px;color:#64748b;">${p.total_unidades?.toLocaleString() || 0} uds</td>
+                        <td style="padding:8px 10px;">
+                            ${p.asignada ? `<div style="display:flex;align-items:center;gap:8px;">
+                                <div style="flex:1;height:8px;background:#f1f5f9;border-radius:99px;overflow:hidden;">
+                                    <div style="width:${pct}%;height:100%;background:${barColor};border-radius:99px;transition:width 0.4s;"></div>
+                                </div>
+                                <span style="font-size:0.78rem;font-weight:700;color:${barColor};min-width:36px;">${pct}%</span>
+                            </div>`
+                            : '<span style="color:#94a3b8;font-size:0.8rem;">Sin asignar</span>'}
+                        </td>
+                        <td style="padding:8px 10px;">
+                            <span style="font-size:0.75rem;padding:2px 8px;border-radius:99px;background:${p.ordenes_comp===p.ordenes_total&&p.ordenes_total>0?'#dcfce7':'#eff6ff'};color:${p.ordenes_comp===p.ordenes_total&&p.ordenes_total>0?'#16a34a':'#2563eb'};">
+                                ${p.ordenes_comp}/${p.ordenes_total} órdenes
+                            </span>
+                        </td>
+                    </tr>`;
+                }).join('');
+
+                return `<div style="background:white;border-radius:12px;border:1px solid #e2e8f0;margin-bottom:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="padding:14px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                        <div>
+                            <span style="font-weight:700;color:#0f172a;">${escHTML(archivo.nombre_archivo)}</span>
+                            <span style="font-size:0.75rem;background:${estadoColor}20;color:${estadoColor};padding:2px 8px;border-radius:99px;margin-left:8px;font-weight:700;">${archivo.estado}</span>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <span style="font-size:0.8rem;color:#64748b;">${archivo.total_planillas} planillas · ${a.total_lineas?.toLocaleString()} líneas</span>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <div style="width:80px;height:8px;background:#f1f5f9;border-radius:99px;overflow:hidden;">
+                                    <div style="width:${a.pct_archivo}%;height:100%;background:#6366f1;border-radius:99px;"></div>
+                                </div>
+                                <span style="font-size:0.78rem;font-weight:700;color:#6366f1;">${a.pct_archivo}%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                        <thead><tr style="background:#fafafa;color:#64748b;font-size:0.75rem;font-weight:700;">
+                            <th style="padding:8px 10px;text-align:left;">Planilla</th>
+                            <th style="padding:8px 10px;text-align:left;">Unidades</th>
+                            <th style="padding:8px 10px;text-align:left;">Progreso Picking</th>
+                            <th style="padding:8px 10px;text-align:left;">Órdenes</th>
+                        </tr></thead>
+                        <tbody>${planillasRows || '<tr><td colspan="4" style="padding:20px;text-align:center;color:#94a3b8;">Sin planillas</td></tr>'}</tbody>
+                    </table>
+                </div>`;
+            }).join('');
+        } catch(e) {
+            box.innerHTML = `<div style="padding:20px;color:#ef4444;text-align:center;">${escHTML(e.message)}</div>`;
+        }
     },
 
     async loadDashboard() {
@@ -606,99 +752,376 @@ window.Picking = {
         }
     },
 
-    /* ── Asignación profesional ──────────────────────────────────────────── */
-    getAsignacionHTML() {
+    /* ── Importar Planilla — vista completa (submódulo) ─────────────────── */
+    getPlanillaImportHTML() {
         return `
-        <div style="padding:12px;">
-            <div style="margin-bottom:16px;">
-                <span style="font-weight:700;color:#0f172a;font-size:1rem;">Asignación de Picking</span>
-                <p style="color:#64748b;font-size:0.78rem;margin:4px 0 0;">Filtre, seleccione y asigne órdenes masivamente</p>
-            </div>
-
-            <!-- Filtros activos -->
-            <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:14px;">
-                <div style="font-size:0.72rem;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:10px;">
-                    <i class="fa-solid fa-filter"></i> Filtros de búsqueda
+        <div style="padding:16px; max-width:800px; margin:0 auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+                <div>
+                    <h3 style="margin:0;color:#0f172a;font-size:1.05rem;font-weight:800;">
+                        <i class="fa-solid fa-file-arrow-up" style="color:#6366f1;margin-right:8px;"></i>Importar Archivo de Planilla
+                    </h3>
+                    <p style="color:#64748b;font-size:0.8rem;margin:3px 0 0;">Carga tu archivo CSV/Excel de picking</p>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-                    <div>
-                        <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Estado</label>
-                        <select id="asig-estado"
-                            style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;background:white;box-sizing:border-box;">
-                            <option value="Pendiente">Pendientes</option>
-                            <option value="EnProceso">En Proceso</option>
-                            <option value="">Todos</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Pasillo</label>
-                        <input type="text" id="asig-f-pasillo" placeholder="Ej: A, B, PA-01..."
-                            style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;box-sizing:border-box;">
-                    </div>
-                    <div>
-                        <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Ubicación (código)</label>
-                        <input type="text" id="asig-f-ubicacion" placeholder="Ej: A-01-01, B-02..."
-                            style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;box-sizing:border-box;">
-                    </div>
-                    <div>
-                        <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Marca</label>
-                        <select id="asig-f-marca"
-                            style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;background:white;box-sizing:border-box;">
-                            <option value="">Todas las marcas</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Sin auxiliar asignado</label>
-                        <select id="asig-f-sinaux"
-                            style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;background:white;box-sizing:border-box;">
-                            <option value="">Todas</option>
-                            <option value="1">Solo sin auxiliar</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Cliente / Planilla</label>
-                        <input type="text" id="asig-f-cliente" placeholder="Nombre cliente..."
-                            style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;box-sizing:border-box;">
-                    </div>
-                </div>
-                <button onclick="window.Picking.loadAsignacion()"
-                    style="width:100%;padding:8px;background:#0f172a;color:white;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;font-weight:600;">
-                    <i class="fa-solid fa-magnifying-glass"></i> Buscar Órdenes
+                <button onclick="window.Picking.abrirCrearManual()"
+                    style="padding:8px 14px;background:#0f172a;color:white;border:none;border-radius:8px;font-size:0.82rem;cursor:pointer;font-weight:600;">
+                    <i class="fa-solid fa-plus"></i> Pedido Manual
                 </button>
             </div>
 
-            <!-- Lista de órdenes -->
-            <div id="asig-ordenes" style="margin-bottom:14px;"></div>
+            <!-- Upload card -->
+            <div style="background:white;border-radius:14px;padding:24px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,0.05);margin-bottom:20px;">
+                <div style="background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:14px;margin-bottom:18px;font-size:0.82rem;color:#78350f;">
+                    <strong><i class="fa-solid fa-circle-info"></i> Columnas requeridas:</strong>
+                    <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">
+                        ${['Numero Factura','Documento','Planilla','Asesor','Producto','Cantidad','Costo','Descuento','Valor Producto','Pedido'].map(c =>
+                            `<code style="background:#fef08a;padding:2px 6px;border-radius:4px;font-size:0.72rem;">${c}</code>`
+                        ).join('')}
+                    </div>
+                </div>
+                <div style="border:2px dashed #cbd5e1;border-radius:10px;padding:32px;text-align:center;cursor:pointer;background:#f8fafc;margin-bottom:14px;"
+                     onclick="document.getElementById('planilla-file-input-full').click()">
+                    <i class="fa-solid fa-cloud-arrow-up" style="font-size:2.5rem;color:#6366f1;display:block;margin-bottom:10px;"></i>
+                    <div style="font-size:0.92rem;font-weight:600;color:#475569;">Haga clic para seleccionar archivo</div>
+                    <div style="font-size:0.75rem;color:#94a3b8;margin-top:4px;">Excel (.xlsx, .xls) o CSV (.csv)</div>
+                </div>
+                <input type="file" id="planilla-file-input-full" accept=".csv,.xlsx,.xls,.txt" style="display:none;"
+                    onchange="document.getElementById('pk-full-file-name').textContent=this.files[0]?.name||''; document.getElementById('pk-full-file-name').style.display=this.files[0]?'block':'none'">
+                <div id="pk-full-file-name" style="display:none;font-size:0.85rem;color:#6366f1;text-align:center;margin-bottom:12px;font-weight:600;padding:8px;background:#eff6ff;border-radius:8px;"></div>
+                <div id="pk-full-error" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-bottom:12px;font-size:0.82rem;color:#dc2626;line-height:1.5;"></div>
+                <button onclick="window.Picking._subirPlanillaFull()"
+                    style="width:100%;padding:14px;background:#6366f1;color:white;border:none;border-radius:10px;font-size:0.95rem;cursor:pointer;font-weight:700;">
+                    <i class="fa-solid fa-upload"></i> Importar Planilla
+                </button>
+            </div>
 
-            <!-- Panel de acciones masivas -->
-            <div id="asig-acciones" style="display:none;position:sticky;bottom:0;background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;box-shadow:0 -4px 12px rgba(0,0,0,0.08);">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                    <span style="font-weight:700;color:#0f172a;font-size:0.9rem;">Acciones masivas</span>
-                    <span id="asig-count" style="font-size:0.8rem;background:#6366f120;color:#6366f1;border-radius:999px;padding:3px 10px;font-weight:700;">0 seleccionadas</span>
+            <!-- Archivos importados -->
+            <div style="background:white;border-radius:14px;padding:20px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                    <h4 style="margin:0;color:#0f172a;font-size:0.95rem;">Archivos Importados</h4>
+                    <button onclick="window.Picking.loadArchivosImportados()"
+                        style="padding:5px 10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;font-size:0.78rem;cursor:pointer;">
+                        <i class="fa-solid fa-rotate"></i>
+                    </button>
                 </div>
-                <div style="margin-bottom:10px;">
-                    <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Asignar auxiliar</label>
-                    <select id="asig-auxiliar"
-                        style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;background:white;">
-                        <option value="">Sin cambio de auxiliar</option>
-                    </select>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
-                    <button onclick="window.Picking._asignarSeleccionados(false)"
-                        style="padding:9px 6px;background:#6366f1;color:white;border:none;border-radius:8px;font-size:0.78rem;cursor:pointer;font-weight:600;text-align:center;">
-                        <i class="fa-solid fa-user-tag"></i><br>Solo Asignar
-                    </button>
-                    <button onclick="window.Picking._asignarSeleccionados(true)"
-                        style="padding:9px 6px;background:#22c55e;color:white;border:none;border-radius:8px;font-size:0.78rem;cursor:pointer;font-weight:600;text-align:center;">
-                        <i class="fa-solid fa-route"></i><br>Asignar + Ruta FEFO
-                    </button>
-                    <button onclick="window.Picking._soloGenerarRutas()"
-                        style="padding:9px 6px;background:#f59e0b;color:white;border:none;border-radius:8px;font-size:0.78rem;cursor:pointer;font-weight:600;text-align:center;">
-                        <i class="fa-solid fa-bolt"></i><br>Solo FEFO
-                    </button>
+                <div id="pk-archivos-list">
+                    <div style="text-align:center;padding:30px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i></div>
                 </div>
             </div>
         </div>`;
+    },
+
+    initPlanillaImport() {
+        this.loadArchivosImportados();
+    },
+
+    async loadArchivosImportados() {
+        const box = document.getElementById('pk-archivos-list');
+        if (!box) return;
+        try {
+            const res = await window.api.get('/planillas');
+            const archivos = res.data || [];
+            if (!archivos.length) {
+                box.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:20px;">No hay archivos importados.</p>';
+                return;
+            }
+            const estadoStyle = { Importada:'background:#fef9c3;color:#854d0e', EnPicking:'background:#dbeafe;color:#1e40af', Separado:'background:#dcfce7;color:#166534', EnCertificacion:'background:#ede9fe;color:#6d28d9', Certificada:'background:#d1fae5;color:#065f46', Anulada:'background:#fee2e2;color:#991b1b' };
+            box.innerHTML = archivos.map(a => {
+                const s = estadoStyle[a.estado] || 'background:#f1f5f9;color:#475569';
+                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #f1f5f9;flex-wrap:wrap;gap:8px;">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div style="width:40px;height:40px;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#6366f1;">
+                            <i class="fa-solid fa-file-csv" style="font-size:1.1rem;"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight:700;color:#334155;font-size:0.9rem;">${escHTML(a.nombre_archivo)}</div>
+                            <div style="font-size:0.75rem;color:#94a3b8;">${a.total_lineas?.toLocaleString()} líneas · ${a.total_planillas} planillas</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:0.72rem;padding:3px 10px;border-radius:99px;font-weight:700;${s}">${a.estado}</span>
+                        ${a.estado === 'Importada' ? `<button onclick="window.Picking._irAsignar(${a.id})"
+                            style="padding:5px 12px;background:#6366f1;color:white;border:none;border-radius:6px;font-size:0.78rem;cursor:pointer;font-weight:700;">
+                            <i class="fa-solid fa-users-gear"></i> Asignar
+                        </button>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        } catch(e) {
+            box.innerHTML = `<div style="color:#ef4444;padding:14px;">${escHTML(e.message)}</div>`;
+        }
+    },
+
+    _irAsignar(archivoId) {
+        // Navigate to asignación tab with this archivo pre-selected
+        if (typeof window.openSubView === 'function') {
+            window.openSubView('picking_asignacion', 'Asignación de Picking');
+        }
+        // Store archivo_id for the asignacion module to pick up
+        window._asignarArchivoId = archivoId;
+    },
+
+    async _subirPlanillaFull() {
+        const input = document.getElementById('planilla-file-input-full');
+        if (!input?.files?.length) return window.showToast('Selecciona un archivo', 'error');
+        const btn = document.querySelector('button[onclick*="_subirPlanillaFull"]');
+        const errBox = document.getElementById('pk-full-error');
+        if (errBox) errBox.style.display = 'none';
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Importando...'; }
+        const formData = new FormData();
+        formData.append('file', input.files[0]);
+        const token = localStorage.getItem('jwt_token') || localStorage.getItem('token');
+        const base = window.api?.baseUrl || '/api';
+        try {
+            const r = await fetch(`${base}/planillas/importar`, {
+                method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData,
+            });
+            const data = await r.json().catch(() => ({ error: true, message: 'Error de servidor (status ' + r.status + ')' }));
+            if (data.error) {
+                if (errBox) { errBox.style.display = 'block'; errBox.innerHTML = '<strong><i class="fa-solid fa-triangle-exclamation"></i> Error:</strong> ' + (data.message || 'Error desconocido') + (data.detail ? '<br><small style="font-family:monospace;">' + data.detail.class + '<br>' + data.detail.file + '</small>' : ''); }
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-upload"></i> Importar Planilla'; }
+                return;
+            }
+            window.showToast('✓ ' + (data.message || 'Planilla importada'), 'success');
+            input.value = '';
+            document.getElementById('pk-full-file-name').style.display = 'none';
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-upload"></i> Importar Planilla'; }
+            this.loadArchivosImportados();
+        } catch(e) {
+            if (errBox) { errBox.style.display = 'block'; errBox.innerHTML = '<strong>Error:</strong> ' + (e.message || 'Error de conexión'); }
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-upload"></i> Importar Planilla'; }
+        }
+    },
+
+    /* ── Asignación de Picking por Planilla ─────────────────────────────── */
+    getAsignacionHTML() {
+        return `
+        <div style="padding:12px; max-width:900px; margin:0 auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+                <div>
+                    <h3 style="margin:0;color:#0f172a;font-size:1rem;font-weight:800;">
+                        <i class="fa-solid fa-users-gear" style="color:#6366f1;margin-right:8px;"></i>Asignación de Picking
+                    </h3>
+                    <p style="color:#64748b;font-size:0.78rem;margin:3px 0 0;">Asigna planillas a auxiliares para iniciar la separación</p>
+                </div>
+            </div>
+
+            <!-- Tabs: Por Planilla | Por Orden -->
+            <div style="display:flex;gap:4px;border-bottom:2px solid #e2e8f0;margin-bottom:16px;">
+                <button id="asig-tab-planilla" onclick="window.Picking._asigTab('planilla')"
+                    style="padding:8px 16px;border:none;background:none;font-weight:700;color:#6366f1;border-bottom:3px solid #6366f1;cursor:pointer;font-size:0.87rem;">
+                    <i class="fa-solid fa-file-lines"></i> Por Planilla
+                </button>
+                <button id="asig-tab-orden" onclick="window.Picking._asigTab('orden')"
+                    style="padding:8px 16px;border:none;background:none;font-weight:600;color:#94a3b8;border-bottom:3px solid transparent;cursor:pointer;font-size:0.87rem;">
+                    <i class="fa-solid fa-list-check"></i> Por Orden
+                </button>
+            </div>
+
+            <!-- Panel Por Planilla -->
+            <div id="asig-panel-planilla">
+                <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:18px;margin-bottom:14px;">
+                    <div style="font-size:0.78rem;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:12px;letter-spacing:.5px;">
+                        <i class="fa-solid fa-sliders"></i> Configuración de Asignación
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                        <div>
+                            <label style="font-size:0.75rem;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Archivo Planilla *</label>
+                            <select id="asig-archivo-id" onchange="window.Picking._cargarPlanillasDelArchivo()"
+                                style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.84rem;background:white;box-sizing:border-box;">
+                                <option value="">Seleccione archivo...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:0.75rem;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Auxiliar *</label>
+                            <select id="asig-aux-planilla"
+                                style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.84rem;background:white;box-sizing:border-box;">
+                                <option value="">Seleccione auxiliar...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:0.75rem;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Modo de Separación</label>
+                            <select id="asig-modo"
+                                style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.84rem;background:white;box-sizing:border-box;">
+                                <option value="por_planilla">Por Planilla (una orden por planilla)</option>
+                                <option value="consolidado">Consolidado (suma todas en una sola orden)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:0.75rem;font-weight:600;color:#64748b;display:block;margin-bottom:4px;">Filtro por Pasillo (opcional)</label>
+                            <input type="text" id="asig-filtro-pasillo" placeholder="Ej: A, PA-01..."
+                                style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.84rem;box-sizing:border-box;">
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:12px;">
+                        <label style="font-size:0.75rem;font-weight:600;color:#64748b;display:block;margin-bottom:6px;">Planillas a asignar (selecciona las que deseas enviar a separar):</label>
+                        <div id="asig-planillas-check" style="display:flex;flex-wrap:wrap;gap:6px;min-height:36px;padding:8px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+                            <span style="color:#94a3b8;font-size:0.82rem;">Seleccione un archivo primero...</span>
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <button onclick="window.Picking._asignarPorPlanilla(false)"
+                            style="padding:11px;background:#6366f1;color:white;border:none;border-radius:8px;font-size:0.87rem;cursor:pointer;font-weight:700;">
+                            <i class="fa-solid fa-user-tag"></i> Asignar
+                        </button>
+                        <button onclick="window.Picking._asignarPorPlanilla(true)"
+                            style="padding:11px;background:#22c55e;color:white;border:none;border-radius:8px;font-size:0.87rem;cursor:pointer;font-weight:700;">
+                            <i class="fa-solid fa-route"></i> Asignar + Ruta FEFO
+                        </button>
+                    </div>
+                    <div id="asig-planilla-result" style="display:none;margin-top:12px;"></div>
+                </div>
+            </div>
+
+            <!-- Panel Por Orden (existing behavior) -->
+            <div id="asig-panel-orden" style="display:none;">
+                <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:14px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                        <div>
+                            <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Estado</label>
+                            <select id="asig-estado" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;background:white;box-sizing:border-box;">
+                                <option value="Pendiente">Pendientes</option>
+                                <option value="EnProceso">En Proceso</option>
+                                <option value="">Todos</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Planilla</label>
+                            <input type="text" id="asig-f-cliente" placeholder="Número planilla..."
+                                style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Pasillo</label>
+                            <input type="text" id="asig-f-pasillo" placeholder="Ej: A, B..."
+                                style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="font-size:0.7rem;font-weight:600;color:#64748b;display:block;margin-bottom:3px;">Marca</label>
+                            <select id="asig-f-marca" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.83rem;background:white;box-sizing:border-box;">
+                                <option value="">Todas las marcas</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button onclick="window.Picking.loadAsignacion()"
+                        style="width:100%;padding:8px;background:#0f172a;color:white;border:none;border-radius:8px;font-size:0.85rem;cursor:pointer;font-weight:600;">
+                        <i class="fa-solid fa-magnifying-glass"></i> Buscar Órdenes
+                    </button>
+                </div>
+                <div id="asig-ordenes" style="margin-bottom:14px;"></div>
+                <div id="asig-acciones" style="display:none;position:sticky;bottom:0;background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;box-shadow:0 -4px 12px rgba(0,0,0,0.08);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <span style="font-weight:700;color:#0f172a;font-size:0.9rem;">Acciones masivas</span>
+                        <span id="asig-count" style="font-size:0.8rem;background:#6366f120;color:#6366f1;border-radius:999px;padding:3px 10px;font-weight:700;">0 seleccionadas</span>
+                    </div>
+                    <div style="margin-bottom:10px;">
+                        <select id="asig-auxiliar" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;background:white;">
+                            <option value="">Sin cambio de auxiliar</option>
+                        </select>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                        <button onclick="window.Picking._asignarSeleccionados(false)"
+                            style="padding:9px 6px;background:#6366f1;color:white;border:none;border-radius:8px;font-size:0.78rem;cursor:pointer;font-weight:600;text-align:center;">
+                            <i class="fa-solid fa-user-tag"></i><br>Solo Asignar
+                        </button>
+                        <button onclick="window.Picking._asignarSeleccionados(true)"
+                            style="padding:9px 6px;background:#22c55e;color:white;border:none;border-radius:8px;font-size:0.78rem;cursor:pointer;font-weight:600;text-align:center;">
+                            <i class="fa-solid fa-route"></i><br>Asignar + FEFO
+                        </button>
+                        <button onclick="window.Picking._soloGenerarRutas()"
+                            style="padding:9px 6px;background:#f59e0b;color:white;border:none;border-radius:8px;font-size:0.78rem;cursor:pointer;font-weight:600;text-align:center;">
+                            <i class="fa-solid fa-bolt"></i><br>Solo FEFO
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    },
+
+    _asigTab(tab) {
+        ['planilla','orden'].forEach(t => {
+            const panel = document.getElementById('asig-panel-' + t);
+            const btn   = document.getElementById('asig-tab-' + t);
+            if (!panel || !btn) return;
+            const active = t === tab;
+            panel.style.display = active ? 'block' : 'none';
+            btn.style.color = active ? '#6366f1' : '#94a3b8';
+            btn.style.borderBottom = active ? '3px solid #6366f1' : '3px solid transparent';
+            btn.style.fontWeight = active ? '700' : '600';
+        });
+    },
+
+    async _cargarPlanillasDelArchivo() {
+        const archivoId = document.getElementById('asig-archivo-id')?.value;
+        const box = document.getElementById('asig-planillas-check');
+        if (!box) return;
+        if (!archivoId) { box.innerHTML = '<span style="color:#94a3b8;font-size:0.82rem;">Seleccione un archivo primero...</span>'; return; }
+        try {
+            const res = await window.api.get('/planillas/' + archivoId);
+            const planillas = res.data?.planillas || [];
+            if (!planillas.length) { box.innerHTML = '<span style="color:#94a3b8;">Sin planillas</span>'; return; }
+            box.innerHTML = planillas.map(p =>
+                `<label style="display:flex;align-items:center;gap:6px;background:white;border:1px solid #e2e8f0;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:0.82rem;">
+                    <input type="checkbox" value="${escHTML(p.numero_planilla)}" checked style="cursor:pointer;">
+                    <span style="font-weight:600;color:#334155;">Planilla ${escHTML(p.numero_planilla)}</span>
+                    <span style="color:#94a3b8;font-size:0.75rem;">(${p.total_unidades?.toLocaleString() || 0} uds)</span>
+                    ${p.estado_cert && p.estado_cert !== 'Pendiente' ? `<span style="font-size:0.7rem;background:#dcfce7;color:#16a34a;padding:1px 6px;border-radius:99px;">${p.estado_cert}</span>` : ''}
+                </label>`
+            ).join('') + `<button onclick="window.Picking._toggleAllPlanillas()"
+                style="padding:4px 10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;font-size:0.78rem;cursor:pointer;align-self:center;">
+                Todos/Ninguno</button>`;
+        } catch(e) { box.innerHTML = `<span style="color:#ef4444;">${escHTML(e.message)}</span>`; }
+    },
+
+    _toggleAllPlanillas() {
+        const checks = document.querySelectorAll('#asig-planillas-check input[type=checkbox]');
+        const allChecked = Array.from(checks).every(c => c.checked);
+        checks.forEach(c => c.checked = !allChecked);
+    },
+
+    async _asignarPorPlanilla(conRuta) {
+        const archivoId  = parseInt(document.getElementById('asig-archivo-id')?.value || '0');
+        const auxiliarId = parseInt(document.getElementById('asig-aux-planilla')?.value || '0');
+        const modo       = document.getElementById('asig-modo')?.value || 'por_planilla';
+        const pasillo    = document.getElementById('asig-filtro-pasillo')?.value?.trim() || '';
+        const result     = document.getElementById('asig-planilla-result');
+
+        if (!archivoId)  return window.showToast('Seleccione el archivo de planilla', 'error');
+        if (!auxiliarId) return window.showToast('Seleccione el auxiliar', 'error');
+
+        const planillasSeleccionadas = Array.from(
+            document.querySelectorAll('#asig-planillas-check input[type=checkbox]:checked')
+        ).map(c => c.value);
+
+        if (!planillasSeleccionadas.length) return window.showToast('Seleccione al menos una planilla', 'error');
+
+        const payload = { archivo_id: archivoId, auxiliar_id: auxiliarId, modo, planillas: planillasSeleccionadas, filtro_pasillo: pasillo };
+        if (result) { result.style.display = 'block'; result.innerHTML = '<div style="text-align:center;padding:12px;color:#6366f1;"><i class="fa-solid fa-spinner fa-spin"></i> Creando órdenes...</div>'; }
+
+        try {
+            const data = await window.api.post('/planillas/asignar', payload);
+            if (result) {
+                result.innerHTML = `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;color:#166534;">
+                    <i class="fa-solid fa-circle-check"></i> <strong>${data.message || 'Asignado'}</strong>
+                </div>`;
+            }
+            if (conRuta) {
+                // Generate FEFO routes for created orders
+                for (const id of (data.data?.orden_ids || [])) {
+                    await window.api.post(`/picking/${id}/generar-ruta`, {}).catch(() => {});
+                }
+                window.showToast('Órdenes creadas y rutas FEFO generadas', 'success');
+            } else {
+                window.showToast(data.message || 'Órdenes creadas', 'success');
+            }
+        } catch(e) {
+            if (result) {
+                result.innerHTML = `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;color:#dc2626;">
+                    <i class="fa-solid fa-triangle-exclamation"></i> ${escHTML(e.message)}
+                </div>`;
+            }
+        }
     },
 
     _asigSelected: [],
@@ -1126,6 +1549,68 @@ window.Picking = {
         }
     },
 
-    init() { this.loadDashboard(); this.loadOrdenes(); },
+    /* ── Inicializar Asignación (poblar selects + pre-selección por archivo) */
+    async initAsignacion() {
+        // Load archivos and personal for "Por Planilla" tab in parallel
+        try {
+            const [archivosRes, personalRes] = await Promise.all([
+                window.api.get('/planillas').catch(() => ({ data: [] })),
+                window.api.get('/param/personal').catch(() => ({ data: [] })),
+            ]);
+            const archivos  = archivosRes?.data || [];
+            const personal  = personalRes?.data || personalRes || [];
+
+            // Populate archivo select (only active picking states)
+            const archSel = document.getElementById('asig-archivo-id');
+            if (archSel) {
+                const opciones = archivos.filter(a => ['Importada','EnPicking'].includes(a.estado));
+                if (opciones.length) {
+                    archSel.innerHTML = '<option value="">Seleccione archivo...</option>' +
+                        opciones.map(a => `<option value="${parseInt(a.id)}">${escHTML(a.nombre_archivo)} — ${a.estado}</option>`).join('');
+                }
+            }
+
+            // Populate auxiliar select for planilla tab
+            const auxSel = document.getElementById('asig-aux-planilla');
+            if (auxSel && personal.length) {
+                auxSel.innerHTML = '<option value="">Seleccione auxiliar...</option>' +
+                    personal.map(p => `<option value="${parseInt(p.id)}">${escHTML(p.nombre)}${p.cargo ? ' — ' + escHTML(p.cargo) : ''}</option>`).join('');
+            }
+
+            // Also populate auxiliar select for "Por Orden" tab
+            const auxSelOrden = document.getElementById('asig-auxiliar');
+            if (auxSelOrden && personal.length) {
+                auxSelOrden.innerHTML = '<option value="">Sin cambio de auxiliar</option>' +
+                    personal.map(p => `<option value="${parseInt(p.id)}">${escHTML(p.nombre)}${p.cargo ? ' — ' + escHTML(p.cargo) : ''}</option>`).join('');
+            }
+
+            // If navigated from "Asignar" button in import page, pre-select that archivo
+            if (window._asignarArchivoId) {
+                if (archSel) {
+                    archSel.value = String(window._asignarArchivoId);
+                    // If the option wasn't available (might be in a different state), add it
+                    if (!archSel.value || archSel.value !== String(window._asignarArchivoId)) {
+                        const found = archivos.find(a => a.id == window._asignarArchivoId);
+                        if (found) {
+                            const opt = document.createElement('option');
+                            opt.value = found.id;
+                            opt.textContent = found.nombre_archivo + ' — ' + found.estado;
+                            archSel.appendChild(opt);
+                            archSel.value = String(found.id);
+                        }
+                    }
+                    await this._cargarPlanillasDelArchivo();
+                }
+                window._asignarArchivoId = null;
+            }
+        } catch(e) {
+            console.error('initAsignacion error:', e);
+        }
+
+        // Also load the "Por Orden" tab data
+        this.loadAsignacion();
+    },
+
+    init() { this.loadDashboard(); this.loadPlanillasProgreso(); },
     crearBatch(a) { this.abrirImportar(); },
 };

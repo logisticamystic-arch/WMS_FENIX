@@ -239,6 +239,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
 
     // Módulo: Planillas (Certificación por Cliente)
     $group->get('/planillas', [\App\Controllers\PlanillaController::class, 'listar']);
+    $group->get('/planillas/progreso', [\App\Controllers\PlanillaController::class, 'planillaProgreso']);
+    $group->post('/planillas/asignar', [\App\Controllers\PlanillaController::class, 'asignar']);
     $group->get('/planillas/cert/dashboard', [\App\Controllers\PlanillaController::class, 'dashboard']);
     $group->post('/planillas/importar', [\App\Controllers\PlanillaController::class, 'importar']);
     $group->post('/planillas/cert/iniciar', [\App\Controllers\PlanillaController::class, 'iniciarCertificacion']);

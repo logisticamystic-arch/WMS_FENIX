@@ -427,9 +427,10 @@ class PlanillaController extends BaseController
         $params = $r->getQueryParams();
         $archivoId = (int)($params['archivo_id'] ?? 0);
 
-        // Archivos recientes
+        // Only show archivos that are Separado or further (picking complete)
         $archivos = DB::table('archivos_planilla')
             ->where('empresa_id', $user->empresa_id)
+            ->whereIn('estado', ['Separado', 'EnCertificacion', 'Certificada'])
             ->orderBy('created_at', 'desc')
             ->limit(10)
             ->get();
@@ -530,6 +531,282 @@ class PlanillaController extends BaseController
 
         $cert->detalles = $detalles;
         return $this->ok($res, $cert);
+    }
+
+    // ── GET /api/planillas/progreso ───────────────────────────────────────────
+    /** Returns per-planilla picking progress for the supervisor dashboard. */
+    public function planillaProgreso(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $params = $r->getQueryParams();
+        $archivoId = (int)($params['archivo_id'] ?? 0);
+
+        $q = DB::table('archivos_planilla')
+            ->where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->orderBy('created_at', 'desc');
+        if ($archivoId) $q->where('id', $archivoId);
+
+        $archivos = $q->get();
+
+        $result = $archivos->map(function ($archivo) {
+            // Count distinct planilla numbers
+            $planillas = DB::table('lineas_planilla')
+                ->where('archivo_id', $archivo->id)
+                ->select(
+                    'numero_planilla',
+                    DB::raw('COUNT(*) as total_lineas'),
+                    DB::raw('SUM(cantidad) as total_unidades')
+                )
+                ->groupBy('numero_planilla')
+                ->get();
+
+            // Count picking orders for this archivo
+            $ordenes = DB::table('orden_pickings')
+                ->where('archivo_id', $archivo->id)
+                ->select('planilla_numero', 'estado',
+                    DB::raw('COUNT(*) as total'),
+                    DB::raw('COUNT(DISTINCT auxiliar_id) as auxiliares'))
+                ->groupBy('planilla_numero', 'estado')
+                ->get();
+
+            $ordensByPlanilla = [];
+            foreach ($ordenes as $o) {
+                $num = $o->planilla_numero ?? 'sin_planilla';
+                if (!isset($ordensByPlanilla[$num])) {
+                    $ordensByPlanilla[$num] = ['total' => 0, 'completadas' => 0, 'en_proceso' => 0];
+                }
+                $ordensByPlanilla[$num]['total'] += $o->total;
+                if ($o->estado === 'Completada') $ordensByPlanilla[$num]['completadas'] += $o->total;
+                if ($o->estado === 'EnProceso')  $ordensByPlanilla[$num]['en_proceso']  += $o->total;
+            }
+
+            $planillasConProgreso = $planillas->map(function ($p) use ($ordensByPlanilla) {
+                $stats = $ordensByPlanilla[$p->numero_planilla] ?? null;
+                $pct = 0;
+                if ($stats && $stats['total'] > 0) {
+                    $pct = round(($stats['completadas'] / $stats['total']) * 100);
+                }
+                return [
+                    'numero_planilla' => $p->numero_planilla,
+                    'total_lineas'    => $p->total_lineas,
+                    'total_unidades'  => $p->total_unidades,
+                    'ordenes_total'   => $stats['total']       ?? 0,
+                    'ordenes_comp'    => $stats['completadas'] ?? 0,
+                    'ordenes_proc'    => $stats['en_proceso']  ?? 0,
+                    'pct_completado'  => $pct,
+                    'asignada'        => $stats !== null,
+                ];
+            });
+
+            $totalLineas    = $planillas->sum('total_lineas');
+            $ordenesTotales = collect(array_values($ordensByPlanilla))->sum('total');
+            $ordenesComp    = collect(array_values($ordensByPlanilla))->sum('completadas');
+
+            return [
+                'archivo'         => $archivo,
+                'planillas'       => $planillasConProgreso->values(),
+                'pct_archivo'     => $ordenesTotales > 0
+                    ? round(($ordenesComp / $ordenesTotales) * 100) : 0,
+                'total_unidades'  => $planillas->sum('total_unidades'),
+                'total_lineas'    => $totalLineas,
+            ];
+        });
+
+        return $this->ok($res, $result->values());
+    }
+
+    // ── POST /api/planillas/asignar ───────────────────────────────────────────
+    /** Creates picking orders from planilla lines and assigns to an auxiliar. */
+    public function asignar(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        if (!$this->isSupervisorOrAbove($user)) {
+            return $this->forbidden($res, 'Solo supervisores pueden asignar picking');
+        }
+
+        $data = $r->getParsedBody() ?? [];
+        $archivoId    = (int)($data['archivo_id'] ?? 0);
+        $planillas    = $data['planillas'] ?? [];   // array of numero_planilla strings
+        $auxiliarId   = (int)($data['auxiliar_id'] ?? 0);
+        $modo         = $data['modo'] ?? 'por_planilla'; // 'consolidado' | 'por_planilla'
+        $filtroMarca  = trim($data['filtro_marca']    ?? '');
+        $filtroPasillo= trim($data['filtro_pasillo']  ?? '');
+
+        if (!$archivoId) return $this->error($res, 'archivo_id requerido');
+        if (!$auxiliarId) return $this->error($res, 'auxiliar_id requerido');
+
+        $archivo = DB::table('archivos_planilla')
+            ->where('empresa_id', $user->empresa_id)
+            ->find($archivoId);
+        if (!$archivo) return $this->notFound($res, 'Archivo no encontrado');
+
+        // Build lines query
+        $qLineas = DB::table('lineas_planilla')
+            ->where('archivo_id', $archivoId);
+        if (!empty($planillas)) {
+            $qLineas->whereIn('numero_planilla', $planillas);
+        }
+        if ($filtroMarca) {
+            $qLineas->where('asesor', 'like', "%{$filtroMarca}%");
+        }
+
+        $lineas = $qLineas->get();
+        if ($lineas->isEmpty()) {
+            return $this->error($res, 'No hay líneas que coincidan con los filtros seleccionados');
+        }
+
+        try {
+            DB::beginTransaction();
+            $now = date('Y-m-d H:i:s');
+            $hoy = date('Y-m-d');
+            $creadas = [];
+
+            if ($modo === 'consolidado') {
+                // One order for all selected planillas
+                $numeroOrden = 'PK-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
+                $planillaLabel = count($planillas) > 0
+                    ? implode(',', array_slice($planillas, 0, 3)) . (count($planillas) > 3 ? '...' : '')
+                    : 'CONSOLIDADO';
+
+                $ordenId = DB::table('orden_pickings')->insertGetId([
+                    'empresa_id'       => $user->empresa_id,
+                    'sucursal_id'      => $user->sucursal_id,
+                    'numero_orden'     => $numeroOrden,
+                    'cliente'          => 'Consolidado ' . $planillaLabel,
+                    'planilla_numero'  => $planillaLabel,
+                    'archivo_id'       => $archivoId,
+                    'auxiliar_id'      => $auxiliarId,
+                    'estado'           => 'Pendiente',
+                    'prioridad'        => 5,
+                    'fecha_movimiento' => $hoy,
+                    'hora_inicio'      => date('H:i:s'),
+                    'created_at'       => $now,
+                    'updated_at'       => $now,
+                ]);
+
+                // Sum quantities by product code/name
+                $sumados = [];
+                foreach ($lineas as $l) {
+                    $key = $l->producto_codigo ?: $l->producto_nombre;
+                    if (!isset($sumados[$key])) {
+                        $sumados[$key] = ['nombre' => $l->producto_nombre, 'codigo' => $l->producto_codigo, 'cantidad' => 0];
+                    }
+                    $sumados[$key]['cantidad'] += $l->cantidad;
+                }
+
+                foreach ($sumados as $item) {
+                    $productoId = $this->_resolveProducto($user->empresa_id, $item['codigo'], $item['nombre']);
+                    DB::table('picking_detalles')->insert([
+                        'orden_picking_id'    => $ordenId,
+                        'producto_id'         => $productoId ?? 1,
+                        'ubicacion_id'        => 0,
+                        'cantidad_solicitada' => (int)ceil($item['cantidad']),
+                        'cantidad_pickeada'   => 0,
+                        'estado'              => 'Pendiente',
+                        'created_at'          => $now,
+                        'updated_at'          => $now,
+                    ]);
+                }
+                $creadas[] = $ordenId;
+
+            } else {
+                // One order per planilla number
+                $porPlanilla = [];
+                foreach ($lineas as $l) {
+                    $porPlanilla[$l->numero_planilla][] = $l;
+                }
+
+                foreach ($porPlanilla as $numPlanilla => $lns) {
+                    // Check if order already exists for this planilla + archivo
+                    $existe = DB::table('orden_pickings')
+                        ->where('archivo_id', $archivoId)
+                        ->where('planilla_numero', $numPlanilla)
+                        ->exists();
+                    if ($existe) continue;
+
+                    $numeroOrden = 'PK-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
+                    $ordenId = DB::table('orden_pickings')->insertGetId([
+                        'empresa_id'       => $user->empresa_id,
+                        'sucursal_id'      => $user->sucursal_id,
+                        'numero_orden'     => $numeroOrden,
+                        'cliente'          => 'Planilla ' . $numPlanilla,
+                        'planilla_numero'  => $numPlanilla,
+                        'archivo_id'       => $archivoId,
+                        'auxiliar_id'      => $auxiliarId,
+                        'estado'           => 'Pendiente',
+                        'prioridad'        => 5,
+                        'fecha_movimiento' => $hoy,
+                        'hora_inicio'      => date('H:i:s'),
+                        'created_at'       => $now,
+                        'updated_at'       => $now,
+                    ]);
+
+                    // Sum by product within this planilla
+                    $sumados = [];
+                    foreach ($lns as $l) {
+                        $key = $l->producto_codigo ?: $l->producto_nombre;
+                        if (!isset($sumados[$key])) {
+                            $sumados[$key] = ['nombre' => $l->producto_nombre, 'codigo' => $l->producto_codigo, 'cantidad' => 0];
+                        }
+                        $sumados[$key]['cantidad'] += $l->cantidad;
+                    }
+
+                    foreach ($sumados as $item) {
+                        $productoId = $this->_resolveProducto($user->empresa_id, $item['codigo'], $item['nombre']);
+                        DB::table('picking_detalles')->insert([
+                            'orden_picking_id'    => $ordenId,
+                            'producto_id'         => $productoId ?? 1,
+                            'ubicacion_id'        => 0,
+                            'cantidad_solicitada' => (int)ceil($item['cantidad']),
+                            'cantidad_pickeada'   => 0,
+                            'estado'              => 'Pendiente',
+                            'created_at'          => $now,
+                            'updated_at'          => $now,
+                        ]);
+                    }
+                    $creadas[] = $ordenId;
+                }
+            }
+
+            if (empty($creadas)) {
+                DB::rollBack();
+                return $this->error($res, 'Todas las planillas seleccionadas ya tienen órdenes asignadas');
+            }
+
+            // Mark archivo as EnPicking
+            DB::table('archivos_planilla')->where('id', $archivoId)
+                ->update(['estado' => 'EnPicking', 'updated_at' => $now]);
+
+            DB::commit();
+
+            return $this->created($res, [
+                'ordenes_creadas' => count($creadas),
+                'orden_ids'       => $creadas,
+            ], count($creadas) . ' orden(es) de picking creada(s) correctamente');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            if (function_exists('wmsLog')) wmsLog('ERROR', 'Planilla asignar: ' . $e->getMessage());
+            return $this->error($res, 'Error al asignar: ' . $e->getMessage());
+        }
+    }
+
+    /** Try to find producto_id by codigo or name. Returns null if not found. */
+    private function _resolveProducto(int $empresaId, ?string $codigo, string $nombre): ?int
+    {
+        if ($codigo) {
+            $p = DB::table('productos')->where('empresa_id', $empresaId)
+                ->where('codigo_interno', $codigo)->value('id');
+            if ($p) return $p;
+            // Try EAN
+            $p = DB::table('producto_eans')->where('codigo_ean', $codigo)->value('producto_id');
+            if ($p) return $p;
+        }
+        // Fuzzy name match
+        $p = DB::table('productos')->where('empresa_id', $empresaId)
+            ->whereRaw('LOWER(nombre) = LOWER(?)', [$nombre])->value('id');
+        return $p ?: null;
     }
 
     // ── Helper: find column index in header ──────────────────────────────────
