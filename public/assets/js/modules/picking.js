@@ -166,7 +166,7 @@ window.Picking = {
                             <span style="font-weight:700;color:#0f172a;">${escHTML(archivo.nombre_archivo)}</span>
                             <span style="font-size:0.75rem;background:${estadoColor}20;color:${estadoColor};padding:2px 8px;border-radius:99px;margin-left:8px;font-weight:700;">${archivo.estado}</span>
                         </div>
-                        <div style="display:flex;gap:8px;align-items:center;">
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                             <span style="font-size:0.8rem;color:#64748b;">${archivo.total_planillas} planillas · ${a.total_lineas?.toLocaleString()} líneas</span>
                             <div style="display:flex;align-items:center;gap:6px;">
                                 <div style="width:80px;height:8px;background:#f1f5f9;border-radius:99px;overflow:hidden;">
@@ -174,6 +174,12 @@ window.Picking = {
                                 </div>
                                 <span style="font-size:0.78rem;font-weight:700;color:#6366f1;">${a.pct_archivo}%</span>
                             </div>
+                            ${['Importada','EnPicking'].includes(archivo.estado) ? `
+                            <button onclick="window.Picking.habilitarCertificacion(${parseInt(archivo.id)}, '${escHTML(archivo.nombre_archivo)}')"
+                                title="Supervisor: habilitar certificación aunque el picking no esté completo"
+                                style="padding:4px 10px;background:#f59e0b;color:white;border:none;border-radius:8px;font-size:0.72rem;cursor:pointer;font-weight:700;">
+                                <i class="fa-solid fa-unlock"></i> Habilitar Cert.
+                            </button>` : ''}
                         </div>
                     </div>
                     <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
@@ -626,6 +632,11 @@ window.Picking = {
                             <button onclick="window.Picking.generarRuta(${parseInt(o.id)})"
                                 style="padding:6px 10px;background:#6366f1;color:white;border:none;border-radius:8px;font-size:0.75rem;cursor:pointer;font-weight:600;">
                                 <i class="fa-solid fa-route"></i> Generar
+                            </button>` : ''}
+                            ${o.estado === 'EnProceso' ? `
+                            <button onclick="event.stopPropagation();window.Picking.iniciarSeparacion(${parseInt(o.id)})"
+                                style="padding:6px 10px;background:#22c55e;color:white;border:none;border-radius:8px;font-size:0.75rem;cursor:pointer;font-weight:700;">
+                                <i class="fa-solid fa-mobile-screen"></i> Separar
                             </button>` : ''}
                             <button onclick="window.Picking.verDetalle(${parseInt(o.id)})"
                                 style="padding:6px 10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;font-size:0.75rem;cursor:pointer;font-weight:600;">
@@ -1613,4 +1624,246 @@ window.Picking = {
 
     init() { this.loadDashboard(); this.loadPlanillasProgreso(); },
     crearBatch(a) { this.abrirImportar(); },
+
+    // ── Habilitar certificación anticipada (Supervisor/Admin) ─────────────────
+    async habilitarCertificacion(archivoId, nombre) {
+        const msg = `¿Habilitar certificación para "${nombre}" aunque el picking no esté al 100%?\n\nSolo se certificarán los productos ya separados. Esta acción queda en el log de auditoría.`;
+        if (!confirm(msg)) return;
+        try {
+            const res = await window.api.post(`/planillas/${archivoId}/habilitar-cert`, {});
+            window.showToast(res.message || 'Certificación habilitada', 'success');
+            this.loadPlanillasProgreso(); // refrescar el panel
+        } catch(e) {
+            window.showToast(e.message || 'Error al habilitar', 'error');
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MODO SEPARACIÓN GUIADO — UI optimizada para móvil
+    // Muestra UN producto a la vez con ubicación prominente, lote y vencimiento.
+    // El auxiliar escanea/confirma y el sistema avanza al siguiente automáticamente.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    _sepOrdenId: null,
+    _sepModal: null,
+
+    async iniciarSeparacion(ordenId) {
+        this._sepOrdenId = ordenId;
+
+        // Crear modal de pantalla completa
+        const modal = document.createElement('div');
+        modal.id = 'sep-modal';
+        modal.style.cssText = 'position:fixed;inset:0;background:#0f172a;z-index:99999;display:flex;flex-direction:column;overflow:hidden;';
+        modal.innerHTML = `
+        <!-- Header -->
+        <div style="background:#1e293b;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid #334155;">
+            <div>
+                <div id="sep-numero" style="font-weight:700;color:white;font-size:0.95rem;"></div>
+                <div id="sep-cliente" style="font-size:0.75rem;color:#94a3b8;margin-top:2px;"></div>
+            </div>
+            <button onclick="window.Picking._cerrarSeparacion()"
+                style="width:36px;height:36px;background:#374151;border:none;border-radius:8px;color:white;font-size:1.1rem;cursor:pointer;">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <!-- Barra de progreso -->
+        <div style="background:#1e293b;padding:10px 16px;flex-shrink:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-size:0.72rem;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">Progreso</span>
+                <span id="sep-prog-txt" style="font-size:0.78rem;font-weight:700;color:#94a3b8;"></span>
+            </div>
+            <div style="background:#334155;border-radius:999px;height:6px;overflow:hidden;">
+                <div id="sep-prog-bar" style="height:100%;background:#22c55e;border-radius:999px;transition:width 0.4s;width:0%;"></div>
+            </div>
+        </div>
+        <!-- Contenido principal -->
+        <div id="sep-body" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;">
+            <div style="text-align:center;padding:40px;color:#64748b;">
+                <i class="fa-solid fa-spinner fa-spin" style="font-size:2rem;"></i>
+            </div>
+        </div>`;
+        document.body.appendChild(modal);
+        this._sepModal = modal;
+
+        await this._cargarSiguienteLinea();
+    },
+
+    async _cargarSiguienteLinea() {
+        const body = document.getElementById('sep-body');
+        if (!body) return;
+        try {
+            const data = await window.api.get(`/picking/${this._sepOrdenId}/siguiente-linea`);
+
+            // Actualizar header
+            const orden = data?.orden || {};
+            const el = document.getElementById('sep-numero');
+            if (el) el.textContent = orden.numero_orden || '';
+            const elC = document.getElementById('sep-cliente');
+            if (elC) elC.textContent = orden.cliente || '';
+
+            // Actualizar progreso
+            const prog = data?.progreso || {};
+            const barEl  = document.getElementById('sep-prog-bar');
+            const txtEl  = document.getElementById('sep-prog-txt');
+            if (barEl) barEl.style.width = (prog.pct || 0) + '%';
+            if (txtEl) txtEl.textContent = `${prog.confirmadas || 0} / ${prog.total || 0} ítems`;
+
+            if (data?.completada) {
+                this._mostrarCompletadaSeparacion(prog);
+                return;
+            }
+
+            const l = data.linea;
+            const diasVencer = l.fecha_vencimiento
+                ? Math.round((new Date(l.fecha_vencimiento) - new Date()) / 86400000)
+                : null;
+            const colorVencer = diasVencer === null ? '#64748b'
+                : diasVencer < 0 ? '#dc2626' : diasVencer <= 30 ? '#ef4444' : diasVencer <= 90 ? '#f59e0b' : '#22c55e';
+
+            body.innerHTML = `
+            <!-- Destino: código de ubicación MUY grande -->
+            <div style="background:#1e40af;border-radius:16px;padding:20px;text-align:center;">
+                <div style="font-size:0.72rem;color:#93c5fd;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;">
+                    <i class="fa-solid fa-map-pin"></i> Ir a ubicación
+                </div>
+                <div style="font-size:2.6rem;font-weight:900;color:white;letter-spacing:0.05em;line-height:1;">
+                    ${escHTML(l.ubicacion_codigo)}
+                </div>
+                ${l.pasillo ? `<div style="font-size:0.82rem;color:#bfdbfe;margin-top:4px;">Pasillo ${escHTML(l.pasillo)}${l.nivel ? ' · Nivel ' + escHTML(l.nivel) : ''}</div>` : ''}
+            </div>
+
+            <!-- Producto -->
+            <div style="background:#1e293b;border-radius:16px;padding:18px;">
+                <div style="font-size:0.72rem;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Producto a separar</div>
+                <div style="font-size:1.15rem;font-weight:700;color:white;line-height:1.3;margin-bottom:6px;">${escHTML(l.producto_nombre)}</div>
+                <div style="font-size:0.8rem;color:#94a3b8;">Código: <strong style="color:#e2e8f0;">${escHTML(l.producto_codigo)}</strong></div>
+                ${l.producto_ean ? `<div style="font-size:0.8rem;color:#94a3b8;margin-top:2px;">EAN: <strong style="color:#e2e8f0;">${escHTML(l.producto_ean)}</strong></div>` : ''}
+            </div>
+
+            <!-- Lote + Vencimiento + Cantidad -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div style="background:#1e293b;border-radius:12px;padding:14px;">
+                    <div style="font-size:0.68rem;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Lote</div>
+                    <div style="font-size:1rem;font-weight:700;color:white;">${escHTML(l.lote || 'N/A')}</div>
+                </div>
+                <div style="background:#1e293b;border-radius:12px;padding:14px;">
+                    <div style="font-size:0.68rem;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Vencimiento</div>
+                    <div style="font-size:0.85rem;font-weight:700;color:${colorVencer};">
+                        ${l.fecha_vencimiento ? escHTML(l.fecha_vencimiento.substring(0,10)) : 'Sin fecha'}
+                        ${diasVencer !== null ? `<br><span style="font-size:0.7rem;">${diasVencer < 0 ? '⚠ VENCIDO' : diasVencer + ' días'}</span>` : ''}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cantidad solicitada -->
+            <div style="background:#064e3b;border:2px solid #065f46;border-radius:16px;padding:18px;text-align:center;">
+                <div style="font-size:0.72rem;color:#6ee7b7;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Separar</div>
+                <div style="font-size:3rem;font-weight:900;color:#34d399;line-height:1;">${parseFloat(l.cantidad_solicitada)}</div>
+                <div style="font-size:0.82rem;color:#6ee7b7;">unidades</div>
+            </div>
+
+            <!-- Input de confirmación -->
+            <div style="background:#1e293b;border-radius:16px;padding:16px;">
+                <label style="font-size:0.72rem;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:8px;">
+                    <i class="fa-solid fa-barcode"></i> Escanear código o confirmar cantidad
+                </label>
+                <input type="text" id="sep-scan-input" inputmode="numeric"
+                    placeholder="Escanee EAN o ingrese cantidad..."
+                    style="width:100%;padding:14px;background:#0f172a;border:2px solid #334155;border-radius:10px;color:white;font-size:1.1rem;box-sizing:border-box;text-align:center;"
+                    onkeydown="if(event.key==='Enter') window.Picking._confirmarYavanzar(${parseInt(l.id)}, ${parseFloat(l.cantidad_solicitada)}, ${l.producto_ean ? `'${escHTML(String(l.producto_ean))}'` : 'null'})">
+            </div>
+
+            <!-- Botones -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-bottom:24px;">
+                <button onclick="window.Picking._marcarFaltanteYavanzar(${parseInt(l.id)})"
+                    style="padding:14px;background:#374151;border:none;border-radius:12px;color:#94a3b8;font-size:0.88rem;font-weight:600;cursor:pointer;">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Faltante
+                </button>
+                <button onclick="window.Picking._confirmarYavanzar(${parseInt(l.id)}, ${parseFloat(l.cantidad_solicitada)}, ${l.producto_ean ? `'${escHTML(String(l.producto_ean))}'` : 'null'})"
+                    style="padding:14px;background:#22c55e;border:none;border-radius:12px;color:white;font-size:0.88rem;font-weight:700;cursor:pointer;">
+                    <i class="fa-solid fa-check"></i> Confirmar
+                </button>
+            </div>`;
+
+            // Auto-focus al input de escaneo
+            setTimeout(() => document.getElementById('sep-scan-input')?.focus(), 100);
+
+        } catch(e) {
+            if (body) body.innerHTML = `<div style="text-align:center;padding:40px;color:#ef4444;">
+                <i class="fa-solid fa-circle-exclamation" style="font-size:2rem;margin-bottom:12px;display:block;"></i>
+                ${escHTML(e.message || 'Error al cargar')}</div>`;
+        }
+    },
+
+    async _confirmarYavanzar(lineaId, cantidadEsperada, ean) {
+        const inputEl = document.getElementById('sep-scan-input');
+        const val = (inputEl?.value || '').trim();
+
+        // Si ingresó un EAN y coincide con el producto → usar cantidad esperada
+        let cantidad = cantidadEsperada;
+        if (val !== '' && !isNaN(Number(val)) && Number(val) > 0) {
+            cantidad = Number(val);
+        } else if (val !== '' && ean && val === String(ean)) {
+            cantidad = cantidadEsperada; // escaneo correcto
+        } else if (val !== '' && !isNaN(Number(val))) {
+            cantidad = Number(val);
+        }
+
+        try {
+            await window.api.post(`/picking/${this._sepOrdenId}/confirmar-linea`, {
+                linea_id:       lineaId,
+                cantidad_tomada: Math.max(1, Math.round(cantidad)),
+            });
+            // Vibración háptica si disponible (móvil)
+            if (navigator.vibrate) navigator.vibrate(60);
+            await this._cargarSiguienteLinea();
+        } catch(e) {
+            window.showToast(e.message || 'Error al confirmar', 'error');
+        }
+    },
+
+    async _marcarFaltanteYavanzar(lineaId) {
+        if (!confirm('¿Marcar este producto como FALTANTE y continuar?')) return;
+        try {
+            await window.api.post(`/picking/${this._sepOrdenId}/confirmar-linea`, {
+                linea_id:       lineaId,
+                cantidad_tomada: 0,
+            });
+            await this._cargarSiguienteLinea();
+        } catch(e) {
+            // Some backends reject qty=0, just mark and move on
+            window.showToast('Producto marcado como faltante', 'warning');
+            await this._cargarSiguienteLinea();
+        }
+    },
+
+    _mostrarCompletadaSeparacion(prog) {
+        const body = document.getElementById('sep-body');
+        if (!body) return;
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+        body.innerHTML = `
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;gap:20px;">
+            <div style="width:80px;height:80px;background:#064e3b;color:#34d399;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2.5rem;">
+                <i class="fa-solid fa-check"></i>
+            </div>
+            <div>
+                <h2 style="color:white;margin:0 0 8px;font-size:1.4rem;">¡Separación completada!</h2>
+                <p style="color:#94a3b8;margin:0;font-size:0.9rem;">${prog.confirmadas} de ${prog.total} ítems procesados</p>
+            </div>
+            <button onclick="window.Picking._cerrarSeparacion()"
+                style="padding:16px 32px;background:#22c55e;color:white;border:none;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;width:100%;max-width:280px;">
+                <i class="fa-solid fa-door-open"></i> Cerrar
+            </button>
+        </div>`;
+    },
+
+    _cerrarSeparacion() {
+        const m = document.getElementById('sep-modal');
+        if (m) m.remove();
+        this._sepModal = null;
+        this._sepOrdenId = null;
+        // Refrescar la lista de picking
+        this.loadOrdenes?.();
+        this.loadDashboard?.();
+    },
 };

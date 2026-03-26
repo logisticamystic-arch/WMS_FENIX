@@ -231,6 +231,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/picking/asignar-multiple', [\App\Controllers\PickingController::class, 'asignarMultiple']);
     $group->get('/picking/reabastecimientos', [\App\Controllers\PickingController::class, 'reabastecimientos']);
     $group->get('/picking/{id}', [\App\Controllers\PickingController::class, 'detalle']);
+    $group->get('/picking/{orden_id}/siguiente-linea', [\App\Controllers\PickingController::class, 'siguienteLinea']);
     $group->post('/picking/{orden_id}/generar-ruta', [\App\Controllers\PickingController::class, 'generateRoute']);
     $group->post('/picking/{orden_id}/confirmar-linea', [\App\Controllers\PickingController::class, 'confirmLine']);
     $group->post('/picking/{id}/completar', [\App\Controllers\PickingController::class, 'completar']);
@@ -248,6 +249,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/planillas/cert/{id}', [\App\Controllers\PlanillaController::class, 'verCertificacion']);
     $group->post('/planillas/cert/{id}/linea', [\App\Controllers\PlanillaController::class, 'registrarLinea']);
     $group->post('/planillas/cert/{id}/finalizar', [\App\Controllers\PlanillaController::class, 'finalizarCertificacion']);
+    $group->post('/planillas/{id}/habilitar-cert', [\App\Controllers\PlanillaController::class, 'habilitarCertificacion']);
     $group->get('/planillas/{id}', [\App\Controllers\PlanillaController::class, 'ver']);
 
     // Módulo: Despachos (Outbound Certification)

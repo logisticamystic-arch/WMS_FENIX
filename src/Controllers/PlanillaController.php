@@ -829,4 +829,48 @@ class PlanillaController extends BaseController
         }
         return null;
     }
+
+    // ── POST /api/planillas/{id}/habilitar-cert ───────────────────────────────
+    // Supervisor/Admin puede forzar un archivo a 'Separado' para habilitar
+    // certificación anticipada (picking no completado al 100%).
+    // Solo se certificarán los productos que ya estén separados.
+    public function habilitarCertificacion(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        if (!$this->isSupervisorOrAbove($user)) {
+            return $this->forbidden($res, 'Solo supervisores pueden habilitar certificación anticipada');
+        }
+
+        $archivo = DB::table('archivos_planilla')
+            ->where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->where('id', (int)$a['id'])
+            ->first();
+
+        if (!$archivo) return $this->notFound($res);
+
+        if (!in_array($archivo->estado, ['Importada', 'EnPicking'])) {
+            return $this->error($res,
+                "El archivo está en estado '{$archivo->estado}'. Solo se puede habilitar desde Importada o EnPicking.");
+        }
+
+        // Calcular progreso de picking para incluir en la respuesta
+        $totalLineas     = DB::table('orden_pickings')->where('archivo_id', $archivo->id)->count();
+        $completadas     = DB::table('orden_pickings')
+            ->where('archivo_id', $archivo->id)
+            ->where('estado', 'Completada')->count();
+
+        DB::table('archivos_planilla')
+            ->where('id', $archivo->id)
+            ->update(['estado' => 'Separado', 'updated_at' => date('Y-m-d H:i:s')]);
+
+        $this->audit($user, 'planilla', 'habilitar_cert', 'archivos_planilla', $archivo->id,
+            ['estado' => $archivo->estado], ['estado' => 'Separado'],
+            "Certificación habilitada anticipadamente por supervisor. Picking: {$completadas}/{$totalLineas} órdenes");
+
+        return $this->ok($res, [
+            'estado'      => 'Separado',
+            'progreso_picking' => "{$completadas}/{$totalLineas} órdenes completadas",
+        ], 'Certificación habilitada. Solo se certificarán los productos ya separados.');
+    }
 }

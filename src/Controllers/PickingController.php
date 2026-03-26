@@ -470,6 +470,71 @@ class PickingController extends BaseController
         return $this->ok($res, $orden, 'Orden de picking completada');
     }
 
+    // ── GET /api/picking/{orden_id}/siguiente-linea ───────────────────────────
+    // Flujo de separación guiado: devuelve la siguiente línea pendiente con toda
+    // la información que el auxiliar necesita para separar (ubicación, lote, vencimiento).
+    public function siguienteLinea(Request $r, Response $res, array $a): Response
+    {
+        $user  = $r->getAttribute('user');
+        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)->find($a['orden_id']);
+        if (!$orden) return $this->notFound($res);
+
+        // Siguiente línea no confirmada, ordenada por ubicacion_id (sigue la ruta FEFO)
+        $linea = PickingDetalle::where('orden_picking_id', $orden->id)
+            ->whereIn('estado', ['Pendiente', 'EnProceso'])
+            ->with(['producto', 'ubicacion'])
+            ->orderBy('ubicacion_id')
+            ->first();
+
+        // Progreso
+        $total       = PickingDetalle::where('orden_picking_id', $orden->id)->count();
+        $confirmadas = PickingDetalle::where('orden_picking_id', $orden->id)
+            ->whereNotIn('estado', ['Pendiente', 'EnProceso'])
+            ->count();
+
+        if (!$linea) {
+            return $this->ok($res, [
+                'completada' => true,
+                'mensaje'    => 'Todas las líneas han sido confirmadas.',
+                'progreso'   => ['confirmadas' => $confirmadas, 'total' => $total, 'pct' => 100],
+            ]);
+        }
+
+        // EAN principal del producto
+        $ean = \App\Models\ProductoEan::where('producto_id', $linea->producto_id)
+            ->orderBy('es_principal', 'desc')->value('ean');
+
+        return $this->ok($res, [
+            'completada' => false,
+            'linea' => [
+                'id'                  => $linea->id,
+                'producto_id'         => $linea->producto_id,
+                'producto_nombre'     => $linea->producto->nombre          ?? '—',
+                'producto_codigo'     => $linea->producto->codigo_interno  ?? '—',
+                'producto_ean'        => $ean,
+                'imagen_url'          => $linea->producto->imagen_url      ?? null,
+                'ubicacion_id'        => $linea->ubicacion_id,
+                'ubicacion_codigo'    => $linea->ubicacion->codigo         ?? '—',
+                'pasillo'             => $linea->ubicacion->pasillo        ?? null,
+                'nivel'               => $linea->ubicacion->nivel          ?? null,
+                'cantidad_solicitada' => $linea->cantidad_solicitada,
+                'cantidad_pickeada'   => $linea->cantidad_pickeada         ?? 0,
+                'lote'                => $linea->lote,
+                'fecha_vencimiento'   => $linea->fecha_vencimiento,
+            ],
+            'progreso' => [
+                'confirmadas' => $confirmadas,
+                'total'        => $total,
+                'pct'          => $total > 0 ? (int)round($confirmadas / $total * 100) : 0,
+            ],
+            'orden' => [
+                'id'           => $orden->id,
+                'numero_orden' => $orden->numero_orden,
+                'cliente'      => $orden->cliente,
+            ],
+        ]);
+    }
+
     // ── DELETE /api/picking/{id} — solo Admin ─────────────────────────────────
     public function eliminar(Request $r, Response $res, array $a): Response
     {
