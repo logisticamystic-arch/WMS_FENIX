@@ -1,0 +1,2347 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>WMS Pro Oriente · Móvil</title>
+  <meta name="theme-color" content="#1a56db">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="../assets/css/mobile.css">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+<div id="mobile-app">
+
+  <!-- ===================== LOGIN ===================== -->
+  <div id="login-screen" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0f172a;z-index:9000;overflow:auto;">
+    <div style="position:absolute;inset:0;background:url('../assets/images/bg.jpg') center/cover no-repeat;opacity:.30;"></div>
+    <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 16px;width:100%;max-width:320px;">
+      <div style="background:#fff;border-radius:14px;padding:6px 14px;box-shadow:0 4px 20px rgba(0,0,0,.2);">
+        <img src="../assets/images/logo.png" alt="Logo" style="height:40px;width:auto;" onerror="this.style.display='none'">
+      </div>
+      <div style="text-align:center;margin-bottom:2px;">
+        <div style="color:#fff;font-size:1rem;font-weight:800;">WMS Prooriente</div>
+        <div style="color:rgba(255,255,255,.6);font-size:.65rem;">Logística Inteligente</div>
+      </div>
+      <div style="background:#fff;border-radius:12px;padding:16px 18px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3);">
+        <div style="margin-bottom:8px;">
+          <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;margin-bottom:3px;">DOCUMENTO</label>
+          <input type="text" id="m-doc" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;">
+        </div>
+        <div style="margin-bottom:6px;">
+          <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;text-align:center;">PIN</label>
+          <div style="display:flex;justify-content:center;gap:8px;margin:8px 0;">
+            <div class="pin-dot" id="mpd0" style="width:12px;height:12px;border-radius:50%;border:2px solid #cbd5e1;"></div>
+            <div class="pin-dot" id="mpd1" style="width:12px;height:12px;border-radius:50%;border:2px solid #cbd5e1;"></div>
+            <div class="pin-dot" id="mpd2" style="width:12px;height:12px;border-radius:50%;border:2px solid #cbd5e1;"></div>
+            <div class="pin-dot" id="mpd3" style="width:12px;height:12px;border-radius:50%;border:2px solid #cbd5e1;"></div>
+          </div>
+          <div class="numpad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:180px;margin:0 auto;">
+            <button class="num-btn" type="button" onclick="MWMS.pinPress('1')">1</button><button class="num-btn" type="button" onclick="MWMS.pinPress('2')">2</button><button class="num-btn" type="button" onclick="MWMS.pinPress('3')">3</button>
+            <button class="num-btn" type="button" onclick="MWMS.pinPress('4')">4</button><button class="num-btn" type="button" onclick="MWMS.pinPress('5')">5</button><button class="num-btn" type="button" onclick="MWMS.pinPress('6')">6</button>
+            <button class="num-btn" type="button" onclick="MWMS.pinPress('7')">7</button><button class="num-btn" type="button" onclick="MWMS.pinPress('8')">8</button><button class="num-btn" type="button" onclick="MWMS.pinPress('9')">9</button>
+            <div></div><button class="num-btn" type="button" onclick="MWMS.pinPress('0')">0</button><button class="num-btn" type="button" onclick="MWMS.pinPress('del')"><i class="fa-solid fa-delete-left"></i></button>
+          </div>
+        </div>
+        <button id="m-btn-login" type="button" class="m-btn primary full" style="margin-top:10px;" onclick="MWMS.doLogin()">Ingresar</button>
+        <p id="m-login-err" style="color:#ef4444;font-size:.7rem;text-align:center;margin-top:6px;display:none;"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MAIN APP ===================== -->
+  <div id="main-screen" style="display:none;flex-direction:column;height:100dvh;">
+    <div class="mobile-header">
+      <div class="header-title-group">
+        <div class="header-title" id="m-title">Principal</div>
+        <div class="header-subtitle" id="m-subtitle"></div>
+      </div>
+      <div class="header-actions">
+        <button class="header-icon-btn" onclick="MWMS.showNotif()" style="position:relative;">
+          <i class="fa-solid fa-bell"></i>
+          <span class="notif-badge-mobile hidden" id="m-notif-badge">0</span>
+        </button>
+        <button class="header-icon-btn" onclick="MWMS.logout()"><i class="fa-solid fa-power-off"></i></button>
+      </div>
+    </div>
+
+    <div class="mobile-content" id="m-content"></div>
+
+    <nav class="mobile-nav">
+      <button class="nav-btn" id="nav-home" onclick="MWMS.showHome()"><i class="fa-solid fa-house"></i><span>Inicio</span></button>
+      <button class="nav-btn" id="nav-notif" onclick="MWMS.showNotif()" style="position:relative;">
+        <i class="fa-solid fa-bell"></i>
+        <span class="nav-badge hidden" id="nav-badge">0</span>
+        <span>Tareas</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- MODALS -->
+  <div id="m-modal-search" class="m-modal">
+    <div class="m-modal-content">
+      <div class="m-modal-header"><span id="m-modal-search-title">Buscar</span><button onclick="MWMS.closeSearch()">&times;</button></div>
+      <div class="m-modal-body">
+        <div class="search-box-mobile"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="m-search-input" placeholder="Escriba..."></div>
+        <div id="m-search-results" class="search-results-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="m-modal-date" class="m-modal">
+    <div class="m-modal-content">
+      <div class="m-modal-header"><span>Verificar Vencimiento</span><button onclick="MWMS.closeDateVerify()">&times;</button></div>
+      <div class="m-modal-body">
+        <div style="margin-bottom:12px;"><label class="m-label">1ra Entrada</label><input type="date" id="m-date-1" class="m-input-full"></div>
+        <div style="margin-bottom:12px;"><label class="m-label">2da Entrada (Confirmación)</label><input type="date" id="m-date-2" class="m-input-full"></div>
+        <button id="m-btn-date-confirm" class="m-btn success full" disabled onclick="MWMS.confirmDateVerify()">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL CAPTURA (Nuevo, reemplaza prompts) -->
+  <div id="m-modal-capture" class="m-modal">
+    <div class="m-modal-content">
+      <div class="m-modal-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <span id="m-modal-capture-title">Capturar Producto</span>
+        <span id="m-cap-pending-badge" style="background:#fef3c7; color:#92400e; font-size:10px; padding:2px 8px; border-radius:99px; font-weight:700; display:none;"></span>
+        <button onclick="MWMS.closeCapture()">&times;</button>
+      </div>
+      <div class="m-modal-body">
+        <p id="m-capture-prod-name" style="font-size:.85rem;font-weight:700;margin-bottom:8px;color:#1e293b;"></p>
+        
+        <div id="m-cap-uxc-alert" style="display:none; padding:8px; border-radius:6px; background:#fee2e2; color:#991b1b; font-size:.7rem; margin-bottom:10px; border:1px solid #fecaca;">
+          <i class="fa-solid fa-triangle-exclamation"></i> <b>Advertencia:</b> Este producto no tiene configuración de UNIDADES X CAJA. Favor definirla en el maestro.
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+           <div>
+              <label class="m-label">¿Cómo recibe?</label>
+              <select id="m-cap-mode" class="m-input-full" onchange="MWMS.updCapTotal()">
+                <option value="box">Por Cajas</option>
+                <option value="unit">Por Unidades</option>
+              </select>
+           </div>
+           <div>
+              <label class="m-label">Cant. x Caja</label>
+              <input type="text" id="m-cap-factor" class="m-input-full" readonly style="background:#f1f5f9; color:#64748b;">
+           </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+           <div style="position:relative;">
+              <label id="m-cap-qty-label" class="m-label">Cant. Cajas</label>
+              <input type="number" id="m-cap-qty" class="m-input-full" placeholder="0" min="1" oninput="MWMS.updCapTotal()">
+           </div>
+           <div>
+              <label class="m-label">Total Unidades</label>
+              <input type="text" id="m-cap-total" class="m-input-full" readonly style="background:#e0f2fe; color:#0369a1; font-weight:bold;">
+           </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label class="m-label">Lote</label>
+          <input type="text" id="m-cap-lote" class="m-input-full" placeholder="N/A">
+        </div>
+        <div id="m-cap-fv-group" style="margin-bottom:12px;display:none;">
+          <label class="m-label">Fecha Vencimiento (FEFO)</label>
+          <input type="date" id="m-cap-fv" class="m-input-full">
+          <label class="m-label" style="margin-top:8px;">Confirmar Fecha Vencimiento</label>
+          <input type="date" id="m-cap-fv2" class="m-input-full" placeholder="Repita la fecha">
+        </div>
+        <button id="m-btn-capture-save" class="m-btn primary full" onclick="MWMS.confirmCapture()">Guardar Item</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL UBICACIÓN (Escaneo y validación) -->
+  <div id="m-modal-location" class="m-modal">
+    <div class="m-modal-content" style="max-width:340px;">
+      <div class="m-modal-header"><span>Seleccionar Ubicación Destino</span><button onclick="MWMS.closeLocationModal()">&times;</button></div>
+      <div class="m-modal-body">
+        <p id="m-loc-product-info" style="font-size:.75rem;color:#64748b;margin-bottom:12px;background:#f1f5f9;padding:8px;border-radius:6px;"></p>
+        
+        <!-- Entrada de código -->
+        <div style="margin-bottom:12px;">
+          <label class="m-label">Código de Ubicación</label>
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="m-loc-codigo" class="m-input-full" placeholder="Eje: 010101 (sin guiones)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+            <button class="m-btn" style="padding:8px 12px;background:#4f46e5;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.9rem;" id="m-loc-camera-btn" onclick="MWMS.scanLocationBarcode()"><i class="fa-solid fa-camera"></i></button>
+          </div>
+        </div>
+
+        <!-- Video preview para escaneo (oculto por defecto) -->
+        <div id="m-loc-camera-preview" style="display:none;margin-bottom:12px;border-radius:8px;overflow:hidden;background:#000;position:relative;">
+          <video id="m-loc-video" style="width:100%;height:240px;object-fit:cover;display:block;"></video>
+          <button class="m-btn" style="position:absolute;bottom:8px;right:8px;background:#ef4444;color:#fff;border:none;border-radius:50%;width:44px;height:44px;cursor:pointer;font-size:1.2rem;" onclick="MWMS.stopLocationCamera()"><i class="fa-solid fa-stop"></i></button>
+        </div>
+
+        <!-- Validación en tiempo real -->
+        <div id="m-loc-validation" style="margin-bottom:12px;min-height:40px;border-radius:6px;padding:8px;display:none;font-size:.8rem;font-weight:600;"></div>
+
+        <!-- Ubicaciones sugeridas (búsqueda) -->
+        <div id="m-loc-suggestions" style="margin-bottom:12px;max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;display:none;">
+          <div id="m-loc-suggestions-list" style="padding:8px;"></div>
+        </div>
+
+        <!-- Acciones -->
+        <div style="display:flex;gap:6px;">
+          <button class="m-btn success full" id="m-loc-confirm-btn" onclick="MWMS.confirmLocationSelection()" disabled style="opacity:0.5;">Confirmar Ubicación</button>
+          <button class="m-btn secondary full" onclick="MWMS.closeLocationModal()">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="m-toast"></div>
+<audio id="notif-sound" preload="auto">
+  <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJiVkJtfXWZqfoGFjY+Yk4qBemxfW2x6iZOXmpqYlI6Hf3ZoYF1ka3eHj5WZmZeUj4iAdmtfWmxAZ2h1hoqPj4+PlYuHfndsZF1dcHl/iI2Pjo+SlIuJgXduaGJfY2d0fYKIio2Njo+Pi4mEgX97d3NxcHFydHd7f4SGiImIiIiHiIiGhYOBf356eXl5eXp7fH5/gYKDg4OEhISEhIOCgYB/fnx7enl4d3d2dnZ2d3h5enx9fn+AgYKDg4ODg4OCgYCAfn18e3p5eHd2dXR0dHR0dXZ3eXp7fX5/gIGCgoKCgoGAgH9+fXx7enmRhj0=" type="audio/wav">
+</audio>
+
+<script>
+const M_API = '/WMS_PROORIENTE/public/api';
+let _mToken    = localStorage.getItem('wms_token') || '';
+let _mUser     = JSON.parse(localStorage.getItem('wms_user') || 'null');
+
+// Retry queue para operaciones offline
+const _offlineQueue = {
+  queue: JSON.parse(localStorage.getItem('_api_queue') || '[]'),
+  add(op) { this.queue.push({...op, timestamp: Date.now()}); this.save(); },
+  remove(idx) { this.queue.splice(idx, 1); this.save(); },
+  save() { localStorage.setItem('_api_queue', JSON.stringify(this.queue)); },
+  flush() { return this.queue.length > 0 ? this.queue : null; },
+};
+
+async function mApi(method, path, data=null, _retries=0) {
+  const url = M_API + path;
+  const headers = { 'Content-Type': 'application/json' };
+  if (_mToken) headers['Authorization'] = 'Bearer ' + _mToken;
+  const cfg = { method, headers, signal: AbortSignal.timeout(5000) };
+  if (data) cfg.body = JSON.stringify(data);
+  
+  try {
+    const res = await fetch(url, cfg);
+    if (res.status === 401) { MWMS.logout(); throw new Error('Sesión expirada'); }
+    const json = await res.json();
+    
+    // Si obtuvo respuesta exitosa, vaciar offline queue si existe
+    if (json.data || json.success) {
+      if (_offlineQueue.queue.length > 0) {
+        console.log('✓ Conexión restaurada, procesando ' + _offlineQueue.queue.length + ' operaciones en cola');
+      }
+      _offlineQueue.queue = [];
+      _offlineQueue.save();
+    }
+    
+    if (json.error) {
+      const err = new Error(json.message || 'Error desconocido');
+      err.isValidationError = true;
+      throw err;
+    }
+    return json;
+  } catch(e) {
+    // Timeout o error de red
+    if (e.name === 'AbortError' || !navigator.onLine) {
+      // Solo guardar en queue si es POST/PUT (operaciones, no lecturas)
+      if (method !== 'GET') {
+        _offlineQueue.add({method, path, data});
+        throw new Error('📡 Operación guardada localmente. Se enviará cuando haya conexión.');
+      }
+      throw new Error('Sin conexión a internet');
+    }
+    
+    // NO reintentar si es error de validación (excedentes, stock, etc) o errores 4xx
+    if (e.isValidationError || (e.status && e.status < 500)) {
+      throw e;
+    }
+
+    // Reintentos solo para errores críticos/transitorios del servidor (500+) o fallas de red no capturadas
+    if (_retries < 3) {
+      const delay = Math.pow(2, _retries) * 1000;
+      console.warn(`Reintentando en ${delay}ms... (intento ${_retries + 1}/3)`);
+      await new Promise(r => setTimeout(r, delay));
+      return mApi(method, path, data, _retries + 1);
+    }
+    
+    throw e;
+  }
+}
+
+const MWMS = {
+  _pin: '', _timer: null, _lastCnt: 0, _sCb: null, _dCb: null, _op: null,
+
+  init() { 
+    // Listeners para cambios de conexión
+    window.addEventListener('online', () => this._processOfflineQueue());
+    window.addEventListener('offline', () => this.toast('📡 Sin conexión', 'warning'));
+    
+    if (_mToken && _mUser) this.showApp(); else this.showLogin(); 
+  },
+  
+  async _processOfflineQueue() {
+    if (_offlineQueue.queue.length === 0) return;
+    this.toast(`Procesando ${_offlineQueue.queue.length} operación(es)...`);
+    let success = 0, failed = 0;
+    for (let i = _offlineQueue.queue.length - 1; i >= 0; i--) {
+      try {
+        const op = _offlineQueue.queue[i];
+        await mApi(op.method, op.path, op.data);
+        _offlineQueue.remove(i);
+        success++;
+      } catch(e) {
+        failed++;
+        console.error('Fallo al procesar cola:', e.message);
+      }
+    }
+    this.toast(`✓ ${success} enviadas, ${failed} pendientes`, success > 0 ? 'success' : 'error');
+  },
+  showLogin() { document.getElementById('login-screen').style.display='flex'; document.getElementById('main-screen').style.display='none'; this._pin=''; this.updPin(); },
+  showApp() {
+    document.getElementById('login-screen').style.display='none'; document.getElementById('main-screen').style.display='flex';
+    document.getElementById('m-subtitle').textContent = _mUser.rol + ' · ' + (_mUser.sucursal||'CEDE');
+    this.showHome(); this.startNotif();
+  },
+  updPin() { for(let i=0;i<4;i++){ const d=document.getElementById('mpd'+i); d.style.background=i<this._pin.length?'#1a56db':'#fff'; d.style.borderColor=i<this._pin.length?'#1a56db':'#cbd5e1';} },
+  pinPress(v) { if(v==='del') this._pin=this._pin.slice(0,-1); else if(this._pin.length<4) this._pin+=v; this.updPin(); if(this._pin.length===4) setTimeout(()=>this.doLogin(),200); },
+  async doLogin() {
+    const doc = document.getElementById('m-doc').value.trim();
+    try {
+      const r = await mApi('POST','/auth/login',{documento:doc,pin:this._pin});
+      _mToken=r.token; _mUser=r.user; localStorage.setItem('wms_token',_mToken); localStorage.setItem('wms_user',JSON.stringify(_mUser)); this.showApp();
+    } catch(e) { document.getElementById('m-login-err').textContent=e.message; document.getElementById('m-login-err').style.display='block'; this._pin=''; this.updPin(); }
+  },
+  logout() { localStorage.clear(); location.reload(); },
+
+  showHome() {
+    document.getElementById('m-title').textContent='Menú'; document.getElementById('nav-home').classList.add('active'); document.getElementById('nav-notif').classList.remove('active');
+    const mods = [
+      { id:'ro', l:'Rec. ODC',   i:'fa-file-invoice',        c:'indigo', a:'viewRecO' },
+      { id:'ct', l:'Citas/YMS',  i:'fa-calendar-check',      c:'green',  a:'viewCitas' },
+      { id:'ub', l:'Ubicar',     i:'fa-warehouse',            c:'teal',   a:'viewUbicar' },
+      { id:'tr', l:'Traslado',   i:'fa-right-left',           c:'orange', a:'viewTrans' },
+      { id:'pk', l:'Picking',    i:'fa-boxes-stacked',        c:'purple', a:'viewPicking' },
+      { id:'ce', l:'Certificar', i:'fa-clipboard-check',      c:'rose',   a:'viewCert' },
+      { id:'re', l:'Reabast.',   i:'fa-pallet',               c:'amber',  a:'viewReabast' },
+      { id:'iv', l:'Inventario', i:'fa-rotate',               c:'indigo', a:'viewInventario' },
+      { id:'ci', l:'Consultar',  i:'fa-magnifying-glass-location', c:'cyan', a:'viewConsultaInteligente' },
+    ];
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        <div style="margin-bottom:15px;"><h2 style="font-size:1.1rem;font-weight:800;">Hola, ${this.esc(_mUser.nombre.split(' ')[0])}!</h2><p style="font-size:.75rem;color:#64748b;">Seleccione una operación:</p></div>
+        <div class="module-grid-mobile">${mods.map(m=>`<button class="module-btn-mobile" onclick="MWMS.${m.a}${m.a.includes('(')?'':'()'}" id="mod-btn-${m.id}"><div class="module-icon-circle ${m.c}"><i class="fa-solid ${m.i}"></i></div><span class="module-label">${m.l}</span></button>`).join('')}</div>
+      </div>`;
+  },
+
+  viewRecM() {
+    document.getElementById('m-title').textContent='Rec. Manual'; 
+    this._op={ id:null, p:null, l:[] }; 
+    this.renderRecM();
+  },
+  async setProvM(p) {
+    this.loading(true);
+    try {
+      const r = await mApi('POST','/recepciones', { observaciones: 'Prov: '+(p.razon_social||p.nombre) });
+      this._op.id = r.data.id;
+      this._op.p = p;
+      this.renderRecM();
+    } catch(e) { this.toast(e.message, "error"); }
+    this.loading(false);
+  },
+  async renderRecM() {
+    const d=this._op;
+    if (d.id && d.l.length === 0) {
+        // Opcional: cargar lineas si ya existe id (por si se recarga)
+        try { const r = await mApi('GET','/recepciones/'+d.id); d.l = r.data.detalles || []; } catch(e){}
+    }
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        <div class="op-card"><div class="m-label">Proveedor</div>${!d.p?`<button class="m-btn secondary full sm" onclick="MWMS.openSearch(p=>{MWMS.setProvM(p);},'Buscar Proveedor','prov')">Seleccionar Proveedor</button>`:`<div style="display:flex;justify-content:space-between;"><b>${this.esc(d.p.razon_social||d.p.nombre)}</b></div>`}</div>
+        <div class="op-card"><div style="display:flex;justify-content:space-between;margin-bottom:10px;"><div class="m-label">Items (${d.l.length})</div><button class="m-btn primary sm" onclick="MWMS.addLM()" ${!d.p?'disabled':''}>+ Item</button></div>
+        <div id="m-lines">${d.l.map((l,idx)=>`<div class="list-item"><div style="flex:1;"><b>${this.esc(l.producto?.nombre||l.p?.nombre||'Producto')}</b><br><small>Cant: ${l.cantidad_recibida||l.q} | Lote: ${l.lote||l.lt}</small></div></div>`).join('')}</div></div>
+        <button class="m-btn success full" onclick="MWMS.saveRM()" ${d.l.length===0?'disabled':''}>Finalizar Descargue</button>
+      </div>`;
+  },
+  addLM() { 
+    this.openSearch(p => { 
+        this.openCapture(p, r => {
+            this.loading(true);
+            mApi('POST','/recepciones/'+this._op.id+'/detalle', { 
+                producto_id: p.id, 
+                cantidad_recibida: r.q, 
+                lote: r.l, 
+                fecha_vencimiento: r.fv 
+            }).then(res => {
+                this._op.l.unshift(res.data);
+                this.renderRecM();
+            }).catch(e => this.toast(e.message, "error"))
+              .finally(() => this.loading(false));
+        });
+    }, 'Producto', 'prod'); 
+  },
+  async saveRM() {
+    this.loading(true);
+    try {
+      await mApi('POST','/recepciones/'+this._op.id+'/confirm', {});
+      this.toast("Recibo Finalizado (En Patio)","success"); 
+      this.showHome();
+    } catch(e) { this.toast(e.message,"error"); } 
+    this.loading(false);
+  },
+  openSearch(cb, t, mode='prod') {
+
+    this._sCb=cb; this._sMode=mode;
+    document.getElementById('m-modal-search-title').textContent=t;
+    document.getElementById('m-modal-search').style.display='flex';
+    const i=document.getElementById('m-search-input'); i.value=''; i.focus();
+    document.getElementById('m-search-results').innerHTML='';
+    i._h=0;
+    if(!i._h){ i._h=1; let tm; i.oninput=e=>{ clearTimeout(tm); const q=e.target.value.trim(); if(q.length<2)return; tm=setTimeout(async()=>{
+      const mode=this._sMode;
+      if(mode==='prov') {
+        const r=await mApi('GET','/param/proveedores');
+        const list=(r.data||[]).filter(p=>(p.razon_social||'').toLowerCase().includes(q.toLowerCase())||(p.nit||'').includes(q));
+        document.getElementById('m-search-results').innerHTML=list.length===0?'<div style="padding:10px;color:#94a3b8;">Sin resultados</div>':list.map(p=>`<div class="search-result-item" onclick="MWMS.selP(${JSON.stringify(p).replace(/"/g,'&quot;')})"><b>${this.esc(p.razon_social)}</b><br><small>NIT: ${p.nit||'N/A'}</small></div>`).join('');
+      } else {
+        const r=await mApi('GET','/odc/buscar-producto?q='+encodeURIComponent(q));
+        document.getElementById('m-search-results').innerHTML=(r.data||[]).map(p=>`<div class="search-result-item" onclick="MWMS.selP(${JSON.stringify(p).replace(/"/g,'&quot;')})"><b>${this.esc(p.nombre)}</b><br><small>COD: ${p.codigo_interno}</small></div>`).join('');
+      }
+    },400);};}
+  },
+  selP(p){ this.closeSearch(); this._sCb(p); },
+  closeSearch(){ document.getElementById('m-modal-search').style.display='none'; },
+
+  openCapture(p, cb, pending = null) {
+    this._cCB = cb;
+    this._currentCapProd = p;
+    this._currentCapPending = pending;
+    document.getElementById('m-capture-prod-name').textContent = p.nombre || p.descripcion;
+    
+    const factor = parseInt(p.unidades_caja || 0);
+    document.getElementById('m-cap-factor').value = factor > 0 ? factor : "N/D";
+    document.getElementById('m-cap-uxc-alert').style.display = (factor > 0 ? 'none' : 'block');
+    
+    // Mostrar badge de pendiente si aplica
+    const pBadge = document.getElementById('m-cap-pending-badge');
+    if (pending !== null) {
+        pBadge.textContent = "PTE: " + pending + " UND";
+        pBadge.style.display = 'block';
+    } else {
+        pBadge.style.display = 'none';
+    }
+
+    // Default mode: box if factor exists, else unit
+    document.getElementById('m-cap-mode').value = (factor > 0 ? 'box' : 'unit');
+    
+    document.getElementById('m-cap-qty').value = "1";
+    document.getElementById('m-cap-lote').value = "";
+    document.getElementById('m-cap-fv').value = "";
+    document.getElementById('m-cap-fv2').value = "";
+    document.getElementById('m-cap-fv-group').style.display = (p.controla_vencimiento ? 'block' : 'none');
+    document.getElementById('m-modal-capture').style.display = 'flex';
+    
+    this.updCapTotal();
+    setTimeout(() => document.getElementById('m-cap-qty').focus(), 300);
+  },
+  updCapTotal() {
+    const p = this._currentCapProd;
+    const mode = document.getElementById('m-cap-mode').value;
+    const qty = parseInt(document.getElementById('m-cap-qty').value || 0);
+    const factor = parseInt(p.unidades_caja || 1);
+    const total = (mode === 'box') ? (qty * factor) : qty;
+    
+    document.getElementById('m-cap-total').value = total;
+    document.getElementById('m-cap-qty-label').textContent = (mode === 'box' ? 'Cant. Cajas' : 'Cant. Unidades');
+    
+    // Si esta en modo caja pero no hay factor, forzar modo unidades o advertir
+    if (mode === 'box' && parseInt(p.unidades_caja || 0) <= 0) {
+        document.getElementById('m-cap-total').value = "Factor Req.";
+    }
+
+    // Validación visual de excedente
+    if (this._currentCapPending !== null && total > this._currentCapPending) {
+        document.getElementById('m-cap-total').style.background = '#fee2e2';
+        document.getElementById('m-cap-total').style.color = '#991b1b';
+    } else {
+        document.getElementById('m-cap-total').style.background = '#e0f2fe';
+        document.getElementById('m-cap-total').style.color = '#0369a1';
+    }
+  },
+  confirmCapture() {
+    const p = this._currentCapProd;
+    const mode = document.getElementById('m-cap-mode').value;
+    const q = parseInt(document.getElementById('m-cap-qty').value);
+    const l = document.getElementById('m-cap-lote').value.trim() || 'N/A';
+    const fv = document.getElementById('m-cap-fv').value;
+    const fv2 = document.getElementById('m-cap-fv2').value;
+    const fvGroup = document.getElementById('m-cap-fv-group').style.display;
+    const factor = parseInt(p.unidades_caja || 0);
+
+    if (isNaN(q) || q <= 0) return this.toast("Cantidad inválida", "error");
+    
+    if (mode === 'box' && factor <= 0) {
+        return this.toast("No puede recibir por cajas si no configuró Unidades x Caja", "error");
+    }
+
+    const totalUnits = (mode === 'box') ? (q * factor) : q;
+
+    if (this._currentCapPending !== null && totalUnits > this._currentCapPending) {
+        this.pA();
+        return this.toast(`EXCEDIDO: Máximo permitido ${this._currentCapPending} unidades.`, "error");
+    }
+
+    if (fvGroup === 'block') {
+      if (!fv) return this.toast("Fecha de vencimiento requerida", "error");
+      if (fv !== fv2) return this.toast("LAS FECHAS NO COINCIDEN", "error");
+    }
+
+    const qtyCajas = (mode === 'box') ? q : Math.ceil(q / (factor || 1));
+
+    this.closeCapture();
+    if (this._cCB) this._cCB({ q: totalUnits, l, fv, cantidad_cajas: qtyCajas });
+  },
+  closeCapture() { document.getElementById('m-modal-capture').style.display = 'none'; },
+
+  // ── FUNCIONES MODAL UBICACIÓN ──
+  _locationData: null,
+  _selectedLocation: null,
+  _locationCamera: null,
+  _locationCameraActive: false,
+
+  openLocationModal(item, cantidad) {
+    this._locationData = { item, cantidad };
+    this._selectedLocation = null;
+    document.getElementById('m-loc-codigo').value = '';
+    document.getElementById('m-loc-validation').style.display = 'none';
+    document.getElementById('m-loc-suggestions').style.display = 'none';
+    document.getElementById('m-loc-confirm-btn').disabled = true;
+    document.getElementById('m-loc-confirm-btn').style.opacity = '0.5';
+    document.getElementById('m-loc-product-info').textContent = `Producto: ${this.esc(item.producto_nombre)} | Cantidad: ${cantidad}`;
+    document.getElementById('m-modal-location').style.display = 'flex';
+    document.getElementById('m-loc-codigo').focus();
+  },
+
+  closeLocationModal() {
+    this.stopLocationCamera();
+    document.getElementById('m-modal-location').style.display = 'none';
+  },
+
+  scanLocationBarcode() {
+    if (this._locationCameraActive) {
+      this.stopLocationCamera();
+      return;
+    }
+    const preview = document.getElementById('m-loc-camera-preview');
+    preview.style.display = 'block';
+    const video = document.getElementById('m-loc-video');
+    this._locationCameraActive = true;
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(stream => {
+        this._locationCamera = stream;
+        video.srcObject = stream;
+        video.onloadedmetadata = () => video.play();
+      })
+      .catch(err => {
+        this.toast('No se pudo acceder a la cámara: ' + err.message, 'error');
+        preview.style.display = 'none';
+        this._locationCameraActive = false;
+      });
+  },
+
+  stopLocationCamera() {
+    if (this._locationCamera) {
+      this._locationCamera.getTracks().forEach(t => t.stop());
+      this._locationCamera = null;
+    }
+    this._locationCameraActive = false;
+    document.getElementById('m-loc-camera-preview').style.display = 'none';
+  },
+
+  async validateLocationCode(codigo) {
+    if (!codigo || codigo.trim().length === 0) {
+      document.getElementById('m-loc-validation').style.display = 'none';
+      document.getElementById('m-loc-suggestions').style.display = 'none';
+      return;
+    }
+    const codNorm = (codigo || '').replace(/[^A-Za-z0-9]/g, '');
+    try {
+      const r = await mApi('GET', '/param/ubicaciones?codigo=' + encodeURIComponent(codNorm));
+      const locations = Array.isArray(r.data) ? r.data : [];
+      const exactMatch = locations.find(x => (x.codigo || '').replace(/[^A-Za-z0-9]/g, '') === codNorm);
+      const val = document.getElementById('m-loc-validation');
+      if (exactMatch) {
+        val.style.background = '#dcfce7';
+        val.style.color = '#166534';
+        val.innerHTML = `<i class="fa-solid fa-check-circle"></i> Ubicación encontrada: <b>${exactMatch.codigo}</b>`;
+        val.style.display = 'block';
+        this._selectedLocation = exactMatch;
+        document.getElementById('m-loc-confirm-btn').disabled = false;
+        document.getElementById('m-loc-confirm-btn').style.opacity = '1';
+        document.getElementById('m-loc-suggestions').style.display = 'none';
+      } else if (locations.length > 0) {
+        val.style.background = '#fef3c7';
+        val.style.color = '#92400e';
+        val.innerHTML = `<i class="fa-solid fa-exclamation-triangle"></i> Ubicación no encontrada. Seleccione una de las sugerencias:`;
+        val.style.display = 'block';
+        const sugList = document.getElementById('m-loc-suggestions-list');
+        sugList.innerHTML = locations.map(loc => `<div style="padding:8px;border-bottom:1px solid #e2e8f0;cursor:pointer;" onclick="MWMS.selectLocationFromList(${JSON.stringify(loc).replace(/"/g,'&quot;')})">${this.esc(loc.codigo)} (${loc.tipo_ubicacion})</div>`).join('');
+        document.getElementById('m-loc-suggestions').style.display = 'block';
+        this._selectedLocation = null;
+        document.getElementById('m-loc-confirm-btn').disabled = true;
+        document.getElementById('m-loc-confirm-btn').style.opacity = '0.5';
+      } else {
+        val.style.background = '#fee2e2';
+        val.style.color = '#991b1b';
+        val.innerHTML = `<i class="fa-solid fa-times-circle"></i> Ubicación "${codigo}" no existe`;
+        val.style.display = 'block';
+        document.getElementById('m-loc-suggestions').style.display = 'none';
+        this._selectedLocation = null;
+        document.getElementById('m-loc-confirm-btn').disabled = true;
+        document.getElementById('m-loc-confirm-btn').style.opacity = '0.5';
+      }
+    } catch (e) {
+      const val = document.getElementById('m-loc-validation');
+      val.style.background = '#fee2e2';
+      val.style.color = '#991b1b';
+      val.innerHTML = `<i class="fa-solid fa-exclamation-circle"></i> Error: ${e.message}`;
+      val.style.display = 'block';
+    }
+  },
+
+  selectLocationFromList(location) {
+    this._selectedLocation = location;
+    document.getElementById('m-loc-codigo').value = location.codigo;
+    document.getElementById('m-loc-validation').style.background = '#dcfce7';
+    document.getElementById('m-loc-validation').style.color = '#166534';
+    document.getElementById('m-loc-validation').innerHTML = `<i class="fa-solid fa-check-circle"></i> Ubicación seleccionada: <b>${location.codigo}</b>`;
+    document.getElementById('m-loc-suggestions').style.display = 'none';
+    document.getElementById('m-loc-confirm-btn').disabled = false;
+    document.getElementById('m-loc-confirm-btn').style.opacity = '1';
+  },
+
+  async confirmLocationSelection() {
+    if (!this._selectedLocation || !this._locationData) {
+      this.toast('Seleccione una ubicación válida', 'error');
+      return;
+    }
+    this.loading(true);
+    try {
+      if (this._palletMove) {
+        // Mover todos los items del pallet
+        for (const i of this._palletMove) {
+           await mApi('POST', '/inventario/traslado', {
+              producto_id: i.producto_id,
+              ubicacion_origen_id: i.ubicacion_id,
+              ubicacion_destino_id: this._selectedLocation.id,
+              cantidad: i.cantidad,
+              lote: i.lote,
+              fecha_vencimiento: i.fecha_vencimiento,
+              numero_pallet: i.numero_pallet
+           });
+        }
+        this.toast(`Pallet #${this._palletMove[0].numero_pallet} ubicado completo.`, "success");
+        this._palletMove = null;
+      } else {
+        // Mover item individual/parcial
+        await mApi('POST', '/inventario/traslado', {
+          producto_id: this._locationData.item.producto_id,
+          ubicacion_origen_id: this._locationData.item.ubicacion_id,
+          ubicacion_destino_id: this._selectedLocation.id,
+          cantidad: this._locationData.cantidad,
+          lote: this._locationData.item.lote,
+          fecha_vencimiento: this._locationData.item.fecha_vencimiento,
+          numero_pallet: this._locationData.item.numero_pallet
+        });
+        const pendiente = parseFloat(this._locationData.item.cantidad) - parseFloat(this._locationData.cantidad);
+        if (pendiente > 0) {
+          this.toast(`Ubicado OK (${this._locationData.cantidad}). Quedan ${pendiente} por ubicar en este pallet.`, "success");
+        } else {
+          this.toast(`Ubicado OK (${this._locationData.cantidad})`, "success");
+        }
+      }
+      this.closeLocationModal();
+      this.viewUbicar();
+    } catch(e) {
+      this.toast(e.message, "error");
+    }
+    this.loading(false);
+  },
+
+  loading(s){ let l=document.getElementById('m-loading'); if(s&&!l)document.body.insertAdjacentHTML('beforeend','<div id="m-loading" style="position:fixed;inset:0;background:rgba(255,255,255,.7);z-index:90000;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#1a56db;"><i class="fa-solid fa-spinner fa-spin"></i></div>'); else if(!s&&l)l.remove(); },
+  toast(m,t='info'){ const c=document.getElementById('m-toast'), e=document.createElement('div'); e.className='m-toast-item '+t; e.innerHTML=m; c.appendChild(e); setTimeout(()=>{e.style.opacity='0';setTimeout(()=>e.remove(),500);},3000); },
+  esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); },
+  formatDate(d){ if(!d)return'-'; const date=new Date(d); return isNaN(date.getTime()) ? d : date.toISOString().split('T')[0]; },
+  formatDateShort(d){ if(!d)return'N/A'; const date=new Date(d); if(isNaN(date.getTime()))return d; const day=String(date.getDate()).padStart(2,'0'); const month=String(date.getMonth()+1).padStart(2,'0'); const year=date.getFullYear(); return `${day}/${month}/${year}`; },
+  getDaysToExpiry(fechaVenc){ if(!fechaVenc)return null; const hoy=new Date(); hoy.setHours(0,0,0,0); const fv=new Date(fechaVenc); fv.setHours(0,0,0,0); const diff=fv-hoy; const dias=Math.ceil(diff/(1000*60*60*24)); return dias; },
+
+  async viewUbicar() {
+    document.getElementById('m-title').textContent = 'Ubicar (Yard)';
+    this.loading(true);
+    try {
+      const r = await mApi('GET', '/inventario/stock?estado=Disponible&tipo_ubicacion=Patio');
+      const allItems = (r.data || r || []).filter(x => parseFloat(x.cantidad) > 0);
+      
+      const groups = {};
+      allItems.forEach(i => {
+          const pKey = i.numero_pallet || 'Sin Pallet';
+          if (!groups[pKey]) groups[pKey] = { id: pKey, items: [], total: 0 };
+          groups[pKey].items.push(i);
+          groups[pKey].total += parseFloat(i.cantidad);
+      });
+
+      const pallets = Object.values(groups);
+
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <div style="margin-bottom:12px; font-size:.7rem; color:#64748b; font-weight:600;">PALLETS EN PATIO:</div>
+          ${pallets.length === 0 
+            ? '<div class="m-empty"><i class="fa-solid fa-truck-ramp-box"></i><p>Sin pallets listos</p></div>' 
+            : pallets.map(p => `
+              <div class="pallet-card" id="pallet-${p.id}">
+                <div class="pallet-header" onclick="MWMS.togglePallet('${p.id}')">
+                  <div>
+                    <i class="fa-solid fa-box-archive" style="color:#1e293b;margin-right:8px;"></i>
+                    <b style="font-size:1rem;">Pallet #${p.id}</b>
+                    <div style="font-size:.65rem;color:#64748b;">${p.items.length} productos | Total: ${p.total} und</div>
+                  </div>
+                  <i class="fa-solid fa-chevron-down toggle-icon"></i>
+                </div>
+                
+                <div class="pallet-actions">
+                   <button class="m-btn secondary sm full" onclick="MWMS.ubicarPalletTodo('${p.id}')">
+                     <i class="fa-solid fa-truck-fast"></i> Ubicar Pallet Completo
+                   </button>
+                </div>
+
+                <div class="pallet-details" style="display:none;">
+                  ${p.items.map(i => `
+                    <div class="item-detail-row">
+                      <div style="flex:1;">
+                        <div style="font-weight:700; font-size:.8rem;">${this.esc(i.producto_nombre)}</div>
+                        <div style="font-size:.7rem; color:#64748b;">Cant: ${i.cantidad} | Lote: ${i.lote || 'N/A'}</div>
+                      </div>
+                      <button class="m-btn-icon-sm success" onclick="MWMS.stUb(${JSON.stringify(i).replace(/"/g,'&quot;')})">
+                        <i class="fa-solid fa-location-dot"></i>
+                      </button>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>`).join('')}
+        </div>`;
+    } catch(e) { this.toast(e.message, "error"); }
+    this.loading(false);
+  },
+
+  togglePallet(id) {
+    const card = document.getElementById(`pallet-${id}`);
+    const details = card.querySelector('.pallet-details');
+    const icon = card.querySelector('.toggle-icon');
+    if (details.style.display === 'none') {
+      details.style.display = 'block';
+      icon.style.transform = 'rotate(180deg)';
+    } else {
+      details.style.display = 'none';
+      icon.style.transform = 'rotate(0deg)';
+    }
+  },
+
+  async ubicarPalletTodo(palletId) {
+    this.toast("Seleccione una ubicación para todo el pallet #" + palletId, "info");
+    // Simulamos que el usuario seleccionó el pallet completo — necesitamos un ítem de referencia
+    this.loading(true);
+    const r = await mApi('GET', '/inventario/stock?estado=Disponible&tipo_ubicacion=Patio');
+    const pItems = r.data.filter(x => x.numero_pallet == palletId);
+    this.loading(false);
+    if (!pItems.length) return this.toast("Pallet no encontrado", "error");
+    
+    // Abrir modal de ubicación para el pallet completo (iteramos o enviamos flag)
+    this._palletMove = pItems; 
+    this.openLocationModal(pItems[0], pItems[0].cantidad, true); 
+  },
+
+  stUb(i) {
+    Swal.fire({
+      title: 'Ubicar Parcial',
+      text: `¿Cuántas unidades del Pallet #${i.numero_pallet} desea mover?`,
+      input: 'number',
+      inputValue: i.cantidad,
+      showCancelButton: true,
+      confirmButtonText: 'Seleccionar Destino'
+    }).then((res) => {
+      if (res.isConfirmed) {
+        const q = parseFloat(res.value);
+        if (q > 0 && q <= parseFloat(i.cantidad)) this.openLocationModal(i, q);
+        else this.toast("Cantidad inválida", "error");
+      }
+    });
+  },
+
+  async viewRecO() {
+    document.getElementById('m-title').textContent='Rec. ODC';
+    document.getElementById('m-content').innerHTML='Cargando órdenes...';
+    try {
+      const params = 'estado=Confirmada,En Proceso&auxiliar_id=' + _mUser.id;
+      const r = await mApi('GET', '/odc?' + params);
+      const items = (r.data || []).filter(o => ['Confirmada', 'En Proceso'].includes(o.estado));
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <div style="margin-bottom:12px; font-size:.7rem; color:#64748b; font-weight:600;">MIS ASIGNACIONES:</div>
+          ${items.map(o => `
+            <div class="op-card" onclick="MWMS.startRecO(${o.id})">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <b>${this.esc(o.numero_odc)}</b>
+                <span class="m-badge ${o.estado==='En Proceso'?'warning':'info'}">${o.estado}</span>
+              </div>
+              <small>${this.esc(o.proveedor?.razon_social || 'Proveedor')}</small><br>
+              <div style="display:flex; justify-content:space-between; font-size:.65rem; color:#64748b; margin-top:4px;">
+                <span>${this.formatDate(o.fecha)}</span>
+                <span>${o.detalles_count || 0} productos</span>
+              </div>
+            </div>`).join('') || '<div class="m-empty"><i class="fa-solid fa-file-circle-exclamation"></i><p>No tiene ODCs asignadas</p></div>'}
+        </div>`;
+    } catch(e) { this.toast(e.message, "error"); }
+  },
+
+  async startRecO(id) {
+    this.loading(true);
+    try {
+      // Notificar al backend que iniciamos (cambia estado a En Proceso)
+      await mApi('POST', `/odc/${id}/iniciar`);
+      const r = await mApi('GET', `/odc/${id}`);
+      const p = await mApi('GET', '/recepciones/proximo-pallet');
+      this._op = { odc: r.data, l: [], currentPallet: p.proximo };
+      this.renderRecO();
+    } catch(e) { this.toast(e.message, "error"); }
+    this.loading(false);
+  },
+
+  renderRecO() {
+    const odc = this._op.odc;
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        <div class="op-card" style="background:#1e293b;color:#fff;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div>
+              <small>Recibiendo ODC</small><br><b>${this.esc(odc.numero_odc)}</b><br>
+              <small>${this.esc(odc.proveedor?.razon_social)}</small>
+            </div>
+            <div style="text-align:right;background:rgba(255,255,255,0.1);padding:5px 10px;border-radius:8px;">
+              <small style="display:block;font-size:0.6rem;opacity:0.8;">PALLET ACTUAL</small>
+              <b style="font-size:1.2rem;">#${this._op.currentPallet}</b>
+            </div>
+          </div>
+          <button onclick="MWMS.openDevolucionODC()" style="width:100%;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.5);color:#fca5a5;border-radius:8px;padding:8px;font-size:.75rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
+            <i class="fa-solid fa-rotate-left"></i> REGISTRAR DEVOLUCIÓN
+          </button>
+        </div>
+        
+        <div class="scanner-card">
+          <p style="font-size:.7rem;margin-bottom:4px;font-weight:700;color:#64748b;">ESCANEAR PRODUCTO (EAN)</p>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="m-odc-scan" class="m-input-full" placeholder="Escanee código de barras...">
+            <button class="m-btn-icon primary" onclick="MWMS.doRecOScan()"><i class="fa-solid fa-barcode"></i></button>
+          </div>
+        </div>
+
+        <div id="m-lines-odc" style="margin-top:12px;"></div>
+        
+        <button class="m-btn secondary full" onclick="MWMS.viewRecO()" style="margin-top:20px;">Volver al listado</button>
+      </div>`;
+    const i = document.getElementById('m-odc-scan'); i.focus(); 
+    i.onkeydown = e => { if(e.key === 'Enter') this.doRecOScan(); };
+    this.refreshRecOLines();
+  },
+
+  // ─── DEVOLUCIÓN INTEGRADA EN ODC ──────────────────────────────────────
+  async openDevolucionODC() {
+    const odc = this._op?.odc;
+    if (!odc) return this.toast('Seleccione una ODC primero', 'error');
+
+    // Construir form de devolución
+    const detalles = odc.detalles || [];
+    const lineasHtml = detalles.map((d, i) => `
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px;" id="dev-line-odc-${i}" data-pid="${d.producto_id}">
+        <div style="font-weight:700;font-size:.82rem;color:#1e293b;margin-bottom:6px;">${this.esc(d.producto?.nombre || 'Producto')}</div>
+        <div style="font-size:.68rem;color:#64748b;margin-bottom:6px;">Solicitado: ${d.cantidad_solicitada} | Recibido: ${d.cantidad_recibida}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+          <div>
+            <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;">CANT. A DEVOLVER</label>
+            <input type="number" class="dev-qty-odc" data-idx="${i}" min="0" max="${d.cantidad_recibida || 999}" value="0"
+              style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-size:.85rem;text-align:center;">
+          </div>
+          <div>
+            <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;">MOTIVO</label>
+            <select class="dev-motivo-odc" data-idx="${i}" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-size:.75rem;">
+              <option value="Averia">Avería</option>
+              <option value="Vencido">Vencido</option>
+              <option value="ErrorProveedor">Error Prov.</option>
+              <option value="CalidadDeficiente">Baja Calidad</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:6px;">
+          <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;">OBSERVACIÓN</label>
+          <input type="text" class="dev-obs-odc" data-idx="${i}" placeholder="Opcional..."
+            style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-size:.78rem;">
+        </div>
+      </div>`).join('');
+
+    const modalHtml = `
+      <div id="m-modal-devolucion" style="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.7);display:flex;align-items:flex-end;">
+        <div style="background:#fff;width:100%;max-height:90dvh;border-radius:20px 20px 0 0;overflow-y:auto;padding:0 0 20px;">
+          <div style="background:#dc2626;color:#fff;padding:14px 18px;border-radius:20px 20px 0 0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div style="font-size:1rem;font-weight:800;"><i class="fa-solid fa-rotate-left"></i> Devolución a Proveedor</div>
+                <div style="font-size:.7rem;opacity:.85;">${this.esc(odc.numero_odc)} · ${this.esc(odc.proveedor?.razon_social||'')}</div>
+              </div>
+              <button onclick="document.getElementById('m-modal-devolucion').remove()" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:1.1rem;cursor:pointer;">×</button>
+            </div>
+          </div>
+          <div style="padding:16px;">
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px;margin-bottom:14px;font-size:.75rem;color:#991b1b;">
+              <i class="fa-solid fa-triangle-exclamation"></i> <b>Importante:</b> Los productos devueltos NO serán cargados al inventario.
+            </div>
+
+            <div style="font-size:.72rem;font-weight:700;color:#64748b;margin-bottom:8px;">PRODUCTOS DE LA ODC:</div>
+            ${lineasHtml || '<div style="text-align:center;padding:20px;color:#94a3b8;">Esta ODC no tiene líneas cargadas</div>'}
+
+            <div style="margin-top:16px;">
+              <label style="font-size:.72rem;font-weight:700;color:#475569;display:block;margin-bottom:6px;">MOTIVO GENERAL</label>
+              <textarea id="dev-motivo-general" rows="2" placeholder="Describa el motivo general de la devolución..."
+                style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:.8rem;resize:none;"></textarea>
+            </div>
+
+            <div style="margin-top:14px;">
+              <label style="font-size:.72rem;font-weight:700;color:#475569;display:block;margin-bottom:6px;">
+                <i class="fa-solid fa-camera"></i> EVIDENCIA FOTOGRÁFICA (máx. 5 fotos)
+              </label>
+              <input type="file" id="dev-fotos-input" accept="image/*" multiple capture="environment"
+                style="width:100%;padding:8px;border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;font-size:.78rem;"
+                onchange="MWMS._previewDevFotos(this)">
+              <div id="dev-fotos-preview" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
+            </div>
+
+            <button onclick="MWMS.guardarDevolucionODC()" 
+              style="width:100%;margin-top:20px;background:#dc2626;color:#fff;border:none;border-radius:10px;padding:14px;font-size:.9rem;font-weight:700;cursor:pointer;">
+              <i class="fa-solid fa-save"></i> Guardar Devolución
+            </button>
+          </div>
+        </div>
+      </div>`;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+  },
+
+  _previewDevFotos(input) {
+    const preview = document.getElementById('dev-fotos-preview');
+    if (!preview) return;
+    preview.innerHTML = '';
+    const files = Array.from(input.files).slice(0, 5);
+    files.forEach((f, i) => {
+      const url = URL.createObjectURL(f);
+      preview.innerHTML += `<div style="position:relative;"><img src="${url}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;border:2px solid #e2e8f0;"><span style="position:absolute;top:-4px;right:-4px;background:#dc2626;color:#fff;border-radius:50%;width:18px;height:18px;font-size:.6rem;display:flex;align-items:center;justify-content:center;">${i+1}</span></div>`;
+    });
+  },
+
+  async guardarDevolucionODC() {
+    const odc = this._op?.odc;
+    if (!odc) return;
+    const motivoGeneral = document.getElementById('dev-motivo-general')?.value?.trim() || 'Novedad en recepción';
+    
+    // Recopilar líneas con cantidad > 0
+    const detalles = [];
+    document.querySelectorAll('.dev-qty-odc').forEach((inp, i) => {
+      const qty = parseFloat(inp.value || 0);
+      if (qty <= 0) return;
+      const row = inp.closest('[data-pid]');
+      const pid = row?.dataset?.pid;
+      if (!pid) return;
+      const motivo = document.querySelectorAll('.dev-motivo-odc')[i]?.value || 'Averia';
+      const obs    = document.querySelectorAll('.dev-obs-odc')[i]?.value || '';
+      detalles.push({ producto_id: parseInt(pid), cantidad: qty, motivo, observacion: obs });
+    });
+
+    if (!detalles.length) return this.toast('Ingrese al menos un producto con cantidad > 0', 'error');
+
+    this.loading(true);
+    try {
+      const formData = new FormData();
+      formData.append('odc_id', odc.id);
+      formData.append('proveedor', odc.proveedor?.razon_social || '');
+      formData.append('motivo_general', motivoGeneral);
+      formData.append('detalles', JSON.stringify(detalles));
+
+      const fotosInput = document.getElementById('dev-fotos-input');
+      if (fotosInput?.files?.length) {
+        Array.from(fotosInput.files).slice(0,5).forEach((f, i) => formData.append(`foto_${i}`, f));
+      }
+
+      const res = await fetch(M_API + '/devoluciones/desde-odc', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + _mToken },
+        body: formData
+      });
+      const json = await res.json();
+      if (json.error) throw new Error(json.message);
+
+      document.getElementById('m-modal-devolucion')?.remove();
+      this.toast(`✓ Devolución ${json.data?.numero_devolucion} registrada`, 'success');
+    } catch(e) { this.toast(e.message, 'error'); }
+    this.loading(false);
+  },
+
+  // ─── CONSULTA INTELIGENTE ─────────────────────────────────────────────
+  viewConsultaInteligente() {
+    document.getElementById('m-title').textContent = 'Consulta';
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        <div class="op-card" style="background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#fff;">
+          <div style="font-size:.85rem;font-weight:800;margin-bottom:4px;"><i class="fa-solid fa-magnifying-glass-location"></i> Consulta Inteligente</div>
+          <div style="font-size:.7rem;opacity:.85;">Busca un producto o una ubicación</div>
+        </div>
+        <div class="scanner-card">
+          <div style="font-size:.7rem;font-weight:700;color:#64748b;margin-bottom:6px;">PRODUCTO o UBICACIÓN:</div>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="ci-query" class="m-input-full" placeholder="EAN, código, nombre, ubicación..." autocomplete="off" autocapitalize="off">
+            <button class="m-btn-icon primary" onclick="MWMS.runConsultaInteligente()"><i class="fa-solid fa-search"></i></button>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <button onclick="MWMS._setCIMode('producto')" id="ci-btn-prod"
+              style="flex:1;padding:6px;border-radius:6px;border:1px solid #0ea5e9;background:#e0f2fe;color:#0284c7;font-size:.72rem;font-weight:700;cursor:pointer;">
+              <i class="fa-solid fa-box"></i> Producto
+            </button>
+            <button onclick="MWMS._setCIMode('ubicacion')" id="ci-btn-ubic"
+              style="flex:1;padding:6px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;font-size:.72rem;font-weight:700;cursor:pointer;">
+              <i class="fa-solid fa-location-dot"></i> Ubicación
+            </button>
+          </div>
+        </div>
+        <div id="ci-results" style="margin-top:8px;"></div>
+      </div>`;
+    this._ciMode = 'producto';
+    const inp = document.getElementById('ci-query');
+    inp.focus();
+    inp.onkeydown = e => { if (e.key==='Enter') this.runConsultaInteligente(); };
+  },
+
+  _ciMode: 'producto',
+  _setCIMode(mode) {
+    this._ciMode = mode;
+    const pBtn = document.getElementById('ci-btn-prod');
+    const uBtn = document.getElementById('ci-btn-ubic');
+    if (mode === 'producto') {
+      pBtn.style.cssText += 'background:#e0f2fe;color:#0284c7;border-color:#0ea5e9;';
+      uBtn.style.cssText += 'background:#f8fafc;color:#64748b;border-color:#e2e8f0;';
+    } else {
+      uBtn.style.cssText += 'background:#e0f2fe;color:#0284c7;border-color:#0ea5e9;';
+      pBtn.style.cssText += 'background:#f8fafc;color:#64748b;border-color:#e2e8f0;';
+    }
+  },
+
+  async runConsultaInteligente() {
+    const q = document.getElementById('ci-query')?.value?.trim();
+    if (!q || q.length < 2) return this.toast('Escriba al menos 2 caracteres', 'warning');
+    const results = document.getElementById('ci-results');
+    results.innerHTML = '<div style="text-align:center;padding:20px;"><i class="fa-solid fa-spinner fa-spin" style="color:#0ea5e9;font-size:1.5rem;"></i></div>';
+    this.loading(true);
+    try {
+      if (this._ciMode === 'producto') {
+        // Buscar producto → mostrar ubicaciones con stock
+        const rP = await mApi('GET', '/odc/buscar-producto?q=' + encodeURIComponent(q));
+        const prods = rP.data || [];
+        if (!prods.length) { results.innerHTML = '<div class="m-empty"><i class="fa-solid fa-box-open"></i><p>Sin productos encontrados</p></div>'; return; }
+        
+        // Si hay varios, mostrar lista para seleccionar
+        if (prods.length > 1) {
+          results.innerHTML = `
+            <div style="font-size:.7rem;font-weight:700;color:#64748b;margin-bottom:8px;">SELECCIONE UN PRODUCTO:</div>
+            ${prods.slice(0,10).map(p => `
+              <div class="op-card" onclick="MWMS._loadStockProducto(${p.id},'${this.esc(p.nombre)}')"
+                style="padding:10px;display:flex;justify-content:space-between;align-items:center;">
+                <div><div style="font-weight:700;font-size:.82rem;">${this.esc(p.nombre)}</div><small style="color:#64748b;">SKU: ${this.esc(p.codigo_interno||'-')}</small></div>
+                <i class="fa-solid fa-chevron-right" style="color:#94a3b8;"></i>
+              </div>`).join('')}`;
+        } else {
+          await this._loadStockProducto(prods[0].id, prods[0].nombre);
+        }
+      } else {
+        // Buscar ubicación → mostrar productos con stock
+        const rU = await mApi('GET', '/param/ubicaciones?codigo=' + encodeURIComponent(q));
+        const ubics = Array.isArray(rU.data) ? rU.data : [];
+        const exact = ubics.find(u => (u.codigo||'').toUpperCase() === q.toUpperCase()) || ubics[0];
+        if (!exact) { results.innerHTML = '<div class="m-empty"><i class="fa-solid fa-location-dot"></i><p>Ubicación no encontrada</p></div>'; return; }
+        await this._loadStockUbicacion(exact);
+      }
+    } catch(e) { results.innerHTML = `<div style="padding:16px;color:#dc2626;font-size:.8rem;"><i class="fa-solid fa-exclamation-circle"></i> ${this.esc(e.message)}</div>`; }
+    this.loading(false);
+  },
+
+  async _loadStockProducto(productoId, nombre) {
+    const results = document.getElementById('ci-results');
+    results.innerHTML = '<div style="text-align:center;padding:20px;"><i class="fa-solid fa-spinner fa-spin" style="color:#0ea5e9;"></i></div>';
+    try {
+      const r = await mApi('GET', '/inventario/stock?producto_id=' + productoId);
+      const stock = (r.data || []).filter(s => parseFloat(s.cantidad) > 0);
+      const total = stock.reduce((a, s) => a + parseFloat(s.cantidad), 0);
+      results.innerHTML = `
+        <div style="font-size:.82rem;font-weight:800;color:#1e293b;margin-bottom:10px;padding:10px;background:#f0f9ff;border-radius:8px;border-left:4px solid #0ea5e9;">
+          <i class="fa-solid fa-box" style="color:#0ea5e9;"></i> ${this.esc(nombre)}
+          <span style="float:right;background:#0ea5e9;color:#fff;padding:2px 10px;border-radius:99px;font-size:.7rem;">Total: ${total}</span>
+        </div>
+        ${stock.length === 0
+          ? '<div class="m-empty"><i class="fa-solid fa-box-open"></i><p>Sin stock disponible</p></div>'
+          : `<div style="font-size:.7rem;font-weight:700;color:#64748b;margin-bottom:6px;">UBICACIONES CON STOCK:</div>
+             ${stock.map(s => `
+               <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+                 <div>
+                   <div style="font-weight:700;font-size:.82rem;">${this.esc(s.ubicacion_nombre||s.ubicacion_codigo||s.ubicacion_id)}</div>
+                   <small style="color:#64748b;">Lote: ${this.esc(s.lote||'N/A')} | ${this.esc(s.estado||'Disponible')}</small>
+                 </div>
+                 <div style="text-align:right;">
+                   <div style="font-size:1.2rem;font-weight:900;color:#0ea5e9;">${s.cantidad}</div>
+                   <div style="font-size:.6rem;color:#94a3b8;">unidades</div>
+                 </div>
+               </div>`).join('')}`}
+      `;
+    } catch(e) { results.innerHTML = `<div style="padding:16px;color:#dc2626;font-size:.8rem;">${this.esc(e.message)}</div>`; }
+  },
+
+  async _loadStockUbicacion(ubicacion) {
+    const results = document.getElementById('ci-results');
+    results.innerHTML = '<div style="text-align:center;padding:20px;"><i class="fa-solid fa-spinner fa-spin" style="color:#0ea5e9;"></i></div>';
+    try {
+      const r = await mApi('GET', '/inventario/stock?ubicacion_id=' + ubicacion.id);
+      const stock = (r.data || []).filter(s => parseFloat(s.cantidad) > 0);
+      const total = stock.reduce((a, s) => a + parseFloat(s.cantidad), 0);
+      results.innerHTML = `
+        <div style="font-size:.82rem;font-weight:800;color:#1e293b;margin-bottom:10px;padding:10px;background:#f0f9ff;border-radius:8px;border-left:4px solid #0284c7;">
+          <i class="fa-solid fa-location-dot" style="color:#0284c7;"></i> ${this.esc(ubicacion.codigo||ubicacion.nombre)}
+          <span style="float:right;background:#0284c7;color:#fff;padding:2px 10px;border-radius:99px;font-size:.7rem;">Total: ${total}</span>
+        </div>
+        ${stock.length === 0
+          ? '<div class="m-empty"><i class="fa-solid fa-inbox"></i><p>Ubicación vacía</p></div>'
+          : `<div style="font-size:.7rem;font-weight:700;color:#64748b;margin-bottom:6px;">PRODUCTOS EN ESTA UBICACIÓN:</div>
+             ${stock.map(s => `
+               <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+                 <div>
+                   <div style="font-weight:700;font-size:.82rem;">${this.esc(s.producto_nombre||'Producto')}</div>
+                   <small style="color:#64748b;">SKU: ${this.esc(s.producto_codigo||'-')} | Lote: ${this.esc(s.lote||'N/A')}</small>
+                 </div>
+                 <div style="text-align:right;">
+                   <div style="font-size:1.2rem;font-weight:900;color:#0284c7;">${s.cantidad}</div>
+                   <div style="font-size:.6rem;color:#94a3b8;">unidades</div>
+                 </div>
+               </div>`).join('')}`}
+      `;
+    } catch(e) { results.innerHTML = `<div style="padding:16px;color:#dc2626;font-size:.8rem;">${this.esc(e.message)}</div>`; }
+  },
+
+  async doRecOScan() {
+    const input = document.getElementById('m-odc-scan');
+    const ean = input.value.trim();
+    if (!ean) return;
+    input.value = '';
+    this.loading(true);
+    try {
+      const r = await mApi('GET', `/odc/${this._op.odc.id}/verificar-ean?q=${encodeURIComponent(ean)}`);
+      // r.data contiene { producto, detalle }
+      const p = r.data.producto;
+      const det = r.data.detalle;
+      const pending = parseFloat(det.cantidad_solicitada) - parseFloat(det.cantidad_recibida);
+      
+      this.openCapture(p, async res => {
+          this.loading(true);
+          try {
+              await mApi('POST', '/recepciones/detalles-operativa', {
+                  odc_id: this._op.odc.id,
+                  producto_id: p.id,
+                  cantidad: res.q, // Unidades totales
+                  cantidad_cajas: res.cantidad_cajas, // Cajas originales
+                  lote: res.l,
+                  fecha_vencimiento: res.fv,
+                  numero_pallet: this._op.currentPallet
+              });
+              
+              this.loading(false);
+              const result = await Swal.fire({
+                title: 'Item Guardado',
+                text: `¿Desea añadir más productos al PALLET #${this._op.currentPallet} o crear uno nuevo?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Añadir a este Pallet',
+                cancelButtonText: 'Nuevo Pallet',
+                confirmButtonColor: '#3b82f6',
+                cancelButtonColor: '#10b981'
+              });
+
+              if (!result.isConfirmed) {
+                // Generar nuevo número de pallet
+                this.loading(true);
+                const next = await mApi('GET', '/recepciones/proximo-pallet');
+                this._op.currentPallet = next.proximo;
+                this.renderRecO(); // Refrescar para mostrar el nuevo número
+              }
+
+              this.toast("Producto capturado", "success");
+              await this.refreshRecOLines();
+              await this.checkODCCompletion();
+          } catch(e) { this.toast(e.message, "error"); }
+          this.loading(false);
+      });
+    } catch(e) { 
+        this.toast(e.message, "error"); 
+        this.pA(); // Alerta sonora
+    }
+    this.loading(false);
+  },
+
+  async checkODCCompletion() {
+      try {
+          const r = await mApi('GET', `/odc/${this._op.odc.id}`);
+          const odc = r.data || r;
+          const totalSolicitado = odc.detalles.reduce((acc, d) => acc + parseFloat(d.cantidad_solicitada), 0);
+          const totalRecibido = odc.detalles.reduce((acc, d) => acc + parseFloat(d.cantidad_recibida), 0);
+          
+          if (totalRecibido >= totalSolicitado && totalSolicitado > 0) {
+              // Notificar al backend para cerrar/completar si no lo hace ya
+              await mApi('POST', `/odc/${odc.id}/cerrar`);
+              
+              // Alerta visual pro
+              this.loading(false);
+              alert(`¡ORDEN #${odc.numero_odc} COMPLETADA!\n\nSe han recibido todos los productos solicitados.`);
+              this.viewRecO();
+              return true;
+          }
+      } catch(e) { console.error("Error checkODC:", e); }
+      return false;
+  },
+
+  async refreshRecOLines() {
+      const container = document.getElementById('m-lines-odc');
+      if (!container) return;
+      try {
+          // Obtener las líneas de la recepción actual para esta ODC
+          const r = await mApi('GET', `/recepciones?odc_id=${this._op.odc.id}&estado=Borrador`);
+          const items = (r.data?.[0]?.detalles || []).slice(-5).reverse(); // Últimos 5
+          
+          if (items.length === 0) {
+              container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:.8rem;">No hay productos registrados aún</div>';
+              return;
+          }
+
+          container.innerHTML = `
+            <p style="font-size:.7rem;font-weight:700;color:#64748b;margin-bottom:8px;">ÚLTIMOS PRODUCTOS CAPTURADOS:</p>
+            ${items.map(i => `
+              <div class="op-card" style="padding:8px; margin-bottom:6px; border-left:4px solid #10b981;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <div style="flex:1;">
+                    <div style="font-weight:700; font-size:.8rem;">${this.esc(i.producto?.nombre)}</div>
+                    <small style="color:#64748b;">Cant: ${i.cantidad_recibida} | Lote: ${i.lote || 'N/A'}</small>
+                  </div>
+                  <i class="fa-solid fa-check-circle" style="color:#10b981;"></i>
+                </div>
+              </div>
+            `).join('')}`;
+      } catch(e) { console.error(e); }
+  },
+
+  viewTrans() {
+    document.getElementById('m-title').textContent='Traslado';
+    document.getElementById('m-content').innerHTML = `<div class="op-view"><div class="op-card"><b>Origen</b><input type="text" id="m-t-o" class="m-input-full"><div id="m-t-s"></div></div><div id="m-t-a" class="op-card" style="display:none"><b>Destino</b><input type="text" id="m-t-d" class="m-input-full"><br><b>Cant</b><input type="number" id="m-t-q" class="m-input-full"><button class="m-btn primary full" onclick="MWMS.doT()">Mover</button></div></div>`;
+    const i=document.getElementById('m-t-o'); i.focus(); i.onkeydown=e=>{if(e.key==='Enter')this.lTS();};
+  },
+  async lTS() {
+    const q=document.getElementById('m-t-o').value.trim(); if(!q) return;
+    this.loading(true);
+    try {
+      const rl=await mApi('GET','/param/ubicaciones?codigo='+encodeURIComponent(q));
+      const loc = Array.isArray(rl.data) ? rl.data.find(x=>x.codigo===q) : null;
+      if(!loc) throw new Error("Ubicación '"+q+"' no encontrada");
+      
+      const rs=await mApi('GET','/inventario/stock?ubicacion_id='+loc.id);
+      const stock = (rs.data||[]).filter(x => parseFloat(x.cantidad) > 0);
+      
+      if(stock.length === 0) throw new Error("Sin stock disponible en esa ubicación");
+      
+      if(stock.length === 1) {
+        this.selT(loc, stock[0]);
+      } else {
+        // Multiple products/batches: Show selection
+        document.getElementById('m-t-s').innerHTML = `
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-top:10px;">
+            <p style="font-size:.7rem;font-weight:700;margin-bottom:8px;color:#64748b;">MÚLTIPLES LOTES ENCONTRADOS:</p>
+            ${stock.map(s => `
+              <div onclick="MWMS.selT(${JSON.stringify(loc).replace(/"/g,'&quot;')}, ${JSON.stringify(s).replace(/"/g,'&quot;')})" 
+                   style="padding:10px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:6px;cursor:pointer;">
+                <div style="font-size:.8rem;font-weight:700;">${this.esc(s.producto_nombre)}</div>
+                <div style="font-size:.65rem;color:#64748b;">Cant: ${s.cantidad} | Lote: ${s.lote||'N/A'}</div>
+              </div>
+            `).join('')}
+          </div>`;
+          document.getElementById('m-t-a').style.display='none';
+      }
+    } catch(e) { this.toast(e.message,"error"); document.getElementById('m-t-s').innerHTML=''; } 
+    this.loading(false);
+  },
+  selT(loc, item) {
+    this._td={o:loc,i:item};
+    document.getElementById('m-t-s').innerHTML='<div style="background:#f1f5f9;padding:12px;border-radius:8px;font-size:.8rem;margin-top:10px;border-left:4px solid #3b82f6;"><b>'+this.esc(item.producto_nombre)+'</b><br><small>Disp: '+item.cantidad+' | Lote: '+(item.lote||'N/A')+'</small></div>';
+    document.getElementById('m-t-a').style.display='block'; 
+    document.getElementById('m-t-q').value=item.cantidad;
+    document.getElementById('m-t-d').focus();
+  },
+  async doT() {
+    const d=document.getElementById('m-t-d').value.trim(); const q=document.getElementById('m-t-q').value; this.loading(true);
+    try {
+      const rl=await mApi('GET','/param/ubicaciones?codigo='+encodeURIComponent(d));
+      const loc = Array.isArray(rl.data) ? rl.data.find(x=>x.codigo===d) : null;
+      if(!loc) throw new Error("Destino '"+d+"' no encontrado");
+      const s = this._td.i;
+      await mApi('POST','/inventario/traslado',{producto_id:s.producto_id, ubicacion_origen_id:this._td.o.id, ubicacion_destino_id:loc.id, cantidad:q, lote:s.lote, fecha_vencimiento:s.fecha_vencimiento});
+      this.toast("Traslado registrado","success"); this.showHome();
+    } catch(e) { this.toast(e.message,"error"); } this.loading(false);
+  },
+
+  async viewInventario() {
+    document.getElementById('m-title').textContent='Mis Tareas'; document.getElementById('m-content').innerHTML='Cargando asignaciones...';
+    try {
+      // Consultar Versión 2: Mis Asignaciones
+      const r = await mApi('GET', '/v2/inventario/mis-asignaciones');
+      const assignments = r.data || [];
+      
+      // Agrupar por sesión para no repetir si hay varios productos asignados en la misma sesión
+      const sessionsMap = {};
+      assignments.forEach(a => {
+          if(!a.sesion) return;
+          if(!sessionsMap[a.sesion_id]) {
+              sessionsMap[a.sesion_id] = {
+                  id: a.sesion_id,
+                  nombre: a.sesion.nombre,
+                  tipo: a.sesion.tipo,
+                  created_at: a.sesion.created_at || a.created_at,
+                  ronda: a.sesion.ronda_actual || 1,
+                  items: []
+              };
+          }
+          sessionsMap[a.sesion_id].items.push(a);
+      });
+      
+      const items = Object.values(sessionsMap);
+
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <div style="margin-bottom:12px;"><h3 style="font-size:.9rem;font-weight:700;">Inventarios En Curso (V2)</h3></div>
+          ${items.map(s => `
+            <div class="op-card" onclick="MWMS.startIv(${s.id})">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <b style="color:#1e293b;">${this.esc(s.nombre)}</b>
+                <span class="badge ${s.ronda>1?'badge-warning':'badge-info'}">R${s.ronda}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+                <small style="color:#64748b;">ID: #${s.id} | ${this.esc(s.tipo)}</small>
+                <small style="color:#94a3b8;font-size:.65rem;">${this.formatDate(s.created_at)}</small>
+              </div>
+              ${s.items.length > 0 ? `<div style="margin-top:6px;border-top:1px dashed #e2e8f0;padding-top:4px;">
+                <small style="color:#0ea5e9;font-weight:700;"><i class="fa-solid fa-clipboard-list"></i> ${s.items.length} tareas asignadas</small>
+              </div>` : ''}
+            </div>
+          `).join('') || '<div class="m-empty"><i class="fa-solid fa-check-circle"></i><p>No tiene inventarios asignados en V2</p></div>'}
+        </div>`;
+    } catch(e) { this.toast(e.message, "error"); }
+  },
+
+  async startIv(id) {
+    this.loading(true);
+    try {
+      // Consultar Versión 2: Detalles de Sesión
+      const r = await mApi('GET', '/v2/inventario/sesiones/' + id);
+      const c = r.data || r;
+      this._op = { ...c, l: [] };
+      this.renderIv();
+    } catch(e) { this.toast(e.message, "error"); }
+    this.loading(false);
+  },
+
+  renderIv() {
+    const d = this._op;
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        <div class="op-card" style="background:#1e293b;color:#fff;">
+          <small>Inventario DOC-${d.id}</small><br><b>Ronda ${d.ronda_actual}</b><br>
+          <small>${this.esc(d.tipo_interno)}</small>
+        </div>
+        
+        <div class="scanner-card">
+          <p id="m-iv-header" style="font-size:.7rem;margin-bottom:4px;font-weight:700;color:#64748b;">DIGITE O ESCANEE LA UBICACIÓN</p>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="m-iv-scan" class="m-input-full" placeholder="Ubicación..." autocomplete="off" oninput="MWMS.validateIvLocation(this.value)">
+            <button class="m-btn-icon primary" onclick="MWMS.doIv()"><i class="fa-solid fa-magnifying-glass"></i></button>
+          </div>
+          <!-- Sugerencias de ubicación -->
+          <div id="m-iv-suggestions" style="margin-top:8px;max-height:150px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;display:none;background:#fff;">
+            <div id="m-iv-suggestions-list" style="padding:4px;"></div>
+          </div>
+        </div>
+
+        <div id="m-lines-iv" style="margin-top:12px;"></div>
+        
+        <button class="m-btn success full" onclick="MWMS.viewInventario()" style="margin-top:20px;">Terminar Sesión</button>
+      </div>`;
+    const i = document.getElementById('m-iv-scan'); i.focus(); 
+    i.onkeydown = e => { if(e.key === 'Enter') this.doIv(); };
+    this.refreshIvLines();
+  },
+
+  async refreshIvLines() {
+      // Opcional: mostrar las últimas líneas contadas por este auxiliar
+  },
+
+  async doIv() {
+    const i = document.getElementById('m-iv-scan'); const q = i.value.trim(); if(!q) return;
+    this.loading(true);
+    try {
+      // 1. Si no tenemos ubicación, ver si es una
+      if (!this._curLoc) {
+          const rl = await mApi('GET', '/param/ubicaciones?codigo=' + encodeURIComponent(q));
+          const loc = Array.isArray(rl.data) ? rl.data.find(x => (x.codigo||'').toUpperCase() === q.toUpperCase()) : null;
+          
+          if (loc) {
+              this.selectIvLocation(loc);
+          } else {
+              this.toast("Ubicación no válida o no encontrada", "error");
+          }
+      } else {
+          // 2. Ya tenemos ubicación, buscamos producto
+          const rp = await mApi('GET', '/odc/buscar-producto?q=' + encodeURIComponent(q));
+          const prods = rp.data || [];
+          const prod = prods.find(p => p.codigo_interno === q || p.codigo_ean === q || (prods.length === 1));
+
+          if (prod) {
+              const p = prod;
+              const u = this._curLoc;
+              this.openCapture(p, async r => {
+                  this.loading(true);
+                  try {
+                      await mApi('POST', `/v2/inventario/sesiones/${this._op.id}/conteo-manual`, {
+                          producto_codigo: p.codigo_interno,
+                          ubicacion_codigo: u.codigo,
+                          cantidad: r.q,
+                          lote: r.l,
+                          fecha_vencimiento: r.fv,
+                          ronda: this._op.ronda_actual || 1
+                      });
+                      this.toast("Contado OK (V2)", "success");
+                      this._curLoc = null;
+                      const scanner = document.getElementById('m-iv-scan');
+                      if (scanner) {
+                          scanner.placeholder = "Ubicación...";
+                          scanner.value = "";
+                      }
+                      document.getElementById('m-iv-header').textContent = "DIGITE O ESCANEE LA UBICACIÓN";
+                      this.renderIv();
+                  } catch(e) { this.toast(e.message, "error"); }
+                  this.loading(false);
+              });
+          } else {
+              this.toast("Producto no reconocido", "error");
+              i.value = "";
+              i.focus();
+          }
+      }
+    } catch(e) { this.toast(e.message, "error"); }
+    this.loading(false);
+  },
+
+  _ivTimeout: null,
+  async validateIvLocation(q) {
+    if (this._curLoc) return; // Si ya hay ubicación, no sugerimos más
+    clearTimeout(this._ivTimeout);
+    if (!q || q.length < 3) {
+      document.getElementById('m-iv-suggestions').style.display = 'none';
+      return;
+    }
+
+    this._ivTimeout = setTimeout(async () => {
+      try {
+        const r = await mApi('GET', '/param/ubicaciones?codigo=' + encodeURIComponent(q));
+        const locs = Array.isArray(r.data) ? r.data : [];
+        if (locs.length > 0) {
+          const list = document.getElementById('m-iv-suggestions-list');
+          list.innerHTML = locs.slice(0, 8).map(loc => `
+            <div style="padding:10px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center;" 
+                 onclick="MWMS.selectIvLocation(${JSON.stringify(loc).replace(/"/g,'&quot;')})">
+              <span style="font-weight:700; color:#1e293b;">${this.esc(loc.codigo)}</span>
+              <small style="color:#64748b; font-size:.65rem;">${this.esc(loc.tipo_ubicacion)}</small>
+            </div>
+          `).join('');
+          document.getElementById('m-iv-suggestions').style.display = 'block';
+        } else {
+          document.getElementById('m-iv-suggestions').style.display = 'none';
+        }
+      } catch(e) { console.error(e); }
+    }, 400);
+  },
+
+  selectIvLocation(loc) {
+    this._curLoc = loc;
+    const inp = document.getElementById('m-iv-scan');
+    const header = document.getElementById('m-iv-header');
+    const sug = document.getElementById('m-iv-suggestions');
+    
+    if (inp) {
+      inp.value = "";
+      inp.placeholder = "Escanee Producto...";
+      inp.focus();
+    }
+    if (header) header.innerHTML = `UBICACIÓN: <b style="color:#0ea5e9;">${loc.codigo}</b> <small onclick="MWMS._clearIvLoc()" style="color:#ef4444; margin-left:8px; cursor:pointer;">[Cambiar]</small>`;
+    if (sug) sug.style.display = 'none';
+    this.toast("Ubicación fijada: " + loc.codigo, "success");
+  },
+
+  _clearIvLoc() {
+    this._curLoc = null;
+    this.renderIv();
+  },
+
+  startNotif() { this.chkN(); if(this._timer) clearInterval(this._timer); this._timer=setInterval(()=>this.chkN(),15000); },
+  async chkN() {
+    if(!_mUser) return;
+    try {
+      const r=await mApi('GET','/notificaciones/badge'); 
+      const c = parseInt(r.badge || 0);
+      const b=document.getElementById('m-notif-badge'), b2=document.getElementById('nav-badge');
+      if(c>0) { 
+        b.textContent=c; b.classList.remove('hidden'); 
+        b2.textContent=c; b2.classList.remove('hidden'); 
+        if(c>this._lastCnt) { this.pA(); b2.classList.add('pulse'); setTimeout(()=>b2.classList.remove('pulse'),2000); }
+      } else { b.classList.add('hidden'); b2.classList.add('hidden'); }
+      this._lastCnt=c;
+    } catch(e){}
+  },
+  pA() { if(navigator.vibrate)navigator.vibrate([200,100,200]); const s=document.getElementById('notif-sound'); if(s){s.currentTime=0;s.play().catch(()=>{});} },
+  async viewNotifications() {
+    document.getElementById('m-title').textContent='Tareas'; document.getElementById('nav-notif').classList.add('active'); document.getElementById('nav-home').classList.remove('active');
+    const r=await mApi('GET','/notificaciones'); const items=r.data||[];
+    document.getElementById('m-content').innerHTML = `<div class="op-view">${items.length===0?'<p>Sin tareas</p>':items.map(n=>`<div class="op-card ${n.leido?'':'unread'}" style="border-left:4px solid ${n.prioridad==='Alta'?'#ef4444':'#3b82f6'}" onclick="MWMS.opT(${n.id},'${n.modulo}')"><b>${this.esc(n.titulo)}</b><br><small>${this.esc(n.mensaje)}</small></div>`).join('')}</div>`;
+  },
+  async opT(id,mod) { await mApi('PUT','/notificaciones/'+id+'/leer'); this.chkN(); if(mod==='Recepcion') this.viewRecO(); else if(mod==='Picking') this.viewPicking(); else this.showHome(); },
+
+  // ── CITAS / YMS ──
+  async viewCitas() {
+    document.getElementById('m-title').textContent='Citas (YMS)';
+    document.getElementById('m-content').innerHTML='Cargando citas...';
+    try {
+      const r = await mApi('GET', '/citas');
+      const citas = (r.data || []).filter(c => ['Programada', 'EnPatio', 'EnCurso'].includes(c.estado));
+      const completadas = (r.data || []).filter(c => c.estado === 'Completada').slice(0, 5);
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <div style="margin-bottom:12px;display:flex;gap:6px;">
+            <button class="m-btn primary sm" onclick="MWMS.viewNewCita()"><i class="fa-solid fa-plus"></i> Nueva Cita</button>
+          </div>
+          <div style="margin-bottom:12px;">
+            <h3 style="font-size:.85rem;font-weight:700;margin-bottom:8px;color:#1e293b;">CITAS PENDIENTES:</h3>
+            ${citas.length === 0 
+              ? '<div class="m-empty"><i class="fa-solid fa-calendar-xmark"></i><p>Sin citas pendientes</p></div>'
+              : citas.map(c => `
+                <div class="op-card" onclick="MWMS.viewCitaDetail(${c.id})">
+                  <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                    <b>${this.esc(c.proveedor)}</b>
+                    <span class="m-badge" style="background:${c.estado==='Programada'?'#3b82f6':c.estado==='EnPatio'?'#f59e0b':'#ef4444'};color:#fff;font-size:.7rem;">${c.estado}</span>
+                  </div>
+                  <small>Fecha: <b>${this.formatDateShort(c.fecha)}</b> Hora: <b>${c.hora_programada}</b></small><br>
+                  <small>Cajas: ${c.cantidad_cajas} | Vehículo: ${c.tipo_vehiculo||'N/A'}</small>
+                </div>
+              `).join('')}
+          </div>
+          ${completadas.length > 0 ? `
+          <div>
+            <h3 style="font-size:.85rem;font-weight:700;margin-bottom:8px;color:#64748b;">ÚLTIMAS FINALIZADAS:</h3>
+            ${completadas.map(c => `
+              <div class="op-card" style="opacity:0.7;">
+                <small><b>${this.esc(c.proveedor)}</b> • Eval: <span style="color:${c.evaluacion_proveedor>=8?'#16a34a':c.evaluacion_proveedor>=6?'#f59e0b':'#dc2626'};font-weight:bold;">${c.evaluacion_proveedor}/10</span></small>
+              </div>
+            `).join('')}
+          </div>` : ''}
+        </div>`;
+    } catch(e) { this.toast(e.message, "error"); }
+  },
+
+  viewNewCita() {
+    document.getElementById('m-title').textContent='Nueva Cita';
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view" style="padding-bottom:100px;">
+        <div style="margin-bottom:12px;">
+          <label class="m-label">Proveedor</label>
+          <input type="text" id="m-cita-proveedor" class="m-input-full" placeholder="Nombre del proveedor">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="m-label">Fecha</label>
+          <input type="date" id="m-cita-fecha" class="m-input-full">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="m-label">Hora Programada</label>
+          <input type="time" id="m-cita-hora" class="m-input-full">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="m-label">Cantidad de Cajas</label>
+          <input type="number" id="m-cita-cajas" class="m-input-full" placeholder="0">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="m-label">Tipo Vehículo</label>
+          <input type="text" id="m-cita-vehiculo" class="m-input-full" placeholder="Ej: Camión, Furgoneta">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="m-label">Kilos</label>
+          <input type="number" id="m-cita-kilos" class="m-input-full" step="0.1" placeholder="0">
+        </div>
+        <button class="m-btn success full" onclick="MWMS.saveCita()" style="margin-top:20px;">Guardar Cita</button>
+        <button class="m-btn secondary full" onclick="MWMS.viewCitas()" style="margin-top:8px;">Cancelar</button>
+      </div>`;
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('m-cita-fecha').value = today;
+  },
+
+  async saveCita() {
+    const proveedor = document.getElementById('m-cita-proveedor').value.trim();
+    const fecha = document.getElementById('m-cita-fecha').value;
+    const hora = document.getElementById('m-cita-hora').value;
+    const cajas = document.getElementById('m-cita-cajas').value;
+    const vehiculo = document.getElementById('m-cita-vehiculo').value.trim();
+    const kilos = document.getElementById('m-cita-kilos').value;
+
+    if (!proveedor || !fecha || !hora) {
+      return this.toast('Proveedor, fecha y hora son requeridos', 'error');
+    }
+
+    this.loading(true);
+    try {
+      await mApi('POST', '/citas', {
+        proveedor,
+        fecha,
+        hora_programada: hora,
+        cantidad_cajas: parseInt(cajas) || 0,
+        tipo_vehiculo: vehiculo || null,
+        kilos: parseFloat(kilos) || 0
+      });
+      this.toast('Cita programada correctamente', 'success');
+      this.viewCitas();
+    } catch(e) { this.toast(e.message, 'error'); }
+    this.loading(false);
+  },
+
+  async viewCitaDetail(id) {
+    try {
+      const r = await mApi('GET', '/citas');
+      const cita = (r.data || []).find(c => c.id === id);
+      if (!cita) return this.toast('Cita no encontrada', 'error');
+
+      document.getElementById('m-title').textContent='Detalle Cita';
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <div class="op-card">
+            <div style="font-weight:700;font-size:.95rem;margin-bottom:12px;border-bottom:2px solid #e2e8f0;padding-bottom:8px;">
+              ${this.esc(cita.proveedor)}
+            </div>
+            <div style="margin-bottom:10px;">
+              <small style="color:#64748b;">ESTADO</small><br>
+              <b style="color:${cita.estado==='Programada'?'#3b82f6':cita.estado==='EnPatio'?'#f59e0b':'#ef4444'};">${cita.estado}</b>
+            </div>
+            <div style="margin-bottom:10px;">
+              <small style="color:#64748b;">FECHA Y HORA</small><br>
+              <b>${this.formatDateShort(cita.fecha)} a las ${cita.hora_programada}</b>
+            </div>
+            <div style="margin-bottom:10px;">
+              <small style="color:#64748b;">MERCANCÍA</small><br>
+              <b>${cita.cantidad_cajas} cajas | ${cita.kilos || 0} kg</b>
+            </div>
+            <div style="margin-bottom:10px;">
+              <small style="color:#64748b;">VEHÍCULO</small><br>
+              <b>${cita.tipo_vehiculo || 'No especificado'}</b>
+            </div>
+            ${cita.estado !== 'Completada' ? `
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid #e2e8f0;display:flex;gap:6px;">
+              ${cita.estado === 'Programada' ? `
+                <button class="m-btn primary sm full" onclick="MWMS.checkInCita(${id})"><i class="fa-solid fa-location-dot"></i> Check-in</button>
+              ` : cita.estado === 'EnPatio' ? `
+                <button class="m-btn primary sm full" onclick="MWMS.completeCita(${id})"><i class="fa-solid fa-check"></i> Completar</button>
+              ` : ''}
+              <button class="m-btn secondary sm full" onclick="MWMS.viewCitas()">Volver</button>
+            </div>` : `
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid #e2e8f0;">
+              <small style="color:#64748b;">EVALUACIÓN PROVEEDOR</small><br>
+              <div style="font-size:1.8rem;font-weight:900;color:${cita.evaluacion_proveedor>=8?'#16a34a':cita.evaluacion_proveedor>=6?'#f59e0b':'#dc2626'};">
+                ${cita.evaluacion_proveedor}/10
+              </div>
+              <button class="m-btn secondary sm full" onclick="MWMS.viewCitas()" style="margin-top:12px;">Volver</button>
+            </div>`}
+          </div>
+        </div>`;
+    } catch(e) { this.toast(e.message, 'error'); }
+  },
+
+  async checkInCita(id) {
+    this.loading(true);
+    try {
+      await mApi('POST', `/citas/${id}`, { estado: 'EnPatio', hora_llegada: new Date().toISOString() });
+      this.toast('Check-in registrado', 'success');
+      this.viewCitaDetail(id);
+    } catch(e) { this.toast(e.message, 'error'); }
+    this.loading(false);
+  },
+
+  async completeCita(id) {
+    const evaluacion = prompt('Evalúe al proveedor (1-10):', '8');
+    if (!evaluacion || isNaN(evaluacion) || parseInt(evaluacion) < 1 || parseInt(evaluacion) > 10) {
+      return this.toast('Evaluación debe ser de 1 a 10', 'error');
+    }
+    this.loading(true);
+    try {
+      const now = new Date();
+      const hora = now.toTimeString().split(' ')[0];
+      await mApi('POST', `/citas/${id}`, {
+        estado: 'Completada',
+        hora_fin_descargue: hora,
+        evaluacion_proveedor: parseInt(evaluacion)
+      });
+      this.toast('Cita completada con evaluación', 'success');
+      this.viewCitas();
+    } catch(e) { this.toast(e.message, 'error'); }
+    this.loading(false);
+  },
+
+  // ── PICKING (REFINADO PARA PROORIENTE) ──
+  async viewPicking() {
+    document.getElementById('m-title').textContent = 'Mis Planillas'; 
+    document.getElementById('m-content').innerHTML = '<div class="m-loading-small"><i class="fa-solid fa-spinner fa-spin"></i> Cargando planillas...</div>';
+    try {
+      const r = await mApi('GET', '/picking/mis-planillas');
+      const items = r.data || [];
+      
+      if (items.length === 0) {
+        document.getElementById('m-content').innerHTML = `
+          <div class="op-view">
+            <div class="m-empty"><i class="fa-solid fa-box-open"></i><p>Sin planillas asignadas</p><small>Pide al supervisor que te asigne una planilla en el dashboard.</small></div>
+            <button class="m-btn secondary full" onclick="MWMS.showHome()" style="margin-top:20px;">Volver al Inicio</button>
+          </div>`;
+        return;
+      }
+
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <div style="font-size:.7rem;font-weight:800;color:#64748b;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">PLANILLAS ASIGNADAS:</div>
+          <div style="display:flex;flex-direction:column;gap:15px;">
+            ${items.map(p => `
+              <div class="op-card" onclick="MWMS.viewPlanilla('${p.planilla_numero}')" style="border-top:4px solid ${p.empezada ? '#10b981' : '#1a56db'}; padding:18px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                   <div>
+                      <div style="font-size:.6rem;color:#64748b;font-weight:700;text-transform:uppercase;">Planilla</div>
+                      <div style="font-size:1.4rem;font-weight:900;color:#1e293b;">${p.planilla_numero}</div>
+                   </div>
+                   <div style="text-align:right;">
+                      <div style="font-size:.6rem;color:#64748b;font-weight:700;text-transform:uppercase;">Ruta</div>
+                      <div style="font-size:.85rem;font-weight:800;color:#1a56db;">${p.ruta || 'SIN RUTA'}</div>
+                   </div>
+                </div>
+                
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;background:#f8fafc;padding:10px;border-radius:10px;border:1px solid #e2e8f0;">
+                   <div style="text-align:center;">
+                      <div style="font-size:.5rem;color:#64748b;font-weight:700;">LÍNEAS</div>
+                      <div style="font-size:.9rem;font-weight:800;color:#1e293b;">${p.total_lineas}</div>
+                   </div>
+                   <div style="text-align:center;border-left:1px solid #e2e8f0;">
+                      <div style="font-size:.5rem;color:#64748b;font-weight:700;">CAJAS</div>
+                      <div style="font-size:.9rem;font-weight:800;color:#1a56db;">${p.total_cajas}</div>
+                   </div>
+                   <div style="text-align:center;border-left:1px solid #e2e8f0;">
+                      <div style="font-size:.5rem;color:#64748b;font-weight:700;">UNIDADES</div>
+                      <div style="font-size:.9rem;font-weight:800;color:#1e293b;">${p.total_unidades}</div>
+                   </div>
+                </div>
+
+                <div style="display:flex;justify-content:center;margin-top:12px;">
+                   ${p.empezada 
+                     ? '<span style="font-size:.65rem;font-weight:800;color:#059669;"><i class="fa-solid fa-play"></i> EN PROCESO</span>' 
+                     : '<span style="font-size:.65rem;font-weight:800;color:#1a56db;">TAP PARA INICIAR <i class="fa-solid fa-chevron-right"></i></span>'}
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>`;
+    } catch(e) { this.toast(e.message, "error"); }
+  },
+
+  async viewPlanilla(numero, verFaltantes = false) {
+    this.loading(true);
+    document.getElementById('m-title').textContent = 'Planilla ' + numero;
+    try {
+      // 1. Verificar si la planilla ya fue iniciada
+      const rp = await mApi('GET', '/picking/mis-planillas');
+      const plan = (rp.data || []).find(p => p.planilla_numero === numero);
+      
+      if (plan && !plan.empezada && !verFaltantes) {
+        document.getElementById('m-content').innerHTML = `
+          <div class="op-view" style="text-align:center;padding-top:40px;">
+            <div class="op-card" style="padding:30px;border-top:6px solid #1a56db;">
+               <i class="fa-solid fa-truck-fast" style="font-size:3rem;color:#1a56db;margin-bottom:20px;"></i>
+               <h2 style="font-weight:900;color:#1e293b;margin-bottom:5px;">¡LISTO PARA INICIAR!</h2>
+               <p style="font-size:.8rem;color:#64748b;margin-bottom:25px;">Se registrará el tiempo de inicio para esta planilla.</p>
+               
+               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:30px;background:#f1f5f9;padding:15px;border-radius:12px;">
+                  <div>
+                    <small style="font-weight:700;color:#475569;display:block;font-size:.55rem;">LÍNEAS</small>
+                    <b style="font-size:1.2rem;color:#1e293b;">${plan.total_lineas}</b>
+                  </div>
+                  <div style="border-left:1px solid #cbd5e1;">
+                    <small style="font-weight:700;color:#475569;display:block;font-size:.55rem;">CAJAS</small>
+                    <b style="font-size:1.2rem;color:#1a56db;">${plan.total_cajas}</b>
+                  </div>
+                  <div style="border-left:1px solid #cbd5e1;">
+                    <small style="font-weight:700;color:#475569;display:block;font-size:.55rem;">UNIDADES</small>
+                    <b style="font-size:1.2rem;color:#1e293b;">${plan.total_unidades}</b>
+                  </div>
+               </div>
+
+               <button class="m-btn primary full" style="height:60px;font-size:1.1rem;font-weight:900;box-shadow:0 10px 15px rgba(26,86,219,.3);" onclick="MWMS.iniciarPicking('${numero}')">
+                  <i class="fa-solid fa-play"></i> INICIAR SEPARACIÓN
+               </button>
+               <button class="m-btn-text full" style="margin-top:20px;color:#64748b;" onclick="MWMS.viewPicking()">Volver</button>
+            </div>
+          </div>`;
+        this.loading(false);
+        return;
+      }
+
+      const estado = verFaltantes ? 'Faltante' : 'Pendiente,EnProceso';
+      const r = await mApi('GET', `/picking/planilla/${numero}?estado=${estado}`);
+      const items = r.data || [];
+      
+      if (items.length === 0 && !verFaltantes) {
+        document.getElementById('m-content').innerHTML = `
+          <div class="op-view">
+            <div class="m-empty" style="padding-top:40px;">
+              <i class="fa-solid fa-circle-check" style="color:#10b981;font-size:3rem;"></i>
+              <p style="font-size:1.1rem;font-weight:700;margin-top:15px;">¡PLANILLA COMPLETADA!</p>
+              <small>No hay más tareas pendientes para esta planilla.</small>
+            </div>
+            <button class="m-btn primary full" onclick="MWMS.finalizarPicking('${numero}')" style="margin-top:30px;">Finalizar Picking de Planilla</button>
+            <button class="m-btn secondary full" onclick="MWMS.viewPlanilla('${numero}', true)" style="margin-top:10px;">Ver Líneas Faltantes</button>
+            <button class="m-btn-text full" onclick="MWMS.viewPicking()" style="margin-top:20px;color:#64748b;">Volver a Mis Planillas</button>
+          </div>`;
+        this.loading(false);
+        return;
+      }
+
+      // Guardar items en memoria temporal para evitar errores de serialización JSON en el HTML
+      this._itemsPlanilla = items;
+
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <div style="background:#1e293b;margin:-10px -10px 15px -10px;padding:12px 15px;display:flex;justify-content:space-between;align-items:center;">
+             <div style="color:#fff;">
+                <div style="font-size:.6rem;font-weight:700;opacity:.7;text-transform:uppercase;">Ruta Actual</div>
+                <div style="font-size:.9rem;font-weight:800;">${plan ? plan.ruta : 'SIN RUTA'}</div>
+             </div>
+             <div style="text-align:right;color:#fff;">
+                <div style="font-size:.6rem;font-weight:700;opacity:.7;text-transform:uppercase;">Planilla</div>
+                <div style="font-size:.9rem;font-weight:800;">${numero}</div>
+             </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div style="font-size:.65rem;font-weight:800;color:#64748b;text-transform:uppercase;">
+               ${verFaltantes ? '<span style="color:#ef4444;">PRODUCTOS FALTANTES</span>' : 'PRODUCTOS PENDIENTES'}:
+            </div>
+            <div style="display:flex;gap:8px;">
+               ${verFaltantes 
+                  ? `<button class="m-btn info sm" style="font-size:.65rem;padding:4px 8px;" onclick="MWMS.viewPlanilla('${numero}', false)"><i class="fa-solid fa-list-check"></i> Ver Pendientes</button>`
+                  : `<button class="m-btn secondary sm" style="font-size:.65rem;padding:4px 8px;" onclick="MWMS.viewPlanilla('${numero}', true)"><i class="fa-solid fa-triangle-exclamation"></i> Ver Faltantes</button>`
+               }
+               <button class="m-btn-icon secondary" onclick="MWMS.viewPicking()"><i class="fa-solid fa-arrow-left"></i></button>
+            </div>
+          </div>
+          ${items.map((it, idx) => `
+            <div class="op-card" onclick="MWMS.initPKConsolidado(${idx}, '${numero}')" style="border-left:4px solid ${verFaltantes ? '#ef4444' : (it.cantidad_pick > 0 ? '#10b981' : '#f59e0b')};">
+              <div style="display:flex;justify-content:space-between;align-items:start;">
+                <div style="flex:1;">
+                   <b style="font-size:.9rem;line-height:1.2;display:block;">${this.esc(it.producto_nombre)}</b>
+                   <small style="color:#64748b;font-weight:600;">Código: ${it.producto_codigo}</small>
+                </div>
+                <div style="text-align:right;">
+                   <b style="font-size:1.1rem;color:#1e293b;">${it.cantidad_total}</b><br>
+                   <small style="font-size:.6rem;font-weight:700;color:#64748b;">UNID</small>
+                </div>
+              </div>
+              <div style="margin-top:8px;display:flex;gap:15px;font-size:.7rem;color:#475569;background:#f8fafc;padding:5px 8px;border-radius:6px;">
+                 <span><i class="fa-solid fa-location-dot"></i> <b>${it.ubicacion_codigo || 'POR ASIGNAR'}</b></span>
+                 <span><i class="fa-solid fa-box-archive"></i> Cjs: <b>${it.cajas}</b></span>
+                 <span><i class="fa-solid fa-layer-group"></i> Un: <b>${it.picos}</b></span>
+              </div>
+            </div>`).join('')}
+        </div>`;
+    } catch(e) { this.toast(e.message, "error"); }
+    this.loading(false);
+  },
+
+  async iniciarPicking(numero) {
+    this.loading(true);
+    try {
+      await mApi('POST', `/picking/planilla/${numero}/iniciar`);
+      this.toast("Picking iniciado", "success");
+      this.viewPlanilla(numero);
+    } catch(e) { this.toast(e.message, "error"); }
+    this.loading(false);
+  },
+
+  async finalizarPicking(numero) {
+     this.toast("Planilla " + numero + " finalizada correctamente", "success");
+     this.viewPicking();
+  },
+
+  initPKConsolidado(idx, planillaNumero) {
+    const it = this._itemsPlanilla[idx];
+    if (!it) return this.toast("Error al recuperar item", "error");
+    this._idxActual = idx;
+    this.renderPKConsolidado(it, planillaNumero);
+  },
+
+  renderPKConsolidado(it, planillaNumero) {
+    let locValidated = false;
+    let prodValidated = false;
+
+    const renderContent = () => {
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view" style="padding-bottom:120px;">
+          <div class="op-card" style="background:#0f172a;color:#fff;border-radius:0 0 20px 20px;margin:-10px -10px 15px -10px;padding:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+              <div>
+                 <small style="opacity:.7;font-weight:700;">DIRÍGETE A:</small><br>
+                 <b style="font-size:2rem;letter-spacing:1px;font-family:monospace;color:${locValidated ? '#10b981' : '#fff'};">
+                   ${it.ubicacion_codigo || 'POR ASIGNAR'}
+                   ${locValidated ? ' <i class="fa-solid fa-circle-check"></i>' : ''}
+                 </b>
+              </div>
+              <div style="text-align:right;">
+                 <small style="opacity:.7;">PLANILLA</small><br>
+                 <b style="font-size:1.2rem;">${planillaNumero}</b>
+              </div>
+            </div>
+          </div>
+
+          <div class="op-card" style="border-radius:15px;box-shadow:0 10px 25px rgba(0,0,0,.15);margin-top:-10px;">
+            <div style="font-weight:800;color:#1e293b;font-size:1.15rem;margin-bottom:10px;line-height:1.2;">${this.esc(it.producto_nombre)}</div>
+            
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:15px;">
+              <div style="background:#f1f5f9;padding:10px;border-radius:10px;text-align:center;border:1px solid #e2e8f0;">
+                 <div style="font-size:.6rem;font-weight:700;color:#64748b;">CAJAS</div>
+                 <div style="font-size:1.5rem;font-weight:900;color:#1e293b;">${it.cajas}</div>
+              </div>
+              <div style="background:#f1f5f9;padding:10px;border-radius:10px;text-align:center;border:1px solid #e2e8f0;">
+                 <div style="font-size:.6rem;font-weight:700;color:#64748b;">UNID. SUELTAS</div>
+                 <div style="font-size:1.5rem;font-weight:900;color:#1e293b;">${it.picos}</div>
+              </div>
+            </div>
+
+            <div style="background:#eff6ff;padding:12px;border-radius:10px;">
+              <div style="display:flex;justify-content:space-between;font-size:.7rem;margin-bottom:5px;">
+                 <span style="color:#1d4ed8;font-weight:700;">LOTE: <b>${it.lote || 'N/A'}</b></span>
+                 <span style="color:#1d4ed8;font-weight:700;">VENCE: <b>${this.formatDateShort(it.fecha_vencimiento) || 'N/A'}</b></span>
+              </div>
+              <div style="text-align:center;margin-top:5px;">
+                 <div style="font-size:.65rem;font-weight:700;color:#64748b;">TOTAL A SEPARAR</div>
+                 <div style="font-size:3rem;font-weight:900;color:#1a56db;line-height:1;">${it.cantidad_total}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="scanner-card" style="margin-top:15px;background:${prodValidated ? '#f0f9ff' : (locValidated ? '#ecfdf5' : '#fef2f2')};border:2px solid ${prodValidated ? '#0ea5e9' : (locValidated ? '#10b981' : '#ef4444')};padding:15px;border-radius:15px;">
+             ${!prodValidated ? `
+                <label style="font-size:.75rem;font-weight:800;color:#1e293b;margin-bottom:8px;display:block;text-align:center;text-transform:uppercase;">
+                   ${locValidated ? '<span style="color:#059669;"><i class="fa-solid fa-barcode"></i> ESCANEÉ CÓDIGO PRODUCTO</span>' : '<span style="color:#dc2626;"><i class="fa-solid fa-location-dot"></i> ESCANEÉ LA UBICACIÓN</span>'}
+                </label>
+                <input type="text" id="m-pk-scan" class="m-input-full" placeholder="${locValidated ? 'Código de Barras...' : 'Código de Ubicación...'}" style="font-size:1.2rem;height:55px;text-align:center;letter-spacing:2px;font-weight:700;background:#fff;">
+                <div style="margin-top:10px;text-align:center;font-size:.65rem;color:#64748b;font-weight:600;">
+                   DEBE GARANTIZAR LA UBICACIÓN Y REFERENCIA CORRESPONDIENTE
+                </div>
+             ` : `
+                <div style="text-align:center;">
+                   <div style="color:#0369a1;font-weight:800;font-size:.9rem;margin-bottom:12px;"><i class="fa-solid fa-circle-check"></i> PRODUCTO VALIDADO</div>
+                   <button class="m-btn primary full" style="height:60px;font-size:1.1rem;" onclick="MWMS.confirmarPKActual('${planillaNumero}')">
+                      <i class="fa-solid fa-check-double"></i> CONFIRMAR ${it.cantidad_total} UNID.
+                   </button>
+                   <button class="m-btn secondary full" style="margin-top:12px;" onclick="MWMS.promptPKActualQty('${planillaNumero}')">
+                      <i class="fa-solid fa-pen-to-square"></i> CAMBIAR CANTIDAD / FALTANTE
+                   </button>
+                </div>
+             `}
+          </div>
+
+          <div style="display:flex;gap:10px;margin-top:20px;">
+             <button class="m-btn secondary full" onclick="MWMS.viewPlanilla('${planillaNumero}')"><i class="fa-solid fa-list-ul"></i> Lista de Tareas</button>
+          </div>
+        </div>`;
+      
+      const inp = document.getElementById('m-pk-scan');
+      if (inp) {
+        inp.focus();
+        inp.onkeydown = e => {
+          if (e.key === 'Enter') {
+            const val = inp.value.trim();
+            if (!val) return;
+            
+            if (!locValidated) {
+              const targetLoc = (it.ubicacion_codigo || "").toUpperCase();
+              const targetId  = (it.ubicacion_id || "").toString();
+              if (val.toUpperCase() === targetLoc || val === targetId) {
+                 locValidated = true;
+                 this.toast("UBICACIÓN VALIDADA", "success");
+                 renderContent();
+              } else {
+                 this.pA(); this.toast("UBICACIÓN INCORRECTA", "error");
+                 inp.value = ""; inp.focus();
+              }
+            } else {
+              const targetEan  = (it.producto_ean || "").toString();
+              const targetCode = (it.producto_codigo || "").toString();
+              if (val === targetEan || val === targetCode) {
+                 prodValidated = true;
+                 this.toast("PRODUCTO VALIDADO", "success");
+                 renderContent();
+              } else {
+                 this.pA(); this.toast("PRODUCTO INCORRECTO", "error");
+                 inp.value = ""; inp.focus();
+              }
+            }
+          }
+        };
+      }
+    };
+
+    renderContent();
+  },
+
+  async confirmarPKActual(planillaNumero, qtyTomada = null) {
+    const it = this._itemsPlanilla[this._idxActual];
+    const qtyActual = qtyTomada !== null ? qtyTomada : it.cantidad_total;
+    this.loading(true);
+    try {
+      await mApi('POST', '/picking/confirmar-consolidado', {
+        ids: it.ids,
+        cantidad_tomada: qtyActual,
+        planilla_numero: planillaNumero
+      });
+      this.toast("Confirmado " + qtyActual + " und", "success");
+      
+      // Pasar a la siguiente tarea automáticamente
+      const r = await mApi('GET', `/picking/planilla/${planillaNumero}`);
+      this._itemsPlanilla = r.data || [];
+      const nextIdx = this._itemsPlanilla.findIndex(x => x.cantidad_pick < x.cantidad_total);
+      
+      if (nextIdx !== -1) {
+        this.initPKConsolidado(nextIdx, planillaNumero);
+      } else {
+        this.toast("¡Planilla Completada!", "success");
+        this.viewPlanilla(planillaNumero);
+      }
+    } catch(e) { this.toast(e.message, "error"); }
+    this.loading(false);
+  },
+
+  async promptPKActualQty(planillaNumero) {
+    const it = this._itemsPlanilla[this._idxActual];
+    const qty = prompt(`PRODUCTO CORRECTO.\n\nIngrese cantidad total tomada:\n(Máximo: ${it.cantidad_total})`, it.cantidad_total);
+    if (qty === null) return;
+    
+    const nQty = parseInt(qty);
+    if (isNaN(nQty) || nQty < 0) return this.toast("Cantidad inválida", "error");
+    if (nQty > it.cantidad_total) return this.toast("No puede ingresar más de lo solicitado ("+it.cantidad_total+")", "error");
+
+    if (nQty < it.cantidad_total) {
+      if (!confirm("ESTÁ INGRESANDO UNA CANTIDAD MENOR.\n\nSe generará una NOVEDAD (Faltante).\n¿Desea continuar?")) return;
+    }
+
+    this.confirmarPKActual(planillaNumero, nQty);
+  },
+
+  async reportPKError(lineaId, ordenId) {
+    const causa = prompt("Reportar problema (Ej: Pasillo Obstruido, Stock no físico, Dañado):");
+    if (!causa) return;
+    this.loading(true);
+    try {
+      await mApi('POST', `/picking/${ordenId}/marcar-faltante`, { 
+        linea_id: lineaId, 
+        observacion: causa 
+      });
+      this.toast("Novedad reportada", "warning");
+      this.viewPicking();
+    } catch(e) { this.toast(e.message, "error"); }
+    this.loading(false);
+  },
+
+  async doPKScan(d) {
+    const i = document.getElementById('m-pk-scan'); 
+    const q = i.value.trim(); 
+    if (!q) return;
+    i.value = '';
+    
+    if (q !== d.linea.producto_ean && q !== d.linea.producto_codigo) {
+      this.pA(); 
+      return this.toast("CÓDIGO INCORRECTO: " + q, "error");
+    }
+    
+    const qty = prompt(`Cantidad confirmada (Esperado: ${d.linea.cantidad_solicitada}):`, d.linea.cantidad_solicitada);
+    if (qty === null) return;
+    const nQty = parseInt(qty);
+    if (isNaN(nQty) || nQty <= 0) return this.toast("Cantidad inválida", "error");
+
+    this.loading(true);
+    try {
+      await mApi('POST', `/picking/${d.orden.id}/confirmar-linea`, { 
+        linea_id: d.linea.id, 
+        cantidad_tomada: nQty 
+      });
+      this.toast("Línea confirmada", "success");
+      this.goPK(d.orden.id);
+    } catch(e) { this.toast(e.message, "error"); }
+    this.loading(false);
+  },
+
+  // ── CERTIFICACIÓN ──
+  async viewCert() {
+    document.getElementById('m-title').textContent='Certificar';
+    document.getElementById('m-content').innerHTML='<div class="pull-indicator"><i class="fa-solid fa-spinner fa-spin"></i> Cargando planillas...</div>';
+    try {
+      const r = await mApi('GET', '/planillas');
+      const archivos = (r.data||[]).filter(a => ['Separado','EnCertificacion','EnPicking'].includes(a.estado));
+      if (archivos.length === 0) {
+        document.getElementById('m-content').innerHTML = '<div class="m-empty"><i class="fa-solid fa-clipboard-check"></i><p>No hay planillas disponibles para certificar</p><small style="color:#94a3b8;">El supervisor debe completar el picking primero</small></div>';
+        return;
+      }
+      
+      let planillasDisp = [];
+      for (const archivo of archivos) {
+        const rd = await mApi('GET', '/planillas/' + archivo.id);
+        const pl = (rd.data?.planillas || []).filter(p => p.estado_cert !== 'Completada');
+        pl.forEach(p => { p._archivo_id = archivo.id; p._archivo_nombre = archivo.nombre_archivo; });
+        planillasDisp = planillasDisp.concat(pl);
+      }
+
+      if (planillasDisp.length === 0) {
+        document.getElementById('m-content').innerHTML = '<div class="m-empty"><i class="fa-solid fa-clipboard-check"></i><p>Todas las planillas ya fueron certificadas</p></div>';
+        return;
+      }
+
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <div style="margin-bottom:12px;">
+            <div style="font-size:.75rem;font-weight:700;color:#64748b;margin-bottom:8px;">SELECCIONE PLANILLA A CERTIFICAR</div>
+            ${planillasDisp.map(p => `
+              <div class="op-card" onclick="MWMS.startCert(${p._archivo_id},'${this.esc(p.numero_planilla)}')" style="cursor:pointer;border-left:4px solid ${p.estado_cert==='EnProceso'?'#f59e0b':'#3d44db'};">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <div><div style="font-weight:800;font-size:.9rem;">${this.esc(p.numero_planilla)}</div>
+                  <div style="font-size:.7rem;color:#64748b;">${this.esc(p._archivo_nombre)}</div></div>
+                  <span class="m-badge ${p.estado_cert==='EnProceso'?'warning':'info'}">${p.estado_cert==='EnProceso'?'En proceso':'Pendiente'}</span>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>`;
+    } catch(e) { this.toast(e.message, 'error'); }
+  },
+
+  async startCert(archivoId, numeroPlanilla) {
+    this.loading(true);
+    try {
+      const r = await mApi('POST', '/planillas/cert/iniciar', { archivo_id: archivoId, numero_planilla: numeroPlanilla });
+      this._op = { cert: r.data };
+      this.renderCert();
+    } catch(e) { this.toast(e.message, "error"); }
+    this.loading(false);
+  },
+
+  renderCert() {
+    const cert = this._op.cert;
+    const detalles = cert.detalles || [];
+    const completados = detalles.filter(d => d.es_correcto).length;
+
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        <div class="op-card" style="background:#0f172a;color:#fff;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div><div style="font-size:.6rem;opacity:.7;">CERTIFICANDO</div><b style="font-size:1.1rem;">${this.esc(cert.numero_planilla)}</b></div>
+            <div style="text-align:right;"><div style="font-size:.6rem;opacity:.7;">PROGRESO</div><b>${completados} / ${detalles.length}</b></div>
+          </div>
+          <div class="m-progress-bar" style="height:6px;background:rgba(255,255,255,.1);"><div class="m-progress-fill" style="width:${(completados/detalles.length)*100}%;background:#10b981;"></div></div>
+        </div>
+
+        <div class="scanner-card" style="position:sticky;top:0;z-index:10;box-shadow:0 10px 15px -3px rgba(0,0,0,0.1);">
+          <input type="text" id="m-cert-scan" class="m-input-full" placeholder="ESCANEE EAN DEL PRODUCTO..." autocomplete="off">
+        </div>
+
+        <div id="m-cert-items" style="margin-top:10px;">
+          ${detalles.map(det => `
+            <div class="op-card cert-line-item" id="cert-det-${det.id}" style="border-left:4px solid ${det.es_correcto?'#10b981':'#f59e0b'}; opacity:${det.es_correcto?'.6':'1'}">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="flex:1;">
+                   <div style="font-weight:700;font-size:1rem;">${this.esc(det.producto_nombre)}</div>
+                   <div style="font-size:.75rem;color:#64748b;">EAN: ${det.producto_codigo||'N/A'}</div>
+                </div>
+                <div style="text-align:right;">
+                   <div style="font-size:1.2rem;font-weight:900;color:${det.es_correcto?'#10b981':'#f59e0b'};">${det.cantidad_certificada}</div>
+                   <div style="font-size:.6rem;color:#94a3b8;">CERTIFICADO</div>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px;">
+          <button class="m-btn secondary full" onclick="MWMS.showFaltantes()"><i class="fa-solid fa-list-check"></i> Faltantes</button>
+          <button class="m-btn success full" onclick="MWMS.endCert()"><i class="fa-solid fa-check-double"></i> Finalizar</button>
+        </div>
+      </div>`;
+
+    const input = document.getElementById('m-cert-scan');
+    input.focus();
+    input.onkeydown = e => { if(e.key === 'Enter') this.doCertScan(); };
+  },
+
+  async doCertScan() {
+    const input = document.getElementById('m-cert-scan');
+    const ean = input.value.trim();
+    input.value = '';
+    if(!ean) return;
+
+    this.loading(true);
+    try {
+      const r = await mApi('POST', `/planillas/cert/${this._op.cert.id}/linea`, { ean: ean, cantidad: 1 });
+      this.toast(r.mensaje, r.es_completo ? 'success' : 'info');
+      
+      // Update local state and redraw line safely
+      const detIdx = this._op.cert.detalles.findIndex(d => d.id === r.det_id);
+      if (detIdx !== -1) {
+        this._op.cert.detalles[detIdx].cantidad_certificada = r.cantidad_nueva;
+        this._op.cert.detalles[detIdx].es_correcto = r.es_completo;
+        this.renderCert(); // Full redraw for progress update
+      }
+    } catch(e) {
+      this.toast(e.message, 'error');
+      this.pA(); // Sound error
+    } finally {
+      this.loading(false);
+    }
+  },
+
+  showFaltantes() {
+    const faltantes = this._op.cert.detalles.filter(d => !d.es_correcto);
+    if (faltantes.length === 0) return this.toast("¡Carga completa!", "success");
+    
+    let html = `<div style="text-align:left;">`;
+    faltantes.forEach(f => {
+      html += `<div style="padding:10px;border-bottom:1px solid #eee;">
+        <b>${this.esc(f.producto_nombre)}</b><br>
+        <small>Faltan: ${f.cantidad_esperada - f.cantidad_certificada} unidades</small>
+      </div>`;
+    });
+    html += `</div>`;
+    
+    WMS.showModal('Items Pendientes', html); // Note: MWMS uses context-dependent modals, but here we'll use a generic alert for simplicity if WMS is not globally accessible as such
+    // Better: use SweetAlert if available, but let's stick to MWMS style
+    alert("PENDIENTES:\n" + faltantes.map(f => `- ${f.producto_nombre}: Faltan ${f.cantidad_esperada - f.cantidad_certificada}`).join("\n"));
+  },
+
+  async endCert() {
+    if (!confirm('¿Finalizar certificación? Los items sin contar quedarán como pendientes.')) return;
+    this.loading(true);
+    try {
+      const d = this._op;
+      const r = await mApi('POST', `/planillas/cert/${d.cert.id}/finalizar`, {});
+      this.toast(r.hay_novedad ? '⚠ Certificación con novedades' : '✓ Certificación completada', r.hay_novedad ? 'warning' : 'success');
+      this.showHome();
+    } catch(e) { this.toast(e.message, "error"); }
+    this.loading(false);
+  },
+
+  // ── REABASTECIMIENTO (MONTACARGAS) ──
+  async viewReabast() {
+    document.getElementById('m-title').textContent='Reabastecimiento';
+    const r = await mApi('GET', '/picking/reabastecimientos');
+    const items = r.data || [];
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        ${items.length===0 ? '<p>Sin tareas pendientes</p>' : items.map(t => `
+          <div class="op-card">
+            <div style="display:flex;justify-content:space-between;"><b>${this.esc(t.producto?.nombre)}</b><span class="m-badge warning">${t.cantidad}</span></div>
+            <div style="font-size:.75rem;margin:5px 0;">ORIGEN: <b>${t.ubicacion_origen?.codigo}</b></div>
+            <div style="font-size:.75rem;">DESTINO: <b>${t.ubicacion_destino?.codigo}</b></div>
+            <button class="m-btn primary sm full" style="margin-top:10px;" onclick="MWMS.doReabast(${t.id})">Completar Movimiento</button>
+          </div>
+        `).join('')}
+      </div>`;
+  },
+
+  async doReabast(id) {
+    if(!confirm("¿Confirmar movimiento físico?")) return;
+    this.loading(true);
+    try {
+      await mApi('POST', `/picking/reabast/${id}/completar`);
+      this.toast("Completado", "success"); this.viewReabast();
+    } catch(e) { this.toast(e.message, "error"); }
+    this.loading(false);
+  },
+
+  openSearch(cb, t, mode='prod') {
+    this._sCb=cb; this._sMode=mode;
+    document.getElementById('m-modal-search-title').textContent=t;
+    document.getElementById('m-modal-search').style.display='flex';
+    const i=document.getElementById('m-search-input'); i.value=''; i.focus();
+    document.getElementById('m-search-results').innerHTML='';
+    // Reset handler so it gets the new mode each time
+    i._h=0;
+    if(!i._h){ i._h=1; let tm; i.oninput=e=>{ clearTimeout(tm); const q=e.target.value.trim(); if(q.length<2)return; tm=setTimeout(async()=>{
+      const mode=this._sMode;
+      if(mode==='prov') {
+        // Search suppliers
+        const r=await mApi('GET','/param/proveedores');
+        const list=(r.data||[]).filter(p=>(p.razon_social||'').toLowerCase().includes(q.toLowerCase())||(p.nit||'').includes(q));
+        document.getElementById('m-search-results').innerHTML=list.length===0?'<div style="padding:10px;color:#94a3b8;">Sin resultados</div>':list.map(p=>`<div class="search-result-item" onclick="MWMS.selP(${JSON.stringify(p).replace(/"/g,'&quot;')})"><b>${this.esc(p.razon_social)}</b><br><small>NIT: ${p.nit||'N/A'}</small></div>`).join('');
+      } else {
+        // Search products
+        const r=await mApi('GET','/odc/buscar-producto?q='+encodeURIComponent(q));
+        document.getElementById('m-search-results').innerHTML=(r.data||[]).map(p=>`<div class="search-result-item" onclick="MWMS.selP(${JSON.stringify(p).replace(/"/g,'&quot;')})"><b>${this.esc(p.nombre)}</b><br><small>COD: ${p.codigo_interno}</small></div>`).join('');
+      }
+    },400);};}
+  },
+  selP(p){ this.closeSearch(); this._sCb(p); },
+  closeSearch(){ document.getElementById('m-modal-search').style.display='none'; },
+  openDV(cb){ this._dCb=cb; document.getElementById('m-modal-date').style.display='flex'; const d1=document.getElementById('m-date-1'), d2=document.getElementById('m-date-2'), b=document.getElementById('m-btn-date-confirm'); d1.value=''; d2.value=''; b.disabled=1; const chk=()=>{b.disabled=!(d1.value&&d1.value===d2.value);}; d1.onchange=chk; d2.onchange=chk; },
+  confirmDateVerify(){ this.closeDateVerify(); this._dCb(document.getElementById('m-date-1').value); },
+  closeDateVerify(){ document.getElementById('m-modal-date').style.display='none'; },
+  pQty(p,cb){ const q=prompt("Cantidad para "+p.nombre+":","1"); if(parseInt(q)>0)cb(parseInt(q)); else this.toast("Invalida","error"); },
+  loading(s){ let l=document.getElementById('m-loading'); if(s&&!l)document.body.insertAdjacentHTML('beforeend','<div id="m-loading" style="position:fixed;inset:0;background:rgba(255,255,255,.7);z-index:90000;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#1a56db;"><i class="fa-solid fa-spinner fa-spin"></i></div>'); else if(!s&&l)l.remove(); },
+  toast(m,t='info'){ const c=document.getElementById('m-toast'), e=document.createElement('div'); e.className='m-toast-item '+t; e.innerHTML=m; c.appendChild(e); setTimeout(()=>{e.style.opacity='0';setTimeout(()=>e.remove(),500);},3000); },
+  esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); },
+  showNotif() { this.viewNotifications(); }
+};
+
+document.addEventListener('DOMContentLoaded',()=>{
+  MWMS.init();
+  const locCodInput = document.getElementById('m-loc-codigo');
+  if (locCodInput) {
+    let timeout;
+    locCodInput.addEventListener('input', function() {
+      this.value = this.value.toUpperCase().replace(/[^A-Z0-9\/\-]/g, '');
+      clearTimeout(timeout);
+      timeout = setTimeout(() => MWMS.validateLocationCode(this.value), 600);
+    });
+    locCodInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        clearTimeout(timeout);
+        MWMS.validateLocationCode(this.value);
+      }
+    });
+  }
+});
+</script>
+</body>
+</html>

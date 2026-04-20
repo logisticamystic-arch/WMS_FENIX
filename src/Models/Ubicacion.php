@@ -36,6 +36,11 @@ class Ubicacion extends Model
         return $this->belongsTo(Sucursal::class);
     }
 
+    public function zona()
+    {
+        return $this->belongsTo(Zona::class, 'zona', 'codigo');
+    }
+
     public function inventarios()
     {
         return $this->hasMany(Inventario::class);
@@ -58,4 +63,21 @@ class Ubicacion extends Model
     {
         return $this->estado === self::ESTADO_LOCKED;
     }
+
+    /**
+     * Recalcula el estado de la ubicación (Libre/Ocupada) basándose en la existencia de inventario.
+     * Útil tras desbloquear una ubicación por inventario.
+     */
+    public function recalcularEstado(): bool
+    {
+        $stockActual = $this->inventarios()->sum('cantidad');
+        $nuevoEstado = ($stockActual > 0) ? self::ESTADO_OCUPADA : self::ESTADO_LIBRE;
+        
+        if ($this->estado !== $nuevoEstado) {
+            $this->estado = $nuevoEstado;
+            return $this->save();
+        }
+        return true;
+    }
 }
+

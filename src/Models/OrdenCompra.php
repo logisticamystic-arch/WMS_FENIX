@@ -9,7 +9,8 @@ class OrdenCompra extends Model
     protected $table = 'ordenes_compra';
 
     protected $fillable = [
-        'empresa_id', 'proveedor_id', 'numero_odc', 'fecha', 'estado', 'observaciones',
+        'empresa_id', 'proveedor_id', 'auxiliar_id', 'numero_odc',
+        'fecha', 'fecha_esperada', 'estado', 'observaciones',
     ];
 
     public function empresa()
@@ -25,5 +26,15 @@ class OrdenCompra extends Model
     public function detalles()
     {
         return $this->hasMany(OrdenCompraDetalle::class, 'orden_compra_id');
+    }
+
+    public function recepciones()
+    {
+        return $this->hasMany(Recepcion::class, 'odc_id');
+    }
+
+    public function auxiliares()
+    {
+        return $this->belongsToMany(Personal::class, 'odc_personal', 'odc_id', 'personal_id');
     }
 }

@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análisis de Inteligencia & Ecosistema de Dashboards — WMS PROORIENTE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=Outfit:wght@500;700;900&display=swap" rel="stylesheet">
+    <script src="https://kit.fontawesome.com/d57a6e11ee.js" crossorigin="anonymous"></script>
+    <style>
+        :root {
+            --sidebar-width: 300px;
+            --primary: #0070f2;
+            --secondary: #0f172a;
+            --accent: #00f2fe;
+            --bg-body: #f8fafc;
+            --bg-card: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --grad-blue: linear-gradient(135deg, #0070f2 0%, #00f2fe 100%);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-body);
+            color: var(--text-main);
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* --- Sidebar --- */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--secondary);
+            color: white;
+            height: 100vh;
+            position: fixed;
+            padding: 40px 24px;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+        }
+
+        .sidebar-logo {
+            font-family: 'Outfit';
+            font-weight: 900;
+            font-size: 1.5rem;
+            margin-bottom: 40px;
+            background: var(--grad-blue);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-menu { list-style: none; flex: 1; }
+
+        .nav-item {
+            padding: 14px 20px;
+            margin-bottom: 8px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.95rem;
+        }
+
+        .nav-item i { width: 24px; text-align: center; }
+
+        .nav-item:hover { background: rgba(255,255,255,0.05); color: white; }
+
+        .nav-item.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 10px 15px -3px rgba(0, 112, 242, 0.4);
+        }
+
+        .divider { height: 1px; background: rgba(255,255,255,0.1); margin: 20px 0; }
+
+        /* --- Main Content --- */
+        main {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            padding: 60px 80px;
+            max-width: 1400px;
+        }
+
+        header { margin-bottom: 60px; }
+
+        .header-title { font-family: 'Outfit'; font-size: 2.8rem; font-weight: 900; letter-spacing: -0.01em; margin-bottom: 15px; }
+
+        .header-desc { font-size: 1.25rem; color: var(--text-muted); max-width: 800px; line-height: 1.6; }
+
+        /* --- Page Layout --- */
+        .dashboard-page { display: none; animation: slideUp 0.5s ease; }
+        .dashboard-page.active { display: block; }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .section-box {
+            background: var(--bg-card);
+            border-radius: 24px;
+            padding: 40px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            margin-bottom: 40px;
+        }
+
+        .section-header { margin-bottom: 30px; display: flex; align-items: center; gap: 20px; }
+
+        .section-num {
+            width: 50px;
+            height: 50px;
+            background: var(--grad-blue);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            font-family: 'Outfit';
+            font-size: 1.5rem;
+            font-weight: 900;
+        }
+
+        .section-info h2 { font-family: 'Outfit'; font-size: 1.8rem; font-weight: 800; }
+
+        .section-objective { font-weight: 700; color: var(--primary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-top: 5px; }
+
+        /* --- Metric Grid --- */
+        .metric-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; margin-top: 30px; }
+
+        .metric-card {
+            background: #f8fafc;
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid #f1f5f9;
+            transition: all 0.3s;
+        }
+
+        .metric-card:hover { border-color: var(--primary); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); }
+
+        .metric-title { font-weight: 800; font-size: 1.1rem; color: var(--secondary); margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+
+        .metric-title i { color: var(--primary); font-size: 0.9rem; }
+
+        .metric-bullet { list-style: none; padding-left: 0; }
+
+        .metric-bullet li {
+            position: relative;
+            padding-left: 20px;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+            color: var(--text-main);
+        }
+
+        .metric-bullet li strong { color: var(--secondary); }
+
+        .metric-bullet li::before {
+            content: '•';
+            position: absolute;
+            left: 0;
+            color: var(--primary);
+            font-weight: 900;
+        }
+
+        .data-analysis {
+            margin-top: 30px;
+            padding: 20px;
+            background: #eff6ff;
+            border-radius: 12px;
+            border-left: 4px solid var(--primary);
+        }
+
+        .data-analysis h4 { font-size: 0.85rem; font-weight: 800; text-transform: uppercase; color: var(--primary); margin-bottom: 5px; }
+
+        .data-analysis p { font-size: 0.95rem; color: var(--secondary); font-weight: 500; }
+
+        /* --- Strategic Summary --- */
+        .summary-card {
+            background: var(--secondary);
+            color: white;
+            border-radius: 30px;
+            padding: 60px;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .summary-card::after {
+            content: '';
+            position: absolute;
+            top: -20%;
+            right: -10%;
+            width: 400px;
+            height: 400px;
+            background: var(--primary);
+            filter: blur(150px);
+            opacity: 0.2;
+            z-index: 0;
+        }
+
+        .summary-title { font-family: 'Outfit'; font-size: 2.2rem; font-weight: 900; margin-bottom: 30px; position: relative; z-index: 1; }
+
+        .summary-desc { font-size: 1.15rem; color: rgba(255,255,255,0.7); margin-bottom: 40px; line-height: 1.7; position: relative; z-index: 1; }
+
+        .strategic-points { display: grid; grid-template-columns: repeat(2, 1fr); gap: 30px; position: relative; z-index: 1; }
+
+        .point-item { display: flex; gap: 20px; }
+
+        .point-icon { font-size: 1.8rem; color: var(--accent); }
+
+        .point-content h4 { font-family: 'Outfit'; font-size: 1.2rem; margin-bottom: 8px; }
+
+        .point-content p { color: rgba(255,255,255,0.6); font-size: 0.95rem; }
+
+        /* --- Layout specific --- */
+        .nav-footer { margin-top: auto; padding: 20px 0; border-top: 1px solid rgba(255,255,255,0.1); text-align: center; }
+        .nav-footer p { font-size: 0.75rem; color: rgba(255,255,255,0.4); }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="sidebar-logo">WMS PROORIENTE</div>
+        <ul class="nav-menu">
+            <li class="nav-item active" onclick="showPage('overview')"><i class="fa-solid fa-house"></i> Auditoría</li>
+            <div class="divider"></div>
+            <li class="nav-item" onclick="showPage('p1')"><i class="fa-solid fa-gauge-high"></i> 1. Principal</li>
+            <li class="nav-item" onclick="showPage('p2')"><i class="fa-solid fa-brain"></i> 2. Inteligencia</li>
+            <li class="nav-item" onclick="showPage('p3')"><i class="fa-solid fa-truck-fast"></i> 3. Picking</li>
+            <li class="nav-item" onclick="showPage('p4')"><i class="fa-solid fa-truck-ramp-box"></i> 4. Recepción</li>
+            <li class="nav-item" onclick="showPage('p5')"><i class="fa-solid fa-boxes-stacked"></i> 5. Inventarios</li>
+            <li class="nav-item" onclick="showPage('p6')"><i class="fa-solid fa-clipboard-check"></i> 6. Despacho</li>
+            <div class="divider"></div>
+            <li class="nav-item" onclick="showPage('summary')"><i class="fa-solid fa-chess-knight"></i> Valor Estratégico</li>
+        </ul>
+        <div class="nav-footer">
+            <p>© 2026 Engine Audit v4</p>
+        </div>
+    </aside>
+
+    <main>
+        <!-- PAGE: OVERVIEW -->
+        <div id="page-overview" class="dashboard-page active">
+            <header>
+                <div class="section-tag" style="margin-bottom:10px; color:var(--primary)">Auditoría Técnica & Funcional</div>
+                <h1 class="header-title">Ecosistema de Dashboards</h1>
+                <p class="header-desc">Analizamos la arquitectura de datos detallando qué información se mide, cómo se procesa y el valor estratégico que aporta cada centro de control para la toma de decisiones.</p>
+            </header>
+            
+            <div class="summary-card" style="padding:40px; background:var(--grad-blue); text-align:center;">
+                <h2 style="font-family:'Outfit'; font-weight:900; margin-bottom:15px">Hacia una Bodega Proactiva</h2>
+                <p style="color:white; opacity:0.9; max-width:600px; margin:0 auto">Navega por las secciones laterales para conocer el desglose detallado de cada pilar operativo de la plataforma.</p>
+            </div>
+        </div>
+
+        <!-- PAGE: 1. PRINCIPAL -->
+        <div id="page-p1" class="dashboard-page">
+            <div class="section-box">
+                <div class="section-header">
+                    <div class="section-num">1</div>
+                    <div class="section-info">
+                        <h2>Dashboard Principal: El "Pulso"</h2>
+                        <span class="section-objective">Objetivo: Brindar conciencia situacional inmediata al supervisor del CEDI.</span>
+                    </div>
+                </div>
+
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-chart-line"></i> KPIs de Catálogo & Flujo</div>
+                        <ul class="metric-bullet">
+                            <li><strong>Productos Activos:</strong> Censo total de SKUs en el maestro de artículos.</li>
+                            <li><strong>Entradas/Salidas del Día:</strong> Contadores dinámicos de recepciones y picking (24h).</li>
+                        </ul>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-donut"></i> Disponibilidad (Donuts)</div>
+                        <ul class="metric-bullet">
+                            <li><strong>Estado del Catálogo:</strong> Proporción Saladable vs. Bajo Stock vs. Agotados.</li>
+                            <li><strong>Ocupación de Bodega:</strong> Ratio de celdas ocupadas frente a espacios vacíos.</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="metric-card" style="margin-top:25px">
+                    <div class="metric-title"><i class="fa-solid fa-calendar-week"></i> Tendencia de Recepciones</div>
+                    <ul class="metric-bullet">
+                        <li>Análisis histórico de los últimos 7 días para detectar picos críticos de carga de trabajo.</li>
+                    </ul>
+                </div>
+
+                <div class="data-analysis">
+                    <h4>Análisis de Datos</h4>
+                    <p>Cruza tablas de existencias (stock), ubicaciones (ubicaciones) y logs de transacciones de inventario en tiempo real.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: 2. INTELIGENCIA -->
+        <div id="page-p2" class="dashboard-page">
+            <div class="section-box">
+                <div class="section-header">
+                    <div class="section-num">2</div>
+                    <div class="section-info">
+                        <h2>Módulo de Inteligencia: Núcleo Predictivo</h2>
+                        <span class="section-objective">Objetivo: Transformar datos históricos en decisiones proactivas para evitar pérdidas.</span>
+                    </div>
+                </div>
+
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-brain"></i> Matrix de Predicción</div>
+                        <ul class="metric-bullet">
+                            <li><strong>Análisis EMA (Media Móvil):</strong> Calcula la velocidad de rotación real.</li>
+                            <li><strong>Vencimiento Proyectado:</strong> Proyecta cuántas unidades se perderán.</li>
+                        </ul>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-triangle-exclamation"></i> Matriz de Anomalías</div>
+                        <ul class="metric-bullet">
+                            <li><strong>Patrones Atípicos:</strong> Identifica devoluciones excesivas o movimientos inusuales de inventario.</li>
+                        </ul>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-hourglass"></i> Análisis FEFO & Aging</div>
+                        <ul class="metric-bullet">
+                            <li>Clasifica stock por "edad" (30/60/90+ días) para identificar inventario estanco.</li>
+                        </ul>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-shield-halved"></i> GuardLog (Integridad)</div>
+                        <ul class="metric-bullet">
+                            <li>Auditoría de reglas de negocio para asegurar procesos críticos.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="data-analysis">
+                    <h4>Análisis de Datos</h4>
+                    <p>Utiliza modelos probabilísticos y comparativas de lotes contra fechas de expiración, ponderados por el promedio de venta mensual.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: 3. PICKING -->
+        <div id="page-p3" class="dashboard-page">
+            <div class="section-box">
+                <div class="section-header">
+                    <div class="section-num">3</div>
+                    <div class="section-info">
+                        <h2>Command Center de Picking</h2>
+                        <span class="section-objective">Objetivo: Garantizar el despacho a tiempo y medir la eficiencia operativa.</span>
+                    </div>
+                </div>
+
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-percent"></i> Progreso Global</div>
+                        <ul class="metric-bullet">
+                            <li>Porcentaje de líneas separadas vs. totales del día.</li>
+                        </ul>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-stopwatch"></i> Tiempos de Demora</div>
+                        <ul class="metric-bullet">
+                            <li>Cronómetros activos que miden la duración del ciclo por cada auxiliar.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="metric-card" style="margin-top:25px">
+                    <div class="metric-title"><i class="fa-solid fa-ranking-star"></i> Ranking de Desempeño</div>
+                    <ul class="metric-bullet">
+                        <li>Clasificación basada en unidades por hora, líneas por pedido y precisión de separación.</li>
+                        <li><strong>Alertas de Faltantes:</strong> Clasificación inmediata de cortes de stock detectados.</li>
+                    </ul>
+                </div>
+
+                <div class="data-analysis">
+                    <h4>Análisis de Datos</h4>
+                    <p>Monitorea los registros de la tabla picking_detalles y marcas de tiempo (timestamp) de cada captura móvil.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: 4. RECEPCION -->
+        <div id="page-p4" class="dashboard-page">
+            <div class="section-box">
+                <div class="section-header">
+                    <div class="section-num">4</div>
+                    <div class="section-info">
+                        <h2>Recepción & YMS: Supply Chain Inbound</h2>
+                        <span class="section-objective">Objetivo: Auditar cumplimiento de proveedores y gestionar el patio de carga.</span>
+                    </div>
+                </div>
+
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-table"></i> Matrix de Auditoría ODC</div>
+                        <ul class="metric-bullet">
+                            <li><strong>Solicitado vs. Recibido:</strong> Comparativa técnica contra capturas físicas.</li>
+                            <li><strong>Novedades:</strong> Registro de averías, faltantes o errores de EAN.</li>
+                        </ul>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-calendar-check"></i> KPIs de Patio (YMS)</div>
+                        <ul class="metric-bullet">
+                            <li><strong>Citas vs. Arribos:</strong> Cumplimiento de ventanas horarias.</li>
+                            <li><strong>Pallets en Patio:</strong> Mercancía capturada en etapa de aprobación (cuallos de botella).</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="data-analysis">
+                    <h4>Análisis de Datos</h4>
+                    <p>Integra las tablas de órdenes de compra externas con las recepciones ejecutadas en los muelles.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: 5. INVENTARIO -->
+        <div id="page-p5" class="dashboard-page">
+            <div class="section-box">
+                <div class="section-header">
+                    <div class="section-num">5</div>
+                    <div class="section-info">
+                        <h2>Control de Inventarios: Salud del Activo</h2>
+                        <span class="section-objective">Objetivo: Garantizar que el sistema coincida 100% con la realidad física.</span>
+                    </div>
+                </div>
+
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-tags"></i> Aging de Vencimientos</div>
+                        <ul class="metric-bullet">
+                            <li>Clasificación por colores (Crítico a >90 días) para procesos de salida urgente.</li>
+                        </ul>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-location-dot"></i> Stock por Ubicación</div>
+                        <ul class="metric-bullet">
+                            <li>Métrica visual (Mapa Lógico) de la posición exacta de cada SKU.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="metric-card" style="margin-top:25px">
+                    <div class="metric-title"><i class="fa-solid fa-clock-rotate-left"></i> Días de Inventario</div>
+                    <ul class="metric-bullet">
+                        <li>Proyección de duración del stock basada en demanda histórica para evitar sobre-stock.</li>
+                    </ul>
+                </div>
+
+                <div class="data-analysis">
+                    <h4>Análisis de Datos</h4>
+                    <p>Agrupaciones masivas por ubicaciones físicas, lotes y fechas de vencimiento filtradas por niveles de riesgo.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: 6. DESPACHO -->
+        <div id="page-p6" class="dashboard-page">
+            <div class="section-box">
+                <div class="section-header">
+                    <div class="section-num">6</div>
+                    <div class="section-info">
+                        <h2>Despacho & Certificación (QA)</h2>
+                        <span class="section-objective">Objetivo: Asegurar que lo que sale del CEDI sea exactamente lo solicitado.</span>
+                    </div>
+                </div>
+
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-bullseye"></i> IRA (Record Accuracy)</div>
+                        <ul class="metric-bullet">
+                            <li>Porcentaje de precisión en la certificación final del pedido.</li>
+                        </ul>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title"><i class="fa-solid fa-user-check"></i> Exactitud por Detalle</div>
+                        <ul class="metric-bullet">
+                            <li>Detección proactiva de sobrantes o faltantes antes de sellar el vehículo.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="metric-card" style="margin-top:25px">
+                    <div class="metric-title"><i class="fa-solid fa-truck-moving"></i> KPI de Eficiencia de Carga</div>
+                    <ul class="metric-bullet">
+                        <li>Tiempo desde certificación de pedido hasta salida de báscula/patio.</li>
+                    </ul>
+                </div>
+
+                <div class="data-analysis">
+                    <h4>Análisis de Datos</h4>
+                    <p>Comparativa entre picking completado y certificación final, integrada con el estado del TMS.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE: STRATEGIC SUMMARY -->
+        <div id="page-summary" class="dashboard-page">
+            <div class="summary-card">
+                <h2 class="summary-title">Resumen Estratégico para el Cliente</h2>
+                <p class="summary-desc">El sistema PROORIENTE no es solo un registrador de datos; es una herramienta de análisis estratégico. Al centralizar la información de entrada, permanencia y salida, permite al cliente:</p>
+                
+                <div class="strategic-points">
+                    <div class="point-item">
+                        <div class="point-icon"><i class="fa-solid fa-money-bill-trend-up"></i></div>
+                        <div class="point-content">
+                            <h4>Reducir Mermas</h4>
+                            <p>Mediante la inteligencia de vencimientos anticipada.</p>
+                        </div>
+                    </div>
+                    <div class="point-item">
+                        <div class="point-icon"><i class="fa-solid fa-people-group"></i></div>
+                        <div class="point-content">
+                            <h4>Optimizar Personal</h4>
+                            <p>Mediante el ranking de productividad y tiempos de picking.</p>
+                        </div>
+                    </div>
+                    <div class="point-item">
+                        <div class="point-icon"><i class="fa-solid fa-certificate"></i></div>
+                        <div class="point-content">
+                            <h4>Asegurar Calidad</h4>
+                            <p>Mediante la matriz de certificación antes del despacho.</p>
+                        </div>
+                    </div>
+                    <div class="point-item">
+                        <div class="point-icon"><i class="fa-solid fa-expand"></i></div>
+                        <div class="point-content">
+                            <h4>Maximizar Espacio</h4>
+                            <p>Mediante análisis de ocupación y aging de inventario.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="page-footer">
+            <p>© 2026 Engine Audit — Logística basada en datos de alta precisión.</p>
+        </footer>
+    </main>
+
+    <script>
+        function showPage(pageId) {
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.dashboard-page').forEach(el => el.classList.remove('active'));
+            
+            document.querySelector(`.nav-item[onclick*="${pageId}"]`).classList.add('active');
+            document.getElementById(`page-${pageId}`).classList.add('active');
+            
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>

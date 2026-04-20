@@ -8,7 +8,7 @@ use App\Models\Personal;
 use App\Models\Empresa;
 use Firebase\JWT\JWT;
 
-class AuthController
+class AuthController extends BaseController
 {
     /**
      * POST /api/auth/login
@@ -17,9 +17,9 @@ class AuthController
     public function login(Request $request, Response $response): Response
     {
         $data = $request->getParsedBody();
-        $documento = $data['documento'] ?? '';
-        $pin = $data['pin'] ?? '';
-        $nit = $data['nit'] ?? '900000001'; // Default = Prooriente nit
+        $documento = trim($data['documento'] ?? '');
+        $pin = trim($data['pin'] ?? '');
+        $nit = trim($data['nit'] ?? '900000001'); // Default = Prooriente nit
 
         if (empty($documento) || empty($pin)) {
             return $this->json($response, ['error' => true, 'message' => 'Documento y PIN son requeridos.'], 400);
@@ -42,7 +42,6 @@ class AuthController
         }
 
         if (!$user->verifyPin($pin)) {
-            error_log("LOGIN FAIL: authentication failed for user ID " . $user->id);
             return $this->json($response, ['error' => true, 'message' => 'Credenciales inválidas.'], 401);
         }
 
@@ -154,9 +153,4 @@ class AuthController
         return $this->json($response, ['error' => false, 'message' => 'PIN actualizado correctamente.']);
     }
 
-    private function json(Response $response, array $data, int $status = 200): Response
-    {
-        $response->getBody()->write(json_encode($data));
-        return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
-    }
 }

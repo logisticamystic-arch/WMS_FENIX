@@ -36,6 +36,16 @@ class Personal extends Model
         return $this->belongsTo(Sucursal::class);
     }
 
+    public function recepciones()
+    {
+        return $this->hasMany(Recepcion::class, 'auxiliar_id');
+    }
+
+    public function recepcionDetalles()
+    {
+        return $this->hasManyThrough(RecepcionDetalle::class, Recepcion::class, 'auxiliar_id', 'recepcion_id');
+    }
+
     /**
      * Verify PIN against stored hash
      */

@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WMS Prooriente — Propuesta Comercial</title>
+<style>
+  :root {
+    --navy:  #1B2B5E;
+    --navy2: #0F1A42;
+    --teal:  #0D9488;
+    --teal2: #00D4AA;
+    --amber: #F59E0B;
+    --red:   #EF4444;
+    --green: #22C55E;
+    --purple:#7C3AED;
+    --dark:  #0F172A;
+    --slate: #64748B;
+    --light: #E2E8F0;
+    --white: #FFFFFF;
+    --off:   #F8FAFC;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#0F172A;color:#E2E8F0;overflow-x:hidden;}
+
+  /* ── NAV ── */
+  nav{position:fixed;top:0;left:0;right:0;z-index:999;background:rgba(15,26,66,.95);backdrop-filter:blur(12px);border-bottom:1px solid rgba(13,148,136,.3);padding:0 2rem;}
+  .nav-inner{max-width:1300px;margin:auto;display:flex;align-items:center;justify-content:space-between;height:62px;}
+  .nav-logo{font-size:1.25rem;font-weight:900;color:#fff;letter-spacing:-.5px;}
+  .nav-logo span{color:var(--teal2);}
+  .nav-links{display:flex;gap:1.6rem;list-style:none;}
+  .nav-links a{color:#94A3B8;text-decoration:none;font-size:.82rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;transition:.2s;}
+  .nav-links a:hover{color:var(--teal2);}
+  .nav-cta{background:var(--teal);color:#fff;padding:.45rem 1.2rem;border-radius:6px;font-size:.82rem;font-weight:700;text-decoration:none;transition:.2s;}
+  .nav-cta:hover{background:var(--teal2);color:#0F172A;}
+
+  /* ── HERO ── */
+  #hero{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;
+    background:linear-gradient(135deg,#0F1A42 0%,#1B2B5E 50%,#0D1035 100%);}
+  .hero-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(13,148,136,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(13,148,136,.08) 1px,transparent 1px);background-size:60px 60px;}
+  .hero-glow{position:absolute;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(13,148,136,.18),transparent 70%);top:50%;left:50%;transform:translate(-50%,-50%);}
+  .hero-content{position:relative;z-index:2;text-align:center;padding:2rem;max-width:980px;}
+  .hero-badge{display:inline-block;background:rgba(13,148,136,.2);border:1px solid rgba(13,148,136,.5);color:var(--teal2);padding:.35rem 1rem;border-radius:100px;font-size:.78rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:1.5rem;}
+  .hero-title{font-size:clamp(2.4rem,5vw,4.2rem);font-weight:900;line-height:1.08;color:#fff;margin-bottom:1rem;}
+  .hero-title .accent{color:var(--teal2);}
+  .hero-title .amber{color:var(--amber);}
+  .hero-sub{font-size:1.15rem;color:#94A3B8;max-width:680px;margin:0 auto 2.5rem;line-height:1.7;}
+  .hero-pills{display:flex;flex-wrap:wrap;gap:.7rem;justify-content:center;margin-bottom:3rem;}
+  .pill{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:#CBD5E1;padding:.4rem 1rem;border-radius:100px;font-size:.78rem;font-weight:600;}
+  .hero-btns{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;}
+  .btn-primary{background:var(--teal);color:#fff;padding:.8rem 2rem;border-radius:8px;font-size:1rem;font-weight:700;text-decoration:none;transition:.2s;display:inline-flex;align-items:center;gap:.5rem;}
+  .btn-primary:hover{background:var(--teal2);color:#0F172A;transform:translateY(-2px);}
+  .btn-outline{background:transparent;color:#fff;padding:.8rem 2rem;border-radius:8px;font-size:1rem;font-weight:700;text-decoration:none;border:2px solid rgba(255,255,255,.25);transition:.2s;}
+  .btn-outline:hover{border-color:var(--teal2);color:var(--teal2);}
+  .hero-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem;max-width:880px;margin:4rem auto 0;padding:2rem;background:rgba(255,255,255,.04);border-radius:16px;border:1px solid rgba(255,255,255,.08);}
+  .hs{text-align:center;}
+  .hs-num{font-size:2rem;font-weight:900;color:var(--teal2);}
+  .hs-label{font-size:.78rem;color:#64748B;margin-top:.3rem;}
+
+  /* ── SECTIONS ── */
+  section{padding:6rem 2rem;}
+  .container{max-width:1200px;margin:auto;}
+  .section-eyebrow{display:inline-block;color:var(--teal2);font-size:.78rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:.8rem;}
+  .section-title{font-size:clamp(1.8rem,3vw,2.6rem);font-weight:900;color:#fff;line-height:1.15;margin-bottom:1rem;}
+  .section-title .t{color:var(--teal2);}
+  .section-title .a{color:var(--amber);}
+  .section-sub{color:#94A3B8;font-size:1rem;max-width:700px;line-height:1.7;margin-bottom:3rem;}
+
+  /* ── PAIN POINTS ── */
+  #dolor{background:#0A1020;}
+  .pain-intro{text-align:center;margin-bottom:3.5rem;}
+  .pain-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.5rem;}
+  .pain-card{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:16px;padding:2rem;position:relative;overflow:hidden;transition:.3s;}
+  .pain-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--red),#F97316);}
+  .pain-card:hover{transform:translateY(-4px);background:rgba(239,68,68,.1);}
+  .pain-icon{font-size:2.2rem;margin-bottom:1rem;}
+  .pain-pct{font-size:2.4rem;font-weight:900;color:var(--red);margin-bottom:.3rem;}
+  .pain-label{font-size:1rem;font-weight:700;color:#fff;margin-bottom:.5rem;}
+  .pain-desc{font-size:.88rem;color:#94A3B8;line-height:1.6;}
+  .pain-bottom{margin-top:3rem;background:linear-gradient(135deg,rgba(13,148,136,.15),rgba(245,158,11,.1));border:1px solid rgba(13,148,136,.3);border-radius:16px;padding:2rem;text-align:center;}
+  .pain-bottom p{font-size:1.1rem;color:#fff;font-weight:600;}
+  .pain-bottom span{color:var(--teal2);}
+
+  /* ── MODULES ── */
+  #modulos{background:linear-gradient(180deg,#0A1020,#0F172A);}
+  .modules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.5rem;}
+  .mod-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:1.8rem;transition:.3s;cursor:default;}
+  .mod-card:hover{background:rgba(13,148,136,.08);border-color:rgba(13,148,136,.4);transform:translateY(-4px);}
+  .mod-header{display:flex;align-items:center;gap:1rem;margin-bottom:1.2rem;}
+  .mod-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;}
+  .mod-title{font-size:1.05rem;font-weight:800;color:#fff;}
+  .mod-tag{font-size:.72rem;color:var(--teal2);font-weight:700;letter-spacing:.5px;margin-top:.15rem;}
+  .mod-feats{list-style:none;display:flex;flex-direction:column;gap:.55rem;}
+  .mod-feats li{font-size:.85rem;color:#94A3B8;display:flex;align-items:flex-start;gap:.5rem;line-height:1.4;}
+  .mod-feats li::before{content:'›';color:var(--teal2);font-weight:900;margin-top:-.05rem;}
+
+  /* ── IA/ML ── */
+  #ia{background:#060E1E;}
+  .ia-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:1.5rem;margin-bottom:2.5rem;}
+  .ia-card{border-radius:16px;padding:1.8rem;position:relative;overflow:hidden;}
+  .ia-card::after{content:'';position:absolute;top:-40px;right:-40px;width:120px;height:120px;border-radius:50%;opacity:.1;}
+  .ia-num{font-size:3rem;font-weight:900;opacity:.15;position:absolute;top:.8rem;right:1.2rem;}
+  .ia-icon{font-size:1.8rem;margin-bottom:.8rem;}
+  .ia-title{font-size:1.05rem;font-weight:800;color:#fff;margin-bottom:.6rem;}
+  .ia-desc{font-size:.86rem;line-height:1.6;margin-bottom:1rem;}
+  .ia-badge{display:inline-block;padding:.25rem .75rem;border-radius:100px;font-size:.72rem;font-weight:700;letter-spacing:.5px;text-transform:uppercase;}
+  .ia-scheduler{background:linear-gradient(135deg,rgba(13,148,136,.2),rgba(0,212,170,.1));border:1px solid rgba(13,148,136,.4);border-radius:16px;padding:2rem;text-align:center;margin-top:1rem;}
+  .ia-scheduler h3{color:#fff;font-size:1.2rem;font-weight:800;margin-bottom:.5rem;}
+  .ia-scheduler p{color:#94A3B8;font-size:.92rem;}
+
+  /* ── COMPARACIÓN ── */
+  #comparacion{background:linear-gradient(180deg,#060E1E,#0A1020);}
+  .comp-intro{text-align:center;margin-bottom:3rem;}
+  .comp-callout{background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.35);border-radius:16px;padding:2rem;margin-bottom:3rem;text-align:center;}
+  .comp-callout h3{color:var(--amber);font-size:1.3rem;font-weight:800;margin-bottom:.7rem;}
+  .comp-callout p{color:#CBD5E1;font-size:.95rem;line-height:1.7;max-width:800px;margin:auto;}
+  .comp-table-wrap{overflow-x:auto;border-radius:16px;border:1px solid rgba(255,255,255,.08);}
+  table.comp{width:100%;border-collapse:collapse;}
+  table.comp th{padding:1rem 1.2rem;font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
+  table.comp th:first-child{background:#0F172A;color:#64748B;text-align:left;}
+  table.comp th:nth-child(2){background:linear-gradient(135deg,#0D4A3E,#0A3B30);color:var(--teal2);}
+  table.comp th:nth-child(3){background:#151E2D;color:#64748B;}
+  table.comp th:nth-child(4){background:#151E2D;color:#64748B;}
+  table.comp td{padding:.9rem 1.2rem;font-size:.88rem;border-top:1px solid rgba(255,255,255,.05);}
+  table.comp td:first-child{color:#CBD5E1;font-weight:600;background:#0A1020;}
+  table.comp td:nth-child(2){background:rgba(13,148,136,.06);color:#fff;font-weight:700;text-align:center;}
+  table.comp td:nth-child(3){background:rgba(255,255,255,.02);color:#64748B;text-align:center;}
+  table.comp td:nth-child(4){background:rgba(255,255,255,.02);color:#64748B;text-align:center;}
+  .check-yes{color:var(--teal2);font-size:1.1rem;}
+  .check-no{color:#EF4444;font-size:1.1rem;}
+  .check-partial{color:var(--amber);font-size:.9rem;}
+  .comp-extras{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.5rem;margin-top:3rem;}
+  .extra-card{border-radius:16px;padding:1.8rem;border:1px solid;}
+  .extra-pro{background:rgba(13,148,136,.06);border-color:rgba(13,148,136,.25);}
+  .extra-con{background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.2);}
+  .extra-card h4{font-size:1rem;font-weight:800;margin-bottom:1rem;}
+  .extra-card li{font-size:.86rem;list-style:none;padding:.35rem 0;border-bottom:1px solid rgba(255,255,255,.05);color:#94A3B8;display:flex;align-items:flex-start;gap:.5rem;}
+  .extra-card li:last-child{border:none;}
+
+  /* ── ROI ── */
+  #roi{background:#060E1E;}
+  .roi-grid{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:start;}
+  @media(max-width:900px){.roi-grid{grid-template-columns:1fr;}}
+  .roi-losses{background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:16px;padding:2rem;}
+  .roi-losses h3{color:var(--red);font-size:1.1rem;font-weight:800;margin-bottom:1.5rem;display:flex;align-items:center;gap:.5rem;}
+  .loss-row{display:flex;justify-content:space-between;align-items:center;padding:.8rem 0;border-bottom:1px solid rgba(255,255,255,.06);}
+  .loss-row:last-child{border:none;}
+  .loss-label{font-size:.88rem;color:#94A3B8;}
+  .loss-amount{font-size:.95rem;font-weight:700;color:var(--red);}
+  .loss-total{background:rgba(239,68,68,.12);border-radius:10px;padding:1rem;margin-top:1rem;display:flex;justify-content:space-between;align-items:center;}
+  .loss-total .label{font-weight:800;color:#fff;}
+  .loss-total .amount{font-size:1.4rem;font-weight:900;color:var(--red);}
+  .roi-gains{display:flex;flex-direction:column;gap:1.2rem;}
+  .roi-kpi{background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:14px;padding:1.5rem;display:flex;align-items:center;gap:1.2rem;}
+  .roi-kpi-num{font-size:2.2rem;font-weight:900;color:var(--green);min-width:100px;}
+  .roi-kpi-label{font-size:.92rem;color:#CBD5E1;font-weight:600;}
+  .roi-kpi-sub{font-size:.8rem;color:#64748B;margin-top:.2rem;}
+  .roi-note{background:linear-gradient(135deg,rgba(13,148,136,.12),rgba(13,148,136,.05));border:1px solid rgba(13,148,136,.3);border-radius:14px;padding:1.5rem;margin-top:1rem;text-align:center;}
+  .roi-note p{color:#CBD5E1;font-size:.9rem;line-height:1.6;}
+  .roi-note strong{color:var(--teal2);}
+
+  /* ── HARDWARE ── */
+  #hardware{background:linear-gradient(180deg,#060E1E,#0A1020);}
+  .hw-intro{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:start;}
+  @media(max-width:900px){.hw-intro{grid-template-columns:1fr;}}
+  .hw-list{display:flex;flex-direction:column;gap:1rem;}
+  .hw-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:1.3rem 1.5rem;display:flex;align-items:center;gap:1.2rem;transition:.2s;}
+  .hw-item:hover{background:rgba(13,148,136,.08);border-color:rgba(13,148,136,.3);}
+  .hw-item-icon{font-size:1.6rem;min-width:36px;}
+  .hw-item-info{flex:1;}
+  .hw-item-name{font-size:.95rem;font-weight:700;color:#fff;}
+  .hw-item-desc{font-size:.8rem;color:#64748B;margin-top:.2rem;}
+  .hw-item-range{font-size:.88rem;font-weight:700;color:var(--amber);white-space:nowrap;}
+  .hw-note-box{background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.25);border-radius:16px;padding:2rem;}
+  .hw-note-box h4{color:var(--amber);font-size:1.1rem;font-weight:800;margin-bottom:1rem;}
+  .hw-note-box ul{list-style:none;display:flex;flex-direction:column;gap:.7rem;}
+  .hw-note-box li{font-size:.88rem;color:#94A3B8;display:flex;align-items:flex-start;gap:.6rem;line-height:1.5;}
+  .hw-note-box li::before{content:'▸';color:var(--amber);flex-shrink:0;}
+  .hw-total-row{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:1.2rem 1.5rem;display:flex;justify-content:space-between;align-items:center;margin-top:1.2rem;}
+  .hw-total-row .label{font-weight:800;color:#fff;font-size:1rem;}
+  .hw-total-row .amount{font-size:1.15rem;font-weight:900;color:var(--amber);}
+
+  /* ── CONECTIVIDAD ── */
+  #conectividad{background:#060E1E;}
+  .connect-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.3rem;margin-bottom:2.5rem;}
+  .conn-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:1.5rem;text-align:center;transition:.3s;}
+  .conn-card:hover{transform:translateY(-4px);background:rgba(124,58,237,.08);border-color:rgba(124,58,237,.3);}
+  .conn-icon{font-size:2rem;margin-bottom:.7rem;}
+  .conn-name{font-size:.95rem;font-weight:800;color:#fff;margin-bottom:.4rem;}
+  .conn-desc{font-size:.8rem;color:#64748B;line-height:1.5;}
+  .api-box{background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(124,58,237,.05));border:1px solid rgba(124,58,237,.3);border-radius:16px;padding:2rem;text-align:center;}
+  .api-box h3{color:#A78BFA;font-size:1.1rem;font-weight:800;margin-bottom:.7rem;}
+  .api-box p{color:#94A3B8;font-size:.9rem;line-height:1.7;max-width:700px;margin:auto;}
+
+  /* ── IMPLEMENTACIÓN ── */
+  #implementacion{background:linear-gradient(180deg,#060E1E,#0F172A);}
+  .impl-timeline{display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;margin-bottom:3rem;}
+  @media(max-width:900px){.impl-timeline{grid-template-columns:1fr 1fr;}}
+  .impl-phase{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:1.5rem;position:relative;overflow:hidden;transition:.3s;}
+  .impl-phase:hover{transform:translateY(-4px);}
+  .impl-phase::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;}
+  .impl-phase.p1::before{background:linear-gradient(90deg,#0D9488,#00D4AA);}
+  .impl-phase.p2::before{background:linear-gradient(90deg,#F59E0B,#FBBF24);}
+  .impl-phase.p3::before{background:linear-gradient(90deg,#7C3AED,#A78BFA);}
+  .impl-phase.p4::before{background:linear-gradient(90deg,#EF4444,#F97316);}
+  .impl-phase.p5::before{background:linear-gradient(90deg,#22C55E,#4ADE80);}
+  .impl-num{font-size:2.5rem;font-weight:900;opacity:.12;position:absolute;top:.5rem;right:.8rem;}
+  .impl-week{font-size:.72rem;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:.5rem;}
+  .impl-phase.p1 .impl-week{color:#0D9488;}
+  .impl-phase.p2 .impl-week{color:#F59E0B;}
+  .impl-phase.p3 .impl-week{color:#7C3AED;}
+  .impl-phase.p4 .impl-week{color:#EF4444;}
+  .impl-phase.p5 .impl-week{color:#22C55E;}
+  .impl-title{font-size:.95rem;font-weight:800;color:#fff;margin-bottom:.7rem;}
+  .impl-feats{list-style:none;display:flex;flex-direction:column;gap:.4rem;}
+  .impl-feats li{font-size:.78rem;color:#64748B;display:flex;align-items:flex-start;gap:.4rem;}
+  .impl-feats li::before{content:'·';color:#475569;font-size:1.2rem;line-height:.9;}
+  .impl-support{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.2rem;}
+  .support-item{background:rgba(13,148,136,.06);border:1px solid rgba(13,148,136,.2);border-radius:12px;padding:1.2rem 1.5rem;display:flex;align-items:center;gap:.8rem;}
+  .support-icon{font-size:1.4rem;}
+  .support-text{font-size:.88rem;color:#CBD5E1;font-weight:600;}
+
+  /* ── AGENTE FENIX ── */
+  #fenix{background:#060E1E;}
+  .fenix-wrap{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:center;}
+  @media(max-width:900px){.fenix-wrap{grid-template-columns:1fr;}}
+  .fenix-left{}
+  .fenix-features{display:flex;flex-direction:column;gap:.9rem;margin-top:2rem;}
+  .fenix-feat{background:rgba(245,158,11,.05);border:1px solid rgba(245,158,11,.15);border-radius:12px;padding:1.2rem 1.5rem;display:flex;align-items:flex-start;gap:1rem;transition:.2s;}
+  .fenix-feat:hover{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.35);}
+  .fenix-feat-icon{font-size:1.3rem;min-width:28px;}
+  .fenix-feat-title{font-size:.92rem;font-weight:800;color:#fff;margin-bottom:.25rem;}
+  .fenix-feat-desc{font-size:.82rem;color:#94A3B8;line-height:1.5;}
+  .fenix-right{background:linear-gradient(135deg,#1A0A3E,#2D1B6E);border-radius:24px;padding:2.5rem;border:1px solid rgba(124,58,237,.25);}
+  .fenix-header{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;}
+  .fenix-logo{width:56px;height:56px;background:linear-gradient(135deg,#F59E0B,#F97316);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:1.6rem;}
+  .fenix-title{font-size:1.3rem;font-weight:900;color:#fff;}
+  .fenix-sub{font-size:.82rem;color:#A78BFA;}
+  .fenix-metric{display:flex;justify-content:space-between;align-items:center;padding:.9rem 0;border-bottom:1px solid rgba(255,255,255,.06);}
+  .fenix-metric:last-child{border:none;}
+  .fenix-metric-label{font-size:.85rem;color:#94A3B8;}
+  .fenix-metric-val{font-size:.95rem;font-weight:800;color:#fff;}
+  .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:.4rem;}
+  .dot-green{background:var(--green);box-shadow:0 0 8px var(--green);}
+  .dot-amber{background:var(--amber);box-shadow:0 0 8px var(--amber);}
+
+  /* ── CTA ── */
+  #cta{background:linear-gradient(135deg,#0F1A42,#1B2B5E,#0D1035);position:relative;overflow:hidden;}
+  #cta::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(13,148,136,.2),transparent 70%);}
+  .cta-content{position:relative;z-index:2;text-align:center;max-width:800px;margin:auto;}
+  .cta-title{font-size:clamp(2rem,4vw,3.2rem);font-weight:900;color:#fff;line-height:1.1;margin-bottom:1.2rem;}
+  .cta-title span{color:var(--teal2);}
+  .cta-sub{font-size:1.05rem;color:#94A3B8;margin-bottom:3rem;line-height:1.7;}
+  .cta-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;margin-bottom:3.5rem;}
+  @media(max-width:700px){.cta-steps{grid-template-columns:1fr;}}
+  .cta-step{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:1.8rem;text-align:center;}
+  .cta-step-num{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.95rem;font-weight:900;margin:0 auto 1rem;background:var(--teal);color:#fff;}
+  .cta-step-title{font-size:.95rem;font-weight:800;color:#fff;margin-bottom:.5rem;}
+  .cta-step-desc{font-size:.82rem;color:#64748B;line-height:1.5;}
+  .cta-contact{display:flex;gap:2rem;justify-content:center;flex-wrap:wrap;margin-top:2rem;}
+  .cta-contact a{color:#94A3B8;text-decoration:none;font-size:.9rem;display:flex;align-items:center;gap:.4rem;transition:.2s;}
+  .cta-contact a:hover{color:var(--teal2);}
+
+  /* ── FOOTER ── */
+  footer{background:#070D1A;border-top:1px solid rgba(255,255,255,.06);padding:2rem;text-align:center;}
+  footer p{color:#334155;font-size:.8rem;}
+
+  /* ── ANIMATIONS ── */
+  .fade-up{opacity:0;transform:translateY(30px);transition:opacity .6s ease,transform .6s ease;}
+  .fade-up.visible{opacity:1;transform:translateY(0);}
+  .count{transition:all .3s;}
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar{width:6px;}
+  ::-webkit-scrollbar-track{background:#0A1020;}
+  ::-webkit-scrollbar-thumb{background:#1B2B5E;border-radius:3px;}
+  ::-webkit-scrollbar-thumb:hover{background:#0D9488;}
+
+  /* ══════════════════════════════════════════
+     LIGHT THEME OVERRIDE
+  ══════════════════════════════════════════ */
+  body{background:#F0F4F8;color:#1E293B;}
+  ::-webkit-scrollbar-track{background:#E2E8F0;}
+
+  /* Nav — mantiene navy sólido */
+  nav{background:rgba(15,26,66,.98);}
+
+  /* Hero queda oscuro (es la portada) */
+
+  /* Todas las secciones de contenido — fondo claro */
+  #dolor{background:#FFFFFF;}
+  #modulos{background:#F0F4F8;}
+  #fenix{background:#FFFFFF;}
+  #ia{background:#F0F4F8;}
+  #comparacion{background:#FFFFFF;}
+  #roi{background:#F0F4F8;}
+  #hardware{background:#FFFFFF;}
+  #conectividad{background:#F0F4F8;}
+  #implementacion{background:#FFFFFF;}
+  #cta{background:linear-gradient(135deg,#0F1A42,#1B2B5E,#0D1035);}
+  footer{background:#1B2B5E;}
+  footer p{color:#94A3B8;}
+
+  /* Títulos de sección */
+  .section-title{color:#1B2B5E;}
+  .section-sub{color:#4B5563;}
+
+  /* Pain cards */
+  .pain-card{background:#FFF5F5;border-color:rgba(239,68,68,.25);}
+  .pain-card:hover{background:#FEE2E2;}
+  .pain-label{color:#1B2B5E;}
+  .pain-desc{color:#4B5563;}
+  .pain-bottom{background:linear-gradient(135deg,rgba(13,148,136,.08),rgba(245,158,11,.06));border-color:rgba(13,148,136,.3);}
+  .pain-bottom p{color:#1B2B5E;}
+
+  /* Module cards */
+  .mod-card{background:#FFFFFF;border-color:#E2E8F0;box-shadow:0 1px 3px rgba(0,0,0,.06);}
+  .mod-card:hover{background:#F0FDFA;border-color:rgba(13,148,136,.4);}
+  .mod-title{color:#1B2B5E;}
+  .mod-feats li{color:#4B5563;}
+
+  /* IA cards */
+  .ia-card{box-shadow:0 1px 4px rgba(0,0,0,.07);}
+  .ia-title{color:#1B2B5E;}
+  .ia-desc{color:#4B5563 !important;}
+  .ia-scheduler{background:linear-gradient(135deg,rgba(13,148,136,.1),rgba(0,212,170,.06));border-color:rgba(13,148,136,.3);}
+  .ia-scheduler h3{color:#1B2B5E;}
+  .ia-scheduler p{color:#4B5563;}
+
+  /* Comparación */
+  .comp-callout{background:rgba(245,158,11,.07);border-color:rgba(245,158,11,.3);}
+  .comp-callout p{color:#374151;}
+  table.comp th:first-child{background:#F8FAFC;color:#64748B;}
+  table.comp th:nth-child(3),table.comp th:nth-child(4){background:#F1F5F9;color:#64748B;}
+  table.comp td:first-child{color:#374151;background:#F8FAFC;}
+  table.comp td:nth-child(2){background:rgba(13,148,136,.05);}
+  table.comp td:nth-child(3),table.comp td:nth-child(4){background:#F9FAFB;color:#4B5563;}
+  .comp-table-wrap{border-color:#E2E8F0;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+  .extra-card.extra-pro{background:#F0FDFA;border-color:rgba(13,148,136,.3);}
+  .extra-card.extra-con{background:#FFF5F5;border-color:rgba(239,68,68,.2);}
+  .extra-card li{color:#4B5563;border-color:#E2E8F0;}
+
+  /* ROI */
+  .roi-losses{background:#FFF5F5;border-color:rgba(239,68,68,.25);}
+  .loss-label{color:#374151;}
+  .loss-row{border-color:#F1F5F9;}
+  .loss-total{background:rgba(239,68,68,.08);}
+  .loss-total .label{color:#1B2B5E;}
+  .roi-kpi{background:#F0FDFA;border-color:rgba(34,197,94,.25);}
+  .roi-kpi-label{color:#1B2B5E;}
+  .roi-kpi-sub{color:#64748B;}
+  .roi-note{background:rgba(13,148,136,.06);border-color:rgba(13,148,136,.25);}
+  .roi-note p{color:#374151;}
+
+  /* Hardware */
+  .hw-item{background:#FFFFFF;border-color:#E2E8F0;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+  .hw-item:hover{background:#F0FDFA;border-color:rgba(13,148,136,.3);}
+  .hw-item-name{color:#1B2B5E;}
+  .hw-item-desc{color:#64748B;}
+  .hw-note-box{background:#FFFBEB;border-color:rgba(245,158,11,.3);}
+  .hw-note-box li{color:#4B5563;border-color:#FEF3C7;}
+  .hw-total-row{background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3);}
+  .hw-total-row .label{color:#1B2B5E;}
+
+  /* Conectividad */
+  .conn-card{background:#FFFFFF;border-color:#E2E8F0;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+  .conn-card:hover{background:rgba(124,58,237,.05);border-color:rgba(124,58,237,.25);}
+  .conn-name{color:#1B2B5E;}
+  .conn-desc{color:#64748B;}
+  .api-box{background:linear-gradient(135deg,rgba(124,58,237,.06),rgba(124,58,237,.03));border-color:rgba(124,58,237,.2);}
+  .api-box h3{color:#6D28D9;}
+  .api-box p{color:#374151;}
+
+  /* Implementación */
+  .impl-phase{background:#F8FAFC;border-color:#E2E8F0;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+  .impl-phase:hover{background:#FFFFFF;}
+  .impl-title{color:#1B2B5E;}
+  .impl-feats li{color:#4B5563;}
+  .support-item{background:#F0FDFA;border-color:rgba(13,148,136,.2);}
+  .support-text{color:#1B2B5E;}
+
+  /* Fénix */
+  .fenix-feat{background:#FFFBEB;border-color:rgba(245,158,11,.2);}
+  .fenix-feat:hover{background:#FEF3C7;border-color:rgba(245,158,11,.4);}
+  .fenix-feat-title{color:#1B2B5E;}
+  .fenix-feat-desc{color:#4B5563;}
+  .fenix-metric{border-color:#F1F5F9;}
+  .fenix-metric-label{color:#64748B;}
+  .fenix-metric-val{color:#1B2B5E;}
+
+  /* Hero stats */
+  .hero-stats{background:rgba(255,255,255,.06);}
+  .hs-label{color:#94A3B8;}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-inner">
+    <div class="nav-logo"><span>WMS</span> PROORIENTE</div>
+    <ul class="nav-links">
+      <li><a href="#dolor">El Problema</a></li>
+      <li><a href="#modulos">Módulos</a></li>
+      <li><a href="#comparacion">Comparación</a></li>
+      <li><a href="#roi">ROI</a></li>
+      <li><a href="#hardware">Infraestructura</a></li>
+      <li><a href="#implementacion">Implementación</a></li>
+    </ul>
+    <a href="#cta" class="nav-cta">Solicitar Demo</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-glow"></div>
+  <div class="hero-content fade-up">
+    <div class="hero-badge">▲ Plataforma Logística de Nueva Generación</div>
+    <h1 class="hero-title">
+      El WMS que <span class="accent">Aprende</span>,<br>
+      <span class="amber">Protege</span> y Crece<br>con su Empresa
+    </h1>
+    <p class="hero-sub">
+      Desarrollado 100% a la medida para operaciones logísticas colombianas.
+      Inteligencia Artificial integrada, FEFO automático, conectividad BI y TMS —
+      todo en un solo sistema que usted posee.
+    </p>
+    <div class="hero-pills">
+      <span class="pill">🤖 IA / Machine Learning</span>
+      <span class="pill">🔄 FEFO Automático</span>
+      <span class="pill">📊 BI Ready</span>
+      <span class="pill">🚛 TMS API</span>
+      <span class="pill">🛡️ InventoryGuard™</span>
+      <span class="pill">🦅 Agente Fénix</span>
+      <span class="pill">☁️ Multi-Sucursal</span>
+      <span class="pill">📱 Web + Escritorio</span>
+    </div>
+    <div class="hero-stats">
+      <div class="hs"><div class="hs-num">9+</div><div class="hs-label">Módulos integrados</div></div>
+      <div class="hs"><div class="hs-num">3 sem</div><div class="hs-label">Implementación completa</div></div>
+      <div class="hs"><div class="hs-num">174%</div><div class="hs-label">ROI proyectado año 1</div></div>
+      <div class="hs"><div class="hs-num">24/7</div><div class="hs-label">Inteligencia activa</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- EL PROBLEMA -->
+<section id="dolor">
+  <div class="container">
+    <div class="pain-intro fade-up">
+      <span class="section-eyebrow">¿Qué le está costando hoy?</span>
+      <h2 class="section-title">Cada Día Sin WMS es <span style="color:var(--red)">Dinero Perdido</span></h2>
+      <p class="section-sub" style="margin:0 auto;">Los errores, vencidos, procesos manuales y la falta de trazabilidad no son gastos invisibles — son pérdidas reales y medibles que afectan su rentabilidad mes a mes.</p>
+    </div>
+    <div class="pain-grid fade-up">
+      <div class="pain-card">
+        <div class="pain-icon">📦</div>
+        <div class="pain-pct">12–15%</div>
+        <div class="pain-label">Tasa de error en despachos</div>
+        <div class="pain-desc">Sin trazabilidad automática, los errores de picking generan devoluciones, retrabajos y pérdida de confianza del cliente. Cada despacho equivocado tiene un costo doble: el costo del error más el costo de la corrección.</div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">⏳</div>
+        <div class="pain-pct">35%</div>
+        <div class="pain-label">Inventario a vencer sin alerta</div>
+        <div class="pain-desc">Sin predicción ML ni FEFO automático, los productos se vencen en bodega antes de ser despachados. Un solo lote vencido puede superar el costo de meses de operación del sistema.</div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">⏱️</div>
+        <div class="pain-pct">8 h/día</div>
+        <div class="pain-label">Perdidas en reportes manuales</div>
+        <div class="pain-desc">Excel, WhatsApp y hojas de cálculo dispersas consumen horas de trabajo que deberían dedicarse a la operación. Sin un sistema centralizado, la toma de decisiones siempre llega tarde.</div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">🔍</div>
+        <div class="pain-pct">0%</div>
+        <div class="pain-label">Visibilidad en tiempo real</div>
+        <div class="pain-desc">No saber qué hay en bodega, dónde está, qué lote vence primero o qué operario tomó qué — es un riesgo operativo y sanitario. La trazabilidad no es lujo, es obligación.</div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">💸</div>
+        <div class="pain-pct">∞</div>
+        <div class="pain-label">Costos de un WMS genérico en arriendo</div>
+        <div class="pain-desc">Pagar mes a mes por un sistema que no se ajusta a su proceso, con desarrollos extras que cobran aparte, actualizaciones que quiebran funcionalidades y soporte en otro idioma y huso horario.</div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">🚧</div>
+        <div class="pain-pct">Alto</div>
+        <div class="pain-label">Riesgo por falta de control de lotes</div>
+        <div class="pain-desc">Una auditoría INVIMA, una queja de cliente o un retiro de producto sin trazabilidad puede generar multas, cierres y daño reputacional. El control de lotes no es opcional en sectores regulados.</div>
+      </div>
+    </div>
+    <div class="pain-bottom fade-up">
+      <p>Con <span>WMS Prooriente</span>, estos problemas desaparecen <span>desde el primer mes de operación.</span><br>
+      No es un gasto — es la inversión que elimina gastos.</p>
+    </div>
+  </div>
+</section>
+
+<!-- MÓDULOS -->
+<section id="modulos">
+  <div class="container">
+    <div class="fade-up">
+      <span class="section-eyebrow">Plataforma completa</span>
+      <h2 class="section-title">9 Módulos <span class="t">Completamente Integrados</span></h2>
+      <p class="section-sub">Cada módulo fue diseñado para trabajar en conjunto, compartiendo datos en tiempo real. No hay silos de información — todo conectado, todo visible, todo controlado.</p>
+    </div>
+    <div class="modules-grid fade-up">
+
+      <div class="mod-card">
+        <div class="mod-header">
+          <div class="mod-icon" style="background:rgba(13,148,136,.15);">📋</div>
+          <div><div class="mod-title">Recepción & YMS</div><div class="mod-tag">Entrada de mercancía</div></div>
+        </div>
+        <ul class="mod-feats">
+          <li>Programación y seguimiento de citas de recepción</li>
+          <li>Lectura de órdenes de compra con validación automática</li>
+          <li>Registro de lotes, fechas de vencimiento y números de serie</li>
+          <li>Control de diferencias y generación de novedades</li>
+          <li>Foto-evidencia y firma digital del recibido</li>
+          <li>Integración directa con proveedores y OC abiertas</li>
+        </ul>
+      </div>
+
+      <div class="mod-card">
+        <div class="mod-header">
+          <div class="mod-icon" style="background:rgba(34,197,94,.12);">🗺️</div>
+          <div><div class="mod-title">Almacenamiento FEFO</div><div class="mod-tag">Gestión de ubicaciones</div></div>
+        </div>
+        <ul class="mod-feats">
+          <li>Mapa 2D de bodega con niveles, pasillos y posiciones</li>
+          <li>Sugerencia automática de ubicación por FEFO y rotación</li>
+          <li>Traslados internos con validación de capacidad</li>
+          <li>Control de cuarentena y bloqueo de ubicaciones</li>
+          <li>Inventario cíclico y conteos físicos en tiempo real</li>
+          <li>Alertas de stock mínimo y máximo por ubicación</li>
+        </ul>
+      </div>
+
+      <div class="mod-card">
+        <div class="mod-header">
+          <div class="mod-icon" style="background:rgba(245,158,11,.12);">🚀</div>
+          <div><div class="mod-title">Picking Inteligente</div><div class="mod-tag">Preparación de pedidos</div></div>
+        </div>
+        <ul class="mod-feats">
+          <li>Generación de rutas FEFO optimizadas por pasillo</li>
+          <li>Planillas digitales con confirmación por código o PDA</li>
+          <li>Validación de lote y cantidad antes de confirmar</li>
+          <li>InventoryGuard™ bloquea picking sin stock real</li>
+          <li>Picking por ola, por pedido o por zona</li>
+          <li>Tiempo de confirmación y productividad por operario</li>
+        </ul>
+      </div>
+
+      <div class="mod-card">
+        <div class="mod-header">
+          <div class="mod-icon" style="background:rgba(239,68,68,.12);">🚛</div>
+          <div><div class="mod-title">Despacho & TMS</div><div class="mod-tag">Salida y logística</div></div>
+        </div>
+        <ul class="mod-feats">
+          <li>Certificados de cargue digitales con trazabilidad de lotes</li>
+          <li>Consolidación de pedidos por ruta o vehículo</li>
+          <li>API bidireccional con TMS externos (carga, rastreo)</li>
+          <li>Registro de conductor, placa y remesa de transporte</li>
+          <li>Validación de temperatura en despachos de cadena frío</li>
+          <li>Notificación automática al cliente vía correo o WhatsApp</li>
+        </ul>
+      </div>
+
+      <div class="mod-card">
+        <div class="mod-header">
+          <div class="mod-icon" style="background:rgba(124,58,237,.12);">📊</div>
+          <div><div class="mod-title">Inventario & Ajustes</div><div class="mod-tag">Control total de stock</div></div>
+        </div>
+        <ul class="mod-feats">
+          <li>Stock en tiempo real por producto, lote, ubicación y sucursal</li>
+          <li>Ajustes con motivo, evidencia y aprobación por niveles</li>
+          <li>Reserva automática de stock para pedidos en proceso</li>
+          <li>Kardex completo con trazabilidad de cada movimiento</li>
+          <li>Cargue masivo desde Excel para inventario inicial</li>
+          <li>Bloqueo de ajustes sospechosos por InventoryGuard™</li>
+        </ul>
+      </div>
+
+      <div class="mod-card">
+        <div class="mod-header">
+          <div class="mod-icon" style="background:rgba(13,148,136,.15);">📈</div>
+          <div><div class="mod-title">Reportes & KPIs</div><div class="mod-tag">Inteligencia de negocio</div></div>
+        </div>
+        <ul class="mod-feats">
+          <li>Dashboard gerencial con Health Score 0–100 en tiempo real</li>
+          <li>Exportación a Excel / PDF con un clic</li>
+          <li>Indicadores de productividad por operario y por turno</li>
+          <li>Análisis de rotación, aging y cobertura de inventario</li>
+          <li>Conectividad directa con Power BI y Tableau</li>
+          <li>Reportes programados por correo a gerencia</li>
+        </ul>
+      </div>
+
+      <div class="mod-card">
+        <div class="mod-header">
+          <div class="mod-icon" style="background:rgba(34,197,94,.12);">🗂️</div>
+          <div><div class="mod-title">Maestros & Catálogos</div><div class="mod-tag">Base de datos unificada</div></div>
+        </div>
+        <ul class="mod-feats">
+          <li>Gestión de empresas, sucursales y bodegas</li>
+          <li>Catálogo de productos con categorías, unidades y atributos</li>
+          <li>Clientes y proveedores con condiciones comerciales</li>
+          <li>Usuarios, roles y permisos granulares por módulo</li>
+          <li>Configuración de alertas, umbrales y reglas de negocio</li>
+          <li>Importación masiva desde ERP o sistemas legado</li>
+        </ul>
+      </div>
+
+      <div class="mod-card">
+        <div class="mod-header">
+          <div class="mod-icon" style="background:rgba(13,148,136,.15);">🧠</div>
+          <div><div class="mod-title">Inteligencia ML</div><div class="mod-tag">IA integrada</div></div>
+        </div>
+        <ul class="mod-feats">
+          <li>Predictor de vencimientos con EMA + Regresión Lineal</li>
+          <li>Detector de anomalías con Z-Score + IQR estadístico</li>
+          <li>Alertas automáticas a supervisores vía notificaciones</li>
+          <li>Scheduler nocturno — el ML corre solo cada noche</li>
+          <li>Panel de anomalías con aprobación o descarte por el equipo</li>
+          <li>Histórico de predicciones y accuracy por producto</li>
+        </ul>
+      </div>
+
+      <div class="mod-card" style="background:rgba(245,158,11,.05);border-color:rgba(245,158,11,.2);">
+        <div class="mod-header">
+          <div class="mod-icon" style="background:rgba(245,158,11,.15);">🦅</div>
+          <div><div class="mod-title" style="color:var(--amber);">Agente Fénix IA</div><div class="mod-tag">Asistente inteligente 24/7</div></div>
+        </div>
+        <ul class="mod-feats">
+          <li>Cerebro digital de la bodega — aprende de cada operación</li>
+          <li>Genera alertas preventivas antes de que los problemas ocurran</li>
+          <li>Detecta fraudes y ajustes sospechosos automáticamente</li>
+          <li>Health Score global de la operación en tiempo real</li>
+          <li>Recomendaciones de traslado para productos estancados</li>
+          <li>Se integra con BI, TMS y ERP vía API REST estándar</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- AGENTE FÉNIX -->
+<section id="fenix">
+  <div class="container">
+    <div class="fenix-wrap fade-up">
+      <div class="fenix-left">
+        <span class="section-eyebrow">Diferenciador exclusivo</span>
+        <h2 class="section-title">Agente <span class="a">Fénix</span> —<br>Su Cerebro Logístico</h2>
+        <p style="color:#94A3B8;font-size:.95rem;line-height:1.7;margin-bottom:1.5rem;">
+          Agente Fénix no es un chatbot ni un reporte más. Es el componente de inteligencia artificial que <strong style="color:#fff;">vive dentro de su operación</strong>, aprende de cada movimiento y genera acciones preventivas antes de que los problemas se materialicen.
+        </p>
+        <div class="fenix-features">
+          <div class="fenix-feat">
+            <div class="fenix-feat-icon">🔮</div>
+            <div>
+              <div class="fenix-feat-title">Alertas Predictivas de Vencimiento</div>
+              <div class="fenix-feat-desc">Notifica a supervisores antes de que productos críticos lleguen a fecha de vencimiento. Clasifica por riesgo: Crítico, Alto, Medio, Bajo. Genera recomendaciones de despacho prioritario.</div>
+            </div>
+          </div>
+          <div class="fenix-feat">
+            <div class="fenix-feat-icon">⚡</div>
+            <div>
+              <div class="fenix-feat-title">Detector de Anomalías en Tiempo Real</div>
+              <div class="fenix-feat-desc">Analiza patrones de movimiento y detecta comportamientos inusuales: ajustes sospechosos, picking fuera de rango, consumos anómalos por usuario o producto.</div>
+            </div>
+          </div>
+          <div class="fenix-feat">
+            <div class="fenix-feat-icon">🔄</div>
+            <div>
+              <div class="fenix-feat-title">Análisis de Rotación FEFO</div>
+              <div class="fenix-feat-desc">Identifica productos estancados que deberían rotar antes. Genera recomendaciones de traslado entre sucursales o de despacho promocional para evitar pérdidas.</div>
+            </div>
+          </div>
+          <div class="fenix-feat">
+            <div class="fenix-feat-icon">📊</div>
+            <div>
+              <div class="fenix-feat-title">Dashboard Inteligente con Health Score</div>
+              <div class="fenix-feat-desc">Un indicador global 0–100 que combina vencimientos, anomalías, picking pendiente y eficiencia operativa. Gerencia toma decisiones en segundos, no en horas.</div>
+            </div>
+          </div>
+          <div class="fenix-feat">
+            <div class="fenix-feat-icon">🔗</div>
+            <div>
+              <div class="fenix-feat-title">Integración Total sin Costos Extra</div>
+              <div class="fenix-feat-desc">Se conecta con Power BI, Tableau, TMS y cualquier ERP vía API REST estándar. La conectividad es nativa — no requiere desarrollos adicionales ni licencias de integración.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="fenix-right">
+        <div class="fenix-header">
+          <div class="fenix-logo">🦅</div>
+          <div>
+            <div class="fenix-title">Agente Fénix</div>
+            <div class="fenix-sub">Estado: <span style="color:var(--green);">● Activo</span> · Última ejecución: hoy 02:03 AM</div>
+          </div>
+        </div>
+        <div class="fenix-metric">
+          <span class="fenix-metric-label">Health Score global</span>
+          <span class="fenix-metric-val" style="color:var(--green);">87 / 100 ✓</span>
+        </div>
+        <div class="fenix-metric">
+          <span class="fenix-metric-label">Predicciones de vencimiento activas</span>
+          <span class="fenix-metric-val">14 productos monitoreados</span>
+        </div>
+        <div class="fenix-metric">
+          <span class="fenix-metric-label">Anomalías detectadas este mes</span>
+          <span class="fenix-metric-val" style="color:var(--amber);">3 revisiones pendientes</span>
+        </div>
+        <div class="fenix-metric">
+          <span class="fenix-metric-label">Alertas enviadas hoy</span>
+          <span class="fenix-metric-val">2 supervisores notificados</span>
+        </div>
+        <div class="fenix-metric">
+          <span class="fenix-metric-label">Productos con riesgo crítico</span>
+          <span class="fenix-metric-val" style="color:var(--red);">1 · Acción requerida</span>
+        </div>
+        <div class="fenix-metric">
+          <span class="fenix-metric-label">Próximo ciclo ML nocturno</span>
+          <span class="fenix-metric-val">Mañana 02:00 AM · Auto</span>
+        </div>
+        <div style="margin-top:1.5rem;background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.25);border-radius:10px;padding:1rem;">
+          <p style="font-size:.8rem;color:#94A3B8;line-height:1.6;">
+            <strong style="color:var(--teal2);">💡 Recomendación Agente Fénix:</strong><br>
+            Lote LT-2043 de Producto X vence en 11 días. Se sugiere priorizar en próximos despachos para Zona Norte.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- INTELIGENCIA ML -->
+<section id="ia" style="padding-top:2rem;">
+  <div class="container">
+    <div class="fade-up" style="text-align:center;margin-bottom:3rem;">
+      <span class="section-eyebrow">Inteligencia Artificial Integrada</span>
+      <h2 class="section-title">El WMS que <span class="t">Aprende y Previene</span></h2>
+      <p class="section-sub" style="margin:0 auto;">Cuatro componentes de Machine Learning que trabajan en segundo plano, protegiendo su inventario y anticipando problemas operativos.</p>
+    </div>
+    <div class="ia-grid fade-up">
+      <div class="ia-card" style="background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.25);">
+        <div class="ia-num" style="color:var(--teal2);">01</div>
+        <div class="ia-icon">🔮</div>
+        <div class="ia-title">Predictor de Vencimientos</div>
+        <div class="ia-desc" style="color:#94A3B8;">Utiliza EMA (Media Móvil Exponencial) + Regresión Lineal sobre 30 días de consumo histórico para predecir qué productos tienen riesgo de vencerse antes de ser despachados.</div>
+        <div class="ia-badge" style="background:rgba(13,148,136,.2);color:var(--teal2);">EMA + Regresión Lineal</div>
+      </div>
+      <div class="ia-card" style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);">
+        <div class="ia-num" style="color:var(--amber);">02</div>
+        <div class="ia-icon">⚡</div>
+        <div class="ia-title">Detector de Anomalías</div>
+        <div class="ia-desc" style="color:#94A3B8;">Aplica Z-Score + IQR estadístico para identificar movimientos que se desvían del comportamiento esperado: ajustes fuera de rango, consumos inusuales y patrones de fraude.</div>
+        <div class="ia-badge" style="background:rgba(245,158,11,.15);color:var(--amber);">Z-Score + IQR</div>
+      </div>
+      <div class="ia-card" style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);">
+        <div class="ia-num" style="color:var(--green);">03</div>
+        <div class="ia-icon">🔄</div>
+        <div class="ia-title">Motor FEFO Inteligente</div>
+        <div class="ia-desc" style="color:#94A3B8;">Primer Expira, Primero Sale — implementado a nivel de sistema. Sugiere el lote correcto en cada picking, bloquea operaciones fuera del orden de vencimiento y genera reportes de rotación.</div>
+        <div class="ia-badge" style="background:rgba(34,197,94,.15);color:var(--green);">First Expiry First Out</div>
+      </div>
+      <div class="ia-card" style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);">
+        <div class="ia-num" style="color:var(--red);">04</div>
+        <div class="ia-icon">🛡️</div>
+        <div class="ia-title">InventoryGuard™</div>
+        <div class="ia-desc" style="color:#94A3B8;">8 reglas de negocio duras que bloquean operaciones inválidas antes de que ocurran: picking sin stock, traslados sin existencia, recepciones sobre OC cerradas y ajustes no autorizados.</div>
+        <div class="ia-badge" style="background:rgba(239,68,68,.15);color:var(--red);">8 Reglas de Negocio</div>
+      </div>
+    </div>
+    <div class="ia-scheduler fade-up">
+      <h3>🌙 Scheduler Nocturno Automático</h3>
+      <p>El sistema ML se ejecuta automáticamente cada noche a las 2:00 AM — sin intervención humana. Analiza todos los productos, genera predicciones actualizadas, detecta nuevas anomalías y envía notificaciones al amanecer. Usted llega a la operación con las alertas ya listas.</p>
+    </div>
+  </div>
+</section>
+
+<!-- COMPARACIÓN -->
+<section id="comparacion">
+  <div class="container">
+    <div class="comp-intro fade-up">
+      <span class="section-eyebrow">WMS Propio vs. Genérico</span>
+      <h2 class="section-title">¿Por qué <span class="t">Desarrollado a la Medida</span><br>es Siempre la Mejor Decisión?</h2>
+      <p class="section-sub" style="margin:0 auto;">La pregunta no es si puede pagar un WMS. La pregunta es si puede seguir pagando las consecuencias de no tener uno — o de tener uno que no se adapta a su proceso.</p>
+    </div>
+    <div class="comp-callout fade-up">
+      <h3>⚠️ La Trampa del WMS Genérico en Arriendo</h3>
+      <p>
+        Un WMS genérico parece económico al inicio. Pero cada personalización tiene costo extra, cada actualización puede romper su proceso, cada desarrollo adicional demora semanas y llega en otro idioma.
+        <strong style="color:#fff;">Con WMS Prooriente, usted es el dueño del sistema</strong> — cualquier ajuste, nueva regla o funcionalidad se implementa sin costo adicional de licencia, porque el código le pertenece a su operación.
+      </p>
+    </div>
+    <div class="comp-table-wrap fade-up">
+      <table class="comp">
+        <thead>
+          <tr>
+            <th>Característica</th>
+            <th>✅ WMS PROORIENTE</th>
+            <th>WMS Genérico SaaS</th>
+            <th>SAP WM / Oracle</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Proceso adaptado 100% a su operación</td>
+            <td><span class="check-yes">✔ Sí — desde el día 1</span></td>
+            <td><span class="check-no">✘ Usted adapta su proceso al sistema</span></td>
+            <td><span class="check-no">✘ Costosa parametrización</span></td>
+          </tr>
+          <tr>
+            <td>Nuevas funcionalidades sin costo de licencia</td>
+            <td><span class="check-yes">✔ Incluido en cuota</span></td>
+            <td><span class="check-no">✘ Cobro por desarrollo + módulo</span></td>
+            <td><span class="check-no">✘ Proyecto SAP = $$$</span></td>
+          </tr>
+          <tr>
+            <td>Base de datos propia (MySQL)</td>
+            <td><span class="check-yes">✔ En su servidor</span></td>
+            <td><span class="check-partial">△ En la nube del proveedor</span></td>
+            <td><span class="check-partial">△ Base Oracle/MSSQL</span></td>
+          </tr>
+          <tr>
+            <td>Integración BI (Power BI, Tableau)</td>
+            <td><span class="check-yes">✔ Directa, sin middleware</span></td>
+            <td><span class="check-partial">△ Limitada o con costo extra</span></td>
+            <td><span class="check-partial">△ SAP BI incluido (muy costoso)</span></td>
+          </tr>
+          <tr>
+            <td>IA y Machine Learning integrado</td>
+            <td><span class="check-yes">✔ Incluido — ML nativo</span></td>
+            <td><span class="check-no">✘ No</span></td>
+            <td><span class="check-partial">△ Add-on de pago</span></td>
+          </tr>
+          <tr>
+            <td>API TMS integrada</td>
+            <td><span class="check-yes">✔ Lista para usar</span></td>
+            <td><span class="check-partial">△ Extra o módulo adicional</span></td>
+            <td><span class="check-partial">△ Módulo separado</span></td>
+          </tr>
+          <tr>
+            <td>Soporte en español colombiano</td>
+            <td><span class="check-yes">✔ Directo con el desarrollador</span></td>
+            <td><span class="check-partial">△ Indirecto o con demora</span></td>
+            <td><span class="check-no">✘ 3rd party / tickets</span></td>
+          </tr>
+          <tr>
+            <td>Costo mensual aproximado</td>
+            <td><span class="check-yes">✔ Bajo — cuota fija</span></td>
+            <td><span class="check-partial">△ Medio y crece con usuarios</span></td>
+            <td><span class="check-no">✘ Alto — licencias por usuario</span></td>
+          </tr>
+          <tr>
+            <td>Tiempo de implementación</td>
+            <td><span class="check-yes">✔ 3 semanas</span></td>
+            <td><span class="check-partial">△ 2–4 meses (parametrización)</span></td>
+            <td><span class="check-no">✘ 6–18 meses (proyecto complejo)</span></td>
+          </tr>
+          <tr>
+            <td>Funciona sin internet (modo offline)</td>
+            <td><span class="check-yes">✔ Servidor local disponible</span></td>
+            <td><span class="check-no">✘ 100% dependiente de conectividad</span></td>
+            <td><span class="check-no">✘ Requiere conectividad SAP</span></td>
+          </tr>
+          <tr>
+            <td>Multi-empresa y multi-sucursal</td>
+            <td><span class="check-yes">✔ Nativo — sin costo extra</span></td>
+            <td><span class="check-partial">△ Plan adicional</span></td>
+            <td><span class="check-yes">✔ Sí (costoso)</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="comp-extras fade-up">
+      <div class="extra-card extra-pro">
+        <h4 style="color:var(--teal2);">✅ Ventajas de un WMS Propio</h4>
+        <ul>
+          <li>🔒 Sus datos nunca salen de su servidor</li>
+          <li>⚙️ Cualquier cambio se implementa en días, no meses</li>
+          <li>💡 Funcionalidades únicas que competidores no tienen</li>
+          <li>📊 Conexión directa con sus herramientas BI sin costo</li>
+          <li>🇨🇴 Soporte local en su mismo horario y cultura</li>
+          <li>🚀 Evoluciona con su negocio sin cambiar de sistema</li>
+          <li>💰 Cuota fija predecible — sin sorpresas de factura</li>
+        </ul>
+      </div>
+      <div class="extra-card extra-con">
+        <h4 style="color:var(--red);">⚠️ Riesgos del WMS Genérico en Arriendo</h4>
+        <ul>
+          <li>💸 Cada personalización cobra desarrollo a tarifa externa</li>
+          <li>🔒 Si deja de pagar, pierde acceso a sus propios datos</li>
+          <li>⏰ Soporte con demoras de 24–72h en otro idioma</li>
+          <li>🔄 Actualizaciones que rompen procesos sin previo aviso</li>
+          <li>📈 El precio sube con el número de usuarios y módulos</li>
+          <li>🌐 Dependencia 100% de conectividad y disponibilidad del proveedor</li>
+          <li>❌ Funciones que necesita "no están en el roadmap"</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ROI -->
+<section id="roi">
+  <div class="container">
+    <div class="fade-up" style="text-align:center;margin-bottom:3rem;">
+      <span class="section-eyebrow">Retorno sobre la inversión</span>
+      <h2 class="section-title">¿Cuánto está <span style="color:var(--red);">Perdiendo</span> Hoy?</h2>
+      <p class="section-sub" style="margin:0 auto;">Antes de evaluar el costo del sistema, evalúe el costo de no tenerlo. Estos son los gastos típicos mensuales de una operación sin WMS o con un sistema genérico que no se adapta.</p>
+    </div>
+    <div class="roi-grid fade-up">
+      <div>
+        <div class="roi-losses">
+          <h3>📉 Pérdidas Mensuales Estimadas</h3>
+          <div class="loss-row">
+            <span class="loss-label">Errores en despachos (12–15%) · devoluciones y retrabajo</span>
+            <span class="loss-amount">$3.200.000</span>
+          </div>
+          <div class="loss-row">
+            <span class="loss-label">Productos vencidos sin alerta FEFO · pérdida directa</span>
+            <span class="loss-amount">$4.000.000</span>
+          </div>
+          <div class="loss-row">
+            <span class="loss-label">Horas extra en reportes manuales y conciliaciones</span>
+            <span class="loss-amount">$2.500.000</span>
+          </div>
+          <div class="loss-row">
+            <span class="loss-label">Re-trabajos por falta de trazabilidad de lotes</span>
+            <span class="loss-amount">$1.800.000</span>
+          </div>
+          <div class="loss-row">
+            <span class="loss-label">Mensualidad WMS genérico + desarrollos adicionales</span>
+            <span class="loss-amount">Variable</span>
+          </div>
+          <div class="loss-row">
+            <span class="loss-label">Riesgo de multas por falta de control sanitario</span>
+            <span class="loss-amount">Alto riesgo</span>
+          </div>
+          <div class="loss-total">
+            <span class="label">Pérdida mensual total estimada</span>
+            <span class="amount">$11.500.000+</span>
+          </div>
+        </div>
+        <div style="margin-top:1.2rem;background:rgba(13,148,136,.06);border:1px solid rgba(13,148,136,.2);border-radius:14px;padding:1.3rem;font-size:.86rem;color:#94A3B8;line-height:1.6;">
+          <strong style="color:var(--teal2);">Nota:</strong> Estos valores son estimados referenciales basados en promedios del sector logístico colombiano. El análisis detallado para su operación se realiza durante el diagnóstico inicial.
+        </div>
+      </div>
+      <div class="roi-gains">
+        <div style="font-size:.9rem;color:#64748B;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:.5rem;">CON WMS PROORIENTE — AÑO 1</div>
+        <div class="roi-kpi">
+          <div class="roi-kpi-num">174%</div>
+          <div><div class="roi-kpi-label">ROI proyectado primer año</div><div class="roi-kpi-sub">Retorno sobre la inversión total (implementación + cuotas)</div></div>
+        </div>
+        <div class="roi-kpi">
+          <div class="roi-kpi-num">5.1</div>
+          <div><div class="roi-kpi-label">Meses de recuperación de inversión</div><div class="roi-kpi-sub">El sistema se paga solo en menos de un semestre</div></div>
+        </div>
+        <div class="roi-kpi">
+          <div class="roi-kpi-num">x3.8</div>
+          <div><div class="roi-kpi-label">Retorno por cada peso invertido</div><div class="roi-kpi-sub">Proyección a 12 meses de operación completa</div></div>
+        </div>
+        <div class="roi-kpi">
+          <div class="roi-kpi-num">-85%</div>
+          <div><div class="roi-kpi-label">Reducción en errores de despacho</div><div class="roi-kpi-sub">Gracias a InventoryGuard™ y picking con validación de lote</div></div>
+        </div>
+        <div class="roi-kpi">
+          <div class="roi-kpi-num">-90%</div>
+          <div><div class="roi-kpi-label">Reducción en pérdidas por vencidos</div><div class="roi-kpi-sub">Motor FEFO + predicciones ML nocturnas</div></div>
+        </div>
+        <div class="roi-note">
+          <p>La implementación de WMS Prooriente no es un gasto operativo — es una <strong>inversión con retorno medible</strong> que se recupera en menos de 6 meses y continúa generando ahorros año tras año.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HARDWARE -->
+<section id="hardware">
+  <div class="container">
+    <div class="fade-up" style="text-align:center;margin-bottom:3rem;">
+      <span class="section-eyebrow">Infraestructura inicial</span>
+      <h2 class="section-title">Inversión en <span class="a">Equipos e Infraestructura</span></h2>
+      <p class="section-sub" style="margin:0 auto;">WMS Prooriente opera sobre infraestructura estándar de mercado. La inversión en equipos es una sola vez — y usted queda con activos propios, no pagando alquiler indefinidamente.</p>
+    </div>
+    <div class="hw-intro fade-up">
+      <div>
+        <div class="hw-list">
+          <div class="hw-item">
+            <div class="hw-item-icon">🖥️</div>
+            <div class="hw-item-info">
+              <div class="hw-item-name">Servidor Dedicado (HP ProLiant / Dell PowerEdge)</div>
+              <div class="hw-item-desc">Core i7 o Xeon · 16GB RAM · SSD 500GB · RAID opcional. Aloja la base de datos MySQL y la aplicación PHP</div>
+            </div>
+            <div class="hw-item-range">Aprox. $3.500.000</div>
+          </div>
+          <div class="hw-item">
+            <div class="hw-item-icon">⚡</div>
+            <div class="hw-item-info">
+              <div class="hw-item-name">UPS de Respaldo (1500VA)</div>
+              <div class="hw-item-desc">Protección contra cortes y picos eléctricos. Autonomía mínima 15 min para cierre ordenado del servidor</div>
+            </div>
+            <div class="hw-item-range">$1.300.000</div>
+          </div>
+          <div class="hw-item">
+            <div class="hw-item-icon">🌐</div>
+            <div class="hw-item-info">
+              <div class="hw-item-name">Switch Administrable Gigabit</div>
+              <div class="hw-item-desc">8–24 puertos según tamaño de bodega. Todos los dispositivos se conectan directamente por red al servidor — sin necesidad de WiFi adicional</div>
+            </div>
+            <div class="hw-item-range">$800.000</div>
+          </div>
+          <div class="hw-item">
+            <div class="hw-item-icon">🔌</div>
+            <div class="hw-item-info">
+              <div class="hw-item-name">Cableado Estructurado y Rack</div>
+              <div class="hw-item-desc">Cableado Cat6 para puntos fijos, patch panel y rack de 9U para servidor, switch y UPS</div>
+            </div>
+            <div class="hw-item-range">$300.000</div>
+          </div>
+        </div>
+        <div class="hw-total-row">
+          <span class="label">Inversión total estimada en hardware</span>
+          <span class="amount">Aprox. $5.900.000 COP</span>
+        </div>
+      </div>
+      <div class="hw-note-box">
+        <h4>📌 Lo que debe saber sobre esta inversión</h4>
+        <ul>
+          <li>Si ya cuenta con servidor o infraestructura existente, el equipo técnico evalúa si es aprovechable — lo que puede reducir significativamente el costo inicial.</li>
+          <li>A diferencia de un WMS en la nube, <strong style="color:#fff;">usted es dueño de los equipos</strong> — son activos depreciables que quedan en su empresa.</li>
+          <li style="display:block;margin:1.2rem 0;padding:0;">
+            <div style="background:linear-gradient(135deg,#0F1A42,#1B2B5E);border:2px solid #00D4AA;border-radius:14px;padding:1.4rem 1.6rem;position:relative;overflow:hidden;">
+              <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#00D4AA,#F59E0B);"></div>
+              <div style="font-size:1.3rem;font-weight:900;color:#00D4AA;margin-bottom:.4rem;letter-spacing:-.3px;">
+                🔒 Opera Sin Internet — Su Bodega Nunca Se Detiene
+              </div>
+              <div style="font-size:.92rem;color:#E2E8F0;line-height:1.6;">
+                A diferencia de los sistemas en la nube, <strong style="color:#fff;">WMS Prooriente corre en su propio servidor local</strong>. Si el internet falla, si el proveedor tiene caída, si hay mantenimiento del datacenter — <strong style="color:#F59E0B;">su operación logística continúa sin interrupciones</strong>. En bodegas de distribución, farmacéuticas o cadena frío, una parada de sistema no es un inconveniente — es una crisis.
+              </div>
+            </div>
+          </li>
+          <li>La cotización de hardware se realiza durante el diagnóstico técnico inicial — sin compromiso y sin costo.</li>
+          <li>WMS Prooriente acompaña la compra y configuración del hardware para garantizar compatibilidad y rendimiento óptimo desde el día 1.</li>
+          <li>El respaldo automático de base de datos puede configurarse a disco local, NAS externo o nube (Google Drive, AWS S3) según su preferencia.</li>
+        </ul>
+        <div style="margin-top:1.5rem;background:rgba(13,148,136,.1);border-radius:10px;padding:1rem;text-align:center;">
+          <p style="font-size:.88rem;color:#CBD5E1;font-weight:600;">💡 Comparación clave</p>
+          <p style="font-size:.82rem;color:#94A3B8;margin-top:.3rem;">Pagar indefinidamente por servidores en la nube de un proveedor externo vs. tener su propio servidor que se paga solo en 18–24 meses y luego no tiene costo de hosting.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONECTIVIDAD -->
+<section id="conectividad">
+  <div class="container">
+    <div class="fade-up" style="text-align:center;margin-bottom:3rem;">
+      <span class="section-eyebrow">Ecosistema abierto</span>
+      <h2 class="section-title">Conecta con Todo <span class="t">sin Costos Extra</span></h2>
+      <p class="section-sub" style="margin:0 auto;">WMS Prooriente habla el mismo idioma que sus otras herramientas. API REST estándar, webhooks y conectores nativos para los sistemas más usados en Colombia.</p>
+    </div>
+    <div class="connect-grid fade-up">
+      <div class="conn-card">
+        <div class="conn-icon">📊</div>
+        <div class="conn-name">Power BI</div>
+        <div class="conn-desc">Conexión directa a MySQL. Dashboards en tiempo real con cualquier KPI del WMS. Sin middleware ni licencias adicionales.</div>
+      </div>
+      <div class="conn-card">
+        <div class="conn-icon">📈</div>
+        <div class="conn-name">Tableau</div>
+        <div class="conn-desc">Visualizaciones avanzadas de inventario, rotación y productividad. Datos actualizados al minuto.</div>
+      </div>
+      <div class="conn-card">
+        <div class="conn-icon">🚛</div>
+        <div class="conn-name">TMS / Transporte</div>
+        <div class="conn-desc">API bidireccional para sistemas de transporte. Consulta de tarifas, generación de remesas y seguimiento de carga.</div>
+      </div>
+      <div class="conn-card">
+        <div class="conn-icon">🏢</div>
+        <div class="conn-name">ERP (SAP, Siigo, World Office)</div>
+        <div class="conn-desc">Sincronización de órdenes de compra, facturas y maestros de productos con su ERP actual vía REST API.</div>
+      </div>
+      <div class="conn-card">
+        <div class="conn-icon">📱</div>
+        <div class="conn-name">Apps Móviles</div>
+        <div class="conn-desc">API consumible desde cualquier app nativa. Planillas de picking en PDA, tablets Android y iOS.</div>
+      </div>
+      <div class="conn-card">
+        <div class="conn-icon">📧</div>
+        <div class="conn-name">Notificaciones</div>
+        <div class="conn-desc">Alertas automáticas vía correo electrónico y notificaciones en app para supervisores y gerencia.</div>
+      </div>
+    </div>
+    <div class="api-box fade-up">
+      <h3>🔌 API REST Abierta — Su Sistema, Sus Reglas</h3>
+      <p>
+        Cada endpoint del WMS está documentado y disponible para integraciones personalizadas. Si en el futuro necesita conectar un nuevo ERP, un sistema de e-commerce, una báscula de camión o una cámara de fría — la API lo permite <strong style="color:#fff;">sin costo de desarrollo adicional en la plataforma base</strong>. Usted no está atrapado en el ecosistema de un proveedor.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- IMPLEMENTACIÓN -->
+<section id="implementacion">
+  <div class="container">
+    <div class="fade-up" style="text-align:center;margin-bottom:3rem;">
+      <span class="section-eyebrow">Arranque sin traumatismo</span>
+      <h2 class="section-title">Implementación en <span class="t">3 Semanas</span><br>Sin Parar su Operación</h2>
+      <p class="section-sub" style="margin:0 auto;">Un proceso probado, paso a paso, que minimiza el riesgo de la transición y garantiza que su equipo esté operando con confianza antes de salir en vivo.</p>
+    </div>
+    <div class="impl-timeline fade-up">
+      <div class="impl-phase p1">
+        <div class="impl-num">1</div>
+        <div class="impl-week">Semana 1</div>
+        <div class="impl-title">Diagnóstico & Setup</div>
+        <ul class="impl-feats">
+          <li>Mapeo de procesos actuales</li>
+          <li>Configuración de servidor y red</li>
+          <li>Carga de maestros iniciales</li>
+          <li>Parametrización de módulos</li>
+          <li>Piloto de ubicaciones en bodega</li>
+        </ul>
+      </div>
+      <div class="impl-phase p2">
+        <div class="impl-num">2</div>
+        <div class="impl-week">Semana 1–2</div>
+        <div class="impl-title">Recepción & Almacenamiento</div>
+        <ul class="impl-feats">
+          <li>Capacitación de recepcionistas</li>
+          <li>Piloto de recepción con OC reales</li>
+          <li>Configuración FEFO por categoría</li>
+          <li>Mapa de bodega digitalizado</li>
+          <li>Integración con proveedores</li>
+        </ul>
+      </div>
+      <div class="impl-phase p3">
+        <div class="impl-num">3</div>
+        <div class="impl-week">Semana 2</div>
+        <div class="impl-title">Picking & Despacho</div>
+        <ul class="impl-feats">
+          <li>Capacitación de pickeros</li>
+          <li>Rutas FEFO en producción</li>
+          <li>Certificados de cargue digitales</li>
+          <li>Integración TMS API</li>
+          <li>Pruebas de carga real</li>
+        </ul>
+      </div>
+      <div class="impl-phase p4">
+        <div class="impl-num">4</div>
+        <div class="impl-week">Semana 2–3</div>
+        <div class="impl-title">Inventarios & BI</div>
+        <ul class="impl-feats">
+          <li>Conteo físico de validación</li>
+          <li>Ajustes y conciliación inicial</li>
+          <li>Conexión Power BI / Tableau</li>
+          <li>Dashboards gerenciales activos</li>
+          <li>KPIs en tiempo real</li>
+        </ul>
+      </div>
+      <div class="impl-phase p5">
+        <div class="impl-num">5</div>
+        <div class="impl-week">Semana 3</div>
+        <div class="impl-title">Go-Live & ML Activo</div>
+        <ul class="impl-feats">
+          <li>Activación ML — Agente Fénix</li>
+          <li>Primeras predicciones de IA</li>
+          <li>Acompañamiento presencial</li>
+          <li>Ajustes finales en producción</li>
+          <li>Entrega formal al equipo</li>
+        </ul>
+      </div>
+    </div>
+    <div class="impl-support fade-up">
+      <div class="support-item">
+        <div class="support-icon">🎓</div>
+        <div class="support-text">Capacitación incluida a todo el equipo operativo y administrativo</div>
+      </div>
+      <div class="support-item">
+        <div class="support-icon">💻</div>
+        <div class="support-text">Soporte técnico post go-live por 3 meses sin costo adicional</div>
+      </div>
+      <div class="support-item">
+        <div class="support-icon">📚</div>
+        <div class="support-text">Capacitación online continua con actualizaciones del sistema</div>
+      </div>
+      <div class="support-item">
+        <div class="support-icon">⚡</div>
+        <div class="support-text">SLA de respuesta &lt; 4 horas en horario laboral colombiano</div>
+      </div>
+      <div class="support-item">
+        <div class="support-icon">🔄</div>
+        <div class="support-text">Actualizaciones y mejoras continuas incluidas en la cuota mensual</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section id="cta">
+  <div class="container">
+    <div class="cta-content fade-up">
+      <h2 class="cta-title">¿Listo para Transformar<br><span>su Operación Logística?</span></h2>
+      <p class="cta-sub">WMS Prooriente es más que software — es un socio tecnológico que crece con su empresa, protege su inventario y genera valor desde el primer día de operación.</p>
+      <div class="cta-steps">
+        <div class="cta-step">
+          <div class="cta-step-num">1</div>
+          <div class="cta-step-title">Diagnóstico Gratuito</div>
+          <div class="cta-step-desc">Reunión de 30 min para entender su operación, identificar pérdidas actuales y definir el alcance ideal del proyecto.</div>
+        </div>
+        <div class="cta-step">
+          <div class="cta-step-num">2</div>
+          <div class="cta-step-title">Demo en Vivo</div>
+          <div class="cta-step-desc">Recorrido completo del sistema en su entorno. Vea el ML, el Agente Fénix y los módulos funcionando con datos reales de su sector.</div>
+        </div>
+        <div class="cta-step">
+          <div class="cta-step-num">3</div>
+          <div class="cta-step-title">Propuesta Formal</div>
+          <div class="cta-step-desc">Cotización ajustada a su operación específica, cronograma de implementación y análisis ROI personalizado. En 48 horas.</div>
+        </div>
+      </div>
+      <div class="hero-btns" style="margin-bottom:2rem;">
+        <a href="mailto:gerencia@prooriente.com" class="btn-primary">✉️ Solicitar Demo Ahora</a>
+        <a href="tel:+573000000000" class="btn-outline">📞 Llamar Ahora</a>
+      </div>
+      <div class="cta-contact">
+        <a href="mailto:gerencia@prooriente.com">✉️ gerencia@prooriente.com</a>
+        <a href="tel:+573000000000">📞 +57 300 000 0000</a>
+        <a href="https://www.prooriente.com" target="_blank">🌐 www.prooriente.com</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>WMS Prooriente · Documento Confidencial · Propuesta Comercial 2025 · Todos los derechos reservados</p>
+</footer>
+
+<script>
+// Scroll animations
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.08, rootMargin: '0px 0px -50px 0px' });
+
+document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+// Animated counters
+function animateCounter(el, target, suffix='', duration=1800) {
+  let start = 0;
+  const isDecimal = String(target).includes('.');
+  const step = (timestamp) => {
+    if (!start) start = timestamp;
+    const progress = Math.min((timestamp - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const current = isDecimal
+      ? (eased * target).toFixed(1)
+      : Math.floor(eased * target);
+    el.textContent = current + suffix;
+    if (progress < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// Smooth active nav
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('.nav-links a');
+const navObserver = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      navLinks.forEach(a => a.style.color = '');
+      const active = document.querySelector(`.nav-links a[href="#${e.target.id}"]`);
+      if (active) active.style.color = 'var(--teal2)';
+    }
+  });
+}, { threshold: 0.4 });
+sections.forEach(s => navObserver.observe(s));
+</script>
+</body>
+</html>

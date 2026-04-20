@@ -113,26 +113,27 @@ class PlanillaController extends BaseController
 
         // Parse header row — find column indexes
         $header = array_map(fn($h) => mb_strtolower(trim(str_replace(['"', "'"], '', $h))), str_getcsv($lines[0], $delim));
+        
         $colMap  = [
-            'numero_factura'  => $this->_findCol($header, ['numero factura', 'factura', 'numero_factura', 'nrofactura']),
-            'documento'       => $this->_findCol($header, ['documento', 'doc']),
-            'numero_planilla' => $this->_findCol($header, ['planilla', 'numero planilla', 'nroplanilla', 'planilla #']),
-            'asesor'          => $this->_findCol($header, ['asesor', 'vendedor', 'comercial']),
-            'producto_nombre' => $this->_findCol($header, ['producto', 'nombre producto', 'descripcion', 'barra', 'nombre']),
-            'producto_codigo' => $this->_findCol($header, ['codigo', 'cod', 'ref', 'referencia']),
-            'cantidad'        => $this->_findCol($header, ['cantid', 'cantidad', 'cant', 'qty', 'unidades']),
-            'costo'           => $this->_findCol($header, ['costo', 'cost', 'precio']),
-            'descuento'       => $this->_findCol($header, ['descuento', 'dto', 'descto', 'disc']),
-            'valor_producto'  => $this->_findCol($header, ['valor producto', 'valor', 'total', 'importe', 'vr producto']),
-            'pedido'          => $this->_findCol($header, ['pedido', 'nro pedido', 'order', 'orden']),
+            'numero_factura'  => $this->_findCol($header, ['numero factura', 'factura', 'nro factura', 'nro_factura', 'nrofactura', 'invoice']),
+            'documento'       => $this->_findCol($header, ['documento', 'doc', 'nro documento', 'nro_documento']),
+            'numero_planilla' => $this->_findCol($header, ['planilla', 'numero planilla', 'nro planilla', 'nro_planilla', 'nroplanilla', 'planilla #']),
+            'asesor'          => $this->_findCol($header, ['asesor', 'vendedor', 'comercial', 'marca', 'comercio']),
+            'producto_nombre' => $this->_findCol($header, ['producto', 'nombre producto', 'descripcion', 'descripción', 'nombre_producto', 'nombre', 'articulo', 'artículo']),
+            'producto_codigo' => $this->_findCol($header, ['codigo', 'código', 'cod', 'ref', 'referencia', 'sku', 'item']),
+            'cantidad'        => $this->_findCol($header, ['cantidad', 'cant', 'qty', 'unidades', 'unds', 'cant.', 'cnt']),
+            'costo'           => $this->_findCol($header, ['costo', 'cost', 'precio', 'valor unitario', 'vr unitario', 'vr_unitario']),
+            'descuento'       => $this->_findCol($header, ['descuento', 'dto', 'descto', 'disc', 'desc']),
+            'valor_producto'  => $this->_findCol($header, ['valor producto', 'valor total', 'total', 'importe', 'vr producto', 'vr_producto', 'vr total']),
+            'pedido'          => $this->_findCol($header, ['pedido', 'nro pedido', 'nro_pedido', 'order', 'orden', 'nro orden']),
         ];
 
         // Log detected headers for debugging
         if (function_exists('wmsLog')) {
-            wmsLog('INFO', 'Planilla import: encabezados detectados', [
+            wmsLog('INFO', 'Planilla import: headers detectados', [
                 'archivo' => $originalName,
-                'delim'   => $delim === ';' ? 'punto_y_coma' : 'coma',
-                'headers' => $header,
+                'delim'   => $delim === ';' ? 'semicolon' : 'comma',
+                'header_raw' => $lines[0],
                 'colMap'  => array_filter($colMap, fn($v) => $v !== null),
                 'missing' => array_keys(array_filter($colMap, fn($v) => $v === null)),
             ]);
@@ -181,6 +182,24 @@ class PlanillaController extends BaseController
                 if (empty($planilla) || empty($producto)) continue;
 
                 $planillasSet[$planilla] = true;
+                
+                // Helper closure to sanitize numbers
+                $toNum = function($val) {
+                    if ($val === null || $val === '') return 0;
+                    // Remove currency symbols, spaces, and handle comma as decimal if needed
+                    $clean = str_replace(['$', ' ',], ['', ''], (string)$val);
+                    // Match pattern where comma might be thousand separator or decimal
+                    // We'll normalize to a point-based float.
+                    if (str_contains($clean, ',') && str_contains($clean, '.')) {
+                        // case: 1,234.56 -> remove comma
+                        $clean = str_replace(',', '', $clean);
+                    } elseif (str_contains($clean, ',')) {
+                        // case: 1234,56 -> replace comma with point
+                        $clean = str_replace(',', '.', $clean);
+                    }
+                    return (float)$clean;
+                };
+
                 $lineas[] = [
                     'archivo_id'      => $archivo,
                     'empresa_id'      => $user->empresa_id,
@@ -191,11 +210,11 @@ class PlanillaController extends BaseController
                     'asesor'          => $colMap['asesor']          !== null ? ($cols[$colMap['asesor']]          ?? null) : null,
                     'producto_codigo' => $colMap['producto_codigo'] !== null ? ($cols[$colMap['producto_codigo']] ?? null) : null,
                     'producto_nombre' => $producto,
-                    'cantidad'        => (float)str_replace([',', '$', ' '], ['', '', ''], $colMap['cantidad'] !== null ? ($cols[$colMap['cantidad']] ?? 0) : 0),
-                    'costo'           => (float)str_replace([',', '$', ' '], ['', '', ''], $colMap['costo']     !== null ? ($cols[$colMap['costo']]     ?? 0) : 0),
-                    'descuento'       => (float)str_replace([',', '$', ' '], ['', '', ''], $colMap['descuento'] !== null ? ($cols[$colMap['descuento']] ?? 0) : 0),
-                    'valor_producto'  => (float)str_replace([',', '$', ' '], ['', '', ''], $colMap['valor_producto'] !== null ? ($cols[$colMap['valor_producto']] ?? 0) : 0),
-                    'pedido'          => $colMap['pedido']          !== null ? ($cols[$colMap['pedido']]          ?? null) : null,
+                    'cantidad'        => $toNum($colMap['cantidad'] !== null ? ($cols[$colMap['cantidad']] ?? 0) : 0),
+                    'costo'           => $toNum($colMap['costo'] !== null ? ($cols[$colMap['costo']] ?? 0) : 0),
+                    'descuento'       => $toNum($colMap['descuento'] !== null ? ($cols[$colMap['descuento']] ?? 0) : 0),
+                    'valor_producto'  => $toNum($colMap['valor_producto'] !== null ? ($cols[$colMap['valor_producto']] ?? 0) : 0),
+                    'pedido'          => $colMap['pedido'] !== null ? ($cols[$colMap['pedido']] ?? null) : null,
                     'created_at'      => $now,
                     'updated_at'      => $now,
                 ];
@@ -334,6 +353,12 @@ class PlanillaController extends BaseController
     }
 
     // ── POST /api/planillas/cert/{id}/linea ──────────────────────────────────
+    /**
+     * Advanced Certification logic:
+     * - Supports EAN/SKU scanning.
+     * - Multi-scan incremental counting (e.g. scan +1).
+     * - Strict cap (cannot certify more than separated/expected).
+     */
     public function registrarLinea(Request $r, Response $res, array $a): Response
     {
         $user   = $r->getAttribute('user');
@@ -348,27 +373,77 @@ class PlanillaController extends BaseController
             return $this->error($res, 'Esta certificación ya fue finalizada');
         }
 
+        $ean      = trim($data['ean'] ?? '');
         $detId    = (int)($data['detalle_id'] ?? 0);
-        $cantidad = (float)($data['cantidad_certificada'] ?? 0);
-        if ($cantidad < 0) return $this->error($res, 'La cantidad no puede ser negativa');
-
-        $det = DB::table('cert_planilla_det')->find($detId);
-        if (!$det || $det->cert_id !== $certId) {
-            return $this->notFound($res, 'Línea no encontrada');
+        $increment = (float)($data['cantidad'] ?? 1); // Default to +1 if not specified
+        
+        $det = null;
+        if ($detId) {
+            $det = DB::table('cert_planilla_det')->find($detId);
+        } elseif ($ean) {
+            // Find by EAN or code within this certification
+            $det = DB::table('cert_planilla_det')
+                ->where('cert_id', $certId)
+                ->where(function($q) use ($ean) {
+                    $q->where('producto_codigo', $ean)
+                      ->orWhere('ean', $ean); // Assuming EAN column exists or will be resolved
+                })
+                ->first();
+            
+            // Fallback: Resolve EAN from products table
+            if (!$det) {
+                $prodId = DB::table('producto_eans')->where('codigo_ean', $ean)->value('producto_id');
+                if ($prodId) {
+                    $codigo = DB::table('productos')->where('id', $prodId)->value('codigo_interno');
+                    if ($codigo) {
+                        $det = DB::table('cert_planilla_det')
+                            ->where('cert_id', $certId)
+                            ->where('producto_codigo', $codigo)
+                            ->first();
+                    }
+                }
+            }
         }
 
-        $correcto = abs($cantidad - $det->cantidad_esperada) < 0.001;
-        DB::table('cert_planilla_det')->where('id', $detId)->update([
-            'cantidad_certificada' => $cantidad,
+        if (!$det || $det->cert_id !== $certId) {
+            return $this->notFound($res, 'Producto no encontrado en esta planilla');
+        }
+
+        // New Logic: Accumulative and Strict
+        $nuevaCantidad = $det->cantidad_certificada + $increment;
+
+        // Block excess
+        if ($nuevaCantidad > $det->cantidad_esperada) {
+            return $this->json($res, [
+                'error' => true,
+                'message' => "No se puede certificar más de lo solicitado. Faltan: " . ($det->cantidad_esperada - $det->cantidad_certificada),
+                'data' => [
+                    'det_id' => $det->id,
+                    'esperada' => $det->cantidad_esperada,
+                    'actual' => $det->cantidad_certificada
+                ]
+            ], 422);
+        }
+
+        $correcto = abs($nuevaCantidad - $det->cantidad_esperada) < 0.001;
+        
+        DB::table('cert_planilla_det')->where('id', $det->id)->update([
+            'cantidad_certificada' => $nuevaCantidad,
             'es_correcto'          => $correcto ? 1 : 0,
-            'observaciones'        => $data['observaciones'] ?? null,
             'updated_at'           => date('Y-m-d H:i:s'),
         ]);
 
+        $msg = $correcto 
+            ? "¡Producto completado correctamente!" 
+            : "Contando: {$nuevaCantidad} / {$det->cantidad_esperada}";
+
         return $this->ok($res, [
-            'es_correcto'       => $correcto,
+            'det_id'            => $det->id,
+            'producto'          => $det->producto_nombre,
+            'cantidad_nueva'    => $nuevaCantidad,
             'cantidad_esperada' => in_array($user->rol, ['Admin', 'Supervisor']) ? $det->cantidad_esperada : null,
-            'mensaje'           => $correcto ? 'Cantidad CORRECTA' : 'DIFERENCIA — verifique el conteo',
+            'es_completo'       => $correcto,
+            'mensaje'           => $msg,
         ]);
     }
 
@@ -780,6 +855,20 @@ class PlanillaController extends BaseController
 
             DB::commit();
 
+            // Notify the auxiliary
+            \App\Controllers\NotificacionesController::crear(
+                $user->empresa_id,
+                $auxiliarId,
+                'Nuevas Planillas para Picking',
+                "Se le han asignado " . count($creadas) . " planillas para alistamiento (Picking).",
+                'picking',
+                $user->id,
+                'Picking',
+                null,
+                'viewPicking',
+                'Picking'
+            );
+
             return $this->created($res, [
                 'ordenes_creadas' => count($creadas),
                 'orden_ids'       => $creadas,
@@ -815,14 +904,7 @@ class PlanillaController extends BaseController
         foreach ($candidates as $candidate) {
             $candidate = mb_strtolower(trim($candidate));
             foreach ($header as $idx => $h) {
-                if (mb_strtolower(trim($h)) === $candidate) return $idx;
-            }
-        }
-        // Partial match fallback
-        foreach ($candidates as $candidate) {
-            $candidate = mb_strtolower(trim($candidate));
-            foreach ($header as $idx => $h) {
-                if (str_contains(mb_strtolower($h), $candidate) || str_contains($candidate, mb_strtolower($h))) {
+                if (mb_strtolower(trim($h)) === $candidate) {
                     return $idx;
                 }
             }
@@ -830,47 +912,124 @@ class PlanillaController extends BaseController
         return null;
     }
 
+    // ── GET /api/planillas/cert/{id}/analytics ────────────────────────────────
+    public function getCertificationAnalytics(Request $r, Response $res, array $a): Response
+    {
+        $user   = $r->getAttribute('user');
+        $certId = (int)$a['id'];
+
+        $cert = DB::table('cert_planillas')
+            ->where('empresa_id', $user->empresa_id)
+            ->where('id', $certId)
+            ->first();
+        if (!$cert) return $this->notFound($res);
+
+        try {
+            $detalles = DB::table('cert_planilla_det')->where('cert_id', $certId)->get();
+
+            $totalLineas    = $detalles->count();
+            $correctas      = $detalles->where('es_correcto', 1)->count();
+            $conNovedad     = $detalles->where('es_correcto', 0)->where('cantidad_certificada', '>', 0)->count();
+            $totalCertif    = $detalles->sum('cantidad_certificada');
+            $totalEsperado  = $detalles->sum('cantidad_esperada');
+
+            return $this->ok($res, [
+                'cert_id'         => $certId,
+                'total_lineas'    => $totalLineas,
+                'lineas_correctas'=> $correctas,
+                'lineas_novedad'  => $conNovedad,
+                'pct_cumplimiento'=> $totalLineas > 0 ? round($correctas / $totalLineas * 100, 1) : 0,
+                'total_certificado'=> $totalCertif,
+                'total_esperado'  => $totalEsperado,
+                'pct_cantidad'    => $totalEsperado > 0 ? round($totalCertif / $totalEsperado * 100, 1) : 0,
+                'duracion_min'    => $cert->hora_inicio && $cert->hora_fin
+                    ? round((strtotime($cert->hora_fin) - strtotime($cert->hora_inicio)) / 60, 1)
+                    : null,
+            ]);
+        } catch (\Exception $e) {
+            return $this->error($res, $e->getMessage());
+        }
+    }
+
+    // ── POST /api/planillas/cert/{id}/editar ─────────────────────────────────
+    public function editarCantidad(Request $r, Response $res, array $a): Response
+    {
+        $user   = $r->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
+        $certId = (int)$a['id'];
+        $data   = $r->getParsedBody() ?? [];
+
+        $cert = DB::table('cert_planillas')
+            ->where('empresa_id', $user->empresa_id)
+            ->where('id', $certId)
+            ->first();
+        if (!$cert) return $this->notFound($res);
+
+        $lineaId  = (int)($data['linea_id'] ?? 0);
+        $cantidad = (int)($data['cantidad'] ?? 0);
+        $motivo   = trim($data['motivo'] ?? 'Corrección supervisión');
+
+        if (!$lineaId) return $this->error($res, 'linea_id requerido');
+
+        $linea = DB::table('cert_planilla_det')->where('cert_id', $certId)->where('id', $lineaId)->first();
+        if (!$linea) return $this->notFound($res, 'Línea no encontrada');
+
+        DB::table('cert_planilla_det')->where('id', $lineaId)->update([
+            'cantidad_certificada' => $cantidad,
+            'es_correcto'          => $cantidad == $linea->cantidad_esperada ? 1 : 0,
+            'observacion'          => $motivo,
+            'updated_at'           => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->audit($user, 'planillas', 'editar_cantidad', 'cert_planilla_det', $lineaId,
+            ['cantidad_certificada' => $linea->cantidad_certificada],
+            ['cantidad_certificada' => $cantidad],
+            "Supervisor editó cantidad en cert #{$certId}: {$motivo}");
+
+        return $this->ok($res, null, 'Cantidad actualizada');
+    }
+
     // ── POST /api/planillas/{id}/habilitar-cert ───────────────────────────────
-    // Supervisor/Admin puede forzar un archivo a 'Separado' para habilitar
-    // certificación anticipada (picking no completado al 100%).
-    // Solo se certificarán los productos que ya estén separados.
     public function habilitarCertificacion(Request $r, Response $res, array $a): Response
     {
-        $user = $r->getAttribute('user');
-        if (!$this->isSupervisorOrAbove($user)) {
-            return $this->forbidden($res, 'Solo supervisores pueden habilitar certificación anticipada');
-        }
+        $user     = $r->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
+        $archivoId = (int)$a['id'];
+        $data      = $r->getParsedBody() ?? [];
+        $planillas = $data['planillas'] ?? null; // null = all
 
         $archivo = DB::table('archivos_planilla')
             ->where('empresa_id', $user->empresa_id)
-            ->where('sucursal_id', $user->sucursal_id)
-            ->where('id', (int)$a['id'])
-            ->first();
+            ->find($archivoId);
+        if (!$archivo) return $this->notFound($res, 'Archivo no encontrado');
 
-        if (!$archivo) return $this->notFound($res);
+        try {
+            // Update archivo estado to allow certification
+            DB::table('archivos_planilla')->where('id', $archivoId)->update([
+                'estado'     => 'Separado', // ready for certification
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
 
-        if (!in_array($archivo->estado, ['Importada', 'EnPicking'])) {
-            return $this->error($res,
-                "El archivo está en estado '{$archivo->estado}'. Solo se puede habilitar desde Importada o EnPicking.");
+            // If specific planillas, mark them
+            if (!empty($planillas) && is_array($planillas)) {
+                DB::table('lineas_planilla')
+                    ->where('archivo_id', $archivoId)
+                    ->whereIn('numero_planilla', $planillas)
+                    ->update(['habilitado_cert' => 1, 'updated_at' => date('Y-m-d H:i:s')]);
+            } else {
+                DB::table('lineas_planilla')
+                    ->where('archivo_id', $archivoId)
+                    ->update(['habilitado_cert' => 1, 'updated_at' => date('Y-m-d H:i:s')]);
+            }
+
+            $this->audit($user, 'planillas', 'habilitar_cert', 'archivos_planilla', $archivoId,
+                null, [], 'Certificación habilitada para archivo ' . $archivoId);
+
+            return $this->ok($res, null, 'Certificación habilitada correctamente');
+        } catch (\Exception $e) {
+            return $this->error($res, $e->getMessage());
         }
-
-        // Calcular progreso de picking para incluir en la respuesta
-        $totalLineas     = DB::table('orden_pickings')->where('archivo_id', $archivo->id)->count();
-        $completadas     = DB::table('orden_pickings')
-            ->where('archivo_id', $archivo->id)
-            ->where('estado', 'Completada')->count();
-
-        DB::table('archivos_planilla')
-            ->where('id', $archivo->id)
-            ->update(['estado' => 'Separado', 'updated_at' => date('Y-m-d H:i:s')]);
-
-        $this->audit($user, 'planilla', 'habilitar_cert', 'archivos_planilla', $archivo->id,
-            ['estado' => $archivo->estado], ['estado' => 'Separado'],
-            "Certificación habilitada anticipadamente por supervisor. Picking: {$completadas}/{$totalLineas} órdenes");
-
-        return $this->ok($res, [
-            'estado'      => 'Separado',
-            'progreso_picking' => "{$completadas}/{$totalLineas} órdenes completadas",
-        ], 'Certificación habilitada. Solo se certificarán los productos ya separados.');
     }
 }

@@ -1,0 +1,2628 @@
+/* ============================================================
+   WMS Desktop — Módulo INVENTARIOS
+   Sub-vistas: ciclico | general | cargue | dashboard | ajuste | stock | stock-ubi | vencimientos
+   ============================================================ */
+WMS_MODULES.inventario = {
+  load(sub) {
+    WMS.setBreadcrumb('inventario', this.subLabel(sub));
+    WMS.renderSidebar('inventario');
+    const s = sub || 'stock';
+    const fn = {
+      sesiones: this.show_sesiones,
+      ciclico: this.show_ciclico, general: this.show_general, cargue: this.show_cargue,
+      dashboard: this.show_dashboard, ajuste: this.show_ajuste,
+      stock: this.show_stock, 'stock-ubi': this.show_stock_ubi, vencimientos: this.show_vencimientos,
+    };
+    (fn[s]?.bind(this) || fn.stock.bind(this))();
+  },
+
+  subLabel(s) {
+    const m = {
+      sesiones: 'Gestión de Conteos',
+      ciclico:'Inventario Cíclico', general:'Inventario General', cargue:'Cargue de Saldo',
+      dashboard:'Dashboard Inventario', ajuste:'Ajuste Manual', stock:'Stock General',
+      'stock-ubi':'Stock por Ubicación', vencimientos:'Vencimientos',
+    };
+    return m[s] || s || 'Panel';
+  },
+
+  // ── STOCK GENERAL ─────────────────────────────────────────────
+  _invStockChart: null,
+  async show_stock() {
+    WMS.setToolbar(`
+      <button class="btn btn-success btn-sm" onclick="WMS_MODULES.inventario.exportarStock()">
+        <i class="fa-solid fa-file-excel"></i> Exportar
+      </button>
+      <button class="pro-btn-refresh" style="margin-left:8px" onclick="WMS_MODULES.inventario.show_stock()">
+        <span class="spin"><i class="fa-solid fa-rotate-right"></i></span> Actualizar
+      </button>`);
+    WMS.spinner();
+    try {
+      const r = await API.get('/inventario/stock', 'limit=5000');
+      const items = r.data || r || [];
+
+      /* Consolidar por producto */
+      const porProducto = {};
+      items.forEach(s => {
+        const key = s.producto_id || s.ean || s.descripcion || s.codigo_interno;
+        if (!porProducto[key]) {
+          porProducto[key] = {
+            codigo: s.codigo_interno || s.ean,
+            descripcion: s.descripcion || s.producto_nombre || s.producto,
+            total: 0,
+            prom_venta_mensual: parseFloat(s.promedio_venta_mensual || 0),
+            lotes: []
+          };
+        }
+        porProducto[key].total += parseFloat(s.cantidad||0);
+        const fv = s.fecha_vencimiento ? new Date(s.fecha_vencimiento) : null;
+        const diasFv = fv ? Math.round((fv - Date.now()) / 86400000) : null;
+        porProducto[key].lotes.push({
+          ubicacion: s.ubicacion_codigo || s.ubicacion || '-',
+          cantidad: parseFloat(s.cantidad||0),
+          lote: s.lote || '-',
+          fecha_vencimiento: s.fecha_vencimiento || '-',
+          dias_vencimiento: diasFv,
+          fecha_ingreso: s.created_at ? WMS.formatDate(s.created_at) : '-'
+        });
+      });
+
+      const consolidado = Object.values(porProducto);
+
+      /* KPIs calculados */
+      const totalRefs  = consolidado.length;
+      const totalUnits = consolidado.reduce((a,p) => a + p.total, 0);
+      const bajoStock  = consolidado.filter(p => p.total > 0 && p.total < 10).length;
+      const sinStock   = consolidado.filter(p => p.total <= 0).length;
+      const vencidos   = consolidado.filter(p =>
+        p.lotes.some(l => l.dias_vencimiento !== null && l.dias_vencimiento < 0)
+      ).length;
+
+      /* Toggle de filas pivot */
+      window._togglePivot = function(btn, id, event) {
+        if (event) event.stopPropagation();
+        const detail = document.getElementById(id);
+        const expanded = detail.style.display !== 'none';
+        detail.style.display = expanded ? 'none' : 'table-row';
+        btn.innerHTML = expanded
+          ? '<i class="fa-solid fa-chevron-right"></i>'
+          : '<i class="fa-solid fa-chevron-down" style="color:#0070f2"></i>';
+      };
+
+      WMS.setContent(`
+<div class="pro-dashboard">
+
+  <!-- KPIs -->
+  <div class="pro-kpi-grid" style="grid-template-columns:repeat(5,1fr)">
+    <div class="pro-kpi-card accent-blue">
+      <div class="pro-kpi-header">
+        <div class="pro-kpi-icon"><i class="fa-solid fa-boxes-stacked"></i></div>
+        <span class="pro-kpi-trend neu">Total</span>
+      </div>
+      <div class="pro-kpi-value">${WMS.formatNum(totalRefs)}</div>
+      <div class="pro-kpi-label">Referencias</div>
+    </div>
+    <div class="pro-kpi-card accent-teal">
+      <div class="pro-kpi-header">
+        <div class="pro-kpi-icon"><i class="fa-solid fa-cubes"></i></div>
+        <span class="pro-kpi-trend up">Stock</span>
+      </div>
+      <div class="pro-kpi-value">${WMS.formatNum(totalUnits)}</div>
+      <div class="pro-kpi-label">Unidades totales</div>
+    </div>
+    <div class="pro-kpi-card accent-green">
+      <div class="pro-kpi-header">
+        <div class="pro-kpi-icon"><i class="fa-solid fa-circle-check"></i></div>
+        <span class="pro-kpi-trend up">OK</span>
+      </div>
+      <div class="pro-kpi-value">${WMS.formatNum(totalRefs - bajoStock - sinStock)}</div>
+      <div class="pro-kpi-label">Disponibles normal</div>
+    </div>
+    <div class="pro-kpi-card accent-amber">
+      <div class="pro-kpi-header">
+        <div class="pro-kpi-icon"><i class="fa-solid fa-arrow-down"></i></div>
+        <span class="pro-kpi-trend ${bajoStock>0?'down':'up'}">${bajoStock>0?'Alerta':'OK'}</span>
+      </div>
+      <div class="pro-kpi-value">${WMS.formatNum(bajoStock)}</div>
+      <div class="pro-kpi-label">Bajo stock (&lt;10 u)</div>
+    </div>
+    <div class="pro-kpi-card accent-red">
+      <div class="pro-kpi-header">
+        <div class="pro-kpi-icon"><i class="fa-solid fa-skull-crossbones"></i></div>
+        <span class="pro-kpi-trend ${vencidos>0?'down':'up'}">${vencidos>0?'Alerta':'OK'}</span>
+      </div>
+      <div class="pro-kpi-value">${WMS.formatNum(vencidos)}</div>
+      <div class="pro-kpi-label">Con lotes vencidos</div>
+    </div>
+  </div>
+
+  <!-- Charts: donut + categorías -->
+  <div class="pro-charts-grid" style="grid-template-columns:320px 1fr;margin-bottom:24px">
+
+    <div class="pro-chart-card">
+      <div class="pro-chart-title">
+        <span><i class="fa-solid fa-chart-pie" style="color:#0891b2;margin-right:8px"></i>Distribución de Stock</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:20px">
+        <div class="pro-donut-wrap" style="position:relative;width:140px;height:140px;flex-shrink:0">
+          <canvas id="inv-donut" width="140" height="140"></canvas>
+          <div class="pro-donut-center">
+            <span class="value" id="inv-pct-ok">–</span>
+            <span class="label">OK</span>
+          </div>
+        </div>
+        <div class="pro-legend" id="inv-stock-legend" style="flex:1"></div>
+      </div>
+    </div>
+
+    <div class="pro-chart-card">
+      <div class="pro-chart-title">
+        <span><i class="fa-solid fa-chart-bar" style="color:#0070f2;margin-right:8px"></i>Top 10 referencias por cantidad</span>
+        <span class="pro-chart-badge">Ranking</span>
+      </div>
+      <div class="pro-chart-container" style="height:200px">
+        <canvas id="inv-top10"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla expandible -->
+  <div class="pro-table-card" id="stock-table-card">
+    <div class="pro-table-header" onclick="WMS_MODULES.inventario._toggleStockTable()">
+      <div class="pro-table-header-left">
+        <span class="pro-table-title"><i class="fa-solid fa-layer-group" style="margin-right:8px;color:#0070f2"></i>Stock General Pivot</span>
+        <span class="pro-table-count">${consolidado.length} referencias</span>
+      </div>
+      <span class="pro-table-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+    </div>
+    <div class="pro-table-body">
+      <div class="pro-table-toolbar">
+        <input class="pro-table-search" id="stock-search" placeholder="Buscar producto, código EAN…"
+               oninput="WMS_MODULES.inventario._filterStockTable(this.value)">
+        <select class="pro-table-filter-select" onchange="WMS_MODULES.inventario._filterStockEstado(this.value)">
+          <option value="">Todos</option>
+          <option value="normal">Stock normal</option>
+          <option value="bajo">Bajo stock</option>
+          <option value="sin">Sin stock</option>
+          <option value="vencido">Con vencidos</option>
+        </select>
+      </div>
+      <div class="pro-table-wrap" style="max-height:520px;overflow-y:auto">
+        <table class="pro-table" id="stock-pro-table">
+          <thead><tr>
+            <th style="width:36px"></th>
+            <th>EAN / Código</th>
+            <th>Descripción</th>
+            <th style="text-align:center">Cantidad</th>
+            <th style="text-align:center">Prom.Venta/mes</th>
+            <th style="text-align:center">Días inv.</th>
+            <th style="text-align:center">Vida útil prom.</th>
+            <th style="text-align:center">Estado</th>
+          </tr></thead>
+          <tbody id="stock-pro-tbody">
+            ${consolidado.map((p, i) => {
+              const detId    = 'spd-' + i;
+              const promVenta= p.prom_venta_mensual;
+              const pctPromo = p.total>0 && promVenta>0 ? ((promVenta/p.total)*100).toFixed(1) : 0;
+              const diasInv  = promVenta>0 ? ((p.total/promVenta)*30).toFixed(0) : '∞';
+              let sumDias=0, cntDias=0;
+              p.lotes.forEach(l => { if (l.dias_vencimiento!==null){sumDias+=l.dias_vencimiento;cntDias++;} });
+              const promFv = cntDias>0 ? (sumDias/cntDias).toFixed(0)+' d' : 'N/A';
+              const hasVenc= p.lotes.some(l => l.dias_vencimiento!==null && l.dias_vencimiento<0);
+              const stCls  = p.total<=0 ? 'alert' : p.total<10 ? 'warn' : 'ok';
+              const stLbl  = p.total<=0 ? 'Sin stock' : p.total<10 ? 'Bajo stock' : 'Normal';
+              const stData = p.total<=0?'sin':p.total<10?'bajo':hasVenc?'vencido':'normal';
+              return `
+              <tr class="pivot-row" data-stock-estado="${stData}"
+                  onclick="window._togglePivot(this.querySelector('.pivot-tog'),'${detId}',event)"
+                  style="cursor:pointer">
+                <td style="text-align:center">
+                  <span class="pivot-tog" style="color:#6b7a99;display:inline-block;transition:transform .2s">
+                    <i class="fa-solid fa-chevron-right"></i>
+                  </span>
+                </td>
+                <td style="font-family:monospace;font-size:.78rem;font-weight:700">${WMS.esc(p.codigo||'–')}</td>
+                <td><strong>${WMS.esc(p.descripcion||'–')}</strong></td>
+                <td style="text-align:center">
+                  <span class="${p.total<=0?'stock-alert':p.total<10?'stock-warn':'stock-ok'}" style="font-size:1.05rem">${WMS.formatNum(p.total)}</span>
+                </td>
+                <td style="text-align:center" class="muted">${promVenta>0?WMS.formatNum(promVenta):'–'}</td>
+                <td style="text-align:center;font-weight:700;color:#0070f2">${diasInv}</td>
+                <td style="text-align:center" class="muted">${promFv}</td>
+                <td style="text-align:center"><span class="pro-badge ${stCls}">${stLbl}</span></td>
+              </tr>
+              <tr id="${detId}" style="display:none">
+                <td colspan="8" style="padding:0 24px 16px 48px;background:#f8faff">
+                  <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-top:8px">
+                    <table class="pro-table" style="font-size:.77rem">
+                      <thead><tr style="background:#f0f4ff">
+                        <th>Ubicación</th><th style="text-align:center">Cantidad</th>
+                        <th>Lote</th><th>F.Vencimiento</th>
+                        <th style="text-align:center">Días aging</th><th>F.Ingreso</th>
+                      </tr></thead>
+                      <tbody>
+                        ${p.lotes.map(l => {
+                          const vBadge = l.dias_vencimiento===null ? 'neutral'
+                            : l.dias_vencimiento<0  ? 'alert'
+                            : l.dias_vencimiento<30 ? 'warn'
+                            : 'ok';
+                          const vLbl = l.dias_vencimiento===null ? '–'
+                            : l.dias_vencimiento<0 ? 'Vencido'
+                            : l.dias_vencimiento+' días';
+                          return `<tr>
+                            <td><span class="pro-badge info">${WMS.esc(l.ubicacion)}</span></td>
+                            <td style="text-align:center;font-weight:700">${WMS.formatNum(l.cantidad)}</td>
+                            <td class="muted">${WMS.esc(l.lote)}</td>
+                            <td class="muted">${l.fecha_vencimiento!=='-'?WMS.formatDate(l.fecha_vencimiento):'N/A'}</td>
+                            <td style="text-align:center"><span class="pro-badge ${vBadge}">${vLbl}</span></td>
+                            <td class="muted">${l.fecha_ingreso}</td>
+                          </tr>`;
+                        }).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </td>
+              </tr>`;
+            }).join('') || '<tr><td colspan="8" class="muted" style="text-align:center;padding:24px">Sin inventario reportado</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+      <div class="pro-table-footer">
+        <span id="stock-count">${consolidado.length} referencias</span>
+        <span>Total: ${WMS.formatNum(totalUnits)} unidades</span>
+      </div>
+    </div>
+  </div>
+
+</div>`);
+
+      /* Donut chart */
+      this._renderStockDonut(totalRefs-bajoStock-sinStock, bajoStock, sinStock);
+      /* Top-10 bar */
+      this._renderTop10(consolidado);
+
+    } catch(e) {
+      WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>');
+      console.error(e);
+    }
+  },
+
+  _toggleStockTable() {
+    document.getElementById('stock-table-card')?.classList.toggle('collapsed');
+  },
+
+  _filterStockTable(q) {
+    const rows = Array.from(document.querySelectorAll('#stock-pro-tbody tr'));
+    let vis = 0;
+    const f = q.toLowerCase();
+    rows.forEach(tr => {
+      if (!tr.dataset.stockEstado) return; // detail rows
+      const show = !f || tr.textContent.toLowerCase().includes(f);
+      tr.style.display = show ? '' : 'none';
+      // also hide corresponding detail row
+      const detId = tr.onclick?.toString().match(/'(spd-\d+)'/)?.[1];
+      if (detId) document.getElementById(detId)?.style && (document.getElementById(detId).style.display='none');
+      if (show) vis++;
+    });
+    const cnt = document.getElementById('stock-count');
+    if (cnt) cnt.textContent = `${vis} referencias`;
+  },
+
+  _filterStockEstado(val) {
+    const rows = Array.from(document.querySelectorAll('#stock-pro-tbody tr'));
+    let vis = 0;
+    rows.forEach(tr => {
+      if (!tr.dataset.stockEstado) return;
+      const show = !val || tr.dataset.stockEstado === val;
+      tr.style.display = show ? '' : 'none';
+      if (show) vis++;
+    });
+    const cnt = document.getElementById('stock-count');
+    if (cnt) cnt.textContent = `${vis} referencias`;
+  },
+
+  _renderStockDonut(ok, bajo, sin) {
+    const ctx = document.getElementById('inv-donut');
+    if (!ctx) return;
+    if (this._invStockChart) { try{this._invStockChart.destroy();}catch(_){} }
+    const total = ok + bajo + sin || 1;
+    const pctOk = Math.round(ok/total*100);
+    const pctEl = document.getElementById('inv-pct-ok');
+    if (pctEl) pctEl.textContent = pctOk + '%';
+
+    const legEl = document.getElementById('inv-stock-legend');
+    if (legEl) {
+      const items = [
+        { label:'Normal',     val:ok,   color:'#00b300', pct:Math.round(ok/total*100) },
+        { label:'Bajo stock', val:bajo, color:'#e8a000', pct:Math.round(bajo/total*100) },
+        { label:'Sin stock',  val:sin,  color:'#e03030', pct:Math.round(sin/total*100) },
+      ];
+      legEl.innerHTML = items.map(i => `
+        <div class="pro-legend-item">
+          <span class="pro-legend-dot" style="background:${i.color}"></span>
+          <span>${i.label}</span>
+          <span class="pro-legend-pct">${i.pct}%</span>
+        </div>
+        <div class="pro-progress-wrap" style="margin-top:-4px;margin-bottom:4px">
+          <div class="pro-progress-bar-bg">
+            <div class="pro-progress-bar-fill" style="background:${i.color};width:${i.pct}%"></div>
+          </div>
+          <span class="pro-progress-label">${WMS.formatNum(i.val)}</span>
+        </div>`).join('');
+    }
+
+    this._invStockChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Normal','Bajo stock','Sin stock'],
+        datasets: [{ data:[ok,bajo,sin].map(v=>v||0), backgroundColor:['#00b300','#e8a000','#e03030'], borderWidth:0, hoverOffset:6 }]
+      },
+      options: {
+        responsive:false, cutout:'70%',
+        plugins: {
+          legend:{display:false},
+          tooltip:{ backgroundColor:'#1a2340', titleColor:'#fff', bodyColor:'rgba(255,255,255,.8)', padding:10, cornerRadius:8 }
+        },
+        animation:{ animateRotate:true, duration:800 }
+      }
+    });
+  },
+
+  _renderTop10(consolidado) {
+    const ctx = document.getElementById('inv-top10');
+    if (!ctx) return;
+    const top = [...consolidado].sort((a,b)=>b.total-a.total).slice(0,10);
+    const gradient = ctx.getContext('2d').createLinearGradient(0,0,0,200);
+    gradient.addColorStop(0,'rgba(0,112,242,.85)');
+    gradient.addColorStop(1,'rgba(0,112,242,.3)');
+    new Chart(ctx, {
+      type:'bar',
+      data:{
+        labels: top.map(p => (p.descripcion||p.codigo||'?').substring(0,22)),
+        datasets:[{ label:'Unidades', data:top.map(p=>p.total), backgroundColor:gradient, borderRadius:6, borderSkipped:false }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false, indexAxis:'y',
+        plugins:{ legend:{display:false}, tooltip:{
+          backgroundColor:'#1a2340', titleColor:'#fff', bodyColor:'rgba(255,255,255,.8)', padding:10, cornerRadius:8,
+          callbacks:{ label: c => ` ${WMS.formatNum(c.parsed.x)} unidades` }
+        }},
+        scales:{
+          x:{ beginAtZero:true, grid:{color:'#f0f2f8'}, ticks:{font:{size:10},color:'#6b7a99'}, border:{display:false} },
+          y:{ grid:{display:false}, ticks:{font:{size:10},color:'#1a2340'}, border:{display:false} }
+        }
+      }
+    });
+  },
+
+  filterTable(q, tableId) {
+    const rows = document.querySelectorAll('#' + (tableId||'stock-table') + ' tbody tr');
+    const f = q.toLowerCase();
+    rows.forEach(r => { r.style.display = r.textContent.toLowerCase().includes(f) ? '' : 'none'; });
+  },
+
+  filterStockEstado(val) {
+    const rows = document.querySelectorAll('#stock-table tbody tr');
+    rows.forEach(r => {
+      if (!val) { r.style.display = ''; return; }
+      const qty = parseFloat(r.cells[3]?.textContent?.replace(/[.,]/g, '')||0);
+      if (val === 'cero') r.style.display = qty <= 0 ? '' : 'none';
+      else if (val === 'bajo') r.style.display = (qty > 0 && qty < 10) ? '' : 'none';
+      else r.style.display = qty >= 10 ? '' : 'none';
+    });
+  },
+
+  async exportarStock() {
+    WMS.toast('info', 'Generando reporte...');
+    try {
+      const token = localStorage.getItem('wms_token') || '';
+      const url = `${API_BASE}/inventario/stock?export=excel&token=${encodeURIComponent(token)}`;
+      window.open(url, '_blank');
+    } catch(e) { WMS.toast('error', 'Error exportando'); }
+  },
+
+  // ── STOCK POR UBICACIÓN ────────────────────────────────────────
+  async show_stock_ubi() {
+    WMS.setToolbar(`<button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.inventario.show_stock_ubi()"><i class="fa-solid fa-rotate"></i> Actualizar</button>`);
+    WMS.spinner();
+    try {
+      const stock = await API.get('/inventario/stock', 'limit=5000');
+      const items = stock.data || stock || [];
+
+      // Agrupar por ubicación
+      const byUbi = {};
+      items.forEach(s => {
+        const k = s.ubicacion_codigo || s.ubicacion || s.ubicacion_id || 'Sin Ubicación';
+        if (!byUbi[k]) byUbi[k] = { ubicacion: k, items: [], total: 0 };
+        
+        let fv = s.fecha_vencimiento ? new Date(s.fecha_vencimiento) : null;
+        let diasFv = fv ? Math.round((fv - Date.now()) / 86400000) : null;
+        
+        byUbi[k].items.push({
+            producto: s.descripcion || s.producto_nombre || s.producto || 'Desconocido',
+            codigo: s.codigo_interno || s.ean || '-',
+            cantidad: parseFloat(s.cantidad || 0),
+            lote: s.lote || '-',
+            fecha_vencimiento: s.fecha_vencimiento || '-',
+            dias_vencimiento: diasFv
+        });
+        byUbi[k].total += parseFloat(s.cantidad||0);
+      });
+
+      const lista = Object.values(byUbi);
+
+      window._toggleUbiPivot = function(btn, id, event) {
+          if (event) event.stopPropagation();
+          const detail = document.getElementById(id);
+          if (detail.style.display === 'none') {
+             detail.style.display = 'table-row';
+             btn.innerHTML = '<i class="fa-solid fa-chevron-up"></i>';
+          } else {
+             detail.style.display = 'none';
+             btn.innerHTML = '<i class="fa-solid fa-chevron-down"></i>';
+          }
+      };
+
+      WMS.setContent(`
+        <style>
+          .pivot-row td { background: #ffffff; cursor: pointer; transition: background 0.2s ease; border-bottom: 1px solid #f1f5f9; }
+          .pivot-row:hover td { background: #f8fafc; }
+          .pivot-detail-row { background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
+          .pivot-detail-table { width:100%; border-radius: 8px; overflow: hidden; background:#ffffff; border:1px solid #cbd5e1; margin:16px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+          .pivot-detail-table th { background: #f1f5f9; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: #334155; padding: 8px 16px; border-bottom: 1px solid #cbd5e1; }
+          .pivot-detail-table td { font-size: 0.82rem; padding: 10px 16px; border-bottom: 1px solid #f1f5f9; color: #475569; }
+          .pivot-row i.fa-chevron-down, .pivot-row i.fa-chevron-up { color: #64748b; font-size: 0.8rem; }
+        </style>
+        <div class="filter-bar">
+          <div class="search-bar"><i class="fa-solid fa-search"></i>
+            <input placeholder="Buscar ubicación..." oninput="WMS_MODULES.inventario.filterPivotTable(this.value,'stock-ubi-table')">
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title"><i class="fa-solid fa-map-location"></i> Stock por Ubicación (${lista.length} ubicaciones)</span></div>
+          <div class="table-container">
+            <table class="data-table" id="stock-ubi-table">
+              <thead><tr>
+                 <th style="width:40px;text-align:center;"></th>
+                 <th>Ubicación</th>
+                 <th style="text-align:center;">Referencias</th>
+                 <th style="text-align:center;">Total Unidades</th>
+              </tr></thead>
+              <tbody>${lista.map((u, i) => {
+                const detId = 'pivot-ubi-' + i;
+                return `<tr class="pivot-row" onclick="window._toggleUbiPivot(this.querySelector('button'), '${detId}', event)">
+                  <td class="text-center"><button class="btn btn-sm btn-outline-secondary" style="padding:2px 8px;border-radius:6px;border-color:#cbd5e1;"><i class="fa-solid fa-chevron-down"></i></button></td>
+                  <td><span class="badge badge-info" style="font-size:.9rem;padding:6px 12px;">${WMS.esc(u.ubicacion)}</span></td>
+                  <td class="text-center" style="font-weight:600; color:#475569;">${u.items.length} refs</td>
+                  <td class="text-center"><span class="badge badge-light-blue" style="font-size:.9rem;padding:4px 10px;">${WMS.formatNum(u.total)}</span></td>
+                </tr>
+                <tr class="pivot-detail-row" id="${detId}" style="display:none;">
+                  <td colspan="4" style="padding:0 32px 16px 64px;">
+                     <table class="pivot-detail-table">
+                       <thead><tr>
+                          <th>Producto</th>
+                          <th>Código</th>
+                          <th style="text-align:center;">Cantidad</th>
+                          <th>Lote</th>
+                          <th>F. Vencimiento</th>
+                          <th>Días (Aging)</th>
+                       </tr></thead>
+                       <tbody>
+                         ${u.items.map(p => {
+                            const clsBadge = p.dias_vencimiento === null ? '' : (p.dias_vencimiento < 0 ? 'badge-danger' : (p.dias_vencimiento < 30 ? 'badge-warning' : (p.dias_vencimiento < 90 ? 'badge-info' : 'badge-success')));
+                            const lblBadge = p.dias_vencimiento === null ? '-' : (p.dias_vencimiento < 0 ? 'Vencido' : p.dias_vencimiento + ' días');
+                            return `<tr>
+                              <td><strong style="color:#0f172a;">${WMS.esc(p.producto)}</strong></td>
+                              <td style="font-family:monospace;">${WMS.esc(p.codigo)}</td>
+                              <td style="text-align:center;"><strong style="font-size:.9rem;color:#0f172a;">${WMS.formatNum(p.cantidad)}</strong></td>
+                              <td>${WMS.esc(p.lote)}</td>
+                              <td>${p.fecha_vencimiento !== '-' ? WMS.formatDate(p.fecha_vencimiento) : '<span class="text-muted">N/A</span>'}</td>
+                              <td><span class="badge ${clsBadge}">${lblBadge}</span></td>
+                            </tr>`;
+                         }).join('')}
+                       </tbody>
+                     </table>
+                  </td>
+                </tr>`;
+              }).join('') || '<tr><td colspan="4" class="table-empty">Sin stock en ubicaciones</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>`);
+    } catch(e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
+  },
+
+  // ── VENCIMIENTOS V2 ──────────────────────────────────────────────────────
+  async show_vencimientos() {
+    WMS.setToolbar(`
+      <button class="btn btn-success btn-sm" onclick="WMS_MODULES.inventario.exportVencV2()">
+        <i class="fa-solid fa-file-excel"></i> Exportar Excel
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.inventario.show_vencimientos()">
+        <i class="fa-solid fa-rotate"></i> Actualizar
+      </button>`);
+    WMS.spinner();
+    try {
+      const r = await API.get('/v2/inventario/vencimientos', 'solo_proximos=0');
+      const d = r.data || {};
+      const items = d.items || [];
+      const res   = d.resumen || {};
+      const sColor = { VENCIDO:'#ef4444', CRITICO:'#f97316', ALERTA:'#eab308', PROXIMO:'#3b82f6', OK:'#10b981' };
+      const sBg    = { VENCIDO:'#fef2f2', CRITICO:'#fff7ed', ALERTA:'#fefce8', PROXIMO:'#eff6ff', OK:'#f0fdf4' };
+
+      WMS.setContent(`
+      <style>
+        .sem-cards { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px; }
+        .sem-card  { border-radius:10px; padding:14px 18px; border-left:5px solid; cursor:pointer; transition:transform .15s; }
+        .sem-card:hover { transform:translateY(-2px); }
+        .sem-card .sem-num { font-size:1.8rem; font-weight:800; }
+        .sem-card .sem-lbl { font-size:.72rem; font-weight:700; text-transform:uppercase; opacity:.7; }
+        .venc-row-VENCIDO { background:#fef2f2 !important; }
+        .venc-row-CRITICO  { background:#fff7ed !important; }
+        .venc-row-ALERTA   { background:#fefce8 !important; }
+      </style>
+
+      <div class="sem-cards">
+        ${Object.entries(res).map(([k,v]) => `
+          <div class="sem-card" style="border-color:${sColor[k]};background:${sBg[k]};"
+               onclick="WMS_MODULES.inventario._filterVencV2('${k}')">
+            <div class="sem-num" style="color:${sColor[k]}">${v}</div>
+            <div class="sem-lbl" style="color:${sColor[k]}">${k}</div>
+          </div>`).join('')}
+      </div>
+
+      <div class="filter-bar">
+        <div class="search-bar"><i class="fa-solid fa-search"></i>
+          <input id="venc-q" placeholder="Buscar producto, ubicación, lote..." oninput="WMS_MODULES.inventario._filterVencV2()">
+        </div>
+        <select id="venc-sem" class="form-control" style="max-width:160px;" onchange="WMS_MODULES.inventario._filterVencV2(this.value)">
+          <option value="">Todos</option>
+          <option value="VENCIDO">Vencidos</option>
+          <option value="CRITICO">Crítico (≤30d)</option>
+          <option value="ALERTA">Alerta (≤60d)</option>
+          <option value="PROXIMO">Próximo (≤90d)</option>
+          <option value="OK">OK (+90d)</option>
+        </select>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-calendar-xmark"></i> Control de Vencimientos — ${d.total||0} registros</span>
+        </div>
+        <div class="table-container">
+          <table class="data-table" id="venc-table">
+            <thead>
+              <tr>
+                <th>Referencia</th><th>Producto</th><th>Marca</th><th>Lote</th>
+                <th>Fecha Vencimiento</th><th>Días Restantes</th><th>Estado</th>
+                <th class="text-center">Cantidad</th><th>Ubicación</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map(v => {
+                const color = sColor[v.semaforo] || '#64748b';
+                return `<tr class="venc-row-${v.semaforo}" data-sem="${v.semaforo}">
+                  <td style="font-family:monospace;font-size:.8rem">${WMS.esc(v.referencia||'-')}</td>
+                  <td style="font-weight:700">${WMS.esc(v.producto||'-')}</td>
+                  <td>${WMS.esc(v.marca||'-')}</td>
+                  <td>${WMS.esc(v.lote||'-')}</td>
+                  <td>${WMS.formatDate(v.fecha_vencimiento)||'-'}</td>
+                  <td class="text-center">
+                    <span style="font-weight:800;color:${color}">${v.dias_restantes < 0 ? 'VENCIDO' : v.dias_restantes + 'd'}</span>
+                  </td>
+                  <td>
+                    <span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:.7rem;font-weight:700;background:${color}20;color:${color}">
+                      ${v.semaforo}
+                    </span>
+                  </td>
+                  <td class="text-center">${WMS.formatNum(v.cantidad)}</td>
+                  <td><span class="badge badge-light-blue">${WMS.esc(v.ubicacion||'-')}</span></td>
+                </tr>`;
+              }).join('') || '<tr><td colspan="9" class="table-empty">Sin registros con fecha de vencimiento</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`);
+    } catch(e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando vencimientos</p></div>'); }
+  },
+
+  _filterVencV2(semaforo) {
+    const sel = semaforo || document.getElementById('venc-sem')?.value || '';
+    if (sel) document.getElementById('venc-sem').value = sel;
+    const q = (document.getElementById('venc-q')?.value || '').toLowerCase();
+    document.querySelectorAll('#venc-table tbody tr').forEach(row => {
+      const matchSem = !sel || row.dataset.sem === sel;
+      const matchQ   = !q || row.textContent.toLowerCase().includes(q);
+      row.style.display = (matchSem && matchQ) ? '' : 'none';
+    });
+  },
+
+  async exportVencV2() {
+    const token = localStorage.getItem('wms_token') || '';
+    window.open(`${API_BASE}/v2/inventario/vencimientos?export=excel&token=${encodeURIComponent(token)}`, '_blank');
+  },
+
+  // ── INVENTARIO CÍCLICO / GENERAL ─────────────────────────────
+  async show_ciclico() { this.show_sesiones(); },
+
+  async nuevoConteo(tipo = 'Ciclico') {
+    WMS.spinner();
+    try {
+      const resp = await API.get('/param/personal', 'limit=200');
+      const auxiliares = resp.data || [];
+      const esGeneral  = tipo === 'General';
+
+      WMS.showModal(`Nueva Sesión de Inventario — ${tipo}`, `
+        <div class="form-grid form-grid-2">
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Nombre de la sesión <span class="required">*</span></label>
+            <input id="cnt-nombre" class="form-control" placeholder="Ej: Conteo Cíclico Pasillo A — Abril 2026">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Descripción / Instrucciones generales</label>
+            <input id="cnt-desc" class="form-control" placeholder="Observaciones para los auxiliares...">
+          </div>
+          ${esGeneral ? `
+          <div class="form-group">
+            <label class="form-label">Número de conteos <span class="required">*</span></label>
+            <select id="cnt-num-conteos" class="form-control" onchange="WMS_MODULES.inventario._toggleComparar(this.value)">
+              <option value="1">1 conteo (igual que cíclico)</option>
+              <option value="2" selected>2 conteos (conteo doble ciego)</option>
+              <option value="3">3 conteos (con tercer conteo auditor)</option>
+            </select>
+          </div>
+          <div class="form-group" id="cnt-comparar-group">
+            <label class="form-label">Comparación</label>
+            <select id="cnt-comparar" class="form-control">
+              <option value="1">Comparar contra sistema (inventario vs sistema)</option>
+              <option value="0">Solo comparar entre conteos (sin sistema)</option>
+            </select>
+          </div>` : ''}
+        </div>
+
+        <div style="margin-top:16px;padding:12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+          <p style="font-weight:700;font-size:.85rem;color:#1e293b;margin-bottom:8px;">
+            <i class="fa-solid fa-user-plus" style="color:#1a56db"></i>
+            Asignaciones de conteo (puede agregar más después de iniciar)
+          </p>
+          <div id="asig-list" style="display:flex;flex-direction:column;gap:10px;max-height:260px;overflow-y:auto;">
+            <!-- Se agrega dinámicamente -->
+          </div>
+          <button class="btn btn-sm btn-outline-primary mt-8" onclick="WMS_MODULES.inventario._addAsigRow(${JSON.stringify(auxiliares).replace(/"/g,'&quot;')})">
+            <i class="fa-solid fa-plus"></i> Agregar auxiliar
+          </button>
+        </div>`,
+
+        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+         <button class="btn btn-primary" onclick="WMS_MODULES.inventario.saveConteoV2('${tipo}')">
+           <i class="fa-solid fa-save"></i> Crear Sesión
+         </button>`);
+
+      // Agregar primera fila de asignación automáticamente
+      this._addAsigRow(auxiliares);
+    } catch(e) { WMS.toast('error', 'Error cargando auxiliares'); }
+  },
+
+  _toggleComparar(num) {
+    const g = document.getElementById('cnt-comparar-group');
+    if (g) g.style.display = num >= 2 ? '' : 'none';
+  },
+
+  _addAsigRow(auxiliares) {
+    const cont = document.getElementById('asig-list');
+    if (!cont) return;
+    const idx = cont.children.length;
+    const div = document.createElement('div');
+    div.className = 'asig-row';
+    div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;background:#fff;padding:8px;border-radius:6px;border:1px solid #e2e8f0';
+    div.innerHTML = `
+      <div>
+        <label style="font-size:.75rem;font-weight:600;color:#64748b;">Auxiliar</label>
+        <select class="form-control asig-aux" style="font-size:.8rem">
+          <option value="">Seleccionar...</option>
+          ${auxiliares.map(a => `<option value="${a.id}">${WMS.esc(a.nombre)}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:.75rem;font-weight:600;color:#64748b;">Tipo instrucción</label>
+        <select class="form-control asig-tipo" style="font-size:.8rem" onchange="WMS_MODULES.inventario._toggleAsigDetalle(this)">
+          <option value="Libre">Libre (sin restricción)</option>
+          <option value="Pasillo">Por Pasillo</option>
+          <option value="Modulo">Por Módulo</option>
+          <option value="Referencia">Por Referencia</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:.75rem;font-weight:600;color:#64748b;">Detalle</label>
+        <input class="form-control asig-detalle" placeholder="Pasillo A, Módulo 3..." style="font-size:.8rem">
+      </div>
+      <div style="padding-bottom:2px">
+        <button class="btn btn-sm btn-outline-danger" onclick="this.closest('.asig-row').remove()">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>`;
+    cont.appendChild(div);
+  },
+
+  _toggleAsigDetalle(sel) {
+    const inp = sel.closest('.asig-row').querySelector('.asig-detalle');
+    const tipo = sel.value;
+    inp.placeholder = tipo === 'Pasillo' ? 'Ej: Pasillo A' :
+                      tipo === 'Modulo'  ? 'Ej: Módulo 3' :
+                      tipo === 'Referencia' ? 'Buscar referencia...' : 'Notas adicionales (opcional)';
+    inp.style.display = tipo === 'Libre' ? '' : '';
+  },
+
+  async saveConteoV2(tipo) {
+    const nombre = document.getElementById('cnt-nombre')?.value.trim();
+    if (!nombre) return WMS.toast('warning', 'Ingrese un nombre para la sesión');
+
+    const asigRows = document.querySelectorAll('.asig-row');
+    const asignaciones = [];
+    for (const row of asigRows) {
+      const auxId = row.querySelector('.asig-aux')?.value;
+      if (!auxId) continue;
+      const tipoInstruccion = row.querySelector('.asig-tipo')?.value || 'Libre';
+      const detalle = row.querySelector('.asig-detalle')?.value.trim() || '';
+      asignaciones.push({
+        auxiliar_id: parseInt(auxId),
+        tipo_instruccion: tipoInstruccion,
+        pasillo: tipoInstruccion === 'Pasillo' ? detalle : null,
+        modulo: tipoInstruccion === 'Modulo' ? detalle : null,
+        instruccion_libre: tipoInstruccion === 'Libre' ? detalle : null,
+        ronda: 1,
+      });
+    }
+    if (asignaciones.length === 0) return WMS.toast('warning', 'Agregue al menos un auxiliar con instrucción');
+
+    const numConteos = parseInt(document.getElementById('cnt-num-conteos')?.value || 1);
+    const compararSistema = document.getElementById('cnt-comparar')?.value !== '0';
+
+    try {
+      const sesion = await API.post('/v2/inventario/sesiones', {
+        nombre,
+        descripcion: document.getElementById('cnt-desc')?.value.trim() || null,
+        tipo,
+        num_conteos: tipo === 'General' ? numConteos : 1,
+        comparar_sistema: compararSistema,
+      });
+      const sesionId = sesion.data?.id;
+      if (!sesionId) throw new Error('No se obtuvo ID de sesión');
+
+      // Crear asignaciones
+      for (const a of asignaciones) {
+        await API.post(`/v2/inventario/sesiones/${sesionId}/asignaciones`, a);
+      }
+
+      WMS.toast('success', 'Sesión creada. Presione "Iniciar" para notificar a los auxiliares.');
+      WMS.closeModal('generic-modal');
+      tipo === 'General' ? this.show_general() : this.show_ciclico();
+    } catch(e) { WMS.toast('error', e.message || 'Error creando sesión'); }
+  },
+
+  async iniciarSesion(id) {
+    if (!confirm('¿Iniciar la sesión? Se notificará a todos los auxiliares asignados.')) return;
+    try {
+      await API.put(`/v2/inventario/sesiones/${id}/iniciar`, {});
+      WMS.toast('success', 'Sesión iniciada — auxiliares notificados');
+      this.show_ciclico();
+    } catch(e) { WMS.toast('error', e.message); }
+  },
+
+  // Compatibilidad legacy
+  async finalizarRonda(id, n) {
+    if (!confirm(`¿Finalizar la Ronda ${n}?`)) return;
+    try {
+      await API.post(`/inventario/conteo/${id}/finalizar-ronda`, {});
+      WMS.toast('success', 'Ronda finalizada');
+    } catch(e) { WMS.toast('error', e.message); }
+  },
+
+  // ── DASHBOARD V2 ────────────────────────────────────────────────────────
+  async verDashboardV2(id, ronda) {
+    const isStandalone = document.body.classList.contains('standalone-mode');
+    const rondaParam = ronda ? `ronda=${ronda}` : '';
+    try {
+      const r = await API.get(`/v2/inventario/sesiones/${id}/dashboard`, rondaParam);
+      const d = r.data || {};
+      this._dashV2 = d;
+      this._dashV2Id = id;
+
+      const { sesion, kpis, consistencia_rondas, necesita_tercer_conteo } = d;
+      const stColor = { Borrador:'#64748b', EnCurso:'#f59e0b', PendienteAjuste:'#ef4444', Ajustado:'#10b981', Cerrado:'#64748b' };
+
+      const iraVal = kpis.total_lineas > 0
+        ? (100 - (kpis.lineas_con_diferencia / kpis.total_lineas * 100)).toFixed(1)
+        : 100;
+
+      const htmlContent = `
+        <style>
+          .inv2-wrapper  { width: 100%; padding: 20px; box-sizing: border-box; background: #fff; display: flex; flex-direction: column; gap: 20px; }
+          
+          /* KPIs compactos */
+          .inv2-kpi-row  { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; width: 100%; }
+          .inv2-kpi      { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; display: flex; gap: 12px; align-items: center; }
+          .inv2-kpi-ic   { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0; }
+          .inv2-kpi-v    { font-size: 1.6rem; font-weight: 900; line-height: 1; color: #1e293b; }
+          .inv2-kpi-lbl  { font-size: .68rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+          .inv2-kpi-sub  { font-size: .65rem; color: #94a3b8; margin-top: 2px; }
+
+          /* Cabecera sesión mejorada */
+          .inv2-header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; }
+          .inv2-title-area { display: flex; flex-direction: column; gap: 4px; }
+          .inv2-session-name { font-size: 1.3rem; font-weight: 900; color: #0f172a; }
+          .inv2-badges     { display: flex; gap: 6px; align-items: center; }
+          .inv2-btn-group  { display: flex; gap: 8px; }
+
+          /* Barra de herramientas unificada */
+          .inv2-toolbar    { display: flex; align-items: center; justify-content: space-between; background: #f8fafc; border-radius: 10px; padding: 8px 16px; border: 1px solid #e2e8f0; }
+          .inv2-rounds-box { display: flex; gap: 8px; align-items: center; border-right: 2px solid #e2e8f0; padding-right: 16px; margin-right: 16px; }
+          
+          .inv2-tabs       { display: flex !important; gap: 4px; flex: 1; }
+          .inv2-tab        { padding: 8px 16px; font-size: .85rem; font-weight: 700; color: #64748b; border: none; background: none; cursor: pointer; border-radius: 6px; transition: 0.2s; display: flex; align-items: center; gap: 6px; }
+          .inv2-tab i      { font-size: .9rem; opacity: .7; }
+          .inv2-tab.on     { background: #1e293b; color: #fff; }
+          .inv2-tab.on i   { opacity: 1; }
+          .inv2-tab:hover:not(.on) { background: #f1f5f9; color: #1e293b; }
+
+          .inv2-content    { width: 100%; min-height: 500px; }
+          
+          /* Tablas y alertas */
+          .inv-mat-scroll  { width: 100%; overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+          .inv2-alert      { padding: 12px 16px; border-radius: 10px; border-left: 5px solid #ef4444; background: #fef2f2; color: #991b1b; display: flex; align-items: center; gap: 12px; font-size: .88rem; }
+          
+          #standalone-side-panel { z-index: 100 !important; }
+        </style>
+
+        <div class="inv2-wrapper">
+          <!-- Nivel 1: KPIs -->
+          <div class="inv2-kpi-row">
+            <div class="inv2-kpi">
+              <div class="inv2-kpi-ic" style="background:${iraVal>=98?'#dcfce7':'#fee2e2'}">
+                <i class="fa-solid fa-bullseye" style="color:${iraVal>=98?'#15803d':'#b91c1c'}"></i>
+              </div>
+              <div>
+                <div class="inv2-kpi-v" style="color:${iraVal>=98?'#15803d':'#b91c1c'}">${iraVal}%</div>
+                <div class="inv2-kpi-lbl">Exactitud (IRA)</div>
+              </div>
+            </div>
+            <div class="inv2-kpi">
+              <div class="inv2-kpi-ic" style="background:#fee2e2">
+                <i class="fa-solid fa-arrow-trend-down" style="color:#b91c1c"></i>
+              </div>
+              <div>
+                <div class="inv2-kpi-v" style="color:#b91c1c">${Math.abs(kpis.faltantes_unidades)}</div>
+                <div class="inv2-kpi-lbl">Faltantes (uds)</div>
+              </div>
+            </div>
+            <div class="inv2-kpi">
+              <div class="inv2-kpi-ic" style="background:#dcfce7">
+                <i class="fa-solid fa-arrow-trend-up" style="color:#15803d"></i>
+              </div>
+              <div>
+                <div class="inv2-kpi-v" style="color:#15803d">${kpis.sobrantes_unidades}</div>
+                <div class="inv2-kpi-lbl">Sobrantes (uds)</div>
+              </div>
+            </div>
+            <div class="inv2-kpi">
+              <div class="inv2-kpi-ic" style="background:#dbeafe">
+                <i class="fa-solid fa-chart-line" style="color:#1d4ed8"></i>
+              </div>
+              <div>
+                <div class="inv2-kpi-v" style="color:#1d4ed8">${kpis.pct_avance}%</div>
+                <div class="inv2-kpi-lbl">Avance R${ronda||1}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Nivel 2: Cabecera operativa -->
+          <div class="inv2-header-box">
+             <div class="inv2-title-area">
+                <div class="inv2-session-name">${WMS.esc(sesion.nombre)}</div>
+                <div class="inv2-badges">
+                   <span style="padding:2px 10px; border-radius:20px; font-size:.65rem; font-weight:800; background:${stColor[sesion.estado]}20; color:${stColor[sesion.estado]}">${sesion.estado.toUpperCase()}</span>
+                   <span class="badge badge-info" style="font-size:.65rem">${sesion.tipo}</span>
+                   ${necesita_tercer_conteo ? '<span class="badge badge-danger" style="font-size:.65rem"><i class="fa-solid fa-exclamation-triangle"></i> Auditoría Pendiente</span>' : ''}
+                </div>
+             </div>
+             <div class="inv2-btn-group">
+                <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._showConteoManualModal(${id})">
+                  <i class="fa-solid fa-plus-circle"></i> NUEVO CONTEO
+                </button>
+                ${['Ajustado', 'EnCurso', 'PendienteAjuste'].includes(sesion.estado) ? `
+                <button class="btn btn-success btn-sm" onclick="WMS_MODULES.inventario._cerrarSesion(${id})">
+                  <i class="fa-solid fa-lock-check"></i> FINALIZAR
+                </button>` : ''}
+             </div>
+          </div>
+
+          <!-- Alertas Críticas -->
+          ${consistencia_rondas && !consistencia_rondas.ok ? `
+          <div class="inv2-alert">
+             <i class="fa-solid fa-triangle-exclamation fa-lg"></i>
+             <div>
+                <b>Diferencias entre Rondas:</b> Se detectaron ${consistencia_rondas.diferencias.length} inconsistencias. 
+                ${sesion.num_conteos===3 ? 'Se requiere tercer conteo de validación.' : ''}
+             </div>
+          </div>` : ''}
+
+          <!-- Nivel 3: Barra de Herramientas Unificada -->
+          <div class="inv2-toolbar">
+             ${sesion.num_conteos > 1 ? `
+             <div class="inv2-rounds-box">
+                <small style="font-weight:800; color:#64748b; text-transform:uppercase; font-size:.65rem">Ronda:</small>
+                ${Array.from({length:sesion.num_conteos},(_,i)=>`
+                  <button class="btn btn-xs ${(ronda||1)===(i+1)?'btn-primary':'btn-outline-secondary'}"
+                          onclick="WMS_MODULES.inventario.verDashboardV2(${id},${i+1})" 
+                          style="min-width:30px; font-weight:800">R${i+1}</button>`).join('')}
+             </div>` : ''}
+
+             <div class="inv2-tabs">
+                <button class="inv2-tab on" id="t2-mat" onclick="WMS_MODULES.inventario._tab2('mat')">
+                  <i class="fa-solid fa-table-cells"></i> Matriz
+                </button>
+                <button class="inv2-tab" id="t2-general" onclick="WMS_MODULES.inventario._tab2('general')">
+                  <i class="fa-solid fa-layer-group"></i> Resumen
+                </button>
+                <button class="inv2-tab" id="t2-dif" onclick="WMS_MODULES.inventario._tab2('dif')">
+                  <i class="fa-solid fa-not-equal"></i> Diferencias
+                </button>
+                <button class="inv2-tab" id="t2-ml" onclick="WMS_MODULES.inventario._tab2('ml')">
+                  <i class="fa-solid fa-robot"></i> Análisis ML
+                </button>
+                <button class="inv2-tab" id="t2-asig" onclick="WMS_MODULES.inventario._tab2('asig')">
+                  <i class="fa-solid fa-users"></i> Asig.
+                </button>
+                <button class="inv2-tab" id="t2-acc" onclick="WMS_MODULES.inventario._tab2('acc')">
+                  <i class="fa-solid fa-shield-halved"></i> Seguridad
+                </button>
+             </div>
+          </div>
+
+          <!-- Nivel 4: Contenedor Dinámico -->
+          <div id="inv2-content" class="inv2-content"></div>
+        </div>
+      `;
+
+      const footerContent = `
+        <button class="btn btn-outline-success btn-sm" onclick="WMS_MODULES.inventario._imprimirReporte(${id})">
+          <i class="fa-solid fa-print"></i> Imprimir Informe
+        </button>
+        ${isStandalone ? '' : `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>`}
+      `;
+
+      if (isStandalone) {
+        WMS.setToolbar(footerContent);
+        // En modo standalone, el título va en el breadcrumb o encabezado inyectado
+        WMS.setBreadcrumb('inventario', 'DASHBOARD V2 ' + sesion.nombre);
+        WMS.setContent(htmlContent);
+      } else {
+        WMS.showModal(title, htmlContent, footerContent, 'full');
+      }
+
+      this._tab2('mat');
+    } catch(e) { WMS.toast('error', 'Error cargando dashboard: ' + e.message); }
+  },
+
+  _openDashboardInTab(id, ronda = 1) {
+    const url = `index.html?view=inv-dash-v2&id=${id}&standalone=1`;
+    window.open(url, '_blank');
+  },
+
+  _formatFullDate(iso) {
+    if (!iso) return '-';
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return iso;
+      const day = d.getDate().toString().padStart(2, '0');
+      const month = (d.getMonth() + 1).toString().padStart(2, '0');
+      const year = d.getFullYear();
+      let hours = d.getHours();
+      const mins = d.getMinutes().toString().padStart(2, '0');
+      const ampm = hours >= 12 ? 'pm' : 'am';
+      hours = hours % 12;
+      hours = hours ? hours : 12; 
+      return `${day}/${month}/${year} ${hours}:${mins} ${ampm}`;
+    } catch(e) { return iso; }
+  },
+  _tab2(tab) {
+    document.querySelectorAll('.inv2-tab').forEach(b => b.classList.remove('on'));
+    const btn = document.getElementById('t2-' + tab);
+    if (btn) btn.classList.add('on');
+    const d = this._dashV2;
+    const id = this._dashV2Id;
+    const content = document.getElementById('inv2-content');
+    if (!content || !d) return;
+
+    if (tab === 'mat') {
+      const lineas = d.matriz_conteo || [];
+      content.innerHTML = `
+        <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center">
+          <div class="search-bar" style="flex:1;background:#fff;border:1px solid #e2e8f0;padding:4px 10px;border-radius:8px;"><i class="fa-solid fa-search"></i>
+            <input placeholder="Filtrar por producto, ubicación, SKU..." oninput="WMS_MODULES.inventario._filterMat(this.value,'inv2-mat-table')" style="border:none;outline:none;margin-left:8px;font-size:.85rem;width:90%">
+          </div>
+          <div style="display:flex;gap:4px;align-items:center;">
+             <small style="font-weight:700;color:#64748b;margin-right:8px;">VER:</small>
+             <button class="btn btn-xs btn-outline-secondary" onclick="WMS_MODULES.inventario._filterMatDiff('all')">Todo</button>
+             <button class="btn btn-xs btn-outline-danger" onclick="WMS_MODULES.inventario._filterMatDiff('diff')">Diferencias</button>
+             <button class="btn btn-xs btn-outline-success" onclick="WMS_MODULES.inventario._filterMatDiff('ok')">Sin dif.</button>
+          </div>
+        </div>
+        <div class="inv-mat-scroll">
+          <table class="data-table" id="inv2-mat-table">
+            <thead>
+              <tr style="background:#f1f5f9">
+                <th>AUXILIAR</th>
+                <th>FECHA / HORA</th>
+                <th>PRODUCTO / REFERENCIA</th>
+                <th>UBICACIÓN</th>
+                <th>LOTE / VENC.</th>
+                <th>DIAS V.U.</th>
+                <th class="text-center">CANT. CONTADA</th>
+                ${d.sesion.num_conteos > 1 ? `
+                  <th class="text-center">R1</th>
+                  <th class="text-center">R2</th>
+                ` : ''}
+                <th>ACCIONES</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${lineas.map(l => {
+                const color_vu = l.dias_vida_util <= 15 ? '#ef4444' : l.dias_vida_util <= 30 ? '#f59e0b' : '#10b981';
+                const has_diff = (l.diferencia !== 0);
+                return `
+                  <tr data-diff="${has_diff?'1':'0'}" id="linea-row-${l.id}">
+                    <td><small>${WMS.esc(l.auxiliar||'-')}</small></td>
+                    <td><small>${l.hora_conteo ? WMS.formatDate(l.hora_conteo.substring(0,10)) + ' ' + l.hora_conteo.substring(11,16) : '-'}</small></td>
+                    <td>
+                      <div style="font-weight:700;font-size:12px;color:#1e293b">${WMS.esc(l.codigo||'-')}</div>
+                      <div style="font-size:10px;color:#64748b;line-height:1.2;margin-top:2px">${WMS.esc(l.producto||'-')}</div>
+                    </td>
+                    <td><b style="font-size:.8rem;color:#1e293b">${WMS.esc(l.ubicacion||'-')}</b></td>
+                    <td><small>${WMS.esc(l.lote)}<br>${WMS.formatDate(l.fecha_vencimiento)}</small></td>
+                    <td><b style="color:${color_vu}">${l.dias_vida_util}d</b></td>
+                    <td class="text-center"><b style="font-size:1.1rem;color:#1d4ed8">${parseFloat(l.cantidad_contada)}</b></td>
+                    ${d.sesion.num_conteos > 1 ? `
+                      <td class="text-center" style="background:#f8fafc;font-weight:600">${l.ronda===1?l.cantidad_contada:'-'}</td>
+                      <td class="text-center" style="background:#f8fafc;font-weight:600">${l.ronda===2?l.cantidad_contada:'-'}</td>
+                    ` : ''}
+                    <td>
+                      <div class="action-btns">
+                        <button class="btn btn-xs btn-outline-info" title="Editar Conteo" onclick="WMS_MODULES.inventario._editarLinea(${l.id})" ${l.ajustado ? 'disabled' : ''}>
+                          <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        <button class="btn btn-xs btn-outline-danger" title="Eliminar" onclick="WMS_MODULES.inventario._eliminarLinea(${l.id},${id})" ${l.ajustado ? 'disabled' : ''}>
+                          <i class="fa-solid fa-trash"></i>
+                        </button>
+                        ${l.diferencia !== 0 && !l.ajustado ? `
+                        <button class="btn btn-xs btn-warning" title="Ajustar Inventario" onclick="WMS_MODULES.inventario._ajustarLinea(${l.id},${id})">
+                           <i class="fa-solid fa-magic-wand-sparkles"></i>
+                        </button>` : ''}
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('') || `<tr><td colspan="12" style="padding:40px;text-align:center;color:#94a3b8">No hay líneas registradas</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    else if (tab === 'general') {
+      const consolidated = d.matriz_consolidada || [];
+      content.innerHTML = `
+        <div style="margin-bottom:10px;"><h3 style="font-size:.85rem;font-weight:700;"><i class="fa-solid fa-list-check"></i> Resumen de Conteo Por Referencia</h3></div>
+        <div class="table-container" style="max-height:480px;overflow-y:auto;">
+          <table class="data-table compact" id="inv2-gen-table">
+            <thead style="position:sticky;top:0;z-index:20;background:#f8fafc">
+              <tr>
+                <th width="30"></th>
+                <th>Referencia</th>
+                <th class="text-center">R1</th>
+                <th class="text-center">R2</th>
+                <th class="text-center">R3</th>
+                <th class="text-center" style="background:#eff6ff">Sistema</th>
+                <th class="text-center" style="background:#fff7ed">Diferencia</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${consolidated.map((m, idx) => {
+                const isCons = m.ronda_1 === m.ronda_2;
+                return `
+                <tr style="background:${!isCons&&m.ronda_2>0?'#fff1f2':'#fff'}">
+                  <td class="text-center">
+                    <button class="btn btn-xs btn-light" onclick="this.closest('tr').nextElementSibling.toggleAttribute('hidden')">
+                       <i class="fa-solid fa-plus"></i>
+                    </button>
+                  </td>
+                  <td>
+                    <div style="font-weight:700;font-size:.82rem">${m.codigo} — ${WMS.esc(m.producto)}</div>
+                    <div style="font-size:.72rem;color:#475569;margin-top:2px;">${m.ean||'Sin Código de Barras'}</div>
+                  </td>
+                  <td class="text-center fw-700" style="font-size:.95rem">${m.ronda_1}</td>
+                  <td class="text-center fw-700 ${!isCons&&m.ronda_2>0?'text-danger':''}" style="font-size:.95rem">${m.ronda_2||'-'}</td>
+                  <td class="text-center fw-700" style="font-size:.95rem">${m.ronda_3||'-'}</td>
+                  <td class="text-center fw-700" style="background:#f9fafb;font-size:.9rem">${m.sistema}</td>
+                  <td class="text-center fw-800 ${m.diferencia!==0?'text-danger':'text-success'}" style="background:#fffaf5;font-size:.95rem">
+                    ${m.diferencia>0?'+':''}${m.diferencia}
+                  </td>
+                </tr>
+                <tr hidden style="background:#f8fafc">
+                  <td colspan="8" style="padding:0">
+                    <div style="padding:12px 20px; border-left:4px solid #3b82f6">
+                      <table style="width:100%;font-size:.75rem" class="detail-subtable">
+                        <thead>
+                          <tr style="border-bottom:1px solid #cbd5e1;color:#64748b;text-transform:uppercase;font-size:.65rem">
+                            <th>Auxiliares</th><th>Ubicación</th><th class="text-center">R1</th><th class="text-center">R2</th><th class="text-center">R3</th><th>F.Venc</th><th>Vencimiento</th><th>Último Registro</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${m.detalles.map(det => `
+                            <tr>
+                              <td>${WMS.esc(det.auxiliares.join(', '))}</td>
+                              <td><span class="badge badge-light-blue">${WMS.esc(det.ubicacion)}</span></td>
+                              <td class="text-center fw-700" style="font-size:.85rem">${det.r1||'-'}</td>
+                              <td class="text-center fw-700" style="font-size:.85rem">${det.r2||'-'}</td>
+                              <td class="text-center fw-700" style="font-size:.85rem">${det.r3||'-'}</td>
+                              <td>${WMS.formatDate(det.f_venc)}</td>
+                              <td>${det.dias_v_u!==null ? `<b style="color:${det.dias_v_u<30?'#dc2626':'#16a34a'}">${det.dias_v_u}d</b>` : '-'}</td>
+                              <td style="color:#64748b;font-style:italic">${WMS_MODULES.inventario._formatFullDate(det.ultimo_c)}</td>
+                            </tr>`).join('')}
+                        </tbody>
+                      </table>
+                    </div>
+                  </td>
+                </tr>`;
+              }).join('') || '<tr><td colspan="8" class="table-empty">Sin datos consolidados</td></tr>'}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    else if (tab === 'ml') {
+      // Análisis ML: referencias en sistema no contadas — async via delegación
+      content.innerHTML = `
+        <div style="text-align:center;padding:30px">
+          <div class="spinner"></div>
+          <p style="color:#64748b;margin-top:10px;font-size:.85rem">Analizando referencias no contadas...</p>
+        </div>`;
+      // Delegar a función async para poder usar await
+      this._loadMLTab(id, d).catch(e => {
+        const c = document.getElementById('inv2-content');
+        if (c) c.innerHTML = `<div class="text-danger" style="padding:20px;">Error cargando análisis ML: ${e.message}</div>`;
+      });
+    }
+
+    else if (tab === 'dif') {
+      const difs = (d.matriz_diferencias || []).filter(m => m.diferencia !== 0);
+      content.innerHTML = `
+        <div class="table-container" style="max-height:420px;overflow-y:auto;">
+          <table class="data-table compact">
+            <thead style="position:sticky;top:0;z-index:10;background:#f8fafc">
+              <tr>
+                <th>Referencia</th><th>Ubicación</th><th>Lote</th><th>F.Venc.</th>
+                <th class="text-center">Cont. Contada</th>
+                <th class="text-center">Cant. Sistema</th>
+                <th class="text-center">Cant. Ubic.</th>
+                <th class="text-center">Diferencia</th>
+                <th>Tipo</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${difs.map(m => `
+                <tr>
+                  <td>
+                    <div style="font-weight:700;font-size:.8rem">${WMS.esc(m.codigo||'-')}</div>
+                    <div style="font-size:.7rem;color:#64748b">${WMS.esc(m.producto||'-')}</div>
+                  </td>
+                  <td><span class="badge badge-light-blue">${WMS.esc(m.ubicacion||'-')}</span></td>
+                  <td style="font-size:.75rem">${WMS.esc(m.lote||'-')}</td>
+                  <td style="font-size:.75rem">${WMS.formatDate(m.fecha_vencimiento)||'-'}</td>
+                  <td class="text-center fw-700">${m.cantidad_contada}</td>
+                  <td class="text-center">${m.cantidad_sistema_snap}</td>
+                  <td class="text-center">${m.cantidad_en_ubicacion||0}</td>
+                  <td class="text-center ${m.diferencia>0?'dif-plus':'dif-minus'}">
+                    ${m.diferencia>0?'+':''}${m.diferencia}
+                  </td>
+                  <td>
+                    <span style="font-size:.7rem;padding:2px 8px;border-radius:12px;font-weight:700;
+                      background:${m.diferencia>0?'#dcfce7':'#fee2e2'};
+                      color:${m.diferencia>0?'#16a34a':'#dc2626'}">
+                      ${m.tipo_diferencia}
+                    </span>
+                  </td>
+                  <td>
+                    <button class="btn btn-xs btn-warning" onclick="WMS_MODULES.inventario._ajustarLinea(${m.id},${id})">
+                      <i class="fa-solid fa-sliders"></i> Ajustar
+                    </button>
+                  </td>
+                </tr>`).join('') || '<tr><td colspan="10" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981"></i> Sin diferencias</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+        ${difs.length > 0 ? `
+        <div style="margin-top:14px;text-align:right">
+          <button class="btn btn-danger" onclick="WMS_MODULES.inventario._ajustarTodo(${id})">
+            <i class="fa-solid fa-sliders"></i> Ajustar Todas las Diferencias
+          </button>
+        </div>` : ''}`;
+    }
+
+    else if (tab === 'asig') {
+      const sesion = d.sesion;
+      content.innerHTML = `
+        <div style="margin-bottom:12px;text-align:right">
+          <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.inventario._addAsigExistente(${id})">
+            <i class="fa-solid fa-plus"></i> Agregar Asignación
+          </button>
+        </div>
+        <div class="table-container" style="max-height:380px;overflow-y:auto;">
+          <table class="data-table compact">
+            <thead>
+              <tr><th>Auxiliar</th><th>Ronda</th><th>Instrucción</th><th>Estado</th><th>Notificado</th><th>Finalizado</th><th></th></tr>
+            </thead>
+            <tbody>
+              ${(sesion.asignaciones||[]).map(a => `
+                <tr>
+                  <td style="font-weight:700">${WMS.esc(a.auxiliar?.nombre||'-')}</td>
+                  <td class="text-center"><span class="badge badge-info">R${a.ronda}</span></td>
+                  <td style="font-size:.78rem">${WMS.esc(a.tipo_instruccion)} ${a.pasillo?'— '+a.pasillo:''} ${a.modulo?'— '+a.modulo:''}</td>
+                  <td>${a.estado}</td>
+                  <td style="font-size:.75rem">${a.notificado_at ? WMS.formatDate(a.notificado_at.substring(0,10)) : '-'}</td>
+                  <td style="font-size:.75rem">${a.finalizado_at ? WMS.formatDate(a.finalizado_at.substring(0,10)) : '-'}</td>
+                  <td>
+                    ${a.estado === 'Pendiente' || a.estado === 'Notificado' ? `
+                      <button class="btn btn-xs btn-outline-danger" onclick="WMS_MODULES.inventario._deleteAsig(${a.id},${id})">
+                        <i class="fa-solid fa-trash"></i>
+                      </button>` : ''}
+                  </td>
+                </tr>`).join('') || '<tr><td colspan="7" class="table-empty">Sin asignaciones</td></tr>'}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    else if (tab === 'acc') {
+      const sesion = d.sesion;
+      const enCurso = sesion.estado === 'EnCurso';
+      const pendiente = sesion.estado === 'PendienteAjuste';
+      content.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:8px 0">
+          ${enCurso ? `
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px">
+            <h4 style="font-size:.85rem;font-weight:800;color:#1e40af;margin:0 0 8px">
+              <i class="fa-solid fa-list-check"></i> Estado del conteo
+            </h4>
+            <p style="font-size:.8rem;color:#1e40af;margin:0">${d.kpis.asignaciones_terminadas} de ${d.kpis.asignaciones_total} auxiliares han finalizado su conteo.</p>
+            <div style="margin-top:8px;background:#dbeafe;border-radius:6px;height:8px">
+              <div style="width:${d.kpis.pct_avance}%;background:#1a56db;height:8px;border-radius:6px"></div>
+            </div>
+            <p style="font-size:.75rem;margin:4px 0 0;color:#1e40af">${d.kpis.pct_avance}% completado</p>
+          </div>` : ''}
+          ${pendiente ? `
+          <div style="background:#fff;border:1px solid #e2e8f0;border-left:5px solid #16a34a;border-radius:10px;padding:24px;grid-column:1/-1;box-shadow:0 10px 15px -3px rgba(0,0,0,.05)">
+            <h4 style="font-size:1.1rem;font-weight:900;color:#0f172a;margin:0 0 4px">
+              <i class="fa-solid fa-shield-halved"></i> Proceso de Ajuste y Conciliación
+            </h4>
+            <p style="font-size:.85rem;color:#64748b;margin:0 0 20px">
+              Analice el impacto en Kardex. Esta auditoría actualizará directamente los saldos del inventario.
+            </p>
+            
+            <div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap">
+              <div style="flex:1;background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;text-align:center;min-width:140px">
+                 <div style="font-size:1.8rem;font-weight:900;color:#dc2626">${Math.abs(d.kpis.faltantes_unidades)}</div>
+                 <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px">Faltantes (Uds)</div>
+              </div>
+              <div style="flex:1;background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;text-align:center;min-width:140px">
+                 <div style="font-size:1.8rem;font-weight:900;color:#16a34a">${d.kpis.sobrantes_unidades}</div>
+                 <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px">Sobrantes (Uds)</div>
+              </div>
+              <div style="flex:1;background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;text-align:center;min-width:140px">
+                 <div style="font-size:1.8rem;font-weight:900;color:#f59e0b">${d.kpis.lineas_con_diferencia}</div>
+                 <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px">Líneas Afectadas</div>
+              </div>
+            </div>
+
+            <div style="padding:12px 14px;background:#fffbeb;border:1px solid #fef3c7;border-radius:8px;margin-bottom:20px;">
+              <p style="margin:0;font-size:.75rem;color:#92400e;line-height:1.4">
+                 <i class="fa-solid fa-triangle-exclamation"></i> <strong>Aviso Legal y Operativo:</strong> Al proceder con el ajuste masivo, el sistema aplicará automáticamente los movimientos de saldo a las cajas/unidades afectadas en todo el recinto. Esta acción es inmutable y registrará su firma electrónica.
+              </p>
+            </div>
+
+            <div style="display:flex;gap:10px">
+              <button class="btn btn-success btn-lg" style="flex:1;font-size:1rem;font-weight:800;padding:14px" onclick="WMS_MODULES.inventario._ajustarTodo(${id})">
+                <i class="fa-solid fa-check-double"></i> APROBAR AJUSTE Y CERRAR INVENTARIO
+              </button>
+            </div>
+          </div>` : ''}
+          ${['Ajustado', 'EnCurso', 'PendienteAjuste'].includes(sesion.estado) ? `
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-left:5px solid #16a34a;border-radius:10px;padding:24px;grid-column:1/-1;box-shadow:0 10px 15px -3px rgba(0,0,0,.05)">
+            <h4 style="font-size:1.1rem;font-weight:900;color:#166534;margin:0 0 4px">
+              <i class="fa-solid fa-flag-checkered"></i> Concluir Operación
+            </h4>
+            <p style="font-size:.85rem;color:#166534;margin:0 0 20px">
+              ${sesion.estado === 'Ajustado' 
+                ? 'Los saldos han sido actualizados. Ahora debe cerrar formalmente el conteo para <strong>liberar las posiciones</strong>.' 
+                : '<strong>Aviso:</strong> El inventario no se ha ajustado. Si concluye ahora, las diferencias NO se aplicarán al stock, pero las ubicaciones se liberarán.'}
+            </p>
+            <div style="display:flex;gap:10px">
+              <button class="btn btn-success btn-lg" style="flex:1;font-size:1rem;font-weight:800;padding:14px" onclick="WMS_MODULES.inventario._cerrarSesion(${id})">
+                <i class="fa-solid fa-lock-open"></i> CONCLUIR Y LIBERAR POSICIONES
+              </button>
+            </div>
+          </div>` : ''}
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px">
+            <h4 style="font-size:.85rem;font-weight:800;color:#1e293b;margin:0 0 8px">
+              <i class="fa-solid fa-print"></i> Impresión
+            </h4>
+            <button class="btn btn-outline-primary full" onclick="WMS_MODULES.inventario._imprimirReporte(${id})">
+              <i class="fa-solid fa-file-pdf"></i> Generar Informe del Conteo
+            </button>
+          </div>
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px">
+            <h4 style="font-size:.85rem;font-weight:800;color:#1e293b;margin:0 0 8px">
+              <i class="fa-solid fa-table-list"></i> Reporte de Ajustes
+            </h4>
+            <button class="btn btn-outline-warning full" onclick="WMS_MODULES.inventario.showAjustesReport(${id})">
+              <i class="fa-solid fa-receipt"></i> Ver Ajustes Aplicados
+            </button>
+          </div>
+        </div>`;
+    }
+  },
+
+  async _cerrarSesion(id) {
+    if (!confirm('¿Está seguro de cerrar formalmente este conteo? Se liberarán todas las ubicaciones bloqueadas y no se podrán realizar más ajustes.')) return;
+    WMS.spinner();
+    try {
+      const r = await API.post(`/v2/inventario/sesiones/${id}/cerrar`, {});
+      WMS.toast('success', r.message || 'Inventario cerrado y ubicaciones liberadas.');
+      this.show_dashboard(id);
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error cerrando sesión');
+      this.show_dashboard(id);
+    }
+  },
+
+
+  async _loadMLTab(id, d) {
+    const content = document.getElementById('inv2-content');
+    if (!content) return;
+    const rondaParam = d.sesion?.ronda_actual ? `ronda=${d.sesion.ronda_actual}` : '';
+    const ml     = await API.get(`/v2/inventario/sesiones/${id}/ml-analisis`, rondaParam);
+    const mlData = ml.data || {};
+    const refs   = mlData.referencias || [];
+
+    content.innerHTML = `
+      <div style="margin-bottom:16px;">
+        ${mlData.alerta ? `
+        <div style="background:#fff7ed;border:2px solid #fdba74;border-radius:10px;padding:16px;display:flex;gap:12px;align-items:flex-start;margin-bottom:16px;">
+          <i class="fa-solid fa-triangle-exclamation fa-2x" style="color:#ea580c;flex-shrink:0;margin-top:2px"></i>
+          <div>
+            <div style="font-weight:700;color:#9a3412;font-size:.9rem;margin-bottom:4px">ALERTA DE AUSENCIA FÍSICA</div>
+            <div style="font-size:.83rem;color:#7c2d12;">${WMS.esc(mlData.alerta)}</div>
+          </div>
+        </div>` : `
+        <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:10px;padding:16px;display:flex;gap:12px;align-items:center;margin-bottom:16px;">
+          <i class="fa-solid fa-circle-check fa-2x" style="color:#16a34a;"></i>
+          <div style="font-weight:700;color:#166534;font-size:.9rem;">Todas las referencias han sido contadas. ✓</div>
+        </div>`}
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:1.6rem;font-weight:900;color:${refs.length > 0 ? '#dc2626' : '#10b981'}">${refs.length}</div>
+            <div style="font-size:.72rem;color:#64748b;font-weight:600;text-transform:uppercase;">NO CONTADAS</div>
+          </div>
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:1.6rem;font-weight:900;color:#dc2626;">${refs.filter(r => r.impacto === 'alto').length}</div>
+            <div style="font-size:.72rem;color:#64748b;font-weight:600;text-transform:uppercase;">IMPACTO ALTO</div>
+          </div>
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:1.6rem;font-weight:900;color:#2563eb;">${refs.reduce((s,r) => s + (r.cantidad_sistema||0), 0)}</div>
+            <div style="font-size:.72rem;color:#64748b;font-weight:600;text-transform:uppercase;">UNIDADES EN RIESGO</div>
+          </div>
+        </div>
+      </div>
+
+      ${refs.length > 0 ? `
+      <div class="table-container" style="max-height:340px;overflow-y:auto;">
+        <table class="data-table compact">
+          <thead style="position:sticky;top:0;z-index:10;background:#f8fafc;">
+            <tr>
+              <th>Código</th><th>Referencia</th><th>Ubicación</th>
+              <th>Lote</th><th>F. Venc.</th>
+              <th class="text-center">Uds. Sistema</th>
+              <th class="text-center">Impacto</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${refs.map(r => {
+              const col   = r.impacto === 'alto' ? '#dc2626' : r.impacto === 'medio' ? '#f59e0b' : '#10b981';
+              const label = r.impacto === 'alto' ? 'ALTO' : r.impacto === 'medio' ? 'MEDIO' : 'BAJO';
+              return `<tr style="background:${r.impacto==='alto'?'#fef2f2':r.impacto==='medio'?'#fffbeb':'#f0fdf4'}">
+                <td style="font-family:monospace;font-size:.75rem;">${WMS.esc(r.codigo_interno||'-')}</td>
+                <td style="font-size:.8rem;font-weight:600;">${WMS.esc(r.producto_nombre)}</td>
+                <td><span class="badge badge-light-blue">${WMS.esc(r.ubicacion_codigo)}</span></td>
+                <td style="font-size:.75rem;font-family:monospace;">${WMS.esc(r.lote||'—')}</td>
+                <td style="font-size:.75rem;">${WMS.formatDate(r.fecha_vencimiento)||'—'}</td>
+                <td class="text-center" style="font-weight:700;color:#1e40af;">${WMS.formatNum(r.cantidad_sistema)}</td>
+                <td class="text-center"><span style="font-weight:800;font-size:.75rem;color:${col};">${label}</span></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:12px;padding:12px;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;font-size:.8rem;color:#92400e;">
+        <strong><i class="fa-solid fa-robot"></i> Acción automática al ajustar:</strong>
+        Al ejecutar "Ajustar Todas las Diferencias", el sistema pondrá en 0 estas <strong>${refs.length}</strong> referencia(s)
+        automáticamente (ausencia física confirmada por conteo completo de la ubicación).
+      </div>` : ''}
+    `;
+  },
+
+  _filterMat(q, tableId) {
+    const term = q.toLowerCase();
+    document.querySelectorAll(`#${tableId} tbody tr`).forEach(r => {
+      r.style.display = r.textContent.toLowerCase().includes(term) ? '' : 'none';
+    });
+  },
+
+  _filterMatDiff(mode) {
+    document.querySelectorAll('#inv2-mat-table tbody tr').forEach(r => {
+      if (mode === 'all') r.style.display = '';
+      else if (mode === 'diff') r.style.display = r.dataset.diff === '1' ? '' : 'none';
+      else r.style.display = r.dataset.diff === '0' ? '' : 'none';
+    });
+  },
+
+  _showConteoManualModal(id) {
+    const html = `
+      <div style="background:#f8fafc;padding:12px;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:16px;">
+        <p style="font-size:.75rem;color:#64748b;margin:0">
+          <i class="fa-solid fa-info-circle"></i> Registre productos o ubicaciones que no fueron contemplados originalmente en esta sesión.
+        </p>
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px;">
+        <label class="form-label">Producto (EAN, Código o Nombre) *</label>
+        <input type="text" id="m-conteo-p-ac" class="form-control" placeholder="Escriba para buscar..." autocomplete="off">
+        <input type="hidden" id="m-conteo-prod-id">
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px;">
+        <label class="form-label">Código de Ubicación *</label>
+        <input type="text" id="m-conteo-u-ac" class="form-control" placeholder="REC-01, A-01-A..." autocomplete="off" style="text-transform:uppercase;">
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div class="form-group">
+          <label class="form-label">Lote</label>
+          <input type="text" id="m-conteo-lote" class="form-control" placeholder="Opcional">
+        </div>
+        <div class="form-group">
+          <label class="form-label">F. Vencimiento</label>
+          <input type="date" id="m-conteo-venc" class="form-control">
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+        <div class="form-group">
+          <label class="form-label">Cantidad Contada *</label>
+          <input type="number" id="m-conteo-cant" class="form-control" placeholder="0" min="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ronda *</label>
+          <select id="m-conteo-ronda" class="form-control">
+            <option value="1">Ronda 1</option>
+            <option value="2" ${this._dashV2?.sesion?.ronda_actual==2?'selected':''}>Ronda 2</option>
+            <option value="3" ${this._dashV2?.sesion?.ronda_actual==3?'selected':''}>Ronda 3</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="m-conteo-prod-info" class="hidden" style="margin-bottom:16px;padding:12px;background:#f1f5f9;border-radius:8px;font-size:.78rem;border-left:4px solid #3b82f6;">
+         <div style="font-weight:700;color:#1e293b;" id="m-conteo-p-name"></div>
+         <div id="m-conteo-p-stock" style="color:#64748b;margin-top:2px;font-family:monospace;"></div>
+      </div>
+
+      <button id="btn-save-manual" class="btn btn-primary w-full" style="padding:14px;font-weight:800;font-size:.95rem;" onclick="WMS_MODULES.inventario._saveConteoManual(${id})">
+        <i class="fa-solid fa-save"></i> REGISTRAR CONTEO
+      </button>
+
+      <button class="btn btn-light w-full" style="margin-top:8px;font-size:11px;color:#94a3b8;" onclick="WMS.closeRightPanel()">
+        Cancelar
+      </button>`;
+
+    WMS.showRightPanel('Conteo Manual Inteligente', html);
+
+    // Inicializar Autocomplete tras render
+    setTimeout(() => {
+        const pInput = document.getElementById('m-conteo-p-ac');
+        if (pInput) {
+            WMS.initProductAutocomplete(pInput, (p) => {
+                document.getElementById('m-conteo-prod-id').value = p.id;
+                document.getElementById('m-conteo-p-name').textContent = p.descripcion;
+                document.getElementById('m-conteo-p-stock').textContent = `Saldos sistema: ${p.stock || 0} Uds`;
+                document.getElementById('m-conteo-prod-info').classList.remove('hidden');
+                document.getElementById('m-conteo-u-ac').focus();
+            });
+        }
+        document.getElementById('m-conteo-p-ac').focus();
+    }, 200);
+  },
+
+  async _saveConteoManual(id) {
+    const prodId = document.getElementById('m-conteo-prod-id')?.value;
+    const uCod   = document.getElementById('m-conteo-u-ac')?.value.trim();
+    const lote   = document.getElementById('m-conteo-lote')?.value.trim();
+    const venc   = document.getElementById('m-conteo-venc')?.value;
+    const cant   = document.getElementById('m-conteo-cant')?.value;
+    const ronda  = document.getElementById('m-conteo-ronda')?.value;
+
+    if (!prodId || !uCod || cant === '') {
+      WMS.toast('warning', 'Complete los campos obligatorios (*)');
+      return;
+    }
+
+    const btn = document.getElementById('btn-save-manual');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Registrando...'; }
+
+    try {
+      const r = await API.post(`/v2/inventario/sesiones/${id}/conteo-manual`, {
+        producto_id: prodId,
+        ubicacion_codigo: uCod,
+        lote: lote || null,
+        fecha_vencimiento: venc || null,
+        cantidad: cant,
+        ronda: ronda
+      });
+      
+      WMS.toast('success', r.message || 'Conteo registrado correctamente');
+      
+      // Limpiar formulario para permitir entrada rápida continua
+      document.getElementById('m-conteo-p-ac').value = '';
+      document.getElementById('m-conteo-prod-id').value = '';
+      document.getElementById('m-conteo-u-ac').value = '';
+      document.getElementById('m-conteo-lote').value = '';
+      document.getElementById('m-conteo-venc').value = '';
+      document.getElementById('m-conteo-cant').value = '';
+      document.getElementById('m-conteo-prod-info').classList.add('hidden');
+      document.getElementById('m-conteo-p-ac').focus();
+      
+      // Refrescar dashboard de fondo
+      this.verDashboardV2(id);
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error registrando conteo');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-save"></i> REGISTRAR CONTEO'; }
+    }
+  },
+
+  async _editarLinea(lineaId) {
+    if (!this._dashV2 || !this._dashV2.matriz_conteo) {
+        WMS.toast('error', 'Sesión no cargada completamente. Refrescando...');
+        if (this._dashV2Id) this.verDashboardV2(this._dashV2Id);
+        return;
+    }
+    const l = this._dashV2.matriz_conteo.find(x => parseInt(x.id) === parseInt(lineaId));
+    if (!l) return WMS.toast('error', 'No se encontró la línea en el dashboard actual');
+    WMS.showModal('Corrección Administrativa de Conteo', `
+      <div class="row">
+        <div class="col-md-6">
+          <div class="form-group">
+            <label class="form-label">Código Producto</label>
+            <input id="edit-prod" type="text" class="form-control" value="${l ? l.codigo : ''}" placeholder="Ej: 123456">
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="form-group">
+            <label class="form-label">Ubicación</label>
+            <input id="edit-ubic" type="text" class="form-control" value="${l ? l.ubicacion : ''}" placeholder="Ej: A-01-A">
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-6">
+          <div class="form-group">
+            <label class="form-label">Cantidad Contada <span class="required">*</span></label>
+            <input id="edit-qty" type="number" class="form-control" value="${l ? l.cantidad_contada : ''}" min="0">
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="form-group">
+            <label class="form-label">Fecha Vencimiento</label>
+            <input id="edit-f-venc" type="date" class="form-control" value="${l && l.fecha_vencimiento ? l.fecha_vencimiento.substring(0,10) : ''}">
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Motivo de la corrección <span class="required">*</span></label>
+        <input id="edit-motivo" class="form-control" placeholder="Ej: Error de digitación, reconteo físico...">
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal-2')">Cancelar</button>
+       <button class="btn btn-primary" onclick="WMS_MODULES.inventario._saveEditLinea(${lineaId})">
+         <i class="fa-solid fa-save"></i> Guardar Cambios
+       </button>`, 'md', 'generic-modal-2');
+  },
+
+  async _saveEditLinea(lineaId) {
+    const qty = document.getElementById('edit-qty')?.value;
+    const prod = document.getElementById('edit-prod')?.value.trim();
+    const ubic = document.getElementById('edit-ubic')?.value.trim();
+    const fvenc = document.getElementById('edit-f-venc')?.value;
+    const motivo = document.getElementById('edit-motivo')?.value.trim();
+    
+    if (qty === '' || qty < 0) return WMS.toast('warning', 'Ingrese una cantidad válida');
+    if (!motivo) return WMS.toast('warning', 'Ingrese el motivo de la corrección');
+
+    try {
+      await API.put(`/v2/inventario/lineas/${lineaId}`, { 
+        cantidad_contada: parseInt(qty), 
+        nuevo_producto_codigo: prod,
+        nueva_ubicacion_codigo: ubic,
+        fecha_vencimiento: fvenc,
+        motivo 
+      });
+      WMS.toast('success', 'Línea actualizada correctamente');
+      WMS.closeModal('generic-modal-2');
+      this.verDashboardV2(this._dashV2Id);
+    } catch(e) { WMS.toast('error', e.message); }
+  },
+
+  async _eliminarLinea(lineaId, sesionId) {
+    const motivo = prompt('Motivo para eliminar esta línea (requerido):');
+    if (motivo === null) return;
+    if (!motivo.trim()) return WMS.toast('warning', 'Ingrese un motivo');
+    try {
+      await API.delete(`/v2/inventario/lineas/${lineaId}`, { motivo });
+      WMS.toast('success', 'Línea eliminada');
+      this.verDashboardV2(sesionId);
+    } catch(e) { WMS.toast('error', e.message); }
+  },
+
+  async _ajustarLinea(lineaId, sesionId) {
+    if (!lineaId || !sesionId) return WMS.toast('error', 'IDs de operación faltantes');
+    WMS.showModal('Validación de Ajuste Individual', `
+      <div style="text-align:center;padding:25px">
+        <i class="fa-solid fa-sliders fa-3x" style="color:#f59e0b;margin-bottom:16px"></i>
+        <h3 style="font-weight:800;font-size:1.2rem;color:#0f172a;margin-bottom:10px">Ajuste de Línea</h3>
+        <p style="font-size:.85rem;color:#475569;margin-bottom:20px">Se ejecutará el movimiento de Kardex únicamente para esta referencia. ¿Autoriza corregir esta discrepancia?</p>
+        <button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal-2')" style="margin-right:8px;font-weight:600">Cancelar</button>
+        <button class="btn btn-warning" onclick="WMS_MODULES.inventario.__execAjustarLinea(${lineaId}, ${sesionId})" style="font-weight:800">
+           Autorizar Línea
+        </button>
+      </div>`, '', 'sm', 'generic-modal-2');
+  },
+
+  async __execAjustarLinea(lineaId, sesionId) {
+    WMS.closeModal('generic-modal-2');
+    WMS.spinner('inv2-content');
+    try {
+      const r = await API.post(`/v2/inventario/sesiones/${sesionId}/ajustar-linea`, { linea_id: lineaId });
+      const d = r.data || {};
+      // Mostrar nuevo stock actualizado
+      const dif = d.diferencia_real ?? 0;
+      const difStr = dif > 0 ? `<span style="color:#10b981;font-weight:700;">+${WMS.formatNum(dif)}</span>`
+                             : `<span style="color:#ef4444;font-weight:700;">${WMS.formatNum(dif)}</span>`;
+      WMS.toast('success', r.message || 'Ajuste aplicado');
+      WMS.showModal('Ajuste Aplicado — Nuevo Stock', `
+        <div style="text-align:center;padding:20px">
+          <i class="fa-solid fa-circle-check fa-3x" style="color:#10b981;margin-bottom:16px"></i>
+          <h3 style="font-weight:800;font-size:1.1rem;margin-bottom:12px">Stock actualizado correctamente</h3>
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;text-align:left;max-width:320px;margin:0 auto;">
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0;">
+              <span style="color:#64748b;font-size:.85rem;">Contado físicamente:</span>
+              <strong style="color:#0f172a;">${WMS.formatNum(d.cantidad_contada ?? 0)}</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0;">
+              <span style="color:#64748b;font-size:.85rem;">Diferencia aplicada:</span>
+              <strong>${difStr}</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0;background:#ecfdf5;margin:-0px -4px;border-radius:6px;padding:8px 10px;margin-top:6px;">
+              <span style="color:#065f46;font-size:.9rem;font-weight:600;">Nuevo stock sistema:</span>
+              <strong style="color:#059669;font-size:1.1rem;">${WMS.formatNum(d.stock_nuevo ?? 0)}</strong>
+            </div>
+          </div>
+          <button class="btn btn-primary" style="margin-top:20px;min-width:140px;" onclick="WMS.closeModal('generic-modal');WMS_MODULES.inventario.verDashboardV2(${sesionId})">
+            <i class="fa-solid fa-arrow-left"></i> Volver al Dashboard
+          </button>
+        </div>`, '', 'sm');
+    } catch(e) { WMS.toast('error', e.message); this.verDashboardV2(sesionId); }
+  },
+
+  async _ajustarTodo(sesionId) {
+    const d = this._dashV2;
+    if (!d || !d.kpis) return WMS.toast('error', 'Faltan KPIs para autorizar cierre');
+    WMS.showModal('Auditoría de Cierre y Ajuste Masivo', `
+      <div style="text-align:center;padding:25px">
+        <i class="fa-solid fa-triangle-exclamation fa-4x" style="color:#ef4444;margin-bottom:20px"></i>
+        <h3 style="font-weight:900;font-size:1.3rem;color:#0f172a;margin-bottom:14px;text-transform:uppercase">¿Confirmar Ajuste y Cierre?</h3>
+        <p style="font-size:.9rem;color:#475569;margin-bottom:24px;line-height:1.5">
+          Esta acción autorizará la conciliación afectando <strong style="color:#dc2626;font-size:1.1rem">${d.kpis.lineas_con_diferencia} líneas</strong> discrepantes.<br><br>
+          Se registrarán en la tabla de operaciones y Kardex. <strong>No podrá deshacerse de forma masiva.</strong>
+        </p>
+        <button class="btn btn-secondary btn-lg" onclick="WMS.closeModal('generic-modal-2')" style="width:140px;margin-right:10px">Cancelar</button>
+        <button class="btn btn-success btn-lg" onclick="WMS_MODULES.inventario.__execAjustarTodo(${sesionId})" style="width:200px">
+          <i class="fa-solid fa-signature"></i> Firmar Autorización
+        </button>
+      </div>`, '', 'md', 'generic-modal-2');
+  },
+
+  async __execAjustarTodo(sesionId) {
+    WMS.closeModal('generic-modal-2');
+    WMS.spinner('inv2-content');
+    try {
+      const r = await API.post(`/v2/inventario/sesiones/${sesionId}/ajustar-todo`, { confirm: true });
+      const d = r.data || {};
+      const resumen   = d.stock_resumen || [];
+      const nConteo   = d.ajustes_conteo || 0;
+      const nML       = d.ajustes_ml_ausencia || 0;
+      const total     = d.ajustes_realizados || 0;
+
+      WMS.closeModal('generic-modal');
+
+      // Mostrar resumen detallado de todos los ajustes aplicados
+      const rowsConteo = resumen.filter(x => x.tipo === 'conteo').map(x => {
+        const dif = x.diferencia ?? 0;
+        const col = dif > 0 ? '#10b981' : (dif < 0 ? '#ef4444' : '#94a3b8');
+        const sign = dif > 0 ? '+' : '';
+        return `<tr>
+          <td style="font-size:.8rem;font-family:monospace;">P-${x.producto_id}</td>
+          <td style="font-size:.8rem;">Ubic-${x.ubicacion_id}${x.lote ? ' · ' + WMS.esc(x.lote) : ''}</td>
+          <td class="text-center" style="font-weight:700;color:#1e40af;">${WMS.formatNum(x.cantidad_nueva)}</td>
+          <td class="text-center" style="font-weight:700;color:${col};">${sign}${WMS.formatNum(dif)}</td>
+        </tr>`;
+      }).join('');
+
+      const rowsML = resumen.filter(x => x.tipo === 'ml_ausencia').map(x => {
+        return `<tr style="background:#fff7ed;">
+          <td style="font-size:.8rem;font-family:monospace;">P-${x.producto_id}</td>
+          <td style="font-size:.8rem;">Ubic-${x.ubicacion_id}${x.lote ? ' · ' + WMS.esc(x.lote) : ''}</td>
+          <td class="text-center" style="font-weight:700;color:#dc2626;">0</td>
+          <td class="text-center" style="font-weight:700;color:#ef4444;">${WMS.formatNum(x.diferencia)}</td>
+        </tr>`;
+      }).join('');
+
+      WMS.showModal('Inventario Cerrado — Resumen de Ajustes', `
+        <div style="padding:10px 0">
+          <div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:120px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;padding:14px;text-align:center;">
+              <div style="font-size:1.8rem;font-weight:900;color:#059669;">${total}</div>
+              <div style="font-size:.75rem;color:#065f46;font-weight:600;">AJUSTES TOTALES</div>
+            </div>
+            <div style="flex:1;min-width:120px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:14px;text-align:center;">
+              <div style="font-size:1.8rem;font-weight:900;color:#2563eb;">${nConteo}</div>
+              <div style="font-size:.75rem;color:#1e40af;font-weight:600;">POR CONTEO</div>
+            </div>
+            ${nML > 0 ? `<div style="flex:1;min-width:120px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:14px;text-align:center;">
+              <div style="font-size:1.8rem;font-weight:900;color:#ea580c;">${nML}</div>
+              <div style="font-size:.75rem;color:#9a3412;font-weight:600;">ML AUSENCIAS</div>
+            </div>` : ''}
+          </div>
+          ${rowsConteo || rowsML ? `
+          <div style="max-height:300px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;">
+            <table class="data-table" style="font-size:.8rem;">
+              <thead><tr style="background:#f1f5f9;position:sticky;top:0;">
+                <th>Producto</th><th>Ubicación</th>
+                <th class="text-center">Nuevo Stock</th>
+                <th class="text-center">Diferencia</th>
+              </tr></thead>
+              <tbody>
+                ${rowsConteo}
+                ${nML > 0 && rowsML ? `<tr><td colspan="4" style="background:#fff7ed;font-weight:700;font-size:.75rem;color:#9a3412;padding:8px 12px;"><i class="fa-solid fa-robot"></i> Referencias eliminadas por ausencia física (ML)</td></tr>${rowsML}` : ''}
+              </tbody>
+            </table>
+          </div>` : '<p style="text-align:center;color:#94a3b8;font-style:italic;margin:20px 0;">Sin diferencias detectadas</p>'}
+          <div style="text-align:center;margin-top:16px;">
+            <button class="btn btn-primary" onclick="WMS.closeModal('generic-modal');WMS_MODULES.inventario.show_sesiones()">
+              <i class="fa-solid fa-check"></i> Finalizar y Ver Sesiones
+            </button>
+          </div>
+        </div>`, '', 'lg');
+
+      WMS.toast('success', `Inventario cerrado: ${total} ajuste(s) aplicados${nML > 0 ? `, ${nML} ausencias ML` : ''}`);
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error ejecutando ajuste masivo');
+      this.verDashboardV2(sesionId);
+    }
+  },
+
+  async _addAsigExistente(sesionId) {
+    try {
+      const resp = await API.get('/param/personal', 'limit=200');
+      const auxiliares = resp.data || [];
+      WMS.showModal('Agregar Asignación', `
+        <div class="form-grid form-grid-2">
+          <div class="form-group">
+            <label class="form-label">Auxiliar <span class="required">*</span></label>
+            <select id="new-asig-aux" class="form-control">
+              <option value="">Seleccionar...</option>
+              ${auxiliares.map(a => `<option value="${a.id}">${WMS.esc(a.nombre)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Ronda</label>
+            <select id="new-asig-ronda" class="form-control">
+              ${[1,2,3].map(i=>`<option value="${i}">Ronda ${i}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tipo de instrucción</label>
+            <select id="new-asig-tipo" class="form-control">
+              <option value="Libre">Libre</option>
+              <option value="Pasillo">Por Pasillo</option>
+              <option value="Modulo">Por Módulo</option>
+              <option value="Referencia">Por Referencia</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Detalle</label>
+            <input id="new-asig-detalle" class="form-control" placeholder="Ej: Pasillo B...">
+          </div>
+        </div>`,
+        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal-2')">Cancelar</button>
+         <button class="btn btn-primary" onclick="WMS_MODULES.inventario._saveNewAsig(${sesionId})">
+           <i class="fa-solid fa-save"></i> Agregar
+         </button>`, 'sm', 'generic-modal-2');
+    } catch(e) { WMS.toast('error', 'Error cargando auxiliares'); }
+  },
+
+  async _saveNewAsig(sesionId) {
+    const auxId = document.getElementById('new-asig-aux')?.value;
+    if (!auxId) return WMS.toast('warning', 'Seleccione un auxiliar');
+    const tipo = document.getElementById('new-asig-tipo')?.value;
+    const detalle = document.getElementById('new-asig-detalle')?.value.trim();
+    try {
+      await API.post(`/v2/inventario/sesiones/${sesionId}/asignaciones`, {
+        auxiliar_id: parseInt(auxId),
+        ronda: parseInt(document.getElementById('new-asig-ronda')?.value || 1),
+        tipo_instruccion: tipo,
+        pasillo: tipo === 'Pasillo' ? detalle : null,
+        modulo: tipo === 'Modulo' ? detalle : null,
+        instruccion_libre: tipo === 'Libre' ? detalle : null,
+      });
+      WMS.toast('success', 'Asignación creada');
+      WMS.closeModal('generic-modal-2');
+      this.verDashboardV2(sesionId);
+    } catch(e) { WMS.toast('error', e.message); }
+  },
+
+  async _deleteAsig(asigId, sesionId) {
+    if (!confirm('¿Eliminar esta asignación?')) return;
+    try {
+      await API.delete(`/v2/inventario/asignaciones/${asigId}`, {});
+      WMS.toast('success', 'Asignación eliminada');
+      this.verDashboardV2(sesionId);
+    } catch(e) { WMS.toast('error', e.message); }
+  },
+
+  async _eliminarSesion(id, nombre) {
+    if (!confirm(`¿Eliminar la sesión "${nombre}"?\n\nEsta acción eliminará todas las líneas y asignaciones. No se puede deshacer.`)) return;
+    try {
+      await API.delete(`/v2/inventario/sesiones/${id}`, {});
+      WMS.toast('success', `Sesión "${nombre}" eliminada`);
+      this.show_sesiones();
+    } catch(e) { WMS.toast('error', e.message || 'Error al eliminar la sesión'); }
+  },
+
+  async _imprimirReporte(sesionId) {
+    try {
+      const r = await API.get(`/v2/inventario/sesiones/${sesionId}/reporte`);
+      const d = r.data || {};
+      const s = d.sesion || {};
+      const res = d.resumen || {};
+      const lineas = d.lineas || [];
+      const ajustes = d.ajustes || [];
+
+      const html = `
+        <html><head><title>Informe Conteo #${sesionId}</title>
+        <style>
+          body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b}
+          h1{font-size:16px;margin:0 0 4px}h2{font-size:13px;margin:16px 0 6px;color:#1a56db}
+          table{width:100%;border-collapse:collapse;margin-bottom:16px}
+          th{background:#1e293b;color:#fff;padding:5px 8px;font-size:10px;text-align:left}
+          td{padding:4px 8px;border-bottom:1px solid #e2e8f0;font-size:10px}
+          .kpi{display:inline-block;padding:4px 12px;border-radius:6px;font-weight:700;margin:0 6px}
+          .badge-r{background:#fee2e2;color:#dc2626}.badge-g{background:#dcfce7;color:#16a34a}
+          @media print{button{display:none}}
+        </style></head><body>
+        <h1>Informe de Inventario: ${WMS.esc(s.nombre||'')}</h1>
+        <p style="color:#64748b;margin:0">Tipo: ${s.tipo} | Estado: ${s.estado} | Creado por: ${WMS.esc(s.creado_por?.nombre||'-')} | Fecha: ${WMS.formatDate(s.created_at)||'-'}</p>
+        <hr style="margin:10px 0">
+
+        <div style="margin-bottom:12px">
+          <span class="kpi" style="background:#eff6ff;color:#1d4ed8">IRA: ${res.pct_exactitud}%</span>
+          <span class="kpi" style="background:#f8fafc">Total líneas: ${res.total_lineas}</span>
+          <span class="kpi badge-g">Exactas: ${res.exactas}</span>
+          <span class="kpi badge-r">Con diferencia: ${res.con_diferencia}</span>
+          <span class="kpi badge-r">Faltantes: ${res.faltantes_total}</span>
+          <span class="kpi badge-g">Sobrantes: ${res.sobrantes_total}</span>
+        </div>
+
+        <h2>Detalle del Conteo</h2>
+        <table>
+          <thead><tr><th>Ronda</th><th>Hora</th><th>Auxiliar</th><th>Referencia</th><th>Producto</th>
+            <th>Ubicación</th><th>Lote</th><th>F.Venc</th><th>Días V.U.</th>
+            <th>Contado</th><th>Sistema</th><th>Diferencia</th></tr></thead>
+          <tbody>
+            ${lineas.map(l=>`<tr>
+              <td>R${l.ronda}</td>
+              <td>${l.hora_conteo?l.hora_conteo.toString().substring(11,16):'-'}</td>
+              <td>${WMS.esc(l.auxiliar||'-')}</td>
+              <td style="font-family:monospace">${WMS.esc(l.referencia||'-')}</td>
+              <td>${WMS.esc(l.producto||'-')}</td>
+              <td>${WMS.esc(l.ubicacion||'-')}</td>
+              <td>${WMS.esc(l.lote||'-')}</td>
+              <td>${WMS.formatDate(l.fecha_vencimiento)||'-'}</td>
+              <td>${l.dias_vida_util!==null?l.dias_vida_util+'d':'-'}</td>
+              <td style="font-weight:700">${l.cantidad_contada}</td>
+              <td>${l.cantidad_sistema}</td>
+              <td style="color:${l.diferencia>0?'#16a34a':l.diferencia<0?'#dc2626':'#64748b'};font-weight:700">
+                ${l.diferencia>0?'+':''}${l.diferencia}
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+
+        ${ajustes.length>0?`
+        <h2>Ajustes Aplicados</h2>
+        <table>
+          <thead><tr><th>Fecha</th><th>Hora</th><th>Referencia</th><th>Tipo</th><th>Físico</th><th>Sistema</th><th>Diferencia</th><th>Ubicación</th><th>Ajustado por</th></tr></thead>
+          <tbody>
+            ${ajustes.map(a=>`<tr>
+              <td>${WMS.formatDate(a.fecha)||'-'}</td><td>${a.hora||'-'}</td>
+              <td style="font-family:monospace">${WMS.esc(a.referencia||'-')}</td>
+              <td>${a.tipo_ajuste}</td>
+              <td>${a.cantidad_fisica}</td><td>${a.cantidad_sistema}</td>
+              <td style="color:${a.diferencia>0?'#16a34a':'#dc2626'};font-weight:700">${a.diferencia>0?'+':''}${a.diferencia}</td>
+              <td>${WMS.esc(a.ubicacion||'-')}</td>
+              <td>${WMS.esc(a.ajustado_por||'-')}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`:'' }
+
+        <p style="color:#94a3b8;font-size:9px;margin-top:20px">Generado: ${new Date().toLocaleString()} — WMS Prooriente</p>
+        <script>window.print()</script>
+        </body></html>`;
+      const w = window.open('', '_blank', 'width=900,height=700');
+      w.document.write(html);
+      w.document.close();
+    } catch(e) { WMS.toast('error', 'Error generando informe'); }
+  },
+
+  // ── REPORTE DE AJUSTES ────────────────────────────────────────────────────
+  async showAjustesReport(sesionId, desde, hasta) {
+    WMS.spinner();
+    let qParts = [];
+    if (sesionId) qParts.push(`sesion_id=${sesionId}`);
+    const d30ago = new Date(); d30ago.setDate(d30ago.getDate()-30);
+    const desdeVal = desde || d30ago.toISOString().slice(0,10);
+    const hastaVal = hasta || new Date().toISOString().slice(0,10);
+    if (!sesionId) {
+      qParts.push(`desde=${desdeVal}`);
+      qParts.push(`hasta=${hastaVal}`);
+    }
+    const q = qParts.join('&');
+    try {
+      const r = await API.get('/v2/inventario/ajustes', q);
+      const items = r.data || [];
+      WMS.setContent(`
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+          <h3 style="margin:0;font-size:1rem;font-weight:800">
+            <i class="fa-solid fa-receipt" style="color:#f59e0b"></i>
+            Registro de Ajustes (${items.length})
+          </h3>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            ${!sesionId ? `
+            <input type="date" id="aj-rep-desde" value="${desdeVal}" class="form-control" style="width:145px">
+            <input type="date" id="aj-rep-hasta" value="${hastaVal}" class="form-control" style="width:145px">
+            <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.inventario.showAjustesReport(null,document.getElementById('aj-rep-desde').value,document.getElementById('aj-rep-hasta').value)">
+              <i class="fa-solid fa-search"></i> Filtrar
+            </button>` : ''}
+            <button class="btn btn-sm btn-success" onclick="WMS_MODULES.inventario._exportAjustes('${q}')">
+              <i class="fa-solid fa-file-excel"></i> Exportar
+            </button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-container" style="max-height:calc(100vh - 220px);overflow-y:auto;">
+            <table class="data-table compact" id="ajustes-tbl">
+              <thead style="position:sticky;top:0;background:#f8fafc;z-index:10">
+                <tr>
+                  <th>Fecha</th><th>Hora</th><th>Referencia</th><th>Producto</th>
+                  <th>Tipo</th><th class="text-center">Físico</th><th class="text-center">Sistema</th>
+                  <th class="text-center">Diferencia</th><th>F. Vencimiento</th>
+                  <th>Ubicación</th><th>Auxiliar (contó)</th><th>Ajustado por</th>
+                  <th>Motivo</th><th>Origen</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map(a => `<tr>
+                  <td style="font-size:.75rem">${WMS.formatDate(a.fecha)||'-'}</td>
+                  <td style="font-size:.75rem">${a.hora||'-'}</td>
+                  <td style="font-family:monospace;font-size:.78rem">${WMS.esc(a.referencia||'-')}</td>
+                  <td style="font-weight:700;font-size:.8rem">${WMS.esc(a.producto||'-')}</td>
+                  <td>
+                    <span style="padding:2px 8px;border-radius:12px;font-size:.7rem;font-weight:700;
+                      background:${a.tipo_ajuste==='Entrada'?'#dcfce7':'#fee2e2'};
+                      color:${a.tipo_ajuste==='Entrada'?'#16a34a':'#dc2626'}">
+                      ${a.tipo_ajuste==='Entrada'?'▲ Entrada':'▼ Salida'}
+                    </span>
+                  </td>
+                  <td class="text-center fw-700">${a.fisico}</td>
+                  <td class="text-center">${a.sistema}</td>
+                  <td class="text-center ${a.dif>0?'dif-plus':'dif-minus'}">
+                    ${a.dif>0?'+':''}${a.dif}
+                  </td>
+                  <td style="font-size:.75rem">${WMS.formatDate(a.fecha_vencimiento)||'-'}</td>
+                  <td><span class="badge badge-light-blue">${WMS.esc(a.ubicacion||'-')}</span></td>
+                  <td style="font-size:.78rem">${WMS.esc(a.auxiliar||'-')}</td>
+                  <td style="font-size:.78rem;font-weight:600">${WMS.esc(a.ajustado_por||'-')}</td>
+                  <td style="font-size:.75rem;max-width:160px" title="${WMS.esc(a.motivo||'')}">${WMS.esc((a.motivo||'').substring(0,50))}${(a.motivo||'').length>50?'...':''}</td>
+                  <td><span class="badge badge-secondary" style="font-size:.68rem">${a.origen||'-'}</span></td>
+                </tr>`).join('') || '<tr><td colspan="14" class="table-empty">Sin ajustes registrados</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>`);
+    } catch(e) { WMS.setContent('<div class="m-empty"><p>Error cargando ajustes</p></div>'); }
+  },
+
+  _exportAjustes(extraQ) {
+    const token = localStorage.getItem('wms_token') || '';
+    const base = extraQ ? `${extraQ}&export=excel` : 'export=excel';
+    window.open(`${API_BASE}/v2/inventario/ajustes?${base}&token=${encodeURIComponent(token)}`, '_blank');
+  },
+
+  // Compatibilidad legacy
+  async verAdministracion(id) { this.verDashboardV2(id); },
+  async aprobarAjustes(id) { this._ajustarTodo(id); },
+
+  switchInvTab(tab) {}, // obsoleto, reemplazado por _tab2
+  async cerrarConteoMasivo(id) {
+    if (!confirm('¿Desea forzar el cierre técnico del conteo sin aplicar ajustes automáticos?')) return;
+    this.cerrarConteo(id);
+  },
+
+  async verConteo(id) { this.verDashboardV2(id); },
+
+  async cerrarConteo(id) {
+    if (!confirm('¿Cerrar este conteo? No se podrán agregar más líneas.')) return;
+    try {
+      const r = await API.post('/inventario/conteo/' + id + '/finalizar', {});
+      if (r.error) WMS.toast('error', r.message);
+      else { WMS.toast('success', 'Conteo cerrado'); WMS.closeModal('generic-modal'); this.show_ciclico(); }
+    } catch(e) { WMS.toast('error', 'Error'); }
+  },
+
+  // ── INVENTARIO GENERAL V2 (Reemplazado por Gestión Unificada) ──────────────────
+  async show_general() { this.show_sesiones(); },
+
+  async show_sesiones() {
+    WMS.setToolbar(`
+      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario.nuevoConteo('Ciclico')">
+        <i class="fa-solid fa-rotate"></i> Nuevo Cíclico
+      </button>
+      <button class="btn btn-primary btn-sm" style="margin-left:8px;background-color:#6d28d9;border-color:#6d28d9" onclick="WMS_MODULES.inventario.nuevoConteo('General')">
+        <i class="fa-solid fa-list-ol"></i> Nuevo General
+      </button>
+      <button class="btn btn-secondary btn-sm" style="margin-left:8px" onclick="WMS_MODULES.inventario.show_sesiones()">
+        <i class="fa-solid fa-rotate"></i> Actualizar
+      </button>`);
+    WMS.spinner();
+    try {
+      const r = await API.get('/v2/inventario/sesiones');
+      let sesiones = r.data || r || [];
+      if (!Array.isArray(sesiones) && sesiones.data) sesiones = sesiones.data;
+
+      const estadoColors = {
+        Borrador: '#94a3b8', EnCurso: '#3b82f6', PendienteAjuste: '#f97316',
+        Ajustado: '#8b5cf6', Cerrado: '#10b981'
+      };
+      const estadoLabel = {
+        Borrador: 'Borrador', EnCurso: 'En Curso', PendienteAjuste: 'Pend. Ajuste',
+        Ajustado: 'Ajustado', Cerrado: 'Cerrado'
+      };
+
+      WMS.setContent(`
+      <style>
+        .gen-estado-chip { display:inline-block; padding:3px 10px; border-radius:20px; font-size:.7rem; font-weight:700; }
+        .tipo-chip { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:6px; font-size:.65rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; }
+        .tipo-ciclico { background:#eef2ff; color:#4f46e5; border:1px solid #c7d2fe; }
+        .tipo-general { background:#f5f3ff; color:#7c3aed; border:1px solid #ddd6fe; }
+      </style>
+      <div class="filter-bar">
+        <div class="search-bar"><i class="fa-solid fa-search"></i>
+          <input placeholder="Buscar nombre, creador..." oninput="WMS_MODULES.inventario._filterSesiones()">
+        </div>
+        <select id="ses-tipo-sel" class="form-control" style="max-width:180px;" onchange="WMS_MODULES.inventario._filterSesiones()">
+          <option value="">Todos los Tipos</option>
+          <option value="Ciclico">Cíclico</option>
+          <option value="General">General</option>
+        </select>
+        <select id="ses-estado-sel" class="form-control" style="max-width:180px;" onchange="WMS_MODULES.inventario._filterSesiones()">
+          <option value="">Todos los Estados</option>
+          <option value="Borrador">Borrador</option>
+          <option value="EnCurso">En Curso</option>
+          <option value="PendienteAjuste">Pendiente Ajuste</option>
+          <option value="Ajustado">Ajustado</option>
+          <option value="Cerrado">Cerrado</option>
+        </select>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-clipboard-check"></i> Gestión de Conteos (${sesiones.length})</span>
+        </div>
+        <div class="table-container">
+          <table class="data-table" id="sesiones-v2-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Tipo</th>
+                <th>Nombre / Descripción</th>
+                <th class="text-center">Estado</th>
+                <th class="text-center">Rondas</th>
+                <th class="text-center">Asign.</th>
+                <th class="text-center">Líneas</th>
+                <th class="text-center">Ajustes</th>
+                <th>Creado por</th>
+                <th>Fecha</th>
+                <th class="text-center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="sesiones-v2-tbody">
+              ${sesiones.length ? sesiones.map(s => {
+                const color = estadoColors[s.estado] || '#64748b';
+                const rondas = [];
+                for (let i = 1; i <= (s.num_conteos||1); i++) rondas.push(i);
+                
+                const isCiclico = s.tipo === 'Ciclico';
+                const tipoBadge = isCiclico 
+                   ? '<span class="tipo-chip tipo-ciclico"><i class="fa-solid fa-rotate"></i> Cíclico</span>'
+                   : '<span class="tipo-chip tipo-general"><i class="fa-solid fa-list-ol"></i> General</span>';
+                   
+                return `<tr data-estado="${s.estado}" data-tipo="${s.tipo}" data-nombre="${(s.nombre||'').toLowerCase()} ${(s.creado_por?.nombre||s.creado_por_nombre||'').toLowerCase()}">
+                  <td><span class="badge badge-secondary">#${s.id}</span></td>
+                  <td>${tipoBadge}</td>
+                  <td>
+                    <div style="font-weight:700;color:#0f172a">${WMS.esc(s.nombre||'Sin nombre')}</div>
+                    ${s.descripcion ? `<div style="font-size:.70rem;color:#64748b">${WMS.esc(s.descripcion)}</div>` : ''}
+                  </td>
+                  <td class="text-center">
+                    <span class="gen-estado-chip" style="background:${color}20;color:${color}">
+                      ${estadoLabel[s.estado]||s.estado}
+                    </span>
+                  </td>
+                  <td class="text-center">
+                    <span style="font-size:.9rem;font-weight:800;color:#0f172a">${s.num_conteos||1}</span>
+                  </td>
+                  <td class="text-center">${s.asignaciones_count||0}</td>
+                  <td class="text-center">${s.lineas_count || 0}</td>
+                  <td class="text-center">
+                    ${(s.ajustes_count || s.total_ajustes || 0) > 0
+                      ? `<span class="badge badge-warning">${s.ajustes_count || s.total_ajustes}</span>`
+                      : '<span class="badge badge-secondary">0</span>'}
+                  </td>
+                  <td style="font-size:.78rem">${WMS.esc(s.creado_por?.nombre || s.creado_por_nombre || '-')}</td>
+                  <td style="font-size:.78rem">${WMS.formatDate(s.created_at)||'-'}</td>
+                  <td class="text-center" style="white-space:nowrap">
+                    ${s.estado === 'Borrador' ? `
+                      <button class="btn btn-success btn-sm" style="margin-right:2px"
+                        onclick="WMS_MODULES.inventario.iniciarSesion(${s.id})" title="Iniciar">
+                        <i class="fa-solid fa-play"></i>
+                      </button>` : ''}
+                    <button class="btn btn-primary btn-sm" style="margin-right:2px"
+                      onclick="WMS_MODULES.inventario._openDashboardInTab(${s.id},1)" title="Dashboard Detalles">
+                      <i class="fa-solid fa-chart-bar"></i>
+                    </button>
+                    ${(s.num_conteos||1) > 1 ? rondas.map(rnd =>
+                      `<button class="btn btn-xs btn-outline-secondary" style="margin-right:2px"
+                        onclick="WMS_MODULES.inventario._openDashboardInTab(${s.id},${rnd})" title="Ver Ronda ${rnd}">
+                        R${rnd}
+                      </button>`).join('') : ''}
+                    ${!['Ajustado','Cerrado'].includes(s.estado) ? `
+                    <button class="btn btn-danger btn-sm" style="margin-left:4px"
+                      onclick="WMS_MODULES.inventario._eliminarSesion(${s.id},'${WMS.esc(s.nombre||'')}')"
+                      title="Eliminar sesión">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>` : ''}
+                  </td>
+                </tr>`;
+              }).join('') : '<tr><td colspan="11" class="table-empty"><i class="fa-solid fa-inbox"></i> No hay sesiones de conteo registradas.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`);
+    } catch(e) { console.error(e); WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
+  },
+
+  _filterSesiones() {
+    const term = (document.querySelector('.search-bar input')?.value || '').toLowerCase();
+    const est  = document.getElementById('ses-estado-sel')?.value || '';
+    const tipo = document.getElementById('ses-tipo-sel')?.value || '';
+    document.querySelectorAll('#sesiones-v2-tbody tr').forEach(row => {
+      const matchQ = !term || row.dataset.nombre?.includes(term);
+      const matchE = !est  || row.dataset.estado === est;
+      const matchT = !tipo || row.dataset.tipo === tipo;
+      row.style.display = (matchQ && matchE && matchT) ? '' : 'none';
+    });
+  },
+
+  filterPivotTable(q, tableId) {
+    const rows = document.querySelectorAll('#' + tableId + ' tbody tr.pivot-row');
+    const f = q.toLowerCase();
+    rows.forEach(r => { 
+       const isMatch = r.textContent.toLowerCase().includes(f);
+       r.style.display = isMatch ? '' : 'none'; 
+       const btn = r.querySelector('button');
+       if(!isMatch) {
+          const detail = r.nextElementSibling;
+          if(detail && detail.classList.contains('pivot-detail-row')) {
+              detail.style.display = 'none';
+              if(btn) btn.innerHTML = '<i class="fa-solid fa-chevron-down"></i>';
+          }
+       }
+    });
+  },
+
+  // ── CARGUE DE SALDO INICIAL ───────────────────────────────────
+  async show_cargue() {
+    WMS.setToolbar(`
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.inventario.descargarPlantilla()"><i class="fa-solid fa-download"></i> Plantilla</button>
+      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario.importarSaldos()"><i class="fa-solid fa-upload"></i> Cargar Saldos</button>`);
+    WMS.setContent(`
+      <div class="card" style="max-width:700px;margin:0 auto;">
+        <div class="card-header"><span class="card-title"><i class="fa-solid fa-upload"></i> Cargue de Saldo Inicial</span></div>
+        <div class="card-body">
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-bottom:20px;">
+            <p style="font-weight:600;color:#1e40af;margin-bottom:8px;"><i class="fa-solid fa-info-circle"></i> Información importante</p>
+            <ul style="color:#1e40af;font-size:.85rem;padding-left:18px;margin:0;">
+              <li>Use esta función solo para la carga inicial de inventario</li>
+              <li>El archivo CSV debe tener: codigo_ean, descripcion, cantidad, ubicacion, lote, fecha_vencimiento</li>
+              <li>Las cantidades se agregarán al stock existente</li>
+              <li>Descargue la plantilla para ver el formato correcto</li>
+            </ul>
+          </div>
+          <div class="form-group"><label class="form-label">Archivo CSV de Saldos</label>
+            <input type="file" id="saldo-file" class="form-control" accept=".csv">
+            <span class="form-hint">Máximo 10,000 líneas por archivo</span></div>
+          <div style="text-align:right;">
+            <button class="btn btn-secondary" onclick="WMS_MODULES.inventario.descargarPlantilla()"><i class="fa-solid fa-download"></i> Plantilla</button>
+            <button class="btn btn-primary" style="margin-left:8px;" onclick="WMS_MODULES.inventario.uploadSaldos()"><i class="fa-solid fa-upload"></i> Cargar</button>
+          </div>
+        </div>
+      </div>`);
+  },
+
+  async descargarPlantilla() {
+    window.open('/WMS_PROORIENTE/public/api/param/import-export/template/saldo_inicial', '_blank');
+  },
+
+  async importarSaldos() { this.show_cargue(); },
+
+  async uploadSaldos() {
+    const file = document.getElementById('saldo-file')?.files[0];
+    if (!file) { WMS.toast('warning', 'Seleccione un archivo CSV'); return; }
+    if (!confirm('¿Confirmar cargue de saldo? Las cantidades se agregarán al inventario actual.')) return;
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      const r = await fetch('/WMS_PROORIENTE/public/api/param/import-export/upload/saldo_inicial', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + localStorage.getItem('wms_token') }, body: fd
+      });
+      const j = await r.json();
+      if (j.error) WMS.toast('error', j.message);
+      else { WMS.toast('success', 'Saldo cargado: ' + (j.importadas||j.registros||0) + ' registros'); this.show_stock(); }
+    } catch(e) { WMS.toast('error', 'Error importando saldo'); }
+  },
+
+  // ── DASHBOARD INVENTARIO V2 ────────────────────────────────────
+  async show_dashboard() {
+    WMS.setToolbar(`<button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.inventario.show_dashboard()"><i class="fa-solid fa-rotate"></i> Actualizar</button>`);
+    WMS.spinner();
+    try {
+      const [dash, niveles, sesiones, venc] = await Promise.all([
+        API.get('/inventario/dashboard').catch(() => ({})),
+        API.get('/inventario/niveles-reposicion').catch(() => ({ data: [] })),
+        API.get('/v2/inventario/sesiones', 'limit=50').catch(() => ({ data: [] })),
+        API.get('/v2/inventario/vencimientos', 'solo_proximos=1').catch(() => ({ data: {} })),
+      ]);
+      const d    = dash.data || dash || {};
+      const nivs = niveles.data || niveles || [];
+      let sess = sesiones.data || sesiones || [];
+      if (!Array.isArray(sess) && sess.data) sess = sess.data;
+      const vres = venc.data?.resumen || {};
+      const bajos = Array.isArray(nivs) ? nivs.filter(n => n.stock_actual < (n.nivel_minimo||0)) : [];
+
+      // Sesiones activas (EnCurso o PendienteAjuste)
+      const sesActivas = sess.filter(s => ['EnCurso','PendienteAjuste'].includes(s.estado));
+      const sesPendAdj = sess.filter(s => s.estado === 'PendienteAjuste');
+      const vencidos = vres.VENCIDO || 0;
+      const criticos = (vres.CRITICO||0) + (vres.ALERTA||0);
+
+      WMS.setContent(`
+      <style>
+        .dash-kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:20px; }
+        .dash-kpi { background:#fff; border-radius:10px; padding:16px 20px; border:1px solid #e2e8f0; border-left:5px solid var(--kc); }
+        .dash-kpi .val { font-size:2rem; font-weight:800; color:var(--kc); line-height:1; }
+        .dash-kpi .lbl { font-size:.72rem; font-weight:700; text-transform:uppercase; color:#64748b; margin-top:4px; }
+        .dash-kpi .sub { font-size:.7rem; color:#94a3b8; margin-top:2px; }
+        .dash-sess-list { list-style:none; margin:0; padding:0; }
+        .dash-sess-list li { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f1f5f9; }
+        .dash-sess-list li:last-child { border:none; }
+      </style>
+
+      <!-- KPIs Fila 1: Stock e Inventario general -->
+      <div class="dash-kpi-row">
+        <div class="dash-kpi" style="--kc:#3b82f6">
+          <div class="val">${WMS.formatNum(d.referencias_activas||0)}</div>
+          <div class="lbl">Referencias en Stock</div>
+        </div>
+        <div class="dash-kpi" style="--kc:#10b981">
+          <div class="val">${sesActivas.length}</div>
+          <div class="lbl">Sesiones Activas</div>
+          <div class="sub">${sess.filter(s=>s.tipo==='Ciclico'&&s.estado==='EnCurso').length} cíclicas · ${sess.filter(s=>s.tipo==='General'&&s.estado==='EnCurso').length} generales</div>
+        </div>
+        <div class="dash-kpi" style="--kc:#f97316">
+          <div class="val">${sesPendAdj.length}</div>
+          <div class="lbl">Pend. Ajuste</div>
+          <div class="sub">sesiones sin ajustar</div>
+        </div>
+        <div class="dash-kpi" style="--kc:#ef4444">
+          <div class="val">${bajos.length}</div>
+          <div class="lbl">Bajo Nivel Mínimo</div>
+          <div class="sub">referencias críticas</div>
+        </div>
+        <div class="dash-kpi" style="--kc:#eab308">
+          <div class="val">${vencidos}</div>
+          <div class="lbl">Vencidos</div>
+          <div class="sub">${criticos} en alerta</div>
+        </div>
+        <div class="dash-kpi" style="--kc:#64748b">
+          <div class="val">${WMS.formatNum(d.ubicaciones_vacias||0)}</div>
+          <div class="lbl">Ubicaciones Vacías</div>
+        </div>
+      </div>
+
+      <!-- Fila 2: Sesiones activas + Bajo stock -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+
+        <div class="card" style="margin:0">
+          <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-rotate" style="color:#3b82f6"></i> Sesiones en Curso</span>
+            <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.inventario.show_ciclico()" style="font-size:.75rem">Ver todas</button>
+          </div>
+          <div style="padding:12px 16px;">
+            ${sesActivas.length ? `<ul class="dash-sess-list">
+              ${sesActivas.slice(0,6).map(s => `<li>
+                <div>
+                  <span style="font-weight:700;color:#0f172a;font-size:.85rem">${WMS.esc(s.nombre||'Sin nombre')}</span>
+                  <span class="badge" style="margin-left:6px;font-size:.65rem;background:${s.tipo==='Ciclico'?'#eff6ff':'#f0fdf4'};color:${s.tipo==='Ciclico'?'#1e40af':'#166534'}">${s.tipo}</span>
+                  <div style="font-size:.72rem;color:#64748b">${s.total_lineas||0} líneas · ${s.total_ajustes||0} ajustes</div>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._openDashboardInTab(${s.id},1)">
+                  <i class="fa-solid fa-chart-bar"></i>
+                </button>
+              </li>`).join('')}
+            </ul>` : '<div style="text-align:center;padding:24px;color:#94a3b8"><i class="fa-solid fa-circle-check" style="font-size:1.5rem"></i><br>Sin sesiones activas</div>'}
+          </div>
+        </div>
+
+        <div class="card" style="margin:0">
+          <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-arrow-down" style="color:#ef4444"></i> Bajo Nivel Mínimo (${bajos.length})</span>
+          </div>
+          <div class="table-container" style="max-height:260px;overflow-y:auto;">
+            <table class="data-table">
+              <thead><tr><th>Producto</th><th class="text-center">Stock</th><th class="text-center">Mínimo</th><th class="text-center">Déficit</th></tr></thead>
+              <tbody>${bajos.slice(0,8).map(n => `<tr>
+                <td style="font-size:.8rem">${WMS.esc(n.descripcion||n.producto||'-')}</td>
+                <td class="text-center"><span class="badge badge-danger">${WMS.formatNum(n.stock_actual||0)}</span></td>
+                <td class="text-center" style="font-size:.8rem">${WMS.formatNum(n.nivel_minimo||0)}</td>
+                <td class="text-center"><span class="badge badge-warning">${WMS.formatNum((n.nivel_minimo||0)-(n.stock_actual||0))}</span></td>
+              </tr>`).join('') || '<tr><td colspan="4" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin referencias críticas</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Fila 3: Accesos rápidos -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="WMS_MODULES.inventario.nuevoConteo('Ciclico')">
+          <i class="fa-solid fa-plus"></i> Nuevo Conteo Cíclico
+        </button>
+        <button class="btn btn-primary" onclick="WMS_MODULES.inventario.nuevoConteo('General')">
+          <i class="fa-solid fa-plus"></i> Nuevo Inv. General
+        </button>
+        <button class="btn btn-secondary" onclick="WMS_MODULES.inventario.show_vencimientos()">
+          <i class="fa-solid fa-calendar-xmark"></i> Ver Vencimientos
+        </button>
+        <button class="btn btn-secondary" onclick="WMS_MODULES.inventario.showAjustesReport(null)">
+          <i class="fa-solid fa-history"></i> Registro de Ajustes
+        </button>
+      </div>`);
+    } catch(e) { console.error(e); WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
+  },
+
+  // ── CORRECCIÓN MANUAL V2 ─────────────────────────────────────
+  async show_ajuste() {
+    WMS.setToolbar(`
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.inventario.showAjustesReport(null)">
+        <i class="fa-solid fa-history"></i> Ver Registro de Ajustes
+      </button>`);
+    let ubis = [];
+    try {
+      const r = await API.get('/param/ubicaciones', 'activo=1&limit=300');
+      ubis = r.data || r || [];
+    } catch(e) {}
+    WMS.setContent(`
+      <div style="max-width:760px;margin:0 auto;">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-sliders"></i> Corrección Manual de Inventario</span>
+            <span style="font-size:.78rem;color:#64748b">Registrada en el Kardex — inmutable</span>
+          </div>
+          <div class="card-body">
+
+            <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;">
+              <i class="fa-solid fa-triangle-exclamation" style="color:#92400e;font-size:1.1rem;"></i>
+              <span style="font-size:.85rem;color:#92400e;font-weight:600;">
+                Cada corrección genera un movimiento en el Kardex y un registro <strong>inmutable</strong> en la tabla de ajustes.
+                Para corregir un error previo, registre un ajuste compensatorio.
+              </span>
+            </div>
+
+            <!-- Fila 1: Producto -->
+            <div class="form-group" style="margin-bottom:16px;">
+              <label class="form-label">Producto / EAN <span class="required">*</span></label>
+              <input id="aj-prod-ac" class="form-control" placeholder="Escriba nombre o escanee EAN...">
+              <input type="hidden" id="aj-prod-id">
+              <div id="aj-stock-preview" style="margin-top:6px;font-size:.8rem;color:#475569;display:none;background:#f8fafc;border-radius:6px;padding:8px 12px;border:1px solid #e2e8f0;"></div>
+            </div>
+
+            <div class="form-grid form-grid-2">
+              <!-- Tipo ajuste -->
+              <div class="form-group">
+                <label class="form-label">Tipo de Ajuste <span class="required">*</span></label>
+                <select id="aj-tipo" class="form-control">
+                  <option value="">Seleccionar...</option>
+                  <option value="Entrada">▲ Entrada — suma al stock</option>
+                  <option value="Salida">▼ Salida — resta del stock</option>
+                </select>
+              </div>
+              <!-- Cantidad -->
+              <div class="form-group">
+                <label class="form-label">Cantidad <span class="required">*</span></label>
+                <input id="aj-cantidad" type="number" class="form-control" min="1" step="1" placeholder="0">
+              </div>
+              <!-- Ubicación -->
+              <div class="form-group">
+                <label class="form-label">Ubicación</label>
+                <select id="aj-ubicacion" class="form-control">
+                  <option value="">Sin ubicación específica</option>
+                  ${ubis.map(u => `<option value="${u.id}">${WMS.esc(u.codigo || u.nombre || u.id)}</option>`).join('')}
+                </select>
+              </div>
+              <!-- Lote -->
+              <div class="form-group">
+                <label class="form-label">Lote</label>
+                <input id="aj-lote" class="form-control" placeholder="Opcional...">
+              </div>
+              <!-- Fecha vencimiento -->
+              <div class="form-group">
+                <label class="form-label">Fecha Vencimiento</label>
+                <input id="aj-fv" type="date" class="form-control">
+              </div>
+              <!-- Motivo -->
+              <div class="form-group" style="grid-column:1/-1;">
+                <label class="form-label">Motivo <span class="required">*</span></label>
+                <textarea id="aj-motivo" class="form-control" rows="2" placeholder="Ej: Conteo físico, devolución proveedor, merma..."></textarea>
+              </div>
+            </div>
+
+            <div style="text-align:right;margin-top:16px;">
+              <button class="btn btn-primary btn-lg" onclick="WMS_MODULES.inventario.ejecutarAjuste()">
+                <i class="fa-solid fa-check"></i> Aplicar Corrección
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Correcciones de hoy -->
+        <div class="card mt-16" id="aj-hoy-card">
+          <div class="card-header"><span class="card-title"><i class="fa-solid fa-clock-rotate-left"></i> Correcciones de hoy</span></div>
+          <div id="aj-hoy-content"><div class="spinner sm" style="margin:10px auto;display:block;"></div></div>
+        </div>
+      </div>`);
+
+    // Autocomplete producto
+    WMS.initProductAutocomplete(document.getElementById('aj-prod-ac'), async p => {
+      document.getElementById('aj-prod-id').value = p.id;
+      const prev = document.getElementById('aj-stock-preview');
+      if (prev) {
+        prev.style.display = 'block';
+        prev.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cargando stock...';
+        try {
+          const rs = await API.get('/inventario/stock', `producto_id=${p.id}&limit=5`);
+          const stock = (rs.data || rs || []).slice(0, 3);
+          if (stock.length) {
+            prev.innerHTML = stock.map(s =>
+              `<span style="margin-right:8px;"><i class="fa-solid fa-box"></i> <strong>${WMS.formatNum(s.cantidad)}</strong> en ${WMS.esc(s.ubicacion_codigo || '-')}${s.lote ? ' · Lote ' + WMS.esc(s.lote) : ''}</span>`
+            ).join('');
+          } else {
+            prev.innerHTML = '<span style="color:#94a3b8;">Sin stock registrado en sistema</span>';
+          }
+        } catch(e) { prev.innerHTML = '<span style="color:#94a3b8;">No se pudo cargar el stock</span>'; }
+      }
+    });
+
+    // Cargar correcciones de hoy
+    this._loadHoyAjustes();
+  },
+
+  async _loadHoyAjustes() {
+    const el = document.getElementById('aj-hoy-content');
+    if (!el) return;
+    try {
+      const hoy = new Date().toISOString().substring(0, 10);
+      const ra  = await API.get('/v2/inventario/ajustes', `desde=${hoy}&hasta=${hoy}&origen=CorreccionAdmin`);
+      const ays = ra.data || ra || [];
+      if (!ays.length) {
+        el.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:16px;font-style:italic;">Sin correcciones realizadas hoy.</p>';
+        return;
+      }
+      el.innerHTML = `
+        <div class="table-container">
+          <table class="data-table compact">
+            <thead><tr><th>Hora</th><th>Producto</th><th>Tipo</th><th>Cantidad</th><th>Ubicación</th><th>Ajustado por</th></tr></thead>
+            <tbody>${ays.slice(0, 15).map(a => `<tr>
+              <td style="font-size:.75rem;">${(a.hora||'').substring(0,5)}</td>
+              <td style="font-size:.8rem;">${WMS.esc(a.producto||'-')}</td>
+              <td><span class="badge ${a.tipo_ajuste==='Entrada'?'badge-success':'badge-danger'}">${WMS.esc(a.tipo_ajuste||'-')}</span></td>
+              <td class="text-center fw-600">${WMS.formatNum(Math.abs(a.dif||0))}</td>
+              <td style="font-size:.78rem;">${WMS.esc(a.ubicacion||'-')}</td>
+              <td style="font-size:.75rem;">${WMS.esc(a.ajustado_por||'-')}</td>
+            </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    } catch(e) { el.innerHTML = '<p class="text-danger" style="padding:12px;">Error cargando correcciones.</p>'; }
+  },
+
+  async ejecutarAjuste() {
+    const prodId   = document.getElementById('aj-prod-id')?.value;
+    const tipo     = document.getElementById('aj-tipo')?.value;
+    const cantidad = parseFloat(document.getElementById('aj-cantidad')?.value || 0);
+    const motivo   = document.getElementById('aj-motivo')?.value?.trim();
+    if (!prodId)              { WMS.toast('warning', 'Seleccione un producto'); return; }
+    if (!tipo)                { WMS.toast('warning', 'Seleccione el tipo de ajuste'); return; }
+    if (!cantidad || cantidad <= 0) { WMS.toast('warning', 'Ingrese una cantidad válida (mayor a 0)'); return; }
+    if (!motivo)              { WMS.toast('warning', 'Ingrese el motivo del ajuste'); return; }
+
+    try {
+      const r = await API.post('/v2/inventario/correccion', {
+        producto_id:       parseInt(prodId),
+        tipo_ajuste:       tipo,
+        cantidad:          cantidad,
+        ubicacion_id:      parseInt(document.getElementById('aj-ubicacion')?.value || 0) || null,
+        lote:              document.getElementById('aj-lote')?.value?.trim() || null,
+        fecha_vencimiento: document.getElementById('aj-fv')?.value || null,
+        motivo:            motivo,
+      });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success', `Corrección aplicada correctamente`);
+      // Limpiar form
+      ['aj-prod-ac','aj-lote','aj-motivo'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+      ['aj-prod-id','aj-cantidad'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+      const prev = document.getElementById('aj-stock-preview');
+      if (prev) prev.style.display = 'none';
+      // Recargar tabla de hoy
+      this._loadHoyAjustes();
+    } catch(e) { WMS.toast('error', e.message || 'Error ejecutando corrección'); }
+  },
+
+}; // fin WMS_MODULES.inventario

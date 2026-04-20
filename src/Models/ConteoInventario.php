@@ -10,7 +10,7 @@ class ConteoInventario extends Model
 
     protected $fillable = [
         'empresa_id', 'sucursal_id', 'tipo_conteo', 'estado',
-        'auxiliar_id', 'aprobado_por',
+        'auxiliar_id', 'analista_id', 'aprobado_por',
         'fecha_movimiento', 'hora_inicio', 'hora_fin', 'observaciones',
     ];
 
@@ -32,9 +32,19 @@ class ConteoInventario extends Model
         return $this->belongsTo(Sucursal::class);
     }
 
+    public function analista()
+    {
+        return $this->belongsTo(Personal::class, 'analista_id');
+    }
+
     public function auxiliar()
     {
         return $this->belongsTo(Personal::class, 'auxiliar_id');
+    }
+
+    public function auxiliares()
+    {
+        return $this->belongsToMany(Personal::class, 'conteo_personal', 'conteo_id', 'personal_id');
     }
 
     public function aprobador()

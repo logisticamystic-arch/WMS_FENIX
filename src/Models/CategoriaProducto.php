@@ -9,7 +9,7 @@ class CategoriaProducto extends Model
     protected $table = 'categoria_productos';
 
     protected $fillable = [
-        'empresa_id', 'nombre', 'descripcion', 'requiere_foto_vencimiento',
+        'empresa_id', 'nombre', 'descripcion', 'activo', 'requiere_foto_vencimiento',
     ];
 
     protected $casts = [

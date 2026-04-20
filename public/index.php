@@ -6,6 +6,7 @@
 
 // Buffer ALL output so stray PHP errors/notices never corrupt the JSON response.
 ob_start();
+date_default_timezone_set('America/Bogota');
 
 // Suppress PHP error output in HTTP responses — errors must not corrupt JSON bodies.
 ini_set('display_errors', '0');
@@ -17,6 +18,30 @@ ini_set('log_errors', '1');
 ini_set('error_log', $logFile);
 error_reporting(E_ALL);
 
+// Interceptar Fatal Errors (incluyendo Syntax Errors) para evitar HTML en respuestas JSON
+register_shutdown_function(function() use ($logFile) {
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        // Limpiar cualquier output corrupto o sucio
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        
+        http_response_code(500);
+        header('Content-Type: application/json');
+        
+        $msg = "FATAL ERROR / SYNTAX ERROR: " . $error['message'] . " en " . $error['file'] . ":" . $error['line'];
+        $ts = date('Y-m-d H:i:s');
+        @file_put_contents($logFile, "[{$ts}] [FATAL_SHUTDOWN] {$msg}" . PHP_EOL, FILE_APPEND | LOCK_EX);
+        
+        echo json_encode([
+            'error'   => true,
+            'message' => 'Error crítico de código o sintaxis detectado. La plataforma fue protegida. Consulte logs/app.log para revisar el origen exacto.'
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+});
+
 // Helper global para escribir al log con contexto
 function wmsLog(string $level, string $message, array $context = []): void {
     global $logFile;
@@ -26,10 +51,19 @@ function wmsLog(string $level, string $message, array $context = []): void {
     @file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
 }
 
-// Only reset opcache in development
-if (function_exists('opcache_reset') && getenv('APP_ENV') === 'development') {
+// Reset opcache in development OR when running on localhost (XAMPP)
+$_appEnv = getenv('APP_ENV') ?: ($_ENV['APP_ENV'] ?? 'production');
+$_appUrl = getenv('APP_URL') ?: ($_ENV['APP_URL'] ?? '');
+$_isLocal = $_appEnv === 'development'
+    || strpos($_appUrl, 'localhost') !== false
+    || strpos($_appUrl, '127.0.0.1') !== false
+    || ($_SERVER['SERVER_NAME'] ?? '') === 'localhost'
+    || ($_SERVER['REMOTE_ADDR'] ?? '') === '127.0.0.1';
+
+if (function_exists('opcache_reset') && $_isLocal) {
     opcache_reset();
 }
+unset($_appEnv, $_appUrl, $_isLocal);
 
 require_once __DIR__ . '/../bootstrap.php';
 
@@ -92,8 +126,234 @@ $errorMiddleware->setDefaultErrorHandler(function (
     return $response->withHeader('Content-Type', 'application/json');
 });
 
+// ── Rotación de logs: se ejecuta al final del proceso, fuera del hot path ─────
+\App\Controllers\BaseController::scheduleLogRotation();
+
+// ── Cabeceras de seguridad globales ───────────────────────────────────────────
+$app->add(function (Request $request, $handler): Response {
+    $response = $handler->handle($request);
+    return $response
+        ->withHeader('X-Content-Type-Options',  'nosniff')
+        ->withHeader('X-Frame-Options',          'DENY')
+        ->withHeader('Referrer-Policy',          'strict-origin-when-cross-origin');
+});
+
+// ── Monitoreo de rendimiento (registra requests > 1500ms) ────────────────────
+$app->add(new \App\Middleware\PerformanceMiddleware(1500));
+
 // Add JSON body parsing middleware
 $app->addBodyParsingMiddleware();
+
+// ── DIAGNÓSTICO DE APROBACIONES ──────────────────────────────────────────────
+// GET /wms-diagnostico-aprobacion — Sin JWT. Detecta qué impide aprobar pallets/líneas/ODC.
+$app->get('/wms-diagnostico-aprobacion', function (Request $request, Response $response) {
+    $resultado = [];
+    $errores   = [];
+
+    // ── 1. COLUMNAS EN BASE DE DATOS ──────────────────────────────────────────
+    $columnasRequeridas = [
+        'recepciones'          => ['odc_id', 'aprobado_admin'],
+        'recepcion_detalles'   => ['aprobado_admin', 'novedad_observacion', 'cantidad_novedad', 'ubicacion_destino_id'],
+        'orden_compra_detalles'=> ['aprobado_admin', 'novedad_motivo', 'novedad_observacion', 'cantidad_novedad'],
+        'inventarios'          => ['estado', 'empresa_id', 'sucursal_id', 'producto_id', 'ubicacion_id', 'cantidad'],
+    ];
+
+    $colCheck = [];
+    foreach ($columnasRequeridas as $tabla => $cols) {
+        foreach ($cols as $col) {
+            $existe = \Illuminate\Database\Capsule\Manager::schema()->hasColumn($tabla, $col);
+            $colCheck[$tabla][$col] = $existe ? 'OK' : 'FALTA';
+            if (!$existe) {
+                $errores[] = "COLUMNA FALTANTE: {$tabla}.{$col} — Ejecute migration 038/041.";
+            }
+        }
+    }
+    $resultado['1_columnas_db'] = $colCheck;
+
+    // ── 2. ENUM VALORES EN ordenes_compra.estado ─────────────────────────────
+    try {
+        $enumRow = \Illuminate\Database\Capsule\Manager::select(
+            "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME   = 'ordenes_compra'
+               AND COLUMN_NAME  = 'estado'"
+        );
+        $enumStr = $enumRow[0]->COLUMN_TYPE ?? '';
+        $tieneEnProceso  = str_contains($enumStr, 'En Proceso');
+        $tieneConfirmada = str_contains($enumStr, 'Confirmada');
+        $resultado['2_enum_ordenes_compra'] = [
+            'definicion'      => $enumStr,
+            'tiene_Confirmada'=> $tieneConfirmada ? 'SI' : 'NO — FALTA',
+            'tiene_EnProceso' => $tieneEnProceso  ? 'SI' : 'NO — Ejecute migration 042',
+        ];
+        if (!$tieneEnProceso) {
+            $errores[] = "ENUM: ordenes_compra.estado no tiene 'En Proceso'. Ejecute migration 042.";
+        }
+    } catch (\Exception $e) {
+        $resultado['2_enum_ordenes_compra'] = 'Error: ' . $e->getMessage();
+        $errores[] = 'No se pudo leer enum de ordenes_compra: ' . $e->getMessage();
+    }
+
+    // ── 3. ENUM VALORES EN citas.estado ──────────────────────────────────────
+    try {
+        $enumCita = \Illuminate\Database\Capsule\Manager::select(
+            "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME   = 'citas'
+               AND COLUMN_NAME  = 'estado'"
+        );
+        $enumCitaStr   = $enumCita[0]->COLUMN_TYPE ?? '';
+        $tieneEnPatio  = str_contains($enumCitaStr, 'EnPatio');
+        $resultado['3_enum_citas'] = [
+            'definicion'    => $enumCitaStr,
+            'tiene_EnPatio' => $tieneEnPatio ? 'SI' : 'NO — Ejecute migration 042',
+        ];
+        if (!$tieneEnPatio) {
+            $errores[] = "ENUM: citas.estado no tiene 'EnPatio'. Ejecute migration 042.";
+        }
+    } catch (\Exception $e) {
+        $resultado['3_enum_citas'] = 'Error: ' . $e->getMessage();
+    }
+
+    // ── 4. VERIFICAR SINTAXIS PHP DE ARCHIVOS CRÍTICOS ────────────────────────
+    $archivosVerificar = [
+        'RecepcionController'    => __DIR__ . '/../src/Controllers/RecepcionController.php',
+        'InboundController'      => __DIR__ . '/../src/Controllers/InboundController.php',
+        'RecepcionDetalle (Model)'=> __DIR__ . '/../src/Models/RecepcionDetalle.php',
+        'OrdenCompraDetalle (Model)'=> __DIR__ . '/../src/Models/OrdenCompraDetalle.php',
+        'Recepcion (Model)'      => __DIR__ . '/../src/Models/Recepcion.php',
+        'OrdenCompra (Model)'    => __DIR__ . '/../src/Models/OrdenCompra.php',
+    ];
+
+    $sintaxis = [];
+    foreach ($archivosVerificar as $nombre => $ruta) {
+        if (!file_exists($ruta)) {
+            $sintaxis[$nombre] = 'ARCHIVO NO EXISTE: ' . $ruta;
+            $errores[] = "ARCHIVO FALTANTE: {$ruta}";
+            continue;
+        }
+        $output = [];
+        $code   = 0;
+        exec('php -l ' . escapeshellarg($ruta) . ' 2>&1', $output, $code);
+        $outStr = implode(' ', $output);
+        if ($code === 0) {
+            $sintaxis[$nombre] = 'OK';
+        } else {
+            $sintaxis[$nombre] = 'ERROR SINTAXIS: ' . $outStr;
+            $errores[] = "SINTAXIS PHP: {$nombre} — {$outStr}";
+        }
+    }
+    $resultado['4_sintaxis_php'] = $sintaxis;
+
+    // ── 5. DATOS DE MUESTRA (conteos) ─────────────────────────────────────────
+    try {
+        $resultado['5_conteos_datos'] = [
+            'ordenes_compra'       => \Illuminate\Database\Capsule\Manager::table('ordenes_compra')->count(),
+            'orden_compra_detalles'=> \Illuminate\Database\Capsule\Manager::table('orden_compra_detalles')->count(),
+            'recepciones'          => \Illuminate\Database\Capsule\Manager::table('recepciones')->count(),
+            'recepcion_detalles'   => \Illuminate\Database\Capsule\Manager::table('recepcion_detalles')->count(),
+            'inventarios_en_patio' => \Illuminate\Database\Capsule\Manager::table('inventarios')->where('estado', 'En Patio')->count(),
+            'inventarios_disponible'=> \Illuminate\Database\Capsule\Manager::table('inventarios')->where('estado', 'Disponible')->count(),
+        ];
+    } catch (\Exception $e) {
+        $resultado['5_conteos_datos'] = 'Error: ' . $e->getMessage();
+        $errores[] = 'Error leyendo conteos: ' . $e->getMessage();
+    }
+
+    // ── 6. MUESTRA UN RecepcionDetalle PARA VER SUS COLUMNAS REALES ──────────
+    try {
+        $detalle = \Illuminate\Database\Capsule\Manager::table('recepcion_detalles')->first();
+        if ($detalle) {
+            $cols = array_keys((array)$detalle);
+            $resultado['6_recepcion_detalle_columnas_reales'] = $cols;
+            $tieneAprobado = in_array('aprobado_admin', $cols);
+            if (!$tieneAprobado) {
+                $errores[] = 'recepcion_detalles.aprobado_admin NO existe en la tabla real de la BD (migration 038 no corrió).';
+            }
+        } else {
+            $resultado['6_recepcion_detalle_columnas_reales'] = 'Tabla vacía — sin datos para verificar';
+        }
+    } catch (\Exception $e) {
+        $resultado['6_recepcion_detalle_columnas_reales'] = 'Error: ' . $e->getMessage();
+    }
+
+    // ── 7. SIMULAR CONSULTA DE aprobarLineaODC (sin escribir nada) ───────────
+    try {
+        // Buscar un OrdenCompraDetalle cualquiera
+        $odcDet = \Illuminate\Database\Capsule\Manager::table('orden_compra_detalles')
+            ->select(['id', 'orden_compra_id', 'producto_id', 'aprobado_admin'])
+            ->first();
+
+        if ($odcDet) {
+            $resultado['7_test_aprobarLineaODC'] = [
+                'odc_detalle_encontrado' => true,
+                'id'         => $odcDet->id,
+                'aprobado_admin_valor' => $odcDet->aprobado_admin,
+                'paso_siguiente' => 'Buscar Recepcion con odc_id = ' . $odcDet->orden_compra_id,
+            ];
+
+            // Verificar que se puede buscar recepciones por odc_id
+            $recepcionIds = \Illuminate\Database\Capsule\Manager::table('recepciones')
+                ->where('odc_id', $odcDet->orden_compra_id)
+                ->pluck('id');
+            $resultado['7_test_aprobarLineaODC']['recepciones_vinculadas'] = $recepcionIds->count();
+
+            if ($recepcionIds->count() > 0) {
+                $drCount = \Illuminate\Database\Capsule\Manager::table('recepcion_detalles')
+                    ->whereIn('recepcion_id', $recepcionIds)
+                    ->where('producto_id', $odcDet->producto_id)
+                    ->count();
+                $resultado['7_test_aprobarLineaODC']['pallets_encontrados'] = $drCount;
+            }
+        } else {
+            $resultado['7_test_aprobarLineaODC'] = 'No hay OrdenCompraDetalles en la BD — cree una ODC primero.';
+        }
+    } catch (\Exception $e) {
+        $resultado['7_test_aprobarLineaODC'] = 'ERROR: ' . $e->getMessage();
+        $errores[] = 'Error simulando aprobarLineaODC: ' . $e->getMessage();
+    }
+
+    // ── 8. SIMULAR CONSULTA DE aprobarDetalle (pallet) ────────────────────────
+    try {
+        $rdRow = \Illuminate\Database\Capsule\Manager::table('recepcion_detalles')
+            ->select(['id', 'recepcion_id', 'producto_id', 'aprobado_admin', 'ubicacion_destino_id'])
+            ->first();
+
+        if ($rdRow) {
+            $resultado['8_test_aprobarDetallePallet'] = [
+                'recepcion_detalle_encontrado' => true,
+                'id'                 => $rdRow->id,
+                'aprobado_admin'     => $rdRow->aprobado_admin,
+                'ubicacion_destino_id'=> $rdRow->ubicacion_destino_id ?? 'NULL',
+            ];
+
+            // Verificar que la relación recepcion->empresa_id es accesible
+            $rec = \Illuminate\Database\Capsule\Manager::table('recepciones')
+                ->select(['id', 'empresa_id', 'sucursal_id'])
+                ->where('id', $rdRow->recepcion_id)
+                ->first();
+            $resultado['8_test_aprobarDetallePallet']['recepcion_padre'] = $rec
+                ? ['empresa_id' => $rec->empresa_id, 'sucursal_id' => $rec->sucursal_id]
+                : 'Recepción padre no encontrada';
+        } else {
+            $resultado['8_test_aprobarDetallePallet'] = 'No hay RecepcionDetalles en la BD.';
+        }
+    } catch (\Exception $e) {
+        $resultado['8_test_aprobarDetallePallet'] = 'ERROR: ' . $e->getMessage();
+        $errores[] = 'Error simulando aprobarDetalle: ' . $e->getMessage();
+    }
+
+    // ── 9. RESUMEN ────────────────────────────────────────────────────────────
+    $resultado['9_resumen'] = [
+        'total_errores' => count($errores),
+        'errores'       => $errores,
+        'estado_general'=> empty($errores) ? '✓ Sin problemas detectados — revisa el log de la app (logs/app.log) para errores en tiempo de ejecución.' : '✗ Se encontraron ' . count($errores) . ' problema(s). Ver detalle arriba.',
+    ];
+
+    ob_clean();
+    $response->getBody()->write(json_encode($resultado, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    return $response->withHeader('Content-Type', 'application/json');
+});
 
 // ── OPTIONS pre-flight handler ────────────────────────────────────────────────
 $app->options('/{routes:.+}', function (Request $request, Response $response) {
@@ -177,14 +437,29 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->put('/citas/{id}', [\App\Controllers\CitaController::class, 'update']);
     $group->delete('/citas/{id}', [\App\Controllers\CitaController::class, 'destroy']);
     $group->get('/citas/disponibilidad', [\App\Controllers\CitaController::class, 'getDisponibilidad']);
+    $group->post('/citas/{id}/llegada', [\App\Controllers\CitaController::class, 'marcarLlegada']);
+    $group->post('/citas/{id}/completar', [\App\Controllers\CitaController::class, 'completarYMS']);
 
     // Módulo: Recepción (Inbound)
+    $group->get('/recepciones/proximo-pallet', [\App\Controllers\RecepcionController::class, 'getProximoPallet']);
+    $group->get('/recepcion/control-panel', [\App\Controllers\RecepcionController::class, 'getControlPanelData']);
     $group->get('/recepciones', [\App\Controllers\RecepcionController::class, 'index']);
     $group->post('/recepciones', [\App\Controllers\RecepcionController::class, 'store']);
     $group->get('/recepciones/{id}', [\App\Controllers\RecepcionController::class, 'ver']);
     $group->post('/recepciones/{id}/detalle', [\App\Controllers\RecepcionController::class, 'addDetail']);
-    $group->post('/recepciones/{id}/confirm', [\App\Controllers\RecepcionController::class, 'confirm']);
+    $group->delete('/recepciones/detalle/{id}', [\App\Controllers\RecepcionController::class, 'eliminarDetalle']);
+    $group->put('/recepcion-detalle/{id}', [\App\Controllers\RecepcionController::class, 'actualizarDetalle']);
     $group->delete('/recepciones/{id}', [\App\Controllers\RecepcionController::class, 'eliminar']);
+    $group->get('/recepcion/dashboard', [\App\Controllers\RecepcionController::class, 'index']);
+    $group->get('/recepcion/dashboard/{id}', [\App\Controllers\RecepcionController::class, 'detalle']);
+    $group->get('/recepcion/analytics/{id}', [\App\Controllers\RecepcionController::class, 'getOdcAnalytics']);
+    $group->post('/recepciones/detalles-operativa', [\App\Controllers\RecepcionController::class, 'detallesOperativa']);
+
+    // Dashboard de Control de Recepción
+    $group->post('/recepcion/control-panel/odc/linea/{id}/aprobar', [\App\Controllers\RecepcionController::class, 'aprobarLinea']);
+    $group->post('/recepcion/control-panel/odc/{id}/linea', [\App\Controllers\RecepcionController::class, 'agregarLinea']);
+    $group->put('/recepcion/control-panel/odc/linea/{id}', [\App\Controllers\RecepcionController::class, 'editarLinea']);
+    $group->delete('/recepcion/control-panel/odc/linea/{id}', [\App\Controllers\RecepcionController::class, 'eliminarLinea']);
 
     // Módulo: Orden de Compra (ODC)
     $group->get('/odc', [\App\Controllers\InboundController::class, 'getOrdenesCompra']);
@@ -196,7 +471,14 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->put('/odc/{id}', [\App\Controllers\InboundController::class, 'updateOrdenCompra']);
     $group->post('/odc/{id}/confirmar', [\App\Controllers\InboundController::class, 'confirmarOrdenCompra']);
     $group->post('/odc/{id}/cerrar', [\App\Controllers\InboundController::class, 'cerrarOrdenCompra']);
+    $group->post('/odc/{id}/reabrir', [\App\Controllers\InboundController::class, 'reabrirOrdenCompra']);
+    $group->post('/odc/{id}/asignar', [\App\Controllers\InboundController::class, 'asignarAuxiliar']);
     $group->delete('/odc/{id}', [\App\Controllers\InboundController::class, 'deleteOrdenCompra']);
+    $group->post('/odc/{id}/iniciar', [\App\Controllers\InboundController::class, 'iniciarReciboODC']);
+    $group->get('/odc/{id}/verificar-ean', [\App\Controllers\InboundController::class, 'verificarEanODC']);
+    $group->post('/odc/detalle/{id}/aprobar', [\App\Controllers\InboundController::class, 'aprobarLineaODC']);
+    $group->post('/odc/{id}/aprobar-todo', [\App\Controllers\InboundController::class, 'aprobarODCTodo']);
+    $group->get('/odc/{id}/imprimir', [\App\Controllers\InboundController::class, 'imprimirRecibo']);
 
     // Módulo: Certificaciones (Outbound)
     $group->get('/certificaciones/reporte', [\App\Controllers\OutboundController::class, 'getCertificacionesReport']);
@@ -207,30 +489,109 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // Módulo: Devoluciones
     $group->get('/devoluciones', [\App\Controllers\DevolucionController::class, 'index']);
     $group->post('/devoluciones', [\App\Controllers\DevolucionController::class, 'store']);
+    $group->post('/devoluciones/desde-recepcion', [\App\Controllers\DevolucionController::class, 'desdeRecepcion']);
+    $group->post('/devoluciones/desde-odc', [\App\Controllers\DevolucionController::class, 'desdeOdcMovil']);
     $group->get('/devoluciones/{id}', [\App\Controllers\DevolucionController::class, 'ver']);
+    $group->post('/devoluciones/{id}/autorizar', [\App\Controllers\DevolucionController::class, 'autorizar']);
+    $group->post('/devoluciones/{id}/completar', [\App\Controllers\DevolucionController::class, 'completar']);
+    $group->get('/devoluciones/resumen/proveedor/{proveedor_id}', [\App\Controllers\DevolucionController::class, 'resumenProveedor']);
     $group->delete('/devoluciones/{id}', [\App\Controllers\DevolucionController::class, 'eliminar']);
+    $group->get('/devoluciones/odc/{odcId}', [\App\Controllers\DevolucionController::class, 'getByOdc']);
 
     // Módulo: Inventario
-    $group->get('/inventario/stock', [\App\Controllers\InventarioController::class, 'getStock']);
-    $group->get('/inventario/kardex', [\App\Controllers\InventarioController::class, 'getKardex']);
-    $group->get('/inventario/conteos', [\App\Controllers\InventarioController::class, 'getConteos']);
-    $group->get('/inventario/niveles-reposicion', [\App\Controllers\InventarioController::class, 'getNivelesReposicion']);
+    $group->group('/inventario', function(\Slim\Routing\RouteCollectorProxy $g) {
+        $g->get('/stock', [\App\Controllers\InventarioController::class, 'getStock']);
+        $g->get('/conteos', [\App\Controllers\InventarioController::class, 'getConteos']);
+        $g->get('/conteo/{id}/dashboard', [\App\Controllers\InventarioController::class, 'getDashboardData']);
+        $g->post('/conteo/nuevo', [\App\Controllers\InventarioController::class, 'crearConteo']);
+        $g->post('/conteo/{id}/linea', [\App\Controllers\InventarioController::class, 'addLineaConteo']);
+        $g->post('/conteo/{id}/finalizar-ronda', [\App\Controllers\InventarioController::class, 'finalizarRonda']);
+        $g->post('/conteo/{id}/finalizar', [\App\Controllers\InventarioController::class, 'finalizarConteo']);
+        $g->post('/conteo/{id}/auxiliares', [\App\Controllers\InventarioController::class, 'syncAuxiliares']);
+        $g->get('/niveles-reposicion', [\App\Controllers\InventarioController::class, 'getNivelesReposicion']);
+        $g->post('/niveles-reposicion', [\App\Controllers\InventarioController::class, 'saveNivelReposicion']);
+        $g->post('/ajuste', [\App\Controllers\InventarioController::class, 'ajusteManual']);
+        $g->get('/dashboard', [\App\Controllers\InventarioController::class, 'getDashboard']);
+        $g->get('/kardex', [\App\Controllers\InventarioController::class, 'getKardex']);
+        $g->get('/mapa-detallado', [\App\Controllers\InventarioController::class, 'getMapaDetallado']);
+    });
+
+    // Ruta directa para /api/inventario/traslado
     $group->post('/inventario/traslado', [\App\Controllers\InventarioController::class, 'traslado']);
-    $group->post('/inventario/ajuste', [\App\Controllers\InventarioController::class, 'ajuste']);
-    $group->post('/inventario/conteo/nuevo', [\App\Controllers\InventarioController::class, 'crearConteo']);
-    $group->post('/inventario/conteo/{id}/linea', [\App\Controllers\InventarioController::class, 'addLineaConteo']);
-    $group->post('/inventario/conteo/{id}/finalizar', [\App\Controllers\InventarioController::class, 'finalizarConteo']);
-    $group->post('/inventario/niveles-reposicion', [\App\Controllers\InventarioController::class, 'saveNivelReposicion']);
+    $group->get('/inv-general/eventos',           [\App\Controllers\InventarioController::class, 'getEventos']);
+    $group->post('/inv-general/eventos',          [\App\Controllers\InventarioController::class, 'crearEvento']);
+    $group->post('/inv-general/asignaciones', [\App\Controllers\InventarioController::class, 'crearAsignacion']);
+    $group->post('/inv-general/conteo', [\App\Controllers\InventarioController::class, 'registrarConteo']);
+    $group->get('/inv-general/eventos/{id}/acta', [\App\Controllers\InventarioController::class, 'getActaHtml']);
+
+    // ════════════════════════════════════════════════════════════════════════
+    // MÓDULO INVENTARIOS V2 — Cíclico / General / Ajustes / Kardex / Vencimientos
+    // ════════════════════════════════════════════════════════════════════════
+
+    // ── Sesiones de inventario ──────────────────────────────────────────────
+    $group->get('/v2/inventario/sesiones',                  [\App\Controllers\InventarioV2Controller::class, 'getSesiones']);
+    $group->post('/v2/inventario/sesiones',                 [\App\Controllers\InventarioV2Controller::class, 'crearSesion']);
+    $group->get('/v2/inventario/sesiones/{id}',             [\App\Controllers\InventarioV2Controller::class, 'getSesion']);
+    $group->put('/v2/inventario/sesiones/{id}/iniciar',     [\App\Controllers\InventarioV2Controller::class, 'iniciarSesion']);
+    $group->get('/v2/inventario/sesiones/{id}/dashboard',   [\App\Controllers\InventarioV2Controller::class, 'getDashboard']);
+    $group->get('/v2/inventario/sesiones/{id}/reporte',     [\App\Controllers\InventarioV2Controller::class, 'getReporteConteo']);
+
+    // ── Ajustes desde el dashboard ─────────────────────────────────────────
+    $group->post('/v2/inventario/sesiones/{id}/ajustar-linea', [\App\Controllers\InventarioV2Controller::class, 'ajustarLinea']);
+    $group->post('/v2/inventario/sesiones/{id}/ajustar-todo',  [\App\Controllers\InventarioV2Controller::class, 'ajustarTodo']);
+    // ── Análisis ML: referencias no contadas (preview, sin ejecutar ajuste) ─
+    $group->get('/v2/inventario/sesiones/{id}/ml-analisis',    [\App\Controllers\InventarioV2Controller::class, 'mlAnalisis']);
+    $group->post('/v2/inventario/sesiones/{id}/conteo-manual', [\App\Controllers\InventarioV2Controller::class, 'addManualLinea']);
+
+    // ── Asignaciones a auxiliares ───────────────────────────────────────────
+    $group->post('/v2/inventario/sesiones/{id}/asignaciones',  [\App\Controllers\InventarioV2Controller::class, 'crearAsignacion']);
+    $group->delete('/v2/inventario/asignaciones/{id}',         [\App\Controllers\InventarioV2Controller::class, 'eliminarAsignacion']);
+    $group->delete('/v2/inventario/sesiones/{id}',             [\App\Controllers\InventarioV2Controller::class, 'eliminarSesion']);
+    $group->post('/v2/inventario/sesiones/{id}/cerrar',        [\App\Controllers\InventarioV2Controller::class, 'cerrarSesion']);
+
+
+    // ── API Móvil — Auxiliar ────────────────────────────────────────────────
+    $group->get('/v2/inventario/mis-asignaciones',             [\App\Controllers\InventarioV2Controller::class, 'getMisAsignaciones']);
+    $group->post('/v2/inventario/asignaciones/{id}/iniciar',   [\App\Controllers\InventarioV2Controller::class, 'iniciarConteo']);
+    $group->post('/v2/inventario/asignaciones/{id}/linea',     [\App\Controllers\InventarioV2Controller::class, 'registrarLinea']);
+    $group->post('/v2/inventario/asignaciones/{id}/finalizar', [\App\Controllers\InventarioV2Controller::class, 'finalizarAsignacion']);
+
+    // ── Edición / eliminación de líneas (admin) ─────────────────────────────
+    $group->put('/v2/inventario/lineas/{id}',                  [\App\Controllers\InventarioV2Controller::class, 'editarLinea']);
+    $group->delete('/v2/inventario/lineas/{id}',               [\App\Controllers\InventarioV2Controller::class, 'eliminarLinea']);
+
+    // ── Corrección manual de inventario ────────────────────────────────────
+    $group->post('/v2/inventario/correccion',                  [\App\Controllers\InventarioV2Controller::class, 'correccionManual']);
+
+    // ── Reportes ────────────────────────────────────────────────────────────
+    $group->get('/v2/inventario/ajustes',                      [\App\Controllers\InventarioV2Controller::class, 'getAjustes']);
+    $group->get('/v2/inventario/kardex',                       [\App\Controllers\InventarioV2Controller::class, 'getKardexCompleto']);
+    $group->get('/v2/inventario/vencimientos',                 [\App\Controllers\InventarioV2Controller::class, 'getVencimientos']);
+
+    // Módulo: Reabastecimiento automático
+    $group->post('/reabastecimiento/auto', [\App\Controllers\ReplenishmentController::class, 'runAutoReplenishment']);
 
     // Módulo: Picking (Outbound)
     $group->get('/picking', [\App\Controllers\PickingController::class, 'listar']);
     $group->post('/picking', [\App\Controllers\PickingController::class, 'crearBatch']);
+    $group->get('/picking/template', [\App\Controllers\PickingController::class, 'getTemplate']);
     $group->post('/picking/importar', [\App\Controllers\PickingController::class, 'importarPedidos']);
     $group->get('/picking/dashboard', [\App\Controllers\PickingController::class, 'dashboard']);
     $group->get('/picking/consolidados', [\App\Controllers\PickingController::class, 'consolidados']);
     $group->post('/picking/asignar-multiple', [\App\Controllers\PickingController::class, 'asignarMultiple']);
+    $group->post('/picking/asignar-ruta', [\App\Controllers\PickingController::class, 'asignarRuta']);
+    $group->get('/picking/mis-planillas', [\App\Controllers\PickingController::class, 'misPlanillas']);
+    $group->get('/picking/planilla/{numero}', [\App\Controllers\PickingController::class, 'planillaDetalles']);
+    $group->get('/picking/planilla/{numero}/detalles', [\App\Controllers\PickingController::class, 'planillaDetalles']);
+    $group->post('/picking/planilla/{numero}/iniciar', [\App\Controllers\PickingController::class, 'iniciarPlanilla']);
+    $group->post('/picking/confirmar-consolidado', [\App\Controllers\PickingController::class, 'confirmarConsolidado']);
+    $group->post('/picking/asignar-consolidado', [\App\Controllers\PickingController::class, 'asignarConsolidado']);
+    $group->post('/picking/assign', [\App\Controllers\PickingController::class, 'assignLines']);
+    $group->post('/picking/transfer', [\App\Controllers\PickingController::class, 'transferTasks']);
+    $group->post('/picking/reabastecimientos/auto', [\App\Controllers\PickingController::class, 'autoReabastecer']);
     $group->get('/picking/reabastecimientos', [\App\Controllers\PickingController::class, 'reabastecimientos']);
     $group->get('/picking/novedades-stock',   [\App\Controllers\PickingController::class, 'novedadesStock']);
+    $group->get('/picking/reporte',           [\App\Controllers\PickingController::class, 'reporte']);
     $group->get('/picking/{id}', [\App\Controllers\PickingController::class, 'detalle']);
     $group->get('/picking/{orden_id}/siguiente-linea', [\App\Controllers\PickingController::class, 'siguienteLinea']);
     $group->post('/picking/{orden_id}/generar-ruta', [\App\Controllers\PickingController::class, 'generateRoute']);
@@ -245,6 +606,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/planillas/progreso', [\App\Controllers\PlanillaController::class, 'planillaProgreso']);
     $group->post('/planillas/asignar', [\App\Controllers\PlanillaController::class, 'asignar']);
     $group->get('/planillas/cert/dashboard', [\App\Controllers\PlanillaController::class, 'dashboard']);
+    $group->get('/planillas/cert/{id}/analytics', [\App\Controllers\PlanillaController::class, 'getCertificationAnalytics']);
+    $group->post('/planillas/cert/{id}/editar', [\App\Controllers\PlanillaController::class, 'editarCantidad']);
     $group->post('/planillas/importar', [\App\Controllers\PlanillaController::class, 'importar']);
     $group->post('/planillas/cert/iniciar', [\App\Controllers\PlanillaController::class, 'iniciarCertificacion']);
     $group->get('/planillas/cert/{id}', [\App\Controllers\PlanillaController::class, 'verCertificacion']);
@@ -287,12 +650,19 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/reportes/odc', [\App\Controllers\ReportesController::class, 'odcReporte']);
     $group->get('/reportes/vencimientos', [\App\Controllers\ReportesController::class, 'vencimientos']);
     $group->get('/reportes/agotados', [\App\Controllers\ReportesController::class, 'agotadosYBajoMinimo']);
+
+    // ── Reportes de Contingencia (imprimibles sin internet) ───────────────────
+    $group->get('/reportes/contingencia/separacion', [\App\Controllers\ReportesController::class, 'contingenciaSeparacion']);
+    $group->get('/reportes/contingencia/certificacion', [\App\Controllers\ReportesController::class, 'contingenciaCertificacion']);
     $group->get('/reportes/dashboard-gerencial', [\App\Controllers\ReportesController::class, 'dashboardGerencial']);
+    $group->get('/reportes/dashboard-bi', [\App\Controllers\ReportesController::class, 'dashboardBI']);
     $group->get('/reportes/audit-log', [\App\Controllers\ReportesController::class, 'auditLog']);
     $group->get('/reportes/evaluacion-proveedores', [\App\Controllers\ReportesController::class, 'evaluacionProveedores']);
 
     // Módulo: Dashboard (Real-time Analytics)
     $group->get('/dashboard', [\App\Controllers\DashboardController::class, 'index']);
+    $group->get('/dashboard/summary', [\App\Controllers\DashboardController::class, 'summary']);
+    $group->get('/dashboard/actividad', [\App\Controllers\DashboardController::class, 'actividad']);
 
     // Herramienta de desarrollo: Ejecutar migraciones pendientes (solo Admin)
     $group->post('/system/migrate', function (Request $request, Response $response) {
@@ -374,7 +744,57 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         return $response->withHeader('Content-Type', 'application/json');
     });
 
+    // ── Backup manual de BD (solo Admin) ─────────────────────────────────────
+    $group->post('/system/backup', function (Request $request, Response $response) {
+        $user = $request->getAttribute('user');
+        if (!$user || ($user->rol ?? '') !== 'Admin') {
+            $response->getBody()->write(json_encode(['error' => true, 'message' => 'Solo administradores']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+        require_once __DIR__ . '/../src/Helpers/BackupHelper.php';
+        try {
+            $result = \App\Helpers\BackupHelper::run();
+            $response->getBody()->write(json_encode(['error' => false, 'backup' => $result]));
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode(['error' => true, 'message' => $e->getMessage()]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+        return $response->withHeader('Content-Type', 'application/json');
+    });
+
+    // ── Estado de backups (solo Admin) ───────────────────────────────────────
+    $group->get('/system/backup', function (Request $request, Response $response) {
+        $user = $request->getAttribute('user');
+        if (!$user || ($user->rol ?? '') !== 'Admin') {
+            $response->getBody()->write(json_encode(['error' => true, 'message' => 'Solo administradores']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+        require_once __DIR__ . '/../src/Helpers/BackupHelper.php';
+        $files = \App\Helpers\BackupHelper::listar();
+        $response->getBody()->write(json_encode(['error' => false, 'data' => $files]));
+        return $response->withHeader('Content-Type', 'application/json');
+    });
+
+    // Módulo: Notificaciones
+    $group->get('/notificaciones', [\App\Controllers\NotificacionesController::class, 'index']);
+    $group->get('/notificaciones/badge', [\App\Controllers\NotificacionesController::class, 'badge']);
+    $group->put('/notificaciones/leer-todas', [\App\Controllers\NotificacionesController::class, 'marcarTodasLeidas']);
+    $group->put('/notificaciones/{id}/leer', [\App\Controllers\NotificacionesController::class, 'marcarLeida']);
+    $group->put('/notificaciones/{id}/completar', [\App\Controllers\NotificacionesController::class, 'marcarCompletada']);
+    $group->delete('/notificaciones/{id}', [\App\Controllers\NotificacionesController::class, 'eliminar']);
+    $group->post('/notificaciones/enviar', [\App\Controllers\NotificacionesController::class, 'enviar']);
+
+    // RBAC individual (permisos por usuario)
+    $group->get('/personal/{id}/permisos', [\App\Controllers\PermisoPersonalController::class, 'getPermisos']);
+    $group->post('/personal/{id}/permisos/toggle', [\App\Controllers\PermisoPersonalController::class, 'togglePermiso']);
+    $group->delete('/personal/{id}/permisos', [\App\Controllers\PermisoPersonalController::class, 'resetPermisos']);
+
     // Módulo: Parametrización (Maestros)
+    // ── Sistema / Diagnóstico (solo Admin) ───────────────────────────────────
+    $group->get('/sistema/validar',        [\App\Controllers\SystemController::class, 'validar']);
+    $group->post('/sistema/opcache-reset', [\App\Controllers\SystemController::class, 'opcacheReset']);
+    $group->post('/sistema/limpiar-logs',  [\App\Controllers\SystemController::class, 'limpiarLogs']);
+
     $group->get('/param/empresas', [\App\Controllers\ParametrosController::class, 'getEmpresas']);
     $group->post('/param/empresas', [\App\Controllers\ParametrosController::class, 'createEmpresa']);
     $group->put('/param/empresas/{id}', [\App\Controllers\ParametrosController::class, 'editEmpresa']);
@@ -388,9 +808,13 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->put('/param/marcas/{id}', [\App\Controllers\ParametrosController::class, 'editMarca']);
     $group->delete('/param/marcas/{id}', [\App\Controllers\ParametrosController::class, 'deleteMarca']);
     $group->get('/param/productos', [\App\Controllers\ParametrosController::class, 'getProductos']);
+    $group->post('/productos/{id}/toggle', [\App\Controllers\ParametrosController::class, 'toggleProductoEstado']);
+    $group->get('/productos/buscar', [\App\Controllers\ParametrosController::class, 'buscarProductos']);
     $group->get('/param/productos/buscar', [\App\Controllers\ParametrosController::class, 'buscarProductos']);
+    $group->get('/param/productos/{id}', [\App\Controllers\ParametrosController::class, 'getProducto']);
     $group->post('/param/productos', [\App\Controllers\ParametrosController::class, 'createProducto']);
     $group->put('/param/productos/{id}', [\App\Controllers\ParametrosController::class, 'editProducto']);
+    $group->put('/param/productos/{id}/toggle-status', [\App\Controllers\ParametrosController::class, 'toggleStatusProducto']);
     $group->delete('/param/productos/{id}', [\App\Controllers\ParametrosController::class, 'deleteProducto']);
     $group->get('/param/categorias', [\App\Controllers\ParametrosController::class, 'getCategorias']);
     $group->post('/param/categorias', [\App\Controllers\ParametrosController::class, 'createCategoria']);
@@ -403,11 +827,17 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/param/ubicaciones', [\App\Controllers\ParametrosController::class, 'getUbicaciones']);
     $group->post('/param/ubicaciones', [\App\Controllers\ParametrosController::class, 'createUbicacion']);
     $group->put('/param/ubicaciones/{id}', [\App\Controllers\ParametrosController::class, 'editUbicacion']);
+    $group->patch('/param/ubicaciones/{id}/toggle', [\App\Controllers\ParametrosController::class, 'toggleStatusUbicacion']);
     $group->delete('/param/ubicaciones/{id}', [\App\Controllers\ParametrosController::class, 'deleteUbicacion']);
+    $group->get('/param/zonas', [\App\Controllers\ParametrosController::class, 'getZonas']);
+    $group->post('/param/zonas', [\App\Controllers\ParametrosController::class, 'createZona']);
+    $group->put('/param/zonas/{id}', [\App\Controllers\ParametrosController::class, 'editZona']);
+    $group->delete('/param/zonas/{id}', [\App\Controllers\ParametrosController::class, 'deleteZona']);
     $group->get('/param/proveedores', [\App\Controllers\ParametrosController::class, 'getProveedores']);
     $group->post('/param/proveedores', [\App\Controllers\ParametrosController::class, 'createProveedor']);
     $group->put('/param/proveedores/{id}', [\App\Controllers\ParametrosController::class, 'editProveedor']);
     $group->delete('/param/proveedores/{id}', [\App\Controllers\ParametrosController::class, 'deleteProveedor']);
+    $group->get('/param/proveedores/{id}/performance', [\App\Controllers\ParametrosController::class, 'getProveedorPerformance']);
     $group->get('/param/productos/{id}/eans', [\App\Controllers\ParametrosController::class, 'getProductoEans']);
     $group->post('/param/productos/{id}/eans', [\App\Controllers\ParametrosController::class, 'addProductoEan']);
     $group->put('/param/productos/{id}/eans/{ean_id}', [\App\Controllers\ParametrosController::class, 'updateProductoEan']);
@@ -424,28 +854,42 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->put('/param/rutas/{id}', [\App\Controllers\ParametrosController::class, 'updateRuta']);
     $group->delete('/param/rutas/{id}', [\App\Controllers\ParametrosController::class, 'deleteRuta']);
     $group->get('/param/import-export/template/{tipo}', [\App\Controllers\ImportExportController::class, 'getTemplate']);
+    $group->get('/param/import-export/export/productos', [\App\Controllers\ImportExportController::class, 'exportProductos']);
     $group->post('/param/import-export/upload/{tipo}', [\App\Controllers\ImportExportController::class, 'uploadCSV']);
+
+    // ── INTELIGENCIA / ML / ANOMALÍAS ────────────────────────────────────────
+    // Predicción de vencimientos (ML + EMA + regresión lineal)
+    $group->get('/inteligencia/vencimientos',           [\App\Controllers\AnomalyController::class, 'vencimientos']);
+    // Escaneo de anomalías estadísticas (Z-score + IQR + frecuencia)
+    $group->get('/inteligencia/anomalias/scan',         [\App\Controllers\AnomalyController::class, 'scanAnomalias']);
+    // Listado paginado de anomalías detectadas
+    $group->get('/inteligencia/anomalias',              [\App\Controllers\AnomalyController::class, 'listarAnomalias']);
+    // Revisar / descartar / confirmar una anomalía
+    $group->put('/inteligencia/anomalias/{id}',         [\App\Controllers\AnomalyController::class, 'revisarAnomalia']);
+    // Alertas de productos próximos a vencer (FEFO)
+    $group->get('/inteligencia/fefo/alertas',           [\App\Controllers\AnomalyController::class, 'fefoAlertas']);
+    // Reporte de rotación (productos sin movimiento)
+    $group->get('/inteligencia/fefo/rotacion',          [\App\Controllers\AnomalyController::class, 'fefoRotacion']);
+    // Log de bloqueos de integridad (InventoryGuard)
+    $group->get('/inteligencia/guardlog',               [\App\Controllers\AnomalyController::class, 'guardLog']);
+    // Métricas de rendimiento de endpoints lentos
+    $group->get('/inteligencia/performance',            [\App\Controllers\AnomalyController::class, 'performance']);
 
 })->add(new \App\Middleware\JwtMiddleware());
 
-// ── TMS Integration API v1 (API Key auth — machine-to-machine) ─────────────────
-$app->group('/api/v1/tms', function (\Slim\Routing\RouteCollectorProxy $group) {
-    // Stock snapshot for TMS
-    $group->get('/stock', [\App\Controllers\TmsController::class, 'stock']);
-    // Active outbound orders
-    $group->get('/ordenes', [\App\Controllers\TmsController::class, 'ordenes']);
-    // Dispatched shipments
-    $group->get('/despachos', [\App\Controllers\TmsController::class, 'despachos']);
-    // TMS notifies WMS a shipment is now in transit
-    $group->post('/despacho/{id}/transportar', [\App\Controllers\TmsController::class, 'marcarEnTransito']);
-    // TMS delivers event webhook to WMS
-    $group->post('/webhook', [\App\Controllers\TmsController::class, 'webhook']);
-    // API key management (admin via JWT still needed)
-    $group->get('/keys', [\App\Controllers\TmsController::class, 'listKeys']);
-    $group->post('/keys', [\App\Controllers\TmsController::class, 'createKey']);
-    $group->delete('/keys/{id}', [\App\Controllers\TmsController::class, 'revokeKey']);
-})->add(new \App\Middleware\ApiKeyMiddleware());
+// Ruta pública para información de conexión
+$app->get('/api/system/connection-info', [\App\Controllers\SystemController::class, 'getConnectionInfo']);
 
-// Discard any stray output buffered before Slim runs (notices, warnings, BOM…)
-ob_end_clean();
+// ── TMS: rutas unificadas (JWT admin o ApiKey M2M — TmsAuthMiddleware) ──────
+$app->group('/api/tms', function (\Slim\Routing\RouteCollectorProxy $group) {
+    $group->get('/stock',                     [\App\Controllers\TmsController::class, 'stock']);
+    $group->get('/ordenes',                   [\App\Controllers\TmsController::class, 'ordenes']);
+    $group->get('/despachos',                 [\App\Controllers\TmsController::class, 'despachos']);
+    $group->post('/despacho/{id}/transportar',[\App\Controllers\TmsController::class, 'marcarEnTransito']);
+    $group->get('/keys',                      [\App\Controllers\TmsController::class, 'listKeys']);
+    $group->post('/keys',                     [\App\Controllers\TmsController::class, 'createKey']);
+    $group->delete('/keys/{id}',              [\App\Controllers\TmsController::class, 'revokeKey']);
+    $group->post('/webhook',                  [\App\Controllers\TmsController::class, 'webhook']);
+})->add(new \App\Middleware\TmsAuthMiddleware());
+
 $app->run();

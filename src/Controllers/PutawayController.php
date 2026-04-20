@@ -334,13 +334,15 @@ class PutawayController extends BaseController
                 'producto_id'  => $productoId,
                 'ubicacion_id' => $destino->id,
                 'lote'         => $loteReal,
+                'fecha_vencimiento' => $fechaVenc,
             ]);
+
             if (!$invDest->exists) {
                 $invDest->cantidad           = 0;
                 $invDest->cantidad_reservada = 0;
                 $invDest->estado             = 'Disponible';
-                $invDest->fecha_vencimiento  = $fechaVenc;
             }
+
             $invDest->cantidad += $cantidad;
             $invDest->save();
 

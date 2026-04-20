@@ -14,10 +14,25 @@ abstract class BaseController
 {
     // ── Respuesta JSON ────────────────────────────────────────────────────────
 
-    protected function json(Response $response, array $data, int $status = 200): Response
+    public function json(Response $response, array $data, int $status = 200): Response
     {
         $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Registra la rotación de logs usando register_shutdown_function para que
+     * no bloquee el path crítico de la respuesta JSON.
+     * Llamar desde index.php una vez por proceso, no en cada request.
+     */
+    public static function scheduleLogRotation(): void
+    {
+        register_shutdown_function(function () {
+            if (mt_rand(1, 200) === 1) {
+                $log = dirname(__DIR__, 2) . '/logs/app.log';
+                \App\Helpers\LogRotator::checkAndRotate($log);
+            }
+        });
     }
 
     protected function ok(Response $response, $data = null, string $message = 'OK'): Response
@@ -85,12 +100,13 @@ abstract class BaseController
 
     protected function isAdmin($user): bool
     {
-        return isset($user->rol) && $user->rol === 'Admin';
+        return isset($user->rol) && strcasecmp($user->rol, 'Admin') === 0;
     }
 
     protected function isSupervisorOrAbove($user): bool
     {
-        return in_array($user->rol ?? '', ['Admin', 'Supervisor']);
+        $rol = strtolower($user->rol ?? '');
+        return in_array($rol, ['admin', 'supervisor']);
     }
 
     /**
@@ -121,8 +137,8 @@ abstract class BaseController
      */
     protected function getDateRange(array $params): array
     {
-        $inicio = $params['fecha_inicio'] ?? date('Y-m-d', strtotime('-30 days'));
-        $fin    = $params['fecha_fin']    ?? date('Y-m-d');
+        $inicio = $params['fecha_inicio'] ?? $params['from'] ?? $params['desde'] ?? date('Y-m-d', strtotime('-30 days'));
+        $fin    = $params['fecha_fin']    ?? $params['to']   ?? $params['hasta'] ?? date('Y-m-d');
 
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $inicio)) {
             $inicio = date('Y-m-d', strtotime('-30 days'));
@@ -221,5 +237,12 @@ abstract class BaseController
     {
         $v = (int)$value;
         return $v > 0 ? $v : null;
+    }
+    /**
+     * Detecta si la conexión actual es PostgreSQL.
+     */
+    protected function isPg(): bool
+    {
+        return \Illuminate\Database\Capsule\Manager::connection()->getDriverName() === 'pgsql';
     }
 }

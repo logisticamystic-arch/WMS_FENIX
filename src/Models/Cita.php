@@ -10,11 +10,13 @@ class Cita extends Model
 
     protected $fillable = [
         'empresa_id', 'sucursal_id', 'proveedor', 'fecha', 'hora_programada',
-        'cantidad_cajas', 'tipo_vehiculo', 'kilos', 'odc', 'estado', 'notas',
+        'cantidad_cajas', 'tipo_vehiculo', 'kilos', 'odc', 'odc_id', 'estado', 'notas',
+        'hora_llegada', 'hora_inicio_descargue', 'hora_fin_descargue',
+        'evaluacion_proveedor', 'tipo_descargue',
     ];
 
     protected $casts = [
-        'fecha' => 'date',
+        'fecha' => 'date:Y-m-d',
         'kilos' => 'decimal:2',
     ];
 

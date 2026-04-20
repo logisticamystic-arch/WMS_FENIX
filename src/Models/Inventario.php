@@ -11,6 +11,7 @@ class Inventario extends Model
     protected $fillable = [
         'empresa_id', 'sucursal_id', 'producto_id', 'ubicacion_id',
         'lote', 'fecha_vencimiento', 'cantidad', 'cantidad_reservada', 'estado',
+        'numero_pallet',
     ];
 
     protected $casts = [

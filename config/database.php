@@ -1,22 +1,56 @@
 <?php
 /**
- * Database Configuration
- * Loads from .env, supports MySQL (Phase 1) and PostgreSQL (Phase 2)
+ * Database Configuration — WMS ProOriente
+ *
+ * FASE 1 (XAMPP/MySQL):   DB_DRIVER=mysql  DB_PORT=3306  DB_CHARSET=utf8mb4
+ * FASE 2 (PostgreSQL):    DB_DRIVER=pgsql  DB_PORT=5432  DB_CHARSET=utf8
  */
 
-// Compatible con Dotenv createImmutable ($_ENV) y getenv() del sistema
-$env = function(string $key, string $default = ''): string {
-    return $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key) ?: $default;
-};
+$env = fn(string $key, string $default = ''): string
+    => $_ENV[$key] ?? $_SERVER[$key] ?? (getenv($key) ?: $default);
 
-return [
-    'driver'    => $env('DB_DRIVER', 'mysql'),
-    'host'      => $env('DB_HOST', '127.0.0.1'),
-    'port'      => $env('DB_PORT', '3306'),
-    'database'  => $env('DB_NAME', 'prooriente_wms'),
-    'username'  => $env('DB_USER', 'root'),
-    'password'  => $env('DB_PASS', ''),
-    'charset'   => $env('DB_CHARSET', 'utf8mb4'),
-    'collation' => $env('DB_COLLATION', 'utf8mb4_unicode_ci'),
-    'prefix'    => '',
+$driver = $env('DB_DRIVER', 'mysql');
+
+$config = [
+    'driver'   => $driver,
+    'host'     => $env('DB_HOST', '127.0.0.1'),
+    'port'     => (int) $env('DB_PORT', $driver === 'pgsql' ? '5432' : '3306'),
+    'database' => $env('DB_NAME', 'WMS_PROORIENTE'),
+    'username' => $env('DB_USER', 'root'),
+    'password' => $env('DB_PASS', ''),
+    'prefix'   => '',
+
+    /*
+     * Opciones PDO para robustez y performance.
+     * PDO::ATTR_PERSISTENT → reutiliza conexiones en solicitudes sucesivas
+     *   (mejora significativa en XAMPP/Apache con múltiples workers).
+     * PDO::ATTR_ERRMODE    → lanza excepciones (no errores silenciosos).
+     * PDO::ATTR_TIMEOUT    → corta si MySQL no responde en 5 s.
+     */
+    'options' => [
+        \PDO::ATTR_PERSISTENT         => true,
+        \PDO::ATTR_ERRMODE            => \PDO::ERRMODE_EXCEPTION,
+        \PDO::ATTR_EMULATE_PREPARES   => false,   // sentencias preparadas reales
+        \PDO::ATTR_TIMEOUT            => 5,
+    ],
 ];
+
+if ($driver === 'pgsql') {
+    $config['charset']  = $env('DB_CHARSET', 'utf8');
+    $config['sslmode']  = $env('DB_SSLMODE', 'prefer');
+} else {
+    // MySQL / MariaDB
+    $config['charset']   = $env('DB_CHARSET',    'utf8mb4');
+    $config['collation'] = $env('DB_COLLATION',  'utf8mb4_unicode_ci');
+    $config['strict']    = true;    // evita truncamientos silenciosos
+    $config['engine']    = null;    // hereda default de la tabla (InnoDB)
+
+    // Fuerza utf8mb4 a nivel de PDO (charset en DSN no siempre es suficiente)
+    $config['options'][\PDO::MYSQL_ATTR_INIT_COMMAND] =
+        "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci, "
+      . "time_zone = '-05:00', "          // UTC-5 Bogotá
+      . "sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
+      .            "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'";
+}
+
+return $config;

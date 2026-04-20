@@ -10,12 +10,15 @@ class RecepcionDetalle extends Model
 
     protected $fillable = [
         'recepcion_id', 'producto_id', 'cantidad_esperada', 'cantidad_recibida',
+        'cantidad_cajas', 'cajas_por_unidad',           // conversión física recibida
         'lote', 'fecha_vencimiento', 'estado_mercancia', 'novedad_motivo',
-        'ubicacion_destino_id',
+        'novedad_observacion', 'cantidad_novedad',
+        'ubicacion_destino_id', 'aprobado_admin', 'numero_pallet',
     ];
 
     protected $casts = [
         'fecha_vencimiento' => 'date',
+        'aprobado_admin'    => 'boolean',
     ];
 
     public function recepcion()

@@ -33,24 +33,24 @@ class TmsController extends BaseController
                 ->select([
                     'i.id',
                     'i.producto_id',
-                    'p.codigo',
+                    'p.codigo_interno',
                     'p.nombre as producto_nombre',
                     'p.unidad_medida',
                     'i.lote',
                     'i.fecha_vencimiento',
                     'i.cantidad',
                     'i.ubicacion_id',
-                    'u.nombre as ubicacion',
+                    'u.codigo as ubicacion',
                     'i.updated_at',
                 ]);
 
             // Optional: filter by product code (already parameterized by QueryBuilder)
             if (!empty($params['codigo'])) {
-                $query->where('p.codigo', 'like', '%' . $params['codigo'] . '%');
+                $query->where('p.codigo_interno', 'like', '%' . $params['codigo'] . '%');
             }
 
             $total  = $query->count();
-            $items  = $query->orderBy('p.codigo')
+            $items  = $query->orderBy('p.codigo_interno')
                             ->offset(($page - 1) * $perPage)
                             ->limit($perPage)
                             ->get()
@@ -79,21 +79,19 @@ class TmsController extends BaseController
 
         try {
         $ordenes = DB::table('orden_pickings as op')
-            ->leftJoin('personal as p', 'p.id', '=', 'op.operador_id')
-            ->leftJoin('clientes as c', 'c.id', '=', 'op.cliente_id')
+            ->leftJoin('personal as p', 'p.id', '=', 'op.auxiliar_id')
             ->where('op.empresa_id', $empresaId)
             ->where('op.estado', $estado)
             ->select([
                 'op.id',
                 'op.numero_orden',
-                'op.cliente_id',
-                'c.nombre as cliente_nombre',
+                'op.cliente as cliente_nombre',
                 'op.estado',
                 'op.prioridad',
                 'op.fecha_requerida',
                 'op.created_at',
-                'op.operador_id',
-                DB::raw("CONCAT(p.nombres, ' ', p.apellidos) as operador"),
+                'op.auxiliar_id',
+                'p.nombre as operador',
             ])
             ->orderBy('op.prioridad', 'desc')
             ->orderBy('op.created_at', 'asc')
@@ -118,20 +116,16 @@ class TmsController extends BaseController
         [$inicio, $fin] = $this->getDateRange($params);
 
         $despachos = DB::table('despachos as d')
-            ->leftJoin('clientes as c', 'c.id', '=', 'd.cliente_id')
-            ->leftJoin('personal as p', 'p.id', '=', 'd.operador_id')
+            ->leftJoin('personal as p', 'p.id', '=', 'd.auxiliar_id')
             ->where('d.empresa_id', $empresaId)
             ->whereBetween('d.created_at', [$inicio, $fin])
             ->select([
                 'd.id',
                 'd.numero_despacho',
                 'd.estado',
-                'd.cliente_id',
-                'c.nombre as cliente_nombre',
-                'c.direccion as cliente_direccion',
-                'd.operador_id',
-                DB::raw("CONCAT(p.nombres, ' ', p.apellidos) as operador"),
-                'd.observaciones',
+                'd.cliente as cliente_nombre',
+                'd.auxiliar_id',
+                'p.nombre as operador',
                 'd.created_at',
                 'd.updated_at',
             ])
@@ -247,7 +241,7 @@ class TmsController extends BaseController
 
         $keys = DB::table('api_keys')
             ->where('empresa_id', $empresaId)
-            ->select(['id', 'nombre', 'permisos', 'activo', 'last_used_at', 'created_at'])
+            ->select(['id', 'nombre', 'permisos', 'activo', 'ultimo_uso', 'created_at'])
             ->orderBy('created_at', 'desc')
             ->get()
             ->toArray();

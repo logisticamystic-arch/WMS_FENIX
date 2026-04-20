@@ -7,7 +7,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Cita;
 use Illuminate\Database\Capsule\Manager as Capsule;
 
-class CitaController
+class CitaController extends BaseController
 {
     /**
      * GET /api/citas
@@ -37,9 +37,7 @@ class CitaController
     {
         $user = $request->getAttribute('user');
         
-        if (!$user->hasPermission('recepcion', 'crear')) {
-            return $this->json($response, ['error' => true, 'message' => 'No tienes permiso para programar citas.'], 403);
-        }
+        // Todos los roles autenticados pueden programar citas
 
         $data = $request->getParsedBody();
 
@@ -49,12 +47,28 @@ class CitaController
         }
 
         try {
+            // Validar disponibilidad de horario (máximo 2 citas por hora)
+            $maxCitasPorHora = 2;
+            $ocupadas = Cita::where('empresa_id', $user->empresa_id)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->where('fecha', $data['fecha'])
+                ->where('hora_programada', $data['hora_programada'])
+                ->whereIn('estado', ['Programada', 'EnPatio', 'EnCurso'])
+                ->count();
+
+            if ($ocupadas >= $maxCitasPorHora) {
+                return $this->json($response, [
+                    'error' => true, 
+                    'message' => "El horario {$data['hora_programada']} ya está completo para esta fecha ({$maxCitasPorHora} citas máx)."
+                ], 400);
+            }
+
             // Resolver nombre del proveedor: acepta nombre libre o proveedor_id
             $nombreProv = trim($data['proveedor'] ?? '');
             if (!empty($data['proveedor_id'])) {
                 $prov = \App\Models\Proveedor::where('empresa_id', $user->empresa_id)
                     ->find((int)$data['proveedor_id']);
-                if ($prov) $nombreProv = $prov->nombre;
+                if ($prov) $nombreProv = $prov->razon_social;
             }
             if (empty($nombreProv)) {
                 return $this->json($response, ['error' => true, 'message' => 'Proveedor es requerido.'], 400);
@@ -68,8 +82,9 @@ class CitaController
             $cita->hora_programada= $data['hora_programada'];
             $cita->cantidad_cajas = (int)($data['cantidad_cajas'] ?? 0);
             $cita->tipo_vehiculo  = $data['tipo_vehiculo'] ?? null;
-            $cita->kilos          = (float)($data['kilos'] ?? 0);
+            $cita->kilos          = $data['kilos'] ?? 0;
             $cita->odc            = $data['odc'] ?? null;
+            $cita->odc_id         = (int)($data['odc_id'] ?? null) ?: null;
             $cita->estado         = 'Programada';
             $cita->notas          = $data['notas'] ?? null;
             $cita->save();
@@ -93,9 +108,7 @@ class CitaController
         $user = $request->getAttribute('user');
         $id = $args['id'] ?? null;
 
-        if (!$user->hasPermission('recepcion', 'editar')) {
-            return $this->json($response, ['error' => true, 'message' => 'No tienes permiso.'], 403);
-        }
+        // Supervisor/Admin o el auxiliar responsable puede editar
 
         $cita = Cita::find($id);
         if (!$cita || $cita->empresa_id !== $user->empresa_id || $cita->sucursal_id !== $user->sucursal_id) {
@@ -132,8 +145,10 @@ class CitaController
         $user = $request->getAttribute('user');
         $id = $args['id'] ?? null;
 
-        if (!$user->hasPermission('recepcion', 'eliminar')) {
-            return $this->json($response, ['error' => true, 'message' => 'No tienes permiso.'], 403);
+        // Solo supervisores pueden cancelar citas
+        $rol = strtolower($user->rol ?? '');
+        if (!in_array($rol, ['admin', 'supervisor'])) {
+            return $this->json($response, ['error' => true, 'message' => 'Se requiere rol Supervisor o Administrador'], 403);
         }
 
         $cita = Cita::find($id);
@@ -179,9 +194,57 @@ class CitaController
         ]);
     }
 
-    private function json(Response $response, array $data, int $status = 200): Response
+    /**
+     * POST /api/citas/{id}/llegada
+     * Marca el arribo físico (Check-in) en patio
+     */
+    public function marcarLlegada(Request $request, Response $response, array $args): Response
     {
-        $response->getBody()->write(json_encode($data));
-        return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
+        $user = $request->getAttribute('user');
+        $id = $args['id'] ?? null;
+
+        $cita = Cita::find($id);
+        if (!$cita || $cita->empresa_id !== $user->empresa_id) {
+            return $this->json($response, ['error' => true, 'message' => 'Cita no encontrada.'], 404);
+        }
+
+        $cita->estado = 'EnPatio';
+        $cita->hora_llegada = date('Y-m-d H:i:s');
+        $cita->save();
+
+        return $this->json($response, [
+            'error' => false,
+            'message' => 'Llegada registrada.',
+            'data' => $cita
+        ]);
     }
+
+    /**
+     * POST /api/citas/{id}/completar-yms
+     * Finaliza la operación de patio con evaluación
+     */
+    public function completarYMS(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        $id = $args['id'] ?? null;
+        $data = $request->getParsedBody();
+
+        $cita = Cita::find($id);
+        if (!$cita || $cita->empresa_id !== $user->empresa_id) {
+            return $this->json($response, ['error' => true, 'message' => 'Cita no encontrada.'], 404);
+        }
+
+        $cita->estado = 'Completada';
+        $cita->hora_fin_descargue = date('Y-m-d H:i:s');
+        $cita->evaluacion_proveedor = (int)($data['evaluacion'] ?? 5);
+        $cita->tipo_descargue = $data['tipo_descargue'] ?? 'Paletizado';
+        $cita->save();
+
+        return $this->json($response, [
+            'error' => false,
+            'message' => 'YMS completado.',
+            'data' => $cita
+        ]);
+    }
+
 }

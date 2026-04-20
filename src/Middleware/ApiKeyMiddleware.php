@@ -39,10 +39,10 @@ class ApiKeyMiddleware
                 return $this->unauthorized('API key inválida o revocada.');
             }
 
-            // Update last_used_at (non-blocking — best-effort)
+            // Update ultimo_uso (non-blocking — best-effort)
             DB::table('api_keys')
                 ->where('id', $record->id)
-                ->update(['last_used_at' => date('Y-m-d H:i:s')]);
+                ->update(['ultimo_uso' => date('Y-m-d H:i:s')]);
 
             // Inject API key record into request attributes
             $request = $request->withAttribute('api_key', $record);

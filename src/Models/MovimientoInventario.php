@@ -20,7 +20,7 @@ class MovimientoInventario extends Model
         'tipo_movimiento', 'cantidad', 'lote', 'fecha_vencimiento',
         'referencia_tipo', 'referencia_id',
         'auxiliar_id', 'fecha_movimiento', 'hora_inicio', 'hora_fin',
-        'observaciones',
+        'observaciones', 'numero_pallet',
     ];
 
     protected $casts = [

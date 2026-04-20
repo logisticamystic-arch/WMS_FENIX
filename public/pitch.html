@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WMS Enterprise | Presentación Gerencial</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-primary: #3b82f6;
+            --accent-secondary: #8b5cf6;
+            --accent-tertiary: #f97316;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            overflow-x: hidden;
+            scroll-behavior: smooth;
+        }
+
+        /* Nav */
+        header {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            padding: 20px 50px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            background: rgba(11, 15, 25, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .logo {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 900;
+            letter-spacing: -0.5px;
+            background: linear-gradient(90deg, #60a5fa, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Sections */
+        section {
+            min-height: 100vh;
+            padding: 100px 5vw;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+        }
+
+        h1, h2, h3 { font-family: 'Outfit', sans-serif; }
+
+        h1 {
+            font-size: 4.5rem;
+            font-weight: 900;
+            line-height: 1.1;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #ffffff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        h2 { font-size: 3rem; font-weight: 700; margin-bottom: 40px; }
+        
+        p { font-size: 1.15rem; line-height: 1.6; color: var(--text-muted); max-width: 800px; }
+
+        /* Split Section */
+        .split-section { display: flex; align-items: center; gap: 80px; margin-bottom: 50px; }
+        .split-section.reverse { flex-direction: row-reverse; }
+        .split-content { flex: 1.3; }
+        .split-img { flex: 0.9; display: flex; justify-content: center; align-items: center; }
+        .split-img img {
+            width: 100%; max-width: 450px; border-radius: 20px; border: 1px solid var(--glass-border);
+            box-shadow: 0 30px 60px rgba(0,0,0,0.5); transition: transform 0.5s;
+        }
+        .split-img:hover img { transform: scale(1.02); }
+
+        .badge {
+            display: inline-block; padding: 8px 16px; border-radius: 50px;
+            background: rgba(59, 130, 246, 0.1); color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.2); font-weight: 600;
+            font-size: 0.9rem; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px;
+        }
+        
+        .badge.orange {
+            background: rgba(249, 115, 22, 0.1); color: #fb923c; border-color: rgba(249, 115, 22, 0.2);
+        }
+
+        /* Grid */
+        .grid-4 {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin-top: 30px;
+        }
+
+        .card {
+            background: var(--glass-bg); border: 1px solid var(--glass-border);
+            border-radius: 20px; padding: 30px; transition: all 0.4s ease;
+        }
+        .card:hover { transform: translateY(-5px); background: rgba(255, 255, 255, 0.05); }
+        .card h3 { font-size: 1.5rem; margin-bottom: 15px; color: #fff; }
+        .card p { font-size: 1rem; }
+        .icon { font-size: 2.2rem; margin-bottom: 15px; }
+
+        /* Table */
+        .comparison-table {
+            width: 100%; border-collapse: collapse; margin-top: 40px;
+            background: var(--glass-bg); border-radius: 15px; overflow: hidden; border: 1px solid var(--glass-border);
+        }
+        .comparison-table th, .comparison-table td { padding: 25px; text-align: left; border-bottom: 1px solid var(--glass-border); }
+        .comparison-table th { background: rgba(0,0,0,0.2); font-size: 1.3rem; }
+        .comparison-table th.ours { color: #a78bfa; background: rgba(139, 92, 246, 0.1); }
+        .comparison-table td.ours-cell { background: rgba(139, 92, 246, 0.03); border-left: 2px solid #8b5cf6; border-right: 2px solid #8b5cf6; }
+
+        /* Stats */
+        .stats-container { display: flex; gap: 30px; margin-top: 50px; justify-content: center; }
+        .stat-box {
+            text-align: center; padding: 30px; background: var(--glass-bg);
+            border-radius: 20px; border: 1px solid var(--glass-border); flex: 1;
+        }
+        .stat-number {
+            font-size: 3.5rem; font-weight: 900; font-family: 'Outfit', sans-serif;
+            background: linear-gradient(135deg, #10b981, #3b82f6);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 10px;
+        }
+
+        /* Pricing Table */
+        .cost-grid {
+            display: flex; gap: 20px; margin-top: 30px;
+        }
+        .cost-card {
+            flex: 1; background: rgba(0,0,0,0.3); border: 1px dashed rgba(148, 163, 184, 0.3);
+            border-radius: 15px; padding: 20px; text-align: center;
+        }
+        .cost-price { font-size: 1.8rem; font-weight: bold; color: #60a5fa; margin: 15px 0; }
+
+        /* Animations */
+        .fade-in { opacity: 0; transform: translateY(30px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
+        .fade-in.visible { opacity: 1; transform: translateY(0); }
+        @keyframes blob { 0% { transform: translate(0px, 0px) scale(1); } 50% { transform: translate(30px, -50px) scale(1.1); } 100% { transform: translate(0px, 0px) scale(1); } }
+        .bg-blob { position: absolute; filter: blur(100px); z-index: -1; border-radius: 50%; animation: blob 10s infinite alternate; opacity: 0.5; }
+        .blob-1 { top: -10%; left: -10%; width: 50vw; height: 50vw; background: rgba(59, 130, 246, 0.2); }
+        .blob-2 { bottom: -10%; right: -10%; width: 40vw; height: 40vw; background: rgba(139, 92, 246, 0.2); animation-delay: 2s; }
+
+        button.cta {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border: none;
+            padding: 15px 40px; font-size: 1.2rem; font-weight: 600; border-radius: 50px;
+            cursor: pointer; margin-top: 30px; transition: all 0.3s;
+        }
+        button.cta:hover { transform: translateY(-3px) scale(1.05); }
+    </style>
+</head>
+<body>
+
+    <div class="bg-blob blob-1"></div>
+    <div class="bg-blob blob-2"></div>
+
+    <header>
+        <div class="logo">WMS PROORIENTE</div>
+        <p style="font-size: 0.9rem; margin:0; color:#94a3b8;">Pitch Gerencial Privado</p>
+    </header>
+
+    <!-- SECTION 1: HERO -->
+    <section class="split-section">
+        <div class="split-content fade-in">
+            <span class="badge">Evolución Logística Exclusiva</span>
+            <h1 style="font-size: 5rem; letter-spacing: -1px;">WMS PROORIENTE</h1>
+            <p>Descubra cómo nuestro WMS Enterprise exclusivo no solo organiza cajas, sino que utiliza <strong>Inteligencia Artificial y analítica predictiva</strong> para transformar cada eslabón de la operación de PROORIENTE en eficiencia absoluta.</p>
+            <button class="cta" onclick="document.getElementById('modulos').scrollIntoView();">Ver la Evolución</button>
+        </div>
+        <div class="split-img fade-in">
+            <img src="assets/pitch/wms_hero.png" alt="WMS Smart Warehouse">
+        </div>
+    </section>
+
+    <!-- SECTION 2: MODULOS DEL WMS -->
+    <section id="modulos">
+        <div class="fade-in" style="text-align: center;">
+            <span class="badge">Ecosistema Integral</span>
+            <h2>Control Total, de Principio a Fin</h2>
+            <p style="margin: 0 auto;">Un ecosistema diseñado para cubrir todo el flujo de valor, eliminando el 100% del papeleo manual y la intuición operativa.</p>
+        </div>
+        
+        <div class="grid-4" style="margin-top: 50px;">
+            <div class="card fade-in">
+                <div class="icon">📥</div>
+                <h3>1. Inbound & YMS</h3>
+                <p>Gestión de Citas en Patio. Aprobación y verificación de muelle automática. Control ciego de contenedores vs Orden de Compra.</p>
+            </div>
+            <div class="card fade-in" style="transition-delay: 0.1s;">
+                <div class="icon">🏗️</div>
+                <h3>2. Putaway Inteligente</h3>
+                <p>Módulo de Almacenamiento: El sistema indica pasillo y nivel óptimo considerando peso, familia del producto y rotación estadística.</p>
+            </div>
+            <div class="card fade-in" style="transition-delay: 0.2s;">
+                <div class="icon">⚡</div>
+                <h3>3. Picking Móvil</h3>
+                <p>Separación guiada en Móviles y Tablets. Consolidación de planillas multipedido y rutas optimizadas para erradicar recorridos en vacío.</p>
+            </div>
+            <div class="card fade-in" style="transition-delay: 0.3s;">
+                <div class="icon">✅</div>
+                <h3>4. Certificaciones</h3>
+                <p>Escaneo unitario de salida con bloqueos duros ante inconsistencias. Generación de actas digitales para garantizar despachos impecables.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 3: IA Y MERMAS FEFO -->
+    <section class="split-section reverse">
+        <div class="split-content fade-in">
+            <span class="badge">Machine Learning Exclusivo</span>
+            <h2>Erradicando la Merma en PROORIENTE</h2>
+            <p>La pérdida de cartera por lotes vencidos en bodega es el enemigo silencioso de toda gran compañía.</p>
+            <p style="margin-top: 15px;">WMS Prooriente incluye un motor de <strong>Inteligencia Artificial Predictivo</strong> que no solo aplica estricto control FEFO (First Expiry, First Out), sino que proyecta <em>cuántos días tomará agotar un lote</em> basado en el consumo histórico real de las zonas operadas por PROORIENTE.</p>
+            <ul style="margin-top: 20px; color: var(--text-muted); list-style-position: inside; font-size: 1.1rem; line-height: 1.8;">
+                <li>✓ Predicción matemática interactiva de Quiebre de Stock.</li>
+                <li>✓ Alertas inyectadas al dashboard a 90, 60 y 30 días de vencimiento.</li>
+                <li>✓ Sugerencias de promoción comercial dinámica para extinguir merma.</li>
+            </ul>
+        </div>
+        <div class="split-img fade-in">
+            <img src="assets/pitch/fefo_ai.png" alt="FEFO AI Analytics">
+        </div>
+    </section>
+
+    <!-- SECTION 4: AGENTE IA FENIX -->
+    <section class="split-section">
+        <div class="split-content fade-in">
+            <span class="badge orange">Revolución Analítica</span>
+            <h2>Conozca al Agente FENIX: Ojos Artificiales</h2>
+            <p>Más allá del cálculo métrico, el cerebro de su WMS está impulsado por <strong>FENIX</strong>, su Analista de Datos Corporativo virtual, operando e inspeccionando ininterrumpidamente su bodega.</p>
+            <p style="margin-top: 15px;">A diferencia de leer reportes excel estáticos mensuales, FENIX escanea activamente toda la red y notifica anomalías al instante:</p>
+            <ul style="margin-top: 20px; color: var(--text-muted); list-style-position: inside; font-size: 1.1rem; line-height: 1.8;">
+                <li>🔥 <strong>Alertas Antifraude:</strong> Rastrea descuadres, inventarios invisibles o retiros ilógicos, erradicando por completo el robo hormiga institucional.</li>
+                <li>🔥 <strong>Dashboard de Vida:</strong> Otorga reportes especializados en <strong>Tiempo Real</strong> orientados a auditores para medir el desempeño humano, fatiga y saturación del CD.</li>
+            </ul>
+        </div>
+        <div class="split-img fade-in">
+            <img src="assets/pitch/agente_fenix.png" alt="Agente de IA FENIX">
+        </div>
+    </section>
+    
+    <!-- SECTION 5: INFRAESTRUCTURA ON-PREMISE Y HARDWARE -->
+    <section class="split-section reverse">
+        <div class="split-content fade-in">
+            <span class="badge">Independencia Operativa</span>
+            <h2>Soberanía de Datos (Infraestructura Local)</h2>
+            <p>Montar una red propia (On-Premise) blinda a PROORIENTE operativamente. Ustedes son los dueños absolutos de sus datos y de su velocidad (latencia cero), asegurando despachos incluso ante caídas de internet global.</p>
+            <h3 style="margin-top:25px; color:#c084fc;">Business Intelligence / Tableau / PowerBI</h3>
+            <p>Al ser propietarios del clúster de datos de forma local, pueden enchufar directamente <strong>múltiples plataformas de analítica masiva</strong> (PowerBI, Looker, etc) sin tener que rogarle a proveedores como Oracle o pagar cuotas extra en USD por cada API Call.</p>
+            
+            <div style="margin-top: 30px; background: rgba(0,0,0,0.4); padding: 25px; border-radius: 15px; border: 1px solid var(--glass-border);">
+                <h4 style="color: white; margin-bottom: 10px;">Estimación de Inversión Estructural (Costo Local):</h4>
+                <div class="cost-grid" style="margin-top: 15px;">
+                    <div class="cost-card">
+                        <div style="font-size: 2rem;">🖥️</div>
+                        <div style="font-weight:bold; color:white; margin-top:10px;">Servidor Favorable</div>
+                        <div class="cost-price">~$5.000.000 COP</div>
+                    </div>
+                    <div class="cost-card">
+                        <div style="font-size: 2rem;">🔋</div>
+                        <div style="font-weight:bold; color:white; margin-top:10px;">Arreglo UPS (Respaldo)</div>
+                        <div class="cost-price">~$1.500.000 COP</div>
+                    </div>
+                    <div class="cost-card">
+                        <div style="font-size: 2rem;">🔌</div>
+                        <div style="font-weight:bold; color:white; margin-top:10px;">Tendido Local de Red</div>
+                        <div class="cost-price">~$1.000.000 COP</div>
+                    </div>
+                </div>
+                <p style="text-align:center; margin-top: 15px; font-size:1rem; color:#10b981;">(Aprox. $7.5M COP Inversión Hardware Única) = Autosuficiencia.</p>
+            </div>
+        </div>
+        <div class="split-img fade-in">
+            <img src="assets/pitch/server_analytics.png" alt="Infraestructura Local y Data Analytics">
+        </div>
+    </section>
+
+    <!-- SECTION 6: FABRICA DE SOFTWARE (EXPANSION) -->
+    <section>
+        <div class="fade-in" style="text-align: center; margin-bottom: 30px;">
+            <span class="badge">Expansión Continua</span>
+            <h2>La Evolución Tecnológica de PROORIENTE</h2>
+        </div>
+        <div style="background: var(--glass-bg); padding: 50px; border-radius: 20px; border: 1px solid var(--glass-border);" class="fade-in">
+            <h3 style="color: #ffffff; font-size: 1.8rem; margin-bottom: 20px;">Adiós a las ataduras de software transnacional</h3>
+            <p style="max-width: 100%; text-align:justify; margin-bottom: 30px;">
+                Cualquier WMS genérico obligará a que PROORIENTE frene sus dinámicas y se rinda a las reglas de una plantilla rígida. Con nuestra alianza es al revés: <strong>El WMS es desarrollado y moldeado para obedecer a las dinámicas atípicas y expansivas de PROORIENTE</strong>, acoplándose al ADN corporativo de la empresa al cien por ciento.
+            </p>
+            
+            <h3 style="color: #60a5fa; font-size: 1.5rem; margin-bottom: 15px;">Expansión a Nuevos Departamentos</h3>
+            <p style="max-width: 100%; text-align:justify;">
+                Nuestra plataforma cuenta con la base estructural idónea para convertirse a largo plazo en el <strong>Gran ERP maestro</strong>. Podemos crear módulos satelitales customizados que eliminen la manualidad en departamentos como <strong>Tesorería, Mantenimiento de Flota, Compras o Gestión de Carteras.</strong> Construir un inmenso holding tecnológico bajo un solo techo, sin pagar cientos de licencias foráneas.
+            </p>
+        </div>
+    </section>
+
+    <!-- SECTION 7: COMPARACION DIRECTA PROPIO VS GENERICO -->
+    <section>
+        <div style="text-align: center; margin-bottom: 40px;" class="fade-in">
+            <span class="badge">Análisis Corporativo</span>
+            <h2>Software Personalizado vs SaaS Comercial Genérico</h2>
+        </div>
+        
+        <table class="comparison-table fade-in">
+            <thead>
+                <tr>
+                    <th>Característica Crítica</th>
+                    <th>WMS Genérico del Mercado (Enlatado)</th>
+                    <th class="ours">WMS PROORIENTE Exclusivo</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Modelo Económico Licenciado</strong></td>
+                    <td>Suscripción castigadora <strong>por número de usuarios</strong>. Un pico de contrataciones eleva astronómicamente su recibo mensual.</td>
+                    <td class="ours-cell"><strong>Crecimiento Sin Limite Oculto</strong>. Puede crear 100 cuentas temporales navideñas sin pagar multas.</td>
+                </tr>
+                <tr>
+                    <td><strong>Evolución y Adaptación de Diseño</strong></td>
+                    <td>"El sistema es como es". Solicitar que le añadan un botón para su proceso toma meses y burocracia de foros inútiles.</td>
+                    <td class="ours-cell"><strong>Modificable a Petición</strong>. Módulos que absorben el carácter de su logística diseñándose exactamente bajo sus términos.</td>
+                </tr>
+                <tr>
+                    <td><strong>Motores de Inteligencia Artificial</strong></td>
+                    <td>Son inmensamente lejanos, y cobrarán Add-Ons muy agresivos solo por visualizar los análisis estandarizados sobre sus datos de servidor externo.</td>
+                    <td class="ours-cell"><strong>Algoritmo Predictivo Local Fénix Inyectado de serie</strong>. Explotando métricas predictivas FEFO gratis.</td>
+                </tr>
+                <tr>
+                    <td><strong>Mesa de Soporte SLA</strong></td>
+                    <td>Intervención en base a call-center general de niveles que desgastan el día para solucionar el bug de un empleado.</td>
+                    <td class="ours-cell"><strong>Intervención Quirúrgica In House</strong>. Contacto directo con su núcleo de TI y mitigaciones sobre la marcha urgente por desarrolladores.</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- SECTION 8: RETORNO DE INVERSIÓN (CHART Y ROI EXPLICITO) -->
+    <section class="split-section">
+        <div class="split-content fade-in">
+            <span class="badge">Visión Estratégica Financiera</span>
+            <h2>Retorno de Inversión (ROI) Garantizado</h2>
+            <p>Implementar tecnología en PROORIENTE no se contabiliza como gasto, es <strong>el mejor gerente operativo salvaguardando el patrimonio anual.</strong> La inversión local se pagará sola rápidamente extinguiendo dos barreras monumentales:</p>
+            
+            <div style="margin-top: 30px;">
+                <h3 style="color:#10b981; font-size:1.5rem; margin-bottom:10px;">• Extinción Completa de Mermas y Descuadres</h3>
+                <p>Las pérdidas incuantificables que causa una rotura térmica o fechas obviadas desaparecen permanentemente. Con la IA evitando solo unos pocos despachos erráticos y blindando las devoluciones de clientes, **el sistema se amortiza automáticamente**.</p>
+            </div>
+            
+            <div style="margin-top: 30px;">
+                <h3 style="color:#3b82f6; font-size:1.5rem; margin-bottom:10px;">• Estabilización de Nómina ante Crecimientos Súbitos</h3>
+                <p>Crecer al doble históricamente implica duplicar analistas ciegos en la bodega. Nuestra tecnología <strong>hiper-digitaliza al operario promedio</strong>. PROORIENTE absorbe picos decembrinos y expansiones territoriales sin contratar batallones insostenibles ni ahogar los actuales márgenes netos de rentabilidad.</p>
+            </div>
+        </div>
+        <div class="split-img fade-in">
+            <img src="assets/pitch/roi_chart.png" alt="Gráfico Exponencial de ROI Inversión">
+        </div>
+    </section>
+
+    <!-- SECTION 9: CIERRE Y KPI ALTO IMPACTO -->
+    <section style="text-align: center; justify-content: center; min-height: 80vh;">
+        <h2 class="fade-in">La Rentabilidad Habla por Sí Sola</h2>
+        <p class="fade-in" style="margin: 0 auto; max-width: 900px;">
+            La transformación industrial requiere dar el paso del excel análogo a los ecosistemas en órbita. Este WMS Enterprise le asegurará la erradicación humana del error, controlará hasta el último centavo del almacén y proyectará exponencialmente su capacidad.
+        </p>
+        
+        <div class="stats-container">
+            <div class="stat-box fade-in" style="transition-delay: 0.1s;">
+                <div class="stat-number">-60%</div>
+                <p style="margin:0; font-weight:bold; color:white;">Despilfarros en Devolución e Inversión Vacía</p>
+            </div>
+            <div class="stat-box fade-in" style="transition-delay: 0.2s;">
+                <div class="stat-number">99.8%</div>
+                <p style="margin:0; font-weight:bold; color:white;">Coherencia Absoluta Matemática de Bodega.</p>
+            </div>
+            <div class="stat-box fade-in" style="transition-delay: 0.3s;">
+                <div class="stat-number">3x</div>
+                <p style="margin:0; font-weight:bold; color:white;">Capacidad de Crecimiento de Multiples Sedes Sincronizadas</p>
+            </div>
+        </div>
+        
+        <div class="fade-in" style="margin-top: 60px;">
+            <h1 style="font-size: 3.2rem; margin-bottom: 20px;">Digitalicemos Juntos el Futuro de su Distribución.</h1>
+            <button class="cta" onclick="window.scrollTo(0,0);">Ir al Inicio</button>
+        </div>
+    </section>
+
+    <script>
+        const observerOptions = { root: null, rootMargin: '0px', threshold: 0.15 };
+        const observer = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.fade-in').forEach(element => {
+            observer.observe(element);
+        });
+    </script>
+</body>
+</html>

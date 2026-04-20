@@ -9,7 +9,7 @@ class Recepcion extends Model
     protected $table = 'recepciones';
 
     protected $fillable = [
-        'empresa_id', 'sucursal_id', 'cita_id', 'numero_recepcion',
+        'empresa_id', 'sucursal_id', 'cita_id', 'odc_id', 'numero_recepcion',
         'auxiliar_id', 'modo_ciego', 'estado',
         'fecha_movimiento', 'hora_inicio', 'hora_fin', 'observaciones',
     ];
@@ -37,6 +37,11 @@ class Recepcion extends Model
     public function auxiliar()
     {
         return $this->belongsTo(Personal::class, 'auxiliar_id');
+    }
+
+    public function ordenCompra()
+    {
+        return $this->belongsTo(OrdenCompra::class, 'odc_id');
     }
 
     public function detalles()

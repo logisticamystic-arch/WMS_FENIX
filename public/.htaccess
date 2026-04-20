@@ -1,12 +1,62 @@
+# ════════════════════════════════════════════════════════════════
+#  WMS Prooriente — .htaccess
+#  Performance: gzip, cache de assets, routing Slim 4
+# ════════════════════════════════════════════════════════════════
+
+# ── Compresión gzip para texto (JS, CSS, JSON, HTML, fonts) ──────────────────
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css text/javascript
+  AddOutputFilterByType DEFLATE application/javascript application/json
+  AddOutputFilterByType DEFLATE application/x-font-ttf application/x-font-opentype
+  AddOutputFilterByType DEFLATE image/svg+xml
+  # No comprimir imágenes ya comprimidas
+  SetEnvIfNoCase Request_URI \.(?:gif|jpe?g|png|webp|avif|woff2?)$ no-gzip dont-vary
+</IfModule>
+
+# ── Caché de activos estáticos (CSS / JS / imágenes / fuentes) ────────────────
+<IfModule mod_expires.c>
+  ExpiresActive On
+  # JS y CSS versionados: 1 año
+  ExpiresByType text/css                 "access plus 1 year"
+  ExpiresByType application/javascript   "access plus 1 year"
+  ExpiresByType text/javascript          "access plus 1 year"
+  # Imágenes: 1 mes
+  ExpiresByType image/jpeg               "access plus 1 month"
+  ExpiresByType image/png                "access plus 1 month"
+  ExpiresByType image/webp               "access plus 1 month"
+  ExpiresByType image/svg+xml            "access plus 1 month"
+  ExpiresByType image/x-icon             "access plus 1 year"
+  # Fuentes: 1 año
+  ExpiresByType font/woff2               "access plus 1 year"
+  ExpiresByType application/x-font-ttf   "access plus 1 year"
+</IfModule>
+
+# ── Sin caché para HTML y respuestas API (evita versiones viejas) ─────────────
+<FilesMatch "\.(html|htm)$">
+  Header set Cache-Control "no-cache, no-store, must-revalidate"
+  Header set Pragma "no-cache"
+  Header set Expires 0
+</FilesMatch>
+
+# ── ETags: deja que Apache maneje la revalidación de assets ──────────────────
+<IfModule mod_headers.c>
+  # Elimina Last-Modified de respuestas API (PHP las maneja)
+  <FilesMatch "\.php$">
+    Header unset Last-Modified
+  </FilesMatch>
+</IfModule>
+
+# ── Reescritura de rutas para Slim 4 ─────────────────────────────────────────
 RewriteEngine On
 RewriteBase /WMS_PROORIENTE/public
 
-# Ensure Authorization header is passed to PHP
+# Pasa el header Authorization a PHP (necesario para JWT en Apache)
 RewriteCond %{HTTP:Authorization} ^(.*)
 RewriteRule .* - [e=HTTP_AUTHORIZATION:%1]
-# Allow direct access to existing files and directories
+
+# Permite acceso directo a archivos y carpetas que existen (assets, uploads…)
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 
-# Route all other requests to index.php
+# Todo lo demás → index.php (Slim 4)
 RewriteRule ^ index.php [QSA,L]

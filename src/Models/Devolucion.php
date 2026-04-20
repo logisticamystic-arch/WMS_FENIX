@@ -9,14 +9,17 @@ class Devolucion extends Model
     protected $table = 'devoluciones';
 
     protected $fillable = [
-        'empresa_id', 'sucursal_id', 'recepcion_id', 'numero_devolucion',
+        'empresa_id', 'sucursal_id', 'recepcion_id', 'odc_id', 'numero_devolucion',
         'proveedor', 'tipo', 'auxiliar_id',
         'fecha_movimiento', 'hora_inicio', 'hora_fin',
-        'estado', 'motivo_general',
+        'estado', 'motivo_general', 'fotos_json',
+        'autorizado_por', 'fecha_autorizacion', 'fecha_devolucion', 'observaciones',
     ];
 
     protected $casts = [
-        'fecha_movimiento' => 'date',
+        'fecha_movimiento'   => 'date',
+        'fecha_autorizacion' => 'datetime',
+        'fotos_json'         => 'array',
     ];
 
     const TIPO_AVERIA = 'AProveedorAveria';

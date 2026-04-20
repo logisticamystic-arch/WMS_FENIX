@@ -12,7 +12,7 @@ class Producto extends Model
         'empresa_id', 'marca_id', 'categoria_id', 'codigo_interno', 'nombre', 'descripcion',
         'imagen_url', 'unidad_medida', 'peso_unitario', 'volumen_unitario',
         'controla_lote', 'controla_vencimiento', 'vida_util_dias',
-        'temperatura_almacen', 'activo',
+        'temperatura_almacen', 'stock_minimo', 'unidades_caja', 'activo',
     ];
 
     protected $casts = [
@@ -21,6 +21,7 @@ class Producto extends Model
         'activo' => 'boolean',
         'peso_unitario' => 'decimal:3',
         'volumen_unitario' => 'decimal:4',
+        'stock_minimo' => 'decimal:2',
     ];
 
     public function empresa()
