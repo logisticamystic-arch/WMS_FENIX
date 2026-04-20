@@ -24,8 +24,8 @@ WMS_MODULES.picking = {
       reporte: this.show_reporte,
     };
     (fn[s]?.bind(this) || fn.pedidos.bind(this))();
-    // Picking es proceso crítico: auto-refresh activo en pedidos y asignación
-    if (['pedidos','asignacion'].includes(s)) this.startAutoRefresh(s);
+    // Picking es proceso crítico: auto-refresh activo en pedidos, asignación y dashboard
+    if (['pedidos','asignacion','dashboard'].includes(s)) this.startAutoRefresh(s);
     else this.stopAutoRefresh();
   },
 
@@ -38,6 +38,7 @@ WMS_MODULES.picking = {
       const cur = WMS.currentSubModule;
       if (cur === 'pedidos')         this.show_pedidos(true);
       else if (cur === 'asignacion') this.show_asignacion(true);
+      else if (cur === 'dashboard')  this.show_dashboard(true);
       else                           this.stopAutoRefresh();
     }, 30000);
     this._updateAutoRefreshBadge(true);
