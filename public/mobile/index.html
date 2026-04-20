@@ -218,7 +218,7 @@ async function mApi(method, path, data=null, _retries=0) {
   const url = M_API + path;
   const headers = { 'Content-Type': 'application/json' };
   if (_mToken) headers['Authorization'] = 'Bearer ' + _mToken;
-  const cfg = { method, headers, signal: AbortSignal.timeout(5000) };
+  const cfg = { method, headers, signal: AbortSignal.timeout(20000) }; // Aumentado a 20s para estabilidad móvil
   if (data) cfg.body = JSON.stringify(data);
   
   try {
@@ -307,10 +307,19 @@ const MWMS = {
   pinPress(v) { if(v==='del') this._pin=this._pin.slice(0,-1); else if(this._pin.length<4) this._pin+=v; this.updPin(); if(this._pin.length===4) setTimeout(()=>this.doLogin(),200); },
   async doLogin() {
     const doc = document.getElementById('m-doc').value.trim();
+    if (!doc || !this._pin) return;
+    this.loading(true);
     try {
       const r = await mApi('POST','/auth/login',{documento:doc,pin:this._pin});
       _mToken=r.token; _mUser=r.user; localStorage.setItem('wms_token',_mToken); localStorage.setItem('wms_user',JSON.stringify(_mUser)); this.showApp();
-    } catch(e) { document.getElementById('m-login-err').textContent=e.message; document.getElementById('m-login-err').style.display='block'; this._pin=''; this.updPin(); }
+    } catch(e) { 
+        document.getElementById('m-login-err').textContent=e.message; 
+        document.getElementById('m-login-err').style.display='block'; 
+        this._pin=''; 
+        this.updPin(); 
+    } finally {
+        this.loading(false);
+    }
   },
   logout() { localStorage.clear(); location.reload(); },
 
@@ -346,8 +355,11 @@ const MWMS = {
       this._op.id = r.data.id;
       this._op.p = p;
       this.renderRecM();
-    } catch(e) { this.toast(e.message, "error"); }
-    this.loading(false);
+    } catch(e) { 
+        this.toast(e.message, "error"); 
+    } finally {
+        this.loading(false);
+    }
   },
   async renderRecM() {
     const d=this._op;
@@ -386,8 +398,11 @@ const MWMS = {
       await mApi('POST','/recepciones/'+this._op.id+'/confirm', {});
       this.toast("Recibo Finalizado (En Patio)","success"); 
       this.showHome();
-    } catch(e) { this.toast(e.message,"error"); } 
-    this.loading(false);
+    } catch(e) { 
+        this.toast(e.message,"error"); 
+    } finally {
+        this.loading(false);
+    }
   },
   openSearch(cb, t, mode='prod') {
 
@@ -806,14 +821,16 @@ const MWMS = {
   async startRecO(id) {
     this.loading(true);
     try {
-      // Notificar al backend que iniciamos (cambia estado a En Proceso)
       await mApi('POST', `/odc/${id}/iniciar`);
       const r = await mApi('GET', `/odc/${id}`);
       const p = await mApi('GET', '/recepciones/proximo-pallet');
       this._op = { odc: r.data, l: [], currentPallet: p.proximo };
       this.renderRecO();
-    } catch(e) { this.toast(e.message, "error"); }
-    this.loading(false);
+    } catch(e) { 
+        this.toast(e.message, "error"); 
+    } finally {
+        this.loading(false);
+    }
   },
 
   renderRecO() {
@@ -1049,12 +1066,13 @@ const MWMS = {
     this.loading(true);
     try {
       if (this._ciMode === 'producto') {
-        // Buscar producto → mostrar ubicaciones con stock
         const rP = await mApi('GET', '/odc/buscar-producto?q=' + encodeURIComponent(q));
         const prods = rP.data || [];
-        if (!prods.length) { results.innerHTML = '<div class="m-empty"><i class="fa-solid fa-box-open"></i><p>Sin productos encontrados</p></div>'; return; }
+        if (!prods.length) { 
+          results.innerHTML = '<div class="m-empty"><i class="fa-solid fa-box-open"></i><p>Sin productos encontrados</p></div>'; 
+          return; 
+        }
         
-        // Si hay varios, mostrar lista para seleccionar
         if (prods.length > 1) {
           results.innerHTML = `
             <div style="font-size:.7rem;font-weight:700;color:#64748b;margin-bottom:8px;">SELECCIONE UN PRODUCTO:</div>
@@ -1068,15 +1086,20 @@ const MWMS = {
           await this._loadStockProducto(prods[0].id, prods[0].nombre);
         }
       } else {
-        // Buscar ubicación → mostrar productos con stock
         const rU = await mApi('GET', '/param/ubicaciones?codigo=' + encodeURIComponent(q));
         const ubics = Array.isArray(rU.data) ? rU.data : [];
         const exact = ubics.find(u => (u.codigo||'').toUpperCase() === q.toUpperCase()) || ubics[0];
-        if (!exact) { results.innerHTML = '<div class="m-empty"><i class="fa-solid fa-location-dot"></i><p>Ubicación no encontrada</p></div>'; return; }
+        if (!exact) { 
+          results.innerHTML = '<div class="m-empty"><i class="fa-solid fa-location-dot"></i><p>Ubicación no encontrada</p></div>'; 
+          return; 
+        }
         await this._loadStockUbicacion(exact);
       }
-    } catch(e) { results.innerHTML = `<div style="padding:16px;color:#dc2626;font-size:.8rem;"><i class="fa-solid fa-exclamation-circle"></i> ${this.esc(e.message)}</div>`; }
-    this.loading(false);
+    } catch(e) { 
+        results.innerHTML = `<div style="padding:16px;color:#dc2626;font-size:.8rem;"><i class="fa-solid fa-exclamation-circle"></i> ${this.esc(e.message)}</div>`; 
+    } finally {
+        this.loading(false);
+    }
   },
 
   async _loadStockProducto(productoId, nombre) {
@@ -1147,10 +1170,8 @@ const MWMS = {
     this.loading(true);
     try {
       const r = await mApi('GET', `/odc/${this._op.odc.id}/verificar-ean?q=${encodeURIComponent(ean)}`);
-      // r.data contiene { producto, detalle }
       const p = r.data.producto;
       const det = r.data.detalle;
-      const pending = parseFloat(det.cantidad_solicitada) - parseFloat(det.cantidad_recibida);
       
       this.openCapture(p, async res => {
           this.loading(true);
@@ -1158,8 +1179,8 @@ const MWMS = {
               await mApi('POST', '/recepciones/detalles-operativa', {
                   odc_id: this._op.odc.id,
                   producto_id: p.id,
-                  cantidad: res.q, // Unidades totales
-                  cantidad_cajas: res.cantidad_cajas, // Cajas originales
+                  cantidad: res.q,
+                  cantidad_cajas: res.cantidad_cajas,
                   lote: res.l,
                   fecha_vencimiento: res.fv,
                   numero_pallet: this._op.currentPallet
@@ -1178,24 +1199,31 @@ const MWMS = {
               });
 
               if (!result.isConfirmed) {
-                // Generar nuevo número de pallet
                 this.loading(true);
-                const next = await mApi('GET', '/recepciones/proximo-pallet');
-                this._op.currentPallet = next.proximo;
-                this.renderRecO(); // Refrescar para mostrar el nuevo número
+                try {
+                    const next = await mApi('GET', '/recepciones/proximo-pallet');
+                    this._op.currentPallet = next.proximo;
+                    this.renderRecO();
+                } finally {
+                    this.loading(false);
+                }
               }
 
               this.toast("Producto capturado", "success");
               await this.refreshRecOLines();
               await this.checkODCCompletion();
-          } catch(e) { this.toast(e.message, "error"); }
-          this.loading(false);
+          } catch(e) { 
+              this.toast(e.message, "error"); 
+          } finally {
+              this.loading(false);
+          }
       });
     } catch(e) { 
         this.toast(e.message, "error"); 
-        this.pA(); // Alerta sonora
+        this.pA(); 
+    } finally {
+        this.loading(false);
     }
-    this.loading(false);
   },
 
   async checkODCCompletion() {
@@ -1269,7 +1297,6 @@ const MWMS = {
       if(stock.length === 1) {
         this.selT(loc, stock[0]);
       } else {
-        // Multiple products/batches: Show selection
         document.getElementById('m-t-s').innerHTML = `
           <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-top:10px;">
             <p style="font-size:.7rem;font-weight:700;margin-bottom:8px;color:#64748b;">MÚLTIPLES LOTES ENCONTRADOS:</p>
@@ -1283,8 +1310,12 @@ const MWMS = {
           </div>`;
           document.getElementById('m-t-a').style.display='none';
       }
-    } catch(e) { this.toast(e.message,"error"); document.getElementById('m-t-s').innerHTML=''; } 
-    this.loading(false);
+    } catch(e) { 
+        this.toast(e.message,"error"); 
+        document.getElementById('m-t-s').innerHTML=''; 
+    } finally {
+        this.loading(false);
+    }
   },
   selT(loc, item) {
     this._td={o:loc,i:item};
@@ -1302,7 +1333,11 @@ const MWMS = {
       const s = this._td.i;
       await mApi('POST','/inventario/traslado',{producto_id:s.producto_id, ubicacion_origen_id:this._td.o.id, ubicacion_destino_id:loc.id, cantidad:q, lote:s.lote, fecha_vencimiento:s.fecha_vencimiento});
       this.toast("Traslado registrado","success"); this.showHome();
-    } catch(e) { this.toast(e.message,"error"); } this.loading(false);
+    } catch(e) { 
+        this.toast(e.message,"error"); 
+    } finally {
+        this.loading(false);
+    }
   },
 
   async viewInventario() {
@@ -1356,13 +1391,15 @@ const MWMS = {
   async startIv(id) {
     this.loading(true);
     try {
-      // Consultar Versión 2: Detalles de Sesión
       const r = await mApi('GET', '/v2/inventario/sesiones/' + id);
       const c = r.data || r;
       this._op = { ...c, l: [] };
       this.renderIv();
-    } catch(e) { this.toast(e.message, "error"); }
-    this.loading(false);
+    } catch(e) { 
+        this.toast(e.message, "error"); 
+    } finally {
+        this.loading(false);
+    }
   },
 
   renderIv() {
@@ -1403,7 +1440,6 @@ const MWMS = {
     const i = document.getElementById('m-iv-scan'); const q = i.value.trim(); if(!q) return;
     this.loading(true);
     try {
-      // 1. Si no tenemos ubicación, ver si es una
       if (!this._curLoc) {
           const rl = await mApi('GET', '/param/ubicaciones?codigo=' + encodeURIComponent(q));
           const loc = Array.isArray(rl.data) ? rl.data.find(x => (x.codigo||'').toUpperCase() === q.toUpperCase()) : null;
@@ -1414,7 +1450,6 @@ const MWMS = {
               this.toast("Ubicación no válida o no encontrada", "error");
           }
       } else {
-          // 2. Ya tenemos ubicación, buscamos producto
           const rp = await mApi('GET', '/odc/buscar-producto?q=' + encodeURIComponent(q));
           const prods = rp.data || [];
           const prod = prods.find(p => p.codigo_interno === q || p.codigo_ean === q || (prods.length === 1));
@@ -1442,8 +1477,11 @@ const MWMS = {
                       }
                       document.getElementById('m-iv-header').textContent = "DIGITE O ESCANEE LA UBICACIÓN";
                       this.renderIv();
-                  } catch(e) { this.toast(e.message, "error"); }
-                  this.loading(false);
+                  } catch(e) { 
+                      this.toast(e.message, "error"); 
+                  } finally {
+                      this.loading(false);
+                  }
               });
           } else {
               this.toast("Producto no reconocido", "error");
@@ -1451,8 +1489,11 @@ const MWMS = {
               i.focus();
           }
       }
-    } catch(e) { this.toast(e.message, "error"); }
-    this.loading(false);
+    } catch(e) { 
+        this.toast(e.message, "error"); 
+    } finally {
+        this.loading(false);
+    }
   },
 
   _ivTimeout: null,
@@ -2075,8 +2116,11 @@ const MWMS = {
       });
       this.toast("Novedad reportada", "warning");
       this.viewPicking();
-    } catch(e) { this.toast(e.message, "error"); }
-    this.loading(false);
+    } catch(e) { 
+        this.toast(e.message, "error"); 
+    } finally {
+        this.loading(false);
+    }
   },
 
   async doPKScan(d) {
@@ -2103,8 +2147,11 @@ const MWMS = {
       });
       this.toast("Línea confirmada", "success");
       this.goPK(d.orden.id);
-    } catch(e) { this.toast(e.message, "error"); }
-    this.loading(false);
+    } catch(e) { 
+        this.toast(e.message, "error"); 
+    } finally {
+        this.loading(false);
+    }
   },
 
   // ── CERTIFICACIÓN ──
@@ -2155,8 +2202,11 @@ const MWMS = {
       const r = await mApi('POST', '/planillas/cert/iniciar', { archivo_id: archivoId, numero_planilla: numeroPlanilla });
       this._op = { cert: r.data };
       this.renderCert();
-    } catch(e) { this.toast(e.message, "error"); }
-    this.loading(false);
+    } catch(e) { 
+        this.toast(e.message, "error"); 
+    } finally {
+        this.loading(false);
+    }
   },
 
   renderCert() {
@@ -2217,16 +2267,15 @@ const MWMS = {
       const r = await mApi('POST', `/planillas/cert/${this._op.cert.id}/linea`, { ean: ean, cantidad: 1 });
       this.toast(r.mensaje, r.es_completo ? 'success' : 'info');
       
-      // Update local state and redraw line safely
       const detIdx = this._op.cert.detalles.findIndex(d => d.id === r.det_id);
       if (detIdx !== -1) {
         this._op.cert.detalles[detIdx].cantidad_certificada = r.cantidad_nueva;
         this._op.cert.detalles[detIdx].es_correcto = r.es_completo;
-        this.renderCert(); // Full redraw for progress update
+        this.renderCert();
       }
     } catch(e) {
       this.toast(e.message, 'error');
-      this.pA(); // Sound error
+      this.pA();
     } finally {
       this.loading(false);
     }
@@ -2258,8 +2307,11 @@ const MWMS = {
       const r = await mApi('POST', `/planillas/cert/${d.cert.id}/finalizar`, {});
       this.toast(r.hay_novedad ? '⚠ Certificación con novedades' : '✓ Certificación completada', r.hay_novedad ? 'warning' : 'success');
       this.showHome();
-    } catch(e) { this.toast(e.message, "error"); }
-    this.loading(false);
+    } catch(e) { 
+        this.toast(e.message, "error"); 
+    } finally {
+        this.loading(false);
+    }
   },
 
   // ── REABASTECIMIENTO (MONTACARGAS) ──
@@ -2286,8 +2338,11 @@ const MWMS = {
     try {
       await mApi('POST', `/picking/reabast/${id}/completar`);
       this.toast("Completado", "success"); this.viewReabast();
-    } catch(e) { this.toast(e.message, "error"); }
-    this.loading(false);
+    } catch(e) { 
+        this.toast(e.message, "error"); 
+    } finally {
+        this.loading(false);
+    }
   },
 
   openSearch(cb, t, mode='prod') {
@@ -2318,7 +2373,34 @@ const MWMS = {
   confirmDateVerify(){ this.closeDateVerify(); this._dCb(document.getElementById('m-date-1').value); },
   closeDateVerify(){ document.getElementById('m-modal-date').style.display='none'; },
   pQty(p,cb){ const q=prompt("Cantidad para "+p.nombre+":","1"); if(parseInt(q)>0)cb(parseInt(q)); else this.toast("Invalida","error"); },
-  loading(s){ let l=document.getElementById('m-loading'); if(s&&!l)document.body.insertAdjacentHTML('beforeend','<div id="m-loading" style="position:fixed;inset:0;background:rgba(255,255,255,.7);z-index:90000;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#1a56db;"><i class="fa-solid fa-spinner fa-spin"></i></div>'); else if(!s&&l)l.remove(); },
+  _loadTm: null,
+  loading(s){ 
+      let l=document.getElementById('m-loading'); 
+      if(s){
+          if(!l) {
+              document.body.insertAdjacentHTML('beforeend',`
+                <div id="m-loading" style="position:fixed;inset:0;background:rgba(255,255,255,.7);z-index:90000;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:2rem;color:#1a56db;">
+                  <i class="fa-solid fa-spinner fa-spin"></i>
+                  <p style="font-size:.8rem;color:#64748b;margin-top:10px;font-weight:700;">PROCESANDO...</p>
+                  <button id="m-loading-close" onclick="MWMS.loading(false)" 
+                    style="display:none;margin-top:20px;background:#f1f5f9;border:1px solid #cbd5e1;padding:8px 16px;border-radius:8px;font-size:.7rem;color:#475569;font-weight:700;cursor:pointer;">
+                    FORZAR CIERRE (ESC)
+                  </button>
+                </div>`);
+          }
+          // Temporizador de seguridad: si tarda > 5s, mostrar botón de cierre
+          clearTimeout(this._loadTm);
+          this._loadTm = setTimeout(() => {
+              const btn = document.getElementById('m-loading-close');
+              if (btn) btn.style.display = 'block';
+          }, 5000);
+          // Si tarda > 30s, cerrar solo
+          setTimeout(() => { if (document.getElementById('m-loading')) this.loading(false); }, 30000);
+      } else {
+          if(l) l.remove();
+          clearTimeout(this._loadTm);
+      }
+  },
   toast(m,t='info'){ const c=document.getElementById('m-toast'), e=document.createElement('div'); e.className='m-toast-item '+t; e.innerHTML=m; c.appendChild(e); setTimeout(()=>{e.style.opacity='0';setTimeout(()=>e.remove(),500);},3000); },
   esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); },
   showNotif() { this.viewNotifications(); }
