@@ -57,6 +57,9 @@
         <div class="header-subtitle" id="m-subtitle"></div>
       </div>
       <div class="header-actions">
+        <button class="header-icon-btn" onclick="location.reload(true)" title="Actualizar APP">
+          <i class="fa-solid fa-arrows-rotate"></i>
+        </button>
         <button class="header-icon-btn" onclick="MWMS.showNotif()" style="position:relative;">
           <i class="fa-solid fa-bell"></i>
           <span class="notif-badge-mobile hidden" id="m-notif-badge">0</span>
@@ -339,7 +342,13 @@ const MWMS = {
     document.getElementById('m-content').innerHTML = `
       <div class="op-view">
         <div style="margin-bottom:15px;"><h2 style="font-size:1.1rem;font-weight:800;">Hola, ${this.esc(_mUser.nombre.split(' ')[0])}!</h2><p style="font-size:.75rem;color:#64748b;">Seleccione una operación:</p></div>
-        <div class="module-grid-mobile">${mods.map(m=>`<button class="module-btn-mobile" onclick="MWMS.${m.a}${m.a.includes('(')?'':'()'}" id="mod-btn-${m.id}"><div class="module-icon-circle ${m.c}"><i class="fa-solid ${m.i}"></i></div><span class="module-label">${m.l}</span></button>`).join('')}</div>
+        <div class="module-grid-mobile">
+          ${mods.map(m=>`<button class="module-btn-mobile" onclick="MWMS.${m.a}${m.a.includes('(')?'':'()'}" id="mod-btn-${m.id}"><div class="module-icon-circle ${m.c}"><i class="fa-solid ${m.i}"></i></div><span class="module-label">${m.l}</span></button>`).join('')}
+          <button class="module-btn-mobile" onclick="location.reload(true)">
+            <div class="module-icon-circle secondary"><i class="fa-solid fa-arrows-rotate"></i></div>
+            <span class="module-label">Actualizar APP</span>
+          </button>
+        </div>
       </div>`;
   },
 
@@ -1281,34 +1290,70 @@ const MWMS = {
     document.getElementById('m-content').innerHTML = `<div class="op-view"><div class="op-card"><b>Origen</b><input type="text" id="m-t-o" class="m-input-full"><div id="m-t-s"></div></div><div id="m-t-a" class="op-card" style="display:none"><b>Destino</b><input type="text" id="m-t-d" class="m-input-full"><br><b>Cant</b><input type="number" id="m-t-q" class="m-input-full"><button class="m-btn primary full" onclick="MWMS.doT()">Mover</button></div></div>`;
     const i=document.getElementById('m-t-o'); i.focus(); i.onkeydown=e=>{if(e.key==='Enter')this.lTS();};
   },
-  async lTS() {
-    const q=document.getElementById('m-t-o').value.trim(); if(!q) return;
-    this.loading(true);
+  async lTS(preSelected = false) {
+    let locs = [];
+    if (preSelected && this._tmpLoc) {
+        locs = [this._tmpLoc];
+        this._tmpLoc = null;
+    } else {
+        const q=document.getElementById('m-t-o').value.trim(); if(!q) return;
+        this.loading(true);
+        try {
+            const rl = await mApi('GET','/param/ubicaciones?codigo='+encodeURIComponent(q));
+            locs = Array.isArray(rl.data) ? rl.data : [];
+        } catch(e) { this.toast(e.message, "error"); this.loading(false); return; }
+    }
+
     try {
-      const rl=await mApi('GET','/param/ubicaciones?codigo='+encodeURIComponent(q));
-      const loc = Array.isArray(rl.data) ? rl.data.find(x=>x.codigo===q) : null;
-      if(!loc) throw new Error("Ubicación '"+q+"' no encontrada");
+      if(locs.length === 0) throw new Error("Ubicación no encontrada");
       
-      const rs=await mApi('GET','/inventario/stock?ubicacion_id='+loc.id);
-      const stock = (rs.data||[]).filter(x => parseFloat(x.cantidad) > 0);
-      
-      if(stock.length === 0) throw new Error("Sin stock disponible en esa ubicación");
-      
-      if(stock.length === 1) {
-        this.selT(loc, stock[0]);
+      const selectUbic = async (loc) => {
+        this.loading(true);
+        try {
+            const rs=await mApi('GET','/inventario/stock?ubicacion_id='+loc.id);
+            const stock = (rs.data||[]).filter(x => parseFloat(x.cantidad) > 0);
+            
+            if(stock.length === 0) {
+                this.toast("Sin stock disponible en esa ubicación", "warning");
+                document.getElementById('m-t-s').innerHTML = '';
+                return;
+            }
+            
+            if(stock.length === 1) {
+              this.selT(loc, stock[0]);
+            } else {
+              document.getElementById('m-t-s').innerHTML = `
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-top:10px;">
+                  <p style="font-size:.7rem;font-weight:700;margin-bottom:8px;color:#64748b;">MÚLTIPLES LOTES ENCONTRADOS:</p>
+                  ${stock.map(s => `
+                    <div onclick="MWMS.selT(${JSON.stringify(loc).replace(/"/g,'&quot;')}, ${JSON.stringify(s).replace(/"/g,'&quot;')})" 
+                         style="padding:10px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:6px;cursor:pointer;">
+                      <div style="font-size:.8rem;font-weight:700;">${this.esc(s.producto_nombre)}</div>
+                      <div style="font-size:.65rem;color:#64748b;">Cant: ${s.cantidad} | Lote: ${s.lote||'N/A'}</div>
+                    </div>
+                  `).join('')}
+                </div>`;
+                document.getElementById('m-t-a').style.display='none';
+            }
+        } finally { this.loading(false); }
+      };
+
+      if (locs.length === 1) {
+          await selectUbic(locs[0]);
       } else {
-        document.getElementById('m-t-s').innerHTML = `
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-top:10px;">
-            <p style="font-size:.7rem;font-weight:700;margin-bottom:8px;color:#64748b;">MÚLTIPLES LOTES ENCONTRADOS:</p>
-            ${stock.map(s => `
-              <div onclick="MWMS.selT(${JSON.stringify(loc).replace(/"/g,'&quot;')}, ${JSON.stringify(s).replace(/"/g,'&quot;')})" 
-                   style="padding:10px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:6px;cursor:pointer;">
-                <div style="font-size:.8rem;font-weight:700;">${this.esc(s.producto_nombre)}</div>
-                <div style="font-size:.65rem;color:#64748b;">Cant: ${s.cantidad} | Lote: ${s.lote||'N/A'}</div>
-              </div>
-            `).join('')}
-          </div>`;
-          document.getElementById('m-t-a').style.display='none';
+          // Mostrar lista de ubicaciones para seleccionar
+          document.getElementById('m-t-s').innerHTML = `
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-top:10px;">
+              <p style="font-size:.7rem;font-weight:700;margin-bottom:8px;color:#64748b;">SELECCIONE LA UBICACIÓN:</p>
+              ${locs.map(l => `
+                <div onclick='MWMS._tmpLoc=${JSON.stringify(l).replace(/"/g,'&quot;')}; MWMS.lTS(true)' 
+                     style="padding:10px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:6px;cursor:pointer;">
+                  <div style="font-size:.8rem;font-weight:700;">${this.esc(l.codigo)}</div>
+                  <div style="font-size:.65rem;color:#64748b;">${this.esc(l.descripcion || 'Sin descripción')}</div>
+                </div>
+              `).join('')}
+            </div>`;
+            document.getElementById('m-t-a').style.display='none';
       }
     } catch(e) { 
         this.toast(e.message,"error"); 
@@ -1339,6 +1384,7 @@ const MWMS = {
         this.loading(false);
     }
   },
+
 
   async viewInventario() {
     document.getElementById('m-title').textContent='Mis Tareas'; document.getElementById('m-content').innerHTML='Cargando asignaciones...';
@@ -1442,20 +1488,27 @@ const MWMS = {
     try {
       if (!this._curLoc) {
           const rl = await mApi('GET', '/param/ubicaciones?codigo=' + encodeURIComponent(q));
-          const loc = Array.isArray(rl.data) ? rl.data.find(x => (x.codigo||'').toUpperCase() === q.toUpperCase()) : null;
+          const locs = Array.isArray(rl.data) ? rl.data : [];
           
-          if (loc) {
-              this.selectIvLocation(loc);
+          if (locs.length === 1) {
+              this.selectIvLocation(locs[0]);
+          } else if (locs.length > 1) {
+              // Mostrar lista de ubicaciones
+              const container = document.getElementById('m-iv-suggestions-list');
+              document.getElementById('m-iv-suggestions').style.display = 'block';
+              container.innerHTML = locs.map(l => `
+                <div class="list-item" onclick="MWMS.selectIvLocation(${JSON.stringify(l).replace(/"/g,'&quot;')}); document.getElementById('m-iv-suggestions').style.display='none';">
+                   <b>${this.esc(l.codigo)}</b><br><small>${this.esc(l.descripcion || 'Sin descripción')}</small>
+                </div>
+              `).join('');
           } else {
               this.toast("Ubicación no válida o no encontrada", "error");
           }
       } else {
           const rp = await mApi('GET', '/odc/buscar-producto?q=' + encodeURIComponent(q));
           const prods = rp.data || [];
-          const prod = prods.find(p => p.codigo_interno === q || p.codigo_ean === q || (prods.length === 1));
 
-          if (prod) {
-              const p = prod;
+          const startCapture = (p) => {
               const u = this._curLoc;
               this.openCapture(p, async r => {
                   this.loading(true);
@@ -1483,6 +1536,20 @@ const MWMS = {
                       this.loading(false);
                   }
               });
+          };
+
+          if (prods.length === 1) {
+              startCapture(prods[0]);
+          } else if (prods.length > 1) {
+              // Mostrar lista de productos encontrados
+              const container = document.getElementById('m-iv-suggestions-list');
+              document.getElementById('m-iv-suggestions').style.display = 'block';
+              document.getElementById('m-iv-header').textContent = "SELECCIONE PRODUCTO:";
+              container.innerHTML = prods.map(p => `
+                <div class="list-item" onclick="document.getElementById('m-iv-suggestions').style.display='none'; MWMS._tmpP=${JSON.stringify(p).replace(/"/g,'&quot;')}; MWMS.startIvCaptureFromList();">
+                   <b>${this.esc(p.nombre)}</b><br><small>Ref: ${p.codigo_interno} | EAN: ${p.codigo_ean || 'N/A'}</small>
+                </div>
+              `).join('');
           } else {
               this.toast("Producto no reconocido", "error");
               i.value = "";
@@ -1494,6 +1561,31 @@ const MWMS = {
     } finally {
         this.loading(false);
     }
+  },
+
+  _tmpP: null,
+  startIvCaptureFromList() {
+      if(!this._tmpP) return;
+      const p = this._tmpP;
+      this._tmpP = null;
+      const u = this._curLoc;
+      this.openCapture(p, async r => {
+          this.loading(true);
+          try {
+              await mApi('POST', `/v2/inventario/sesiones/${this._op.id}/conteo-manual`, {
+                  producto_codigo: p.codigo_interno,
+                  ubicacion_codigo: u.codigo,
+                  cantidad: r.q,
+                  lote: r.l,
+                  fecha_vencimiento: r.fv,
+                  ronda: this._op.ronda_actual || 1
+              });
+              this.toast("Contado OK (V2)", "success");
+              this._curLoc = null;
+              this.renderIv();
+          } catch(e) { this.toast(e.message, "error"); }
+          finally { this.loading(false); }
+      });
   },
 
   _ivTimeout: null,
@@ -1568,7 +1660,19 @@ const MWMS = {
     const r=await mApi('GET','/notificaciones'); const items=r.data||[];
     document.getElementById('m-content').innerHTML = `<div class="op-view">${items.length===0?'<p>Sin tareas</p>':items.map(n=>`<div class="op-card ${n.leido?'':'unread'}" style="border-left:4px solid ${n.prioridad==='Alta'?'#ef4444':'#3b82f6'}" onclick="MWMS.opT(${n.id},'${n.modulo}')"><b>${this.esc(n.titulo)}</b><br><small>${this.esc(n.mensaje)}</small></div>`).join('')}</div>`;
   },
-  async opT(id,mod) { await mApi('PUT','/notificaciones/'+id+'/leer'); this.chkN(); if(mod==='Recepcion') this.viewRecO(); else if(mod==='Picking') this.viewPicking(); else this.showHome(); },
+  async opT(id,mod) { 
+    try {
+      await mApi('PUT','/notificaciones/'+id+'/leer'); 
+      this.chkN(); 
+      // Si estamos viendo las notificaciones, refrescar la lista para que desaparezca la leída
+      if (document.getElementById('nav-notif').classList.contains('active')) {
+          this.viewNotifications();
+      }
+      if(mod==='Recepcion') this.viewRecO(); 
+      else if(mod==='Picking') this.viewPicking(); 
+      else this.showHome(); 
+    } catch(e) { this.toast(e.message, "error"); }
+  },
 
   // ── CITAS / YMS ──
   async viewCitas() {

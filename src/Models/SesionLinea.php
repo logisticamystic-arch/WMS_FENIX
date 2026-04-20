@@ -26,7 +26,7 @@ class SesionLinea extends Model
         'cantidad_contada', 'cantidad_sistema', 'diferencia',
         'hora_conteo',
         'cantidad_original', 'editado_por', 'editado_at', 'motivo_edicion',
-        'estado', 'eliminado_por', 'eliminado_at',
+        'estado', 'eliminado_por', 'eliminado_at', 'ajustado',
     ];
 
     protected $casts = [
