@@ -1286,8 +1286,40 @@ const MWMS = {
   },
 
   viewTrans() {
+    this._td = {};
     document.getElementById('m-title').textContent='Traslado';
-    document.getElementById('m-content').innerHTML = `<div class="op-view"><div class="op-card"><b>Origen</b><input type="text" id="m-t-o" class="m-input-full"><div id="m-t-s"></div></div><div id="m-t-a" class="op-card" style="display:none"><b>Destino</b><input type="text" id="m-t-d" class="m-input-full"><br><b>Cant</b><input type="number" id="m-t-q" class="m-input-full"><button class="m-btn primary full" onclick="MWMS.doT()">Mover</button></div></div>`;
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        <div class="op-card">
+          <b>Ubicación Origen</b>
+          <input type="text" id="m-t-o" class="m-input-full" placeholder="Scan Origen..." autocomplete="off">
+          <div id="m-t-s"></div>
+        </div>
+        <div id="m-t-a" class="op-card" style="display:none">
+          <div id="m-t-prod-info" style="margin-bottom:12px;"></div>
+          
+          <div style="margin-bottom:12px;">
+            <b>Ubicación Destino</b>
+            <div id="m-t-d-locked" style="display:none; background:#dcfce7; padding:8px; border-radius:6px; margin-top:4px; border:1px solid #86efac; display:flex; justify-content:space-between; align-items:center;">
+              <span id="m-t-d-val" style="font-weight:800; color:#15803d;">-</span>
+              <small onclick="MWMS._clearTDest()" style="color:#ef4444; font-weight:700; cursor:pointer;">[Cambiar]</small>
+            </div>
+            <div id="m-t-d-input-wrap">
+              <input type="text" id="m-t-d" class="m-input-full" placeholder="Buscar Destino..." oninput="MWMS.validateTransDest(this.value)" autocomplete="off">
+              <div id="m-t-d-suggestions" style="display:none; background:#fff; border:1px solid #e2e8f0; border-radius:10px; margin-top:6px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); max-height:160px; overflow-y:auto; z-index:100; position:relative;">
+                <div id="m-t-d-suggestions-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <b>Cantidad a Mover</b>
+          <input type="number" id="m-t-q" class="m-input-full" placeholder="0">
+          
+          <button class="m-btn primary full" style="margin-top:15px; padding:15px; font-weight:800;" onclick="MWMS.doT()">
+            <i class="fa-solid fa-truck-ramp-box"></i> EJECUTAR TRASLADO
+          </button>
+        </div>
+      </div>`;
     const i=document.getElementById('m-t-o'); i.focus(); i.onkeydown=e=>{if(e.key==='Enter')this.lTS();};
   },
   async lTS(preSelected = false) {
@@ -1363,21 +1395,90 @@ const MWMS = {
     }
   },
   selT(loc, item) {
-    this._td={o:loc,i:item};
-    document.getElementById('m-t-s').innerHTML='<div style="background:#f1f5f9;padding:12px;border-radius:8px;font-size:.8rem;margin-top:10px;border-left:4px solid #3b82f6;"><b>'+this.esc(item.producto_nombre)+'</b><br><small>Disp: '+item.cantidad+' | Lote: '+(item.lote||'N/A')+'</small></div>';
+    this._td={o:loc, i:item, d:null};
+    document.getElementById('m-t-prod-info').innerHTML='<div style="background:#f1f5f9;padding:12px;border-radius:8px;font-size:.8rem;border-left:4px solid #3b82f6;"><b>'+this.esc(item.producto_nombre)+'</b><br><small>Disp: '+item.cantidad+' | Lote: '+(item.lote||'N/A')+'</small></div>';
     document.getElementById('m-t-a').style.display='block'; 
     document.getElementById('m-t-q').value=item.cantidad;
     document.getElementById('m-t-d').focus();
   },
+
+  _tDestTimeout: null,
+  validateTransDest(q) {
+    clearTimeout(this._tDestTimeout);
+    if (!q || q.length < 2) {
+      document.getElementById('m-t-d-suggestions').style.display = 'none';
+      return;
+    }
+    this._tDestTimeout = setTimeout(async () => {
+      try {
+        const r = await mApi('GET', '/param/ubicaciones?codigo=' + encodeURIComponent(q));
+        const locs = Array.isArray(r.data) ? r.data : [];
+        const container = document.getElementById('m-t-d-suggestions');
+        const list = document.getElementById('m-t-d-suggestions-list');
+        if (locs.length > 0) {
+          list.innerHTML = locs.slice(0, 6).map(loc => `
+            <div style="padding:10px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center;" 
+                 onclick="MWMS.selectTransDest(${JSON.stringify(loc).replace(/"/g,'&quot;')})">
+              <span style="font-weight:700; color:#1e293b;">${this.esc(loc.codigo)}</span>
+              <small style="color:#10b981; font-weight:700;">${this.esc(loc.tipo_ubicacion)}</small>
+            </div>
+          `).join('');
+          container.style.display = 'block';
+        } else {
+          container.style.display = 'none';
+        }
+      } catch(e) { console.error(e); }
+    }, 350);
+  },
+
+  selectTransDest(loc) {
+    this._td.d = loc;
+    document.getElementById('m-t-d-input-wrap').style.display = 'none';
+    document.getElementById('m-t-d-locked').style.display = 'flex';
+    document.getElementById('m-t-d-val').textContent = loc.codigo;
+    document.getElementById('m-t-q').focus();
+    this.toast("Destino fijado: " + loc.codigo, "success");
+  },
+
+  _clearTDest() {
+    this._td.d = null;
+    document.getElementById('m-t-d-locked').style.display = 'none';
+    const wrap = document.getElementById('m-t-d-input-wrap');
+    wrap.style.display = 'block';
+    const i = document.getElementById('m-t-d');
+    i.value = "";
+    i.focus();
+  },
   async doT() {
-    const d=document.getElementById('m-t-d').value.trim(); const q=document.getElementById('m-t-q').value; this.loading(true);
+    const q=document.getElementById('m-t-q').value;
+    const dest = this._td.d;
+    if(!dest) {
+       // Si no seleccionó de la lista, intentar validar lo que hay en el input
+       const dVal = document.getElementById('m-t-d').value.trim();
+       if(!dVal) return this.toast("Seleccione un destino", "warning");
+       this.loading(true);
+       try {
+         const rl=await mApi('GET','/param/ubicaciones?codigo='+encodeURIComponent(dVal));
+         const locs = Array.isArray(rl.data) ? rl.data : [];
+         if(locs.length === 0) throw new Error("Ubicación destino no encontrada");
+         this._td.d = locs[0];
+       } catch(e) { this.toast(e.message, "error"); this.loading(false); return; }
+    }
+    
+    this.loading(true);
     try {
-      const rl=await mApi('GET','/param/ubicaciones?codigo='+encodeURIComponent(d));
-      const loc = Array.isArray(rl.data) ? rl.data.find(x=>x.codigo===d) : null;
-      if(!loc) throw new Error("Destino '"+d+"' no encontrado");
       const s = this._td.i;
-      await mApi('POST','/inventario/traslado',{producto_id:s.producto_id, ubicacion_origen_id:this._td.o.id, ubicacion_destino_id:loc.id, cantidad:q, lote:s.lote, fecha_vencimiento:s.fecha_vencimiento});
-      this.toast("Traslado registrado","success"); this.showHome();
+      const loc = this._td.d;
+      await mApi('POST','/inventario/traslado',{
+        producto_id: s.producto_id, 
+        ubicacion_origen_id: this._td.o.id, 
+        ubicacion_destino_id: loc.id, 
+        cantidad: q, 
+        lote: s.lote, 
+        fecha_vencimiento: s.fecha_vencimiento
+      });
+      this.toast("Traslado registrado correctamente","success"); 
+      this.showHome();
     } catch(e) { 
         this.toast(e.message,"error"); 
     } finally {

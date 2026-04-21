@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    WMS Desktop — Módulo RECEPCIÓN & YMS (Enterprise Edition)
    ============================================================ */
 WMS_MODULES.recepcion = {
@@ -2150,6 +2150,42 @@ WMS_MODULES.recepcion = {
           </div>
         </div>`);
     } catch(e) { console.error(e); WMS.toast('error','Error cargando devoluciones'); }
+  },
+
+  async verDevolucion(id) {
+    WMS.spinner();
+    try {
+      const r = await API.get('/devoluciones/'+id);
+      const dev = r.data || r;
+      const detalles = dev.detalles || dev.devolucion_detalles || [];
+      const tipoLabel = {Faltante:'Faltante',Averia:'Avería',Calidad:'Calidad',AProveedorAveria:'Avería Proveedor',DevolucionRecepcion:'Recepción'}[dev.tipo]||dev.tipo;
+      
+      const rows = detalles.map((d, i) => `<tr>
+        <td style="font-weight:600">${WMS.esc(d.producto?.nombre || 'Producto Múltiple')}</td>
+        <td style="text-align:center">${WMS.formatNum(d.cantidad)}</td>
+        <td style="text-align:center"><span class="badge badge-light">${WMS.esc(d.motivo)}</span></td>
+        <td>${WMS.esc(d.detalle_motivo || '-')}</td>
+      </tr>`).join('');
+
+      WMS.showModal('Detalle Devolución — ' + WMS.esc(dev.numero_devolucion), `
+        <div class="pro-kpi-grid" style="grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+          <div class="pro-kpi-card accent-blue" style="padding:10px;"><div class="pro-kpi-label">Proveedor</div><div style="font-weight:700">${WMS.esc(dev.proveedor||'-')}</div></div>
+          <div class="pro-kpi-card accent-amber" style="padding:10px;"><div class="pro-kpi-label">Tipo</div><div style="font-weight:700">${tipoLabel}</div></div>
+          <div class="pro-kpi-card accent-green" style="padding:10px;"><div class="pro-kpi-label">Estado</div><div style="font-weight:700">${WMS.esc(dev.estado)}</div></div>
+          <div class="pro-kpi-card accent-red" style="padding:10px;"><div class="pro-kpi-label">Motivo Gral</div><div style="font-weight:700">${WMS.esc(dev.motivo_general||'-')}</div></div>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead><tr><th>Producto</th><th style="text-align:center">Cant</th><th style="text-align:center">Motivo Exacto</th><th>Observación</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="4" class="text-center">Sin detalles</td></tr>'}</tbody>
+          </table>
+        </div>
+      `, `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>
+          <button class="btn btn-warning-soft" onclick="WMS_MODULES.recepcion.verFotosDevolucion(${dev.id})"><i class="fa-solid fa-camera"></i> Ver Evidencia</button>
+          <button class="btn btn-primary" onclick="WMS_MODULES.recepcion.imprimirDevolucion(${dev.id})"><i class="fa-solid fa-print"></i> Imprimir</button>`);
+    } catch (e) {
+      WMS.toast('error', 'Error al cargar detalle: ' + e.message);
+    }
   },
 
   async verFotosDevolucion(id) {

@@ -19,6 +19,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="assets/js/DataCache.js"></script>
   <script src="assets/js/CacheHelpers.js"></script>
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/utils.js"></script>
 
   <!-- App CSS -->
   <link rel="stylesheet" href="assets/css/desktop.css">
@@ -731,124 +733,11 @@
   </style>
 
   <!-- ======================= SCRIPTS ======================= -->
-  <!-- API client -->
   <script>
-    const API_BASE = '/WMS_PROORIENTE/public/api';
-    let _wmsToken = localStorage.getItem('wms_token') || '';
+    // _wmsToken y API_BASE ya se definen en api.js
     let _wmsUser = JSON.parse(localStorage.getItem('wms_user') || 'null');
     let _wmsPermisos = JSON.parse(localStorage.getItem('wms_permisos') || '[]');
 
-    // ── API Client with Timeout & Retry Logic ──
-    const API_CONFIG = {
-      timeout: 12000,        // 12 segundos desktop (más ágil)
-      mobileTimeout: 25000,  // 25 segundos mobile
-      maxRetries: 2,         // 2 reintentos (menos ruido)
-      retryDelay: 600,       // 600ms inicial
-      backoffFactor: 1.8,    // exponencial moderado: .6s, 1.1s
-    };
-
-    // Detectar si es mobile
-    const IS_MOBILE = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    
-    async function apiCall(method, path, data = null, opts = {}) {
-      const timeout = opts.timeout || (IS_MOBILE ? API_CONFIG.mobileTimeout : API_CONFIG.timeout);
-      const maxRetries = opts.maxRetries !== undefined ? opts.maxRetries : API_CONFIG.maxRetries;
-      
-      let lastError;
-      let notifiedUser = false;
-      
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          const url = API_BASE + path;
-          const headers = { 'Content-Type': 'application/json' };
-          if (_wmsToken) headers['Authorization'] = 'Bearer ' + _wmsToken;
-          
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), timeout);
-          
-          const cfg = { 
-            method, 
-            headers,
-            signal: controller.signal
-          };
-          if (data) cfg.body = JSON.stringify(data);
-          
-          const res = await fetch(url, cfg);
-          clearTimeout(timeoutId);
-          
-          if (res.status === 401) {
-            // Solo forzar logout si la app está activa (token existe). Evita loop.
-            if (_wmsToken) {
-              _wmsToken = '';
-              _wmsUser = null;
-              localStorage.removeItem('wms_token');
-              localStorage.removeItem('wms_user');
-              if (window.WMS) WMS.stopPolling();
-              setTimeout(() => { if (window.WMS) WMS.showLogin(); }, 50);
-            }
-            throw new Error('Sesión expirada. Inicie sesión nuevamente.');
-          }
-          
-          let json;
-          try {
-            json = await res.json();
-          } catch (err) {
-            throw new Error(`Error de servidor (${res.status})`);
-          }
-          
-          if (!res.ok) {
-            const errorMsg = json?.message || `Error de servidor (${res.status})`;
-            // Reintentar en errores 5xx (excepto 501)
-            if (res.status >= 500 && res.status !== 501 && attempt < maxRetries) {
-              const delay = API_CONFIG.retryDelay * Math.pow(API_CONFIG.backoffFactor, attempt - 1);
-              if (!notifiedUser && window.WMS) {
-                WMS.toast('warning', `Reintentando conexión (intento ${attempt}/${maxRetries})...`);
-                notifiedUser = true;
-              }
-              console.warn(`[API] Reintentando ${method} ${path} en ${delay}ms (intento ${attempt}/${maxRetries})`);
-              await new Promise(r => setTimeout(r, delay));
-              continue;
-            }
-            throw new Error(errorMsg);
-          }
-          
-          if (json && json.error) {
-            throw new Error(json.message || 'Error de servidor');
-          }
-          
-          return json;
-        } catch (error) {
-          lastError = error;
-          
-          // Reintentar en errores de red o timeout
-          if ((error.name === 'AbortError' || !navigator.onLine || error.message.includes('fetch')) && attempt < maxRetries) {
-            const delay = API_CONFIG.retryDelay * Math.pow(API_CONFIG.backoffFactor, attempt - 1);
-            if (!notifiedUser && window.WMS) {
-              WMS.toast('warning', `Conexión lenta. Reintentando (intento ${attempt}/${maxRetries})...`);
-              notifiedUser = true;
-            }
-            console.warn(`[API] Reconectando ${method} ${path} en ${delay}ms (intento ${attempt}/${maxRetries})`, error.message);
-            await new Promise(r => setTimeout(r, delay));
-            continue;
-          }
-          
-          // No reintentar en otros errores
-          break;
-        }
-      }
-      
-      throw lastError || new Error('Error desconocido al conectar con el servidor');
-    }
-
-    const API = {
-      BASE_URL: API_BASE,
-      config: API_CONFIG,
-      get: (p, q = '', opts = {}) => apiCall('GET', p + (q ? '?' + q : ''), null, opts),
-      post: (p, d, opts = {}) => apiCall('POST', p, d, opts),
-      put: (p, d, opts = {}) => apiCall('PUT', p, d, opts),
-      delete: (p, opts = {}) => apiCall('DELETE', p, null, opts),
-      patch: (p, d, opts = {}) => apiCall('PATCH', p, d, opts),
-    };
 
     // ── Connectivity Monitor ──
     let _lastConnected = navigator.onLine;
@@ -1206,7 +1095,10 @@
             // Precargar todos los módulos en background para eliminar latencia en primer clic
             setTimeout(() => this._preloadModules(), 800);
           }
-        } catch (e) { errEl.textContent = 'Error de conexión. Verifique el servidor.'; errEl.style.display = 'block'; }
+        } catch (e) { 
+          errEl.textContent = e.message || 'Error de conexión. Verifique el servidor.'; 
+          errEl.style.display = 'block'; 
+        }
         btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Ingresar';
       },
 
@@ -1474,8 +1366,7 @@
           inventario: [
             {
               section: 'CONTEOS', items: [
-                { icon: 'fa-rotate', label: 'Inventario Cíclico', action: "WMS.nav('inventario','ciclico')" },
-                { icon: 'fa-list-ol', label: 'Inventario General', action: "WMS.nav('inventario','general')" },
+                { icon: 'fa-rotate', label: 'Admin Conteos', action: "WMS.nav('inventario','ciclico')" },
                 { icon: 'fa-upload', label: 'Cargue de Saldo', action: "WMS.nav('inventario','cargue')" },
               ]
             },
@@ -1894,24 +1785,10 @@
         }, true);
       },
 
-      // ── Toasts ────────────────────────────────────────────
-      toast(type = 'info', msg, title = '') {
-        const icons = { success: 'fa-circle-check', error: 'fa-circle-xmark', warning: 'fa-triangle-exclamation', info: 'fa-circle-info' };
-        const titles = { success: 'Éxito', error: 'Error', warning: 'Advertencia', info: 'Información' };
-        const container = document.getElementById('toast-container');
-        const el = document.createElement('div');
-        el.className = `toast ${type}`;
-        el.innerHTML = `<i class="fa-solid ${icons[type] || icons.info} toast-icon"></i>
-      <div class="toast-content">
-        <div class="toast-title">${title || titles[type] || 'Info'}</div>
-        <div class="toast-msg">${msg}</div>
-      </div>`;
-        container.appendChild(el);
-        setTimeout(() => el.remove(), 4500);
-      },
+
 
       // ── Utilidades ────────────────────────────────────────
-      esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); },
+
 
       tiempoRelativo(isoStr) {
         const diff = (Date.now() - new Date(isoStr)) / 1000;
@@ -1925,7 +1802,6 @@
       formatDateTime(s) { if (!s) return '-'; return new Date(s).toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); },
       formatMoney(n) { return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n || 0); },
       formatCurrency(n) { return this.formatMoney(n); },
-      formatNum(n) { return new Intl.NumberFormat('es-CO').format(n || 0); },
       formatTime(s) { if (!s) return '--:--'; const d = new Date(s); return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }); },
 
       hasPermiso(modulo, accion = 'ver') {
@@ -1957,9 +1833,7 @@
         document.getElementById('content-body').innerHTML = html;
       },
 
-      spinner(container = 'content-body') {
-        document.getElementById(container).innerHTML = '<div class="m-empty" style="padding:60px;"><div class="spinner spinner-lg" style="margin:0 auto;"></div></div>';
-      },
+
 
       toggleFullscreen() {
         if (!document.fullscreenElement) {
@@ -1971,9 +1845,7 @@
         }
       },
 
-      getToday() {
-        return new Date().toISOString().split('T')[0];
-      }
+
     };
 
     // ── Login event listeners ──────────────────────────────

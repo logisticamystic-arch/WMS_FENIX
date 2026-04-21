@@ -429,6 +429,7 @@ class PickingController extends BaseController
         $rows = Capsule::table('picking_faltantes as f')
             ->join('productos as p', 'f.producto_id', '=', 'p.id')
             ->leftJoin('orden_pickings as o', 'f.orden_picking_id', '=', 'o.id')
+            ->leftJoin('personal as aux', 'o.auxiliar_id', '=', 'aux.id')
             ->where('f.empresa_id',  $user->empresa_id)
             ->where('f.sucursal_id', $user->sucursal_id)
             ->whereBetween('f.created_at', [$ini . ' 00:00:00', $fin . ' 23:59:59'])
@@ -442,26 +443,28 @@ class PickingController extends BaseController
                 'p.nombre as producto_nombre',
                 'f.cantidad_solicitada',
                 Capsule::raw('(f.cantidad_solicitada - f.cantidad_faltante) as stock_disponible'),
-                'f.cantidad_faltante'
+                'f.cantidad_faltante',
+                'aux.nombre as auxiliar_nombre'
             )
             ->orderBy('f.created_at', 'desc')
             ->get();
 
         if (($params['export'] ?? '') === 'excel') {
-            $headers = ['Fecha', 'Planilla', 'Cliente', 'Asesor/Comercial',
+            $headers = ['Fecha', 'Planilla', 'Cliente', 'Asesor/Comercial', 'Auxiliar',
                         'Código', 'Producto', 'Solicitado', 'Stock Disponible', 'Faltante'];
             $data = $rows->map(fn($row) => [
                 substr($row->created_at, 0, 10),
                 $row->numero_planilla   ?? '—',
                 $row->cliente           ?? '—',
                 $row->asesor            ?? '—',
+                $row->auxiliar_nombre   ?? '—',
                 $row->producto_codigo   ?? '—',
                 $row->producto_nombre   ?? '—',
                 $row->cantidad_solicitada,
                 $row->stock_disponible,
                 $row->cantidad_faltante,
             ])->toArray();
-            return $this->exportCsv($res, $headers, $rows, 'faltantes_picking_' . date('Y-m-d'));
+            return $this->exportCsv($res, $headers, $data, 'faltantes_picking_' . date('Y-m-d'));
         }
 
         return $this->ok($res, $rows);

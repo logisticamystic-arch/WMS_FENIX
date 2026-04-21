@@ -106,7 +106,7 @@ abstract class BaseController
     protected function isSupervisorOrAbove($user): bool
     {
         $rol = strtolower($user->rol ?? '');
-        return in_array($rol, ['admin', 'supervisor']);
+        return strpos($rol, 'admin') !== false || strpos($rol, 'super') !== false;
     }
 
     /**

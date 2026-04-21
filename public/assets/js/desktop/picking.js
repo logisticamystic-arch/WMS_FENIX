@@ -24,8 +24,8 @@ WMS_MODULES.picking = {
       reporte: this.show_reporte,
     };
     (fn[s]?.bind(this) || fn.pedidos.bind(this))();
-    // Picking es proceso crítico: auto-refresh activo en pedidos, asignación y dashboard
-    if (['pedidos','asignacion','dashboard'].includes(s)) this.startAutoRefresh(s);
+    // Picking es proceso crítico: auto-refresh activo en pedidos y asignación (dashboard excluido localmente)
+    if (['pedidos','asignacion'].includes(s)) this.startAutoRefresh(s);
     else this.stopAutoRefresh();
   },
 
@@ -38,7 +38,6 @@ WMS_MODULES.picking = {
       const cur = WMS.currentSubModule;
       if (cur === 'pedidos')         this.show_pedidos(true);
       else if (cur === 'asignacion') this.show_asignacion(true);
-      else if (cur === 'dashboard')  this.show_dashboard(true);
       else                           this.stopAutoRefresh();
     }, 30000);
     this._updateAutoRefreshBadge(true);
@@ -236,15 +235,21 @@ WMS_MODULES.picking = {
       if (pr.estados.has('Completado') || pr.estados.has('Faltante')) {
          estadoFinal = (pr.estados.size === 1 || (pr.estados.size === 2 && pr.estados.has('Completado'))) ? "Cumplida" : "Parcial";
       }
+      
+      const pickingIniciado = pr.estados.has('Completado') || pr.estados.has('Parcial') || pr.estados.has('EnProceso') || (pr.cantidad_total > pr.cantidad_pendiente);
+      const prAux = pickingIniciado ? WMS.esc([...pr.auxiliares].join(', ') || '-') : '-';
+      const prHora = pickingIniciado ? (pr.hora_fin || '-') : '-';
+      const prDur = pickingIniciado && pr.hora_fin ? (durLine.str || '00:00:00') : '-';
+
       return `
       <tr style="border-bottom:1px solid #e2e8f0;">
         <td style="padding:5px 8px;"><b style="color:#1e293b">${WMS.esc(pr.nombre)}</b></td>
         <td style="padding:5px 8px;text-align:center;font-weight:600;">${WMS.formatNum(pr.cantidad_total)}</td>
         <td style="padding:5px 8px;text-align:center;">${this._fmtCantidad(pr.cantidad_total, pr.unidades_caja)}</td>
         <td style="padding:5px 8px;text-align:center;color:#dc3545;font-weight:600;">${WMS.formatNum(pr.cantidad_pendiente)}</td>
-        <td style="padding:5px 8px;text-align:center;font-size:11px;">${WMS.esc([...pr.auxiliares].join(', ') || '-')}</td>
-        <td style="padding:5px 8px;text-align:center;font-size:11px;color:#2563eb;font-weight:700;">${pr.hora_fin || '-'}</td>
-        <td style="padding:5px 8px;text-align:center;font-size:11px;color:#64748b;font-family:monospace;">${pr.hora_fin ? (durLine.str || '00:00:00') : '-'}</td>
+        <td style="padding:5px 8px;text-align:center;font-size:11px;">${prAux}</td>
+        <td style="padding:5px 8px;text-align:center;font-size:11px;color:#2563eb;font-weight:700;">${prHora}</td>
+        <td style="padding:5px 8px;text-align:center;font-size:11px;color:#64748b;font-family:monospace;">${prDur}</td>
         <td style="padding:5px 8px;text-align:center;">${stChip(estadoFinal)}</td>
       </tr>`;
     }).join('');
@@ -715,6 +720,8 @@ WMS_MODULES.picking = {
          <i class="fa-solid fa-check"></i> Asignar Ruta
        </button>`);
   },
+
+
 
   async _confirmarRuta(ordenIds) {
     const ruta = document.getElementById('ruta-input')?.value?.trim();
@@ -1361,62 +1368,85 @@ WMS_MODULES.picking = {
   },
 
   // ── FALTANTES ─────────────────────────────────────────────────────────────
-  async show_faltantes() {
-    WMS.setToolbar(`<button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking.show_faltantes()"><i class="fa-solid fa-rotate"></i> Actualizar</button>`);
+  async show_faltantes(verTodos = false) {
+    const f_inicio = document.getElementById('falt-f-ini')?.value || WMS.getToday();
+    const f_fin    = document.getElementById('falt-f-fin')?.value || WMS.getToday();
+    
+    WMS.setToolbar(`
+      <input type="date" id="falt-f-ini" class="form-control" style="width:130px; display:inline-block;" value="${f_inicio}">
+      <span style="font-size:12px;margin:0 5px;">-</span>
+      <input type="date" id="falt-f-fin" class="form-control" style="width:130px; display:inline-block;" value="${f_fin}">
+      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.picking.show_faltantes()" style="margin-left:8px;"><i class="fa-solid fa-search"></i> Buscar</button>
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking.show_faltantes()"><i class="fa-solid fa-rotate"></i> Actualizar</button>
+      <button class="btn btn-success btn-sm" onclick="WMS_MODULES.picking.exportarFaltantes()" style="margin-left:8px;"><i class="fa-solid fa-file-excel"></i> Exportar</button>
+    `);
+    
     WMS.spinner();
     try {
+      const qs = `fecha_inicio=${f_inicio}&fecha_fin=${f_fin}`;
       const [faltantes, reabast] = await Promise.all([
-        API.get('/picking/novedades-stock'),
+        API.get('/picking/novedades-stock', qs),
         API.get('/picking/reabastecimientos'),
       ]);
-      const falt = faltantes.data || faltantes || [];
+      const faltTotal = faltantes.data || faltantes || [];
+      const faltDisplay = verTodos ? faltTotal : faltTotal.slice(0, 10);
       const rea  = reabast.data  || reabast  || [];
-      const self = this;
+      
       WMS.setContent(`
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;">
           <div class="card">
-            <div class="card-header"><span class="card-title"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Faltantes de Stock (${falt.length})</span></div>
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="card-title"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Faltantes de Stock (${faltTotal.length})</span>
+              ${(!verTodos && faltTotal.length > 10) ? `<button class="btn btn-xs btn-outline-primary" onclick="WMS_MODULES.picking.show_faltantes(true)">Ver Todos</button>` : ''}
+              ${(verTodos && faltTotal.length > 10) ? `<button class="btn btn-xs btn-outline-secondary" onclick="WMS_MODULES.picking.show_faltantes(false)">Ver Top 10</button>` : ''}
+            </div>
             <div class="table-container">
-              <table class="data-table">
-                <thead><tr><th>Producto</th><th style="text-align:center;">Pedido</th><th style="text-align:center;">Disponible</th><th style="text-align:center;">Déficit</th><th>Reserva</th><th>Acción</th></tr></thead>
-                <tbody>${falt.map(f => {
-                  const ped   = f.cantidad_pedida      || 0;
-                  const disp  = f.cantidad_disponible  || 0;
-                  const reser = f.cantidad_en_reserva  || 0;
-                  const def   = Math.abs(ped - disp);
+              <table class="data-table" style="font-size:11px;">
+                <thead><tr>
+                   <th>Fecha/Planilla</th><th>Producto</th><th style="text-align:center;">Pedido</th><th style="text-align:center;">Disp.</th><th style="text-align:center;">Déficit</th><th>Auxiliar/Acción</th>
+                </tr></thead>
+                <tbody>${faltDisplay.map(f => {
+                  const ped   = f.cantidad_solicitada  || f.cantidad_pedida      || 0;
+                  const disp  = f.stock_disponible     || f.cantidad_disponible  || 0;
+                  const reser = f.cantidad_en_reserva  || 0; 
+                  const def   = f.cantidad_faltante    || Math.abs(ped - disp);
+                  const fechaStr = (f.created_at || '').substring(0,10) || '-';
                   return `<tr>
                     <td>
-                      <div style="font-weight:700;">${WMS.esc(f.producto||'-')}</div>
-                      <div style="font-size:10px;color:#64748b;">Planilla: ${WMS.esc(f.numero_planilla||'-')}</div>
+                      <div style="font-weight:700;">#${WMS.esc(f.numero_planilla||'-')}</div>
+                      <div style="color:#64748b;font-size:10px;">${fechaStr}</div>
                     </td>
-                    <td style="text-align:center;">${WMS.formatNum(ped)}</td>
+                    <td>
+                      <div style="font-weight:700;color:#1e293b;">${WMS.esc(f.producto_nombre||f.producto||'-')}</div>
+                      <div style="font-size:10px;color:#64748b;">${WMS.esc(f.producto_codigo||'-')}</div>
+                    </td>
+                    <td style="text-align:center;font-weight:600;">${WMS.formatNum(ped)}</td>
                     <td style="text-align:center;">${WMS.formatNum(disp)}</td>
                     <td style="text-align:center;"><span class="badge badge-danger">${WMS.formatNum(def)}</span></td>
                     <td style="text-align:center;">
-                        <span class="badge ${reser > 0 ? 'badge-success' : 'badge-secondary'}">${WMS.formatNum(reser)}</span>
-                    </td>
-                    <td style="text-align:center;">
+                        <span style="font-size:10px;font-weight:600;">${WMS.esc(f.auxiliar_nombre||'-')}</span><br>
                         ${reser > 0 ? `
-                        <button class="btn btn-xs btn-primary" onclick="WMS_MODULES.picking.autoReabastecer(${f.producto_id})" title="Sugerir Reabastecimiento">
-                            <i class="fa-solid fa-truck-moving"></i> Reabastecer
-                        </button>` : '<small style="color:#94a3b8;font-size:10px;">Sin reserva</small>'}
+                        <button class="btn btn-xs btn-primary mt-1" onclick="WMS_MODULES.picking.autoReabastecer(${f.producto_id})" title="Sugerir Reabastecimiento" style="padding:2px 5px;font-size:9px;">
+                            <i class="fa-solid fa-truck-moving"></i> Reabast.
+                        </button>` : '<span style="color:#94a3b8;font-size:9px;">Sin reserva</span>'}
                     </td>
                   </tr>`;
-                }).join('') || '<tr><td colspan="6" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes críticos</td></tr>'}
+                }).join('') || '<tr><td colspan="6" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en este rango</td></tr>'}
                 </tbody>
               </table>
+              ${(!verTodos && faltTotal.length > 10) ? `<div style="text-align:center;padding:10px;background:#f8fafc;font-size:11px;color:#64748b;">Mostrando 10 de ${faltTotal.length}</div>` : ''}
             </div>
           </div>
           <div class="card">
             <div class="card-header"><span class="card-title"><i class="fa-solid fa-rotate" style="color:#3b82f6;"></i> Tareas de Reabastecimiento (${rea.length})</span></div>
             <div class="table-container">
-              <table class="data-table">
+              <table class="data-table" style="font-size:11px;">
                 <thead><tr><th>Producto</th><th>Desde</th><th>Hacia</th><th>Cant.</th><th>Estado</th><th></th></tr></thead>
                 <tbody>${rea.map(t => `<tr>
-                  <td style="font-size:.8rem;font-weight:600;">${WMS.esc(t.producto||'-')}</td>
+                  <td style="font-weight:600;">${WMS.esc(t.producto||'-')}</td>
                   <td><code>${WMS.esc(t.ubicacion_origen||'-')}</code></td>
                   <td><code>${WMS.esc(t.ubicacion_destino||'-')}</code></td>
-                  <td class="text-center">${WMS.formatNum(t.cantidad||0)}</td>
+                  <td class="text-center" style="font-weight:700;">${WMS.formatNum(t.cantidad||0)}</td>
                   <td><span class="badge ${t.completada?'badge-success':'badge-warning'}">${t.completada?'Completado':'Pendiente'}</span></td>
                   <td>${!t.completada?`<button class="btn btn-xs btn-success" onclick="WMS_MODULES.picking.completarReabast(${t.id})"><i class="fa-solid fa-check"></i></button>`:''}</td>
                 </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin tareas activas</td></tr>'}
@@ -1425,7 +1455,20 @@ WMS_MODULES.picking = {
             </div>
           </div>
         </div>`);
-    } catch(e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error</p></div>'); }
+    } catch(e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de carga</p></div>'); }
+  },
+
+  exportarFaltantes() {
+    const f_inicio = document.getElementById('falt-f-ini')?.value || WMS.getToday();
+    const f_fin    = document.getElementById('falt-f-fin')?.value || WMS.getToday();
+    const url = WMS.API_URL + '/picking/novedades-stock?fecha_inicio='+f_inicio+'&fecha_fin='+f_fin+'&export=excel';
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   },
 
   async completarReabast(id) {
@@ -1442,6 +1485,7 @@ WMS_MODULES.picking = {
   _timerInterval: null,
 
   async show_dashboard(silent = false) {
+    WMS.currentSubModule = 'dashboard';
     const isStandalone = document.body.classList.contains('standalone-mode');
     WMS.setToolbar(`
       <button class="pro-btn-refresh" onclick="WMS_MODULES.picking.show_dashboard()">
@@ -1806,8 +1850,7 @@ WMS_MODULES.picking = {
   },
 
   _openTVDashboard() {
-    const url = `index.html?view=picking-dash&standalone=1`;
-    window.open(url, '_blank');
+    window.open('tv.html', '_blank');
   },
   _tvRefreshInterval: null,
 };

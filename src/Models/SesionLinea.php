@@ -19,6 +19,8 @@ use Carbon\Carbon;
 class SesionLinea extends Model
 {
     protected $table = 'sesion_lineas';
+    protected $primaryKey = 'id';
+    public $incrementing = true;
 
     protected $fillable = [
         'sesion_id', 'asignacion_id', 'auxiliar_id', 'ronda',

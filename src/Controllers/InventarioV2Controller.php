@@ -455,6 +455,9 @@ class InventarioV2Controller extends BaseController
                 ->get()
                 ->map(function ($a) {
                     $a->descripcion_instruccion = $a->descripcion_instruccion;
+                    if ($a->sesion) {
+                        $a->sesion->ronda_actual = $a->ronda;
+                    }
                     return $a;
                 });
 
@@ -1958,7 +1961,9 @@ class InventarioV2Controller extends BaseController
         $data = $req->getParsedBody() ?? [];
         $required = ['ubicacion_codigo', 'cantidad', 'ronda'];
         foreach ($required as $f) {
-            if (empty($data[$f])) return $this->error($res, "Campo requerido: {$f}");
+            if (!isset($data[$f]) || (is_string($data[$f]) && trim($data[$f]) === '')) {
+                return $this->error($res, "Campo requerido: {$f}");
+            }
         }
 
         try {

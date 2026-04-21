@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WMS PRO - Dashboard Operativo de TV</title>
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    /* Estilos base minimizados para no depender de app.css completo si falla */
+    :root {
+      --tv-bg: #f8fafc;
+      --tv-text: #0f172a;
+      --tv-muted: #64748b;
+      --tv-border: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    body { background: var(--tv-bg); color: var(--tv-text); font-family: system-ui, -apple-system, sans-serif; margin: 0; overflow: hidden; height: 100vh; font-size: 14px; }
+    
+    .tv-grid { display: grid; grid-template-columns: 6.5fr 3.5fr; height: 100vh; gap: 16px; padding: 16px; }
+    .tv-panel { background: #fff; border-radius: 16px; border: 1px solid var(--tv-border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+    .tv-panel-head { padding: 16px 20px; font-weight: 900; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--tv-border); font-size: 1.1rem; }
+    .tv-panel-body { padding: 16px; overflow-y: auto; flex: 1; }
+    
+    /* Picking Kpis */
+    .kpi-grid { display: grid; gap: 12px; margin-bottom: 16px; }
+    .kpi-card { background: #f8fafc; border: 1px solid var(--tv-border); border-radius: 12px; padding: 16px; display: flex; align-items: center; gap: 16px; }
+    .kpi-card.accent-blue { border-left: 4px solid #3b82f6; }
+    .kpi-card.accent-amber { border-left: 4px solid #f59e0b; }
+    .kpi-card.accent-green { border-left: 4px solid #10b981; }
+    .kpi-card.accent-red { border-left: 4px solid #ef4444; }
+    .kpi-val { font-size: 2rem; font-weight: 900; line-height: 1; }
+    .kpi-lbl { font-size: 0.75rem; font-weight: 800; color: var(--tv-muted); text-transform: uppercase; margin-top: 4px; }
+
+    /* Tables */
+    .tv-box { background: #fff; border: 1px solid var(--tv-border); border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+    .tv-box-title { padding: 12px 16px; background: #f8fafc; font-weight: 800; font-size: 0.9rem; border-bottom: 1px solid var(--tv-border); display:flex; justify-content:space-between; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th { text-align: left; padding: 10px 16px; color: var(--tv-muted); font-size: 0.75rem; text-transform: uppercase; border-bottom: 2px solid var(--tv-border); }
+    td { padding: 10px 16px; border-bottom: 1px solid var(--tv-border); }
+    tr:last-child td { border-bottom: none; }
+    .status { padding: 4px 8px; border-radius: 99px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; display:inline-block; }
+    .st-pend { background: #fee2e2; color: #991b1b; }
+    .st-proc { background: #fef3c7; color: #92400e; }
+    .st-done { background: #dcfce7; color: #166534; }
+
+    /* Badge */
+    .badge { padding: 2px 6px; border-radius: 4px; font-weight: 800; font-size: 0.7rem; }
+    .badge-info { background: #dbeafe; color: #1e40af; }
+    .badge-danger { background: #fee2e2; color: #991b1b; }
+    
+    /* Ticker/Scroll */
+    .tv-footer { position: fixed; bottom: 0; left: 0; right: 0; height: 40px; background: #1e293b; color: #fff; z-index: 9999; display: flex; align-items: center; justify-content:space-between; overflow:hidden; }
+    
+    .ticker-title { background: #ef4444; color:#fff; font-weight:900; height:100%; display:flex; align-items:center; padding:0 20px; text-transform:uppercase; font-size:0.8rem; z-index:2; position:relative; white-space:nowrap; }
+    .ticker-view { flex:1; overflow:hidden; position:relative; display:flex; align-items:center; height:100%; }
+    .ticker-wrap { display: inline-flex; white-space: nowrap; align-items: center; animation: ticker 80s linear infinite; padding-left: 100vw; gap: 80px; }
+    .ticker-wrap:hover { animation-play-state: paused; }
+    @keyframes ticker { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-100%, 0, 0); } }
+    .ticker-item { font-size: 0.9rem; font-weight: 700; color: #cbd5e1; display:flex; align-items:center; gap:8px; }
+    .t-hl { color: #fff; font-weight: 900; }
+    .t-err { color: #f87171; }
+    .t-warn { color: #fbbf24; }
+  </style>
+</head>
+<body>
+
+  <div class="tv-grid">
+    <!-- PANEL PICKING 70% -->
+    <div class="tv-panel">
+      <div class="tv-panel-head" style="color: #2563eb; background:#eff6ff;">
+        <div><i class="fa-solid fa-boxes-stacked"></i> DASHBOARD DE PICKING</div>
+        <div id="tv-clock" style="color:#1e40af; font-size:1rem;">--:--:--</div>
+      </div>
+      <div class="tv-panel-body">
+        
+        <!-- KPIs EXACTOS DE PICKING.JS -->
+        <div class="kpi-grid" style="grid-template-columns: 2fr 1fr 1fr 1fr 1fr;">
+          <div class="kpi-card accent-blue" style="justify-content:center;">
+             <div style="position:relative; width:60px; height:60px; margin-right:10px;">
+               <svg width="60" height="60" viewBox="0 0 100 100" style="transform:rotate(-90deg)">
+                  <circle cx="50" cy="50" r="45" fill="none" stroke="#e2e8f0" stroke-width="10"/>
+                  <circle id="pick-svg-circ" cx="50" cy="50" r="45" fill="none" stroke="#3b82f6" stroke-width="10" stroke-dasharray="283" stroke-dashoffset="283" stroke-linecap="round"/>
+               </svg>
+               <div id="pick-svg-txt" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:14px; font-weight:900;">0%</div>
+             </div>
+             <div>
+               <div class="kpi-lbl">Progreso</div>
+               <div id="pick-prog-txt" style="font-size:1.2rem; font-weight:900;">0 / 0</div>
+             </div>
+          </div>
+          <div class="kpi-card accent-amber">
+            <div><div class="kpi-val" id="pkpi-pend">0</div><div class="kpi-lbl">Por Iniciar</div></div>
+          </div>
+          <div class="kpi-card accent-blue">
+            <div><div class="kpi-val" id="pkpi-proc">0</div><div class="kpi-lbl">En Ejecución</div></div>
+          </div>
+          <div class="kpi-card accent-green">
+            <div><div class="kpi-val" id="pkpi-done">0</div><div class="kpi-lbl">Terminadas</div></div>
+          </div>
+          <div class="kpi-card accent-red">
+            <div><div class="kpi-val text-danger" id="pkpi-falt">0</div><div class="kpi-lbl text-danger">Faltantes</div></div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1.5fr; gap:16px;">
+          <!-- Alerta Faltantes Críticos -->
+          <div class="tv-box" style="border-color:#fecaca;">
+            <div class="tv-box-title" style="background:#fef2f2; color:#b91c1c;"><i class="fa-solid fa-triangle-exclamation"></i> Alertas Críticas</div>
+            <table id="tbl-faltantes">
+              <thead><tr><th>Producto</th><th>Cant.</th><th>Hora</th><th>Planilla</th></tr></thead>
+              <tbody><tr><td colspan="4" align="center">Cargando...</td></tr></tbody>
+            </table>
+          </div>
+
+          <!-- Ranking Auxiliares -->
+          <div class="tv-box">
+            <div class="tv-box-title" style="color:#0f172a;"><i class="fa-solid fa-ranking-star" style="color:#f59e0b;"></i> Productividad Auxiliar <span style="font-size:10px;color:#94a3b8">Unidades · Líneas · Pedidos</span></div>
+            <table id="tbl-ranking">
+              <thead><tr><th width="40">#</th><th>Auxiliar</th><th>Pedidos</th><th>Líneas</th><th>Unid. Pick</th><th width="100">Meta</th></tr></thead>
+              <tbody><tr><td colspan="6" align="center">Cargando...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Planillas en Curso (sin cliente) -->
+        <div class="tv-box">
+          <div class="tv-box-title"><i class="fa-solid fa-list-check"></i> Planillas en Curso</div>
+          <table id="tbl-planillas">
+            <thead><tr><th>Planilla</th><th>Auxiliares</th><th>Líneas</th><th width="150">Progreso</th><th>Estado</th></tr></thead>
+            <tbody><tr><td colspan="5" align="center">Cargando...</td></tr></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- PANEL RECEPCIÓN 30% -->
+    <div class="tv-panel">
+      <div class="tv-panel-head" style="color: #db2777; background:#fdf2f8;">
+        <div><i class="fa-solid fa-truck-ramp-box"></i> RECEPCIÓN ODC</div>
+      </div>
+      <div class="tv-panel-body">
+
+        <!-- KPIs EXACTOS DE RECEPCION.JS -->
+        <div class="kpi-grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+          <div class="kpi-card" style="padding:10px;"><div style="width:100%;">
+            <div class="kpi-val" id="rkpi-odcs" style="font-size:1.5rem">0</div><div class="kpi-lbl">ODCs Abiertas</div>
+          </div></div>
+          <div class="kpi-card" style="padding:10px;"><div style="width:100%;">
+            <div class="kpi-val" id="rkpi-lin" style="font-size:1.5rem">0</div><div class="kpi-lbl">Líneas Proceso</div>
+          </div></div>
+          <div class="kpi-card" style="padding:10px;"><div style="width:100%;">
+            <div class="kpi-val" id="rkpi-falt" style="font-size:1.5rem;color:#dc2626">0</div><div class="kpi-lbl">Lín Faltantes</div>
+          </div></div>
+          
+          <div class="kpi-card" style="padding:10px;"><div style="width:100%;">
+            <div class="kpi-val" id="rkpi-pref" style="font-size:1.5rem">0%</div><div class="kpi-lbl">% Recibo Ref</div>
+          </div></div>
+          <div class="kpi-card" style="padding:10px;"><div style="width:100%;">
+            <div class="kpi-val" id="rkpi-pcan" style="font-size:1.5rem">0%</div><div class="kpi-lbl">% Recibo Cant</div>
+          </div></div>
+          <div class="kpi-card" style="padding:10px;"><div style="width:100%;">
+            <div class="kpi-val" id="rkpi-venc" style="font-size:1.5rem">0</div><div class="kpi-lbl">Próx Vencer</div>
+          </div></div>
+        </div>
+
+        <div class="tv-box">
+          <div class="tv-box-title"><i class="fa-solid fa-chart-pie" style="color:#7c3aed;"></i> Por Categoría</div>
+          <div style="padding:10px; height:200px;"><canvas id="chart-cat"></canvas></div>
+        </div>
+        
+        <div class="tv-box">
+          <div class="tv-box-title"><i class="fa-solid fa-chart-line" style="color:#10b981;"></i> Tendencia (7d)</div>
+          <div style="padding:10px; height:180px;"><canvas id="chart-trend"></canvas></div>
+        </div>
+
+        <div class="tv-box" style="margin-bottom:0;">
+          <div class="tv-box-title"><i class="fa-solid fa-trophy" style="color:#f59e0b;"></i> Líderes Recepción</div>
+          <table id="tbl-lideres">
+            <thead><tr><th>#</th><th>Auxiliar</th><th>Unid. Recibidas</th></tr></thead>
+            <tbody><tr><td colspan="3" align="center">Cargando...</td></tr></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="tv-footer">
+    <div class="ticker-title"><i class="fa-solid fa-triangle-exclamation" style="margin-right:8px;"></i> Próximos a Vencer</div>
+    <div class="ticker-view">
+      <div class="ticker-wrap" id="tv-ticker-wrap">Cargando alertas de inventario...</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="assets/js/api.js"></script>
+  <!-- Basic utils if api.js doesn't include wait/format -->
+  <script>
+    const sysfmt = (n) => new Intl.NumberFormat('es-CO').format(n||0);
+    const esc = (t) => String(t||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+    setInterval(() => document.getElementById('tv-clock').innerText = new Date().toLocaleTimeString('es-CO'), 1000);
+  </script>
+  <script src="assets/js/desktop/tv_dashboard.js"></script>
+</body>
+</html>

@@ -19,7 +19,7 @@ WMS_MODULES.inventario = {
   subLabel(s) {
     const m = {
       sesiones: 'Gestión de Conteos',
-      ciclico:'Inventario Cíclico', general:'Inventario General', cargue:'Cargue de Saldo',
+      ciclico:'Admin Conteos', general:'Inventario General', cargue:'Cargue de Saldo',
       dashboard:'Dashboard Inventario', ajuste:'Ajuste Manual', stock:'Stock General',
       'stock-ubi':'Stock por Ubicación', vencimientos:'Vencimientos',
     };
@@ -976,6 +976,9 @@ WMS_MODULES.inventario = {
                 <button class="inv2-tab" id="t2-acc" onclick="WMS_MODULES.inventario._tab2('acc')">
                   <i class="fa-solid fa-shield-halved"></i> Seguridad
                 </button>
+                <button class="inv2-tab" style="color:#f59e0b" onclick="WMS_MODULES.inventario._resetServerCache()">
+                  <i class="fa-solid fa-cloud-arrow-down"></i> Sincronizar Servidor
+                </button>
              </div>
           </div>
 
@@ -1531,11 +1534,11 @@ WMS_MODULES.inventario = {
         <i class="fa-solid fa-save"></i> REGISTRAR CONTEO
       </button>
 
-      <button class="btn btn-light w-full" style="margin-top:8px;font-size:11px;color:#94a3b8;" onclick="WMS.closeRightPanel()">
-        Cancelar
+      <button class="btn btn-light w-full" style="margin-top:8px;font-size:11px;color:#94a3b8;" onclick="WMS.closeModal()">
+        Cerrar
       </button>`;
 
-    WMS.showRightPanel('Conteo Manual Inteligente', html);
+    WMS.showModal('Conteo Manual Administrativo', html);
 
     // Inicializar Autocomplete tras render
     setTimeout(() => {
@@ -1676,10 +1679,24 @@ WMS_MODULES.inventario = {
     if (motivo === null) return;
     if (!motivo.trim()) return WMS.toast('warning', 'Ingrese un motivo');
     try {
-      await API.delete(`/v2/inventario/lineas/${lineaId}`, { motivo });
+      const r = await API.delete(`/v2/inventario/lineas/${lineaId}`, { motivo });
+      if (r && r.error) throw new Error(r.message);
       WMS.toast('success', 'Línea eliminada');
       this.verDashboardV2(sesionId);
     } catch(e) { WMS.toast('error', e.message); }
+  },
+
+  async _resetServerCache() {
+    WMS.toast('info', 'Solicitando sincronización de archivos...', 2000);
+    try {
+      const r = await API.post('/sistema/opcache-reset', {});
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', 'Sincronización completada. El servidor ya reconoce las últimas versiones de los archivos PHP.');
+      // Forzar recarga de datos del dashboard
+      if (this._dashV2Id) this.verDashboardV2(this._dashV2Id);
+    } catch(e) {
+      WMS.toast('error', 'Error sincronizando: ' + e.message);
+    }
   },
 
   async _ajustarLinea(lineaId, sesionId) {
