@@ -1,11 +1,11 @@
-/**
- * Service Worker — WMS Prooriente
+﻿/**
+ * Service Worker — WMS Fénix
  * v22: Network-First for HTML/JS to prevent stale cache.
  *      Cache-First only for images/fonts/css.
  */
 
 const CACHE_NAME = 'prowms-v22';
-const BASE = '/WMS_PROORIENTE/public';
+const BASE = '/WMS_FENIX/public';
 
 // ── Instalación: precachear solo assets estáticos ───────────────────────────
 self.addEventListener('install', event => {

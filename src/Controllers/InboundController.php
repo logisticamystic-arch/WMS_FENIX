@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Controllers;
 
@@ -557,7 +557,7 @@ class InboundController extends BaseController
             . '<button onclick="window.print()" style="position:fixed;top:10px;right:10px;background:#1e3a5f;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:700;cursor:pointer">Imprimir / PDF</button>'
             . '<div class="hdr">'
             . '<div><div style="font-size:22px;font-weight:900;color:#1e3a5f">' . $logo . '</div>'
-            . '<div style="font-size:10px;color:#64748b;text-transform:uppercase">WMS ProOriente</div></div>'
+            . '<div style="font-size:10px;color:#64748b;text-transform:uppercase">WMS Fénix</div></div>'
             . '<div style="text-align:right">'
             . '<div style="font-size:18px;font-weight:800;color:#1e3a5f">ACTA DE RECIBO DE MERCANC&Iacute;A</div>'
             . '<div style="font-size:22px;font-weight:900;color:#2e75b6;margin:4px 0">' . htmlspecialchars($odc->numero_odc) . '</div>'

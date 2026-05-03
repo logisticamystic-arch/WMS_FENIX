@@ -1,9 +1,8 @@
 <?php
 /**
- * Database Configuration — WMS ProOriente
+ * Database Configuration — WMS Fénix
  *
- * FASE 1 (XAMPP/MySQL):   DB_DRIVER=mysql  DB_PORT=3306  DB_CHARSET=utf8mb4
- * FASE 2 (PostgreSQL):    DB_DRIVER=pgsql  DB_PORT=5432  DB_CHARSET=utf8
+ * PostgreSQL: DB_DRIVER=pgsql  DB_PORT=5432  DB_CHARSET=utf8
  */
 
 $env = fn(string $key, string $default = ''): string
@@ -15,7 +14,7 @@ $config = [
     'driver'   => $driver,
     'host'     => $env('DB_HOST', '127.0.0.1'),
     'port'     => (int) $env('DB_PORT', $driver === 'pgsql' ? '5432' : '3306'),
-    'database' => $env('DB_NAME', 'WMS_PROORIENTE'),
+    'database' => $env('DB_NAME', 'wms_fenix'),
     'username' => $env('DB_USER', 'root'),
     'password' => $env('DB_PASS', ''),
     'prefix'   => '',

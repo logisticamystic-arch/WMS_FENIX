@@ -9,10 +9,10 @@ class DatabaseSeeder
     {
         echo "  → Seeding empresa...\n";
         $empresa = Empresa::firstOrCreate(['nit' => '900000001'], [
-            'razon_social' => 'Prooriente WMS',
+            'razon_social' => 'WMS Fénix',
             'direccion' => 'Calle Principal #1',
             'telefono' => '3001234567',
-            'email' => 'admin@prooriente.com',
+            'email' => 'admin@wmsfenix.com',
             'activo' => true,
         ]);
 

@@ -1,12 +1,12 @@
-/* ============================================================
+﻿/* ============================================================
    WMS PRO ORIENTE - DESKTOP UI (SAP Business One Style)
    Versión: 2.0 Enterprise
    ============================================================ */
 
 :root {
   /* Paleta corporativa */
-  --primary:       #1a56db;
-  --primary-dark:  #1e40af;
+  --primary:       #0F4C81;
+  --primary-dark:  #0a3d69;
   --primary-light: #eff6ff;
   --secondary:     #0f172a;
   --accent:        #f59e0b;
@@ -16,7 +16,7 @@
   --info:          #3b82f6;
 
   /* ── Tokens Semánticos Enterprise (Agente UX/UI) ──────── */
-  --color-primary:    #1F498B;
+  --color-primary:    #0F4C81;
   --color-success:    #188038;
   --color-warning:    #E65C00;
   --color-danger:     #C62828;
@@ -62,7 +62,7 @@
   --font-mono:     'JetBrains Mono', 'Fira Code', monospace;
 
   /* ── Gradientes Enterprise ────────────────────────────── */
-  --pro-grad-blue:    linear-gradient(135deg, #1a56db, #3b82f6);
+  --pro-grad-blue:    linear-gradient(135deg, #0F4C81, #1e7bc4);
   --pro-grad-green:   linear-gradient(135deg, #059669, #10b981);
   --pro-grad-red:     linear-gradient(135deg, #dc2626, #ef4444);
   --pro-grad-amber:   linear-gradient(135deg, #d97706, #f59e0b);
@@ -99,7 +99,7 @@
 .status-badge.sb-pending::before { background: #f59e0b; }
 .status-badge.sb-error    { background: #fef2f2; color: #dc2626; }
 .status-badge.sb-error::before   { background: #ef4444; }
-.status-badge.sb-complete { background: #eff6ff; color: #1d4ed8; }
+.status-badge.sb-complete { background: #eff6ff; color: #0F4C81; }
 .status-badge.sb-complete::before { background: #3b82f6; }
 .status-badge.sb-inactive { background: #f1f5f9; color: #64748b; }
 .status-badge.sb-inactive::before { background: #94a3b8; }
@@ -150,7 +150,7 @@
   justify-content: center;
   font-size: 1rem;
 }
-.accent-blue .pro-kpi-icon   { background: #eff6ff; color: #1a56db; }
+.accent-blue .pro-kpi-icon   { background: #eff6ff; color: #0F4C81; }
 .accent-green .pro-kpi-icon  { background: #f0fdf4; color: #059669; }
 .accent-red .pro-kpi-icon    { background: #fef2f2; color: #dc2626; }
 .accent-amber .pro-kpi-icon  { background: #fffbeb; color: #d97706; }
@@ -325,7 +325,7 @@
 .wms-toast-item.toast-success { border-color: #22c55e; color: #15803d; }
 .wms-toast-item.toast-danger  { border-color: #ef4444; color: #dc2626; }
 .wms-toast-item.toast-warning { border-color: #f59e0b; color: #b45309; }
-.wms-toast-item.toast-info    { border-color: #3b82f6; color: #1d4ed8; }
+.wms-toast-item.toast-info    { border-color: #3b82f6; color: #0F4C81; }
 @keyframes toastSlideIn {
   from { transform: translateX(100%); opacity: 0; }
   to   { transform: translateX(0);    opacity: 1; }
@@ -902,7 +902,7 @@ button { cursor: pointer; font-family: var(--font); }
 .badge-success { background: #f0fdf4; color: #15803d; }
 .badge-danger  { background: #fef2f2; color: #dc2626; }
 .badge-warning { background: #fffbeb; color: #b45309; }
-.badge-info    { background: #eff6ff; color: #1d4ed8; }
+.badge-info    { background: #eff6ff; color: #0F4C81; }
 .badge-gray    { background: #f1f5f9; color: #475569; }
 .badge-purple  { background: #f5f3ff; color: #6d28d9; }
 .badge-teal    { background: #f0fdfa; color: #0f766e; }
@@ -1476,7 +1476,7 @@ button { cursor: pointer; font-family: var(--font); }
   border-bottom: 2px solid;
 }
 .picking-col-header.pending  { background: #fffbeb; color: #b45309; border-color: #f59e0b; }
-.picking-col-header.progress { background: #eff6ff; color: #1d4ed8; border-color: #3b82f6; }
+.picking-col-header.progress { background: #eff6ff; color: #0F4C81; border-color: #3b82f6; }
 .picking-col-header.done     { background: #f0fdf4; color: #15803d; border-color: #22c55e; }
 .picking-item {
   background: #fff;
@@ -1537,7 +1537,7 @@ button { cursor: pointer; font-family: var(--font); }
 }
 .status-chip::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .status-creada    { background: #f1f5f9; color: #475569; }
-.status-confirmada { background: #eff6ff; color: #1d4ed8; }
+.status-confirmada { background: #eff6ff; color: #0F4C81; }
 .status-en-proceso { background: #fffbeb; color: #b45309; }
 .status-cerrada   { background: #f0fdf4; color: #15803d; }
 .status-cancelada { background: #fef2f2; color: #dc2626; }
@@ -1797,7 +1797,7 @@ canvas {
 }
 .inv-tab-btn i { margin-right: 6px; }
 .inv-tab-btn:hover { color: #1e293b; background: #f1f5f9; }
-.inv-tab-btn.active { color: #1a56db; border-color: #1a56db; }
+.inv-tab-btn.active { color: #0F4C81; border-color: #0F4C81; }
 
 .action-card-group { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .action-card {

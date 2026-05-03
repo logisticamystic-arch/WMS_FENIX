@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    WMS Desktop — Módulo INVENTARIOS
    Sub-vistas: ciclico | general | cargue | dashboard | ajuste | stock | stock-ubi | vencimientos
    ============================================================ */
@@ -2000,7 +2000,7 @@ WMS_MODULES.inventario = {
           </tbody>
         </table>`:'' }
 
-        <p style="color:#94a3b8;font-size:9px;margin-top:20px">Generado: ${new Date().toLocaleString()} — WMS Prooriente</p>
+        <p style="color:#94a3b8;font-size:9px;margin-top:20px">Generado: ${new Date().toLocaleString()} — WMS Fénix</p>
         <script>window.print()</script>
         </body></html>`;
       const w = window.open('', '_blank', 'width=900,height=700');
@@ -2314,7 +2314,7 @@ WMS_MODULES.inventario = {
   },
 
   async descargarPlantilla() {
-    window.open('/WMS_PROORIENTE/public/api/param/import-export/template/saldo_inicial', '_blank');
+    window.open('/WMS_FENIX/public/api/param/import-export/template/saldo_inicial', '_blank');
   },
 
   async importarSaldos() { this.show_cargue(); },
@@ -2325,7 +2325,7 @@ WMS_MODULES.inventario = {
     if (!confirm('¿Confirmar cargue de saldo? Las cantidades se agregarán al inventario actual.')) return;
     const fd = new FormData(); fd.append('file', file);
     try {
-      const r = await fetch('/WMS_PROORIENTE/public/api/param/import-export/upload/saldo_inicial', {
+      const r = await fetch('/WMS_FENIX/public/api/param/import-export/upload/saldo_inicial', {
         method: 'POST', headers: { Authorization: 'Bearer ' + localStorage.getItem('wms_token') }, body: fd
       });
       const j = await r.json();

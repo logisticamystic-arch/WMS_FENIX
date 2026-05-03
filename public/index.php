@@ -1,6 +1,6 @@
-<?php
+﻿<?php
 /**
- * Prooriente WMS — API Entry Point
+ * fenix WMS — API Entry Point
  * Slim Framework 4 with Eloquent ORM
  */
 
@@ -75,7 +75,7 @@ use Slim\Exception\HttpNotFoundException;
 $app = AppFactory::create();
 
 // Set base path for XAMPP subdirectory
-$app->setBasePath('/WMS_PROORIENTE/public');
+$app->setBasePath('/WMS_FENIX/public');
 
 // ── Custom error middleware: logs to file + returns JSON ──────────────────────
 $errorMiddleware = $app->addErrorMiddleware(
@@ -407,7 +407,7 @@ $app->add(function (Request $request, $handler) {
 $app->get('/api/health', function (Request $request, Response $response) {
     $data = [
         'status'    => 'ok',
-        'app'       => 'Prooriente WMS',
+        'app'       => 'fenix WMS',
         'version'   => '1.1.0',
         'env'       => getenv('APP_ENV') ?: 'production',
         'timestamp' => date('Y-m-d H:i:s'),

@@ -8,12 +8,14 @@ use Illuminate\Database\Capsule\Manager as DB;
 
 return [
     'up' => function () {
-        // Extend archivos_planilla.estado enum
+        // Extend archivos_planilla.estado enum (PostgreSQL-compatible via CHECK constraint)
         try {
             DB::connection()->statement(
-                "ALTER TABLE archivos_planilla MODIFY COLUMN estado
-                 ENUM('Importada','EnPicking','Separado','EnCertificacion','Certificada','Anulada')
-                 NOT NULL DEFAULT 'Importada'"
+                "ALTER TABLE archivos_planilla DROP CONSTRAINT IF EXISTS archivos_planilla_estado_check"
+            );
+            DB::connection()->statement(
+                "ALTER TABLE archivos_planilla ADD CONSTRAINT archivos_planilla_estado_check
+                 CHECK (estado IN ('Importada','EnPicking','Separado','EnCertificacion','Certificada','Anulada'))"
             );
         } catch (\Exception $e) { /* already updated */ }
 

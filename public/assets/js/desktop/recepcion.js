@@ -2297,7 +2297,7 @@ WMS_MODULES.recepcion = {
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;">
             ${fotos.map((f,i) => `
               <div style="border-radius:8px;overflow:hidden;border:2px solid #e2e8f0;">
-                <img src="/WMS_PROORIENTE/public/${f}" style="width:100%;height:150px;object-fit:cover;cursor:pointer;" onclick="window.open(this.src,'_blank')" onerror="this.src='data:image/svg+xml,<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; width=&quot;150&quot; height=&quot;150&quot;><rect fill=&quot;%23f1f5f9&quot; width=&quot;150&quot; height=&quot;150&quot;/><text x=&quot;50%&quot; y=&quot;50%&quot; text-anchor=&quot;middle&quot; dy=&quot;.3em&quot; fill=&quot;%2394a3b8&quot;>Foto ${i+1}</text></svg>'" alt="Foto ${i+1}">
+                <img src="/WMS_FENIX/public/${f}" style="width:100%;height:150px;object-fit:cover;cursor:pointer;" onclick="window.open(this.src,'_blank')" onerror="this.src='data:image/svg+xml,<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; width=&quot;150&quot; height=&quot;150&quot;><rect fill=&quot;%23f1f5f9&quot; width=&quot;150&quot; height=&quot;150&quot;/><text x=&quot;50%&quot; y=&quot;50%&quot; text-anchor=&quot;middle&quot; dy=&quot;.3em&quot; fill=&quot;%2394a3b8&quot;>Foto ${i+1}</text></svg>'" alt="Foto ${i+1}">
                 <div style="padding:4px 8px;font-size:10px;color:#64748b;font-weight:600;">Foto ${i+1}</div>
               </div>`).join('')}
           </div>
@@ -2345,7 +2345,7 @@ WMS_MODULES.recepcion = {
       const dev = r.data||r;
       const fotos = Array.isArray(dev.fotos_json) ? dev.fotos_json : JSON.parse(dev.fotos_json||'[]');
       if (!fotos.length) return WMS.toast('info','Sin fotos para imprimir');
-      const baseUrl = window.location.origin + '/WMS_PROORIENTE/public/';
+      const baseUrl = window.location.origin + '/WMS_FENIX/public/';
       const w = window.open('','_blank','width=900,height=700');
       const css = `body{font-family:Arial,sans-serif;padding:20px;color:#1e293b;} .header{text-align:center;border-bottom:3px solid #dc2626;padding-bottom:12px;margin-bottom:20px;} .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;} .foto-box{border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;} .foto-box img{width:100%;height:200px;object-fit:cover;} .foto-label{padding:4px 8px;font-size:10px;color:#64748b;background:#f8fafc;text-align:center;font-weight:700;}`;
       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Evidencia — ${dev.numero_devolucion}</title><style>${css}</style></head><body>

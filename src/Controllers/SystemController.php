@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Controllers;
 
@@ -27,9 +27,9 @@ class SystemController extends BaseController
             'local_ip' => $localIP,
             'server_port' => $_SERVER['SERVER_PORT'] ?? '80',
             'protocol' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http',
-            'app_path' => '/WMS_PROORIENTE/public',
-            'full_url' => "http://{$localIP}/WMS_PROORIENTE/public",
-            'mobile_url' => "http://{$localIP}/WMS_PROORIENTE/public/mobile/index.html"
+            'app_path' => '/WMS_FENIX/public',
+            'full_url' => "http://{$localIP}/WMS_FENIX/public",
+            'mobile_url' => "http://{$localIP}/WMS_FENIX/public/mobile/index.html"
         ]);
     }
 

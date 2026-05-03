@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    WMS Desktop - Módulo REPORTES
    ============================================================ */
 WMS_MODULES.reportes = {
@@ -622,7 +622,7 @@ WMS_MODULES.reportes = {
           <strong><i class="fa-solid fa-database"></i> Backup de Base de Datos</strong>
           <p style="font-size:.85rem;color:#555;margin:6px 0 0">
             El backup automático se ejecuta diariamente a las 2:00 a.m. (si el PC está encendido) usando el Programador de Tareas de Windows.
-            Guarda 30 archivos rotativos en <code>WMS_PROORIENTE/backups/</code> — uno por cada día del mes.
+            Guarda 30 archivos rotativos en <code>WMS_FENIX/backups/</code> — uno por cada día del mes.
             También puede ejecutarse manualmente desde la terminal del servidor:
             <code>C:\\xampp\\php\\php.exe scripts\\backup.php</code>
           </p>

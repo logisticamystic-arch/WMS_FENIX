@@ -91,10 +91,10 @@ return [
             });
         }
 
-        // Fix conteo_detalles.ubicacion_id nullable
+        // Fix conteo_detalles.ubicacion_id nullable (PostgreSQL-compatible)
         if ($schema->hasTable('conteo_detalles')) {
             try {
-                DB::connection()->statement('ALTER TABLE conteo_detalles MODIFY ubicacion_id BIGINT UNSIGNED NULL');
+                DB::connection()->statement('ALTER TABLE conteo_detalles ALTER COLUMN ubicacion_id DROP NOT NULL');
             } catch (\Exception $e) { /* already nullable */ }
         }
 

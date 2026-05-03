@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    WMS Desktop — Módulo PICKING v2
    Sub-vistas: pedidos | asignacion | faltantes | dashboard | reporte
    Mejoras v2:
@@ -838,7 +838,7 @@ WMS_MODULES.picking = {
         <div id="pick-preview-summary" style="margin-top:10px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:12px;color:#1e40af;"></div>
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <a href="/WMS_PROORIENTE/public/api/picking/template?token=${encodeURIComponent(localStorage.getItem('wms_token'))}" target="_blank" class="btn btn-secondary" style="gap:6px;"><i class="fa-solid fa-download"></i> Plantilla</a>
+       <a href="/WMS_FENIX/public/api/picking/template?token=${encodeURIComponent(localStorage.getItem('wms_token'))}" target="_blank" class="btn btn-secondary" style="gap:6px;"><i class="fa-solid fa-download"></i> Plantilla</a>
        <button class="btn btn-primary" id="btn-importar-pick" onclick="WMS_MODULES.picking.uploadCsv()" disabled><i class="fa-solid fa-upload"></i> Importar Pedidos</button>`,
       { width: '680px' }
     );
@@ -962,7 +962,7 @@ WMS_MODULES.picking = {
     fd.append('file', file);
 
     try {
-      const r = await fetch('/WMS_PROORIENTE/public/api/picking/importar', {
+      const r = await fetch('/WMS_FENIX/public/api/picking/importar', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + localStorage.getItem('wms_token') },
         body: fd
@@ -1499,7 +1499,7 @@ WMS_MODULES.picking = {
     const ini = f.ini || new Date(Date.now()-30*24*3600*1000).toISOString().slice(0,10);
     const fin = f.fin || WMS.getToday();
     const token = localStorage.getItem('wms_token') || '';
-    const base = (window.API_BASE || '/WMS_PROORIENTE/public/api');
+    const base = (window.API_BASE || '/WMS_FENIX/public/api');
     const url = `${base}/picking/novedades-stock?fecha_inicio=${ini}&fecha_fin=${fin}&numero_planilla=${encodeURIComponent(f.planilla||'')}&producto=${encodeURIComponent(f.producto||'')}&export=excel`;
     const a = document.createElement('a');
     a.href = url + '&_token=' + encodeURIComponent(token);

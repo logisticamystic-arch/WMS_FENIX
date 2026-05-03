@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Controllers;
 
@@ -20,7 +20,7 @@ use Carbon\Carbon;
 /**
  * InventarioV2Controller
  * ======================
- * Módulo profesional de Inventarios WMS Prooriente.
+ * Módulo profesional de Inventarios WMS Fénix.
  *
  * Funcionalidades:
  *  1. Sesiones de inventario (Cíclico y General)

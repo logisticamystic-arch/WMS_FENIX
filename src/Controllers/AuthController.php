@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Controllers;
 
@@ -19,7 +19,7 @@ class AuthController extends BaseController
         $data = $request->getParsedBody();
         $documento = trim($data['documento'] ?? '');
         $pin = trim($data['pin'] ?? '');
-        $nit = trim($data['nit'] ?? '900000001'); // Default = Prooriente nit
+        $nit = trim($data['nit'] ?? '900000001'); // Default = Fénix nit
 
         if (empty($documento) || empty($pin)) {
             return $this->json($response, ['error' => true, 'message' => 'Documento y PIN son requeridos.'], 400);

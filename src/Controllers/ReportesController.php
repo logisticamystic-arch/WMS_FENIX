@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Controllers;
 
@@ -1046,7 +1046,7 @@ class ReportesController extends BaseController
                     . '</tr>';
             }
         }
-        $emp      = htmlspecialchars($user->empresa ?? 'ProOriente WMS');
+        $emp      = htmlspecialchars($user->empresa ?? 'Fénix WMS');
         $total    = $ordenes->count();
         $impreso  = date('d/m/Y H:i:s');
         return <<<HTML
@@ -1119,7 +1119,7 @@ HTML;
                 . '</tr>';
         }
 
-        $emp = htmlspecialchars($user->empresa ?? 'ProOriente WMS');
+        $emp = htmlspecialchars($user->empresa ?? 'Fénix WMS');
         $fecha = date('d/m/Y');
         $hora_gen = date('H:i:s');
         
@@ -1147,7 +1147,7 @@ HTML;
   </thead>
   <tbody>$rows</tbody>
 </table>
-<div class="footer">WMS ProOriente — Documento generado automáticamente</div>
+<div class="footer">WMS Fénix — Documento generado automáticamente</div>
 </body></html>
 HTML;
     }

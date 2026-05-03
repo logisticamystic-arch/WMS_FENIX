@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    WMS Desktop - Módulo MAESTRO  (rev 2)
    Fixes: load() OR-bug, stubs implementados, EAN field, ubicaciones
    zona+tipo_ubicacion+capacidad_maxima, proveedores razon_social+
@@ -2211,7 +2211,7 @@ WMS_MODULES.maestro = {
     const token = localStorage.getItem('wms_token') || '';
 
     try {
-      const url = '/WMS_PROORIENTE/public/api/param/import-export/upload/' + tipo;
+      const url = '/WMS_FENIX/public/api/param/import-export/upload/' + tipo;
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token },

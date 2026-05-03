@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    WMS Desktop — Módulo DESPACHO & TMS
    Sub-vistas: certificacion | cargue | dashboard | tms
    ============================================================ */
@@ -242,7 +242,7 @@ WMS_MODULES.despacho = {
     WMS.showModal('Importar Planillas de Certificación', `
       <p class="text-muted" style="margin-bottom:12px;">Suba un CSV con: numero_planilla, cliente, ruta, codigo_ean, cantidad</p>
       <div class="form-group">
-        <a href="/WMS_PROORIENTE/public/api/param/import-export/template/planillas" target="_blank" class="btn btn-secondary btn-sm"><i class="fa-solid fa-download"></i> Descargar Plantilla</a>
+        <a href="/WMS_FENIX/public/api/param/import-export/template/planillas" target="_blank" class="btn btn-secondary btn-sm"><i class="fa-solid fa-download"></i> Descargar Plantilla</a>
       </div>
       <div class="form-group"><label class="form-label">Archivo CSV</label>
         <input type="file" id="plan-csv" class="form-control" accept=".csv"></div>`,
@@ -255,7 +255,7 @@ WMS_MODULES.despacho = {
     if (!file) { WMS.toast('warning', 'Seleccione un archivo CSV'); return; }
     const fd = new FormData(); fd.append('file', file);
     try {
-      const r = await fetch('/WMS_PROORIENTE/public/api/planillas/importar', {
+      const r = await fetch('/WMS_FENIX/public/api/planillas/importar', {
         method: 'POST', headers: { Authorization: 'Bearer ' + localStorage.getItem('wms_token') }, body: fd
       });
       const j = await r.json();

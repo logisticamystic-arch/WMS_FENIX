@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Controllers;
 
@@ -68,9 +68,9 @@ class ImportExportController extends BaseController
         
         // Row 8: Sample row
         if ($tipo === 'productos') {
-            $content .= "1;1;P001;Producto ProOriente;Ejemplo;UN;0.100;0.0010;1;1;365;Temp Ambiente;10.0;7701234567890\r\n";
+            $content .= "1;1;P001;Producto Fénix;Ejemplo;UN;0.100;0.0010;1;1;365;Temp Ambiente;10.0;7701234567890\r\n";
         } elseif ($tipo === 'clientes') {
-            $content .= "1;900000001;PROORIENTE SAS;CALLE 123;BOGOTA;3000000;ventas@prooriente.com;Contacto Ventas\r\n";
+            $content .= "1;900000001;Fénix SAS;CALLE 123;BOGOTA;3000000;ventas@Fénix.com;Contacto Ventas\r\n";
         }
 
         if (ob_get_length()) ob_clean();

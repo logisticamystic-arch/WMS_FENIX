@@ -13,7 +13,7 @@ $env = static function(string $key, $default = null) {
 return [
     'env'       => $env('APP_ENV',   'development'),
     'debug'     => filter_var($env('APP_DEBUG', 'false'), FILTER_VALIDATE_BOOLEAN),
-    'url'       => $env('APP_URL',   'http://localhost/WMS_PROORIENTE/public'),
+    'url'       => $env('APP_URL',   'http://localhost/WMS_FENIX/public'),
     'jwt' => [
         'secret' => $env('JWT_SECRET', 'change_this_secret'),
         'expiry' => (int)($env('JWT_EXPIRY', 28800)),
