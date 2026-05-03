@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * fenix WMS — API Entry Point
  * Slim Framework 4 with Eloquent ORM

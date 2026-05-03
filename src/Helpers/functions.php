@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 /**
  * Global helper functions for Fénix WMS.
