@@ -400,21 +400,4 @@ class RotacionController extends BaseController
         }
     }
 
-    /** Requiere rol supervisor o admin. */
-    private function requireSupervisor($user, Response $res): ?Response
-    {
-        if (!in_array($user->rol ?? '', ['Admin', 'Supervisor', 'SuperAdmin'])) {
-            return $this->forbidden($res, 'Se requiere rol Supervisor o Admin');
-        }
-        return null;
-    }
-
-    /** Requiere rol admin. */
-    private function requireAdmin($user, Response $res): ?Response
-    {
-        if (!in_array($user->rol ?? '', ['Admin', 'SuperAdmin'])) {
-            return $this->forbidden($res, 'Se requiere rol Admin');
-        }
-        return null;
-    }
 }

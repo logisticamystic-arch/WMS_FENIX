@@ -518,11 +518,4 @@ class ForecastController extends BaseController
         return [$pred, $std];
     }
 
-    private function requireSupervisor($user, Response $res): ?Response
-    {
-        if (!in_array($user->rol ?? '', ['Admin', 'Supervisor', 'SuperAdmin'])) {
-            return $this->forbidden($res, 'Se requiere rol Supervisor o Admin');
-        }
-        return null;
-    }
 }

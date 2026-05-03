@@ -380,11 +380,4 @@ class UbicacionesController extends BaseController
             "{$creadas} ubicaciones creadas");
     }
 
-    private function requireAdmin($user, Response $res): ?Response
-    {
-        if (!in_array($user->rol ?? '', ['Admin', 'SuperAdmin'])) {
-            return $this->forbidden($res, 'Se requiere rol Admin');
-        }
-        return null;
-    }
 }
