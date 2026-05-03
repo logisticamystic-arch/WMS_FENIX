@@ -41,7 +41,9 @@ class AlertasController extends BaseController
             $q->where('a.tipo', $params['tipo']);
         }
 
-        $alertas = $q->orderByRaw("FIELD(a.tipo, 'Vencido','ProximoVencer','Agotado','BajoMinimo','SobreMaximo')")
+        $alertas = $q->orderByRaw($this->isPg()
+                    ? "CASE a.tipo WHEN 'Vencido' THEN 1 WHEN 'ProximoVencer' THEN 2 WHEN 'Agotado' THEN 3 WHEN 'BajoMinimo' THEN 4 WHEN 'SobreMaximo' THEN 5 ELSE 6 END"
+                    : "FIELD(a.tipo, 'Vencido','ProximoVencer','Agotado','BajoMinimo','SobreMaximo')")
                      ->get();
 
         return $this->ok($res, [

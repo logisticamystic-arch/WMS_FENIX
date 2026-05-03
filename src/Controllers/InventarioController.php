@@ -230,11 +230,14 @@ class InventarioController extends BaseController
                     ->when(!empty($data['numero_pallet']), fn($q) => $q->where('numero_pallet', $data['numero_pallet']))
                     ->when(empty($data['numero_pallet']), fn($q) => $q->whereNull('numero_pallet'));
 
-                $registrosOrigen = $origenQuery->lockForUpdate()->get();
-                $totalDisponible = $registrosOrigen->sum('cantidad');
+                $origen = $origenQuery->lockForUpdate()->first();
 
-                if ($registrosOrigen->isEmpty() || $totalDisponible < $cantidad) {
-                    throw new \Exception("Stock insuficiente en ubicación origen ({$totalDisponible} disponibles, solicita {$cantidad})");
+                if (!$origen || $origen->cantidad < $cantidad) {
+                    throw new \Exception('Stock insuficiente en ubicación origen');
+                }
+
+                if (!$fvenc && $origen->fecha_vencimiento) {
+                    $fvenc = $origen->fecha_vencimiento;
                 }
 
                 // Validar Bloqueo por Inventario
@@ -248,23 +251,10 @@ class InventarioController extends BaseController
                     throw new \Exception('La ubicación de origen está bloqueada por un inventario activo.');
                 }
 
-                // Descontar origen secuencialmente
-                $pendiente = $cantidad;
-                foreach ($registrosOrigen as $reg) {
-                    if ($pendiente <= 0) break;
-
-                    // Tomar la fecha de vencimiento del primer registro que la tenga si no viene en el request
-                    if (!$fvenc && $reg->fecha_vencimiento) {
-                        $fvenc = $reg->fecha_vencimiento;
-                    }
-
-                    $aQuitar = min($reg->cantidad, $pendiente);
-                    $reg->cantidad -= $aQuitar;
-                    $pendiente -= $aQuitar;
-
-                    if ($reg->cantidad <= 0) $reg->delete();
-                    else $reg->save();
-                }
+                // Descontar origen
+                $origen->cantidad -= $cantidad;
+                if ($origen->cantidad === 0) $origen->delete();
+                else $origen->save();
 
                 // Acumular en destino
                 if ($lote !== null) {

@@ -278,6 +278,8 @@ class PickingController extends BaseController
     }
 
     // ── Método privado: lógica FEFO reutilizable ──────────────────────────────
+    // OPTIMIZADO: pre-carga todo el inventario de los productos de la orden
+    // en una sola query agrupada, evitando N+1 (una query por línea antes).
     private function _generarRutaFEFO(OrdenPicking $orden, $user): array
     {
         $alertas = [];
@@ -285,26 +287,41 @@ class PickingController extends BaseController
         $now = date('Y-m-d H:i:s');
         $soloAlmacenamiento = ($orden->tipo_picking === 'Consolidado Almacenamiento');
 
-        Capsule::transaction(function () use ($orden, $user, &$alertas, $now, $soloAlmacenamiento) {
+        // ── PRE-CARGA BATCH DE INVENTARIOS (anti-N+1) ────────────────────────
+        // Obtiene todo el inventario disponible para los productos de la orden
+        // en una sola query con JOIN a ubicaciones, ordenado por FEFO.
+        $productoIds = $orden->detalles->pluck('producto_id')->unique()->toArray();
+
+        $todosLosStock = Inventario::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereIn('producto_id', $productoIds)
+            ->where('estado', 'Disponible')
+            ->where('cantidad', '>', 0)
+            ->with('ubicacion:id,tipo_ubicacion,codigo,zona')
+            // FEFO estricto: NULL fechas al final, luego ascendente por fecha
+            ->orderByRaw('fecha_vencimiento IS NULL ASC')
+            ->orderBy('fecha_vencimiento', 'ASC')
+            ->get();
+
+        // Indexar por producto_id para acceso O(1) en el foreach
+        $stockPorProducto = $todosLosStock->groupBy('producto_id');
+
+        Capsule::transaction(function () use ($orden, $user, &$alertas, $now,
+                                              $soloAlmacenamiento, $stockPorProducto) {
             foreach ($orden->detalles as $linea) {
                 $qtyEnPicking = 0;
+                $stockProducto = $stockPorProducto->get($linea->producto_id, collect());
 
                 if (!$soloAlmacenamiento) {
-                    // 1. Buscar en Zona de Picking (Prioridad 1)
-                    $pickingStock = Inventario::where('empresa_id', $user->empresa_id)
-                        ->where('sucursal_id', $user->sucursal_id)
-                        ->where('producto_id', $linea->producto_id)
-                        ->where('estado', 'Disponible')
-                        ->where('cantidad', '>', 0)
-                        ->whereHas('ubicacion', fn($q) => $q->where('tipo_ubicacion', 'Picking'))
-                        ->orderByRaw('fecha_vencimiento IS NULL ASC')
-                        ->orderBy('fecha_vencimiento')
-                        ->get();
+                    // 1. Buscar en Zona de Picking (Prioridad 1) — desde cache batch
+                    $pickingStock = $stockProducto->filter(
+                        fn($i) => ($i->ubicacion->tipo_ubicacion ?? '') === 'Picking'
+                    );
 
                     $qtyEnPicking = $pickingStock->sum('cantidad');
 
                     if ($qtyEnPicking >= $linea->cantidad_solicitada) {
-                        // Caso A: Hay suficiente en Picking
+                        // Caso A: Hay suficiente en Picking (FEFO ya ordenado en batch)
                         $first = $pickingStock->first();
                         $linea->ubicacion_id      = $first->ubicacion_id;
                         $linea->lote              = $first->lote;
@@ -316,21 +333,18 @@ class PickingController extends BaseController
                 }
 
                 // Caso B: Falta en Picking. Buscar en el resto de la bodega (Almacenamiento)
-                $qStockGlobal = Inventario::where('empresa_id', $user->empresa_id)
-                    ->where('sucursal_id', $user->sucursal_id)
-                    ->where('producto_id', $linea->producto_id)
-                    ->where('estado', 'Disponible')
-                    ->where('cantidad', '>', 0);
-                    
                 if ($soloAlmacenamiento) {
-                    $qStockGlobal->whereHas('ubicacion', fn($q) => $q->whereIn('tipo_ubicacion', ['Almacenamiento', 'Rack', 'Estante']));
+                    $stockGlobal = $stockProducto->filter(
+                        fn($i) => in_array($i->ubicacion->tipo_ubicacion ?? '',
+                                           ['Almacenamiento', 'Rack', 'Estante'])
+                    );
                 } else {
-                    $qStockGlobal->whereHas('ubicacion', fn($q) => $q->where('tipo_ubicacion', '!=', 'Picking'));
+                    $stockGlobal = $stockProducto->filter(
+                        fn($i) => ($i->ubicacion->tipo_ubicacion ?? '') !== 'Picking'
+                    );
                 }
 
-                $stockGlobal = $qStockGlobal->orderByRaw('fecha_vencimiento IS NULL ASC')
-                    ->orderBy('fecha_vencimiento')
-                    ->get();
+                // ── [resto del código sin cambios desde aquí] ─────────────────
 
                 $totalDisponible = $qtyEnPicking + $stockGlobal->sum('cantidad');
 
@@ -419,47 +433,65 @@ class PickingController extends BaseController
 
     // ── GET /api/picking/novedades-stock ──────────────────────────────────────
     // Retorna faltantes de stock registrados durante la generación de rutas FEFO.
-    // Filtros: fecha_inicio, fecha_fin, archivo_id, numero_planilla, export=excel
+    // Filtros: fecha_inicio, fecha_fin, numero_planilla, producto, limit, export=excel
     public function novedadesStockLegacy(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
 
-        $rows = Capsule::table('picking_faltantes as f')
-            ->join('productos as p', 'f.producto_id', '=', 'p.id')
+        $query = Capsule::table('picking_faltantes as f')
+            ->join('productos as p',      'f.producto_id',       '=', 'p.id')
             ->leftJoin('orden_pickings as o', 'f.orden_picking_id', '=', 'o.id')
-            ->leftJoin('personal as aux', 'o.auxiliar_id', '=', 'aux.id')
+            ->leftJoin('personal as aux',    'o.auxiliar_id',       '=', 'aux.id')
             ->where('f.empresa_id',  $user->empresa_id)
             ->where('f.sucursal_id', $user->sucursal_id)
             ->whereBetween('f.created_at', [$ini . ' 00:00:00', $fin . ' 23:59:59'])
             ->when($params['numero_planilla'] ?? null, fn($q, $v) => $q->where('f.planilla_lote', $v))
+            ->when($params['producto'] ?? null, function($q, $v) {
+                $likeOp = (Capsule::connection()->getDriverName() === 'pgsql') ? 'ilike' : 'like';
+                $q->where(fn($sub) => $sub
+                    ->where('p.nombre', $likeOp, "%{$v}%")
+                    ->orWhere('p.codigo_interno', $likeOp, "%{$v}%")
+                );
+            })
             ->select(
+                'f.id',
                 'f.created_at',
                 'f.planilla_lote as numero_planilla',
                 'o.cliente',
                 'o.asesor_comercial as asesor',
+                'aux.nombre as auxiliar',
                 'p.codigo_interno as producto_codigo',
                 'p.nombre as producto_nombre',
                 'f.cantidad_solicitada',
                 Capsule::raw('(f.cantidad_solicitada - f.cantidad_faltante) as stock_disponible'),
-                'f.cantidad_faltante',
-                'aux.nombre as auxiliar_nombre'
+                'f.cantidad_faltante'
             )
-            ->orderBy('f.created_at', 'desc')
-            ->get();
+            ->orderBy('f.created_at', 'desc');
+
+        // Total sin límite (para el frontend)
+        $total = $query->count();
+
+        // Aplicar límite si se solicita (por defecto sin límite para export)
+        $limit = isset($params['limit']) ? (int)$params['limit'] : null;
+        if ($limit && ($params['export'] ?? '') !== 'excel') {
+            $query->limit($limit);
+        }
+
+        $rows = $query->get();
 
         if (($params['export'] ?? '') === 'excel') {
-            $headers = ['Fecha', 'Planilla', 'Cliente', 'Asesor/Comercial', 'Auxiliar',
+            $headers = ['Fecha', 'Planilla', 'Auxiliar', 'Cliente', 'Asesor/Comercial',
                         'Código', 'Producto', 'Solicitado', 'Stock Disponible', 'Faltante'];
             $data = $rows->map(fn($row) => [
-                substr($row->created_at, 0, 10),
-                $row->numero_planilla   ?? '—',
-                $row->cliente           ?? '—',
-                $row->asesor            ?? '—',
-                $row->auxiliar_nombre   ?? '—',
-                $row->producto_codigo   ?? '—',
-                $row->producto_nombre   ?? '—',
+                substr($row->created_at ?? '', 0, 10),
+                $row->numero_planilla ?? '—',
+                $row->auxiliar        ?? '—',
+                $row->cliente         ?? '—',
+                $row->asesor          ?? '—',
+                $row->producto_codigo ?? '—',
+                $row->producto_nombre ?? '—',
                 $row->cantidad_solicitada,
                 $row->stock_disponible,
                 $row->cantidad_faltante,
@@ -467,7 +499,7 @@ class PickingController extends BaseController
             return $this->exportCsv($res, $headers, $data, 'faltantes_picking_' . date('Y-m-d'));
         }
 
-        return $this->ok($res, $rows);
+        return $this->ok($res, ['rows' => $rows, 'total' => $total]);
     }
 
     // ── GET /api/picking/{id} ─────────────────────────────────────────────────
@@ -475,11 +507,53 @@ class PickingController extends BaseController
     {
         $user  = $r->getAttribute('user');
         $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
-            ->with(['detalles.producto', 'detalles.ubicacion'])
             ->find($a['id']);
 
         if (!$orden) return $this->notFound($res);
-        return $this->ok($res, $orden);
+
+        // ── CTE anti-N+1: carga detalles + stock disponible en una sola query ─
+        // Sustituye el with(['detalles.producto','detalles.ubicacion']) que
+        // generaba una query extra por cada línea para obtener el stock.
+        if ($this->isPg()) {
+            $detalles = Capsule::select("
+                WITH stock_agg AS (
+                    SELECT
+                        producto_id,
+                        SUM(cantidad) FILTER (WHERE estado = 'Disponible') AS stock_disponible,
+                        MIN(fecha_vencimiento) FILTER (WHERE estado = 'Disponible'
+                                                        AND fecha_vencimiento IS NOT NULL
+                                                        AND fecha_vencimiento >= CURRENT_DATE) AS proximo_vencer,
+                        SUM(cantidad) FILTER (WHERE estado = 'Disponible'
+                                              AND fecha_vencimiento IS NOT NULL
+                                              AND fecha_vencimiento < CURRENT_DATE) AS stock_vencido
+                    FROM inventarios
+                    WHERE empresa_id = ? AND sucursal_id = ? AND cantidad > 0
+                    GROUP BY producto_id
+                )
+                SELECT
+                    pd.*,
+                    p.nombre            AS producto_nombre,
+                    p.codigo_interno    AS producto_codigo,
+                    p.unidades_caja     AS producto_unidades_caja,
+                    ub.codigo           AS ubicacion_codigo,
+                    ub.pasillo          AS ubicacion_pasillo,
+                    ub.zona             AS ubicacion_zona,
+                    COALESCE(sa.stock_disponible, 0) AS stock_disponible,
+                    sa.proximo_vencer,
+                    COALESCE(sa.stock_vencido, 0) AS stock_vencido
+                FROM picking_detalles pd
+                JOIN productos p    ON pd.producto_id  = p.id
+                LEFT JOIN ubicaciones ub ON pd.ubicacion_id = ub.id
+                LEFT JOIN stock_agg sa   ON sa.producto_id  = pd.producto_id
+                WHERE pd.orden_picking_id = ?
+                ORDER BY pd.id ASC
+            ", [$user->empresa_id, $user->sucursal_id, $orden->id]);
+        } else {
+            // MySQL fallback: eager loading estándar
+            $detalles = $orden->load(['detalles.producto', 'detalles.ubicacion'])->detalles;
+        }
+
+        return $this->ok($res, array_merge($orden->toArray(), ['detalles' => $detalles]));
     }
 
     // ── POST /api/picking ─────────────────────────────────────────────────────
@@ -1666,235 +1740,36 @@ class PickingController extends BaseController
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
-        
-        // Rango de fechas
-        $ini = $params['fecha_desde'] ?? date('Y-m-d');
-        $fin = $params['fecha_hasta'] ?? date('Y-m-d');
-        
-        $rows = Capsule::table('picking_detalles as d')
-            ->join('orden_pickings as o', 'd.orden_picking_id', '=', 'o.id')
-            ->join('productos as p', 'd.producto_id', '=', 'p.id')
-            ->leftJoin('personal as aux', 'd.auxiliar_id', '=', 'aux.id')
-            ->leftJoin('ubicaciones as u', 'd.ubicacion_id', '=', 'u.id')
-            ->where('o.empresa_id', $user->empresa_id)
-            ->where('o.sucursal_id', $user->sucursal_id)
-            ->whereBetween('o.created_at', [$ini . ' 00:00:00', $fin . ' 23:59:59'])
-            ->select(
-                'o.planilla_numero',
-                'o.cliente',
-                'p.nombre as producto',
-                'p.codigo_interno as ean',
-                'd.cantidad_solicitada',
-                'd.cantidad_pickeada',
-                'u.codigo as ubicacion',
-                'aux.nombre as auxiliar',
-                'd.estado',
-                'd.updated_at'
-            )
-            ->orderBy('o.created_at', 'desc')
-            ->get();
 
-        if ($rows->isEmpty()) {
-            return $this->ok($res, ['html' => '<div class="alert alert-info">Sin movimientos de picking en el rango seleccionado.</div>']);
-        }
+        $fechaDesde = $params['fecha_desde'] ?? date('Y-m-01');
+        $fechaHasta = $params['fecha_hasta'] ?? date('Y-m-d');
 
-        $html = '<div class="table-responsive"><table class="table table-sm table-hover table-bordered table-striped" style="font-size:0.85rem;">';
-        $html .= '<thead class="table-dark"><tr>
-                    <th>Planilla</th><th>Cliente</th><th>Producto</th><th>Solic.</th><th>Pick.</th><th>Ubica.</th><th>Auxiliar</th><th>Estado</th><th>Fecha/Hora</th>
-                  </tr></thead><tbody>';
-
-        foreach ($rows as $row) {
-            $badgeColor = match($row->estado) {
-                'Completado', 'Completada' => 'success',
-                'Faltante'   => 'danger',
-                'EnProceso'  => 'warning',
-                default      => 'secondary'
-            };
-            $fechaShort = substr($row->updated_at, 5, 11);
-            $html .= "<tr>
-                        <td><b>" . ($row->planilla_numero ?: '-') . "</b></td>
-                        <td style='max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;'>" . htmlspecialchars($row->cliente ?? '-') . "</td>
-                        <td><small>($row->ean)</small> $row->producto</td>
-                        <td class='text-center'>$row->cantidad_solicitada</td>
-                        <td class='text-center'>$row->cantidad_pickeada</td>
-                        <td class='text-center'><code>" . ($row->ubicacion ?: '-') . "</code></td>
-                        <td>" . ($row->auxiliar ?: '-') . "</td>
-                        <td><span class='badge bg-$badgeColor'>$row->estado</span></td>
-                        <td><small>$fechaShort</small></td>
-                      </tr>";
-        }
-        $html .= '</tbody></table></div>';
-        return $this->ok($res, ['html' => $html]);
-    }
-
-    /**
-     * GET /api/picking/novedades-stock
-     * Detecta faltantes comparando lo solicitado vs disponible en picking.
-     */
-    public function novedadesStock(Request $r, Response $res): Response
-    {
         try {
-            $user = $r->getAttribute('user');
-            
-            // Unidades pedidas pendientes vs Unidades en ubicaciones de Picking
-            $faltantes = Capsule::table('picking_detalles as d')
-                ->join('orden_pickings as o', 'o.id', '=', 'd.orden_picking_id')
-                ->join('productos as p', 'p.id', '=', 'd.producto_id')
-                ->leftJoin('inventarios as i', function($j) {
-                    $j->on('i.producto_id', '=', 'd.producto_id')
-                      ->on('i.ubicacion_id', '=', 'd.ubicacion_id');
-                })
-                ->where('o.empresa_id', $user->empresa_id)
-                ->whereIn('d.estado', ['Pendiente', 'Faltante'])
-                ->select(
-                    'p.id as producto_id',
-                    'p.nombre as producto',
-                    'p.codigo_interno as codigo',
-                    'o.planilla_numero',
-                    Capsule::raw('SUM(d.cantidad_solicitada - d.cantidad_pickeada) as cantidad_pedida'),
-                    Capsule::raw('COALESCE(SUM(i.cantidad), 0) as cantidad_disponible'),
-                    // Subconsulta para ver si hay stock en otras ubicaciones (Reserva/Pulmón)
-                    Capsule::raw("(SELECT COALESCE(SUM(inv2.cantidad), 0) 
-                                   FROM inventarios inv2 
-                                   JOIN ubicaciones u2 ON u2.id = inv2.ubicacion_id 
-                                   WHERE inv2.producto_id = p.id 
-                                     AND u2.tipo_ubicacion != 'Picking'
-                                     AND inv2.empresa_id = o.empresa_id) as cantidad_en_reserva")
-                )
-                ->groupBy('p.id', 'p.nombre', 'p.codigo_interno', 'o.planilla_numero', 'o.empresa_id')
-                ->havingRaw('SUM(d.cantidad_solicitada - d.cantidad_pickeada) > COALESCE(SUM(i.cantidad), 0)')
+            $ordenes = OrdenPicking::where('empresa_id', $user->empresa_id)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->whereBetween('created_at', [$fechaDesde . ' 00:00:00', $fechaHasta . ' 23:59:59'])
+                ->orderBy('created_at', 'DESC')
                 ->get();
 
-            return $this->ok($res, $faltantes);
+            $resumen = [
+                'total'       => $ordenes->count(),
+                'completadas' => $ordenes->where('estado', 'Completado')->count(),
+                'pendientes'  => $ordenes->whereIn('estado', ['Pendiente', 'En Proceso'])->count(),
+                'canceladas'  => $ordenes->where('estado', 'Cancelado')->count(),
+            ];
+
+            $this->audit($user, 'picking', 'reporte', 'ordenes_picking', null, null, [],
+                "Reporte picking {$fechaDesde} → {$fechaHasta}");
+
+            return $this->ok($res, [
+                'resumen'       => $resumen,
+                'ordenes'       => $ordenes->values(),
+                'fecha_desde'   => $fechaDesde,
+                'fecha_hasta'   => $fechaHasta,
+            ]);
         } catch (\Exception $e) {
-            error_log('PickingController::novedadesStock error: ' . $e->getMessage());
-            return $this->error($res, $e->getMessage(), 500);
-        }
-    }
-
-    /**
-     * GET /api/picking/reabastecimientos
-     * Lista tareas de reabastecimiento activas.
-     */
-    public function reabastecimientos(Request $r, Response $res): Response
-    {
-        try {
-            $user = $r->getAttribute('user');
-            $tasks = Capsule::table('tarea_reabastecimientos as t')
-                ->join('productos as p', 'p.id', '=', 't.producto_id')
-                ->leftJoin('ubicaciones as uo', 'uo.id', '=', 't.ubicacion_origen_id')
-                ->leftJoin('ubicaciones as ud', 'ud.id', '=', 't.ubicacion_destino_id')
-                ->where('t.empresa_id', $user->empresa_id)
-                ->where('t.estado', '!=', 'Completada')
-                ->select(
-                    't.id',
-                    'p.nombre as producto',
-                    'uo.codigo as ubicacion_origen',
-                    'ud.codigo as ubicacion_destino',
-                    't.cantidad',
-                    't.estado',
-                    't.created_at'
-                )
-                ->orderBy('t.created_at', 'desc')
-                ->get();
-
-            return $this->ok($res, $tasks);
-        } catch (\Exception $e) {
-             error_log('PickingController::reabastecimientos error: ' . $e->getMessage());
-             return $this->error($res, $e->getMessage(), 500);
-        }
-    }
-
-    /**
-     * POST /api/picking/reabastecimientos/auto
-     * Genera automáticamente una tarea de reabastecimiento si hay stock en reserva.
-     */
-    public function autoReabastecer(Request $r, Response $res): Response
-    {
-        try {
-            $user = $r->getAttribute('user');
-            $data = $r->getParsedBody();
-            $productoId = $data['producto_id'] ?? null;
-
-            if (!$productoId) return $this->error($res, "Producto no especificado");
-
-            return Capsule::transaction(function() use ($res, $user, $productoId) {
-                // 1. Buscar ubicación de picking para este producto (donde debería estar)
-                $dest = Capsule::table('ubicaciones')
-                    ->where('empresa_id', $user->empresa_id)
-                    ->where('tipo_ubicacion', 'Picking')
-                    ->where('activo', true)
-                    // Podríamos filtrar por producto si las ubicaciones están asignadas
-                    ->first(); 
-
-                if (!$dest) {
-                    // Si no hay asignada, buscar la primera de picking disponible
-                    $dest = Capsule::table('ubicaciones')
-                        ->where('empresa_id', $user->empresa_id)
-                        ->where('tipo_ubicacion', 'Picking')
-                        ->first();
-                }
-
-                // 2. Buscar ubicación de reserva con stock
-                $origen = Capsule::table('inventarios as i')
-                    ->join('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
-                    ->where('i.producto_id', $productoId)
-                    ->where('u.tipo_ubicacion', '!=', 'Picking')
-                    ->where('i.cantidad', '>', 0)
-                    ->select('i.ubicacion_id', 'i.cantidad', 'u.codigo as ubicacion_codigo')
-                    ->orderBy('i.cantidad', 'desc')
-                    ->first();
-
-                if (!$origen) {
-                    return $this->error($res, "No hay stock disponible en ubicaciones de reserva para este producto.");
-                }
-
-                // 3. Crear la tarea de reabastecimiento
-                $cantidadSugerida = min($origen->cantidad, 50); // Por ejemplo, máximo 50 unidades o lo que haya en reserva
-                
-                $id = Capsule::table('tarea_reabastecimientos')->insertGetId([
-                    'empresa_id' => $user->empresa_id,
-                    'producto_id' => $productoId,
-                    'ubicacion_origen_id' => $origen->ubicacion_id,
-                    'ubicacion_destino_id' => $dest->id,
-                    'cantidad' => $cantidadSugerida,
-                    'completada' => false,
-                    'created_at' => date('Y-m-d H:i:s'),
-                    'updated_at' => date('Y-m-d H:i:s')
-                ]);
-
-                return $this->ok($res, [
-                    'message' => 'Tarea de reabastecimiento creada desde ' . $origen->ubicacion_codigo,
-                    'tarea_id' => $id
-                ]);
-            });
-
-        } catch (\Exception $e) {
-            return $this->error($res, $e->getMessage(), 500);
-        }
-    }
-
-    /**
-     * POST /api/picking/reabast/{id}/completar
-     * Marca una tarea de reabastecimiento como completada.
-     */
-    public function completarReabast(Request $r, Response $res, array $args): Response
-    {
-        try {
-            $id = $args['id'];
-            $user = $r->getAttribute('user');
-
-            Capsule::table('tarea_reabastecimientos')
-                ->where('id', $id)
-                ->where('empresa_id', $user->empresa_id)
-                ->update([
-                    'completada' => true,
-                    'updated_at' => date('Y-m-d H:i:s')
-                ]);
-
-            return $this->ok($res, ['message' => 'Reabastecimiento completado.']);
-        } catch (\Exception $e) {
-            return $this->error($res, $e->getMessage(), 500);
+            error_log('PickingController::reporte error: ' . $e->getMessage());
+            return $this->error($res, 'Error generando reporte.', 500);
         }
     }
 }

@@ -720,8 +720,11 @@ class ReportesController extends BaseController
         foreach ($topCategorias as $cat) {
             $tendenciaCatQuery = (clone $qTopCategorias)
                 ->where('cp.id', $cat->id)
-                ->select(Capsule::raw('MONTH(op.created_at) as mes'), Capsule::raw('SUM(pd.cantidad_pickeada) as total'))
-                ->groupBy(Capsule::raw('MONTH(op.created_at)'))
+                ->select(
+                    Capsule::raw($this->isPg() ? "EXTRACT(MONTH FROM op.created_at)::int as mes" : "MONTH(op.created_at) as mes"),
+                    Capsule::raw('SUM(pd.cantidad_pickeada) as total')
+                )
+                ->groupBy(Capsule::raw($this->isPg() ? "EXTRACT(MONTH FROM op.created_at)::int" : "MONTH(op.created_at)"))
                 ->get()
                 ->keyBy('mes');
             
@@ -889,7 +892,9 @@ class ReportesController extends BaseController
                 END as alerta')
             )
             ->havingRaw("alerta != 'OK'")
-            ->orderByRaw("FIELD(alerta, 'Agotado', 'Punto Reorden', 'Bajo Mínimo')")
+            ->orderByRaw($this->isPg()
+                ? "CASE alerta WHEN 'Agotado' THEN 1 WHEN 'Punto Reorden' THEN 2 WHEN 'Bajo Mínimo' THEN 3 ELSE 4 END"
+                : "FIELD(alerta, 'Agotado', 'Punto Reorden', 'Bajo Mínimo')")
             ->get();
 
         $params = $r->getQueryParams();
@@ -927,7 +932,9 @@ class ReportesController extends BaseController
             ->whereIn('estado', ['Pendiente', 'EnCurso'])
             ->whereDate('created_at', $fecha)
             ->with(['detalles.producto:id,nombre,codigo_interno', 'asignado:id,nombre'])
-            ->orderByRaw("FIELD(prioridad,'Alta','Media','Normal','Baja') ASC")
+            ->orderByRaw($this->isPg()
+                ? "CASE prioridad WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 WHEN 'Normal' THEN 3 WHEN 'Baja' THEN 4 ELSE 5 END ASC"
+                : "FIELD(prioridad,'Alta','Media','Normal','Baja') ASC")
             ->orderBy('id')
             ->get();
 
@@ -1118,37 +1125,29 @@ HTML;
         
         return <<<HTML
 <!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
-<title>Certificación Contingencia</title>
+<title>Certificación Contingencia — $emp</title>
 <style>
-  body{font-family:Segoe UI,Tahoma,Arial,sans-serif;font-size:11px;margin:20px;color:#1e293b}
-  h2{margin:0;font-size:16px;color:#1e3a5f}
-  .header{border-bottom:2px solid #1e3a5f;padding-bottom:10px;margin-bottom:15px}
-  table{width:100%;border-collapse:collapse}
-  th{background:#1e3a5f;color:#fff;padding:5px 4px;text-align:left;font-size:10px}
-  td{padding:4px 3px;border-bottom:1px solid #eee;vertical-align:middle}
-  .firma{margin-top:36px;display:flex;gap:70px}
-  .firma-box{border-top:1px solid #333;width:190px;padding-top:4px;font-size:10px}
-  @media print{button{display:none!important}}
+  body{font-family:Segoe UI,Tahoma,sans-serif;font-size:12px;margin:24px;color:#1e293b}
+  h2{color:#1e3a5f;margin-bottom:4px}
+  .sub{color:#64748b;font-size:11px;margin-bottom:16px}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  th{background:#1e3a5f;color:#fff;padding:7px 10px;text-align:left;font-size:11px}
+  td{padding:6px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top}
+  tr:nth-child(even) td{background:#f8fafc}
+  .footer{margin-top:20px;font-size:10px;color:#94a3b8;text-align:right}
 </style></head><body>
-<div class="header">
-  <h2>🏭 {$emp} — CERTIFICACIÓN CONTINGENCIA</h2>
-  <div style="display:flex;gap:36px;margin:6px 0 0;font-size:11px">
-    <span><b>Fecha:</b> {$fecha}</span>
-    <span><b>Generado:</b> {$hora_gen}</span>
-  </div>
-</div>
-<button onclick="window.print()" style="margin:10px 0 14px;padding:6px 18px;background:#1e3a5f;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">🖨 Imprimir</button>
+<h2>Certificación de Contingencia</h2>
+<div class="sub">Empresa: $emp &nbsp;|&nbsp; Generado: $fecha $hora_gen</div>
 <table>
-  <thead><tr>
-    <th>Producto</th><th>Código</th><th>Cant. Planilla</th><th>Cant. Real ✓</th><th>Diferencia</th><th>Observación</th>
-  </tr></thead>
-  <tbody>{$rows}</tbody>
+  <thead>
+    <tr>
+      <th>Producto</th><th>Código</th><th>Cant. Planilla</th>
+      <th>Cant. Física</th><th>Diferencia</th><th>Observación</th>
+    </tr>
+  </thead>
+  <tbody>$rows</tbody>
 </table>
-<div class="firma">
-  <div class="firma-box">Jefe de Bodega</div>
-  <div class="firma-box">Auxiliar</div>
-  <div class="firma-box">Supervisor</div>
-</div>
+<div class="footer">WMS ProOriente — Documento generado automáticamente</div>
 </body></html>
 HTML;
     }

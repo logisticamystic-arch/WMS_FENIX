@@ -875,6 +875,86 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // Métricas de rendimiento de endpoints lentos
     $group->get('/inteligencia/performance',            [\App\Controllers\AnomalyController::class, 'performance']);
 
+    // ════════════════════════════════════════════════════════════════════════
+    // MÓDULOS ENTERPRISE — Repotencialización Multi-Agente
+    // ════════════════════════════════════════════════════════════════════════
+
+    // ── ROTACIÓN / ABC-XYZ (Motor de clasificación de inventario) ─────────
+    $group->get('/rotacion',                            [\App\Controllers\RotacionController::class, 'index']);
+    $group->get('/rotacion/abc-xyz',                    [\App\Controllers\RotacionController::class, 'abcXyz']);
+    $group->post('/rotacion/abc-xyz/ejecutar',          [\App\Controllers\RotacionController::class, 'ejecutarAbcXyz']);
+    $group->post('/rotacion/poblar-ventas',             [\App\Controllers\RotacionController::class, 'poblarVentas']);
+    $group->post('/rotacion/refresh-mv',                [\App\Controllers\RotacionController::class, 'refreshMv']);
+    $group->get('/rotacion/riesgo',                     [\App\Controllers\RotacionController::class, 'riesgo']);
+    $group->get('/rotacion/coberturas-bajas',           [\App\Controllers\RotacionController::class, 'coberturasBajas']);
+    $group->get('/rotacion/ejecuciones',                [\App\Controllers\RotacionController::class, 'ejecuciones']);
+    $group->get('/rotacion/export',                     [\App\Controllers\RotacionController::class, 'export']);
+
+    // ── FORECAST / PREDICCIÓN DE DEMANDA ──────────────────────────────────
+    $group->get('/forecast',                            [\App\Controllers\ForecastController::class, 'index']);
+    $group->get('/forecast/alertas',                    [\App\Controllers\ForecastController::class, 'alertas']);
+    $group->get('/forecast/producto/{id}',              [\App\Controllers\ForecastController::class, 'producto']);
+    $group->post('/forecast/ingest',                    [\App\Controllers\ForecastController::class, 'ingest']);
+    $group->post('/forecast/calcular',                  [\App\Controllers\ForecastController::class, 'calcularInterno']);
+    $group->get('/forecast/precision',                  [\App\Controllers\ForecastController::class, 'precision']);
+    $group->get('/forecast/export',                     [\App\Controllers\ForecastController::class, 'export']);
+
+    // ── SLOTTING / OPTIMIZACIÓN DE UBICACIONES ────────────────────────────
+    $group->get('/slotting',                            [\App\Controllers\SlottingController::class, 'index']);
+    $group->post('/slotting/ejecutar',                  [\App\Controllers\SlottingController::class, 'ejecutar']);
+    $group->post('/slotting/{id}/aprobar',              [\App\Controllers\SlottingController::class, 'aprobar']);
+    $group->post('/slotting/{id}/rechazar',             [\App\Controllers\SlottingController::class, 'rechazar']);
+    $group->get('/slotting/sugerencias',                [\App\Controllers\SlottingController::class, 'sugerencias']);
+    $group->get('/slotting/mapa',                       [\App\Controllers\SlottingController::class, 'mapa']);
+    $group->get('/slotting/export',                     [\App\Controllers\SlottingController::class, 'export']);
+
+    // ── CROSS-DOCKING (Transferencia directa entrada→salida) ──────────────
+    $group->get('/crossdock',                           [\App\Controllers\CrossDockController::class, 'index']);
+    $group->get('/crossdock/{id}',                      [\App\Controllers\CrossDockController::class, 'show']);
+    $group->post('/crossdock',                          [\App\Controllers\CrossDockController::class, 'crear']);
+    $group->post('/crossdock/{id}/recibir',             [\App\Controllers\CrossDockController::class, 'recibir']);
+    $group->post('/crossdock/{id}/transferir',          [\App\Controllers\CrossDockController::class, 'transferir']);
+    $group->post('/crossdock/{id}/completar',           [\App\Controllers\CrossDockController::class, 'completar']);
+    $group->get('/crossdock/kpis/resumen',              [\App\Controllers\CrossDockController::class, 'kpis']);
+    $group->get('/crossdock/export/csv',                [\App\Controllers\CrossDockController::class, 'export']);
+
+    // ── UBICACIONES ML (Mapa físico del almacén) ──────────────────────────
+    $group->get('/ubicaciones-ml',                      [\App\Controllers\UbicacionesController::class, 'index']);
+    $group->get('/ubicaciones-ml/{id}',                 [\App\Controllers\UbicacionesController::class, 'show']);
+    $group->post('/ubicaciones-ml',                     [\App\Controllers\UbicacionesController::class, 'crear']);
+    $group->put('/ubicaciones-ml/{id}',                 [\App\Controllers\UbicacionesController::class, 'actualizar']);
+    $group->patch('/ubicaciones-ml/{id}/estado',        [\App\Controllers\UbicacionesController::class, 'cambiarEstado']);
+    $group->delete('/ubicaciones-ml/{id}',              [\App\Controllers\UbicacionesController::class, 'eliminar']);
+    $group->get('/ubicaciones-ml/filtro/disponibles',   [\App\Controllers\UbicacionesController::class, 'disponibles']);
+    $group->get('/ubicaciones-ml/mapa/ocupacion',       [\App\Controllers\UbicacionesController::class, 'ocupacion']);
+    $group->get('/ubicaciones-ml/export/csv',           [\App\Controllers\UbicacionesController::class, 'export']);
+    $group->post('/ubicaciones-ml/importar',            [\App\Controllers\UbicacionesController::class, 'importar']);
+
+    // ── YARD MANAGEMENT (Gestión de patio / muelles) ──────────────────────
+    $group->get('/yard',                                [\App\Controllers\YardController::class, 'index']);
+    $group->get('/yard/{id}',                           [\App\Controllers\YardController::class, 'show']);
+    $group->post('/yard',                               [\App\Controllers\YardController::class, 'crear']);
+    $group->put('/yard/{id}',                           [\App\Controllers\YardController::class, 'actualizar']);
+    $group->post('/yard/{id}/entrada',                  [\App\Controllers\YardController::class, 'registrarEntrada']);
+    $group->post('/yard/{id}/inicio-operacion',         [\App\Controllers\YardController::class, 'registrarInicioOperacion']);
+    $group->post('/yard/{id}/fin-operacion',            [\App\Controllers\YardController::class, 'registrarFinOperacion']);
+    $group->post('/yard/{id}/salida',                   [\App\Controllers\YardController::class, 'registrarSalida']);
+    $group->post('/yard/{id}/cancelar',                 [\App\Controllers\YardController::class, 'cancelar']);
+    $group->get('/yard/muelles/estado',                 [\App\Controllers\YardController::class, 'muelles']);
+    $group->get('/yard/kpis/resumen',                   [\App\Controllers\YardController::class, 'kpis']);
+    $group->get('/yard/export/csv',                     [\App\Controllers\YardController::class, 'export']);
+
+    // ── WAVE PICKING (Consolidación de planillas en olas) ─────────────────
+    $group->get('/wave',                                [\App\Controllers\WaveController::class, 'index']);
+    $group->get('/wave/{id}',                           [\App\Controllers\WaveController::class, 'show']);
+    $group->post('/wave',                               [\App\Controllers\WaveController::class, 'crear']);
+    $group->post('/wave/{id}/iniciar',                  [\App\Controllers\WaveController::class, 'iniciar']);
+    $group->post('/wave/{id}/completar',                [\App\Controllers\WaveController::class, 'completar']);
+    $group->post('/wave/{id}/cancelar',                 [\App\Controllers\WaveController::class, 'cancelar']);
+    $group->post('/wave/auto-generar',                  [\App\Controllers\WaveController::class, 'autoGenerar']);
+    $group->get('/wave/kpis/resumen',                   [\App\Controllers\WaveController::class, 'kpis']);
+    $group->get('/wave/export/csv',                     [\App\Controllers\WaveController::class, 'export']);
+
 })->add(new \App\Middleware\JwtMiddleware());
 
 // Ruta pública para información de conexión

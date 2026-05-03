@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WMS · TV Dashboard — Picking & Recepción</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
+      --border: #30363d; --text: #e6edf3; --text2: #8b949e;
+      --blue: #58a6ff; --green: #3fb950; --yellow: #d29922;
+      --red: #f85149; --purple: #bc8cff; --cyan: #79c0ff;
+      --orange: #ffa657;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif;
+           height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+
+    /* HEADER */
+    .tv-header {
+      background:var(--bg2); border-bottom:2px solid var(--border);
+      padding:10px 28px; display:flex; align-items:center; justify-content:space-between;
+      flex-shrink:0;
+    }
+    .tv-logo { display:flex; align-items:center; gap:12px; }
+    .tv-logo-icon { width:36px; height:36px; background:linear-gradient(135deg,#1f6feb,#388bfd);
+                    border-radius:8px; display:flex; align-items:center; justify-content:center;
+                    font-weight:900; font-size:16px; color:#fff; }
+    .tv-logo-text { font-size:18px; font-weight:800; letter-spacing:1px; }
+    .tv-logo-sub  { font-size:11px; color:var(--text2); letter-spacing:2px; text-transform:uppercase; }
+    .tv-meta { display:flex; align-items:center; gap:24px; }
+    .tv-live { display:flex; align-items:center; gap:7px; font-size:12px; font-weight:700; color:var(--green); }
+    .tv-live-dot { width:8px; height:8px; border-radius:50%; background:var(--green);
+                   animation:pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.4)} }
+    .tv-clock { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--blue); }
+    .tv-date  { font-size:11px; color:var(--text2); text-align:right; }
+    .tv-refresh-badge { font-size:11px; color:var(--text2); display:flex; align-items:center; gap:5px; }
+
+    /* LAYOUT */
+    .tv-body { flex:1; display:grid; grid-template-columns:70% 30%; overflow:hidden; }
+
+    /* PANELS */
+    .tv-panel { padding:12px 14px; display:flex; flex-direction:column; gap:10px; overflow:hidden; }
+    .tv-panel-right { border-left:2px solid var(--border); background:var(--bg2);
+                      padding:12px 14px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; }
+
+    /* KPI CARDS */
+    .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; flex-shrink:0; }
+    .kpi-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px;
+                padding:12px 14px; display:flex; flex-direction:column; gap:4px; }
+    .kpi-card.accent-blue  { border-top:3px solid var(--blue); }
+    .kpi-card.accent-green { border-top:3px solid var(--green); }
+    .kpi-card.accent-yellow{ border-top:3px solid var(--yellow); }
+    .kpi-card.accent-purple{ border-top:3px solid var(--purple); }
+    .kpi-card.accent-cyan  { border-top:3px solid var(--cyan); }
+    .kpi-label  { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:var(--text2); }
+    .kpi-value  { font-size:26px; font-weight:900; line-height:1; font-variant-numeric:tabular-nums; }
+    .kpi-sub    { font-size:10px; color:var(--text2); }
+    .kpi-blue   { color:var(--blue); }
+    .kpi-green  { color:var(--green); }
+    .kpi-yellow { color:var(--yellow); }
+    .kpi-purple { color:var(--purple); }
+    .kpi-cyan   { color:var(--cyan); }
+
+    /* CHARTS SECTION */
+    .charts-row { flex:1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; min-height:0; }
+    .chart-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px;
+                  padding:12px; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+    .chart-title { font-size:12px; font-weight:700; color:var(--text2); text-transform:uppercase;
+                   letter-spacing:.8px; margin-bottom:8px; display:flex; align-items:center; gap:8px; flex-shrink:0; }
+    .chart-title i { font-size:13px; }
+    .chart-wrap { flex:1; position:relative; min-height:0; }
+
+    /* RIGHT PANEL */
+    .recv-title { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:1px;
+                  color:var(--text2); padding-bottom:8px; border-bottom:1px solid var(--border); flex-shrink:0; }
+    .recv-kpi-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .recv-kpi { background:var(--bg3); border:1px solid var(--border); border-radius:8px;
+                padding:10px 12px; }
+    .recv-kpi-label { font-size:10px; color:var(--text2); font-weight:700; text-transform:uppercase; }
+    .recv-kpi-val   { font-size:22px; font-weight:900; font-variant-numeric:tabular-nums; }
+
+    .recv-section-title { font-size:11px; font-weight:700; color:var(--text2); text-transform:uppercase;
+                          letter-spacing:.8px; margin-top:4px; padding:6px 0 4px; border-top:1px solid var(--border); }
+    .recv-odc-item { background:var(--bg3); border:1px solid var(--border); border-radius:6px;
+                     padding:8px 10px; margin-bottom:6px; }
+    .recv-odc-num  { font-size:12px; font-weight:700; color:var(--blue); }
+    .recv-odc-prov { font-size:11px; color:var(--text2); }
+    .recv-odc-bar  { height:4px; background:var(--border); border-radius:99px; margin-top:5px; overflow:hidden; }
+    .recv-odc-fill { height:100%; background:var(--green); border-radius:99px; transition:width .6s ease; }
+
+    /* TOAST */
+    #tv-error { position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
+                background:#1f1f1f; border:1px solid var(--red); color:var(--red);
+                padding:8px 20px; border-radius:8px; font-size:13px; display:none; z-index:999; }
+    .tv-loading { position:fixed; inset:0; background:rgba(13,17,23,.9); display:flex;
+                  align-items:center; justify-content:center; font-size:16px; color:var(--text2);
+                  z-index:998; }
+    .spin-icon { animation:spin 1s linear infinite; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+  </style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="tv-loading" id="tv-loading">
+  <div style="text-align:center;">
+    <i class="fa-solid fa-rotate spin-icon" style="font-size:32px;color:#388bfd;margin-bottom:12px;display:block;"></i>
+    Conectando con WMS...
+  </div>
+</div>
+
+<!-- HEADER -->
+<header class="tv-header">
+  <div class="tv-logo">
+    <div class="tv-logo-icon">W</div>
+    <div>
+      <div class="tv-logo-text">WMS PRO ORIENTE</div>
+      <div class="tv-logo-sub">TV Dashboard · Picking & Recepción</div>
+    </div>
+  </div>
+  <div class="tv-meta">
+    <div class="tv-refresh-badge"><i class="fa-solid fa-rotate-right spin-icon" id="refresh-spin" style="display:none;"></i>
+      <span id="next-refresh">Actualizando...</span>
+    </div>
+    <div class="tv-live"><div class="tv-live-dot"></div> EN VIVO</div>
+    <div>
+      <div class="tv-clock" id="tv-clock">--:--:--</div>
+      <div class="tv-date"  id="tv-date">---</div>
+    </div>
+  </div>
+</header>
+
+<!-- BODY -->
+<div class="tv-body">
+
+  <!-- LEFT 70% — PICKING -->
+  <div class="tv-panel" id="pick-panel">
+
+    <!-- KPI Cards -->
+    <div class="kpi-row">
+      <div class="kpi-card accent-blue">
+        <div class="kpi-label">Planillas Activas</div>
+        <div class="kpi-value kpi-blue" id="k-planillas">—</div>
+        <div class="kpi-sub">En proceso hoy</div>
+      </div>
+      <div class="kpi-card accent-green">
+        <div class="kpi-label">Planillas Completadas</div>
+        <div class="kpi-value kpi-green" id="k-completadas">—</div>
+        <div class="kpi-sub">Cerradas hoy</div>
+      </div>
+      <div class="kpi-card accent-yellow">
+        <div class="kpi-label">Líneas Pendientes</div>
+        <div class="kpi-value kpi-yellow" id="k-lineas-pend">—</div>
+        <div class="kpi-sub">Por separar</div>
+      </div>
+      <div class="kpi-card accent-purple">
+        <div class="kpi-label">Unidades Pendientes</div>
+        <div class="kpi-value kpi-purple" id="k-uds-pend">—</div>
+        <div class="kpi-sub">Cantidad total</div>
+      </div>
+      <div class="kpi-card accent-cyan">
+        <div class="kpi-label">Promedio por Planilla</div>
+        <div class="kpi-value kpi-cyan" id="k-avg-min">—</div>
+        <div class="kpi-sub">minutos</div>
+      </div>
+    </div>
+
+    <!-- Charts: Ranking Auxiliares -->
+    <div class="charts-row">
+      <div class="chart-card">
+        <div class="chart-title"><i class="fa-solid fa-trophy" style="color:#ffd700;"></i> Ranking por Planillas</div>
+        <div class="chart-wrap"><canvas id="chart-planillas"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title"><i class="fa-solid fa-list-check" style="color:var(--green);"></i> Ranking por Líneas</div>
+        <div class="chart-wrap"><canvas id="chart-lineas"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title"><i class="fa-solid fa-boxes-stacked" style="color:var(--purple);"></i> Ranking por Unidades</div>
+        <div class="chart-wrap"><canvas id="chart-unidades"></canvas></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT 30% — RECEPCIÓN -->
+  <div class="tv-panel-right" id="recv-panel">
+    <div class="recv-title"><i class="fa-solid fa-truck-ramp-box" style="color:var(--blue);"></i> Recepción</div>
+
+    <div class="recv-kpi-grid">
+      <div class="recv-kpi">
+        <div class="recv-kpi-label">ODCs Abiertas</div>
+        <div class="recv-kpi-val kpi-blue" id="r-odcs">—</div>
+      </div>
+      <div class="recv-kpi">
+        <div class="recv-kpi-label">Líneas en Proceso</div>
+        <div class="recv-kpi-val kpi-yellow" id="r-lineas">—</div>
+      </div>
+      <div class="recv-kpi">
+        <div class="recv-kpi-label">% Recibo / Ref</div>
+        <div class="recv-kpi-val kpi-green" id="r-pct-ref">—</div>
+      </div>
+      <div class="recv-kpi">
+        <div class="recv-kpi-label">% Recibo / Cant</div>
+        <div class="recv-kpi-val kpi-purple" id="r-pct-cant">—</div>
+      </div>
+    </div>
+
+    <div class="recv-section-title"><i class="fa-solid fa-file-invoice"></i> ODCs Activas</div>
+    <div id="recv-odcs-list">
+      <div style="color:var(--text2);font-size:12px;text-align:center;padding:20px;">Cargando...</div>
+    </div>
+  </div>
+
+</div>
+
+<div id="tv-error"></div>
+
+<script>
+// ── CONFIGURACIÓN ───────────────────────────────────────────────────────────
+const REFRESH_INTERVAL = 120; // segundos
+let token = localStorage.getItem('wms_token') || '';
+let _countDown = REFRESH_INTERVAL;
+let _refreshTimer = null;
+let _countTimer  = null;
+let charts = {};
+
+// Recibir token desde ventana padre
+window.addEventListener('message', e => {
+  if (e.data?.type === 'WMS_TOKEN') { token = e.data.token; init(); }
+});
+
+// Detectar base URL
+const BASE = (() => {
+  const p = window.location.pathname;
+  const m = p.match(/^(\/.*?\/public)\//);
+  return (m ? m[1] : '') + '/api';
+})();
+
+async function api(path) {
+  const r = await fetch(BASE + path, {
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  return j.data ?? j;
+}
+
+// ── RELOJ ───────────────────────────────────────────────────────────────────
+function tick() {
+  const now = new Date();
+  document.getElementById('tv-clock').textContent = now.toLocaleTimeString('es-CO');
+  document.getElementById('tv-date').textContent  = now.toLocaleDateString('es-CO',
+    {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+}
+setInterval(tick, 1000); tick();
+
+// ── COUNTDOWN ───────────────────────────────────────────────────────────────
+function startCountdown() {
+  if (_countTimer) clearInterval(_countTimer);
+  _countDown = REFRESH_INTERVAL;
+  _countTimer = setInterval(() => {
+    _countDown--;
+    const el = document.getElementById('next-refresh');
+    if (el) el.textContent = `Próxima actualización: ${_countDown}s`;
+    if (_countDown <= 0) { clearInterval(_countTimer); refresh(); }
+  }, 1000);
+}
+
+// ── CHARTS ──────────────────────────────────────────────────────────────────
+const CHART_COLORS = [
+  '#58a6ff','#3fb950','#d29922','#bc8cff','#ffa657',
+  '#79c0ff','#f0883e','#56d364','#db61a2','#e3b341'
+];
+
+function buildChart(id, labels, data, label, color) {
+  if (charts[id]) { charts[id].destroy(); }
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  charts[id] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label, data,
+        backgroundColor: labels.map((_,i) => CHART_COLORS[i % CHART_COLORS.length] + 'cc'),
+        borderColor:     labels.map((_,i) => CHART_COLORS[i % CHART_COLORS.length]),
+        borderWidth: 2, borderRadius: 4
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 800 },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.x} ${label.toLowerCase()}` } }
+      },
+      scales: {
+        x: { ticks:{ color:'#8b949e', font:{size:10} }, grid:{ color:'#21262d' },
+             beginAtZero: true },
+        y: { ticks:{ color:'#e6edf3', font:{size:11,weight:'bold'} }, grid:{ display:false } }
+      }
+    }
+  });
+}
+
+// ── DATOS PICKING ────────────────────────────────────────────────────────────
+function getToday() {
+  return new Date().toISOString().slice(0,10);
+}
+
+async function loadPicking() {
+  const today = getToday();
+  const [dash, allPick] = await Promise.all([
+    api(`/picking/dashboard?fecha_inicio=${today}&fecha_fin=${today}&estado=&planilla=`),
+    api(`/picking?fecha_inicio=${today}&fecha_fin=${today}&estado=&planilla=&limit=1000`)
+  ]);
+
+  const d   = dash || {};
+  const all = Array.isArray(allPick) ? allPick : [];
+
+  // KPIs
+  const totalLineas  = all.reduce((a,p) => a + parseInt(p.total_lineas||0), 0);
+  const pendLineas   = all.reduce((a,p) => a + parseInt(p.lineas_pendientes||0), 0);
+  const pendUds      = all.reduce((a,p) => a + parseFloat(p.cantidad_pendiente||0), 0);
+  const planActivas  = (d.en_proceso || 0);
+  const planCompletas= (d.completadas || 0);
+
+  // Promedio minutos por planilla (basado en series diarias si existe)
+  let avgMin = '—';
+  try {
+    const series = d.series?.diario || [];
+    if (series.length > 1) {
+      const first = new Date(series[0]?.label);
+      const last  = new Date(series[series.length-1]?.label);
+      const mins  = (last - first) / 60000;
+      const plan  = Math.max(1, planCompletas);
+      avgMin = Math.round(mins / plan);
+    }
+  } catch(e) {}
+
+  setText('k-planillas',    planActivas);
+  setText('k-completadas',  planCompletas);
+  setText('k-lineas-pend',  fmt(pendLineas));
+  setText('k-uds-pend',     fmt(pendUds));
+  setText('k-avg-min',      avgMin);
+
+  // Rankings (usar datos del dashboard)
+  const ranking = Array.isArray(d.ranking_auxiliares) ? d.ranking_auxiliares : [];
+  const sorted = [...ranking].sort((a,b) => b.planillas - a.planillas || b.lineas - a.lineas);
+  const names  = sorted.map(r => r.nombre || 'N/A');
+  const rPlan  = sorted.map(r => r.planillas || r.pedidos || 0);
+  const rLin   = sorted.map(r => r.lineas || 0);
+  const rUds   = sorted.map(r => parseFloat(r.unidades || 0));
+
+  buildChart('chart-planillas', names, rPlan, 'Planillas',  '#58a6ff');
+  buildChart('chart-lineas',    names, rLin,  'Líneas',     '#3fb950');
+  buildChart('chart-unidades',  names, rUds,  'Unidades',   '#bc8cff');
+}
+
+// ── DATOS RECEPCIÓN ──────────────────────────────────────────────────────────
+async function loadRecepcion() {
+  const panel = await api('/recepcion/control-panel');
+  const kpis  = panel?.kpis || {};
+  const odcs  = Array.isArray(panel?.odcs) ? panel.odcs : [];
+
+  setText('r-odcs',      kpis.total_odcs          || 0);
+  setText('r-lineas',    kpis.total_lineas         || 0);
+  setText('r-pct-ref',  (kpis.pct_recibo_referencia || 0) + '%');
+  setText('r-pct-cant', (kpis.pct_recibo_cantidad   || 0) + '%');
+
+  const listEl = document.getElementById('recv-odcs-list');
+  if (!listEl) return;
+  const open = odcs.filter(o => o.estado !== 'Cerrada' && o.estado !== 'Cancelada').slice(0, 8);
+  if (!open.length) { listEl.innerHTML = '<div style="color:#8b949e;font-size:12px;text-align:center;padding:16px;">Sin ODCs activas</div>'; return; }
+  listEl.innerHTML = open.map(o => {
+    const pct = Math.min(100, Math.round((o.pct_recibo || o.pct_cantidad || 0)));
+    return `<div class="recv-odc-item">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span class="recv-odc-num">${esc(o.numero_odc||'-')}</span>
+        <span style="font-size:11px;font-weight:700;color:${pct>=100?'#3fb950':pct>50?'#d29922':'#f85149'}">${pct}%</span>
+      </div>
+      <div class="recv-odc-prov">${esc(o.proveedor?.razon_social || o.proveedor || '-')}</div>
+      <div class="recv-odc-bar"><div class="recv-odc-fill" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── REFRESH ──────────────────────────────────────────────────────────────────
+async function refresh() {
+  const spin = document.getElementById('refresh-spin');
+  if (spin) spin.style.display = 'inline-block';
+  try {
+    await Promise.all([ loadPicking(), loadRecepcion() ]);
+    hideError();
+  } catch(e) {
+    showError('Error al actualizar: ' + e.message);
+  } finally {
+    if (spin) spin.style.display = 'none';
+    startCountdown();
+  }
+}
+
+async function init() {
+  if (!token) { showError('Sin token de sesión. Abra el TV Dashboard desde el módulo Picking.'); return; }
+  document.getElementById('tv-loading').style.display = 'none';
+  await refresh();
+}
+
+// ── HELPERS ──────────────────────────────────────────────────────────────────
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+function fmt(n) {
+  return new Intl.NumberFormat('es-CO').format(Math.round(Number(n)||0));
+}
+function esc(s) {
+  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function showError(msg) {
+  const el = document.getElementById('tv-error');
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
+function hideError() {
+  const el = document.getElementById('tv-error');
+  if (el) el.style.display = 'none';
+}
+
+// ── ARRANQUE ─────────────────────────────────────────────────────────────────
+// Intentar leer token inmediatamente (si la misma pestaña tiene localStorage)
+if (token) {
+  init();
+} else {
+  // Esperar postMessage del padre (1 segundo de gracia)
+  setTimeout(() => {
+    token = localStorage.getItem('wms_token') || '';
+    if (token) init();
+    else showError('Sin sesión activa. Abra el TV desde el módulo Picking con sesión iniciada.');
+  }, 800);
+}
+</script>
+</body>
+</html>
