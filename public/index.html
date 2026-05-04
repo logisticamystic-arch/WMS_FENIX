@@ -17,6 +17,8 @@
 
   <!-- Chart.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <!-- JsBarcode — generación CODE128 para rótulos -->
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script src="assets/js/DataCache.js"></script>
   <script src="assets/js/CacheHelpers.js"></script>
 
@@ -148,6 +150,9 @@
         </button>
         <button class="module-tab" data-module="logistica" onclick="WMS.nav('logistica')">
           <i class="fa-solid fa-truck-fast"></i><span>Logística Pro</span>
+        </button>
+        <button class="module-tab" data-module="rotulos" onclick="WMS.nav('rotulos')">
+          <i class="fa-solid fa-barcode"></i><span>Rótulos</span>
         </button>
       </nav>
 
@@ -960,6 +965,7 @@
           'assets/js/desktop/reportes.js',
           'assets/js/desktop/inicio.js',
           'assets/js/desktop/inteligencia.js',
+          'assets/js/desktop/rotulos.js',
         ];
         this._preloadCancelled = false;
         let i = 0;
@@ -1248,7 +1254,8 @@
         reportes:       'gerencial',
         inteligencia:   'vencimientos',
         logistica:      'crossdock',
-        rotacion:       'abc-xyz'
+        rotacion:       'abc-xyz',
+        rotulos:        'productos',
       },
 
       // ── Navegación por módulos ────────────────────────────
@@ -1283,6 +1290,7 @@
           inteligencia:  'assets/js/desktop/inteligencia.js',
           rotacion:      'assets/js/desktop/rotacion.js',
           logistica:     'assets/js/desktop/logistica-avanzada.js',
+          rotulos:       'assets/js/desktop/rotulos.js',
         };
 
         if (scripts[module]) {
@@ -1310,7 +1318,7 @@
         const curEl   = document.getElementById('bc-current');
         const backBtn = document.getElementById('btn-back-breadcrumb');
 
-        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', inventario:'Inventario', reportes:'Reportes', inteligencia:'Inteligencia ML', logistica:'Logística Pro', rotacion:'Rotación ML' };
+        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', inventario:'Inventario', reportes:'Reportes', inteligencia:'Inteligencia ML', logistica:'Logística Pro', rotacion:'Rotación ML', rotulos:'Rótulos' };
         modEl.textContent = labels[mod] || mod.toUpperCase();
 
         if (sub) {
@@ -1522,6 +1530,14 @@
               ]
             },
           ],
+          rotulos: [
+            {
+              section: 'IMPRIMIR', items: [
+                { icon: 'fa-barcode',      label: 'Rótulo Producto',   action: "WMS.nav('rotulos','productos')"   },
+                { icon: 'fa-location-dot', label: 'Rótulo Ubicación',  action: "WMS.nav('rotulos','ubicaciones')" },
+              ]
+            },
+          ],
           logistica: [
             {
               section: 'AVANZADA', items: [
@@ -1574,8 +1590,8 @@
         });
         const sidebarContentEl = document.getElementById('sidebar-content');
         const sidebarTitleEl   = document.getElementById('sidebar-module-title');
-        const modIcons = { inicio:'fa-house', maestro:'fa-database', recepcion:'fa-truck-ramp-box', almacenamiento:'fa-warehouse', picking:'fa-boxes-stacked', despacho:'fa-truck-fast', inventario:'fa-clipboard-list', reportes:'fa-chart-column', inteligencia:'fa-brain', logistica:'fa-truck-fast' };
-        const modLabels = { inicio:'INICIO', maestro:'MAESTROS', recepcion:'RECEPCIÓN & YMS', almacenamiento:'ALMACENAMIENTO', picking:'PICKING', despacho:'DESPACHO & TMS', inventario:'INVENTARIOS', reportes:'REPORTES', inteligencia:'INTELIGENCIA ML', logistica:'LOGÍSTICA PRO' };
+        const modIcons = { inicio:'fa-house', maestro:'fa-database', recepcion:'fa-truck-ramp-box', almacenamiento:'fa-warehouse', picking:'fa-boxes-stacked', despacho:'fa-truck-fast', inventario:'fa-clipboard-list', reportes:'fa-chart-column', inteligencia:'fa-brain', logistica:'fa-truck-fast', rotulos:'fa-barcode' };
+        const modLabels = { inicio:'INICIO', maestro:'MAESTROS', recepcion:'RECEPCIÓN & YMS', almacenamiento:'ALMACENAMIENTO', picking:'PICKING', despacho:'DESPACHO & TMS', inventario:'INVENTARIOS', reportes:'REPORTES', inteligencia:'INTELIGENCIA ML', logistica:'LOGÍSTICA PRO', rotulos:'RÓTULOS' };
         if (sidebarContentEl) sidebarContentEl.innerHTML = html;
         if (sidebarTitleEl) sidebarTitleEl.innerHTML = `<i class="fa-solid ${modIcons[module]||'fa-circle'}" style="margin-right:8px;opacity:.7"></i>${modLabels[module]||module.toUpperCase()}`;
       },

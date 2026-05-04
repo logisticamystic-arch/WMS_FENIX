@@ -1284,7 +1284,7 @@ WMS_MODULES.maestro = {
       pasillo:         pas,
       modulo:          mod,
       nivel:           niv,
-      codigo:          [pas, mod, niv].filter(Boolean).join('-'),
+      codigo:          zona + '/' + [pas, mod, niv].filter(Boolean).join('-'),
       tipo_ubicacion:  document.getElementById('f-utip')?.value,
       clase:           document.getElementById('f-ucla')?.value,
       capacidad_maxima: parseInt(document.getElementById('f-ucap')?.value) || 0,

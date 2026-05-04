@@ -849,39 +849,42 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         $data = $request->getParsedBody();
         try {
-            // Pre-generar código para validar duplicidad
-            $modulo = $data['modulo'] ?? '01';
-            $mStr   = str_pad($modulo, 2, '0', STR_PAD_LEFT);
-            $pasillo = strtoupper($data['pasillo'] ?? '');
-            $nivel   = strtoupper($data['nivel'] ?? '');
-            $codigo  = "WP/EX/" . $pasillo . "-" . $mStr . "-" . $nivel;
+            $zona    = strtoupper(trim($data['zona'] ?? ''));
+            $pasillo = strtoupper(trim($data['pasillo'] ?? ''));
+            $modulo  = str_pad($data['modulo'] ?? '01', 2, '0', STR_PAD_LEFT);
+            $nivel   = strtoupper(trim($data['nivel'] ?? ''));
+
+            // Código = zona/pasillo-modulo-nivel (si el cliente ya lo envía, usarlo directamente)
+            if (!empty($data['codigo'])) {
+                $codigo = trim($data['codigo']);
+            } else {
+                $parts = array_filter([$pasillo, $modulo, $nivel]);
+                $codigo = $zona . '/' . implode('-', $parts);
+            }
 
             $exists = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id)
                 ->where('sucursal_id', $data['sucursal_id'])
                 ->where('codigo', $codigo)
                 ->exists();
-            
+
             if ($exists) {
                 return $this->json($response, ['error' => true, 'message' => "La ubicación {$codigo} ya existe en esta sucursal."], 400);
             }
 
             $u = new \App\Models\Ubicacion();
-            $u->empresa_id = $user->empresa_id;
-            $u->sucursal_id = $data['sucursal_id'];
-            $u->zona = $data['zona'];
-            $u->pasillo = $data['pasillo'];
-            $u->modulo = $data['modulo'] ?? '00';
-            $u->nivel = $data['nivel'];
-            
-            // Auto-generate code: WP/EX/PASILLO-MODULO-NIVEL
-            $mStr = str_pad($u->modulo, 2, '0', STR_PAD_LEFT);
-            $u->codigo = "WP/EX/" . strtoupper($u->pasillo) . "-" . $mStr . "-" . strtoupper($u->nivel);
-            
-            $u->posicion = $data['posicion'] ?? null;
-            $u->tipo_ubicacion = $data['tipo_ubicacion'] ?? 'Almacenamiento';
-            $u->capacidad_maxima = $data['capacidad_maxima'] ?? 0;
-            $u->activo = 1;
+            $u->empresa_id      = $user->empresa_id;
+            $u->sucursal_id     = $data['sucursal_id'];
+            $u->zona            = $data['zona'];
+            $u->pasillo         = $data['pasillo'];
+            $u->modulo          = $data['modulo'] ?? '01';
+            $u->nivel           = $data['nivel'];
+            $u->codigo          = $codigo;
+            $u->posicion        = $data['posicion'] ?? null;
+            $u->tipo_ubicacion  = $data['tipo_ubicacion'] ?? 'Almacenamiento';
+            $u->capacidad_maxima = (int)($data['capacidad_maxima'] ?? 0);
+            $u->activo          = 1;
             $u->save();
+
             return $this->json($response, ['error' => false, 'message' => 'Ubicación creada: ' . $u->codigo, 'data' => $u]);
         } catch (\Exception $e) {
             return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 400);

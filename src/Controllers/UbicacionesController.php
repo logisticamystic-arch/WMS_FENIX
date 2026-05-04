@@ -342,7 +342,7 @@ class UbicacionesController extends BaseController
             for ($est = 1; $est <= $estanterias; $est++) {
                 for ($niv = 1; $niv <= $niveles; $niv++) {
                     for ($pos = 1; $pos <= $posiciones; $pos++) {
-                        $codigo = sprintf('%s-%02d-%02d-%02d', strtoupper($pasillo), $est, $niv, $pos);
+                        $codigo = sprintf('%s/%02d-%02d-%02d', strtoupper($zona), $est, $niv, $pos);
 
                         $existe = Capsule::table('ubicaciones')
                             ->where('empresa_id',  $user->empresa_id)
