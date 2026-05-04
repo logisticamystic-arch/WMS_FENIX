@@ -18,9 +18,11 @@ class DevolucionController extends BaseController
     public function index(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
         try {
-            $devoluciones = Devolucion::where('empresa_id', $user->empresa_id)
-                ->where('sucursal_id', $user->sucursal_id)
+            $devoluciones = Devolucion::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
                 ->orderBy('created_at', 'desc')
                 ->limit(100)
                 ->get();
@@ -37,10 +39,13 @@ class DevolucionController extends BaseController
     public function ver(Request $request, Response $response, array $args): Response
     {
         $user = $request->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
         $id = (int)($args['id'] ?? 0);
         try {
             $devolucion = Devolucion::with('detalles')
-                ->where('empresa_id', $user->empresa_id)
+                ->where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
                 ->find($id);
             if (!$devolucion) {
                 return $this->json($response, ['error' => true, 'message' => 'Devolución no encontrada.'], 404);
@@ -61,9 +66,13 @@ class DevolucionController extends BaseController
         if (!($user->rol === 'Admin' || $user->rol === 'Supervisor')) {
             return $this->json($response, ['error' => true, 'message' => 'No tienes permiso para eliminar devoluciones.'], 403);
         }
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
         $id = (int)($args['id'] ?? 0);
         try {
-            $devolucion = Devolucion::where('empresa_id', $user->empresa_id)->find($id);
+            $devolucion = Devolucion::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
+                ->find($id);
             if (!$devolucion) {
                 return $this->json($response, ['error' => true, 'message' => 'Devolución no encontrada.'], 404);
             }
@@ -83,6 +92,7 @@ class DevolucionController extends BaseController
     public function store(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $request);
         
         // Cualquier usuario autenticado puede registrar devoluciones
 
@@ -100,8 +110,8 @@ class DevolucionController extends BaseController
 
         try {
             $devolucion = new Devolucion();
-            $devolucion->empresa_id = $user->empresa_id;
-            $devolucion->sucursal_id = $user->sucursal_id;
+            $devolucion->empresa_id = $empresaId;
+            $devolucion->sucursal_id = $sucursalId;
             $devolucion->recepcion_id = $data['recepcion_id'] ?? null;
             $devolucion->proveedor = $data['proveedor'] ?? null;
             $devolucion->numero_devolucion = 'DEV-' . time() . '-' . rand(10,99);
@@ -115,8 +125,8 @@ class DevolucionController extends BaseController
             $devolucion->save();
 
             // Buscar la ubicación virtual adecuada (OBSOLETO o PATIO)
-            $ubicacion_obsoleto = Ubicacion::where('sucursal_id', $user->sucursal_id)->where('tipo_ubicacion', 'Patio')->where('codigo', 'OBSOLETO')->first();
-            $ubicacion_patio = Ubicacion::where('sucursal_id', $user->sucursal_id)->where('tipo_ubicacion', 'Patio')->where('codigo', 'PATIO')->first();
+            $ubicacion_obsoleto = Ubicacion::where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)->where('tipo_ubicacion', 'Patio')->where('codigo', 'OBSOLETO')->first();
+            $ubicacion_patio = Ubicacion::where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)->where('tipo_ubicacion', 'Patio')->where('codigo', 'PATIO')->first();
 
             foreach ($detalles as $idx => $linea) {
                 $lineaNum = $idx + 1;
@@ -147,8 +157,8 @@ class DevolucionController extends BaseController
 
                 // Registrar en MovimientoInventario
                 $movimiento = new MovimientoInventario();
-                $movimiento->empresa_id = $user->empresa_id;
-                $movimiento->sucursal_id = $user->sucursal_id;
+                $movimiento->empresa_id = $empresaId;
+                $movimiento->sucursal_id = $sucursalId;
                 $movimiento->producto_id = $linea['producto_id'];
                 $movimiento->ubicacion_origen_id = null; // Viene del usuario/proveedor o zona perdida
                 $movimiento->ubicacion_destino_id = $ubicacion_destino_id;
@@ -167,8 +177,8 @@ class DevolucionController extends BaseController
                 // Actualizar inventario en la ubicación destino virtual (Obsoleto o Patio)
                 if ($ubicacion_destino_id) {
                     $inventario = Inventario::firstOrNew([
-                        'empresa_id' => $user->empresa_id,
-                        'sucursal_id' => $user->sucursal_id,
+                        'empresa_id' => $empresaId,
+                        'sucursal_id' => $sucursalId,
                         'producto_id' => $linea['producto_id'],
                         'ubicacion_id' => $ubicacion_destino_id,
                         'lote' => $linea['lote'] ?? null
@@ -199,9 +209,12 @@ class DevolucionController extends BaseController
     public function getByOdc(Request $request, Response $response, array $args): Response
     {
         $user  = $request->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
         $odcId = (int)($args['odcId'] ?? 0);
         try {
-            $devs = Devolucion::where('empresa_id', $user->empresa_id)
+            $devs = Devolucion::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
                 ->where('odc_id', $odcId)
                 ->with('detalles.producto')
                 ->orderBy('created_at', 'desc')
@@ -219,6 +232,7 @@ class DevolucionController extends BaseController
     public function desdeRecepcion(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $request);
         $data = $request->getParsedBody();
 
         $recepcion_detalle_ids = $data['recepcion_detalle_ids'] ?? [];
@@ -228,8 +242,13 @@ class DevolucionController extends BaseController
 
         \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
         try {
+            // empresa_id join ensures cross-tenant isolation
             $detalles_grupo = \Illuminate\Database\Capsule\Manager::table('recepcion_detalles')
-                ->whereIn('id', $recepcion_detalle_ids)
+                ->join('recepciones', 'recepciones.id', '=', 'recepcion_detalles.recepcion_id')
+                ->where('recepciones.empresa_id', $empresaId)
+                ->where('recepciones.sucursal_id', $sucursalId)
+                ->whereIn('recepcion_detalles.id', $recepcion_detalle_ids)
+                ->select('recepcion_detalles.*')
                 ->get();
 
             $recepcion_id = null;
@@ -241,8 +260,8 @@ class DevolucionController extends BaseController
             }
 
             $devolucion = new Devolucion();
-            $devolucion->empresa_id = $user->empresa_id;
-            $devolucion->sucursal_id = $user->sucursal_id;
+            $devolucion->empresa_id = $empresaId;
+            $devolucion->sucursal_id = $sucursalId;
             $devolucion->recepcion_id = $recepcion_id;
             $devolucion->numero_devolucion = 'DEV-RCP-' . time();
             $devolucion->tipo = 'DevolucionRecepcion';
@@ -284,6 +303,8 @@ class DevolucionController extends BaseController
     public function autorizar(Request $request, Response $response, array $args): Response
     {
         $user = $request->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
         $id = (int)($args['id'] ?? 0);
 
         // Verificar permisos (solo Jefe o Admin)
@@ -292,7 +313,9 @@ class DevolucionController extends BaseController
         }
 
         try {
-            $devolucion = Devolucion::where('empresa_id', $user->empresa_id)->find($id);
+            $devolucion = Devolucion::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
+                ->find($id);
             if (!$devolucion) {
                 return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
             }
@@ -315,11 +338,14 @@ class DevolucionController extends BaseController
     public function completar(Request $request, Response $response, array $args): Response
     {
         $user = $request->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
         $id = (int)($args['id'] ?? 0);
         $data = $request->getParsedBody();
 
         try {
-            $devolucion = Devolucion::where('empresa_id', $user->empresa_id)
+            $devolucion = Devolucion::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
                 ->with('detalles')
                 ->find($id);
             
@@ -359,13 +385,14 @@ class DevolucionController extends BaseController
     public function resumenProveedor(Request $request, Response $response, array $args): Response
     {
         $user = $request->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
         $proveedor_id = (int)($args['proveedor_id'] ?? 0);
 
         try {
             $hace30 = date('Y-m-d', strtotime('-30 days'));
 
             $stats = \Illuminate\Database\Capsule\Manager::table('devoluciones')
-                ->where('empresa_id', $user->empresa_id)
+                ->where('empresa_id', $empresaId)
                 ->where('proveedor', 'LIKE', "%{$proveedor_id}%")
                 ->where('created_at', '>=', $hace30)
                 ->select(
@@ -400,6 +427,8 @@ class DevolucionController extends BaseController
     public function desdeOdcMovil(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
 
         // Soporte multipart/form-data (con fotos) o JSON (sin fotos)
         $rawBody   = $request->getParsedBody() ?? [];
@@ -438,11 +467,11 @@ class DevolucionController extends BaseController
         \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
         try {
             // Generar número de devolución único
-            $numeroDevolucion = Devolucion::generarNumero($user->sucursal_id);
+            $numeroDevolucion = Devolucion::generarNumero($sucursalId);
 
             $devolucion = new Devolucion();
-            $devolucion->empresa_id      = $user->empresa_id;
-            $devolucion->sucursal_id     = $user->sucursal_id;
+            $devolucion->empresa_id      = $empresaId;
+            $devolucion->sucursal_id     = $sucursalId;
             $devolucion->odc_id          = $odc_id ?: null;
             $devolucion->recepcion_id    = null;
             $devolucion->proveedor       = $proveedorNombre;
@@ -503,8 +532,8 @@ class DevolucionController extends BaseController
 
                 // Registrar movimiento de salida / devolución (NO suma a inventario)
                 $movimiento = new MovimientoInventario();
-                $movimiento->empresa_id        = $user->empresa_id;
-                $movimiento->sucursal_id       = $user->sucursal_id;
+                $movimiento->empresa_id        = $empresaId;
+                $movimiento->sucursal_id       = $sucursalId;
                 $movimiento->producto_id        = $productoId;
                 $movimiento->ubicacion_origen_id  = null;
                 $movimiento->ubicacion_destino_id = null;

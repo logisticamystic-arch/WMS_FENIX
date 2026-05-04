@@ -221,7 +221,7 @@ class RecepcionController extends BaseController
             return $this->json($response, ['error' => true, 'message' => 'Producto y cantidad validos son requeridos.'], 400);
         }
 
-        $producto = Producto::find($producto_id);
+        $producto = Producto::where('empresa_id', $recepcion->empresa_id)->find($producto_id);
         if (!$producto) {
             return $this->json($response, ['error' => true, 'message' => 'Producto inexistente.'], 404);
         }
@@ -307,7 +307,7 @@ class RecepcionController extends BaseController
             }
         }
 
-        $producto = Producto::find((int)$data['producto_id']);
+        $producto = Producto::where('empresa_id', $user->empresa_id)->find((int)$data['producto_id']);
         if (!$producto) {
             return $this->json($response, ['error' => true, 'message' => 'Producto inválido'], 404);
         }
@@ -533,15 +533,20 @@ class RecepcionController extends BaseController
                     }
                 }
 
-                // Log Inmortal Inmutable de Movimientos
+                // Log inmutable de movimiento
                 \App\Models\MovimientoInventario::create([
-                    'empresa_id'  => $recepcion->empresa_id,
-                    'sucursal_id' => $recepcion->sucursal_id,
-                    'producto_id' => $linea->producto_id,
-                    'tipo'        => 'Entrada',
-                    'referencia'  => 'Recepción ' . $recepcion->numero_recepcion,
-                    'cantidad'    => $linea->cantidad_recibida,
-                    'fecha'       => date('Y-m-d'),
+                    'empresa_id'      => $recepcion->empresa_id,
+                    'sucursal_id'     => $recepcion->sucursal_id,
+                    'producto_id'     => $linea->producto_id,
+                    'tipo_movimiento' => 'Entrada',
+                    'cantidad'        => $linea->cantidad_recibida,
+                    'lote'            => $linea->lote,
+                    'referencia_tipo' => 'recepciones',
+                    'referencia_id'   => $recepcion->id,
+                    'auxiliar_id'     => $user->id,
+                    'observaciones'   => 'Recepción ' . $recepcion->numero_recepcion,
+                    'fecha_movimiento' => date('Y-m-d'),
+                    'hora_fin'        => date('H:i:s'),
                 ]);
 
                 // ── PALLET AUTO-DISPONIBLE ───────────────────────────────────
