@@ -162,7 +162,7 @@ class RecepcionController extends BaseController
 
         if ($cita_id) {
             $cita = Cita::find($cita_id);
-            if (!$cita || $cita->sucursal_id !== $user->sucursal_id) {
+            if (!$cita || $cita->empresa_id !== $user->empresa_id || $cita->sucursal_id !== $user->sucursal_id) {
                 return $this->json($response, ['error' => true, 'message' => 'Cita inválida.'], 400);
             }
             $cita->estado = 'EnCurso';
@@ -201,7 +201,7 @@ class RecepcionController extends BaseController
         $id = $args['id'] ?? null;
 
         $recepcion = Recepcion::find($id);
-        if (!$recepcion || $recepcion->sucursal_id !== $user->sucursal_id || $recepcion->estado !== 'Borrador') {
+        if (!$recepcion || $recepcion->empresa_id !== $user->empresa_id || $recepcion->sucursal_id !== $user->sucursal_id || $recepcion->estado !== 'Borrador') {
             return $this->json($response, ['error' => true, 'message' => 'Recepción inválida o ya cerrada.'], 400);
         }
 
@@ -1336,7 +1336,9 @@ public function getControlPanelData(Request $request, Response $response): Respo
                 ->first();
 
             foreach ($recepcionDetalles as $rd) {
-                $invPatio = Inventario::where('producto_id', $rd->producto_id)
+                $invPatio = Inventario::where('empresa_id', $linea->ordenCompra->empresa_id)
+                    ->where('sucursal_id', $user->sucursal_id)
+                    ->where('producto_id', $rd->producto_id)
                     ->where('lote', $rd->lote)
                     ->where('fecha_vencimiento', $rd->fecha_vencimiento)
                     ->where('ubicacion_id', $patio->id)

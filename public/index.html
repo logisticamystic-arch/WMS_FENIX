@@ -745,6 +745,8 @@
     let _wmsToken = localStorage.getItem('wms_token') || '';
     let _wmsUser = JSON.parse(localStorage.getItem('wms_user') || 'null');
     let _wmsPermisos = JSON.parse(localStorage.getItem('wms_permisos') || '[]');
+    // SuperAdmin: empresa seleccionada para operar (null = sin filtro)
+    let _wmsEmpresaFiltro = JSON.parse(localStorage.getItem('wms_empresa_filtro') || 'null');
 
     // ── API Client with Timeout & Retry Logic ──
     const API_CONFIG = {
@@ -761,10 +763,18 @@
     async function apiCall(method, path, data = null, opts = {}) {
       const timeout = opts.timeout || (IS_MOBILE ? API_CONFIG.mobileTimeout : API_CONFIG.timeout);
       const maxRetries = opts.maxRetries !== undefined ? opts.maxRetries : API_CONFIG.maxRetries;
-      
+
+      // SuperAdmin: inyectar empresa_id en todas las peticiones cuando hay filtro activo
+      if (_wmsUser?.rol === 'SuperAdmin' && _wmsEmpresaFiltro) {
+        const sep = path.includes('?') ? '&' : '?';
+        if (!path.includes('empresa_id=')) {
+          path = path + sep + 'empresa_id=' + _wmsEmpresaFiltro.id;
+        }
+      }
+
       let lastError;
       let notifiedUser = false;
-      
+
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           const url = API_BASE + path;
@@ -1165,8 +1175,13 @@
           document.getElementById('user-role-hdr').textContent = (u.rol || '') + (u.sucursal ? ' · ' + u.sucursal : '');
           document.getElementById('user-avatar-hdr').textContent = (u.nombre || 'US').substring(0, 2).toUpperCase();
           document.getElementById('um-nombre').textContent = u.nombre;
-          document.getElementById('um-rol').textContent = u.rol;
           document.getElementById('um-sucursal').textContent = u.sucursal || '';
+          // SuperAdmin: mostrar empresa activa en header
+          if (u.rol === 'SuperAdmin') {
+            setTimeout(() => this._updateSuperAdminBadge(), 0);
+          } else {
+            document.getElementById('um-rol').textContent = u.rol;
+          }
         }
       },
 
@@ -1209,21 +1224,28 @@
             localStorage.setItem('wms_token', _wmsToken);
             localStorage.setItem('wms_user', JSON.stringify(_wmsUser));
             localStorage.setItem('wms_permisos', JSON.stringify(_wmsPermisos));
-            this.showApp();
-            this.nav('inicio');
-            this.startNotifPolling();
-            // Precargar todos los módulos en background para eliminar latencia en primer clic
-            setTimeout(() => this._preloadModules(), 800);
+            if (r.user.rol === 'SuperAdmin') {
+              // SuperAdmin debe seleccionar empresa antes de operar
+              await this.showEmpresaSelector();
+            } else {
+              _wmsEmpresaFiltro = null;
+              localStorage.removeItem('wms_empresa_filtro');
+              this.showApp();
+              this.nav('inicio');
+              this.startNotifPolling();
+              setTimeout(() => this._preloadModules(), 800);
+            }
           }
         } catch (e) { errEl.textContent = 'Error de conexión. Verifique el servidor.'; errEl.style.display = 'block'; }
         btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Ingresar';
       },
 
       logout() {
-        _wmsToken = ''; _wmsUser = null; _wmsPermisos = [];
+        _wmsToken = ''; _wmsUser = null; _wmsPermisos = []; _wmsEmpresaFiltro = null;
         localStorage.removeItem('wms_token');
         localStorage.removeItem('wms_user');
         localStorage.removeItem('wms_permisos');
+        localStorage.removeItem('wms_empresa_filtro');
         // Detener TODOS los pollings e intervalos
         this.stopPolling();
         // Limpiar módulos cargados para forzar re-carga limpia al volver
@@ -1241,6 +1263,87 @@
         const loginDoc = document.getElementById('login-doc');
         if (loginDoc) loginDoc.value = '';
         this.showLogin();
+      },
+
+      // ── Selector de empresa para SuperAdmin ──────────────
+      async showEmpresaSelector() {
+        let modal = document.getElementById('empresa-selector-modal');
+        if (!modal) {
+          modal = document.createElement('div');
+          modal.id = 'empresa-selector-modal';
+          modal.innerHTML = `
+            <div style="position:fixed;inset:0;background:rgba(15,76,129,.85);z-index:9999;display:flex;align-items:center;justify-content:center;">
+              <div style="background:#fff;border-radius:14px;padding:36px 32px;min-width:340px;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.25);">
+                <div style="text-align:center;margin-bottom:24px;">
+                  <img src="assets/images/logo.png" style="height:48px;margin-bottom:12px;" alt="Logo">
+                  <h2 style="color:#0F4C81;font-size:1.2rem;font-weight:700;margin:0 0 4px;">SuperAdmin — Seleccionar Empresa</h2>
+                  <p style="color:#64748b;font-size:.85rem;margin:0;">Todos los movimientos quedarán registrados bajo la empresa seleccionada.</p>
+                </div>
+                <select id="empresa-select" style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem;color:#1e293b;margin-bottom:16px;outline:none;">
+                  <option value="">Cargando empresas...</option>
+                </select>
+                <p id="empresa-sel-error" style="color:#dc2626;font-size:.8rem;display:none;margin-bottom:8px;"></p>
+                <button id="btn-empresa-confirmar" style="width:100%;padding:11px;background:#0F4C81;color:#fff;border:none;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;">
+                  <i class="fa-solid fa-check"></i> Ingresar como SuperAdmin
+                </button>
+              </div>
+            </div>`;
+          document.body.appendChild(modal);
+        }
+        modal.style.display = 'flex';
+
+        // Cargar empresas desde la API
+        try {
+          const r = await fetch(API_BASE + '/param/empresas', {
+            headers: { 'Authorization': 'Bearer ' + _wmsToken }
+          });
+          const data = await r.json();
+          const empresas = data.data || data.empresas || [];
+          const sel = document.getElementById('empresa-select');
+          sel.innerHTML = '<option value="">— Seleccione una empresa —</option>' +
+            empresas.map(e => `<option value="${e.id}" data-nombre="${e.razon_social}">${e.razon_social} (NIT: ${e.nit||'—'})</option>`).join('');
+        } catch(e) {
+          document.getElementById('empresa-sel-error').textContent = 'Error al cargar empresas.';
+          document.getElementById('empresa-sel-error').style.display = 'block';
+        }
+
+        return new Promise(resolve => {
+          document.getElementById('btn-empresa-confirmar').onclick = () => {
+            const sel = document.getElementById('empresa-select');
+            const errEl = document.getElementById('empresa-sel-error');
+            if (!sel.value) {
+              errEl.textContent = 'Debe seleccionar una empresa para continuar.';
+              errEl.style.display = 'block';
+              return;
+            }
+            const opt = sel.options[sel.selectedIndex];
+            _wmsEmpresaFiltro = { id: parseInt(sel.value), nombre: opt.dataset.nombre };
+            localStorage.setItem('wms_empresa_filtro', JSON.stringify(_wmsEmpresaFiltro));
+            modal.remove();
+            this._updateSuperAdminBadge();
+            this.showApp();
+            this.nav('inicio');
+            this.startNotifPolling();
+            setTimeout(() => this._preloadModules(), 800);
+            resolve();
+          };
+        });
+      },
+
+      _updateSuperAdminBadge() {
+        if (_wmsUser?.rol !== 'SuperAdmin' || !_wmsEmpresaFiltro) return;
+        const roleEl = document.getElementById('user-role-hdr');
+        if (roleEl) roleEl.textContent = 'SuperAdmin · ' + _wmsEmpresaFiltro.nombre;
+        // Mostrar botón para cambiar empresa en el menú de usuario
+        const umRol = document.getElementById('um-rol');
+        if (umRol) {
+          umRol.innerHTML = `SuperAdmin<br><a href="#" style="font-size:.75rem;color:#0F4C81;text-decoration:none;" onclick="WMS.cambiarEmpresaSA();return false;"><i class='fa-solid fa-building'></i> Cambiar empresa: <b>${_wmsEmpresaFiltro.nombre}</b></a>`;
+        }
+      },
+
+      async cambiarEmpresaSA() {
+        document.getElementById('user-menu')?.classList.remove('visible');
+        await this.showEmpresaSelector();
       },
 
       // ── Sub-vistas por defecto por módulo ─────────────────

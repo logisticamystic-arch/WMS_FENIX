@@ -1183,7 +1183,7 @@ class InventarioController extends BaseController
             $c->save();
 
             // Sincronizar con Mesa de Control (Diferencias)
-            $this->sincronizarMesaDiferencia($eventoId, $ubicacionId, $productoId, $lote, $vencimiento, $cantidad, $ciclo);
+            $this->sincronizarMesaDiferencia($eventoId, $ubicacionId, $productoId, $lote, $vencimiento, $cantidad, $ciclo, $user->empresa_id);
 
             return $this->ok($res, $c, 'Conteo registrado con éxito');
 
@@ -1198,7 +1198,7 @@ class InventarioController extends BaseController
     /**
      * Helper paramétrica para mesa de control
      */
-    private function sincronizarMesaDiferencia($eventoId, $ubicacionId, $productoId, $lote, $vencimiento, $cantidad, $ciclo)
+    private function sincronizarMesaDiferencia($eventoId, $ubicacionId, $productoId, $lote, $vencimiento, $cantidad, $ciclo, int $empresaId = 0)
     {
         $dif = InvGeneralDiferencia::where('evento_id', $eventoId)
             ->where('ubicacion_id', $ubicacionId)
@@ -1214,11 +1214,12 @@ class InventarioController extends BaseController
             $dif->lote = $lote;
             $dif->vencimiento_esperado = $vencimiento;
 
-            // Retrieve expected system stock
-            $stockOriginal = Inventario::where('ubicacion_id', $ubicacionId)
+            // Stock del sistema scoped por empresa para evitar cross-tenant
+            $invQuery = Inventario::where('ubicacion_id', $ubicacionId)
                 ->where('producto_id', $productoId)
-                ->where('lote', $lote)
-                ->sum('cantidad');
+                ->where('lote', $lote);
+            if ($empresaId) $invQuery->where('empresa_id', $empresaId);
+            $stockOriginal = $invQuery->sum('cantidad');
             
             $dif->cantidad_sistema = $stockOriginal ?? 0;
             $dif->estado = 'Pendiente';

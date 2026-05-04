@@ -322,14 +322,14 @@ class WaveController extends BaseController
             ->whereBetween('created_at', [$ini, $fin])
             ->selectRaw("
                 COUNT(*) AS total_waves,
-                COUNT(*) FILTER (WHERE estado = 'Completado') AS completadas,
-                COUNT(*) FILTER (WHERE estado = 'En Proceso') AS en_proceso,
-                COUNT(*) FILTER (WHERE estado = 'Cancelado')  AS canceladas,
+                COUNT(CASE WHEN estado = 'Completado' THEN 1 END) AS completadas,
+                COUNT(CASE WHEN estado = 'En Proceso' THEN 1 END) AS en_proceso,
+                COUNT(CASE WHEN estado = 'Cancelado'  THEN 1 END) AS canceladas,
                 SUM(planillas_count) AS total_planillas,
                 SUM(lineas_count)    AS total_lineas,
-                ROUND(AVG(duracion_min) FILTER (WHERE duracion_min IS NOT NULL)::numeric, 1) AS avg_duracion_min,
-                MIN(duracion_min) FILTER (WHERE duracion_min IS NOT NULL) AS min_duracion_min,
-                MAX(duracion_min) FILTER (WHERE duracion_min IS NOT NULL) AS max_duracion_min
+                ROUND(AVG(CASE WHEN duracion_min IS NOT NULL THEN duracion_min END), 1) AS avg_duracion_min,
+                MIN(CASE WHEN duracion_min IS NOT NULL THEN duracion_min END) AS min_duracion_min,
+                MAX(CASE WHEN duracion_min IS NOT NULL THEN duracion_min END) AS max_duracion_min
             ")
             ->first();
 

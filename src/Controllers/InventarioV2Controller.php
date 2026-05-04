@@ -824,7 +824,8 @@ class InventarioV2Controller extends BaseController
         // Cambio de Producto
         if (!empty($data['nuevo_producto_codigo'])) {
             $codigoProd = strtoupper(trim($data['nuevo_producto_codigo']));
-            $prod = Producto::whereRaw("UPPER(codigo_interno) = ?", [$codigoProd])->first();
+            $prod = Producto::where('empresa_id', $user->empresa_id)
+                ->whereRaw("UPPER(codigo_interno) = ?", [$codigoProd])->first();
             if (!$prod) return $this->error($res, "Producto no encontrado: {$codigoProd}");
             $auditDataOld['producto_id'] = $linea->producto_id;
             $linea->producto_id = $prod->id;
@@ -1972,9 +1973,10 @@ class InventarioV2Controller extends BaseController
             $uCod = strtoupper(trim($data['ubicacion_codigo']));
 
             if ($pId) {
-                $prod = Producto::find($pId);
+                $prod = Producto::where('empresa_id', $user->empresa_id)->find($pId);
             } else {
-                $prod = Producto::whereRaw("UPPER(codigo_interno) = ?", [$pCod])->first();
+                $prod = Producto::where('empresa_id', $user->empresa_id)
+                    ->whereRaw("UPPER(codigo_interno) = ?", [$pCod])->first();
             }
 
             if (!$prod) return $this->error($res, "Producto no encontrado.");

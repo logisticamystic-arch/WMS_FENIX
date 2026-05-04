@@ -317,9 +317,9 @@ class SlottingController extends BaseController
             ->where('activa', true)
             ->selectRaw("
                 COUNT(*) as total,
-                COUNT(*) FILTER (WHERE estado = 'Disponible') as disponibles,
-                COUNT(*) FILTER (WHERE estado = 'Ocupado')    as ocupadas,
-                COUNT(*) FILTER (WHERE estado = 'Bloqueado')  as bloqueadas,
+                COUNT(CASE WHEN estado = 'Disponible' THEN 1 END) as disponibles,
+                COUNT(CASE WHEN estado = 'Ocupado'    THEN 1 END) as ocupadas,
+                COUNT(CASE WHEN estado = 'Bloqueado'  THEN 1 END) as bloqueadas,
                 AVG(ocupacion_pct) as ocupacion_promedio
             ")
             ->first();

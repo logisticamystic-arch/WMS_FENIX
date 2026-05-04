@@ -36,7 +36,7 @@ class SystemController extends BaseController
     public function validar(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        if (!$user || $user->rol !== 'Admin') {
+        if (!$user || !$this->isAdmin($user)) {
             return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
         }
 
@@ -106,7 +106,7 @@ class SystemController extends BaseController
     public function opcacheReset(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        if (!$user || $user->rol !== 'Admin') {
+        if (!$user || !$this->isAdmin($user)) {
             return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
         }
 
@@ -121,7 +121,7 @@ class SystemController extends BaseController
     public function limpiarLogs(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        if (!$user || $user->rol !== 'Admin') {
+        if (!$user || !$this->isAdmin($user)) {
             return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
         }
 

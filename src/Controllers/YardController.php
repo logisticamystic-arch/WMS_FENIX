@@ -407,29 +407,26 @@ class YardController extends BaseController
             ->whereBetween('fecha_cita', [$ini, $fin])
             ->selectRaw("
                 COUNT(*) AS total_citas,
-                COUNT(*) FILTER (WHERE estado = 'Completado')                  AS completadas,
-                COUNT(*) FILTER (WHERE estado = 'No Show')                     AS no_show,
-                COUNT(*) FILTER (WHERE estado = 'Cancelado')                   AS canceladas,
-                COUNT(*) FILTER (WHERE estado IN ('Programado','En Patio','Operando')) AS en_proceso,
+                COUNT(CASE WHEN estado = 'Completado'                               THEN 1 END) AS completadas,
+                COUNT(CASE WHEN estado = 'No Show'                                  THEN 1 END) AS no_show,
+                COUNT(CASE WHEN estado = 'Cancelado'                                THEN 1 END) AS canceladas,
+                COUNT(CASE WHEN estado IN ('Programado','En Patio','Operando')       THEN 1 END) AS en_proceso,
                 -- Turnaround (entrada → salida)
-                ROUND(AVG(turnaround_min) FILTER (WHERE turnaround_min IS NOT NULL)::numeric, 1) AS avg_turnaround_min,
-                MIN(turnaround_min) FILTER (WHERE turnaround_min IS NOT NULL)  AS min_turnaround_min,
-                MAX(turnaround_min) FILTER (WHERE turnaround_min IS NOT NULL)  AS max_turnaround_min,
-                -- Puntualidad (llegada vs cita programada)
-                COUNT(*) FILTER (
-                    WHERE entrada_real IS NOT NULL
-                      AND EXTRACT(EPOCH FROM (entrada_real::timestamptz - fecha_cita::timestamptz))/60 <= 15
-                ) AS llegadas_a_tiempo,
+                ROUND(AVG(CASE WHEN turnaround_min IS NOT NULL THEN turnaround_min END), 1) AS avg_turnaround_min,
+                MIN(CASE WHEN turnaround_min IS NOT NULL THEN turnaround_min END)           AS min_turnaround_min,
+                MAX(CASE WHEN turnaround_min IS NOT NULL THEN turnaround_min END)           AS max_turnaround_min,
+                -- Puntualidad (llegada vs cita programada) — TIMESTAMPDIFF compatible MySQL y PostgreSQL via Eloquent
+                COUNT(CASE WHEN entrada_real IS NOT NULL
+                              AND TIMESTAMPDIFF(MINUTE, fecha_cita, entrada_real) <= 15
+                           THEN 1 END) AS llegadas_a_tiempo,
                 -- Tiempo de espera en muelle (entrada → inicio op)
-                ROUND(AVG(
-                    EXTRACT(EPOCH FROM (inicio_op_real::timestamptz - entrada_real::timestamptz))/60
-                ) FILTER (WHERE inicio_op_real IS NOT NULL AND entrada_real IS NOT NULL)::numeric, 1)
-                    AS avg_espera_muelle_min,
+                ROUND(AVG(CASE WHEN inicio_op_real IS NOT NULL AND entrada_real IS NOT NULL
+                               THEN TIMESTAMPDIFF(MINUTE, entrada_real, inicio_op_real)
+                          END), 1) AS avg_espera_muelle_min,
                 -- Duración de operación (inicio → fin)
-                ROUND(AVG(
-                    EXTRACT(EPOCH FROM (fin_op_real::timestamptz - inicio_op_real::timestamptz))/60
-                ) FILTER (WHERE fin_op_real IS NOT NULL AND inicio_op_real IS NOT NULL)::numeric, 1)
-                    AS avg_duracion_op_min
+                ROUND(AVG(CASE WHEN fin_op_real IS NOT NULL AND inicio_op_real IS NOT NULL
+                               THEN TIMESTAMPDIFF(MINUTE, inicio_op_real, fin_op_real)
+                          END), 1) AS avg_duracion_op_min
             ")
             ->first();
 
@@ -441,7 +438,7 @@ class YardController extends BaseController
             ->selectRaw("
                 tipo,
                 COUNT(*) AS total,
-                ROUND(AVG(turnaround_min)::numeric, 1) AS avg_turnaround_min
+                ROUND(AVG(turnaround_min), 1) AS avg_turnaround_min
             ")
             ->groupBy('tipo')
             ->get();

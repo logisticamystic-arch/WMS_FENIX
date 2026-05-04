@@ -263,11 +263,11 @@ class UbicacionesController extends BaseController
             ->selectRaw("
                 zona,
                 COUNT(*) AS total,
-                COUNT(*) FILTER (WHERE estado = 'Disponible') AS disponibles,
-                COUNT(*) FILTER (WHERE estado = 'Ocupado')    AS ocupadas,
-                COUNT(*) FILTER (WHERE estado = 'Bloqueado')  AS bloqueadas,
-                ROUND(AVG(ocupacion_pct)::numeric, 2)         AS ocupacion_promedio,
-                ROUND(SUM(capacidad_m3)::numeric, 2)          AS capacidad_m3_total
+                COUNT(CASE WHEN estado = 'Disponible' THEN 1 END) AS disponibles,
+                COUNT(CASE WHEN estado = 'Ocupado'    THEN 1 END) AS ocupadas,
+                COUNT(CASE WHEN estado = 'Bloqueado'  THEN 1 END) AS bloqueadas,
+                ROUND(AVG(ocupacion_pct), 2)                      AS ocupacion_promedio,
+                ROUND(SUM(capacidad_m3), 2)                       AS capacidad_m3_total
             ")
             ->groupBy('zona')
             ->orderByRaw("CASE zona WHEN 'oro' THEN 1 WHEN 'plata' THEN 2 WHEN 'bronce' THEN 3 ELSE 4 END")
@@ -280,7 +280,7 @@ class UbicacionesController extends BaseController
             ->selectRaw("
                 pasillo,
                 COUNT(*) AS total_ubicaciones,
-                ROUND(AVG(ocupacion_pct)::numeric, 2) AS ocupacion_promedio
+                ROUND(AVG(ocupacion_pct), 2) AS ocupacion_promedio
             ")
             ->groupBy('pasillo')
             ->orderBy('pasillo')

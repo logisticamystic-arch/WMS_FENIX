@@ -85,13 +85,13 @@ class RotacionController extends BaseController
             ->where('sucursal_id', $user->sucursal_id)
             ->selectRaw("
                 COUNT(*) AS total_productos,
-                COUNT(*) FILTER (WHERE clase_abc = 'A') AS clase_a,
-                COUNT(*) FILTER (WHERE clase_abc = 'B') AS clase_b,
-                COUNT(*) FILTER (WHERE clase_abc = 'C') AS clase_c,
-                COUNT(*) FILTER (WHERE alerta_quiebre = TRUE) AS con_alerta_quiebre,
-                COUNT(*) FILTER (WHERE score_riesgo >= 70) AS riesgo_alto,
-                COUNT(*) FILTER (WHERE dias_cobertura IS NOT NULL AND dias_cobertura < 7) AS cobertura_critica,
-                ROUND(SUM(total_valor)::numeric, 2) AS valor_total_ventas,
+                COUNT(CASE WHEN clase_abc = 'A' THEN 1 END) AS clase_a,
+                COUNT(CASE WHEN clase_abc = 'B' THEN 1 END) AS clase_b,
+                COUNT(CASE WHEN clase_abc = 'C' THEN 1 END) AS clase_c,
+                COUNT(CASE WHEN alerta_quiebre = TRUE THEN 1 END) AS con_alerta_quiebre,
+                COUNT(CASE WHEN score_riesgo >= 70 THEN 1 END) AS riesgo_alto,
+                COUNT(CASE WHEN dias_cobertura IS NOT NULL AND dias_cobertura < 7 THEN 1 END) AS cobertura_critica,
+                ROUND(SUM(total_valor), 2) AS valor_total_ventas,
                 MAX(calculado_at) AS ultima_actualizacion
             ")
             ->first();
@@ -148,7 +148,7 @@ class RotacionController extends BaseController
             ->selectRaw("
                 (clase_abc || clase_xyz) AS segmento,
                 COUNT(*) AS cantidad,
-                ROUND(SUM(total_valor)::numeric, 2) AS valor_total
+                ROUND(SUM(total_valor), 2) AS valor_total
             ")
             ->groupByRaw("clase_abc || clase_xyz")
             ->orderByRaw("clase_abc || clase_xyz")

@@ -31,12 +31,13 @@ class CrossDockController extends BaseController
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         $limit  = min((int)($params['limit'] ?? 50), 200);
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $r);
 
         [$ini, $fin] = $this->getDateRange($params);
 
         $q = Capsule::table('cross_dock_ordenes as cd')
-            ->where('cd.empresa_id',  $user->empresa_id)
-            ->where('cd.sucursal_id', $user->sucursal_id)
+            ->where('cd.empresa_id',  $empresaId)
+            ->where('cd.sucursal_id', $sucursalId)
             ->whereBetween('cd.created_at', [$ini, $fin]);
 
         if (!empty($params['estado'])) {
@@ -87,9 +88,11 @@ class CrossDockController extends BaseController
     public function show(Request $r, Response $res, array $a): Response
     {
         $user = $r->getAttribute('user');
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $r);
         $cd   = Capsule::table('cross_dock_ordenes')
             ->where('id',          $a['id'])
-            ->where('empresa_id',  $user->empresa_id)
+            ->where('empresa_id',  $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->first();
 
         if (!$cd) return $this->notFound($res);
@@ -107,6 +110,7 @@ class CrossDockController extends BaseController
     public function crear(Request $r, Response $res): Response
     {
         $user = $r->getAttribute('user');
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $r);
         if (!in_array($user->rol ?? '', ['Admin', 'Supervisor', 'SuperAdmin', 'Logistico'])) {
             return $this->forbidden($res, 'Se requiere rol Logístico, Supervisor o Admin para crear cross-dock');
         }
@@ -120,8 +124,8 @@ class CrossDockController extends BaseController
         try {
             $id = Capsule::transaction(function () use ($body, $user) {
                 $id = Capsule::table('cross_dock_ordenes')->insertGetId([
-                    'empresa_id'     => $user->empresa_id,
-                    'sucursal_id'    => $user->sucursal_id,
+                    'empresa_id'     => $empresaId,
+                    'sucursal_id'    => $sucursalId,
                     'numero'         => $body['numero'],
                     'recepcion_id'   => $body['recepcion_id'] ?? null,
                     'despacho_id'    => $body['despacho_id']  ?? null,
@@ -164,11 +168,13 @@ class CrossDockController extends BaseController
     public function recibir(Request $r, Response $res, array $a): Response
     {
         $user = $r->getAttribute('user');
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $r);
         $body = (array)($r->getParsedBody() ?? []);
 
         $cd = Capsule::table('cross_dock_ordenes')
             ->where('id',         $a['id'])
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->first();
 
         if (!$cd) return $this->notFound($res);
@@ -219,11 +225,13 @@ class CrossDockController extends BaseController
     public function transferir(Request $r, Response $res, array $a): Response
     {
         $user = $r->getAttribute('user');
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $r);
         $body = (array)($r->getParsedBody() ?? []);
 
         $cd = Capsule::table('cross_dock_ordenes')
             ->where('id',         $a['id'])
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->first();
 
         if (!$cd) return $this->notFound($res);
@@ -250,11 +258,13 @@ class CrossDockController extends BaseController
     public function completar(Request $r, Response $res, array $a): Response
     {
         $user = $r->getAttribute('user');
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $r);
         $body = (array)($r->getParsedBody() ?? []);
 
         Capsule::table('cross_dock_ordenes')
             ->where('id',         $a['id'])
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->update([
                 'estado'      => 'Completado',
                 'salida_real' => $body['salida_real'] ?? date('Y-m-d H:i:s'),
@@ -271,20 +281,21 @@ class CrossDockController extends BaseController
     public function kpis(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $r);
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
 
         $stats = Capsule::table('cross_dock_ordenes')
-            ->where('empresa_id',  $user->empresa_id)
-            ->where('sucursal_id', $user->sucursal_id)
+            ->where('empresa_id',  $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->whereBetween('created_at', [$ini, $fin])
             ->selectRaw("
                 COUNT(*) as total_ordenes,
-                COUNT(*) FILTER (WHERE estado = 'Completado') as completadas,
-                COUNT(*) FILTER (WHERE estado IN ('Programado','Recibiendo','Clasificando','Despachando')) as en_proceso,
-                AVG(tiempo_suelo_min) FILTER (WHERE tiempo_suelo_min IS NOT NULL) as avg_tiempo_suelo_min,
-                MIN(tiempo_suelo_min) FILTER (WHERE tiempo_suelo_min IS NOT NULL) as min_tiempo_suelo_min,
-                MAX(tiempo_suelo_min) FILTER (WHERE tiempo_suelo_min IS NOT NULL) as max_tiempo_suelo_min
+                COUNT(CASE WHEN estado = 'Completado' THEN 1 END) as completadas,
+                COUNT(CASE WHEN estado IN ('Programado','Recibiendo','Clasificando','Despachando') THEN 1 END) as en_proceso,
+                AVG(CASE WHEN tiempo_suelo_min IS NOT NULL THEN tiempo_suelo_min END) as avg_tiempo_suelo_min,
+                MIN(CASE WHEN tiempo_suelo_min IS NOT NULL THEN tiempo_suelo_min END) as min_tiempo_suelo_min,
+                MAX(CASE WHEN tiempo_suelo_min IS NOT NULL THEN tiempo_suelo_min END) as max_tiempo_suelo_min
             ")
             ->first();
 
@@ -295,12 +306,13 @@ class CrossDockController extends BaseController
     public function export(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $r);
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
 
         $ordenes = Capsule::table('cross_dock_ordenes')
-            ->where('empresa_id',  $user->empresa_id)
-            ->where('sucursal_id', $user->sucursal_id)
+            ->where('empresa_id',  $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->whereBetween('created_at', [$ini, $fin])
             ->orderBy('created_at', 'desc')
             ->get();
