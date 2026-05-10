@@ -417,7 +417,7 @@ WMS_MODULES.picking = {
       const p = r.data || r;
       const lineas = p.lineas || p.detalles || [];
       const self = this;
-      WMS.showModal('Detalle Picking — ' + (p.planilla_numero || ('#' + id)), `
+      WMS.showRightPanel('Detalle Picking — ' + (p.planilla_numero || ('#' + id)), `
         <div class="form-grid form-grid-2" style="margin-bottom:16px;">
           <div><label class="form-label">Planilla</label><p><span class="badge badge-info">${WMS.esc(p.planilla_numero||'N/A')}</span></p></div>
           <div><label class="form-label">Cliente</label><p>${WMS.esc(p.cliente||'-')}</p></div>
@@ -453,7 +453,7 @@ WMS_MODULES.picking = {
             </tbody>
           </table>
         </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>
+        `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cerrar</button>
          ${p.estado==='Asignado'||p.estado==='EnProceso' ? `<button class="btn btn-warning" onclick="WMS_MODULES.picking.transferir(${p.id})"><i class="fa-solid fa-right-left"></i> Transferir</button>` : ''}
          ${p.estado==='EnProceso' ? `<button class="btn btn-success" onclick="WMS_MODULES.picking.completarPicking(${id})"><i class="fa-solid fa-check-double"></i> Completar</button>` : ''}`);
     } catch(e) { WMS.toast('error', 'Error cargando detalle'); }
@@ -476,7 +476,7 @@ WMS_MODULES.picking = {
     window._assignPlanillaIds = ordenIds;
     window._assignPlanillaKey = planilla;
 
-    WMS.showModal(`Asignar Planilla: ${planilla}`, `
+    WMS.showRightPanel(`Asignar Planilla: ${planilla}`, `
       <div style="margin-bottom:12px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;">
         <i class="fa-solid fa-layer-group"></i>
         <strong>${ordenIds.length}</strong> orden(es) en esta planilla serán asignadas.
@@ -553,7 +553,7 @@ WMS_MODULES.picking = {
         <label class="form-label">Observaciones</label>
         <textarea id="asig-obs" class="form-control" rows="2" placeholder="Instrucciones adicionales..."></textarea>
       </div>`,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+      `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.picking.confirmarAsignacionPlanilla()">
          <i class="fa-solid fa-user-check"></i> Confirmar Asignación
        </button>`);
@@ -637,7 +637,7 @@ WMS_MODULES.picking = {
         WMS.toast('success', `Líneas divididas: ${totalCount}`);
       }
 
-      WMS.closeModal('generic-modal');
+      WMS.closeRightPanel();
       this.show_pedidos();
     } catch(e) {
       WMS.toast('error', e.message || 'Error en asignación');
@@ -652,7 +652,7 @@ WMS_MODULES.picking = {
       personal = rPers.data || rPers || [];
     } catch(e) {}
 
-    WMS.showModal('Asignar Orden #' + id, `
+    WMS.showRightPanel('Asignar Orden #' + id, `
       <div class="form-grid form-grid-2">
         <div class="form-group">
           <label class="form-label">Auxiliar <span class="required">*</span></label>
@@ -668,7 +668,7 @@ WMS_MODULES.picking = {
           </select>
         </div>
       </div>`,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+      `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.picking.confirmarAsignacion(${id})">Asignar</button>`);
   },
 
@@ -682,7 +682,7 @@ WMS_MODULES.picking = {
         prioridad: parseInt(document.getElementById('asig-prio')?.value || 0),
       });
       if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Picking asignado'); WMS.closeModal('generic-modal'); this.show_pedidos(); }
+      else { WMS.toast('success', 'Picking asignado'); WMS.closeRightPanel(); this.show_pedidos(); }
     } catch(e) { WMS.toast('error', 'Error'); }
   },
 
@@ -694,7 +694,7 @@ WMS_MODULES.picking = {
       rutas = (rr.data || rr || []).filter(r => r.activo);
     } catch(e) { console.error('Error cargando rutas', e); }
 
-    WMS.showModal(`Asignar Ruta — Planilla ${planilla}`, `
+    WMS.showRightPanel(`Asignar Ruta — Planilla ${planilla}`, `
       <div style="margin-bottom:12px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;">
         <i class="fa-solid fa-route" style="margin-right:6px;"></i>
         Asigne una ruta a las <strong>${ordenIds.length}</strong> orden(es) de esta planilla.
@@ -710,7 +710,7 @@ WMS_MODULES.picking = {
         ` : ''}
         <input type="text" id="ruta-input" class="form-control" placeholder="Nombre de la ruta..." style="font-weight:600;">
       </div>`,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+      `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.picking._confirmarRuta(${JSON.stringify(ordenIds)})">
          <i class="fa-solid fa-check"></i> Asignar Ruta
        </button>`);
@@ -723,7 +723,7 @@ WMS_MODULES.picking = {
       const r = await API.post('/picking/asignar-ruta', { orden_ids: ordenIds, ruta });
       if (r.error) throw new Error(r.message);
       WMS.toast('success', r.data?.message || 'Ruta asignada');
-      WMS.closeModal('generic-modal');
+      WMS.closeRightPanel();
       this.show_pedidos();
     } catch(e) {
       WMS.toast('error', e.message || 'Error asignando ruta');
@@ -735,7 +735,7 @@ WMS_MODULES.picking = {
     try {
       const r = await API.post('/picking/' + id + '/completar', {});
       if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Picking completado'); WMS.closeModal('generic-modal'); this.show_pedidos(); }
+      else { WMS.toast('success', 'Picking completado'); WMS.closeRightPanel(); this.show_pedidos(); }
     } catch(e) { WMS.toast('error', 'Error'); }
   },
 
@@ -1273,7 +1273,7 @@ WMS_MODULES.picking = {
         <td style="text-align:center">${o.lineas_pendientes>0?`<span class="pro-badge alert">${o.lineas_pendientes}</span>`:'<span class="pro-badge ok">0</span>'}</td>
         <td><span class="pro-badge ${o.estado==='Completado'?'ok':o.estado==='Asignado'?'warn':'info'}">${WMS.esc(o.estado||'–')}</span></td>
       </tr>`).join('') || '<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">Sin líneas</td></tr>';
-    WMS.showModal(`Detalle Planilla ${planilla}`, `
+    WMS.showRightPanel(`Detalle Planilla ${planilla}`, `
       <div class="pro-mini-kpi-row" style="margin-bottom:16px">
         <div class="pro-mini-kpi">
           <div class="pro-mini-kpi-icon"><i class="fa-solid fa-layer-group"></i></div>
@@ -1299,7 +1299,7 @@ WMS_MODULES.picking = {
   _mostrarAsignarModal(planilla, ordenIds) {
     const staff = this._asigData.staff;
     const cards = staff.map(p => `
-      <div class="asig-aux-card" onclick="WMS_MODULES.picking._asignarPlanillaAPersonal('${WMS.esc(planilla)}',${JSON.stringify(ordenIds)},${p.id},'${WMS.esc(p.nombre||'')}', window._asigModalSoloAlm);WMS.closeModal('generic-modal')">
+      <div class="asig-aux-card" onclick="WMS_MODULES.picking._asignarPlanillaAPersonal('${WMS.esc(planilla)}',${JSON.stringify(ordenIds)},${p.id},'${WMS.esc(p.nombre||'')}', window._asigModalSoloAlm);WMS.closeRightPanel()">
         <div class="asig-aux-avatar">${(p.nombre||'??').substring(0,2).toUpperCase()}</div>
         <div>
           <div class="asig-aux-name">${WMS.esc(p.nombre||'')}</div>
@@ -1309,7 +1309,7 @@ WMS_MODULES.picking = {
       </div>`).join('') || '<div class="pro-empty-state"><div class="icon">👥</div><p>Sin auxiliares</p></div>';
     
     window._asigModalSoloAlm = false; // reset state
-    WMS.showModal(`Asignar Planilla ${planilla}`, `
+    WMS.showRightPanel(`Asignar Planilla ${planilla}`, `
       <p style="font-size:.82rem;color:#6b7a99;margin-bottom:8px">Selecciona el auxiliar que ejecutará esta planilla:</p>
       <div style="margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:4px;border:1px solid #e2e8f0;">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.8rem;margin:0;font-weight:600;color:#1e3a5f;">

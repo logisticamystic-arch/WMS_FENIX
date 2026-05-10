@@ -123,7 +123,7 @@ WMS_MODULES.despacho = {
       const stats = analytics.overview || {};
       const kpis  = analytics.kpis || {};
 
-      WMS.showModal('Análisis de Planilla #' + (p.numero_planilla || id), `
+      WMS.showRightPanel('Análisis de Planilla #' + (p.numero_planilla || id), `
         <div class="inv-commander-root" style="padding:0; background:transparent;">
           <div class="kpi-dashboard-row" style="grid-template-columns: repeat(3, 1fr); gap:12px; margin-bottom:15px;">
             <div class="kpi-dashboard-card gold" style="padding:12px;">
@@ -185,7 +185,7 @@ WMS_MODULES.despacho = {
             </table>
           </div>
         </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar Ventana</button>
+        `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cerrar Ventana</button>
          ${p.estado === 'ConNovedad' ? `<button class="btn btn-warning" onclick="WMS_MODULES.despacho.generarCargue(${id})"><i class="fa-solid fa-triangle-exclamation"></i> Forzar Salida</button>` : ''}
          ${p.estado === 'Completada' ? `<button class="btn btn-primary" onclick="WMS_MODULES.despacho.generarCargue(${id})"><i class="fa-solid fa-truck-loading"></i> Proceder a Cargue</button>` : ''}`);
     } catch(e) { 
@@ -218,13 +218,13 @@ WMS_MODULES.despacho = {
       const r = await API.get('/param/personal', 'activo=1&limit=100');
       personal = r.data || r || [];
     } catch(e) {}
-    WMS.showModal('Asignar Certificador', `
+    WMS.showRightPanel('Asignar Certificador', `
       <div class="form-group"><label class="form-label">Certificador <span class="required">*</span></label>
         <select id="cert-personal" class="form-control">
           <option value="">Seleccionar...</option>
           ${personal.map(p => `<option value="${p.id}">${WMS.esc(p.nombre||'')} — ${WMS.esc(p.rol||'')}</option>`).join('')}
         </select></div>`,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+      `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.despacho.confirmarAsigCert(${planillaId})"><i class="fa-solid fa-user-check"></i> Asignar</button>`);
   },
 
@@ -234,7 +234,7 @@ WMS_MODULES.despacho = {
     try {
       const r = await API.post('/planillas/asignar', { planilla_id: id, personal_id: parseInt(pid) });
       if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Certificador asignado'); WMS.closeModal('generic-modal'); this.show_certificacion(); }
+      else { WMS.toast('success', 'Certificador asignado'); WMS.closeRightPanel(); this.show_certificacion(); }
     } catch(e) { WMS.toast('error', 'Error'); }
   },
 
@@ -307,7 +307,7 @@ WMS_MODULES.despacho = {
   },
 
   nuevoPlanillaCargue() {
-    WMS.showModal('Nueva Planilla de Cargue', `
+    WMS.showRightPanel('Nueva Planilla de Cargue', `
       <div class="form-grid form-grid-2">
         <div class="form-group"><label class="form-label">Placa del Vehículo <span class="required">*</span></label><input id="car-placa" class="form-control" placeholder="ABC-123"></div>
         <div class="form-group"><label class="form-label">Conductor <span class="required">*</span></label><input id="car-conductor" class="form-control" placeholder="Nombre del conductor"></div>
@@ -315,7 +315,7 @@ WMS_MODULES.despacho = {
         <div class="form-group"><label class="form-label">N° Precinto</label><input id="car-precinto" class="form-control" placeholder="PRE-001"></div>
         <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Observaciones</label><input id="car-obs" class="form-control" placeholder="Notas adicionales"></div>
       </div>`,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+      `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.despacho.saveCargue()"><i class="fa-solid fa-save"></i> Crear Cargue</button>`);
   },
 
@@ -331,7 +331,7 @@ WMS_MODULES.despacho = {
         observaciones: document.getElementById('car-obs')?.value.trim()||null,
       });
       if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Cargue creado'); WMS.closeModal('generic-modal'); this.show_cargue(); }
+      else { WMS.toast('success', 'Cargue creado'); WMS.closeRightPanel(); this.show_cargue(); }
     } catch(e) { WMS.toast('error', 'Error guardando'); }
   },
 
@@ -340,7 +340,7 @@ WMS_MODULES.despacho = {
       const r = await API.get('/despachos/' + id);
       const d = r.data || r;
       const planillas = d.planillas || d.detalles || [];
-      WMS.showModal('Cargue #' + (d.planilla_numero || id), `
+      WMS.showRightPanel('Cargue #' + (d.planilla_numero || id), `
         <div class="form-grid form-grid-2" style="margin-bottom:16px;">
           <div><label class="form-label">Placa</label><p>${WMS.esc(d.placa||'-')}</p></div>
           <div><label class="form-label">Conductor</label><p>${WMS.esc(d.conductor||'-')}</p></div>
@@ -359,7 +359,7 @@ WMS_MODULES.despacho = {
             </tbody>
           </table>
         </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>`);
+        `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cerrar</button>`);
     } catch(e) { WMS.toast('error', 'Error cargando detalle'); }
   },
 
@@ -630,7 +630,7 @@ WMS_MODULES.despacho = {
     try {
       const r = await API.get('/tms/keys');
       const keys = r.data || r || [];
-      WMS.showModal('Gestión de API Keys TMS', `
+      WMS.showRightPanel('Gestión de API Keys TMS', `
         <div class="d-flex justify-between align-center" style="margin-bottom:12px;">
           <span class="text-muted text-sm">Las API Keys permiten que el TMS externo acceda a este WMS</span>
           <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.crearApiKey()"><i class="fa-solid fa-plus"></i> Nueva Key</button>
@@ -648,7 +648,7 @@ WMS_MODULES.despacho = {
             </tbody>
           </table>
         </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>`);
+        `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cerrar</button>`);
     } catch(e) { WMS.toast('error', 'Error cargando API Keys'); }
   },
 
