@@ -425,6 +425,7 @@ $app->get('/', function (Request $request, Response $response) {
 
 // ── Auth (public) ─────────────────────────────────────────────────────────────
 $app->post('/api/auth/login', [\App\Controllers\AuthController::class, 'login']);
+$app->get('/api/auth/empresas', [\App\Controllers\ParametrosController::class, 'getEmpresas']);
 
 // ── Authenticated API routes ──────────────────────────────────────────────────
 $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
@@ -955,7 +956,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/wave/kpis/resumen',                   [\App\Controllers\WaveController::class, 'kpis']);
     $group->get('/wave/export/csv',                     [\App\Controllers\WaveController::class, 'export']);
 
-})->add(new \App\Middleware\JwtMiddleware());
+})->add(new \App\Middleware\TenantMiddleware())
+  ->add(new \App\Middleware\JwtMiddleware());
 
 // Ruta pública para información de conexión
 $app->get('/api/system/connection-info', [\App\Controllers\SystemController::class, 'getConnectionInfo']);
@@ -970,6 +972,7 @@ $app->group('/api/tms', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/keys',                     [\App\Controllers\TmsController::class, 'createKey']);
     $group->delete('/keys/{id}',              [\App\Controllers\TmsController::class, 'revokeKey']);
     $group->post('/webhook',                  [\App\Controllers\TmsController::class, 'webhook']);
-})->add(new \App\Middleware\TmsAuthMiddleware());
+})->add(new \App\Middleware\TenantMiddleware())
+  ->add(new \App\Middleware\TmsAuthMiddleware());
 
 $app->run();

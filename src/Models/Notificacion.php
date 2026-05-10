@@ -4,9 +4,17 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class Notificacion extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
+
+
+
+
+
     protected $table = 'notificaciones';
 
     protected $fillable = [
@@ -51,3 +59,7 @@ class Notificacion extends Model
         return $query->where('leida', false);
     }
 }
+
+
+
+

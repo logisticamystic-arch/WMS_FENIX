@@ -9,8 +9,15 @@ return [
             foreach ($cols as $col) {
                 if (!$schema->hasColumn($table, $col)) { echo "  [SKIP] $indexName: '$col' no existe.\n"; return; }
             }
-            $exists = DB::select("SELECT COUNT(*) as cnt FROM pg_indexes WHERE tablename = ? AND indexname = ?", [$table, $indexName]);
-            if ($exists[0]->cnt > 0) { echo "  [--] $indexName ya existe.\n"; return; }
+            $driver = DB::getDriverName();
+            if ($driver === 'pgsql') {
+                $exists = DB::select("SELECT COUNT(*) as cnt FROM pg_indexes WHERE tablename = ? AND indexname = ?", [$table, $indexName]);
+                $alreadyExists = $exists[0]->cnt > 0;
+            } else {
+                $exists = DB::select("SHOW INDEX FROM `$table` WHERE Key_name = ?", [$indexName]);
+                $alreadyExists = count($exists) > 0;
+            }
+            if ($alreadyExists) { echo "  [--] $indexName ya existe.\n"; return; }
             $schema->table($table, function (Blueprint $t) use ($cols, $indexName, $unique) {
                 if ($unique) $t->unique($cols, $indexName); else $t->index($cols, $indexName);
             });

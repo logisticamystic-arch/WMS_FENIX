@@ -60,8 +60,8 @@ class SlottingController extends BaseController
         if (!empty($params['q'])) {
             $term = '%' . $params['q'] . '%';
             $q->where(fn($sq) =>
-                $sq->where('p.nombre', 'ilike', $term)
-                   ->orWhere('p.codigo_interno', 'ilike', $term)
+                $sq->where('p.nombre', 'like', $term)
+                   ->orWhere('p.codigo_interno', 'like', $term)
             );
         }
 

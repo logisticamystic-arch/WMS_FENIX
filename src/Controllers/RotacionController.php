@@ -63,10 +63,10 @@ class RotacionController extends BaseController
         }
         if (!empty($params['q'])) {
             $search = '%' . $params['q'] . '%';
-            $q->where(function ($sub) use ($search) {
-                $sub->where('producto_nombre', 'ilike', $search)
-                    ->orWhere('codigo', 'ilike', $search);
-            });
+            $q->where(fn($sub) =>
+                $sub->where('producto_nombre', 'like', $search)
+                    ->orWhere('codigo', 'like', $search)
+            );
         }
 
         $limit  = min((int)($params['limit'] ?? 50), 200);
@@ -125,7 +125,7 @@ class RotacionController extends BaseController
             );
 
         if (!empty($params['segmento'])) {
-            $q->whereRaw('(c.clase_abc || c.clase_xyz) = ?', [strtoupper($params['segmento'])]);
+            $q->whereRaw('CONCAT(c.clase_abc, c.clase_xyz) = ?', [strtoupper($params['segmento'])]);
         }
         if (!empty($params['clase_abc'])) {
             $q->where('c.clase_abc', strtoupper($params['clase_abc']));
@@ -146,12 +146,12 @@ class RotacionController extends BaseController
             ->where('sucursal_id', $user->sucursal_id)
             ->where('vigente', true)
             ->selectRaw("
-                (clase_abc || clase_xyz) AS segmento,
+                CONCAT(clase_abc, clase_xyz) AS segmento,
                 COUNT(*) AS cantidad,
                 ROUND(SUM(total_valor), 2) AS valor_total
             ")
-            ->groupByRaw("clase_abc || clase_xyz")
-            ->orderByRaw("clase_abc || clase_xyz")
+            ->groupByRaw("CONCAT(clase_abc, clase_xyz)")
+            ->orderByRaw("CONCAT(clase_abc, clase_xyz)")
             ->get();
 
         return $this->ok($res, [
@@ -349,7 +349,7 @@ class RotacionController extends BaseController
                 'p.nombre as producto',
                 'c.clase_abc',
                 'c.clase_xyz',
-                Capsule::raw("(c.clase_abc || c.clase_xyz) AS segmento"),
+                Capsule::raw("CONCAT(c.clase_abc, c.clase_xyz) AS segmento"),
                 'c.total_valor',
                 'c.pct_valor_acum',
                 'c.demanda_media',

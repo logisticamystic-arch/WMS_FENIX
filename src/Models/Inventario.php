@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class Inventario extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
     protected $table = 'inventarios';
 
     protected $fillable = [
@@ -77,3 +80,5 @@ class Inventario extends Model
             ->where('cantidad', '>', 0);
     }
 }
+
+

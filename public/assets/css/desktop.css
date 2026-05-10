@@ -1,5 +1,5 @@
 ﻿/* ============================================================
-   WMS PRO ORIENTE - DESKTOP UI (SAP Business One Style)
+   WMS Fénix - DESKTOP UI (SAP Business One Style)
    Versión: 2.0 Enterprise
    ============================================================ */
 
@@ -3168,3 +3168,115 @@ canvas {
   .pro-kpi-grid   { grid-template-columns: 1fr; }
   .pro-module-grid{ grid-template-columns: 1fr; }
 }
+
+/* ══════════════════════════════════════════════════════
+   ERP ENTERPRISE SYSTEM — UX/UI PATCH
+   Master-Detail, Square corners, Micro-interactions
+   ══════════════════════════════════════════════════════ */
+
+/* ── Button loading state ───────────────────────────── */
+.btn.loading { pointer-events: none; opacity: .75; }
+.btn.loading::after {
+  content: '';
+  display: inline-block;
+  width: 10px; height: 10px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  margin-left: 8px;
+  animation: btnSpin .6s linear infinite;
+  vertical-align: middle;
+}
+@keyframes btnSpin { to { transform: rotate(360deg); } }
+
+/* ── ERP square-corner override ─────────────────────── */
+.card, .wms-card       { border-radius: 4px !important; }
+.form-control          { border-radius: 4px !important; }
+.btn                   { border-radius: 4px !important; }
+.badge                 { border-radius: 2px !important; }
+.landing-card          { border-radius: 4px !important; }
+.wms-toast-item        { border-radius: 4px !important; }
+.modal                 { border-radius: 4px !important; }
+.pro-kpi-card          { border-radius: 4px !important; }
+.pro-kpi-icon          { border-radius: 4px !important; }
+.abc-matrix-cell       { border-radius: 2px !important; }
+.wh-heatmap            { border-radius: 4px !important; }
+.forecast-chart-wrap   { border-radius: 4px !important; }
+
+/* ── ERP table header style ──────────────────────────── */
+.data-table thead th {
+  background: #f1f5f9;
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: #475569;
+  border-bottom: 2px solid #e2e8f0;
+  padding: 10px 12px;
+  white-space: nowrap;
+}
+.data-table tbody td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: .83rem;
+  vertical-align: middle;
+}
+.data-table tbody tr:last-child td { border-bottom: none; }
+
+/* ── ERP form group spacing ──────────────────────────── */
+.drawer-form-group {
+  margin-bottom: 14px;
+}
+.drawer-form-group label {
+  display: block;
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: #475569;
+  margin-bottom: 5px;
+}
+.drawer-form-group .form-control {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: .85rem;
+  background: #fff;
+  transition: border-color .15s, box-shadow .15s;
+}
+.drawer-form-group .form-control:focus {
+  outline: none;
+  border-color: #0F4C81;
+  box-shadow: 0 0 0 3px rgba(15,76,129,.1);
+}
+
+/* ── Row click indicator ─────────────────────────────── */
+.data-table tbody tr.clickable::after {
+  content: '';
+}
+.data-table tbody tr.clickable td:last-child {
+  color: #94a3b8;
+}
+
+/* ── Section header ─────────────────────────────────── */
+.erp-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0 8px;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 14px;
+}
+.erp-section-title {
+  font-size: .78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.erp-section-title i { color: #0F4C81; }
+.erp-section-actions { display: flex; gap: 6px; }

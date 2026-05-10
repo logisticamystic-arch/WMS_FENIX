@@ -2,9 +2,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class Cliente extends Model
 {
+    use TenantScoped;
     protected $table = 'clientes';
     protected $fillable = [
         'empresa_id',
@@ -24,3 +26,5 @@ class Cliente extends Model
         return $this->belongsTo(Ruta::class);
     }
 }
+
+

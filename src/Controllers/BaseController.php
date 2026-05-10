@@ -181,6 +181,24 @@ abstract class BaseController
         return null;
     }
 
+    protected function requireSelectedTenantForSuperAdmin($user, Request $request, Response $response, bool $requireSucursal = false): ?Response
+    {
+        if (!$this->isSuperAdmin($user)) {
+            return null;
+        }
+
+        $params = $request->getQueryParams();
+        if (!isset($params['empresa_id']) || trim((string)$params['empresa_id']) === '') {
+            return $this->error($response, 'SuperAdmin debe filtrar la empresa con el parámetro empresa_id.');
+        }
+
+        if ($requireSucursal && (!isset($params['sucursal_id']) || trim((string)$params['sucursal_id']) === '')) {
+            return $this->error($response, 'SuperAdmin debe filtrar la sucursal con el parámetro sucursal_id.');
+        }
+
+        return null;
+    }
+
     // ── Filtros de fecha comunes ───────────────────────────────────────────────
 
     /**

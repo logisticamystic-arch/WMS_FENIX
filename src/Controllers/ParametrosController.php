@@ -75,7 +75,13 @@ class ParametrosController extends BaseController
          $user = $request->getAttribute('user');
          $params = $request->getQueryParams();
          try {
-             $query = \App\Models\Sucursal::where('empresa_id', $user->empresa_id);
+             $query = \App\Models\Sucursal::query();
+
+             if ($this->isSuperAdmin($user) && !empty($params['empresa_id'])) {
+                 $query->where('empresa_id', $params['empresa_id']);
+             } else {
+                 $query->where('empresa_id', $user->empresa_id);
+             }
              
              if (isset($params['activo'])) {
                  $query->where('activo', filter_var($params['activo'], FILTER_VALIDATE_BOOLEAN));

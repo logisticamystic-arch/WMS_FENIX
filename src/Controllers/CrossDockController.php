@@ -51,7 +51,7 @@ class CrossDockController extends BaseController
         }
         if (!empty($params['q'])) {
             $term = '%' . $params['q'] . '%';
-            $q->where('cd.numero', 'ilike', $term);
+            $q->where('cd.numero', 'like', $term);
         }
 
         $total  = (clone $q)->count();

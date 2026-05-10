@@ -25,11 +25,13 @@ class AlertasController extends BaseController
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
 
         $q = Capsule::table('alertas_stock as a')
             ->join('productos as p', 'a.producto_id', '=', 'p.id')
-            ->where('a.empresa_id', $user->empresa_id)
-            ->where('a.sucursal_id', $user->sucursal_id)
+            ->where('a.empresa_id', $empresaId)
+            ->where('a.sucursal_id', $sucursalId)
             ->where('a.estado', 'Activa')
             ->select(
                 'a.*',
@@ -63,8 +65,8 @@ class AlertasController extends BaseController
         $user = $r->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $eId = $user->empresa_id;
-        $sId = $user->sucursal_id;
+        $eId = $this->getEffectiveEmpresaId($user, $r);
+        $sId = $this->getEffectiveSucursalId($user, $r);
         $hoy = date('Y-m-d');
         $en30 = date('Y-m-d', strtotime('+30 days'));
 
@@ -139,9 +141,12 @@ class AlertasController extends BaseController
     public function resolver(Request $r, Response $res, array $a): Response
     {
         $user   = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
         $alerta = Capsule::table('alertas_stock')
             ->where('id', $a['id'])
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->first();
 
         if (!$alerta) return $this->notFound($res);
@@ -161,9 +166,12 @@ class AlertasController extends BaseController
     public function ignorar(Request $r, Response $res, array $a): Response
     {
         $user = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
         Capsule::table('alertas_stock')
             ->where('id', $a['id'])
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->update(['estado' => 'Ignorada']);
 
         return $this->ok($res, null, 'Alerta ignorada');
@@ -173,9 +181,12 @@ class AlertasController extends BaseController
     public function export(Request $r, Response $res): Response
     {
         $user    = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
         $alertas = Capsule::table('alertas_stock as a')
             ->join('productos as p', 'a.producto_id', '=', 'p.id')
-            ->where('a.empresa_id', $user->empresa_id)
+            ->where('a.empresa_id', $empresaId)
+            ->where('a.sucursal_id', $sucursalId)
             ->where('a.estado', 'Activa')
             ->select('a.*', 'p.nombre as producto', 'p.codigo_interno as codigo')
             ->orderBy('a.tipo')

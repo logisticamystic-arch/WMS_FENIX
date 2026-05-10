@@ -58,16 +58,14 @@ class YardController extends BaseController
         if (!empty($params['q'])) {
             $term = '%' . $params['q'] . '%';
             $q->where(fn($sq) =>
-                $sq->where('y.transportista', 'ilike', $term)
-                   ->orWhere('y.placa_vehiculo', 'ilike', $term)
-                   ->orWhere('y.numero', 'ilike', $term)
+                $sq->where('y.transportista', 'like', $term)
+                   ->orWhere('y.placa_vehiculo', 'like', $term)
+                   ->orWhere('y.numero', 'like', $term)
             );
         }
 
         $total  = (clone $q)->count();
-        $citas  = $q->leftJoin(
-                        Capsule::raw("personal AS op ON op.id = y.creado_por")
-                    )
+        $citas  = $q->leftJoin('personal AS op', 'op.id', '=', 'y.creado_por')
                     ->select('y.*', Capsule::raw('op.nombre AS operador_nombre'))
                     ->orderBy('y.fecha_cita', 'asc')
                     ->limit($limit)

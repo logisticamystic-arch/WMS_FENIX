@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    WMS Desktop - Módulo MAESTRO  (rev 2)
    Fixes: load() OR-bug, stubs implementados, EAN field, ubicaciones
    zona+tipo_ubicacion+capacidad_maxima, proveedores razon_social+
@@ -104,48 +104,99 @@ WMS_MODULES.maestro = {
 
   // ── EMPRESA ──────────────────────────────────────────────────
   async show_empresa() {
-    WMS.setToolbar(`<button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaEmpresa()"><i class="fa-solid fa-plus"></i> Nueva Empresa</button>`);
+    WMS.setToolbar(`<button class="btn btn-primary btn-sm" style="border-radius:4px;" onclick="WMS_MODULES.maestro.nuevaEmpresa()"><i class="fa-solid fa-plus"></i> Nueva Empresa</button>`);
     WMS.spinner();
     try {
       const r     = await API.get('/param/empresas');
       const items = r.data || r || [];
       WMS.setContent(`
-        <div class="card">
-          <div class="card-header"><span class="card-title"><i class="fa-solid fa-building"></i> Empresas</span></div>
-          <div class="table-container">
-            <table class="data-table">
+        <style>
+          .erp-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+          .erp-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; }
+          .erp-table th { background: #f8f9fa; color: #475569; font-weight: 600; padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: left; }
+          .erp-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: middle; transition: background 0.2s; }
+          .erp-table tr.main-row:hover { background: #f1f5f9; cursor: pointer; }
+          
+          .md-container { display: flex; position: relative; height: calc(100vh - 160px); overflow: hidden; background: #f8f9fa; }
+          .md-master { flex: 1; overflow-y: auto; transition: margin-right 0.3s ease; }
+          
+          .md-drawer { position: absolute; right: -40%; top: 0; bottom: 0; width: 40%; background: #fff; border-left: 1px solid #cbd5e1; box-shadow: -4px 0 15px rgba(0,0,0,0.05); transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; display: flex; flex-direction: column; }
+          .md-drawer.open { right: 0; }
+          @media (max-width: 768px) { .md-drawer { width: 100%; right: -100%; } .md-drawer.open { right: 0; } }
+          
+          .drawer-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; }
+          .drawer-title { font-size: 1.1rem; font-weight: 600; color: #0f172a; margin: 0; }
+          .drawer-close { background: transparent; border: none; font-size: 1.2rem; color: #64748b; cursor: pointer; }
+          .drawer-close:hover { color: #ef4444; }
+          .drawer-body { padding: 20px; flex: 1; overflow-y: auto; }
+          .drawer-footer { padding: 16px 20px; border-top: 1px solid #e2e8f0; background: #f8f9fa; display: flex; gap: 12px; justify-content: flex-end; }
+          
+          .md-drawer .form-control { border-radius: 4px; border: 1px solid #cbd5e1; background: #f8fafc; transition: all 0.2s; }
+          .md-drawer .form-control:focus { border-color: #3b82f6; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+        </style>
+        
+        <div class="md-container">
+          <div class="md-master erp-card">
+            <table class="erp-table">
               <thead><tr><th>NIT</th><th>Razón Social</th><th>Teléfono</th><th>Email</th><th>Estado</th><th>Acciones</th></tr></thead>
-              <tbody>${items.length === 0
-                ? '<tr><td colspan="6" class="table-empty">Sin registros</td></tr>'
-                : items.map(e => `<tr>
-                    <td><span class="badge badge-info">${WMS.esc(e.nit || '')}</span></td>
-                    <td><strong>${WMS.esc(e.razon_social || '')}</strong></td>
-                    <td>${WMS.esc(e.telefono || '-')}</td>
-                    <td>${WMS.esc(e.email || '-')}</td>
-                    <td><span class="status-chip ${e.activo ? 'status-cerrada' : 'status-cancelada'}">${e.activo ? 'Activa' : 'Inactiva'}</span></td>
-                    <td><div class="actions">
-                      <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editEmpresa(${e.id})"><i class="fa-solid fa-pen"></i></button>
-                      <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteEmpresa(${e.id},'${WMS.esc(e.razon_social || '')}')"><i class="fa-solid fa-trash"></i></button>
+              <tbody id="empresa-tbody">${items.length === 0
+                ? '<tr><td colspan="6" class="table-empty" style="text-align:center; padding:30px;">Sin registros</td></tr>'
+                : items.map(e => `<tr class="main-row" id="row-emp-${e.id}" onclick="WMS_MODULES.maestro.editEmpresa(${e.id})">
+                    <td><span class="badge badge-info" style="border-radius:4px; font-family:monospace;">${WMS.esc(e.nit || '')}</span></td>
+                    <td style="font-weight:600; color:#1e293b;">${WMS.esc(e.razon_social || '')}</td>
+                    <td style="color:#64748b;">${WMS.esc(e.telefono || '-')}</td>
+                    <td style="color:#64748b;">${WMS.esc(e.email || '-')}</td>
+                    <td><span class="status-chip ${e.activo ? 'status-cerrada' : 'status-cancelada'}" style="border-radius:4px;">${e.activo ? 'Activa' : 'Inactiva'}</span></td>
+                    <td onclick="event.stopPropagation()"><div class="actions">
+                      <button class="btn btn-sm btn-danger" style="border-radius:4px;" onclick="WMS_MODULES.maestro.deleteEmpresa(${e.id},'${WMS.esc(e.razon_social || '')}')"><i class="fa-solid fa-trash"></i></button>
                     </div></td>
                   </tr>`).join('')}
               </tbody>
             </table>
           </div>
+          
+          <!-- Side Panel / Drawer -->
+          <div id="empresa-drawer" class="md-drawer">
+            <div class="drawer-header">
+              <h3 class="drawer-title"><i class="fa-solid fa-building" style="color:#3b82f6; margin-right:8px;"></i> <span id="drawer-empresa-title">Empresa</span></h3>
+              <button class="drawer-close" onclick="WMS_MODULES.maestro.closeDrawerEmpresa()"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="drawer-body" id="drawer-empresa-content"></div>
+            <div class="drawer-footer">
+              <button class="btn btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.maestro.closeDrawerEmpresa()">Cancelar</button>
+              <button id="btn-save-empresa" class="btn btn-primary" style="border-radius:4px;"><i class="fa-solid fa-save"></i> Guardar</button>
+            </div>
+          </div>
         </div>`);
     } catch (e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
   },
+  
+  closeDrawerEmpresa() {
+    const drawer = document.getElementById('empresa-drawer');
+    if (drawer) drawer.classList.remove('open');
+    document.querySelectorAll('#empresa-tbody tr').forEach(r => r.style.background = '');
+  },
 
   nuevaEmpresa() {
-    WMS.showModal('Nueva Empresa', `
-      <div class="form-grid form-grid-2">
-        <div class="form-group"><label class="form-label">NIT <span class="required">*</span></label><input id="f-nit" class="form-control" placeholder="900000001-1"></div>
-        <div class="form-group"><label class="form-label">RAZÓN SOCIAL <span class="required">*</span></label><input id="f-rs" class="form-control" placeholder="Nombre completo de la empresa"></div>
-        <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-dir" class="form-control" placeholder="Calle 1 # 2-3"></div>
-        <div class="form-group"><label class="form-label">TELÉFONO</label><input id="f-tel" class="form-control" placeholder="+57 300 000 0000"></div>
-        <div class="form-group" style="grid-column:1/-1;"><label class="form-label">EMAIL</label><input id="f-email" class="form-control" type="email" placeholder="contacto@empresa.com"></div>
-      </div>`,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveEmpresa(null)"><i class="fa-solid fa-save"></i> Guardar</button>`);
+    this.closeDrawerEmpresa();
+    const drawer = document.getElementById('empresa-drawer');
+    const content = document.getElementById('drawer-empresa-content');
+    const title = document.getElementById('drawer-empresa-title');
+    const btnSave = document.getElementById('btn-save-empresa');
+    if (!drawer) return;
+    
+    title.textContent = 'Nueva Empresa';
+    content.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="form-group"><label class="form-label">NIT <span class="required" style="color:#ef4444;">*</span></label><input id="f-nit" class="form-control" placeholder="Ej: 900000001-1"></div>
+        <div class="form-group"><label class="form-label">RAZÓN SOCIAL <span class="required" style="color:#ef4444;">*</span></label><input id="f-rs" class="form-control" placeholder="Nombre de la empresa"></div>
+        <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-dir" class="form-control" placeholder="Dirección"></div>
+        <div class="form-group"><label class="form-label">TELÉFONO</label><input id="f-tel" class="form-control" placeholder="Teléfono"></div>
+        <div class="form-group"><label class="form-label">EMAIL</label><input id="f-email" class="form-control" type="email" placeholder="contacto@empresa.com"></div>
+      </div>
+    `;
+    btnSave.onclick = () => WMS_MODULES.maestro.saveEmpresa(null);
+    drawer.classList.add('open');
   },
 
   async saveEmpresa(id) {
@@ -160,26 +211,39 @@ WMS_MODULES.maestro = {
     try {
       const r = id ? await API.put('/param/empresas/' + id, data) : await API.post('/param/empresas', data);
       if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', id ? 'Empresa actualizada' : 'Empresa creada'); WMS.closeModal('generic-modal'); this.show_empresa(); }
+      else { WMS.toast('success', id ? 'Empresa actualizada' : 'Empresa creada'); this.closeDrawerEmpresa(); this.show_empresa(); }
     } catch (e) { WMS.toast('error', 'Error de conexión'); }
   },
 
   async editEmpresa(id) {
+    this.closeDrawerEmpresa();
+    const row = document.getElementById(`row-emp-${id}`);
+    if (row) row.style.background = '#e0f2fe';
+    
+    const drawer = document.getElementById('empresa-drawer');
+    const content = document.getElementById('drawer-empresa-content');
+    const title = document.getElementById('drawer-empresa-title');
+    const btnSave = document.getElementById('btn-save-empresa');
+    if (!drawer) return;
+
     try {
       const r     = await API.get('/param/empresas');
       const items = r.data || r || [];
       const e     = items.find(x => x.id == id);
       if (!e) return;
-      WMS.showModal('Editar Empresa', `
-        <div class="form-grid form-grid-2">
-          <div class="form-group"><label class="form-label">NIT</label><input id="f-nit" class="form-control" value="${WMS.esc(e.nit || '')}"></div>
-          <div class="form-group"><label class="form-label">RAZÓN SOCIAL</label><input id="f-rs" class="form-control" value="${WMS.esc(e.razon_social || '')}"></div>
+      
+      title.textContent = 'Editar Empresa';
+      content.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div class="form-group"><label class="form-label">NIT <span class="required" style="color:#ef4444;">*</span></label><input id="f-nit" class="form-control" value="${WMS.esc(e.nit || '')}"></div>
+          <div class="form-group"><label class="form-label">RAZÓN SOCIAL <span class="required" style="color:#ef4444;">*</span></label><input id="f-rs" class="form-control" value="${WMS.esc(e.razon_social || '')}"></div>
           <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-dir" class="form-control" value="${WMS.esc(e.direccion || '')}"></div>
           <div class="form-group"><label class="form-label">TELÉFONO</label><input id="f-tel" class="form-control" value="${WMS.esc(e.telefono || '')}"></div>
-          <div class="form-group" style="grid-column:1/-1;"><label class="form-label">EMAIL</label><input id="f-email" class="form-control" value="${WMS.esc(e.email || '')}"></div>
-        </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-         <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveEmpresa(${id})"><i class="fa-solid fa-save"></i> Actualizar</button>`);
+          <div class="form-group"><label class="form-label">EMAIL</label><input id="f-email" class="form-control" value="${WMS.esc(e.email || '')}"></div>
+        </div>
+      `;
+      btnSave.onclick = () => WMS_MODULES.maestro.saveEmpresa(id);
+      drawer.classList.add('open');
     } catch (ex) { WMS.toast('error', 'Error cargando datos'); }
   },
 
@@ -192,35 +256,79 @@ WMS_MODULES.maestro = {
 
   // ── SUCURSALES ───────────────────────────────────────────────
   async show_sucursales() {
-    WMS.setToolbar(`<button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaSucursal()"><i class="fa-solid fa-plus"></i> Nueva Sucursal</button>`);
+    WMS.setToolbar(`<button class="btn btn-primary btn-sm" style="border-radius:4px;" onclick="WMS_MODULES.maestro.nuevaSucursal()"><i class="fa-solid fa-plus"></i> Nueva Sucursal</button>`);
     WMS.spinner();
     const [rs, es] = await Promise.all([API.get('/param/sucursales'), API.get('/param/empresas')]);
     const items    = rs.data || rs || [];
     const empresas = es.data || es || [];
     WMS.setContent(`
-      <div class="card">
-        <div class="card-header"><span class="card-title"><i class="fa-solid fa-store"></i> Sucursales / Bodegas</span></div>
-        <div class="table-container">
-          <table class="data-table">
+      <style>
+        .erp-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+        .erp-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; }
+        .erp-table th { background: #f8f9fa; color: #475569; font-weight: 600; padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: left; }
+        .erp-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: middle; transition: background 0.2s; }
+        .erp-table tr.main-row:hover { background: #f1f5f9; cursor: pointer; }
+        
+        .md-container { display: flex; position: relative; height: calc(100vh - 160px); overflow: hidden; background: #f8f9fa; }
+        .md-master { flex: 1; overflow-y: auto; transition: margin-right 0.3s ease; }
+        
+        .md-drawer { position: absolute; right: -40%; top: 0; bottom: 0; width: 40%; background: #fff; border-left: 1px solid #cbd5e1; box-shadow: -4px 0 15px rgba(0,0,0,0.05); transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; display: flex; flex-direction: column; }
+        .md-drawer.open { right: 0; }
+        @media (max-width: 768px) { .md-drawer { width: 100%; right: -100%; } .md-drawer.open { right: 0; } }
+        
+        .drawer-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; }
+        .drawer-title { font-size: 1.1rem; font-weight: 600; color: #0f172a; margin: 0; }
+        .drawer-close { background: transparent; border: none; font-size: 1.2rem; color: #64748b; cursor: pointer; }
+        .drawer-close:hover { color: #ef4444; }
+        .drawer-body { padding: 20px; flex: 1; overflow-y: auto; }
+        .drawer-footer { padding: 16px 20px; border-top: 1px solid #e2e8f0; background: #f8f9fa; display: flex; gap: 12px; justify-content: flex-end; }
+        
+        .md-drawer .form-control { border-radius: 4px; border: 1px solid #cbd5e1; background: #f8fafc; transition: all 0.2s; }
+        .md-drawer .form-control:focus { border-color: #3b82f6; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+      </style>
+      
+      <div class="md-container">
+        <div class="md-master erp-card">
+          <table class="erp-table">
             <thead><tr><th>Código</th><th>Nombre</th><th>Empresa</th><th>Ciudad</th><th>Estado</th><th>Acciones</th></tr></thead>
-            <tbody>${items.map(s => `<tr>
-              <td><span class="badge badge-gray">${WMS.esc(s.codigo || '-')}</span></td>
-              <td><strong>${WMS.esc(s.nombre || '')}</strong></td>
-              <td>${WMS.esc(empresas.find(e => e.id == s.empresa_id)?.razon_social || s.empresa_id || '-')}</td>
-              <td>${WMS.esc(s.ciudad || '-')}</td>
-              <td><span class="status-chip ${s.activo ? 'status-cerrada' : 'status-cancelada'}">${s.activo ? 'Activa' : 'Inactiva'}</span></td>
-              <td><div class="actions">
-                <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editSucursal(${s.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
-                <button class="btn btn-sm ${s.activo ? 'btn-warning' : 'btn-success'}" onclick="WMS_MODULES.maestro.toggleEstadoSucursal(${s.id}, ${s.activo ? 0 : 1})" title="${s.activo ? 'Desactivar' : 'Activar'}">
-                  <i class="fa-solid ${s.activo ? 'fa-ban' : 'fa-check'}"></i>
-                </button>
-                <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteSucursal(${s.id},'${WMS.esc(s.nombre || '')}')" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
-              </div></td>
-            </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin sucursales</td></tr>'}
+            <tbody id="sucursales-tbody">${items.length === 0
+              ? '<tr><td colspan="6" class="table-empty" style="text-align:center; padding:30px;">Sin sucursales</td></tr>'
+              : items.map(s => `<tr class="main-row" id="row-suc-${s.id}" onclick="WMS_MODULES.maestro.editSucursal(${s.id})">
+                <td><span class="badge badge-gray" style="border-radius:4px; font-family:monospace;">${WMS.esc(s.codigo || '-')}</span></td>
+                <td style="font-weight:600; color:#1e293b;">${WMS.esc(s.nombre || '')}</td>
+                <td style="color:#64748b;">${WMS.esc(empresas.find(e => e.id == s.empresa_id)?.razon_social || s.empresa_id || '-')}</td>
+                <td style="color:#64748b;">${WMS.esc(s.ciudad || '-')}</td>
+                <td><span class="status-chip ${s.activo ? 'status-cerrada' : 'status-cancelada'}" style="border-radius:4px;">${s.activo ? 'Activa' : 'Inactiva'}</span></td>
+                <td onclick="event.stopPropagation()"><div class="actions">
+                  <button class="btn btn-sm ${s.activo ? 'btn-warning' : 'btn-success'}" style="border-radius:4px;" onclick="WMS_MODULES.maestro.toggleEstadoSucursal(${s.id}, ${s.activo ? 0 : 1})" title="${s.activo ? 'Desactivar' : 'Activar'}">
+                    <i class="fa-solid ${s.activo ? 'fa-ban' : 'fa-check'}"></i>
+                  </button>
+                  <button class="btn btn-sm btn-danger" style="border-radius:4px;" onclick="WMS_MODULES.maestro.deleteSucursal(${s.id},'${WMS.esc(s.nombre || '')}')" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
+                </div></td>
+              </tr>`).join('')}
             </tbody>
           </table>
         </div>
+        
+        <!-- Side Panel / Drawer -->
+        <div id="sucursal-drawer" class="md-drawer">
+          <div class="drawer-header">
+            <h3 class="drawer-title"><i class="fa-solid fa-store" style="color:#3b82f6; margin-right:8px;"></i> <span id="drawer-sucursal-title">Sucursal</span></h3>
+            <button class="drawer-close" onclick="WMS_MODULES.maestro.closeDrawerSucursal()"><i class="fa-solid fa-times"></i></button>
+          </div>
+          <div class="drawer-body" id="drawer-sucursal-content"></div>
+          <div class="drawer-footer">
+            <button class="btn btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.maestro.closeDrawerSucursal()">Cancelar</button>
+            <button id="btn-save-sucursal" class="btn btn-primary" style="border-radius:4px;"><i class="fa-solid fa-save"></i> Guardar</button>
+          </div>
+        </div>
       </div>`);
+  },
+
+  closeDrawerSucursal() {
+    const drawer = document.getElementById('sucursal-drawer');
+    if (drawer) drawer.classList.remove('open');
+    document.querySelectorAll('#sucursales-tbody tr').forEach(r => r.style.background = '');
   },
 
   async toggleEstadoSucursal(id, nuevoEstado) {
@@ -232,24 +340,38 @@ WMS_MODULES.maestro = {
   },
 
   async nuevaSucursal() {
+    this.closeDrawerSucursal();
     const es      = await API.get('/param/empresas');
     const empresas = es.data || es || [];
-    WMS.showModal('Nueva Sucursal', `
-      <div class="form-grid form-grid-2">
-        <div class="form-group"><label class="form-label">CÓDIGO <span class="required">*</span></label><input id="f-scod" class="form-control" placeholder="BOG01"></div>
-        <div class="form-group"><label class="form-label">NOMBRE <span class="required">*</span></label><input id="f-snom" class="form-control" placeholder="Bodega Principal"></div>
-        <div class="form-group"><label class="form-label">EMPRESA <span class="required">*</span></label>
+    
+    const drawer = document.getElementById('sucursal-drawer');
+    const content = document.getElementById('drawer-sucursal-content');
+    const title = document.getElementById('drawer-sucursal-title');
+    const btnSave = document.getElementById('btn-save-sucursal');
+    if (!drawer) return;
+
+    title.textContent = 'Nueva Sucursal';
+    content.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="form-group"><label class="form-label">CÓDIGO <span class="required" style="color:#ef4444;">*</span></label><input id="f-scod" class="form-control" placeholder="Ej: BOG01"></div>
+        <div class="form-group"><label class="form-label">NOMBRE <span class="required" style="color:#ef4444;">*</span></label><input id="f-snom" class="form-control" placeholder="Nombre de la bodega"></div>
+        <div class="form-group"><label class="form-label">EMPRESA <span class="required" style="color:#ef4444;">*</span></label>
           <select id="f-semp" class="form-control"><option value="">-- Seleccione --</option>
             ${empresas.map(e => `<option value="${e.id}">${WMS.esc(e.razon_social)}</option>`).join('')}
           </select></div>
-        <div class="form-group"><label class="form-label">CIUDAD</label><input id="f-scity" class="form-control" placeholder="Bogotá"></div>
-        <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-sdir" class="form-control" placeholder="Dirección"></div>
-        <div class="form-group"><label class="form-label">ESTADO</label>
-          <select id="f-sact" class="form-control"><option value="1">Activa</option><option value="0">Inactiva</option></select>
+        <div class="form-group"><label class="form-label">CIUDAD</label><input id="f-scity" class="form-control" placeholder="Ciudad"></div>
+        <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-sdir" class="form-control" placeholder="Dirección física"></div>
+        <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:4px; margin-top:10px;">
+           <div>
+             <span style="font-weight:600; color:#334155; font-size:0.9rem; display:block;">Estado Activo</span>
+             <span style="font-size:0.8rem; color:#64748b;">Si está inactiva, no se podrá operar.</span>
+           </div>
+           <label class="wms-switch"><input type="checkbox" id="f-sact" checked><span class="slider"></span></label>
         </div>
-      </div>`,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveSucursal(null)"><i class="fa-solid fa-save"></i> Guardar</button>`);
+      </div>
+    `;
+    btnSave.onclick = () => WMS_MODULES.maestro.saveSucursal(null);
+    drawer.classList.add('open');
   },
 
   async saveSucursal(id) {
@@ -259,43 +381,57 @@ WMS_MODULES.maestro = {
       empresa_id: document.getElementById('f-semp')?.value,
       ciudad:     document.getElementById('f-scity')?.value.trim(),
       direccion:  document.getElementById('f-sdir')?.value.trim(),
-      activo:     document.getElementById('f-sact')?.value === "1" ? 1 : 0
+      activo:     document.getElementById('f-sact')?.checked ? 1 : 0
     };
     if (!data.codigo || !data.nombre || !data.empresa_id) { WMS.toast('warning', 'Código, Nombre y Empresa son obligatorios'); return; }
     try {
       const r = id ? await API.put('/param/sucursales/' + id, data) : await API.post('/param/sucursales', data);
       if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', id ? 'Sucursal actualizada' : 'Sucursal creada'); WMS.closeModal('generic-modal'); this.show_sucursales(); }
+      else { WMS.toast('success', id ? 'Sucursal actualizada' : 'Sucursal creada'); this.closeDrawerSucursal(); this.show_sucursales(); }
     } catch (e) { WMS.toast('error', 'Error de conexión'); }
   },
 
   // FIX: editSucursal era un stub; ahora carga datos y pre-llena el modal
   async editSucursal(id) {
+    this.closeDrawerSucursal();
+    const row = document.getElementById(`row-suc-${id}`);
+    if (row) row.style.background = '#e0f2fe';
+    
+    const drawer = document.getElementById('sucursal-drawer');
+    const content = document.getElementById('drawer-sucursal-content');
+    const title = document.getElementById('drawer-sucursal-title');
+    const btnSave = document.getElementById('btn-save-sucursal');
+    if (!drawer) return;
+
     try {
       const [rs, es] = await Promise.all([API.get('/param/sucursales'), API.get('/param/empresas')]);
       const items    = rs.data || rs || [];
       const empresas = es.data || es || [];
       const s        = items.find(x => x.id == id);
       if (!s) { WMS.toast('error', 'Sucursal no encontrada'); return; }
-      WMS.showModal('Editar Sucursal', `
-        <div class="form-grid form-grid-2">
-          <div class="form-group"><label class="form-label">CÓDIGO <span class="required">*</span></label><input id="f-scod" class="form-control" value="${WMS.esc(s.codigo || '')}"></div>
-          <div class="form-group"><label class="form-label">NOMBRE <span class="required">*</span></label><input id="f-snom" class="form-control" value="${WMS.esc(s.nombre || '')}"></div>
-          <div class="form-group"><label class="form-label">EMPRESA <span class="required">*</span></label>
+      
+      title.textContent = 'Editar Sucursal';
+      content.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div class="form-group"><label class="form-label">CÓDIGO <span class="required" style="color:#ef4444;">*</span></label><input id="f-scod" class="form-control" value="${WMS.esc(s.codigo || '')}"></div>
+          <div class="form-group"><label class="form-label">NOMBRE <span class="required" style="color:#ef4444;">*</span></label><input id="f-snom" class="form-control" value="${WMS.esc(s.nombre || '')}"></div>
+          <div class="form-group"><label class="form-label">EMPRESA <span class="required" style="color:#ef4444;">*</span></label>
             <select id="f-semp" class="form-control">
               ${empresas.map(e => `<option value="${e.id}" ${e.id == s.empresa_id ? 'selected' : ''}>${WMS.esc(e.razon_social)}</option>`).join('')}
             </select></div>
           <div class="form-group"><label class="form-label">CIUDAD</label><input id="f-scity" class="form-control" value="${WMS.esc(s.ciudad || '')}"></div>
           <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-sdir" class="form-control" value="${WMS.esc(s.direccion || '')}"></div>
-          <div class="form-group"><label class="form-label">ESTADO</label>
-            <select id="f-sact" class="form-control">
-              <option value="1" ${s.activo ? 'selected' : ''}>Activa</option>
-              <option value="0" ${!s.activo ? 'selected' : ''}>Inactiva</option>
-            </select>
+          <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:4px; margin-top:10px;">
+             <div>
+               <span style="font-weight:600; color:#334155; font-size:0.9rem; display:block;">Estado Activo</span>
+               <span style="font-size:0.8rem; color:#64748b;">Si está inactiva, no se podrá operar.</span>
+             </div>
+             <label class="wms-switch"><input type="checkbox" id="f-sact" ${s.activo ? 'checked' : ''}><span class="slider"></span></label>
           </div>
-        </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-         <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveSucursal(${id})"><i class="fa-solid fa-save"></i> Actualizar</button>`);
+        </div>
+      `;
+      btnSave.onclick = () => WMS_MODULES.maestro.saveSucursal(id);
+      drawer.classList.add('open');
     } catch (ex) { WMS.toast('error', 'Error cargando sucursal'); }
   },
 
@@ -310,41 +446,121 @@ WMS_MODULES.maestro = {
   // ── PERSONAL ─────────────────────────────────────────────────
   async show_personal() {
     WMS.setToolbar(`
-      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-personal" placeholder="Buscar personal..." oninput="WMS_MODULES.maestro.filtrarPersonal(this.value)"></div>
-      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevoPersonal()"><i class="fa-solid fa-plus"></i> Nuevo Personal</button>`);
+      <div style="display:flex;align-items:center;gap:12px;width:100%;">
+        <div style="position:relative; flex:1; max-width: 400px;">
+          <i class="fa-solid fa-search" style="position:absolute; left:10px; top:10px; color:#94a3b8;"></i>
+          <input id="search-personal" class="form-control" style="padding-left:32px; border-radius:4px;" placeholder="Buscar personal..." oninput="WMS_MODULES.maestro.filtrarPersonal(this.value)">
+        </div>
+        <button class="btn btn-primary btn-sm" style="border-radius:4px;" onclick="WMS_MODULES.maestro.nuevoPersonal()"><i class="fa-solid fa-plus"></i> Nuevo Personal</button>
+      </div>`);
     WMS.spinner();
     try {
       const r = await API.get('/param/personal');
       this._personalData = r.data || r || [];
+
+      WMS.setContent(`
+        <style>
+          /* ADN Visual ERP - Square & Professional */
+          .erp-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+          .erp-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; }
+          .erp-table th { background: #f8f9fa; color: #475569; font-weight: 600; padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: left; }
+          .erp-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: middle; transition: background 0.2s; }
+          .erp-table tr.main-row:hover { background: #f1f5f9; cursor: pointer; }
+          
+          /* Master-Detail Layout */
+          .md-container { display: flex; position: relative; height: calc(100vh - 160px); overflow: hidden; background: #f8f9fa; }
+          .md-master { flex: 1; overflow-y: auto; transition: margin-right 0.3s ease; }
+          
+          /* Side Panel (Drawer) */
+          .md-drawer { 
+            position: absolute; right: -40%; top: 0; bottom: 0; width: 40%; background: #fff; 
+            border-left: 1px solid #cbd5e1; box-shadow: -4px 0 15px rgba(0,0,0,0.05); 
+            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; 
+            display: flex; flex-direction: column; 
+          }
+          .md-drawer.open { right: 0; }
+          @media (max-width: 768px) { .md-drawer { width: 100%; right: -100%; } .md-drawer.open { right: 0; } }
+          
+          .drawer-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; }
+          .drawer-title { font-size: 1.1rem; font-weight: 600; color: #0f172a; margin: 0; }
+          .drawer-close { background: transparent; border: none; font-size: 1.2rem; color: #64748b; cursor: pointer; }
+          .drawer-close:hover { color: #ef4444; }
+          .drawer-body { padding: 20px; flex: 1; overflow-y: auto; }
+          .drawer-footer { padding: 16px 20px; border-top: 1px solid #e2e8f0; background: #f8f9fa; display: flex; gap: 12px; justify-content: flex-end; }
+          
+          /* Inputs outline */
+          .md-drawer .form-control { border-radius: 4px; border: 1px solid #cbd5e1; background: #f8fafc; transition: all 0.2s; }
+          .md-drawer .form-control:focus { border-color: #3b82f6; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+        </style>
+
+        <div class="md-container">
+          <!-- Master View -->
+          <div class="md-master erp-card">
+            <table class="erp-table">
+              <thead>
+                <tr>
+                  <th>Documento</th>
+                  <th>Nombre</th>
+                  <th>Rol</th>
+                  <th>Sucursal</th>
+                  <th>Último Login</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="personal-tbody">
+                <!-- Contenido generado dinamicamente -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Side Panel / Drawer View -->
+          <div id="personal-drawer" class="md-drawer">
+            <div class="drawer-header">
+              <h3 class="drawer-title"><i class="fa-solid fa-user" style="color:#3b82f6; margin-right:8px;"></i> <span id="drawer-personal-title">Personal</span></h3>
+              <button class="drawer-close" onclick="WMS_MODULES.maestro.closeDrawerPersonal()"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="drawer-body" id="drawer-personal-content">
+              <!-- Formulario inyectado -->
+            </div>
+            <div class="drawer-footer" id="drawer-personal-actions">
+               <button class="btn btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.maestro.closeDrawerPersonal()">Limpiar</button>
+               <button class="btn btn-primary" style="border-radius:4px;" id="btn-save-personal"><i class="fa-solid fa-save"></i> Guardar Personal</button>
+            </div>
+          </div>
+        </div>
+      `);
       this.renderPersonal(this._personalData);
-    } catch (e) { WMS.setContent('<div class="m-empty">Error de conexión</div>'); }
+    } catch (e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
   },
 
   renderPersonal(items) {
     const rolColors = { Admin: 'badge-danger', Supervisor: 'badge-warning', Auxiliar: 'badge-info', Montacarguista: 'badge-success', Analista: 'badge-purple' };
-    WMS.setContent(`
-      <div class="card">
-        <div class="card-header"><span class="card-title"><i class="fa-solid fa-users"></i> Personal (${items.length})</span></div>
-        <div class="table-container">
-          <table class="data-table">
-            <thead><tr><th>Documento</th><th>Nombre</th><th>Rol</th><th>Sucursal</th><th>Último Login</th><th>Estado</th><th>Acciones</th></tr></thead>
-            <tbody>${items.map(p => `<tr>
-              <td><span class="badge badge-gray" style="font-family:monospace;">${WMS.esc(p.documento || '')}</span></td>
-              <td><strong>${WMS.esc(p.nombre || '')}</strong></td>
-              <td><span class="badge ${rolColors[p.rol] || 'badge-gray'}">${WMS.esc(p.rol || '')}</span></td>
-              <td>${WMS.esc(p.sucursal?.nombre || p.sucursal_id || '-')}</td>
-              <td class="text-sm text-muted">${WMS.formatDateTime(p.ultimo_login) || '-'}</td>
-              <td><span class="status-chip ${p.activo ? 'status-cerrada' : 'status-cancelada'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
-              <td><div class="actions">
-                <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editPersonal(${p.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
-                <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.gestionarPermisos(${p.id},'${WMS.esc(p.nombre || '')}')" title="Permisos individuales"><i class="fa-solid fa-shield-halved"></i></button>
-                <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deletePersonal(${p.id},'${WMS.esc(p.nombre || '')}')"><i class="fa-solid fa-trash"></i></button>
-              </div></td>
-            </tr>`).join('') || '<tr><td colspan="7" class="table-empty">Sin personal registrado</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </div>`);
+    const tbody = document.getElementById('personal-tbody');
+    if (!tbody) return; // Puede que el HTML no se haya cargado todavía
+
+    tbody.innerHTML = items.map(p => `
+      <tr class="main-row" id="row-pers-${p.id}" onclick="WMS_MODULES.maestro.editPersonal(${p.id})">
+        <td><span style="font-family:monospace; color:#475569; font-weight:500;">${WMS.esc(p.documento || '')}</span></td>
+        <td style="font-weight:600; color:#1e293b;">${WMS.esc(p.nombre || '')}</td>
+        <td><span class="badge ${rolColors[p.rol] || 'badge-gray'}" style="border-radius:4px;">${WMS.esc(p.rol || '')}</span></td>
+        <td style="color:#64748b;">${WMS.esc(p.sucursal?.nombre || p.sucursal_id || '-')}</td>
+        <td class="text-sm" style="color:#64748b;">${WMS.formatDateTime(p.ultimo_login) || '-'}</td>
+        <td><span class="status-chip ${p.activo ? 'status-cerrada' : 'status-cancelada'}" style="border-radius:4px;">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
+        <td>
+          <div class="actions" onclick="event.stopPropagation()">
+            <button class="btn btn-sm btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.maestro.gestionarPermisos(${p.id},'${WMS.esc(p.nombre || '')}')" title="Permisos individuales"><i class="fa-solid fa-shield-halved"></i></button>
+            <button class="btn btn-sm btn-danger" style="border-radius:4px;" onclick="WMS_MODULES.maestro.deletePersonal(${p.id},'${WMS.esc(p.nombre || '')}')" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `).join('') || '<tr><td colspan="7" class="table-empty">Sin personal registrado con los filtros aplicados</td></tr>';
+  },
+
+  closeDrawerPersonal() {
+    const drawer = document.getElementById('personal-drawer');
+    if (drawer) drawer.classList.remove('open');
+    document.querySelectorAll('#personal-tbody tr').forEach(r => r.style.background = '');
   },
 
   filtrarPersonal(q) {
@@ -356,25 +572,47 @@ WMS_MODULES.maestro = {
   },
 
   async nuevoPersonal() {
+    this.closeDrawerPersonal();
     const ss  = await API.get('/param/sucursales?activo=1');
     const suc = ss.data || ss || [];
-    WMS.showModal('Nuevo Personal', `
-      <div class="form-grid form-grid-2">
-        <div class="form-group"><label class="form-label">DOCUMENTO <span class="required">*</span></label><input id="f-pdoc" class="form-control" placeholder="Número de documento"></div>
-        <div class="form-group"><label class="form-label">NOMBRE COMPLETO <span class="required">*</span></label><input id="f-pnom" class="form-control" placeholder="Nombre y apellidos"></div>
-        <div class="form-group"><label class="form-label">ROL <span class="required">*</span></label>
+    
+    const drawer = document.getElementById('personal-drawer');
+    const title = document.getElementById('drawer-personal-title');
+    const content = document.getElementById('drawer-personal-content');
+    const btnSave = document.getElementById('btn-save-personal');
+    
+    if (!drawer) return;
+
+    title.textContent = 'Nuevo Personal';
+    content.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div style="background:#f1f5f9; padding:12px; border-radius:4px; margin-bottom:8px;">
+           <span style="font-size:0.85rem; color:#475569;">Complete la información obligatoria marcada con (*).</span>
+        </div>
+        <div class="form-group"><label class="form-label">DOCUMENTO <span class="required" style="color:#ef4444;">*</span></label><input id="f-pdoc" class="form-control" placeholder="Ej: 1012345678"></div>
+        <div class="form-group"><label class="form-label">NOMBRE COMPLETO <span class="required" style="color:#ef4444;">*</span></label><input id="f-pnom" class="form-control" placeholder="Nombres y apellidos"></div>
+        <div class="form-group"><label class="form-label">ROL <span class="required" style="color:#ef4444;">*</span></label>
           <select id="f-prol" class="form-control">
             <option value="">-- Seleccione --</option>
             ${['Admin', 'Supervisor', 'Auxiliar', 'Montacarguista', 'Analista'].map(r => `<option value="${r}">${r}</option>`).join('')}
           </select></div>
         <div class="form-group"><label class="form-label">SUCURSAL</label>
-          <select id="f-psuc" class="form-control"><option value="">-- Seleccione --</option>
+          <select id="f-psuc" class="form-control"><option value="">-- Sin asignar --</option>
             ${suc.map(s => `<option value="${s.id}">${WMS.esc(s.nombre)}</option>`).join('')}
           </select></div>
-        <div class="form-group" style="grid-column:1/-1;"><label class="form-label">PIN (4-6 DÍGITOS) <span class="required">*</span></label><input id="f-ppin" class="form-control" type="password" maxlength="6" placeholder="••••"></div>
-      </div>`,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.savePersonal(null)"><i class="fa-solid fa-save"></i> Crear</button>`);
+        <div class="form-group"><label class="form-label">PIN DE ACCESO (4-6 DÍGITOS) <span class="required" style="color:#ef4444;">*</span></label><input id="f-ppin" class="form-control" type="password" maxlength="6" placeholder="••••"></div>
+        <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:4px; margin-top:10px;">
+           <div>
+             <span style="font-weight:600; color:#334155; font-size:0.9rem; display:block;">Estado del Usuario</span>
+             <span style="font-size:0.8rem; color:#64748b;">Si está inactivo, no podrá ingresar al sistema.</span>
+           </div>
+           <label class="wms-switch"><input type="checkbox" id="f-pact" checked><span class="slider"></span></label>
+        </div>
+      </div>
+    `;
+    
+    btnSave.onclick = () => WMS_MODULES.maestro.savePersonal(null);
+    drawer.classList.add('open');
   },
 
   async savePersonal(id) {
@@ -383,16 +621,48 @@ WMS_MODULES.maestro = {
       nombre:      document.getElementById('f-pnom')?.value.trim(),
       rol:         document.getElementById('f-prol')?.value,
       sucursal_id: document.getElementById('f-psuc')?.value || null,
-      pin:         document.getElementById('f-ppin')?.value
+      pin:         document.getElementById('f-ppin')?.value,
+      activo:      document.getElementById('f-pact')?.checked ? 1 : 0
     };
     if (!data.documento || !data.nombre || !data.rol) { WMS.toast('warning', 'Documento, Nombre y Rol son obligatorios'); return; }
+    
+    // El PIN es obligatorio solo para nuevos usuarios
+    if (!id && !data.pin) { WMS.toast('warning', 'El PIN de acceso es obligatorio para nuevos usuarios'); return; }
+
+    const btn = document.getElementById('btn-save-personal');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner sm"></div> Guardando...'; }
+
     const r = id ? await API.put('/param/personal/' + id, data) : await API.post('/param/personal', data);
+    
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-save"></i> Guardar Personal'; }
+    
     if (r.error) WMS.toast('error', r.message);
-    else { WMS.toast('success', id ? 'Personal actualizado' : 'Personal creado'); WMS.closeModal('generic-modal'); this.show_personal(); }
+    else { 
+      WMS.toast('success', id ? 'Personal actualizado correctamente' : 'Personal creado correctamente'); 
+      this.closeDrawerPersonal(); 
+      this.show_personal(); 
+    }
   },
 
-  // FIX: editPersonal era un stub; ahora carga datos reales y abre modal pre-llenado
+  // FIX: editPersonal carga datos reales y abre Drawer pre-llenado
   async editPersonal(id) {
+    this.closeDrawerPersonal();
+    
+    document.querySelectorAll('#personal-tbody tr').forEach(r => r.style.background = '');
+    const row = document.getElementById(`row-pers-${id}`);
+    if (row) row.style.background = '#e0f2fe';
+
+    const drawer = document.getElementById('personal-drawer');
+    const title = document.getElementById('drawer-personal-title');
+    const content = document.getElementById('drawer-personal-content');
+    const btnSave = document.getElementById('btn-save-personal');
+
+    if (!drawer) return;
+
+    title.textContent = 'Editar Personal';
+    content.innerHTML = `<div style="padding:40px; text-align:center;"><div class="spinner"></div><p style="margin-top:10px; color:#64748b;">Cargando datos...</p></div>`;
+    drawer.classList.add('open');
+
     try {
       const [pr, ss] = await Promise.all([
         API.get('/param/personal'), 
@@ -402,17 +672,22 @@ WMS_MODULES.maestro = {
       const suc      = ss.data || ss || [];
       const p        = personal.find(x => x.id == id);
       
-      // FIX: si el usuario ya tiene una sucursal inactiva, ésta no vendría en el ?activo=1.
-      // Para evitar que el select quede vacío o salte a otra, si p.sucursal existe, la añadimos.
       if (p && p.sucursal && !suc.find(s => s.id == p.sucursal_id)) {
         suc.push(p.sucursal);
       }
-      if (!p) { WMS.toast('error', 'Usuario no encontrado'); return; }
-      WMS.showModal('Editar Personal', `
-        <div class="form-grid form-grid-2">
-          <div class="form-group"><label class="form-label">DOCUMENTO</label><input id="f-pdoc" class="form-control" value="${WMS.esc(p.documento || '')}"></div>
-          <div class="form-group"><label class="form-label">NOMBRE COMPLETO <span class="required">*</span></label><input id="f-pnom" class="form-control" value="${WMS.esc(p.nombre || '')}"></div>
-          <div class="form-group"><label class="form-label">ROL <span class="required">*</span></label>
+      if (!p) { 
+        content.innerHTML = `<div class="text-danger" style="padding:20px;">Usuario no encontrado.</div>`;
+        return; 
+      }
+      
+      content.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div style="background:#f1f5f9; padding:12px; border-radius:4px; margin-bottom:8px;">
+             <span style="font-size:0.85rem; color:#475569;">Modifique los datos logísticos del usuario.</span>
+          </div>
+          <div class="form-group"><label class="form-label">DOCUMENTO <span class="required" style="color:#ef4444;">*</span></label><input id="f-pdoc" class="form-control" value="${WMS.esc(p.documento || '')}"></div>
+          <div class="form-group"><label class="form-label">NOMBRE COMPLETO <span class="required" style="color:#ef4444;">*</span></label><input id="f-pnom" class="form-control" value="${WMS.esc(p.nombre || '')}"></div>
+          <div class="form-group"><label class="form-label">ROL <span class="required" style="color:#ef4444;">*</span></label>
             <select id="f-prol" class="form-control">
               ${['Admin', 'Supervisor', 'Auxiliar', 'Montacarguista', 'Analista'].map(r => `<option value="${r}" ${p.rol === r ? 'selected' : ''}>${r}</option>`).join('')}
             </select></div>
@@ -420,11 +695,21 @@ WMS_MODULES.maestro = {
             <select id="f-psuc" class="form-control"><option value="">-- Sin asignar --</option>
               ${suc.map(s => `<option value="${s.id}" ${s.id == p.sucursal_id ? 'selected' : ''}>${WMS.esc(s.nombre)}</option>`).join('')}
             </select></div>
-          <div class="form-group" style="grid-column:1/-1;"><label class="form-label">NUEVO PIN (dejar vacío para no cambiar)</label><input id="f-ppin" class="form-control" type="password" maxlength="6" placeholder="Dejar vacío para mantener actual"></div>
-        </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-         <button class="btn btn-primary" onclick="WMS_MODULES.maestro.savePersonal(${id})"><i class="fa-solid fa-save"></i> Actualizar</button>`);
-    } catch (ex) { WMS.toast('error', 'Error cargando datos del personal'); }
+          <div class="form-group"><label class="form-label">NUEVO PIN (dejar vacío para no cambiar)</label><input id="f-ppin" class="form-control" type="password" maxlength="6" placeholder="Dejar vacío para mantener actual"></div>
+          <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:4px; margin-top:10px;">
+             <div>
+               <span style="font-weight:600; color:#334155; font-size:0.9rem; display:block;">Estado del Usuario</span>
+               <span style="font-size:0.8rem; color:#64748b;">Si está inactivo, no podrá ingresar al sistema.</span>
+             </div>
+             <label class="wms-switch"><input type="checkbox" id="f-pact" ${p.activo ? 'checked' : ''}><span class="slider"></span></label>
+          </div>
+        </div>
+      `;
+      
+      btnSave.onclick = () => WMS_MODULES.maestro.savePersonal(id);
+    } catch (ex) { 
+      content.innerHTML = `<div class="text-danger" style="padding:20px;">Error cargando datos del personal</div>`;
+    }
   },
 
   deletePersonal(id, n) {

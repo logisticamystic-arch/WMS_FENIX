@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    WMS Desktop — Módulo RECEPCIÓN & YMS (Enterprise Edition)
    ============================================================ */
 WMS_MODULES.recepcion = {
@@ -174,70 +174,136 @@ WMS_MODULES.recepcion = {
       const stChip = s => {
         const map = { Borrador:'status-creada', Confirmada:'status-confirmada',
           'En Proceso':'status-en-proceso', Cerrada:'status-cerrada', Cancelada:'status-cancelada' };
-        return `<span class="status-chip ${map[s]||'status-creada'}">${WMS.esc(s)}</span>`;
+        return `<span class="status-chip ${map[s]||'status-creada'}" style="border-radius:4px;">${WMS.esc(s)}</span>`;
       };
+      
       WMS.setContent(`
-        <!-- Filtros ODC -->
-        <div class="card" style="padding:14px 18px;margin-bottom:12px;">
-          <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
-            <div>
-              <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">DESDE</label>
-              <input type="date" id="odc-f-ini" class="form-control" style="width:135px;" value="${f.ini||''}">
-            </div>
-            <div>
-              <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">HASTA</label>
-              <input type="date" id="odc-f-fin" class="form-control" style="width:135px;" value="${f.fin||''}">
-            </div>
-            <div>
-              <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">ESTADO</label>
-              <select id="odc-f-est" class="form-control" style="width:150px;">
-                <option value="" ${!f.estado?'selected':''}>Todos</option>
-                ${['Borrador','Confirmada','En Proceso','Cerrada','Cancelada'].map(s => `<option value="${s}" ${f.estado===s?'selected':''}>${s}</option>`).join('')}
-              </select>
-            </div>
-            <div style="flex:2;min-width:220px;">
-              <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">BUSCAR (ODC / PROVEEDOR / PRODUCTO)</label>
-              <div class="search-bar" style="margin:0;"><i class="fa-solid fa-search"></i>
-                <input id="odc-q" placeholder="Número ODC, proveedor, producto..." value="${WMS.esc(f.q||'')}">
+        <style>
+          /* ADN Visual ERP - Square & Professional */
+          .erp-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+          .erp-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; }
+          .erp-table th { background: #f8f9fa; color: #475569; font-weight: 600; padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: left; }
+          .erp-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: middle; transition: background 0.2s; }
+          .erp-table tr.main-row:hover { background: #f1f5f9; cursor: pointer; }
+          
+          /* Master-Detail Layout */
+          .md-container { display: flex; position: relative; height: calc(100vh - 160px); overflow: hidden; background: #f8f9fa; }
+          .md-master { flex: 1; overflow-y: auto; transition: margin-right 0.3s ease; padding-right: 12px; }
+          
+          /* Side Panel (Drawer) */
+          .md-drawer { 
+            position: absolute; right: -40%; top: 0; bottom: 0; width: 40%; background: #fff; 
+            border-left: 1px solid #cbd5e1; box-shadow: -4px 0 15px rgba(0,0,0,0.05); 
+            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; 
+            display: flex; flex-direction: column; 
+          }
+          .md-drawer.open { right: 0; }
+          @media (max-width: 768px) { .md-drawer { width: 100%; right: -100%; } .md-drawer.open { right: 0; } }
+          
+          .drawer-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; }
+          .drawer-title { font-size: 1.1rem; font-weight: 600; color: #0f172a; margin: 0; }
+          .drawer-close { background: transparent; border: none; font-size: 1.2rem; color: #64748b; cursor: pointer; }
+          .drawer-close:hover { color: #ef4444; }
+          .drawer-body { padding: 20px; flex: 1; overflow-y: auto; }
+          .drawer-footer { padding: 16px 20px; border-top: 1px solid #e2e8f0; background: #f8f9fa; display: flex; gap: 12px; justify-content: flex-end; }
+          
+          /* Inputs outline */
+          .md-drawer .form-control { border-radius: 4px; border: 1px solid #cbd5e1; background: #f8fafc; transition: all 0.2s; }
+          .md-drawer .form-control:focus { border-color: #3b82f6; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+        </style>
+
+        <div class="md-container">
+          <!-- Master View -->
+          <div class="md-master">
+            <!-- Filtros ODC -->
+            <div class="erp-card" style="padding:14px 18px;margin-bottom:12px; height:auto;">
+              <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+                <div>
+                  <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">DESDE</label>
+                  <input type="date" id="odc-f-ini" class="form-control" style="width:135px; border-radius:4px;" value="${f.ini||''}">
+                </div>
+                <div>
+                  <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">HASTA</label>
+                  <input type="date" id="odc-f-fin" class="form-control" style="width:135px; border-radius:4px;" value="${f.fin||''}">
+                </div>
+                <div>
+                  <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">ESTADO</label>
+                  <select id="odc-f-est" class="form-control" style="width:150px; border-radius:4px;">
+                    <option value="" ${!f.estado?'selected':''}>Todos</option>
+                    ${['Borrador','Confirmada','En Proceso','Cerrada','Cancelada'].map(s => `<option value="${s}" ${f.estado===s?'selected':''}>${s}</option>`).join('')}
+                  </select>
+                </div>
+                <div style="flex:2;min-width:220px;">
+                  <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">BUSCAR (ODC / PROVEEDOR / PRODUCTO)</label>
+                  <div class="search-bar" style="margin:0; border-radius:4px;"><i class="fa-solid fa-search"></i>
+                    <input id="odc-q" placeholder="Número ODC, proveedor, producto..." value="${WMS.esc(f.q||'')}">
+                  </div>
+                </div>
+                <button class="btn btn-primary" style="height:38px;padding:0 18px; border-radius:4px;" onclick="WMS_MODULES.recepcion._applyODCFilters()">
+                  <i class="fa-solid fa-filter"></i> Filtrar
+                </button>
+                <button class="btn btn-secondary" style="height:38px;padding:0 14px; border-radius:4px;" onclick="WMS_MODULES.recepcion._clearODCFilters()">
+                  <i class="fa-solid fa-broom"></i>
+                </button>
               </div>
             </div>
-            <button class="btn btn-primary" style="height:38px;padding:0 18px;" onclick="WMS_MODULES.recepcion._applyODCFilters()">
-              <i class="fa-solid fa-filter"></i> Filtrar
-            </button>
-            <button class="btn btn-secondary" style="height:38px;padding:0 14px;" onclick="WMS_MODULES.recepcion._clearODCFilters()">
-              <i class="fa-solid fa-broom"></i>
-            </button>
+
+            <div class="erp-card" style="height: calc(100% - 110px);">
+              <div style="padding:10px 16px;font-size:12px;color:#64748b;border-bottom:1px solid #f1f5f9;">
+                <i class="fa-solid fa-list"></i> ${items.length} ODC(s) encontradas
+              </div>
+              <div style="flex:1; overflow-y:auto;">
+                <table class="erp-table" id="odc-table">
+                  <thead style="position: sticky; top: 0; background: #f8f9fa;">
+                    <tr><th>N° ODC</th><th>Proveedor</th><th>Fecha</th><th>Líneas</th><th>Estado</th><th style="width:280px">Acciones</th></tr>
+                  </thead>
+                  <tbody>${items.map(o=>`<tr class="main-row" id="row-odc-${o.id}">
+                    <td><span class="badge badge-info" style="border-radius:4px; font-family:monospace; font-weight:600;">${WMS.esc(o.numero_odc)}</span></td>
+                    <td><strong style="color:#1e3a5f;">${WMS.esc(o.proveedor?.razon_social||'-')}</strong></td>
+                    <td style="color:#64748b;">${WMS.formatDate(o.fecha)}</td>
+                    <td class="text-center fw-700" style="color:#0f172a;">${o.detalles_count||o.detalles?.length||0}</td>
+                    <td>${stChip(o.estado)}</td>
+                    <td onclick="event.stopPropagation()">
+                      <div class="actions" style="gap:6px;">
+                        <button class="btn btn-sm btn-primary" style="border-radius:4px;" onclick="WMS_MODULES.recepcion.verODC(${o.id})" title="Ver Matriz"><i class="fa-solid fa-table-cells"></i> Matriz</button>
+                        ${o.estado==='Confirmada'?`<button class="btn btn-sm btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.recepcion.asignar_odc(${o.id})" title="Asignar auxiliar"><i class="fa-solid fa-user-plus"></i></button>`:''}
+                        ${o.estado==='Borrador'?`<button class="btn btn-sm btn-success" style="border-radius:4px;" onclick="WMS_MODULES.recepcion.confirmarODC(${o.id})" title="Confirmar ODC"><i class="fa-solid fa-check"></i></button>`:''}
+                        ${!['Cerrada','Cancelada'].includes(o.estado)?`<button class="btn btn-sm btn-danger" style="border-radius:4px;" onclick="WMS_MODULES.recepcion.cerrarODC(${o.id})" title="Cerrar ODC"><i class="fa-solid fa-lock"></i></button>`:''}
+                        <button class="btn btn-sm btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.recepcion.abrirPDF(${o.id})" title="Imprimir"><i class="fa-solid fa-file-pdf"></i></button>
+                        ${o.estado!=='Cerrada'?`<button class="btn btn-sm btn-danger" style="border-radius:4px; opacity:0.8;" onclick="WMS_MODULES.recepcion.deleteODC(${o.id})" title="Eliminar"><i class="fa-solid fa-trash"></i></button>`:''}
+                        ${o.estado==='Cerrada'?`<button class="btn btn-sm btn-warning" style="border-radius:4px;" onclick="WMS_MODULES.recepcion.reabrirODC(${o.id})" title="Reabrir ODC"><i class="fa-solid fa-folder-open"></i></button>`:''}
+                      </div>
+                    </td>
+                  </tr>`).join('')||'<tr><td colspan="6" class="table-empty" style="text-align:center; padding:30px;">No se encontraron órdenes</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Side Panel / Drawer -->
+          <div id="odc-drawer" class="md-drawer">
+            <div class="drawer-header">
+              <h3 class="drawer-title"><i class="fa-solid fa-file-invoice" style="color:#3b82f6; margin-right:8px;"></i> <span id="drawer-odc-title">Nueva ODC</span></h3>
+              <button class="drawer-close" onclick="WMS_MODULES.recepcion.closeDrawerODC()"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="drawer-body" id="drawer-odc-content">
+              <!-- Content injected -->
+            </div>
+            <div class="drawer-footer" id="drawer-odc-actions">
+              <button class="btn btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.recepcion.closeDrawerODC()">Cancelar</button>
+              <button id="btn-save-odc-drawer" class="btn btn-primary" style="border-radius:4px;" onclick="WMS_MODULES.recepcion._saveManualODC()">Guardar ODC</button>
+            </div>
           </div>
         </div>
-
-        <div class="card shadow-soft">
-          <div style="padding:10px 16px;font-size:12px;color:#64748b;border-bottom:1px solid #f1f5f9;">
-            <i class="fa-solid fa-list"></i> ${items.length} ODC(s) encontradas
-          </div>
-          <div class="table-container">
-            <table class="data-table" id="odc-table">
-              <thead><tr><th>N° ODC</th><th>Proveedor</th><th>Fecha</th><th>Líneas</th><th>Estado</th><th style="width:280px">Acciones</th></tr></thead>
-              <tbody>${items.map(o=>`<tr>
-                <td><span class="badge badge-info">${WMS.esc(o.numero_odc)}</span></td>
-                <td><strong>${WMS.esc(o.proveedor?.razon_social||'-')}</strong></td>
-                <td>${WMS.formatDate(o.fecha)}</td>
-                <td class="text-center fw-700">${o.detalles_count||o.detalles?.length||0}</td>
-                <td>${stChip(o.estado)}</td>
-                <td><div class="actions">
-                  <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.recepcion.verODC(${o.id})" title="Ver Matriz"><i class="fa-solid fa-table-cells"></i> Matriz</button>
-                  ${o.estado==='Confirmada'?`<button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.recepcion.asignar_odc(${o.id})" title="Asignar auxiliar"><i class="fa-solid fa-user-plus"></i></button>`:''}
-                  ${o.estado==='Borrador'?`<button class="btn btn-sm btn-success" onclick="WMS_MODULES.recepcion.confirmarODC(${o.id})" title="Confirmar ODC"><i class="fa-solid fa-check"></i></button>`:''}
-                  ${!['Cerrada','Cancelada'].includes(o.estado)?`<button class="btn btn-sm btn-danger" onclick="WMS_MODULES.recepcion.cerrarODC(${o.id})" title="Cerrar ODC"><i class="fa-solid fa-lock"></i> Cerrar</button>`:''}
-                  <button class="btn btn-sm btn-info-soft" onclick="WMS_MODULES.recepcion.abrirPDF(${o.id})" title="Imprimir"><i class="fa-solid fa-file-pdf"></i></button>
-                  ${o.estado!=='Cerrada'?`<button class="btn btn-sm btn-danger-soft" onclick="WMS_MODULES.recepcion.deleteODC(${o.id})" title="Eliminar"><i class="fa-solid fa-trash"></i></button>`:''}
-                  ${o.estado==='Cerrada'?`<button class="btn btn-sm btn-warning" onclick="WMS_MODULES.recepcion.reabrirODC(${o.id})" title="Reabrir ODC"><i class="fa-solid fa-folder-open"></i> Reabrir</button>`:''}
-                </div></td>
-              </tr>`).join('')||'<tr><td colspan="6" class="table-empty">No se encontraron órdenes</td></tr>'}
-              </tbody>
-            </table>
-          </div>
-        </div>`);
+      `);
     } catch(e) { console.error(e); WMS.toast('error','Error cargando ODCs'); }
+  },
+  
+  closeDrawerODC() {
+    const drawer = document.getElementById('odc-drawer');
+    if (drawer) drawer.classList.remove('open');
+    document.querySelectorAll('#odc-table tr').forEach(r => r.style.background = '');
   },
 
   _applyODCFilters() {
@@ -747,45 +813,59 @@ WMS_MODULES.recepcion = {
   // LIFECYCLE ODC
   // ══════════════════════════════════════════════════════════════════════
   async nuevaODC() {
-    WMS.spinner();
-    try {
-      const provR = await API.get('/param/proveedores');
-      const provs = provR.data||provR||[];
+    this.closeDrawerODC();
+    const provR = await API.get('/param/proveedores');
+    const provs = provR.data||provR||[];
 
-      WMS.showModal('Registrar Nueva ODC Manual', `
-        <div class="px-20 py-16">
-          <div class="alert alert-info" style="margin-bottom:12px;">La ODC se creará directamente en estado <b>Confirmada</b> para iniciar el recibo inmediato.</div>
-          <div class="form-group">
-            <label class="fw-700">Proveedor *</label>
-            <select id="mo-prov" class="form-control">
-              <option value="">Seleccione...</option>
-              ${provs.map(p=>`<option value="${p.id}">${WMS.esc(p.razon_social||p.nombre)}</option>`).join('')}
-            </select>
+    const drawer = document.getElementById('odc-drawer');
+    const content = document.getElementById('drawer-odc-content');
+    const btnSave = document.getElementById('btn-save-odc-drawer');
+    
+    if (!drawer || !content) return;
+
+    content.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div style="background:#eff6ff; border-left:4px solid #3b82f6; padding:12px; border-radius:0 4px 4px 0; margin-bottom:8px;">
+           <span style="font-size:0.85rem; color:#1e3a5f;">La ODC se creará directamente en estado <b>Confirmada</b> para iniciar el recibo inmediato.</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Proveedor <span class="required" style="color:#ef4444;">*</span></label>
+          <select id="mo-prov" class="form-control">
+            <option value="">Seleccione...</option>
+            ${provs.map(p=>`<option value="${p.id}">${WMS.esc(p.razon_social||p.nombre)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observaciones</label>
+          <textarea id="mo-obs" class="form-control" rows="2" placeholder="Nota o referencia adicional"></textarea>
+        </div>
+        <div style="border-top:1px solid #e2e8f0; margin-top:8px; padding-top:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <span style="font-weight:700; color:#0f172a; font-size:0.95rem;"><i class="fa-solid fa-list-ul" style="color:#64748b; margin-right:6px;"></i> Ítems de la Orden</span>
+            <button class="btn btn-sm btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.recepcion._addManualItem()"><i class="fa-solid fa-plus"></i> Agregar Item</button>
           </div>
-          <div class="form-group mt-12">
-            <label class="fw-700">Observaciones</label>
-            <textarea id="mo-obs" class="form-control" rows="2"></textarea>
+          <div style="border:1px solid #cbd5e1; border-radius:4px; overflow:hidden;">
+            <table class="erp-table" style="font-size:0.85rem;">
+              <thead style="background:#f1f5f9;">
+                <tr>
+                  <th style="padding:8px 10px;">Producto</th>
+                  <th style="width:80px; padding:8px 10px; text-align:center;">Cant.</th>
+                  <th style="width:40px; padding:8px 10px;"></th>
+                </tr>
+              </thead>
+              <tbody id="mo-items"></tbody>
+            </table>
           </div>
-          <div class="mt-16">
-            <div class="d-flex justify-between align-center mb-8">
-              <span class="fw-800"><i class="fa-solid fa-list"></i> Ítems de la Orden</span>
-              <button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.recepcion._addManualItem()">+ Agregar Item</button>
-            </div>
-            <div style="max-height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;">
-              <table class="data-table" style="font-size:12px;">
-                <thead><tr class="bg-blue-dark"><th>Producto</th><th style="width:100px;">Cant.</th><th></th></tr></thead>
-                <tbody id="mo-items"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-         <button id="btn-save-odc-manual" class="btn btn-primary fw-900" onclick="WMS_MODULES.recepcion._saveManualODC()">CREAR ODC CONFIRMADA</button>`
-      );
-      // Auto-populate local data
-      this._tempProds = prods;
-      this._addManualItem();
-    } catch(e) { WMS.toast('error','Error preparando creación manual'); }
+        </div>
+      </div>
+    `;
+
+    btnSave.innerHTML = '<i class="fa-solid fa-save"></i> Crear ODC Confirmada';
+    btnSave.onclick = () => WMS_MODULES.recepcion._saveManualODC();
+    
+    drawer.classList.add('open');
+    this._tempProds = window.prods || [];
+    this._addManualItem();
   },
 
   _tempProds: [],
@@ -794,12 +874,16 @@ WMS_MODULES.recepcion = {
     if (!tbody) return;
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>
-        <input class="form-control mo-p-ac" style="font-size:11px;" placeholder="Buscar producto...">
+      <td style="padding:6px;">
+        <input class="form-control mo-p-ac" style="font-size:0.85rem; padding:4px 8px; border-radius:4px;" placeholder="Buscar producto...">
         <input type="hidden" class="mo-pid">
       </td>
-      <td><input type="number" class="form-control mo-qty" value="1" min="1" style="text-align:center;"></td>
-      <td class="text-center"><button class="btn btn-xs btn-danger-soft" onclick="this.closest('tr').remove()"><i class="fa-solid fa-times"></i></button></td>
+      <td style="padding:6px; text-align:center;">
+        <input type="number" class="form-control mo-qty" value="1" min="1" style="font-size:0.85rem; padding:4px; border-radius:4px; text-align:center;">
+      </td>
+      <td style="padding:6px; text-align:center;">
+        <button class="btn btn-sm btn-danger" style="border-radius:4px; padding:2px 6px;" onclick="this.closest('tr').remove()"><i class="fa-solid fa-times"></i></button>
+      </td>
     `;
     tbody.appendChild(tr);
     
@@ -822,17 +906,17 @@ WMS_MODULES.recepcion = {
     if (!provId) return WMS.toast('warning','Seleccione el proveedor');
     if (!items.length) return WMS.toast('warning','Agregue al menos un producto');
 
-    const btn = document.getElementById('btn-save-odc-manual');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creando...'; }
+    const btn = document.getElementById('btn-save-odc-drawer');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner sm"></div> Procesando...'; }
 
     try {
       await API.post('/odc', { proveedor_id: provId, observaciones: obs, detalles: items });
       WMS.toast('success','Orden de Compra creada y confirmada');
-      WMS.closeModal('generic-modal');
+      this.closeDrawerODC();
       this.show_odc();
     } catch(e) { 
       WMS.toast('error','Error al crear ODC: ' + e.message); 
-      if (btn) { btn.disabled = false; btn.innerHTML = 'CREAR ODC CONFIRMADA'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-save"></i> Crear ODC Confirmada'; }
     }
   },
 

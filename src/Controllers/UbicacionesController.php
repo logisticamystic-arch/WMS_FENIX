@@ -42,7 +42,7 @@ class UbicacionesController extends BaseController
 
         if (!empty($params['q'])) {
             $term = '%' . $params['q'] . '%';
-            $q->where('ub.codigo', 'ilike', $term);
+            $q->where('ub.codigo', 'like', $term);
         }
 
         // Enriquecer con producto asignado (desde slotting)

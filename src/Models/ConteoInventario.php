@@ -3,9 +3,17 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class ConteoInventario extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
+
+
+
+
+
     protected $table = 'conteo_inventarios';
 
     protected $fillable = [
@@ -57,3 +65,7 @@ class ConteoInventario extends Model
         return $this->hasMany(ConteoDetalle::class, 'conteo_id');
     }
 }
+
+
+
+

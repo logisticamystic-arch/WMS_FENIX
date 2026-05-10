@@ -502,6 +502,11 @@ class PickingController extends BaseController
         return $this->ok($res, ['rows' => $rows, 'total' => $total]);
     }
 
+    public function novedadesStock(Request $r, Response $res): Response
+    {
+        return $this->novedadesStockLegacy($r, $res);
+    }
+
     // ── GET /api/picking/{id} ─────────────────────────────────────────────────
     public function detalle(Request $r, Response $res, array $a): Response
     {
@@ -1140,6 +1145,11 @@ class PickingController extends BaseController
             ->limit(100)
             ->get();
         return $this->ok($res, $tareas);
+    }
+
+    public function reabastecimientos(Request $r, Response $res): Response
+    {
+        return $this->reabastecimientosLegacy($r, $res);
     }
 
     // ── GET /api/picking/template ─────────────────────────────────────────────

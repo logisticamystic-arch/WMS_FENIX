@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class NivelReposicion extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
     protected $table = 'niveles_reposicion';
 
     protected $fillable = [
@@ -20,3 +23,5 @@ class NivelReposicion extends Model
         return $this->belongsTo(Producto::class);
     }
 }
+
+

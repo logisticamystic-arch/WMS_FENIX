@@ -314,21 +314,21 @@ WMS_MODULES.almacenamiento = {
       <div style="display:flex;align-items:center;gap:12px;">
         <div style="position:relative; flex:1;">
           <i class="fa-solid fa-search" style="position:absolute; left:10px; top:10px; color:#94a3b8;"></i>
-          <input id="mapa-prod-ac" class="form-control" style="padding-left:32px;" placeholder="Localizar producto o ubicación (Buscador Rápido)..." oninput="WMS_MODULES.almacenamiento.filterMapaTable(this.value)">
+          <input id="mapa-prod-ac" class="form-control" style="padding-left:32px; border-radius:4px;" placeholder="Localizar producto o ubicación (Buscador Rápido)..." oninput="WMS_MODULES.almacenamiento.filterMapaTable(this.value)">
         </div>
-        <select id="mapa-tipo-f" class="form-control" style="max-width:160px;" onchange="WMS_MODULES.almacenamiento.renderMapa()">
+        <select id="mapa-tipo-f" class="form-control" style="max-width:160px; border-radius:4px;" onchange="WMS_MODULES.almacenamiento.renderMapa()">
           <option value="">-- Todos los tipos --</option>
           <option value="Almacenamiento">Almacenamiento</option>
           <option value="Picking">Picking</option>
         </select>
-        <select id="mapa-ocup-f" class="form-control" style="max-width:180px;" onchange="WMS_MODULES.almacenamiento.renderMapa()">
+        <select id="mapa-ocup-f" class="form-control" style="max-width:180px; border-radius:4px;" onchange="WMS_MODULES.almacenamiento.renderMapa()">
           <option value="">-- Todas las ocupaciones --</option>
           <option value="empty">Vacías (0%)</option>
           <option value="partial">Parciales (>0% y <100%)</option>
           <option value="full">Llenas (100%)</option>
         </select>
-        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.almacenamiento.limpiarFiltrosMapa()"><i class="fa-solid fa-eraser"></i> Limpiar</button>
-        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.almacenamiento.show_mapa()"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn btn-secondary btn-sm" style="border-radius:4px;" onclick="WMS_MODULES.almacenamiento.limpiarFiltrosMapa()"><i class="fa-solid fa-eraser"></i> Limpiar</button>
+        <button class="btn btn-secondary btn-sm" style="border-radius:4px;" onclick="WMS_MODULES.almacenamiento.show_mapa()"><i class="fa-solid fa-rotate"></i></button>
       </div>`);
     
     WMS.spinner();
@@ -338,27 +338,48 @@ WMS_MODULES.almacenamiento = {
       this._mapaData = r.data || r || [];
 
       WMS.setContent(`
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-map-location-dot"></i> Ubicación Detalle</span>
-          </div>
-          <div class="filter-bar">
-            <div class="search-bar">
-              <i class="fa-solid fa-search"></i>
-              <input placeholder="Buscar ubicación..." oninput="WMS_MODULES.almacenamiento.filterMapaTable(this.value)">
-            </div>
-          </div>
-          <div class="table-container">
-            <table class="data-table" id="mapa-table">
+        <style>
+          /* ADN Visual ERP - Square & Professional */
+          .erp-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+          .erp-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; }
+          .erp-table th { background: #f8f9fa; color: #475569; font-weight: 600; padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: left; }
+          .erp-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: middle; transition: background 0.2s; }
+          .erp-table tr.main-row:hover { background: #f1f5f9; cursor: pointer; }
+          
+          /* Master-Detail Layout */
+          .md-container { display: flex; position: relative; height: calc(100vh - 160px); overflow: hidden; background: #f8f9fa; }
+          .md-master { flex: 1; overflow-y: auto; transition: margin-right 0.3s ease; }
+          
+          /* Side Panel (Drawer) */
+          .md-drawer { 
+            position: absolute; right: -40%; top: 0; bottom: 0; width: 40%; background: #fff; 
+            border-left: 1px solid #cbd5e1; box-shadow: -4px 0 15px rgba(0,0,0,0.05); 
+            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; 
+            display: flex; flex-direction: column; 
+          }
+          .md-drawer.open { right: 0; }
+          @media (max-width: 768px) { .md-drawer { width: 100%; right: -100%; } .md-drawer.open { right: 0; } }
+          
+          .drawer-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; }
+          .drawer-title { font-size: 1.1rem; font-weight: 600; color: #0f172a; margin: 0; }
+          .drawer-close { background: transparent; border: none; font-size: 1.2rem; color: #64748b; cursor: pointer; }
+          .drawer-close:hover { color: #ef4444; }
+          .drawer-body { padding: 20px; flex: 1; overflow-y: auto; }
+          .drawer-footer { padding: 16px 20px; border-top: 1px solid #e2e8f0; background: #f8f9fa; display: flex; gap: 12px; justify-content: flex-end; }
+        </style>
+
+        <div class="md-container">
+          <!-- Master View -->
+          <div class="md-master erp-card">
+            <table class="erp-table" id="mapa-table">
               <thead>
                 <tr>
-                  <th style="width:50px;"></th>
                   <th>Posición</th>
                   <th>Ubicación</th>
                   <th>Tipo</th>
                   <th>% Ocupación</th>
-                  <th>Total Cajas</th>
-                  <th>Total Unidades</th>
+                  <th>Cajas</th>
+                  <th>Unidades</th>
                   <th>Próximo Venc.</th>
                   <th>Días sin mov.</th>
                 </tr>
@@ -368,10 +389,25 @@ WMS_MODULES.almacenamiento = {
               </tbody>
             </table>
           </div>
-        </div>`);
+
+          <!-- Side Panel / Drawer View -->
+          <div id="ubicacion-drawer" class="md-drawer">
+            <div class="drawer-header">
+              <h3 class="drawer-title"><i class="fa-solid fa-map-pin" style="color:#3b82f6; margin-right:8px;"></i> <span id="drawer-ubi-code">Detalle de Ubicación</span></h3>
+              <button class="drawer-close" onclick="WMS_MODULES.almacenamiento.closeDrawer()"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="drawer-body" id="drawer-content">
+              <div class="text-center text-muted" style="margin-top: 40px;">Seleccione una ubicación para ver el detalle</div>
+            </div>
+            <div class="drawer-footer" id="drawer-actions" style="display:none;">
+               <button class="btn btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.almacenamiento.closeDrawer()">Cerrar</button>
+               <button class="btn btn-primary" style="border-radius:4px;" id="btn-trasladar-drawer"><i class="fa-solid fa-arrow-right-arrow-left"></i> Trasladar Stock</button>
+            </div>
+          </div>
+        </div>
+      `);
 
       this.renderMapa();
-
 
     } catch (e) {
       WMS.toast('error', 'Error cargando ubicación detalle');
@@ -392,10 +428,6 @@ WMS_MODULES.almacenamiento = {
     const f = q.toLowerCase();
     rows.forEach(r => {
       r.style.display = r.textContent.toLowerCase().includes(f) ? '' : 'none';
-      if (r.nextElementSibling?.classList.contains('expand-row')) {
-         r.nextElementSibling.style.display = 'none'; // Cerrar expansiones al filtrar
-         r.querySelector('.btn-expand i').className = 'fa-solid fa-chevron-right';
-      }
     });
   },
 
@@ -419,110 +451,106 @@ WMS_MODULES.almacenamiento = {
       if (i.ocupacion_pct >= 100) colorClass = 'status-cancelada'; // Roja (Llena)
 
       return `
-        <tr class="main-row" id="row-${i.id}">
-          <td style="text-align:center;">
-             <button class="btn btn-sm btn-outline-primary btn-expand" onclick="WMS_MODULES.almacenamiento.toggleExpand(${i.id}, '${i.ubicacion}')">
-                <i class="fa-solid fa-chevron-right"></i>
-             </button>
-          </td>
+        <tr class="main-row" id="row-${i.id}" onclick="WMS_MODULES.almacenamiento.openDrawer(${i.id}, '${i.ubicacion}')">
           <td>${i.posicion}</td>
           <td style="font-weight:700; color:#1e40af;">${WMS.esc(i.ubicacion)}</td>
-          <td><span class="badge ${i.tipo === 'Picking' ? 'badge-success' : 'badge-info'}">${WMS.esc(i.tipo)}</span></td>
+          <td><span class="badge ${i.tipo === 'Picking' ? 'badge-success' : 'badge-info'}" style="border-radius:4px;">${WMS.esc(i.tipo)}</span></td>
           <td>
             <div style="display:flex; align-items:center; gap:8px;">
                <div style="flex:1; height:8px; background:#e2e8f0; border-radius:4px; overflow:hidden;">
                   <div style="width:${i.ocupacion_pct}%; height:100%; background:${i.ocupacion_pct >= 100 ? '#ef4444' : (i.ocupacion_pct > 0 ? '#f59e0b' : '#10b981')};"></div>
                </div>
-               <span class="status-chip ${colorClass}" style="min-width:50px; text-align:center;">${i.ocupacion_pct}%</span>
+               <span class="status-chip ${colorClass}" style="min-width:50px; text-align:center; border-radius:4px;">${i.ocupacion_pct}%</span>
             </div>
           </td>
           <td class="text-center fw-600" style="color:#059669;">${WMS.formatNum(i.total_cajas || 0)}</td>
           <td class="text-center fw-600" style="color:#1e40af;">${WMS.formatNum(i.total_productos)}</td>
           <td class="text-center">
-            ${i.proximo_vencimiento ? `<span class="badge badge-warning">${WMS.formatDate(i.proximo_vencimiento)}</span>` : '—'}
+            ${i.proximo_vencimiento ? `<span class="badge badge-warning" style="border-radius:4px;">${WMS.formatDate(i.proximo_vencimiento)}</span>` : '—'}
           </td>
           <td class="text-center">${i.dias_sin_mov === 'N/A' || i.dias_sin_mov === null ? '—' : i.dias_sin_mov + ' días'}</td>
         </tr>
-        <tr id="expand-${i.id}" class="expand-row" style="display:none; background:#f8fafc;">
-          <td colspan="7">
-             <div class="expand-content" style="padding:15px; border-left:4px solid #3b82f6; margin:5px 10px;">
-                <div class="spinner sm"></div> Cargando detalle...
-             </div>
-          </td>
-        </tr>
       `;
-    }).join('') || '<tr><td colspan="7" class="table-empty">No se encontraron ubicaciones con los filtros aplicados.</td></tr>';
+    }).join('') || '<tr><td colspan="8" class="table-empty">No se encontraron ubicaciones con los filtros aplicados.</td></tr>';
   },
 
-  async toggleExpand(id, codigo) {
+  closeDrawer() {
+    const drawer = document.getElementById('ubicacion-drawer');
+    if (drawer) {
+      drawer.classList.remove('open');
+      // Limpiar selección
+      document.querySelectorAll('#mapa-tbody tr').forEach(r => r.style.background = '');
+    }
+  },
+
+  async openDrawer(id, codigo) {
+    const drawer = document.getElementById('ubicacion-drawer');
+    const content = document.getElementById('drawer-content');
+    const title = document.getElementById('drawer-ubi-code');
+    const actions = document.getElementById('drawer-actions');
+    const btnTrasladar = document.getElementById('btn-trasladar-drawer');
+    
+    if (!drawer || !content) return;
+
+    // Highlight row
+    document.querySelectorAll('#mapa-tbody tr').forEach(r => r.style.background = '');
     const row = document.getElementById(`row-${id}`);
-    const expandRow = document.getElementById(`expand-${id}`);
-    const btn = row.querySelector('.btn-expand i');
+    if (row) row.style.background = '#e0f2fe';
 
-    if (expandRow.style.display === 'none') {
-      // Abrir
-      expandRow.style.display = 'table-row';
-      btn.className = 'fa-solid fa-chevron-down';
+    // Show Drawer
+    title.textContent = codigo;
+    drawer.classList.add('open');
+    content.innerHTML = `<div style="padding:40px; text-align:center;"><div class="spinner"></div><p style="margin-top:10px; color:#64748b;">Cargando inventario...</p></div>`;
+    actions.style.display = 'none';
+
+    try {
+      const r = await API.get('/inventario/stock', `ubicacion_id=${id}`);
+      const stockItems = r.data || r || [];
       
-      // Cargar detalle si no está cargado
-      const content = expandRow.querySelector('.expand-content');
-      try {
-        const r = await API.get('/inventario/stock', `ubicacion_id=${id}`);
-        const stockItems = r.data || r || [];
-        
-        if (stockItems.length === 0) {
-          content.innerHTML = `<div style="color:#64748b; font-style:italic;"><i class="fa-solid fa-info-circle"></i> Ubicación vacía.</div>`;
-          return;
-        }
-
-        content.innerHTML = `
-          <div style="font-weight:600; font-size:.85rem; margin-bottom:10px; color:#1e293b;">
-            Detalle de productos en: <span style="color:#2563eb;">${WMS.esc(codigo)}</span>
-          </div>
-          <table class="data-table table-sm" style="background:white; font-size:.8rem; border:1px solid #e2e8f0;">
-            <thead>
-              <tr style="background:#f1f5f9;">
-                <th>Producto</th>
-                <th>Lote</th>
-                <th class="text-center">Unidades</th>
-                <th class="text-center">Cajas</th>
-                <th class="text-center">Vencimiento</th>
-                <th class="text-center">Días Loc.</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${stockItems.map(s => {
-                const units = parseFloat(s.cantidad || 0);
-                const factor = parseInt(s.unidades_caja || 1) || 1;
-                const boxes = units / factor;
-                const fechaRef = s.last_movement_at || s.created_at;
-                const diasEnLoc = fechaRef ? Math.floor((Date.now() - new Date(fechaRef).getTime()) / 86400000) : 0;
-                return `
-                  <tr>
-                    <td><strong>${WMS.esc(s.producto_nombre)}</strong><br><small style="color:#64748b;">${WMS.esc(s.codigo_interno)}</small></td>
-                    <td style="font-family:monospace;">${WMS.esc(s.lote || '—')}</td>
-                    <td class="text-center" style="font-weight:700; color:#1e40af;">${WMS.formatNum(units)}</td>
-                    <td class="text-center" style="font-weight:700; color:#059669;">${boxes % 1 === 0 ? boxes : boxes.toFixed(2)}</td>
-                    <td class="text-center">${WMS.formatDate(s.fecha_vencimiento) || '<span class="text-muted">N/A</span>'}</td>
-                    <td class="text-center">${diasEnLoc} d.</td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-          <div style="margin-top:10px; text-align:right;">
-             <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.almacenamiento.trasladarTodo(${id}, '${WMS.esc(codigo)}')">
-                <i class="fa-solid fa-arrow-right-arrow-left"></i> Trasladar desde aquí
-             </button>
-          </div>
-        `;
-      } catch (e) {
-        content.innerHTML = `<div class="text-danger">Error al cargar productos.</div>`;
+      if (stockItems.length === 0) {
+        content.innerHTML = `<div style="padding:30px; text-align:center; color:#64748b; background:#f1f5f9; border-radius:4px;"><i class="fa-solid fa-box-open" style="font-size:2rem; margin-bottom:10px;"></i><br>Ubicación vacía.</div>`;
+        return;
       }
-    } else {
-      // Cerrar
-      expandRow.style.display = 'none';
-      btn.className = 'fa-solid fa-chevron-right';
+
+      content.innerHTML = `
+        <div style="margin-bottom:16px;">
+           <span style="font-size:0.85rem; color:#64748b; text-transform:uppercase; font-weight:600;">Inventario Actual</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          ${stockItems.map(s => {
+            const units = parseFloat(s.cantidad || 0);
+            const factor = parseInt(s.unidades_caja || 1) || 1;
+            const boxes = units / factor;
+            const fechaRef = s.last_movement_at || s.created_at;
+            const diasEnLoc = fechaRef ? Math.floor((Date.now() - new Date(fechaRef).getTime()) / 86400000) : 0;
+            return `
+              <div style="border:1px solid #e2e8f0; border-radius:4px; padding:12px; background:#fff; display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                  <div style="flex:1;">
+                    <div style="font-weight:600; color:#0f172a; line-height:1.3;">${WMS.esc(s.producto_nombre)}</div>
+                    <div style="font-family:monospace; font-size:0.8rem; color:#64748b; margin-top:2px;">${WMS.esc(s.codigo_interno)}</div>
+                  </div>
+                  <div style="text-align:right;">
+                     <div style="font-weight:700; color:#1e40af; font-size:1.1rem;">${WMS.formatNum(units)} <span style="font-size:0.75rem; color:#64748b; font-weight:400;">ud</span></div>
+                     <div style="font-weight:600; color:#059669; font-size:0.9rem;">${boxes % 1 === 0 ? boxes : boxes.toFixed(2)} <span style="font-size:0.75rem; color:#64748b; font-weight:400;">cx</span></div>
+                  </div>
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; background:#f8f9fa; padding:8px; border-radius:4px; font-size:0.85rem; margin-top:4px;">
+                   <div><span style="color:#64748b;">Lote:</span> <span style="font-family:monospace; color:#1e293b; font-weight:500;">${WMS.esc(s.lote || '—')}</span></div>
+                   <div><span style="color:#64748b;">Venc:</span> <span style="color:#1e293b; font-weight:500;">${WMS.formatDate(s.fecha_vencimiento) || 'N/A'}</span></div>
+                   <div style="grid-column: 1/-1;"><span style="color:#64748b;">Días Loc:</span> <span style="color:#1e293b; font-weight:500;">${diasEnLoc} días</span></div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+
+      btnTrasladar.onclick = () => WMS_MODULES.almacenamiento.trasladarTodo(id, codigo);
+      actions.style.display = 'flex';
+
+    } catch (e) {
+      content.innerHTML = `<div class="text-danger" style="padding:20px;"><i class="fa-solid fa-triangle-exclamation"></i> Error al cargar productos.</div>`;
     }
   },
 

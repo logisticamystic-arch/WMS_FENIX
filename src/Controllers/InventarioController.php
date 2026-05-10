@@ -49,14 +49,19 @@ class InventarioController extends BaseController
     public function getStock(Request $req, Response $res, array $args): Response
     {
         $user   = $req->getAttribute('user');
+        if ($deny = $this->requireSelectedTenantForSuperAdmin($user, $req, $res, true)) {
+            return $deny;
+        }
+
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $req);
         $params = $req->getQueryParams();
 
         // ── Límite defensivo: nunca devolver un dump completo sin filtro ──────
         // Con 25 usuarios simultáneos sin límite podría saturar memoria PHP.
         $limit = min((int)($params['limit'] ?? 500), 2000);
 
-        $q = Inventario::where('inventarios.empresa_id', $user->empresa_id)
-            ->where('inventarios.sucursal_id', $user->sucursal_id)
+        $q = Inventario::where('inventarios.empresa_id', $empresaId)
+            ->where('inventarios.sucursal_id', $sucursalId)
             ->join('productos',   'inventarios.producto_id',  '=', 'productos.id')
             ->join('ubicaciones', 'inventarios.ubicacion_id', '=', 'ubicaciones.id')
             ->select(
@@ -174,6 +179,11 @@ class InventarioController extends BaseController
     public function traslado(Request $req, Response $res): Response
     {
         $user = $req->getAttribute('user');
+        if ($deny = $this->requireSelectedTenantForSuperAdmin($user, $req, $res, true)) {
+            return $deny;
+        }
+
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $req);
         $data = $req->getParsedBody() ?? [];
 
         $required = ['producto_id', 'ubicacion_origen_id', 'ubicacion_destino_id', 'cantidad'];
@@ -186,7 +196,7 @@ class InventarioController extends BaseController
 
         // ── Guard de integridad: verificar stock en origen antes de abrir la TX ─
         $loteGuard = trim((string)($data['lote'] ?? '')) ?: null;
-        $guard = new InventoryGuard($user->empresa_id, $user->sucursal_id, $user->id);
+        $guard = new InventoryGuard($empresaId, $sucursalId, $user->id);
         $numeroPalletGuard = !empty($data['numero_pallet']) ? (int)$data['numero_pallet'] : null;
         $check = $guard->canTransfer(
             $data['producto_id'],
@@ -207,7 +217,7 @@ class InventarioController extends BaseController
         }
 
         try {
-            Capsule::transaction(function () use ($data, $user, $cantidad) {
+            Capsule::transaction(function () use ($data, $user, $cantidad, $empresaId, $sucursalId) {
                 $lote  = trim((string)($data['lote'] ?? ''));
                 $fvenc = trim((string)($data['fecha_vencimiento'] ?? ''));
                 if ($lote === '') {
@@ -218,8 +228,8 @@ class InventarioController extends BaseController
                 }
 
                 // Verificar stock origen. Permitir inventario en patio o disponible para ubicar.
-                $origenQuery = Inventario::where('empresa_id',    $user->empresa_id)
-                    ->where('sucursal_id',   $user->sucursal_id)
+                $origenQuery = Inventario::where('empresa_id',    $empresaId)
+                    ->where('sucursal_id',   $sucursalId)
                     ->where('producto_id',   $data['producto_id'])
                     ->where('ubicacion_id',  $data['ubicacion_origen_id'])
                     ->whereIn('estado',       ['Disponible', 'En Patio'])
@@ -260,8 +270,8 @@ class InventarioController extends BaseController
                 if ($lote !== null) {
                     $destino = Inventario::firstOrCreate(
                         [
-                            'empresa_id'   => $user->empresa_id,
-                            'sucursal_id'  => $user->sucursal_id,
+                            'empresa_id'   => $empresaId,
+                            'sucursal_id'  => $sucursalId,
                             'producto_id'  => $data['producto_id'],
                             'ubicacion_id' => $data['ubicacion_destino_id'],
                             'lote'         => $lote,
@@ -274,8 +284,8 @@ class InventarioController extends BaseController
                         ]
                     );
                 } else {
-                    $destino = Inventario::where('empresa_id', $user->empresa_id)
-                        ->where('sucursal_id', $user->sucursal_id)
+                    $destino = Inventario::where('empresa_id', $empresaId)
+                        ->where('sucursal_id', $sucursalId)
                         ->where('producto_id', $data['producto_id'])
                         ->where('ubicacion_id', $data['ubicacion_destino_id'])
                         ->where(function ($sub) {
@@ -286,8 +296,8 @@ class InventarioController extends BaseController
 
                     if (!$destino) {
                         $destino = new Inventario();
-                        $destino->empresa_id = $user->empresa_id;
-                        $destino->sucursal_id = $user->sucursal_id;
+                        $destino->empresa_id = $empresaId;
+                        $destino->sucursal_id = $sucursalId;
                         $destino->producto_id = $data['producto_id'];
                         $destino->ubicacion_id = $data['ubicacion_destino_id'];
                         $destino->lote = null;
@@ -307,8 +317,8 @@ class InventarioController extends BaseController
 
                 // Movimiento trazable
                 MovimientoInventario::create([
-                    'empresa_id'          => $user->empresa_id,
-                    'sucursal_id'         => $user->sucursal_id,
+                    'empresa_id'          => $empresaId,
+                    'sucursal_id'         => $sucursalId,
                     'producto_id'         => $data['producto_id'],
                     'tipo_movimiento'     => 'Traslado',
                     'cantidad'            => $cantidad,
@@ -391,8 +401,8 @@ class InventarioController extends BaseController
 
                 $tipo = $diferencia >= 0 ? 'AjustePositivo' : 'AjusteNegativo';
                 MovimientoInventario::create([
-                    'empresa_id'       => $user->empresa_id,
-                    'sucursal_id'      => $user->sucursal_id,
+                    'empresa_id'       => $empresaId,
+                    'sucursal_id'      => $sucursalId,
                     'producto_id'      => $data['producto_id'],
                     'tipo_movimiento'  => $tipo,
                     'cantidad'         => abs($diferencia),
@@ -1409,21 +1419,26 @@ class InventarioController extends BaseController
     public function getMapaDetallado(Request $req, Response $res): Response
     {
         $user   = $req->getAttribute('user');
+        if ($deny = $this->requireSelectedTenantForSuperAdmin($user, $req, $res, true)) {
+            return $deny;
+        }
+
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $req);
         $params = $req->getQueryParams();
         $prodId = !empty($params['producto_id']) ? (int)$params['producto_id'] : null;
         
         try {
             // 1. Obtener todas las ubicaciones activas
-            $ubicaciones = Ubicacion::where('empresa_id', $user->empresa_id)
-                ->where('sucursal_id', $user->sucursal_id)
+            $ubicaciones = Ubicacion::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
                 ->where('activo', 1)
-                ->orderBy('secuencia_picking', 'asc')
+                ->orderBy('codigo', 'asc')
                 ->get();
 
             // 2. Obtener ocupación actual agrupada por ubicación
             $stockQuery = Capsule::table('inventarios')
-                ->where('empresa_id', $user->empresa_id)
-                ->where('sucursal_id', $user->sucursal_id);
+                ->where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId);
             
             if ($prodId) {
                 $stockQuery->where('producto_id', $prodId);
@@ -1441,8 +1456,8 @@ class InventarioController extends BaseController
             // 2.1 Obtener detalle para calcular cajas (necesitamos el factor del producto)
             $detalleStock = Capsule::table('inventarios')
                 ->join('productos', 'inventarios.producto_id', '=', 'productos.id')
-                ->where('inventarios.empresa_id', $user->empresa_id)
-                ->where('inventarios.sucursal_id', $user->sucursal_id)
+                ->where('inventarios.empresa_id', $empresaId)
+                ->where('inventarios.sucursal_id', $sucursalId)
                 ->select('inventarios.ubicacion_id', 'inventarios.cantidad', 'productos.unidades_caja')
                 ->get();
 
@@ -1464,8 +1479,8 @@ class InventarioController extends BaseController
             // 3. Obtener último movimiento por ubicación (origen o destino)
             // Usamos un UNION o verificamos ambos campos. Para simplificar, vemos destino que es donde "llega" stock.
             $ultimosMovimientos = Capsule::table('movimiento_inventarios')
-                ->where('empresa_id', $user->empresa_id)
-                ->where('sucursal_id', $user->sucursal_id)
+                ->where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
                 ->select('ubicacion_destino_id', Capsule::raw('MAX(created_at) as ultimo_mov'))
                 ->groupBy('ubicacion_destino_id')
                 ->get()

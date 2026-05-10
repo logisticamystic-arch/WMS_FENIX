@@ -19,31 +19,57 @@ class AuthController extends BaseController
         $data = $request->getParsedBody();
         $documento = trim($data['documento'] ?? '');
         $pin = trim($data['pin'] ?? '');
-        $nit = trim($data['nit'] ?? '900000001'); // Default = Fénix nit
+        $empresaId = trim($data['empresa_id'] ?? '');
+        $nit = trim($data['nit'] ?? '');
 
         if (empty($documento) || empty($pin)) {
             return $this->json($response, ['error' => true, 'message' => 'Documento y PIN son requeridos.'], 400);
         }
 
-        // Buscar empresa por NIT
-        $empresa = Empresa::where('nit', $nit)->where('activo', true)->first();
-        if (!$empresa) {
-            return $this->json($response, ['error' => true, 'message' => 'Empresa inactiva o no encontrada.'], 401);
-        }
-
-        // Buscar operador
-        $user = Personal::with('sucursal')->where('empresa_id', $empresa->id)
+        // Buscar usuario sin el scope de tenant para diagnóstico detallado
+        $user = Personal::withoutTenantScope()
+            ->with(['sucursal', 'empresa'])
             ->where('documento', $documento)
-            ->where('activo', true)
             ->first();
 
         if (!$user) {
-            return $this->json($response, ['error' => true, 'message' => 'Credenciales inválidas.'], 401);
+            $msg = "Acceso denegado: El documento '{$documento}' no se encuentra registrado en el sistema Fénix.";
+            if (!empty($nit)) {
+                $msg .= " Verifique si el usuario pertenece a la empresa con NIT {$nit}.";
+            }
+            return $this->json($response, ['error' => true, 'message' => $msg], 401);
+        }
+
+        if (!$user->activo) {
+            return $this->json($response, ['error' => true, 'message' => "Acceso denegado: El usuario '{$user->nombre}' se encuentra INACTIVO. Contacte al administrador."], 401);
+        }
+
+        // Obtener empresa si se proporcionó NIT o ID
+        $selectedEmpresa = null;
+        if (!empty($empresaId)) {
+            $selectedEmpresa = Empresa::where('id', (int)$empresaId)->where('activo', true)->first();
+        } elseif (!empty($nit)) {
+            $selectedEmpresa = Empresa::where('nit', $nit)->where('activo', true)->first();
+        }
+
+        // Validaciones de pertenencia
+        if (!$user->isSuperAdmin()) {
+            if (!$selectedEmpresa) {
+                return $this->json($response, ['error' => true, 'message' => 'Debe seleccionar una empresa válida para ingresar.'], 401);
+            }
+            if ($user->empresa_id !== $selectedEmpresa->id) {
+                return $this->json($response, ['error' => true, 'message' => "Acceso denegado: El usuario '{$user->nombre}' no está vinculado a la empresa '{$selectedEmpresa->razon_social}' (NIT: {$selectedEmpresa->nit})."], 401);
+            }
         }
 
         if (!$user->verifyPin($pin)) {
-            return $this->json($response, ['error' => true, 'message' => 'Credenciales inválidas.'], 401);
+            return $this->json($response, ['error' => true, 'message' => "PIN incorrecto para el usuario '{$user->nombre}'. Intente nuevamente."], 401);
         }
+
+        // Determinar ID de empresa para el contexto (JWT)
+        // Si es SuperAdmin y seleccionó una empresa, usamos esa. Si no, su propia empresa_id.
+        $contextEmpresaId = $selectedEmpresa ? $selectedEmpresa->id : $user->empresa_id;
+        $contextEmpresaNombre = $selectedEmpresa ? $selectedEmpresa->razon_social : ($user->empresa ? $user->empresa->razon_social : 'SISTEMA GLOBAL');
 
         // Actualizar ultimo login
         $user->ultimo_login = date('Y-m-d H:i:s');
@@ -55,29 +81,31 @@ class AuthController extends BaseController
             'iss' => $config['url'],
             'aud' => $config['url'],
             'iat' => time(),
-            'exp' => time() + (3600 * 24), // 24 horas para dev
+            'exp' => time() + (3600 * 24), // 24 horas
             'uid' => $user->id,
             'rol' => $user->rol,
-            'emp' => $user->empresa_id,
+            'emp' => $contextEmpresaId,
             'suc' => $user->sucursal_id
         ];
 
         $token = JWT::encode($payload, $config['jwt']['secret'], 'HS256');
 
-        // Extraer permisos (optimización para PWA)
-        $permisos = \App\Models\RolPermiso::with('permiso')
-            ->where('empresa_id', $user->empresa_id)
-            ->where('rol', $user->rol)
-            ->where('concedido', true)
-            ->get()
-            ->map(function ($rp) {
-                if (!$rp->permiso) {
-                    error_log("ORPHAN PERMISO for Rol: " . $rp->rol . " RP ID: " . $rp->id);
-                    return 'unknown.unknown';
-                }
-                return $rp->permiso->modulo . '.' . $rp->permiso->accion;
-            })->toArray();
-        error_log("PERMISOS MAP READY");
+        // Extraer permisos
+        if ($user->isSuperAdmin()) {
+            $permisos = \App\Models\Permiso::all()
+                ->map(function ($permiso) {
+                    return $permiso->modulo . '.' . $permiso->accion;
+                })->toArray();
+        } else {
+            $permisos = \App\Models\RolPermiso::with('permiso')
+                ->where('empresa_id', $user->empresa_id)
+                ->where('rol', $user->rol)
+                ->where('concedido', true)
+                ->get()
+                ->map(function ($rp) {
+                    return $rp ? $rp->permiso->modulo . '.' . $rp->permiso->accion : 'unknown';
+                })->toArray();
+        }
 
         return $this->json($response, [
             'error' => false,
@@ -86,7 +114,19 @@ class AuthController extends BaseController
                 'id' => $user->id,
                 'nombre' => $user->nombre,
                 'rol' => $user->rol,
-                'sucursal' => $user->sucursal ? $user->sucursal->nombre : null
+                'empresa_id' => $contextEmpresaId,
+                'empresa_nombre' => $contextEmpresaNombre,
+                'sucursal_id' => $user->sucursal_id,
+                'sucursal_nombre' => $user->sucursal ? $user->sucursal->nombre : null,
+                'empresa' => $selectedEmpresa ? [
+                    'id' => $selectedEmpresa->id,
+                    'razon_social' => $selectedEmpresa->razon_social,
+                    'nit' => $selectedEmpresa->nit,
+                ] : ($user->empresa ? [
+                    'id' => $user->empresa->id,
+                    'razon_social' => $user->empresa->razon_social,
+                    'nit' => $user->empresa->nit,
+                ] : null),
             ],
             'permisos' => $permisos
         ]);
@@ -98,16 +138,30 @@ class AuthController extends BaseController
      */
     public function me(Request $request, Response $response): Response
     {
-        $user = $request->getAttribute('user'); // Inyectado por JwtMiddleware
+        $userJwt = $request->getAttribute('user'); 
+        $user = Personal::with(['sucursal', 'empresa'])->find($userJwt->uid ?? $userJwt->id);
         
-        $permisos = \App\Models\RolPermiso::with('permiso')
-            ->where('empresa_id', $user->empresa_id)
-            ->where('rol', $user->rol)
-            ->where('concedido', true)
-            ->get()
-            ->map(function ($rp) {
-                return $rp->permiso->modulo . '.' . $rp->permiso->accion;
-            })->toArray();
+        if (!$user) return $this->json($response, ['error' => true, 'message' => 'Usuario no encontrado'], 404);
+
+        // Identificar empresa del contexto (JWT)
+        $empId = $userJwt->emp ?? $user->empresa_id;
+        $empresaInfo = $user->empresa;
+        if ($empId && (!$empresaInfo || $empresaInfo->id != $empId)) {
+            $empresaInfo = Empresa::find($empId);
+        }
+
+        if ($user->isSuperAdmin()) {
+            $permisos = \App\Models\Permiso::all()
+                ->map(fn($p) => $p->modulo . '.' . $p->accion)->toArray();
+        } else {
+            $permisos = \App\Models\RolPermiso::with('permiso')
+                ->where('empresa_id', $user->empresa_id)
+                ->where('rol', $user->rol)
+                ->where('concedido', true)
+                ->get()
+                ->map(fn($rp) => $rp->permiso ? $rp->permiso->modulo . '.' . $rp->permiso->accion : 'unknown')
+                ->toArray();
+        }
 
         return $this->json($response, [
             'error' => false,
@@ -115,8 +169,15 @@ class AuthController extends BaseController
                 'id' => $user->id,
                 'nombre' => $user->nombre,
                 'rol' => $user->rol,
-                'empresa_id' => $user->empresa_id,
+                'empresa_id' => $empId,
+                'empresa_nombre' => $empresaInfo ? $empresaInfo->razon_social : 'SISTEMA GLOBAL',
                 'sucursal_id' => $user->sucursal_id,
+                'sucursal_nombre' => $user->sucursal ? $user->sucursal->nombre : null,
+                'empresa' => $empresaInfo ? [
+                    'id' => $empresaInfo->id,
+                    'razon_social' => $empresaInfo->razon_social,
+                    'nit' => $empresaInfo->nit,
+                ] : null,
             ],
             'permisos' => $permisos
         ]);

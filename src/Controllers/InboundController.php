@@ -33,8 +33,9 @@ class InboundController extends BaseController
             }
 
             [$ini, $fin] = $this->getDateRange($params);
+            [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $req);
 
-            $q = OrdenCompra::where('ordenes_compra.empresa_id', $user->empresa_id)
+            $q = OrdenCompra::where('ordenes_compra.empresa_id', $empresaId)
                 ->where(function ($q2) use ($ini, $fin) {
                     // Siempre incluir ODCs activas (Confirmada / En Proceso) sin importar la fecha
                     $q2->whereBetween('ordenes_compra.created_at', [$ini, $fin])
@@ -89,7 +90,9 @@ class InboundController extends BaseController
     public function getODC(Request $req, Response $res, array $a): Response
     {
         $user = $req->getAttribute('user');
-        $odc  = OrdenCompra::where('empresa_id', $user->empresa_id)
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $req);
+        $odc  = OrdenCompra::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->with(['proveedor', 'detalles.producto', 'recepciones.auxiliar', 'recepciones.detalles.producto', 'recepciones.detalles.ubicacionDestino'])
             ->find($a['id']);
 
@@ -101,14 +104,16 @@ class InboundController extends BaseController
     public function createOrdenCompra(Request $req, Response $res): Response
     {
         $user = $req->getAttribute('user');
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $req);
         $data = $req->getParsedBody() ?? [];
 
         if (empty($data['proveedor_id'])) return $this->error($res, 'El proveedor es requerido');
 
         try {
-            $odc = Capsule::transaction(function () use ($data, $user) {
+            $odc = Capsule::transaction(function () use ($data, $user, $empresaId, $sucursalId) {
                 $odc = OrdenCompra::create([
-                    'empresa_id'    => $user->empresa_id,
+                    'empresa_id'    => $empresaId,
+                    'sucursal_id'   => $sucursalId,
                     'proveedor_id'  => $data['proveedor_id'],
                     'numero_odc'    => 'ODC-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5)),
                     'fecha'         => $data['fecha'] ?? date('Y-m-d'),
@@ -139,7 +144,8 @@ class InboundController extends BaseController
     public function updateOrdenCompra(Request $req, Response $res, array $a): Response
     {
         $user = $req->getAttribute('user');
-        $odc  = OrdenCompra::where('empresa_id', $user->empresa_id)->find($a['id']);
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $req);
+        $odc  = OrdenCompra::where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)->find($a['id']);
         if (!$odc) return $this->notFound($res);
 
         $data    = $req->getParsedBody() ?? [];
@@ -233,9 +239,10 @@ class InboundController extends BaseController
     public function deleteOrdenCompra(Request $req, Response $res, array $a): Response
     {
         $user = $req->getAttribute('user');
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $req);
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $odc = OrdenCompra::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $odc = OrdenCompra::where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)->find($a['id']);
         if (!$odc) return $this->notFound($res);
 
         if ($odc->estado === 'Cerrada') {
@@ -258,9 +265,10 @@ class InboundController extends BaseController
     public function confirmarOrdenCompra(Request $req, Response $res, array $a): Response
     {
         $user = $req->getAttribute('user');
+        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $req);
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $odc = OrdenCompra::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $odc = OrdenCompra::where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)->find($a['id']);
         if (!$odc || $odc->estado !== 'Borrador') return $this->error($res, 'ODC no válida para confirmar');
 
         $odc->estado = 'Confirmada';
@@ -284,20 +292,20 @@ class InboundController extends BaseController
         if (empty($auxIds)) return $this->error($res, 'Debe seleccionar al menos un auxiliar');
 
         try {
-            Capsule::transaction(function () use ($odc, $auxIds, $user) {
+            Capsule::transaction(function () use ($odc, $auxIds, $user, $empresaId, $sucursalId) {
                 Capsule::table('odc_auxiliares')->where('orden_compra_id', $odc->id)->delete();
                 foreach ($auxIds as $auxId) {
                     Capsule::table('odc_auxiliares')->insert([
-                        'empresa_id'      => $user->empresa_id,
-                        'sucursal_id'     => $user->sucursal_id,
+                        'empresa_id'      => $empresaId,
+                        'sucursal_id'     => $sucursalId,
                         'orden_compra_id' => $odc->id,
                         'auxiliar_id'     => $auxId,
                         'assigned_at'     => date('Y-m-d H:i:s')
                     ]);
 
                     Capsule::table('notificaciones')->insert([
-                        'empresa_id'      => $user->empresa_id,
-                        'sucursal_id'     => $user->sucursal_id,
+                        'empresa_id'      => $empresaId,
+                        'sucursal_id'     => $sucursalId,
                         'personal_id'     => $auxId,
                         'emisor_id'       => $user->id,
                         'titulo'          => 'Nueva ODC Asignada',
