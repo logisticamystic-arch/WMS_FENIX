@@ -548,6 +548,7 @@ WMS_MODULES.rotulos = {
 
   /* ── Horizontal (layout original mejorado) ── */
   _buildRotuloUbiHorizontal(codigo, zona, tipo, anchomm, altomm) {
+    const infoLine = [zona, tipo].filter(Boolean).map(WMS.esc).join(' · ');
     return `
       <div style="width:${anchomm}mm;min-height:${altomm}mm;
         display:flex;flex-direction:column;
@@ -555,54 +556,60 @@ WMS_MODULES.rotulos = {
         padding:3mm;box-sizing:border-box;
         border:0.5mm solid #000;font-family:Arial,sans-serif;
         page-break-after:always;background:#fff;overflow:hidden;">
-        <div style="font-size:min(7pt,calc(${anchomm}mm*0.09));font-weight:700;color:#000;text-align:center;text-transform:uppercase;">
-          ${zona ? 'ZONA: '+WMS.esc(zona) : ''}${tipo ? (zona?' · ':'')+WMS.esc(tipo) : ''}
+        ${infoLine ? `<div style="font-size:min(6pt,calc(${anchomm}mm*0.08));color:#555;text-align:center;flex-shrink:0;">${infoLine}</div>` : '<div></div>'}
+        <div style="width:100%;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:1mm 0;">
+          <svg class="rot-barcode" data-value="${WMS.esc(codigo)}" data-anchomm="${anchomm}"
+               style="display:block;"></svg>
         </div>
-        <svg class="rot-barcode" data-value="${WMS.esc(codigo)}"
-             style="max-width:95%;height:auto;max-height:55%;"></svg>
         <div style="font-size:min(10pt,calc(${anchomm}mm*0.12));font-weight:900;color:#000;text-align:center;
-          letter-spacing:2px;font-family:monospace;">
+          letter-spacing:2px;font-family:monospace;flex-shrink:0;">
           ${WMS.esc(codigo||'')}
         </div>
       </div>`;
   },
 
-  /* ── Vertical (código de barras rotado 90°) ── */
+  /* ── Vertical (código de barras rotado 90° + código en texto vertical) ── */
   _buildRotuloUbiVertical(codigo, zona, tipo, anchomm, altomm) {
-    const infoLine = [zona, tipo].filter(Boolean).map(WMS.esc).join(' · ');
+    /* Franja izquierda para el texto del código en posición vertical.
+       ~25% del ancho, mínimo 6mm, máximo 10mm. */
+    const textW    = Math.max(6, Math.min(10, Math.round(anchomm * 0.25)));
+    const barcodeW = anchomm - textW - 0.5; // 0.5mm de separador
     return `
       <div style="width:${anchomm}mm;height:${altomm}mm;
-        display:flex;flex-direction:column;
-        align-items:center;
-        padding:2.5mm 2mm;box-sizing:border-box;
+        display:flex;flex-direction:row;
+        box-sizing:border-box;
         border:0.5mm solid #000;font-family:Arial,sans-serif;
         page-break-after:always;background:#fff;overflow:hidden;">
 
-        <!-- Código en grande -->
-        <div style="font-size:min(12pt,calc(${anchomm}mm*0.145));font-weight:900;color:#000;
-          text-align:center;letter-spacing:1.5px;font-family:monospace;
-          line-height:1.15;flex-shrink:0;width:100%;word-break:break-all;">
-          ${WMS.esc(codigo||'')}
+        <!-- Franja izquierda: código de ubicación en posición vertical -->
+        <div style="width:${textW}mm;height:100%;
+          flex-shrink:0;
+          display:flex;align-items:center;justify-content:center;
+          border-right:0.3mm solid #ccc;
+          overflow:hidden;padding:2mm 0;">
+          <div style="
+            writing-mode:vertical-rl;
+            transform:rotate(180deg);
+            font-size:min(9pt,calc(${altomm}mm*0.08));
+            font-weight:900;
+            color:#000;
+            letter-spacing:1px;
+            font-family:monospace;
+            text-align:center;
+            white-space:nowrap;
+            overflow:hidden;">
+            ${WMS.esc(codigo||'')}
+          </div>
         </div>
 
-        ${infoLine ? `
-        <!-- Zona / tipo -->
-        <div style="font-size:min(5.5pt,calc(${anchomm}mm*0.07));color:#555;
-          text-align:center;margin:0.8mm 0 0;flex-shrink:0;">
-          ${infoLine}
-        </div>` : ''}
-
-        <!-- Separador -->
-        <div style="width:80%;border-top:0.4mm solid #333;margin:1.5mm 0;flex-shrink:0;"></div>
-
-        <!-- Área del código de barras vertical -->
-        <div style="flex:1;width:100%;
+        <!-- Área del código de barras vertical (ocupa el resto del ancho) -->
+        <div style="flex:1;height:100%;
           display:flex;align-items:center;justify-content:center;
-          overflow:hidden;position:relative;min-height:0;">
+          overflow:hidden;position:relative;">
           <svg class="rot-barcode rot-barcode-v"
                data-value="${WMS.esc(codigo)}"
                data-vertical="1"
-               data-anchomm="${anchomm}"
+               data-anchomm="${barcodeW}"
                data-altomm="${altomm}">
           </svg>
         </div>
@@ -663,10 +670,13 @@ WMS_MODULES.rotulos = {
           }
 
         } else {
+          const hAncho = parseFloat(svg.dataset.anchomm || 70);
+          /* Grosor de barra adaptativo: más angosto en etiquetas pequeñas */
+          const barW   = Math.max(0.8, Math.min(1.5, hAncho * 0.016));
           JsBarcode(svg, val, {
             format:       'CODE128',
-            width:        1.5,
-            height:       50,
+            width:        barW,
+            height:       44,
             displayValue: true,
             fontSize:     9,
             margin:       3,
@@ -674,6 +684,18 @@ WMS_MODULES.rotulos = {
             lineColor:    '#000000',
             textMargin:   2,
           });
+          /* Hacer el SVG fluido: establecer viewBox y dejar que el contenedor
+             padre controle el ancho real via CSS width:100% */
+          const bW = svg.getAttribute('width');
+          const bH = svg.getAttribute('height');
+          if (bW && bH) {
+            svg.setAttribute('viewBox', `0 0 ${bW} ${bH}`);
+            svg.setAttribute('width', '100%');
+            svg.style.maxWidth  = Math.min(parseFloat(bW), hAncho * 3.3) + 'px';
+            svg.style.height    = 'auto';
+            svg.style.display   = 'block';
+            svg.style.margin    = '0 auto';
+          }
         }
       } catch(e) {
         svg.innerHTML = `<text x="5" y="30" font-size="12">${WMS.esc(val)}</text>`;
