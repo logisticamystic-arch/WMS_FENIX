@@ -33,7 +33,7 @@ WMS_MODULES.rotulos = {
         <div class="card-body" style="display:flex;flex-direction:column;gap:20px;">
 
           <!-- Configuración de tamaño -->
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;">
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
             <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
               <i class="fa-solid fa-ruler-combined" style="color:#0F4C81;"></i> Dimensiones del Rótulo
             </div>
@@ -56,7 +56,7 @@ WMS_MODULES.rotulos = {
           </div>
 
           <!-- Búsqueda de producto -->
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;">
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
             <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
               <i class="fa-solid fa-search" style="color:#0F4C81;"></i> Buscar Producto
             </div>
@@ -106,7 +106,7 @@ WMS_MODULES.rotulos = {
               <i class="fa-solid fa-eye"></i> Vista Previa (escala de pantalla)
             </div>
             <div id="rot-preview-container" style="
-              background:#f1f5f9;padding:20px;border-radius:10px;
+              background:#f1f5f9;padding:20px;border-radius:4px;
               display:inline-block;border:2px dashed #cbd5e1;">
             </div>
           </div>
@@ -140,7 +140,7 @@ WMS_MODULES.rotulos = {
           <div class="card-body" style="display:flex;flex-direction:column;gap:20px;">
 
             <!-- Dimensiones -->
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;">
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
               <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
                 <i class="fa-solid fa-ruler-combined" style="color:#0F4C81;"></i> Dimensiones del Rótulo
               </div>
@@ -163,7 +163,7 @@ WMS_MODULES.rotulos = {
             </div>
 
             <!-- Selección ubicación -->
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;">
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
               <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
                 <i class="fa-solid fa-map-pin" style="color:#0F4C81;"></i> Seleccionar Ubicación
               </div>
@@ -191,7 +191,7 @@ WMS_MODULES.rotulos = {
                 <i class="fa-solid fa-eye"></i> Vista Previa
               </div>
               <div id="rotub-preview-container" style="
-                background:#f1f5f9;padding:20px;border-radius:10px;
+                background:#f1f5f9;padding:20px;border-radius:4px;
                 display:inline-block;border:2px dashed #cbd5e1;">
               </div>
             </div>
