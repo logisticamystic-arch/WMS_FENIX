@@ -66,7 +66,7 @@ WMS_MODULES.reportes = {
       <div class="inv-commander-root animate-fade-in" style="padding:20px; background:#f8fafc; min-height:calc(100vh - 120px); overflow:auto;">
         
         <!-- Dashboard Filters EXACTAMENTE IGUAL AL DASHBOARD PRINCIPAL -->
-        <div style="background:#fff; border-radius:16px; padding:20px; border:1px solid #e2e8f0; margin-bottom:24px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+        <div style="background:#fff; border-radius:4px; padding:20px; border:1px solid #e2e8f0; margin-bottom:24px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
             <div style="font-weight:900; color:#0f172a; margin-bottom:16px; display:flex; align-items:center; gap:10px; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;">
                 <i class="fa-solid fa-sliders" style="color:var(--cmd-blue, #2563eb);"></i> Control de Filtros
             </div>
@@ -116,7 +116,7 @@ WMS_MODULES.reportes = {
 
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(350px, 1fr)); gap:20px; margin-bottom:24px;">
           <!-- Grafico 1 -->
-          <div style="background:#fff; border-radius:16px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
+          <div style="background:#fff; border-radius:4px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
             <div style="font-weight:900; color:#0f172a; margin-bottom:20px; display:flex; align-items:center; gap:10px; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;">
                 <i class="fa-regular fa-calendar-check" style="color:var(--cmd-blue, #2563eb);"></i> Total Unidades Separadas Por Mes
             </div>
@@ -126,7 +126,7 @@ WMS_MODULES.reportes = {
           </div>
 
           <!-- Grafico 2 -->
-          <div style="background:#fff; border-radius:16px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
+          <div style="background:#fff; border-radius:4px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
             <div style="font-weight:900; color:#0f172a; margin-bottom:20px; display:flex; align-items:center; gap:10px; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;">
                 <i class="fa-solid fa-layer-group" style="color:#0891b2;"></i> Picking Volumétrico por Categoría
             </div>
@@ -138,7 +138,7 @@ WMS_MODULES.reportes = {
 
         <!-- Fila 3: Tendencia Mensual y Forecast ML -->
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(350px, 1fr)); gap:20px; margin-bottom:24px;">
-          <div style="background:#fff; border-radius:16px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
+          <div style="background:#fff; border-radius:4px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
             <div style="font-weight:900; color:#0f172a; margin-bottom:20px; display:flex; align-items:center; gap:10px; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;">
                 <i class="fa-solid fa-chart-area" style="color:#475569;"></i> Tendencia Mensual Picking Por Categoría
             </div>
@@ -147,7 +147,7 @@ WMS_MODULES.reportes = {
             </div>
           </div>
 
-          <div style="background:#fff; border-radius:16px; padding:24px; border:1px solid #e2e8f0; border-top:4px solid #059669; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
+          <div style="background:#fff; border-radius:4px; padding:24px; border:1px solid #e2e8f0; border-top:4px solid #059669; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
             <div style="font-weight:900; color:#0f172a; margin-bottom:20px; display:flex; align-items:center; gap:10px; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;">
                 <i class="fa-solid fa-brain" style="color:#059669;"></i> Forecast ML: Cierre de Año
             </div>
@@ -158,7 +158,7 @@ WMS_MODULES.reportes = {
         </div>
 
         <!-- Fila 4: Matriz Cero Rotación -->
-        <div style="background:#fff;border-radius:12px;padding:20px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+        <div style="background:#fff;border-radius:4px;padding:20px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #e2e8f0;">
               <div style="font-weight:800;color:#1e3a5f;"><i class="fa-solid fa-battery-quarter" style="color:#f59e0b;margin-right:6px;"></i>Alerta: Stock Inmovilizado y Baja Rotación</div>
             </div>
@@ -321,7 +321,7 @@ WMS_MODULES.reportes = {
       WMS.setContent(`
         <div class="filter-bar"><div class="search-bar"><i class="fa-solid fa-search"></i><input placeholder="Filtrar kardex..." oninput="WMS_MODULES.reportes.filterTable(this.value,'k-table')"></div></div>
         <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-file-invoice"></i> Movimientos de Kardex (${items.length})</span></div>
-        <div class="table-container"><table class="data-table" id="k-table"><thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Referencia</th><th>Cantidad</th><th>Ubicación</th></tr></thead>
+        <div class="table-container"><table class="erp-table" id="k-table"><thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Referencia</th><th>Cantidad</th><th>Ubicación</th></tr></thead>
         <tbody>${items.map(k=>`<tr><td>${WMS.formatDateTime(k.created_at)}</td><td>${WMS.esc(k.producto?.nombre||k.producto_nombre||'-')}</td><td><span class="badge ${k.tipo==='Entrada'?'badge-success':'badge-danger'}">${k.tipo}</span></td><td>${WMS.esc(k.referencia||'-')}</td><td>${k.cantidad}</td><td>${WMS.esc(k.ubicacion?.codigo||k.ubicacion_codigo||'-')}</td></tr>`).join('')||'<tr><td colspan="6" class="table-empty">Sin movimientos</td></tr>'}</tbody></table></div></div>`);
     } catch(e) { WMS.setContent('<div class="m-empty">Error cargando Kardex</div>'); }
   },
@@ -335,7 +335,7 @@ WMS_MODULES.reportes = {
       WMS.setContent(`
         <div class="filter-bar"><div class="search-bar"><i class="fa-solid fa-search"></i><input placeholder="Filtrar recepciones..." oninput="WMS_MODULES.reportes.filterTable(this.value,'r-table')"></div></div>
         <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-truck-ramp-box"></i> Historico de Recepciones (${items.length})</span></div>
-        <div class="table-container"><table class="data-table" id="r-table"><thead><tr><th>Fecha</th><th>N° Recepción</th><th>Auxiliar</th><th>Estado</th><th>Items</th></tr></thead>
+        <div class="table-container"><table class="erp-table" id="r-table"><thead><tr><th>Fecha</th><th>N° Recepción</th><th>Auxiliar</th><th>Estado</th><th>Items</th></tr></thead>
         <tbody>${items.map(i=>`<tr><td>${WMS.formatDate(i.created_at)}</td><td><strong>${WMS.esc(i.numero_recepcion)}</strong></td><td>${WMS.esc(i.auxiliar?.nombre||'-')}</td><td><span class="status-chip status-cerrada">${i.estado}</span></td><td>${i.detalles_count || 0}</td></tr>`).join('')||'<tr><td colspan="5" class="table-empty">Sin recepciones</td></tr>'}</tbody></table></div></div>`);
     } catch(e) { WMS.setContent('<div class="m-empty">Error cargando Recepciones</div>'); }
   },
@@ -348,7 +348,7 @@ WMS_MODULES.reportes = {
       const items = r.data || r || [];
       WMS.setContent(`
         <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-truck-fast"></i> Despachos Consolidados (${items.length})</span></div>
-        <div class="table-container"><table class="data-table"><thead><tr><th>Fecha</th><th>N° Despacho</th><th>Cliente</th><th>Estado</th><th>Bultos</th></tr></thead>
+        <div class="table-container"><table class="erp-table"><thead><tr><th>Fecha</th><th>N° Despacho</th><th>Cliente</th><th>Estado</th><th>Bultos</th></tr></thead>
         <tbody>${items.map(i=>`<tr><td>${WMS.formatDate(i.created_at)}</td><td><strong>${WMS.esc(i.numero_despacho)}</strong></td><td>${WMS.esc(i.cliente?.razon_social||'-')}</td><td><span class="badge badge-success">${i.estado}</span></td><td>${i.total_bultos||0}</td></tr>`).join('')||'<tr><td colspan="5" class="table-empty">Sin despachos</td></tr>'}</tbody></table></div></div>`);
     } catch(e) { WMS.setContent('<div class="m-empty">Error cargando Despachos</div>'); }
   },
@@ -361,7 +361,7 @@ WMS_MODULES.reportes = {
       const items = r.data || r || [];
       WMS.setContent(`
         <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Reporte Global de Picking (${items.length})</span></div>
-        <div class="table-container"><table class="data-table"><thead><tr><th>Fecha</th><th>Orden ID</th><th>Estado</th><th>Unidades</th></tr></thead>
+        <div class="table-container"><table class="erp-table"><thead><tr><th>Fecha</th><th>Orden ID</th><th>Estado</th><th>Unidades</th></tr></thead>
         <tbody>${items.map(i=>`<tr><td>${WMS.formatDate(i.created_at)}</td><td><strong>${i.id}</strong></td><td><span class="badge badge-info">${i.estado}</span></td><td>${i.total_unidades||0}</td></tr>`).join('')||'<tr><td colspan="4" class="table-empty">Sin órdenes de picking</td></tr>'}</tbody></table></div></div>`);
     } catch(e) { WMS.setContent('<div class="m-empty">Error cargando Picking</div>'); }
   },
@@ -390,7 +390,7 @@ WMS_MODULES.reportes = {
         <div class="card">
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-reply"></i> Reporte de Devoluciones (${items.length})</span></div>
           <div class="table-container">
-            <table class="data-table">
+            <table class="erp-table">
               <thead>
                 <tr>
                   <th># Devolución</th><th>Tipo</th><th>Proveedor</th><th>Fecha</th><th>Estado</th><th>Detalle Productos</th>
@@ -432,7 +432,7 @@ WMS_MODULES.reportes = {
         <div class="card">
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-star"></i> Evaluación de Proveedores — KPIs de Rendimiento</span></div>
           <div class="table-container">
-            <table class="data-table">
+            <table class="erp-table">
               <thead>
                 <tr>
                   <th>Proveedor</th>
@@ -452,7 +452,7 @@ WMS_MODULES.reportes = {
     } catch (e) { WMS.toast('error', 'Error cargando Evaluación de Proveedores'); }
   },
 
-  async show_audit(){WMS.setToolbar('');WMS.spinner();try{const r=await API.get('/reportes/audit-log','limit=200');const items=r.data||r||[];WMS.setContent(`<div class="filter-bar"><div class="search-bar"><i class="fa-solid fa-search"></i><input placeholder="Filtrar log..." oninput="WMS_MODULES.reportes.filterTable(this.value,'audit-table')"></div></div><div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-scroll"></i> Log de Auditoría (${items.length})</span></div><div class="table-container"><table class="data-table" id="audit-table"><thead><tr><th>Fecha/Hora</th><th>Usuario</th><th>Acción</th><th>Módulo</th><th>Detalle</th></tr></thead><tbody>${items.map(a=>`<tr><td class="text-sm">${WMS.formatDateTime(a.created_at)}</td><td>${WMS.esc(a.usuario||a.personal||'-')}</td><td><span class="badge badge-info">${WMS.esc(a.accion||a.tipo||'')}</span></td><td>${WMS.esc(a.modulo||'-')}</td><td class="truncate" style="max-width:250px;">${WMS.esc(a.descripcion||a.detalle||'-')}</td></tr>`).join('')||'<tr><td colspan="5" class="table-empty">Sin registros de auditoría</td></tr>'}</tbody></table></div></div>`);}catch(e){WMS.setContent('<div class="m-empty">Error de conexión</div>');}},
+  async show_audit(){WMS.setToolbar('');WMS.spinner();try{const r=await API.get('/reportes/audit-log','limit=200');const items=r.data||r||[];WMS.setContent(`<div class="filter-bar"><div class="search-bar"><i class="fa-solid fa-search"></i><input placeholder="Filtrar log..." oninput="WMS_MODULES.reportes.filterTable(this.value,'audit-table')"></div></div><div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-scroll"></i> Log de Auditoría (${items.length})</span></div><div class="table-container"><table class="erp-table" id="audit-table"><thead><tr><th>Fecha/Hora</th><th>Usuario</th><th>Acción</th><th>Módulo</th><th>Detalle</th></tr></thead><tbody>${items.map(a=>`<tr><td class="text-sm">${WMS.formatDateTime(a.created_at)}</td><td>${WMS.esc(a.usuario||a.personal||'-')}</td><td><span class="badge badge-info">${WMS.esc(a.accion||a.tipo||'')}</span></td><td>${WMS.esc(a.modulo||'-')}</td><td class="truncate" style="max-width:250px;">${WMS.esc(a.descripcion||a.detalle||'-')}</td></tr>`).join('')||'<tr><td colspan="5" class="table-empty">Sin registros de auditoría</td></tr>'}</tbody></table></div></div>`);}catch(e){WMS.setContent('<div class="m-empty">Error de conexión</div>');}},
 
   async show_odc(){
     const d=document.getElementById('o-desde')?.value || '';
@@ -476,7 +476,7 @@ WMS_MODULES.reportes = {
           <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.reportes.show_odc()"><i class="fa-solid fa-search"></i> Filtrar</button>
         </div>
         <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-file-invoice"></i> Reporte Detallado de ODC (${items.length})</span></div>
-        <div class="table-container"><table class="data-table" id="odc-table"><thead><tr><th>Fecha</th><th>N° ODC</th><th>Proveedor</th><th>Estado</th><th>Productos</th><th>Recibido</th></tr></thead>
+        <div class="table-container"><table class="erp-table" id="odc-table"><thead><tr><th>Fecha</th><th>N° ODC</th><th>Proveedor</th><th>Estado</th><th>Productos</th><th>Recibido</th></tr></thead>
           <tbody>${items.map(o=>`<tr>
             <td>${WMS.formatDate(o.created_at)}</td>
             <td><strong>${WMS.esc(o.numero_odc)}</strong></td>

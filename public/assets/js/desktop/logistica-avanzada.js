@@ -55,7 +55,7 @@ WMS_MODULES.logistica = {
           <div class="pro-kpi-card accent-purple"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-stopwatch"></i></div></div><div class="pro-kpi-value">${kpis.tiempo_promedio_min||'—'}</div><div class="pro-kpi-label">Tiempo Prom. (min)</div></div>
         </div>
         <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-right-left me-2" style="color:#0277BD"></i>Órdenes de Cross-Docking</div></div>
-        <div class="table-responsive"><table class="table table-hover mb-0"><thead><tr style="background:#f8fafc"><th class="ps-3">ORDEN</th><th class="text-center">ESTADO</th><th>ORIGEN</th><th>DESTINO</th><th class="text-end">ITEMS</th><th class="text-end">FECHA</th><th class="text-center">ACCIONES</th></tr></thead>
+        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:#f8fafc"><th class="ps-3">ORDEN</th><th class="text-center">ESTADO</th><th>ORIGEN</th><th>DESTINO</th><th class="text-end">ITEMS</th><th class="text-end">FECHA</th><th class="text-center">ACCIONES</th></tr></thead>
         <tbody>${rows||'<tr><td colspan="7" class="text-center py-5 text-muted">Sin órdenes de cross-docking</td></tr>'}</tbody></table></div></div>
       </div>`);
     } catch(e) { WMS.setContent(`<div class="m-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>${e.message}</p></div>`); }
@@ -108,7 +108,7 @@ WMS_MODULES.logistica = {
         ${muelles.length?`<div class="card border-0 shadow-sm mb-4"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-warehouse me-2" style="color:#7c3aed"></i>Estado de Muelles</div></div>
         <div class="card-body"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">${muelleCards}</div></div></div>`:''}
         <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-calendar-check me-2" style="color:#1a56db"></i>Citas Programadas</div></div>
-        <div class="table-responsive"><table class="table table-hover mb-0"><thead><tr style="background:#f8fafc"><th class="ps-3">ID</th><th class="text-center">ESTADO</th><th>TRANSPORTISTA</th><th>PLACA</th><th>MUELLE</th><th class="text-center">TIPO</th><th>FECHA CITA</th><th class="text-center">ACCIONES</th></tr></thead>
+        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:#f8fafc"><th class="ps-3">ID</th><th class="text-center">ESTADO</th><th>TRANSPORTISTA</th><th>PLACA</th><th>MUELLE</th><th class="text-center">TIPO</th><th>FECHA CITA</th><th class="text-center">ACCIONES</th></tr></thead>
         <tbody>${rows||'<tr><td colspan="8" class="text-center py-5 text-muted">Sin citas programadas</td></tr>'}</tbody></table></div></div>
       </div>`);
     } catch(e) { WMS.setContent(`<div class="m-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>${e.message}</p></div>`); }
@@ -154,7 +154,7 @@ WMS_MODULES.logistica = {
           <div class="pro-kpi-card accent-purple"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-boxes-stacked"></i></div></div><div class="pro-kpi-value">${kpis.lineas_totales||0}</div><div class="pro-kpi-label">Líneas Totales</div></div>
         </div>
         <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-layer-group me-2" style="color:#1a56db"></i>Waves de Picking</div></div>
-        <div class="table-responsive"><table class="table table-hover mb-0"><thead><tr style="background:#f8fafc"><th class="ps-3">WAVE</th><th class="text-center">ESTADO</th><th class="text-end">PLANILLAS</th><th class="text-end">LÍNEAS</th><th>PROGRESO</th><th>FECHA</th><th class="text-center">ACCIONES</th></tr></thead>
+        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:#f8fafc"><th class="ps-3">WAVE</th><th class="text-center">ESTADO</th><th class="text-end">PLANILLAS</th><th class="text-end">LÍNEAS</th><th>PROGRESO</th><th>FECHA</th><th class="text-center">ACCIONES</th></tr></thead>
         <tbody>${rows||'<tr><td colspan="7" class="text-center py-5 text-muted">Sin waves. Use Auto-Generar para crear.</td></tr>'}</tbody></table></div></div>
       </div>`);
     } catch(e) { WMS.setContent(`<div class="m-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>${e.message}</p></div>`); }

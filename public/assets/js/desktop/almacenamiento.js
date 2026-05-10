@@ -39,7 +39,7 @@ WMS_MODULES.almacenamiento = {
             <span class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Mercancía Pendiente de Ubicar (${items.length})</span>
           </div>
           <div class="table-container">
-            <table class="data-table" id="ub-table">
+            <table class="erp-table" id="ub-table">
               <thead><tr><th>Producto</th><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Fecha Venc.</th><th>Origen</th><th>Acciones</th></tr></thead>
               <tbody>${items.map(item => `<tr>
                 <td style="font-family:monospace;font-size:.75rem;">${WMS.esc(item.codigo_interno || item.ean || item.codigo || '-')}</td>
@@ -101,7 +101,7 @@ WMS_MODULES.almacenamiento = {
     WMS.showModal('Asignar Ubicación: ' + WMS.esc(nombre), `
       <div class="form-grid form-grid-2">
         <div class="form-group" style="grid-column: 1/-1;">
-           <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+           <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px; padding:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
               <span style="font-size:12px; color:#1e40af; font-weight:600;"><i class="fa-solid fa-info-circle"></i> Cantidad en espera:</span>
               <span style="font-size:16px; color:#1e3a8a; font-weight:800;">${WMS.formatNum(maxCant)}</span>
            </div>
@@ -214,7 +214,7 @@ WMS_MODULES.almacenamiento = {
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Stock Disponible para Traslado</span></div>
           <div class="filter-bar"><div class="search-bar"><i class="fa-solid fa-search"></i><input placeholder="Buscar..." oninput="WMS_MODULES.almacenamiento.filterTable(this.value,'tr-stock-table')"></div></div>
           <div class="table-container">
-            <table class="data-table" id="tr-stock-table">
+            <table class="erp-table" id="tr-stock-table">
               <thead><tr><th>Producto</th><th>Ubicación</th><th>Cantidad</th><th>Lote</th><th>Vencimiento</th></tr></thead>
               <tbody>${items.slice(0, 50).map(s => `<tr>
                 <td>${WMS.esc(s.descripcion || s.producto || '-')}</td>
@@ -338,36 +338,6 @@ WMS_MODULES.almacenamiento = {
       this._mapaData = r.data || r || [];
 
       WMS.setContent(`
-        <style>
-          /* ADN Visual ERP - Square & Professional */
-          .erp-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-          .erp-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; }
-          .erp-table th { background: #f8f9fa; color: #475569; font-weight: 600; padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: left; }
-          .erp-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: middle; transition: background 0.2s; }
-          .erp-table tr.main-row:hover { background: #f1f5f9; cursor: pointer; }
-          
-          /* Master-Detail Layout */
-          .md-container { display: flex; position: relative; height: calc(100vh - 160px); overflow: hidden; background: #f8f9fa; }
-          .md-master { flex: 1; overflow-y: auto; transition: margin-right 0.3s ease; }
-          
-          /* Side Panel (Drawer) */
-          .md-drawer { 
-            position: absolute; right: -40%; top: 0; bottom: 0; width: 40%; background: #fff; 
-            border-left: 1px solid #cbd5e1; box-shadow: -4px 0 15px rgba(0,0,0,0.05); 
-            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; 
-            display: flex; flex-direction: column; 
-          }
-          .md-drawer.open { right: 0; }
-          @media (max-width: 768px) { .md-drawer { width: 100%; right: -100%; } .md-drawer.open { right: 0; } }
-          
-          .drawer-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; }
-          .drawer-title { font-size: 1.1rem; font-weight: 600; color: #0f172a; margin: 0; }
-          .drawer-close { background: transparent; border: none; font-size: 1.2rem; color: #64748b; cursor: pointer; }
-          .drawer-close:hover { color: #ef4444; }
-          .drawer-body { padding: 20px; flex: 1; overflow-y: auto; }
-          .drawer-footer { padding: 16px 20px; border-top: 1px solid #e2e8f0; background: #f8f9fa; display: flex; gap: 12px; justify-content: flex-end; }
-        </style>
-
         <div class="md-container">
           <!-- Master View -->
           <div class="md-master erp-card">
@@ -588,7 +558,7 @@ WMS_MODULES.almacenamiento = {
         <div class="card">
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-file-lines"></i> Informe de Traslados (${items.length})</span></div>
           <div class="table-container">
-            <table class="data-table" id="tr-inf-table">
+            <table class="erp-table" id="tr-inf-table">
               <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>Origen</th><th>Destino</th><th>Usuario</th></tr></thead>
               <tbody>${items.map(m => `<tr>
                 <td>${WMS.formatDateTime(m.created_at)}</td>

@@ -233,7 +233,7 @@ WMS_MODULES.inteligencia = {
               </button>` : ''}
           </div>
           <div class="table-responsive">
-            <table class="table table-bordered table-hover mb-0 align-middle" style="border: 1px solid #e2e8f0; table-layout: auto;">
+            <table class="erp-table" style="border: 1px solid #e2e8f0; table-layout: auto;">
               <thead>
                 <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0;">
                   <th class="ps-3 py-3" style="border-right: 1px solid #e2e8f0;">PRODUCTO / DETALLES</th>
@@ -451,7 +451,7 @@ WMS_MODULES.inteligencia = {
             </div>
           </div>
           <div class="table-responsive">
-            <table class="table table-hover mb-0 align-middle">
+            <table class="erp-table">
               <thead>
                 <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
                   <th class="ps-3 text-center" style="width:100px;">RIESGO</th>
@@ -639,7 +639,7 @@ WMS_MODULES.inteligencia = {
                 </div>
               </div>
               <div class="table-responsive">
-                <table class="table table-hover mb-0 align-middle">
+                <table class="erp-table">
                   <thead>
                     <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
                       <th class="ps-3">PRODUCTO</th>
@@ -665,7 +665,7 @@ WMS_MODULES.inteligencia = {
                 </div>
               </div>
               <div class="table-responsive">
-                <table class="table table-hover mb-0 align-middle">
+                <table class="erp-table">
                   <thead>
                     <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
                       <th class="ps-3">PRODUCTO</th>
@@ -807,7 +807,7 @@ WMS_MODULES.inteligencia = {
             </div>
           </div>
           <div class="table-responsive">
-            <table class="table table-hover mb-0 align-middle">
+            <table class="erp-table">
               <thead>
                 <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
                   <th class="ps-3 text-center" style="width:120px;">OPERACIÓN</th>
@@ -943,7 +943,7 @@ WMS_MODULES.inteligencia = {
             </div>
           </div>
           <div class="table-responsive">
-            <table class="table table-hover mb-0 align-middle">
+            <table class="erp-table">
               <thead>
                 <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
                   <th class="ps-3 text-center" style="width:80px;">VERBO</th>

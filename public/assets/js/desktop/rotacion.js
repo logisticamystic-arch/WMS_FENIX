@@ -66,7 +66,7 @@ WMS_MODULES.rotacion = {
           </div>
         </div></div>
         <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-table me-2" style="color:#1a56db"></i>Detalle de Clasificación</div></div>
-        <div class="table-responsive"><table class="table table-hover mb-0 align-middle"><thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
           <th class="ps-3">PRODUCTO</th><th class="text-center">SEGMENTO</th><th class="text-center">ABC</th><th class="text-center">XYZ</th><th class="text-end">VALOR TOTAL</th><th class="text-end">DEMANDA/MES</th><th class="text-end">CV</th><th class="text-center">ZONA</th>
         </tr></thead><tbody>${rows||'<tr><td colspan="8" class="text-center py-5 text-muted">Ejecute la clasificación ABC-XYZ para generar datos</td></tr>'}</tbody></table></div></div>
       </div>`);
@@ -116,9 +116,9 @@ WMS_MODULES.rotacion = {
           <div class="pro-kpi-card accent-green"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-bullseye"></i></div></div><div class="pro-kpi-value">${forecasts.length?Number(forecasts.reduce((a,f)=>a+(f.score_confianza||0),0)/forecasts.length*100).toFixed(0)+'%':'—'}</div><div class="pro-kpi-label">Confianza Promedio</div></div>
         </div>
         ${alertas.length?`<div class="card border-0 shadow-sm mb-4" style="border-left:4px solid #ef4444!important"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-bell me-2" style="color:#ef4444"></i>Alertas de Quiebre de Stock</div></div>
-        <div class="table-responsive"><table class="table table-hover mb-0"><thead><tr style="background:#fef2f2"><th class="ps-3">PRODUCTO</th><th class="text-end">DÍAS AL QUIEBRE</th><th class="text-end">STOCK SEGURIDAD</th><th class="text-end">DEMANDA PRED.</th></tr></thead><tbody>${rowsA}</tbody></table></div></div>`:''}
+        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:#fef2f2"><th class="ps-3">PRODUCTO</th><th class="text-end">DÍAS AL QUIEBRE</th><th class="text-end">STOCK SEGURIDAD</th><th class="text-end">DEMANDA PRED.</th></tr></thead><tbody>${rowsA}</tbody></table></div></div>`:''}
         <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-chart-line me-2" style="color:#1a56db"></i>Predicciones de Demanda</div></div>
-        <div class="table-responsive"><table class="table table-hover mb-0"><thead><tr style="background:#f8fafc"><th class="ps-3">PRODUCTO</th><th class="text-end">DEMANDA PRED.</th><th class="text-center">MODELO</th><th class="text-center">HORIZONTE</th><th class="text-end">MAPE</th><th class="text-center">ESTADO</th><th class="text-end">DÍAS A QUIEBRE</th></tr></thead>
+        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:#f8fafc"><th class="ps-3">PRODUCTO</th><th class="text-end">DEMANDA PRED.</th><th class="text-center">MODELO</th><th class="text-center">HORIZONTE</th><th class="text-end">MAPE</th><th class="text-center">ESTADO</th><th class="text-end">DÍAS A QUIEBRE</th></tr></thead>
         <tbody>${rowsF||'<tr><td colspan="7" class="text-center py-5 text-muted">Ejecute el motor de predicción</td></tr>'}</tbody></table></div></div>
       </div>`);
     } catch(e) { WMS.setContent(`<div class="m-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>${e.message}</p></div>`); }
@@ -152,7 +152,7 @@ WMS_MODULES.rotacion = {
           <div class="pro-kpi-card accent-amber"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-gauge-high"></i></div></div><div class="pro-kpi-value">${data.length?Number(data.reduce((a,s)=>a+(s.score_asignacion||0),0)/data.length).toFixed(1):'—'}</div><div class="pro-kpi-label">Score Promedio</div></div>
         </div>
         <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-location-dot me-2" style="color:#7c3aed"></i>Asignaciones de Slotting Óptimo</div></div>
-        <div class="table-responsive"><table class="table table-hover mb-0"><thead><tr style="background:#f8fafc"><th class="ps-3">PRODUCTO</th><th class="text-center">SEGMENTO</th><th>UBICACIÓN</th><th class="text-center">ZONA</th><th class="text-end">SCORE</th><th class="text-center">ESTADO</th></tr></thead>
+        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:#f8fafc"><th class="ps-3">PRODUCTO</th><th class="text-center">SEGMENTO</th><th>UBICACIÓN</th><th class="text-center">ZONA</th><th class="text-end">SCORE</th><th class="text-center">ESTADO</th></tr></thead>
         <tbody>${rows||'<tr><td colspan="6" class="text-center py-5 text-muted">Ejecute la optimización de slotting</td></tr>'}</tbody></table></div></div>
       </div>`);
     } catch(e) { WMS.setContent(`<div class="m-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>${e.message}</p></div>`); }

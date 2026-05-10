@@ -60,7 +60,7 @@ WMS_MODULES.maestro = {
          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:20px;">
             ${cards.map(c => c._admin ? `
                <div class="landing-card" onclick="WMS.nav('maestro','${c.id}')"
-                    style="background:linear-gradient(135deg,#0f172a,#1e3a5f); border:1px solid #334155; border-radius:16px; padding:20px; cursor:pointer; transition:all .2s ease; display:flex; flex-direction:column; gap:12px; box-shadow:0 4px 12px rgba(0,0,0,0.25);">
+                    style="background:linear-gradient(135deg,#0f172a,#1e3a5f); border:1px solid #334155; border-radius:4px; padding:20px; cursor:pointer; transition:all .2s ease; display:flex; flex-direction:column; gap:12px; box-shadow:0 4px 12px rgba(0,0,0,0.25);">
                   <div style="width:48px; height:48px; border-radius:12px; background:rgba(99,102,241,0.25); color:#818cf8; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">
                      <i class="fa-solid ${c.icon}"></i>
                   </div>
@@ -73,7 +73,7 @@ WMS_MODULES.maestro = {
                   </div>
                </div>
             ` : `
-               <div class="landing-card" onclick="WMS.nav('maestro','${c.id}')" style="background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:20px; cursor:pointer; transition:all .2s ease; display:flex; flex-direction:column; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+               <div class="landing-card" onclick="WMS.nav('maestro','${c.id}')" style="background:#fff; border:1px solid #e2e8f0; border-radius:4px; padding:20px; cursor:pointer; transition:all .2s ease; display:flex; flex-direction:column; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
                   <div style="width:48px; height:48px; border-radius:12px; background:var(--primary-soft); color:var(--primary); display:flex; align-items:center; justify-content:center; font-size:1.2rem;">
                      <i class="fa-solid ${c.icon}"></i>
                   </div>
@@ -110,31 +110,6 @@ WMS_MODULES.maestro = {
       const r     = await API.get('/param/empresas');
       const items = r.data || r || [];
       WMS.setContent(`
-        <style>
-          .erp-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-          .erp-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; }
-          .erp-table th { background: #f8f9fa; color: #475569; font-weight: 600; padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: left; }
-          .erp-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: middle; transition: background 0.2s; }
-          .erp-table tr.main-row:hover { background: #f1f5f9; cursor: pointer; }
-          
-          .md-container { display: flex; position: relative; height: calc(100vh - 160px); overflow: hidden; background: #f8f9fa; }
-          .md-master { flex: 1; overflow-y: auto; transition: margin-right 0.3s ease; }
-          
-          .md-drawer { position: absolute; right: -40%; top: 0; bottom: 0; width: 40%; background: #fff; border-left: 1px solid #cbd5e1; box-shadow: -4px 0 15px rgba(0,0,0,0.05); transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; display: flex; flex-direction: column; }
-          .md-drawer.open { right: 0; }
-          @media (max-width: 768px) { .md-drawer { width: 100%; right: -100%; } .md-drawer.open { right: 0; } }
-          
-          .drawer-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; }
-          .drawer-title { font-size: 1.1rem; font-weight: 600; color: #0f172a; margin: 0; }
-          .drawer-close { background: transparent; border: none; font-size: 1.2rem; color: #64748b; cursor: pointer; }
-          .drawer-close:hover { color: #ef4444; }
-          .drawer-body { padding: 20px; flex: 1; overflow-y: auto; }
-          .drawer-footer { padding: 16px 20px; border-top: 1px solid #e2e8f0; background: #f8f9fa; display: flex; gap: 12px; justify-content: flex-end; }
-          
-          .md-drawer .form-control { border-radius: 4px; border: 1px solid #cbd5e1; background: #f8fafc; transition: all 0.2s; }
-          .md-drawer .form-control:focus { border-color: #3b82f6; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
-        </style>
-        
         <div class="md-container">
           <div class="md-master erp-card">
             <table class="erp-table">
@@ -262,31 +237,6 @@ WMS_MODULES.maestro = {
     const items    = rs.data || rs || [];
     const empresas = es.data || es || [];
     WMS.setContent(`
-      <style>
-        .erp-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-        .erp-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; }
-        .erp-table th { background: #f8f9fa; color: #475569; font-weight: 600; padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: left; }
-        .erp-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: middle; transition: background 0.2s; }
-        .erp-table tr.main-row:hover { background: #f1f5f9; cursor: pointer; }
-        
-        .md-container { display: flex; position: relative; height: calc(100vh - 160px); overflow: hidden; background: #f8f9fa; }
-        .md-master { flex: 1; overflow-y: auto; transition: margin-right 0.3s ease; }
-        
-        .md-drawer { position: absolute; right: -40%; top: 0; bottom: 0; width: 40%; background: #fff; border-left: 1px solid #cbd5e1; box-shadow: -4px 0 15px rgba(0,0,0,0.05); transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; display: flex; flex-direction: column; }
-        .md-drawer.open { right: 0; }
-        @media (max-width: 768px) { .md-drawer { width: 100%; right: -100%; } .md-drawer.open { right: 0; } }
-        
-        .drawer-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; }
-        .drawer-title { font-size: 1.1rem; font-weight: 600; color: #0f172a; margin: 0; }
-        .drawer-close { background: transparent; border: none; font-size: 1.2rem; color: #64748b; cursor: pointer; }
-        .drawer-close:hover { color: #ef4444; }
-        .drawer-body { padding: 20px; flex: 1; overflow-y: auto; }
-        .drawer-footer { padding: 16px 20px; border-top: 1px solid #e2e8f0; background: #f8f9fa; display: flex; gap: 12px; justify-content: flex-end; }
-        
-        .md-drawer .form-control { border-radius: 4px; border: 1px solid #cbd5e1; background: #f8fafc; transition: all 0.2s; }
-        .md-drawer .form-control:focus { border-color: #3b82f6; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
-      </style>
-      
       <div class="md-container">
         <div class="md-master erp-card">
           <table class="erp-table">
@@ -459,40 +409,6 @@ WMS_MODULES.maestro = {
       this._personalData = r.data || r || [];
 
       WMS.setContent(`
-        <style>
-          /* ADN Visual ERP - Square & Professional */
-          .erp-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-          .erp-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; }
-          .erp-table th { background: #f8f9fa; color: #475569; font-weight: 600; padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: left; }
-          .erp-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: middle; transition: background 0.2s; }
-          .erp-table tr.main-row:hover { background: #f1f5f9; cursor: pointer; }
-          
-          /* Master-Detail Layout */
-          .md-container { display: flex; position: relative; height: calc(100vh - 160px); overflow: hidden; background: #f8f9fa; }
-          .md-master { flex: 1; overflow-y: auto; transition: margin-right 0.3s ease; }
-          
-          /* Side Panel (Drawer) */
-          .md-drawer { 
-            position: absolute; right: -40%; top: 0; bottom: 0; width: 40%; background: #fff; 
-            border-left: 1px solid #cbd5e1; box-shadow: -4px 0 15px rgba(0,0,0,0.05); 
-            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; 
-            display: flex; flex-direction: column; 
-          }
-          .md-drawer.open { right: 0; }
-          @media (max-width: 768px) { .md-drawer { width: 100%; right: -100%; } .md-drawer.open { right: 0; } }
-          
-          .drawer-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; }
-          .drawer-title { font-size: 1.1rem; font-weight: 600; color: #0f172a; margin: 0; }
-          .drawer-close { background: transparent; border: none; font-size: 1.2rem; color: #64748b; cursor: pointer; }
-          .drawer-close:hover { color: #ef4444; }
-          .drawer-body { padding: 20px; flex: 1; overflow-y: auto; }
-          .drawer-footer { padding: 16px 20px; border-top: 1px solid #e2e8f0; background: #f8f9fa; display: flex; gap: 12px; justify-content: flex-end; }
-          
-          /* Inputs outline */
-          .md-drawer .form-control { border-radius: 4px; border: 1px solid #cbd5e1; background: #f8fafc; transition: all 0.2s; }
-          .md-drawer .form-control:focus { border-color: #3b82f6; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
-        </style>
-
         <div class="md-container">
           <!-- Master View -->
           <div class="md-master erp-card">
@@ -819,7 +735,7 @@ WMS_MODULES.maestro = {
       <div class="card">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-tags"></i> Categorías (${items.length})</span></div>
         <div class="table-container">
-          <table class="data-table">
+          <table class="erp-table">
             <thead><tr><th>Nombre</th><th>Descripción</th><th>Acciones</th></tr></thead>
             <tbody>${items.map(c => `<tr>
               <td><strong>${WMS.esc(c.nombre || c.marca || '')}</strong></td>
@@ -892,7 +808,7 @@ WMS_MODULES.maestro = {
         <div class="card">
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-copyright"></i> Marcas (${items.length})</span></div>
           <div class="table-container">
-            <table class="data-table">
+            <table class="erp-table">
               <thead><tr><th>Nombre</th><th>Proveedor (Opcional)</th><th>Estado</th><th>Acciones</th></tr></thead>
               <tbody>${items.map(m => `<tr>
                 <td><strong>${WMS.esc(m.nombre || '')}</strong></td>
@@ -971,6 +887,7 @@ WMS_MODULES.maestro = {
       <div class="actions" style="display:flex;gap:12px;align-items:center;">
         <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.show_productos()"><i class="fa-solid fa-plus"></i> Registrar Nuevo</button>
         <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.consultar_productos()"><i class="fa-solid fa-search"></i> Consultar Catálogo</button>
+        <button class="btn btn-info btn-sm" onclick="WMS_MODULES.maestro.descargarPlantillaProductos()"><i class="fa-solid fa-file-csv"></i> Plantilla CSV</button>
         <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.importarGenerico('productos')"><i class="fa-solid fa-file-import"></i> Importar CSV</button>
         <button class="btn btn-success btn-sm" onclick="WMS_MODULES.maestro.exportarExcel()"><i class="fa-solid fa-file-excel"></i> Exportar Todo</button>
       </div>`);
@@ -1007,7 +924,7 @@ WMS_MODULES.maestro = {
               <div class="form-group"><label class="form-label">PESO BRUTO (kg)</label><input id="f-ppeso" class="form-control" type="number" step="0.01" value="0.00"></div>
               <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.0001" value="0.0000"></div>
               
-              <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:15px; border-radius:10px; border:1px solid #e2e8f0;">
+              <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:15px; border-radius:4px; border:1px solid #e2e8f0;">
                 <div style="display:flex;flex-direction:column;gap:5px;">
                   <span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;">Stock Mínimo</span>
                   <input id="f-pmin" class="form-control sm" type="number" step="0.01" value="0">
@@ -1070,6 +987,9 @@ WMS_MODULES.maestro = {
         <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.show_productos()">
           <i class="fa-solid fa-plus"></i> Nuevo
         </button>
+        <button class="btn btn-info btn-sm" onclick="WMS_MODULES.maestro.descargarPlantillaProductos()" title="Descargar plantilla de importación">
+          <i class="fa-solid fa-file-csv"></i> Plantilla
+        </button>
         <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.importarGenerico('productos')" title="Importar desde CSV">
           <i class="fa-solid fa-file-import"></i> Importar
         </button>
@@ -1088,6 +1008,112 @@ WMS_MODULES.maestro = {
             </div>
          </div>
       </div>`);
+  },
+
+  async descargarPlantillaProductos() {
+    WMS.spinner();
+    try {
+      const [cr, mr] = await Promise.all([API.get('/param/categorias'), API.get('/param/marcas')]);
+      const cats   = cr.data || cr || [];
+      const marcas = mr.data || mr || [];
+      
+      let html = `
+        <div style="padding:10px;">
+          <div class="alert alert-info" style="margin-bottom:15px; border-left:4px solid #3b82f6;">
+            <strong>¡Atención!</strong> Para que la importación sea exitosa, los campos de <strong>categoria_id</strong> y <strong>marca_id</strong> deben contener el número de ID que aparece en las siguientes tablas, no el nombre en texto.
+          </div>
+          
+          <div style="display:flex; gap:20px;">
+            <!-- Categorias -->
+            <div style="flex:1;">
+              <h4 style="font-size:0.95rem; font-weight:700; color:#1e293b; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:5px;">IDs de Categorías</h4>
+              <div style="max-height:250px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:4px;">
+                <table class="erp-table" style="font-size:0.85rem; width:100%;">
+                  <thead style="background:#f1f5f9; position:sticky; top:0;">
+                    <tr><th style="padding:6px 10px;">ID</th><th style="padding:6px 10px;">Categoría</th></tr>
+                  </thead>
+                  <tbody>
+                    \${cats.map(c => `<tr><td style="padding:6px 10px; font-weight:700; color:#ef4444;">\${c.id}</td><td style="padding:6px 10px;">\${WMS.esc(c.nombre)}</td></tr>`).join('')}
+                    \${cats.length === 0 ? '<tr><td colspan="2" style="padding:10px; text-align:center;">Sin categorías</td></tr>' : ''}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            <!-- Marcas -->
+            <div style="flex:1;">
+              <h4 style="font-size:0.95rem; font-weight:700; color:#1e293b; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:5px;">IDs de Marcas</h4>
+              <div style="max-height:250px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:4px;">
+                <table class="erp-table" style="font-size:0.85rem; width:100%;">
+                  <thead style="background:#f1f5f9; position:sticky; top:0;">
+                    <tr><th style="padding:6px 10px;">ID</th><th style="padding:6px 10px;">Marca</th></tr>
+                  </thead>
+                  <tbody>
+                    \${marcas.map(m => `<tr><td style="padding:6px 10px; font-weight:700; color:#3b82f6;">\${m.id}</td><td style="padding:6px 10px;">\${WMS.esc(m.nombre)}</td></tr>`).join('')}
+                    \${marcas.length === 0 ? '<tr><td colspan="2" style="padding:10px; text-align:center;">Sin marcas</td></tr>' : ''}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          
+          <div style="margin-top:20px; text-align:center;">
+             <button class="btn btn-success" style="border-radius:4px; padding:10px 20px; font-weight:700;" onclick="WMS_MODULES.maestro._generarCSVPlantilla()">
+               <i class="fa-solid fa-download"></i> DESCARGAR PLANTILLA CSV DE EJEMPLO
+             </button>
+          </div>
+        </div>
+      `;
+      
+      WMS.showModal('Guía para Importar Productos', html);
+    } catch(e) {
+      WMS.toast('error', 'Error al cargar IDs para la plantilla');
+    }
+  },
+  
+  _generarCSVPlantilla() {
+    const cabeceras = [
+      "ean", 
+      "referencia", 
+      "descripcion", 
+      "categoria_id", 
+      "marca_id", 
+      "unidad_medida", 
+      "unidades_caja", 
+      "peso", 
+      "volumen", 
+      "stock_minimo", 
+      "maneja_lotes", 
+      "control_vencimiento"
+    ];
+    const ejemplo1 = [
+      "7701234567890", 
+      "REF001", 
+      "VINO TINTO MALBEC 750ML", 
+      "1", 
+      "2", 
+      "UN", 
+      "12", 
+      "1.50", 
+      "0.005", 
+      "10", 
+      "1", 
+      "1"
+    ];
+    
+    let csvContent = "data:text/csv;charset=utf-8," 
+      + cabeceras.join(";") + "\\n" 
+      + ejemplo1.join(";");
+      
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "plantilla_productos.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    WMS.toast('success', 'Plantilla descargada. Recuerde guardar como CSV delimitado por comas o punto y coma.');
   },
 
   _timerBuscar() {
@@ -1136,7 +1162,7 @@ WMS_MODULES.maestro = {
           </div>
         </div>
         <div class="table-container" style="max-height:600px; overflow-y:auto;">
-          <table class="data-table">
+          <table class="erp-table">
             <thead style="position:sticky; top:0; z-index:10; background:#f8fafc;">
                <tr><th>Referencia/EAN</th><th>Descripción</th><th>Categoría/Marca</th><th>Estado</th><th>Acciones</th></tr>
             </thead>
@@ -1223,7 +1249,7 @@ WMS_MODULES.maestro = {
         <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.001" placeholder="0.000"></div>
         <div class="form-group"><label class="form-label">UNIDADES X CAJA</label><input id="f-puxc" class="form-control" type="number" value="1" min="1"></div>
         
-        <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:10px; border-radius:10px; margin-top:5px;">
+        <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:10px; border-radius:4px; margin-top:5px;">
            <div style="display:flex;flex-direction:column;gap:5px;">
               <span style="font-size:.78rem;font-weight:600;color:#475569;">Stock Mínimo</span>
               <input id="f-pmin" class="form-control sm" type="number" step="0.01" value="0">
@@ -1297,7 +1323,7 @@ WMS_MODULES.maestro = {
           <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.001" value="${p.volumen_unitario || ''}"></div>
           <div class="form-group"><label class="form-label">UNIDADES X CAJA</label><input id="f-puxc" class="form-control" type="number" value="${p.unidades_caja || 1}" min="1"></div>
           
-          <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:10px; border-radius:10px; margin-top:5px;">
+          <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:10px; border-radius:4px; margin-top:5px;">
              <div style="display:flex;flex-direction:column;gap:5px;">
                 <span style="font-size:.78rem;font-weight:600;color:#475569;">Stock Mínimo</span>
                 <input id="f-pmin" class="form-control sm" type="number" step="0.01" value="${p.stock_minimo || 0}">
@@ -1323,7 +1349,7 @@ WMS_MODULES.maestro = {
     WMS.showModal(`EANs de: ${WMS.esc(nombre)}`, `
       <div style="margin-bottom:14px;"><strong>${eans.length}</strong> EAN(s) asociado(s)</div>
       <div class="table-container">
-        <table class="data-table">
+        <table class="erp-table">
           <thead><tr><th>EAN</th><th>Descripción</th><th>Acciones</th></tr></thead>
           <tbody>${eans.map(e => `<tr>
             <td style="font-family:monospace;">${WMS.esc(e.codigo_ean || e.ean || '')}</td>
@@ -1425,7 +1451,7 @@ WMS_MODULES.maestro = {
       <div class="card">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-map-pin"></i> Ubicaciones (<span id="ubi-count">${items.length}</span>)</span></div>
         <div class="table-container">
-          <table class="data-table" id="ubi-table">
+          <table class="erp-table" id="ubi-table">
             <thead><tr><th>Código</th><th>Zona</th><th style="width:80px;">Pasillo</th><th style="width:80px;">Mód.</th><th style="width:80px;">Niv.</th><th>Tipo</th><th>Clase</th><th>M3</th><th>Cant. Máx.</th><th>Activo</th><th>Acciones</th></tr></thead>
             <tbody id="ubi-tbody">
               ${hasData ? this._renderUbiRows(items, tipoColor, estadoClass) : '<tr><td colspan="11" class="table-empty"><div class="py-20 text-center"><i class="fa-solid fa-magnifying-glass fa-2x mb-12" style="opacity:.3"></i><p>Ingrese un criterio de búsqueda o haga clic en "Cargar Todo" para ver las ubicaciones.</p></div></td></tr>'}
@@ -1753,7 +1779,7 @@ WMS_MODULES.maestro = {
       <div class="card">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-truck"></i> Proveedores (${items.length})</span></div>
         <div class="table-container">
-          <table class="data-table">
+          <table class="erp-table">
             <thead><tr><th>NIT</th><th>Razón Social</th><th>Contacto</th><th>Teléfono</th><th>Email</th><th>Acciones</th></tr></thead>
             <tbody>${items.map(p => `<tr>
               <td style="font-family:monospace;">${WMS.esc(p.nit || '-')}</td>
@@ -1839,7 +1865,7 @@ WMS_MODULES.maestro = {
       <div class="card">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-route"></i> Rutas (${items.length})</span></div>
         <div class="table-container">
-          <table class="data-table">
+          <table class="erp-table">
             <thead><tr><th>Nombre / Código</th><th>Comercial</th><th>Frecuencia</th><th>Acciones</th></tr></thead>
             <tbody>${items.map(r => `<tr>
               <td><strong>${WMS.esc(r.nombre || r.codigo || '')}</strong></td>
@@ -1870,7 +1896,7 @@ WMS_MODULES.maestro = {
           </select></div>
         <div class="form-group" id="frec-detail-group" style="display:none; grid-column:1/-1;">
            <label class="form-label" id="frec-detail-label">Detalle de frecuencia</label>
-           <div id="frec-detail-container" style="display:flex; flex-wrap:wrap; gap:8px; background:#f1f5f9; padding:10px; border-radius:8px;"></div>
+           <div id="frec-detail-container" style="display:flex; flex-wrap:wrap; gap:8px; background:#f1f5f9; padding:10px; border-radius:4px;"></div>
         </div>
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
@@ -1956,7 +1982,7 @@ WMS_MODULES.maestro = {
             </select></div>
           <div class="form-group" id="frec-detail-group" style="display:none; grid-column:1/-1;">
              <label class="form-label" id="frec-detail-label">Detalle de frecuencia</label>
-             <div id="frec-detail-container" style="display:flex; flex-wrap:wrap; gap:8px; background:#f1f5f9; padding:10px; border-radius:8px;"></div>
+             <div id="frec-detail-container" style="display:flex; flex-wrap:wrap; gap:8px; background:#f1f5f9; padding:10px; border-radius:4px;"></div>
           </div>
         </div>`,
         `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
@@ -2082,7 +2108,7 @@ WMS_MODULES.maestro = {
       <div class="card">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-user-tie"></i> Clientes (${items.length})</span></div>
         <div class="table-container">
-          <table class="data-table">
+          <table class="erp-table">
             <thead><tr><th>NIT</th><th>Razón Social</th><th>Ciudad</th><th>Contacto</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody>${items.map(c => `<tr>
               <td><span class="badge badge-gray" style="font-family:monospace;">${WMS.esc(c.nit || '')}</span></td>
@@ -2166,7 +2192,7 @@ WMS_MODULES.maestro = {
 
         <!-- Header -->
         <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px; padding:20px 24px;
-                    background:linear-gradient(135deg,#0f172a,#1e3a5f); border-radius:16px; box-shadow:0 4px 16px rgba(0,0,0,0.2);">
+                    background:linear-gradient(135deg,#0f172a,#1e3a5f); border-radius:4px; box-shadow:0 4px 16px rgba(0,0,0,0.2);">
           <div style="width:52px;height:52px;border-radius:14px;background:rgba(99,102,241,0.3);display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:#818cf8;">
             <i class="fa-solid fa-stethoscope"></i>
           </div>
@@ -2179,7 +2205,7 @@ WMS_MODULES.maestro = {
         <!-- Resumen KPIs -->
         <div id="diag-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:24px;">
           ${['Controladores OK','Errores','Advertencias','Rutas OK','Rutas Errores'].map((label,i) => `
-            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;text-align:center;">
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:16px 18px;text-align:center;">
               <div id="diag-kpi-${i}" style="font-size:2rem;font-weight:900;color:#94a3b8;">—</div>
               <div style="font-size:11px;color:#64748b;margin-top:4px;">${label}</div>
             </div>
@@ -2205,7 +2231,7 @@ WMS_MODULES.maestro = {
             <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
               <i class="fa-solid fa-file-code" style="margin-right:6px;color:#0ea5e9;"></i>Controladores PHP
             </div>
-            <div id="diag-ctrl-table" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;"></div>
+            <div id="diag-ctrl-table" style="border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;"></div>
           </div>
 
           <!-- Rutas -->
@@ -2213,7 +2239,7 @@ WMS_MODULES.maestro = {
             <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
               <i class="fa-solid fa-route" style="margin-right:6px;color:#f59e0b;"></i>Validación de Rutas
             </div>
-            <div id="diag-routes-box" style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;background:#fff;"></div>
+            <div id="diag-routes-box" style="border:1px solid #e2e8f0;border-radius:4px;padding:16px;background:#fff;"></div>
           </div>
         </div>
 
@@ -2534,19 +2560,19 @@ WMS_MODULES.maestro = {
              </span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:8px;margin-bottom:14px;">
-            <div style="padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;text-align:center;">
+            <div style="padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;text-align:center;">
               <div style="font-size:20px;font-weight:800;color:#475569;">${total}</div>
               <div style="font-size:9px;color:#64748b;font-weight:700;">TOTAL</div>
             </div>
-            <div style="padding:10px;background:#f0fdf4;border-radius:8px;text-align:center;border:1px solid #dcfce7;">
+            <div style="padding:10px;background:#f0fdf4;border-radius:4px;text-align:center;border:1px solid #dcfce7;">
               <div style="font-size:20px;font-weight:800;color:#16a34a;">${success}</div>
               <div style="font-size:9px;color:#16a34a;font-weight:700;">NUEVOS</div>
             </div>
-            <div style="padding:10px;background:#eff6ff;border-radius:8px;text-align:center;border:1px solid #dbeafe;">
+            <div style="padding:10px;background:#eff6ff;border-radius:4px;text-align:center;border:1px solid #dbeafe;">
               <div style="font-size:20px;font-weight:800;color:#2563eb;">${updated}</div>
               <div style="font-size:9px;color:#2563eb;font-weight:700;">ACTUALIZADOS</div>
             </div>
-            <div style="padding:10px;background:#fef2f2;border-radius:8px;text-align:center;border:1px solid #fee2e2;">
+            <div style="padding:10px;background:#fef2f2;border-radius:4px;text-align:center;border:1px solid #fee2e2;">
               <div style="font-size:20px;font-weight:800;color:#dc2626;">${errsArray.length + skipped}</div>
               <div style="font-size:9px;color:#dc2626;font-weight:700;">AVISOS</div>
             </div>

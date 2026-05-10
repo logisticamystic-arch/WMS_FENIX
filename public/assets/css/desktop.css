@@ -3280,3 +3280,145 @@ canvas {
 }
 .erp-section-title i { color: #0F4C81; }
 .erp-section-actions { display: flex; gap: 6px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   MASTER-DETAIL (ERP): shared layout — used by all module views
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── ERP card container ──────────────────────────────────── */
+.erp-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── ERP table ───────────────────────────────────────────── */
+.erp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Inter', sans-serif;
+}
+.erp-table th {
+  background: #f8f9fa;
+  color: #475569;
+  font-weight: 600;
+  padding: 12px;
+  border-bottom: 2px solid #e2e8f0;
+  text-align: left;
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  white-space: nowrap;
+}
+.erp-table td {
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #334155;
+  vertical-align: middle;
+  font-size: .83rem;
+  transition: background 0.2s;
+}
+.erp-table tbody tr:last-child td { border-bottom: none; }
+.erp-table tbody tr:hover { background: #f8fafc; }
+.erp-table tbody tr.main-row:hover,
+.erp-table tbody tr.clickable:hover { background: #eff6ff !important; cursor: pointer; }
+.erp-table tbody tr.selected { background: #dbeafe !important; }
+
+/* ── Master-Detail layout ────────────────────────────────── */
+.md-container {
+  display: flex;
+  position: relative;
+  height: calc(100vh - 160px);
+  overflow: hidden;
+  background: #f8f9fa;
+}
+.md-master {
+  flex: 1;
+  overflow-y: auto;
+  transition: margin-right 0.3s ease;
+}
+
+/* ── Slide-in drawer ─────────────────────────────────────── */
+.md-drawer {
+  position: absolute;
+  right: -40%;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  background: #fff;
+  border-left: 1px solid #cbd5e1;
+  box-shadow: -4px 0 15px rgba(0,0,0,0.05);
+  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+}
+.md-drawer.open { right: 0; }
+
+@media (max-width: 768px) {
+  .md-drawer { width: 100%; right: -100%; }
+  .md-drawer.open { right: 0; }
+}
+
+/* ── Drawer sub-parts ────────────────────────────────────── */
+.drawer-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8f9fa;
+  flex-shrink: 0;
+}
+.drawer-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+}
+.drawer-close {
+  background: transparent;
+  border: none;
+  font-size: 1.2rem;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.drawer-close:hover { color: #ef4444; background: #fee2e2; }
+.drawer-body {
+  padding: 20px;
+  flex: 1;
+  overflow-y: auto;
+}
+.drawer-footer {
+  padding: 16px 20px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8f9fa;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+/* ── Inputs inside drawer ────────────────────────────────── */
+.md-drawer .form-control,
+.drawer-body .form-control {
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  transition: border-color .15s, box-shadow .15s;
+}
+.md-drawer .form-control:focus,
+.drawer-body .form-control:focus {
+  border-color: #0F4C81;
+  background: #fff;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(15,76,129,.12);
+}

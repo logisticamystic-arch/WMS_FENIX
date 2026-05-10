@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    WMS Desktop — Módulo INVENTARIOS
    Sub-vistas: ciclico | general | cargue | dashboard | ajuste | stock | stock-ubi | vencimientos
    ============================================================ */
@@ -188,7 +188,7 @@ WMS_MODULES.inventario = {
         </select>
       </div>
       <div class="pro-table-wrap" style="max-height:520px;overflow-y:auto">
-        <table class="pro-table" id="stock-pro-table">
+        <table class="erp-table" id="stock-pro-table">
           <thead><tr>
             <th style="width:36px"></th>
             <th>EAN / Código</th>
@@ -233,8 +233,8 @@ WMS_MODULES.inventario = {
               </tr>
               <tr id="${detId}" style="display:none">
                 <td colspan="8" style="padding:0 24px 16px 48px;background:#f8faff">
-                  <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-top:8px">
-                    <table class="pro-table" style="font-size:.77rem">
+                  <div style="border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;margin-top:8px">
+                    <table class="erp-table" style="font-size:.77rem">
                       <thead><tr style="background:#f0f4ff">
                         <th>Ubicación</th><th style="text-align:center">Cantidad</th>
                         <th>Lote</th><th>F.Vencimiento</th>
@@ -481,7 +481,7 @@ WMS_MODULES.inventario = {
         <div class="card">
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-map-location"></i> Stock por Ubicación (${lista.length} ubicaciones)</span></div>
           <div class="table-container">
-            <table class="data-table" id="stock-ubi-table">
+            <table class="erp-table" id="stock-ubi-table">
               <thead><tr>
                  <th style="width:40px;text-align:center;"></th>
                  <th>Ubicación</th>
@@ -590,7 +590,7 @@ WMS_MODULES.inventario = {
           <span class="card-title"><i class="fa-solid fa-calendar-xmark"></i> Control de Vencimientos — ${d.total||0} registros</span>
         </div>
         <div class="table-container">
-          <table class="data-table" id="venc-table">
+          <table class="erp-table" id="venc-table">
             <thead>
               <tr>
                 <th>Referencia</th><th>Producto</th><th>Marca</th><th>Lote</th>
@@ -680,7 +680,7 @@ WMS_MODULES.inventario = {
           </div>` : ''}
         </div>
 
-        <div style="margin-top:16px;padding:12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+        <div style="margin-top:16px;padding:12px;background:#f8fafc;border-radius:4px;border:1px solid #e2e8f0;">
           <p style="font-weight:700;font-size:.85rem;color:#1e293b;margin-bottom:8px;">
             <i class="fa-solid fa-user-plus" style="color:#1a56db"></i>
             Asignaciones de conteo (puede agregar más después de iniciar)
@@ -1041,7 +1041,7 @@ WMS_MODULES.inventario = {
       const lineas = d.matriz_conteo || [];
       content.innerHTML = `
         <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center">
-          <div class="search-bar" style="flex:1;background:#fff;border:1px solid #e2e8f0;padding:4px 10px;border-radius:8px;"><i class="fa-solid fa-search"></i>
+          <div class="search-bar" style="flex:1;background:#fff;border:1px solid #e2e8f0;padding:4px 10px;border-radius:4px;"><i class="fa-solid fa-search"></i>
             <input placeholder="Filtrar por producto, ubicación, SKU..." oninput="WMS_MODULES.inventario._filterMat(this.value,'inv2-mat-table')" style="border:none;outline:none;margin-left:8px;font-size:.85rem;width:90%">
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
@@ -1052,7 +1052,7 @@ WMS_MODULES.inventario = {
           </div>
         </div>
         <div class="inv-mat-scroll">
-          <table class="data-table" id="inv2-mat-table">
+          <table class="erp-table" id="inv2-mat-table">
             <thead>
               <tr style="background:#f1f5f9">
                 <th>AUXILIAR</th>
@@ -1294,7 +1294,7 @@ WMS_MODULES.inventario = {
       content.innerHTML = `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:8px 0">
           ${enCurso ? `
-          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px">
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:16px">
             <h4 style="font-size:.85rem;font-weight:800;color:#1e40af;margin:0 0 8px">
               <i class="fa-solid fa-list-check"></i> Estado del conteo
             </h4>
@@ -1305,7 +1305,7 @@ WMS_MODULES.inventario = {
             <p style="font-size:.75rem;margin:4px 0 0;color:#1e40af">${d.kpis.pct_avance}% completado</p>
           </div>` : ''}
           ${pendiente ? `
-          <div style="background:#fff;border:1px solid #e2e8f0;border-left:5px solid #16a34a;border-radius:10px;padding:24px;grid-column:1/-1;box-shadow:0 10px 15px -3px rgba(0,0,0,.05)">
+          <div style="background:#fff;border:1px solid #e2e8f0;border-left:5px solid #16a34a;border-radius:4px;padding:24px;grid-column:1/-1;box-shadow:0 10px 15px -3px rgba(0,0,0,.05)">
             <h4 style="font-size:1.1rem;font-weight:900;color:#0f172a;margin:0 0 4px">
               <i class="fa-solid fa-shield-halved"></i> Proceso de Ajuste y Conciliación
             </h4>
@@ -1314,21 +1314,21 @@ WMS_MODULES.inventario = {
             </p>
             
             <div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap">
-              <div style="flex:1;background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;text-align:center;min-width:140px">
+              <div style="flex:1;background:#f8fafc;padding:16px;border-radius:4px;border:1px solid #e2e8f0;text-align:center;min-width:140px">
                  <div style="font-size:1.8rem;font-weight:900;color:#dc2626">${Math.abs(d.kpis.faltantes_unidades)}</div>
                  <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px">Faltantes (Uds)</div>
               </div>
-              <div style="flex:1;background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;text-align:center;min-width:140px">
+              <div style="flex:1;background:#f8fafc;padding:16px;border-radius:4px;border:1px solid #e2e8f0;text-align:center;min-width:140px">
                  <div style="font-size:1.8rem;font-weight:900;color:#16a34a">${d.kpis.sobrantes_unidades}</div>
                  <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px">Sobrantes (Uds)</div>
               </div>
-              <div style="flex:1;background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;text-align:center;min-width:140px">
+              <div style="flex:1;background:#f8fafc;padding:16px;border-radius:4px;border:1px solid #e2e8f0;text-align:center;min-width:140px">
                  <div style="font-size:1.8rem;font-weight:900;color:#f59e0b">${d.kpis.lineas_con_diferencia}</div>
                  <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px">Líneas Afectadas</div>
               </div>
             </div>
 
-            <div style="padding:12px 14px;background:#fffbeb;border:1px solid #fef3c7;border-radius:8px;margin-bottom:20px;">
+            <div style="padding:12px 14px;background:#fffbeb;border:1px solid #fef3c7;border-radius:4px;margin-bottom:20px;">
               <p style="margin:0;font-size:.75rem;color:#92400e;line-height:1.4">
                  <i class="fa-solid fa-triangle-exclamation"></i> <strong>Aviso Legal y Operativo:</strong> Al proceder con el ajuste masivo, el sistema aplicará automáticamente los movimientos de saldo a las cajas/unidades afectadas en todo el recinto. Esta acción es inmutable y registrará su firma electrónica.
               </p>
@@ -1341,7 +1341,7 @@ WMS_MODULES.inventario = {
             </div>
           </div>` : ''}
           ${['Ajustado', 'EnCurso', 'PendienteAjuste'].includes(sesion.estado) ? `
-          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-left:5px solid #16a34a;border-radius:10px;padding:24px;grid-column:1/-1;box-shadow:0 10px 15px -3px rgba(0,0,0,.05)">
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-left:5px solid #16a34a;border-radius:4px;padding:24px;grid-column:1/-1;box-shadow:0 10px 15px -3px rgba(0,0,0,.05)">
             <h4 style="font-size:1.1rem;font-weight:900;color:#166534;margin:0 0 4px">
               <i class="fa-solid fa-flag-checkered"></i> Concluir Operación
             </h4>
@@ -1356,7 +1356,7 @@ WMS_MODULES.inventario = {
               </button>
             </div>
           </div>` : ''}
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px">
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px">
             <h4 style="font-size:.85rem;font-weight:800;color:#1e293b;margin:0 0 8px">
               <i class="fa-solid fa-print"></i> Impresión
             </h4>
@@ -1364,7 +1364,7 @@ WMS_MODULES.inventario = {
               <i class="fa-solid fa-file-pdf"></i> Generar Informe del Conteo
             </button>
           </div>
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px">
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px">
             <h4 style="font-size:.85rem;font-weight:800;color:#1e293b;margin:0 0 8px">
               <i class="fa-solid fa-table-list"></i> Reporte de Ajustes
             </h4>
@@ -1401,28 +1401,28 @@ WMS_MODULES.inventario = {
     content.innerHTML = `
       <div style="margin-bottom:16px;">
         ${mlData.alerta ? `
-        <div style="background:#fff7ed;border:2px solid #fdba74;border-radius:10px;padding:16px;display:flex;gap:12px;align-items:flex-start;margin-bottom:16px;">
+        <div style="background:#fff7ed;border:2px solid #fdba74;border-radius:4px;padding:16px;display:flex;gap:12px;align-items:flex-start;margin-bottom:16px;">
           <i class="fa-solid fa-triangle-exclamation fa-2x" style="color:#ea580c;flex-shrink:0;margin-top:2px"></i>
           <div>
             <div style="font-weight:700;color:#9a3412;font-size:.9rem;margin-bottom:4px">ALERTA DE AUSENCIA FÍSICA</div>
             <div style="font-size:.83rem;color:#7c2d12;">${WMS.esc(mlData.alerta)}</div>
           </div>
         </div>` : `
-        <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:10px;padding:16px;display:flex;gap:12px;align-items:center;margin-bottom:16px;">
+        <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:4px;padding:16px;display:flex;gap:12px;align-items:center;margin-bottom:16px;">
           <i class="fa-solid fa-circle-check fa-2x" style="color:#16a34a;"></i>
           <div style="font-weight:700;color:#166534;font-size:.9rem;">Todas las referencias han sido contadas. ✓</div>
         </div>`}
 
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;text-align:center;">
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:12px;text-align:center;">
             <div style="font-size:1.6rem;font-weight:900;color:${refs.length > 0 ? '#dc2626' : '#10b981'}">${refs.length}</div>
             <div style="font-size:.72rem;color:#64748b;font-weight:600;text-transform:uppercase;">NO CONTADAS</div>
           </div>
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;text-align:center;">
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:12px;text-align:center;">
             <div style="font-size:1.6rem;font-weight:900;color:#dc2626;">${refs.filter(r => r.impacto === 'alto').length}</div>
             <div style="font-size:.72rem;color:#64748b;font-weight:600;text-transform:uppercase;">IMPACTO ALTO</div>
           </div>
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;text-align:center;">
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:12px;text-align:center;">
             <div style="font-size:1.6rem;font-weight:900;color:#2563eb;">${refs.reduce((s,r) => s + (r.cantidad_sistema||0), 0)}</div>
             <div style="font-size:.72rem;color:#64748b;font-weight:600;text-transform:uppercase;">UNIDADES EN RIESGO</div>
           </div>
@@ -1457,7 +1457,7 @@ WMS_MODULES.inventario = {
           </tbody>
         </table>
       </div>
-      <div style="margin-top:12px;padding:12px;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;font-size:.8rem;color:#92400e;">
+      <div style="margin-top:12px;padding:12px;background:#fef3c7;border:1px solid #fde68a;border-radius:4px;font-size:.8rem;color:#92400e;">
         <strong><i class="fa-solid fa-robot"></i> Acción automática al ajustar:</strong>
         Al ejecutar "Ajustar Todas las Diferencias", el sistema pondrá en 0 estas <strong>${refs.length}</strong> referencia(s)
         automáticamente (ausencia física confirmada por conteo completo de la ubicación).
@@ -1482,7 +1482,7 @@ WMS_MODULES.inventario = {
 
   _showConteoManualModal(id) {
     const html = `
-      <div style="background:#f8fafc;padding:12px;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:16px;">
+      <div style="background:#f8fafc;padding:12px;border-radius:4px;border:1px solid #e2e8f0;margin-bottom:16px;">
         <p style="font-size:.75rem;color:#64748b;margin:0">
           <i class="fa-solid fa-info-circle"></i> Registre productos o ubicaciones que no fueron contemplados originalmente en esta sesión.
         </p>
@@ -1525,7 +1525,7 @@ WMS_MODULES.inventario = {
         </div>
       </div>
 
-      <div id="m-conteo-prod-info" class="hidden" style="margin-bottom:16px;padding:12px;background:#f1f5f9;border-radius:8px;font-size:.78rem;border-left:4px solid #3b82f6;">
+      <div id="m-conteo-prod-info" class="hidden" style="margin-bottom:16px;padding:12px;background:#f1f5f9;border-radius:4px;font-size:.78rem;border-left:4px solid #3b82f6;">
          <div style="font-weight:700;color:#1e293b;" id="m-conteo-p-name"></div>
          <div id="m-conteo-p-stock" style="color:#64748b;margin-top:2px;font-family:monospace;"></div>
       </div>
@@ -1728,7 +1728,7 @@ WMS_MODULES.inventario = {
         <div style="text-align:center;padding:20px">
           <i class="fa-solid fa-circle-check fa-3x" style="color:#10b981;margin-bottom:16px"></i>
           <h3 style="font-weight:800;font-size:1.1rem;margin-bottom:12px">Stock actualizado correctamente</h3>
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;text-align:left;max-width:320px;margin:0 auto;">
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;text-align:left;max-width:320px;margin:0 auto;">
             <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0;">
               <span style="color:#64748b;font-size:.85rem;">Contado físicamente:</span>
               <strong style="color:#0f172a;">${WMS.formatNum(d.cantidad_contada ?? 0)}</strong>
@@ -1805,22 +1805,22 @@ WMS_MODULES.inventario = {
       WMS.showModal('Inventario Cerrado — Resumen de Ajustes', `
         <div style="padding:10px 0">
           <div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
-            <div style="flex:1;min-width:120px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;padding:14px;text-align:center;">
+            <div style="flex:1;min-width:120px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:4px;padding:14px;text-align:center;">
               <div style="font-size:1.8rem;font-weight:900;color:#059669;">${total}</div>
               <div style="font-size:.75rem;color:#065f46;font-weight:600;">AJUSTES TOTALES</div>
             </div>
-            <div style="flex:1;min-width:120px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:14px;text-align:center;">
+            <div style="flex:1;min-width:120px;background:#eff6ff;border:1px solid #93c5fd;border-radius:4px;padding:14px;text-align:center;">
               <div style="font-size:1.8rem;font-weight:900;color:#2563eb;">${nConteo}</div>
               <div style="font-size:.75rem;color:#1e40af;font-weight:600;">POR CONTEO</div>
             </div>
-            ${nML > 0 ? `<div style="flex:1;min-width:120px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:14px;text-align:center;">
+            ${nML > 0 ? `<div style="flex:1;min-width:120px;background:#fff7ed;border:1px solid #fdba74;border-radius:4px;padding:14px;text-align:center;">
               <div style="font-size:1.8rem;font-weight:900;color:#ea580c;">${nML}</div>
               <div style="font-size:.75rem;color:#9a3412;font-weight:600;">ML AUSENCIAS</div>
             </div>` : ''}
           </div>
           ${rowsConteo || rowsML ? `
-          <div style="max-height:300px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;">
-            <table class="data-table" style="font-size:.8rem;">
+          <div style="max-height:300px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:4px;">
+            <table class="erp-table" style="font-size:.8rem;">
               <thead><tr style="background:#f1f5f9;position:sticky;top:0;">
                 <th>Producto</th><th>Ubicación</th>
                 <th class="text-center">Nuevo Stock</th>
@@ -2173,7 +2173,7 @@ WMS_MODULES.inventario = {
           <span class="card-title"><i class="fa-solid fa-clipboard-check"></i> Gestión de Conteos (${sesiones.length})</span>
         </div>
         <div class="table-container">
-          <table class="data-table" id="sesiones-v2-table">
+          <table class="erp-table" id="sesiones-v2-table">
             <thead>
               <tr>
                 <th>ID</th>
@@ -2293,7 +2293,7 @@ WMS_MODULES.inventario = {
       <div class="card" style="max-width:700px;margin:0 auto;">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-upload"></i> Cargue de Saldo Inicial</span></div>
         <div class="card-body">
-          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-bottom:20px;">
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:16px;margin-bottom:20px;">
             <p style="font-weight:600;color:#1e40af;margin-bottom:8px;"><i class="fa-solid fa-info-circle"></i> Información importante</p>
             <ul style="color:#1e40af;font-size:.85rem;padding-left:18px;margin:0;">
               <li>Use esta función solo para la carga inicial de inventario</li>
@@ -2431,7 +2431,7 @@ WMS_MODULES.inventario = {
             <span class="card-title"><i class="fa-solid fa-arrow-down" style="color:#ef4444"></i> Bajo Nivel Mínimo (${bajos.length})</span>
           </div>
           <div class="table-container" style="max-height:260px;overflow-y:auto;">
-            <table class="data-table">
+            <table class="erp-table">
               <thead><tr><th>Producto</th><th class="text-center">Stock</th><th class="text-center">Mínimo</th><th class="text-center">Déficit</th></tr></thead>
               <tbody>${bajos.slice(0,8).map(n => `<tr>
                 <td style="font-size:.8rem">${WMS.esc(n.descripcion||n.producto||'-')}</td>
@@ -2484,7 +2484,7 @@ WMS_MODULES.inventario = {
           </div>
           <div class="card-body">
 
-            <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;">
+            <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:4px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;">
               <i class="fa-solid fa-triangle-exclamation" style="color:#92400e;font-size:1.1rem;"></i>
               <span style="font-size:.85rem;color:#92400e;font-weight:600;">
                 Cada corrección genera un movimiento en el Kardex y un registro <strong>inmutable</strong> en la tabla de ajustes.

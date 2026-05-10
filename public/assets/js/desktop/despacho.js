@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    WMS Desktop — Módulo DESPACHO & TMS
    Sub-vistas: certificacion | cargue | dashboard | tms
    ============================================================ */
@@ -74,7 +74,7 @@ WMS_MODULES.despacho = {
         <div class="card">
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-clipboard-check"></i> Planillas de Certificación (${items.length})</span></div>
           <div class="table-container">
-            <table class="data-table" id="cert-table">
+            <table class="erp-table" id="cert-table">
               <thead><tr><th>Planilla</th><th>Cliente</th><th>Ruta</th><th>Líneas</th><th>Estado</th><th>Certificador</th><th>Fecha</th><th>Acciones</th></tr></thead>
               <tbody>${items.map(p => `<tr data-estado-cert="${p.estado||''}">
                 <td><span class="badge badge-info">${WMS.esc(p.numero_planilla||p.planilla_numero||('#'+p.id))}</span></td>
@@ -146,8 +146,8 @@ WMS_MODULES.despacho = {
             </div>
           </div>
 
-          <div class="table-container" style="max-height:400px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:8px;">
-            <table class="data-table">
+          <div class="table-container" style="max-height:400px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:4px;">
+            <table class="erp-table">
               <thead style="position:sticky; top:0; background:#f8fafc; z-index:10;">
                 <tr>
                   <th>Producto / SKU</th>
@@ -284,7 +284,7 @@ WMS_MODULES.despacho = {
         <div class="card">
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-truck-loading"></i> Planillas de Cargue (${items.length})</span></div>
           <div class="table-container">
-            <table class="data-table" id="cargue-table">
+            <table class="erp-table" id="cargue-table">
               <thead><tr><th>N° Planilla</th><th>Placa</th><th>Conductor</th><th>Ruta</th><th>Planillas Cert.</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr></thead>
               <tbody>${items.map(d => `<tr>
                 <td><span class="badge badge-info">${WMS.esc(d.planilla_numero||d.numero||('#'+d.id))}</span></td>
@@ -348,7 +348,7 @@ WMS_MODULES.despacho = {
           <div><label class="form-label">Estado</label><p><span class="badge badge-info">${WMS.esc(d.estado||'')}</span></p></div>
         </div>
         <div class="table-container">
-          <table class="data-table">
+          <table class="erp-table">
             <thead><tr><th>Planilla</th><th>Cliente</th><th>Ruta</th><th>Estado</th></tr></thead>
             <tbody>${planillas.map(p => `<tr>
               <td>${WMS.esc(p.numero_planilla||('-'))}</td>
@@ -470,7 +470,7 @@ WMS_MODULES.despacho = {
         </select>
       </div>
       <div class="pro-table-wrap">
-        <table class="pro-table" id="cert-table">
+        <table class="erp-table" id="cert-table">
           <thead><tr>
             <th>Planilla / Documento</th>
             <th>Estado</th>
@@ -580,7 +580,7 @@ WMS_MODULES.despacho = {
             <span class="card-title"><i class="fa-solid fa-file-import"></i> Órdenes desde TMS (${ords.length})</span>
           </div>
           <div class="table-container">
-            <table class="data-table">
+            <table class="erp-table">
               <thead><tr><th>N° Orden</th><th>Cliente</th><th>Ruta</th><th>Fecha</th><th>Estado</th><th>Acciones</th></tr></thead>
               <tbody>${ords.slice(0,20).map(o => `<tr>
                 <td><span class="badge badge-info">${WMS.esc(o.numero||o.id||'-')}</span></td>
@@ -599,7 +599,7 @@ WMS_MODULES.despacho = {
             <span class="card-title"><i class="fa-solid fa-truck-fast"></i> Despachos Enviados al TMS (${desp.length})</span>
           </div>
           <div class="table-container">
-            <table class="data-table">
+            <table class="erp-table">
               <thead><tr><th>Planilla</th><th>Placa</th><th>Ruta</th><th>Estado TMS</th><th>Acciones</th></tr></thead>
               <tbody>${desp.slice(0,20).map(d => `<tr>
                 <td>${WMS.esc(d.planilla_numero||d.numero||('-'))}</td>
@@ -636,7 +636,7 @@ WMS_MODULES.despacho = {
           <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.crearApiKey()"><i class="fa-solid fa-plus"></i> Nueva Key</button>
         </div>
         <div class="table-container">
-          <table class="data-table">
+          <table class="erp-table">
             <thead><tr><th>Nombre</th><th>Key (parcial)</th><th>Permisos</th><th>Creada</th><th>Acciones</th></tr></thead>
             <tbody id="api-keys-tbody">${keys.map(k => `<tr>
               <td>${WMS.esc(k.nombre||'-')}</td>

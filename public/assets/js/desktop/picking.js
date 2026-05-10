@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    WMS Desktop — Módulo PICKING v2
    Sub-vistas: pedidos | asignacion | faltantes | dashboard | reporte
    Mejoras v2:
@@ -287,7 +287,7 @@ WMS_MODULES.picking = {
     </tr>
     <tr id="sub-plan-${WMS.esc(g.planilla)}" style="display:none;background:#f8fafc;">
       <td colspan="9" style="padding:0 8px 10px 42px;">
-        <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#fff;box-shadow:inset 0 2px 4px rgba(0,0,0,.02)">
+        <div style="border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;background:#fff;box-shadow:inset 0 2px 4px rgba(0,0,0,.02)">
           <table style="width:100%;border-collapse:collapse;font-size:11px;">
             <thead style="background:#f1f5f9;color:#64748b;font-weight:700;text-transform:uppercase;font-size:10px;">
               <tr>
@@ -351,7 +351,7 @@ WMS_MODULES.picking = {
             <span class="card-title"><i class="fa-solid fa-layer-group"></i> Planillas de Picking (${grupos.length})</span>
           </div>
           <div class="table-container">
-            <table class="data-table" id="pick-table">
+            <table class="erp-table" id="pick-table">
               <thead><tr>
                 <th>Planilla</th><th>Ruta</th>
                 <th style="text-align:center;">Líneas</th>
@@ -427,7 +427,7 @@ WMS_MODULES.picking = {
           ${p.observaciones ? `<div style="grid-column:1/-1;"><label class="form-label">Observaciones</label><p>${WMS.esc(p.observaciones)}</p></div>` : ''}
         </div>
         <div class="table-container">
-          <table class="data-table">
+          <table class="erp-table">
             <thead><tr>
               <th>Producto</th><th>Ubicación</th>
               <th style="text-align:center;">Pedido</th>
@@ -477,7 +477,7 @@ WMS_MODULES.picking = {
     window._assignPlanillaKey = planilla;
 
     WMS.showModal(`Asignar Planilla: ${planilla}`, `
-      <div style="margin-bottom:12px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:13px;color:#1e40af;">
+      <div style="margin-bottom:12px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;">
         <i class="fa-solid fa-layer-group"></i>
         <strong>${ordenIds.length}</strong> orden(es) en esta planilla serán asignadas.
       </div>
@@ -506,7 +506,7 @@ WMS_MODULES.picking = {
         </label>
       </div>
 
-      <div id="split-config" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-top:8px;">
+      <div id="split-config" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:14px;margin-top:8px;">
         <div style="font-size:13px;font-weight:700;color:#1e3a5f;margin-bottom:10px;"><i class="fa-solid fa-person-walking-arrow-right"></i> Configuración de División por Pasillo</div>
         <div id="split-rows">
           ${[1,2].map(i => `
@@ -531,7 +531,7 @@ WMS_MODULES.picking = {
 
       <div style="margin-top:12px; border-top:1px solid #e2e8f0; padding-top:12px;">
         <label class="form-label"><i class="fa-solid fa-tags"></i> Filtrar por Categoría (Opcional - Múltiples)</label>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; max-height:150px; overflow-y:auto; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; max-height:150px; overflow-y:auto; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px;">
            ${categorias.map(c => `
              <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin:0;">
                <input type="checkbox" class="asig-cat-check" value="${c.id}">
@@ -695,7 +695,7 @@ WMS_MODULES.picking = {
     } catch(e) { console.error('Error cargando rutas', e); }
 
     WMS.showModal(`Asignar Ruta — Planilla ${planilla}`, `
-      <div style="margin-bottom:12px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:13px;color:#1e40af;">
+      <div style="margin-bottom:12px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;">
         <i class="fa-solid fa-route" style="margin-right:6px;"></i>
         Asigne una ruta a las <strong>${ordenIds.length}</strong> orden(es) de esta planilla.
       </div>
@@ -768,7 +768,7 @@ WMS_MODULES.picking = {
     ];
 
     const camposGrid = CAMPOS_REQUERIDOS.map(c => `
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:${c.color}10;border:1px solid ${c.color}30;border-radius:8px;">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:${c.color}10;border:1px solid ${c.color}30;border-radius:4px;">
         <i class="fa-solid ${c.icon}" style="color:${c.color};font-size:14px;width:18px;text-align:center;"></i>
         <span style="font-size:12px;font-weight:600;color:#1e293b;">${c.label}</span>
       </div>
@@ -776,7 +776,7 @@ WMS_MODULES.picking = {
 
     WMS.showModal('Importar Pedidos para Picking', `
       <div style="margin-bottom:16px;">
-        <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:linear-gradient(135deg,#eff6ff,#f0f9ff);border:1px solid #bfdbfe;border-radius:10px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:linear-gradient(135deg,#eff6ff,#f0f9ff);border:1px solid #bfdbfe;border-radius:4px;margin-bottom:14px;">
           <i class="fa-solid fa-file-lines" style="font-size:22px;color:#3b82f6;"></i>
           <div>
             <div style="font-weight:700;color:#1e40af;font-size:14px;">Importación Masiva — Archivo Plano</div>
@@ -793,7 +793,7 @@ WMS_MODULES.picking = {
           </div>
         </div>
 
-        <div style="padding:10px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#92400e;margin-bottom:14px;">
+        <div style="padding:10px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;font-size:12px;color:#92400e;margin-bottom:14px;">
           <i class="fa-solid fa-lightbulb" style="margin-right:6px;color:#f59e0b;"></i>
           <strong>Nota:</strong> El archivo puede contener más columnas — el sistema solo extraerá los campos listados arriba.
           Los pedidos se agrupan por <strong>Numero Factura</strong> para crear las órdenes de picking.
@@ -804,7 +804,7 @@ WMS_MODULES.picking = {
             <i class="fa-solid fa-cloud-arrow-up" style="color:#3b82f6;margin-right:6px;"></i>Archivo CSV / TXT
             <span class="required">*</span>
           </label>
-          <div id="pick-dropzone" style="border:2px dashed #cbd5e1;border-radius:12px;padding:28px;text-align:center;cursor:pointer;transition:all .2s;
+          <div id="pick-dropzone" style="border:2px dashed #cbd5e1;border-radius:4px;padding:28px;text-align:center;cursor:pointer;transition:all .2s;
                background:#f8fafc;" onclick="document.getElementById('pick-csv-file').click()"
                ondragover="event.preventDefault();this.style.borderColor='#3b82f6';this.style.background='#eff6ff';"
                ondragleave="this.style.borderColor='#cbd5e1';this.style.background='#f8fafc';"
@@ -816,7 +816,7 @@ WMS_MODULES.picking = {
           <input type="file" id="pick-csv-file" style="display:none;" accept=".csv,.txt" onchange="WMS_MODULES.picking._onFileSelect()">
         </div>
 
-        <div id="pick-file-info" style="display:none;margin-top:10px;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+        <div id="pick-file-info" style="display:none;margin-top:10px;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;">
           <div style="display:flex;align-items:center;gap:8px;">
             <i class="fa-solid fa-file-csv" style="font-size:20px;color:#16a34a;"></i>
             <div style="flex:1;">
@@ -834,8 +834,8 @@ WMS_MODULES.picking = {
         <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">
           <i class="fa-solid fa-table" style="margin-right:6px;color:#0ea5e9;"></i>Vista Previa (primeras 5 filas)
         </div>
-        <div id="pick-preview-table" style="max-height:220px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;"></div>
-        <div id="pick-preview-summary" style="margin-top:10px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:12px;color:#1e40af;"></div>
+        <div id="pick-preview-table" style="max-height:220px;overflow:auto;border:1px solid #e2e8f0;border-radius:4px;"></div>
+        <div id="pick-preview-summary" style="margin-top:10px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:12px;color:#1e40af;"></div>
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
        <a href="/WMS_FENIX/public/api/picking/template?token=${encodeURIComponent(localStorage.getItem('wms_token'))}" target="_blank" class="btn btn-secondary" style="gap:6px;"><i class="fa-solid fa-download"></i> Plantilla</a>
@@ -940,7 +940,7 @@ WMS_MODULES.picking = {
           <span><i class="fa-solid fa-file-invoice" style="color:#6366f1;margin-right:4px;"></i><strong>${facturas.size}</strong> facturas únicas (= órdenes picking)</span>
           <span><i class="fa-solid fa-grip-lines" style="color:#94a3b8;margin-right:4px;"></i>Separador: <code>${sep === ';' ? 'punto y coma (;)' : 'coma (,)'}</code></span>
         </div>
-        ${mapped < 5 ? `<div style="margin-top:8px;padding:6px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;color:#dc2626;font-size:11px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Advertencia: Se detectaron pocos campos. Verifique que el archivo tenga los encabezados correctos.</div>` : ''}
+        ${mapped < 5 ? `<div style="margin-top:8px;padding:6px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Advertencia: Se detectaron pocos campos. Verifique que el archivo tenga los encabezados correctos.</div>` : ''}
       `;
 
       document.getElementById('pick-preview-section').style.display = 'block';
@@ -987,18 +987,18 @@ WMS_MODULES.picking = {
           html: `
             <div style="text-align:left;font-size:13px;">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
-                <div style="padding:10px;background:#f0fdf4;border-radius:8px;text-align:center;">
+                <div style="padding:10px;background:#f0fdf4;border-radius:4px;text-align:center;">
                   <div style="font-size:22px;font-weight:800;color:#16a34a;">${j.importadas || 0}</div>
                   <div style="font-size:11px;color:#4ade80;">Órdenes Creadas</div>
                 </div>
-                <div style="padding:10px;background:#eff6ff;border-radius:8px;text-align:center;">
+                <div style="padding:10px;background:#eff6ff;border-radius:4px;text-align:center;">
                   <div style="font-size:22px;font-weight:800;color:#2563eb;">${data.total_lineas || 0}</div>
                   <div style="font-size:11px;color:#60a5fa;">Líneas Procesadas</div>
                 </div>
               </div>
 
               <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:6px;text-transform:uppercase;">📊 Auditoría de Importación</div>
-              <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+              <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;">
                 <thead>
                   <tr style="background:#f1f5f9;">
                     <th style="padding:6px 10px;text-align:left;">Concepto</th>
@@ -1015,10 +1015,10 @@ WMS_MODULES.picking = {
                 </tbody>
               </table>
 
-              ${diff.lineas > 0 ? `<div style="margin-top:10px;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;color:#dc2626;font-size:11px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>${diff.lineas} línea(s)</strong> del archivo no se cargaron. Posibles causas: productos no encontrados en el catálogo.</div>` : `<div style="margin-top:10px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;color:#166534;font-size:11px;"><i class="fa-solid fa-check-circle" style="margin-right:4px;"></i>Todas las líneas fueron importadas correctamente.</div>`}
+              ${diff.lineas > 0 ? `<div style="margin-top:10px;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>${diff.lineas} línea(s)</strong> del archivo no se cargaron. Posibles causas: productos no encontrados en el catálogo.</div>` : `<div style="margin-top:10px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;color:#166534;font-size:11px;"><i class="fa-solid fa-check-circle" style="margin-right:4px;"></i>Todas las líneas fueron importadas correctamente.</div>`}
 
-              ${(data.errores||[]).length ? `<div style="margin-top:8px;padding:8px;background:#fef2f2;border-radius:6px;color:#dc2626;font-size:11px;"><strong>Errores (${data.errores.length}):</strong><br>${data.errores.slice(0,5).join('<br>')}</div>` : ''}
-              ${(data.productos_no_encontrados||0) > 0 ? `<div style="margin-top:8px;padding:8px;background:#fefce8;border-radius:6px;color:#92400e;font-size:11px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>${data.productos_no_encontrados} producto(s) no encontrado(s) en el catálogo</div>` : ''}
+              ${(data.errores||[]).length ? `<div style="margin-top:8px;padding:8px;background:#fef2f2;border-radius:4px;color:#dc2626;font-size:11px;"><strong>Errores (${data.errores.length}):</strong><br>${data.errores.slice(0,5).join('<br>')}</div>` : ''}
+              ${(data.productos_no_encontrados||0) > 0 ? `<div style="margin-top:8px;padding:8px;background:#fefce8;border-radius:4px;color:#92400e;font-size:11px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>${data.productos_no_encontrados} producto(s) no encontrado(s) en el catálogo</div>` : ''}
             </div>`,
           confirmButtonText: 'Aceptar',
           confirmButtonColor: '#3b82f6',
@@ -1096,7 +1096,7 @@ WMS_MODULES.picking = {
 
     <!-- Tabla de planillas -->
     <div style="overflow-y:auto;border-right:1px solid #e2e8f0">
-      <table class="pro-table" id="asig-table" style="border-radius:0">
+      <table class="erp-table" id="asig-table" style="border-radius:0">
         <thead style="position:sticky;top:0;z-index:10">
           <tr>
             <th style="width:36px;text-align:center">
@@ -1185,7 +1185,7 @@ WMS_MODULES.picking = {
       <div class="pro-section-title" style="margin-bottom:4px">
         <span style="margin-left:12px;font-size:.82rem"><i class="fa-solid fa-users" style="margin-right:6px;color:#0070f2"></i>Auxiliares Disponibles</span>
       </div>
-      <div style="margin-bottom:6px;background:#fff;padding:8px;border-radius:6px;border:1px solid #e2e8f0;">
+      <div style="margin-bottom:6px;background:#fff;padding:8px;border-radius:4px;border:1px solid #e2e8f0;">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.75rem;margin:0;font-weight:600;color:#1e3a5f;">
           <input type="checkbox" id="asig-sel-solo-alm" onchange="window._asigSelSoloAlm = this.checked">
           <span><i class="fa-solid fa-boxes-stacked" style="color:#0ea5e9;"></i> Separar Consolidado (Solo Almacen.)</span>
@@ -1289,7 +1289,7 @@ WMS_MODULES.picking = {
         </div>
       </div>
       <div class="pro-table-wrap" style="max-height:340px;overflow-y:auto">
-        <table class="pro-table">
+        <table class="erp-table">
           <thead><tr><th>#Ord</th><th>Código</th><th>Producto</th><th style="text-align:center">Cant.</th><th style="text-align:center">Pend.</th><th>Estado</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -1311,7 +1311,7 @@ WMS_MODULES.picking = {
     window._asigModalSoloAlm = false; // reset state
     WMS.showModal(`Asignar Planilla ${planilla}`, `
       <p style="font-size:.82rem;color:#6b7a99;margin-bottom:8px">Selecciona el auxiliar que ejecutará esta planilla:</p>
-      <div style="margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
+      <div style="margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:4px;border:1px solid #e2e8f0;">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.8rem;margin:0;font-weight:600;color:#1e3a5f;">
           <input type="checkbox" onchange="window._asigModalSoloAlm = this.checked">
           <span><i class="fa-solid fa-boxes-stacked" style="color:#0ea5e9;"></i> Separar Consolidado (Solo Almacen.)</span>
@@ -1433,7 +1433,7 @@ WMS_MODULES.picking = {
                 ${f.showAll ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:false})"><i class="fa-solid fa-compress"></i> Mostrar 10</button>` : ''}
               </div>
               <div class="table-container">
-                <table class="data-table">
+                <table class="erp-table">
                   <thead><tr>
                     <th>Fecha</th><th>Planilla</th><th>Auxiliar</th>
                     <th>Producto</th><th style="text-align:center;">Solicitado</th>
@@ -1462,7 +1462,7 @@ WMS_MODULES.picking = {
             <div class="card">
               <div class="card-header"><span class="card-title"><i class="fa-solid fa-rotate" style="color:#3b82f6;"></i> Reabastecimientos (${rea.length})</span></div>
               <div class="table-container">
-                <table class="data-table">
+                <table class="erp-table">
                   <thead><tr><th>Producto</th><th>Desde</th><th>Hacia</th><th>Cant.</th><th>Estado</th><th></th></tr></thead>
                   <tbody>${rea.map(t => `<tr>
                     <td style="font-size:.8rem;font-weight:600;">${WMS.esc(t.producto||'-')}</td>
@@ -1578,7 +1578,7 @@ WMS_MODULES.picking = {
 
       WMS.setContent(`
 <div class="pro-dashboard">
-  <div class="filter-bar dashboard-filters" style="background:#fff;padding:16px;border-radius:12px;margin-bottom:20px;box-shadow:0 4px 20px rgba(0,0,0,.04);display:flex;flex-wrap:wrap;gap:18px;align-items:center;border:1px solid #f1f5f9;">
+  <div class="filter-bar dashboard-filters" style="background:#fff;padding:16px;border-radius:4px;margin-bottom:20px;box-shadow:0 4px 20px rgba(0,0,0,.04);display:flex;flex-wrap:wrap;gap:18px;align-items:center;border:1px solid #f1f5f9;">
     <div class="filter-group"><label>PERIODO</label>
       <div style="display:flex;gap:5px;">
         <input type="date" id="dash-f-ini" class="form-control" style="width:130px;" value="${f_inicio}" onchange="WMS_MODULES.picking.show_dashboard(true)">
@@ -1644,7 +1644,7 @@ WMS_MODULES.picking = {
     <div class="card" style="border:1px solid #fee2e2;">
       <div class="card-header" style="background:#fef2f2;border-bottom:1px solid #fecaca;"><span class="card-title text-danger"><i class="fa-solid fa-triangle-exclamation"></i> Alerta de Faltantes Críticos</span></div>
       <div class="table-container" style="max-height:300px;">
-        <table class="data-table" style="font-size:11px;">
+        <table class="erp-table" style="font-size:11px;">
           <thead style="background:#fff;"><tr><th>Producto</th><th class="text-center">Solic.</th><th class="text-center">H.Ini</th><th class="text-center">Planilla</th></tr></thead>
           <tbody>${(d.alertas_faltantes||[]).length ? d.alertas_faltantes.map(f => `<tr>
             <td><b style="color:#1e293b">${WMS.esc(f.producto)}</b><br><span style="color:#94a3b8">${WMS.esc(f.ean)}</span></td>
@@ -1663,7 +1663,7 @@ WMS_MODULES.picking = {
         <span style="font-size:11px; color:#94a3b8; font-weight:600;">UNIDADES · LÍNEAS · PEDIDOS</span>
       </div>
       <div class="table-container" style="max-height:300px;">
-        <table class="data-table">
+        <table class="erp-table">
           <thead><tr><th>#</th><th>Auxiliar</th><th class="text-center">Pedidos</th><th class="text-center">Líneas</th><th class="text-center">Unid. Pick</th><th style="width:100px;">Desempeño</th></tr></thead>
           <tbody>${(d.ranking_auxiliares||[]).length ? d.ranking_auxiliares.map((a,i) => {
             const maxL = d.ranking_auxiliares[0].lineas || 1;
@@ -1689,7 +1689,7 @@ WMS_MODULES.picking = {
   <div class="card">
     <div class="card-header"><span class="card-title"><i class="fa-solid fa-list-check"></i> Proceso por Planilla y Tiempos Operacionales</span></div>
     <div class="table-container">
-      <table class="data-table" id="dash-table">
+      <table class="erp-table" id="dash-table">
         <thead><tr>
           <th>Planilla</th><th>Ruta</th><th class="text-center">Avance Líneas</th><th style="min-width:130px;">Progreso</th>
           <th>Estado</th><th>Encargado(s)</th><th class="text-center">H. Inicio</th><th class="text-center">T. Demora</th><th class="text-right">Obs</th>

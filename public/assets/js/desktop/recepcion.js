@@ -178,40 +178,6 @@ WMS_MODULES.recepcion = {
       };
       
       WMS.setContent(`
-        <style>
-          /* ADN Visual ERP - Square & Professional */
-          .erp-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-          .erp-table { width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif; }
-          .erp-table th { background: #f8f9fa; color: #475569; font-weight: 600; padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: left; }
-          .erp-table td { padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: middle; transition: background 0.2s; }
-          .erp-table tr.main-row:hover { background: #f1f5f9; cursor: pointer; }
-          
-          /* Master-Detail Layout */
-          .md-container { display: flex; position: relative; height: calc(100vh - 160px); overflow: hidden; background: #f8f9fa; }
-          .md-master { flex: 1; overflow-y: auto; transition: margin-right 0.3s ease; padding-right: 12px; }
-          
-          /* Side Panel (Drawer) */
-          .md-drawer { 
-            position: absolute; right: -40%; top: 0; bottom: 0; width: 40%; background: #fff; 
-            border-left: 1px solid #cbd5e1; box-shadow: -4px 0 15px rgba(0,0,0,0.05); 
-            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; 
-            display: flex; flex-direction: column; 
-          }
-          .md-drawer.open { right: 0; }
-          @media (max-width: 768px) { .md-drawer { width: 100%; right: -100%; } .md-drawer.open { right: 0; } }
-          
-          .drawer-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; }
-          .drawer-title { font-size: 1.1rem; font-weight: 600; color: #0f172a; margin: 0; }
-          .drawer-close { background: transparent; border: none; font-size: 1.2rem; color: #64748b; cursor: pointer; }
-          .drawer-close:hover { color: #ef4444; }
-          .drawer-body { padding: 20px; flex: 1; overflow-y: auto; }
-          .drawer-footer { padding: 16px 20px; border-top: 1px solid #e2e8f0; background: #f8f9fa; display: flex; gap: 12px; justify-content: flex-end; }
-          
-          /* Inputs outline */
-          .md-drawer .form-control { border-radius: 4px; border: 1px solid #cbd5e1; background: #f8fafc; transition: all 0.2s; }
-          .md-drawer .form-control:focus { border-color: #3b82f6; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
-        </style>
-
         <div class="md-container">
           <!-- Master View -->
           <div class="md-master">
@@ -948,7 +914,7 @@ WMS_MODULES.recepcion = {
           </div>
           <div style="display:flex; flex-direction:column; gap:8px; max-height:450px; overflow-y:auto; padding-right:8px;" id="aux-list-container">
             ${per.map(p => `
-              <label style="display:flex; align-items:center; gap:12px; padding:12px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.background='#eff6ff'; this.style.borderColor='#bfdbfe';" onmouseout="this.style.background='#f8fafc'; this.style.borderColor='#e2e8f0';">
+              <label style="display:flex; align-items:center; gap:12px; padding:12px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.background='#eff6ff'; this.style.borderColor='#bfdbfe';" onmouseout="this.style.background='#f8fafc'; this.style.borderColor='#e2e8f0';">
                 <input type="checkbox" name="aux-assign" value="${p.id}" ${auxActuales.has(p.id) ? 'checked' : ''} style="width:18px; height:18px; cursor:pointer;">
                 <div style="display:flex; flex-direction:column;">
                   <span style="font-weight:700; color:#1e3a5f; font-size:0.9rem;">${WMS.esc(p.nombre)}</span>
@@ -1015,7 +981,7 @@ WMS_MODULES.recepcion = {
       WMS.setContent(`
         <div style="padding:20px;overflow:auto;height:calc(100vh - 120px);">
           <!-- Filtros -->
-          <div style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e2e8f0;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+          <div style="background:#fff;border-radius:4px;padding:16px;border:1px solid #e2e8f0;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.06);">
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
               <div>
                 <label style="font-size:12px;font-weight:700;color:#1e3a5f;display:block;margin-bottom:6px;">N° ODC</label>
@@ -1037,9 +1003,9 @@ WMS_MODULES.recepcion = {
           </div>
 
           <!-- Tabla -->
-          <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+          <div style="background:#fff;border-radius:4px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);">
             <div style="overflow-x:auto;">
-              <table class="data-table" id="informe-table" style="width:100%;border-collapse:collapse;">
+              <table class="erp-table" id="informe-table" style="width:100%;border-collapse:collapse;">
                 <thead style="background:#f8fafc;position:sticky;top:0;z-index:10;">
                   <tr>
                     <th style="padding:12px;text-align:left;color:#64748b;font-weight:700;border-bottom:2px solid #e2e8f0;">N° Recepción</th>
@@ -1138,7 +1104,7 @@ WMS_MODULES.recepcion = {
               <div class="text-xs text-muted">Auto-refresh cada 30s</div>
             </div>
             <div class="table-container">
-              <table class="data-table">
+              <table class="erp-table">
                 <thead><tr><th>ID</th><th>N° Recepción</th><th>ODC Vinc.</th><th>Estado</th><th>F. Inicio</th><th>F. Fin</th><th>Auxiliar</th><th>Acciones</th></tr></thead>
                 <tbody>${items.map(rc=>`<tr>
                   <td>${rc.id}</td>
@@ -1213,7 +1179,7 @@ WMS_MODULES.recepcion = {
             <div style="display:grid;grid-template-columns:350px 1fr;gap:20px;padding:20px;height:calc(100vh - 120px);overflow:hidden;">
                 
                 <!-- Panel de Captura Manual (Desktop) -->
-                <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 4px 6px -1px rgba(0,0,0,.05);overflow-y:auto;">
+                <div style="background:#fff;border-radius:4px;border:1px solid #e2e8f0;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 4px 6px -1px rgba(0,0,0,.05);overflow-y:auto;">
                     <div style="font-weight:900;font-size:16px;color:#1e3a5f;border-bottom:2px solid #e2e8f0;padding-bottom:10px;margin-bottom:10px;"><i class="fa-solid fa-barcode"></i> Capturar Producto</div>
                     
                     <div class="form-group">
@@ -1229,7 +1195,7 @@ WMS_MODULES.recepcion = {
                         <input type="number" id="op-cant" class="form-control" value="1" min="1"
                                oninput="WMS_MODULES.recepcion._actualizarPreviewUnidades()">
                         <!-- Preview de conversión cajas → unidades -->
-                        <div id="op-conv-preview" style="display:none;margin-top:6px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:13px;color:#1e40af;font-weight:600;">
+                        <div id="op-conv-preview" style="display:none;margin-top:6px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;font-weight:600;">
                             <i class="fa-solid fa-calculator"></i>
                             <span id="op-conv-text">1 caja × 1 = 1 unidad</span>
                         </div>
@@ -1252,7 +1218,7 @@ WMS_MODULES.recepcion = {
                 </div>
 
                 <!-- Panel Resumen de la ODC -->
-                <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;display:flex;flex-direction:column;box-shadow:0 4px 6px -1px rgba(0,0,0,.05);overflow:hidden;">
+                <div style="background:#fff;border-radius:4px;border:1px solid #e2e8f0;display:flex;flex-direction:column;box-shadow:0 4px 6px -1px rgba(0,0,0,.05);overflow:hidden;">
                     <div style="background:#f8fafc;padding:16px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
                         <h3 style="margin:0;font-size:16px;color:#1e3a5f;"><i class="fa-solid fa-clipboard-list"></i> Resumen ODC: ${odc.numero_odc}</h3>
                         <div style="display:flex;gap:8px;align-items:center;">
@@ -1449,8 +1415,8 @@ WMS_MODULES.recepcion = {
               {icon:'fa-truck-ramp-box', val:enPatio,                  lab:'En Patio / Descargue', color:'#7c3aed', bg:'#f5f3ff'},
               {icon:'fa-circle-check',   val:completadas,               lab:'Completadas',       color:'#059669', bg:'#f0fdf4'},
             ].map(k=>`
-              <div style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);display:flex;align-items:center;gap:12px;">
-                <div style="width:44px;height:44px;border-radius:10px;background:${k.bg};display:flex;align-items:center;justify-content:center;color:${k.color};font-size:20px;"><i class="fa-solid ${k.icon}"></i></div>
+              <div style="background:#fff;border-radius:4px;padding:16px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);display:flex;align-items:center;gap:12px;">
+                <div style="width:44px;height:44px;border-radius:4px;background:${k.bg};display:flex;align-items:center;justify-content:center;color:${k.color};font-size:20px;"><i class="fa-solid ${k.icon}"></i></div>
                 <div><div style="font-size:24px;font-weight:900;color:#1e3a5f;">${k.val}</div><div style="font-size:11px;font-weight:600;color:#64748b;">${k.lab}</div></div>
               </div>`).join('')}
           </div>
@@ -1465,8 +1431,8 @@ WMS_MODULES.recepcion = {
                 (esHoy ? '🟢 HOY — ' + d.toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})
                        : d.toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'}));
               return `
-              <div style="background:#fff;border-radius:12px;border:1px solid ${esHoy?'#2563eb':'#e2e8f0'};box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:16px;">
-                <div style="padding:12px 20px;border-bottom:1px solid ${esHoy?'#dbeafe':'#f1f5f9'};background:${esHoy?'#eff6ff':'#f8fafc'};border-radius:12px 12px 0 0;">
+              <div style="background:#fff;border-radius:4px;border:1px solid ${esHoy?'#2563eb':'#e2e8f0'};box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:16px;">
+                <div style="padding:12px 20px;border-bottom:1px solid ${esHoy?'#dbeafe':'#f1f5f9'};background:${esHoy?'#eff6ff':'#f8fafc'};border-radius:4px 4px 0 0;">
                   <span style="font-weight:800;color:${esHoy?'#2563eb':'#1e3a5f'};font-size:13px;">${label}</span>
                   <span style="margin-left:10px;font-size:11px;color:#64748b;">${byFecha[fecha].length} cita(s)</span>
                 </div>
@@ -1525,7 +1491,7 @@ WMS_MODULES.recepcion = {
     let startOffset = firstDay === 0 ? 6 : firstDay - 1;
 
     let html = `
-      <div class="card shadow-soft" style="padding:0; overflow:hidden; border:1px solid #e2e8f0; border-radius:12px;">
+      <div class="card shadow-soft" style="padding:0; overflow:hidden; border:1px solid #e2e8f0; border-radius:4px;">
         <div style="display:grid; grid-template-columns:repeat(7, 1fr); background:#f8fafc; border-bottom:1px solid #e2e8f0; grid-auto-rows: 40px;">
           ${['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'].map(d=>`<div style="display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:#64748b; text-transform:uppercase;">${d}</div>`).join('')}
         </div>
@@ -1553,7 +1519,7 @@ WMS_MODULES.recepcion = {
                const stColor = { Programada:'#2563eb', EnPatio:'#d97706', EnCurso:'#7c3aed', Completada:'#059669', Cancelada:'#dc2626' };
                const stBg    = { Programada:'#eff6ff', EnPatio:'#fffbeb', EnCurso:'#f5f3ff', Completada:'#f0fdf4', Cancelada:'#fef2f2' };
                return `
-               <div onclick="WMS_MODULES.recepcion.verDetalleCita(${c.id})" style="cursor:pointer; background:${stBg[c.estado]||'#fff'}; border-left:3px solid ${stColor[c.estado]||'#64748b'}; padding:4px 8px; border-radius:6px; font-size:10px; box-shadow:0 1px 2px rgba(0,0,0,0.03); transition:all 0.2s;" class="yms-cal-item" title="${WMS.esc(c.proveedor)}">
+               <div onclick="WMS_MODULES.recepcion.verDetalleCita(${c.id})" style="cursor:pointer; background:${stBg[c.estado]||'#fff'}; border-left:3px solid ${stColor[c.estado]||'#64748b'}; padding:4px 8px; border-radius:4px; font-size:10px; box-shadow:0 1px 2px rgba(0,0,0,0.03); transition:all 0.2s;" class="yms-cal-item" title="${WMS.esc(c.proveedor)}">
                  <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
                     <strong style="color:#1e3a5f;">${(c.hora_programada||'').substring(0,5)}</strong>
                     <span style="font-size:9px; color:${stColor[c.estado]}; font-weight:700;">${c.estado === 'EnPatio' ? 'PATIO' : c.estado === 'EnCurso' ? 'DESC' : ''}</span>
@@ -1880,7 +1846,7 @@ WMS_MODULES.recepcion = {
         <div class="inv-commander-root animate-fade-in" style="padding:20px; background:#f8fafc; min-height:calc(100vh - 120px); overflow:auto;">
           
           <!-- Dashboard Filters -->
-          <div style="background:#fff; border-radius:16px; padding:20px; border:1px solid #e2e8f0; margin-bottom:24px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+          <div style="background:#fff; border-radius:4px; padding:20px; border:1px solid #e2e8f0; margin-bottom:24px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
               <div style="font-weight:900; color:#0f172a; margin-bottom:16px; display:flex; align-items:center; gap:10px; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;">
                   <i class="fa-solid fa-sliders" style="color:var(--cmd-blue);"></i> Control de Filtros
               </div>
@@ -1945,25 +1911,25 @@ WMS_MODULES.recepcion = {
           </div>
 
           <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(350px, 1fr)); gap:20px; margin-bottom:24px;">
-            <div style="background:#fff; border-radius:16px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
+            <div style="background:#fff; border-radius:4px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
               <div style="font-weight:900; color:#0f172a; margin-bottom:20px; display:flex; align-items:center; gap:10px; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;">
                   <i class="fa-solid fa-chart-pie" style="color:#7c3aed;"></i> Distribución por Categoría
               </div>
               <canvas id="categoryReceivedChart" style="max-height:280px;"></canvas>
             </div>
-            <div style="background:#fff; border-radius:16px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
+            <div style="background:#fff; border-radius:4px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
               <div style="font-weight:900; color:#0f172a; margin-bottom:20px; display:flex; align-items:center; gap:10px; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;">
                   <i class="fa-solid fa-chart-line" style="color:var(--cmd-green);"></i> Tendencia de Recepción (7d)
               </div>
               <canvas id="recepcionTrendChart" style="max-height:280px;"></canvas>
             </div>
-            <div style="background:#fff; border-radius:16px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
+            <div style="background:#fff; border-radius:4px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05); min-height:350px;">
               <div style="font-weight:900; color:#0f172a; margin-bottom:20px; display:flex; align-items:center; gap:10px; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;">
                   <i class="fa-solid fa-trophy" style="color:#f59e0b;"></i> Líderes de Recepción
               </div>
               <div style="display:flex; flex-direction:column; gap:12px;">
                 ${ranking.slice(0, 5).map((aux, idx) => `
-                  <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:#f8fafc; border-radius:12px; border-left:4px solid ${idx===0?'#f59e0b':'#e2e8f0'};">
+                  <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:#f8fafc; border-radius:4px; border-left:4px solid ${idx===0?'#f59e0b':'#e2e8f0'};">
                     <div style="display:flex; align-items:center; gap:10px;">
                       <span style="font-weight:900; color:#64748b; font-size:0.8rem;">#${idx+1}</span>
                       <div style="font-weight:800; color:#0f172a; font-size:0.9rem;">${WMS.esc(aux.nombre)}</div>
@@ -1974,7 +1940,7 @@ WMS_MODULES.recepcion = {
             </div>
           </div>
 
-          <div style="background:#fff; border-radius:16px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+          <div style="background:#fff; border-radius:4px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid #f1f5f9;">
               <div style="font-weight:900; color:#0f172a; display:flex; align-items:center; gap:10px; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;">
                   <i class="fa-solid fa-list-check" style="color:#7c3aed;"></i> Monitoreo de Órdenes (ODC)
@@ -2035,7 +2001,7 @@ WMS_MODULES.recepcion = {
             ` : `<div class="p-20 text-center text-muted">Panel restringido al Administrador</div>`}
           </div>
 
-          <div style="background:#fff;border-radius:12px;padding:20px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+          <div style="background:#fff;border-radius:4px;padding:20px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #e2e8f0;">
               <div style="font-weight:800;color:#1e3a5f;"><i class="fa-solid fa-magnifying-glass-chart" style="color:#059669;margin-right:6px;"></i>Análisis por ODC — Tiempos y Faltantes por Línea</div>
               <select id="dash-odc-f" class="form-control" style="max-width:370px;" onchange="WMS_MODULES.recepcion.renderAnalyticsDetail(this.value)">
@@ -2188,13 +2154,13 @@ WMS_MODULES.recepcion = {
             {icon:'fa-boxes-stacked',    val:totalRec.toLocaleString(),           lab:'Total Recibido',        color:'#7c3aed', bg:'#f5f3ff'},
             {icon:'fa-ban',              val:totalFalt.toLocaleString(),          lab:'Total Faltante',        color:'#d97706', bg:'#fffbeb'},
           ].map(k=>`
-            <div style="background:#f8fafc;border-radius:10px;padding:14px;border:1px solid #e2e8f0;display:flex;align-items:center;gap:10px;">
-              <div style="width:38px;height:38px;border-radius:8px;background:${k.bg};display:flex;align-items:center;justify-content:center;color:${k.color};font-size:16px;"><i class="fa-solid ${k.icon}"></i></div>
+            <div style="background:#f8fafc;border-radius:4px;padding:14px;border:1px solid #e2e8f0;display:flex;align-items:center;gap:10px;">
+              <div style="width:38px;height:38px;border-radius:4px;background:${k.bg};display:flex;align-items:center;justify-content:center;color:${k.color};font-size:16px;"><i class="fa-solid ${k.icon}"></i></div>
               <div><div style="font-size:20px;font-weight:900;color:#1e3a5f;">${k.val}</div><div style="font-size:10px;font-weight:600;color:#64748b;">${k.lab}</div></div>
             </div>`).join('')}
         </div>
         <!-- Barra progreso global -->
-        <div style="margin-bottom:18px;padding:14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+        <div style="margin-bottom:18px;padding:14px;background:#f8fafc;border-radius:4px;border:1px solid #e2e8f0;">
           <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
             <span style="font-weight:700;color:#1e3a5f;font-size:13px;">Avance Global de Recepción</span>
             <span style="font-weight:900;color:${pctGlobal>=100?'#059669':'#2563eb'};font-size:16px;">${pctGlobal}%</span>
@@ -2274,14 +2240,14 @@ WMS_MODULES.recepcion = {
               {icon:'fa-clock-rotate-left', val:items.filter(d=>d.tipo==='AProveedorVencido').length, lab:'Por Vencimiento',     color:'#7c3aed', bg:'#f5f3ff'},
               {icon:'fa-arrow-rotate-right',val:items.filter(d=>d.tipo==='ReingresoBuenEstado').length,lab:'Reingreso',          color:'#059669', bg:'#f0fdf4'},
             ].map(k=>`
-              <div style="background:#fff;border-radius:12px;padding:16px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);display:flex;align-items:center;gap:12px;">
-                <div style="width:44px;height:44px;border-radius:10px;background:${k.bg};display:flex;align-items:center;justify-content:center;color:${k.color};font-size:20px;"><i class="fa-solid ${k.icon}"></i></div>
+              <div style="background:#fff;border-radius:4px;padding:16px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);display:flex;align-items:center;gap:12px;">
+                <div style="width:44px;height:44px;border-radius:4px;background:${k.bg};display:flex;align-items:center;justify-content:center;color:${k.color};font-size:20px;"><i class="fa-solid ${k.icon}"></i></div>
                 <div><div style="font-size:24px;font-weight:900;color:#1e3a5f;">${k.val}</div><div style="font-size:11px;font-weight:600;color:#64748b;">${k.lab}</div></div>
               </div>`).join('')}
           </div>
 
           <!-- Tabla de devoluciones -->
-          <div style="background:#fff;border-radius:12px;padding:20px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+          <div style="background:#fff;border-radius:4px;padding:20px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);">
             <div style="font-weight:800;color:#1e3a5f;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #e2e8f0;">
               <i class="fa-solid fa-list" style="color:#dc2626;margin-right:6px;"></i>Historial de Devoluciones a Proveedor
             </div>
@@ -2348,7 +2314,7 @@ WMS_MODULES.recepcion = {
           <div><label class="form-label">Observaciones</label><p style="font-size:12px;">${WMS.esc(dev.observaciones||'-')}</p></div>
         </div>
         <div class="table-container" style="max-height:320px;overflow-y:auto;">
-          <table class="data-table">
+          <table class="erp-table">
             <thead><tr><th>Producto</th><th style="text-align:center;">Cant. Devuelta</th><th>Motivo</th></tr></thead>
             <tbody>
               ${detalles.length ? detalles.map(d => `<tr>
@@ -2380,7 +2346,7 @@ WMS_MODULES.recepcion = {
         <div style="padding:16px;">
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;">
             ${fotos.map((f,i) => `
-              <div style="border-radius:8px;overflow:hidden;border:2px solid #e2e8f0;">
+              <div style="border-radius:4px;overflow:hidden;border:2px solid #e2e8f0;">
                 <img src="/WMS_FENIX/public/${f}" style="width:100%;height:150px;object-fit:cover;cursor:pointer;" onclick="window.open(this.src,'_blank')" onerror="this.src='data:image/svg+xml,<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; width=&quot;150&quot; height=&quot;150&quot;><rect fill=&quot;%23f1f5f9&quot; width=&quot;150&quot; height=&quot;150&quot;/><text x=&quot;50%&quot; y=&quot;50%&quot; text-anchor=&quot;middle&quot; dy=&quot;.3em&quot; fill=&quot;%2394a3b8&quot;>Foto ${i+1}</text></svg>'" alt="Foto ${i+1}">
                 <div style="padding:4px 8px;font-size:10px;color:#64748b;font-weight:600;">Foto ${i+1}</div>
               </div>`).join('')}
@@ -2454,9 +2420,9 @@ WMS_MODULES.recepcion = {
 
       WMS.setContent(`
         <div style="padding:20px;overflow:auto;height:calc(100vh - 120px);">
-          <div style="background:#fff;border-radius:12px;padding:24px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);max-width:960px;margin:0 auto;">
+          <div style="background:#fff;border-radius:4px;padding:24px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);max-width:960px;margin:0 auto;">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #fecaca;">
-              <div style="width:44px;height:44px;border-radius:10px;background:#fef2f2;display:flex;align-items:center;justify-content:center;color:#dc2626;font-size:20px;"><i class="fa-solid fa-rotate-left"></i></div>
+              <div style="width:44px;height:44px;border-radius:4px;background:#fef2f2;display:flex;align-items:center;justify-content:center;color:#dc2626;font-size:20px;"><i class="fa-solid fa-rotate-left"></i></div>
               <div><h2 style="margin:0;font-size:18px;font-weight:800;color:#1e3a5f;">Nueva Devolución a Proveedor</h2><p style="margin:0;font-size:12px;color:#64748b;">Vincula la devolución con la ODC que se estaba recibiendo</p></div>
             </div>
 
@@ -2492,7 +2458,7 @@ WMS_MODULES.recepcion = {
               <span style="font-weight:800;color:#1e3a5f;font-size:14px;"><i class="fa-solid fa-list" style="color:#dc2626;margin-right:6px;"></i>Productos a Devolver</span>
               <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.recepcion._addDevLine()"><i class="fa-solid fa-plus"></i> Agregar Línea</button>
             </div>
-            <div id="dev-lines" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:20px;">
+            <div id="dev-lines" style="border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;margin-bottom:20px;">
               <table style="width:100%;border-collapse:collapse;font-size:12px;">
                 <thead><tr style="background:#fef2f2;">
                   <th style="padding:8px 10px;text-align:left;color:#64748b;font-weight:700;">Producto</th>
