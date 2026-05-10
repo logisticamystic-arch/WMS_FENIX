@@ -29,7 +29,7 @@ Profesionalizar el módulo de Picking del WMS Fénix con asignación multi-auxil
 
 ## Sección 1 — Modelo de Datos
 
-### Migración nueva: `030_picking_profesional.php`
+### Migración nueva: `065_picking_profesional.php`
 
 ```sql
 -- Campo destino de entrega (viene del CSV)
@@ -222,6 +222,8 @@ Una línea (`picking_detalles`) con `auxiliar_id IS NOT NULL` es inmutable hasta
 }
 ```
 
+**Líneas de ambiente sin auxiliar configurado** (ej. Congelado: null): permanecen con `auxiliar_id = NULL` y `estado = 'Pendiente'`. Quedan visibles en el submodulo de asignación para ser asignadas en un paso posterior. El campo `ambiente` sí se actualiza para facilitar el filtro.
+
 ### Otros cambios backend
 
 **`listar()`** — parámetros nuevos:
@@ -276,7 +278,7 @@ GET /picking/reporte?fecha_desde=&fecha_hasta=&ruta=&sucursal_entrega=
 | Duración (min) | diferencia calculada |
 
 **Nombre de archivo:** `Picking_Reporte_YYYY-MM-DD.xlsx`  
-**Librería:** SheetJS (ya disponible en el proyecto)
+**Librería:** SheetJS — cargado dinámicamente desde CDN (`https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js`) solo cuando el usuario hace clic en "Exportar Excel". No requiere instalación.
 
 ---
 
@@ -286,7 +288,7 @@ GET /picking/reporte?fecha_desde=&fecha_hasta=&ruta=&sucursal_entrega=
 |---|---|
 | `public/assets/js/desktop/picking.js` | Rediseño completo de 3 submodulos |
 | `src/Controllers/PickingController.php` | Nuevo método + extensiones existentes |
-| `database/migrations/030_picking_profesional.php` | Migración nueva |
+| `database/migrations/065_picking_profesional.php` | Migración nueva |
 | `src/routes/api.php` | Registro de nueva ruta POST `/picking/asignar-ambiente` |
 
 ---
