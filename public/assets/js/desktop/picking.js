@@ -412,6 +412,11 @@ WMS_MODULES.picking = {
       <div class="card animate-fade-in">
         <div class="card-header">
           <h5 class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Pedidos de Picking</h5>
+          <div class="card-actions">
+            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.picking.importarPedidos()">
+              <i class="fa-solid fa-file-arrow-up"></i> Importar CSV
+            </button>
+          </div>
         </div>
         <div class="card-body" style="padding:0;">
           <div style="padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
@@ -1276,11 +1281,22 @@ WMS_MODULES.picking = {
             ${errList.length > 0 ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><strong>Detalle de errores (' + errList.length + '):</strong><ul style="margin:4px 0 0;padding-left:16px;">' + errList.slice(0,15).map(e => '<li>' + WMS.esc(e) + '</li>').join('') + (errList.length > 15 ? '<li>... y ' + (errList.length-15) + ' más</li>' : '') + '</ul></div>' : ''}
           </div>`;
 
-        WMS.closeModal('generic-modal');
-        WMS.showModal(zeroPedidos ? '❌ Importación sin resultados' : hasDiff ? '⚠️ Resultado de Importación' : '✅ Importación Completada', summaryHtml,
-          `<button class="btn btn-primary" onclick="WMS.closeModal('generic-modal');${zeroPedidos ? '' : 'WMS_MODULES.picking.show_pedidos();'}">
-            <i class="fa-solid fa-check"></i> ${zeroPedidos ? 'Cerrar' : 'Aceptar y ver pedidos'}
-          </button>`);
+        const modalTitle = zeroPedidos
+          ? '<i class="fa-solid fa-circle-xmark" style="color:#dc2626;margin-right:6px;"></i>Importación sin resultados'
+          : hasDiff
+            ? '<i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;margin-right:6px;"></i>Resultado de Importación'
+            : '<i class="fa-solid fa-circle-check" style="color:#16a34a;margin-right:6px;"></i>Importación Completada';
+        const modalFooter = zeroPedidos
+          ? `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking.importarPedidos()">
+               <i class="fa-solid fa-rotate-left"></i> Intentar de nuevo
+             </button>
+             <button class="btn btn-primary" onclick="WMS.closeModal('generic-modal')">
+               <i class="fa-solid fa-xmark"></i> Cerrar
+             </button>`
+          : `<button class="btn btn-primary" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking.show_pedidos();">
+               <i class="fa-solid fa-check"></i> Aceptar y ver pedidos
+             </button>`;
+        WMS.showModal(modalTitle, summaryHtml, modalFooter);
       }
     } catch(e) { console.error('[picking] uploadCsv error:', e); WMS.toast('error', 'Error al procesar la importación: ' + (e.message || 'Error desconocido')); if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-upload"></i> Importar Pedidos'; } }
   },
