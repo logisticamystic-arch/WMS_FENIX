@@ -362,12 +362,10 @@ const MWMS = {
     const mods = [
       { id:'ro', l:'Rec. ODC',   i:'fa-file-invoice',        c:'indigo',  a:'viewRecO' },
       { id:'rs', l:'Rec. Sin ODC', i:'fa-box-open',          c:'emerald', a:'viewRecSinOdc' },
-      { id:'ct', l:'Citas/YMS',  i:'fa-calendar-check',      c:'green',   a:'viewCitas' },
       { id:'ub', l:'Ubicar',     i:'fa-warehouse',            c:'teal',    a:'viewUbicar' },
       { id:'tr', l:'Traslado',   i:'fa-right-left',           c:'orange',  a:'viewTrans' },
       { id:'pk', l:'Picking',    i:'fa-boxes-stacked',        c:'purple',  a:'viewPicking' },
       { id:'ce', l:'Certificar', i:'fa-clipboard-check',      c:'rose',    a:'viewCert' },
-      { id:'re', l:'Reabast.',   i:'fa-pallet',               c:'amber',   a:'viewReabast' },
       { id:'iv', l:'Inventario', i:'fa-rotate',               c:'indigo',  a:'viewInventario' },
       { id:'ci', l:'Consultar',  i:'fa-magnifying-glass-location', c:'cyan', a:'viewConsultaInteligente' },
     ];
@@ -376,10 +374,6 @@ const MWMS = {
         <div style="margin-bottom:15px;"><h2 style="font-size:1.1rem;font-weight:800;">Hola, ${this.esc(_mUser.nombre.split(' ')[0])}!</h2><p style="font-size:.75rem;color:#64748b;">Seleccione una operación:</p></div>
         <div class="module-grid-mobile">
           ${mods.map(m=>`<button class="module-btn-mobile" onclick="MWMS.${m.a}${m.a.includes('(')?'':'()'}" id="mod-btn-${m.id}"><div class="module-icon-circle ${m.c}"><i class="fa-solid ${m.i}"></i></div><span class="module-label">${m.l}</span></button>`).join('')}
-          <button class="module-btn-mobile" onclick="location.reload(true)">
-            <div class="module-icon-circle secondary"><i class="fa-solid fa-arrows-rotate"></i></div>
-            <span class="module-label">Actualizar APP</span>
-          </button>
         </div>
       </div>`;
   },
