@@ -2310,6 +2310,7 @@ class PickingController extends BaseController
         $c = strtolower($categoria);
         if (str_contains($z, 'congel') || str_contains($c, 'congel')) return 'Congelado';
         if (str_contains($z, 'refrig') || str_contains($z, 'frio') || str_contains($z, 'frío') ||
+            str_contains($z, 'lácteo') || str_contains($z, 'lacteo') ||
             str_contains($c, 'refrig') || str_contains($c, 'frio') || str_contains($c, 'lácteo') ||
             str_contains($c, 'lacteo')) return 'Refrigerado';
         return 'Seco';
