@@ -1738,7 +1738,8 @@ class PickingController extends BaseController
     // ── POST /api/picking/importar ────────────────────────────────────────────
     // Importación masiva desde archivo plano con mapeo inteligente de columnas.
     // Agrupa por sucursal_entrega → una Planilla por sucursal.
-    // Anti-duplicado: bloquea reimportación de facturas ya existentes (por numero_pedido_ref).
+    // Si la planilla ya existe en estado Pendiente: ACTUALIZA cantidades y agrega líneas nuevas.
+    // Productos no encontrados en catálogo → tabla picking_productos_pendientes.
     public function importarPedidos(Request $r, Response $res): Response
     {
         $user  = $r->getAttribute('user');
@@ -1793,7 +1794,7 @@ class PickingController extends BaseController
             return $this->error($res, 'No se pudieron detectar las columnas de Producto y Cantidad en el archivo. Verifique los encabezados.');
         }
 
-        // ── Pre-audit totals + collect facturas for duplicate check ──────────
+        // ── Pre-audit totals + collect facturas ──────────────────────────────
         $auditArchivo = [
             'lineas_archivo'   => count($dataLines),
             'clientes_archivo' => 0,
@@ -1822,32 +1823,37 @@ class PickingController extends BaseController
         }
         $auditArchivo['clientes_archivo'] = count($clientesSet);
 
-        // ── Check which facturas already exist in picking_detalles ───────────
-        $facturasExistentes = [];
-        $facturasEnArchivo  = array_keys($facturasSet);
+        // ── Build map: numero_pedido_ref → orden_picking_id (sólo Pendiente) ─
+        // Usamos esto para decidir si CREAR o ACTUALIZAR una planilla.
+        $facturasOrdenMap = [];   // nf => orden_picking_id
+        $facturasEnArchivo = array_keys($facturasSet);
         if (!empty($facturasEnArchivo)) {
             try {
-                $existing = Capsule::table('picking_detalles')
-                    ->join('orden_pickings', 'orden_pickings.id', '=', 'picking_detalles.orden_picking_id')
-                    ->where('orden_pickings.empresa_id', $user->empresa_id)
-                    ->where('orden_pickings.sucursal_id', $user->sucursal_id)
-                    ->whereIn('picking_detalles.numero_pedido_ref', $facturasEnArchivo)
-                    ->pluck('picking_detalles.numero_pedido_ref')
-                    ->unique()
-                    ->toArray();
-                $facturasExistentes = array_flip($existing);
-            } catch (\Throwable $ignored) {
-                // Column not yet in DB — skip duplicate check gracefully
-            }
+                $rows = Capsule::table('picking_detalles as pd')
+                    ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
+                    ->where('op.empresa_id', $user->empresa_id)
+                    ->where('op.sucursal_id', $user->sucursal_id)
+                    ->whereIn('pd.numero_pedido_ref', $facturasEnArchivo)
+                    ->whereIn('op.estado', ['Pendiente'])
+                    ->select('pd.numero_pedido_ref', 'pd.orden_picking_id')
+                    ->distinct()
+                    ->get();
+                foreach ($rows as $row) {
+                    $facturasOrdenMap[$row->numero_pedido_ref] = (int) $row->orden_picking_id;
+                }
+            } catch (\Throwable $ignored) {}
         }
 
         $summary = [
             'total'                    => 0,
             'total_lineas'             => 0,
-            'importadas'               => 0,
+            'importadas'               => 0,   // planillas nuevas creadas
+            'actualizadas'             => 0,   // planillas existentes actualizadas
+            'lineas_nuevas'            => 0,   // líneas añadidas a planillas existentes
+            'lineas_actualizadas'      => 0,   // líneas actualizadas (cantidad cambió)
+            'lineas_sin_cambio'        => 0,   // líneas ya existentes sin diferencia
             'errores'                  => [],
-            'duplicados'               => [],
-            'lineas_excluidas'         => [],
+            'productos_pendientes'     => [],  // EANs no encontrados → staging
             'productos_no_encontrados' => 0,
             'campos_detectados'        => array_keys($colMap),
             'cantidad_sistema'         => 0,
@@ -1856,7 +1862,7 @@ class PickingController extends BaseController
             'por_sucursal_sistema'     => [],
         ];
 
-        // ── Group lines by sucursal_entrega → one OrdenPicking per sucursal ──
+        // ── Group lines by sucursal_entrega ───────────────────────────────────
         $grupos = [];
         foreach ($dataLines as $line) {
             $cols = str_getcsv($line, $sep);
@@ -1874,7 +1880,7 @@ class PickingController extends BaseController
             return $this->error($res, 'No se encontraron filas de datos en el archivo');
         }
 
-        // ── Sequential planilla number ────────────────────────────────────────
+        // ── Sequential planilla number (sólo para planillas NUEVAS) ──────────
         $maxSeq = (int) OrdenPicking::where('empresa_id', $user->empresa_id)
             ->where('sucursal_id', $user->sucursal_id)
             ->where('numero_orden', 'like', 'Planilla %')
@@ -1889,143 +1895,236 @@ class PickingController extends BaseController
             return (float) $val;
         };
 
-        // ── Process each sucursal group ───────────────────────────────────────
-        foreach ($grupos as $sucursal => $filas) {
-            // Separate duplicate lines from clean lines; aggregate by factura
-            $filasLimpias   = [];
-            $dupsPorFactura = [];
-            foreach ($filas as $fila) {
-                $nf = trim($fila['numero_factura'] ?? $fila['planilla'] ?? '');
-                if ($nf && isset($facturasExistentes[$nf])) {
-                    if (!isset($dupsPorFactura[$nf])) {
-                        $dupsPorFactura[$nf] = ['numero_factura' => $nf, 'sucursal' => $sucursal, 'lineas' => 0];
-                    }
-                    $dupsPorFactura[$nf]['lineas']++;
-                } else {
-                    $filasLimpias[] = $fila;
+        // Helper: buscar producto por EAN/código interno
+        $buscarProducto = function(string $ean) use ($user): ?\App\Models\Producto {
+            if ($ean === '') return null;
+            $eanRec = \App\Models\ProductoEan::where('codigo_ean', $ean)->first();
+            if ($eanRec) {
+                $p = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($eanRec->producto_id);
+                if ($p) return $p;
+            }
+            $p = \App\Models\Producto::where('empresa_id', $user->empresa_id)
+                ->where('codigo_interno', $ean)->first();
+            if ($p) return $p;
+            if (strlen($ean) > 6) {
+                $eanRec = \App\Models\ProductoEan::where('codigo_ean', 'like', '%' . substr($ean, -10))->first();
+                if ($eanRec) {
+                    return \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($eanRec->producto_id);
                 }
             }
-            foreach ($dupsPorFactura as $dup) {
-                $summary['duplicados'][] = $dup;
+            return null;
+        };
+
+        // Helper: guardar en staging los productos no encontrados
+        $staging = function(string $ean, string $nfRef, string $sucursal, int $cantidad) use ($user) {
+            if ($ean === '') return;
+            try {
+                Capsule::table('picking_productos_pendientes')->updateOrInsert(
+                    ['empresa_id' => $user->empresa_id, 'sucursal_id' => $user->sucursal_id, 'ean_codigo' => $ean],
+                    [
+                        'cantidad'          => $cantidad,
+                        'numero_factura'    => $nfRef ?: null,
+                        'sucursal_entrega'  => $sucursal,
+                        'importado_por'     => $user->id,
+                        'fecha_importacion' => date('Y-m-d'),
+                        'updated_at'        => date('Y-m-d H:i:s'),
+                        'created_at'        => date('Y-m-d H:i:s'),
+                    ]
+                );
+            } catch (\Throwable $ignored) {}
+        };
+
+        // ── Process each sucursal group ───────────────────────────────────────
+        foreach ($grupos as $sucursal => $filas) {
+
+            // ¿Tiene esta sucursal una planilla existente (Pendiente)?
+            $ordenExistenteId = null;
+            foreach ($filas as $fila) {
+                $nf = trim($fila['numero_factura'] ?? $fila['planilla'] ?? '');
+                if ($nf && isset($facturasOrdenMap[$nf])) {
+                    $ordenExistenteId = $facturasOrdenMap[$nf];
+                    break;
+                }
             }
 
-            if (empty($filasLimpias)) continue;
+            if ($ordenExistenteId) {
+                // ════════════════════════════════════════════════════════
+                // MODO ACTUALIZACIÓN: planilla existente en Pendiente
+                // ════════════════════════════════════════════════════════
+                try {
+                    Capsule::transaction(function () use (
+                        $ordenExistenteId, $filas, $user, $sucursal,
+                        &$summary, $cleanNumber, $buscarProducto, $staging
+                    ) {
+                        // Cargar líneas existentes en mapa: "prod_id:nf" → detalle
+                        $lineasExistentes = PickingDetalle::where('orden_picking_id', $ordenExistenteId)->get();
+                        $lineasMap = [];
+                        foreach ($lineasExistentes as $l) {
+                            $k = $l->producto_id . ':' . ($l->numero_pedido_ref ?? '');
+                            $lineasMap[$k] = $l;
+                        }
 
-            try {
-                Capsule::transaction(function () use (
-                    $sucursal, $filasLimpias, $user, &$summary, &$nextSeq, $cleanNumber
-                ) {
-                    $fila0 = $filasLimpias[0];
+                        foreach ($filas as $fila) {
+                            $ean      = trim($fila['producto'] ?? '');
+                            $nfRef    = trim($fila['numero_factura'] ?? $fila['planilla'] ?? '');
+                            $cantidad = max(1, (int)($fila['cantidad'] ?? 1));
+                            $costo    = $cleanNumber($fila['costo'] ?? '0');
+                            $descuento= (float)($fila['descuento'] ?? 0);
 
-                    $orden = OrdenPicking::create([
-                        'empresa_id'        => $user->empresa_id,
-                        'sucursal_id'       => $user->sucursal_id,
-                        'numero_orden'      => 'Planilla ' . $nextSeq,
-                        'numero_factura'    => null,
-                        'planilla_numero'   => $fila0['planilla'] ?? null,
-                        'planilla_lote'     => null,
-                        'cliente'           => trim($fila0['cliente'] ?? ''),
-                        'sucursal_entrega'  => trim($fila0['sucursal_entrega'] ?? '') ?: $sucursal,
-                        'direccion_cliente' => trim($fila0['direccion'] ?? ''),
-                        'asesor_comercial'  => trim($fila0['asesor'] ?? ''),
-                        'estado'            => 'Pendiente',
-                        'fecha_movimiento'  => date('Y-m-d'),
-                        'hora_inicio'       => date('H:i:s'),
-                        'prioridad'         => 5,
-                        'auxiliar_id'       => null,
-                    ]);
-                    $nextSeq++;
-
-                    $lineasCreadas = 0;
-                    foreach ($filasLimpias as $fila) {
-                        $ean  = trim($fila['producto'] ?? '');
-                        $prod = null;
-
-                        if ($ean) {
-                            $eanRec = \App\Models\ProductoEan::where('codigo_ean', $ean)->first();
-                            if ($eanRec) {
-                                $prod = \App\Models\Producto::where('empresa_id', $user->empresa_id)
-                                    ->find($eanRec->producto_id);
-                            }
+                            $prod = $buscarProducto($ean);
                             if (!$prod) {
-                                $prod = \App\Models\Producto::where('empresa_id', $user->empresa_id)
-                                    ->where('codigo_interno', $ean)->first();
+                                $summary['productos_no_encontrados']++;
+                                $summary['productos_pendientes'][] = [
+                                    'ean' => $ean, 'numero_factura' => $nfRef, 'sucursal' => $sucursal, 'cantidad' => $cantidad,
+                                ];
+                                $staging($ean, $nfRef, $sucursal, $cantidad);
+                                continue;
                             }
-                            if (!$prod && strlen($ean) > 6) {
-                                $eanRec = \App\Models\ProductoEan::where('codigo_ean', 'like', '%' . substr($ean, -10))->first();
-                                if ($eanRec) {
-                                    $prod = \App\Models\Producto::where('empresa_id', $user->empresa_id)
-                                        ->find($eanRec->producto_id);
+
+                            $key = $prod->id . ':' . $nfRef;
+                            if (isset($lineasMap[$key])) {
+                                // Línea ya existe — actualizar cantidad si cambió
+                                $linea = $lineasMap[$key];
+                                if ($linea->cantidad_solicitada != $cantidad && $linea->estado === 'Pendiente') {
+                                    $linea->cantidad_solicitada = $cantidad;
+                                    $linea->costo_unitario      = $costo ?: $linea->costo_unitario;
+                                    $linea->descuento_porc      = $descuento ?: $linea->descuento_porc;
+                                    $linea->save();
+                                    $summary['lineas_actualizadas']++;
+                                } else {
+                                    $summary['lineas_sin_cambio']++;
                                 }
+                            } else {
+                                // Línea nueva para este producto/factura en planilla existente
+                                PickingDetalle::create([
+                                    'orden_picking_id'    => $ordenExistenteId,
+                                    'producto_id'         => $prod->id,
+                                    'cantidad_solicitada' => $cantidad,
+                                    'cantidad_pickeada'   => 0,
+                                    'costo_unitario'      => $costo,
+                                    'descuento_porc'      => $descuento,
+                                    'estado'              => 'Pendiente',
+                                    'ambiente'            => $this->_clasificarAmbiente('', $prod->categoria ?? ''),
+                                    'numero_pedido_ref'   => $nfRef ?: null,
+                                ]);
+                                $summary['lineas_nuevas']++;
+                                $summary['total_lineas']++;
+                            }
+
+                            $summary['cantidad_sistema'] += $cantidad;
+                            $summary['valor_sistema']    += $cantidad * $costo;
+                            if (!empty(trim($fila['cliente'] ?? ''))) {
+                                $summary['clientes_sistema'][trim($fila['cliente'])] = true;
                             }
                         }
 
-                        if (!$prod) {
-                            $summary['productos_no_encontrados']++;
-                            $nfRef = trim($fila['numero_factura'] ?? $fila['planilla'] ?? '');
-                            $summary['lineas_excluidas'][] = [
-                                'tipo'           => 'producto_no_encontrado',
-                                'ean'            => $ean,
-                                'numero_factura' => $nfRef,
-                                'sucursal'       => $sucursal,
-                                'razon'          => "Producto '{$ean}' no encontrado en catálogo",
-                            ];
-                            continue;
-                        }
+                        $summary['por_sucursal_sistema'][$sucursal] =
+                            ($summary['por_sucursal_sistema'][$sucursal] ?? 0) + $summary['lineas_nuevas'];
+                    });
+                    $summary['actualizadas']++;
+                } catch (\Exception $e) {
+                    $summary['errores'][] = "Actualizar '{$sucursal}': " . $e->getMessage();
+                }
 
-                        $cantidad  = max(1, (int)($fila['cantidad'] ?? 1));
-                        $costo     = $cleanNumber($fila['costo'] ?? '0');
-                        $descuento = (float)($fila['descuento'] ?? 0);
-                        $nfRef     = trim($fila['numero_factura'] ?? $fila['planilla'] ?? '');
+            } else {
+                // ════════════════════════════════════════════════════════
+                // MODO CREACIÓN: planilla nueva
+                // ════════════════════════════════════════════════════════
+                try {
+                    Capsule::transaction(function () use (
+                        $sucursal, $filas, $user, &$summary, &$nextSeq,
+                        $cleanNumber, $buscarProducto, $staging
+                    ) {
+                        $fila0 = $filas[0];
 
-                        PickingDetalle::create([
-                            'orden_picking_id'    => $orden->id,
-                            'producto_id'         => $prod->id,
-                            'cantidad_solicitada' => $cantidad,
-                            'cantidad_pickeada'   => 0,
-                            'costo_unitario'      => $costo,
-                            'descuento_porc'      => $descuento,
-                            'estado'              => 'Pendiente',
-                            'ambiente'            => $this->_clasificarAmbiente('', $prod->categoria ?? ''),
-                            'numero_pedido_ref'   => $nfRef ?: null,
+                        $orden = OrdenPicking::create([
+                            'empresa_id'        => $user->empresa_id,
+                            'sucursal_id'       => $user->sucursal_id,
+                            'numero_orden'      => 'Planilla ' . $nextSeq,
+                            'numero_factura'    => null,
+                            'planilla_numero'   => $fila0['planilla'] ?? null,
+                            'planilla_lote'     => null,
+                            'cliente'           => trim($fila0['cliente'] ?? ''),
+                            'sucursal_entrega'  => trim($fila0['sucursal_entrega'] ?? '') ?: $sucursal,
+                            'direccion_cliente' => trim($fila0['direccion'] ?? ''),
+                            'asesor_comercial'  => trim($fila0['asesor'] ?? ''),
+                            'estado'            => 'Pendiente',
+                            'fecha_movimiento'  => date('Y-m-d'),
+                            'hora_inicio'       => date('H:i:s'),
+                            'prioridad'         => 5,
+                            'auxiliar_id'       => null,
                         ]);
+                        $nextSeq++;
 
-                        $lineasCreadas++;
-                        $summary['cantidad_sistema'] += $cantidad;
-                        $summary['valor_sistema']    += $cantidad * $costo;
-                        if (!empty(trim($fila0['cliente'] ?? ''))) {
-                            $summary['clientes_sistema'][trim($fila0['cliente'])] = true;
+                        $lineasCreadas = 0;
+                        foreach ($filas as $fila) {
+                            $ean      = trim($fila['producto'] ?? '');
+                            $nfRef    = trim($fila['numero_factura'] ?? $fila['planilla'] ?? '');
+                            $cantidad = max(1, (int)($fila['cantidad'] ?? 1));
+                            $costo    = $cleanNumber($fila['costo'] ?? '0');
+                            $descuento= (float)($fila['descuento'] ?? 0);
+
+                            $prod = $buscarProducto($ean);
+                            if (!$prod) {
+                                $summary['productos_no_encontrados']++;
+                                $summary['productos_pendientes'][] = [
+                                    'ean' => $ean, 'numero_factura' => $nfRef, 'sucursal' => $sucursal, 'cantidad' => $cantidad,
+                                ];
+                                $staging($ean, $nfRef, $sucursal, $cantidad);
+                                continue;
+                            }
+
+                            PickingDetalle::create([
+                                'orden_picking_id'    => $orden->id,
+                                'producto_id'         => $prod->id,
+                                'cantidad_solicitada' => $cantidad,
+                                'cantidad_pickeada'   => 0,
+                                'costo_unitario'      => $costo,
+                                'descuento_porc'      => $descuento,
+                                'estado'              => 'Pendiente',
+                                'ambiente'            => $this->_clasificarAmbiente('', $prod->categoria ?? ''),
+                                'numero_pedido_ref'   => $nfRef ?: null,
+                            ]);
+                            $lineasCreadas++;
+                            $summary['total_lineas']++;
+                            $summary['cantidad_sistema'] += $cantidad;
+                            $summary['valor_sistema']    += $cantidad * $costo;
+                            if (!empty(trim($fila['cliente'] ?? ''))) {
+                                $summary['clientes_sistema'][trim($fila['cliente'])] = true;
+                            }
                         }
-                    }
 
-                    $summary['total_lineas'] += $lineasCreadas;
-                    if ($lineasCreadas > 0) {
+                        if ($lineasCreadas === 0) {
+                            $orden->delete();
+                            $nextSeq--;
+                            throw new \Exception('Ningún producto fue encontrado en el catálogo');
+                        }
+
                         $summary['por_sucursal_sistema'][$sucursal] =
                             ($summary['por_sucursal_sistema'][$sucursal] ?? 0) + $lineasCreadas;
-                    }
-
-                    if ($lineasCreadas === 0) {
-                        $orden->delete();
-                        $nextSeq--;
-                        throw new \Exception('Ningún producto fue encontrado en el catálogo');
-                    }
-                });
-                $summary['importadas']++;
-            } catch (\Exception $e) {
-                $summary['errores'][] = "Sucursal '{$sucursal}': " . $e->getMessage();
+                    });
+                    $summary['importadas']++;
+                } catch (\Exception $e) {
+                    $summary['errores'][] = "Sucursal '{$sucursal}': " . $e->getMessage();
+                }
             }
         }
 
-        $msg = "Importación completada: {$summary['importadas']} planilla(s) de picking creada(s)";
-        if (!empty($summary['duplicados'])) {
-            $msg .= '. ' . count($summary['duplicados']) . ' pedido(s) bloqueado(s) por duplicado';
-        }
-        if ($summary['productos_no_encontrados'] > 0) {
-            $msg .= ". {$summary['productos_no_encontrados']} producto(s) no encontrado(s)";
-        }
-        if (!empty($summary['errores'])) {
-            $msg .= '. Errores: ' . count($summary['errores']);
-        }
+        // ── Mensaje de resumen ────────────────────────────────────────────────
+        $partes = [];
+        if ($summary['importadas'] > 0)
+            $partes[] = "{$summary['importadas']} planilla(s) nueva(s)";
+        if ($summary['actualizadas'] > 0)
+            $partes[] = "{$summary['actualizadas']} planilla(s) actualizada(s)";
+        if ($summary['lineas_actualizadas'] > 0)
+            $partes[] = "{$summary['lineas_actualizadas']} línea(s) con cantidad actualizada";
+        if ($summary['lineas_nuevas'] > 0)
+            $partes[] = "{$summary['lineas_nuevas']} línea(s) agregada(s) a planillas existentes";
+        if ($summary['productos_no_encontrados'] > 0)
+            $partes[] = "{$summary['productos_no_encontrados']} producto(s) sin codificar (guardados en pendientes)";
+        if (!empty($summary['errores']))
+            $partes[] = count($summary['errores']) . ' error(es)';
+        $msg = 'Importación completada: ' . implode(', ', $partes ?: ['sin cambios']);
 
         $audit = [
             'archivo' => $auditArchivo,
@@ -2057,6 +2156,43 @@ class PickingController extends BaseController
             'audit'      => $audit,
         ]));
         return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    // ── GET /api/picking/productos-pendientes ─────────────────────────────────
+    public function listarProductosPendientes(Request $r, Response $res): Response
+    {
+        $user  = $r->getAttribute('user');
+        $items = Capsule::table('picking_productos_pendientes')
+            ->where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->orderBy('updated_at', 'desc')
+            ->get();
+        return $this->ok($res, $items);
+    }
+
+    // ── DELETE /api/picking/productos-pendientes/{id} ─────────────────────────
+    public function eliminarProductoPendiente(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        $deleted = Capsule::table('picking_productos_pendientes')
+            ->where('id', $a['id'])
+            ->where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->delete();
+        if (!$deleted) return $this->notFound($res, 'Registro no encontrado');
+        return $this->ok($res, null, 'Eliminado');
+    }
+
+    // ── DELETE /api/picking/productos-pendientes ──────────────────────────────
+    public function limpiarProductosPendientes(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
+        Capsule::table('picking_productos_pendientes')
+            ->where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->delete();
+        return $this->ok($res, null, 'Tabla limpiada');
     }
 
     // ── POST /api/picking/{id}/marcar-faltante ───────────────────────────────

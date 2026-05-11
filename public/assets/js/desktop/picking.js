@@ -21,7 +21,7 @@ WMS_MODULES.picking = {
     const fn = {
       pedidos: this.show_pedidos, asignacion: this.show_asignacion,
       faltantes: this.show_faltantes, dashboard: this.show_dashboard,
-      reporte: this.show_reporte,
+      reporte: this.show_reporte, pendientes: this.show_productos_pendientes,
     };
     (fn[s]?.bind(this) || fn.pedidos.bind(this))();
     // Auto-refresh solo en Dashboard (sincronización periódica)
@@ -1185,8 +1185,11 @@ WMS_MODULES.picking = {
         const errList = data.errores || [];
         const noProd = data.productos_no_encontrados || 0;
         const campos = data.campos_detectados || [];
-        const duplicados = data.duplicados || [];
-        const lineasExcluidas = data.lineas_excluidas || [];
+        const actualizadas = data.actualizadas || 0;
+        const lineasActualizadas = data.lineas_actualizadas || 0;
+        const lineasNuevas = data.lineas_nuevas || 0;
+        const lineasSinCambio = data.lineas_sin_cambio || 0;
+        const productosPendientes = data.productos_pendientes || [];
 
         // Per-sucursal breakdown table
         const allSucs = [...new Set([...Object.keys(sucArch), ...Object.keys(sucSis)])].sort();
@@ -1225,20 +1228,30 @@ WMS_MODULES.picking = {
             </div>` : ''}
 
             <!-- KPI Cards -->
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
-              <div style="padding:12px;background:${zeroPedidos?'#fef2f2':'#f0fdf4'};border-radius:6px;text-align:center;border:1px solid ${zeroPedidos?'#fca5a5':'#bbf7d0'};">
-                <div style="font-size:24px;font-weight:800;color:${zeroPedidos?'#dc2626':'#16a34a'};">${j.importadas || 0}</div>
-                <div style="font-size:10px;color:${zeroPedidos?'#dc2626':'#16a34a'};font-weight:600;text-transform:uppercase;">Pedidos Creados</div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;">
+              <div style="padding:10px;background:${zeroPedidos?'#fef2f2':'#f0fdf4'};border-radius:6px;text-align:center;border:1px solid ${zeroPedidos?'#fca5a5':'#bbf7d0'};">
+                <div style="font-size:22px;font-weight:800;color:${zeroPedidos?'#dc2626':'#16a34a'};">${j.importadas || 0}</div>
+                <div style="font-size:9px;color:${zeroPedidos?'#dc2626':'#16a34a'};font-weight:600;text-transform:uppercase;">Planillas Nuevas</div>
               </div>
-              <div style="padding:12px;background:#eff6ff;border-radius:6px;text-align:center;border:1px solid #bfdbfe;">
-                <div style="font-size:24px;font-weight:800;color:#2563eb;">${data.total_lineas || 0}</div>
-                <div style="font-size:10px;color:#2563eb;font-weight:600;text-transform:uppercase;">Líneas Cargadas</div>
+              <div style="padding:10px;background:${actualizadas>0?'#eff6ff':'#f8fafc'};border-radius:6px;text-align:center;border:1px solid ${actualizadas>0?'#bfdbfe':'#e2e8f0'};">
+                <div style="font-size:22px;font-weight:800;color:${actualizadas>0?'#2563eb':'#94a3b8'};">${actualizadas}</div>
+                <div style="font-size:9px;color:${actualizadas>0?'#2563eb':'#94a3b8'};font-weight:600;text-transform:uppercase;">Actualizadas</div>
               </div>
-              <div style="padding:12px;background:${hasDiff?'#fef2f2':'#f0fdf4'};border-radius:6px;text-align:center;border:1px solid ${hasDiff?'#fecaca':'#bbf7d0'};">
-                <div style="font-size:24px;font-weight:800;color:${hasDiff?'#dc2626':'#16a34a'};">${diff.lineas || 0}</div>
-                <div style="font-size:10px;color:${hasDiff?'#dc2626':'#16a34a'};font-weight:600;text-transform:uppercase;">Líneas Excluidas</div>
+              <div style="padding:10px;background:#eff6ff;border-radius:6px;text-align:center;border:1px solid #bfdbfe;">
+                <div style="font-size:22px;font-weight:800;color:#2563eb;">${data.total_lineas || 0}</div>
+                <div style="font-size:9px;color:#2563eb;font-weight:600;text-transform:uppercase;">Líneas Cargadas</div>
+              </div>
+              <div style="padding:10px;background:${noProd>0?'#fefce8':'#f0fdf4'};border-radius:6px;text-align:center;border:1px solid ${noProd>0?'#fde68a':'#bbf7d0'};">
+                <div style="font-size:22px;font-weight:800;color:${noProd>0?'#d97706':'#16a34a'};">${noProd}</div>
+                <div style="font-size:9px;color:${noProd>0?'#d97706':'#16a34a'};font-weight:600;text-transform:uppercase;">Sin Codificar</div>
               </div>
             </div>
+            ${(actualizadas > 0) ? `<div style="padding:7px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:11px;color:#1e40af;margin-bottom:10px;">
+              <i class="fa-solid fa-pen-to-square"></i> <strong>${actualizadas}</strong> planilla(s) actualizadas —
+              <strong>${lineasActualizadas}</strong> línea(s) con cantidad modificada ·
+              <strong>${lineasNuevas}</strong> línea(s) nueva(s) agregadas ·
+              <strong>${lineasSinCambio}</strong> sin cambio
+            </div>` : ''}
 
             <!-- Campos detectados -->
             <div style="margin-bottom:12px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;">
@@ -1278,35 +1291,29 @@ WMS_MODULES.picking = {
                 ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>' + diff.lineas + ' línea(s)</strong> del archivo no se cargaron. Causas: productos no encontrados o datos incompletos.</div>'
                 : '<div style="padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;color:#166534;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-check-circle" style="margin-right:4px;"></i><strong>Importación exitosa.</strong> Todas las líneas del archivo fueron cargadas correctamente.</div>'}
 
-            ${noProd > 0 ? '<div style="padding:8px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;color:#92400e;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>' + noProd + '</strong> referencia(s) no existen en el catálogo. Verifique los códigos EAN/Referencia en el archivo.</div>' : ''}
-
-            ${duplicados.length > 0 ? `
-            <div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#991b1b;font-size:11px;margin-bottom:6px;">
-              <div style="font-weight:700;margin-bottom:6px;"><i class="fa-solid fa-ban" style="margin-right:4px;"></i>Pedidos bloqueados — ya existen en el sistema (${duplicados.length})</div>
+            ${productosPendientes.length > 0 ? `
+            <div style="padding:8px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;color:#78350f;font-size:11px;margin-bottom:6px;">
+              <div style="font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+                <span><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Productos sin codificar — guardados en tabla de pendientes (${productosPendientes.length})</span>
+                <button class="btn btn-xs" style="background:#92400e;color:#fff;padding:2px 10px;font-size:10px;" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking.show_productos_pendientes();">Ver tabla</button>
+              </div>
               <table style="width:100%;border-collapse:collapse;font-size:11px;">
-                <thead><tr style="background:#fee2e2;">
-                  <th style="padding:3px 8px;text-align:left;">N° Pedido / Factura</th>
+                <thead><tr style="background:#fef08a;">
+                  <th style="padding:3px 8px;text-align:left;">EAN / Código</th>
+                  <th style="padding:3px 8px;text-align:left;">N° Factura</th>
                   <th style="padding:3px 8px;text-align:left;">Sucursal</th>
-                  <th style="padding:3px 8px;text-align:right;">Líneas bloqueadas</th>
+                  <th style="padding:3px 8px;text-align:right;">Cant.</th>
                 </tr></thead>
                 <tbody>
-                  ${duplicados.slice(0,20).map(d => `<tr style="border-top:1px solid #fecaca;">
-                    <td style="padding:3px 8px;font-weight:600;">${WMS.esc(d.numero_factura || '')}</td>
-                    <td style="padding:3px 8px;">${WMS.esc(d.sucursal || '')}</td>
-                    <td style="padding:3px 8px;text-align:right;">${d.lineas || 0}</td>
+                  ${productosPendientes.slice(0,15).map(p => `<tr style="border-top:1px solid #fde68a;">
+                    <td style="padding:3px 8px;font-weight:700;font-family:monospace;">${WMS.esc(p.ean || '')}</td>
+                    <td style="padding:3px 8px;">${WMS.esc(p.numero_factura || '-')}</td>
+                    <td style="padding:3px 8px;">${WMS.esc(p.sucursal || '')}</td>
+                    <td style="padding:3px 8px;text-align:right;">${p.cantidad || 1}</td>
                   </tr>`).join('')}
-                  ${duplicados.length > 20 ? `<tr><td colspan="3" style="padding:3px 8px;color:#7f1d1d;">... y ${duplicados.length - 20} más</td></tr>` : ''}
+                  ${productosPendientes.length > 15 ? `<tr><td colspan="4" style="padding:3px 8px;color:#92400e;">... y ${productosPendientes.length - 15} más en la tabla de pendientes</td></tr>` : ''}
                 </tbody>
               </table>
-            </div>` : ''}
-
-            ${lineasExcluidas.length > 0 ? `
-            <div style="padding:8px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;color:#78350f;font-size:11px;margin-bottom:6px;">
-              <div style="font-weight:700;margin-bottom:6px;"><i class="fa-solid fa-circle-minus" style="margin-right:4px;"></i>Líneas excluidas — producto no encontrado (${lineasExcluidas.length})</div>
-              <ul style="margin:0;padding-left:16px;max-height:100px;overflow-y:auto;">
-                ${lineasExcluidas.slice(0,20).map(l => `<li>EAN <strong>${WMS.esc(l.ean || '')}</strong>${l.numero_factura ? ' · Pedido ' + WMS.esc(l.numero_factura) : ''} · ${WMS.esc(l.sucursal || '')}</li>`).join('')}
-                ${lineasExcluidas.length > 20 ? `<li>... y ${lineasExcluidas.length - 20} más</li>` : ''}
-              </ul>
             </div>` : ''}
 
             ${errList.length > 0 ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><strong>Detalle de errores (' + errList.length + '):</strong><ul style="margin:4px 0 0;padding-left:16px;">' + errList.slice(0,15).map(e => '<li>' + WMS.esc(e) + '</li>').join('') + (errList.length > 15 ? '<li>... y ' + (errList.length-15) + ' más</li>' : '') + '</ul></div>' : ''}
@@ -2357,6 +2364,79 @@ WMS_MODULES.picking = {
   filterTable(val) {
     const el = document.getElementById('pick-f-plan');
     if (el) { el.value = val; this.show_pedidos(); }
+  },
+
+  // ── PRODUCTOS PENDIENTES DE CODIFICACIÓN ─────────────────────────────────
+  async show_productos_pendientes(silent = false) {
+    WMS.setBreadcrumb('picking', 'Productos Pendientes');
+    WMS.setToolbar(`
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking.show_productos_pendientes()">
+        <i class="fa-solid fa-sync"></i> Actualizar
+      </button>
+      <button class="btn btn-danger btn-sm" onclick="WMS_MODULES.picking._limpiarPendientes()">
+        <i class="fa-solid fa-trash"></i> Limpiar Todo
+      </button>`);
+    if (!silent) WMS.spinner();
+    try {
+      const r = await API.get('/picking/productos-pendientes');
+      const items = r.data || [];
+      WMS.setContent(`
+        <div class="px-20 py-16">
+          <div class="card shadow-soft">
+            <div class="card-header d-flex justify-between align-center">
+              <span class="card-title fw-900 color-primary">
+                <i class="fa-solid fa-triangle-exclamation" style="color:#d97706;"></i> Productos sin Codificar
+              </span>
+              <span class="text-xs text-muted">${items.length} EAN(s) pendiente(s)</span>
+            </div>
+            <div style="padding:10px 16px;background:#fefce8;border-bottom:1px solid #fde68a;font-size:12px;color:#78350f;">
+              <i class="fa-solid fa-info-circle"></i> Estos códigos EAN aparecieron en importaciones de pedidos pero no se encontraron en la maestra de productos.
+              Codifíquelos en <strong>Maestros → Productos</strong> y luego reimporte el archivo para que se incluyan en las planillas.
+            </div>
+            <div class="table-container">
+              <table class="erp-table">
+                <thead><tr>
+                  <th>EAN / Código</th><th>Última Factura</th><th>Sucursal</th>
+                  <th class="text-center">Cantidad</th><th>Fecha Import.</th><th>Acciones</th>
+                </tr></thead>
+                <tbody>
+                  ${items.length === 0
+                    ? '<tr><td colspan="6" class="table-empty"><i class="fa-solid fa-check-circle" style="color:#16a34a;"></i> No hay productos pendientes de codificación</td></tr>'
+                    : items.map(it => `<tr>
+                        <td class="fw-800" style="font-family:monospace;">${WMS.esc(it.ean_codigo)}</td>
+                        <td>${WMS.esc(it.numero_factura || '-')}</td>
+                        <td>${WMS.esc(it.sucursal_entrega || '-')}</td>
+                        <td class="text-center">${it.cantidad || 1}</td>
+                        <td>${WMS.formatDate(it.fecha_importacion)}</td>
+                        <td>
+                          <button class="btn btn-xs btn-danger-soft" onclick="WMS_MODULES.picking._eliminarPendiente(${it.id})">
+                            <i class="fa-solid fa-trash"></i>
+                          </button>
+                        </td>
+                      </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>`);
+    } catch (e) { WMS.toast('error', 'Error cargando pendientes'); }
+  },
+
+  async _eliminarPendiente(id) {
+    try {
+      await API.delete('/picking/productos-pendientes/' + id);
+      WMS.toast('success', 'Eliminado');
+      this.show_productos_pendientes(true);
+    } catch (e) { WMS.toast('error', e.message); }
+  },
+
+  async _limpiarPendientes() {
+    if (!confirm('¿Eliminar TODOS los productos pendientes? Esta acción no se puede deshacer.')) return;
+    try {
+      await API.delete('/picking/productos-pendientes');
+      WMS.toast('success', 'Tabla limpiada');
+      this.show_productos_pendientes(true);
+    } catch (e) { WMS.toast('error', e.message); }
   },
 
   // ── REPORTE HISTÓRICO ─────────────────────────────────────────────────────

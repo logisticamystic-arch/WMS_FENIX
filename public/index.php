@@ -581,6 +581,9 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->post('', [\App\Controllers\PickingController::class, 'crearBatch']);
         $group->get('/template', [\App\Controllers\PickingController::class, 'getTemplate']);
         $group->post('/importar', [\App\Controllers\PickingController::class, 'importarPedidos']);
+        $group->get('/productos-pendientes', [\App\Controllers\PickingController::class, 'listarProductosPendientes']);
+        $group->delete('/productos-pendientes', [\App\Controllers\PickingController::class, 'limpiarProductosPendientes']);
+        $group->delete('/productos-pendientes/{id}', [\App\Controllers\PickingController::class, 'eliminarProductoPendiente']);
         $group->get('/dashboard', [\App\Controllers\PickingController::class, 'dashboard']);
         $group->get('/consolidados', [\App\Controllers\PickingController::class, 'consolidados']);
         $group->post('/asignar-multiple', [\App\Controllers\PickingController::class, 'asignarMultiple']);
