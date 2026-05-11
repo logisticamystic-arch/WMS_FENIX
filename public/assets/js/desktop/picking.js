@@ -95,6 +95,7 @@ WMS_MODULES.picking = {
           lineas_pendientes: 0,
           total_unidades: 0,
           auxiliares: new Set(),
+          clientes: new Set(),
           prioridad: 0,
           productos: {},
           primer_pick_ts: null,
@@ -103,6 +104,7 @@ WMS_MODULES.picking = {
         };
       }
       grupos[key].ordenes.push(p);
+      if (p.cliente) grupos[key].clientes.add(p.cliente);
       const detalles = p.detalles || [];
       grupos[key].total_lineas += detalles.length || parseInt(p.total_lineas || p.lineas || 0);
       let pendThisOrder = 0;
@@ -259,6 +261,7 @@ WMS_MODULES.picking = {
           <span class="badge badge-info" style="font-size:11.5px;font-weight:700;">#${WMS.esc(g.planilla)}</span>
         </div>
       </td>
+      <td style="font-size:11px;font-weight:600;">${WMS.esc([...g.clientes].join(', ') || '-')}</td>
       <td><span style="font-size:11px;font-weight:600;color:#64748b;">${WMS.esc(g.ruta)}</span></td>
       <td class="text-center"><b>${g.total_lineas - g.lineas_pendientes}</b> / ${g.total_lineas}</td>
       <td>
@@ -285,8 +288,8 @@ WMS_MODULES.picking = {
         `}
       </td>
     </tr>
-    <tr id="sub-plan-${WMS.esc(g.planilla)}" style="display:none;background:#f8fafc;">
-      <td colspan="9" style="padding:0 8px 10px 42px;">
+    <tr id="sub-plan-${WMS.esc(g.planilla)}" style="display:none;background:#f8fafc;" data-estado="${g.estado}">
+      <td colspan="10" style="padding:0 8px 10px 42px;">
         <div style="border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;background:#fff;box-shadow:inset 0 2px 4px rgba(0,0,0,.02)">
           <table style="width:100%;border-collapse:collapse;font-size:11px;">
             <thead style="background:#f1f5f9;color:#64748b;font-weight:700;text-transform:uppercase;font-size:10px;">
@@ -309,62 +312,233 @@ WMS_MODULES.picking = {
   },
 
   // ── PEDIDOS / PLANILLAS ───────────────────────────────────────────────────
-  async show_pedidos(silent = false) {
-    WMS.setToolbar(`
-      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking.importarPedidos()"><i class="fa-solid fa-file-import"></i> Importar</button>
-      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.picking.show_pedidos()"><i class="fa-solid fa-rotate"></i> Actualizar</button>
-      <span id="pick-refresh-badge" style="display:inline-flex;align-items:center;gap:5px;background:#198754;color:#fff;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:600;">
-        <span style="width:7px;height:7px;border-radius:50%;background:#fff;animation:pulse-dot 1.2s infinite;display:inline-block;"></span> Auto 30s
-      </span>`);
-    if (!silent) WMS.spinner();
+  async show_pedidos() {
+    WMS.setBreadcrumb('picking', 'Pedidos');
+    WMS.spinner();
+    this._pedidosFiltros = this._pedidosFiltros || {
+      q: '', solo_hoy: 1, estado: '', ruta: '', sucursal_entrega: '', fecha_desde: '', fecha_hasta: ''
+    };
+    await this._cargarPedidos();
+  },
+
+  _todayStr() {
+    return new Date().toISOString().split('T')[0];
+  },
+
+  async _cargarPedidos() {
+    const f = this._pedidosFiltros || {};
+    const params = new URLSearchParams();
+    if (f.solo_hoy)            params.set('solo_hoy', '1');
+    if (f.incluir_finalizados) params.set('incluir_finalizados', '1');
+    if (f.q)                   params.set('q', f.q);
+    if (f.estado)              params.set('estado', f.estado);
+    if (f.ruta)                params.set('ruta', f.ruta);
+    if (f.sucursal_entrega)    params.set('sucursal_entrega', f.sucursal_entrega);
+    if (f.fecha_desde)         params.set('fecha_desde', f.fecha_desde);
+    if (f.fecha_hasta)         params.set('fecha_hasta', f.fecha_hasta);
+    params.set('limit', '200');
+
     try {
-      const r = await API.get('/picking', 'estado=Pendiente&limit=200');
-      const items = r.data || r || [];
+      const r = await API.get('/picking?' + params.toString());
+      const ordenes = r.data || r || [];
+      this._renderPedidosTabla(ordenes);
+    } catch(e) {
+      WMS.toast('error', 'Error cargando pedidos');
+    }
+  },
 
-      // Agrupar por planilla
-      const grupos = this._agruparPorPlanilla(items);
+  _renderPedidosTabla(ordenes) {
+    const f = this._pedidosFiltros || {};
 
-      const stChip = s => {
-        const m = { Creado:'status-creada', Pendiente:'status-creada', Asignado:'status-confirmada',
-          EnProceso:'status-en-proceso', Completado:'status-cerrada', Cancelado:'status-cancelada' };
-        return `<span class="status-chip ${m[s]||'status-creada'}">${WMS.esc(s)}</span>`;
+    const estadoBadge = (e) => {
+      const map = {
+        'Pendiente': 'background:#fef9c3;color:#854d0e',
+        'EnProceso': 'background:#dbeafe;color:#1e40af',
+        'Completada':'background:#dcfce7;color:#166534',
+        'Cancelada': 'background:#fee2e2;color:#991b1b',
+        'Anulado':   'background:#f1f5f9;color:#64748b',
       };
+      const s = map[e] || 'background:#f1f5f9;color:#64748b';
+      return `<span style="${s};padding:2px 8px;border-radius:3px;font-size:.72rem;font-weight:600;">${WMS.esc(e)}</span>`;
+    };
 
-      const filas = grupos.map(g => {
-        return this._renderPlanillaRow(g);
-      }).join('');
+    const rows = ordenes.map(o => {
+      const seco  = o.seco_count || 0;
+      const frio  = o.refrigerado_count || 0;
+      const cong  = o.congelado_count || 0;
+      const total = o.total_count || o.detalles?.length || 0;
+      return `
+        <tr class="erp-table-row clickable main-row" onclick="WMS_MODULES.picking._toggleExpandRow(this, ${o.id})" style="cursor:pointer;">
+          <td style="padding:8px 12px;">
+            <div style="font-weight:700;color:#0F4C81;">${WMS.esc(o.numero_pedido||o.numero_orden||'—')}</div>
+            <div style="font-size:.7rem;color:#64748b;">${WMS.esc(o.planilla_lote||'')}</div>
+          </td>
+          <td style="padding:8px 12px;">
+            <div style="font-weight:600;">${WMS.esc(o.sucursal_entrega||o.cliente||'—')}</div>
+            <div style="font-size:.7rem;color:#64748b;">${WMS.esc(o.cliente||'')}</div>
+          </td>
+          <td style="padding:8px 12px;">
+            ${o.ruta
+              ? `<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:3px;font-size:.72rem;">${WMS.esc(o.ruta)}</span>`
+              : `<button class="btn btn-outline-primary btn-sm" style="font-size:.7rem;padding:2px 8px;" onclick="event.stopPropagation();WMS_MODULES.picking._asignarRutaInline(${o.id}, this)">+ Ruta</button>`
+            }
+          </td>
+          <td style="padding:8px 12px;text-align:center;font-weight:700;color:#92400e;">${seco||'—'}</td>
+          <td style="padding:8px 12px;text-align:center;font-weight:700;color:#0369a1;">${frio||'—'}</td>
+          <td style="padding:8px 12px;text-align:center;font-weight:700;color:#7c3aed;">${cong||'—'}</td>
+          <td style="padding:8px 12px;text-align:center;font-weight:700;">${total}</td>
+          <td style="padding:8px 12px;">${estadoBadge(o.estado)}</td>
+          <td style="padding:8px 12px;text-align:center;">
+            <button title="Eliminar" onclick="event.stopPropagation();WMS_MODULES.picking._eliminarOrden(${o.id})"
+              style="background:#fee2e2;border:none;border-radius:3px;padding:4px 8px;cursor:pointer;color:#991b1b;font-size:.75rem;">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+        <tr id="expand-${o.id}" style="display:none;">
+          <td colspan="9" style="padding:0;background:#f8fafc;">
+            <div id="expand-content-${o.id}" style="padding:12px 24px;border-top:1px solid #e2e8f0;">
+              <div style="color:#64748b;font-size:.78rem;">Cargando detalle...</div>
+            </div>
+          </td>
+        </tr>`;
+    }).join('');
 
-      WMS.setContent(`
-        <div class="filter-bar">
-          <div class="search-bar"><i class="fa-solid fa-search"></i>
-            <input placeholder="Buscar planilla, ruta..." oninput="WMS_MODULES.picking.filterTable(this.value,'pick-table')">
-          </div>
-          <select class="form-control" style="max-width:160px;" onchange="WMS_MODULES.picking.filterEstado(this.value)">
-            <option value="Pendiente" selected>Pendiente</option>
-            <option value="Asignado">Asignado</option>
-            <option>EnProceso</option><option>Completado</option>
-          </select>
-          <span class="badge badge-info" style="padding:6px 12px;">${grupos.length} planilla(s) — ${items.length} orden(es)</span>
+    const rutasUnicas     = [...new Set(ordenes.map(o=>o.ruta).filter(Boolean))];
+    const sucursalesUnicas = [...new Set(ordenes.map(o=>o.sucursal_entrega||o.cliente).filter(Boolean))];
+
+    WMS.setContent(`
+      <div class="card animate-fade-in">
+        <div class="card-header">
+          <h5 class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Pedidos de Picking</h5>
         </div>
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-layer-group"></i> Planillas de Picking (${grupos.length})</span>
+        <div class="card-body" style="padding:0;">
+          <div style="padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+            <div style="flex:1;min-width:200px;">
+              <input id="pick-q" type="text" class="form-control" placeholder="🔍 Buscar ruta, sucursal, N° pedido..."
+                     value="${WMS.esc(f.q||'')}"
+                     oninput="WMS_MODULES.picking._pedidosFiltros.q=this.value;clearTimeout(WMS_MODULES.picking._qt);WMS_MODULES.picking._qt=setTimeout(()=>WMS_MODULES.picking._cargarPedidos(),350)">
+            </div>
+            <div>
+              <select id="pick-ruta" class="form-control" onchange="WMS_MODULES.picking._pedidosFiltros.ruta=this.value;WMS_MODULES.picking._cargarPedidos()">
+                <option value="">Ruta: Todas</option>
+                ${rutasUnicas.map(r=>`<option value="${WMS.esc(r)}" ${f.ruta===r?'selected':''}>${WMS.esc(r)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <select id="pick-suc" class="form-control" onchange="WMS_MODULES.picking._pedidosFiltros.sucursal_entrega=this.value;WMS_MODULES.picking._cargarPedidos()">
+                <option value="">Sucursal: Todas</option>
+                ${sucursalesUnicas.map(s=>`<option value="${WMS.esc(s)}" ${f.sucursal_entrega===s?'selected':''}>${WMS.esc(s)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <select id="pick-est" class="form-control" onchange="WMS_MODULES.picking._pedidosFiltros.estado=this.value;WMS_MODULES.picking._cargarPedidos()">
+                <option value="">Estado: Activos</option>
+                <option value="Pendiente" ${f.estado==='Pendiente'?'selected':''}>Pendiente</option>
+                <option value="EnProceso" ${f.estado==='EnProceso'?'selected':''}>En Proceso</option>
+                <option value="Completada,Cancelada" ${f.estado==='Completada,Cancelada'?'selected':''}>Finalizados</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:4px;align-items:center;">
+              <input id="pick-desde" type="date" class="form-control" style="width:140px;" value="${f.fecha_desde||''}"
+                     onchange="WMS_MODULES.picking._pedidosFiltros.fecha_desde=this.value;WMS_MODULES.picking._pedidosFiltros.solo_hoy=0;WMS_MODULES.picking._cargarPedidos()">
+              <span style="color:#64748b;font-size:.78rem;">—</span>
+              <input id="pick-hasta" type="date" class="form-control" style="width:140px;" value="${f.fecha_hasta||''}"
+                     onchange="WMS_MODULES.picking._pedidosFiltros.fecha_hasta=this.value;WMS_MODULES.picking._pedidosFiltros.solo_hoy=0;WMS_MODULES.picking._cargarPedidos()">
+            </div>
+            <button class="btn btn-outline-primary btn-sm" onclick="WMS_MODULES.picking._pedidosFiltros={solo_hoy:1,q:'',estado:'',ruta:'',sucursal_entrega:'',fecha_desde:'',fecha_hasta:''};WMS_MODULES.picking._cargarPedidos()">
+              <i class="fa-solid fa-rotate-left"></i> Hoy
+            </button>
           </div>
-          <div class="table-container">
-            <table class="erp-table" id="pick-table">
-              <thead><tr>
-                <th>Planilla</th><th>Ruta</th>
-                <th style="text-align:center;">Líneas</th>
-                <th style="text-align:center;">Pendientes</th>
-                <th style="min-width:120px;">Progreso</th>
-                <th>Estado</th><th>Auxiliar(es)</th><th>Hora Inicio</th><th>Acciones</th>
-              </tr></thead>
-              <tbody>${filas || '<tr><td colspan="8" class="table-empty">Sin órdenes de picking</td></tr>'}</tbody>
+          <div style="overflow-x:auto;">
+            <table class="erp-table">
+              <thead>
+                <tr>
+                  <th style="padding:10px 12px;">N° Pedido</th>
+                  <th style="padding:10px 12px;">Sucursal Entrega</th>
+                  <th style="padding:10px 12px;">Ruta</th>
+                  <th style="padding:10px 12px;text-align:center;" title="Líneas Seco">🌡️ Seco</th>
+                  <th style="padding:10px 12px;text-align:center;" title="Líneas Refrigerado">❄️ Frío</th>
+                  <th style="padding:10px 12px;text-align:center;" title="Líneas Congelado">🧊 Cong.</th>
+                  <th style="padding:10px 12px;text-align:center;">Total</th>
+                  <th style="padding:10px 12px;">Estado</th>
+                  <th style="padding:10px 12px;text-align:center;">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows || '<tr><td colspan="9" style="text-align:center;padding:32px;color:#94a3b8;">Sin pedidos activos hoy. Use los filtros para buscar.</td></tr>'}
+              </tbody>
             </table>
           </div>
-        </div>`);
+        </div>
+      </div>`);
+  },
+
+  async _toggleExpandRow(tr, ordenId) {
+    const expandRow = document.getElementById('expand-' + ordenId);
+    const content   = document.getElementById('expand-content-' + ordenId);
+    if (!expandRow) return;
+    if (expandRow.style.display !== 'none') {
+      expandRow.style.display = 'none';
+      tr.classList.remove('selected');
+      return;
+    }
+    expandRow.style.display = '';
+    tr.classList.add('selected');
+    try {
+      const r = await API.get('/picking/' + ordenId);
+      const o = r.data || r;
+      const lineas = (o.detalles || []).map(d => `
+        <tr>
+          <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.producto?.nombre||d.producto?.codigo_interno||'—')}</td>
+          <td style="padding:5px 10px;font-size:.78rem;text-align:center;">${d.cantidad_solicitada}</td>
+          <td style="padding:5px 10px;font-size:.78rem;text-align:center;">${d.cantidad_pickeada||0}</td>
+          <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.ambiente||'—')}</td>
+          <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.auxiliar?.nombre||'—')}</td>
+          <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.estado||'')}</td>
+        </tr>`).join('');
+      content.innerHTML = `
+        <div style="font-size:.78rem;font-weight:700;color:#0F4C81;margin-bottom:8px;">
+          Pedido: <strong>${WMS.esc(o.numero_pedido||o.numero_orden||'—')}</strong>
+          · Asesor: ${WMS.esc(o.asesor_comercial||'—')}
+          · Área: ${WMS.esc(o.area_comercial||'—')}
+        </div>
+        <table class="erp-table" style="margin:0;">
+          <thead><tr>
+            <th style="padding:5px 10px;font-size:.7rem;">Producto</th>
+            <th style="padding:5px 10px;font-size:.7rem;text-align:center;">Solicitado</th>
+            <th style="padding:5px 10px;font-size:.7rem;text-align:center;">Pickeado</th>
+            <th style="padding:5px 10px;font-size:.7rem;">Ambiente</th>
+            <th style="padding:5px 10px;font-size:.7rem;">Auxiliar</th>
+            <th style="padding:5px 10px;font-size:.7rem;">Estado</th>
+          </tr></thead>
+          <tbody>${lineas||'<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:12px;">Sin líneas</td></tr>'}</tbody>
+        </table>`;
     } catch(e) {
-      WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>');
+      content.innerHTML = '<div style="color:#ef4444;font-size:.78rem;padding:8px;">Error cargando detalle</div>';
+    }
+  },
+
+  async _asignarRutaInline(ordenId, btn) {
+    const ruta = prompt('Nombre de la ruta para este pedido:');
+    if (ruta === null) return;
+    try {
+      await API.put('/picking/' + ordenId + '/ruta', { ruta });
+      WMS.toast('success', 'Ruta asignada');
+      this._cargarPedidos();
+    } catch(e) {
+      WMS.toast('error', 'Error asignando ruta');
+    }
+  },
+
+  async _eliminarOrden(ordenId) {
+    if (!confirm('¿Eliminar este pedido? Se revertirán las reservas de inventario.')) return;
+    try {
+      await API.delete('/picking/' + ordenId);
+      WMS.toast('success', 'Pedido eliminado');
+      this._cargarPedidos();
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error eliminando pedido');
     }
   },
 
@@ -611,7 +785,11 @@ WMS_MODULES.picking = {
           separar_consolidado: sepCons
         });
         if (r.error) throw new Error(r.message);
-        WMS.toast('success', `Líneas asignadas (${r.data?.asignadas || 0})`);
+        const data = r.data || {};
+        const resMsg = [`Líneas asignadas: ${data.asignadas || 0}`];
+        if (data.inventario_reservado > 0) resMsg.push(`${data.inventario_reservado} unidades reservadas`);
+        if (data.faltantes_detectados > 0) resMsg.push(`${data.faltantes_detectados} faltantes detectados`);
+        WMS.toast(data.faltantes_detectados > 0 ? 'warning' : 'success', resMsg.join(' • '));
       } else {
         // Asignación dividida por pasillo
         const rows = document.querySelectorAll('.split-row');
@@ -755,16 +933,16 @@ WMS_MODULES.picking = {
 
   async importarPedidos() {
     const CAMPOS_REQUERIDOS = [
-      { key: 'numero_factura', label: 'Num Factura',  icon: 'fa-file-invoice', color: '#6366f1' },
-      { key: 'cliente',        label: 'Cliente',      icon: 'fa-user',         color: '#0ea5e9' },
-      { key: 'documento',      label: 'Documento',    icon: 'fa-id-card',      color: '#8b5cf6' },
-      { key: 'direccion',      label: 'Dirección',    icon: 'fa-location-dot', color: '#f59e0b' },
-      { key: 'planilla',       label: 'Planilla',     icon: 'fa-layer-group',  color: '#10b981' },
-      { key: 'asesor',         label: 'Asesor',       icon: 'fa-user-tie',     color: '#ec4899' },
-      { key: 'producto',       label: 'Producto (EAN)', icon: 'fa-barcode',    color: '#14b8a6' },
-      { key: 'cantidad',       label: 'Cantidad',     icon: 'fa-cubes',        color: '#f97316' },
-      { key: 'costo',          label: 'Costo',        icon: 'fa-dollar-sign',  color: '#22c55e' },
-      { key: 'descuento',      label: 'Descuento %',  icon: 'fa-percent',      color: '#ef4444' },
+      { key: 'numero_factura', label: 'Num Pedido',       icon: 'fa-file-invoice', color: '#6366f1' },
+      { key: 'cliente',        label: 'Sucursal Entrega', icon: 'fa-building',     color: '#0ea5e9' },
+      { key: 'documento',      label: 'Documento',        icon: 'fa-id-card',      color: '#8b5cf6' },
+      { key: 'direccion',      label: 'Dirección',        icon: 'fa-location-dot', color: '#f59e0b' },
+      { key: 'planilla',       label: 'Planilla',         icon: 'fa-layer-group',  color: '#10b981' },
+      { key: 'asesor',         label: 'Asesor',           icon: 'fa-user-tie',     color: '#ec4899' },
+      { key: 'producto',       label: 'Referencia (EAN)', icon: 'fa-barcode',      color: '#14b8a6' },
+      { key: 'cantidad',       label: 'UNID Pedido',      icon: 'fa-cubes',        color: '#f97316' },
+      { key: 'costo',          label: 'Costo',            icon: 'fa-dollar-sign',  color: '#22c55e' },
+      { key: 'descuento',      label: 'Descuento %',      icon: 'fa-percent',      color: '#ef4444' },
     ];
 
     const camposGrid = CAMPOS_REQUERIDOS.map(c => `
@@ -784,6 +962,19 @@ WMS_MODULES.picking = {
           </div>
         </div>
 
+        <div style="padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;font-size:12px;color:#166534;margin-bottom:14px;">
+          <i class="fa-solid fa-table" style="margin-right:6px;color:#10b981;"></i>
+          <strong>Mapeo de Campos (Sistema ← Archivo):</strong>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px 20px;margin-top:6px;font-size:11px;">
+            <span>Numero Factura ← <strong>Num Pedido</strong></span>
+            <span>Cliente ← <strong>SUCURSAL ENTREGA</strong></span>
+            <span>Planilla ← <strong>Num Pedido</strong></span>
+            <span>Producto ← <strong>Referencia</strong></span>
+            <span>Cantidad ← <strong>UNID PEDIDO</strong></span>
+            <span>Documento, Direccion ← <em>opcionales</em></span>
+          </div>
+        </div>
+
         <div style="margin-bottom:14px;">
           <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">
             <i class="fa-solid fa-diagram-project" style="margin-right:6px;color:#6366f1;"></i>Campos que se extraerán del archivo
@@ -796,7 +987,7 @@ WMS_MODULES.picking = {
         <div style="padding:10px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;font-size:12px;color:#92400e;margin-bottom:14px;">
           <i class="fa-solid fa-lightbulb" style="margin-right:6px;color:#f59e0b;"></i>
           <strong>Nota:</strong> El archivo puede contener más columnas — el sistema solo extraerá los campos listados arriba.
-          Los pedidos se agrupan por <strong>Numero Factura</strong> para crear las órdenes de picking.
+          Los pedidos se agrupan por <strong>Num Pedido</strong> para crear las órdenes de picking. Al asignar, el sistema reservará inventario y detectará faltantes automáticamente.
         </div>
 
         <div class="form-group">
@@ -869,14 +1060,14 @@ WMS_MODULES.picking = {
 
       // Auto-detect column mappings (case-insensitive, partial match)
       const MAPEO = {
-        numero_factura: ['numero factura', 'num factura', 'factura', 'nro factura', 'no. factura'],
-        cliente:        ['cliente', 'nombre cliente', 'razon social'],
+        numero_factura: ['numero factura', 'num factura', 'factura', 'nro factura', 'num pedido', 'numero pedido', 'nro pedido', 'pedido'],
+        cliente:        ['cliente', 'nombre cliente', 'razon social', 'sucursal entrega', 'sucursal', 'punto entrega', 'destino'],
         documento:      ['documento', 'nit', 'cedula', 'cc', 'rut'],
         direccion:      ['direccion', 'dirección', 'dir', 'address'],
-        planilla:       ['planilla', 'planilla numero', 'num planilla', 'nro planilla'],
+        planilla:       ['planilla', 'planilla numero', 'num planilla', 'nro planilla', 'num pedido', 'numero pedido'],
         asesor:         ['asesor', 'comercial', 'vendedor', 'asesor comercial'],
-        producto:       ['barras', 'ean', 'codigo barras', 'codigo_barras', 'producto', 'codigo producto'],
-        cantidad:       ['cantidad', 'cant', 'qty', 'unidades'],
+        producto:       ['referencia', 'ref', 'barras', 'ean', 'codigo barras', 'codigo_barras', 'producto', 'codigo producto', 'codigo'],
+        cantidad:       ['cantidad', 'cant', 'qty', 'unidades', 'unid pedido', 'unid_pedido', 'unidades pedido'],
         costo:          ['costo', 'precio', 'valor', 'cost', 'precio unitario'],
         descuento:      ['descuento', 'desc', 'descto', 'discount', 'dcto'],
       };
@@ -908,9 +1099,9 @@ WMS_MODULES.picking = {
       // Build preview table showing only the mapped columns
       const mappedFields = Object.entries(colMap);
       const fieldLabels = {
-        numero_factura: 'Num Factura', cliente: 'Cliente', documento: 'Documento',
+        numero_factura: 'Num Pedido', cliente: 'Sucursal Entrega', documento: 'Documento',
         direccion: 'Dirección', planilla: 'Planilla', asesor: 'Asesor',
-        producto: 'Producto (EAN)', cantidad: 'Cantidad', costo: 'Costo', descuento: 'Descuento'
+        producto: 'Referencia (EAN)', cantidad: 'UNID Pedido', costo: 'Costo', descuento: 'Descuento'
       };
 
       let tableHtml = `<table style="width:100%;border-collapse:collapse;font-size:11px;">
@@ -937,7 +1128,7 @@ WMS_MODULES.picking = {
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;">
           <span><i class="fa-solid fa-check-circle" style="color:#10b981;margin-right:4px;"></i><strong>${mapped}</strong> / ${total} campos detectados</span>
           <span><i class="fa-solid fa-file-lines" style="color:#3b82f6;margin-right:4px;"></i><strong>${allDataRows.length}</strong> líneas de datos</span>
-          <span><i class="fa-solid fa-file-invoice" style="color:#6366f1;margin-right:4px;"></i><strong>${facturas.size}</strong> facturas únicas (= órdenes picking)</span>
+          <span><i class="fa-solid fa-file-invoice" style="color:#6366f1;margin-right:4px;"></i><strong>${facturas.size}</strong> pedidos únicos (= órdenes picking)</span>
           <span><i class="fa-solid fa-grip-lines" style="color:#94a3b8;margin-right:4px;"></i>Separador: <code>${sep === ';' ? 'punto y coma (;)' : 'coma (,)'}</code></span>
         </div>
         ${mapped < 5 ? `<div style="margin-top:8px;padding:6px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Advertencia: Se detectaron pocos campos. Verifique que el archivo tenga los encabezados correctos.</div>` : ''}
@@ -979,58 +1170,181 @@ WMS_MODULES.picking = {
         const diff = au.diferencias || {};
         const diffColor = v => v > 0 ? 'color:#dc2626;font-weight:700;' : (v < 0 ? 'color:#f59e0b;font-weight:700;' : 'color:#10b981;font-weight:700;');
         const fmtVal = v => typeof v === 'number' ? v.toLocaleString('es-CO') : (v || '0');
+        const hasDiff = (diff.lineas > 0 || diff.cantidad > 0);
+        const errList = data.errores || [];
+        const noProd = data.productos_no_encontrados || 0;
+        const campos = data.campos_detectados || [];
 
-        await Swal.fire({
-          icon: (diff.lineas > 0 || diff.cantidad > 0) ? 'warning' : 'success',
-          title: 'Resultado de Importación',
-          width: 580,
-          html: `
-            <div style="text-align:left;font-size:13px;">
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
-                <div style="padding:10px;background:#f0fdf4;border-radius:4px;text-align:center;">
-                  <div style="font-size:22px;font-weight:800;color:#16a34a;">${j.importadas || 0}</div>
-                  <div style="font-size:11px;color:#4ade80;">Órdenes Creadas</div>
-                </div>
-                <div style="padding:10px;background:#eff6ff;border-radius:4px;text-align:center;">
-                  <div style="font-size:22px;font-weight:800;color:#2563eb;">${data.total_lineas || 0}</div>
-                  <div style="font-size:11px;color:#60a5fa;">Líneas Procesadas</div>
-                </div>
+        // Build the professional summary HTML
+        const summaryHtml = `
+          <div style="text-align:left;font-size:13px;max-height:70vh;overflow-y:auto;">
+            <!-- KPI Cards -->
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
+              <div style="padding:12px;background:#f0fdf4;border-radius:6px;text-align:center;border:1px solid #bbf7d0;">
+                <div style="font-size:24px;font-weight:800;color:#16a34a;">${j.importadas || 0}</div>
+                <div style="font-size:10px;color:#16a34a;font-weight:600;text-transform:uppercase;">Pedidos Creados</div>
               </div>
+              <div style="padding:12px;background:#eff6ff;border-radius:6px;text-align:center;border:1px solid #bfdbfe;">
+                <div style="font-size:24px;font-weight:800;color:#2563eb;">${data.total_lineas || 0}</div>
+                <div style="font-size:10px;color:#2563eb;font-weight:600;text-transform:uppercase;">Líneas Cargadas</div>
+              </div>
+              <div style="padding:12px;background:${hasDiff?'#fef2f2':'#f0fdf4'};border-radius:6px;text-align:center;border:1px solid ${hasDiff?'#fecaca':'#bbf7d0'};">
+                <div style="font-size:24px;font-weight:800;color:${hasDiff?'#dc2626':'#16a34a'};">${diff.lineas || 0}</div>
+                <div style="font-size:10px;color:${hasDiff?'#dc2626':'#16a34a'};font-weight:600;text-transform:uppercase;">Líneas Excluidas</div>
+              </div>
+            </div>
 
-              <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:6px;text-transform:uppercase;">📊 Auditoría de Importación</div>
-              <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;">
-                <thead>
-                  <tr style="background:#f1f5f9;">
-                    <th style="padding:6px 10px;text-align:left;">Concepto</th>
-                    <th style="padding:6px 10px;text-align:right;">Archivo</th>
-                    <th style="padding:6px 10px;text-align:right;">Sistema</th>
-                    <th style="padding:6px 10px;text-align:right;">Diferencia</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:5px 10px;">Líneas de datos</td><td style="padding:5px 10px;text-align:right;">${fmtVal(arch.lineas_archivo)}</td><td style="padding:5px 10px;text-align:right;">${fmtVal(sys.lineas_sistema)}</td><td style="padding:5px 10px;text-align:right;${diffColor(diff.lineas)}">${diff.lineas > 0 ? '+' : ''}${fmtVal(diff.lineas)}</td></tr>
-                  <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:5px 10px;">Clientes únicos</td><td style="padding:5px 10px;text-align:right;">${fmtVal(arch.clientes_archivo)}</td><td style="padding:5px 10px;text-align:right;">${fmtVal(sys.clientes_sistema)}</td><td style="padding:5px 10px;text-align:right;${diffColor(diff.clientes)}">${diff.clientes > 0 ? '+' : ''}${fmtVal(diff.clientes)}</td></tr>
-                  <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:5px 10px;">Cantidad total</td><td style="padding:5px 10px;text-align:right;">${fmtVal(arch.cantidad_archivo)}</td><td style="padding:5px 10px;text-align:right;">${fmtVal(sys.cantidad_sistema)}</td><td style="padding:5px 10px;text-align:right;${diffColor(diff.cantidad)}">${diff.cantidad > 0 ? '+' : ''}${fmtVal(diff.cantidad)}</td></tr>
-                  <tr><td style="padding:5px 10px;">Valor total</td><td style="padding:5px 10px;text-align:right;">$${fmtVal(arch.valor_archivo)}</td><td style="padding:5px 10px;text-align:right;">$${fmtVal(sys.valor_sistema)}</td><td style="padding:5px 10px;text-align:right;${diffColor(diff.valor)}">${diff.valor > 0 ? '+$' : '-$'}${fmtVal(Math.abs(diff.valor))}</td></tr>
-                </tbody>
-              </table>
+            <!-- Campos detectados -->
+            <div style="margin-bottom:12px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;">
+              <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Campos Detectados en el Archivo</div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                ${campos.map(c => '<span style="padding:2px 8px;background:#e0e7ff;color:#4338ca;border-radius:10px;font-size:10px;font-weight:600;">' + WMS.esc(c) + '</span>').join('')}
+              </div>
+            </div>
 
-              ${diff.lineas > 0 ? `<div style="margin-top:10px;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>${diff.lineas} línea(s)</strong> del archivo no se cargaron. Posibles causas: productos no encontrados en el catálogo.</div>` : `<div style="margin-top:10px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;color:#166534;font-size:11px;"><i class="fa-solid fa-check-circle" style="margin-right:4px;"></i>Todas las líneas fueron importadas correctamente.</div>`}
+            <!-- Audit Table -->
+            <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:6px;text-transform:uppercase;">📊 Auditoría de Importación — Archivo vs Sistema</div>
+            <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;margin-bottom:10px;">
+              <thead>
+                <tr style="background:#f1f5f9;">
+                  <th style="padding:6px 10px;text-align:left;">Concepto</th>
+                  <th style="padding:6px 10px;text-align:right;">📄 Archivo</th>
+                  <th style="padding:6px 10px;text-align:right;">💾 Sistema</th>
+                  <th style="padding:6px 10px;text-align:right;">Δ Diferencia</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:5px 10px;">Líneas de datos</td><td style="padding:5px 10px;text-align:right;">${fmtVal(arch.lineas_archivo)}</td><td style="padding:5px 10px;text-align:right;">${fmtVal(sys.lineas_sistema)}</td><td style="padding:5px 10px;text-align:right;${diffColor(diff.lineas)}">${diff.lineas > 0 ? '+' : ''}${fmtVal(diff.lineas)}</td></tr>
+                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:5px 10px;">Sucursales / Clientes</td><td style="padding:5px 10px;text-align:right;">${fmtVal(arch.clientes_archivo)}</td><td style="padding:5px 10px;text-align:right;">${fmtVal(sys.clientes_sistema)}</td><td style="padding:5px 10px;text-align:right;${diffColor(diff.clientes)}">${diff.clientes > 0 ? '+' : ''}${fmtVal(diff.clientes)}</td></tr>
+                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:5px 10px;">Unidades totales</td><td style="padding:5px 10px;text-align:right;">${fmtVal(arch.cantidad_archivo)}</td><td style="padding:5px 10px;text-align:right;">${fmtVal(sys.cantidad_sistema)}</td><td style="padding:5px 10px;text-align:right;${diffColor(diff.cantidad)}">${diff.cantidad > 0 ? '+' : ''}${fmtVal(diff.cantidad)}</td></tr>
+                <tr><td style="padding:5px 10px;">Valor monetario</td><td style="padding:5px 10px;text-align:right;">$${fmtVal(arch.valor_archivo)}</td><td style="padding:5px 10px;text-align:right;">$${fmtVal(sys.valor_sistema)}</td><td style="padding:5px 10px;text-align:right;${diffColor(diff.valor)}">${diff.valor > 0 ? '+$' : diff.valor < 0 ? '-$' : '$'}${fmtVal(Math.abs(diff.valor || 0))}</td></tr>
+              </tbody>
+            </table>
 
-              ${(data.errores||[]).length ? `<div style="margin-top:8px;padding:8px;background:#fef2f2;border-radius:4px;color:#dc2626;font-size:11px;"><strong>Errores (${data.errores.length}):</strong><br>${data.errores.slice(0,5).join('<br>')}</div>` : ''}
-              ${(data.productos_no_encontrados||0) > 0 ? `<div style="margin-top:8px;padding:8px;background:#fefce8;border-radius:4px;color:#92400e;font-size:11px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>${data.productos_no_encontrados} producto(s) no encontrado(s) en el catálogo</div>` : ''}
-            </div>`,
-          confirmButtonText: 'Aceptar',
-          confirmButtonColor: '#3b82f6',
-        });
+            <!-- Status Banner -->
+            ${diff.lineas > 0
+              ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>' + diff.lineas + ' línea(s)</strong> del archivo no se cargaron. Causas: productos no encontrados o datos incompletos.</div>'
+              : '<div style="padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;color:#166534;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-check-circle" style="margin-right:4px;"></i><strong>Importación exitosa.</strong> Todas las líneas del archivo fueron cargadas correctamente.</div>'}
 
+            ${noProd > 0 ? '<div style="padding:8px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;color:#92400e;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>' + noProd + '</strong> referencia(s) del archivo no existen en el catálogo de productos. Verifique los códigos EAN/Referencia.</div>' : ''}
+
+            ${errList.length > 0 ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><strong>Novedades (' + errList.length + '):</strong><ul style="margin:4px 0 0;padding-left:16px;">' + errList.slice(0,10).map(e => '<li>' + WMS.esc(e) + '</li>').join('') + (errList.length > 10 ? '<li>... y ' + (errList.length-10) + ' más</li>' : '') + '</ul></div>' : ''}
+          </div>`;
+
+        // Use WMS native modal (not Swal which is not loaded)
         WMS.closeModal('generic-modal');
-        this.show_pedidos();
+        WMS.showModal(hasDiff ? '⚠️ Resultado de Importación' : '✅ Importación Completada', summaryHtml,
+          `<button class="btn btn-primary" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking.show_pedidos();">
+            <i class="fa-solid fa-check"></i> Aceptar
+          </button>`);
       }
-    } catch(e) {
-      WMS.toast('error', 'Error de conexión al importar');
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-upload"></i> Importar Pedidos'; }
-    }
+    } catch(e) { console.error('Error al iniciar', e); WMS.toast('error', 'Error al iniciar planilla'); }
+  },
+
+  async _anularPedido(id) {
+    WMS.confirm('Anular Pedido', '¿Está seguro de anular este pedido? Se revertirá la reserva de inventario y el stock pickeado regresará al sistema.', async () => {
+      try {
+        const r = await API.delete('/picking/' + id);
+        if (r.error) WMS.toast('error', r.message);
+        else {
+          WMS.toast('success', 'Pedido anulado correctamente');
+          WMS.closeRightPanel();
+          this.show_pedidos(true);
+        }
+      } catch(e) { WMS.toast('error', 'Error al anular'); }
+    });
+  },
+
+  async _editarPedido(id) {
+    try {
+      const r = await API.get('/picking/' + id);
+      const o = r.data || r;
+      WMS.showModal('Editar Pedido ' + (o.numero_orden || o.id), `
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Cliente / Sucursal</label>
+            <input type="text" id="edit-ped-cliente" class="form-control" value="${WMS.esc(o.cliente || '')}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Prioridad (1-10)</label>
+            <input type="number" id="edit-ped-prioridad" class="form-control" value="${o.prioridad || 5}" min="1" max="10">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha Requerida</label>
+            <input type="date" id="edit-ped-fecha" class="form-control" value="${o.fecha_requerida || ''}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Ruta / Área Comercial</label>
+            <input type="text" id="edit-ped-area" class="form-control" value="${WMS.esc(o.area_comercial || '')}">
+          </div>
+        </div>
+      `, `
+        <button class="btn btn-secondary" onclick="WMS.closeModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="WMS_MODULES.picking._guardarEdicionPedido(${id})">Guardar Cambios</button>
+      `);
+    } catch(e) { WMS.toast('error', 'Error al cargar pedido'); }
+  },
+
+  async _guardarEdicionPedido(id) {
+    const payload = {
+      cliente: document.getElementById('edit-ped-cliente').value,
+      prioridad: document.getElementById('edit-ped-prioridad').value,
+      fecha_requerida: document.getElementById('edit-ped-fecha').value,
+      area_comercial: document.getElementById('edit-ped-area').value,
+    };
+    try {
+      const r = await API.put('/picking/' + id, payload);
+      if (r.error) WMS.toast('error', r.message);
+      else {
+        WMS.toast('success', 'Pedido actualizado');
+        WMS.closeModal();
+        WMS.closeRightPanel();
+        this.show_pedidos(true);
+      }
+    } catch(e) { WMS.toast('error', 'Error al actualizar'); }
+  },
+
+  async _mostrarAgregarLineaPedido(id) {
+    try {
+      const r = await API.get('/maestro/productos');
+      const productos = r.data || r || [];
+      WMS.showModal('Agregar Línea a Pedido #' + id, `
+        <div class="form-group">
+          <label class="form-label">Producto</label>
+          <select id="add-line-prod" class="form-control select2" style="width:100%">
+            <option value="">Seleccione un producto...</option>
+            ${productos.map(p => `<option value="${p.id}">${WMS.esc(p.nombre)} [${WMS.esc(p.codigo_interno || '')}]</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cantidad</label>
+          <input type="number" id="add-line-qty" class="form-control" value="1" min="0.1" step="0.1">
+        </div>
+      `, `
+        <button class="btn btn-secondary" onclick="WMS.closeModal()">Cancelar</button>
+        <button class="btn btn-success" onclick="WMS_MODULES.picking._confirmarAgregarLinea(${id})">Agregar Línea</button>
+      `);
+      // Si select2 está disponible, activarlo
+      if (window.$ && $.fn.select2) $('#add-line-prod').select2({ dropdownParent: $('#generic-modal') });
+    } catch(e) { WMS.toast('error', 'Error cargando productos'); }
+  },
+
+  async _confirmarAgregarLinea(id) {
+    const payload = {
+      producto_id: document.getElementById('add-line-prod').value,
+      cantidad: document.getElementById('add-line-qty').value,
+    };
+    if (!payload.producto_id) return WMS.toast('warn', 'Seleccione un producto');
+    try {
+      const r = await API.post(`/picking/${id}/lineas`, payload);
+      if (r.error) WMS.toast('error', r.message);
+      else {
+        WMS.toast('success', 'Línea agregada correctamente');
+        WMS.closeModal();
+        WMS.closeRightPanel();
+        this.show_pedidos(true);
+      }
+    } catch(e) { WMS.toast('error', 'Error al agregar línea'); }
   },
 
   // ── ASIGNACIÓN DE PICKING ─────────────────────────────────────────────────
@@ -1266,13 +1580,19 @@ WMS_MODULES.picking = {
     if (!g) return;
     const rows = (g.ordenes||[]).map(o => `
       <tr>
-        <td><span class="pro-badge info">${WMS.esc(o.id||'–')}</span></td>
-        <td>${WMS.esc(o.codigo_producto||o.ean||'–')}</td>
-        <td>${WMS.esc(o.descripcion||o.producto||'–')}</td>
-        <td style="text-align:center;font-weight:700">${o.cantidad||0}</td>
-        <td style="text-align:center">${o.lineas_pendientes>0?`<span class="pro-badge alert">${o.lineas_pendientes}</span>`:'<span class="pro-badge ok">0</span>'}</td>
+        <td><span class="pro-badge info">${WMS.esc(o.numero_orden || o.id || '–')}</span></td>
+        <td>${WMS.esc(o.cliente || '–')}</td>
+        <td>${WMS.esc(o.fecha_requerida || '–')}</td>
+        <td style="text-align:center;font-weight:700">${o.detalles ? o.detalles.length : (o.total_lineas || 0)}</td>
         <td><span class="pro-badge ${o.estado==='Completado'?'ok':o.estado==='Asignado'?'warn':'info'}">${WMS.esc(o.estado||'–')}</span></td>
-      </tr>`).join('') || '<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">Sin líneas</td></tr>';
+        <td style="text-align:right">
+          <div style="display:flex;gap:4px;justify-content:flex-end">
+            <button class="btn btn-xs btn-primary" title="Editar Pedido" onclick="WMS_MODULES.picking._editarPedido(${o.id})"><i class="fa-solid fa-edit"></i></button>
+            <button class="btn btn-xs btn-success" title="Agregar Línea" onclick="WMS_MODULES.picking._mostrarAgregarLineaPedido(${o.id})"><i class="fa-solid fa-plus"></i></button>
+            <button class="btn btn-xs btn-danger" title="Anular/Eliminar" onclick="WMS_MODULES.picking._anularPedido(${o.id})"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">Sin pedidos</td></tr>';
     WMS.showRightPanel(`Detalle Planilla ${planilla}`, `
       <div class="pro-mini-kpi-row" style="margin-bottom:16px">
         <div class="pro-mini-kpi">
@@ -1288,9 +1608,9 @@ WMS_MODULES.picking = {
           <div><div class="pro-mini-kpi-value">${g.total_lineas-g.lineas_pendientes}</div><div class="pro-mini-kpi-label">Completadas</div></div>
         </div>
       </div>
-      <div class="pro-table-wrap" style="max-height:340px;overflow-y:auto">
+      <div class="pro-table-wrap" style="max-height:450px;overflow-y:auto">
         <table class="erp-table">
-          <thead><tr><th>#Ord</th><th>Código</th><th>Producto</th><th style="text-align:center">Cant.</th><th style="text-align:center">Pend.</th><th>Estado</th></tr></thead>
+          <thead><tr><th>Pedido</th><th>Cliente</th><th>Fecha Req.</th><th style="text-align:center">Lineas</th><th>Estado</th><th style="text-align:right">Acciones</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>`);
@@ -1326,7 +1646,14 @@ WMS_MODULES.picking = {
       if (soloAlm) payload.separar_consolidado = true;
       const r = await API.post('/picking/asignar-multiple', payload);
       if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', `Planilla ${planilla} asignada a ${nombre}`); this.show_asignacion(); }
+      else {
+        const d = r.data || {};
+        const msgs = [`Planilla ${planilla} asignada a ${nombre}`];
+        if (d.inventario_reservado > 0) msgs.push(`${d.inventario_reservado} unidades reservadas`);
+        if (d.faltantes_detectados > 0) msgs.push(`${d.faltantes_detectados} faltantes detectados`);
+        WMS.toast(d.faltantes_detectados > 0 ? 'warning' : 'success', msgs.join(' • '));
+        this.show_asignacion();
+      }
     } catch(e) { WMS.toast('error', 'Error al asignar'); }
   },
 
@@ -1355,13 +1682,19 @@ WMS_MODULES.picking = {
         if (window._asigSelSoloAlm) payload.separar_consolidado = true;
         const r = await API.post('/picking/asignar-multiple', payload);
         if (r.error) WMS.toast('error', r.message);
-        else { WMS.toast('success', `${planCount} planilla(s) asignadas a ${nombre}`); this.show_asignacion(); }
+        else {
+          const d = r.data || {};
+          const msgs = [`${planCount} planilla(s) asignadas a ${nombre}`];
+          if (d.inventario_reservado > 0) msgs.push(`${d.inventario_reservado} unds reservadas`);
+          if (d.faltantes_detectados > 0) msgs.push(`${d.faltantes_detectados} faltantes`);
+          WMS.toast(d.faltantes_detectados > 0 ? 'warning' : 'success', msgs.join(' • '));
+          this.show_asignacion();
+        }
       } catch(e) { WMS.toast('error', 'Error'); }
       });
   },
 
   // ── FALTANTES ─────────────────────────────────────────────────────────────
-  // Estado de filtros faltantes
   _faltFilters: { ini: '', fin: '', planilla: '', producto: '', showAll: false },
 
   async show_faltantes(filters = null) {
@@ -1372,11 +1705,14 @@ WMS_MODULES.picking = {
 
     WMS.setToolbar(`
       <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking.show_faltantes()"><i class="fa-solid fa-rotate"></i> Actualizar</button>
+      <button class="btn btn-warning btn-sm" onclick="WMS_MODULES.picking._procesarBackorder()" id="btn-backorder" style="display:none;">
+        <i class="fa-solid fa-arrow-rotate-left"></i> Procesar Backorder (<span id="bo-count">0</span>)
+      </button>
       <button class="btn btn-success btn-sm" onclick="WMS_MODULES.picking._exportFaltantes()"><i class="fa-solid fa-file-excel"></i> Exportar Excel</button>
     `);
     WMS.spinner();
     try {
-      const limit = f.showAll ? '' : '&limit=10';
+      const limit = f.showAll ? '' : '&limit=50';
       const qs = `fecha_inicio=${f.ini}&fecha_fin=${f.fin}&numero_planilla=${encodeURIComponent(f.planilla||'')}&producto=${encodeURIComponent(f.producto||'')}${limit}`;
       const [faltR, reabast] = await Promise.all([
         API.get('/picking/novedades-stock', qs),
@@ -1386,11 +1722,11 @@ WMS_MODULES.picking = {
       const falt  = Array.isArray(resp.rows) ? resp.rows : (Array.isArray(resp) ? resp : []);
       const total = resp.total ?? falt.length;
       const rea   = reabast.data || reabast || [];
+      const conStock = falt.filter(r => (r.stock_actual||0) >= (r.cantidad_faltante||1)).length;
 
       WMS.setContent(`
         <div style="display:flex;flex-direction:column;gap:16px;">
-
-          <!-- Filtros Faltantes -->
+          <!-- Filtros -->
           <div class="card" style="padding:14px 18px;">
             <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
               <div>
@@ -1420,39 +1756,63 @@ WMS_MODULES.picking = {
             </div>
           </div>
 
+          ${conStock > 0 ? `<div style="padding:10px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;font-size:12px;color:#166534;display:flex;align-items:center;gap:8px;">
+            <i class="fa-solid fa-circle-check" style="font-size:16px;color:#22c55e;"></i>
+            <strong>${conStock} producto(s)</strong> ahora tienen stock disponible. Selecciónelos y haga clic en <strong>Procesar Backorder</strong> para reasignarlos al picking.
+          </div>` : ''}
+
           <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;">
-            <!-- Tabla Faltantes -->
             <div class="card">
-              <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
+              <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
                 <span class="card-title"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Faltantes de Stock
                   <span style="font-size:11px;color:#64748b;font-weight:400;margin-left:6px;">
-                    Mostrando ${falt.length} de ${total} registros
+                    ${falt.length} de ${total}
                   </span>
                 </span>
-                ${!f.showAll && total > 10 ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:true})"><i class="fa-solid fa-list"></i> Mostrar todos (${total})</button>` : ''}
-                ${f.showAll ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:false})"><i class="fa-solid fa-compress"></i> Mostrar 10</button>` : ''}
+                <div style="display:flex;gap:6px;align-items:center;">
+                  ${conStock > 0 ? `<button class="btn btn-xs btn-success" onclick="WMS_MODULES.picking._selFaltConStock()" title="Seleccionar solo los que tienen stock">
+                    <i class="fa-solid fa-check-double"></i> Sel. con stock (${conStock})
+                  </button>` : ''}
+                  ${!f.showAll && total > 50 ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:true})"><i class="fa-solid fa-list"></i> Todos (${total})</button>` : ''}
+                  ${f.showAll ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:false})"><i class="fa-solid fa-compress"></i> Mostrar 50</button>` : ''}
+                </div>
               </div>
               <div class="table-container">
                 <table class="erp-table">
                   <thead><tr>
+                    <th style="width:32px;text-align:center;">
+                      <input type="checkbox" id="falt-sel-all" onchange="WMS_MODULES.picking._toggleAllFalt(this.checked)"
+                             style="accent-color:#0070f2;width:14px;height:14px;">
+                    </th>
                     <th>Fecha</th><th>Planilla</th><th>Auxiliar</th>
-                    <th>Producto</th><th style="text-align:center;">Solicitado</th>
-                    <th style="text-align:center;">Disponible</th><th style="text-align:center;">Faltante</th>
+                    <th>Producto</th><th style="text-align:center;">Faltante</th>
+                    <th style="text-align:center;">Stock Actual</th>
                     <th>Cliente</th>
                   </tr></thead>
-                  <tbody>${falt.map(f => `<tr>
-                    <td style="font-size:11px;white-space:nowrap;">${WMS.formatDate(f.created_at?.slice(0,10)||'-')}</td>
-                    <td><span class="badge badge-info" style="font-size:11px;">${WMS.esc(f.numero_planilla||'-')}</span></td>
-                    <td style="font-size:12px;">${WMS.esc(f.auxiliar||'-')}</td>
-                    <td>
-                      <div style="font-weight:700;font-size:12px;">${WMS.esc(f.producto_nombre||'-')}</div>
-                      <div style="font-size:10px;color:#64748b;">${WMS.esc(f.producto_codigo||'')}</div>
+                  <tbody>${falt.map(r => {
+                    const sa = r.stock_actual || 0;
+                    const cf = r.cantidad_faltante || 0;
+                    const ok = sa >= cf;
+                    return `<tr data-falt-id="${r.id}" data-has-stock="${ok?1:0}" style="${ok?'background:#f0fdf4;':''}">
+                    <td style="text-align:center;" onclick="event.stopPropagation()">
+                      <input type="checkbox" class="falt-sel" value="${r.id}" onchange="WMS_MODULES.picking._onFaltCheck()"
+                             style="accent-color:#0070f2;width:14px;height:14px;">
                     </td>
-                    <td style="text-align:center;">${WMS.formatNum(f.cantidad_solicitada||0)}</td>
-                    <td style="text-align:center;">${WMS.formatNum(f.stock_disponible||0)}</td>
-                    <td style="text-align:center;"><span class="badge badge-danger">${WMS.formatNum(f.cantidad_faltante||0)}</span></td>
-                    <td style="font-size:11px;">${WMS.esc(f.cliente||'-')}</td>
-                  </tr>`).join('') || '<tr><td colspan="8" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
+                    <td style="font-size:11px;white-space:nowrap;">${WMS.formatDate(r.created_at?.slice(0,10)||'-')}</td>
+                    <td><span class="badge badge-info" style="font-size:11px;">${WMS.esc(r.numero_planilla||'-')}</span></td>
+                    <td style="font-size:12px;">${WMS.esc(r.auxiliar||'-')}</td>
+                    <td>
+                      <div style="font-weight:700;font-size:12px;">${WMS.esc(r.producto_nombre||'-')}</div>
+                      <div style="font-size:10px;color:#64748b;">${WMS.esc(r.producto_codigo||'')}</div>
+                    </td>
+                    <td style="text-align:center;"><span class="badge badge-danger">${WMS.formatNum(cf)}</span></td>
+                    <td style="text-align:center;">
+                      ${ok
+                        ? `<span class="badge badge-success" title="Stock disponible para backorder"><i class="fa-solid fa-check" style="margin-right:3px;"></i>${WMS.formatNum(sa)}</span>`
+                        : `<span class="badge badge-danger" style="opacity:.7;" title="Stock insuficiente">${WMS.formatNum(sa)}</span>`}
+                    </td>
+                    <td style="font-size:11px;">${WMS.esc(r.cliente||'-')}</td>
+                  </tr>`;}).join('') || '<tr><td colspan="8" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
                   </tbody>
                 </table>
               </div>
@@ -1479,6 +1839,46 @@ WMS_MODULES.picking = {
           </div>
         </div>`);
     } catch(e) { console.error(e); WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando faltantes</p></div>'); }
+  },
+
+  _toggleAllFalt(checked) {
+    document.querySelectorAll('.falt-sel').forEach(cb => { cb.checked = checked; });
+    this._onFaltCheck();
+  },
+
+  _selFaltConStock() {
+    document.querySelectorAll('.falt-sel').forEach(cb => { cb.checked = false; });
+    document.querySelectorAll('tr[data-has-stock="1"] .falt-sel').forEach(cb => { cb.checked = true; });
+    this._onFaltCheck();
+  },
+
+  _onFaltCheck() {
+    const cnt = document.querySelectorAll('.falt-sel:checked').length;
+    const btn = document.getElementById('btn-backorder');
+    const span = document.getElementById('bo-count');
+    if (btn) btn.style.display = cnt > 0 ? '' : 'none';
+    if (span) span.textContent = cnt;
+  },
+
+  async _procesarBackorder() {
+    const ids = Array.from(document.querySelectorAll('.falt-sel:checked')).map(cb => parseInt(cb.value));
+    if (!ids.length) { WMS.toast('warning', 'Seleccione al menos un faltante'); return; }
+
+    WMS.confirm('Procesar Backorder',
+      `¿Reasignar <strong>${ids.length} faltante(s)</strong> al picking?<br><small>Solo se procesarán los que tengan stock disponible. Se reservará inventario y se reactivarán las líneas de picking.</small>`,
+      async () => {
+        try {
+          const r = await API.post('/picking/backorder', { faltante_ids: ids });
+          if (r.error) { WMS.toast('error', r.message); return; }
+          const d = r.data || {};
+          const msgs = [];
+          if (d.procesados > 0) msgs.push(`${d.procesados} reasignado(s)`);
+          if (d.reservados > 0) msgs.push(`${d.reservados} unds reservadas`);
+          if (d.sin_stock > 0) msgs.push(`${d.sin_stock} sin stock aún`);
+          WMS.toast(d.sin_stock > 0 ? 'warning' : 'success', msgs.join(' • ') || 'Backorder procesado');
+          this.show_faltantes();
+        } catch(e) { WMS.toast('error', 'Error al procesar backorder'); console.error(e); }
+      });
   },
 
   _applyFaltFilters() {
