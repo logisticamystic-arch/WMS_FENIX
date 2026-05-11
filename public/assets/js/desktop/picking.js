@@ -2254,6 +2254,205 @@ WMS_MODULES.picking = {
     if (el) { el.value = val; this.show_pedidos(); }
   },
 
+  // ── REPORTE HISTÓRICO ─────────────────────────────────────────────────────
+  async show_reporte() {
+    WMS.setBreadcrumb('picking', 'Reporte');
+    this._reporteFiltros = { fecha_desde: '', fecha_hasta: '', ruta: '', sucursal_entrega: '' };
+    this._reporteData = [];
+    WMS.setContent(`
+      <div class="card animate-fade-in">
+        <div class="card-header">
+          <h5 class="card-title"><i class="fa-solid fa-chart-bar"></i> Historial de Separaciones</h5>
+        </div>
+        <div class="card-body">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Desde <span style="color:#dc2626;">*</span></label>
+              <input type="date" id="rep-desde" class="form-control">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Hasta <span style="color:#dc2626;">*</span></label>
+              <input type="date" id="rep-hasta" class="form-control" value="${new Date().toISOString().split('T')[0]}">
+            </div>
+            <div class="form-group" style="margin:0;min-width:160px;">
+              <label class="form-label">Ruta</label>
+              <input type="text" id="rep-ruta" class="form-control" placeholder="Ej: Ruta 01">
+            </div>
+            <div class="form-group" style="margin:0;min-width:180px;">
+              <label class="form-label">Sucursal Entrega</label>
+              <input type="text" id="rep-suc" class="form-control" placeholder="TiendaXYZ...">
+            </div>
+            <div style="display:flex;gap:6px;align-items:flex-end;padding-bottom:2px;">
+              <button class="btn btn-primary" onclick="WMS_MODULES.picking._buscarReporte()">
+                <i class="fa-solid fa-search"></i> Buscar
+              </button>
+              <button class="btn btn-outline-success" id="btn-export-excel" onclick="WMS_MODULES.picking._exportarExcel()" style="display:none;">
+                <i class="fa-solid fa-file-excel"></i> Excel
+              </button>
+            </div>
+          </div>
+          <div id="rep-kpis" style="display:none;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+            <div class="erp-card" style="flex:1;min-width:120px;text-align:center;padding:14px;">
+              <div style="font-size:.72rem;color:#64748b;text-transform:uppercase;">Pedidos</div>
+              <div id="rep-k-total" style="font-size:1.5rem;font-weight:900;color:#0F4C81;">—</div>
+            </div>
+            <div class="erp-card" style="flex:1;min-width:120px;text-align:center;padding:14px;">
+              <div style="font-size:.72rem;color:#64748b;text-transform:uppercase;">Completadas</div>
+              <div id="rep-k-comp" style="font-size:1.5rem;font-weight:900;color:#059669;">—</div>
+            </div>
+            <div class="erp-card" style="flex:1;min-width:120px;text-align:center;padding:14px;">
+              <div style="font-size:.72rem;color:#64748b;text-transform:uppercase;">Faltantes</div>
+              <div id="rep-k-falt" style="font-size:1.5rem;font-weight:900;color:#dc2626;">—</div>
+            </div>
+            <div class="erp-card" style="flex:1;min-width:120px;text-align:center;padding:14px;">
+              <div style="font-size:.72rem;color:#64748b;text-transform:uppercase;">Dur. Prom.</div>
+              <div id="rep-k-dur" style="font-size:1.5rem;font-weight:900;color:#7c3aed;">—</div>
+            </div>
+          </div>
+          <div id="rep-tabla" style="display:none;overflow-x:auto;">
+            <table class="erp-table">
+              <thead>
+                <tr>
+                  <th style="padding:10px 12px;">Fecha</th>
+                  <th style="padding:10px 12px;">N° Pedido</th>
+                  <th style="padding:10px 12px;">Sucursal Entrega</th>
+                  <th style="padding:10px 12px;">Ruta</th>
+                  <th style="padding:10px 12px;text-align:center;">Total Lín.</th>
+                  <th style="padding:10px 12px;text-align:center;">Completadas</th>
+                  <th style="padding:10px 12px;text-align:center;">Faltantes</th>
+                  <th style="padding:10px 12px;text-align:center;">% Cumpl.</th>
+                  <th style="padding:10px 12px;">Auxiliar(es)</th>
+                  <th style="padding:10px 12px;">Inicio</th>
+                  <th style="padding:10px 12px;">Fin</th>
+                  <th style="padding:10px 12px;text-align:center;">Dur.(min)</th>
+                </tr>
+              </thead>
+              <tbody id="rep-tbody"></tbody>
+            </table>
+          </div>
+          <div id="rep-empty" style="text-align:center;padding:40px;color:#94a3b8;">
+            <i class="fa-solid fa-magnifying-glass" style="font-size:2rem;margin-bottom:10px;display:block;"></i>
+            Seleccione un rango de fechas y haga clic en Buscar para ver el historial.
+          </div>
+        </div>
+      </div>`);
+  },
+
+  async _buscarReporte() {
+    const desde = document.getElementById('rep-desde')?.value;
+    const hasta = document.getElementById('rep-hasta')?.value;
+    if (!desde || !hasta) { WMS.toast('warning', 'Seleccione fecha desde y hasta'); return; }
+
+    const ruta = document.getElementById('rep-ruta')?.value.trim();
+    const suc  = document.getElementById('rep-suc')?.value.trim();
+
+    const params = new URLSearchParams({ fecha_desde: desde, fecha_hasta: hasta });
+    if (ruta) params.set('ruta', ruta);
+    if (suc)  params.set('sucursal_entrega', suc);
+
+    const buscarBtn = document.querySelector('[onclick="WMS_MODULES.picking._buscarReporte()"]');
+    if (buscarBtn) { buscarBtn.disabled = true; buscarBtn.textContent = 'Buscando...'; }
+
+    try {
+      const r = await API.get('/picking/reporte?' + params.toString());
+      const d = r.data || r;
+      this._reporteData = d.ordenes || [];
+      const res = d.resumen || {};
+
+      const kpis = document.getElementById('rep-kpis');
+      if (kpis) kpis.style.display = 'flex';
+      const setKpi = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
+      setKpi('rep-k-total', res.total || 0);
+      setKpi('rep-k-comp',  res.completadas || 0);
+      setKpi('rep-k-falt',  res.faltantes || 0);
+      setKpi('rep-k-dur',   res.duracion_prom_min ? res.duracion_prom_min + ' min' : '—');
+
+      const tbody     = document.getElementById('rep-tbody');
+      const emptyDiv  = document.getElementById('rep-empty');
+      const tablaDiv  = document.getElementById('rep-tabla');
+      const exportBtn = document.getElementById('btn-export-excel');
+
+      if (!this._reporteData.length) {
+        if (tablaDiv)  tablaDiv.style.display  = 'none';
+        if (emptyDiv)  { emptyDiv.style.display = 'block'; emptyDiv.textContent = 'Sin resultados para los filtros seleccionados.'; }
+        if (exportBtn) exportBtn.style.display = 'none';
+        return;
+      }
+
+      if (emptyDiv)  emptyDiv.style.display  = 'none';
+      if (tablaDiv)  tablaDiv.style.display  = 'block';
+      if (exportBtn) exportBtn.style.display = '';
+
+      tbody.innerHTML = this._reporteData.map(o => `
+        <tr>
+          <td style="padding:8px 12px;white-space:nowrap;">${WMS.esc(o.fecha||'—')}</td>
+          <td style="padding:8px 12px;font-weight:700;color:#0F4C81;">${WMS.esc(o.numero_pedido||o.numero_orden||'—')}</td>
+          <td style="padding:8px 12px;">${WMS.esc(o.sucursal_entrega||o.cliente||'—')}</td>
+          <td style="padding:8px 12px;">${o.ruta ? `<span style="background:#dbeafe;color:#1e40af;padding:2px 7px;border-radius:3px;font-size:.72rem;">${WMS.esc(o.ruta)}</span>` : '—'}</td>
+          <td style="padding:8px 12px;text-align:center;">${WMS.esc(String(o.total_lineas||0))}</td>
+          <td style="padding:8px 12px;text-align:center;color:#059669;font-weight:700;">${WMS.esc(String(o.completadas||0))}</td>
+          <td style="padding:8px 12px;text-align:center;color:#dc2626;font-weight:700;">${WMS.esc(String(o.faltantes||0))}</td>
+          <td style="padding:8px 12px;text-align:center;">
+            <span style="font-weight:700;${(o.pct_cumplimiento||0)>=90?'color:#059669;':(o.pct_cumplimiento||0)>=70?'color:#d97706;':'color:#dc2626;'}">${WMS.esc(String(o.pct_cumplimiento||0))}%</span>
+          </td>
+          <td style="padding:8px 12px;font-size:.78rem;">${WMS.esc(o.auxiliares||'—')}</td>
+          <td style="padding:8px 12px;white-space:nowrap;">${WMS.esc(o.hora_inicio||'—')}</td>
+          <td style="padding:8px 12px;white-space:nowrap;">${WMS.esc(o.hora_fin||'—')}</td>
+          <td style="padding:8px 12px;text-align:center;">${WMS.esc(String(o.duracion_min||'—'))}</td>
+        </tr>`).join('');
+
+    } catch(e) {
+      WMS.toast('error', 'Error generando reporte');
+    } finally {
+      if (buscarBtn) {
+        buscarBtn.disabled = false;
+        buscarBtn.innerHTML = '<i class="fa-solid fa-search"></i> Buscar';
+      }
+    }
+  },
+
+  async _exportarExcel() {
+    if (!this._reporteData?.length) { WMS.toast('warning', 'Sin datos para exportar'); return; }
+    const btn = document.getElementById('btn-export-excel');
+    if (btn) { btn.disabled = true; btn.textContent = 'Generando...'; }
+    try {
+      if (typeof XLSX === 'undefined') {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js';
+          s.onload = resolve;
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
+      const headers = ['Fecha','N° Pedido','Sucursal Entrega','Ruta','Total Líneas','Completadas','Faltantes','% Cumplimiento','Auxiliar(es)','Hora Inicio','Hora Fin','Duración (min)'];
+      const data = this._reporteData.map(o => [
+        o.fecha,
+        o.numero_pedido || o.numero_orden,
+        o.sucursal_entrega || o.cliente,
+        o.ruta || '',
+        o.total_lineas || 0,
+        o.completadas || 0,
+        o.faltantes || 0,
+        o.pct_cumplimiento || 0,
+        o.auxiliares || '',
+        o.hora_inicio || '',
+        o.hora_fin || '',
+        o.duracion_min || '',
+      ]);
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+      ws['!cols'] = headers.map(() => ({ wch: 18 }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Picking');
+      const hoy = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(wb, `Picking_Reporte_${hoy}.xlsx`);
+    } catch(e) {
+      WMS.toast('error', 'Error generando Excel: ' + WMS.esc(e.message));
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-file-excel"></i> Excel'; }
+    }
+  },
+
   // ── TV DASHBOARD ─────────────────────────────────────────────────────────
   _openTVDashboard() {
     const token = localStorage.getItem('wms_token') || '';
