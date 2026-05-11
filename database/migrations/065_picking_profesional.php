@@ -1,4 +1,12 @@
 <?php
+/**
+ * Migration 065 — Picking Profesional: schema extensión
+ * =====================================================
+ * 1. Agrega sucursal_entrega, ruta, orden_logico a orden_pickings
+ * 2. Agrega ambiente a picking_detalles
+ * 3. Crea tabla picking_asignaciones_log
+ * 4. Agrega índices de rendimiento idx_pick_ruta, idx_pick_suc, idx_pick_fecha_est
+ */
 // database/migrations/065_picking_profesional.php
 use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Schema\Blueprint;
@@ -61,6 +69,9 @@ return [
         if ($schema->hasTable('picking_detalles') && $schema->hasColumn('picking_detalles', 'ambiente')) {
             $schema->table('picking_detalles', fn(Blueprint $t) => $t->dropColumn('ambiente'));
         }
+        try { Capsule::statement('ALTER TABLE orden_pickings DROP INDEX idx_pick_ruta'); } catch (\Exception $e) {}
+        try { Capsule::statement('ALTER TABLE orden_pickings DROP INDEX idx_pick_suc'); } catch (\Exception $e) {}
+        try { Capsule::statement('ALTER TABLE orden_pickings DROP INDEX idx_pick_fecha_est'); } catch (\Exception $e) {}
         if ($schema->hasTable('orden_pickings')) {
             $schema->table('orden_pickings', function (Blueprint $table) use ($schema) {
                 foreach (['orden_logico', 'ruta', 'sucursal_entrega'] as $col) {
