@@ -38,10 +38,18 @@ class PickingController extends BaseController
         $soloHoy           = !empty($params['solo_hoy']);
         $incluirFinalizados = !empty($params['incluir_finalizados']);
 
+        $fechaDesdeFilter = $params['fecha_desde'] ?? null;
+        $fechaHastaFilter = $params['fecha_hasta'] ?? null;
+
         $q = OrdenPicking::where('orden_pickings.empresa_id', $user->empresa_id)
             ->where('orden_pickings.sucursal_id', $user->sucursal_id)
-            ->when(!$soloHoy, fn($q) => $q->whereBetween('orden_pickings.created_at', [$ini, $fin]))
-            ->when($soloHoy, fn($q) => $q->whereDate('orden_pickings.fecha_movimiento', date('Y-m-d')))
+            ->when($fechaDesdeFilter && $fechaHastaFilter, fn($q) =>
+                $q->whereDate('orden_pickings.fecha_movimiento', '>=', $fechaDesdeFilter)
+                  ->whereDate('orden_pickings.fecha_movimiento', '<=', $fechaHastaFilter))
+            ->when(!$soloHoy && !($fechaDesdeFilter && $fechaHastaFilter),
+                fn($q) => $q->whereBetween('orden_pickings.created_at', [$ini, $fin]))
+            ->when($soloHoy && !($fechaDesdeFilter && $fechaHastaFilter),
+                fn($q) => $q->whereDate('orden_pickings.fecha_movimiento', date('Y-m-d')))
             ->when($params['estado'] ?? null, function($q, $e) {
                 if (strpos($e, ',') !== false) {
                     $q->whereIn('estado', explode(',', $e));
@@ -49,7 +57,7 @@ class PickingController extends BaseController
                     $q->where('estado', $e);
                 }
             })
-            ->when($soloHoy && !isset($params['estado']) && !$incluirFinalizados,
+            ->when($soloHoy && !($fechaDesdeFilter && $fechaHastaFilter) && !isset($params['estado']) && !$incluirFinalizados,
                 fn($q) => $q->whereIn('orden_pickings.estado', ['Pendiente', 'EnProceso']))
             ->when($params['auxiliar_id']  ?? null, fn($q, $v) => $q->where('auxiliar_id', (int)$v))
             ->when($params['sin_auxiliar'] ?? null, fn($q)     => $q->whereNull('orden_pickings.auxiliar_id'))
@@ -1791,7 +1799,8 @@ class PickingController extends BaseController
             'cantidad_archivo'  => 0,
             'valor_archivo'     => 0,
         ];
-        $clientesSet = [];
+        $clientesSet       = [];
+        $porSucursalArch   = [];
         foreach ($dataLines as $line) {
             $cols = str_getcsv($line, $sep);
             $row  = [];
@@ -1800,10 +1809,12 @@ class PickingController extends BaseController
             }
             if (empty(array_filter($row))) continue;
             if (!empty($row['cliente'])) $clientesSet[$row['cliente']] = true;
-            $cant = max(1, (int)($row['cantidad'] ?? 1));
+            $cant  = max(1, (int)($row['cantidad'] ?? 1));
             $costo = (float) str_replace(',', '.', str_replace('.', '', $row['costo'] ?? '0'));
             $auditArchivo['cantidad_archivo'] += $cant;
             $auditArchivo['valor_archivo']    += $cant * $costo;
+            $suc = trim($row['sucursal_entrega'] ?? $row['cliente'] ?? '') ?: '(Sin sucursal)';
+            $porSucursalArch[$suc] = ($porSucursalArch[$suc] ?? 0) + 1;
         }
         $auditArchivo['clientes_archivo'] = count($clientesSet);
 
@@ -1813,10 +1824,11 @@ class PickingController extends BaseController
             'importadas'      => 0,
             'errores'         => [],
             'productos_no_encontrados' => 0,
-            'campos_detectados' => array_keys($colMap),
-            'cantidad_sistema'  => 0,
-            'valor_sistema'     => 0,
-            'clientes_sistema'  => [],
+            'campos_detectados'  => array_keys($colMap),
+            'cantidad_sistema'   => 0,
+            'valor_sistema'      => 0,
+            'clientes_sistema'   => [],
+            'por_sucursal_sistema' => [],
         ];
 
         // ── Group lines by Numero Factura → one OrdenPicking per factura ────
@@ -1931,6 +1943,10 @@ class PickingController extends BaseController
                     }
 
                     $summary['total_lineas'] += $lineasCreadas;
+                    if ($lineasCreadas > 0) {
+                        $suc = trim($fila0['sucursal_entrega'] ?? $fila0['cliente'] ?? '') ?: '(Sin sucursal)';
+                        $summary['por_sucursal_sistema'][$suc] = ($summary['por_sucursal_sistema'][$suc] ?? 0) + $lineasCreadas;
+                    }
 
                     // If no lines were created, delete the empty order
                     if ($lineasCreadas === 0) {
@@ -1968,7 +1984,11 @@ class PickingController extends BaseController
             'cantidad'  => $auditArchivo['cantidad_archivo'] - $summary['cantidad_sistema'],
             'valor'     => round($auditArchivo['valor_archivo'] - $summary['valor_sistema'], 2),
         ];
-        unset($summary['clientes_sistema']); // don't send raw set
+        $audit['por_sucursal'] = [
+            'archivo' => $porSucursalArch,
+            'sistema' => $summary['por_sucursal_sistema'],
+        ];
+        unset($summary['clientes_sistema'], $summary['por_sucursal_sistema']); // don't send raw sets
 
         $response = $res;
         $response->getBody()->write(json_encode([
@@ -2586,5 +2606,200 @@ class PickingController extends BaseController
         $orden->ruta = $ruta ?: null;
         $orden->save();
         return $this->ok($res, ['id' => $orden->id, 'ruta' => $orden->ruta], 'Ruta actualizada');
+    }
+
+    // ── CERTIFICACIÓN POR SUCURSAL ───────────────────────────────────────────
+    
+    public function certPendientes(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        
+        $sucursales = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->where('estado', 'Completada')
+            ->where('estado_certificacion', 'Pendiente')
+            ->select('sucursal_entrega', Capsule::raw('COUNT(*) as total_pedidos'), Capsule::raw('SUM( (SELECT COUNT(*) FROM picking_detalles WHERE orden_picking_id = orden_pickings.id) ) as total_lineas'))
+            ->groupBy('sucursal_entrega')
+            ->get();
+            
+        return $this->ok($res, $sucursales);
+    }
+
+    public function certDetalle(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        $sucursal = urldecode($a['sucursal']);
+        
+        $detalles = PickingDetalle::whereHas('ordenPicking', function($q) use ($user, $sucursal) {
+                $q->where('empresa_id', $user->empresa_id)
+                  ->where('sucursal_id', $user->sucursal_id)
+                  ->where('sucursal_entrega', $sucursal)
+                  ->where('estado', 'Completada')
+                  ->where('estado_certificacion', 'Pendiente');
+            })
+            ->with(['producto:id,nombre,codigo_interno,codigo_barras', 'ordenPicking:id,numero_orden,cliente'])
+            ->get();
+            
+        // Consolidation by product
+        $consolidado = [];
+        foreach ($detalles as $d) {
+            $pid = $d->producto_id;
+            if (!isset($consolidado[$pid])) {
+                $consolidado[$pid] = [
+                    'producto_id' => $pid,
+                    'nombre'      => $d->producto->nombre ?? 'Desconocido',
+                    'codigo'      => $d->producto->codigo_interno ?? $d->producto->codigo_barras ?? '-',
+                    'ean'         => $d->producto->codigo_barras ?? '-',
+                    'cantidad_pickeada' => 0,
+                    'cantidad_certificada' => 0,
+                    'detalles_ids' => []
+                ];
+            }
+            $consolidado[$pid]['cantidad_pickeada']    += (float)$d->cantidad_pickeada;
+            $consolidado[$pid]['cantidad_certificada'] += (float)$d->cantidad_certificada;
+            $consolidado[$pid]['detalles_ids'][]       = $d->id;
+        }
+        
+        return $this->ok($res, array_values($consolidado));
+    }
+
+    public function certConfirmar(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $data = $r->getParsedBody();
+        
+        $productoId = $data['producto_id'];
+        $sucursal   = $data['sucursal_entrega'];
+        $cantidad   = (float)$data['cantidad'];
+        
+        $detalles = PickingDetalle::where('producto_id', $productoId)
+            ->whereHas('ordenPicking', function($q) use ($user, $sucursal) {
+                $q->where('empresa_id', $user->empresa_id)
+                  ->where('sucursal_id', $user->sucursal_id)
+                  ->where('sucursal_entrega', $sucursal)
+                  ->where('estado', 'Completada')
+                  ->where('estado_certificacion', 'Pendiente');
+            })
+            ->orderBy('id', 'asc')
+            ->get();
+            
+        if ($detalles->isEmpty()) return $this->error($res, 'No se encontraron líneas pendientes para certificar');
+
+        Capsule::transaction(function() use ($detalles, $cantidad) {
+            $restante = $cantidad;
+            foreach ($detalles as $d) {
+                $capacidad = (float)$d->cantidad_pickeada;
+                $tomar = min($restante, $capacidad);
+                $d->cantidad_certificada = $tomar;
+                $d->estado_certificacion = ($tomar >= $capacidad) ? 'Certificado' : 'Diferencia';
+                $d->save();
+                $restante -= $tomar;
+            }
+        });
+        
+        return $this->ok($res, null, 'Certificación de producto registrada');
+    }
+
+    public function certFinalizar(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $data = $r->getParsedBody();
+        $sucursal = $data['sucursal_entrega'];
+        
+        $ordenes = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->where('sucursal_entrega', $sucursal)
+            ->where('estado', 'Completada')
+            ->where('estado_certificacion', 'Pendiente')
+            ->get();
+            
+        if ($ordenes->isEmpty()) return $this->error($res, 'No hay órdenes pendientes para finalizar');
+
+        Capsule::transaction(function() use ($ordenes, $user) {
+            foreach ($ordenes as $o) {
+                $o->estado_certificacion = 'Certificada';
+                $o->fecha_certificacion  = date('Y-m-d H:i:s');
+                $o->certificador_id      = $user->id;
+                $o->save();
+                
+                // Audit differences as novedades
+                foreach ($o->detalles as $d) {
+                    $diff = (float)$d->cantidad_pickeada - (float)$d->cantidad_certificada;
+                    if ($diff != 0) {
+                        $this->audit($user, 'picking', 'novedad_certificacion', 'picking_detalles', $d->id,
+                            ['pick' => $d->cantidad_pickeada], ['cert' => $d->cantidad_certificada],
+                            "Diferencia en certificación: Pedido {$o->numero_orden}, Producto ID {$d->producto_id}. Faltan " . abs($diff));
+                    }
+                }
+            }
+        });
+        
+        return $this->ok($res, null, 'Certificación de sucursal finalizada correctamente');
+    }
+
+    public function imprimirCertificado(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        $sucursal = urldecode($a['sucursal']);
+        
+        // 1. Get info to print
+        $ordenes = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->where('sucursal_entrega', $sucursal)
+            ->where('estado_certificacion', 'Certificada')
+            ->get();
+
+        if ($ordenes->isEmpty()) return $this->error($res, 'No se encontraron órdenes certificadas para esta sucursal');
+
+        $totalLineas = PickingDetalle::whereIn('orden_picking_id', $ordenes->pluck('id'))->count();
+        
+        // 2. Get printers assigned to the 'certificacion' module
+        $pRotulos = \App\Models\Impresora::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->where('modulos', 'LIKE', '%certificacion%')
+            ->where('tipo', 'Rotulos')
+            ->where('activo', true)
+            ->first();
+            
+        $pDespacho = \App\Models\Impresora::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->where('modulos', 'LIKE', '%certificacion%')
+            ->where('tipo', 'Despacho')
+            ->where('activo', true)
+            ->first();
+
+        $results = [];
+
+        // 3. Print Label (ZPL)
+        if ($pRotulos) {
+            $zpl = \App\Helpers\PrintHelper::generateZPL($sucursal, [
+                'pedidos' => $ordenes->count(),
+                'lineas'  => $totalLineas
+            ]);
+            $results['label'] = \App\Helpers\PrintHelper::sendToPrinter($pRotulos->ip, $pRotulos->puerto, $zpl);
+        } else {
+            $results['label'] = ['error' => true, 'message' => 'No hay impresora de rótulos configurada'];
+        }
+
+        // 4. Print Document (Mockup or ESC/POS if applicable)
+        if ($pDespacho) {
+            $text = "--- DOCUMENTO DE DESPACHO ---\n";
+            $text .= "Sucursal: $sucursal\n";
+            $text .= "Fecha: " . date('Y-m-d H:i') . "\n";
+            $text .= "-----------------------------\n";
+            foreach($ordenes as $o) {
+                $text .= "Orden: {$o->numero_orden} - {$o->cliente}\n";
+            }
+            $text .= "-----------------------------\n";
+            $text .= "Total Pedidos: " . $ordenes->count() . "\n";
+            $text .= "Total Lineas: $totalLineas\n";
+            $text .= "\n\n\n\n"; // Space for cutter
+            
+            $results['document'] = \App\Helpers\PrintHelper::sendToPrinter($pDespacho->ip, $pDespacho->puerto, $text);
+        } else {
+            $results['document'] = ['error' => true, 'message' => 'No hay impresora de despacho configurada'];
+        }
+
+        return $this->ok($res, $results, 'Proceso de impresión completado');
     }
 }

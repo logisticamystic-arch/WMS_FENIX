@@ -24,8 +24,8 @@ WMS_MODULES.picking = {
       reporte: this.show_reporte,
     };
     (fn[s]?.bind(this) || fn.pedidos.bind(this))();
-    // Auto-refresh solo en pedidos y asignación (dashboard se actualiza manualmente)
-    if (['pedidos','asignacion'].includes(s)) this.startAutoRefresh(s);
+    // Auto-refresh solo en Dashboard (sincronización periódica)
+    if (s === 'dashboard') this.startAutoRefresh(s);
     else this.stopAutoRefresh();
   },
 
@@ -36,10 +36,8 @@ WMS_MODULES.picking = {
     this._pickInterval = setInterval(() => {
       if (WMS.currentModule !== 'picking') { this.stopAutoRefresh(); return; }
       const cur = WMS.currentSubModule;
-      if (cur === 'pedidos')         this.show_pedidos(true);
-      else if (cur === 'asignacion') this.show_asignacion(true);
-      else if (cur === 'dashboard')  this.show_dashboard(true);
-      else                           this.stopAutoRefresh();
+      if (cur === 'dashboard') this.show_dashboard(true);
+      else                     this.stopAutoRefresh();
     }, 30000);
     this._updateAutoRefreshBadge(true);
   },
@@ -1161,6 +1159,7 @@ WMS_MODULES.picking = {
         headers: { Authorization: 'Bearer ' + localStorage.getItem('wms_token') },
         body: fd
       });
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + r.statusText);
       const j = await r.json();
       if (j.error) {
         WMS.toast('error', j.message || 'Error en importación');
@@ -1171,21 +1170,58 @@ WMS_MODULES.picking = {
         const arch = au.archivo || {};
         const sys  = au.sistema || {};
         const diff = au.diferencias || {};
+        const porSuc = au.por_sucursal || {};
+        const sucArch = porSuc.archivo || {};
+        const sucSis  = porSuc.sistema || {};
         const diffColor = v => v > 0 ? 'color:#dc2626;font-weight:700;' : (v < 0 ? 'color:#f59e0b;font-weight:700;' : 'color:#10b981;font-weight:700;');
         const fmtVal = v => typeof v === 'number' ? v.toLocaleString('es-CO') : (v || '0');
         const hasDiff = (diff.lineas > 0 || diff.cantidad > 0);
+        const zeroPedidos = (j.importadas || 0) === 0;
         const errList = data.errores || [];
         const noProd = data.productos_no_encontrados || 0;
         const campos = data.campos_detectados || [];
 
+        // Per-sucursal breakdown table
+        const allSucs = [...new Set([...Object.keys(sucArch), ...Object.keys(sucSis)])].sort();
+        const sucTable = allSucs.length > 0 ? `
+          <div style="margin-bottom:12px;">
+            <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:6px;text-transform:uppercase;">📦 Líneas por Sucursal de Entrega</div>
+            <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;">
+              <thead>
+                <tr style="background:#f1f5f9;">
+                  <th style="padding:5px 10px;text-align:left;">Sucursal de Entrega</th>
+                  <th style="padding:5px 10px;text-align:right;">📄 Archivo</th>
+                  <th style="padding:5px 10px;text-align:right;">💾 Cargadas</th>
+                  <th style="padding:5px 10px;text-align:right;">Excluidas</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${allSucs.map(s => {
+                  const a = sucArch[s] || 0, si = sucSis[s] || 0, ex = a - si;
+                  return `<tr style="border-bottom:1px solid #f1f5f9;">
+                    <td style="padding:5px 10px;">${WMS.esc(s)}</td>
+                    <td style="padding:5px 10px;text-align:right;">${a}</td>
+                    <td style="padding:5px 10px;text-align:right;color:${si>0?'#16a34a':'#dc2626'};font-weight:600;">${si}</td>
+                    <td style="padding:5px 10px;text-align:right;${ex>0?'color:#dc2626;font-weight:700;':''}">${ex > 0 ? '+'+ex : ex}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>` : '';
+
         // Build the professional summary HTML
         const summaryHtml = `
           <div style="text-align:left;font-size:13px;max-height:70vh;overflow-y:auto;">
+            ${zeroPedidos ? `<div style="padding:12px 16px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;margin-bottom:14px;">
+              <div style="font-size:14px;font-weight:700;color:#991b1b;margin-bottom:6px;"><i class="fa-solid fa-circle-xmark" style="margin-right:6px;"></i>No se crearon pedidos</div>
+              <div style="font-size:12px;color:#7f1d1d;">El archivo no generó órdenes de picking. Revise los motivos a continuación.</div>
+            </div>` : ''}
+
             <!-- KPI Cards -->
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
-              <div style="padding:12px;background:#f0fdf4;border-radius:6px;text-align:center;border:1px solid #bbf7d0;">
-                <div style="font-size:24px;font-weight:800;color:#16a34a;">${j.importadas || 0}</div>
-                <div style="font-size:10px;color:#16a34a;font-weight:600;text-transform:uppercase;">Pedidos Creados</div>
+              <div style="padding:12px;background:${zeroPedidos?'#fef2f2':'#f0fdf4'};border-radius:6px;text-align:center;border:1px solid ${zeroPedidos?'#fca5a5':'#bbf7d0'};">
+                <div style="font-size:24px;font-weight:800;color:${zeroPedidos?'#dc2626':'#16a34a'};">${j.importadas || 0}</div>
+                <div style="font-size:10px;color:${zeroPedidos?'#dc2626':'#16a34a'};font-weight:600;text-transform:uppercase;">Pedidos Creados</div>
               </div>
               <div style="padding:12px;background:#eff6ff;border-radius:6px;text-align:center;border:1px solid #bfdbfe;">
                 <div style="font-size:24px;font-weight:800;color:#2563eb;">${data.total_lineas || 0}</div>
@@ -1202,11 +1238,13 @@ WMS_MODULES.picking = {
               <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Campos Detectados en el Archivo</div>
               <div style="display:flex;flex-wrap:wrap;gap:4px;">
                 ${campos.map(c => '<span style="padding:2px 8px;background:#e0e7ff;color:#4338ca;border-radius:10px;font-size:10px;font-weight:600;">' + WMS.esc(c) + '</span>').join('')}
+                ${!campos.includes('producto') ? '<span style="padding:2px 8px;background:#fee2e2;color:#991b1b;border-radius:10px;font-size:10px;font-weight:600;">⚠ producto NO detectado</span>' : ''}
+                ${!campos.includes('cantidad') ? '<span style="padding:2px 8px;background:#fee2e2;color:#991b1b;border-radius:10px;font-size:10px;font-weight:600;">⚠ cantidad NO detectada</span>' : ''}
               </div>
             </div>
 
             <!-- Audit Table -->
-            <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:6px;text-transform:uppercase;">📊 Auditoría de Importación — Archivo vs Sistema</div>
+            <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:6px;text-transform:uppercase;">📊 Auditoría — Archivo vs Sistema</div>
             <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;margin-bottom:10px;">
               <thead>
                 <tr style="background:#f1f5f9;">
@@ -1224,24 +1262,27 @@ WMS_MODULES.picking = {
               </tbody>
             </table>
 
+            ${sucTable}
+
             <!-- Status Banner -->
-            ${diff.lineas > 0
-              ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>' + diff.lineas + ' línea(s)</strong> del archivo no se cargaron. Causas: productos no encontrados o datos incompletos.</div>'
-              : '<div style="padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;color:#166534;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-check-circle" style="margin-right:4px;"></i><strong>Importación exitosa.</strong> Todas las líneas del archivo fueron cargadas correctamente.</div>'}
+            ${zeroPedidos
+              ? ''
+              : diff.lineas > 0
+                ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>' + diff.lineas + ' línea(s)</strong> del archivo no se cargaron. Causas: productos no encontrados o datos incompletos.</div>'
+                : '<div style="padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;color:#166534;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-check-circle" style="margin-right:4px;"></i><strong>Importación exitosa.</strong> Todas las líneas del archivo fueron cargadas correctamente.</div>'}
 
-            ${noProd > 0 ? '<div style="padding:8px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;color:#92400e;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>' + noProd + '</strong> referencia(s) del archivo no existen en el catálogo de productos. Verifique los códigos EAN/Referencia.</div>' : ''}
+            ${noProd > 0 ? '<div style="padding:8px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;color:#92400e;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>' + noProd + '</strong> referencia(s) no existen en el catálogo. Verifique los códigos EAN/Referencia en el archivo.</div>' : ''}
 
-            ${errList.length > 0 ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><strong>Novedades (' + errList.length + '):</strong><ul style="margin:4px 0 0;padding-left:16px;">' + errList.slice(0,10).map(e => '<li>' + WMS.esc(e) + '</li>').join('') + (errList.length > 10 ? '<li>... y ' + (errList.length-10) + ' más</li>' : '') + '</ul></div>' : ''}
+            ${errList.length > 0 ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><strong>Detalle de errores (' + errList.length + '):</strong><ul style="margin:4px 0 0;padding-left:16px;">' + errList.slice(0,15).map(e => '<li>' + WMS.esc(e) + '</li>').join('') + (errList.length > 15 ? '<li>... y ' + (errList.length-15) + ' más</li>' : '') + '</ul></div>' : ''}
           </div>`;
 
-        // Use WMS native modal (not Swal which is not loaded)
         WMS.closeModal('generic-modal');
-        WMS.showModal(hasDiff ? '⚠️ Resultado de Importación' : '✅ Importación Completada', summaryHtml,
-          `<button class="btn btn-primary" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking.show_pedidos();">
-            <i class="fa-solid fa-check"></i> Aceptar
+        WMS.showModal(zeroPedidos ? '❌ Importación sin resultados' : hasDiff ? '⚠️ Resultado de Importación' : '✅ Importación Completada', summaryHtml,
+          `<button class="btn btn-primary" onclick="WMS.closeModal('generic-modal');${zeroPedidos ? '' : 'WMS_MODULES.picking.show_pedidos();'}">
+            <i class="fa-solid fa-check"></i> ${zeroPedidos ? 'Cerrar' : 'Aceptar y ver pedidos'}
           </button>`);
       }
-    } catch(e) { console.error('Error al iniciar', e); WMS.toast('error', 'Error al iniciar planilla'); }
+    } catch(e) { console.error('[picking] uploadCsv error:', e); WMS.toast('error', 'Error al procesar la importación: ' + (e.message || 'Error desconocido')); if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-upload"></i> Importar Pedidos'; } }
   },
 
   async _anularPedido(id) {
@@ -1357,7 +1398,7 @@ WMS_MODULES.picking = {
       WMS.setBreadcrumb('picking', 'Asignación');
       WMS.spinner();
     }
-    this._asigFiltros = { solo_hoy: 1, q: '', ruta: '', sucursal_entrega: '' };
+    this._asigFiltros = { solo_hoy: 1, q: '', ruta: '', sucursal_entrega: '', fecha_desde: '', fecha_hasta: '' };
     this._asigSeleccionados = new Set();
     this._asigOrdenes = [];
     this._asigAuxiliares = [];
@@ -1377,7 +1418,14 @@ WMS_MODULES.picking = {
     if (typeof WMS !== 'undefined' && WMS.currentModule !== 'picking') return;
     const f = this._asigFiltros || {};
     const params = new URLSearchParams({ limit: 300 });
-    if (f.solo_hoy) { params.set('solo_hoy','1'); params.set('estado','Pendiente'); }
+    if (f.fecha_desde && f.fecha_hasta) {
+      params.set('fecha_desde', f.fecha_desde);
+      params.set('fecha_hasta', f.fecha_hasta);
+      params.set('estado', 'Pendiente');
+    } else if (f.solo_hoy) {
+      params.set('solo_hoy', '1');
+      params.set('estado', 'Pendiente');
+    }
     if (f.q)                params.set('q', f.q);
     if (f.ruta)             params.set('ruta', f.ruta);
     if (f.sucursal_entrega) params.set('sucursal_entrega', f.sucursal_entrega);
@@ -1435,12 +1483,22 @@ WMS_MODULES.picking = {
           <div class="card" style="margin:0;border-radius:0;flex:1;overflow:hidden;display:flex;flex-direction:column;">
             <div class="card-header" style="flex-shrink:0;">
               <h5 class="card-title"><i class="fa-solid fa-user-check"></i> Asignación de Separación</h5>
-              <span style="font-size:.78rem;color:#64748b;">Solo pedidos pendientes de hoy — marque para asignar</span>
+              <span style="font-size:.78rem;color:#64748b;">${f.fecha_desde && f.fecha_hasta ? WMS.esc(f.fecha_desde) + ' → ' + WMS.esc(f.fecha_hasta) : 'Hoy — pedidos pendientes'} — marque para asignar</span>
             </div>
             <div style="padding:10px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0;">
               <input type="text" class="form-control" style="flex:1;min-width:180px;" placeholder="🔍 Buscar..."
                      value="${WMS.esc(f.q||'')}"
                      oninput="WMS_MODULES.picking._asigFiltros.q=this.value;clearTimeout(WMS_MODULES.picking._aqt);WMS_MODULES.picking._aqt=setTimeout(()=>WMS_MODULES.picking._cargarAsignacion(),350)">
+              <input type="date" class="form-control" style="width:140px;" title="Fecha desde"
+                     value="${WMS.esc(f.fecha_desde||'')}"
+                     onchange="WMS_MODULES.picking._asigFiltros.fecha_desde=this.value;WMS_MODULES.picking._asigFiltros.solo_hoy=0;WMS_MODULES.picking._cargarAsignacion()">
+              <input type="date" class="form-control" style="width:140px;" title="Fecha hasta"
+                     value="${WMS.esc(f.fecha_hasta||'')}"
+                     onchange="WMS_MODULES.picking._asigFiltros.fecha_hasta=this.value;WMS_MODULES.picking._asigFiltros.solo_hoy=0;WMS_MODULES.picking._cargarAsignacion()">
+              <button class="btn btn-xs btn-secondary" title="Volver a hoy"
+                      onclick="WMS_MODULES.picking._asigFiltros.fecha_desde='';WMS_MODULES.picking._asigFiltros.fecha_hasta='';WMS_MODULES.picking._asigFiltros.solo_hoy=1;WMS_MODULES.picking._cargarAsignacion()">
+                <i class="fa-solid fa-rotate-left"></i> Hoy
+              </button>
               <select class="form-control" style="width:160px;" onchange="WMS_MODULES.picking._asigFiltros.sucursal_entrega=this.value;WMS_MODULES.picking._cargarAsignacion()">
                 <option value="">Sucursal: Todas</option>
                 ${sucursales.map(s=>`<option value="${WMS.esc(s)}" ${f.sucursal_entrega===s?'selected':''}>${WMS.esc(s)}</option>`).join('')}
