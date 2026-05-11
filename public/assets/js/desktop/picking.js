@@ -1185,6 +1185,8 @@ WMS_MODULES.picking = {
         const errList = data.errores || [];
         const noProd = data.productos_no_encontrados || 0;
         const campos = data.campos_detectados || [];
+        const duplicados = data.duplicados || [];
+        const lineasExcluidas = data.lineas_excluidas || [];
 
         // Per-sucursal breakdown table
         const allSucs = [...new Set([...Object.keys(sucArch), ...Object.keys(sucSis)])].sort();
@@ -1277,6 +1279,35 @@ WMS_MODULES.picking = {
                 : '<div style="padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;color:#166534;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-check-circle" style="margin-right:4px;"></i><strong>Importación exitosa.</strong> Todas las líneas del archivo fueron cargadas correctamente.</div>'}
 
             ${noProd > 0 ? '<div style="padding:8px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;color:#92400e;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>' + noProd + '</strong> referencia(s) no existen en el catálogo. Verifique los códigos EAN/Referencia en el archivo.</div>' : ''}
+
+            ${duplicados.length > 0 ? `
+            <div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#991b1b;font-size:11px;margin-bottom:6px;">
+              <div style="font-weight:700;margin-bottom:6px;"><i class="fa-solid fa-ban" style="margin-right:4px;"></i>Pedidos bloqueados — ya existen en el sistema (${duplicados.length})</div>
+              <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                <thead><tr style="background:#fee2e2;">
+                  <th style="padding:3px 8px;text-align:left;">N° Pedido / Factura</th>
+                  <th style="padding:3px 8px;text-align:left;">Sucursal</th>
+                  <th style="padding:3px 8px;text-align:right;">Líneas bloqueadas</th>
+                </tr></thead>
+                <tbody>
+                  ${duplicados.slice(0,20).map(d => `<tr style="border-top:1px solid #fecaca;">
+                    <td style="padding:3px 8px;font-weight:600;">${WMS.esc(d.numero_factura || '')}</td>
+                    <td style="padding:3px 8px;">${WMS.esc(d.sucursal || '')}</td>
+                    <td style="padding:3px 8px;text-align:right;">${d.lineas || 0}</td>
+                  </tr>`).join('')}
+                  ${duplicados.length > 20 ? `<tr><td colspan="3" style="padding:3px 8px;color:#7f1d1d;">... y ${duplicados.length - 20} más</td></tr>` : ''}
+                </tbody>
+              </table>
+            </div>` : ''}
+
+            ${lineasExcluidas.length > 0 ? `
+            <div style="padding:8px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;color:#78350f;font-size:11px;margin-bottom:6px;">
+              <div style="font-weight:700;margin-bottom:6px;"><i class="fa-solid fa-circle-minus" style="margin-right:4px;"></i>Líneas excluidas — producto no encontrado (${lineasExcluidas.length})</div>
+              <ul style="margin:0;padding-left:16px;max-height:100px;overflow-y:auto;">
+                ${lineasExcluidas.slice(0,20).map(l => `<li>EAN <strong>${WMS.esc(l.ean || '')}</strong>${l.numero_factura ? ' · Pedido ' + WMS.esc(l.numero_factura) : ''} · ${WMS.esc(l.sucursal || '')}</li>`).join('')}
+                ${lineasExcluidas.length > 20 ? `<li>... y ${lineasExcluidas.length - 20} más</li>` : ''}
+              </ul>
+            </div>` : ''}
 
             ${errList.length > 0 ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><strong>Detalle de errores (' + errList.length + '):</strong><ul style="margin:4px 0 0;padding-left:16px;">' + errList.slice(0,15).map(e => '<li>' + WMS.esc(e) + '</li>').join('') + (errList.length > 15 ? '<li>... y ' + (errList.length-15) + ' más</li>' : '') + '</ul></div>' : ''}
           </div>`;

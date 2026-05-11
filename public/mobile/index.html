@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>WMS Pro Oriente · Móvil</title>
+  <title>WMS Fénix · Móvil</title>
   <meta name="theme-color" content="#0F4C81">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="../assets/css/mobile.css">
@@ -27,6 +27,12 @@
         <div style="margin-bottom:8px;">
           <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;margin-bottom:3px;">DOCUMENTO</label>
           <input type="text" id="m-doc" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;">
+        </div>
+        <div style="margin-bottom:8px;">
+          <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;margin-bottom:3px;">EMPRESA</label>
+          <select id="m-empresa" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;">
+            <option value="">— Seleccione una empresa —</option>
+          </select>
         </div>
         <div style="margin-bottom:6px;">
           <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;text-align:center;">PIN</label>
@@ -226,7 +232,10 @@ async function mApi(method, path, data=null, _retries=0) {
   
   try {
     const res = await fetch(url, cfg);
-    if (res.status === 401) { MWMS.logout(); throw new Error('Sesión expirada'); }
+    if (res.status === 401 && !path.includes('/auth/login')) { 
+      MWMS.logout(); 
+      throw new Error('Sesión expirada'); 
+    }
     const json = await res.json();
     
     // Si obtuvo respuesta exitosa, vaciar offline queue si existe
@@ -300,7 +309,7 @@ const MWMS = {
     }
     this.toast(`✓ ${success} enviadas, ${failed} pendientes`, success > 0 ? 'success' : 'error');
   },
-  showLogin() { document.getElementById('login-screen').style.display='flex'; document.getElementById('main-screen').style.display='none'; this._pin=''; this.updPin(); },
+  showLogin() { document.getElementById('login-screen').style.display='flex'; document.getElementById('main-screen').style.display='none'; this._pin=''; this.updPin(); this.loadLoginEmpresas(); },
   showApp() {
     document.getElementById('login-screen').style.display='none'; document.getElementById('main-screen').style.display='flex';
     document.getElementById('m-subtitle').textContent = _mUser.rol + ' · ' + (_mUser.sucursal||'CEDE');
@@ -308,18 +317,40 @@ const MWMS = {
   },
   updPin() { for(let i=0;i<4;i++){ const d=document.getElementById('mpd'+i); d.style.background=i<this._pin.length?'#0F4C81':'#fff'; d.style.borderColor=i<this._pin.length?'#0F4C81':'#cbd5e1';} },
   pinPress(v) { if(v==='del') this._pin=this._pin.slice(0,-1); else if(this._pin.length<4) this._pin+=v; this.updPin(); if(this._pin.length===4) setTimeout(()=>this.doLogin(),200); },
+  async loadLoginEmpresas() {
+    const empresaSel = document.getElementById('m-empresa');
+    if (!empresaSel) return;
+    empresaSel.innerHTML = '<option value="">Cargando empresas...</option>';
+    try {
+      const r = await mApi('GET', '/auth/empresas');
+      const empresas = r.data || [];
+      empresaSel.innerHTML = '<option value="">— Seleccione una empresa —</option>' + empresas.map(e =>
+        `<option value="${e.id}">${e.razon_social} ${e.nit ? '(' + e.nit + ')' : ''}</option>`
+      ).join('');
+    } catch (error) {
+      empresaSel.innerHTML = '<option value="">Error cargando empresas</option>';
+    }
+  },
+
   async doLogin() {
     const doc = document.getElementById('m-doc').value.trim();
-    if (!doc || !this._pin) return;
+    const empresaId = document.getElementById('m-empresa').value;
+    if (!doc || !empresaId || !this._pin) {
+      if (!empresaId) {
+        document.getElementById('m-login-err').textContent='Seleccione la empresa antes de ingresar.';
+        document.getElementById('m-login-err').style.display='block';
+      }
+      return;
+    }
     this.loading(true);
     try {
-      const r = await mApi('POST','/auth/login',{documento:doc,pin:this._pin});
+      const r = await mApi('POST','/auth/login',{documento:doc,pin:this._pin,empresa_id:empresaId});
       _mToken=r.token; _mUser=r.user; localStorage.setItem('wms_token',_mToken); localStorage.setItem('wms_user',JSON.stringify(_mUser)); this.showApp();
-    } catch(e) { 
-        document.getElementById('m-login-err').textContent=e.message; 
-        document.getElementById('m-login-err').style.display='block'; 
-        this._pin=''; 
-        this.updPin(); 
+    } catch(e) {
+        document.getElementById('m-login-err').textContent=e.message;
+        document.getElementById('m-login-err').style.display='block';
+        this._pin='';
+        this.updPin();
     } finally {
         this.loading(false);
     }
@@ -329,14 +360,15 @@ const MWMS = {
   showHome() {
     document.getElementById('m-title').textContent='Menú'; document.getElementById('nav-home').classList.add('active'); document.getElementById('nav-notif').classList.remove('active');
     const mods = [
-      { id:'ro', l:'Rec. ODC',   i:'fa-file-invoice',        c:'indigo', a:'viewRecO' },
-      { id:'ct', l:'Citas/YMS',  i:'fa-calendar-check',      c:'green',  a:'viewCitas' },
-      { id:'ub', l:'Ubicar',     i:'fa-warehouse',            c:'teal',   a:'viewUbicar' },
-      { id:'tr', l:'Traslado',   i:'fa-right-left',           c:'orange', a:'viewTrans' },
-      { id:'pk', l:'Picking',    i:'fa-boxes-stacked',        c:'purple', a:'viewPicking' },
-      { id:'ce', l:'Certificar', i:'fa-clipboard-check',      c:'rose',   a:'viewCert' },
-      { id:'re', l:'Reabast.',   i:'fa-pallet',               c:'amber',  a:'viewReabast' },
-      { id:'iv', l:'Inventario', i:'fa-rotate',               c:'indigo', a:'viewInventario' },
+      { id:'ro', l:'Rec. ODC',   i:'fa-file-invoice',        c:'indigo',  a:'viewRecO' },
+      { id:'rs', l:'Rec. Sin ODC', i:'fa-box-open',          c:'emerald', a:'viewRecSinOdc' },
+      { id:'ct', l:'Citas/YMS',  i:'fa-calendar-check',      c:'green',   a:'viewCitas' },
+      { id:'ub', l:'Ubicar',     i:'fa-warehouse',            c:'teal',    a:'viewUbicar' },
+      { id:'tr', l:'Traslado',   i:'fa-right-left',           c:'orange',  a:'viewTrans' },
+      { id:'pk', l:'Picking',    i:'fa-boxes-stacked',        c:'purple',  a:'viewPicking' },
+      { id:'ce', l:'Certificar', i:'fa-clipboard-check',      c:'rose',    a:'viewCert' },
+      { id:'re', l:'Reabast.',   i:'fa-pallet',               c:'amber',   a:'viewReabast' },
+      { id:'iv', l:'Inventario', i:'fa-rotate',               c:'indigo',  a:'viewInventario' },
       { id:'ci', l:'Consultar',  i:'fa-magnifying-glass-location', c:'cyan', a:'viewConsultaInteligente' },
     ];
     document.getElementById('m-content').innerHTML = `
@@ -413,6 +445,192 @@ const MWMS = {
         this.loading(false);
     }
   },
+  // ── RECEPCIÓN SIN ODC ──────────────────────────────────────────────────
+  viewRecSinOdc() {
+    document.getElementById('m-title').textContent = 'Rec. Sin ODC';
+    this._sinOdc = { recepcionId: null, lineas: [], prods: [] };
+    this._renderRecSinOdc();
+    // Precargar productos en segundo plano
+    mApi('GET', '/param/productos').then(r => {
+      this._sinOdc.prods = r.data || r || [];
+    }).catch(() => {});
+  },
+
+  _renderRecSinOdc() {
+    const s = this._sinOdc;
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+
+        <!-- QR Scanner -->
+        <div class="op-card" style="background:#f0fdf4;border:1px solid #a7f3d0;padding:14px;border-radius:10px;margin-bottom:10px;">
+          <div class="m-label" style="color:#065f46;margin-bottom:6px;"><i class="fa-solid fa-qrcode"></i> Escanear QR (Código/Fecha)</div>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="rs-qr-input" class="m-input-full" placeholder="Escanee QR o escriba código/fecha"
+              style="font-family:monospace;font-size:.82rem;"
+              onkeydown="if(event.key==='Enter'){MWMS._doSinOdcQr();}">
+            <button class="m-btn primary sm" onclick="MWMS._doSinOdcQr()" style="white-space:nowrap;min-width:56px;">
+              <i class="fa-solid fa-search"></i>
+            </button>
+          </div>
+          <div style="font-size:.65rem;color:#6b7280;margin-top:4px;">Formato QR: <b>CODIGO/FECHAVENC</b></div>
+        </div>
+
+        <!-- Producto encontrado / seleccionado -->
+        <div class="op-card">
+          <div class="m-label">Producto <span style="color:#ef4444">*</span></div>
+          <div id="rs-prod-info" style="margin-bottom:8px;display:${s.prodSel ? 'block' : 'none'};padding:8px;background:#f0fdf4;border-radius:6px;font-size:.8rem;font-weight:700;color:#065f46;">
+            ${s.prodSel ? `<i class="fa-solid fa-check-circle"></i> ${this.esc(s.prodSel.nombre)}` : ''}
+          </div>
+          <button class="m-btn secondary full sm" onclick="MWMS._buscarProdSinOdc()">
+            <i class="fa-solid fa-magnifying-glass"></i> ${s.prodSel ? 'Cambiar producto' : 'Buscar producto manualmente'}
+          </button>
+          <input type="hidden" id="rs-prod-id" value="${s.prodSel?.id || ''}">
+          <input type="hidden" id="rs-upc" value="${s.prodSel?.unidades_caja || 1}">
+        </div>
+
+        <!-- Cantidad -->
+        <div class="op-card">
+          <div class="m-label" id="rs-cant-label">${(s.prodSel?.unidades_caja || 1) > 1 ? 'Cajas a recibir' : 'Cantidad (unidades)'} *</div>
+          <input type="number" id="rs-cant" class="m-input-full" value="1" min="1"
+            oninput="MWMS._actualizarPreviewRs()">
+          <div id="rs-conv-preview" style="display:${(s.prodSel?.unidades_caja || 1) > 1 ? 'block' : 'none'};margin-top:6px;padding:8px;background:#eff6ff;border-radius:6px;font-size:.78rem;color:#1e40af;font-weight:600;">
+            <i class="fa-solid fa-calculator"></i> <span id="rs-conv-text"></span>
+          </div>
+        </div>
+
+        <!-- Lote -->
+        <div class="op-card">
+          <div class="m-label">Lote (Opcional)</div>
+          <input type="text" id="rs-lote" class="m-input-full" placeholder="N/A"
+            value="${this.esc(s.fechaAutoLote || '')}">
+        </div>
+
+        <!-- Fecha Vencimiento -->
+        <div class="op-card">
+          <div class="m-label">Fecha de Vencimiento</div>
+          <input type="date" id="rs-fecha-venc" class="m-input-full" value="${s.fechaAuto || ''}">
+          ${s.fechaAutoRaw ? `<div style="font-size:.68rem;color:#059669;margin-top:3px;"><i class="fa-solid fa-calendar-check"></i> Fecha del QR: <b>${this.esc(s.fechaAutoRaw)}</b></div>` : ''}
+        </div>
+
+        <!-- Estado mercancía -->
+        <div class="op-card">
+          <div class="m-label">Estado Mercancía</div>
+          <select id="rs-estado" class="m-input-full">
+            <option value="BuenEstado">Buen Estado</option>
+            <option value="Averia">Avería</option>
+            <option value="Vencido">Vencido</option>
+          </select>
+        </div>
+
+        <!-- Botón guardar -->
+        <button class="m-btn success full" onclick="MWMS._guardarSinOdc()" style="font-size:1rem;padding:14px;font-weight:800;margin-top:6px;">
+          <i class="fa-solid fa-check"></i> GUARDAR CAPTURA
+        </button>
+
+        <!-- Historial de capturas -->
+        ${s.lineas.length > 0 ? `
+        <div class="op-card" style="margin-top:10px;">
+          <div class="m-label"><i class="fa-solid fa-history"></i> Capturas registradas (${s.lineas.length})</div>
+          ${s.lineas.slice().reverse().map(l => `
+            <div style="padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;">
+              <div style="font-weight:700;font-size:.82rem;">${this.esc(l.nombre)}</div>
+              <small style="color:#64748b;">Cant: ${l.cant} | Lote: ${l.lote || 'N/A'} | Venc: ${l.fv || '-'}</small>
+            </div>`).join('')}
+        </div>` : ''}
+
+      </div>`;
+    this._actualizarPreviewRs();
+  },
+
+  _actualizarPreviewRs() {
+    const cajas   = parseInt(document.getElementById('rs-cant')?.value || '0') || 0;
+    const upc     = parseInt(document.getElementById('rs-upc')?.value  || '1') || 1;
+    const preview = document.getElementById('rs-conv-preview');
+    const span    = document.getElementById('rs-conv-text');
+    const label   = document.getElementById('rs-cant-label');
+    if (label)   label.textContent = upc > 1 ? 'Cajas a recibir *' : 'Cantidad (unidades) *';
+    if (preview) preview.style.display = upc > 1 ? 'block' : 'none';
+    if (span && upc > 1) {
+      const plural = cajas === 1 ? 'caja' : 'cajas';
+      span.textContent = `${cajas} ${plural} × ${upc} = ${cajas * upc} unidades`;
+    }
+  },
+
+  async _doSinOdcQr() {
+    const input = document.getElementById('rs-qr-input');
+    const qr = (input?.value || '').trim();
+    if (!qr) return;
+    this.loading(true);
+    try {
+      const r = await mApi('GET', '/recepciones/buscar-qr?q=' + encodeURIComponent(qr));
+      const p = r.data.producto;
+      this._sinOdc.prodSel      = p;
+      this._sinOdc.fechaAuto    = r.data.fecha_vencimiento || '';
+      this._sinOdc.fechaAutoRaw = r.data.fecha_raw || '';
+      input.value = '';
+      this.toast('Producto: ' + p.nombre, 'success');
+      this._renderRecSinOdc();
+    } catch (e) {
+      this.toast(e.message || 'Producto no encontrado', 'error');
+    } finally {
+      this.loading(false);
+    }
+  },
+
+  _buscarProdSinOdc() {
+    this.openSearch(p => {
+      this._sinOdc.prodSel = p;
+      this._sinOdc.fechaAuto    = '';
+      this._sinOdc.fechaAutoRaw = '';
+      this._renderRecSinOdc();
+    }, 'Buscar Producto', 'prod');
+  },
+
+  async _guardarSinOdc() {
+    const s       = this._sinOdc;
+    const prodId  = document.getElementById('rs-prod-id')?.value;
+    const cantCajas = parseInt(document.getElementById('rs-cant')?.value || '0');
+    const upc     = parseInt(document.getElementById('rs-upc')?.value   || '1') || 1;
+    const lote    = document.getElementById('rs-lote')?.value || '';
+    const fv      = document.getElementById('rs-fecha-venc')?.value || '';
+    const estado  = document.getElementById('rs-estado')?.value || 'BuenEstado';
+
+    if (!prodId) return this.toast('Seleccione un producto', 'error');
+    if (cantCajas <= 0) return this.toast('Cantidad debe ser mayor a cero', 'error');
+
+    const totalUnidades = cantCajas * upc;
+    this.loading(true);
+    try {
+      const r = await mApi('POST', '/recepciones/sin-odc', {
+        producto_id:      prodId,
+        cantidad_cajas:   cantCajas,
+        cantidad:         totalUnidades,
+        lote:             lote || undefined,
+        fecha_vencimiento:fv   || undefined,
+        estado_mercancia: estado,
+      });
+
+      s.recepcionId = r.data?.recepcion?.id || s.recepcionId;
+      s.lineas.push({
+        nombre: s.prodSel?.nombre || 'Producto',
+        cant:   totalUnidades,
+        lote,
+        fv: fv ? fv.split('-').reverse().join('/') : '',
+      });
+
+      // Reset para siguiente captura (mantener producto)
+      s.fechaAuto    = '';
+      s.fechaAutoRaw = '';
+      this.toast('Captura registrada ✓', 'success');
+      this._renderRecSinOdc();
+    } catch (e) {
+      this.toast(e.message, 'error');
+    } finally {
+      this.loading(false);
+    }
+  },
+  // ── FIN RECEPCIÓN SIN ODC ───────────────────────────────────────────────
+
   openSearch(cb, t, mode='prod') {
 
     this._sCb=cb; this._sMode=mode;

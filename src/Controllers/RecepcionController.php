@@ -476,6 +476,262 @@ class RecepcionController extends BaseController
     }
 
     /**
+     * GET /api/recepciones/buscar-qr
+     * Busca un producto a partir de texto QR con formato CODIGO/FECHA_VENCIMIENTO.
+     * Retorna el producto encontrado y la fecha de vencimiento parseada.
+     */
+    public function buscarProductoPorQr(Request $request, Response $response): Response
+    {
+        $user   = $request->getAttribute('user');
+        $params = $request->getQueryParams();
+        $qr     = trim($params['q'] ?? '');
+
+        if ($qr === '') {
+            return $this->json($response, ['error' => true, 'message' => 'Parámetro q requerido'], 400);
+        }
+
+        // ── Separar código y fecha ───────────────────────────────────────────
+        $slashPos = strpos($qr, '/');
+        $code     = $slashPos !== false ? trim(substr($qr, 0, $slashPos)) : trim($qr);
+        $rawDate  = $slashPos !== false ? trim(substr($qr, $slashPos + 1)) : '';
+
+        // ── Parsear fecha de vencimiento ─────────────────────────────────────
+        $fechaVenc = null;
+        if ($rawDate !== '') {
+            $fechaVenc = $this->_parsearFechaQr($rawDate);
+        }
+
+        // ── Buscar producto: EAN exacto → código_interno → parcial ───────────
+        $prod = null;
+        if ($code !== '') {
+            // 1. EAN exacto
+            $eanRec = \App\Models\ProductoEan::where('codigo_ean', $code)->first();
+            if ($eanRec) {
+                $prod = Producto::where('empresa_id', $user->empresa_id)->find($eanRec->producto_id);
+            }
+            // 2. código_interno exacto
+            if (!$prod) {
+                $prod = Producto::where('empresa_id', $user->empresa_id)
+                    ->where('codigo_interno', $code)->first();
+            }
+            // 3. EAN sufijo (últimos 10 chars)
+            if (!$prod && strlen($code) > 6) {
+                $eanRec = \App\Models\ProductoEan::where('codigo_ean', 'like', '%' . substr($code, -10))->first();
+                if ($eanRec) {
+                    $prod = Producto::where('empresa_id', $user->empresa_id)->find($eanRec->producto_id);
+                }
+            }
+            // 4. Búsqueda por nombre si no era un código (fallback texto libre)
+            if (!$prod) {
+                $prod = Producto::where('empresa_id', $user->empresa_id)
+                    ->where(function($q) use ($code) {
+                        $q->where('nombre', 'like', "%{$code}%")
+                          ->orWhere('codigo_interno', 'like', "%{$code}%");
+                    })->first();
+            }
+        }
+
+        if (!$prod) {
+            return $this->json($response, [
+                'error'   => true,
+                'message' => "Producto no encontrado para el código: '{$code}'",
+                'code'    => $code,
+                'fecha_raw' => $rawDate,
+            ], 404);
+        }
+
+        return $this->json($response, [
+            'error'   => false,
+            'data'    => [
+                'producto'         => $prod,
+                'fecha_vencimiento'=> $fechaVenc,
+                'fecha_raw'        => $rawDate,
+                'code_qr'          => $code,
+            ],
+        ]);
+    }
+
+    /**
+     * Parsea textos de fecha en formatos variados → YYYY-MM-DD o null.
+     * Soporta: YYYYMMDD, DDMMYYYY, DD/MM/YYYY, YYYY-MM-DD, YYYY/MM/DD, DD-MM-YYYY, etc.
+     */
+    private function _parsearFechaQr(string $raw): ?string
+    {
+        $s = trim($raw);
+        if ($s === '') return null;
+
+        // 1. YYYYMMDD — 8 dígitos donde los primeros 4 son un año plausible (1900-2199)
+        if (preg_match('/^(19|20|21)(\d{2})(\d{2})(\d{2})$/', $s)) {
+            try { return Carbon::createFromFormat('Ymd', $s)->format('Y-m-d'); } catch (\Exception $e) {}
+        }
+        // 2. DDMMYYYY — 8 dígitos donde los dos últimos 4 son año plausible
+        if (preg_match('/^(\d{2})(\d{2})(19|20|21)(\d{2})$/', $s)) {
+            try { return Carbon::createFromFormat('dmY', $s)->format('Y-m-d'); } catch (\Exception $e) {}
+        }
+        // 3. YYYY-MM-DD o YYYY/MM/DD (con separador, año primero)
+        if (preg_match('/^(19|20|21)\d{2}[\/\-]\d{2}[\/\-]\d{2}$/', $s)) {
+            try { return Carbon::parse(str_replace('/', '-', $s))->format('Y-m-d'); } catch (\Exception $e) {}
+        }
+        // 4. DD/MM/YYYY o DD-MM-YYYY (con separador, día primero)
+        if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $s)) {
+            try { return Carbon::createFromFormat('d/m/Y', str_replace('-', '/', $s))->format('Y-m-d'); } catch (\Exception $e) {}
+        }
+        // 5. MM/YYYY o MM-YYYY → primer día del mes
+        if (preg_match('/^(\d{1,2})[\/\-](\d{4})$/', $s, $m)) {
+            try { return Carbon::createFromFormat('m/Y', $m[1] . '/' . $m[2])->startOfMonth()->format('Y-m-d'); } catch (\Exception $e) {}
+        }
+        // 6. Intento genérico con Carbon
+        try { return Carbon::parse($s)->format('Y-m-d'); } catch (\Exception $e) {}
+
+        return null;
+    }
+
+    /**
+     * POST /api/recepciones/sin-odc
+     * Captura operativa SIN Orden de Compra (modo ciego).
+     * Misma lógica que detallesOperativa() pero sin requerir ni validar ODC.
+     */
+    public function detallesOperativaSinOdc(Request $request, Response $response): Response
+    {
+        $user = $request->getAttribute('user');
+        $data = $request->getParsedBody() ?? [];
+
+        if (empty($data['producto_id']) || empty($data['cantidad'])) {
+            return $this->json($response, ['error' => true, 'message' => 'Campos requeridos: producto_id, cantidad'], 400);
+        }
+
+        $producto = Producto::where('empresa_id', $user->empresa_id)->find((int)$data['producto_id']);
+        if (!$producto) {
+            return $this->json($response, ['error' => true, 'message' => 'Producto inválido'], 404);
+        }
+
+        $cajasUnd      = max(1, (int)($producto->unidades_caja ?? 1));
+        $cantidad      = (float)$data['cantidad'];
+        $cantidadCajas = isset($data['cantidad_cajas']) ? (int)$data['cantidad_cajas'] : (int)ceil($cantidad / $cajasUnd);
+
+        if ($cantidad <= 0) {
+            return $this->json($response, ['error' => true, 'message' => 'La cantidad debe ser mayor a cero'], 400);
+        }
+
+        // Validar fecha de vencimiento (si el producto la requiere)
+        $fechaVenc = $this->estandarizarFecha($data['fecha_vencimiento'] ?? null);
+        $guard = new InventoryGuard($user->empresa_id, $user->sucursal_id, $user->id);
+        $checkDate = $guard->checkExpirationMandatory($producto->id, $fechaVenc);
+        if (!$checkDate['ok']) {
+            return $this->json($response, ['error' => true, 'message' => $checkDate['message']], 422);
+        }
+
+        // Buscar o crear Recepción sin ODC del día en Borrador para este auxiliar
+        $hoy = date('Y-m-d');
+        $recepcion = Recepcion::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereNull('odc_id')
+            ->where('auxiliar_id', $user->id)
+            ->where('estado', 'Borrador')
+            ->whereDate('fecha_movimiento', $hoy)
+            ->first();
+
+        if (!$recepcion) {
+            $recepcion = new Recepcion();
+            $recepcion->empresa_id       = $user->empresa_id;
+            $recepcion->sucursal_id      = $user->sucursal_id;
+            $recepcion->odc_id           = null;
+            $recepcion->numero_recepcion = Recepcion::generarNumero($user->sucursal_id);
+            $recepcion->auxiliar_id      = $user->id;
+            $recepcion->modo_ciego       = true;
+            $recepcion->estado           = 'Borrador';
+            $recepcion->fecha_movimiento = $hoy;
+            $recepcion->hora_inicio      = date('H:i:s');
+            $recepcion->observaciones    = 'Recepción sin Orden de Compra';
+            $recepcion->save();
+        }
+
+        // Resolver ubicación destino
+        $ubicacionDestinoId = null;
+        if (!empty($data['ubicacion_destino_id'])) {
+            $ubicacionDestinoId = (int)$data['ubicacion_destino_id'];
+        } elseif (!empty($data['ubicacion_destino_codigo'])) {
+            $codigo = trim(strtoupper($data['ubicacion_destino_codigo']));
+            $ubicacionDestinoId = Ubicacion::where('sucursal_id', $user->sucursal_id)
+                ->whereRaw('REPLACE(UPPER(codigo), "-", "") = ?', [str_replace('-', '', $codigo)])
+                ->value('id');
+        }
+        if (!$ubicacionDestinoId) {
+            $ubicacionDestinoId = Ubicacion::where('sucursal_id', $user->sucursal_id)
+                ->where('tipo_ubicacion', 'Patio')->value('id');
+        }
+
+        $detalle = new RecepcionDetalle();
+        $detalle->recepcion_id       = $recepcion->id;
+        $detalle->producto_id        = $producto->id;
+        $detalle->cantidad_esperada  = 0;
+        $detalle->cantidad_recibida  = $cantidad;
+        $detalle->cantidad_cajas     = $cantidadCajas;
+        $detalle->cajas_por_unidad   = $cajasUnd;
+        $detalle->lote               = $data['lote'] ?? null;
+        $detalle->fecha_vencimiento  = $fechaVenc;
+        $detalle->estado_mercancia   = $data['estado_mercancia'] ?? 'BuenEstado';
+        $detalle->novedad_motivo     = $data['novedad_motivo'] ?? null;
+        $detalle->ubicacion_destino_id = $ubicacionDestinoId;
+        $detalle->numero_pallet      = !empty($data['numero_pallet']) ? (int)$data['numero_pallet'] : null;
+        $detalle->aprobado_admin     = 1;
+        $detalle->save();
+
+        // Inventario en tiempo real
+        try {
+            \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
+
+            \App\Models\MovimientoInventario::create([
+                'empresa_id'           => $user->empresa_id,
+                'sucursal_id'          => $user->sucursal_id,
+                'producto_id'          => $producto->id,
+                'tipo_movimiento'      => 'Entrada',
+                'referencia_tipo'      => 'Recepción Sin ODC: ' . $recepcion->numero_recepcion,
+                'cantidad'             => $cantidad,
+                'fecha_movimiento'     => $hoy,
+                'hora_inicio'          => date('H:i:s'),
+                'ubicacion_destino_id' => $ubicacionDestinoId,
+                'auxiliar_id'          => $user->id,
+                'numero_pallet'        => $detalle->numero_pallet,
+                'lote'                 => $data['lote'] ?? 'N/A',
+            ]);
+
+            $inv = \App\Models\Inventario::firstOrNew([
+                'empresa_id'    => $user->empresa_id,
+                'sucursal_id'   => $user->sucursal_id,
+                'producto_id'   => $producto->id,
+                'ubicacion_id'  => $ubicacionDestinoId,
+                'lote'          => $data['lote'] ?? 'N/A',
+                'estado'        => 'Disponible',
+                'numero_pallet' => $detalle->numero_pallet,
+            ]);
+            $inv->cantidad           = ($inv->cantidad ?? 0) + $cantidad;
+            $inv->cantidad_reservada = $inv->cantidad_reservada ?? 0;
+            $inv->fecha_vencimiento  = $detalle->fecha_vencimiento ?? $inv->fecha_vencimiento;
+            $inv->save();
+
+            \Illuminate\Database\Capsule\Manager::connection()->commit();
+        } catch (\Exception $e) {
+            \Illuminate\Database\Capsule\Manager::connection()->rollBack();
+            error_log('Error inventario sin-ODC: ' . $e->getMessage());
+        }
+
+        return $this->json($response, [
+            'error'   => false,
+            'message' => 'Captura sin ODC registrada correctamente',
+            'data'    => [
+                'recepcion'  => $recepcion,
+                'detalle'    => $detalle,
+                'conversion' => [
+                    'cajas'          => $cantidadCajas,
+                    'unidades_caja'  => $cajasUnd,
+                    'total_unidades' => $cantidad,
+                ],
+            ],
+        ], 201);
+    }
+
+    /**
      * POST /api/recepciones/{id}/confirm
      * Cierra la recepción y afecta el inventario (ledger)
      */

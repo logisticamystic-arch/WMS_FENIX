@@ -375,6 +375,11 @@ body {
 .module-icon-circle.pink { background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); }
 .module-icon-circle.red { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
 .module-icon-circle.gray { background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%); }
+.module-icon-circle.emerald { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+.module-icon-circle.rose { background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%); }
+.module-icon-circle.cyan { background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); }
+.module-icon-circle.amber { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+.module-icon-circle.secondary { background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%); }
 
 .module-label {
   font-size: 0.75rem;

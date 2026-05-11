@@ -455,6 +455,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/recepcion/dashboard/{id}', [\App\Controllers\RecepcionController::class, 'detalle']);
     $group->get('/recepcion/analytics/{id}', [\App\Controllers\RecepcionController::class, 'getOdcAnalytics']);
     $group->post('/recepciones/detalles-operativa', [\App\Controllers\RecepcionController::class, 'detallesOperativa']);
+    $group->post('/recepciones/sin-odc', [\App\Controllers\RecepcionController::class, 'detallesOperativaSinOdc']);
+    $group->get('/recepciones/buscar-qr', [\App\Controllers\RecepcionController::class, 'buscarProductoPorQr']);
 
     // Dashboard de Control de Recepción
     $group->post('/recepcion/control-panel/odc/linea/{id}/aprobar', [\App\Controllers\RecepcionController::class, 'aprobarLinea']);
@@ -572,40 +574,59 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // Módulo: Reabastecimiento automático
     $group->post('/reabastecimiento/auto', [\App\Controllers\ReplenishmentController::class, 'runAutoReplenishment']);
 
-    // Módulo: Picking (Outbound)
-    $group->get('/picking', [\App\Controllers\PickingController::class, 'listar']);
-    $group->post('/picking', [\App\Controllers\PickingController::class, 'crearBatch']);
-    $group->get('/picking/template', [\App\Controllers\PickingController::class, 'getTemplate']);
-    $group->post('/picking/importar', [\App\Controllers\PickingController::class, 'importarPedidos']);
-    $group->get('/picking/dashboard', [\App\Controllers\PickingController::class, 'dashboard']);
-    $group->get('/picking/consolidados', [\App\Controllers\PickingController::class, 'consolidados']);
-    $group->post('/picking/asignar-multiple', [\App\Controllers\PickingController::class, 'asignarMultiple']);
-    $group->post('/picking/asignar-ruta', [\App\Controllers\PickingController::class, 'asignarRuta']);
-    $group->post('/picking/asignar-ambiente', [\App\Controllers\PickingController::class, 'asignarPorAmbiente']);
-    $group->put('/picking/{id}/ruta',         [\App\Controllers\PickingController::class, 'asignarRutaOrden']);
-    $group->get('/picking/mis-planillas', [\App\Controllers\PickingController::class, 'misPlanillas']);
-    $group->get('/picking/planilla/{numero}', [\App\Controllers\PickingController::class, 'planillaDetalles']);
-    $group->get('/picking/planilla/{numero}/detalles', [\App\Controllers\PickingController::class, 'planillaDetalles']);
-    $group->post('/picking/planilla/{numero}/iniciar', [\App\Controllers\PickingController::class, 'iniciarPlanilla']);
-    $group->post('/picking/confirmar-consolidado', [\App\Controllers\PickingController::class, 'confirmarConsolidado']);
-    $group->post('/picking/asignar-consolidado', [\App\Controllers\PickingController::class, 'asignarConsolidado']);
-    $group->post('/picking/assign', [\App\Controllers\PickingController::class, 'assignLines']);
-    $group->post('/picking/transfer', [\App\Controllers\PickingController::class, 'transferTasks']);
-    $group->post('/picking/reabastecimientos/auto', [\App\Controllers\PickingController::class, 'autoReabastecer']);
-    $group->get('/picking/reabastecimientos', [\App\Controllers\PickingController::class, 'reabastecimientos']);
-    $group->get('/picking/novedades-stock',   [\App\Controllers\PickingController::class, 'novedadesStock']);
-    $group->post('/picking/backorder',         [\App\Controllers\PickingController::class, 'procesarBackorder']);
-    $group->get('/picking/reporte',           [\App\Controllers\PickingController::class, 'reporte']);
-    $group->get('/picking/{id}', [\App\Controllers\PickingController::class, 'detalle']);
-    $group->get('/picking/{orden_id}/siguiente-linea', [\App\Controllers\PickingController::class, 'siguienteLinea']);
-    $group->post('/picking/{orden_id}/generar-ruta', [\App\Controllers\PickingController::class, 'generateRoute']);
-    $group->post('/picking/{orden_id}/confirmar-linea', [\App\Controllers\PickingController::class, 'confirmLine']);
-    $group->post('/picking/{id}/completar', [\App\Controllers\PickingController::class, 'completar']);
-    $group->post('/picking/{id}/marcar-faltante', [\App\Controllers\PickingController::class, 'marcarFaltante']);
-    $group->post('/picking/reabast/{id}/completar', [\App\Controllers\PickingController::class, 'completarReabast']);
-    $group->delete('/picking/{id}', [\App\Controllers\PickingController::class, 'eliminar']);
-    $group->put('/picking/{id}', [\App\Controllers\PickingController::class, 'actualizar']);
-    $group->post('/picking/{id}/lineas', [\App\Controllers\PickingController::class, 'agregarLinea']);
+    $group->group('/picking', function($group) {
+        // Operaciones base
+        $group->get('', [\App\Controllers\PickingController::class, 'listar']);
+        $group->post('', [\App\Controllers\PickingController::class, 'crearBatch']);
+        $group->get('/template', [\App\Controllers\PickingController::class, 'getTemplate']);
+        $group->post('/importar', [\App\Controllers\PickingController::class, 'importarPedidos']);
+        $group->get('/dashboard', [\App\Controllers\PickingController::class, 'dashboard']);
+        $group->get('/consolidados', [\App\Controllers\PickingController::class, 'consolidados']);
+        $group->post('/asignar-multiple', [\App\Controllers\PickingController::class, 'asignarMultiple']);
+        $group->post('/asignar-ruta', [\App\Controllers\PickingController::class, 'asignarRuta']);
+        $group->post('/asignar-ambiente', [\App\Controllers\PickingController::class, 'asignarPorAmbiente']);
+        $group->get('/mis-planillas', [\App\Controllers\PickingController::class, 'misPlanillas']);
+        $group->get('/planilla/{numero}', [\App\Controllers\PickingController::class, 'planillaDetalles']);
+        $group->post('/planilla/{numero}/iniciar', [\App\Controllers\PickingController::class, 'iniciarPlanilla']);
+        $group->post('/confirmar-consolidado', [\App\Controllers\PickingController::class, 'confirmarConsolidado']);
+        $group->post('/asignar-consolidado', [\App\Controllers\PickingController::class, 'asignarConsolidado']);
+        $group->post('/assign', [\App\Controllers\PickingController::class, 'assignLines']);
+        $group->post('/transfer', [\App\Controllers\PickingController::class, 'transferTasks']);
+        $group->post('/reabastecimientos/auto', [\App\Controllers\PickingController::class, 'autoReabastecer']);
+        $group->get('/reabastecimientos', [\App\Controllers\PickingController::class, 'reabastecimientos']);
+        $group->get('/novedades-stock',   [\App\Controllers\PickingController::class, 'novedadesStock']);
+        $group->post('/backorder',         [\App\Controllers\PickingController::class, 'procesarBackorder']);
+        $group->get('/reporte',           [\App\Controllers\PickingController::class, 'reporte']);
+        
+        // Rutas por ID de Orden
+        $group->get('/{id}', [\App\Controllers\PickingController::class, 'detalle']);
+        $group->put('/{id}', [\App\Controllers\PickingController::class, 'actualizar']);
+        $group->delete('/{id}', [\App\Controllers\PickingController::class, 'eliminar']);
+        $group->put('/{id}/ruta',         [\App\Controllers\PickingController::class, 'asignarRutaOrden']);
+        $group->get('/{orden_id}/siguiente-linea', [\App\Controllers\PickingController::class, 'siguienteLinea']);
+        $group->post('/{orden_id}/generar-ruta', [\App\Controllers\PickingController::class, 'generateRoute']);
+        $group->post('/{orden_id}/confirmar-linea', [\App\Controllers\PickingController::class, 'confirmLine']);
+        $group->post('/{id}/completar', [\App\Controllers\PickingController::class, 'completar']);
+        $group->post('/{id}/marcar-faltante', [\App\Controllers\PickingController::class, 'marcarFaltante']);
+        $group->post('/{id}/lineas', [\App\Controllers\PickingController::class, 'agregarLinea']);
+
+        // Certificación por Sucursal
+        $group->get('/certificacion/pendientes', [\App\Controllers\PickingController::class, 'certPendientes']);
+        $group->get('/certificacion/detalle/{sucursal}', [\App\Controllers\PickingController::class, 'certDetalle']);
+        $group->post('/certificacion/confirmar', [\App\Controllers\PickingController::class, 'certConfirmar']);
+        $group->post('/certificacion/finalizar', [\App\Controllers\PickingController::class, 'certFinalizar']);
+        $group->get('/certificacion/imprimir/{sucursal}', [\App\Controllers\PickingController::class, 'imprimirCertificado']);
+    });
+
+    // Módulo: Impresoras
+    $group->group('/impresoras', function($group) {
+        $group->get('', [\App\Controllers\ImpresoraController::class, 'listar']);
+        $group->post('', [\App\Controllers\ImpresoraController::class, 'guardar']);
+        $group->post('/imprimir-rotulo', [\App\Controllers\ImpresoraController::class, 'imprimirRotulo']);
+        $group->delete('/{id}', [\App\Controllers\ImpresoraController::class, 'eliminar']);
+    });
+
+
 
     // Módulo: Planillas (Certificación por Cliente)
     $group->get('/planillas', [\App\Controllers\PlanillaController::class, 'listar']);

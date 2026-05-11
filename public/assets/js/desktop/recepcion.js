@@ -19,6 +19,7 @@ WMS_MODULES.recepcion = {
       odc:        this.show_odc,
       citas:      this.show_citas,
       operativa:  this.show_operativa,
+      sin_odc:    this.show_sin_odc,
       devoluciones:this.show_devoluciones,
       dashboard:  this.show_dashboard,
       informe:    this.show_informe,
@@ -50,11 +51,12 @@ WMS_MODULES.recepcion = {
       { id:'odc',          icon:'fa-file-invoice',    color:'blue',   bg:'rgba(0,112,242,.09)',   title:'Órdenes de Compra',    desc:'Sincronizar y auditar pedidos pendientes de proveedores.' },
       { id:'citas',        icon:'fa-calendar-check',  color:'green',  bg:'rgba(0,179,0,.09)',     title:'Citas YMS',            desc:'Control de agenda para muelles y entrada de patios.' },
       { id:'operativa',    icon:'fa-truck-ramp-box',  color:'teal',   bg:'rgba(8,145,178,.09)',   title:'Recibo Operativo',     desc:'Ejecución descarga, conteo y verificación de mercancía.' },
+      { id:'sin_odc',      icon:'fa-box-open',        color:'emerald',bg:'rgba(5,150,105,.09)',   title:'Recepción sin ODC',    desc:'Ingreso de mercancía sin orden de compra previa. Soporte QR.' },
       { id:'devoluciones', icon:'fa-rotate-left',     color:'amber',  bg:'rgba(232,160,0,.09)',   title:'Devoluciones',         desc:'Gestión de devoluciones a proveedores y novedades.' },
       { id:'dashboard',    icon:'fa-gauge',           color:'purple', bg:'rgba(124,58,237,.09)',  title:'Monitor de Recibo',    desc:'KPIs en tiempo real, ocupación y productividad.' },
       { id:'informe',      icon:'fa-file-excel',      color:'red',    bg:'rgba(224,48,48,.09)',   title:'Informes Detallados',  desc:'Reportes de descarga, lotes y sellos de seguridad.' },
     ];
-    const colorHex = { blue:'#0070f2', green:'#00b300', teal:'#0891b2', amber:'#e8a000', purple:'#7c3aed', red:'#e03030' };
+    const colorHex = { blue:'#0070f2', green:'#00b300', teal:'#0891b2', amber:'#e8a000', purple:'#7c3aed', red:'#e03030', emerald:'#059669' };
 
     WMS.setContent(`
 <div class="pro-dashboard">
@@ -131,7 +133,8 @@ WMS_MODULES.recepcion = {
 
   subLabel(s) {
     const m = { odc:'Órdenes de Compra', citas:'Citas YMS', operativa:'Recepción Operativa',
-                devoluciones:'Devolución Proveedor', dashboard:'Dashboard Recepción', informe:'Informe de Recibo' };
+                sin_odc:'Recepción sin ODC', devoluciones:'Devolución Proveedor',
+                dashboard:'Dashboard Recepción', informe:'Informe de Recibo' };
     return m[s] || s || 'Panel';
   },
 
@@ -1342,6 +1345,404 @@ WMS_MODULES.recepcion = {
           btn.disabled = false;
           btn.innerHTML = originalText;
       }
+  },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // RECEPCIÓN SIN ODC
+  // ══════════════════════════════════════════════════════════════════════
+  async show_sin_odc(silent = false) {
+    WMS.setToolbar(`
+      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.recepcion.abrirConsolaSinODC()">
+        <i class="fa-solid fa-plus"></i> Nueva Captura Sin ODC
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.recepcion.show_sin_odc()">
+        <i class="fa-solid fa-sync"></i> Actualizar
+      </button>`);
+    if (!silent) WMS.spinner();
+    try {
+      const r = await API.get('/recepciones', 'odc_id=null&limit=100');
+      const items = (r.data || r || []).filter(rc => !rc.odc_id);
+      WMS.setContent(`
+        <div class="px-20 py-16">
+          <div class="card shadow-soft">
+            <div class="card-header d-flex justify-between align-center">
+              <span class="card-title fw-900 color-primary">
+                <i class="fa-solid fa-box-open"></i> Recepciones sin Orden de Compra
+              </span>
+              <span class="text-xs text-muted">${items.length} registro(s)</span>
+            </div>
+            <div class="table-container">
+              <table class="erp-table">
+                <thead><tr>
+                  <th>N° Recepción</th><th>Auxiliar</th><th>Estado</th>
+                  <th>Fecha</th><th>Líneas</th><th>Acciones</th>
+                </tr></thead>
+                <tbody>${items.map(rc => `<tr>
+                  <td class="fw-800">${WMS.esc(rc.numero_recepcion)}</td>
+                  <td>${WMS.esc(rc.auxiliar?.nombre || '-')}</td>
+                  <td><span class="status-chip ${rc.estado === 'Cerrada' ? 'status-cerrada' : 'status-en-proceso'}">${rc.estado}</span></td>
+                  <td>${WMS.formatDate(rc.fecha_movimiento)}</td>
+                  <td class="text-center">${rc.detalles?.length || rc.detalles_count || '-'}</td>
+                  <td>
+                    ${rc.estado === 'Borrador' ? `
+                      <button class="btn btn-xs btn-primary-soft" onclick="WMS_MODULES.recepcion.abrirConsolaSinODC('${rc.id}')">
+                        <i class="fa-solid fa-play"></i> Retomar
+                      </button>` : ''}
+                  </td>
+                </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin recepciones sin ODC registradas</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>`);
+    } catch (e) { WMS.toast('error', 'Error cargando recepciones'); }
+  },
+
+  // _sinOdcProds: caché de productos cargados para el autocompletado
+  _sinOdcProds: [],
+  _sinOdcRecepcionId: null,
+
+  async abrirConsolaSinODC(recepcionId = null) {
+    WMS.setToolbar(`
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.recepcion.show_sin_odc()">
+        <i class="fa-solid fa-arrow-left"></i> Volver al Monitor
+      </button>`);
+    WMS.spinner();
+    try {
+      const prodR = await API.get('/param/productos');
+      this._sinOdcProds = prodR.data || prodR || [];
+      this._sinOdcRecepcionId = recepcionId || null;
+
+      // Historial de capturas del día (recepcion en borrador sin ODC)
+      let lineas = [];
+      if (recepcionId) {
+        try {
+          const recR = await API.get('/recepciones/' + recepcionId);
+          lineas = (recR.data?.detalles || []).slice().reverse();
+        } catch (_) {}
+      }
+
+      WMS.setContent(`
+        <div style="display:grid;grid-template-columns:400px 1fr;gap:20px;padding:20px;height:calc(100vh - 120px);overflow:hidden;">
+
+          <!-- Panel de Captura -->
+          <div style="background:#fff;border-radius:6px;border:1px solid #e2e8f0;padding:20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 4px 6px -1px rgba(0,0,0,.05);overflow-y:auto;">
+
+            <!-- Header -->
+            <div style="font-weight:900;font-size:16px;color:#1e3a5f;border-bottom:2px solid #e2e8f0;padding-bottom:10px;">
+              <i class="fa-solid fa-box-open" style="color:#059669;"></i> Captura Sin ODC
+            </div>
+
+            <!-- QR Scanner -->
+            <div style="background:#f0fdf4;border:1px solid #a7f3d0;border-radius:6px;padding:12px;">
+              <div style="font-size:11px;font-weight:700;color:#065f46;margin-bottom:6px;text-transform:uppercase;">
+                <i class="fa-solid fa-qrcode"></i> Escanear QR (Código/FechaVencimiento)
+              </div>
+              <div style="display:flex;gap:8px;">
+                <input type="text" id="sodc-qr-input" class="form-control" placeholder="Escanee o ingrese QR (ej: 7702003/20261231)"
+                  style="flex:1;font-family:monospace;font-size:13px;"
+                  onkeydown="if(event.key==='Enter'||event.key==='Tab'){event.preventDefault();WMS_MODULES.recepcion._procesarQrSinODC();}">
+                <button class="btn btn-success" style="padding:0 14px;" onclick="WMS_MODULES.recepcion._procesarQrSinODC()" title="Buscar QR">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                </button>
+              </div>
+              <div style="font-size:10px;color:#6b7280;margin-top:4px;">
+                Formato: <code>CODIGO_PRODUCTO/FECHA_VENCIMIENTO</code> — El sistema extrae el producto y parsea la fecha automáticamente.
+              </div>
+            </div>
+
+            <!-- Producto -->
+            <div class="form-group">
+              <label class="form-label">Producto <span style="color:#ef4444">*</span></label>
+              <div style="position:relative;">
+                <input type="text" id="sodc-prod-search" class="form-control" placeholder="Buscar por nombre, EAN o código..."
+                  autocomplete="off" oninput="WMS_MODULES.recepcion._buscarProdSinODC(this.value)">
+                <div id="sodc-prod-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:4px;box-shadow:0 8px 16px rgba(0,0,0,.12);z-index:1000;max-height:200px;overflow-y:auto;"></div>
+              </div>
+              <input type="hidden" id="sodc-prod-id">
+              <div id="sodc-prod-info" style="display:none;margin-top:6px;padding:8px 12px;background:#f1f5f9;border-radius:4px;font-size:12px;"></div>
+            </div>
+
+            <!-- Cantidad + Conversión -->
+            <div class="form-group">
+              <label class="form-label" id="sodc-cant-label">Cantidad a Recibir *</label>
+              <input type="number" id="sodc-cant" class="form-control" value="1" min="1"
+                oninput="WMS_MODULES.recepcion._actualizarPreviewSinODC()">
+              <div id="sodc-conv-preview" style="display:none;margin-top:6px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;font-weight:600;">
+                <i class="fa-solid fa-calculator"></i> <span id="sodc-conv-text"></span>
+              </div>
+              <input type="hidden" id="sodc-upc" value="1">
+            </div>
+
+            <!-- Lote -->
+            <div class="form-group">
+              <label class="form-label">Lote (Opcional)</label>
+              <input type="text" id="sodc-lote" class="form-control" placeholder="Número de lote">
+            </div>
+
+            <!-- Fecha Vencimiento -->
+            <div class="form-group">
+              <label class="form-label">Fecha de Vencimiento</label>
+              <input type="date" id="sodc-fecha-venc" class="form-control">
+              <div id="sodc-fecha-info" style="display:none;font-size:11px;color:#059669;margin-top:3px;"></div>
+            </div>
+
+            <!-- Estado Mercancía -->
+            <div class="form-group">
+              <label class="form-label">Estado Mercancía</label>
+              <select id="sodc-estado" class="form-control">
+                <option value="BuenEstado">Buen Estado</option>
+                <option value="Averia">Avería</option>
+                <option value="Vencido">Vencido</option>
+              </select>
+            </div>
+
+            <!-- Botón Guardar -->
+            <button class="btn btn-success" style="padding:14px;font-size:16px;font-weight:800;margin-top:4px;"
+              onclick="WMS_MODULES.recepcion._enviarCapturaSinODC()">
+              <i class="fa-solid fa-check"></i> GUARDAR CAPTURA
+            </button>
+          </div>
+
+          <!-- Panel Historial -->
+          <div style="background:#fff;border-radius:6px;border:1px solid #e2e8f0;display:flex;flex-direction:column;box-shadow:0 4px 6px -1px rgba(0,0,0,.05);overflow:hidden;">
+            <div style="background:#f8fafc;padding:16px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+              <h3 style="margin:0;font-size:15px;color:#1e3a5f;"><i class="fa-solid fa-history"></i> Capturas Registradas</h3>
+              <span id="sodc-counter" style="font-size:12px;color:#64748b;">${lineas.length} líneas</span>
+            </div>
+            <div style="flex:1;overflow:auto;" id="sodc-lines-container">
+              ${lineas.length === 0
+                ? '<div style="text-align:center;padding:40px;color:#94a3b8;font-style:italic;"><i class="fa-solid fa-inbox" style="font-size:2rem;display:block;margin-bottom:8px;"></i>Sin capturas aún. Use el panel izquierdo para registrar.</div>'
+                : `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+                  <thead style="background:#f1f5f9;"><tr>
+                    <th style="padding:10px;text-align:left;">Producto</th>
+                    <th style="padding:10px;text-align:center;">Cant.</th>
+                    <th style="padding:10px;text-align:center;">Cajas</th>
+                    <th style="padding:10px;text-align:left;">Lote</th>
+                    <th style="padding:10px;text-align:left;">F. Venc.</th>
+                    <th style="padding:10px;text-align:left;">Estado</th>
+                  </tr></thead>
+                  <tbody id="sodc-lines-body">
+                    ${lineas.map(l => `<tr style="border-bottom:1px solid #f1f5f9;">
+                      <td style="padding:9px 10px;font-weight:600;">${WMS.esc(l.producto?.nombre || '-')}</td>
+                      <td style="padding:9px 10px;text-align:center;font-weight:800;color:#059669;">${l.cantidad_recibida}</td>
+                      <td style="padding:9px 10px;text-align:center;">${l.cantidad_cajas || '-'}</td>
+                      <td style="padding:9px 10px;">${WMS.esc(l.lote || 'N/A')}</td>
+                      <td style="padding:9px 10px;">${l.fecha_vencimiento ? WMS.formatDate(l.fecha_vencimiento) : '-'}</td>
+                      <td style="padding:9px 10px;"><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#166534;">${WMS.esc(l.estado_mercancia || 'BuenEstado')}</span></td>
+                    </tr>`).join('')}
+                  </tbody>
+                </table>`}
+            </div>
+          </div>
+
+        </div>`);
+    } catch (e) { WMS.toast('error', 'Error cargando consola sin ODC: ' + e.message); }
+  },
+
+  async _procesarQrSinODC() {
+    const input = document.getElementById('sodc-qr-input');
+    const qr = (input?.value || '').trim();
+    if (!qr) return;
+
+    try {
+      const r = await API.get('/recepciones/buscar-qr', 'q=' + encodeURIComponent(qr));
+      if (r.error) { WMS.toast('warning', r.message || 'Producto no encontrado'); return; }
+
+      const p = r.data.producto;
+      const fechaVenc = r.data.fecha_vencimiento;
+
+      // Rellenar campo producto
+      const searchInput = document.getElementById('sodc-prod-search');
+      const hiddenId    = document.getElementById('sodc-prod-id');
+      const prodInfo    = document.getElementById('sodc-prod-info');
+      const upcInput    = document.getElementById('sodc-upc');
+
+      if (searchInput) searchInput.value = p.nombre;
+      if (hiddenId)    hiddenId.value    = p.id;
+      if (upcInput)    upcInput.value    = p.unidades_caja || 1;
+
+      if (prodInfo) {
+        prodInfo.style.display = 'block';
+        prodInfo.innerHTML = `<i class="fa-solid fa-check-circle" style="color:#059669;"></i> <b>${WMS.esc(p.nombre)}</b> · EAN: ${WMS.esc(p.codigo_interno || '-')} · UxC: ${p.unidades_caja || 1}`;
+      }
+
+      // Rellenar fecha de vencimiento si viene en el QR
+      const fechaInput  = document.getElementById('sodc-fecha-venc');
+      const fechaInfo   = document.getElementById('sodc-fecha-info');
+      if (fechaVenc && fechaInput) {
+        fechaInput.value = fechaVenc;
+        if (fechaInfo) {
+          fechaInfo.style.display = 'block';
+          fechaInfo.innerHTML = `<i class="fa-solid fa-calendar-check"></i> Fecha parseada del QR: <b>${WMS.formatDate(fechaVenc)}</b> (texto original: "${WMS.esc(r.data.fecha_raw || '')}"))`;
+        }
+      }
+
+      this._actualizarPreviewSinODC();
+      input.value = '';
+      document.getElementById('sodc-cant')?.focus();
+      WMS.toast('success', 'Producto identificado: ' + p.nombre);
+    } catch (e) {
+      WMS.toast('error', 'Error al procesar QR: ' + (e.message || 'No encontrado'));
+    }
+  },
+
+  _buscarProdSinODC(q) {
+    const dd = document.getElementById('sodc-prod-dropdown');
+    if (!dd) return;
+    if (q.length < 2) { dd.style.display = 'none'; return; }
+    const ql = q.toLowerCase();
+    const matches = this._sinOdcProds.filter(p =>
+      (p.nombre || '').toLowerCase().includes(ql) ||
+      (p.codigo_interno || '').toLowerCase().includes(ql) ||
+      (p.ean || '').toLowerCase().includes(ql)
+    ).slice(0, 10);
+    if (!matches.length) { dd.style.display = 'none'; return; }
+    dd.style.display = 'block';
+    dd.innerHTML = matches.map(p => `
+      <div onclick="WMS_MODULES.recepcion._seleccionarProdSinODC(${p.id})"
+        style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:13px;"
+        onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
+        <div style="font-weight:600;">${WMS.esc(p.nombre)}</div>
+        <div style="font-size:11px;color:#64748b;">${WMS.esc(p.codigo_interno || '')} · UxC: ${p.unidades_caja || 1}</div>
+      </div>`).join('');
+  },
+
+  _seleccionarProdSinODC(id) {
+    const p = this._sinOdcProds.find(x => x.id === id || x.id === String(id));
+    if (!p) return;
+    const searchInput = document.getElementById('sodc-prod-search');
+    const hiddenId    = document.getElementById('sodc-prod-id');
+    const prodInfo    = document.getElementById('sodc-prod-info');
+    const upcInput    = document.getElementById('sodc-upc');
+    const dd          = document.getElementById('sodc-prod-dropdown');
+
+    if (searchInput) searchInput.value = p.nombre;
+    if (hiddenId)    hiddenId.value    = p.id;
+    if (upcInput)    upcInput.value    = p.unidades_caja || 1;
+    if (dd)          dd.style.display  = 'none';
+    if (prodInfo) {
+      prodInfo.style.display = 'block';
+      prodInfo.innerHTML = `<i class="fa-solid fa-check-circle" style="color:#059669;"></i> <b>${WMS.esc(p.nombre)}</b> · Cód: ${WMS.esc(p.codigo_interno || '-')} · UxC: ${p.unidades_caja || 1}`;
+    }
+    this._actualizarPreviewSinODC();
+    document.getElementById('sodc-cant')?.focus();
+  },
+
+  _actualizarPreviewSinODC() {
+    const cajas   = parseInt(document.getElementById('sodc-cant')?.value || '0') || 0;
+    const upc     = parseInt(document.getElementById('sodc-upc')?.value  || '1') || 1;
+    const preview = document.getElementById('sodc-conv-preview');
+    const span    = document.getElementById('sodc-conv-text');
+    const label   = document.getElementById('sodc-cant-label');
+    if (label)   label.textContent = upc > 1 ? 'Cajas a Recibir *' : 'Cantidad a Recibir (unidades) *';
+    if (preview) preview.style.display = upc > 1 ? 'block' : 'none';
+    if (span && upc > 1) {
+      const plural = cajas === 1 ? 'caja' : 'cajas';
+      span.textContent = `${cajas} ${plural} × ${upc} = ${WMS.formatNum(cajas * upc)} unidades`;
+    }
+  },
+
+  async _enviarCapturaSinODC() {
+    const btn = event.currentTarget;
+    const prodId    = document.getElementById('sodc-prod-id')?.value;
+    const cantCajas = parseInt(document.getElementById('sodc-cant')?.value || '0');
+    const upc       = parseInt(document.getElementById('sodc-upc')?.value  || '1') || 1;
+    const lote      = document.getElementById('sodc-lote')?.value || '';
+    const venc      = document.getElementById('sodc-fecha-venc')?.value || '';
+    const estado    = document.getElementById('sodc-estado')?.value || 'BuenEstado';
+
+    if (!prodId) return WMS.toast('warning', 'Seleccione un producto');
+    if (cantCajas <= 0) return WMS.toast('warning', 'Cantidad debe ser mayor a cero');
+
+    const totalUnidades = cantCajas * upc;
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Guardando...';
+
+    try {
+      const r = await API.post('/recepciones/sin-odc', {
+        producto_id:    prodId,
+        cantidad_cajas: cantCajas,
+        cantidad:       totalUnidades,
+        lote:           lote || undefined,
+        fecha_vencimiento: venc || undefined,
+        estado_mercancia: estado,
+      });
+      if (r.error) throw new Error(r.message);
+
+      // Guardar id de recepción para retomarla
+      this._sinOdcRecepcionId = r.data?.recepcion?.id || null;
+
+      // Agregar fila al panel de historial
+      this._agregarLineaSinODC(r.data);
+
+      // Limpiar campos (no el producto, para captura rápida del mismo ítem)
+      const cantInput = document.getElementById('sodc-cant');
+      const loteInput = document.getElementById('sodc-lote');
+      const fechaInput = document.getElementById('sodc-fecha-venc');
+      const fechaInfo  = document.getElementById('sodc-fecha-info');
+      if (cantInput)  cantInput.value  = '1';
+      if (loteInput)  loteInput.value  = '';
+      if (fechaInput) fechaInput.value = '';
+      if (fechaInfo)  { fechaInfo.style.display = 'none'; }
+
+      const conv = r.data?.conversion;
+      const msgCajas = upc > 1
+        ? ` (${cantCajas} caja${cantCajas !== 1 ? 's' : ''} × ${upc} = ${conv?.total_unidades || totalUnidades} und)`
+        : ` (${totalUnidades} und)`;
+      WMS.toast('success', 'Captura registrada' + msgCajas);
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error al guardar captura');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = original;
+    }
+  },
+
+  _agregarLineaSinODC(data) {
+    const container = document.getElementById('sodc-lines-container');
+    const counter   = document.getElementById('sodc-counter');
+    if (!container) return;
+
+    const det  = data?.detalle || {};
+    const prod = data?.recepcion ? null : null; // producto viene en detalle.producto (not loaded eagerly)
+    const prodName = document.getElementById('sodc-prod-search')?.value || '-';
+
+    // Si el contenedor tiene el mensaje vacío, reemplazar con tabla
+    if (container.querySelector('.fa-inbox')) {
+      container.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead style="background:#f1f5f9;"><tr>
+          <th style="padding:10px;text-align:left;">Producto</th>
+          <th style="padding:10px;text-align:center;">Cant.</th>
+          <th style="padding:10px;text-align:center;">Cajas</th>
+          <th style="padding:10px;text-align:left;">Lote</th>
+          <th style="padding:10px;text-align:left;">F. Venc.</th>
+          <th style="padding:10px;text-align:left;">Estado</th>
+        </tr></thead>
+        <tbody id="sodc-lines-body"></tbody>
+      </table>`;
+    }
+
+    const tbody = document.getElementById('sodc-lines-body');
+    if (!tbody) return;
+
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid #f1f5f9';
+    tr.style.background = '#f0fdf4';
+    tr.innerHTML = `
+      <td style="padding:9px 10px;font-weight:600;">${WMS.esc(prodName)}</td>
+      <td style="padding:9px 10px;text-align:center;font-weight:800;color:#059669;">${det.cantidad_recibida || '-'}</td>
+      <td style="padding:9px 10px;text-align:center;">${det.cantidad_cajas || '-'}</td>
+      <td style="padding:9px 10px;">${WMS.esc(det.lote || 'N/A')}</td>
+      <td style="padding:9px 10px;">${det.fecha_vencimiento ? WMS.formatDate(det.fecha_vencimiento) : '-'}</td>
+      <td style="padding:9px 10px;"><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#166534;">${WMS.esc(det.estado_mercancia || 'BuenEstado')}</span></td>`;
+    tbody.insertBefore(tr, tbody.firstChild);
+    setTimeout(() => { tr.style.background = ''; }, 1500);
+
+    // Actualizar contador
+    const rows = tbody.querySelectorAll('tr').length;
+    if (counter) counter.textContent = rows + ' línea' + (rows !== 1 ? 's' : '');
   },
 
   // ══════════════════════════════════════════════════════════════════════
