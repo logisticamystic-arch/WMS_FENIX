@@ -581,6 +581,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/picking/consolidados', [\App\Controllers\PickingController::class, 'consolidados']);
     $group->post('/picking/asignar-multiple', [\App\Controllers\PickingController::class, 'asignarMultiple']);
     $group->post('/picking/asignar-ruta', [\App\Controllers\PickingController::class, 'asignarRuta']);
+    $group->post('/picking/asignar-ambiente', [\App\Controllers\PickingController::class, 'asignarPorAmbiente']);
+    $group->put('/picking/{id}/ruta',         [\App\Controllers\PickingController::class, 'asignarRutaOrden']);
     $group->get('/picking/mis-planillas', [\App\Controllers\PickingController::class, 'misPlanillas']);
     $group->get('/picking/planilla/{numero}', [\App\Controllers\PickingController::class, 'planillaDetalles']);
     $group->get('/picking/planilla/{numero}/detalles', [\App\Controllers\PickingController::class, 'planillaDetalles']);
@@ -592,6 +594,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/picking/reabastecimientos/auto', [\App\Controllers\PickingController::class, 'autoReabastecer']);
     $group->get('/picking/reabastecimientos', [\App\Controllers\PickingController::class, 'reabastecimientos']);
     $group->get('/picking/novedades-stock',   [\App\Controllers\PickingController::class, 'novedadesStock']);
+    $group->post('/picking/backorder',         [\App\Controllers\PickingController::class, 'procesarBackorder']);
     $group->get('/picking/reporte',           [\App\Controllers\PickingController::class, 'reporte']);
     $group->get('/picking/{id}', [\App\Controllers\PickingController::class, 'detalle']);
     $group->get('/picking/{orden_id}/siguiente-linea', [\App\Controllers\PickingController::class, 'siguienteLinea']);
@@ -601,6 +604,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/picking/{id}/marcar-faltante', [\App\Controllers\PickingController::class, 'marcarFaltante']);
     $group->post('/picking/reabast/{id}/completar', [\App\Controllers\PickingController::class, 'completarReabast']);
     $group->delete('/picking/{id}', [\App\Controllers\PickingController::class, 'eliminar']);
+    $group->put('/picking/{id}', [\App\Controllers\PickingController::class, 'actualizar']);
+    $group->post('/picking/{id}/lineas', [\App\Controllers\PickingController::class, 'agregarLinea']);
 
     // Módulo: Planillas (Certificación por Cliente)
     $group->get('/planillas', [\App\Controllers\PlanillaController::class, 'listar']);
