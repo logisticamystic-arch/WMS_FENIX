@@ -2480,7 +2480,7 @@ class PickingController extends BaseController
         } catch (\RuntimeException $e) {
             $decoded = json_decode($e->getMessage(), true);
             if (($decoded['tipo'] ?? '') === 'colision') {
-                $payload = json_encode(['error' => 'Algunos pedidos ya tienen líneas asignadas.', 'orden_ids_en_conflicto' => $decoded['orden_ids']]);
+                $payload = json_encode(['error' => 'Algunos pedidos ya tienen líneas asignadas.', 'orden_ids_en_conflicto' => $decoded['orden_ids']], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 $res->getBody()->write($payload);
                 return $res->withStatus(409)->withHeader('Content-Type', 'application/json');
             }
