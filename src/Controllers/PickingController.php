@@ -26,7 +26,8 @@ class PickingController extends BaseController
 {
     // ── GET /api/picking ──────────────────────────────────────────────────────
     // Parámetros de filtro: estado, auxiliar_id, pasillo, marca_id, ubicacion,
-    //                       planilla, sin_auxiliar, fecha_inicio, fecha_fin, limit
+    //                       planilla, sin_auxiliar, fecha_inicio, fecha_fin, limit,
+    //                       solo_hoy, incluir_finalizados, sucursal_entrega, ruta, q
     public function listar(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
@@ -34,9 +35,13 @@ class PickingController extends BaseController
         [$ini, $fin] = $this->getDateRange($params);
         $limit = min((int)($params['limit'] ?? 100), 500);
 
+        $soloHoy           = !empty($params['solo_hoy']);
+        $incluirFinalizados = !empty($params['incluir_finalizados']);
+
         $q = OrdenPicking::where('orden_pickings.empresa_id', $user->empresa_id)
             ->where('orden_pickings.sucursal_id', $user->sucursal_id)
-            ->whereBetween('orden_pickings.created_at', [$ini, $fin])
+            ->when(!$soloHoy, fn($q) => $q->whereBetween('orden_pickings.created_at', [$ini, $fin]))
+            ->when($soloHoy, fn($q) => $q->whereDate('orden_pickings.fecha_movimiento', date('Y-m-d')))
             ->when($params['estado'] ?? null, function($q, $e) {
                 if (strpos($e, ',') !== false) {
                     $q->whereIn('estado', explode(',', $e));
@@ -44,9 +49,21 @@ class PickingController extends BaseController
                     $q->where('estado', $e);
                 }
             })
+            ->when($soloHoy && !isset($params['estado']) && !$incluirFinalizados,
+                fn($q) => $q->whereIn('orden_pickings.estado', ['Pendiente', 'EnProceso']))
             ->when($params['auxiliar_id']  ?? null, fn($q, $v) => $q->where('auxiliar_id', (int)$v))
-            ->when($params['sin_auxiliar'] ?? null, fn($q)     => $q->whereNull('auxiliar_id'))
-            ->when($params['cliente']      ?? null, fn($q, $v) => $q->where('cliente', 'like', "%$v%"));
+            ->when($params['sin_auxiliar'] ?? null, fn($q)     => $q->whereNull('orden_pickings.auxiliar_id'))
+            ->when($params['cliente']      ?? null, fn($q, $v) => $q->where('cliente', 'like', "%$v%"))
+            ->when($params['sucursal_entrega'] ?? null, fn($q, $v) => $q->where('orden_pickings.sucursal_entrega', 'like', "%$v%"))
+            ->when($params['ruta'] ?? null, fn($q, $v) => $q->where('orden_pickings.ruta', 'like', "%$v%"))
+            ->when($params['q'] ?? null, function($q, $v) {
+                $q->where(fn($sq) => $sq
+                    ->where('orden_pickings.numero_pedido', 'like', "%$v%")
+                    ->orWhere('orden_pickings.cliente', 'like', "%$v%")
+                    ->orWhere('orden_pickings.sucursal_entrega', 'like', "%$v%")
+                    ->orWhere('orden_pickings.ruta', 'like', "%$v%")
+                );
+            });
 
         // Filtro específico para versión móvil: mostrar tareas del usuario conectado
         if (!empty($params['tiene_asignadas'])) {
@@ -97,6 +114,13 @@ class PickingController extends BaseController
         }
 
         $ordenes = $q->with(['auxiliar:id,nombre', 'detalles.producto:id,nombre,codigo_interno,unidades_caja', 'detalles.auxiliar:id,nombre'])
+            ->withCount([
+                'detalles as seco_count'        => fn($q) => $q->where('ambiente', 'Seco'),
+                'detalles as refrigerado_count' => fn($q) => $q->where('ambiente', 'Refrigerado'),
+                'detalles as congelado_count'   => fn($q) => $q->where('ambiente', 'Congelado'),
+                'detalles as total_count',
+            ])
+            ->orderBy('orden_pickings.sucursal_entrega', 'asc')
             ->orderBy('orden_pickings.prioridad')
             ->orderBy('orden_pickings.created_at', 'desc')
             ->limit($limit)
@@ -1729,9 +1753,10 @@ class PickingController extends BaseController
         // Soporta tanto el formato nuevo (Num Pedido, SUCURSAL ENTREGA, Referencia, UNID PEDIDO)
         // como el formato legado (Numero factura, Cliente, Producto, Cantidad)
         $ALIASES = [
-            'numero_factura' => ['numero factura', 'num factura', 'factura', 'nro factura', 'num pedido', 'numero pedido', 'nro pedido', 'pedido'],
-            'cliente'        => ['cliente', 'nombre cliente', 'razon social', 'sucursal entrega', 'sucursal', 'punto entrega', 'destino'],
-            'documento'      => ['documento', 'nit', 'cedula', 'cc'],
+            'numero_factura'   => ['numero factura', 'num factura', 'factura', 'nro factura', 'num pedido', 'numero pedido', 'nro pedido', 'pedido'],
+            'cliente'          => ['cliente', 'nombre cliente', 'razon social'],
+            'sucursal_entrega' => ['sucursal entrega', 'sucursal_entrega', 'sucursal', 'punto entrega', 'destino', 'cliente entrega'],
+            'documento'        => ['documento', 'nit', 'cedula', 'cc'],
             'direccion'      => ['direccion', 'dirección', 'dir'],
             'planilla'       => ['planilla', 'planilla numero', 'num planilla', 'num pedido', 'numero pedido', 'nro planilla'],
             'asesor'         => ['asesor', 'comercial', 'vendedor'],
@@ -1837,6 +1862,7 @@ class PickingController extends BaseController
                         'planilla_numero'  => $fila0['planilla'] ?? $factura ?? null,
                         'planilla_lote'    => $fila0['planilla'] ?? $factura ?? null,
                         'cliente'          => trim($fila0['cliente'] ?? ''),
+                        'sucursal_entrega' => $fila0['sucursal_entrega'] ?? null,
                         'direccion_cliente'=> trim($fila0['direccion'] ?? ''),
                         'asesor_comercial' => trim($fila0['asesor'] ?? ''),
                         'estado'           => 'Pendiente',
@@ -1893,6 +1919,7 @@ class PickingController extends BaseController
                             'costo_unitario'     => $costo,
                             'descuento_porc'     => $descuento,
                             'estado'             => 'Pendiente',
+                            'ambiente'           => $this->_clasificarAmbiente('', $prod->categoria ?? ''),
                         ]);
 
                         $lineasCreadas++;
@@ -2265,41 +2292,97 @@ class PickingController extends BaseController
 
     /**
      * GET /api/picking/reporte
-     * Retorna una tabla HTML con el resumen operativo del picking.
+     * Retorna resumen operativo del picking con filtros de fecha, ruta y sucursal_entrega.
      */
     public function reporte(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
 
-        $fechaDesde = $params['fecha_desde'] ?? date('Y-m-01');
-        $fechaHasta = $params['fecha_hasta'] ?? date('Y-m-d');
+        $fechaDesde = $params['fecha_desde'] ?? null;
+        $fechaHasta = $params['fecha_hasta'] ?? null;
+
+        if (!$fechaDesde || !$fechaHasta) {
+            return $this->ok($res, [
+                'ordenes'     => [],
+                'resumen'     => ['total'=>0,'completadas'=>0,'faltantes'=>0,'duracion_prom_min'=>0],
+                'fecha_desde' => $fechaDesde,
+                'fecha_hasta' => $fechaHasta,
+            ]);
+        }
 
         try {
-            $ordenes = OrdenPicking::where('empresa_id', $user->empresa_id)
+            $q = OrdenPicking::where('empresa_id', $user->empresa_id)
                 ->where('sucursal_id', $user->sucursal_id)
-                ->whereBetween('created_at', [$fechaDesde . ' 00:00:00', $fechaHasta . ' 23:59:59'])
-                ->orderBy('created_at', 'DESC')
-                ->get();
+                ->whereBetween('fecha_movimiento', [$fechaDesde, $fechaHasta])
+                ->when($params['ruta'] ?? null,
+                    fn($q, $v) => $q->where('ruta', 'like', "%$v%"))
+                ->when($params['sucursal_entrega'] ?? null,
+                    fn($q, $v) => $q->where('sucursal_entrega', 'like', "%$v%"))
+                ->withCount([
+                    'detalles as completadas_count' => fn($q) => $q->where('estado', 'Completado'),
+                    'detalles as faltantes_count'   => fn($q) => $q->where('estado', 'Faltante'),
+                    'detalles as total_lineas_count',
+                ])
+                ->with([
+                    'detalles.auxiliar:id,nombre',
+                    'auxiliar:id,nombre',
+                ])
+                ->orderBy('fecha_movimiento', 'DESC')
+                ->orderBy('created_at', 'DESC');
 
-            $resumen = [
-                'total'       => $ordenes->count(),
-                'completadas' => $ordenes->where('estado', 'Completado')->count(),
-                'pendientes'  => $ordenes->whereIn('estado', ['Pendiente', 'En Proceso'])->count(),
-                'canceladas'  => $ordenes->where('estado', 'Cancelado')->count(),
-            ];
+            $ordenes = $q->get();
 
-            $this->audit($user, 'picking', 'reporte', 'ordenes_picking', null, null, [],
-                "Reporte picking {$fechaDesde} → {$fechaHasta}");
+            $rows = $ordenes->map(function($o) {
+                $auxNombres = $o->detalles->pluck('auxiliar.nombre')
+                    ->filter()->unique()->values()->join(', ');
+                if (!$auxNombres && $o->auxiliar) $auxNombres = $o->auxiliar->nombre;
+
+                $durMin = null;
+                if ($o->hora_inicio && $o->hora_fin) {
+                    $ini = strtotime($o->fecha_movimiento . ' ' . $o->hora_inicio);
+                    $fin = strtotime($o->fecha_movimiento . ' ' . $o->hora_fin);
+                    if ($fin > $ini) $durMin = round(($fin - $ini) / 60);
+                }
+
+                $total = $o->total_lineas_count ?: 0;
+                $comp  = $o->completadas_count  ?: 0;
+                return [
+                    'id'               => $o->id,
+                    'fecha'            => $o->fecha_movimiento,
+                    'numero_orden'     => $o->numero_orden,
+                    'numero_pedido'    => $o->numero_pedido,
+                    'cliente'          => $o->cliente,
+                    'sucursal_entrega' => $o->sucursal_entrega,
+                    'ruta'             => $o->ruta,
+                    'estado'           => $o->estado,
+                    'total_lineas'     => $total,
+                    'completadas'      => $comp,
+                    'faltantes'        => $o->faltantes_count ?: 0,
+                    'pct_cumplimiento' => $total > 0 ? round($comp / $total * 100, 1) : 0,
+                    'auxiliares'       => $auxNombres ?: '—',
+                    'hora_inicio'      => $o->hora_inicio,
+                    'hora_fin'         => $o->hora_fin,
+                    'duracion_min'     => $durMin,
+                ];
+            });
+
+            $duraciones  = $rows->pluck('duracion_min')->filter();
+            $durPromedio = $duraciones->isNotEmpty() ? round($duraciones->avg()) : 0;
 
             return $this->ok($res, [
-                'resumen'       => $resumen,
-                'ordenes'       => $ordenes->values(),
-                'fecha_desde'   => $fechaDesde,
-                'fecha_hasta'   => $fechaHasta,
+                'ordenes'     => $rows->values(),
+                'resumen'     => [
+                    'total'             => $rows->count(),
+                    'completadas'       => $rows->where('estado','Completada')->count(),
+                    'faltantes'         => $rows->sum('faltantes'),
+                    'duracion_prom_min' => $durPromedio,
+                ],
+                'fecha_desde' => $fechaDesde,
+                'fecha_hasta' => $fechaHasta,
             ]);
         } catch (\Exception $e) {
-            error_log('PickingController::reporte error: ' . $e->getMessage());
+            error_log('reporte error: ' . $e->getMessage());
             return $this->error($res, 'Error generando reporte.', 500);
         }
     }
