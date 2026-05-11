@@ -2369,32 +2369,28 @@ class PickingController extends BaseController
             $resultado = Capsule::transaction(function () use ($ordenIds, $modo, $config, $ruta, $user) {
                 $now = date('Y-m-d H:i:s');
 
-                // 1. Cargar líneas pendientes sin auxiliar con lock
-                $lineas = Capsule::table('picking_detalles as pd')
+                // 1+2. Cargar TODAS las líneas con lock pesimista y detectar colisiones en PHP
+                $todasLineas = Capsule::table('picking_detalles as pd')
                     ->join('orden_pickings as op', 'pd.orden_picking_id', '=', 'op.id')
                     ->leftJoin('ubicaciones as u', 'pd.ubicacion_id', '=', 'u.id')
                     ->leftJoin('productos as pr', 'pd.producto_id', '=', 'pr.id')
                     ->where('op.empresa_id', $user->empresa_id)
                     ->where('op.sucursal_id', $user->sucursal_id)
                     ->whereIn('pd.orden_picking_id', $ordenIds)
-                    ->where('pd.estado', 'Pendiente')
-                    ->whereNull('pd.auxiliar_id')
-                    ->select(['pd.id','pd.orden_picking_id','u.zona','u.pasillo','pr.categoria'])
+                    ->select(['pd.id','pd.orden_picking_id','pd.auxiliar_id','pd.estado','u.zona','u.pasillo','pr.categoria'])
                     ->lockForUpdate()
                     ->get();
 
-                // 2. Detectar colisiones (líneas ya asignadas en estas órdenes)
-                $colision = Capsule::table('picking_detalles')
-                    ->whereIn('orden_picking_id', $ordenIds)
-                    ->whereNotNull('auxiliar_id')
+                $colisionIds = $todasLineas->filter(fn($l) => $l->auxiliar_id !== null)
                     ->pluck('orden_picking_id')->unique()->values();
-
-                if ($colision->isNotEmpty()) {
+                if ($colisionIds->isNotEmpty()) {
                     throw new \RuntimeException(json_encode([
                         'tipo'      => 'colision',
-                        'orden_ids' => $colision->toArray(),
+                        'orden_ids' => $colisionIds->toArray(),
                     ]));
                 }
+
+                $lineas = $todasLineas->filter(fn($l) => $l->estado === 'Pendiente' && $l->auxiliar_id === null);
 
                 // 3. Clasificar cada línea por ambiente
                 foreach ($lineas as $linea) {
@@ -2433,14 +2429,14 @@ class PickingController extends BaseController
 
                 // 5. UPDATE picking_detalles por auxiliar
                 $totalAsignadas = 0;
+                $ambPorId = collect($lineas)->pluck('amb', 'id')->toArray();
                 foreach ($porAuxiliar as $auxId => $ids) {
-                    foreach ($lineas as $linea) {
-                        if (!in_array($linea->id, $ids)) continue;
+                    foreach ($ids as $lineaId) {
                         Capsule::table('picking_detalles')
-                            ->where('id', $linea->id)
+                            ->where('id', $lineaId)
                             ->update([
                                 'auxiliar_id' => $auxId,
-                                'ambiente'    => $linea->amb,
+                                'ambiente'    => $ambPorId[$lineaId] ?? 'Seco',
                                 'estado'      => 'EnProceso',
                                 'updated_at'  => $now,
                             ]);
@@ -2449,11 +2445,10 @@ class PickingController extends BaseController
                 }
 
                 // 6. Actualizar orden_pickings: estado + ruta + orden_logico
-                $logico = 1;
-                foreach (Capsule::table('orden_pickings')->whereIn('id', $ordenIds)->get(['id']) as $ord) {
-                    $upd = ['estado' => 'EnProceso', 'updated_at' => $now, 'orden_logico' => $logico++];
+                foreach ($ordenIds as $i => $ordId) {
+                    $upd = ['estado' => 'EnProceso', 'updated_at' => $now, 'orden_logico' => $i + 1];
                     if ($ruta) $upd['ruta'] = $ruta;
-                    Capsule::table('orden_pickings')->where('id', $ord->id)->update($upd);
+                    Capsule::table('orden_pickings')->where('id', $ordId)->update($upd);
                 }
 
                 // 7. Reservar inventario
@@ -2485,8 +2480,9 @@ class PickingController extends BaseController
         } catch (\RuntimeException $e) {
             $decoded = json_decode($e->getMessage(), true);
             if (($decoded['tipo'] ?? '') === 'colision') {
-                return $this->error($res, 'Algunos pedidos ya tienen líneas asignadas.', 409,
-                    ['orden_ids_en_conflicto' => $decoded['orden_ids']]);
+                $payload = json_encode(['error' => 'Algunos pedidos ya tienen líneas asignadas.', 'orden_ids_en_conflicto' => $decoded['orden_ids']]);
+                $res->getBody()->write($payload);
+                return $res->withStatus(409)->withHeader('Content-Type', 'application/json');
             }
             return $this->error($res, $e->getMessage(), 500);
         } catch (\Exception $e) {
