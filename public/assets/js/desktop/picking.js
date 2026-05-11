@@ -1351,350 +1351,341 @@ WMS_MODULES.picking = {
   },
 
   // ── ASIGNACIÓN DE PICKING ─────────────────────────────────────────────────
-  _asigData: { grupos:[], staff:[] },
 
   async show_asignacion(silent = false) {
-    WMS.setToolbar(`
-      <button class="pro-btn-refresh" onclick="WMS_MODULES.picking.show_asignacion()">
-        <span class="spin"><i class="fa-solid fa-rotate-right"></i></span> Actualizar
-      </button>
-      <span style="display:inline-flex;align-items:center;gap:5px;background:rgba(0,179,0,.15);color:#007000;padding:4px 10px;border-radius:12px;font-size:.72rem;font-weight:700;margin-left:8px">
-        <span class="pick-live-dot"></span> Auto 30s
-      </span>`);
-    if (!silent) WMS.spinner();
-    try {
-      const [picking, personal] = await Promise.all([
-        // SOLO planillas activas: Creado o Asignado (excluir Completado, Cerrado, Cancelado)
-        API.get('/picking', 'estado=Pendiente,Asignado&limit=500'),
-        API.get('/param/personal', 'activo=1&limit=100'),
-      ]);
-      const rawItems = picking.data || picking || [];
-      const staff    = personal.data || personal || [];
-
-      // Filtrar explícitamente cualquier planilla cerrada/completada que pueda venir
-      const ESTADOS_EXCLUIDOS = ['Completado','Completada','Cerrado','Cerrada','Cancelado','Cancelada'];
-      const items = rawItems.filter(p => !ESTADOS_EXCLUIDOS.includes(p.estado));
-
-      const grupos = this._agruparPorPlanilla(items);
-      this._asigData = { grupos, staff };
-
-      /* Calcular carga actual por auxiliar */
-      const cargaMap = {};
-      grupos.forEach(g => {
-        if (g.auxiliar) {
-          cargaMap[g.auxiliar] = (cargaMap[g.auxiliar]||0) + 1;
-        }
-      });
-
-      WMS.setContent(`
-<div class="pro-dashboard" style="padding:0">
-
-  <!-- Action bar -->
-  <div class="asig-action-bar">
-    <input class="pro-table-search" style="max-width:260px" placeholder="Buscar planilla, cliente, ruta…"
-           oninput="WMS_MODULES.picking._filterAsig(this.value)">
-    <select class="pro-table-filter-select" onchange="WMS_MODULES.picking._filterAsigEstado(this.value)">
-      <option value="">Todos los estados</option>
-      <option value="Creado">Sin asignar</option>
-      <option value="Asignado">Asignados</option>
-    </select>
-    <div style="flex:1"></div>
-    <button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking._selAllPlanillas(true)">
-      <i class="fa-solid fa-check-double"></i> Sel. Todo
-    </button>
-    <button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking._selAllPlanillas(false)">
-      <i class="fa-solid fa-square-minus"></i> Limpiar
-    </button>
-    <span id="asig-sel-count" style="font-size:.78rem;color:#0070f2;font-weight:700;padding:0 8px"></span>
-  </div>
-
-  <!-- Layout: tabla + panel auxiliares -->
-  <div style="display:grid;grid-template-columns:1fr 300px;gap:0;height:calc(100vh - 106px - 56px)">
-
-    <!-- Tabla de planillas -->
-    <div style="overflow-y:auto;border-right:1px solid #e2e8f0">
-      <table class="erp-table" id="asig-table" style="border-radius:0">
-        <thead style="position:sticky;top:0;z-index:10">
-          <tr>
-            <th style="width:36px;text-align:center">
-              <input type="checkbox" id="sel-all-pick" onchange="WMS_MODULES.picking._selAllPlanillas(this.checked)"
-                     style="accent-color:#0070f2;width:15px;height:15px">
-            </th>
-            <th>Planilla</th>
-            <th>Cliente</th>
-            <th>Ruta</th>
-            <th style="text-align:center">Líneas</th>
-            <th style="text-align:center">Pend.</th>
-            <th style="min-width:130px">Progreso</th>
-            <th>Auxiliar</th>
-            <th>Estado</th>
-            <th style="min-width:140px;text-align:center">Acciones</th>
-          </tr>
-        </thead>
-        <tbody id="asig-tbody">
-          ${grupos.length ? grupos.map(g => {
-            const hechas = g.total_lineas - g.lineas_pendientes;
-            const pct    = g.total_lineas>0 ? Math.round((hechas/g.total_lineas)*100) : 0;
-            const fillCls= pct===100?'green':pct>=60?'':'amber';
-            const stCls  = g.estado==='Asignado'?'warn':'info';
-            return `<tr data-plan="${WMS.esc(g.planilla)}" data-estado="${WMS.esc(g.estado)}"
-                        data-ids='${JSON.stringify((g.ordenes||[]).map(o=>o.id))}'
-                        onclick="WMS_MODULES.picking._toggleRowSel(this)"
-                        style="cursor:pointer">
-              <td style="text-align:center" onclick="event.stopPropagation()">
-                <input type="checkbox" class="plan-sel"
-                       value="${WMS.esc(g.planilla)}"
-                       data-ids='${JSON.stringify((g.ordenes||[]).map(o=>o.id))}'
-                       onchange="WMS_MODULES.picking._onRowCheck(this)"
-                       style="accent-color:#0070f2;width:15px;height:15px">
-              </td>
-              <td><span class="pro-badge info">${WMS.esc(g.planilla)}</span></td>
-              <td style="font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                  title="${WMS.esc(g.cliente)}">${WMS.esc(g.cliente||'–')}</td>
-              <td class="muted">${WMS.esc(g.ruta||'–')}</td>
-              <td style="text-align:center;font-weight:700">${g.total_lineas}</td>
-              <td style="text-align:center">
-                ${g.lineas_pendientes>0
-                  ? `<span class="pro-badge alert">${g.lineas_pendientes}</span>`
-                  : `<span class="pro-badge ok">✓ 0</span>`}
-              </td>
-              <td>
-                <div class="pro-progress-wrap">
-                  <div class="pro-progress-bar-bg">
-                    <div class="pro-progress-bar-fill ${fillCls}" style="width:${pct}%"></div>
-                  </div>
-                  <span class="pro-progress-label">${pct}%</span>
-                </div>
-              </td>
-              <td>
-                ${g.auxiliar
-                  ? `<div style="display:flex;align-items:center;gap:6px">
-                       <div style="width:26px;height:26px;border-radius:50%;background:var(--pro-grad-blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:800;flex-shrink:0">${(g.auxiliar||'?').substring(0,2).toUpperCase()}</div>
-                       <span style="font-size:.78rem;font-weight:600">${WMS.esc(g.auxiliar)}</span>
-                     </div>`
-                  : `<span class="muted" style="font-size:.75rem"><i class="fa-solid fa-circle-minus" style="color:#e8a000;margin-right:4px"></i>Sin asignar</span>`}
-              </td>
-              <td><span class="pro-badge ${stCls}">${WMS.esc(g.estado)}</span></td>
-              <td style="text-align:center" onclick="event.stopPropagation()">
-                <div style="display:flex;gap:4px;justify-content:center">
-                  <button class="btn btn-xs btn-secondary" title="Ver detalle"
-                          onclick="WMS_MODULES.picking._verDetallePlanilla('${WMS.esc(g.planilla)}')">
-                    <i class="fa-solid fa-eye"></i>
-                  </button>
-                  <button class="btn btn-xs btn-primary" title="Asignar auxiliar"
-                          onclick="WMS_MODULES.picking._mostrarAsignarModal('${WMS.esc(g.planilla)}',${JSON.stringify((g.ordenes||[]).map(o=>o.id))})">
-                    <i class="fa-solid fa-user-plus"></i>
-                  </button>
-                  <button class="btn btn-xs btn-danger" title="Eliminar planilla"
-                          onclick="WMS_MODULES.picking._eliminarPlanilla('${WMS.esc(g.planilla)}',${JSON.stringify((g.ordenes||[]).map(o=>o.id))})">
-                    <i class="fa-solid fa-trash"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>`;
-          }).join('') : '<tr><td colspan="10" class="muted" style="text-align:center;padding:32px"><i class="fa-solid fa-circle-check" style="color:#00b300;font-size:1.4rem;display:block;margin-bottom:8px"></i>Sin planillas pendientes de asignación</td></tr>'}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Panel auxiliares (sticky) -->
-    <div style="overflow-y:auto;background:#f8faff;padding:16px;display:flex;flex-direction:column;gap:10px">
-      <div class="pro-section-title" style="margin-bottom:4px">
-        <span style="margin-left:12px;font-size:.82rem"><i class="fa-solid fa-users" style="margin-right:6px;color:#0070f2"></i>Auxiliares Disponibles</span>
-      </div>
-      <div style="margin-bottom:6px;background:#fff;padding:8px;border-radius:4px;border:1px solid #e2e8f0;">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.75rem;margin:0;font-weight:600;color:#1e3a5f;">
-          <input type="checkbox" id="asig-sel-solo-alm" onchange="window._asigSelSoloAlm = this.checked">
-          <span><i class="fa-solid fa-boxes-stacked" style="color:#0ea5e9;"></i> Separar Consolidado (Solo Almacen.)</span>
-        </label>
-      </div>
-      <p style="font-size:.72rem;color:#6b7a99;margin-bottom:6px">
-        <i class="fa-solid fa-hand-pointer" style="margin-right:4px"></i>
-        Selecciona planillas y haz clic en un auxiliar para asignar
-      </p>
-      ${staff.map(p => {
-        const carga = cargaMap[p.nombre||''] || cargaMap[p.id] || 0;
-        return `
-        <div class="asig-aux-card" id="aux-card-${p.id}"
-             onclick="WMS_MODULES.picking._asignarSeleccionAPersonal(${p.id},'${WMS.esc(p.nombre||'')}')">
-          <div class="asig-aux-avatar">${(p.nombre||'??').substring(0,2).toUpperCase()}</div>
-          <div style="flex:1;min-width:0">
-            <div class="asig-aux-name">${WMS.esc(p.nombre||'')}</div>
-            <div class="asig-aux-role">${WMS.esc(p.rol||'Auxiliar')}</div>
-            <span class="asig-aux-load">${carga} planilla${carga===1?'':'s'} activa${carga===1?'':'s'}</span>
-          </div>
-          <i class="fa-solid fa-user-plus" style="color:#0070f2;font-size:.85rem"></i>
-        </div>`;
-      }).join('') || '<div class="pro-empty-state"><div class="icon">👥</div><p>Sin auxiliares activos</p></div>'}
-    </div>
-
-  </div>
-</div>`);
-
-    } catch(e) {
-      WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>');
-      console.error(e);
+    if (!silent) {
+      WMS.setBreadcrumb('picking', 'Asignación');
+      WMS.spinner();
     }
+    this._asigFiltros = { solo_hoy: 1, q: '', ruta: '', sucursal_entrega: '' };
+    this._asigSeleccionados = new Set();
+    this._asigOrdenes = [];
+    this._asigAuxiliares = [];
+    await this._cargarAuxiliares();
+    await this._cargarAsignacion();
   },
 
-  _toggleRowSel(tr) {
-    const cb = tr.querySelector('.plan-sel');
-    if (cb) { cb.checked = !cb.checked; this._onRowCheck(cb); }
-  },
-
-  _onRowCheck(cb) {
-    const tr = cb.closest('tr');
-    if (tr) tr.classList.toggle('asig-row-selected', cb.checked);
-    // Actualizar contador
-    const cnt = document.querySelectorAll('.plan-sel:checked').length;
-    const el  = document.getElementById('asig-sel-count');
-    if (el) el.textContent = cnt > 0 ? `${cnt} seleccionada${cnt>1?'s':''}` : '';
-  },
-
-  _selAllPlanillas(checked) {
-    document.querySelectorAll('.plan-sel').forEach(cb => {
-      cb.checked = checked;
-      const tr = cb.closest('tr');
-      if (tr) tr.classList.toggle('asig-row-selected', checked);
-    });
-    const selAll = document.getElementById('sel-all-pick');
-    if (selAll) selAll.checked = checked;
-    const cnt = checked ? document.querySelectorAll('.plan-sel').length : 0;
-    const el  = document.getElementById('asig-sel-count');
-    if (el) el.textContent = cnt > 0 ? `${cnt} seleccionada${cnt>1?'s':''}` : '';
-  },
-
-  _filterAsig(q) {
-    const rows = Array.from(document.querySelectorAll('#asig-tbody tr'));
-    rows.forEach(tr => {
-      tr.style.display = !q || tr.textContent.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
-    });
-  },
-
-  _filterAsigEstado(val) {
-    const rows = Array.from(document.querySelectorAll('#asig-tbody tr'));
-    rows.forEach(tr => {
-      tr.style.display = !val || tr.dataset.estado === val ? '' : 'none';
-    });
-  },
-
-  _verDetallePlanilla(planilla) {
-    const g = this._asigData.grupos.find(x => x.planilla === planilla);
-    if (!g) return;
-    const rows = (g.ordenes||[]).map(o => `
-      <tr>
-        <td><span class="pro-badge info">${WMS.esc(o.numero_orden || o.id || '–')}</span></td>
-        <td>${WMS.esc(o.cliente || '–')}</td>
-        <td>${WMS.esc(o.fecha_requerida || '–')}</td>
-        <td style="text-align:center;font-weight:700">${o.detalles ? o.detalles.length : (o.total_lineas || 0)}</td>
-        <td><span class="pro-badge ${o.estado==='Completado'?'ok':o.estado==='Asignado'?'warn':'info'}">${WMS.esc(o.estado||'–')}</span></td>
-        <td style="text-align:right">
-          <div style="display:flex;gap:4px;justify-content:flex-end">
-            <button class="btn btn-xs btn-primary" title="Editar Pedido" onclick="WMS_MODULES.picking._editarPedido(${o.id})"><i class="fa-solid fa-edit"></i></button>
-            <button class="btn btn-xs btn-success" title="Agregar Línea" onclick="WMS_MODULES.picking._mostrarAgregarLineaPedido(${o.id})"><i class="fa-solid fa-plus"></i></button>
-            <button class="btn btn-xs btn-danger" title="Anular/Eliminar" onclick="WMS_MODULES.picking._anularPedido(${o.id})"><i class="fa-solid fa-trash"></i></button>
-          </div>
-        </td>
-      </tr>`).join('') || '<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">Sin pedidos</td></tr>';
-    WMS.showRightPanel(`Detalle Planilla ${planilla}`, `
-      <div class="pro-mini-kpi-row" style="margin-bottom:16px">
-        <div class="pro-mini-kpi">
-          <div class="pro-mini-kpi-icon"><i class="fa-solid fa-layer-group"></i></div>
-          <div><div class="pro-mini-kpi-value">${g.total_lineas}</div><div class="pro-mini-kpi-label">Total Líneas</div></div>
-        </div>
-        <div class="pro-mini-kpi">
-          <div class="pro-mini-kpi-icon" style="background:rgba(232,160,0,.1);color:#e8a000"><i class="fa-solid fa-hourglass-half"></i></div>
-          <div><div class="pro-mini-kpi-value">${g.lineas_pendientes}</div><div class="pro-mini-kpi-label">Pendientes</div></div>
-        </div>
-        <div class="pro-mini-kpi">
-          <div class="pro-mini-kpi-icon" style="background:rgba(0,179,0,.1);color:#00b300"><i class="fa-solid fa-check"></i></div>
-          <div><div class="pro-mini-kpi-value">${g.total_lineas-g.lineas_pendientes}</div><div class="pro-mini-kpi-label">Completadas</div></div>
-        </div>
-      </div>
-      <div class="pro-table-wrap" style="max-height:450px;overflow-y:auto">
-        <table class="erp-table">
-          <thead><tr><th>Pedido</th><th>Cliente</th><th>Fecha Req.</th><th style="text-align:center">Lineas</th><th>Estado</th><th style="text-align:right">Acciones</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>`);
-  },
-
-  _mostrarAsignarModal(planilla, ordenIds) {
-    const staff = this._asigData.staff;
-    const cards = staff.map(p => `
-      <div class="asig-aux-card" onclick="WMS_MODULES.picking._asignarPlanillaAPersonal('${WMS.esc(planilla)}',${JSON.stringify(ordenIds)},${p.id},'${WMS.esc(p.nombre||'')}', window._asigModalSoloAlm);WMS.closeRightPanel()">
-        <div class="asig-aux-avatar">${(p.nombre||'??').substring(0,2).toUpperCase()}</div>
-        <div>
-          <div class="asig-aux-name">${WMS.esc(p.nombre||'')}</div>
-          <div class="asig-aux-role">${WMS.esc(p.rol||'Auxiliar')}</div>
-        </div>
-        <i class="fa-solid fa-arrow-right" style="color:#0070f2;margin-left:auto"></i>
-      </div>`).join('') || '<div class="pro-empty-state"><div class="icon">👥</div><p>Sin auxiliares</p></div>';
-    
-    window._asigModalSoloAlm = false; // reset state
-    WMS.showRightPanel(`Asignar Planilla ${planilla}`, `
-      <p style="font-size:.82rem;color:#6b7a99;margin-bottom:8px">Selecciona el auxiliar que ejecutará esta planilla:</p>
-      <div style="margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:4px;border:1px solid #e2e8f0;">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.8rem;margin:0;font-weight:600;color:#1e3a5f;">
-          <input type="checkbox" onchange="window._asigModalSoloAlm = this.checked">
-          <span><i class="fa-solid fa-boxes-stacked" style="color:#0ea5e9;"></i> Separar Consolidado (Solo Almacen.)</span>
-        </label>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px;max-height:360px;overflow-y:auto">${cards}</div>`);
-  },
-
-  async _asignarPlanillaAPersonal(planilla, ordenIds, personalId, nombre, soloAlm = false) {
+  async _cargarAuxiliares() {
     try {
-      const payload = { orden_ids: ordenIds, personal_id: personalId };
-      if (soloAlm) payload.separar_consolidado = true;
-      const r = await API.post('/picking/asignar-multiple', payload);
-      if (r.error) WMS.toast('error', r.message);
-      else {
-        const d = r.data || {};
-        const msgs = [`Planilla ${planilla} asignada a ${nombre}`];
-        if (d.inventario_reservado > 0) msgs.push(`${d.inventario_reservado} unidades reservadas`);
-        if (d.faltantes_detectados > 0) msgs.push(`${d.faltantes_detectados} faltantes detectados`);
-        WMS.toast(d.faltantes_detectados > 0 ? 'warning' : 'success', msgs.join(' • '));
-        this.show_asignacion();
+      const r = await API.get('/personal?rol=auxiliar&limit=100');
+      this._asigAuxiliares = r.data || r || [];
+    } catch(e) { this._asigAuxiliares = []; }
+  },
+
+  async _cargarAsignacion() {
+    if (typeof WMS !== 'undefined' && WMS.currentModule !== 'picking') return;
+    const f = this._asigFiltros || {};
+    const params = new URLSearchParams({ limit: 300 });
+    if (f.solo_hoy) { params.set('solo_hoy','1'); params.set('estado','Pendiente'); }
+    if (f.q)                params.set('q', f.q);
+    if (f.ruta)             params.set('ruta', f.ruta);
+    if (f.sucursal_entrega) params.set('sucursal_entrega', f.sucursal_entrega);
+    params.set('sin_auxiliar', '1');
+    try {
+      const r = await API.get('/picking?' + params.toString());
+      this._asigOrdenes = r.data || r || [];
+      this._asigSeleccionados.clear();
+      this._renderAsignacion();
+    } catch(e) { WMS.toast('error', 'Error cargando pedidos'); }
+  },
+
+  _renderAsignacion() {
+    const ordenes = this._asigOrdenes;
+    const f = this._asigFiltros || {};
+    const sucursales = [...new Set(ordenes.map(o=>o.sucursal_entrega||o.cliente).filter(Boolean))];
+    const rutas      = [...new Set(ordenes.map(o=>o.ruta).filter(Boolean))];
+
+    const auxOpts = this._asigAuxiliares.map(a =>
+      `<option value="${parseInt(a.id)||0}">${WMS.esc(a.nombre)}</option>`).join('');
+
+    const rows = ordenes.map(o => {
+      const seco  = o.seco_count || 0;
+      const frio  = o.refrigerado_count || 0;
+      const cong  = o.congelado_count || 0;
+      const total = o.total_count || 0;
+      const sel   = this._asigSeleccionados.has(o.id);
+      return `
+        <tr style="${sel?'background:#eff6ff;':''}" id="asig-row-${parseInt(o.id)||0}">
+          <td style="padding:8px 12px;text-align:center;">
+            <input type="checkbox" ${sel?'checked':''} onchange="WMS_MODULES.picking._toggleAsig(${parseInt(o.id)||0},this.checked)">
+          </td>
+          <td style="padding:8px 12px;">
+            <div style="font-weight:700;color:#0F4C81;">${WMS.esc(o.numero_pedido||o.numero_orden||'—')}</div>
+            <div style="font-size:.7rem;color:#64748b;">${WMS.esc(o.cliente||'')}</div>
+          </td>
+          <td style="padding:8px 12px;">${WMS.esc(o.sucursal_entrega||o.cliente||'—')}</td>
+          <td style="padding:8px 12px;">
+            ${o.ruta?`<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:3px;font-size:.72rem;">${WMS.esc(o.ruta)}</span>`:'—'}
+          </td>
+          <td style="padding:8px 12px;text-align:center;font-weight:700;color:#92400e;">${seco||'—'}</td>
+          <td style="padding:8px 12px;text-align:center;font-weight:700;color:#0369a1;">${frio||'—'}</td>
+          <td style="padding:8px 12px;text-align:center;font-weight:700;color:#7c3aed;">${cong||'—'}</td>
+          <td style="padding:8px 12px;text-align:center;font-weight:700;">${total}</td>
+        </tr>`;
+    }).join('');
+
+    WMS.setContent(`
+      <div style="display:flex;min-height:calc(100vh - 140px);position:relative;">
+        <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
+          <div class="card" style="margin:0;border-radius:0;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+            <div class="card-header" style="flex-shrink:0;">
+              <h5 class="card-title"><i class="fa-solid fa-user-check"></i> Asignación de Separación</h5>
+              <span style="font-size:.78rem;color:#64748b;">Solo pedidos pendientes de hoy — marque para asignar</span>
+            </div>
+            <div style="padding:10px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0;">
+              <input type="text" class="form-control" style="flex:1;min-width:180px;" placeholder="🔍 Buscar..."
+                     value="${WMS.esc(f.q||'')}"
+                     oninput="WMS_MODULES.picking._asigFiltros.q=this.value;clearTimeout(WMS_MODULES.picking._aqt);WMS_MODULES.picking._aqt=setTimeout(()=>WMS_MODULES.picking._cargarAsignacion(),350)">
+              <select class="form-control" style="width:160px;" onchange="WMS_MODULES.picking._asigFiltros.sucursal_entrega=this.value;WMS_MODULES.picking._cargarAsignacion()">
+                <option value="">Sucursal: Todas</option>
+                ${sucursales.map(s=>`<option value="${WMS.esc(s)}" ${f.sucursal_entrega===s?'selected':''}>${WMS.esc(s)}</option>`).join('')}
+              </select>
+              <select class="form-control" style="width:140px;" onchange="WMS_MODULES.picking._asigFiltros.ruta=this.value;WMS_MODULES.picking._cargarAsignacion()">
+                <option value="">Ruta: Todas</option>
+                ${rutas.map(r=>`<option value="${WMS.esc(r)}" ${f.ruta===r?'selected':''}>${WMS.esc(r)}</option>`).join('')}
+              </select>
+              ${this._asigSeleccionados.size > 0 ?
+                `<span style="background:#0F4C81;color:#fff;padding:4px 12px;border-radius:4px;font-weight:600;font-size:.8rem;">${this._asigSeleccionados.size} sel.</span>` : ''}
+            </div>
+            <div style="overflow:auto;flex:1;">
+              <table class="erp-table">
+                <thead>
+                  <tr>
+                    <th style="padding:10px 12px;width:40px;">
+                      <input type="checkbox" onchange="WMS_MODULES.picking._toggleAsigTodos(this.checked)">
+                    </th>
+                    <th style="padding:10px 12px;">N° Pedido</th>
+                    <th style="padding:10px 12px;">Sucursal</th>
+                    <th style="padding:10px 12px;">Ruta</th>
+                    <th style="padding:10px 12px;text-align:center;">🌡️ Seco</th>
+                    <th style="padding:10px 12px;text-align:center;">❄️ Frío</th>
+                    <th style="padding:10px 12px;text-align:center;">🧊 Cong.</th>
+                    <th style="padding:10px 12px;text-align:center;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows || '<tr><td colspan="8" style="text-align:center;padding:32px;color:#94a3b8;">No hay pedidos pendientes hoy.</td></tr>'}
+                </tbody>
+                ${this._asigSeleccionados.size > 0 ? `
+                <tfoot>
+                  <tr style="background:#f0fdf4;border-top:2px solid #86efac;">
+                    <td colspan="4" style="padding:8px 12px;font-weight:700;font-size:.78rem;color:#166534;">
+                      ∑ ${this._asigSeleccionados.size} pedidos seleccionados
+                    </td>
+                    <td style="padding:8px 12px;text-align:center;font-weight:900;color:#92400e;font-size:.9rem;" id="asig-tot-seco">—</td>
+                    <td style="padding:8px 12px;text-align:center;font-weight:900;color:#0369a1;font-size:.9rem;" id="asig-tot-frio">—</td>
+                    <td style="padding:8px 12px;text-align:center;font-weight:900;color:#7c3aed;font-size:.9rem;" id="asig-tot-cong">—</td>
+                    <td style="padding:8px 12px;text-align:center;font-weight:900;font-size:.9rem;" id="asig-tot-total">—</td>
+                  </tr>
+                </tfoot>` : ''}
+              </table>
+            </div>
+          </div>
+        </div>
+        ${this._asigSeleccionados.size > 0 ? this._buildDrawerAsignacion(auxOpts) : ''}
+      </div>`);
+
+    if (this._asigSeleccionados.size > 0) this._actualizarTotalesAsig();
+  },
+
+  _buildDrawerAsignacion(auxOpts) {
+    const totales = this._calcularTotalesAmbiente();
+    return `
+      <div id="asig-drawer" style="width:260px;flex-shrink:0;border-left:2px solid #0F4C81;background:#fff;display:flex;flex-direction:column;max-height:calc(100vh - 140px);overflow-y:auto;">
+        <div style="background:#0F4C81;color:#fff;padding:12px 14px;flex-shrink:0;">
+          <div style="font-weight:700;font-size:.85rem;">⚡ Asignar Separación</div>
+          <div style="font-size:.75rem;opacity:.85;">${this._asigSeleccionados.size} pedidos · ${totales.total} líneas</div>
+        </div>
+        <div style="padding:14px;display:flex;flex-direction:column;gap:14px;flex:1;">
+          <div>
+            <div style="font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:6px;">Modo Asignación</div>
+            <div style="display:flex;gap:4px;">
+              <button id="modo-amb" onclick="WMS_MODULES.picking._setModoAsig('ambiente')"
+                style="flex:1;padding:6px;border-radius:4px;border:none;cursor:pointer;font-size:.75rem;background:#0F4C81;color:#fff;">
+                🌡️ Ambiente
+              </button>
+              <button id="modo-pas" onclick="WMS_MODULES.picking._setModoAsig('pasillo')"
+                style="flex:1;padding:6px;border-radius:4px;border:1px solid #e2e8f0;cursor:pointer;font-size:.75rem;background:#f8fafc;color:#64748b;">
+                🛒 Pasillo
+              </button>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <div style="flex:1;background:#fef3c7;border:1px solid #fde68a;border-radius:4px;padding:8px;text-align:center;">
+              <div style="font-size:.65rem;color:#92400e;font-weight:600;">🌡️ SECO</div>
+              <div style="font-size:1.3rem;font-weight:900;color:#92400e;" id="kpi-seco">${totales.seco}</div>
+              <div style="font-size:.6rem;color:#92400e;">líneas</div>
+            </div>
+            <div style="flex:1;background:#e0f2fe;border:1px solid #bae6fd;border-radius:4px;padding:8px;text-align:center;">
+              <div style="font-size:.65rem;color:#0369a1;font-weight:600;">❄️ FRÍO</div>
+              <div style="font-size:1.3rem;font-weight:900;color:#0369a1;" id="kpi-frio">${totales.frio}</div>
+              <div style="font-size:.6rem;color:#0369a1;">líneas</div>
+            </div>
+            <div style="flex:1;background:#ede9fe;border:1px solid #ddd6fe;border-radius:4px;padding:8px;text-align:center;">
+              <div style="font-size:.65rem;color:#7c3aed;font-weight:600;">🧊 CONG.</div>
+              <div style="font-size:1.3rem;font-weight:900;color:#7c3aed;" id="kpi-cong">${totales.cong}</div>
+              <div style="font-size:.6rem;color:#7c3aed;">líneas</div>
+            </div>
+          </div>
+          <div id="config-ambiente">
+            ${[
+              {key:'Seco',        label:'🌡️ Seco',       count:totales.seco, borderColor:'#fde68a', bg:'#fffbeb', color:'#92400e'},
+              {key:'Refrigerado', label:'❄️ Refrigerado', count:totales.frio, borderColor:'#bae6fd', bg:'#f0f9ff', color:'#0369a1'},
+              {key:'Congelado',   label:'🧊 Congelado',   count:totales.cong, borderColor:'#ddd6fe', bg:'#faf5ff', color:'#7c3aed'},
+            ].map(env => `
+              <div style="margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                  <span style="font-size:.75rem;font-weight:700;color:${env.color};">${env.label}</span>
+                  <span style="font-size:.68rem;background:${env.bg};color:${env.color};border:1px solid ${env.borderColor};padding:1px 6px;border-radius:10px;">${WMS.esc(String(env.count))} lín.</span>
+                </div>
+                <select class="form-control" id="aux-${env.key.toLowerCase()}"
+                  style="border-color:${env.borderColor};background:${env.bg};font-size:.78rem;"
+                  data-ambiente="${env.key}">
+                  <option value="">— Sin asignar —</option>
+                  ${auxOpts}
+                </select>
+              </div>`).join('')}
+          </div>
+          <div id="config-pasillo" style="display:none;">
+            <div style="font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:8px;">Rangos de Pasillo</div>
+            <div id="rangos-pasillo">
+              ${this._buildRangoPasillo(0, auxOpts)}
+            </div>
+            <button onclick="WMS_MODULES.picking._agregarRangoPasillo()" class="btn btn-outline-primary btn-sm" style="width:100%;margin-top:4px;font-size:.75rem;">
+              + Agregar rango
+            </button>
+          </div>
+          <div>
+            <div style="font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:4px;">Nombre de Ruta</div>
+            <input type="text" id="asig-ruta-nombre" class="form-control" placeholder="Ej: Ruta 01" style="font-size:.82rem;">
+          </div>
+        </div>
+        <div style="padding:12px 14px;border-top:1px solid #e2e8f0;display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
+          <button class="btn btn-primary" id="btn-confirmar-asig" onclick="WMS_MODULES.picking._confirmarAsignacion()"
+            style="width:100%;background:#059669;border-color:#059669;font-weight:700;">
+            <i class="fa-solid fa-check"></i> Confirmar Asignación
+          </button>
+          <button class="btn btn-outline-secondary btn-sm" onclick="WMS_MODULES.picking._asigSeleccionados.clear();WMS_MODULES.picking._renderAsignacion()"
+            style="width:100%;font-size:.78rem;">
+            ✕ Cancelar
+          </button>
+        </div>
+      </div>`;
+  },
+
+  _buildRangoPasillo(idx, auxOpts) {
+    return `
+      <div style="display:flex;gap:4px;margin-bottom:8px;align-items:center;" id="rango-${parseInt(idx)||0}">
+        <input type="text" placeholder="P01" class="form-control" style="width:60px;font-size:.75rem;" data-rango-desde="${parseInt(idx)||0}">
+        <span style="color:#64748b;font-size:.8rem;">—</span>
+        <input type="text" placeholder="P10" class="form-control" style="width:60px;font-size:.75rem;" data-rango-hasta="${parseInt(idx)||0}">
+        <select class="form-control" style="flex:1;font-size:.75rem;" data-rango-aux="${parseInt(idx)||0}">
+          <option value="">Auxiliar</option>${auxOpts}
+        </select>
+      </div>`;
+  },
+
+  _rangoIdx: 1,
+
+  _agregarRangoPasillo() {
+    const cont = document.getElementById('rangos-pasillo');
+    if (!cont) return;
+    const auxOpts = this._asigAuxiliares.map(a=>`<option value="${parseInt(a.id)||0}">${WMS.esc(a.nombre)}</option>`).join('');
+    cont.insertAdjacentHTML('beforeend', this._buildRangoPasillo(this._rangoIdx++, auxOpts));
+  },
+
+  _setModoAsig(modo) {
+    const ce = document.getElementById('config-ambiente');
+    const cp = document.getElementById('config-pasillo');
+    const ba = document.getElementById('modo-amb');
+    const bp = document.getElementById('modo-pas');
+    if (ce) ce.style.display = modo === 'ambiente' ? '' : 'none';
+    if (cp) cp.style.display = modo === 'pasillo'  ? '' : 'none';
+    const on  = 'flex:1;padding:6px;border-radius:4px;border:none;cursor:pointer;font-size:.75rem;background:#0F4C81;color:#fff;';
+    const off = 'flex:1;padding:6px;border-radius:4px;border:1px solid #e2e8f0;cursor:pointer;font-size:.75rem;background:#f8fafc;color:#64748b;';
+    if (ba) ba.style.cssText = modo === 'ambiente' ? on : off;
+    if (bp) bp.style.cssText = modo === 'pasillo'  ? on : off;
+  },
+
+  _toggleAsig(ordenId, checked) {
+    if (checked) this._asigSeleccionados.add(ordenId);
+    else         this._asigSeleccionados.delete(ordenId);
+    this._renderAsignacion();
+  },
+
+  _toggleAsigTodos(checked) {
+    if (checked) this._asigOrdenes.forEach(o => this._asigSeleccionados.add(o.id));
+    else         this._asigSeleccionados.clear();
+    this._renderAsignacion();
+  },
+
+  _calcularTotalesAmbiente() {
+    let seco = 0, frio = 0, cong = 0, total = 0;
+    this._asigOrdenes
+      .filter(o => this._asigSeleccionados.has(o.id))
+      .forEach(o => {
+        seco  += o.seco_count || 0;
+        frio  += o.refrigerado_count || 0;
+        cong  += o.congelado_count || 0;
+        total += o.total_count || 0;
+      });
+    return { seco, frio, cong, total };
+  },
+
+  _actualizarTotalesAsig() {
+    const t = this._calcularTotalesAmbiente();
+    const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v||'—'; };
+    set('asig-tot-seco',  t.seco);
+    set('asig-tot-frio',  t.frio);
+    set('asig-tot-cong',  t.cong);
+    set('asig-tot-total', t.total);
+    set('kpi-seco', t.seco);
+    set('kpi-frio', t.frio);
+    set('kpi-cong', t.cong);
+  },
+
+  async _confirmarAsignacion() {
+    const btn = document.getElementById('btn-confirmar-asig');
+    if (btn) btn.disabled = true;
+
+    const ordenIds = [...this._asigSeleccionados];
+    const ruta     = document.getElementById('asig-ruta-nombre')?.value.trim() || '';
+    const modoPasEl = document.getElementById('config-pasillo');
+    const modo     = (modoPasEl && modoPasEl.style.display !== 'none') ? 'pasillo' : 'ambiente';
+
+    let config = {};
+    if (modo === 'ambiente') {
+      ['Seco','Refrigerado','Congelado'].forEach(amb => {
+        const sel   = document.getElementById('aux-' + amb.toLowerCase());
+        const auxId = sel?.value ? parseInt(sel.value) : null;
+        config[amb] = { auxiliar_id: auxId };
+      });
+    } else {
+      const rangos = [];
+      document.querySelectorAll('[data-rango-desde]').forEach(el => {
+        const idx   = el.dataset.rangoDesde;
+        const desde = el.value.trim();
+        const hasta = document.querySelector(`[data-rango-hasta="${idx}"]`)?.value.trim();
+        const auxId = parseInt(document.querySelector(`[data-rango-aux="${idx}"]`)?.value);
+        if (desde && hasta && auxId) rangos.push({ pasillo_desde: desde, pasillo_hasta: hasta, auxiliar_id: auxId });
+      });
+      config = { rangos };
+    }
+
+    try {
+      const r = await API.post('/picking/asignar-ambiente', { orden_ids: ordenIds, modo, config, ruta });
+      const d = r.data || r;
+      WMS.toast('success', `✓ ${WMS.esc(String(d.asignadas))} líneas asignadas a ${WMS.esc(String(d.ordenes))} pedidos`);
+      this._asigSeleccionados.clear();
+      await this._cargarAsignacion();
+    } catch(e) {
+      if (e.status === 409 || (e.response && e.response.status === 409)) {
+        WMS.toast('error', 'Conflicto: algunos pedidos ya tienen líneas asignadas. Recargue la lista.');
+      } else {
+        WMS.toast('error', e.message || 'Error en asignación');
       }
-    } catch(e) { WMS.toast('error', 'Error al asignar'); }
-  },
-
-  async _eliminarPlanilla(planilla, ordenIds) {
-    WMS.confirm('Eliminar Planilla', `¿Está seguro de eliminar la planilla <strong>${planilla}</strong>? Esta acción no se puede deshacer.`, async () => {
-      try {
-        // Intentar eliminar cada orden de la planilla
-        const promises = ordenIds.map(id => API.delete('/picking/' + id).catch(() => {}));
-        await Promise.all(promises);
-        WMS.toast('success', `Planilla ${planilla} eliminada`);
-        this.show_asignacion();
-      } catch(e) { WMS.toast('error', 'Error al eliminar'); }
-      });
-  },
-
-  async _asignarSeleccionAPersonal(personalId, nombre) {
-    const cbs = Array.from(document.querySelectorAll('.plan-sel:checked'));
-    if (!cbs.length) { WMS.toast('warning', 'Seleccione al menos una planilla'); return; }
-    const ids = [];
-    cbs.forEach(cb => { try { JSON.parse(cb.dataset.ids||'[]').forEach(id => ids.push(id)); } catch(e){} });
-    const planCount = cbs.length;
-
-    WMS.confirm('Asignar Planillas', `¿Asignar <strong>${planCount} planilla(s)</strong> a <strong>${nombre}</strong>?`, async () => {
-        try {
-        const payload = { orden_ids: ids, personal_id: personalId };
-        if (window._asigSelSoloAlm) payload.separar_consolidado = true;
-        const r = await API.post('/picking/asignar-multiple', payload);
-        if (r.error) WMS.toast('error', r.message);
-        else {
-          const d = r.data || {};
-          const msgs = [`${planCount} planilla(s) asignadas a ${nombre}`];
-          if (d.inventario_reservado > 0) msgs.push(`${d.inventario_reservado} unds reservadas`);
-          if (d.faltantes_detectados > 0) msgs.push(`${d.faltantes_detectados} faltantes`);
-          WMS.toast(d.faltantes_detectados > 0 ? 'warning' : 'success', msgs.join(' • '));
-          this.show_asignacion();
-        }
-      } catch(e) { WMS.toast('error', 'Error'); }
-      });
+      if (btn) btn.disabled = false;
+    }
   },
 
   // ── FALTANTES ─────────────────────────────────────────────────────────────
