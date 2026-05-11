@@ -2257,7 +2257,6 @@ WMS_MODULES.picking = {
   // ── REPORTE HISTÓRICO ─────────────────────────────────────────────────────
   async show_reporte() {
     WMS.setBreadcrumb('picking', 'Reporte');
-    this._reporteFiltros = { fecha_desde: '', fecha_hasta: '', ruta: '', sucursal_entrega: '' };
     this._reporteData = [];
     WMS.setContent(`
       <div class="card animate-fade-in">
@@ -2283,7 +2282,7 @@ WMS_MODULES.picking = {
               <select id="rep-suc" class="form-control"><option value="">Todas las sucursales</option></select>
             </div>
             <div style="display:flex;gap:6px;align-items:flex-end;padding-bottom:2px;">
-              <button class="btn btn-primary" onclick="WMS_MODULES.picking._buscarReporte()">
+              <button class="btn btn-primary" id="btn-buscar-reporte" onclick="WMS_MODULES.picking._buscarReporte()">
                 <i class="fa-solid fa-search"></i> Buscar
               </button>
               <button class="btn btn-outline-success" id="btn-export-excel" onclick="WMS_MODULES.picking._exportarExcel()" style="display:none;">
@@ -2350,7 +2349,7 @@ WMS_MODULES.picking = {
     if (ruta) params.set('ruta', ruta);
     if (suc)  params.set('sucursal_entrega', suc);
 
-    const buscarBtn = document.querySelector('[onclick="WMS_MODULES.picking._buscarReporte()"]');
+    const buscarBtn = document.getElementById('btn-buscar-reporte');
     if (buscarBtn) { buscarBtn.disabled = true; buscarBtn.textContent = 'Buscando...'; }
 
     try {
@@ -2362,21 +2361,22 @@ WMS_MODULES.picking = {
       const rutasSel = document.getElementById('rep-ruta');
       const sucsSel  = document.getElementById('rep-suc');
       if (rutasSel && sucsSel) {
-        const existingRutas = new Set([...rutasSel.options].map(o => o.value));
-        const existingSucs  = new Set([...sucsSel.options].map(o => o.value));
-        this._reporteData.forEach(r => {
-          if (r.ruta && !existingRutas.has(r.ruta)) {
+        rutasSel.length = 1;
+        sucsSel.length  = 1;
+        const seenR = new Set(), seenS = new Set();
+        this._reporteData.forEach(row => {
+          if (row.ruta && !seenR.has(row.ruta)) {
+            seenR.add(row.ruta);
             const opt = document.createElement('option');
-            opt.value = opt.text = r.ruta;
+            opt.value = opt.text = row.ruta;
             rutasSel.appendChild(opt);
-            existingRutas.add(r.ruta);
           }
-          const s = r.sucursal_entrega || r.cliente;
-          if (s && !existingSucs.has(s)) {
+          const s = row.sucursal_entrega || row.cliente;
+          if (s && !seenS.has(s)) {
+            seenS.add(s);
             const opt = document.createElement('option');
             opt.value = opt.text = s;
             sucsSel.appendChild(opt);
-            existingSucs.add(s);
           }
         });
       }
@@ -2398,7 +2398,7 @@ WMS_MODULES.picking = {
 
       if (!this._reporteData.length) {
         if (tablaDiv)  tablaDiv.style.display  = 'none';
-        if (emptyDiv)  { emptyDiv.style.display = 'block'; emptyDiv.textContent = 'Sin resultados para los filtros seleccionados.'; }
+        if (emptyDiv)  { emptyDiv.style.display = 'block'; emptyDiv.innerHTML = '<i class="fa-solid fa-magnifying-glass" style="font-size:2rem;margin-bottom:10px;display:block;"></i>Sin resultados para los filtros seleccionados.'; }
         if (exportBtn) exportBtn.style.display = 'none';
         return;
       }
@@ -2407,7 +2407,7 @@ WMS_MODULES.picking = {
       if (tablaDiv)  tablaDiv.style.display  = 'block';
       if (exportBtn) exportBtn.style.display = '';
 
-      tbody.innerHTML = this._reporteData.map(o => `
+      if (tbody) tbody.innerHTML = this._reporteData.map(o => `
         <tr>
           <td style="padding:8px 12px;white-space:nowrap;">${WMS.esc(o.fecha||'—')}</td>
           <td style="padding:8px 12px;font-weight:700;color:#0F4C81;">${WMS.esc(o.numero_pedido||o.numero_orden||'—')}</td>
@@ -2426,6 +2426,7 @@ WMS_MODULES.picking = {
         </tr>`).join('');
 
     } catch(e) {
+      console.error('[picking] _buscarReporte:', e);
       WMS.toast('error', 'Error generando reporte');
     } finally {
       if (buscarBtn) {
@@ -2443,7 +2444,7 @@ WMS_MODULES.picking = {
       if (typeof XLSX === 'undefined') {
         await new Promise((resolve, reject) => {
           const s = document.createElement('script');
-          s.src = 'https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js';
+          s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
           s.onload = resolve;
           s.onerror = reject;
           document.head.appendChild(s);
