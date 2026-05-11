@@ -62,7 +62,15 @@ class PickingController extends BaseController
             ->when($params['auxiliar_id']  ?? null, fn($q, $v) => $q->where('auxiliar_id', (int)$v))
             ->when($params['sin_auxiliar'] ?? null, fn($q)     => $q->whereNull('orden_pickings.auxiliar_id'))
             ->when($params['cliente']      ?? null, fn($q, $v) => $q->where('cliente', 'like', "%$v%"))
-            ->when($params['sucursal_entrega'] ?? null, fn($q, $v) => $q->where('orden_pickings.sucursal_entrega', 'like', "%$v%"))
+            ->when($params['sucursal_entrega'] ?? null, function($q, $v) {
+                $q->where(fn($sq) =>
+                    $sq->where('orden_pickings.sucursal_entrega', 'like', "%$v%")
+                       ->orWhere(fn($sq2) =>
+                           $sq2->whereNull('orden_pickings.sucursal_entrega')
+                               ->where('orden_pickings.cliente', 'like', "%$v%")
+                       )
+                );
+            })
             ->when($params['ruta'] ?? null, fn($q, $v) => $q->where('orden_pickings.ruta', 'like', "%$v%"))
             ->when($params['q'] ?? null, function($q, $v) {
                 $q->where(fn($sq) => $sq
