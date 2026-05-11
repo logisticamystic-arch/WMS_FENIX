@@ -12,6 +12,7 @@ class PickingDetalle extends Model
         'orden_picking_id', 'producto_id', 'ubicacion_id', 'auxiliar_id', 'lote',
         'cantidad_solicitada', 'cantidad_pickeada', 'pasillo_lock', 'estado',
         'costo_unitario', 'descuento_porc', 'iva_porc', 'valor_iva', 'total_linea', 'devolucion_qty',
+        'ambiente',
     ];
 
     public function ordenPicking()

@@ -120,7 +120,7 @@ class PickingController extends BaseController
                 'detalles as congelado_count'   => fn($q) => $q->where('ambiente', 'Congelado'),
                 'detalles as total_count',
             ])
-            ->orderBy('orden_pickings.sucursal_entrega', 'asc')
+            ->orderByRaw('ISNULL(orden_pickings.sucursal_entrega) ASC, orden_pickings.sucursal_entrega ASC')
             ->orderBy('orden_pickings.prioridad')
             ->orderBy('orden_pickings.created_at', 'desc')
             ->limit($limit)

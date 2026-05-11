@@ -16,6 +16,7 @@ class OrdenPicking extends Model
         'direccion_cliente', 'asesor_comercial', 'area_comercial', 'numero_pedido',
         'planilla_numero', 'planilla_lote', 'estado', 'prioridad', 'auxiliar_id',
         'fecha_movimiento', 'hora_inicio', 'hora_fin', 'fecha_requerida',
+        'sucursal_entrega', 'ruta', 'orden_logico',
     ];
 
     protected $casts = [
