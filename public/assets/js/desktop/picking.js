@@ -1425,7 +1425,7 @@ WMS_MODULES.picking = {
 
   async _cargarAuxiliares() {
     try {
-      const r = await API.get('/personal?rol=auxiliar&limit=100');
+      const r = await API.get('/param/personal?rol=auxiliar&limit=100');
       this._asigAuxiliares = r.data || r || [];
     } catch(e) { this._asigAuxiliares = []; }
   },
