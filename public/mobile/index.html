@@ -527,6 +527,12 @@ const MWMS = {
           <i class="fa-solid fa-check"></i> GUARDAR CAPTURA
         </button>
 
+        <!-- Botón cerrar recepción (sólo si ya hay líneas guardadas) -->
+        ${s.recepcionId ? `
+        <button class="m-btn danger full" onclick="MWMS._cerrarRecepcionSinOdc()" style="font-size:.9rem;padding:12px;font-weight:700;margin-top:6px;">
+          <i class="fa-solid fa-lock"></i> CERRAR RECEPCIÓN
+        </button>` : ''}
+
         <!-- Historial de capturas -->
         ${s.lineas.length > 0 ? `
         <div class="op-card" style="margin-top:10px;">
@@ -625,6 +631,25 @@ const MWMS = {
       this._renderRecSinOdc();
     } catch (e) {
       this.toast(e.message, 'error');
+    } finally {
+      this.loading(false);
+    }
+  },
+  async _cerrarRecepcionSinOdc() {
+    const id = this._sinOdc?.recepcionId;
+    if (!id) return this.toast('No hay recepción activa', 'error');
+    if (!confirm('¿Cerrar recepción? No podrá agregar más líneas.')) return;
+    this.loading(true);
+    try {
+      const r = await mApi('POST', '/recepciones/' + id + '/cerrar', {});
+      if (r.error) throw new Error(r.message);
+      this.toast('Recepción cerrada ✓', 'success');
+      this._sinOdc.recepcionId = null;
+      this._sinOdc.lineas = [];
+      this._sinOdc.prodSel = null;
+      this._renderRecSinOdc();
+    } catch (e) {
+      this.toast(e.message || 'Error al cerrar', 'error');
     } finally {
       this.loading(false);
     }

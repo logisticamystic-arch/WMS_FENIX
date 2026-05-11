@@ -927,6 +927,15 @@ body {
   color: white;
 }
 
+.m-btn.danger {
+  background: #dc2626;
+  color: white;
+}
+
+.m-btn.danger:active {
+  background: #b91c1c;
+}
+
 .m-btn:disabled {
   background: #e2e8f0;
   color: #94a3b8;

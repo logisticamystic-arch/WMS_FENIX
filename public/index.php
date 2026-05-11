@@ -451,6 +451,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/recepciones/sin-odc', [\App\Controllers\RecepcionController::class, 'detallesOperativaSinOdc']);
     $group->get('/recepciones/{id}', [\App\Controllers\RecepcionController::class, 'ver']);
     $group->post('/recepciones/{id}/detalle', [\App\Controllers\RecepcionController::class, 'addDetail']);
+    $group->post('/recepciones/{id}/cerrar', [\App\Controllers\RecepcionController::class, 'confirm']);
     $group->delete('/recepciones/detalle/{id}', [\App\Controllers\RecepcionController::class, 'eliminarDetalle']);
     $group->put('/recepcion-detalle/{id}', [\App\Controllers\RecepcionController::class, 'actualizarDetalle']);
     $group->delete('/recepciones/{id}', [\App\Controllers\RecepcionController::class, 'eliminar']);

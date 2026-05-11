@@ -1402,11 +1402,20 @@ WMS_MODULES.recepcion = {
   _sinOdcProds: [],
   _sinOdcRecepcionId: null,
 
-  async abrirConsolaSinODC(recepcionId = null) {
+  _sodc_actualizarToolbar() {
+    const id = this._sinOdcRecepcionId;
     WMS.setToolbar(`
       <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.recepcion.show_sin_odc()">
         <i class="fa-solid fa-arrow-left"></i> Volver al Monitor
-      </button>`);
+      </button>
+      ${id ? `<button class="btn btn-danger btn-sm" onclick="WMS_MODULES.recepcion._cerrarRecepcionSinODC()">
+        <i class="fa-solid fa-lock"></i> Cerrar Recepción
+      </button>` : ''}`);
+  },
+
+  async abrirConsolaSinODC(recepcionId = null) {
+    this._sinOdcRecepcionId = recepcionId || null;
+    this._sodc_actualizarToolbar();
     WMS.spinner();
     try {
       const prodR = await API.get('/param/productos');
@@ -1671,8 +1680,10 @@ WMS_MODULES.recepcion = {
       });
       if (r.error) throw new Error(r.message);
 
-      // Guardar id de recepción para retomarla
+      // Guardar id de recepción; si es la primera línea, actualizar toolbar para mostrar botón Cerrar
+      const prevId = this._sinOdcRecepcionId;
       this._sinOdcRecepcionId = r.data?.recepcion?.id || null;
+      if (!prevId && this._sinOdcRecepcionId) this._sodc_actualizarToolbar();
 
       // Agregar fila al panel de historial
       this._agregarLineaSinODC(r.data);
@@ -1743,6 +1754,21 @@ WMS_MODULES.recepcion = {
     // Actualizar contador
     const rows = tbody.querySelectorAll('tr').length;
     if (counter) counter.textContent = rows + ' línea' + (rows !== 1 ? 's' : '');
+  },
+
+  async _cerrarRecepcionSinODC() {
+    const id = this._sinOdcRecepcionId;
+    if (!id) return WMS.toast('warning', 'No hay recepción activa para cerrar');
+    if (!confirm('¿Cerrar esta recepción sin ODC? Ya no podrá agregar más líneas.')) return;
+    try {
+      const r = await API.post('/recepciones/' + id + '/cerrar', {});
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', 'Recepción cerrada correctamente');
+      this._sinOdcRecepcionId = null;
+      this.show_sin_odc();
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error al cerrar la recepción');
+    }
   },
 
   // ══════════════════════════════════════════════════════════════════════

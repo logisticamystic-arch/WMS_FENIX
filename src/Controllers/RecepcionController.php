@@ -61,9 +61,12 @@ class RecepcionController extends BaseController
         if (!empty($params['estado'])) {
             $query->where('estado', $params['estado']);
         }
-        if (!empty($params['odc_id'])) {
-            $query->where('odc_id', $params['odc_id'])
-                  ->with('detalles.producto');
+        if (isset($params['odc_id'])) {
+            if ($params['odc_id'] === 'null' || $params['odc_id'] === '') {
+                $query->whereNull('odc_id')->with('auxiliar');
+            } else {
+                $query->where('odc_id', $params['odc_id'])->with('detalles.producto');
+            }
         }
 
         $items = $query->get()->map(function($r) {
