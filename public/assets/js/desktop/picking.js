@@ -312,9 +312,11 @@ WMS_MODULES.picking = {
   },
 
   // ── PEDIDOS / PLANILLAS ───────────────────────────────────────────────────
-  async show_pedidos() {
-    WMS.setBreadcrumb('picking', 'Pedidos');
-    WMS.spinner();
+  async show_pedidos(silent = false) {
+    if (!silent) {
+      WMS.setBreadcrumb('picking', 'Pedidos');
+      WMS.spinner();
+    }
     this._pedidosFiltros = this._pedidosFiltros || {
       q: '', solo_hoy: 1, estado: '', ruta: '', sucursal_entrega: '', fecha_desde: '', fecha_hasta: ''
     };
@@ -326,6 +328,7 @@ WMS_MODULES.picking = {
   },
 
   async _cargarPedidos() {
+    if (typeof WMS !== 'undefined' && WMS.currentModule !== 'picking') return;
     const f = this._pedidosFiltros || {};
     const params = new URLSearchParams();
     if (f.solo_hoy)            params.set('solo_hoy', '1');
@@ -368,7 +371,7 @@ WMS_MODULES.picking = {
       const cong  = o.congelado_count || 0;
       const total = o.total_count || o.detalles?.length || 0;
       return `
-        <tr class="erp-table-row clickable main-row" onclick="WMS_MODULES.picking._toggleExpandRow(this, ${o.id})" style="cursor:pointer;">
+        <tr class="erp-table-row clickable main-row" onclick="WMS_MODULES.picking._toggleExpandRow(this, ${parseInt(o.id)||0})" style="cursor:pointer;">
           <td style="padding:8px 12px;">
             <div style="font-weight:700;color:#0F4C81;">${WMS.esc(o.numero_pedido||o.numero_orden||'—')}</div>
             <div style="font-size:.7rem;color:#64748b;">${WMS.esc(o.planilla_lote||'')}</div>
@@ -380,7 +383,7 @@ WMS_MODULES.picking = {
           <td style="padding:8px 12px;">
             ${o.ruta
               ? `<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:3px;font-size:.72rem;">${WMS.esc(o.ruta)}</span>`
-              : `<button class="btn btn-outline-primary btn-sm" style="font-size:.7rem;padding:2px 8px;" onclick="event.stopPropagation();WMS_MODULES.picking._asignarRutaInline(${o.id}, this)">+ Ruta</button>`
+              : `<button class="btn btn-outline-primary btn-sm" style="font-size:.7rem;padding:2px 8px;" onclick="event.stopPropagation();WMS_MODULES.picking._asignarRutaInline(${parseInt(o.id)||0}, this)">+ Ruta</button>`
             }
           </td>
           <td style="padding:8px 12px;text-align:center;font-weight:700;color:#92400e;">${seco||'—'}</td>
@@ -389,7 +392,7 @@ WMS_MODULES.picking = {
           <td style="padding:8px 12px;text-align:center;font-weight:700;">${total}</td>
           <td style="padding:8px 12px;">${estadoBadge(o.estado)}</td>
           <td style="padding:8px 12px;text-align:center;">
-            <button title="Eliminar" onclick="event.stopPropagation();WMS_MODULES.picking._eliminarOrden(${o.id})"
+            <button title="Eliminar" onclick="event.stopPropagation();WMS_MODULES.picking._eliminarOrden(${parseInt(o.id)||0})"
               style="background:#fee2e2;border:none;border-radius:3px;padding:4px 8px;cursor:pointer;color:#991b1b;font-size:.75rem;">
               <i class="fa-solid fa-trash"></i>
             </button>
@@ -491,8 +494,8 @@ WMS_MODULES.picking = {
       const lineas = (o.detalles || []).map(d => `
         <tr>
           <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.producto?.nombre||d.producto?.codigo_interno||'—')}</td>
-          <td style="padding:5px 10px;font-size:.78rem;text-align:center;">${d.cantidad_solicitada}</td>
-          <td style="padding:5px 10px;font-size:.78rem;text-align:center;">${d.cantidad_pickeada||0}</td>
+          <td style="padding:5px 10px;font-size:.78rem;text-align:center;">${WMS.esc(d.cantidad_solicitada ?? 0)}</td>
+          <td style="padding:5px 10px;font-size:.78rem;text-align:center;">${WMS.esc(d.cantidad_pickeada ?? 0)}</td>
           <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.ambiente||'—')}</td>
           <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.auxiliar?.nombre||'—')}</td>
           <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.estado||'')}</td>
