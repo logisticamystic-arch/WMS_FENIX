@@ -446,6 +446,9 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/recepcion/control-panel', [\App\Controllers\RecepcionController::class, 'getControlPanelData']);
     $group->get('/recepciones', [\App\Controllers\RecepcionController::class, 'index']);
     $group->post('/recepciones', [\App\Controllers\RecepcionController::class, 'store']);
+    $group->get('/recepciones/buscar-qr', [\App\Controllers\RecepcionController::class, 'buscarProductoPorQr']);
+    $group->post('/recepciones/detalles-operativa', [\App\Controllers\RecepcionController::class, 'detallesOperativa']);
+    $group->post('/recepciones/sin-odc', [\App\Controllers\RecepcionController::class, 'detallesOperativaSinOdc']);
     $group->get('/recepciones/{id}', [\App\Controllers\RecepcionController::class, 'ver']);
     $group->post('/recepciones/{id}/detalle', [\App\Controllers\RecepcionController::class, 'addDetail']);
     $group->delete('/recepciones/detalle/{id}', [\App\Controllers\RecepcionController::class, 'eliminarDetalle']);
@@ -454,9 +457,6 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/recepcion/dashboard', [\App\Controllers\RecepcionController::class, 'index']);
     $group->get('/recepcion/dashboard/{id}', [\App\Controllers\RecepcionController::class, 'detalle']);
     $group->get('/recepcion/analytics/{id}', [\App\Controllers\RecepcionController::class, 'getOdcAnalytics']);
-    $group->post('/recepciones/detalles-operativa', [\App\Controllers\RecepcionController::class, 'detallesOperativa']);
-    $group->post('/recepciones/sin-odc', [\App\Controllers\RecepcionController::class, 'detallesOperativaSinOdc']);
-    $group->get('/recepciones/buscar-qr', [\App\Controllers\RecepcionController::class, 'buscarProductoPorQr']);
 
     // Dashboard de Control de Recepción
     $group->post('/recepcion/control-panel/odc/linea/{id}/aprobar', [\App\Controllers\RecepcionController::class, 'aprobarLinea']);
