@@ -1361,6 +1361,7 @@ WMS_MODULES.picking = {
     this._asigSeleccionados = new Set();
     this._asigOrdenes = [];
     this._asigAuxiliares = [];
+    this._rangoIdx = 1;
     await this._cargarAuxiliares();
     await this._cargarAsignacion();
   },
@@ -1384,7 +1385,11 @@ WMS_MODULES.picking = {
     try {
       const r = await API.get('/picking?' + params.toString());
       this._asigOrdenes = r.data || r || [];
-      this._asigSeleccionados.clear();
+      // Preserve only selections that still exist in the new result
+      const validIds = new Set((this._asigOrdenes).map(o => o.id));
+      for (const id of this._asigSeleccionados) {
+        if (!validIds.has(id)) this._asigSeleccionados.delete(id);
+      }
       this._renderAsignacion();
     } catch(e) { WMS.toast('error', 'Error cargando pedidos'); }
   },

@@ -915,7 +915,9 @@
               await new Promise(r => setTimeout(r, delay));
               continue;
             }
-            throw new Error(errorMsg);
+            const _err = new Error(errorMsg);
+            _err.status = res.status;
+            throw _err;
           }
           
           if (json && json.error) {
@@ -1641,16 +1643,20 @@
           const panelBody = document.getElementById('right-panel-body');
           const panelFooter = document.getElementById('right-panel-footer');
 
-          panelTitle.textContent = title;
+          if (!panel || !panelBody) {
+            console.warn('showRightPanel: panel elements not found in DOM');
+            return;
+          }
+
+          if (panelTitle) panelTitle.textContent = title;
           panelBody.innerHTML = html;
           if (panelFooter) {
             panelFooter.innerHTML = footer || `<button class="btn btn-secondary btn-sm" onclick="WMS.closeRightPanel()"><i class="fa-solid fa-xmark"></i> Cerrar</button>`;
           }
 
-          container.classList.add('layout-edit');
-          if (window.innerWidth <= 768) container.classList.add('has-drawer');
+          if (container) container.classList.add('layout-edit');
+          if (container && window.innerWidth <= 768) container.classList.add('has-drawer');
           panel.classList.remove('hidden');
-          // Re-trigger animation
           panel.style.animation = 'none';
           panel.offsetHeight;
           panel.style.animation = '';
@@ -1718,6 +1724,7 @@
                 { icon: 'fa-map-pin', label: 'Ubicaciones', action: "WMS.nav('maestro','ubicaciones')" },
                 { icon: 'fa-truck', label: 'Proveedores', action: "WMS.nav('maestro','proveedores')" },
                 { icon: 'fa-route', label: 'Rutas', action: "WMS.nav('maestro','rutas')" },
+                { icon: 'fa-print', label: 'Impresoras IP', action: "WMS.nav('maestro','impresoras')" },
               ]
             },
             {
@@ -2308,11 +2315,14 @@
       },
 
       setContent(html) {
-        document.getElementById('content-body').innerHTML = html;
+        const el = document.getElementById('main-content');
+        if (el) el.innerHTML = html;
+        else document.getElementById('content-body').innerHTML = html;
       },
 
-      spinner(container = 'content-body') {
-        document.getElementById(container).innerHTML = '<div class="m-empty" style="padding:60px;"><div class="spinner spinner-lg" style="margin:0 auto;"></div></div>';
+      spinner(container = 'main-content') {
+        const el = document.getElementById(container) || document.getElementById('content-body');
+        if (el) el.innerHTML = '<div class="m-empty" style="padding:60px;"><div class="spinner spinner-lg" style="margin:0 auto;"></div></div>';
       },
 
       toggleFullscreen() {
