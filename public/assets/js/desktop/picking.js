@@ -2276,11 +2276,11 @@ WMS_MODULES.picking = {
             </div>
             <div class="form-group" style="margin:0;min-width:160px;">
               <label class="form-label">Ruta</label>
-              <input type="text" id="rep-ruta" class="form-control" placeholder="Ej: Ruta 01">
+              <select id="rep-ruta" class="form-control"><option value="">Todas las rutas</option></select>
             </div>
             <div class="form-group" style="margin:0;min-width:180px;">
               <label class="form-label">Sucursal Entrega</label>
-              <input type="text" id="rep-suc" class="form-control" placeholder="TiendaXYZ...">
+              <select id="rep-suc" class="form-control"><option value="">Todas las sucursales</option></select>
             </div>
             <div style="display:flex;gap:6px;align-items:flex-end;padding-bottom:2px;">
               <button class="btn btn-primary" onclick="WMS_MODULES.picking._buscarReporte()">
@@ -2357,6 +2357,30 @@ WMS_MODULES.picking = {
       const r = await API.get('/picking/reporte?' + params.toString());
       const d = r.data || r;
       this._reporteData = d.ordenes || [];
+
+      // Populate ruta and sucursal_entrega selects from results
+      const rutasSel = document.getElementById('rep-ruta');
+      const sucsSel  = document.getElementById('rep-suc');
+      if (rutasSel && sucsSel) {
+        const existingRutas = new Set([...rutasSel.options].map(o => o.value));
+        const existingSucs  = new Set([...sucsSel.options].map(o => o.value));
+        this._reporteData.forEach(r => {
+          if (r.ruta && !existingRutas.has(r.ruta)) {
+            const opt = document.createElement('option');
+            opt.value = opt.text = r.ruta;
+            rutasSel.appendChild(opt);
+            existingRutas.add(r.ruta);
+          }
+          const s = r.sucursal_entrega || r.cliente;
+          if (s && !existingSucs.has(s)) {
+            const opt = document.createElement('option');
+            opt.value = opt.text = s;
+            sucsSel.appendChild(opt);
+            existingSucs.add(s);
+          }
+        });
+      }
+
       const res = d.resumen || {};
 
       const kpis = document.getElementById('rep-kpis');
