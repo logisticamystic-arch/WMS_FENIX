@@ -3,104 +3,127 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WMS · TV Dashboard — Picking & Recepción</title>
+  <title>WMS · TV Dashboard — Picking 360°</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <style>
     :root {
-      --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
-      --border: #30363d; --text: #e6edf3; --text2: #8b949e;
-      --blue: #58a6ff; --green: #3fb950; --yellow: #d29922;
-      --red: #f85149; --purple: #bc8cff; --cyan: #79c0ff;
-      --orange: #ffa657;
+      --bg:#0d1117; --bg2:#161b22; --bg3:#21262d;
+      --border:#30363d; --text:#e6edf3; --text2:#8b949e;
+      --blue:#58a6ff; --green:#3fb950; --yellow:#d29922;
+      --red:#f85149; --purple:#bc8cff; --cyan:#79c0ff; --orange:#ffa657;
     }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif;
-           height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;
+         height:100vh;overflow:hidden;display:flex;flex-direction:column;}
 
     /* HEADER */
-    .tv-header {
-      background:var(--bg2); border-bottom:2px solid var(--border);
-      padding:10px 28px; display:flex; align-items:center; justify-content:space-between;
-      flex-shrink:0;
-    }
-    .tv-logo { display:flex; align-items:center; gap:12px; }
-    .tv-logo-icon { width:36px; height:36px; background:linear-gradient(135deg,#1f6feb,#388bfd);
-                    border-radius:8px; display:flex; align-items:center; justify-content:center;
-                    font-weight:900; font-size:16px; color:#fff; }
-    .tv-logo-text { font-size:18px; font-weight:800; letter-spacing:1px; }
-    .tv-logo-sub  { font-size:11px; color:var(--text2); letter-spacing:2px; text-transform:uppercase; }
-    .tv-meta { display:flex; align-items:center; gap:24px; }
-    .tv-live { display:flex; align-items:center; gap:7px; font-size:12px; font-weight:700; color:var(--green); }
-    .tv-live-dot { width:8px; height:8px; border-radius:50%; background:var(--green);
-                   animation:pulse 1.5s ease-in-out infinite; }
-    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.4)} }
-    .tv-clock { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--blue); }
-    .tv-date  { font-size:11px; color:var(--text2); text-align:right; }
-    .tv-refresh-badge { font-size:11px; color:var(--text2); display:flex; align-items:center; gap:5px; }
+    .tv-header{background:var(--bg2);border-bottom:2px solid var(--border);
+               padding:7px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+    .tv-logo{display:flex;align-items:center;gap:10px;}
+    .tv-logo-icon{width:30px;height:30px;background:linear-gradient(135deg,#1f6feb,#388bfd);
+                  border-radius:6px;display:flex;align-items:center;justify-content:center;
+                  font-weight:900;font-size:13px;color:#fff;}
+    .tv-logo-text{font-size:15px;font-weight:800;letter-spacing:1px;}
+    .tv-logo-sub{font-size:9px;color:var(--text2);letter-spacing:2px;text-transform:uppercase;}
+    .tv-meta{display:flex;align-items:center;gap:18px;}
+    .tv-live{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:var(--green);}
+    .tv-live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);
+                 animation:pulse 1.5s ease-in-out infinite;}
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.4)}}
+    .tv-clock{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--blue);}
+    .tv-date{font-size:9px;color:var(--text2);text-align:right;}
+    .tv-refresh-badge{font-size:9px;color:var(--text2);display:flex;align-items:center;gap:4px;}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .spin-icon{animation:spin 1s linear infinite;}
 
-    /* LAYOUT */
-    .tv-body { flex:1; display:grid; grid-template-columns:70% 30%; overflow:hidden; }
+    /* BODY */
+    .tv-body{flex:1;display:grid;grid-template-columns:200px 1fr;overflow:hidden;}
 
-    /* PANELS */
-    .tv-panel { padding:12px 14px; display:flex; flex-direction:column; gap:10px; overflow:hidden; }
-    .tv-panel-right { border-left:2px solid var(--border); background:var(--bg2);
-                      padding:12px 14px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; }
+    /* FILTER PANEL */
+    .tv-filters{background:var(--bg2);border-right:2px solid var(--border);
+                padding:10px 9px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+    .filter-section-title{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;
+                           color:var(--text2);padding-bottom:6px;border-bottom:1px solid var(--border);
+                           display:flex;align-items:center;gap:5px;}
+    .filter-group{display:flex;flex-direction:column;gap:3px;}
+    .filter-label{font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;}
+    .filter-input,.filter-select{background:var(--bg3);border:1px solid var(--border);border-radius:5px;
+                                  color:var(--text);font-size:10px;padding:4px 7px;width:100%;}
+    .filter-input:focus,.filter-select:focus{outline:none;border-color:var(--blue);}
+    .preset-btns{display:grid;grid-template-columns:1fr 1fr;gap:3px;}
+    .preset-btn{background:var(--bg3);border:1px solid var(--border);border-radius:4px;
+                color:var(--text2);font-size:9px;font-weight:700;padding:4px 2px;cursor:pointer;
+                text-align:center;text-transform:uppercase;letter-spacing:.4px;transition:all .12s;}
+    .preset-btn:hover{border-color:var(--blue);color:var(--blue);}
+    .preset-btn.active{background:#1d4ed8;border-color:var(--blue);color:#fff;}
+    .btn-refresh{background:linear-gradient(135deg,#1d4ed8,#2563eb);border:none;border-radius:5px;
+                 color:#fff;font-size:10px;font-weight:700;padding:7px;cursor:pointer;
+                 text-transform:uppercase;letter-spacing:.4px;margin-top:auto;
+                 display:flex;align-items:center;justify-content:center;gap:5px;}
+    .btn-refresh:hover{background:linear-gradient(135deg,#1e40af,#1d4ed8);}
 
-    /* KPI CARDS */
-    .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; flex-shrink:0; }
-    .kpi-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px;
-                padding:12px 14px; display:flex; flex-direction:column; gap:4px; }
-    .kpi-card.accent-blue  { border-top:3px solid var(--blue); }
-    .kpi-card.accent-green { border-top:3px solid var(--green); }
-    .kpi-card.accent-yellow{ border-top:3px solid var(--yellow); }
-    .kpi-card.accent-purple{ border-top:3px solid var(--purple); }
-    .kpi-card.accent-cyan  { border-top:3px solid var(--cyan); }
-    .kpi-label  { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:var(--text2); }
-    .kpi-value  { font-size:26px; font-weight:900; line-height:1; font-variant-numeric:tabular-nums; }
-    .kpi-sub    { font-size:10px; color:var(--text2); }
-    .kpi-blue   { color:var(--blue); }
-    .kpi-green  { color:var(--green); }
-    .kpi-yellow { color:var(--yellow); }
-    .kpi-purple { color:var(--purple); }
-    .kpi-cyan   { color:var(--cyan); }
+    /* MAIN */
+    .tv-main{display:flex;flex-direction:column;overflow:hidden;}
 
-    /* CHARTS SECTION */
-    .charts-row { flex:1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; min-height:0; }
-    .chart-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px;
-                  padding:12px; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
-    .chart-title { font-size:12px; font-weight:700; color:var(--text2); text-transform:uppercase;
-                   letter-spacing:.8px; margin-bottom:8px; display:flex; align-items:center; gap:8px; flex-shrink:0; }
-    .chart-title i { font-size:13px; }
-    .chart-wrap { flex:1; position:relative; min-height:0; }
+    /* KPI STRIP */
+    .kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;padding:6px 8px;flex-shrink:0;}
+    .kpi-card{background:var(--bg2);border:1px solid var(--border);border-radius:7px;
+              padding:7px 9px;display:flex;flex-direction:column;gap:1px;}
+    .kpi-card.ab{border-top:3px solid var(--blue);}
+    .kpi-card.ag{border-top:3px solid var(--green);}
+    .kpi-card.ac{border-top:3px solid var(--cyan);}
+    .kpi-card.ay{border-top:3px solid var(--yellow);}
+    .kpi-card.ap{border-top:3px solid var(--purple);}
+    .kpi-card.ar{border-top:3px solid var(--red);}
+    .kpi-label{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text2);}
+    .kpi-value{font-size:20px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums;}
+    .kpi-sub{font-size:8px;color:var(--text2);}
+    .cb{color:var(--blue);} .cg{color:var(--green);} .cc{color:var(--cyan);}
+    .cy{color:var(--yellow);} .cp{color:var(--purple);} .cr{color:var(--red);}
 
-    /* RIGHT PANEL */
-    .recv-title { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:1px;
-                  color:var(--text2); padding-bottom:8px; border-bottom:1px solid var(--border); flex-shrink:0; }
-    .recv-kpi-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-    .recv-kpi { background:var(--bg3); border:1px solid var(--border); border-radius:8px;
-                padding:10px 12px; }
-    .recv-kpi-label { font-size:10px; color:var(--text2); font-weight:700; text-transform:uppercase; }
-    .recv-kpi-val   { font-size:22px; font-weight:900; font-variant-numeric:tabular-nums; }
+    /* CONTENT */
+    .tv-content{flex:1;display:grid;grid-template-columns:60% 40%;overflow:hidden;min-height:0;}
 
-    .recv-section-title { font-size:11px; font-weight:700; color:var(--text2); text-transform:uppercase;
-                          letter-spacing:.8px; margin-top:4px; padding:6px 0 4px; border-top:1px solid var(--border); }
-    .recv-odc-item { background:var(--bg3); border:1px solid var(--border); border-radius:6px;
-                     padding:8px 10px; margin-bottom:6px; }
-    .recv-odc-num  { font-size:12px; font-weight:700; color:var(--blue); }
-    .recv-odc-prov { font-size:11px; color:var(--text2); }
-    .recv-odc-bar  { height:4px; background:var(--border); border-radius:99px; margin-top:5px; overflow:hidden; }
-    .recv-odc-fill { height:100%; background:var(--green); border-radius:99px; transition:width .6s ease; }
+    /* PLANILLAS TABLE */
+    .planillas-panel{display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border);}
+    .panel-hdr{padding:6px 10px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;
+               color:var(--text2);border-bottom:1px solid var(--border);display:flex;align-items:center;
+               gap:7px;flex-shrink:0;}
+    .table-wrap{flex:1;overflow-y:auto;}
+    table.pt{width:100%;border-collapse:collapse;font-size:.75rem;}
+    table.pt th{background:var(--bg3);padding:5px 8px;text-align:left;font-size:.62rem;font-weight:700;
+                color:var(--text2);text-transform:uppercase;letter-spacing:.5px;
+                border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1;}
+    table.pt td{padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:middle;}
+    table.pt tr:hover td{background:rgba(255,255,255,.02);}
+
+    /* RANKING */
+    .ranking-panel{display:flex;flex-direction:column;overflow:hidden;}
+    .chart-card{display:flex;flex-direction:column;flex:1;padding:8px 10px;overflow:hidden;min-height:0;}
+    .chart-card+.chart-card{border-top:1px solid var(--border);}
+    .chart-title{font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;
+                 letter-spacing:.7px;margin-bottom:5px;display:flex;align-items:center;gap:5px;flex-shrink:0;}
+    .chart-wrap{flex:1;position:relative;min-height:0;}
+    .no-data{display:flex;align-items:center;justify-content:center;height:100%;
+             color:var(--text2);font-size:.75rem;font-style:italic;}
+
+    /* ALERTS */
+    #alerts-strip{height:40px;background:#0a0000;border-top:1px solid #7f1d1d;
+                  display:none;align-items:center;overflow:hidden;flex-shrink:0;padding:0 8px;gap:6px;}
+    .alerts-label{font-size:9px;font-weight:900;color:var(--red);text-transform:uppercase;
+                  letter-spacing:1px;white-space:nowrap;display:flex;align-items:center;gap:4px;}
+    .alerts-scroll{flex:1;overflow:hidden;}
+    .alerts-inner{display:inline-flex;align-items:center;animation:marquee 35s linear infinite;}
+    @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
     /* TOAST */
-    #tv-error { position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
-                background:#1f1f1f; border:1px solid var(--red); color:var(--red);
-                padding:8px 20px; border-radius:8px; font-size:13px; display:none; z-index:999; }
-    .tv-loading { position:fixed; inset:0; background:rgba(13,17,23,.9); display:flex;
-                  align-items:center; justify-content:center; font-size:16px; color:var(--text2);
-                  z-index:998; }
-    .spin-icon { animation:spin 1s linear infinite; }
-    @keyframes spin { to{transform:rotate(360deg)} }
+    #tv-error{position:fixed;bottom:12px;right:12px;background:#1f1f1f;border:1px solid var(--red);
+              color:var(--red);padding:7px 14px;border-radius:7px;font-size:11px;display:none;z-index:999;}
+
+    /* LOADING */
+    .tv-loading{position:fixed;inset:0;background:rgba(13,17,23,.92);display:flex;
+                align-items:center;justify-content:center;font-size:15px;color:var(--text2);z-index:998;}
   </style>
 </head>
 <body>
@@ -108,7 +131,7 @@
 <!-- LOADING -->
 <div class="tv-loading" id="tv-loading">
   <div style="text-align:center;">
-    <i class="fa-solid fa-rotate spin-icon" style="font-size:32px;color:#388bfd;margin-bottom:12px;display:block;"></i>
+    <i class="fa-solid fa-rotate spin-icon" style="font-size:30px;color:#388bfd;margin-bottom:10px;display:block;"></i>
     Conectando con WMS...
   </div>
 </div>
@@ -118,12 +141,13 @@
   <div class="tv-logo">
     <div class="tv-logo-icon">W</div>
     <div>
-      <div class="tv-logo-text">WMS PRO ORIENTE</div>
-      <div class="tv-logo-sub">TV Dashboard · Picking & Recepción</div>
+      <div class="tv-logo-text">WMS Fénix</div>
+      <div class="tv-logo-sub">TV Dashboard · Picking 360°</div>
     </div>
   </div>
   <div class="tv-meta">
-    <div class="tv-refresh-badge"><i class="fa-solid fa-rotate-right spin-icon" id="refresh-spin" style="display:none;"></i>
+    <div class="tv-refresh-badge">
+      <i class="fa-solid fa-rotate-right spin-icon" id="refresh-spin" style="display:none;"></i>
       <span id="next-refresh">Actualizando...</span>
     </div>
     <div class="tv-live"><div class="tv-live-dot"></div> EN VIVO</div>
@@ -137,290 +161,205 @@
 <!-- BODY -->
 <div class="tv-body">
 
-  <!-- LEFT 70% — PICKING -->
-  <div class="tv-panel" id="pick-panel">
+  <!-- FILTROS -->
+  <aside class="tv-filters">
+    <div class="filter-section-title"><i class="fa-solid fa-sliders"></i> Filtros</div>
 
-    <!-- KPI Cards -->
-    <div class="kpi-row">
-      <div class="kpi-card accent-blue">
+    <div class="filter-group">
+      <div class="filter-label">Período</div>
+      <div class="preset-btns">
+        <button class="preset-btn" data-preset="hoy">Hoy</button>
+        <button class="preset-btn" data-preset="semana">Semana</button>
+        <button class="preset-btn" data-preset="mes">Mes</button>
+        <button class="preset-btn" data-preset="custom" style="grid-column:span 2;">Personalizado</button>
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <div class="filter-label">Desde</div>
+      <input type="date" id="f-desde" class="filter-input">
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">Hasta</div>
+      <input type="date" id="f-hasta" class="filter-input">
+    </div>
+
+    <div class="filter-group">
+      <div class="filter-label">Auxiliar</div>
+      <select id="f-auxiliar" class="filter-select">
+        <option value="">Todos</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <div class="filter-label">Ruta / Área</div>
+      <select id="f-ruta" class="filter-select">
+        <option value="">Todas</option>
+      </select>
+    </div>
+
+    <button class="btn-refresh" id="btn-refresh">
+      <i class="fa-solid fa-rotate-right"></i> Actualizar
+    </button>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="tv-main">
+
+    <!-- KPIs -->
+    <div class="kpi-strip">
+      <div class="kpi-card ab">
         <div class="kpi-label">Planillas Activas</div>
-        <div class="kpi-value kpi-blue" id="k-planillas">—</div>
-        <div class="kpi-sub">En proceso hoy</div>
+        <div class="kpi-value cb" id="k-activas">—</div>
+        <div class="kpi-sub">Pendiente + En Proceso</div>
       </div>
-      <div class="kpi-card accent-green">
-        <div class="kpi-label">Planillas Completadas</div>
-        <div class="kpi-value kpi-green" id="k-completadas">—</div>
-        <div class="kpi-sub">Cerradas hoy</div>
+      <div class="kpi-card ag">
+        <div class="kpi-label">Completadas hoy</div>
+        <div class="kpi-value cg" id="k-completadas">—</div>
+        <div class="kpi-sub">Cerradas</div>
       </div>
-      <div class="kpi-card accent-yellow">
+      <div class="kpi-card ac">
+        <div class="kpi-label">% Progreso Global</div>
+        <div class="kpi-value cc" id="k-pct">—</div>
+        <div class="kpi-sub" id="k-pct-sub">líneas</div>
+      </div>
+      <div class="kpi-card ay">
         <div class="kpi-label">Líneas Pendientes</div>
-        <div class="kpi-value kpi-yellow" id="k-lineas-pend">—</div>
+        <div class="kpi-value cy" id="k-lineas-pend">—</div>
         <div class="kpi-sub">Por separar</div>
       </div>
-      <div class="kpi-card accent-purple">
+      <div class="kpi-card ap">
         <div class="kpi-label">Unidades Pendientes</div>
-        <div class="kpi-value kpi-purple" id="k-uds-pend">—</div>
+        <div class="kpi-value cp" id="k-uds-pend">—</div>
         <div class="kpi-sub">Cantidad total</div>
       </div>
-      <div class="kpi-card accent-cyan">
-        <div class="kpi-label">Promedio por Planilla</div>
-        <div class="kpi-value kpi-cyan" id="k-avg-min">—</div>
-        <div class="kpi-sub">minutos</div>
+      <div class="kpi-card ar">
+        <div class="kpi-label">Con Faltantes</div>
+        <div class="kpi-value cr" id="k-faltantes">—</div>
+        <div class="kpi-sub">Planillas c/ novedad</div>
       </div>
     </div>
 
-    <!-- Charts: Ranking Auxiliares -->
-    <div class="charts-row">
-      <div class="chart-card">
-        <div class="chart-title"><i class="fa-solid fa-trophy" style="color:#ffd700;"></i> Ranking por Planillas</div>
-        <div class="chart-wrap"><canvas id="chart-planillas"></canvas></div>
+    <!-- CONTENT -->
+    <div class="tv-content">
+
+      <!-- TABLA PLANILLAS -->
+      <div class="planillas-panel">
+        <div class="panel-hdr">
+          <i class="fa-solid fa-clipboard-list" style="color:var(--blue);"></i>
+          Planillas en Vivo
+        </div>
+        <div class="table-wrap">
+          <table class="pt">
+            <thead>
+              <tr>
+                <th>Planilla</th>
+                <th>Auxiliar(es)</th>
+                <th style="min-width:130px;">Progreso</th>
+                <th style="text-align:center;">%</th>
+                <th style="text-align:center;">⏱ Tiempo</th>
+                <th style="text-align:center;">Estado</th>
+                <th>Ruta</th>
+              </tr>
+            </thead>
+            <tbody id="planillas-tbody">
+              <tr><td colspan="7" style="text-align:center;padding:18px;color:var(--text2);">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div class="chart-card">
-        <div class="chart-title"><i class="fa-solid fa-list-check" style="color:var(--green);"></i> Ranking por Líneas</div>
-        <div class="chart-wrap"><canvas id="chart-lineas"></canvas></div>
+
+      <!-- RANKING -->
+      <div class="ranking-panel">
+        <div class="chart-card">
+          <div class="chart-title">
+            <i class="fa-solid fa-list-check" style="color:var(--green);"></i>
+            Líneas Separadas por Auxiliar
+          </div>
+          <div class="chart-wrap" id="wrap-lineas"><canvas id="chart-lineas"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">
+            <i class="fa-solid fa-stopwatch" style="color:var(--cyan);"></i>
+            Tiempo Promedio por Planilla (min)
+          </div>
+          <div class="chart-wrap" id="wrap-tiempos"><canvas id="chart-tiempos"></canvas></div>
+        </div>
       </div>
-      <div class="chart-card">
-        <div class="chart-title"><i class="fa-solid fa-boxes-stacked" style="color:var(--purple);"></i> Ranking por Unidades</div>
-        <div class="chart-wrap"><canvas id="chart-unidades"></canvas></div>
+
+    </div>
+
+    <!-- ALERTAS -->
+    <div id="alerts-strip">
+      <div class="alerts-label">
+        <i class="fa-solid fa-triangle-exclamation"></i> Faltantes
+      </div>
+      <div class="alerts-scroll">
+        <div class="alerts-inner" id="alerts-inner"></div>
       </div>
     </div>
 
   </div>
-
-  <!-- RIGHT 30% — RECEPCIÓN -->
-  <div class="tv-panel-right" id="recv-panel">
-    <div class="recv-title"><i class="fa-solid fa-truck-ramp-box" style="color:var(--blue);"></i> Recepción</div>
-
-    <div class="recv-kpi-grid">
-      <div class="recv-kpi">
-        <div class="recv-kpi-label">ODCs Abiertas</div>
-        <div class="recv-kpi-val kpi-blue" id="r-odcs">—</div>
-      </div>
-      <div class="recv-kpi">
-        <div class="recv-kpi-label">Líneas en Proceso</div>
-        <div class="recv-kpi-val kpi-yellow" id="r-lineas">—</div>
-      </div>
-      <div class="recv-kpi">
-        <div class="recv-kpi-label">% Recibo / Ref</div>
-        <div class="recv-kpi-val kpi-green" id="r-pct-ref">—</div>
-      </div>
-      <div class="recv-kpi">
-        <div class="recv-kpi-label">% Recibo / Cant</div>
-        <div class="recv-kpi-val kpi-purple" id="r-pct-cant">—</div>
-      </div>
-    </div>
-
-    <div class="recv-section-title"><i class="fa-solid fa-file-invoice"></i> ODCs Activas</div>
-    <div id="recv-odcs-list">
-      <div style="color:var(--text2);font-size:12px;text-align:center;padding:20px;">Cargando...</div>
-    </div>
-  </div>
-
 </div>
 
 <div id="tv-error"></div>
 
 <script>
-// ── CONFIGURACIÓN ───────────────────────────────────────────────────────────
-const REFRESH_INTERVAL = 120; // segundos
+// ── CONFIG ───────────────────────────────────────────────────────────────────
+const REFRESH_INTERVAL = 120;
 let token = localStorage.getItem('wms_token') || '';
-let _countDown = REFRESH_INTERVAL;
-let _refreshTimer = null;
+let _initialized = false;
 let _countTimer  = null;
-let charts = {};
+let _countDown   = REFRESH_INTERVAL;
+let charts       = {};
+let liveTimerId  = null;
 
-// Recibir token desde ventana padre
-window.addEventListener('message', e => {
-  if (e.data?.type === 'WMS_TOKEN') { token = e.data.token; init(); }
-});
+let filters = { fecha_inicio:'', fecha_fin:'', auxiliar_id:'', ruta:'' };
 
-// Detectar base URL
+// ── BASE URL ─────────────────────────────────────────────────────────────────
 const BASE = (() => {
   const p = window.location.pathname;
-  const m = p.match(/^(\/.*?\/public)\//);
-  return (m ? m[1] : '') + '/api';
+  const m = p.match(/^(\/[^/]+\/public)\//);
+  return m ? m[1] + '/api' : window.location.origin + '/api';
 })();
 
+// ── API ──────────────────────────────────────────────────────────────────────
 async function api(path) {
   const r = await fetch(BASE + path, {
-    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' }
   });
-  if (!r.ok) throw new Error('HTTP ' + r.status);
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' en ' + path);
   const j = await r.json();
   return j.data ?? j;
 }
 
-// ── RELOJ ───────────────────────────────────────────────────────────────────
+// ── RELOJ ────────────────────────────────────────────────────────────────────
 function tick() {
-  const now = new Date();
-  document.getElementById('tv-clock').textContent = now.toLocaleTimeString('es-CO');
-  document.getElementById('tv-date').textContent  = now.toLocaleDateString('es-CO',
-    {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+  const n = new Date();
+  setText('tv-clock', n.toLocaleTimeString('es-CO'));
+  setText('tv-date',  n.toLocaleDateString('es-CO',
+    { weekday:'long', year:'numeric', month:'long', day:'numeric' }));
 }
 setInterval(tick, 1000); tick();
 
-// ── COUNTDOWN ───────────────────────────────────────────────────────────────
-function startCountdown() {
-  if (_countTimer) clearInterval(_countTimer);
-  _countDown = REFRESH_INTERVAL;
-  _countTimer = setInterval(() => {
-    _countDown--;
-    const el = document.getElementById('next-refresh');
-    if (el) el.textContent = `Próxima actualización: ${_countDown}s`;
-    if (_countDown <= 0) { clearInterval(_countTimer); refresh(); }
-  }, 1000);
-}
-
-// ── CHARTS ──────────────────────────────────────────────────────────────────
-const CHART_COLORS = [
-  '#58a6ff','#3fb950','#d29922','#bc8cff','#ffa657',
-  '#79c0ff','#f0883e','#56d364','#db61a2','#e3b341'
-];
-
-function buildChart(id, labels, data, label, color) {
-  if (charts[id]) { charts[id].destroy(); }
-  const ctx = document.getElementById(id);
-  if (!ctx) return;
-  charts[id] = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{ label, data,
-        backgroundColor: labels.map((_,i) => CHART_COLORS[i % CHART_COLORS.length] + 'cc'),
-        borderColor:     labels.map((_,i) => CHART_COLORS[i % CHART_COLORS.length]),
-        borderWidth: 2, borderRadius: 4
-      }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true, maintainAspectRatio: false,
-      animation: { duration: 800 },
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.x} ${label.toLowerCase()}` } }
-      },
-      scales: {
-        x: { ticks:{ color:'#8b949e', font:{size:10} }, grid:{ color:'#21262d' },
-             beginAtZero: true },
-        y: { ticks:{ color:'#e6edf3', font:{size:11,weight:'bold'} }, grid:{ display:false } }
-      }
-    }
-  });
-}
-
-// ── DATOS PICKING ────────────────────────────────────────────────────────────
-function getToday() {
-  return new Date().toISOString().slice(0,10);
-}
-
-async function loadPicking() {
-  const today = getToday();
-  const [dash, allPick] = await Promise.all([
-    api(`/picking/dashboard?fecha_inicio=${today}&fecha_fin=${today}&estado=&planilla=`),
-    api(`/picking?fecha_inicio=${today}&fecha_fin=${today}&estado=&planilla=&limit=1000`)
-  ]);
-
-  const d   = dash || {};
-  const all = Array.isArray(allPick) ? allPick : [];
-
-  // KPIs
-  const totalLineas  = all.reduce((a,p) => a + parseInt(p.total_lineas||0), 0);
-  const pendLineas   = all.reduce((a,p) => a + parseInt(p.lineas_pendientes||0), 0);
-  const pendUds      = all.reduce((a,p) => a + parseFloat(p.cantidad_pendiente||0), 0);
-  const planActivas  = (d.en_proceso || 0);
-  const planCompletas= (d.completadas || 0);
-
-  // Promedio minutos por planilla (basado en series diarias si existe)
-  let avgMin = '—';
-  try {
-    const series = d.series?.diario || [];
-    if (series.length > 1) {
-      const first = new Date(series[0]?.label);
-      const last  = new Date(series[series.length-1]?.label);
-      const mins  = (last - first) / 60000;
-      const plan  = Math.max(1, planCompletas);
-      avgMin = Math.round(mins / plan);
-    }
-  } catch(e) {}
-
-  setText('k-planillas',    planActivas);
-  setText('k-completadas',  planCompletas);
-  setText('k-lineas-pend',  fmt(pendLineas));
-  setText('k-uds-pend',     fmt(pendUds));
-  setText('k-avg-min',      avgMin);
-
-  // Rankings (usar datos del dashboard)
-  const ranking = Array.isArray(d.ranking_auxiliares) ? d.ranking_auxiliares : [];
-  const sorted = [...ranking].sort((a,b) => b.planillas - a.planillas || b.lineas - a.lineas);
-  const names  = sorted.map(r => r.nombre || 'N/A');
-  const rPlan  = sorted.map(r => r.planillas || r.pedidos || 0);
-  const rLin   = sorted.map(r => r.lineas || 0);
-  const rUds   = sorted.map(r => parseFloat(r.unidades || 0));
-
-  buildChart('chart-planillas', names, rPlan, 'Planillas',  '#58a6ff');
-  buildChart('chart-lineas',    names, rLin,  'Líneas',     '#3fb950');
-  buildChart('chart-unidades',  names, rUds,  'Unidades',   '#bc8cff');
-}
-
-// ── DATOS RECEPCIÓN ──────────────────────────────────────────────────────────
-async function loadRecepcion() {
-  const panel = await api('/recepcion/control-panel');
-  const kpis  = panel?.kpis || {};
-  const odcs  = Array.isArray(panel?.odcs) ? panel.odcs : [];
-
-  setText('r-odcs',      kpis.total_odcs          || 0);
-  setText('r-lineas',    kpis.total_lineas         || 0);
-  setText('r-pct-ref',  (kpis.pct_recibo_referencia || 0) + '%');
-  setText('r-pct-cant', (kpis.pct_recibo_cantidad   || 0) + '%');
-
-  const listEl = document.getElementById('recv-odcs-list');
-  if (!listEl) return;
-  const open = odcs.filter(o => o.estado !== 'Cerrada' && o.estado !== 'Cancelada').slice(0, 8);
-  if (!open.length) { listEl.innerHTML = '<div style="color:#8b949e;font-size:12px;text-align:center;padding:16px;">Sin ODCs activas</div>'; return; }
-  listEl.innerHTML = open.map(o => {
-    const pct = Math.min(100, Math.round((o.pct_recibo || o.pct_cantidad || 0)));
-    return `<div class="recv-odc-item">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <span class="recv-odc-num">${esc(o.numero_odc||'-')}</span>
-        <span style="font-size:11px;font-weight:700;color:${pct>=100?'#3fb950':pct>50?'#d29922':'#f85149'}">${pct}%</span>
-      </div>
-      <div class="recv-odc-prov">${esc(o.proveedor?.razon_social || o.proveedor || '-')}</div>
-      <div class="recv-odc-bar"><div class="recv-odc-fill" style="width:${pct}%"></div></div>
-    </div>`;
-  }).join('');
-}
-
-// ── REFRESH ──────────────────────────────────────────────────────────────────
-async function refresh() {
-  const spin = document.getElementById('refresh-spin');
-  if (spin) spin.style.display = 'inline-block';
-  try {
-    await Promise.all([ loadPicking(), loadRecepcion() ]);
-    hideError();
-  } catch(e) {
-    showError('Error al actualizar: ' + e.message);
-  } finally {
-    if (spin) spin.style.display = 'none';
-    startCountdown();
-  }
-}
-
-async function init() {
-  if (!token) { showError('Sin token de sesión. Abra el TV Dashboard desde el módulo Picking.'); return; }
-  document.getElementById('tv-loading').style.display = 'none';
-  await refresh();
-}
-
 // ── HELPERS ──────────────────────────────────────────────────────────────────
+function getToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function fmtDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function setText(id, val) {
   const el = document.getElementById(id);
   if (el) el.textContent = val;
 }
 function fmt(n) {
-  return new Intl.NumberFormat('es-CO').format(Math.round(Number(n)||0));
+  return new Intl.NumberFormat('es-CO').format(Math.round(Number(n) || 0));
 }
 function esc(s) {
-  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return String(s ?? '').replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function showError(msg) {
   const el = document.getElementById('tv-error');
@@ -430,18 +369,322 @@ function hideError() {
   const el = document.getElementById('tv-error');
   if (el) el.style.display = 'none';
 }
+function elapsedTime(horaInicio) {
+  if (!horaInicio || horaInicio === '00:00:00') return null;
+  const d = new Date();
+  const [h, m, s] = horaInicio.split(':').map(Number);
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m, s);
+  const diff = Math.floor((Date.now() - start.getTime()) / 1000);
+  if (diff < 0) return null;
+  const hrs  = Math.floor(diff / 3600);
+  const mins = Math.floor((diff % 3600) / 60);
+  return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+}
 
-// ── ARRANQUE ─────────────────────────────────────────────────────────────────
-// Intentar leer token inmediatamente (si la misma pestaña tiene localStorage)
+// ── COUNTDOWN ────────────────────────────────────────────────────────────────
+function startCountdown() {
+  if (_countTimer) clearInterval(_countTimer);
+  _countDown = REFRESH_INTERVAL;
+  _countTimer = setInterval(() => {
+    _countDown--;
+    setText('next-refresh', `Próxima actualización: ${_countDown}s`);
+    if (_countDown <= 0) { clearInterval(_countTimer); refresh(); }
+  }, 1000);
+}
+
+// ── FILTROS ──────────────────────────────────────────────────────────────────
+function setupFilters() {
+  const today = getToday();
+  filters.fecha_inicio = today;
+  filters.fecha_fin    = today;
+  document.getElementById('f-desde').value = today;
+  document.getElementById('f-hasta').value = today;
+  document.querySelector('[data-preset="hoy"]').classList.add('active');
+
+  document.querySelectorAll('[data-preset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const today = getToday();
+      const preset = btn.dataset.preset;
+      if (preset === 'hoy') {
+        filters.fecha_inicio = today; filters.fecha_fin = today;
+      } else if (preset === 'semana') {
+        const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+        filters.fecha_inicio = fmtDate(d); filters.fecha_fin = today;
+      } else if (preset === 'mes') {
+        const d = new Date(); d.setDate(1);
+        filters.fecha_inicio = fmtDate(d); filters.fecha_fin = today;
+      } else {
+        return;
+      }
+      document.getElementById('f-desde').value = filters.fecha_inicio;
+      document.getElementById('f-hasta').value = filters.fecha_fin;
+      refresh();
+    });
+  });
+
+  document.getElementById('f-desde').addEventListener('change', e => {
+    filters.fecha_inicio = e.target.value;
+    document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
+    refresh();
+  });
+  document.getElementById('f-hasta').addEventListener('change', e => {
+    filters.fecha_fin = e.target.value;
+    document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
+    refresh();
+  });
+  document.getElementById('f-auxiliar').addEventListener('change', e => {
+    filters.auxiliar_id = e.target.value; refresh();
+  });
+  document.getElementById('f-ruta').addEventListener('change', e => {
+    filters.ruta = e.target.value; refresh();
+  });
+  document.getElementById('btn-refresh').addEventListener('click', () => refresh());
+}
+
+function buildQS() {
+  const p = new URLSearchParams({ fecha_inicio: filters.fecha_inicio, fecha_fin: filters.fecha_fin });
+  if (filters.auxiliar_id) p.set('auxiliar_id', filters.auxiliar_id);
+  if (filters.ruta)        p.set('ruta', filters.ruta);
+  return p.toString();
+}
+
+function populateSelects(d) {
+  const auxSel = document.getElementById('f-auxiliar');
+  const prevAux = auxSel.value;
+  auxSel.innerHTML = '<option value="">Todos</option>';
+  (d.ranking_auxiliares || []).forEach(r => {
+    if (!r.id) return;
+    const o = document.createElement('option');
+    o.value = r.id; o.textContent = r.nombre;
+    if (String(r.id) === prevAux) o.selected = true;
+    auxSel.appendChild(o);
+  });
+
+  const rutaSel = document.getElementById('f-ruta');
+  const prevRuta = rutaSel.value;
+  const rutas = [...new Set((d.planillas_activas || []).map(p => p.ruta).filter(Boolean))].sort();
+  rutaSel.innerHTML = '<option value="">Todas</option>';
+  rutas.forEach(r => {
+    const o = document.createElement('option');
+    o.value = r; o.textContent = r;
+    if (r === prevRuta) o.selected = true;
+    rutaSel.appendChild(o);
+  });
+}
+
+// ── KPIs ─────────────────────────────────────────────────────────────────────
+function renderKPIs(d) {
+  const activas  = (d.pendientes || 0) + (d.en_proceso || 0);
+  const totalLin = d.total_lineas_activas || 0;
+  const pendLin  = d.lineas_pendientes    || 0;
+  const compLin  = totalLin - pendLin;
+  const pct      = totalLin > 0 ? Math.round(compLin / totalLin * 100) : 0;
+  const pctColor = pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--yellow)' : 'var(--red)';
+
+  setText('k-activas',    activas);
+  setText('k-completadas', d.completadas || 0);
+  const pctEl = document.getElementById('k-pct');
+  if (pctEl) { pctEl.textContent = pct + '%'; pctEl.style.color = pctColor; }
+  setText('k-pct-sub',     `${fmt(compLin)} de ${fmt(totalLin)} líneas`);
+  setText('k-lineas-pend', fmt(pendLin));
+  setText('k-uds-pend',    fmt(d.unidades_pendientes || 0));
+  setText('k-faltantes',   (d.alertas_faltantes || []).length);
+}
+
+// ── TABLA PLANILLAS ──────────────────────────────────────────────────────────
+function renderPlanillasTable(planillas) {
+  if (liveTimerId) { clearInterval(liveTimerId); liveTimerId = null; }
+  const tbody = document.getElementById('planillas-tbody');
+  if (!tbody) return;
+
+  if (!planillas?.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--text2);font-style:italic;">
+      Sin planillas activas para los filtros seleccionados</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = planillas.map(p => {
+    const pct      = p.total_lineas > 0 ? Math.round(p.lineas_completadas / p.total_lineas * 100) : 0;
+    const pctColor = pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--orange)' : 'var(--red)';
+    const isEP     = p.estado === 'EnProceso';
+    const stBg     = isEP ? 'background:#1d4ed8;color:#fff;' : 'background:#374151;color:#d1d5db;';
+    const rowBdr   = p.tiene_faltante ? 'border-left:3px solid var(--red);' : 'border-left:3px solid transparent;';
+
+    const auxChips = (p.auxiliares || []).length
+      ? p.auxiliares.map(a =>
+          `<span style="display:inline-flex;align-items:center;gap:2px;background:#1e3a5f;border:1px solid #1d4ed8;
+                border-radius:10px;padding:1px 6px;font-size:.65rem;color:#93c5fd;white-space:nowrap;">
+            <i class="fa-solid fa-user" style="font-size:.55rem;"></i>${esc(a)}</span>`
+        ).join(' ')
+      : `<span style="color:var(--text2);font-style:italic;font-size:.7rem;">Sin asignar</span>`;
+
+    return `<tr style="${rowBdr}" data-hora="${esc(p.hora_inicio || '')}">
+      <td style="font-weight:700;color:var(--blue);font-size:.75rem;white-space:nowrap;">${esc(p.planilla_numero)}</td>
+      <td style="max-width:140px;">${auxChips}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="flex:1;background:var(--bg3);border-radius:99px;height:5px;overflow:hidden;">
+            <div style="width:${pct}%;background:${pctColor};height:100%;border-radius:99px;transition:width .5s;"></div>
+          </div>
+          <span style="font-size:.65rem;white-space:nowrap;color:var(--text2);">${p.lineas_completadas}/${p.total_lineas}</span>
+        </div>
+      </td>
+      <td style="font-weight:900;font-size:.9rem;color:${pctColor};text-align:center;">${pct}%</td>
+      <td class="timer-cell" style="font-variant-numeric:tabular-nums;text-align:center;
+          color:var(--cyan);font-weight:700;font-size:.8rem;">—</td>
+      <td style="text-align:center;">
+        <span style="border-radius:99px;padding:2px 7px;font-size:.65rem;font-weight:700;${stBg}">
+          ${isEP ? 'En Proceso' : 'Pendiente'}
+        </span>
+      </td>
+      <td style="color:var(--text2);font-size:.72rem;max-width:80px;overflow:hidden;
+                 text-overflow:ellipsis;white-space:nowrap;">${esc(p.ruta || '—')}</td>
+    </tr>`;
+  }).join('');
+
+  function tickTimers() {
+    document.querySelectorAll('#planillas-tbody tr[data-hora]').forEach(row => {
+      const cell = row.querySelector('.timer-cell');
+      if (!cell) return;
+      const elapsed = elapsedTime(row.dataset.hora);
+      cell.textContent = elapsed ?? 'No iniciada';
+      cell.style.color = elapsed ? 'var(--cyan)' : 'var(--text2)';
+    });
+  }
+  tickTimers();
+  liveTimerId = setInterval(tickTimers, 1000);
+}
+
+// ── GRÁFICAS ─────────────────────────────────────────────────────────────────
+const COLORS = ['#58a6ff','#3fb950','#d29922','#bc8cff','#ffa657','#79c0ff','#f0883e','#56d364','#db61a2','#e3b341'];
+
+function buildChart(id, wrapId, labels, data, unitLabel) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+
+  if (!labels.length) {
+    wrap.innerHTML = '<div class="no-data">Sin datos para el período seleccionado</div>';
+    return;
+  }
+  if (!wrap.querySelector('canvas')) {
+    wrap.innerHTML = `<canvas id="${id}"></canvas>`;
+  }
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+
+  charts[id] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: unitLabel, data,
+        backgroundColor: labels.map((_,i) => COLORS[i % COLORS.length] + 'bb'),
+        borderColor:     labels.map((_,i) => COLORS[i % COLORS.length]),
+        borderWidth: 2, borderRadius: 4
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 500 },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => ` ${c.parsed.x} ${unitLabel.toLowerCase()}` } }
+      },
+      scales: {
+        x: { ticks:{ color:'#8b949e', font:{size:9} }, grid:{ color:'#21262d' }, beginAtZero:true },
+        y: { ticks:{ color:'#e6edf3', font:{size:10,weight:'bold'} }, grid:{ display:false } }
+      }
+    }
+  });
+}
+
+function renderCharts(ranking) {
+  const sorted    = [...(ranking || [])].sort((a, b) => (b.lineas || 0) - (a.lineas || 0));
+  const names     = sorted.map(r => r.nombre || 'N/A');
+  buildChart('chart-lineas', 'wrap-lineas', names, sorted.map(r => r.lineas || 0), 'líneas');
+
+  const withTime  = sorted.filter(r => r.avg_minutos > 0);
+  const timeNames = withTime.map(r => r.nombre || 'N/A');
+  buildChart('chart-tiempos', 'wrap-tiempos', timeNames, withTime.map(r => Math.round(r.avg_minutos || 0)), 'min promedio');
+}
+
+// ── ALERTAS ──────────────────────────────────────────────────────────────────
+function renderAlertas(alertas) {
+  const strip = document.getElementById('alerts-strip');
+  const inner = document.getElementById('alerts-inner');
+  if (!strip || !inner) return;
+  if (!alertas?.length) { strip.style.display = 'none'; return; }
+  strip.style.display = 'flex';
+  const html = alertas.map(a =>
+    `<span style="display:inline-flex;align-items:center;gap:5px;background:#450a0a;
+                  border:1px solid var(--red);border-radius:5px;padding:3px 9px;
+                  white-space:nowrap;margin-right:14px;font-size:.72rem;">
+      <i class="fa-solid fa-triangle-exclamation" style="color:var(--red);"></i>
+      <b style="color:#fca5a5;">${esc(a.producto || a.ean || '—')}</b>
+      <span style="color:var(--red);">· ${a.dif || 0} unds faltantes</span>
+      <span style="color:#6b7280;">· ${esc(a.planilla || '—')}</span>
+    </span>`
+  ).join('');
+  inner.innerHTML = html + html;
+}
+
+// ── LOAD / REFRESH ───────────────────────────────────────────────────────────
+async function loadPicking() {
+  const d = await api(`/picking/dashboard?${buildQS()}`);
+  populateSelects(d);
+  renderKPIs(d);
+  renderPlanillasTable(d.planillas_activas || []);
+  renderCharts(d.ranking_auxiliares || []);
+  renderAlertas(d.alertas_faltantes  || []);
+}
+
+async function refresh() {
+  const spin = document.getElementById('refresh-spin');
+  if (spin) spin.style.display = 'inline-block';
+  try {
+    await loadPicking();
+    hideError();
+  } catch(e) {
+    showError('Error al cargar datos: ' + e.message);
+  } finally {
+    if (spin) spin.style.display = 'none';
+    startCountdown();
+  }
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+async function init() {
+  _initialized = true;
+  const loading = document.getElementById('tv-loading');
+  if (loading) loading.style.display = 'none';
+  setupFilters();
+  if (!token) {
+    showError('Sin sesión activa. Inicie sesión en el WMS y abra el TV desde el módulo Picking.');
+    return;
+  }
+  await refresh();
+}
+
+window.addEventListener('message', e => {
+  if (e.data?.type === 'WMS_TOKEN' && e.data.token) {
+    token = e.data.token;
+    localStorage.setItem('wms_token', token);
+    if (!_initialized) init();
+  }
+});
+
+token = localStorage.getItem('wms_token') || '';
 if (token) {
   init();
 } else {
-  // Esperar postMessage del padre (1 segundo de gracia)
   setTimeout(() => {
     token = localStorage.getItem('wms_token') || '';
-    if (token) init();
-    else showError('Sin sesión activa. Abra el TV desde el módulo Picking con sesión iniciada.');
-  }, 800);
+    if (!_initialized) init();
+  }, 1000);
 }
 </script>
 </body>
