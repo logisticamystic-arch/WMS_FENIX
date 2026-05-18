@@ -376,9 +376,9 @@ function elapsedTime(horaInicio) {
   if (!horaInicio || horaInicio === '00:00:00') return null;
   const d = new Date();
   const [h, m, s] = horaInicio.split(':').map(Number);
-  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m, s);
+  let start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m, s);
+  if (start > Date.now()) start.setDate(start.getDate() - 1);
   const diff = Math.floor((Date.now() - start.getTime()) / 1000);
-  if (diff < 0) return null;
   const hrs  = Math.floor(diff / 3600);
   const mins = Math.floor((diff % 3600) / 60);
   return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
@@ -628,7 +628,7 @@ function renderAlertas(alertas) {
                   white-space:nowrap;margin-right:14px;font-size:.72rem;">
       <i class="fa-solid fa-triangle-exclamation" style="color:var(--red);"></i>
       <b style="color:#fca5a5;">${esc(a.producto || a.ean || '—')}</b>
-      <span style="color:var(--red);">· ${a.dif || 0} unds faltantes</span>
+      <span style="color:var(--red);">· ${Number(a.dif) || 0} unds faltantes</span>
       <span style="color:#6b7280;">· ${esc(a.planilla || '—')}</span>
     </span>`
   ).join('');
@@ -652,7 +652,13 @@ async function refresh() {
   if (result.status === 'fulfilled') {
     hideError();
   } else {
-    showError('Error al cargar datos: ' + result.reason?.message);
+    const msg = result.reason?.message || '';
+    if (msg.includes('401')) {
+      showError('Sesión expirada. Reinicie sesión en el WMS y recargue esta página.');
+      if (spin) spin.style.display = 'none';
+      return;
+    }
+    showError('Error al cargar datos: ' + msg);
   }
   if (spin) spin.style.display = 'none';
   startCountdown();
@@ -672,6 +678,7 @@ async function init() {
 }
 
 window.addEventListener('message', e => {
+  if (e.origin !== window.location.origin) return;
   if (e.data?.type === 'WMS_TOKEN' && e.data.token) {
     token = e.data.token;
     localStorage.setItem('wms_token', token);
