@@ -43,7 +43,10 @@ class PutawayController extends BaseController
                     'i.lote',
                     'i.fecha_vencimiento',
                     'i.cantidad',
+                    'i.cantidad_reservada',
                     'i.ubicacion_id',
+                    'i.numero_pallet',
+                    'i.estado',
                     'u.codigo as ubicacion_codigo',
                     'u.tipo_ubicacion',
                 ])
@@ -181,6 +184,7 @@ class PutawayController extends BaseController
                     ->where('producto_id', $productoId)
                     ->where('ubicacion_id', $ubicacionOrigId)
                     ->where('lote', $lote)
+                    ->lockForUpdate()
                     ->first();
 
                 if (!$invOrigen || $invOrigen->cantidad < $cantidad) {
@@ -225,7 +229,7 @@ class PutawayController extends BaseController
                 'producto_id'          => $productoId,
                 'ubicacion_origen_id'  => $ubicacionOrigId,
                 'ubicacion_destino_id' => $ubicacionDestId,
-                'tipo_movimiento'      => 'Putaway',
+                'tipo_movimiento'      => 'Traslado',
                 'cantidad'             => $cantidad,
                 'lote'                 => $lote,
                 'fecha_vencimiento'    => $fechaVenc,

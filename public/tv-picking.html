@@ -547,11 +547,15 @@ function renderPlanillasTable(planillas) {
     </tr>`;
   }).join('');
 
+  // Cache row/cell pairs once after render — avoid repeated querySelectorAll
+  const timerPairs = Array.from(
+    document.querySelectorAll('#planillas-tbody tr[data-hora]')
+  ).map(row => ({ hora: row.dataset.hora, cell: row.querySelector('.timer-cell') }))
+   .filter(p => p.cell);
+
   function tickTimers() {
-    document.querySelectorAll('#planillas-tbody tr[data-hora]').forEach(row => {
-      const cell = row.querySelector('.timer-cell');
-      if (!cell) return;
-      const elapsed = elapsedTime(row.dataset.hora);
+    timerPairs.forEach(({ hora, cell }) => {
+      const elapsed = elapsedTime(hora);
       cell.textContent = elapsed ?? 'No iniciada';
       cell.style.color = elapsed ? 'var(--cyan)' : 'var(--text2)';
     });
@@ -564,14 +568,26 @@ function renderPlanillasTable(planillas) {
 const COLORS = ['#58a6ff','#3fb950','#d29922','#bc8cff','#ffa657','#79c0ff','#f0883e','#56d364','#db61a2','#e3b341'];
 
 function buildChart(id, wrapId, labels, data, unitLabel, noDataMsg = 'Sin datos para el período seleccionado') {
-  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
   const wrap = document.getElementById(wrapId);
   if (!wrap) return;
 
   if (!labels.length) {
+    if (charts[id]) { charts[id].destroy(); delete charts[id]; }
     wrap.innerHTML = `<div class="no-data">${noDataMsg}</div>`;
     return;
   }
+
+  // Update in-place when chart already exists — avoids destroy/recreate every 30s
+  if (charts[id]) {
+    const ds = charts[id].data.datasets[0];
+    charts[id].data.labels    = labels;
+    ds.data                   = data;
+    ds.backgroundColor        = labels.map((_,i) => COLORS[i % COLORS.length] + 'bb');
+    ds.borderColor            = labels.map((_,i) => COLORS[i % COLORS.length]);
+    charts[id].update('none'); // skip animation on refresh
+    return;
+  }
+
   if (!wrap.querySelector('canvas')) {
     wrap.innerHTML = `<canvas id="${id}"></canvas>`;
   }

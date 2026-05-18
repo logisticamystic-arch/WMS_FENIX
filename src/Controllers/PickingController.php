@@ -1151,9 +1151,48 @@ class PickingController extends BaseController
         $orden = OrdenPicking::where('empresa_id', $user->empresa_id)->find($a['id']);
         if (!$orden) return $this->notFound($res);
 
-        $orden->estado   = 'Completada';
-        $orden->hora_fin = date('H:i:s');
-        $orden->save();
+        try {
+            Capsule::transaction(function () use ($orden, $user) {
+                // Release reservations and close any lines still open
+                $lineasAbiertas = PickingDetalle::where('orden_picking_id', $orden->id)
+                    ->whereIn('estado', ['Pendiente', 'EnProceso'])
+                    ->lockForUpdate()
+                    ->get();
+
+                foreach ($lineasAbiertas as $linea) {
+                    if ($linea->producto_id && $linea->cantidad_solicitada > 0) {
+                        $invReservas = Inventario::where('empresa_id',        $user->empresa_id)
+                            ->where('sucursal_id',        $user->sucursal_id)
+                            ->where('producto_id',        $linea->producto_id)
+                            ->where('cantidad_reservada', '>', 0)
+                            ->when($linea->ubicacion_id, fn($q) => $q->where('ubicacion_id', $linea->ubicacion_id))
+                            ->when($linea->lote,         fn($q) => $q->where('lote',         $linea->lote))
+                            ->lockForUpdate()
+                            ->get();
+
+                        $porLiberar = (int)$linea->cantidad_solicitada;
+                        foreach ($invReservas as $invR) {
+                            if ($porLiberar <= 0) break;
+                            $aLiberar = min((int)$invR->cantidad_reservada, $porLiberar);
+                            $invR->cantidad_reservada -= $aLiberar;
+                            $invR->save();
+                            $porLiberar -= $aLiberar;
+                        }
+                    }
+
+                    $linea->estado = 'Faltante';
+                    $linea->observacion = 'Orden completada manualmente';
+                    $linea->save();
+                }
+
+                $orden->estado   = 'Completada';
+                $orden->hora_fin = date('H:i:s');
+                $orden->save();
+            });
+        } catch (\Exception $e) {
+            error_log('PickingController::completar error: ' . $e->getMessage());
+            return $this->error($res, 'Error al completar orden: ' . $e->getMessage(), 500);
+        }
 
         $this->audit($user, 'picking', 'completar', 'orden_pickings', $orden->id,
             null, ['estado' => 'Completada'], "Orden picking {$orden->numero_orden} completada");
@@ -1562,12 +1601,18 @@ class PickingController extends BaseController
             })
             ->when($params['ruta'] ?? null, fn($q, $ruta) => $q->where('area_comercial', $ruta));
 
-        // KPIs Básicos
+        // KPIs Básicos — single query instead of 4
+        $counts = (clone $baseQ)->selectRaw(
+            'COUNT(*) as total_ordenes,
+             SUM(estado = "Pendiente") as pendientes,
+             SUM(estado = "EnProceso") as en_proceso,
+             SUM(estado = "Completada") as completadas'
+        )->first();
         $stats = [
-            'total_ordenes'   => (clone $baseQ)->count(),
-            'pendientes'      => (clone $baseQ)->where('estado', 'Pendiente')->count(),
-            'en_proceso'      => (clone $baseQ)->where('estado', 'EnProceso')->count(),
-            'completadas'     => (clone $baseQ)->where('estado', 'Completada')->count(),
+            'total_ordenes' => (int)($counts->total_ordenes ?? 0),
+            'pendientes'    => (int)($counts->pendientes    ?? 0),
+            'en_proceso'    => (int)($counts->en_proceso    ?? 0),
+            'completadas'   => (int)($counts->completadas   ?? 0),
         ];
 
         // Líneas activas (pendientes + en proceso)
@@ -1631,6 +1676,7 @@ class PickingController extends BaseController
         })
         ->where('estado', 'Faltante')
         ->with(['producto:id,nombre,codigo_interno', 'ordenPicking:id,planilla_numero'])
+        ->limit(30)
         ->get()
         ->map(fn($f) => [
             'id'       => $f->id,
@@ -2351,18 +2397,46 @@ class PickingController extends BaseController
         $linea = PickingDetalle::where('orden_picking_id', $orden->id)->find($lineaId);
         if (!$linea) return $this->notFound($res, 'Línea no encontrada');
 
-        $linea->estado      = 'Faltante';
-        $linea->observacion = $obs ?: 'Sin stock disponible';
-        $linea->save();
+        try {
+            Capsule::transaction(function () use ($linea, $obs, $orden, $user) {
+                // Release reservation created by asignarMultiple() for this line
+                if ($linea->producto_id && $linea->cantidad_solicitada > 0) {
+                    $invReservas = Inventario::where('empresa_id',        $user->empresa_id)
+                        ->where('sucursal_id',        $user->sucursal_id)
+                        ->where('producto_id',        $linea->producto_id)
+                        ->where('cantidad_reservada', '>', 0)
+                        ->when($linea->ubicacion_id, fn($q) => $q->where('ubicacion_id', $linea->ubicacion_id))
+                        ->when($linea->lote,         fn($q) => $q->where('lote',         $linea->lote))
+                        ->lockForUpdate()
+                        ->get();
 
-        // Si todas las líneas están resueltas, cerrar la orden
-        $abiertas = PickingDetalle::where('orden_picking_id', $orden->id)
-            ->whereIn('estado', ['Pendiente', 'EnProceso'])
-            ->count();
-        if ($abiertas === 0) {
-            $orden->estado   = 'Completada';
-            $orden->hora_fin = date('H:i:s');
-            $orden->save();
+                    $porLiberar = (int)$linea->cantidad_solicitada;
+                    foreach ($invReservas as $invR) {
+                        if ($porLiberar <= 0) break;
+                        $aLiberar = min((int)$invR->cantidad_reservada, $porLiberar);
+                        $invR->cantidad_reservada -= $aLiberar;
+                        $invR->save();
+                        $porLiberar -= $aLiberar;
+                    }
+                }
+
+                $linea->estado      = 'Faltante';
+                $linea->observacion = $obs ?: 'Sin stock disponible';
+                $linea->save();
+
+                // Si todas las líneas están resueltas, cerrar la orden
+                $abiertas = PickingDetalle::where('orden_picking_id', $orden->id)
+                    ->whereIn('estado', ['Pendiente', 'EnProceso'])
+                    ->count();
+                if ($abiertas === 0) {
+                    $orden->estado   = 'Completada';
+                    $orden->hora_fin = date('H:i:s');
+                    $orden->save();
+                }
+            });
+        } catch (\Exception $e) {
+            error_log('PickingController::marcarFaltante error: ' . $e->getMessage());
+            return $this->error($res, 'Error al marcar faltante: ' . $e->getMessage(), 500);
         }
 
         $this->audit($user, 'picking', 'marcar_faltante', 'picking_detalles', $linea->id,
@@ -2393,9 +2467,14 @@ class PickingController extends BaseController
                         ->where('producto_id',  $tarea->producto_id)
                         ->where('ubicacion_id', $tarea->ubicacion_origen_id)
                         ->where('estado', 'Disponible')
+                        ->lockForUpdate()
                         ->first();
 
-                    if ($origen && $origen->cantidad >= $tarea->cantidad) {
+                    if (!$origen || $origen->cantidad < $tarea->cantidad) {
+                        throw new \Exception('Stock insuficiente en origen para completar el reabastecimiento');
+                    }
+
+                    if ($origen->cantidad >= $tarea->cantidad) {
                         $origen->cantidad -= $tarea->cantidad;
                         if ($origen->cantidad === 0) $origen->delete();
                         else $origen->save();
@@ -2642,8 +2721,8 @@ class PickingController extends BaseController
         if (!$idsRaw) {
             return $this->error($res, 'ids requerido.', 400);
         }
-        if ($cantidadTomada < 0) {
-            return $this->error($res, 'cantidad_tomada requerida.', 400);
+        if ($cantidadTomada <= 0) {
+            return $this->error($res, 'cantidad_tomada debe ser mayor a 0.', 400);
         }
 
         $ids = is_array($idsRaw)
@@ -2705,10 +2784,10 @@ class PickingController extends BaseController
                     }
 
                     // ── Fase 2 + 3: Descontar stock real y registrar movimiento ────────────
-                    // Solo si se tomaron unidades físicamente del almacén.
+                    $realmenteDescontado = 0; // unidades efectivamente retiradas del inventario
+
                     if ($tomarInventario > 0) {
-                        // Busca el registro de inventario exacto (ubicacion + lote)
-                        $invQ = Inventario::where('empresa_id', $user->empresa_id)
+                        $inv = Inventario::where('empresa_id', $user->empresa_id)
                             ->where('sucursal_id', $user->sucursal_id)
                             ->where('producto_id', $det->producto_id)
                             ->where('estado',      'Disponible')
@@ -2716,9 +2795,8 @@ class PickingController extends BaseController
                             ->when($det->lote,         fn($q) => $q->where('lote',         $det->lote))
                             ->lockForUpdate()
                             ->orderBy('fecha_vencimiento', 'asc')
-                            ->orderBy('id', 'asc');
-
-                        $inv = $invQ->first();
+                            ->orderBy('id', 'asc')
+                            ->first();
 
                         // FEFO fallback: si la ubicación exacta no tiene stock, buscar otra
                         if (!$inv || $inv->cantidad <= 0) {
@@ -2735,6 +2813,7 @@ class PickingController extends BaseController
                         }
 
                         if ($inv) {
+                            // Cap descuento at available stock — picking_detalles reflects reality
                             $descuento = min($tomarInventario, (int)$inv->cantidad);
                             $inv->cantidad -= $descuento;
                             if ($inv->cantidad <= 0) {
@@ -2742,6 +2821,7 @@ class PickingController extends BaseController
                             } else {
                                 $inv->save();
                             }
+                            $realmenteDescontado = $descuento;
 
                             MovimientoInventario::create([
                                 'empresa_id'          => $user->empresa_id,
@@ -2760,15 +2840,15 @@ class PickingController extends BaseController
                                 'hora_inicio'         => date('H:i:s'),
                             ]);
                         } else {
-                            // Sin stock físico: registra diferencia para auditoría
                             error_log("[confirmarConsolidado] Sin inventario para producto_id={$det->producto_id}"
                                 . " ubicacion_id={$det->ubicacion_id} lote={$det->lote}");
                         }
                     }
 
                     // ── Fase 4: Actualizar detalle ──────────────────────────────────────────
-                    $det->cantidad_pickeada = $tomarInventario;
-                    $det->estado = ($tomarInventario >= $det->cantidad_solicitada)
+                    // cantidad_pickeada = lo que físicamente se retiró del inventario
+                    $det->cantidad_pickeada = $realmenteDescontado;
+                    $det->estado = ($realmenteDescontado >= $det->cantidad_solicitada)
                         ? 'Completado' : 'Faltante';
                     $det->save();
 

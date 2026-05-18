@@ -129,20 +129,65 @@ class RecepcionController extends BaseController
         $user = $request->getAttribute('user');
         $id   = (int)$args['id'];
 
-        $recepcion = Recepcion::where('empresa_id', $user->empresa_id)->find($id);
+        $recepcion = Recepcion::with('detalles')->where('empresa_id', $user->empresa_id)->find($id);
         if (!$recepcion) {
             return $this->json($response, ['error' => true, 'message' => 'Recepción no encontrada'], 404);
         }
-        if ($recepcion->estado === 'Cerrada') {
-            return $this->json($response, ['error' => true, 'message' => 'No se puede eliminar una recepción cerrada'], 400);
+        try {
+            Capsule::connection()->beginTransaction();
+
+            // Revertir inventario de cada línea aprobada (sin-ODC y ODC con stock en Patio)
+            if ($recepcion->detalles->isNotEmpty()) {
+                foreach ($recepcion->detalles as $detalle) {
+                    if (!$detalle->aprobado_admin) continue; // sólo líneas que crearon stock
+                    $loteKey = $detalle->lote ?? 'N/A';
+                    $inv = \App\Models\Inventario::where('empresa_id', $user->empresa_id)
+                        ->where('sucursal_id', $user->sucursal_id)
+                        ->where('producto_id', $detalle->producto_id)
+                        ->where('ubicacion_id', $detalle->ubicacion_destino_id)
+                        ->where('lote', $loteKey)
+                        ->when($detalle->numero_pallet, fn($q) => $q->where('numero_pallet', $detalle->numero_pallet))
+                        ->when(!$detalle->numero_pallet, fn($q) => $q->whereNull('numero_pallet'))
+                        ->first();
+
+                    if ($inv) {
+                        $newQty = max(0, ($inv->cantidad ?? 0) - (float)$detalle->cantidad_recibida);
+                        if ($newQty == 0) {
+                            $inv->delete();
+                        } else {
+                            $inv->cantidad = $newQty;
+                            $inv->save();
+                        }
+
+                        \App\Models\MovimientoInventario::create([
+                            'empresa_id'           => $user->empresa_id,
+                            'sucursal_id'          => $user->sucursal_id,
+                            'producto_id'          => $detalle->producto_id,
+                            'tipo_movimiento'      => 'AjusteNegativo',
+                            'referencia_tipo'      => $recepcion->odc_id ? 'ODC' : 'SinODC',
+                            'referencia_id'        => $recepcion->id,
+                            'cantidad'             => (int)round((float)$detalle->cantidad_recibida),
+                            'fecha_movimiento'     => date('Y-m-d'),
+                            'hora_inicio'          => date('H:i:s'),
+                            'ubicacion_destino_id' => $detalle->ubicacion_destino_id,
+                            'auxiliar_id'          => $user->id,
+                            'numero_pallet'        => $detalle->numero_pallet,
+                            'lote'                 => $loteKey,
+                            'observaciones'        => 'Anulación recepción ' . $recepcion->numero_recepcion,
+                        ]);
+                    }
+                }
+            }
+
+            Capsule::table('recepcion_detalles')->where('recepcion_id', $recepcion->id)->delete();
+            $recepcion->delete();
+
+            Capsule::connection()->commit();
+            return $this->json($response, ['error' => false, 'message' => 'Recepción eliminada correctamente']);
+        } catch (\Exception $e) {
+            Capsule::connection()->rollBack();
+            return $this->json($response, ['error' => true, 'message' => 'Error al eliminar: ' . $e->getMessage()], 500);
         }
-
-        // Delete details first
-        \Illuminate\Database\Capsule\Manager::table('recepcion_detalles')
-            ->where('recepcion_id', $recepcion->id)->delete();
-        $recepcion->delete();
-
-        return $this->json($response, ['error' => false, 'message' => 'Recepción eliminada']);
     }
 
     /**
@@ -412,18 +457,19 @@ class RecepcionController extends BaseController
         $detalle->ubicacion_destino_id = $ubicacionDestinoId;
         $detalle->numero_pallet = !empty($data['numero_pallet']) ? (int)$data['numero_pallet'] : null;
         $detalle->aprobado_admin = 1; // Auto-aprobar para visibilidad inmediata en Patio
-        $detalle->save();
-
-        if ($detalleOdc) {
-            // Actualizar en UNIDADES (cantidad ya contiene unidades convertidas)
-            $detalleOdc->cantidad_recibida = max(0, $detalleOdc->cantidad_recibida + $cantidad);
-            $detalleOdc->save();
-        }
 
         // ── INVENTARIO EN TIEMPO REAL (PALLET POR PALLET) ────────────────────
         try {
             \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
-            
+
+            $detalle->save();
+
+            if ($detalleOdc) {
+                // Actualizar en UNIDADES (cantidad ya contiene unidades convertidas)
+                $detalleOdc->cantidad_recibida = max(0, $detalleOdc->cantidad_recibida + $cantidad);
+                $detalleOdc->save();
+            }
+
             // 1. Registrar Movimiento de Entrada
             \App\Models\MovimientoInventario::create([
                 'empresa_id'  => $user->empresa_id,
@@ -458,8 +504,11 @@ class RecepcionController extends BaseController
             \Illuminate\Database\Capsule\Manager::connection()->commit();
         } catch (\Exception $e) {
             \Illuminate\Database\Capsule\Manager::connection()->rollBack();
-            // Log error pero permitimos retornar 201 porque el detalle manual ya se guardó
-            error_log("Error en inventario real-time: " . $e->getMessage());
+            error_log("Error en recepcion operativa transaccion: " . $e->getMessage());
+            return $this->json($response, [
+                'error' => true,
+                'message' => 'Error al guardar recepción: ' . $e->getMessage(),
+            ], 500);
         }
 
         return $this->json($response, [
@@ -494,9 +543,32 @@ class RecepcionController extends BaseController
         }
 
         // ── Separar código y fecha ───────────────────────────────────────────
-        $slashPos = strpos($qr, '/');
-        $code     = $slashPos !== false ? trim(substr($qr, 0, $slashPos)) : trim($qr);
-        $rawDate  = $slashPos !== false ? trim(substr($qr, $slashPos + 1)) : '';
+        $code     = '';
+        $rawDate  = '';
+        $rawLote  = '';
+
+        if (strpos($qr, ',') !== false) {
+            // Formato Comas: CODIGO, SOMETHING, FECHA_VENC, SOMETHING, LOTE_DATE, ...
+            $parts = explode(',', $qr);
+            $code = trim($parts[0] ?? '');
+            
+            // Fecha Vencimiento: Tercer campo (index 2)
+            $rawDate = trim($parts[2] ?? '');
+            
+            // Lote: Quinto campo (index 4) - También puede ser una fecha
+            $rawLote = trim($parts[4] ?? '');
+            if ($rawLote !== '') {
+                $parsedLoteDate = $this->_parsearFechaQr($rawLote);
+                if ($parsedLoteDate) {
+                    $rawLote = $parsedLoteDate;
+                }
+            }
+        } else {
+            // Formato Legacy: CODIGO/FECHA_VENCIMIENTO
+            $slashPos = strpos($qr, '/');
+            $code     = $slashPos !== false ? trim(substr($qr, 0, $slashPos)) : trim($qr);
+            $rawDate  = $slashPos !== false ? trim(substr($qr, $slashPos + 1)) : '';
+        }
 
         // ── Parsear fecha de vencimiento ─────────────────────────────────────
         $fechaVenc = null;
@@ -549,6 +621,7 @@ class RecepcionController extends BaseController
                 'producto'         => $prod,
                 'fecha_vencimiento'=> $fechaVenc,
                 'fecha_raw'        => $rawDate,
+                'lote_raw'         => $rawLote,
                 'code_qr'          => $code,
             ],
         ]);
@@ -563,28 +636,38 @@ class RecepcionController extends BaseController
         $s = trim($raw);
         if ($s === '') return null;
 
-        // 1. YYYYMMDD — 8 dígitos donde los primeros 4 son un año plausible (1900-2199)
-        if (preg_match('/^(19|20|21)(\d{2})(\d{2})(\d{2})$/', $s)) {
-            try { return Carbon::createFromFormat('Ymd', $s)->format('Y-m-d'); } catch (\Exception $e) {}
+        // 1. Si ya tiene formato YYYY-MM-DD, retornarlo tal cual
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $s)) return $s;
+
+        // 2. Intentar parseo directo con Carbon (maneja /, -, y formatos estándar)
+        try {
+            return Carbon::parse(str_replace('/', '-', $s))->format('Y-m-d');
+        } catch (\Exception $e) {}
+
+        // 3. Limpiar todo lo que no sea números para formatos pegados (20261231, 31122026)
+        $clean = preg_replace('/[^0-9]/', '', $s);
+        
+        // 8 dígitos: YYYYMMDD
+        if (strlen($clean) === 8 && preg_match('/^(19|20|21)\d{6}$/', $clean)) {
+            try { return Carbon::createFromFormat('Ymd', $clean)->format('Y-m-d'); } catch (\Exception $e) {}
         }
-        // 2. DDMMYYYY — 8 dígitos donde los dos últimos 4 son año plausible
-        if (preg_match('/^(\d{2})(\d{2})(19|20|21)(\d{2})$/', $s)) {
-            try { return Carbon::createFromFormat('dmY', $s)->format('Y-m-d'); } catch (\Exception $e) {}
+        
+        // 8 dígitos: DDMMYYYY
+        if (strlen($clean) === 8 && preg_match('/^\d{4}(19|20|21)\d{2}$/', $clean)) {
+            try { return Carbon::createFromFormat('dmY', $clean)->format('Y-m-d'); } catch (\Exception $e) {}
         }
-        // 3. YYYY-MM-DD o YYYY/MM/DD (con separador, año primero)
-        if (preg_match('/^(19|20|21)\d{2}[\/\-]\d{2}[\/\-]\d{2}$/', $s)) {
-            try { return Carbon::parse(str_replace('/', '-', $s))->format('Y-m-d'); } catch (\Exception $e) {}
+
+        // 6 dígitos: DDMMYY (asumimos siglo 21 si es > 20)
+        if (strlen($clean) === 6) {
+            try { return Carbon::createFromFormat('dmy', $clean)->format('Y-m-d'); } catch (\Exception $e) {}
         }
-        // 4. DD/MM/YYYY o DD-MM-YYYY (con separador, día primero)
-        if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $s)) {
-            try { return Carbon::createFromFormat('d/m/Y', str_replace('-', '/', $s))->format('Y-m-d'); } catch (\Exception $e) {}
+
+        // 7. Soporte para fechas seriales de Excel (ej: 46232)
+        if (is_numeric($s) && (int)$s > 30000 && (int)$s < 70000) {
+            try {
+                return Carbon::create(1899, 12, 30)->addDays((int)$s)->format('Y-m-d');
+            } catch (\Exception $e) {}
         }
-        // 5. MM/YYYY o MM-YYYY → primer día del mes
-        if (preg_match('/^(\d{1,2})[\/\-](\d{4})$/', $s, $m)) {
-            try { return Carbon::createFromFormat('m/Y', $m[1] . '/' . $m[2])->startOfMonth()->format('Y-m-d'); } catch (\Exception $e) {}
-        }
-        // 6. Intento genérico con Carbon
-        try { return Carbon::parse($s)->format('Y-m-d'); } catch (\Exception $e) {}
 
         return null;
     }
@@ -732,6 +815,199 @@ class RecepcionController extends BaseController
                 ],
             ],
         ], 201);
+    }
+
+    // ── PATCH /api/recepciones/{id}/detalle/{detalleId} ──────────────────────
+    // Edita la cantidad de una línea de recepción sin ODC y ajusta el inventario.
+    public function actualizarDetalleSinOdc(Request $r, Response $res, array $a): Response
+    {
+        $user        = $r->getAttribute('user');
+        $recepcionId = (int)($a['id']        ?? 0);
+        $detalleId   = (int)($a['detalleId'] ?? 0);
+        $body        = (array)($r->getParsedBody() ?? []);
+
+        $recepcion = Recepcion::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereNull('odc_id')
+            ->where('estado', 'Borrador')
+            ->find($recepcionId);
+        if (!$recepcion) {
+            return $this->json($res, ['error'=>true,'message'=>'Recepción sin ODC no encontrada o ya cerrada'], 404);
+        }
+
+        $rol = strtolower($user->rol ?? '');
+        if ($recepcion->auxiliar_id !== $user->id && !in_array($rol, ['admin','supervisor'])) {
+            return $this->json($res, ['error'=>true,'message'=>'No tiene permiso para modificar esta recepción'], 403);
+        }
+
+        $detalle = RecepcionDetalle::where('recepcion_id', $recepcionId)->find($detalleId);
+        if (!$detalle) {
+            return $this->json($res, ['error'=>true,'message'=>'Línea no encontrada'], 404);
+        }
+
+        $nuevaCantidad = (float)($body['cantidad_recibida'] ?? $body['cantidad'] ?? 0);
+        if ($nuevaCantidad <= 0) {
+            return $this->json($res, ['error'=>true,'message'=>'La cantidad debe ser mayor a cero'], 400);
+        }
+
+        $upc         = max(1, (int)($detalle->cajas_por_unidad ?? 1));
+        $nuevasCajas = isset($body['cantidad_cajas']) ? (int)$body['cantidad_cajas'] : (int)ceil($nuevaCantidad / $upc);
+        $delta       = $nuevaCantidad - (float)$detalle->cantidad_recibida;
+
+        try {
+            Capsule::connection()->beginTransaction();
+
+            if (abs($delta) > 0.001) {
+                $loteKey = $detalle->lote ?? 'N/A';
+
+                $inv = \App\Models\Inventario::where('empresa_id', $user->empresa_id)
+                    ->where('sucursal_id', $user->sucursal_id)
+                    ->where('producto_id', $detalle->producto_id)
+                    ->where('ubicacion_id', $detalle->ubicacion_destino_id)
+                    ->where('lote', $loteKey)
+                    ->where('estado', 'Disponible')
+                    ->first();
+
+                if ($inv) {
+                    $inv->cantidad = max(0, ($inv->cantidad ?? 0) + $delta);
+                    $inv->save();
+                } elseif ($delta > 0) {
+                    $inv = new \App\Models\Inventario([
+                        'empresa_id'         => $user->empresa_id,
+                        'sucursal_id'        => $user->sucursal_id,
+                        'producto_id'        => $detalle->producto_id,
+                        'ubicacion_id'       => $detalle->ubicacion_destino_id,
+                        'lote'               => $loteKey,
+                        'estado'             => 'Disponible',
+                        'cantidad'           => $delta,
+                        'cantidad_reservada' => 0,
+                        'fecha_vencimiento'  => $detalle->fecha_vencimiento,
+                    ]);
+                    $inv->save();
+                }
+
+                \App\Models\MovimientoInventario::create([
+                    'empresa_id'           => $user->empresa_id,
+                    'sucursal_id'          => $user->sucursal_id,
+                    'producto_id'          => $detalle->producto_id,
+                    'tipo_movimiento'      => $delta >= 0 ? 'AjustePositivo' : 'AjusteNegativo',
+                    'referencia_tipo'      => 'SinODC',
+                    'referencia_id'        => $recepcion->id,
+                    'cantidad'             => (int)round(abs($delta)),
+                    'fecha_movimiento'     => date('Y-m-d'),
+                    'hora_inicio'          => date('H:i:s'),
+                    'ubicacion_destino_id' => $detalle->ubicacion_destino_id,
+                    'auxiliar_id'          => $user->id,
+                    'lote'                 => $loteKey,
+                    'observaciones'        => 'Corrección línea recepción ' . $recepcion->numero_recepcion,
+                ]);
+            }
+
+            $detalle->cantidad_recibida = $nuevaCantidad;
+            $detalle->cantidad_cajas    = $nuevasCajas;
+            if (array_key_exists('lote', $body))              $detalle->lote              = $body['lote'] ?: null;
+            if (array_key_exists('fecha_vencimiento', $body)) $detalle->fecha_vencimiento = $body['fecha_vencimiento'] ?: null;
+            if (array_key_exists('estado_mercancia', $body))  $detalle->estado_mercancia  = $body['estado_mercancia'];
+            $detalle->save();
+
+            Capsule::connection()->commit();
+        } catch (\Exception $e) {
+            Capsule::connection()->rollBack();
+            return $this->json($res, ['error'=>true,'message'=>'Error actualizando línea: ' . $e->getMessage()], 500);
+        }
+
+        $detalle->load('producto');
+        return $this->json($res, ['error'=>false,'message'=>'Línea actualizada correctamente','data'=>['detalle'=>$detalle->toArray()]]);
+    }
+
+    // ── DELETE /api/recepciones/{id}/detalle/{detalleId} ─────────────────────
+    // Elimina una línea de recepción sin ODC y revierte el inventario.
+    public function eliminarDetalleSinOdc(Request $r, Response $res, array $a): Response
+    {
+        $user        = $r->getAttribute('user');
+        $recepcionId = (int)($a['id']        ?? 0);
+        $detalleId   = (int)($a['detalleId'] ?? 0);
+
+        $recepcion = Recepcion::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereNull('odc_id')
+            ->where('estado', 'Borrador')
+            ->find($recepcionId);
+        if (!$recepcion) {
+            return $this->json($res, ['error'=>true,'message'=>'Recepción sin ODC no encontrada o ya cerrada'], 404);
+        }
+
+        $rol = strtolower($user->rol ?? '');
+        if ($recepcion->auxiliar_id !== $user->id && !in_array($rol, ['admin','supervisor'])) {
+            return $this->json($res, ['error'=>true,'message'=>'No tiene permiso para modificar esta recepción'], 403);
+        }
+
+        $detalle = RecepcionDetalle::where('recepcion_id', $recepcionId)->find($detalleId);
+        if (!$detalle) {
+            return $this->json($res, ['error'=>true,'message'=>'Línea no encontrada'], 404);
+        }
+
+        try {
+            Capsule::connection()->beginTransaction();
+
+            $loteKey = $detalle->lote ?? 'N/A';
+
+            // Revertir inventario
+            $inv = \App\Models\Inventario::where('empresa_id', $user->empresa_id)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->where('producto_id', $detalle->producto_id)
+                ->where('ubicacion_id', $detalle->ubicacion_destino_id)
+                ->where('lote', $loteKey)
+                ->where('estado', 'Disponible')
+                ->first();
+
+            if ($inv) {
+                $newQty = max(0, ($inv->cantidad ?? 0) - (float)$detalle->cantidad_recibida);
+                if ($newQty == 0) {
+                    $inv->delete();
+                } else {
+                    $inv->cantidad = $newQty;
+                    $inv->save();
+                }
+            }
+
+            // Log de reversa
+            \App\Models\MovimientoInventario::create([
+                'empresa_id'           => $user->empresa_id,
+                'sucursal_id'          => $user->sucursal_id,
+                'producto_id'          => $detalle->producto_id,
+                'tipo_movimiento'      => 'AjusteNegativo',
+                'referencia_tipo'      => 'SinODC',
+                'referencia_id'        => $recepcion->id,
+                'cantidad'             => (int)round((float)$detalle->cantidad_recibida),
+                'fecha_movimiento'     => date('Y-m-d'),
+                'hora_inicio'          => date('H:i:s'),
+                'ubicacion_destino_id' => $detalle->ubicacion_destino_id,
+                'auxiliar_id'          => $user->id,
+                'lote'                 => $loteKey,
+                'observaciones'        => 'Anulación línea recepción ' . $recepcion->numero_recepcion,
+            ]);
+
+            $detalle->delete();
+
+            $restantes = RecepcionDetalle::where('recepcion_id', $recepcionId)->count();
+            $recepcionEliminada = false;
+            if ($restantes === 0) {
+                $recepcion->delete();
+                $recepcionEliminada = true;
+            }
+
+            Capsule::connection()->commit();
+
+            return $this->json($res, [
+                'error'   => false,
+                'message' => 'Línea eliminada y stock revertido' . ($recepcionEliminada ? '. Recepción vacía eliminada.' : '.'),
+                'data'    => ['recepcion_eliminada' => $recepcionEliminada],
+            ]);
+        } catch (\Exception $e) {
+            Capsule::connection()->rollBack();
+            return $this->json($res, ['error'=>true,'message'=>'Error eliminando línea: ' . $e->getMessage()], 500);
+        }
     }
 
     /**
@@ -973,6 +1249,9 @@ class RecepcionController extends BaseController
             return $this->json($response, ['error' => true, 'message' => 'Cantidad inválida'], 422);
         }
 
+        $oldQty     = (float)$det->cantidad_recibida;
+        $oldUbicId  = $det->ubicacion_destino_id;
+
         $det->cantidad_recibida = $qty;
         if (isset($body['lote'])) {
             $det->lote = $body['lote'] ?: null;
@@ -983,7 +1262,37 @@ class RecepcionController extends BaseController
         if (isset($body['ubicacion_destino_id'])) {
             $det->ubicacion_destino_id = (int)$body['ubicacion_destino_id'] ?: null;
         }
-        $det->save();
+
+        try {
+            \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
+
+            $det->save();
+
+            // Keep inventory in sync when the pallet was already approved
+            if ($det->aprobado_admin && $qty != $oldQty && $det->producto_id) {
+                $diff    = $qty - $oldQty;
+                $ubicId  = $det->ubicacion_destino_id ?? $oldUbicId;
+                $inv = \App\Models\Inventario::where('empresa_id',  $recepcion->empresa_id)
+                    ->where('sucursal_id',  $recepcion->sucursal_id)
+                    ->where('producto_id', $det->producto_id)
+                    ->where('ubicacion_id', $ubicId)
+                    ->lockForUpdate()
+                    ->first();
+                if ($inv) {
+                    $inv->cantidad = max(0, (float)$inv->cantidad + $diff);
+                    if ($inv->cantidad <= 0) {
+                        $inv->delete();
+                    } else {
+                        $inv->save();
+                    }
+                }
+            }
+
+            \Illuminate\Database\Capsule\Manager::connection()->commit();
+        } catch (\Exception $e) {
+            \Illuminate\Database\Capsule\Manager::connection()->rollBack();
+            return $this->json($response, ['error' => true, 'message' => 'Error al actualizar: ' . $e->getMessage()], 500);
+        }
 
         return $this->json($response, [
             'error'   => false,
@@ -1109,16 +1418,18 @@ class RecepcionController extends BaseController
             $totalRecibido = (float)($stats->total_recibido ?? 0);
             $porcentaje = $totalEsperado > 0 ? round(($totalRecibido / $totalEsperado) * 100, 1) : 0;
 
+            $esSinOdc = is_null($rec->odc_id);
             return [
-                'id' => $rec->id,
+                'id'               => $rec->id,
                 'numero_recepcion' => $rec->numero_recepcion,
-                'estado' => $rec->estado,
-                'proveedor' => $rec->cita->proveedor ?? 'Manual/Directo',
-                'auxiliar' => $rec->auxiliar->nombre ?? 'N/A',
-                'lineas_count' => $rec->detalles_count,
-                'progreso' => $porcentaje,
-                'inicio' => $rec->hora_inicio,
-                'created_at' => $rec->created_at ? $rec->created_at->toDateTimeString() : null,
+                'estado'           => $rec->estado,
+                'es_sin_odc'       => $esSinOdc,
+                'proveedor'        => $esSinOdc ? 'Sin ODC' : ($rec->cita->proveedor ?? 'Manual/Directo'),
+                'auxiliar'         => $rec->auxiliar->nombre ?? 'N/A',
+                'lineas_count'     => $rec->detalles_count,
+                'progreso'         => $porcentaje,
+                'inicio'           => $rec->hora_inicio,
+                'created_at'       => $rec->created_at ? $rec->created_at->toDateTimeString() : null,
             ];
         });
 
@@ -1187,18 +1498,49 @@ class RecepcionController extends BaseController
                 ->orderBy('total', 'desc')
                 ->get();
 
+            // Sin-ODC specific stats
+            $sinOdcActivas = Recepcion::where('sucursal_id', $user->sucursal_id)
+                ->whereNull('odc_id')
+                ->where('estado', 'Borrador')
+                ->withCount('detalles')
+                ->get()
+                ->map(fn($r) => [
+                    'id'               => $r->id,
+                    'numero_recepcion' => $r->numero_recepcion,
+                    'auxiliar'         => $r->auxiliar->nombre ?? 'N/A',
+                    'lineas_count'     => $r->detalles_count,
+                    'hora_inicio'      => $r->hora_inicio,
+                    'fecha_movimiento' => $r->fecha_movimiento,
+                ]);
+            $sinOdcCerradasHoy = Recepcion::where('sucursal_id', $user->sucursal_id)
+                ->whereNull('odc_id')
+                ->where('estado', 'Cerrada')
+                ->whereDate('fecha_movimiento', $hoy)
+                ->count();
+            $sinOdcLineasHoy = (int) Capsule::table('recepcion_detalles as rd')
+                ->join('recepciones as r', 'r.id', '=', 'rd.recepcion_id')
+                ->where('r.sucursal_id', $user->sucursal_id)
+                ->whereNull('r.odc_id')
+                ->whereDate('r.fecha_movimiento', $hoy)
+                ->sum('rd.cantidad_recibida');
+
             return $this->ok($res, [
-                'activas' => $activasData,
-                'tendencia' => $tendencia,
-                'eficiencia' => $eficiencia,
+                'activas'        => $activasData,
+                'tendencia'      => $tendencia,
+                'eficiencia'     => $eficiencia,
                 'categorias_stats' => $categorias_stats,
-                'pwa_stats' => [
+                'sin_odc'        => [
+                    'activas'       => $sinOdcActivas,
+                    'cerradas_hoy'  => $sinOdcCerradasHoy,
+                    'lineas_hoy'    => $sinOdcLineasHoy,
+                ],
+                'pwa_stats'      => [
                     'recepciones_hoy' => $totalCerradasHoy->count(),
-                    'odc_pendientes' => OrdenCompra::where('empresa_id', $user->empresa_id)->whereIn('estado', ['Confirmada', 'En Proceso'])->count(),
-                    'total_horas' => $totalHorasEjecutadas . "h",
-                    'total_lineas' => $lineasTotales,
-                    'promedio_tiempo' => $lineasTotales > 0 ? round(($totalHorasEjecutadas * 60) / $lineasTotales, 1) . "m" : "0m"
-                ]
+                    'odc_pendientes'  => OrdenCompra::where('empresa_id', $user->empresa_id)->whereIn('estado', ['Confirmada', 'En Proceso'])->count(),
+                    'total_horas'     => $totalHorasEjecutadas . "h",
+                    'total_lineas'    => $lineasTotales,
+                    'promedio_tiempo' => $lineasTotales > 0 ? round(($totalHorasEjecutadas * 60) / $lineasTotales, 1) . "m" : "0m",
+                ],
             ]);
         } catch (\Exception $e) {
             return $this->error($res, 'Error en Dashboard de Recepción: ' . $e->getMessage());
