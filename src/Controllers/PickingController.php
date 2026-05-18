@@ -2698,7 +2698,7 @@ class PickingController extends BaseController
                     ->count();
 
                 if ($total > 0 && $done >= $total) {
-                    $orden->estado    = 'Completado';
+                    $orden->estado    = 'Completada';
                     $orden->hora_fin  = date('H:i:s');
                 }
 
