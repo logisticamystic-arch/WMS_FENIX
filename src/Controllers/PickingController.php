@@ -914,17 +914,24 @@ class PickingController extends BaseController
 
         try {
             $orden = Capsule::transaction(function () use ($data, $user) {
+                $numeroOrden = !empty($data['numero_pedido'])
+                    ? trim($data['numero_pedido'])
+                    : 'PK-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
+
                 $orden = OrdenPicking::create([
-                    'empresa_id'     => $user->empresa_id,
-                    'sucursal_id'    => $user->sucursal_id,
-                    'numero_orden'   => 'PK-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5)),
-                    'cliente'        => $data['cliente'] ?? null,
-                    'estado'         => 'Pendiente',
-                    'prioridad'      => $data['prioridad'] ?? 5,
-                    'auxiliar_id'    => $data['auxiliar_id'] ?? null,
+                    'empresa_id'      => $user->empresa_id,
+                    'sucursal_id'     => $user->sucursal_id,
+                    'numero_orden'    => $numeroOrden,
+                    'numero_pedido'   => $data['numero_pedido'] ?? null,
+                    'cliente'         => $data['cliente'] ?? null,
+                    'sucursal_entrega'=> $data['sucursal_entrega'] ?? $data['cliente'] ?? null,
+                    'ruta'            => $data['ruta'] ?? null,
+                    'estado'          => 'Pendiente',
+                    'prioridad'       => $data['prioridad'] ?? 5,
+                    'auxiliar_id'     => $data['auxiliar_id'] ?? null,
                     'fecha_movimiento'=> date('Y-m-d'),
-                    'hora_inicio'    => date('H:i:s'),
-                    'fecha_requerida'=> $data['fecha_requerida'] ?? null,
+                    'hora_inicio'     => date('H:i:s'),
+                    'fecha_requerida' => date('Y-m-d'),
                 ]);
 
                 foreach ($data['detalles'] as $det) {
@@ -1552,7 +1559,8 @@ class PickingController extends BaseController
                     ->where('planilla_numero', $p)
                     ->orWhere('area_comercial', 'like', "%$p%")
                 );
-            });
+            })
+            ->when($params['ruta'] ?? null, fn($q, $ruta) => $q->where('area_comercial', $ruta));
 
         // KPIs Básicos
         $stats = [
@@ -1561,6 +1569,61 @@ class PickingController extends BaseController
             'en_proceso'      => (clone $baseQ)->where('estado', 'EnProceso')->count(),
             'completadas'     => (clone $baseQ)->where('estado', 'Completada')->count(),
         ];
+
+        // Líneas activas (pendientes + en proceso)
+        $ordenesActivasIds = (clone $baseQ)->whereIn('estado', ['Pendiente', 'EnProceso'])->pluck('id');
+        $stats['total_lineas_activas']    = PickingDetalle::whereIn('orden_picking_id', $ordenesActivasIds)->count();
+        $stats['lineas_pendientes']       = PickingDetalle::whereIn('orden_picking_id', $ordenesActivasIds)
+                                                ->whereIn('estado', ['Pendiente', 'Creado'])->count();
+        $stats['unidades_pendientes']     = (int) PickingDetalle::whereIn('orden_picking_id', $ordenesActivasIds)
+                                                ->whereIn('estado', ['Pendiente', 'Creado'])
+                                                ->sum('cantidad_solicitada');
+
+        // Planillas activas en vivo (agrupadas por planilla_numero)
+        $ordenesActivas = OrdenPicking::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereBetween('created_at', [$ini, $fin])
+            ->whereIn('estado', ['Pendiente', 'EnProceso'])
+            ->when($params['auxiliar_id'] ?? null, fn($q, $a) => $q->where('auxiliar_id', $a))
+            ->when($params['ruta'] ?? null, fn($q, $ruta) => $q->where('area_comercial', $ruta))
+            ->withCount([
+                'detalles as total_lineas',
+                'detalles as lineas_completadas' => fn($q) => $q->whereIn('estado', ['Completado', 'Faltante']),
+            ])
+            ->with([
+                'detalles' => fn($q) => $q->select('id', 'orden_picking_id', 'auxiliar_id', 'estado')
+                                           ->with('auxiliar:id,nombre'),
+            ])
+            ->get();
+
+        $stats['planillas_activas'] = $ordenesActivas
+            ->groupBy(fn($o) => $o->planilla_numero ?? $o->numero_orden)
+            ->map(function ($orders, $planillaKey) {
+                $first       = $orders->first();
+                $totalLineas = $orders->sum('total_lineas');
+                $lineasComp  = $orders->sum('lineas_completadas');
+                $estado      = $orders->contains('estado', 'EnProceso') ? 'EnProceso' : 'Pendiente';
+                $horaInicio  = $orders->whereNotNull('hora_inicio')
+                                      ->where('hora_inicio', '!=', '00:00:00')
+                                      ->min('hora_inicio');
+                $auxiliares  = $orders->flatMap(fn($o) => $o->detalles->pluck('auxiliar.nombre'))
+                                      ->filter()->unique()->values();
+                $tieneFalt   = $orders->flatMap(fn($o) => $o->detalles)
+                                      ->contains('estado', 'Faltante');
+
+                return [
+                    'planilla_numero'    => $planillaKey,
+                    'estado'             => $estado,
+                    'ruta'               => $first->area_comercial,
+                    'hora_inicio'        => $horaInicio,
+                    'total_lineas'       => $totalLineas,
+                    'lineas_completadas' => $lineasComp,
+                    'auxiliares'         => $auxiliares,
+                    'tiene_faltante'     => $tieneFalt,
+                ];
+            })
+            ->sortBy(fn($p) => $p['estado'] === 'EnProceso' ? 0 : 1)
+            ->values();
 
         // Faltantes Críticos (Alertas)
         $stats['alertas_faltantes'] = PickingDetalle::whereHas('ordenPicking', function($q) use ($ini, $fin, $empresaId, $params, $user) {
@@ -1772,6 +1835,7 @@ class PickingController extends BaseController
             'planilla'         => ['planilla', 'planilla numero', 'num planilla', 'num pedido', 'numero pedido', 'nro planilla'],
             'asesor'           => ['asesor', 'comercial', 'vendedor'],
             'producto'         => ['referencia', 'ref', 'barras', 'ean', 'codigo barras', 'producto', 'codigo producto', 'codigo'],
+            'descripcion'      => ['descripcion', 'descripcion producto', 'nombre producto', 'nombre', 'detalle', 'articulo'],
             'cantidad'         => ['cantidad', 'cant', 'qty', 'unidades', 'unid pedido', 'unid_pedido', 'unidades pedido'],
             'costo'            => ['costo', 'precio', 'valor', 'cost'],
             'descuento'        => ['descuento', 'desc', 'descto', 'dcto'],
@@ -1916,20 +1980,22 @@ class PickingController extends BaseController
         };
 
         // Helper: guardar en staging los productos no encontrados
-        $staging = function(string $ean, string $nfRef, string $sucursal, int $cantidad) use ($user) {
+        $staging = function(string $ean, string $nfRef, string $sucursal, int $cantidad, string $descripcion = '') use ($user) {
             if ($ean === '') return;
             try {
+                $values = [
+                    'cantidad'          => $cantidad,
+                    'numero_factura'    => $nfRef ?: null,
+                    'sucursal_entrega'  => $sucursal,
+                    'importado_por'     => $user->id,
+                    'fecha_importacion' => date('Y-m-d'),
+                    'updated_at'        => date('Y-m-d H:i:s'),
+                    'created_at'        => date('Y-m-d H:i:s'),
+                ];
+                if ($descripcion !== '') $values['descripcion'] = $descripcion;
                 Capsule::table('picking_productos_pendientes')->updateOrInsert(
                     ['empresa_id' => $user->empresa_id, 'sucursal_id' => $user->sucursal_id, 'ean_codigo' => $ean],
-                    [
-                        'cantidad'          => $cantidad,
-                        'numero_factura'    => $nfRef ?: null,
-                        'sucursal_entrega'  => $sucursal,
-                        'importado_por'     => $user->id,
-                        'fecha_importacion' => date('Y-m-d'),
-                        'updated_at'        => date('Y-m-d H:i:s'),
-                        'created_at'        => date('Y-m-d H:i:s'),
-                    ]
+                    $values
                 );
             } catch (\Throwable $ignored) {}
         };
@@ -1965,11 +2031,12 @@ class PickingController extends BaseController
                         }
 
                         foreach ($filas as $fila) {
-                            $ean      = trim($fila['producto'] ?? '');
-                            $nfRef    = trim($fila['numero_factura'] ?? $fila['planilla'] ?? '');
-                            $cantidad = max(1, (int)($fila['cantidad'] ?? 1));
-                            $costo    = $cleanNumber($fila['costo'] ?? '0');
-                            $descuento= (float)($fila['descuento'] ?? 0);
+                            $ean        = trim($fila['producto'] ?? '');
+                            $nfRef      = trim($fila['numero_factura'] ?? $fila['planilla'] ?? '');
+                            $cantidad   = max(1, (int)($fila['cantidad'] ?? 1));
+                            $costo      = $cleanNumber($fila['costo'] ?? '0');
+                            $descuento  = (float)($fila['descuento'] ?? 0);
+                            $descripcion= trim($fila['descripcion'] ?? '');
 
                             $prod = $buscarProducto($ean);
                             if (!$prod) {
@@ -1977,7 +2044,7 @@ class PickingController extends BaseController
                                 $summary['productos_pendientes'][] = [
                                     'ean' => $ean, 'numero_factura' => $nfRef, 'sucursal' => $sucursal, 'cantidad' => $cantidad,
                                 ];
-                                $staging($ean, $nfRef, $sucursal, $cantidad);
+                                $staging($ean, $nfRef, $sucursal, $cantidad, $descripcion);
                                 continue;
                             }
 
@@ -2058,11 +2125,12 @@ class PickingController extends BaseController
 
                         $lineasCreadas = 0;
                         foreach ($filas as $fila) {
-                            $ean      = trim($fila['producto'] ?? '');
-                            $nfRef    = trim($fila['numero_factura'] ?? $fila['planilla'] ?? '');
-                            $cantidad = max(1, (int)($fila['cantidad'] ?? 1));
-                            $costo    = $cleanNumber($fila['costo'] ?? '0');
-                            $descuento= (float)($fila['descuento'] ?? 0);
+                            $ean        = trim($fila['producto'] ?? '');
+                            $nfRef      = trim($fila['numero_factura'] ?? $fila['planilla'] ?? '');
+                            $cantidad   = max(1, (int)($fila['cantidad'] ?? 1));
+                            $costo      = $cleanNumber($fila['costo'] ?? '0');
+                            $descuento  = (float)($fila['descuento'] ?? 0);
+                            $descripcion= trim($fila['descripcion'] ?? '');
 
                             $prod = $buscarProducto($ean);
                             if (!$prod) {
@@ -2070,7 +2138,7 @@ class PickingController extends BaseController
                                 $summary['productos_pendientes'][] = [
                                     'ean' => $ean, 'numero_factura' => $nfRef, 'sucursal' => $sucursal, 'cantidad' => $cantidad,
                                 ];
-                                $staging($ean, $nfRef, $sucursal, $cantidad);
+                                $staging($ean, $nfRef, $sucursal, $cantidad, $descripcion);
                                 continue;
                             }
 
@@ -2195,6 +2263,74 @@ class PickingController extends BaseController
         return $this->ok($res, null, 'Tabla limpiada');
     }
 
+    // ── PATCH /api/picking/{id}/linea/{lineaId} ──────────────────────────────
+    public function actualizarLinea(Request $r, Response $res, array $a): Response
+    {
+        $user    = $r->getAttribute('user');
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
+        $ordenId = (int)($a['id'] ?? 0);
+        $lineaId = (int)($a['lineaId'] ?? 0);
+        $body    = (array)($r->getParsedBody() ?? []);
+
+        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->find($ordenId);
+        if (!$orden) return $this->notFound($res);
+        if ($orden->estado !== 'Pendiente') {
+            return $this->error($res, 'Solo se pueden editar órdenes en estado Pendiente');
+        }
+
+        $linea = PickingDetalle::where('orden_picking_id', $ordenId)->find($lineaId);
+        if (!$linea) return $this->notFound($res);
+        if ($linea->estado !== 'Pendiente') {
+            return $this->error($res, 'Solo se pueden editar líneas en estado Pendiente');
+        }
+
+        $cantidad = (int)($body['cantidad_solicitada'] ?? 0);
+        if ($cantidad < 1) return $this->error($res, 'La cantidad debe ser mayor a 0');
+
+        $linea->cantidad_solicitada = $cantidad;
+        if (isset($body['costo_unitario']) && $body['costo_unitario'] !== '') {
+            $linea->costo_unitario = (float)$body['costo_unitario'];
+        }
+        $linea->save();
+
+        return $this->ok($res, ['linea' => $linea->toArray()], 'Cantidad actualizada');
+    }
+
+    // ── DELETE /api/picking/{id}/linea/{lineaId} ─────────────────────────────
+    public function eliminarLinea(Request $r, Response $res, array $a): Response
+    {
+        $user    = $r->getAttribute('user');
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
+        $ordenId = (int)($a['id'] ?? 0);
+        $lineaId = (int)($a['lineaId'] ?? 0);
+
+        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->find($ordenId);
+        if (!$orden) return $this->notFound($res);
+        if ($orden->estado !== 'Pendiente') {
+            return $this->error($res, 'Solo se pueden eliminar líneas de órdenes en estado Pendiente');
+        }
+
+        $linea = PickingDetalle::where('orden_picking_id', $ordenId)->find($lineaId);
+        if (!$linea) return $this->notFound($res);
+        if ((int)$linea->cantidad_pickeada > 0) {
+            return $this->error($res, 'No se puede eliminar una línea con cantidades ya pickeadas');
+        }
+
+        $linea->delete();
+
+        $restantes = PickingDetalle::where('orden_picking_id', $ordenId)->count();
+        if ($restantes === 0) {
+            $orden->delete();
+            return $this->ok($res, ['orden_eliminada' => true], 'Línea eliminada. La planilla quedó vacía y fue eliminada.');
+        }
+
+        return $this->ok($res, ['orden_eliminada' => false], 'Línea eliminada');
+    }
+
     // ── POST /api/picking/{id}/marcar-faltante ───────────────────────────────
     public function marcarFaltante(Request $r, Response $res, array $a): Response
     {
@@ -2305,6 +2441,7 @@ class PickingController extends BaseController
     {
         $user = $r->getAttribute('user');
         
+        // COALESCE ensures orders without planilla_numero get their own entry using numero_orden
         $planillas = OrdenPicking::where('empresa_id', $user->empresa_id)
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('estado', ['Pendiente', 'EnProceso'])
@@ -2312,16 +2449,22 @@ class PickingController extends BaseController
                 $q->where('auxiliar_id', $user->id)
                   ->orWhereHas('detalles', fn($dq) => $dq->where('auxiliar_id', $user->id));
             })
-            ->select('planilla_numero')
+            ->selectRaw('COALESCE(planilla_numero, numero_orden) as planilla_numero')
             ->selectRaw('MAX(area_comercial) as ruta')
             ->selectRaw('MAX(hora_inicio) as hora_inicio')
-            ->groupBy('planilla_numero')
-            ->orderBy('planilla_numero', 'desc')
+            ->groupByRaw('COALESCE(planilla_numero, numero_orden)')
+            ->orderByRaw('COALESCE(planilla_numero, numero_orden) DESC')
             ->get();
 
         // Calcular métricas para cada planilla
         foreach ($planillas as $p) {
-            $detalles = PickingDetalle::whereHas('ordenPicking', fn($q) => $q->where('planilla_numero', $p->planilla_numero))
+            // Search by both planilla_numero and numero_orden (fallback)
+            $detalles = PickingDetalle::whereHas('ordenPicking', fn($q) =>
+                $q->where(function($sq) use ($p) {
+                    $sq->where('planilla_numero', $p->planilla_numero)
+                       ->orWhere('numero_orden', $p->planilla_numero);
+                })
+            )
                 ->join('productos', 'picking_detalles.producto_id', '=', 'productos.id')
                 ->where('picking_detalles.auxiliar_id', $user->id)
                 ->whereIn('picking_detalles.estado', ['Pendiente', 'EnProceso', 'Completado', 'Faltante'])
@@ -2351,17 +2494,21 @@ class PickingController extends BaseController
         $estado = $r->getQueryParams()['estado'] ?? 'Pendiente,EnProceso';
         $estados = explode(',', $estado);
 
-        if (!$numero) return $this->error($res, 'Número de planilla requerido.', 400);
+        if (!$numero || $numero === 'null') return $this->error($res, 'Número de planilla requerido.', 400);
 
         try {
-            // Consolidar por Producto + Ubicación
+            // Consolidar por Producto + Ubicación; busca por planilla_numero o numero_orden (fallback)
             $detalles = PickingDetalle::join('orden_pickings', 'picking_detalles.orden_picking_id', '=', 'orden_pickings.id')
                 ->leftJoin('productos', 'picking_detalles.producto_id', '=', 'productos.id')
                 ->leftJoin('ubicaciones', 'picking_detalles.ubicacion_id', '=', 'ubicaciones.id')
                 ->where('orden_pickings.empresa_id', $user->empresa_id)
-                ->where('orden_pickings.planilla_numero', $numero)
+                ->where(function($q) use ($numero) {
+                    $q->where('orden_pickings.planilla_numero', $numero)
+                      ->orWhere('orden_pickings.numero_orden', $numero);
+                })
                 ->whereIn('picking_detalles.estado', $estados)
                 ->select(
+                    'picking_detalles.producto_id',
                     'productos.nombre as producto_nombre',
                     'productos.codigo_interno as producto_codigo',
                     'productos.unidades_caja',
@@ -2369,29 +2516,60 @@ class PickingController extends BaseController
                     'ubicaciones.id as ubicacion_id',
                     'picking_detalles.lote',
                     'picking_detalles.fecha_vencimiento',
-                    Capsule::raw('SUM(picking_detalles.cantidad_total) as cantidad_total'),
+                    Capsule::raw('SUM(picking_detalles.cantidad_solicitada) as cantidad_total'),
                     Capsule::raw('SUM(picking_detalles.cantidad_pickeada) as cantidad_pick'),
                     Capsule::raw($this->isPg() ? 'STRING_AGG(picking_detalles.id::text, \',\') as ids' : 'GROUP_CONCAT(picking_detalles.id) as ids')
                 )
                 ->groupBy(
-                    'productos.id', 
-                    'productos.nombre', 
-                    'productos.codigo_interno', 
-                    'productos.unidades_caja', 
-                    'ubicaciones.id', 
+                    'picking_detalles.producto_id',
+                    'productos.id',
+                    'productos.nombre',
+                    'productos.codigo_interno',
+                    'productos.unidades_caja',
+                    'ubicaciones.id',
                     'ubicaciones.codigo',
-                    'picking_detalles.lote', 
+                    'picking_detalles.lote',
                     'picking_detalles.fecha_vencimiento'
                 )
                 ->orderBy(Capsule::raw('SUM(picking_detalles.cantidad_pickeada)'), 'asc')
                 ->orderBy('ubicaciones.codigo')
                 ->get();
 
+            // Fallback de ubicación: líneas sin ubicacion_id asignada → buscar en stock actual
+            $sinUbic = $detalles->filter(fn($d) => !$d->ubicacion_id)
+                                ->pluck('producto_id')->unique()->values();
+            if ($sinUbic->isNotEmpty()) {
+                $stockMap = Inventario::where('empresa_id', $user->empresa_id)
+                    ->where('sucursal_id', $user->sucursal_id)
+                    ->whereIn('producto_id', $sinUbic)
+                    ->where('estado', 'Disponible')
+                    ->where('cantidad', '>', 0)
+                    ->with('ubicacion:id,codigo')
+                    ->orderByRaw('fecha_vencimiento IS NULL ASC')
+                    ->orderBy('fecha_vencimiento', 'ASC')
+                    ->get()
+                    ->groupBy('producto_id')
+                    ->map(fn($g) => $g->first()->ubicacion?->codigo);
+
+                $detalles->transform(function ($it) use ($stockMap) {
+                    if (!$it->ubicacion_id) {
+                        $it->ubicacion_codigo = $stockMap->get($it->producto_id);
+                    }
+                    return $it;
+                });
+            }
+
             // Formatear para el Wizard Móvil (Cajas / Picos)
             $detalles->transform(function($it) {
-                $factor = (int)($it->unidades_caja ?: 1);
-                $it->cajas = floor($it->cantidad_total / $factor);
-                $it->picos = $it->cantidad_total % $factor;
+                $factor = (int)($it->unidades_caja ?: 0);
+                if ($factor <= 1) {
+                    // Sin empaque definido: todo se muestra como unidades sueltas
+                    $it->cajas = 0;
+                    $it->picos = (int)$it->cantidad_total;
+                } else {
+                    $it->cajas = (int)floor($it->cantidad_total / $factor);
+                    $it->picos = (int)($it->cantidad_total % $factor);
+                }
                 return $it;
             });
 
@@ -2411,21 +2589,26 @@ class PickingController extends BaseController
         $user   = $r->getAttribute('user');
         $numero = $a['numero'] ?? null;
 
-        if (!$numero) {
+        if (!$numero || $numero === 'null') {
             return $this->error($res, 'Número de planilla requerido.', 400);
         }
 
         try {
             $updated = OrdenPicking::where('empresa_id', $user->empresa_id)
-                ->where('planilla_numero', $numero)
+                ->where(function($q) use ($numero) {
+                    $q->where('planilla_numero', $numero)
+                      ->orWhere('numero_orden', $numero);
+                })
                 ->where('auxiliar_id', $user->id)
                 ->whereNull('hora_inicio')
                 ->update(['hora_inicio' => date('H:i:s'), 'estado' => 'EnProceso']);
 
             if ($updated === 0) {
-                // Already started or not assigned
                 $exists = OrdenPicking::where('empresa_id', $user->empresa_id)
-                    ->where('planilla_numero', $numero)->exists();
+                    ->where(function($q) use ($numero) {
+                        $q->where('planilla_numero', $numero)
+                          ->orWhere('numero_orden', $numero);
+                    })->exists();
                 if (!$exists) {
                     return $this->notFound($res, 'Planilla no encontrada.');
                 }
@@ -2671,10 +2854,11 @@ class PickingController extends BaseController
                     ->join('orden_pickings as op', 'pd.orden_picking_id', '=', 'op.id')
                     ->leftJoin('ubicaciones as u', 'pd.ubicacion_id', '=', 'u.id')
                     ->leftJoin('productos as pr', 'pd.producto_id', '=', 'pr.id')
+                    ->leftJoin('categoria_productos as cat', 'pr.categoria_id', '=', 'cat.id')
                     ->where('op.empresa_id', $user->empresa_id)
                     ->where('op.sucursal_id', $user->sucursal_id)
                     ->whereIn('pd.orden_picking_id', $ordenIds)
-                    ->select(['pd.id','pd.orden_picking_id','pd.auxiliar_id','pd.estado','u.zona','u.pasillo','pr.categoria'])
+                    ->select(['pd.id','pd.orden_picking_id','pd.auxiliar_id','pd.estado','u.zona','u.pasillo','cat.nombre as categoria'])
                     ->lockForUpdate()
                     ->get();
 
@@ -2929,6 +3113,129 @@ class PickingController extends BaseController
         });
         
         return $this->ok($res, null, 'Certificación de sucursal finalizada correctamente');
+    }
+
+    // ── PUT /api/picking/{id}/auxiliar ───────────────────────────────────────
+    // Cambia el auxiliar cuando ninguna línea ha iniciado picking
+    public function cambiarAuxiliar(Request $r, Response $res, array $a): Response
+    {
+        $user       = $r->getAttribute('user');
+        $data       = $r->getParsedBody() ?? [];
+        $nuevoAuxId = isset($data['auxiliar_id']) ? (int)$data['auxiliar_id'] : null;
+
+        if (!$nuevoAuxId) {
+            return $this->error($res, 'Se requiere auxiliar_id');
+        }
+
+        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->find((int)$a['id']);
+
+        if (!$orden) return $this->notFound($res);
+
+        $lineasActivas = PickingDetalle::where('orden_picking_id', $orden->id)
+            ->whereNotIn('estado', ['Pendiente', 'Creado'])
+            ->count();
+
+        if ($lineasActivas > 0) {
+            return $this->error($res,
+                'No se puede cambiar el auxiliar: el picking ya inició en algunas líneas. Use "Agregar Auxiliar" para distribuir las líneas restantes.',
+                422);
+        }
+
+        $anteriorAuxId = $orden->auxiliar_id;
+        $now = date('Y-m-d H:i:s');
+
+        Capsule::transaction(function () use ($orden, $nuevoAuxId, $now) {
+            $orden->auxiliar_id = $nuevoAuxId;
+            $orden->save();
+            Capsule::table('picking_detalles')
+                ->where('orden_picking_id', $orden->id)
+                ->update(['auxiliar_id' => $nuevoAuxId, 'updated_at' => $now]);
+        });
+
+        \App\Controllers\NotificacionesController::crear(
+            $user->empresa_id, $nuevoAuxId,
+            'Orden de Picking Asignada',
+            "Se le ha asignado la orden {$orden->numero_orden} para alistamiento.",
+            'picking', $user->id, 'Picking', $orden->id, 'viewPicking', 'Picking',
+            true, $user->sucursal_id
+        );
+
+        $this->audit($user, 'picking', 'cambiar_auxiliar', 'orden_pickings', $orden->id,
+            ['auxiliar_id' => $anteriorAuxId], ['auxiliar_id' => $nuevoAuxId],
+            "Auxiliar cambiado en orden {$orden->numero_orden}");
+
+        return $this->ok($res, null, 'Auxiliar actualizado correctamente');
+    }
+
+    // ── POST /api/picking/{id}/auxiliar ──────────────────────────────────────
+    // Agrega auxiliar y le asigna la mitad de las líneas pendientes (sin duplicar productos)
+    public function agregarAuxiliar(Request $r, Response $res, array $a): Response
+    {
+        $user       = $r->getAttribute('user');
+        $data       = $r->getParsedBody() ?? [];
+        $nuevoAuxId = isset($data['auxiliar_id']) ? (int)$data['auxiliar_id'] : null;
+
+        if (!$nuevoAuxId) {
+            return $this->error($res, 'Se requiere auxiliar_id');
+        }
+
+        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->find((int)$a['id']);
+
+        if (!$orden) return $this->notFound($res);
+
+        if (!in_array($orden->estado, ['EnProceso', 'Pendiente', 'Asignado'])) {
+            return $this->error($res, 'El pedido no está en un estado que permita agregar auxiliares');
+        }
+
+        // Líneas pendientes ordenadas por zona+pasillo para respetar el recorrido de bodega
+        $lineasPendientes = Capsule::table('picking_detalles as pd')
+            ->leftJoin('ubicaciones as u', 'pd.ubicacion_id', '=', 'u.id')
+            ->where('pd.orden_picking_id', $orden->id)
+            ->whereIn('pd.estado', ['Pendiente', 'Creado'])
+            ->select(['pd.id'])
+            ->orderByRaw("COALESCE(u.zona, 'ZZZ') ASC")
+            ->orderByRaw("COALESCE(u.pasillo, 'ZZZ') ASC")
+            ->pluck('pd.id');
+
+        if ($lineasPendientes->isEmpty()) {
+            return $this->error($res, 'No hay líneas pendientes para distribuir', 422);
+        }
+
+        $total = $lineasPendientes->count();
+        $mitad = (int)ceil($total / 2);
+        // La segunda mitad va al nuevo auxiliar
+        $paraNuevo = $lineasPendientes->slice($mitad)->values()->toArray();
+
+        $now = date('Y-m-d H:i:s');
+
+        Capsule::transaction(function () use ($paraNuevo, $nuevoAuxId, $now) {
+            Capsule::table('picking_detalles')
+                ->whereIn('id', $paraNuevo)
+                ->update(['auxiliar_id' => $nuevoAuxId, 'updated_at' => $now]);
+        });
+
+        \App\Controllers\NotificacionesController::crear(
+            $user->empresa_id, $nuevoAuxId,
+            'Tareas de Picking Asignadas',
+            "Se le han asignado " . count($paraNuevo) . " líneas pendientes en el pedido {$orden->numero_orden}.",
+            'picking', $user->id, 'Picking', $orden->id, 'viewPicking', 'Picking',
+            true, $user->sucursal_id
+        );
+
+        $this->audit($user, 'picking', 'agregar_auxiliar', 'orden_pickings', $orden->id,
+            null,
+            ['nuevo_auxiliar_id' => $nuevoAuxId, 'lineas_asignadas' => count($paraNuevo)],
+            "Auxiliar adicional en orden {$orden->numero_orden}: {$mitad} existente + " . count($paraNuevo) . " nuevas");
+
+        return $this->ok($res, [
+            'lineas_reasignadas'       => count($paraNuevo),
+            'lineas_auxiliar_original' => $total - count($paraNuevo),
+            'total_pendientes'         => $total,
+        ], count($paraNuevo) . ' líneas asignadas al nuevo auxiliar');
     }
 
     public function imprimirCertificado(Request $r, Response $res, array $a): Response
