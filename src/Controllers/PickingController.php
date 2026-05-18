@@ -1580,18 +1580,15 @@ class PickingController extends BaseController
                                                 ->sum('cantidad_solicitada');
 
         // Planillas activas en vivo (agrupadas por planilla_numero)
-        $ordenesActivas = OrdenPicking::where('empresa_id', $empresaId)
-            ->where('sucursal_id', $user->sucursal_id)
-            ->whereBetween('created_at', [$ini, $fin])
+        $ordenesActivas = (clone $baseQ)
             ->whereIn('estado', ['Pendiente', 'EnProceso'])
-            ->when($params['auxiliar_id'] ?? null, fn($q, $a) => $q->where('auxiliar_id', $a))
-            ->when($params['ruta'] ?? null, fn($q, $ruta) => $q->where('area_comercial', $ruta))
             ->withCount([
                 'detalles as total_lineas',
                 'detalles as lineas_completadas' => fn($q) => $q->whereIn('estado', ['Completado', 'Faltante']),
+                'detalles as tiene_faltante_count' => fn($q) => $q->where('estado', 'Faltante'),
             ])
             ->with([
-                'detalles' => fn($q) => $q->select('id', 'orden_picking_id', 'auxiliar_id', 'estado')
+                'detalles' => fn($q) => $q->select('id', 'orden_picking_id', 'auxiliar_id')
                                            ->with('auxiliar:id,nombre'),
             ])
             ->get();
@@ -1602,14 +1599,12 @@ class PickingController extends BaseController
                 $first       = $orders->first();
                 $totalLineas = $orders->sum('total_lineas');
                 $lineasComp  = $orders->sum('lineas_completadas');
-                $estado      = $orders->contains('estado', 'EnProceso') ? 'EnProceso' : 'Pendiente';
-                $horaInicio  = $orders->whereNotNull('hora_inicio')
-                                      ->where('hora_inicio', '!=', '00:00:00')
+                $estado      = $orders->contains(fn($o) => $o->estado === 'EnProceso') ? 'EnProceso' : 'Pendiente';
+                $horaInicio  = $orders->where('hora_inicio', '!=', '00:00:00')
                                       ->min('hora_inicio');
                 $auxiliares  = $orders->flatMap(fn($o) => $o->detalles->pluck('auxiliar.nombre'))
                                       ->filter()->unique()->values();
-                $tieneFalt   = $orders->flatMap(fn($o) => $o->detalles)
-                                      ->contains('estado', 'Faltante');
+                $tieneFalt   = $orders->sum('tiene_faltante_count') > 0;
 
                 return [
                     'planilla_numero'    => $planillaKey,
