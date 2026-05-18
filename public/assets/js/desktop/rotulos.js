@@ -96,7 +96,10 @@ WMS_MODULES.rotulos = {
               <i class="fa-solid fa-eye"></i> Previsualizar
             </button>
             <button class="btn btn-primary" onclick="WMS_MODULES.rotulos._imprimirProd()">
-              <i class="fa-solid fa-print"></i> Imprimir Rótulo
+              <i class="fa-solid fa-desktop"></i> Imprimir (Navegador)
+            </button>
+            <button class="btn btn-success" onclick="WMS_MODULES.rotulos._imprimirIP('producto')">
+              <i class="fa-solid fa-print"></i> Impresión Térmica IP
             </button>
           </div>
 
@@ -346,7 +349,10 @@ WMS_MODULES.rotulos = {
                 <i class="fa-solid fa-eye"></i> Previsualizar
               </button>
               <button class="btn btn-primary" onclick="WMS_MODULES.rotulos._imprimirUbi()">
-                <i class="fa-solid fa-print"></i> Imprimir Rótulo
+                <i class="fa-solid fa-desktop"></i> Imprimir (Navegador)
+              </button>
+              <button class="btn btn-success" onclick="WMS_MODULES.rotulos._imprimirIP('ubicacion')">
+                <i class="fa-solid fa-print"></i> Impresión Térmica IP
               </button>
             </div>
 
@@ -778,5 +784,29 @@ WMS_MODULES.rotulos = {
       window.print();
       setTimeout(() => { printArea.remove(); style.remove(); }, 600);
     }, 300);
+  },
+
+  async _imprimirIP(tipo) {
+    let payload = { tipo };
+    if (tipo === 'producto') {
+      const ean = document.getElementById('rot-ean-sel')?.value;
+      if (!ean || !this._selectedProd) return WMS.toast('warning', 'Seleccione producto y EAN');
+      payload.nombre = document.getElementById('rot-prod-nombre')?.textContent || '';
+      payload.codigo = this._selectedProd.codigo_interno || '';
+      payload.ean = ean;
+    } else {
+      const sel = document.getElementById('rotub-sel');
+      const opt = sel?.options[sel.selectedIndex];
+      if (!opt?.value) return WMS.toast('warning', 'Seleccione ubicación');
+      payload.codigo = opt.dataset.codigo || '';
+      payload.zona   = opt.dataset.zona   || '';
+    }
+
+    WMS.spinner();
+    try {
+      const r = await API.post('/impresoras/imprimir-rotulo', payload);
+      if (r.error) WMS.toast('error', r.message);
+      else WMS.toast('success', r.message || 'Impresión enviada correctamente');
+    } catch(e) { WMS.toast('error', 'Error al conectar con el servidor de impresión'); }
   },
 };

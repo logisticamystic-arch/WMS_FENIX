@@ -211,8 +211,11 @@ WMS_MODULES.picking = {
 
   /** Renderiza una fila de planilla de forma reutilizable */
   _renderPlanillaRow(g, options = {}) {
-    const isDash = options.isDashboard || false;
-    const auxList = [...g.auxiliares].join(', ') || '-';
+    const isDash  = options.isDashboard || false;
+    const auxArr  = [...g.auxiliares];
+    const auxList = auxArr.length
+      ? auxArr.map(n => `<span style="display:inline-flex;align-items:center;gap:3px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:3px;padding:1px 6px;font-size:.68rem;font-weight:600;color:#166534;margin:1px;"><i class="fa-solid fa-user" style="font-size:.6rem;"></i>${WMS.esc(n)}</span>`).join(' ')
+      : '<span style="color:#94a3b8;font-size:.72rem;font-style:italic;">Sin asignar</span>';
     const pct = g.total_lineas > 0 ? Math.round(((g.total_lineas - g.lineas_pendientes) / g.total_lineas) * 100) : 100;
     const ordenIdsJson = JSON.stringify(g.ordenes.map(o=>o.id));
     
@@ -271,7 +274,7 @@ WMS_MODULES.picking = {
         </div>
       </td>
       <td>${stChip(g.estado)}</td>
-      <td style="font-size:11px;font-weight:600;">${WMS.esc(auxList)}</td>
+      <td style="font-size:11px;">${auxList}</td>
       <td class="text-center"><span style="font-family:monospace;font-size:11px;">${inicioOp || '-'}</span></td>
       <td>
         ${!isDash ? `
@@ -364,12 +367,21 @@ WMS_MODULES.picking = {
     };
 
     const rows = ordenes.map(o => {
-      const seco  = o.seco_count || 0;
-      const frio  = o.refrigerado_count || 0;
-      const cong  = o.congelado_count || 0;
-      const total = o.total_count || o.detalles?.length || 0;
+      const seco    = o.seco_count || 0;
+      const frio    = o.refrigerado_count || 0;
+      const cong    = o.congelado_count || 0;
+      const total   = o.total_count || o.detalles?.length || 0;
+      const auxNom  = o.auxiliar?.nombre || null;
+      const auxId   = parseInt(o.id) || 0;
+      const auxChip = auxNom
+        ? `<div style="display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:3px;padding:2px 8px;font-size:.72rem;font-weight:600;color:#166534;">
+             <i class="fa-solid fa-user" style="font-size:.65rem;"></i>${WMS.esc(auxNom)}
+           </div>`
+        : `<span style="color:#94a3b8;font-size:.72rem;font-style:italic;">Sin asignar</span>`;
+      const esPendiente  = o.estado === 'Pendiente';
+      const esProceso    = o.estado === 'EnProceso';
       return `
-        <tr class="erp-table-row clickable main-row" onclick="WMS_MODULES.picking._toggleExpandRow(this, ${parseInt(o.id)||0})" style="cursor:pointer;">
+        <tr id="main-row-${auxId}" class="erp-table-row clickable main-row" onclick="WMS_MODULES.picking._toggleExpandRow(this, ${auxId})" style="cursor:pointer;">
           <td style="padding:8px 12px;">
             <div style="font-weight:700;color:#0F4C81;">${WMS.esc(o.numero_pedido||o.numero_orden||'—')}</div>
             <div style="font-size:.7rem;color:#64748b;">${WMS.esc(o.planilla_lote||'')}</div>
@@ -381,23 +393,36 @@ WMS_MODULES.picking = {
           <td style="padding:8px 12px;">
             ${o.ruta
               ? `<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:3px;font-size:.72rem;">${WMS.esc(o.ruta)}</span>`
-              : `<button class="btn btn-outline-primary btn-sm" style="font-size:.7rem;padding:2px 8px;" onclick="event.stopPropagation();WMS_MODULES.picking._asignarRutaInline(${parseInt(o.id)||0}, this)">+ Ruta</button>`
+              : `<button class="btn btn-outline-primary btn-sm" style="font-size:.7rem;padding:2px 8px;" onclick="event.stopPropagation();WMS_MODULES.picking._asignarRutaInline(${auxId}, this)">+ Ruta</button>`
             }
           </td>
+          <td style="padding:8px 12px;">${auxChip}</td>
           <td style="padding:8px 12px;text-align:center;font-weight:700;color:#92400e;">${seco||'—'}</td>
           <td style="padding:8px 12px;text-align:center;font-weight:700;color:#0369a1;">${frio||'—'}</td>
           <td style="padding:8px 12px;text-align:center;font-weight:700;color:#7c3aed;">${cong||'—'}</td>
           <td style="padding:8px 12px;text-align:center;font-weight:700;">${total}</td>
           <td style="padding:8px 12px;">${estadoBadge(o.estado)}</td>
-          <td style="padding:8px 12px;text-align:center;">
-            <button title="Eliminar" onclick="event.stopPropagation();WMS_MODULES.picking._eliminarOrden(${parseInt(o.id)||0})"
+          <td style="padding:8px 12px;text-align:center;white-space:nowrap;">
+            ${esPendiente ? `<button title="Editar cantidades" onclick="event.stopPropagation();WMS_MODULES.picking._abrirEditar(${auxId})"
+              style="background:#eff6ff;border:none;border-radius:3px;padding:4px 8px;cursor:pointer;color:#1e40af;font-size:.75rem;margin-right:4px;">
+              <i class="fa-solid fa-pencil"></i>
+            </button>
+            <button title="Cambiar auxiliar" onclick="event.stopPropagation();WMS_MODULES.picking._abrirCambiarAuxiliar(${auxId},'${WMS.esc(auxNom||'').replace(/'/g,'\\\'')}')"
+              style="background:#fef9c3;border:none;border-radius:3px;padding:4px 8px;cursor:pointer;color:#854d0e;font-size:.75rem;margin-right:4px;">
+              <i class="fa-solid fa-user-pen"></i>
+            </button>` : ''}
+            ${esProceso ? `<button title="Agregar auxiliar" onclick="event.stopPropagation();WMS_MODULES.picking._abrirAgregarAuxiliar(${auxId})"
+              style="background:#dcfce7;border:none;border-radius:3px;padding:4px 8px;cursor:pointer;color:#166534;font-size:.75rem;margin-right:4px;">
+              <i class="fa-solid fa-user-plus"></i>
+            </button>` : ''}
+            <button title="Eliminar" onclick="event.stopPropagation();WMS_MODULES.picking._eliminarOrden(${auxId})"
               style="background:#fee2e2;border:none;border-radius:3px;padding:4px 8px;cursor:pointer;color:#991b1b;font-size:.75rem;">
               <i class="fa-solid fa-trash"></i>
             </button>
           </td>
         </tr>
         <tr id="expand-${o.id}" style="display:none;">
-          <td colspan="9" style="padding:0;background:#f8fafc;">
+          <td colspan="10" style="padding:0;background:#f8fafc;">
             <div id="expand-content-${o.id}" style="padding:12px 24px;border-top:1px solid #e2e8f0;">
               <div style="color:#64748b;font-size:.78rem;">Cargando detalle...</div>
             </div>
@@ -413,6 +438,9 @@ WMS_MODULES.picking = {
         <div class="card-header">
           <h5 class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Pedidos de Picking</h5>
           <div class="card-actions">
+            <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking.nuevoPedidoManual()">
+              <i class="fa-solid fa-pencil"></i> Nuevo Manual
+            </button>
             <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.picking.importarPedidos()">
               <i class="fa-solid fa-file-arrow-up"></i> Importar CSV
             </button>
@@ -463,6 +491,7 @@ WMS_MODULES.picking = {
                   <th style="padding:10px 12px;">N° Pedido</th>
                   <th style="padding:10px 12px;">Sucursal Entrega</th>
                   <th style="padding:10px 12px;">Ruta</th>
+                  <th style="padding:10px 12px;">Auxiliar</th>
                   <th style="padding:10px 12px;text-align:center;" title="Líneas Seco">🌡️ Seco</th>
                   <th style="padding:10px 12px;text-align:center;" title="Líneas Refrigerado">❄️ Frío</th>
                   <th style="padding:10px 12px;text-align:center;" title="Líneas Congelado">🧊 Cong.</th>
@@ -472,7 +501,7 @@ WMS_MODULES.picking = {
                 </tr>
               </thead>
               <tbody>
-                ${rows || '<tr><td colspan="9" style="text-align:center;padding:32px;color:#94a3b8;">Sin pedidos activos hoy. Use los filtros para buscar.</td></tr>'}
+                ${rows || '<tr><td colspan="10" style="text-align:center;padding:32px;color:#94a3b8;">Sin pedidos activos hoy. Use los filtros para buscar.</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -482,7 +511,6 @@ WMS_MODULES.picking = {
 
   async _toggleExpandRow(tr, ordenId) {
     const expandRow = document.getElementById('expand-' + ordenId);
-    const content   = document.getElementById('expand-content-' + ordenId);
     if (!expandRow) return;
     if (expandRow.style.display !== 'none') {
       expandRow.style.display = 'none';
@@ -491,23 +519,57 @@ WMS_MODULES.picking = {
     }
     expandRow.style.display = '';
     tr.classList.add('selected');
+    await this._recargarExpandRow(ordenId);
+  },
+
+  async _recargarExpandRow(ordenId) {
+    const content = document.getElementById('expand-content-' + ordenId);
+    if (!content) return;
+    content.innerHTML = '<div style="color:#64748b;font-size:.78rem;padding:8px;">Cargando detalle...</div>';
     try {
       const r = await API.get('/picking/' + ordenId);
       const o = r.data || r;
-      const lineas = (o.detalles || []).map(d => `
-        <tr>
-          <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.producto?.nombre||d.producto?.codigo_interno||'—')}</td>
-          <td style="padding:5px 10px;font-size:.78rem;text-align:center;">${WMS.esc(d.cantidad_solicitada ?? 0)}</td>
+      const editable = o.estado === 'Pendiente';
+      const lineas = (o.detalles || []).map(d => {
+        const lineaPend = d.estado === 'Pendiente';
+        return `<tr>
+          <td style="padding:5px 10px;font-size:.78rem;">
+            ${WMS.esc(d.producto?.nombre||d.producto?.codigo_interno||'—')}
+            ${d.numero_pedido_ref ? `<div style="font-size:.68rem;color:#64748b;">Ref: ${WMS.esc(d.numero_pedido_ref)}</div>` : ''}
+          </td>
+          <td style="padding:5px 10px;font-size:.78rem;text-align:center;">
+            ${editable && lineaPend
+              ? `<input type="number" min="1" id="qty-${parseInt(d.id)||0}" value="${parseInt(d.cantidad_solicitada)||0}"
+                   style="width:70px;text-align:center;border:1px solid #cbd5e1;border-radius:3px;padding:2px 4px;font-size:.78rem;"
+                   onkeydown="if(event.key==='Enter')WMS_MODULES.picking._guardarCantidadLinea(${parseInt(o.id)||0},${parseInt(d.id)||0})">`
+              : WMS.esc(d.cantidad_solicitada ?? 0)
+            }
+          </td>
           <td style="padding:5px 10px;font-size:.78rem;text-align:center;">${WMS.esc(d.cantidad_pickeada ?? 0)}</td>
           <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.ambiente||'—')}</td>
           <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.auxiliar?.nombre||'—')}</td>
           <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.estado||'')}</td>
-        </tr>`).join('');
+          ${editable ? `<td style="padding:5px 10px;text-align:center;white-space:nowrap;">
+            ${lineaPend
+              ? `<button title="Guardar" onclick="WMS_MODULES.picking._guardarCantidadLinea(${parseInt(o.id)||0},${parseInt(d.id)||0})"
+                   style="background:#dcfce7;border:none;border-radius:3px;padding:3px 7px;cursor:pointer;color:#166534;font-size:.72rem;margin-right:2px;">
+                   <i class="fa-solid fa-check"></i>
+                 </button>
+                 <button title="Eliminar línea" onclick="WMS_MODULES.picking._eliminarLinea(${parseInt(o.id)||0},${parseInt(d.id)||0})"
+                   style="background:#fee2e2;border:none;border-radius:3px;padding:3px 7px;cursor:pointer;color:#991b1b;font-size:.72rem;">
+                   <i class="fa-solid fa-trash-can"></i>
+                 </button>`
+              : `<span style="font-size:.68rem;color:#94a3b8;">—</span>`
+            }
+          </td>` : ''}
+        </tr>`;
+      }).join('');
       content.innerHTML = `
-        <div style="font-size:.78rem;font-weight:700;color:#0F4C81;margin-bottom:8px;">
-          Pedido: <strong>${WMS.esc(o.numero_pedido||o.numero_orden||'—')}</strong>
+        <div style="font-size:.78rem;font-weight:700;color:#0F4C81;margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+          <span>Pedido: <strong>${WMS.esc(o.numero_pedido||o.numero_orden||'—')}</strong>
           · Asesor: ${WMS.esc(o.asesor_comercial||'—')}
-          · Área: ${WMS.esc(o.area_comercial||'—')}
+          · Área: ${WMS.esc(o.area_comercial||'—')}</span>
+          ${editable ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:3px;font-size:.68rem;font-weight:600;">Editable</span>' : ''}
         </div>
         <table class="erp-table" style="margin:0;">
           <thead><tr>
@@ -517,8 +579,9 @@ WMS_MODULES.picking = {
             <th style="padding:5px 10px;font-size:.7rem;">Ambiente</th>
             <th style="padding:5px 10px;font-size:.7rem;">Auxiliar</th>
             <th style="padding:5px 10px;font-size:.7rem;">Estado</th>
+            ${editable ? '<th style="padding:5px 10px;font-size:.7rem;text-align:center;">Acciones</th>' : ''}
           </tr></thead>
-          <tbody>${lineas||'<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:12px;">Sin líneas</td></tr>'}</tbody>
+          <tbody>${lineas||`<tr><td colspan="${editable?7:6}" style="text-align:center;color:#94a3b8;padding:12px;">Sin líneas</td></tr>`}</tbody>
         </table>`;
     } catch(e) {
       content.innerHTML = '<div style="color:#ef4444;font-size:.78rem;padding:8px;">Error cargando detalle</div>';
@@ -537,6 +600,84 @@ WMS_MODULES.picking = {
     }
   },
 
+  async _abrirCambiarAuxiliar(ordenId, auxNombreActual) {
+    let personal = [];
+    try {
+      const r = await API.get('/param/personal?rol=Auxiliar&activo=1');
+      personal = r.data || r || [];
+    } catch(e) { if (e.isSessionExpired) return; }
+
+    WMS.showRightPanel('Cambiar Auxiliar', `
+      <div style="margin-bottom:14px;padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;">
+        <i class="fa-solid fa-circle-info"></i> El pedido aún no ha iniciado — se puede reasignar a otro auxiliar.
+      </div>
+      ${auxNombreActual ? `<div style="margin-bottom:14px;padding:10px 14px;background:#fef9c3;border:1px solid #fde68a;border-radius:4px;font-size:13px;">
+        <b>Auxiliar actual:</b> ${WMS.esc(auxNombreActual)}
+      </div>` : ''}
+      <div class="form-group">
+        <label class="form-label">Nuevo Auxiliar <span class="required">*</span></label>
+        <select id="ca-aux" class="form-control">
+          <option value="">Seleccionar auxiliar...</option>
+          ${personal.map(p => `<option value="${parseInt(p.id)||0}">${WMS.esc(p.nombre)}</option>`).join('')}
+        </select>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cancelar</button>
+       <button class="btn btn-primary" onclick="WMS_MODULES.picking._confirmarCambiarAuxiliar(${parseInt(ordenId)||0})">
+         <i class="fa-solid fa-user-check"></i> Confirmar Cambio
+       </button>`);
+  },
+
+  async _confirmarCambiarAuxiliar(ordenId) {
+    const auxId = document.getElementById('ca-aux')?.value;
+    if (!auxId) { WMS.toast('warning', 'Seleccione un auxiliar'); return; }
+    try {
+      await API.put('/picking/' + ordenId + '/auxiliar', { auxiliar_id: parseInt(auxId) });
+      WMS.closeRightPanel();
+      WMS.toast('success', 'Auxiliar actualizado correctamente');
+      this._cargarPedidos();
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error actualizando auxiliar');
+    }
+  },
+
+  async _abrirAgregarAuxiliar(ordenId) {
+    let personal = [];
+    try {
+      const r = await API.get('/param/personal?rol=Auxiliar&activo=1');
+      personal = r.data || r || [];
+    } catch(e) { if (e.isSessionExpired) return; }
+
+    WMS.showRightPanel('Agregar Auxiliar al Picking', `
+      <div style="margin-bottom:14px;padding:12px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;font-size:13px;color:#166534;">
+        <i class="fa-solid fa-code-branch"></i>
+        <strong>División inteligente:</strong> el sistema asignará la mitad de las líneas pendientes al nuevo auxiliar, ordenadas por zona y pasillo para evitar duplicar recorridos. No habrá productos duplicados entre auxiliares.
+      </div>
+      <div class="form-group">
+        <label class="form-label">Auxiliar Adicional <span class="required">*</span></label>
+        <select id="aa-aux" class="form-control">
+          <option value="">Seleccionar auxiliar...</option>
+          ${personal.map(p => `<option value="${parseInt(p.id)||0}">${WMS.esc(p.nombre)}</option>`).join('')}
+        </select>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cancelar</button>
+       <button class="btn btn-success" onclick="WMS_MODULES.picking._confirmarAgregarAuxiliar(${parseInt(ordenId)||0})">
+         <i class="fa-solid fa-user-plus"></i> Asignar Líneas
+       </button>`);
+  },
+
+  async _confirmarAgregarAuxiliar(ordenId) {
+    const auxId = document.getElementById('aa-aux')?.value;
+    if (!auxId) { WMS.toast('warning', 'Seleccione un auxiliar'); return; }
+    try {
+      const r = await API.post('/picking/' + ordenId + '/auxiliar', { auxiliar_id: parseInt(auxId) });
+      WMS.closeRightPanel();
+      WMS.toast('success', r.message || 'Auxiliar asignado con éxito');
+      this._cargarPedidos();
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error asignando auxiliar');
+    }
+  },
+
   async _eliminarOrden(ordenId) {
     if (!confirm('¿Eliminar este pedido? Se revertirán las reservas de inventario.')) return;
     try {
@@ -545,6 +686,50 @@ WMS_MODULES.picking = {
       this._cargarPedidos();
     } catch(e) {
       WMS.toast('error', e.message || 'Error eliminando pedido');
+    }
+  },
+
+  _abrirEditar(ordenId) {
+    const expandRow = document.getElementById('expand-' + ordenId);
+    if (expandRow && expandRow.style.display === 'none') {
+      const mainRow = document.getElementById('main-row-' + ordenId);
+      if (mainRow) this._toggleExpandRow(mainRow, ordenId);
+    } else {
+      const content = document.getElementById('expand-content-' + ordenId);
+      if (content) content.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  },
+
+  async _guardarCantidadLinea(ordenId, lineaId) {
+    const input = document.getElementById('qty-' + lineaId);
+    if (!input) return;
+    const cantidad = parseInt(input.value);
+    if (!cantidad || cantidad < 1) { WMS.toast('warning', 'Cantidad inválida'); return; }
+    try {
+      await API.patch('/picking/' + ordenId + '/linea/' + lineaId, { cantidad_solicitada: cantidad });
+      WMS.toast('success', 'Cantidad actualizada');
+      await this._recargarExpandRow(ordenId);
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error actualizando cantidad');
+    }
+  },
+
+  async _eliminarLinea(ordenId, lineaId) {
+    if (!confirm('¿Eliminar esta línea del pedido?')) return;
+    try {
+      const r = await API.delete('/picking/' + ordenId + '/linea/' + lineaId);
+      WMS.toast('success', r.message || 'Línea eliminada');
+      if (r.data?.orden_eliminada) {
+        const expandRow = document.getElementById('expand-' + ordenId);
+        if (expandRow) expandRow.style.display = 'none';
+        const mainRow = document.getElementById('main-row-' + ordenId);
+        if (mainRow) mainRow.classList.remove('selected');
+        this._cargarPedidos();
+      } else {
+        await this._recargarExpandRow(ordenId);
+      }
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error eliminando línea');
     }
   },
 
@@ -650,7 +835,7 @@ WMS_MODULES.picking = {
       ]);
       personal = rPers.data || rPers || [];
       categorias = rCat.data || rCat || [];
-    } catch(e) { console.error('Error cargando parámetros', e); }
+    } catch(e) { if (e.isSessionExpired) return; console.error('Error cargando parámetros', e); }
 
     // Guardamos los IDs para usarlos en confirmarAsignacionPlanilla
     window._assignPlanillaIds = ordenIds;
@@ -876,7 +1061,7 @@ WMS_MODULES.picking = {
     try {
       const rr = await API.get('/param/rutas');
       rutas = (rr.data || rr || []).filter(r => r.activo);
-    } catch(e) { console.error('Error cargando rutas', e); }
+    } catch(e) { if (e.isSessionExpired) return; console.error('Error cargando rutas', e); }
 
     WMS.showRightPanel(`Asignar Ruta — Planilla ${planilla}`, `
       <div style="margin-bottom:12px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;">
@@ -933,6 +1118,312 @@ WMS_MODULES.picking = {
   },
 
   async transferir(id) { WMS.toast('info', 'Función de transferencia próximamente'); },
+
+  // ── PEDIDO MANUAL ────────────────────────────────────────────────────────
+
+  nuevoPedidoManual() {
+    WMS.setBreadcrumb('picking', 'Nuevo Pedido Manual');
+    WMS.setToolbar('');
+    WMS.setContent(`
+      <div style="padding:20px;overflow:auto;height:calc(100vh - 120px);">
+        <div style="background:#fff;border-radius:4px;padding:24px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);max-width:960px;margin:0 auto;">
+
+          <!-- Header -->
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #dbeafe;">
+            <div style="width:44px;height:44px;border-radius:4px;background:#eff6ff;display:flex;align-items:center;justify-content:center;color:#1d4ed8;font-size:20px;">
+              <i class="fa-solid fa-boxes-stacked"></i>
+            </div>
+            <div>
+              <h2 style="margin:0;font-size:18px;font-weight:800;color:#1e3a5f;">Nuevo Pedido Manual</h2>
+              <p style="margin:0;font-size:12px;color:#64748b;">La fecha se asigna automáticamente al día de hoy</p>
+            </div>
+          </div>
+
+          <!-- Campos cabecera -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px;">
+            <div class="form-group">
+              <label class="form-label">N° Pedido <span style="color:#94a3b8;font-weight:400;">(opcional)</span></label>
+              <input id="pm-numero" class="form-control" placeholder="Ej: FAC-2026-001">
+              <div style="font-size:10px;color:#94a3b8;margin-top:3px;">Si se deja vacío se genera automáticamente</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Cliente / Sucursal <span style="color:#dc2626;">*</span></label>
+              <div style="position:relative;">
+                <input id="pm-cliente" class="form-control" placeholder="Buscar por nombre, NIT o ciudad..."
+                       autocomplete="off" oninput="WMS_MODULES.picking._pmClienteInput()">
+                <input type="hidden" id="pm-cliente-id" value="">
+                <div id="pm-cliente-drop"
+                     style="display:none;position:absolute;left:0;right:0;z-index:400;background:#fff;
+                            border:1px solid #e2e8f0;border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,.12);
+                            max-height:220px;overflow-y:auto;top:calc(100% + 2px);min-width:320px;"></div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Ruta</label>
+              <select id="pm-ruta" class="form-control">
+                <option value="">— Cargando rutas… —</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Tabla de productos -->
+          <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:800;color:#1e3a5f;font-size:14px;">
+              <i class="fa-solid fa-list" style="color:#1d4ed8;margin-right:6px;"></i>Productos del Pedido
+            </span>
+            <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.picking._pmAgregarLinea()">
+              <i class="fa-solid fa-plus"></i> Agregar Producto
+            </button>
+          </div>
+
+          <div id="pm-lines-wrap" style="border:1px solid #e2e8f0;border-radius:4px;overflow:visible;margin-bottom:20px;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead>
+                <tr style="background:#eff6ff;">
+                  <th style="padding:8px 10px;text-align:left;color:#64748b;font-weight:700;">Producto</th>
+                  <th style="padding:8px 10px;text-align:center;color:#64748b;font-weight:700;width:100px;">Cantidad</th>
+                  <th style="padding:8px 10px;width:36px;"></th>
+                </tr>
+              </thead>
+              <tbody id="pm-lines-body">
+                <tr id="pm-empty-row">
+                  <td colspan="3" style="text-align:center;padding:20px;color:#94a3b8;font-style:italic;">
+                    Haz clic en "Agregar Producto" para añadir líneas al pedido
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:10px;">
+            <button class="btn btn-ghost" onclick="WMS_MODULES.picking.show_pedidos()">
+              <i class="fa-solid fa-arrow-left"></i> Cancelar
+            </button>
+            <button class="btn btn-primary" onclick="WMS_MODULES.picking._pmGuardar()">
+              <i class="fa-solid fa-save"></i> Guardar Pedido
+            </button>
+          </div>
+
+        </div>
+      </div>`);
+
+    // Agregar la primera línea vacía automáticamente
+    this._pmAgregarLinea();
+    // Cargar rutas y clientes maestros en paralelo
+    this._pmCargarDatosMaestros();
+  },
+
+  _pmClientes: [],
+  _pmClienteMatches: [],
+  _pmTimers: {},
+  _pmCache: {},
+
+  async _pmCargarDatosMaestros() {
+    try {
+      const [rR, cR] = await Promise.all([
+        API.get('/param/rutas'),
+        API.get('/param/clientes'),
+      ]);
+      // Poblar select de rutas
+      const sel = document.getElementById('pm-ruta');
+      if (sel) {
+        const rutas = Array.isArray(rR.data) ? rR.data : [];
+        sel.innerHTML = '<option value="">— Sin ruta —</option>' +
+          rutas.map(r => `<option value="${WMS.esc(r.nombre)}">${WMS.esc(r.nombre)}</option>`).join('');
+      }
+      // Cachear clientes para autocompletado
+      this._pmClientes = Array.isArray(cR.data) ? cR.data : [];
+    } catch(e) {
+      if (e.isSessionExpired) return;
+      const sel = document.getElementById('pm-ruta');
+      if (sel) sel.innerHTML = '<option value="">— Sin ruta —</option>';
+    }
+  },
+
+  _pmClienteInput() {
+    const q = (document.getElementById('pm-cliente')?.value || '').trim().toLowerCase();
+    const drop = document.getElementById('pm-cliente-drop');
+    const idInp = document.getElementById('pm-cliente-id');
+    if (!drop) return;
+    if (idInp) idInp.value = '';
+    if (q.length < 1) { drop.style.display = 'none'; this._pmClienteMatches = []; return; }
+
+    const matches = (this._pmClientes || []).filter(c =>
+      (c.razon_social || '').toLowerCase().includes(q) ||
+      (c.nit          || '').toLowerCase().includes(q) ||
+      (c.ciudad       || '').toLowerCase().includes(q)
+    ).slice(0, 15);
+
+    this._pmClienteMatches = matches;
+    if (!matches.length) { drop.style.display = 'none'; return; }
+
+    drop.innerHTML = matches.map((c, i) => `
+      <div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:12px;"
+           onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background=''"
+           onclick="WMS_MODULES.picking._pmSelectCliente(${i})">
+        <div style="font-weight:600;color:#1e293b;">${WMS.esc(c.razon_social)}</div>
+        <div style="color:#64748b;font-size:11px;">
+          ${c.nit   ? 'NIT: ' + WMS.esc(c.nit) : ''}
+          ${c.ciudad ? ' · ' + WMS.esc(c.ciudad) : ''}
+          ${c.ruta  ? ' · <span style="color:#1d4ed8;">Ruta: ' + WMS.esc(c.ruta.nombre) + '</span>' : ''}
+        </div>
+      </div>`).join('');
+    drop.style.display = 'block';
+
+    const closeHandler = e => {
+      if (!e.target.closest('#pm-cliente-drop') && !e.target.closest('#pm-cliente')) {
+        drop.style.display = 'none';
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    document.addEventListener('click', closeHandler);
+  },
+
+  _pmSelectCliente(i) {
+    const c = this._pmClienteMatches[i];
+    if (!c) return;
+    const inp   = document.getElementById('pm-cliente');
+    const idInp = document.getElementById('pm-cliente-id');
+    const drop  = document.getElementById('pm-cliente-drop');
+    if (inp)   inp.value   = c.razon_social;
+    if (idInp) idInp.value = c.id;
+    if (drop)  drop.style.display = 'none';
+    // Auto-seleccionar ruta si el cliente tiene una asignada
+    if (c.ruta?.nombre) {
+      const sel = document.getElementById('pm-ruta');
+      if (sel) sel.value = c.ruta.nombre;
+    }
+  },
+
+  _pmAgregarLinea() {
+    const tbody   = document.getElementById('pm-lines-body');
+    const emptyRow = document.getElementById('pm-empty-row');
+    if (emptyRow) emptyRow.remove();
+    const idx = Date.now();
+    const tr  = document.createElement('tr');
+    tr.id = 'pm-line-' + idx;
+    tr.style.borderBottom = '1px solid #f1f5f9';
+    tr.innerHTML = `
+      <td style="padding:6px 8px;position:relative;">
+        <input class="form-control pm-prod-name" id="pm-pn-${idx}" style="font-size:12px;"
+               placeholder="Buscar producto por nombre o código..." autocomplete="off"
+               oninput="WMS_MODULES.picking._pmProdInput('${idx}')">
+        <input type="hidden" class="pm-pid" id="pm-pid-${idx}" value="">
+        <div id="pm-drop-${idx}"
+             style="display:none;position:absolute;left:0;right:0;z-index:300;background:#fff;
+                    border:1px solid #e2e8f0;border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,.12);
+                    max-height:220px;overflow-y:auto;top:calc(100% + 2px);min-width:340px;"></div>
+      </td>
+      <td style="padding:6px 8px;text-align:center;">
+        <input type="number" class="form-control pm-qty"
+               style="width:85px;margin:0 auto;text-align:center;font-size:12px;" min="1" value="1">
+      </td>
+      <td style="text-align:center;padding:6px;">
+        <button class="btn btn-xs btn-danger-soft" onclick="this.closest('tr').remove()"
+                title="Quitar línea"><i class="fa-solid fa-times"></i></button>
+      </td>`;
+    tbody.appendChild(tr);
+    document.getElementById('pm-pn-' + idx)?.focus();
+  },
+
+  _pmProdInput(idx) {
+    clearTimeout(this._pmTimers[idx]);
+    this._pmTimers[idx] = setTimeout(() => this._pmSearchProduct(idx), 300);
+  },
+
+  async _pmSearchProduct(idx) {
+    const input = document.getElementById('pm-pn-' + idx);
+    const drop  = document.getElementById('pm-drop-' + idx);
+    if (!input || !drop) return;
+    const q = input.value.trim();
+    if (q.length < 2) { drop.style.display = 'none'; return; }
+    try {
+      const r = await API.get('/param/productos/buscar?q=' + encodeURIComponent(q) + '&limit=10');
+      const items = Array.isArray(r.data) ? r.data : (Array.isArray(r) ? r : []);
+      this._pmCache[idx] = items;
+      if (!items.length) {
+        drop.innerHTML = '<div style="padding:10px 14px;color:#94a3b8;font-size:12px;font-style:italic;">Sin resultados para "' + WMS.esc(q) + '"</div>';
+      } else {
+        drop.innerHTML = items.map((p, i) => `
+          <div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:12px;"
+               onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background=''"
+               onclick="WMS_MODULES.picking._pmSelectProduct('${idx}', ${i})">
+            <div style="font-weight:600;color:#1e293b;">${WMS.esc(p.nombre || p.descripcion || '')}</div>
+            <div style="color:#64748b;font-size:11px;">
+              Cód: ${WMS.esc(p.codigo_interno || '—')}
+              ${p.ean_principal ? ' · EAN: ' + WMS.esc(p.ean_principal) : ''}
+              ${p.unidades_caja > 1 ? ' · ' + p.unidades_caja + ' und/cj' : ''}
+            </div>
+          </div>`).join('');
+      }
+      drop.style.display = 'block';
+      const closeHandler = (e) => {
+        if (!e.target.closest('#pm-drop-' + idx) && !e.target.closest('#pm-pn-' + idx)) {
+          drop.style.display = 'none';
+          document.removeEventListener('click', closeHandler);
+        }
+      };
+      document.addEventListener('click', closeHandler);
+    } catch(e) { if (e.isSessionExpired) return; }
+  },
+
+  _pmSelectProduct(idx, i) {
+    const p     = (this._pmCache[idx] || [])[i];
+    if (!p) return;
+    const input = document.getElementById('pm-pn-' + idx);
+    const pid   = document.getElementById('pm-pid-' + idx);
+    const drop  = document.getElementById('pm-drop-' + idx);
+    if (input) input.value = p.nombre || p.descripcion || '';
+    if (pid)   pid.value   = p.id;
+    if (drop)  drop.style.display = 'none';
+    // Enfocar cantidad para flujo rápido
+    const tr  = document.getElementById('pm-line-' + idx);
+    if (tr) tr.querySelector('.pm-qty')?.select();
+  },
+
+  async _pmGuardar() {
+    const numero   = document.getElementById('pm-numero')?.value.trim();
+    const cliente  = document.getElementById('pm-cliente')?.value.trim();
+    const ruta     = document.getElementById('pm-ruta')?.value.trim();
+
+    if (!cliente) {
+      WMS.toast('warning', 'El campo Cliente / Sucursal es obligatorio');
+      document.getElementById('pm-cliente')?.focus();
+      return;
+    }
+
+    const detalles = [];
+    document.querySelectorAll('#pm-lines-body tr[id^="pm-line-"]').forEach(tr => {
+      const pid = tr.querySelector('.pm-pid')?.value;
+      const qty = parseFloat(tr.querySelector('.pm-qty')?.value || '0');
+      if (pid && qty > 0) detalles.push({ producto_id: parseInt(pid), cantidad: qty });
+    });
+
+    if (!detalles.length) {
+      WMS.toast('warning', 'Agrega al menos un producto con cantidad mayor a 0');
+      return;
+    }
+
+    const btn = document.querySelector('button[onclick*="_pmGuardar"]');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando...'; }
+
+    try {
+      await API.post('/picking', {
+        numero_pedido    : numero || null,
+        cliente,
+        sucursal_entrega : cliente,
+        ruta             : ruta || null,
+        fecha_requerida  : new Date().toISOString().split('T')[0],
+        detalles,
+      });
+      WMS.toast('success', 'Pedido creado correctamente');
+      this.show_pedidos();
+    } catch(e) {
+      if (e.isSessionExpired) return;
+      WMS.toast('error', e.message || 'Error al guardar el pedido');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-save"></i> Guardar Pedido'; }
+    }
+  },
 
   // ── IMPORTACIÓN MASIVA DE PEDIDOS (Archivo Plano) ────────────────────────
   _importPreviewData: null,
@@ -1336,7 +1827,7 @@ WMS_MODULES.picking = {
              </button>`;
         WMS.showModal(modalTitle, summaryHtml, modalFooter);
       }
-    } catch(e) { console.error('[picking] uploadCsv error:', e); WMS.toast('error', 'Error al procesar la importación: ' + (e.message || 'Error desconocido')); if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-upload"></i> Importar Pedidos'; } }
+    } catch(e) { if (e.isSessionExpired) return; console.error('[picking] uploadCsv error:', e); WMS.toast('error', 'Error al procesar la importación: ' + (e.message || 'Error desconocido')); if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-upload"></i> Importar Pedidos'; } }
   },
 
   async _anularPedido(id) {
@@ -1949,7 +2440,7 @@ WMS_MODULES.picking = {
             </div>
           </div>
         </div>`);
-    } catch(e) { console.error(e); WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando faltantes</p></div>'); }
+    } catch(e) { if (e.isSessionExpired) return; console.error(e); WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando faltantes</p></div>'); }
   },
 
   _toggleAllFalt(checked) {
@@ -1988,7 +2479,7 @@ WMS_MODULES.picking = {
           if (d.sin_stock > 0) msgs.push(`${d.sin_stock} sin stock aún`);
           WMS.toast(d.sin_stock > 0 ? 'warning' : 'success', msgs.join(' • ') || 'Backorder procesado');
           this.show_faltantes();
-        } catch(e) { WMS.toast('error', 'Error al procesar backorder'); console.error(e); }
+        } catch(e) { if (e.isSessionExpired) return; WMS.toast('error', 'Error al procesar backorder'); console.error(e); }
       });
   },
 
@@ -2202,8 +2693,9 @@ WMS_MODULES.picking = {
     <div class="table-container">
       <table class="erp-table" id="dash-table">
         <thead><tr>
-          <th>Planilla</th><th>Ruta</th><th class="text-center">Avance Líneas</th><th style="min-width:130px;">Progreso</th>
-          <th>Estado</th><th>Encargado(s)</th><th class="text-center">H. Inicio</th><th class="text-center">T. Demora</th><th class="text-right">Obs</th>
+          <th>Planilla</th><th>Clientes / Sucursal</th><th>Ruta</th><th class="text-center">Avance</th>
+          <th style="min-width:130px;">Progreso</th><th>Estado</th><th>Encargado(s)</th>
+          <th class="text-center">H. Inicio</th><th class="text-right">Obs</th>
         </tr></thead>
         <tbody>${tableRows || '<tr><td colspan="9" class="table-empty">Sin planillas en este rango</td></tr>'}</tbody>
       </table>
@@ -2380,6 +2872,7 @@ WMS_MODULES.picking = {
     try {
       const r = await API.get('/picking/productos-pendientes');
       const items = r.data || [];
+      this._pendientesCache = items;
       WMS.setContent(`
         <div class="px-20 py-16">
           <div class="card shadow-soft">
@@ -2390,26 +2883,34 @@ WMS_MODULES.picking = {
               <span class="text-xs text-muted">${items.length} EAN(s) pendiente(s)</span>
             </div>
             <div style="padding:10px 16px;background:#fefce8;border-bottom:1px solid #fde68a;font-size:12px;color:#78350f;">
-              <i class="fa-solid fa-info-circle"></i> Estos códigos EAN aparecieron en importaciones de pedidos pero no se encontraron en la maestra de productos.
-              Codifíquelos en <strong>Maestros → Productos</strong> y luego reimporte el archivo para que se incluyan en las planillas.
+              <i class="fa-solid fa-info-circle"></i> Estos EAN aparecieron en importaciones pero no existen en la maestra de productos.
+              Use <strong>Crear Producto</strong> para codificarlos directamente aquí, luego reimporte el CSV para incluirlos en las planillas.
             </div>
             <div class="table-container">
               <table class="erp-table">
                 <thead><tr>
-                  <th>EAN / Código</th><th>Última Factura</th><th>Sucursal</th>
-                  <th class="text-center">Cantidad</th><th>Fecha Import.</th><th>Acciones</th>
+                  <th>EAN / Código</th><th>Descripción</th><th>Última Factura</th><th>Sucursal</th>
+                  <th class="text-center">Cant.</th><th>Fecha Import.</th><th>Acciones</th>
                 </tr></thead>
                 <tbody>
                   ${items.length === 0
-                    ? '<tr><td colspan="6" class="table-empty"><i class="fa-solid fa-check-circle" style="color:#16a34a;"></i> No hay productos pendientes de codificación</td></tr>'
+                    ? '<tr><td colspan="7" class="table-empty"><i class="fa-solid fa-check-circle" style="color:#16a34a;"></i> No hay productos pendientes de codificación</td></tr>'
                     : items.map(it => `<tr>
                         <td class="fw-800" style="font-family:monospace;">${WMS.esc(it.ean_codigo)}</td>
-                        <td>${WMS.esc(it.numero_factura || '-')}</td>
-                        <td>${WMS.esc(it.sucursal_entrega || '-')}</td>
+                        <td style="max-width:200px;white-space:normal;font-size:.8rem;">${WMS.esc(it.descripcion || '—')}</td>
+                        <td style="font-size:.8rem;">${WMS.esc(it.numero_factura || '—')}</td>
+                        <td style="font-size:.8rem;">${WMS.esc(it.sucursal_entrega || '—')}</td>
                         <td class="text-center">${it.cantidad || 1}</td>
-                        <td>${WMS.formatDate(it.fecha_importacion)}</td>
-                        <td>
-                          <button class="btn btn-xs btn-danger-soft" onclick="WMS_MODULES.picking._eliminarPendiente(${it.id})">
+                        <td style="font-size:.8rem;">${WMS.formatDate(it.fecha_importacion)}</td>
+                        <td style="white-space:nowrap;">
+                          <button title="Crear producto en catálogo"
+                            onclick="WMS_MODULES.picking._crearProductoDesdePendiente(${parseInt(it.id)||0})"
+                            style="background:#dcfce7;color:#166534;border:none;border-radius:3px;padding:3px 10px;cursor:pointer;font-size:.72rem;font-weight:600;margin-right:4px;">
+                            <i class="fa-solid fa-plus"></i> Crear
+                          </button>
+                          <button title="Eliminar de la lista"
+                            onclick="WMS_MODULES.picking._eliminarPendiente(${parseInt(it.id)||0})"
+                            style="background:#fee2e2;color:#991b1b;border:none;border-radius:3px;padding:3px 8px;cursor:pointer;font-size:.72rem;">
                             <i class="fa-solid fa-trash"></i>
                           </button>
                         </td>
@@ -2420,6 +2921,127 @@ WMS_MODULES.picking = {
           </div>
         </div>`);
     } catch (e) { WMS.toast('error', 'Error cargando pendientes'); }
+  },
+
+  async _crearProductoDesdePendiente(pendienteId) {
+    const it = (this._pendientesCache || []).find(x => x.id == pendienteId);
+    if (!it) { WMS.toast('error', 'Registro no encontrado'); return; }
+    WMS.spinner();
+    try {
+      const [cs, ms] = await Promise.all([API.get('/param/categorias'), API.get('/param/marcas')]);
+      const cats  = cs.data || cs || [];
+      const marcas = ms.data || ms || [];
+      WMS.showModal('Codificar Producto desde Pendiente', `
+        <div style="background:#fefce8;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:.8rem;color:#78350f;display:flex;gap:8px;align-items:flex-start;">
+          <i class="fa-solid fa-triangle-exclamation" style="margin-top:2px;flex-shrink:0;"></i>
+          <span>EAN <strong>${WMS.esc(it.ean_codigo)}</strong> encontrado en pedidos de picking (Factura: ${WMS.esc(it.numero_factura||'—')}, Sucursal: ${WMS.esc(it.sucursal_entrega||'—')}).
+          Tras crear el producto, <strong>reimporte el CSV</strong> para incluirlo en las planillas automáticamente.</span>
+        </div>
+        <div class="form-grid form-grid-2">
+          <div class="form-group" style="grid-column:1/-1;">
+            <label class="form-label">EAN / CÓDIGO INTERNO <span class="required">*</span></label>
+            <input id="pp-ean" class="form-control" value="${WMS.esc(it.ean_codigo)}" placeholder="Código de barras o código interno">
+          </div>
+          <div class="form-group" style="grid-column:1/-1;">
+            <label class="form-label">NOMBRE DEL PRODUCTO <span class="required">*</span></label>
+            <input id="pp-nombre" class="form-control" value="${WMS.esc(it.descripcion || '')}" placeholder="Nombre completo del producto">
+          </div>
+          <div class="form-group">
+            <label class="form-label">CATEGORÍA</label>
+            <select id="pp-cat" class="form-control">
+              <option value="">-- Sin categoría --</option>
+              ${cats.map(c => `<option value="${parseInt(c.id)||0}">${WMS.esc(c.nombre || c.marca || '')}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">MARCA</label>
+            <select id="pp-marca" class="form-control">
+              <option value="">-- Sin marca --</option>
+              ${marcas.map(m => `<option value="${parseInt(m.id)||0}">${WMS.esc(m.nombre)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">AMBIENTE DE ALMACÉN</label>
+            <select id="pp-amb" class="form-control">
+              <option value="Seco">🌡️ Seco (temperatura ambiente)</option>
+              <option value="Refrigerado">❄️ Refrigerado (0°–8°C)</option>
+              <option value="Congelado">🧊 Congelado (bajo 0°C)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">UNIDAD DE MEDIDA</label>
+            <select id="pp-um" class="form-control">
+              ${['UN','KG','LT','ML','GR','CJ','BL','PQ','RO','PA'].map(u => `<option>${u}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">PESO UNITARIO (kg)</label>
+            <input id="pp-peso" class="form-control" type="number" step="0.01" min="0" placeholder="0.00">
+          </div>
+          <div class="form-group">
+            <label class="form-label">UNIDADES POR CAJA</label>
+            <input id="pp-uxc" class="form-control" type="number" value="1" min="1">
+          </div>
+          <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px;background:#f8fafc;padding:12px;border-radius:6px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div>
+                <div style="font-size:.78rem;font-weight:600;color:#475569;">Maneja Lotes</div>
+                <div style="font-size:.68rem;color:#94a3b8;">Control de trazabilidad por lote</div>
+              </div>
+              <label class="wms-switch sm"><input type="checkbox" id="pp-lote"><span class="slider"></span></label>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div>
+                <div style="font-size:.78rem;font-weight:600;color:#475569;">Controla Vencimiento</div>
+                <div style="font-size:.68rem;color:#94a3b8;">FEFO en picking y despacho</div>
+              </div>
+              <label class="wms-switch sm"><input type="checkbox" id="pp-venc"><span class="slider"></span></label>
+            </div>
+          </div>
+        </div>`,
+        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+         <button class="btn btn-primary" onclick="WMS_MODULES.picking._saveProductoPendiente(${parseInt(pendienteId)||0})">
+           <i class="fa-solid fa-box-open"></i> Crear Producto
+         </button>`
+      );
+    } catch(e) {
+      WMS.toast('error', 'Error cargando formulario: ' + (e.message||''));
+    }
+  },
+
+  async _saveProductoPendiente(pendienteId) {
+    const pv = s => { if (!s) return 0; const v = parseFloat(String(s).replace(',','.')); return isNaN(v) ? 0 : v; };
+    const ean    = document.getElementById('pp-ean')?.value.trim()   || '';
+    const nombre = document.getElementById('pp-nombre')?.value.trim() || '';
+    if (!ean)    { WMS.toast('warning', 'El EAN / Código es obligatorio');    return; }
+    if (!nombre) { WMS.toast('warning', 'El Nombre del producto es obligatorio'); return; }
+
+    const data = {
+      codigo_interno:       ean,
+      codigo_ean:           ean,
+      nombre,
+      descripcion:          nombre,
+      categoria_id:         document.getElementById('pp-cat')?.value   || null,
+      marca_id:             document.getElementById('pp-marca')?.value  || null,
+      temperatura_almacen:  document.getElementById('pp-amb')?.value   || 'Seco',
+      unidad_medida:        document.getElementById('pp-um')?.value     || 'UN',
+      peso_unitario:        pv(document.getElementById('pp-peso')?.value),
+      unidades_caja:        parseInt(document.getElementById('pp-uxc')?.value  || 1),
+      maneja_lotes:         document.getElementById('pp-lote')?.checked  ? 1 : 0,
+      controla_vencimiento: document.getElementById('pp-venc')?.checked  ? 1 : 0,
+    };
+
+    try {
+      const r = await API.post('/param/productos', data);
+      if (r.error) { WMS.toast('error', r.message || 'Error al crear el producto'); return; }
+      // Auto-eliminar de la tabla de pendientes
+      try { await API.delete('/picking/productos-pendientes/' + pendienteId); } catch(_) {}
+      WMS.closeModal('generic-modal');
+      WMS.toast('success', `Producto "${nombre}" creado. Reimporte el CSV para incluirlo en las planillas.`);
+      this.show_productos_pendientes(true);
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error de conexión al crear el producto');
+    }
   },
 
   async _eliminarPendiente(id) {

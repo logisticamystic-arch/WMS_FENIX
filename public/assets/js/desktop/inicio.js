@@ -281,6 +281,10 @@ WMS_MODULES.inicio = {
 
   /* ── Gráfica de tendencia (línea) ──────────────────────────── */
   _renderTrend(labels, data) {
+    if (typeof Chart === 'undefined') {
+      console.warn('Chart.js no está disponible. No se pudo renderizar la tendencia.');
+      return;
+    }
     const ctx = document.getElementById('chart-trend');
     if (!ctx) return;
     if (this._charts.trend) this._charts.trend.destroy();
@@ -349,6 +353,7 @@ WMS_MODULES.inicio = {
 
   /* ── Gráfica donut inventario (Universal) ──────────────────── */
   _renderDonut(canvasId, legendId, pctId, items, label, isBinary = false) {
+    if (typeof Chart === 'undefined') return;
     const ctx = document.getElementById(canvasId);
     if (!ctx) return;
     if (this._charts[canvasId]) this._charts[canvasId].destroy();

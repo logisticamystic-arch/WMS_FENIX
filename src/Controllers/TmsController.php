@@ -241,7 +241,8 @@ class TmsController extends BaseController
 
         $keys = DB::table('api_keys')
             ->where('empresa_id', $empresaId)
-            ->select(['id', 'nombre', 'permisos', 'activo', 'ultimo_uso', 'created_at'])
+            ->where('activo', 1)
+            ->select(['id', 'nombre', 'key_hash', 'permisos', 'activo', 'ultimo_uso', 'created_at'])
             ->orderBy('created_at', 'desc')
             ->get()
             ->toArray();

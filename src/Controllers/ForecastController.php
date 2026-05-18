@@ -86,12 +86,17 @@ class ForecastController extends BaseController
         }
 
         $total = (clone $q)->count();
+
+        $nullsLast = $this->isPg()
+            ? 'f.alerta_quiebre DESC, f.dias_hasta_quiebre ASC NULLS LAST'
+            : 'f.alerta_quiebre DESC, ISNULL(f.dias_hasta_quiebre) ASC, f.dias_hasta_quiebre ASC';
+
         $items = $q->select(
                     'f.*',
                     'p.nombre as producto_nombre',
                     'p.codigo_interno as codigo'
                 )
-                ->orderByRaw('f.alerta_quiebre DESC, f.dias_hasta_quiebre ASC NULLS LAST')
+                ->orderByRaw($nullsLast)
                 ->limit($limit)
                 ->offset((int)($params['offset'] ?? 0))
                 ->get();
@@ -111,14 +116,26 @@ class ForecastController extends BaseController
         $params = $r->getQueryParams();
         $diasUmbral = (int)($params['dias'] ?? 14);
 
+        $empId   = $user->empresa_id;
+        $sucId   = $user->sucursal_id;
+        $isPg    = $this->isPg();
+        $segExpr = $isPg ? "(c.clase_abc || c.clase_xyz) AS segmento"
+                         : "CONCAT(COALESCE(c.clase_abc,''), COALESCE(c.clase_xyz,'')) AS segmento";
+        $orderQ  = $isPg ? 'f.dias_hasta_quiebre ASC NULLS LAST'
+                         : 'ISNULL(f.dias_hasta_quiebre) ASC, f.dias_hasta_quiebre ASC';
+        $orderAbc = $isPg ? 'c.clase_abc ASC NULLS LAST'
+                          : 'ISNULL(c.clase_abc) ASC, c.clase_abc ASC';
+
         $alertas = Capsule::table('forecast_demanda as f')
             ->join('productos as p', 'f.producto_id', '=', 'p.id')
-            ->leftJoin('clasificaciones_abc_xyz as c',
-                fn($j) => $j->on('c.producto_id', '=', 'f.producto_id')
-                             ->where('c.empresa_id',  '=', 'f.empresa_id') // nota: raw comparison
-                             ->where('c.vigente', true))
-            ->where('f.empresa_id',  $user->empresa_id)
-            ->where('f.sucursal_id', $user->sucursal_id)
+            ->leftJoin('clasificaciones_abc_xyz as c', function ($j) use ($empId, $sucId) {
+                $j->on('c.producto_id', '=', 'f.producto_id')
+                  ->on('c.empresa_id',  '=', 'f.empresa_id')
+                  ->on('c.sucursal_id', '=', 'f.sucursal_id')
+                  ->where('c.vigente', true);
+            })
+            ->where('f.empresa_id',  $empId)
+            ->where('f.sucursal_id', $sucId)
             ->where('f.es_vigente',  true)
             ->where('f.alerta_quiebre', true)
             ->where(fn($q) =>
@@ -131,11 +148,11 @@ class ForecastController extends BaseController
                 'f.stock_seguridad_sug', 'f.punto_reorden_sug',
                 'f.banda_inf_80', 'f.banda_sup_80',
                 'f.modelo_usado', 'f.score_confianza',
-                Capsule::raw("(c.clase_abc || c.clase_xyz) AS segmento"),
+                Capsule::raw($segExpr),
                 'c.total_valor'
             )
-            ->orderByRaw('f.dias_hasta_quiebre ASC NULLS LAST')
-            ->orderByRaw("c.clase_abc ASC NULLS LAST")
+            ->orderByRaw($orderQ)
+            ->orderByRaw($orderAbc)
             ->get();
 
         // Resumen por nivel de urgencia
@@ -426,9 +443,9 @@ class ForecastController extends BaseController
                 modelo_usado,
                 horizonte_dias,
                 COUNT(*) AS num_predicciones,
-                ROUND(AVG(mape)::numeric, 3)           AS mape_promedio,
-                ROUND(AVG(rmse)::numeric, 3)           AS rmse_promedio,
-                ROUND(AVG(score_confianza)::numeric, 3) AS confianza_promedio
+                ROUND(AVG(mape), 3)           AS mape_promedio,
+                ROUND(AVG(rmse), 3)           AS rmse_promedio,
+                ROUND(AVG(score_confianza), 3) AS confianza_promedio
             ")
             ->groupBy('modelo_usado', 'horizonte_dias')
             ->orderBy('mape_promedio', 'asc')

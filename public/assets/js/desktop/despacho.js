@@ -43,53 +43,40 @@ WMS_MODULES.despacho = {
     return m[s] || s || 'Panel';
   },
 
-  // ── CERTIFICACIÓN ─────────────────────────────────────────────
+  // ── CERTIFICACIÓN (POR SUCURSAL) ───────────────────────────────
   async show_certificacion(silent = false) {
     WMS.setToolbar(`
-      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.despacho.importarPlanillas()"><i class="fa-solid fa-file-import"></i> Importar Planillas</button>
       <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.show_certificacion()"><i class="fa-solid fa-rotate"></i> Actualizar</button>
       <span id="cert-refresh-badge" style="display:inline-flex;align-items:center;gap:5px;background:#198754;color:#fff;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:600;">
         <span style="width:7px;height:7px;border-radius:50%;background:#fff;animation:pulse-dot 1.2s infinite;display:inline-block;"></span> Auto 30s
       </span>`);
     if (!silent) WMS.spinner();
     try {
-      const r = await API.get('/planillas', 'limit=100');
+      const r = await API.get('/picking/certificacion/pendientes');
       const items = r.data || r || [];
-      const stChip = s => {
-        const m = { Creada:'status-creada', Asignada:'status-confirmada', 'En Proceso':'status-en-proceso',
-          Cerrada:'status-cerrada', Cancelada:'status-cancelada' };
-        return `<span class="status-chip ${m[s]||'status-creada'}">${WMS.esc(s)}</span>`;
-      };
+      
       WMS.setContent(`
         <div class="filter-bar">
           <div class="search-bar"><i class="fa-solid fa-search"></i>
-            <input placeholder="Buscar planilla, cliente..." oninput="WMS_MODULES.despacho.filterTable(this.value,'cert-table')">
+            <input placeholder="Buscar sucursal..." oninput="WMS_MODULES.despacho.filterTable(this.value,'cert-table')">
           </div>
-          <select class="form-control" style="max-width:160px;" onchange="WMS_MODULES.despacho.filterEstadoCert(this.value)">
-            <option value="">Todos los estados</option>
-            <option>Creada</option><option>Asignada</option>
-            <option>En Proceso</option><option>Cerrada</option>
-          </select>
         </div>
         <div class="card">
-          <div class="card-header"><span class="card-title"><i class="fa-solid fa-clipboard-check"></i> Planillas de Certificación (${items.length})</span></div>
+          <div class="card-header"><span class="card-title"><i class="fa-solid fa-clipboard-check"></i> Pendientes por Certificar (${items.length})</span></div>
           <div class="table-container">
             <table class="erp-table" id="cert-table">
-              <thead><tr><th>Planilla</th><th>Cliente</th><th>Ruta</th><th>Líneas</th><th>Estado</th><th>Certificador</th><th>Fecha</th><th>Acciones</th></tr></thead>
-              <tbody>${items.map(p => `<tr data-estado-cert="${p.estado||''}">
-                <td><span class="badge badge-info">${WMS.esc(p.numero_planilla||p.planilla_numero||('#'+p.id))}</span></td>
-                <td><strong>${WMS.esc(p.cliente||p.cliente_nombre||'-')}</strong></td>
-                <td>${WMS.esc(p.ruta||'-')}</td>
-                <td class="text-center">${p.total_lineas||p.lineas||0}</td>
-                <td>${stChip(p.estado||'Creada')}</td>
-                <td>${WMS.esc(p.certificador||p.auxiliar||'-')}</td>
-                <td>${WMS.formatDate(p.fecha||p.created_at)||'-'}</td>
+              <thead><tr><th>Sucursal de Entrega</th><th class="text-center">Pedidos</th><th class="text-center">Líneas Totales</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <tbody>${items.map(s => `<tr>
+                <td><strong>${WMS.esc(s.sucursal_entrega || 'Sin Sucursal')}</strong></td>
+                <td class="text-center">${s.total_pedidos}</td>
+                <td class="text-center">${s.total_lineas}</td>
+                <td><span class="status-chip status-creada">Listo para Certificar</span></td>
                 <td><div class="actions">
-                  <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.despacho.verPlanilla(${p.id})"><i class="fa-solid fa-eye"></i></button>
-                  ${p.estado==='Creada'||p.estado==='Asignada' ? `<button class="btn btn-sm btn-primary" onclick="WMS_MODULES.despacho.asignarCert(${p.id})"><i class="fa-solid fa-user-check"></i></button>` : ''}
-                  ${p.estado==='Cerrada' ? `<button class="btn btn-sm btn-success" onclick="WMS_MODULES.despacho.generarCargue(${p.id})"><i class="fa-solid fa-truck-loading"></i> Cargue</button>` : ''}
+                  <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.despacho.iniciarCertificacion('${WMS.esc(s.sucursal_entrega)}')">
+                    <i class="fa-solid fa-barcode"></i> Iniciar Certificación
+                  </button>
                 </div></td>
-              </tr>`).join('') || '<tr><td colspan="8" class="table-empty">Sin planillas de certificación</td></tr>'}
+              </tr>`).join('') || '<tr><td colspan="5" class="table-empty">Sin sucursales pendientes de certificación</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -97,16 +84,189 @@ WMS_MODULES.despacho = {
     } catch(e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
   },
 
-  filterTable(q, tableId) {
-    const rows = document.querySelectorAll('#' + tableId + ' tbody tr');
-    const f = q.toLowerCase();
-    rows.forEach(r => { r.style.display = r.textContent.toLowerCase().includes(f) ? '' : 'none'; });
+  async iniciarCertificacion(sucursal) {
+    WMS.spinner();
+    try {
+      const r = await API.get('/picking/certificacion/detalle/' + encodeURIComponent(sucursal));
+      const lineas = r.data || r || [];
+      
+      this._renderCertInterface(sucursal, lineas);
+    } catch(e) { WMS.toast('error', 'Error al cargar detalles'); }
   },
 
-  filterEstadoCert(estado) {
-    document.querySelectorAll('#cert-table tbody tr').forEach(r => {
-      r.style.display = (!estado || r.dataset.estadoCert === estado) ? '' : 'none';
+  _renderCertInterface(sucursal, lineas) {
+    const totalLines = lineas.length;
+    const certLines  = lineas.filter(l => l.cantidad_certificada > 0).length;
+    const progress   = totalLines > 0 ? Math.round((certLines / totalLines) * 100) : 0;
+
+    WMS.setContent(`
+      <div class="cert-workflow-container">
+        <div class="cert-header">
+          <div class="cert-header-left">
+            <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.despacho.show_certificacion()">
+              <i class="fa-solid fa-arrow-left"></i> Volver
+            </button>
+            <h2 class="cert-title">Certificando: <strong>${WMS.esc(sucursal)}</strong></h2>
+          </div>
+          <div class="cert-progress-box">
+             <div class="cert-progress-info">
+               <span>Progreso: <strong>${certLines} / ${totalLines}</strong> líneas</span>
+               <span>${progress}%</span>
+             </div>
+             <div class="pro-progress-bar-bg"><div class="pro-progress-bar-fill ${progress>=100?'green':''}" style="width:${progress}%"></div></div>
+          </div>
+        </div>
+
+        <div class="cert-body">
+          <div class="cert-scanner-box">
+            <div class="scanner-input-wrap">
+              <i class="fa-solid fa-barcode"></i>
+              <input type="text" id="cert-scanner" placeholder="Escanee producto o ingrese código..." 
+                     onkeyup="if(event.key==='Enter') WMS_MODULES.despacho.procesarEscaneo('${WMS.esc(sucursal)}')">
+              <button class="btn btn-primary" onclick="WMS_MODULES.despacho.procesarEscaneo('${WMS.esc(sucursal)}')">Validar</button>
+            </div>
+            <p class="text-muted text-sm" style="margin-top:8px;"><i class="fa-solid fa-keyboard"></i> También puede seleccionar un producto de la lista para certificarlo manualmente.</p>
+          </div>
+
+          <div class="card" style="margin-top:20px;">
+            <div class="table-container" style="max-height:calc(100vh - 350px); overflow-y:auto;">
+              <table class="erp-table" id="table-cert-lines">
+                <thead>
+                  <tr>
+                    <th>Producto</th>
+                    <th class="text-center">EAN/Código</th>
+                    <th class="text-center">Pickeado</th>
+                    <th class="text-center">Certificado</th>
+                    <th class="text-center">Diferencia</th>
+                    <th class="text-center">Estado</th>
+                    <th class="text-center">Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${lineas.map(l => {
+                    const diff = l.cantidad_pickeada - l.cantidad_certificada;
+                    const st = l.cantidad_certificada === 0 ? 'pendiente' : (diff === 0 ? 'ok' : 'error');
+                    return `
+                    <tr id="cert-row-${l.producto_id}" class="cert-row-${st}" data-ean="${WMS.esc(l.ean)}" data-codigo="${WMS.esc(l.codigo)}">
+                      <td>
+                        <div class="fw-700">${WMS.esc(l.nombre)}</div>
+                      </td>
+                      <td class="text-center"><code style="font-size:11px;">${WMS.esc(l.ean)}</code></td>
+                      <td class="text-center fw-700" style="font-size:1.1rem;">${WMS.formatNum(l.cantidad_pickeada)}</td>
+                      <td class="text-center fw-700" style="font-size:1.1rem; color:var(--primary);">${WMS.formatNum(l.cantidad_certificada)}</td>
+                      <td class="text-center">
+                         ${l.cantidad_certificada > 0 ? (diff === 0 ? '<span class="status-badge success"><i class="fa-solid fa-check"></i></span>' : `<span class="badge badge-danger">${diff > 0 ? '-' : '+'}${WMS.formatNum(Math.abs(diff))}</span>`) : '—'}
+                      </td>
+                      <td class="text-center">
+                         <span class="pro-badge ${st === 'ok' ? 'ok' : st === 'error' ? 'warn' : 'info'}">
+                           ${st === 'ok' ? 'Correcto' : st === 'error' ? 'Diferencia' : 'Pendiente'}
+                         </span>
+                      </td>
+                      <td class="text-center">
+                        <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.despacho.manualCert('${WMS.esc(sucursal)}', ${l.producto_id}, '${WMS.esc(l.nombre)}', ${l.cantidad_pickeada}, ${l.cantidad_certificada})">
+                          <i class="fa-solid fa-edit"></i>
+                        </button>
+                      </td>
+                    </tr>`;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="cert-footer">
+          <div class="cert-footer-left">
+            <span class="text-muted">Sucursal: ${WMS.esc(sucursal)}</span>
+          </div>
+          <div class="cert-footer-actions">
+            <button class="btn btn-danger btn-sm" onclick="WMS_MODULES.despacho.show_certificacion()">Cancelar Proceso</button>
+            <button class="btn btn-success" onclick="WMS_MODULES.despacho.finalizarCertificacion('${WMS.esc(sucursal)}')" ${progress < 100 ? 'disabled title="Certifique todas las líneas antes de finalizar"' : ''}>
+              <i class="fa-solid fa-check-double"></i> Finalizar y Generar PDF
+            </button>
+          </div>
+        </div>
+      </div>
+    `);
+    
+    // Auto-focus scanner
+    setTimeout(() => document.getElementById('cert-scanner')?.focus(), 200);
+  },
+
+  async procesarEscaneo(sucursal) {
+    const input = document.getElementById('cert-scanner');
+    const val   = input.value.trim();
+    if (!val) return;
+    
+    // Buscar en la tabla por EAN o Código
+    const rows = document.querySelectorAll('#table-cert-lines tbody tr');
+    let match = null;
+    rows.forEach(r => {
+        if (r.dataset.ean === val || r.dataset.codigo === val) match = r;
     });
+
+    if (match) {
+        const pid = match.id.replace('cert-row-', '');
+        // For simplicity, we ask for quantity even on scan if it's not a single unit scan flow
+        // Or we can just cert the whole picked qty
+        const nombre = match.querySelector('div.fw-700').textContent;
+        const pick   = parseFloat(match.cells[2].textContent);
+        const cert   = parseFloat(match.cells[3].textContent);
+        
+        input.value = '';
+        this.manualCert(sucursal, pid, nombre, pick, cert);
+    } else {
+        WMS.toast('error', 'Producto no encontrado en este despacho');
+        input.select();
+    }
+  },
+
+  manualCert(sucursal, pid, nombre, pick, actual) {
+    const nueva = prompt(`Certificando: ${nombre}\n\nCantidad Pickeada: ${pick}\nIngrese la cantidad encontrada:`, actual || pick);
+    if (nueva === null || nueva === "" || isNaN(nueva)) return;
+
+    this.confirmarLineaCert(sucursal, pid, parseFloat(nueva));
+  },
+
+  async confirmarLineaCert(sucursal, pid, cantidad) {
+    WMS.spinner();
+    try {
+        const r = await API.post('/picking/certificacion/confirmar', {
+            sucursal_entrega: sucursal,
+            producto_id: pid,
+            cantidad: cantidad
+        });
+        if (r.error) WMS.toast('error', r.message);
+        else {
+            WMS.toast('success', 'Línea certificada');
+            this.iniciarCertificacion(sucursal); // Refresh
+        }
+    } catch(e) { WMS.toast('error', 'Error'); }
+  },
+
+  async finalizarCertificacion(sucursal) {
+    if (!confirm('¿Desea finalizar la certificación de ' + sucursal + '? Se generarán las novedades si existen diferencias.')) return;
+    WMS.spinner();
+    try {
+        const r = await API.post('/picking/certificacion/finalizar', { sucursal_entrega: sucursal });
+        if (r.error) WMS.toast('error', r.message);
+        else {
+            WMS.toast('success', 'Certificación finalizada exitosamente');
+            
+            // Intentar imprimir automáticamente
+            try {
+                const rp = await API.get('/picking/certificacion/imprimir/' + encodeURIComponent(sucursal));
+                if (rp.error) WMS.toast('warning', 'Certificado finalizado pero error en impresión: ' + rp.message);
+                else {
+                    const labelMsg = rp.label?.error ? 'Error Etiqueta: ' + rp.label.message : 'Etiqueta impresa OK';
+                    const docMsg   = rp.document?.error ? 'Error Documento: ' + rp.document.message : 'Documento impreso OK';
+                    WMS.toast('success', `Impresión: ${labelMsg} | ${docMsg}`);
+                }
+            } catch(e) { WMS.toast('warning', 'Error al intentar imprimir'); }
+
+            this.show_certificacion();
+        }
+    } catch(e) { WMS.toast('error', 'Error finalizando'); }
   },
 
   async verPlanilla(id) {
@@ -541,137 +701,329 @@ WMS_MODULES.despacho = {
   },
 
   // ── INTEGRACIÓN TMS ───────────────────────────────────────────
+
   async show_tms() {
     WMS.setToolbar(`
-      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.despacho.show_tms()"><i class="fa-solid fa-rotate"></i> Actualizar</button>
-      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.gestionarApiKeys()"><i class="fa-solid fa-key"></i> API Keys</button>`);
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.despacho.show_tms()">
+        <i class="fa-solid fa-rotate"></i> Actualizar
+      </button>
+      <button class="btn btn-outline-primary btn-sm" onclick="WMS_MODULES.despacho.guiaTms()">
+        <i class="fa-solid fa-book"></i> Guía de Conexión
+      </button>
+      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.gestionarApiKeys()">
+        <i class="fa-solid fa-key"></i> API Keys
+      </button>`);
     WMS.spinner();
     try {
-      const [ordenes, stock, despachos] = await Promise.all([
-        API.get('/tms/ordenes'),
-        API.get('/tms/stock'),
+      const [stockR, despR] = await Promise.all([
+        API.get('/tms/stock?per_page=1'),
         API.get('/tms/despachos'),
       ]);
-      const ords = ordenes.data || ordenes || [];
-      const stk = stock.data || stock || [];
-      const desp = despachos.data || despachos || [];
+      const stk  = stockR.meta?.total ?? (stockR.data?.length ?? 0);
+      const desp = Array.isArray(despR.data) ? despR.data : [];
+
       WMS.setContent(`
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
-          <div class="card" style="border-left:4px solid #10b981;">
-            <div class="card-header"><span class="card-title"><i class="fa-solid fa-satellite-dish" style="color:#10b981;"></i> Estado TMS</span></div>
-            <div class="card-body">
-              <div style="display:flex;align-items:center;gap:10px;">
-                <span style="width:10px;height:10px;border-radius:50%;background:#10b981;display:inline-block;"></span>
-                <span style="font-weight:600;color:#10b981;">Conectado</span>
-              </div>
-              <p class="text-muted text-sm" style="margin-top:8px;">Sincronización bidireccional activa</p>
+        <!-- KPIs -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;">
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:16px;display:flex;align-items:center;gap:12px;">
+            <div style="width:40px;height:40px;border-radius:4px;background:#dcfce7;display:flex;align-items:center;justify-content:center;color:#16a34a;font-size:18px;"><i class="fa-solid fa-satellite-dish"></i></div>
+            <div>
+              <div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.5px;">Estado API</div>
+              <div style="font-size:16px;font-weight:800;color:#166534;">Endpoints activos</div>
             </div>
           </div>
-          <div class="card">
-            <div class="card-header"><span class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Stock Expuesto</span></div>
-            <div class="card-body">
-              <div class="kpi-value" style="font-size:1.5rem;">${WMS.formatNum(stk.length||0)}</div>
-              <div class="kpi-label">referencias disponibles</div>
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:16px;display:flex;align-items:center;gap:12px;">
+            <div style="width:40px;height:40px;border-radius:4px;background:#dbeafe;display:flex;align-items:center;justify-content:center;color:#1d4ed8;font-size:18px;"><i class="fa-solid fa-boxes-stacked"></i></div>
+            <div>
+              <div style="font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:.5px;">Ítems en stock</div>
+              <div style="font-size:22px;font-weight:900;color:#1e3a5f;">${WMS.formatNum(stk)}</div>
+            </div>
+          </div>
+          <div style="background:#fefce8;border:1px solid #fde68a;border-radius:4px;padding:16px;display:flex;align-items:center;gap:12px;">
+            <div style="width:40px;height:40px;border-radius:4px;background:#fef08a;display:flex;align-items:center;justify-content:center;color:#d97706;font-size:18px;"><i class="fa-solid fa-truck-fast"></i></div>
+            <div>
+              <div style="font-size:11px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:.5px;">Despachos hoy</div>
+              <div style="font-size:22px;font-weight:900;color:#1e3a5f;">${WMS.formatNum(desp.length)}</div>
             </div>
           </div>
         </div>
-        <div class="card mb-16">
-          <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-file-import"></i> Órdenes desde TMS (${ords.length})</span>
+
+        <!-- Despachos -->
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+          <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;font-weight:800;color:#1e3a5f;font-size:13px;">
+            <i class="fa-solid fa-truck-fast" style="color:#d97706;margin-right:6px;"></i>Despachos del día
           </div>
-          <div class="table-container">
-            <table class="erp-table">
-              <thead><tr><th>N° Orden</th><th>Cliente</th><th>Ruta</th><th>Fecha</th><th>Estado</th><th>Acciones</th></tr></thead>
-              <tbody>${ords.slice(0,20).map(o => `<tr>
-                <td><span class="badge badge-info">${WMS.esc(o.numero||o.id||'-')}</span></td>
-                <td>${WMS.esc(o.cliente||'-')}</td>
-                <td>${WMS.esc(o.ruta||'-')}</td>
-                <td>${WMS.formatDate(o.fecha||o.created_at)||'-'}</td>
-                <td><span class="badge badge-warning">${WMS.esc(o.estado||'-')}</span></td>
-                <td><button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.despacho.sincTMS(${o.id||0})"><i class="fa-solid fa-sync"></i> Sync</button></td>
-              </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin órdenes del TMS</td></tr>'}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-truck-fast"></i> Despachos Enviados al TMS (${desp.length})</span>
-          </div>
-          <div class="table-container">
-            <table class="erp-table">
-              <thead><tr><th>Planilla</th><th>Placa</th><th>Ruta</th><th>Estado TMS</th><th>Acciones</th></tr></thead>
-              <tbody>${desp.slice(0,20).map(d => `<tr>
-                <td>${WMS.esc(d.planilla_numero||d.numero||('-'))}</td>
-                <td>${WMS.esc(d.placa||'-')}</td>
-                <td>${WMS.esc(d.ruta||'-')}</td>
-                <td><span class="badge ${d.estado_tms==='Entregado'?'badge-success':'badge-warning'}">${WMS.esc(d.estado_tms||d.estado||'-')}</span></td>
-                <td>${d.estado==='Despachado'&&d.estado_tms!=='En Tránsito' ? `<button class="btn btn-sm btn-primary" onclick="WMS_MODULES.despacho.marcarEnTransito(${d.id})"><i class="fa-solid fa-truck-moving"></i> En Tránsito</button>` : ''}</td>
-              </tr>`).join('') || '<tr><td colspan="5" class="table-empty">Sin despachos enviados</td></tr>'}
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead><tr style="background:#f8fafc;">
+                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">N° Despacho</th>
+                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">Cliente</th>
+                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">Operador</th>
+                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">Estado</th>
+                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">Tracking</th>
+                <th style="padding:8px 12px;text-align:center;color:#64748b;font-weight:700;">Acción</th>
+              </tr></thead>
+              <tbody>
+                ${desp.length ? desp.slice(0,30).map(d => {
+                  const enTransito = d.tms_estado === 'EnTransito' || d.estado === 'En Tránsito';
+                  const entregado  = d.tms_estado === 'Entregado'  || d.estado === 'Entregado';
+                  const badge = entregado
+                    ? 'background:#dcfce7;color:#166534'
+                    : enTransito
+                      ? 'background:#dbeafe;color:#1e40af'
+                      : 'background:#fef9c3;color:#854d0e';
+                  const label = entregado ? 'Entregado' : enTransito ? 'En Tránsito' : (d.estado||'Pendiente');
+                  return `<tr style="border-bottom:1px solid #f1f5f9;">
+                    <td style="padding:8px 12px;font-weight:700;color:#0F4C81;">${WMS.esc(d.numero_despacho||'-')}</td>
+                    <td style="padding:8px 12px;">${WMS.esc(d.cliente_nombre||d.cliente||'-')}</td>
+                    <td style="padding:8px 12px;">${WMS.esc(d.operador||'-')}</td>
+                    <td style="padding:8px 12px;"><span style="${badge};padding:2px 8px;border-radius:3px;font-size:.72rem;font-weight:600;">${WMS.esc(label)}</span></td>
+                    <td style="padding:8px 12px;font-family:monospace;font-size:11px;color:#64748b;">${WMS.esc(d.tms_tracking_code||'—')}</td>
+                    <td style="padding:8px 12px;text-align:center;">
+                      ${d.estado === 'Cerrado' && !enTransito && !entregado
+                        ? `<button class="btn btn-sm btn-primary" style="font-size:.7rem;" onclick="WMS_MODULES.despacho.marcarEnTransito(${d.id})">
+                             <i class="fa-solid fa-truck-moving"></i> En Tránsito
+                           </button>`
+                        : `<span style="color:#94a3b8;font-size:11px;">—</span>`}
+                    </td>
+                  </tr>`;
+                }).join('') : '<tr><td colspan="6" style="text-align:center;padding:20px;color:#94a3b8;font-style:italic;">Sin despachos registrados hoy</td></tr>'}
               </tbody>
             </table>
           </div>
         </div>`);
-    } catch(e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión con TMS</p></div>'); }
+    } catch(e) {
+      if (e.isSessionExpired) return;
+      WMS.setContent('<div class="m-empty"><i class="fa-solid fa-plug-circle-xmark"></i><p>Error conectando con el módulo TMS</p></div>');
+    }
   },
 
   async marcarEnTransito(id) {
-    if (!confirm('¿Marcar este despacho como En Tránsito en el TMS?')) return;
-    try {
-      const r = await API.post('/tms/despacho/' + id + '/transportar', {});
-      if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Marcado como En Tránsito'); this.show_tms(); }
-    } catch(e) { WMS.toast('error', 'Error sincronizando con TMS'); }
+    WMS.showModal('Marcar En Tránsito', `
+      <div class="form-group">
+        <label class="form-label">Transportista</label>
+        <input id="tms-trans" class="form-control" placeholder="Nombre del transportista o empresa">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Código de Tracking</label>
+        <input id="tms-track" class="form-control" placeholder="Ej: TRACK-2026-001">
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+       <button class="btn btn-primary" onclick="WMS_MODULES.despacho._confirmarEnTransito(${id})">
+         <i class="fa-solid fa-truck-moving"></i> Confirmar
+       </button>`);
   },
 
-  sincTMS(id) { WMS.toast('info', 'Sincronizando con TMS...'); },
+  async _confirmarEnTransito(id) {
+    const transportista = document.getElementById('tms-trans')?.value.trim();
+    const tracking      = document.getElementById('tms-track')?.value.trim();
+    try {
+      const r = await API.post('/tms/despacho/' + id + '/transportar', { transportista, tracking_code: tracking });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.closeModal('generic-modal');
+      WMS.toast('success', 'Despacho marcado como En Tránsito');
+      this.show_tms();
+    } catch(e) {
+      if (e.isSessionExpired) return;
+      WMS.toast('error', 'Error al sincronizar con TMS');
+    }
+  },
 
   async gestionarApiKeys() {
     try {
-      const r = await API.get('/tms/keys');
-      const keys = r.data || r || [];
-      WMS.showRightPanel('Gestión de API Keys TMS', `
-        <div class="d-flex justify-between align-center" style="margin-bottom:12px;">
-          <span class="text-muted text-sm">Las API Keys permiten que el TMS externo acceda a este WMS</span>
-          <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.crearApiKey()"><i class="fa-solid fa-plus"></i> Nueva Key</button>
-        </div>
-        <div class="table-container">
-          <table class="erp-table">
-            <thead><tr><th>Nombre</th><th>Key (parcial)</th><th>Permisos</th><th>Creada</th><th>Acciones</th></tr></thead>
-            <tbody id="api-keys-tbody">${keys.map(k => `<tr>
-              <td>${WMS.esc(k.nombre||'-')}</td>
-              <td style="font-family:monospace;">${WMS.esc(k.key_partial||k.api_key?.substring(0,12)+'...'||'-')}</td>
-              <td>${WMS.esc(k.permisos||'lectura')}</td>
-              <td>${WMS.formatDate(k.created_at)||'-'}</td>
-              <td><button class="btn btn-sm btn-danger" onclick="WMS_MODULES.despacho.revocarKey(${k.id})"><i class="fa-solid fa-ban"></i> Revocar</button></td>
-            </tr>`).join('') || '<tr><td colspan="5" class="table-empty">Sin API Keys activas</td></tr>'}
-            </tbody>
-          </table>
-        </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cerrar</button>`);
-    } catch(e) { WMS.toast('error', 'Error cargando API Keys'); }
+      const r    = await API.get('/tms/keys');
+      const keys = Array.isArray(r.data) ? r.data : [];
+      WMS.showModal(
+        '<i class="fa-solid fa-key" style="margin-right:6px;color:#1d4ed8;"></i>API Keys TMS',
+        `<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+           <p style="margin:0;font-size:12px;color:#64748b;">Cada key autoriza al TMS externo a consultar los endpoints del WMS.</p>
+           <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.crearApiKey()">
+             <i class="fa-solid fa-plus"></i> Nueva Key
+           </button>
+         </div>
+         <div style="overflow-x:auto;">
+           <table style="width:100%;border-collapse:collapse;font-size:12px;">
+             <thead><tr style="background:#f8fafc;">
+               <th style="padding:7px 10px;text-align:left;color:#64748b;font-weight:700;">Nombre</th>
+               <th style="padding:7px 10px;text-align:left;color:#64748b;font-weight:700;">Key (hash parcial)</th>
+               <th style="padding:7px 10px;text-align:left;color:#64748b;font-weight:700;">Último uso</th>
+               <th style="padding:7px 10px;text-align:center;color:#64748b;font-weight:700;width:80px;"></th>
+             </tr></thead>
+             <tbody id="tms-keys-tbody">
+               ${keys.length ? keys.map(k => `
+                 <tr style="border-bottom:1px solid #f1f5f9;" id="tms-key-row-${k.id}">
+                   <td style="padding:8px 10px;font-weight:600;">${WMS.esc(k.nombre||'-')}</td>
+                   <td style="padding:8px 10px;font-family:monospace;font-size:11px;color:#64748b;">${(k.key_hash||'').substring(0,12)}…</td>
+                   <td style="padding:8px 10px;color:#64748b;">${k.ultimo_uso ? WMS.formatDate(k.ultimo_uso) : '<span style="color:#94a3b8">Nunca</span>'}</td>
+                   <td style="padding:8px 10px;text-align:center;">
+                     <button class="btn btn-xs" style="background:#fee2e2;color:#991b1b;border:none;border-radius:3px;padding:3px 8px;cursor:pointer;"
+                             onclick="WMS_MODULES.despacho.revocarKey(${k.id})">
+                       <i class="fa-solid fa-ban"></i> Revocar
+                     </button>
+                   </td>
+                 </tr>`).join('')
+               : '<tr><td colspan="4" style="text-align:center;padding:20px;color:#94a3b8;font-style:italic;">Sin API Keys activas</td></tr>'}
+             </tbody>
+           </table>
+         </div>`,
+        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>`);
+    } catch(e) {
+      if (e.isSessionExpired) return;
+      WMS.toast('error', 'Error cargando API Keys');
+    }
   },
 
   async crearApiKey() {
-    const nombre = prompt('Nombre para la nueva API Key (ej: TMS-Externo-1):');
-    if (!nombre?.trim()) return;
+    WMS.showModal(
+      '<i class="fa-solid fa-plus" style="margin-right:6px;color:#16a34a;"></i>Nueva API Key TMS',
+      `<p style="font-size:12px;color:#64748b;margin-bottom:14px;">
+         La clave se mostrará <strong>una sola vez</strong>. Cópiala al servidor TMS antes de cerrar este cuadro.
+       </p>
+       <div class="form-group">
+         <label class="form-label">Nombre identificador <span style="color:#dc2626;">*</span></label>
+         <input id="tms-key-nombre" class="form-control" placeholder="Ej: TMS-Hostinger-Prod" autofocus>
+       </div>
+       <div id="tms-key-result" style="display:none;margin-top:14px;">
+         <label class="form-label" style="color:#16a34a;font-weight:700;">
+           <i class="fa-solid fa-circle-check"></i> Key generada — cópiala ahora
+         </label>
+         <div style="display:flex;gap:8px;align-items:center;">
+           <input id="tms-key-value" class="form-control" readonly
+                  style="font-family:monospace;font-size:12px;background:#f0fdf4;border-color:#86efac;">
+           <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.despacho._copiarKey()"
+                   style="white-space:nowrap;flex-shrink:0;">
+             <i class="fa-solid fa-copy"></i> Copiar
+           </button>
+         </div>
+         <p style="font-size:11px;color:#dc2626;margin-top:6px;">
+           <i class="fa-solid fa-triangle-exclamation"></i> No se almacena en texto plano. Si la pierdes deberás crear una nueva.
+         </p>
+       </div>`,
+      `<button id="tms-btn-crear" class="btn btn-primary" onclick="WMS_MODULES.despacho._submitCrearKey()">
+         <i class="fa-solid fa-key"></i> Generar Key
+       </button>
+       <button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal');WMS_MODULES.despacho.gestionarApiKeys()">
+         Cerrar
+       </button>`);
+  },
+
+  async _submitCrearKey() {
+    const nombre = document.getElementById('tms-key-nombre')?.value.trim();
+    if (!nombre) { WMS.toast('warning', 'Ingresa un nombre para la key'); return; }
+    const btn = document.getElementById('tms-btn-crear');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando...'; }
     try {
-      const r = await API.post('/tms/keys', { nombre: nombre.trim(), permisos: 'lectura,escritura' });
-      if (r.error) WMS.toast('error', r.message);
-      else {
-        alert('API Key creada:\n' + (r.api_key || r.data?.api_key || 'Ver en la lista'));
-        this.gestionarApiKeys();
-      }
-    } catch(e) { WMS.toast('error', 'Error creando API Key'); }
+      const r = await API.post('/tms/keys', { nombre, permisos: ['read', 'write'] });
+      const plainKey = r.data?.api_key || r.api_key || '';
+      document.getElementById('tms-key-value').value = plainKey;
+      document.getElementById('tms-key-result').style.display = 'block';
+      document.getElementById('tms-key-nombre').disabled = true;
+      if (btn) { btn.style.display = 'none'; }
+    } catch(e) {
+      if (e.isSessionExpired) return;
+      WMS.toast('error', e.message || 'Error generando API Key');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-key"></i> Generar Key'; }
+    }
+  },
+
+  _copiarKey() {
+    const val = document.getElementById('tms-key-value')?.value;
+    if (!val) return;
+    navigator.clipboard?.writeText(val).then(() => WMS.toast('success', 'Key copiada al portapapeles'))
+      .catch(() => { document.getElementById('tms-key-value').select(); document.execCommand('copy'); WMS.toast('success', 'Key copiada'); });
   },
 
   async revocarKey(id) {
-    if (!confirm('¿Revocar esta API Key? El TMS perderá acceso inmediatamente.')) return;
-    try {
-      const r = await API.delete('/tms/keys/' + id);
-      if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'API Key revocada'); this.gestionarApiKeys(); }
-    } catch(e) { WMS.toast('error', 'Error revocando API Key'); }
+    WMS.confirm('Revocar API Key', '¿Revocar esta API Key? El TMS perderá acceso inmediatamente.', async () => {
+      try {
+        await API.delete('/tms/keys/' + id);
+        WMS.toast('success', 'API Key revocada');
+        WMS.closeModal('generic-modal');
+        this.gestionarApiKeys();
+      } catch(e) {
+        if (e.isSessionExpired) return;
+        WMS.toast('error', 'Error revocando API Key');
+      }
+    });
+  },
+
+  guiaTms() {
+    const base = (window.location.origin + '/WMS_FENIX/public/api/tms').replace(/([^:])\/\//g, '$1/');
+    const endpoints = [
+      { method:'GET',  path:'/stock',                   desc:'Inventario disponible (paginado)',         params:'?page=1&per_page=100&codigo=ABC' },
+      { method:'GET',  path:'/ordenes',                 desc:'Órdenes de picking activas',               params:'?estado=EnProceso' },
+      { method:'GET',  path:'/despachos',               desc:'Despachos del período',                    params:'?fecha_inicio=2026-05-01&fecha_fin=2026-05-31' },
+      { method:'POST', path:'/despacho/{id}/transportar',desc:'Marcar despacho en tránsito',             params:'Body: {"tracking_code":"T001","transportista":"TransCo"}' },
+      { method:'POST', path:'/webhook',                  desc:'Receptor de eventos del TMS',             params:'Body: {"evento":"ENTREGA_CONFIRMADA","payload":{...}}' },
+    ];
+    const methodColor = { GET:'#16a34a', POST:'#1d4ed8', DELETE:'#dc2626' };
+    WMS.showModal(
+      '<i class="fa-solid fa-book" style="margin-right:6px;color:#7c3aed;"></i>Guía de Conexión — TMS',
+      `<!-- URL base -->
+       <div style="margin-bottom:18px;">
+         <label class="form-label" style="color:#7c3aed;font-weight:700;">URL Base del WMS</label>
+         <div style="display:flex;gap:8px;align-items:center;">
+           <input id="tms-base-url" class="form-control" readonly value="${base}"
+                  style="font-family:monospace;font-size:12px;background:#f5f3ff;border-color:#c4b5fd;">
+           <button class="btn btn-sm btn-secondary" onclick="navigator.clipboard?.writeText(document.getElementById('tms-base-url').value).then(()=>WMS.toast('success','URL copiada'))" style="white-space:nowrap;flex-shrink:0;">
+             <i class="fa-solid fa-copy"></i> Copiar
+           </button>
+         </div>
+       </div>
+
+       <!-- Auth -->
+       <div style="background:#fefce8;border:1px solid #fde68a;border-radius:4px;padding:12px 14px;margin-bottom:18px;font-size:12px;">
+         <div style="font-weight:700;color:#78350f;margin-bottom:6px;"><i class="fa-solid fa-shield-halved"></i> Autenticación</div>
+         <p style="margin:0 0 6px;color:#713f12;">Incluye el header en cada request:</p>
+         <code style="display:block;background:#fef08a;padding:6px 10px;border-radius:3px;font-size:11px;">X-API-Key: wms_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</code>
+         <p style="margin:6px 0 0;color:#713f12;font-size:11px;">Genera la key en el botón <strong>API Keys</strong> de este panel.</p>
+       </div>
+
+       <!-- Endpoints -->
+       <div style="font-weight:700;color:#1e3a5f;font-size:13px;margin-bottom:10px;">Endpoints disponibles</div>
+       <div style="display:flex;flex-direction:column;gap:8px;">
+         ${endpoints.map(ep => `
+           <div style="border:1px solid #e2e8f0;border-radius:4px;padding:10px 12px;background:#f8fafc;">
+             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+               <span style="background:${methodColor[ep.method]||'#64748b'};color:#fff;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:800;font-family:monospace;">${ep.method}</span>
+               <code style="font-size:12px;color:#1e293b;font-weight:600;">${ep.path}</code>
+             </div>
+             <div style="font-size:11px;color:#64748b;margin-bottom:3px;">${ep.desc}</div>
+             <code style="font-size:10px;color:#94a3b8;word-break:break-all;">${ep.params}</code>
+           </div>`).join('')}
+       </div>
+
+       <!-- Ejemplo cURL -->
+       <div style="margin-top:18px;">
+         <div style="font-weight:700;color:#1e3a5f;font-size:12px;margin-bottom:6px;">Ejemplo PHP/cURL (servidor TMS)</div>
+         <pre style="background:#1e293b;color:#e2e8f0;padding:12px;border-radius:4px;font-size:11px;overflow-x:auto;line-height:1.6;">\$ch = curl_init('${base}/stock');\ncurl_setopt_array(\$ch, [\n  CURLOPT_RETURNTRANSFER =&gt; true,\n  CURLOPT_HTTPHEADER =&gt; ['X-API-Key: wms_TU_KEY_AQUI']\n]);\n\$json = json_decode(curl_exec(\$ch));\n// \$json-&gt;ok === true\n// \$json-&gt;data = [...items de inventario]</pre>
+       </div>
+
+       <!-- Conexión Hostinger → Local -->
+       <div style="margin-top:18px;background:#fff7ed;border:1px solid #fed7aa;border-radius:4px;padding:14px;">
+         <div style="font-weight:700;color:#c2410c;margin-bottom:8px;font-size:12px;">
+           <i class="fa-solid fa-cloud-arrow-up"></i> Conectar servidor Hostinger → WMS local (XAMPP)
+         </div>
+         <p style="font-size:12px;color:#7c2d12;margin:0 0 10px;">
+           Hostinger está en internet público; tu XAMPP está en red privada. El servidor TMS no puede acceder a <code>localhost</code> directamente.
+           Usa <strong>ngrok</strong> para crear un túnel seguro.
+         </p>
+         <div style="font-weight:600;color:#9a3412;font-size:12px;margin-bottom:6px;">Pasos con ngrok (gratis):</div>
+         <ol style="font-size:12px;color:#7c2d12;margin:0 0 10px;padding-left:18px;line-height:1.9;">
+           <li>Descarga ngrok: <code style="background:#fef3c7;padding:1px 5px;border-radius:2px;">ngrok.com/download</code></li>
+           <li>Inicia el túnel en tu máquina: <code style="background:#fef3c7;padding:1px 5px;border-radius:2px;">ngrok http 80</code></li>
+           <li>Ngrok genera una URL pública como <code style="background:#fef3c7;padding:1px 5px;border-radius:2px;">https://abc123.ngrok-free.app</code></li>
+           <li>Desde Hostinger usa esa URL como base:
+             <code style="display:block;background:#fef9c3;padding:4px 8px;border-radius:3px;margin-top:4px;word-break:break-all;">https://abc123.ngrok-free.app/WMS_FENIX/public/api/tms/stock</code>
+           </li>
+         </ol>
+         <div style="font-size:11px;color:#9a3412;background:#fef3c7;padding:8px;border-radius:3px;">
+           <i class="fa-solid fa-circle-info"></i>
+           <strong>Para producción</strong>: el WMS debe estar en un servidor público (Hostinger, VPS, etc.) con dominio propio.
+           ngrok es solo para desarrollo y pruebas — la URL cambia en cada reinicio (plan gratuito).
+         </div>
+       </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>`);
   },
 
 };

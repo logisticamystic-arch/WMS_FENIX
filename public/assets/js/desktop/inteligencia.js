@@ -107,23 +107,51 @@ WMS_MODULES.inteligencia = {
         </div>`;
     };
 
+    const recLine = (r, isFirst, nivel) => {
+      const rU = r.toUpperCase();
+      const bgRisk = { critico:'#fef2f2', alto:'#fffbeb', medio:'#eff6ff', bajo:'#f0fdf4', vencido:'#f8fafc' };
+      const bdRisk = { critico:'#fca5a5', alto:'#fde68a', medio:'#93c5fd', bajo:'#6ee7b7', vencido:'#cbd5e1' };
+      if (isFirst) {
+        return `<div style="background:${bgRisk[nivel]||'#f8fafc'};border:1px solid ${bdRisk[nivel]||'#e2e8f0'};border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:.77rem;font-weight:700;color:#0f172a;line-height:1.5;">${WMS.esc(r)}</div>`;
+      }
+      if (rU.includes('RUTA') || rU.includes('DESPACHO') || rU.includes('DISTRIBUCIÓN') || rU.includes('DISTRIBUCION')) {
+        return `<div style="background:#eff6ff;border-left:3px solid #3b82f6;padding:5px 9px;font-size:.73rem;color:#1e40af;margin-bottom:4px;border-radius:0 4px 4px 0;line-height:1.4;"><i class="fa-solid fa-store" style="margin-right:5px;opacity:.7;"></i>${WMS.esc(r)}</div>`;
+      }
+      if (rU.includes('OPORTUNIDAD') || rU.includes('FESTIV') || rU.includes('EVENTO') || rU.includes('VENTANA') || rU.includes('PLANIFICACI')) {
+        return `<div style="background:#f0fdf4;border-left:3px solid #10b981;padding:5px 9px;font-size:.73rem;color:#065f46;margin-bottom:4px;border-radius:0 4px 4px 0;line-height:1.4;"><i class="fa-solid fa-calendar-star" style="margin-right:5px;opacity:.7;"></i>${WMS.esc(r)}</div>`;
+      }
+      if (rU.includes('AGRAVANTE') || rU.includes('ATENCIÓN') || rU.includes('ATENCION') || rU.includes('REVISION') || rU.includes('REVISIÓN')) {
+        return `<div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:5px 9px;font-size:.73rem;color:#92400e;margin-bottom:4px;border-radius:0 4px 4px 0;line-height:1.4;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:5px;opacity:.7;"></i>${WMS.esc(r)}</div>`;
+      }
+      if (rU.includes('ACCION') || rU.includes('ACCIÓN') || rU.includes('TÁCTICA') || rU.includes('TACTICA') || rU.includes('ESTRATEGIA')) {
+        return `<div style="background:#faf5ff;border-left:3px solid #9333ea;padding:5px 9px;font-size:.73rem;color:#581c87;margin-bottom:4px;border-radius:0 4px 4px 0;line-height:1.4;"><i class="fa-solid fa-lightbulb" style="margin-right:5px;opacity:.7;"></i>${WMS.esc(r)}</div>`;
+      }
+      if (rU.includes('SEÑAL') || rU.includes('MITIGANTE') || rU.includes('POSITIVA') || rU.includes('CRECIENTE')) {
+        return `<div style="background:#f0fdf4;border-left:3px solid #22c55e;padding:5px 9px;font-size:.73rem;color:#166534;margin-bottom:4px;border-radius:0 4px 4px 0;line-height:1.4;"><i class="fa-solid fa-arrow-trend-up" style="margin-right:5px;opacity:.7;"></i>${WMS.esc(r)}</div>`;
+      }
+      if (rU.includes('PROTOCOLO') || rU.includes('CUARENTENA') || rU.includes('BAJA') || rU.includes('MERMA')) {
+        return `<div style="background:#fef2f2;border-left:3px solid #dc2626;padding:5px 9px;font-size:.73rem;color:#991b1b;margin-bottom:4px;border-radius:0 4px 4px 0;line-height:1.4;"><i class="fa-solid fa-ban" style="margin-right:5px;opacity:.7;"></i>${WMS.esc(r)}</div>`;
+      }
+      return `<div style="padding:4px 0;font-size:.73rem;color:#334155;display:flex;gap:6px;align-items:flex-start;line-height:1.4;margin-bottom:3px;"><i class="fa-solid fa-circle-dot" style="color:#6366f1;font-size:.55rem;margin-top:4px;flex-shrink:0;"></i><span>${WMS.esc(r)}</span></div>`;
+    };
+
     const rows = data.map((p, idx) => `
-      <tr class="${p.nivel_riesgo === 'critico' ? 'bg-danger-light' : ''}" 
+      <tr class="${p.nivel_riesgo === 'critico' ? 'bg-danger-light' : ''}"
           style="transition:all .2s; background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
         <td class="ps-3 py-3" style="min-width:250px; border-right: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">
           <div style="font-weight:700; color:#0f172a; font-size:.92rem; line-height:1.2;">${WMS.esc(p.nombre || p.producto_id)}</div>
-          <div style="display:flex; gap:10px; margin-top:5px;">
-            <span style="font-size:.68rem; color:#475569; background:#e2e8f0; padding:2px 6px; border-radius:4px;">
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:5px;">
+            <span style="font-size:.65rem; color:#475569; background:#e2e8f0; padding:2px 6px; border-radius:4px;">
               <i class="fa-solid fa-barcode me-1"></i> REF: <strong>${WMS.esc(p.referencia || 'N/A')}</strong>
             </span>
-            ${p.lote ? `
-            <span style="font-size:.68rem; color:#475569; background:#e2e8f0; padding:2px 6px; border-radius:4px;">
-              <i class="fa-solid fa-layer-group me-1"></i> Lote: <strong>${WMS.esc(p.lote)}</strong>
-            </span>` : ''}
+            ${p.lote ? `<span style="font-size:.65rem; color:#475569; background:#e2e8f0; padding:2px 6px; border-radius:4px;"><i class="fa-solid fa-layer-group me-1"></i> Lote: <strong>${WMS.esc(p.lote)}</strong></span>` : ''}
+            ${p.categoria_producto ? `<span style="font-size:.62rem; background:#dbeafe; color:#1e40af; padding:2px 6px; border-radius:4px; font-weight:700;">${WMS.esc(p.categoria_producto)}</span>` : ''}
           </div>
+          ${p.outlet_primario ? `<div style="margin-top:5px;font-size:.65rem;color:#6d28d9;"><i class="fa-solid fa-store me-1"></i>Outlet: <strong>${WMS.esc(p.outlet_primario)}</strong></div>` : ''}
         </td>
         <td class="text-center" style="width:120px; border-right: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">
           <div style="display:inline-block; transform:scale(0.9);">${riskBadge(p.nivel_riesgo)}</div>
+          ${p.tendencia_demanda ? `<div style="font-size:.6rem;margin-top:4px;color:${p.tendencia_demanda==='creciente'?'#16a34a':p.tendencia_demanda==='decreciente'?'#dc2626':'#64748b'};font-weight:700;">${p.tendencia_demanda==='creciente'?'↑':p.tendencia_demanda==='decreciente'?'↓':'→'} ${p.tendencia_demanda}</div>` : ''}
         </td>
         <td class="text-center" style="width:100px; border-right: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">
           <div style="font-size:1.15rem; font-weight:800; color:${p.dias_para_vencer < 30 ? '#ef4444' : '#0f172a'}; line-height:1;">
@@ -144,6 +172,7 @@ WMS_MODULES.inteligencia = {
         <td class="text-end" style="width:110px; border-right: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">
           <div style="font-weight:600; color:#0f172a;">${Number(p.consumo_diario || 0).toFixed(2)} <small style="font-weight:400; color:#64748b;">u./d</small></div>
           <div style="font-size:.62rem; color:#94a3b8; text-transform:uppercase;">Consumo Diario</div>
+          ${p.consumo_proyectado != null ? `<div style="font-size:.6rem;color:#6b7280;margin-top:2px;">Proy: ${Number(p.consumo_proyectado).toFixed(0)} uds</div>` : ''}
         </td>
         <td style="width:130px; border-right: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">
           <div style="margin-bottom:3px; display:flex; justify-content:space-between; align-items:center;">
@@ -151,17 +180,12 @@ WMS_MODULES.inteligencia = {
             <span style="font-size:.68rem; color:#0f172a; font-weight:800;">${Math.round((p.confianza || 0.5) * 100)}%</span>
           </div>
           ${riskBar(p.nivel_riesgo, p.confianza)}
+          ${p.eventos_proximos && p.eventos_proximos.length ? `<div style="margin-top:6px;font-size:.58rem;color:#0891b2;font-weight:700;"><i class="fa-solid fa-calendar-check me-1"></i>${WMS.esc(p.eventos_proximos[0].nombre)} en ${p.eventos_proximos[0].dias_hasta}d</div>` : ''}
         </td>
-        <td class="ps-4" style="min-width:420px; background:rgba(241, 245, 249, 0.5); border-bottom: 1px solid #cbd5e1;">
+        <td class="ps-3" style="min-width:440px; background:rgba(241,245,249,0.4); border-bottom: 1px solid #cbd5e1; padding:10px 12px;">
           ${(p.recomendaciones || []).length
-            ? `<ul style="margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px;">
-                ${(p.recomendaciones).map(r => `
-                  <li style="font-size:.78rem; color:#1e293b; line-height:1.4; display:flex; align-items:flex-start; gap:8px;">
-                    <i class="fa-solid fa-circle-chevron-right" style="color:#4f46e5; font-size:.65rem; margin-top:5px;"></i>
-                    <span style="flex:1;">${WMS.esc(r)}</span>
-                  </li>`).join('')}
-              </ul>`
-            : '<div class="text-muted italic" style="font-size:.78rem; opacity:0.6;">Sin recomendaciones tácticas.</div>'}
+            ? (p.recomendaciones).map((r, i) => recLine(r, i === 0, p.nivel_riesgo)).join('')
+            : '<div style="font-size:.78rem;color:#94a3b8;font-style:italic;">Sin recomendaciones tácticas.</div>'}
         </td>
       </tr>
     `).join('');

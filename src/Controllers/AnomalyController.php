@@ -411,8 +411,8 @@ class AnomalyController extends BaseController
         }
 
         $python = $this->getPythonCommand();
-        // Asegurar que el comando esté correctamente entrecomillado para Windows
-        $command = "\"{$python}\" \"{$scriptPath}\"";
+        // -X utf8 fuerza modo UTF-8 en stdin/stdout/stderr (esencial en Windows)
+        $command = "\"{$python}\" -X utf8 \"{$scriptPath}\"";
         
         $descriptorspec = [
             0 => ["pipe", "r"], // stdin
@@ -473,7 +473,7 @@ class AnomalyController extends BaseController
                     'unidades_en_riesgo' => ($dias_vencer < $dias_agotamiento) ? $p['stock_actual'] : 0,
                     'nivel_riesgo' => $nivel,
                     'confianza'    => ($nivel === 'vencido' || $nivel === 'critico') ? 0.95 : 0.82, 
-                    'recomendaciones' => $this->getFallbackRecs($nivel, $p['nombre'], round($dias_vencer), (float)$p['stock_actual']),
+                    'recomendaciones' => $this->getFallbackRecs($nivel, $p['nombre'], (int)round($dias_vencer), (float)$p['stock_actual'], (float)round($consumo, 2)),
                     'serie_consumo'   => $p['consumo_historico'] ?? []
                 ];
             }
@@ -493,34 +493,276 @@ class AnomalyController extends BaseController
         return ['error' => true, 'message' => 'Python no detectado - Modo de contingencia activo'];
     }
 
-    private function getFallbackRecs(string $nivel, string $nombre, int $dias, float $stock): array
+    private function getFallbackRecs(string $nivel, string $nombre, int $dias, float $stock, float $consumo = 0.0): array
     {
+        $cat        = $this->categorizarProducto($nombre);
+        $categoria  = $cat['categoria'];
+        $outlets    = implode(' -> ', $cat['outlets']);
+        $outletPrim = $cat['outlet_primario'];
+        $estrategia = $cat['estrategia_rapida'];
+        $nota       = $cat['nota'];
+        $esEmpaque  = $cat['es_empaque'] ?? false;
+
+        $evento    = $this->getEventoProximo($dias);
+
+        // ── Empaque / Material Operativo (no alimento) ───────────────────────
+        if ($esEmpaque) {
+            $urgencia = $nivel === 'vencido' ? 'VENCIDO' : "{$dias} días para vencer";
+            if (in_array($nivel, ['vencido', 'critico', 'alto'])) {
+                $recs = [
+                    "ALERTA MATERIAL OPERATIVO — $nombre | $urgencia\n"
+                    . "IMPORTANTE: Este es un EMPAQUE o SUMINISTRO, no un alimento. "
+                    . "El vencimiento es la vida útil del material según el proveedor. "
+                    . "Stock: {$stock} unidades.",
+                    "INSPECCION FISICA: Verificar condición del material (humedad, deformación). "
+                    . "Si está en buen estado: usar antes que lotes más nuevos (FEFO). "
+                    . "Si hay deterioro: gestionar baja con Supervisor de Calidad.",
+                ];
+                if ($nivel === 'critico') {
+                    $recs[] = "ACCION INMEDIATA: Comunicar a Jefe de Producción para priorizar estas {$stock} "
+                        . "unidades en todos los despachos y empaques. No requiere acción comercial ni de cocina.";
+                }
+                return $recs;
+            }
+            return [
+                "MATERIAL OPERATIVO — $categoria: {$stock} unidades con {$dias} días de vida útil restante. "
+                . "Rotación normal recomendada aplicando FEFO. Sin urgencia inmediata."
+            ];
+        }
+
         if ($nivel === 'vencido') {
             return [
-                "RETIRAR INMEDIATAMENTE: $nombre ha caducado. Ejecutar proceso de baja física para evitar sanciones legales y riesgos sanitarios.",
-                "Impacto financiero del 100%. No mantener en áreas de picking."
+                "PRODUCTO VENCIDO — ACCION INMEDIATA: $nombre ($categoria) superó su fecha de vencimiento. "
+                . "Stock afectado: {$stock} uds. Impacto financiero: 100%.",
+                "PROTOCOLO WMS: Ejecutar baja física → mover a zona CUARENTENA → registrar merma → notificar Supervisor de Calidad.",
+                "Este insumo ({$nota}) no puede permanecer en zona de picking ni en producción."
             ];
         }
+
         if ($nivel === 'critico') {
-            return [
-                "RIESGO EXTREMO DE PÉRDIDA ($dias días): El stock actual de $stock unidades no rotará a tiempo.",
-                "RECOMENDACIÓN: Ejecutar 'Venta a Empleados' o aplicar 'Ofertas Agresivas' (Flash Sales) en los próximos 7 días.",
-                "Priorizar salida manual (FEFO Crítico)."
-            ];
+            if ($consumo > 0) {
+                $deficit = round(max(0, $stock - $consumo * $dias));
+                $recs = [
+                    "DICTAMEN CRITICO — $categoria ({$dias} días): Con consumo de {$consumo} uds/día "
+                    . "se proyecta un déficit de {$deficit} uds sin rotar antes de vencer.",
+                    "RUTA DE DESPACHO URGENTE: $outlets. $estrategia. Comunicar HOY a Jefe de Cocina de $outletPrim.",
+                ];
+                if ($evento) {
+                    $recs[] = "OPORTUNIDAD FESTIVA: {$evento['nombre']} en {$evento['dias_hasta']} día(s) "
+                        . "(factor demanda ×{$evento['factor']}). {$evento['descripcion']}";
+                }
+                $recs[] = $cat['aplica_oferta']
+                    ? "ACCION TACTICA: Activar salida urgente en $outletPrim — menú especial, combo o oferta empleados."
+                    : "ACCION TACTICA: Incorporar en preparación inmediata en $outletPrim — próximos 2 turnos de cocina.";
+            } else {
+                // Sin historial: alerta honesta, sin proyecciones falsas
+                $recs = [
+                    "ALERTA DE VENCIMIENTO — $categoria | Vence en {$dias} día(s) | Stock: {$stock} uds\n"
+                    . "SIN HISTORIAL DE CONSUMO: No se puede proyectar demanda. "
+                    . "Cada unidad no despachada antes de vencer es pérdida directa. "
+                    . "Producto: {$nota}.",
+                ];
+                if ($evento) {
+                    $recs[] = "VENTANA DE OPORTUNIDAD: {$evento['nombre']} en {$evento['dias_hasta']} día(s) "
+                        . "(demanda ×{$evento['factor']} en $outletPrim). {$evento['descripcion']} "
+                        . "Coordinar despacho ANTES del festivo.";
+                }
+                $diasAcc = min($dias, 2);
+                $recs[] = $cat['aplica_oferta']
+                    ? "ACCION URGENTE: Activar salida de $nombre en $outletPrim en las próximas "
+                      . ($diasAcc * 24) . " horas. Opciones ({$nota}): "
+                      . "(a) Menú especial o carta del día, (b) Combo sin cargo adicional, (c) Oferta interna empleados."
+                    : "ACCION URGENTE: Incorporar $nombre en preparaciones de $outletPrim en los próximos "
+                      . "{$diasAcc} turnos de cocina. Ruta: $outlets. Informar a Jefe de Cocina.";
+            }
+            return $recs;
         }
+
         if ($nivel === 'alto') {
-            return [
-                "ALERTA PREVENTIVA ($dias días): Riesgo de obsolescencia detectado para $stock unidades.",
-                "ESTRATEGIA: Considerar traslados a sucursales de mayor tráfico o promociones tipo 'Amarre' con productos de alta rotación."
+            $recs = [
+                $consumo > 0
+                    ? "ALERTA PREVENTIVA — $categoria ({$dias} días): Excedente proyectado requiere rotación activa. Consumo: {$consumo} uds/día."
+                    : "ALERTA PREVENTIVA — $categoria | {$dias} días para vencer | Stock: {$stock} uds\nSIN HISTORIAL DE CONSUMO — se requiere plan de rotación activo. Producto: {$nota}.",
+                "Ruta sugerida: $outlets. $estrategia",
             ];
+            if ($evento) {
+                $recs[] = "OPORTUNIDAD: {$evento['nombre']} en {$evento['dias_hasta']} día(s) (×{$evento['factor']}). {$evento['descripcion']}";
+            } else {
+                $recs[] = "ESTRATEGIA: Vincular $nombre con producto de alta rotación en $outletPrim. Traslado del 50% del excedente.";
+            }
+            return $recs;
         }
+
         if ($nivel === 'medio') {
-            return [
-                "MONITOREO ACTIVO: Exceso de stock moderado frente a fecha de vencimiento ($dias días).",
-                "ACCIÓN: Pausar nuevas órdenes de compra y priorizar este lote en el flujo de Picking."
+            $recs = [
+                "MONITOREO ACTIVO — $categoria ({$dias} días): Excedente moderado detectado. Pausar OC de $nombre hasta que el stock baje al 50%.",
+                "FEFO activo: priorizar este lote en {$cat['outlets'][0]}.",
             ];
+            if ($evento) {
+                $recs[] = "OPORTUNIDAD: {$evento['nombre']} en {$evento['dias_hasta']} días — puede normalizar inventario con factor ×{$evento['factor']}.";
+            }
+            return $recs;
         }
-        return ["INVENTARIO SALUDABLE: La proyección indica que el stock se agotará naturalmente antes del vencimiento."];
+
+        return [
+            "INVENTARIO SALUDABLE — $categoria: Rotación proyectada completa antes de vencer. Sin acción requerida.",
+            $evento
+                ? "PLANIFICACION: {$evento['nombre']} próximo — verificar stock suficiente para cubrir el pico de demanda en $outletPrim."
+                : "Continuar monitoreo estándar FEFO.",
+        ];
+    }
+
+    private function categorizarProducto(string $nombre): array
+    {
+        $n          = mb_strtolower($nombre);
+        $primerWord = explode(' ', trim($n))[0] ?? '';
+
+        // ── PRIMERO: Empaques y materiales operativos (NO alimentos) ─────────
+        // Si el nombre empieza con un clasificador de empaque, es material operativo.
+        // Esto evita que "CAJA PIZZA MEDIANA" sea clasificada como ingrediente de pizza.
+        $empaque_inicio = ['caja','bolsa','bolsas','empaque','empaques','embalaje',
+                           'rollo','manga','papel','servilleta','servilletas',
+                           'desechable','desechables','guante','guantes','bandeja',
+                           'carton','cartón','envase','envases','precinto','etiqueta',
+                           'palillo','cubierto','cubiertos','stretch','film','tapa'];
+        foreach ($empaque_inicio as $ek) {
+            if (str_starts_with($n, $ek) || $primerWord === $ek) {
+                return [
+                    'categoria' => 'Empaque / Material Operativo',
+                    'outlet_primario' => 'Producción',
+                    'outlets' => ['Almacén Central - Materiales', 'Jefe de Producción'],
+                    'aplica_oferta' => false,
+                    'es_empaque' => true,
+                    'nota' => 'material de empaque o suministro operativo — NO es un alimento',
+                    'estrategia_rapida' => 'Priorizar uso en producción corriente; inspección física del material',
+                ];
+            }
+        }
+
+        $patrones = [
+            ['keys' => ['pizza','masa pizza','pepperoni','mozzarella','oregano'],
+             'categoria' => 'Masa / Pizza', 'outlet_primario' => 'Olivia',
+             'outlets' => ['Olivia - Horno de Pizzas', 'Clap Burger - Menú Pizza Especial'],
+             'aplica_oferta' => false, 'es_empaque' => false,
+             'nota' => 'insumo base para pizzas artesanales',
+             'estrategia_rapida' => 'Activar en menú del día o pizza especial en Olivia'],
+
+            ['keys' => ['carne','res','burger','hamburguesa','pollo','cerdo','tocino','bacon','proteina','costilla'],
+             'categoria' => 'Proteína / Carne', 'outlet_primario' => 'Clap Burger',
+             'outlets' => ['Clap Burger - Línea de Hamburguesas', 'Olivia - Platos Fuertes del Día'],
+             'aplica_oferta' => true, 'es_empaque' => false,
+             'nota' => 'proteína principal — degradación acelerada en calor',
+             'estrategia_rapida' => 'Lanzar Burger del Día en Clap o Plato Especial en Olivia'],
+
+            ['keys' => ['pan','bun','brioche','bollería','almendra','bread','focaccia'],
+             'categoria' => 'Panadería / Masas', 'outlet_primario' => 'Clap Burger',
+             'outlets' => ['Clap Burger - Buns de Hamburguesa', 'Olivia - Panes Artesanales'],
+             'aplica_oferta' => false, 'es_empaque' => false,
+             'nota' => 'insumo de presentación — impacta calidad percibida',
+             'estrategia_rapida' => 'Rotar como complemento de combos en Clap Burger'],
+
+            ['keys' => ['leche','queso','yogur','crema','mantequilla','lacteo','lácteo'],
+             'categoria' => 'Lácteos', 'outlet_primario' => 'Olivia',
+             'outlets' => ['Olivia - Cocina Central', 'Clap Burger - Complementos'],
+             'aplica_oferta' => true, 'es_empaque' => false,
+             'nota' => 'cadena de frío crítica — rotar en horas',
+             'estrategia_rapida' => 'Incorporar a salsas del día o postres especiales en Olivia inmediatamente'],
+
+            ['keys' => ['tomate','lechuga','cebolla','pimentón','aguacate','pepino','zanahoria','vegetal','ensalada','sopa'],
+             'categoria' => 'Vegetales / Frescos', 'outlet_primario' => 'Olivia',
+             'outlets' => ['Olivia - Ensaladas y Guarniciones', 'Clap Burger - Toppings Frescos'],
+             'aplica_oferta' => true, 'es_empaque' => false,
+             'nota' => 'producto perecedero — ventana máx. 24-48h',
+             'estrategia_rapida' => 'Activar como topping extra o ensalada del día en Olivia'],
+
+            ['keys' => ['jugo','bebida','refresco','gaseosa','cerveza','vino','limonada'],
+             'categoria' => 'Bebidas', 'outlet_primario' => 'Olivia',
+             'outlets' => ['Olivia - Servicio de Mesa / Bar', 'Clap Burger - Combos y Bebidas'],
+             'aplica_oferta' => true, 'es_empaque' => false,
+             'nota' => 'alta rotación en servicio de mesa',
+             'estrategia_rapida' => 'Incluir en combo 2×1 o bebida del combo sin costo adicional'],
+
+            // Dulces/confitería colombiana antes que la detección genérica de "salsa"
+            ['keys' => ['arequipe','dulce de leche','manjar'],
+             'categoria' => 'Dulces / Repostería', 'outlet_primario' => 'Olivia',
+             'outlets' => ['Olivia - Carta de Postres', 'Clap Burger - Postres y Complementos Dulces'],
+             'aplica_oferta' => true, 'es_empaque' => false,
+             'nota' => 'dulce colombiano — uso en postres, rellenos y decoración de repostería',
+             'estrategia_rapida' => 'Incorporar en postre del día o relleno de repostería en Olivia'],
+
+            ['keys' => ['salsa','ketchup','mostaza','mayonesa','vinagre','aceite','aderezo','condimento','chile'],
+             'categoria' => 'Condimentos / Salsas', 'outlet_primario' => 'Clap Burger',
+             'outlets' => ['Clap Burger - Salsas de Mesa', 'Olivia - Cocina (preparaciones)'],
+             'aplica_oferta' => false, 'es_empaque' => false,
+             'nota' => 'insumo de apoyo — alto volumen por uso diario en línea de producción',
+             'estrategia_rapida' => 'Incrementar uso en preparaciones de fondo; no requiere acción comercial'],
+
+            ['keys' => ['postre','helado','torta','dulce','chocolate','azúcar','azucar',
+                        'galleta','brownie','mousse','flan','tiramisu','tiramisú',
+                        'panna cotta','cheesecake','mermelada','caramelo','natilla'],
+             'categoria' => 'Postres / Repostería', 'outlet_primario' => 'Olivia',
+             'outlets' => ['Olivia - Carta de Postres', 'Clap Burger - Menú Dulce'],
+             'aplica_oferta' => true, 'es_empaque' => false,
+             'nota' => 'alta demanda en festivos y fines de semana',
+             'estrategia_rapida' => 'Postre del día o postre gratis al pedir plato fuerte en Olivia'],
+
+            ['keys' => ['harina','arroz','pasta','fideos','cereal','avena','lenteja','frijol','maíz','maiz'],
+             'categoria' => 'Granos / Carbohidratos', 'outlet_primario' => 'Olivia',
+             'outlets' => ['Olivia - Cocina Central', 'Clap Burger - Guarniciones'],
+             'aplica_oferta' => false, 'es_empaque' => false,
+             'nota' => 'larga vida útil relativa — revisar si el riesgo de datos es real',
+             'estrategia_rapida' => 'Incorporar como guarnición en menú del día para acelerar consumo'],
+        ];
+
+        foreach ($patrones as $p) {
+            foreach ($p['keys'] as $k) {
+                if (str_contains($n, $k)) {
+                    return $p;
+                }
+            }
+        }
+
+        return [
+            'categoria' => 'Insumo General', 'outlet_primario' => 'Olivia',
+            'outlets' => ['Olivia', 'Clap Burger'],
+            'aplica_oferta' => true, 'es_empaque' => false,
+            'nota' => 'insumo operativo general',
+            'estrategia_rapida' => 'Evaluar uso en preparaciones de fondo o como complemento de menú del día'
+        ];
+    }
+
+    private function getEventoProximo(int $diasHorizonte): ?array
+    {
+        $hoy = new \DateTime();
+        $fin = (new \DateTime())->modify("+{$diasHorizonte} days");
+
+        $festivos = [
+            ['mes' => 2,  'dia' => 14, 'nombre' => 'San Valentín',          'factor' => 2.5, 'descripcion' => 'Olivia con reservas completas. Oportunidad en postres y bebidas especiales.'],
+            ['mes' => 5,  'dia' => 1,  'nombre' => 'Día del Trabajo',        'factor' => 1.4, 'descripcion' => 'Festivo con alto tráfico. Clap Burger supera en afluencia casual.'],
+            ['mes' => 7,  'dia' => 20, 'nombre' => 'Independencia Colombia', 'factor' => 1.5, 'descripcion' => 'Festivo nacional. Alto tráfico en ambos conceptos.'],
+            ['mes' => 10, 'dia' => 31, 'nombre' => 'Halloween',              'factor' => 1.8, 'descripcion' => 'Noche de alta demanda en Clap Burger. Olivia: menú temático.'],
+            ['mes' => 12, 'dia' => 8,  'nombre' => 'Inmaculada Concepción',  'factor' => 1.4, 'descripcion' => 'Inicio temporada navideña. Postres y bebidas suben.'],
+            ['mes' => 12, 'dia' => 24, 'nombre' => 'Nochebuena',             'factor' => 2.5, 'descripcion' => 'Pico alto. Olivia: reservas agotadas. Clap: tráfico familiar.'],
+            ['mes' => 12, 'dia' => 31, 'nombre' => 'Fin de Año',             'factor' => 2.8, 'descripcion' => 'Pico máximo del año. Rotación total de bebidas y proteínas.'],
+        ];
+
+        $año = (int)$hoy->format('Y');
+        foreach ($festivos as $f) {
+            foreach ([$año, $año + 1] as $yr) {
+                try {
+                    $d = new \DateTime("{$yr}-{$f['mes']}-{$f['dia']}");
+                    if ($d > $hoy && $d <= $fin) {
+                        return [
+                            'nombre'     => $f['nombre'],
+                            'dias_hasta' => (int)$hoy->diff($d)->days,
+                            'factor'     => $f['factor'],
+                            'descripcion'=> $f['descripcion'],
+                        ];
+                    }
+                } catch (\Exception $e) {}
+            }
+        }
+        return null;
     }
 
     /**

@@ -21,44 +21,184 @@ WMS_MODULES.almacenamiento = {
   },
 
   // ── UBICAR (PUTAWAY) ─────────────────────────────────────────
+  _patioItems: [],
+
   async show_ubicar() {
     WMS.setToolbar(`<button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.almacenamiento.show_ubicar()"><i class="fa-solid fa-rotate"></i> Actualizar</button>`);
     WMS.spinner();
     try {
       const r     = await API.get('/putaway/patio');
-      const items = r.data || r || [];
+      this._patioItems = r.data || r || [];
+      const items = this._patioItems;
+
+      // Agrupar por numero_pallet
+      const groups = {};
+      items.forEach((item, idx) => {
+        const key = item.numero_pallet != null ? String(item.numero_pallet) : '__sin_pallet__';
+        if (!groups[key]) groups[key] = { pallet: item.numero_pallet, items: [], idxs: [], total: 0 };
+        groups[key].items.push(item);
+        groups[key].idxs.push(idx);
+        groups[key].total += parseFloat(item.cantidad || 0);
+      });
+
+      const groupHtml = Object.entries(groups).map(([key, g]) => {
+        const palletLabel = key !== '__sin_pallet__' ? `Pallet #${key}` : 'Artículos sin pallet';
+        const refs = g.items.length;
+        const rowsHtml = g.idxs.map(idx => {
+          const item = items[idx];
+          return `<tr data-pallet="${key}">
+            <td style="font-family:monospace;font-size:.75rem;padding-left:28px;">${WMS.esc(item.codigo_interno || '-')}</td>
+            <td><strong>${WMS.esc(item.producto_nombre || '-')}</strong></td>
+            <td class="text-center fw-700">${WMS.formatNum(item.cantidad || 0)}</td>
+            <td>${WMS.esc(item.unidad_medida || '-')}</td>
+            <td>${WMS.esc(item.lote || 'N/A')}</td>
+            <td>${item.fecha_vencimiento ? WMS.formatDate(item.fecha_vencimiento) : '-'}</td>
+            <td style="font-size:.72rem;color:#64748b;">${WMS.esc(item.ubicacion_codigo || 'Patio')}</td>
+            <td style="white-space:nowrap;">
+              <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.almacenamiento.asignarUbicacion(${idx})">
+                <i class="fa-solid fa-map-pin"></i> Ubicar
+              </button>
+            </td>
+          </tr>`;
+        }).join('');
+
+        return `
+          <tr class="pallet-group-header" style="background:#1e3a5f;color:#fff;cursor:pointer;" onclick="WMS_MODULES.almacenamiento.togglePalletGroup('${key}')">
+            <td colspan="5" style="padding:10px 12px;font-weight:700;font-size:.85rem;">
+              <i class="fa-solid fa-box-archive" style="margin-right:6px;"></i>
+              ${WMS.esc(palletLabel)}
+              <span style="background:rgba(255,255,255,.15);padding:1px 8px;border-radius:99px;font-size:.72rem;margin-left:8px;">${refs} ref${refs !== 1 ? 's' : ''} · ${WMS.formatNum(g.total)} und</span>
+            </td>
+            <td colspan="3" style="text-align:right;padding:8px 12px;">
+              <button class="btn btn-sm" style="background:#fff;color:#1e3a5f;font-weight:700;font-size:.75rem;padding:4px 12px;"
+                onclick="event.stopPropagation();WMS_MODULES.almacenamiento.ubicarTodoPallet('${key}')">
+                <i class="fa-solid fa-layer-group"></i> Ubicar Todo el Pallet
+              </button>
+              <i class="fa-solid fa-chevron-down toggle-pg-icon" style="margin-left:8px;transition:transform .2s;"></i>
+            </td>
+          </tr>
+          ${rowsHtml}`;
+      }).join('');
+
       WMS.setContent(`
         <div class="filter-bar">
           <div class="search-bar"><i class="fa-solid fa-search"></i>
-            <input placeholder="Buscar producto, EAN..." oninput="WMS_MODULES.almacenamiento.filterTable(this.value,'ub-table')">
+            <input placeholder="Buscar producto, lote, pallet..." oninput="WMS_MODULES.almacenamiento.filterUbicar(this.value)">
           </div>
           <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.almacenamiento.escanearUbicar()"><i class="fa-solid fa-barcode"></i> Escanear EAN</button>
         </div>
         <div class="card">
           <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Mercancía Pendiente de Ubicar (${items.length})</span>
+            <span class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Mercancía Pendiente de Ubicar (${items.length} artículos · ${Object.keys(groups).length} pallet${Object.keys(groups).length !== 1 ? 's' : ''})</span>
           </div>
           <div class="table-container">
             <table class="erp-table" id="ub-table">
-              <thead><tr><th>Producto</th><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Fecha Venc.</th><th>Origen</th><th>Acciones</th></tr></thead>
-              <tbody>${items.map(item => `<tr>
-                <td style="font-family:monospace;font-size:.75rem;">${WMS.esc(item.codigo_interno || item.ean || item.codigo || '-')}</td>
-                <td><strong>${WMS.esc(item.producto_nombre || item.descripcion || item.producto || '-')}</strong></td>
-                <td class="text-center">${WMS.formatNum(item.cantidad || 0)}</td>
-                <td>${WMS.esc(item.unidad_medida || '-')}</td>
-                <td>${WMS.formatDate(item.fecha_vencimiento) || '-'}</td>
-                <td>${WMS.esc(item.origen || item.recibo || '-')}</td>
-                <td>
-                  <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.almacenamiento.asignarUbicacion(${item.id || 0},'${WMS.esc(item.producto_nombre || item.descripcion || '')}', ${item.cantidad||0}, '${WMS.esc(item.lote||'')}', '${item.fecha_vencimiento||''}')">
-                    <i class="fa-solid fa-map-pin"></i> Ubicar
-                  </button>
-                </td>
-              </tr>`).join('') || '<tr><td colspan="7" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin mercancía pendiente de ubicar</td></tr>'}
+              <thead><tr><th>Código</th><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Lote</th><th>F. Venc.</th><th>Patio</th><th>Acción</th></tr></thead>
+              <tbody>
+                ${groupHtml || '<tr><td colspan="8" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin mercancía pendiente de ubicar</td></tr>'}
               </tbody>
             </table>
           </div>
         </div>`);
     } catch (e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
+  },
+
+  togglePalletGroup(key) {
+    const rows = document.querySelectorAll(`#ub-table tr[data-pallet="${key}"]`);
+    rows.forEach(r => { r.style.display = r.style.display === 'none' ? '' : 'none'; });
+    const headers = document.querySelectorAll('#ub-table .pallet-group-header');
+    headers.forEach(h => {
+      if (h.textContent.includes(key === '__sin_pallet__' ? 'sin pallet' : `#${key}`)) {
+        const icon = h.querySelector('.toggle-pg-icon');
+        if (icon) icon.style.transform = icon.style.transform === 'rotate(180deg)' ? '' : 'rotate(180deg)';
+      }
+    });
+  },
+
+  filterUbicar(q) {
+    const rows = document.querySelectorAll('#ub-table tbody tr:not(.pallet-group-header)');
+    const f = q.toLowerCase();
+    const visiblePallets = new Set();
+    rows.forEach(r => {
+      const match = r.textContent.toLowerCase().includes(f);
+      r.style.display = match ? '' : 'none';
+      if (match) {
+        const pkey = r.getAttribute('data-pallet');
+        if (pkey) visiblePallets.add(pkey);
+      }
+    });
+    // Show/hide pallet headers based on whether they have visible rows
+    document.querySelectorAll('#ub-table .pallet-group-header').forEach(h => {
+      const txt = h.textContent;
+      const hasRows = [...visiblePallets].some(pk => txt.includes(pk === '__sin_pallet__' ? 'sin pallet' : `#${pk}`));
+      h.style.display = (!f || hasRows) ? '' : 'none';
+    });
+  },
+
+  async ubicarTodoPallet(palletKey) {
+    const items = this._patioItems.filter((item, idx) => {
+      const k = item.numero_pallet != null ? String(item.numero_pallet) : '__sin_pallet__';
+      return k === palletKey;
+    });
+    if (!items.length) return WMS.toast('warning', 'No se encontraron artículos para este pallet');
+
+    const label = palletKey !== '__sin_pallet__' ? `Pallet #${palletKey}` : 'artículos sin pallet';
+    let ubis = [];
+    try {
+      const ru = await API.get('/param/ubicaciones', 'activo=1&tipo_ubicacion=Almacenamiento&limit=500');
+      ubis = (ru.data || ru || []).filter(u => u.tipo_ubicacion !== 'Patio');
+    } catch (e) {}
+
+    const itemsHtml = items.map(i =>
+      `<tr><td style="padding:4px 8px;font-size:.78rem;font-weight:600;">${WMS.esc(i.producto_nombre)}</td>
+       <td style="padding:4px 8px;font-size:.78rem;text-align:center;">${WMS.formatNum(i.cantidad)} ${WMS.esc(i.unidad_medida||'')}</td>
+       <td style="padding:4px 8px;font-size:.78rem;color:#64748b;">${WMS.esc(i.lote||'N/A')}</td></tr>`
+    ).join('');
+
+    this._palletMoveItems = items;
+
+    WMS.showModal(`Ubicar ${label}`, `
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:16px;">
+        <div style="font-weight:700;color:#1e40af;margin-bottom:8px;"><i class="fa-solid fa-box-archive"></i> Referencias en este pallet</div>
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr style="background:#dbeafe;"><th style="padding:4px 8px;font-size:.72rem;text-align:left;">Producto</th><th style="padding:4px 8px;font-size:.72rem;">Cantidad</th><th style="padding:4px 8px;font-size:.72rem;text-align:left;">Lote</th></tr></thead>
+          <tbody>${itemsHtml}</tbody>
+        </table>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ubicación Destino <span class="required">*</span></label>
+        ${this._buildUbicDestino('ubp-ubicacion', ubis)}
+        <div style="font-size:.7rem;color:#64748b;margin-top:4px;"><i class="fa-solid fa-barcode"></i> Escanee el código o escriba para filtrar · Enter confirma coincidencia única</div>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+       <button class="btn btn-primary" onclick="WMS_MODULES.almacenamiento.confirmarUbicacionPallet()">
+         <i class="fa-solid fa-layer-group"></i> Ubicar Todo el Pallet
+       </button>`);
+  },
+
+  async confirmarUbicacionPallet() {
+    const items = this._palletMoveItems;
+    if (!items?.length) return WMS.toast('error', 'No hay artículos seleccionados');
+    const ubi_id = document.getElementById('ubp-ubicacion-id')?.value;
+    if (!ubi_id) return WMS.toast('warning', 'Seleccione una ubicación de destino');
+
+    try {
+      for (const item of items) {
+        await API.post('/inventario/traslado', {
+          producto_id:          item.producto_id,
+          ubicacion_origen_id:  item.ubicacion_id,
+          ubicacion_destino_id: parseInt(ubi_id),
+          cantidad:             item.cantidad,
+          lote:                 item.lote || null,
+          fecha_vencimiento:    item.fecha_vencimiento || null,
+          numero_pallet:        item.numero_pallet || null,
+        });
+      }
+      this._palletMoveItems = null;
+      WMS.closeModal('generic-modal');
+      WMS.toast('success', `${items.length} referencia${items.length !== 1 ? 's' : ''} ubicadas correctamente`);
+      this.show_ubicar();
+    } catch (e) { WMS.toast('error', e.message || 'Error al ubicar pallet'); }
   },
 
   filterTable(q, tableId) {
@@ -86,61 +226,186 @@ WMS_MODULES.almacenamiento = {
     try {
       const r = await API.get('/putaway/resolver-ean', 'ean=' + encodeURIComponent(ean));
       if (r.error || !r.producto) { WMS.toast('warning', 'EAN no encontrado: ' + ean); return; }
-      const p = r.producto;
+      const prodId = r.producto.id;
+      const idx = this._patioItems.findIndex(i => i.producto_id == prodId);
       WMS.closeModal('generic-modal');
-      this.asignarUbicacion(p.id || 0, p.nombre || p.descripcion || ean);
+      if (idx < 0) { WMS.toast('warning', 'Producto encontrado pero no está en patio'); return; }
+      this.asignarUbicacion(idx);
     } catch (e) { WMS.toast('error', 'Error resolviendo EAN'); }
   },
 
-  async asignarUbicacion(id, nombre, maxCant = 0, lote = '', fv = '') {
-    let ubis = [];
-    try {
-      const ru = await API.get('/param/ubicaciones', 'activo=1&limit=200');
-      ubis = ru.data || ru || [];
-    } catch (e) {}
-    WMS.showModal('Asignar Ubicación: ' + WMS.esc(nombre), `
-      <div class="form-grid form-grid-2">
-        <div class="form-group" style="grid-column: 1/-1;">
-           <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px; padding:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
-              <span style="font-size:12px; color:#1e40af; font-weight:600;"><i class="fa-solid fa-info-circle"></i> Cantidad en espera:</span>
-              <span style="font-size:16px; color:#1e3a8a; font-weight:800;">${WMS.formatNum(maxCant)}</span>
-           </div>
+  _currentPutawayItem: null,
+  _ubData: {},
+
+  // ── UBICACIÓN DESTINO: scan/search combo ─────────────────────
+  _buildUbicDestino(inputId, ubis) {
+    this._ubData[inputId] = ubis;
+    const hidId = `${inputId}-id`;
+    return `
+      <div style="position:relative;" id="${inputId}-wrap">
+        <div style="position:relative;">
+          <i class="fa-solid fa-barcode" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#3b82f6;z-index:1;pointer-events:none;font-size:.9rem;"></i>
+          <input id="${inputId}" type="text" class="form-control" style="padding-left:34px;"
+            placeholder="Escanee código o escriba para buscar..." autocomplete="off"
+            oninput="WMS_MODULES.almacenamiento._filterUbicSuggestions('${inputId}','${hidId}')"
+            onkeydown="WMS_MODULES.almacenamiento._ubKeydown(event,'${inputId}','${hidId}')"
+            onfocus="WMS_MODULES.almacenamiento._filterUbicSuggestions('${inputId}','${hidId}')">
+          <input type="hidden" id="${hidId}">
         </div>
-        <div class="form-group"><label class="form-label">Ubicación Destino <span class="required">*</span></label>
-          <select id="ub-ubicacion" class="form-control" autofocus>
-            <option value="">Seleccionar ubicación...</option>
-            ${ubis.map(u => `<option value="${u.id}">${WMS.esc(u.codigo || '')} — ${WMS.esc(u.zona || '')} (${WMS.esc(u.tipo_ubicacion || '')})</option>`).join('')}
-          </select></div>
-        <div class="form-group"><label class="form-label">Cantidad a Ubicar <span class="required">*</span></label>
-          <input id="ub-cantidad" type="number" class="form-control" min="1" max="${maxCant}" value="${maxCant}" placeholder="0"></div>
-        <div class="form-group"><label class="form-label">Lote</label><input id="ub-lote" class="form-control" value="${WMS.esc(lote)}" placeholder="LOT-001"></div>
-        <div class="form-group"><label class="form-label">Fecha Vencimiento</label><input id="ub-fv" type="date" class="form-control" value="${fv}"></div>
-      </div>`,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-primary" onclick="WMS_MODULES.almacenamiento.confirmarUbicacion(${id}, ${maxCant})"><i class="fa-solid fa-map-pin"></i> Confirmar Ubicación</button>`);
+        <div id="${inputId}-drop" style="display:none;position:absolute;z-index:9999;width:100%;background:#fff;border:1px solid #cbd5e1;border-top:none;border-radius:0 0 6px 6px;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12);"></div>
+        <div id="${inputId}-sel" style="display:none;margin-top:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:8px 12px;font-size:.85rem;justify-content:space-between;align-items:center;">
+          <span><i class="fa-solid fa-map-pin" style="color:#3b82f6;margin-right:6px;"></i><strong id="${inputId}-lbl"></strong></span>
+          <button type="button" onclick="WMS_MODULES.almacenamiento._clearUbic('${inputId}','${hidId}')"
+            style="background:none;border:none;color:#64748b;cursor:pointer;font-size:.75rem;padding:0 4px;">
+            <i class="fa-solid fa-times"></i> Cambiar
+          </button>
+        </div>
+      </div>`;
   },
 
-  async confirmarUbicacion(id, maxCant) {
-    const ubi_id   = document.getElementById('ub-ubicacion')?.value;
+  _filterUbicSuggestions(inputId, hidId) {
+    if (document.getElementById(hidId)?.value) return;
+    const q = document.getElementById(inputId)?.value?.toLowerCase() || '';
+    const drop = document.getElementById(`${inputId}-drop`);
+    if (!drop) return;
+    const ubis = this._ubData[inputId] || [];
+    const matches = q
+      ? ubis.filter(u => (`${u.codigo||''} ${u.zona||''} ${u.tipo_ubicacion||''}`).toLowerCase().includes(q)).slice(0, 25)
+      : ubis.slice(0, 25);
+    if (!matches.length) {
+      drop.innerHTML = `<div style="padding:10px 14px;color:#94a3b8;font-size:.82rem;"><i class="fa-solid fa-magnifying-glass"></i> Sin resultados</div>`;
+      drop.style.display = 'block';
+      return;
+    }
+    drop.innerHTML = matches.map(u => {
+      const lbl = `${u.codigo||''} — ${u.zona||''} (${u.tipo_ubicacion||''})`;
+      return `<div style="padding:9px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:.83rem;"
+        data-ub-id="${u.id}" data-ub-cod="${WMS.esc(u.codigo||'')}" data-ub-lbl="${WMS.esc(lbl)}"
+        onmousedown="WMS_MODULES.almacenamiento._selectUbicEl(this,'${inputId}','${hidId}')"
+        onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background=''">
+        <i class="fa-solid fa-map-pin" style="color:#3b82f6;margin-right:6px;font-size:.72rem;"></i>
+        <strong>${WMS.esc(u.codigo||'')}</strong>
+        <span style="color:#64748b;margin-left:6px;">${WMS.esc(u.zona||'')} · ${WMS.esc(u.tipo_ubicacion||'')}</span>
+      </div>`;
+    }).join('');
+    drop.style.display = 'block';
+  },
+
+  _selectUbicEl(el, inputId, hidId) {
+    this._selectUbic(inputId, hidId, el.dataset.ubId, el.dataset.ubCod, el.dataset.ubLbl);
+  },
+
+  _selectUbic(inputId, hidId, id, codigo, label) {
+    document.getElementById(hidId).value = id;
+    const inp = document.getElementById(inputId);
+    if (inp) { inp.value = codigo; inp.blur(); }
+    const drop = document.getElementById(`${inputId}-drop`);
+    if (drop) drop.style.display = 'none';
+    const sel = document.getElementById(`${inputId}-sel`);
+    const lbl = document.getElementById(`${inputId}-lbl`);
+    if (sel && lbl) { lbl.textContent = label; sel.style.display = 'flex'; }
+  },
+
+  _clearUbic(inputId, hidId) {
+    document.getElementById(hidId).value = '';
+    const inp = document.getElementById(inputId);
+    if (inp) { inp.value = ''; setTimeout(() => inp.focus(), 50); }
+    const sel = document.getElementById(`${inputId}-sel`);
+    if (sel) sel.style.display = 'none';
+    const drop = document.getElementById(`${inputId}-drop`);
+    if (drop) drop.style.display = 'none';
+  },
+
+  _ubKeydown(event, inputId, hidId) {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    const q = document.getElementById(inputId)?.value?.toLowerCase() || '';
+    if (!q) return;
+    const ubis = this._ubData[inputId] || [];
+    const matches = ubis.filter(u => (`${u.codigo||''} ${u.zona||''} ${u.tipo_ubicacion||''}`).toLowerCase().includes(q));
+    if (matches.length === 1) {
+      const u = matches[0];
+      this._selectUbic(inputId, hidId, u.id, u.codigo || '', `${u.codigo||''} — ${u.zona||''} (${u.tipo_ubicacion||''})`);
+    } else {
+      const drop = document.getElementById(`${inputId}-drop`);
+      if (drop && drop.firstElementChild) drop.firstElementChild.focus();
+    }
+  },
+
+  async asignarUbicacion(idx) {
+    const item = this._patioItems[idx];
+    if (!item) return WMS.toast('error', 'Item no encontrado');
+    this._currentPutawayItem = item;
+
+    let ubis = [];
+    try {
+      const ru = await API.get('/param/ubicaciones', 'activo=1&tipo_ubicacion=Almacenamiento&limit=500');
+      ubis = (ru.data || ru || []).filter(u => u.tipo_ubicacion !== 'Patio');
+    } catch (e) {}
+
+    const palletInfo = item.numero_pallet ? `Pallet #${item.numero_pallet} · ` : '';
+    WMS.showModal(`Ubicar: ${WMS.esc(item.producto_nombre || '-')}`, `
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:16px;font-size:13px;">
+        <div style="font-weight:700;color:#1e40af;margin-bottom:4px;">${palletInfo}${WMS.esc(item.codigo_interno || '')} — ${WMS.esc(item.producto_nombre)}</div>
+        <div style="display:flex;gap:20px;color:#1d4ed8;">
+          <span><i class="fa-solid fa-layer-group"></i> Disponible: <strong>${WMS.formatNum(item.cantidad)}</strong> ${WMS.esc(item.unidad_medida||'und')}</span>
+          <span><i class="fa-solid fa-tag"></i> Lote: <strong>${WMS.esc(item.lote||'N/A')}</strong></span>
+          <span><i class="fa-solid fa-location-dot"></i> Origen: <strong>${WMS.esc(item.ubicacion_codigo||'Patio')}</strong></span>
+        </div>
+      </div>
+      <div class="form-grid form-grid-2">
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Ubicación Destino <span class="required">*</span></label>
+          ${this._buildUbicDestino('ub-ubicacion', ubis)}
+          <div style="font-size:.7rem;color:#64748b;margin-top:4px;"><i class="fa-solid fa-barcode"></i> Escanee el código o escriba para filtrar · Enter confirma coincidencia única</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cantidad a Ubicar <span class="required">*</span></label>
+          <input id="ub-cantidad" type="number" class="form-control" min="1" max="${item.cantidad}" value="${item.cantidad}" placeholder="0">
+          <div style="font-size:.7rem;color:#64748b;margin-top:3px;">Máximo: ${WMS.formatNum(item.cantidad)} ${WMS.esc(item.unidad_medida||'und')}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha Vencimiento</label>
+          <input id="ub-fv" type="date" class="form-control" value="${item.fecha_vencimiento||''}">
+        </div>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+       <button class="btn btn-primary" onclick="WMS_MODULES.almacenamiento.confirmarUbicacion()"><i class="fa-solid fa-map-pin"></i> Confirmar Ubicación</button>`);
+  },
+
+  async confirmarUbicacion() {
+    const item    = this._currentPutawayItem;
+    if (!item) return WMS.toast('error', 'No hay item seleccionado');
+
+    const ubi_id  = document.getElementById('ub-ubicacion-id')?.value;
     const cantidad = parseFloat(document.getElementById('ub-cantidad')?.value || 0);
-    const lote     = document.getElementById('ub-lote')?.value.trim();
     const fv       = document.getElementById('ub-fv')?.value;
 
-    if (!ubi_id || cantidad <= 0) { WMS.toast('warning', 'Seleccione ubicación y cantidad'); return; }
-    if (cantidad > maxCant) { WMS.toast('warning', 'La cantidad no puede superar la disponible ('+maxCant+')'); return; }
+    if (!ubi_id) return WMS.toast('warning', 'Seleccione una ubicación de destino');
+    if (cantidad <= 0) return WMS.toast('warning', 'La cantidad debe ser mayor a cero');
+    if (cantidad > item.cantidad) return WMS.toast('warning', `La cantidad no puede superar ${WMS.formatNum(item.cantidad)}`);
+    if (!item.ubicacion_id) return WMS.toast('error', 'El ítem no tiene ubicación de origen registrada');
 
     try {
       const r = await API.post('/inventario/traslado', {
-        putaway_id:           id, // Enviamos el ID del registro de putaway
+        producto_id:          item.producto_id,
+        ubicacion_origen_id:  item.ubicacion_id,
         ubicacion_destino_id: parseInt(ubi_id),
         cantidad,
-        lote:              lote || null,
-        fecha_vencimiento: fv || null,
-        tipo:              'Putaway',
+        lote:                 item.lote || null,
+        fecha_vencimiento:    fv || item.fecha_vencimiento || null,
+        numero_pallet:        item.numero_pallet || null,
       });
-      if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Mercancía ubicada'); WMS.closeModal('generic-modal'); this.show_ubicar(); }
-    } catch (e) { WMS.toast('error', 'Error guardando'); }
+      if (r.error) { WMS.toast('error', r.message); return; }
+      const restante = item.cantidad - cantidad;
+      WMS.closeModal('generic-modal');
+      if (restante > 0) {
+        WMS.toast('success', `${WMS.formatNum(cantidad)} und ubicadas. Quedan ${WMS.formatNum(restante)} und en patio.`);
+      } else {
+        WMS.toast('success', 'Mercancía ubicada completamente');
+      }
+      this.show_ubicar();
+    } catch (e) { WMS.toast('error', e.message || 'Error al ubicar'); }
   },
 
   // ── TRANSFERIR ───────────────────────────────────────────────

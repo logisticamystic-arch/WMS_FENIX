@@ -442,8 +442,13 @@ const MWMS = {
   // ── RECEPCIÓN SIN ODC ──────────────────────────────────────────────────
   viewRecSinOdc() {
     document.getElementById('m-title').textContent = 'Rec. Sin ODC';
-    this._sinOdc = { recepcionId: null, lineas: [], prods: [] };
+    this._sinOdc = { recepcionId: null, lineas: [], prods: [], palletNum: null };
     this._renderRecSinOdc();
+    // Auto-fetch pallet consecutivo
+    mApi('GET', '/recepciones/proximo-pallet').then(r => {
+      this._sinOdc.palletNum = r.proximo || 1;
+      this._renderRecSinOdc();
+    }).catch(() => { this._sinOdc.palletNum = 1; this._renderRecSinOdc(); });
     // Precargar productos en segundo plano
     mApi('GET', '/param/productos').then(r => {
       this._sinOdc.prods = r.data || r || [];
@@ -516,6 +521,19 @@ const MWMS = {
           </select>
         </div>
 
+        <!-- Número de Pallet (automático) -->
+        <div class="op-card">
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px 14px;display:flex;align-items:center;gap:10px;">
+            <i class="fa-solid fa-pallet" style="color:#1d4ed8;font-size:1.1rem;"></i>
+            <div>
+              <div style="font-size:.7rem;font-weight:700;color:#1e40af;">Pallet Asignado</div>
+              <div style="font-size:1.2rem;font-weight:900;color:#1d4ed8;">${s.palletNum ? '#' + s.palletNum : '...'}</div>
+            </div>
+            <div style="flex:1;"></div>
+            <div style="font-size:.65rem;color:#3b82f6;">Consecutivo automático</div>
+          </div>
+        </div>
+
         <!-- Botón guardar -->
         <button class="m-btn success full" onclick="MWMS._guardarSinOdc()" style="font-size:1rem;padding:14px;font-weight:800;margin-top:6px;">
           <i class="fa-solid fa-check"></i> GUARDAR CAPTURA
@@ -531,11 +549,27 @@ const MWMS = {
         ${s.lineas.length > 0 ? `
         <div class="op-card" style="margin-top:10px;">
           <div class="m-label"><i class="fa-solid fa-history"></i> Capturas registradas (${s.lineas.length})</div>
-          ${s.lineas.slice().reverse().map(l => `
-            <div style="padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;">
-              <div style="font-weight:700;font-size:.82rem;">${this.esc(l.nombre)}</div>
-              <small style="color:#64748b;">Cant: ${l.cant} | Lote: ${l.lote || 'N/A'} | Venc: ${l.fv || '-'}</small>
-            </div>`).join('')}
+          ${s.lineas.slice().reverse().map((l, ri) => {
+            const idx = s.lineas.length - 1 - ri;
+            return `<div style="padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <div style="flex:1;">
+                  <div style="font-weight:700;font-size:.82rem;">${this.esc(l.nombre)}
+                    ${l.numero_pallet ? `<span style="background:#dbeafe;color:#1d4ed8;padding:1px 6px;border-radius:99px;font-size:.65rem;font-weight:700;margin-left:4px;">#${l.numero_pallet}</span>` : ''}
+                  </div>
+                  <small style="color:#64748b;">Cant: ${l.cant} | Lote: ${l.lote || 'N/A'} | Venc: ${l.fv || '-'}</small>
+                </div>
+                ${l.detalleId ? `<div style="display:flex;gap:4px;flex-shrink:0;">
+                  <button class="m-btn secondary sm" onclick="MWMS._editarLineaSinOdc(${idx})" style="padding:4px 8px;font-size:.7rem;">
+                    <i class="fa-solid fa-pencil"></i>
+                  </button>
+                  <button class="m-btn danger sm" onclick="MWMS._eliminarLineaSinOdc(${idx})" style="padding:4px 8px;font-size:.7rem;">
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </div>` : ''}
+              </div>
+            </div>`;
+          }).join('')}
         </div>` : ''}
 
       </div>`;
@@ -594,6 +628,7 @@ const MWMS = {
     const lote    = document.getElementById('rs-lote')?.value || '';
     const fv      = document.getElementById('rs-fecha-venc')?.value || '';
     const estado  = document.getElementById('rs-estado')?.value || 'BuenEstado';
+    const palletNum = s.palletNum || null;
 
     if (!prodId) return this.toast('Seleccione un producto', 'error');
     if (cantCajas <= 0) return this.toast('Cantidad debe ser mayor a cero', 'error');
@@ -608,17 +643,22 @@ const MWMS = {
         lote:             lote || undefined,
         fecha_vencimiento:fv   || undefined,
         estado_mercancia: estado,
+        numero_pallet:    palletNum || undefined,
       });
 
       s.recepcionId = r.data?.recepcion?.id || s.recepcionId;
       s.lineas.push({
-        nombre: s.prodSel?.nombre || 'Producto',
-        cant:   totalUnidades,
+        detalleId:    r.data?.detalle?.id || null,
+        nombre:       s.prodSel?.nombre || 'Producto',
+        cant:         totalUnidades,
+        cajas:        cantCajas,
+        upc,
         lote,
-        fv: fv ? fv.split('-').reverse().join('/') : '',
+        fv:           fv ? fv.split('-').reverse().join('/') : '',
+        numero_pallet: palletNum,
       });
 
-      // Reset para siguiente captura (mantener producto)
+      // Reset para siguiente captura (mantener producto y pallet)
       s.fechaAuto    = '';
       s.fechaAutoRaw = '';
       this.toast('Captura registrada ✓', 'success');
@@ -641,13 +681,75 @@ const MWMS = {
       this._sinOdc.recepcionId = null;
       this._sinOdc.lineas = [];
       this._sinOdc.prodSel = null;
-      this._renderRecSinOdc();
+      if (confirm('¿Desea ir ahora a dar ubicación a los productos en el almacén?')) {
+        this.viewUbicar();
+      } else {
+        this._renderRecSinOdc();
+      }
     } catch (e) {
       this.toast(e.message || 'Error al cerrar', 'error');
     } finally {
       this.loading(false);
     }
   },
+
+  async _editarLineaSinOdc(lineaIndex) {
+    const s = this._sinOdc;
+    const linea = s.lineas[lineaIndex];
+    if (!linea || !linea.detalleId) return this.toast('Línea no editable', 'error');
+
+    const upc = linea.upc || 1;
+    const labelQty = upc > 1
+      ? `Cajas a recibir (UxC: ${upc}, actual: ${linea.cajas || Math.round(linea.cant / upc)} cajas)`
+      : `Cantidad en unidades (actual: ${linea.cant})`;
+    const currentVal = upc > 1 ? (linea.cajas || Math.round(linea.cant / upc)) : linea.cant;
+
+    const newVal = prompt(`${linea.nombre}\n${labelQty}:`, currentVal);
+    if (newVal === null) return;
+    const parsed = parseInt(newVal);
+    if (isNaN(parsed) || parsed <= 0) return this.toast('Cantidad inválida', 'error');
+
+    const cantidad = parsed * upc;
+    this.loading(true);
+    try {
+      const r = await mApi('PATCH', `/recepciones/${s.recepcionId}/detalle/${linea.detalleId}`, { cantidad });
+      if (r.error) throw new Error(r.message);
+      s.lineas[lineaIndex].cant  = cantidad;
+      s.lineas[lineaIndex].cajas = parsed;
+      this.toast('Cantidad actualizada ✓', 'success');
+      this._renderRecSinOdc();
+    } catch (e) {
+      this.toast(e.message || 'Error al actualizar', 'error');
+    } finally {
+      this.loading(false);
+    }
+  },
+
+  async _eliminarLineaSinOdc(lineaIndex) {
+    const s = this._sinOdc;
+    const linea = s.lineas[lineaIndex];
+    if (!linea || !linea.detalleId) return this.toast('Línea no eliminable', 'error');
+    if (!confirm(`¿Eliminar "${linea.nombre}"? El inventario será revertido.`)) return;
+
+    this.loading(true);
+    try {
+      const r = await mApi('DELETE', `/recepciones/${s.recepcionId}/detalle/${linea.detalleId}`);
+      if (r.error) throw new Error(r.message);
+      s.lineas.splice(lineaIndex, 1);
+      this.toast('Línea eliminada ✓', 'success');
+      if (r.data?.recepcion_eliminada) {
+        s.recepcionId = null;
+        s.lineas = [];
+        s.prodSel = null;
+      }
+      this._renderRecSinOdc();
+    } catch (e) {
+      this.toast(e.message || 'Error al eliminar', 'error');
+    } finally {
+      this.loading(false);
+    }
+  },
+
   // ── FIN RECEPCIÓN SIN ODC ───────────────────────────────────────────────
 
   openSearch(cb, t, mode='prod') {
@@ -901,7 +1003,9 @@ const MWMS = {
               numero_pallet: i.numero_pallet
            });
         }
-        this.toast(`Pallet #${this._palletMove[0].numero_pallet} ubicado completo.`, "success");
+        const movedLabel = (this._palletMove[0].numero_pallet != null && this._palletMove[0].numero_pallet !== '')
+          ? `Pallet #${this._palletMove[0].numero_pallet}` : 'Artículos sin pallet';
+        this.toast(`${movedLabel} ubicado completo.`, "success");
         this._palletMove = null;
       } else {
         // Mover item individual/parcial
@@ -943,11 +1047,14 @@ const MWMS = {
       const r = await mApi('GET', '/inventario/stock?estado=Disponible&tipo_ubicacion=Patio');
       const allItems = (r.data || r || []).filter(x => parseFloat(x.cantidad) > 0);
       
+      this._ubicarItems = allItems;
+
       const groups = {};
-      allItems.forEach(i => {
-          const pKey = i.numero_pallet || 'Sin Pallet';
-          if (!groups[pKey]) groups[pKey] = { id: pKey, items: [], total: 0 };
+      allItems.forEach((i, idx) => {
+          const pKey = (i.numero_pallet != null && i.numero_pallet !== '') ? i.numero_pallet : '__sin_pallet__';
+          if (!groups[pKey]) groups[pKey] = { id: pKey, items: [], idxs: [], total: 0 };
           groups[pKey].items.push(i);
+          groups[pKey].idxs.push(idx);
           groups[pKey].total += parseFloat(i.cantidad);
       });
 
@@ -955,40 +1062,46 @@ const MWMS = {
 
       document.getElementById('m-content').innerHTML = `
         <div class="op-view">
-          <div style="margin-bottom:12px; font-size:.7rem; color:#64748b; font-weight:600;">PALLETS EN PATIO:</div>
-          ${pallets.length === 0 
-            ? '<div class="m-empty"><i class="fa-solid fa-truck-ramp-box"></i><p>Sin pallets listos</p></div>' 
-            : pallets.map(p => `
+          <div style="margin-bottom:12px; font-size:.7rem; color:#64748b; font-weight:600;">ARTÍCULOS EN PATIO:</div>
+          ${pallets.length === 0
+            ? '<div class="m-empty"><i class="fa-solid fa-truck-ramp-box"></i><p>Sin artículos listos para ubicar</p></div>'
+            : pallets.map(p => {
+                const palletLabel = p.id === '__sin_pallet__' ? 'Artículos sin pallet' : `Pallet #${p.id}`;
+                const btnLabel = p.id === '__sin_pallet__' ? 'Ubicar Todo (Sin Pallet)' : 'Ubicar Pallet Completo';
+                return `
               <div class="pallet-card" id="pallet-${p.id}">
                 <div class="pallet-header" onclick="MWMS.togglePallet('${p.id}')">
                   <div>
                     <i class="fa-solid fa-box-archive" style="color:#1e293b;margin-right:8px;"></i>
-                    <b style="font-size:1rem;">Pallet #${p.id}</b>
+                    <b style="font-size:1rem;">${palletLabel}</b>
                     <div style="font-size:.65rem;color:#64748b;">${p.items.length} productos | Total: ${p.total} und</div>
                   </div>
                   <i class="fa-solid fa-chevron-down toggle-icon"></i>
                 </div>
-                
+
                 <div class="pallet-actions">
                    <button class="m-btn secondary sm full" onclick="MWMS.ubicarPalletTodo('${p.id}')">
-                     <i class="fa-solid fa-truck-fast"></i> Ubicar Pallet Completo
+                     <i class="fa-solid fa-truck-fast"></i> ${btnLabel}
                    </button>
                 </div>
 
                 <div class="pallet-details" style="display:none;">
-                  ${p.items.map(i => `
+                  ${p.idxs.map(idx => {
+                    const i = allItems[idx];
+                    return `
                     <div class="item-detail-row">
                       <div style="flex:1;">
                         <div style="font-weight:700; font-size:.8rem;">${this.esc(i.producto_nombre)}</div>
                         <div style="font-size:.7rem; color:#64748b;">Cant: ${i.cantidad} | Lote: ${i.lote || 'N/A'}</div>
                       </div>
-                      <button class="m-btn-icon-sm success" onclick="MWMS.stUb(${JSON.stringify(i).replace(/"/g,'&quot;')})">
+                      <button class="m-btn-icon-sm success" onclick="MWMS.stUb(${idx})">
                         <i class="fa-solid fa-location-dot"></i>
                       </button>
-                    </div>
-                  `).join('')}
+                    </div>`;
+                  }).join('')}
                 </div>
-              </div>`).join('')}
+              </div>`;
+              }).join('')}
         </div>`;
     } catch(e) { this.toast(e.message, "error"); }
     this.loading(false);
@@ -1008,23 +1121,26 @@ const MWMS = {
   },
 
   async ubicarPalletTodo(palletId) {
-    this.toast("Seleccione una ubicación para todo el pallet #" + palletId, "info");
-    // Simulamos que el usuario seleccionó el pallet completo — necesitamos un ítem de referencia
-    this.loading(true);
-    const r = await mApi('GET', '/inventario/stock?estado=Disponible&tipo_ubicacion=Patio');
-    const pItems = r.data.filter(x => x.numero_pallet == palletId);
-    this.loading(false);
-    if (!pItems.length) return this.toast("Pallet no encontrado", "error");
-    
-    // Abrir modal de ubicación para el pallet completo (iteramos o enviamos flag)
-    this._palletMove = pItems; 
-    this.openLocationModal(pItems[0], pItems[0].cantidad, true); 
+    const label = palletId === '__sin_pallet__' ? 'artículos sin pallet' : `pallet #${palletId}`;
+    this.toast(`Seleccione una ubicación para todos los ${label}`, "info");
+    const src = this._ubicarItems || [];
+    const pItems = src.filter(x => {
+      if (palletId === '__sin_pallet__') return x.numero_pallet == null || x.numero_pallet === '';
+      return String(x.numero_pallet) === String(palletId);
+    });
+    if (!pItems.length) return this.toast("Artículos no encontrados", "error");
+    this._palletMove = pItems;
+    this.openLocationModal(pItems[0], pItems[0].cantidad, true);
   },
 
-  stUb(i) {
+  stUb(idx) {
+    const i = (this._ubicarItems || [])[idx];
+    if (!i) return this.toast("Artículo no encontrado", "error");
+    const palletLabel = (i.numero_pallet != null && i.numero_pallet !== '')
+      ? `Pallet #${i.numero_pallet}` : 'artículo sin pallet';
     Swal.fire({
       title: 'Ubicar Parcial',
-      text: `¿Cuántas unidades del Pallet #${i.numero_pallet} desea mover?`,
+      text: `¿Cuántas unidades del ${palletLabel} desea mover?`,
       input: 'number',
       inputValue: i.cantidad,
       showCancelButton: true,
@@ -1268,9 +1384,13 @@ const MWMS = {
         <div class="scanner-card">
           <div style="font-size:.7rem;font-weight:700;color:#64748b;margin-bottom:6px;">PRODUCTO o UBICACIÓN:</div>
           <div style="display:flex;gap:8px;">
-            <input type="text" id="ci-query" class="m-input-full" placeholder="EAN, código, nombre, ubicación..." autocomplete="off" autocapitalize="off">
+            <input type="text" id="ci-query" class="m-input-full"
+                   placeholder="Nombre, código, EAN, descripción..."
+                   autocomplete="off" autocapitalize="off"
+                   oninput="MWMS._ciOnInput()">
             <button class="m-btn-icon primary" onclick="MWMS.runConsultaInteligente()"><i class="fa-solid fa-search"></i></button>
           </div>
+          <div id="ci-suggestions" style="margin-top:5px;"></div>
           <div style="display:flex;gap:6px;margin-top:8px;">
             <button onclick="MWMS._setCIMode('producto')" id="ci-btn-prod"
               style="flex:1;padding:6px;border-radius:6px;border:1px solid #0ea5e9;background:#e0f2fe;color:#0284c7;font-size:.72rem;font-weight:700;cursor:pointer;">
@@ -1285,28 +1405,129 @@ const MWMS = {
         <div id="ci-results" style="margin-top:8px;"></div>
       </div>`;
     this._ciMode = 'producto';
+    this._ciSuggs = [];
     const inp = document.getElementById('ci-query');
     inp.focus();
-    inp.onkeydown = e => { if (e.key==='Enter') this.runConsultaInteligente(); };
+    inp.onkeydown = e => {
+      if (e.key === 'Enter') {
+        if (this._ciSuggs.length) this._ciSelectIdx(0);
+        else this.runConsultaInteligente();
+      }
+      if (e.key === 'Escape') {
+        const s = document.getElementById('ci-suggestions');
+        if (s) s.innerHTML = '';
+        this._ciSuggs = [];
+      }
+    };
   },
 
   _ciMode: 'producto',
+  _ciTimer: null,
+  _ciSuggs: [],
+
   _setCIMode(mode) {
     this._ciMode = mode;
+    const sugg = document.getElementById('ci-suggestions');
+    if (sugg) sugg.innerHTML = '';
+    this._ciSuggs = [];
+    clearTimeout(this._ciTimer);
     const pBtn = document.getElementById('ci-btn-prod');
     const uBtn = document.getElementById('ci-btn-ubic');
     if (mode === 'producto') {
       pBtn.style.cssText += 'background:#e0f2fe;color:#0284c7;border-color:#0ea5e9;';
       uBtn.style.cssText += 'background:#f8fafc;color:#64748b;border-color:#e2e8f0;';
+      const inp = document.getElementById('ci-query');
+      if (inp) { inp.placeholder = 'Nombre, código, EAN, descripción...'; inp.focus(); }
     } else {
       uBtn.style.cssText += 'background:#e0f2fe;color:#0284c7;border-color:#0ea5e9;';
       pBtn.style.cssText += 'background:#f8fafc;color:#64748b;border-color:#e2e8f0;';
+      const inp = document.getElementById('ci-query');
+      if (inp) { inp.placeholder = 'Código de ubicación...'; inp.focus(); }
     }
+  },
+
+  _ciOnInput() {
+    const q = (document.getElementById('ci-query')?.value || '').trim();
+    const sugg = document.getElementById('ci-suggestions');
+    if (!sugg) return;
+    clearTimeout(this._ciTimer);
+    if (q.length < 2 || this._ciMode !== 'producto') {
+      sugg.innerHTML = '';
+      this._ciSuggs = [];
+      return;
+    }
+    sugg.innerHTML = '<div style="text-align:center;padding:8px;"><i class="fa-solid fa-spinner fa-spin" style="color:#0ea5e9;font-size:.85rem;"></i></div>';
+    this._ciTimer = setTimeout(() => this._ciSearchProductos(q), 300);
+  },
+
+  async _ciSearchProductos(q) {
+    const sugg = document.getElementById('ci-suggestions');
+    if (!sugg) return;
+    try {
+      const r = await mApi('GET', '/param/productos/buscar?q=' + encodeURIComponent(q) + '&limit=10');
+      const prods = Array.isArray(r.data) ? r.data : [];
+      this._ciSuggs = prods;
+      if (!prods.length) {
+        sugg.innerHTML = '<div style="padding:8px 0;text-align:center;color:#94a3b8;font-size:.75rem;">Sin resultados para "' + this.esc(q) + '"</div>';
+        return;
+      }
+      sugg.innerHTML =
+        '<div style="font-size:.65rem;font-weight:700;color:#94a3b8;letter-spacing:.5px;margin-bottom:4px;">' +
+          prods.length + ' RESULTADO' + (prods.length > 1 ? 'S' : '') +
+        '</div>' +
+        prods.map((p, i) =>
+          '<div onclick="MWMS._ciSelectIdx(' + i + ')"' +
+               ' style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;' +
+                        'margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;' +
+                        'cursor:pointer;min-height:46px;-webkit-tap-highlight-color:rgba(14,165,233,.12);">' +
+            '<div style="flex:1;min-width:0;">' +
+              '<div style="font-weight:700;font-size:.82rem;color:#1e293b;' +
+                           'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+                this.esc(p.nombre) +
+              '</div>' +
+              '<div style="font-size:.68rem;color:#64748b;margin-top:2px;">' +
+                (p.codigo_interno ? 'Cód: <b>' + this.esc(p.codigo_interno) + '</b>' : '') +
+                (p.codigo_ean && p.codigo_ean !== p.codigo_interno
+                  ? '&nbsp;·&nbsp;<span style="font-family:monospace">EAN ' + this.esc(p.codigo_ean) + '</span>'
+                  : '') +
+                (p.marca_nombre && p.marca_nombre !== '-'
+                  ? '&nbsp;·&nbsp;' + this.esc(p.marca_nombre)
+                  : '') +
+              '</div>' +
+            '</div>' +
+            '<div style="text-align:right;flex-shrink:0;margin-left:10px;">' +
+              '<div style="font-weight:900;color:#0ea5e9;font-size:.95rem;">' +
+                parseFloat(p.stock || 0).toLocaleString('es-CO') +
+              '</div>' +
+              '<div style="font-size:.6rem;color:#94a3b8;">' + this.esc(p.unidad_medida || 'UN') + '</div>' +
+            '</div>' +
+          '</div>'
+        ).join('');
+    } catch(e) {
+      sugg.innerHTML = '';
+      this._ciSuggs = [];
+    }
+  },
+
+  _ciSelectIdx(i) {
+    const p = this._ciSuggs[i];
+    if (!p) return;
+    const inp = document.getElementById('ci-query');
+    if (inp) inp.value = p.nombre;
+    const sugg = document.getElementById('ci-suggestions');
+    if (sugg) sugg.innerHTML = '';
+    this._ciSuggs = [];
+    clearTimeout(this._ciTimer);
+    this._loadStockProducto(p.id, p.nombre);
   },
 
   async runConsultaInteligente() {
     const q = document.getElementById('ci-query')?.value?.trim();
     if (!q || q.length < 2) return this.toast('Escriba al menos 2 caracteres', 'warning');
+    clearTimeout(this._ciTimer);
+    const sugg = document.getElementById('ci-suggestions');
+    if (sugg) sugg.innerHTML = '';
+    this._ciSuggs = [];
     const results = document.getElementById('ci-results');
     results.innerHTML = '<div style="text-align:center;padding:20px;"><i class="fa-solid fa-spinner fa-spin" style="color:#0ea5e9;font-size:1.5rem;"></i></div>';
     this.loading(true);
@@ -2217,7 +2438,7 @@ const MWMS = {
         <div class="op-view">
           <div style="font-size:.7rem;font-weight:800;color:#64748b;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">PLANILLAS ASIGNADAS:</div>
           <div style="display:flex;flex-direction:column;gap:15px;">
-            ${items.map(p => `
+            ${items.filter(p => p.planilla_numero && p.planilla_numero !== 'null').map(p => `
               <div class="op-card" onclick="MWMS.viewPlanilla('${p.planilla_numero}')" style="border-top:4px solid ${p.empezada ? '#10b981' : '#0F4C81'}; padding:18px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                    <div>
@@ -2344,7 +2565,10 @@ const MWMS = {
                <button class="m-btn-icon secondary" onclick="MWMS.viewPicking()"><i class="fa-solid fa-arrow-left"></i></button>
             </div>
           </div>
-          ${items.map((it, idx) => `
+          ${items.map((it, idx) => {
+            const sinUbic = !it.ubicacion_codigo;
+            const soloPicos = it.cajas === 0;
+            return `
             <div class="op-card" onclick="MWMS.initPKConsolidado(${idx}, '${numero}')" style="border-left:4px solid ${verFaltantes ? '#ef4444' : (it.cantidad_pick > 0 ? '#10b981' : '#f59e0b')};">
               <div style="display:flex;justify-content:space-between;align-items:start;">
                 <div style="flex:1;">
@@ -2356,12 +2580,18 @@ const MWMS = {
                    <small style="font-size:.6rem;font-weight:700;color:#64748b;">UNID</small>
                 </div>
               </div>
-              <div style="margin-top:8px;display:flex;gap:15px;font-size:.7rem;color:#475569;background:#f8fafc;padding:5px 8px;border-radius:6px;">
-                 <span><i class="fa-solid fa-location-dot"></i> <b>${it.ubicacion_codigo || 'POR ASIGNAR'}</b></span>
-                 <span><i class="fa-solid fa-box-archive"></i> Cjs: <b>${it.cajas}</b></span>
-                 <span><i class="fa-solid fa-layer-group"></i> Un: <b>${it.picos}</b></span>
+              <div style="margin-top:8px;display:flex;gap:10px;font-size:.7rem;color:#475569;background:#f8fafc;padding:6px 8px;border-radius:6px;align-items:center;">
+                 <span style="font-weight:700;color:${sinUbic ? '#dc2626' : '#0F4C81'};display:flex;align-items:center;gap:3px;">
+                   <i class="fa-solid fa-location-dot"></i>
+                   ${sinUbic ? '<span style="color:#dc2626;">SIN UBICACIÓN</span>' : `<b>${it.ubicacion_codigo}</b>`}
+                 </span>
+                 ${soloPicos
+                   ? `<span><i class="fa-solid fa-layer-group"></i> <b>${it.picos}</b> und</span>`
+                   : `<span><i class="fa-solid fa-box-archive"></i> <b>${it.cajas}</b> cj${it.picos > 0 ? ` + <b>${it.picos}</b> und` : ''}</span>`
+                 }
               </div>
-            </div>`).join('')}
+            </div>`;
+          }).join('')}
         </div>`;
     } catch(e) { this.toast(e.message, "error"); }
     this.loading(false);
@@ -2390,20 +2620,25 @@ const MWMS = {
   },
 
   renderPKConsolidado(it, planillaNumero) {
-    let locValidated = false;
+    // Si no hay ubicación asignada, saltar validación de ubicación directamente
+    let locValidated = !it.ubicacion_codigo;
     let prodValidated = false;
 
     const renderContent = () => {
+      const soloPicos = it.cajas === 0;
       document.getElementById('m-content').innerHTML = `
         <div class="op-view" style="padding-bottom:120px;">
           <div class="op-card" style="background:#0f172a;color:#fff;border-radius:0 0 20px 20px;margin:-10px -10px 15px -10px;padding:20px;">
             <div style="display:flex;justify-content:space-between;align-items:start;">
               <div>
                  <small style="opacity:.7;font-weight:700;">DIRÍGETE A:</small><br>
-                 <b style="font-size:2rem;letter-spacing:1px;font-family:monospace;color:${locValidated ? '#10b981' : '#fff'};">
-                   ${it.ubicacion_codigo || 'POR ASIGNAR'}
-                   ${locValidated ? ' <i class="fa-solid fa-circle-check"></i>' : ''}
-                 </b>
+                 ${it.ubicacion_codigo
+                   ? `<b style="font-size:2rem;letter-spacing:1px;font-family:monospace;color:${locValidated ? '#10b981' : '#fff'};">
+                        ${it.ubicacion_codigo}
+                        ${locValidated ? ' <i class="fa-solid fa-circle-check"></i>' : ''}
+                      </b>`
+                   : `<b style="font-size:1.2rem;color:#fbbf24;"><i class="fa-solid fa-triangle-exclamation"></i> SIN UBICACIÓN ASIGNADA</b>`
+                 }
               </div>
               <div style="text-align:right;">
                  <small style="opacity:.7;">PLANILLA</small><br>
@@ -2414,14 +2649,15 @@ const MWMS = {
 
           <div class="op-card" style="border-radius:15px;box-shadow:0 10px 25px rgba(0,0,0,.15);margin-top:-10px;">
             <div style="font-weight:800;color:#1e293b;font-size:1.15rem;margin-bottom:10px;line-height:1.2;">${this.esc(it.producto_nombre)}</div>
-            
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:15px;">
+
+            <div style="display:grid;grid-template-columns:${soloPicos ? '1fr' : '1fr 1fr'};gap:8px;margin-bottom:15px;">
+              ${!soloPicos ? `
               <div style="background:#f1f5f9;padding:10px;border-radius:10px;text-align:center;border:1px solid #e2e8f0;">
                  <div style="font-size:.6rem;font-weight:700;color:#64748b;">CAJAS</div>
                  <div style="font-size:1.5rem;font-weight:900;color:#1e293b;">${it.cajas}</div>
-              </div>
+              </div>` : ''}
               <div style="background:#f1f5f9;padding:10px;border-radius:10px;text-align:center;border:1px solid #e2e8f0;">
-                 <div style="font-size:.6rem;font-weight:700;color:#64748b;">UNID. SUELTAS</div>
+                 <div style="font-size:.6rem;font-weight:700;color:#64748b;">${soloPicos ? 'UNIDADES' : 'UNID. SUELTAS'}</div>
                  <div style="font-size:1.5rem;font-weight:900;color:#1e293b;">${it.picos}</div>
               </div>
             </div>
@@ -2441,11 +2677,13 @@ const MWMS = {
           <div class="scanner-card" style="margin-top:15px;background:${prodValidated ? '#f0f9ff' : (locValidated ? '#ecfdf5' : '#fef2f2')};border:2px solid ${prodValidated ? '#0ea5e9' : (locValidated ? '#10b981' : '#ef4444')};padding:15px;border-radius:15px;">
              ${!prodValidated ? `
                 <label style="font-size:.75rem;font-weight:800;color:#1e293b;margin-bottom:8px;display:block;text-align:center;text-transform:uppercase;">
-                   ${locValidated ? '<span style="color:#059669;"><i class="fa-solid fa-barcode"></i> ESCANEÉ CÓDIGO PRODUCTO</span>' : '<span style="color:#dc2626;"><i class="fa-solid fa-location-dot"></i> ESCANEÉ LA UBICACIÓN</span>'}
+                   ${locValidated
+                     ? '<span style="color:#059669;"><i class="fa-solid fa-barcode"></i> ESCANEÉ CÓDIGO PRODUCTO</span>'
+                     : '<span style="color:#dc2626;"><i class="fa-solid fa-location-dot"></i> ESCANEÉ LA UBICACIÓN</span>'}
                 </label>
                 <input type="text" id="m-pk-scan" class="m-input-full" placeholder="${locValidated ? 'Código de Barras...' : 'Código de Ubicación...'}" style="font-size:1.2rem;height:55px;text-align:center;letter-spacing:2px;font-weight:700;background:#fff;">
                 <div style="margin-top:10px;text-align:center;font-size:.65rem;color:#64748b;font-weight:600;">
-                   DEBE GARANTIZAR LA UBICACIÓN Y REFERENCIA CORRESPONDIENTE
+                   VERIFIQUE UBICACIÓN Y REFERENCIA ANTES DE SEPARAR
                 </div>
              ` : `
                 <div style="text-align:center;">

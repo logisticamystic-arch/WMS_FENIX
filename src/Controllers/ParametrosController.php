@@ -1250,7 +1250,7 @@ class ParametrosController extends BaseController
         if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
         $u = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id)->find($args['id']);
         if (!$u) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
-        $u->estado = 'Inactiva'; $u->save();
+        $u->activo = false; $u->save();
         return $this->json($response, ['error' => false, 'message' => 'Ubicación desactivada']);
     }
 

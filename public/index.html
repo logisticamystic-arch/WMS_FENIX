@@ -832,6 +832,23 @@
     let _wmsPermisos = JSON.parse(localStorage.getItem('wms_permisos') || '[]');
     // SuperAdmin: empresa seleccionada para operar (null = sin filtro)
     let _wmsEmpresaFiltro = JSON.parse(localStorage.getItem('wms_empresa_filtro') || 'null');
+    // Evita redirigir al login múltiples veces cuando varias llamadas reciben 401 simultáneamente
+    let _sessionExpiredRedirecting = false;
+
+    function _jwtExp(token) {
+      try { return JSON.parse(atob(token.split('.')[1])).exp || Infinity; }
+      catch(_) { return Infinity; }
+    }
+
+    function _handleSessionExpired() {
+      if (_sessionExpiredRedirecting) return;
+      _sessionExpiredRedirecting = true;
+      _wmsToken = ''; _wmsUser = null;
+      localStorage.removeItem('wms_token');
+      localStorage.removeItem('wms_user');
+      if (window.WMS) WMS.stopPolling();
+      setTimeout(() => { if (window.WMS) WMS.showLogin(); }, 50);
+    }
 
     // ── API Client with Timeout & Retry Logic ──
     const API_CONFIG = {
@@ -860,6 +877,12 @@
         }
       }
 
+      // Verificar expiración del token antes de hacer la petición
+      if (_wmsToken && !path.includes('/auth/login') && Date.now() / 1000 >= _jwtExp(_wmsToken)) {
+        _handleSessionExpired();
+        throw Object.assign(new Error('Sesión expirada. Inicie sesión nuevamente.'), { isSessionExpired: true });
+      }
+
       let lastError;
       let notifiedUser = false;
 
@@ -883,16 +906,8 @@
           clearTimeout(timeoutId);
           
           if (res.status === 401 && !path.includes('/auth/login')) {
-            // Solo forzar logout si la app está activa (token existe). Evita loop.
-            if (_wmsToken) {
-              _wmsToken = '';
-              _wmsUser = null;
-              localStorage.removeItem('wms_token');
-              localStorage.removeItem('wms_user');
-              if (window.WMS) WMS.stopPolling();
-              setTimeout(() => { if (window.WMS) WMS.showLogin(); }, 50);
-            }
-            throw new Error('Sesión expirada. Inicie sesión nuevamente.');
+            _handleSessionExpired();
+            throw Object.assign(new Error('Sesión expirada. Inicie sesión nuevamente.'), { isSessionExpired: true });
           }
           
           let json;
@@ -1328,6 +1343,7 @@
           if (r.error) { errEl.textContent = r.message; errEl.style.display = 'block'; this._pin = ''; for (let i = 0; i < 4; i++) { document.getElementById('pd' + i).style.background = 'transparent'; document.getElementById('pd' + i).style.borderColor = '#cbd5e1'; } }
           else {
             _wmsToken = r.token; _wmsUser = r.user; _wmsPermisos = r.permisos;
+            _sessionExpiredRedirecting = false;
             localStorage.setItem('wms_token', _wmsToken);
             localStorage.setItem('wms_user', JSON.stringify(_wmsUser));
             localStorage.setItem('wms_permisos', JSON.stringify(_wmsPermisos));
@@ -1637,7 +1653,7 @@
 
       // ── Detail Drawer (Master-Detail) ──────────────────
       showRightPanel(title, html, footer = '') {
-          const container = document.getElementById('wrapper-main');
+          const container = document.getElementById('content-body');
           const panel = document.getElementById('right-panel');
           const panelTitle = document.getElementById('right-panel-title');
           const panelBody = document.getElementById('right-panel-body');
@@ -1663,7 +1679,7 @@
       },
 
       closeRightPanel() {
-          const container = document.getElementById('wrapper-main');
+          const container = document.getElementById('content-body');
           const panel = document.getElementById('right-panel');
           container.classList.remove('layout-edit', 'has-drawer');
           panel.classList.add('hidden');

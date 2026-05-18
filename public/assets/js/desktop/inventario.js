@@ -2252,7 +2252,7 @@ WMS_MODULES.inventario = {
           </table>
         </div>
       </div>`);
-    } catch(e) { console.error(e); WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
+    } catch(e) { if (e.isSessionExpired) return; console.error(e); WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
   },
 
   _filterSesiones() {
@@ -2461,7 +2461,7 @@ WMS_MODULES.inventario = {
           <i class="fa-solid fa-history"></i> Registro de Ajustes
         </button>
       </div>`);
-    } catch(e) { console.error(e); WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
+    } catch(e) { if (e.isSessionExpired) return; console.error(e); WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
   },
 
   // ── CORRECCIÓN MANUAL V2 ─────────────────────────────────────

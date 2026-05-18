@@ -139,7 +139,8 @@ class UbicacionesController extends BaseController
             'distancia_muelle'=> $body['distancia_muelle'] ?? null,
             'accesibilidad'   => $body['accesibilidad']  ?? 3,
             'tipo_ubicacion'  => $body['tipo_ubicacion'] ?? 'Picking',
-            'estado'          => 'Disponible',
+            'estado'          => 'Libre',
+            'activo'          => true,
             'activa'          => true,
             'created_at'      => date('Y-m-d H:i:s'),
             'updated_at'      => date('Y-m-d H:i:s'),
@@ -186,7 +187,7 @@ class UbicacionesController extends BaseController
         if ($deny = $this->requireAdmin($user, $res)) return $deny;
 
         $body    = (array)($r->getParsedBody() ?? []);
-        $estados = ['Disponible', 'Bloqueado', 'Mantenimiento', 'Reservado'];
+        $estados = ['Libre', 'Ocupada', 'Parcial', 'Locked'];
 
         if (!in_array($body['estado'] ?? '', $estados)) {
             return $this->error($res, 'Estado inválido. Válidos: ' . implode(', ', $estados));
@@ -263,9 +264,9 @@ class UbicacionesController extends BaseController
             ->selectRaw("
                 zona,
                 COUNT(*) AS total,
-                COUNT(CASE WHEN estado = 'Disponible' THEN 1 END) AS disponibles,
-                COUNT(CASE WHEN estado = 'Ocupado'    THEN 1 END) AS ocupadas,
-                COUNT(CASE WHEN estado = 'Bloqueado'  THEN 1 END) AS bloqueadas,
+                COUNT(CASE WHEN estado = 'Libre'   THEN 1 END) AS disponibles,
+                COUNT(CASE WHEN estado = 'Ocupada' THEN 1 END) AS ocupadas,
+                COUNT(CASE WHEN estado = 'Locked'  THEN 1 END) AS bloqueadas,
                 ROUND(AVG(ocupacion_pct), 2)                      AS ocupacion_promedio,
                 ROUND(SUM(capacidad_m3), 2)                       AS capacidad_m3_total
             ")

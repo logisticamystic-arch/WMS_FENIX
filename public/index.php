@@ -107,18 +107,26 @@ $errorMiddleware->setDefaultErrorHandler(function (
         FILTER_VALIDATE_BOOLEAN
     );
 
-    $status  = 500;
-    $payload = [
-        'error'   => true,
-        'message' => $isDebug
-            ? "Error interno: {$msg}"
-            : 'Error interno del servidor. Revise logs/app.log para más detalles.',
-    ];
-    if ($isDebug) {
-        $payload['detail'] = [
-            'class' => get_class($exception),
-            'file'  => $exception->getFile() . ':' . $exception->getLine(),
+    // Use the HTTP status code from HttpException subclasses (404, 405, etc.)
+    $status = ($exception instanceof \Slim\Exception\HttpException) ? $exception->getCode() : 500;
+
+    if ($status === 405) {
+        $payload = ['error' => true, 'message' => 'Método HTTP no permitido para esta ruta.'];
+    } elseif ($status === 404) {
+        $payload = ['error' => true, 'message' => 'Ruta no encontrada.'];
+    } else {
+        $payload = [
+            'error'   => true,
+            'message' => $isDebug
+                ? "Error interno: {$msg}"
+                : 'Error interno del servidor. Revise logs/app.log para más detalles.',
         ];
+        if ($isDebug) {
+            $payload['detail'] = [
+                'class' => get_class($exception),
+                'file'  => $exception->getFile() . ':' . $exception->getLine(),
+            ];
+        }
     }
 
     $response = $app->getResponseFactory()->createResponse($status);
@@ -451,6 +459,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/recepciones/sin-odc', [\App\Controllers\RecepcionController::class, 'detallesOperativaSinOdc']);
     $group->get('/recepciones/{id}', [\App\Controllers\RecepcionController::class, 'ver']);
     $group->post('/recepciones/{id}/detalle', [\App\Controllers\RecepcionController::class, 'addDetail']);
+    $group->patch('/recepciones/{id}/detalle/{detalleId}', [\App\Controllers\RecepcionController::class, 'actualizarDetalleSinOdc']);
+    $group->delete('/recepciones/{id}/detalle/{detalleId}', [\App\Controllers\RecepcionController::class, 'eliminarDetalleSinOdc']);
     $group->post('/recepciones/{id}/cerrar', [\App\Controllers\RecepcionController::class, 'confirm']);
     $group->delete('/recepciones/detalle/{id}', [\App\Controllers\RecepcionController::class, 'eliminarDetalle']);
     $group->put('/recepcion-detalle/{id}', [\App\Controllers\RecepcionController::class, 'actualizarDetalle']);
@@ -602,6 +612,14 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->post('/backorder',         [\App\Controllers\PickingController::class, 'procesarBackorder']);
         $group->get('/reporte',           [\App\Controllers\PickingController::class, 'reporte']);
         
+        // Edición de líneas individuales (requiere admin/supervisor)
+        $group->patch('/{id}/linea/{lineaId}', [\App\Controllers\PickingController::class, 'actualizarLinea']);
+        $group->delete('/{id}/linea/{lineaId}', [\App\Controllers\PickingController::class, 'eliminarLinea']);
+
+        // Gestión de auxiliares por orden
+        $group->put('/{id}/auxiliar', [\App\Controllers\PickingController::class, 'cambiarAuxiliar']);
+        $group->post('/{id}/auxiliar', [\App\Controllers\PickingController::class, 'agregarAuxiliar']);
+
         // Rutas por ID de Orden
         $group->get('/{id}', [\App\Controllers\PickingController::class, 'detalle']);
         $group->put('/{id}', [\App\Controllers\PickingController::class, 'actualizar']);
@@ -627,6 +645,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->get('', [\App\Controllers\ImpresoraController::class, 'listar']);
         $group->post('', [\App\Controllers\ImpresoraController::class, 'guardar']);
         $group->post('/imprimir-rotulo', [\App\Controllers\ImpresoraController::class, 'imprimirRotulo']);
+        $group->post('/{id}/test-print', [\App\Controllers\ImpresoraController::class, 'testPrint']);
         $group->delete('/{id}', [\App\Controllers\ImpresoraController::class, 'eliminar']);
     });
 

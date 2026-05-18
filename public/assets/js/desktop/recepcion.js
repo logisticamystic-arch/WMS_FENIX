@@ -266,7 +266,7 @@ WMS_MODULES.recepcion = {
           </div>
         </div>
       `);
-    } catch(e) { console.error(e); WMS.toast('error','Error cargando ODCs'); }
+    } catch(e) { if (e.isSessionExpired) return; console.error(e); WMS.toast('error','Error cargando ODCs'); }
   },
   
   closeDrawerODC() {
@@ -487,7 +487,7 @@ WMS_MODULES.recepcion = {
 
       WMS.setContent(html);
 
-    } catch(e) { console.error(e); WMS.toast('error','Error al cargar matriz ODC'); }
+    } catch(e) { if (e.isSessionExpired) return; console.error(e); WMS.toast('error','Error al cargar matriz ODC'); }
   },
 
   _buildPalletTable(caps, detId, odcId) {
@@ -930,7 +930,7 @@ WMS_MODULES.recepcion = {
         `<button class="btn btn-ghost" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
          <button class="btn btn-primary fw-900" onclick="WMS_MODULES.recepcion.saveAsignacion(${id})"><i class="fa-solid fa-save"></i> Guardar Asignación</button>`
       );
-    } catch(e) { console.error(e); WMS.toast('error','Error al cargar personal'); }
+    } catch(e) { if (e.isSessionExpired) return; console.error(e); WMS.toast('error','Error al cargar personal'); }
   },
 
   async saveAsignacion(id) {
@@ -1042,7 +1042,7 @@ WMS_MODULES.recepcion = {
             </div>
           </div>
         </div>`);
-    } catch(e) { console.error(e); WMS.toast('error','Error cargando informe'); }
+    } catch(e) { if (e.isSessionExpired) return; console.error(e); WMS.toast('error','Error cargando informe'); }
   },
 
   filterInforme() {
@@ -1117,8 +1117,8 @@ WMS_MODULES.recepcion = {
                   <td>${rc.hora_inicio}</td><td>${rc.hora_fin||'...'}</td>
                   <td><strong>${WMS.esc(rc.auxiliar?.nombre||'-')}</strong></td>
                   <td>
-                    ${(rc.estado!=='Cerrada' && rc.odc?.estado!=='Cerrada' && rc.odc?.estado!=='Completada' && rc.odc_id) 
-                        ? `<button class="btn btn-xs btn-primary-soft" onclick="WMS_MODULES.recepcion.abrirConsolaRecepcion(${rc.odc_id})"><i class="fa-solid fa-play"></i> Retomar</button>`
+                    ${(rc.estado!=='Cerrada' && rc.odc?.estado!=='Cerrada' && rc.odc?.estado!=='Completada' && rc.odc_id)
+                        ? `<button class="btn btn-xs btn-primary-soft" onclick="WMS_MODULES.recepcion.abrirConsolaRecepcion(${rc.odc_id},${rc.id})"><i class="fa-solid fa-play"></i> Retomar</button>`
                         : (rc.odc_id ? '<span class="text-success text-xs fw-bold"><i class="fa-solid fa-check-double"></i> Finalizada</span>' : '')}
                   </td>
                 </tr>`).join('')||'<tr><td colspan="8" class="table-empty">Sin ingresos recientes</td></tr>'}</tbody>
@@ -1155,18 +1155,31 @@ WMS_MODULES.recepcion = {
       }
   },
 
-  async abrirConsolaRecepcion(odcId) {
+  async abrirConsolaRecepcion(odcId, recepcionId = null) {
       WMS.setToolbar(`<button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.recepcion.show_operativa()"><i class="fa-solid fa-arrow-left"></i> Volver a Monitor</button>`);
       WMS.spinner();
+
+      // Intentar cargar la ODC; si falla mostrar vista de rescate
+      let odc = null;
       try {
-          const [odcR, prodR] = await Promise.all([
-              API.get('/odc/' + odcId),
-              API.get('/param/productos')
-          ]);
-          const odc = odcR.data||odcR;
+          const odcR = await API.get('/odc/' + odcId);
+          odc = odcR.data || odcR;
+      } catch (e) {
+          // ODC no encontrada → mostrar vista de rescate con los datos de la recepción
+          return this._abrirConsolaRecepcionRescate(odcId, recepcionId);
+      }
+
+      try {
+          const prodR = await API.get('/param/productos');
           window._opProds = prodR.data||prodR||[];
           window._opOdcDetalles = odc.detalles||[];
           window._opCurrentOdcId = odc.id;
+
+          // Auto-asignar pallet para esta sesión de recepción ODC
+          try {
+              const pr = await API.get('/recepciones/proximo-pallet');
+              this._odcPalletNum = pr.proximo || 1;
+          } catch (_) { this._odcPalletNum = 1; }
 
           const summaryLines = window._opOdcDetalles.map(d => {
               const pend = d.cantidad_solicitada - d.cantidad_recibida;
@@ -1180,11 +1193,11 @@ WMS_MODULES.recepcion = {
 
           WMS.setContent(`
             <div style="display:grid;grid-template-columns:350px 1fr;gap:20px;padding:20px;height:calc(100vh - 120px);overflow:hidden;">
-                
+
                 <!-- Panel de Captura Manual (Desktop) -->
                 <div style="background:#fff;border-radius:4px;border:1px solid #e2e8f0;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 4px 6px -1px rgba(0,0,0,.05);overflow-y:auto;">
                     <div style="font-weight:900;font-size:16px;color:#1e3a5f;border-bottom:2px solid #e2e8f0;padding-bottom:10px;margin-bottom:10px;"><i class="fa-solid fa-barcode"></i> Capturar Producto</div>
-                    
+
                     <div class="form-group">
                         <label class="form-label">Producto *</label>
                         <select id="op-prod" class="form-control" onchange="WMS_MODULES.recepcion._onProductoCaptura(this)">
@@ -1197,12 +1210,11 @@ WMS_MODULES.recepcion = {
                         <label class="form-label" id="op-cant-label">Cajas a Recibir *</label>
                         <input type="number" id="op-cant" class="form-control" value="1" min="1"
                                oninput="WMS_MODULES.recepcion._actualizarPreviewUnidades()">
-                        <!-- Preview de conversión cajas → unidades -->
                         <div id="op-conv-preview" style="display:none;margin-top:6px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;font-weight:600;">
                             <i class="fa-solid fa-calculator"></i>
                             <span id="op-conv-text">1 caja × 1 = 1 unidad</span>
                         </div>
-                        <input type="hidden" id="op-upc" value="1"> <!-- unidades_caja del producto seleccionado -->
+                        <input type="hidden" id="op-upc" value="1">
                     </div>
 
                     <div class="form-group">
@@ -1213,6 +1225,17 @@ WMS_MODULES.recepcion = {
                     <div class="form-group">
                         <label class="form-label">Fecha de Vencimiento</label>
                         <input type="date" id="op-fecha-venc" class="form-control">
+                    </div>
+
+                    <!-- Pallet asignado (auto-generado) -->
+                    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px 14px;display:flex;align-items:center;gap:10px;">
+                      <i class="fa-solid fa-pallet" style="color:#1d4ed8;font-size:1.1rem;"></i>
+                      <div>
+                        <div style="font-size:.7rem;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.05em;">Pallet Asignado</div>
+                        <div style="font-size:1.2rem;font-weight:900;color:#1d4ed8;">#${this._odcPalletNum || '—'}</div>
+                      </div>
+                      <div style="flex:1;"></div>
+                      <div style="font-size:.65rem;color:#3b82f6;">Consecutivo automático</div>
                     </div>
 
                     <button class="btn btn-success" style="padding:14px;font-size:16px;font-weight:800;margin-top:10px;" onclick="WMS_MODULES.recepcion._enviarCapturaOperativa()">
@@ -1248,7 +1271,90 @@ WMS_MODULES.recepcion = {
 
             </div>
           `);
-      } catch(e) { WMS.toast('error', 'Error al cargar consola'); }
+      } catch(e) {
+          WMS.toast('error', 'Error al cargar consola: ' + (e.message || ''));
+          WMS_MODULES.recepcion.show_operativa();
+      }
+  },
+
+  async _abrirConsolaRecepcionRescate(odcId, recepcionId) {
+      // La ODC no está disponible para este tenant. Mostrar la recepción existente
+      // con opciones para cerrarla o eliminarla.
+      let rec = null;
+      if (recepcionId) {
+          try {
+              const rr = await API.get('/recepciones/' + recepcionId);
+              rec = rr.data || rr;
+          } catch(_) {}
+      }
+
+      const lineas = rec?.detalles || [];
+      const rowsHtml = lineas.map(l => `
+          <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:8px 10px;font-weight:600;">${WMS.esc(l.producto?.nombre || '-')}</td>
+              <td style="padding:8px 10px;text-align:center;">${l.cantidad_recibida}</td>
+              <td style="padding:8px 10px;">${WMS.esc(l.lote || 'N/A')}</td>
+              <td style="padding:8px 10px;">${l.numero_pallet ? `<span style="background:#dbeafe;color:#1d4ed8;padding:2px 7px;border-radius:99px;font-size:.7rem;">#${l.numero_pallet}</span>` : '—'}</td>
+          </tr>`).join('') || '<tr><td colspan="4" style="padding:16px;text-align:center;color:#94a3b8;">Sin líneas registradas</td></tr>';
+
+      WMS.setContent(`
+          <div style="max-width:700px;margin:40px auto;padding:0 20px;">
+              <div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;padding:20px;margin-bottom:20px;">
+                  <div style="font-weight:800;color:#92400e;font-size:1rem;margin-bottom:8px;">
+                      <i class="fa-solid fa-triangle-exclamation"></i> ODC no disponible en esta empresa/sucursal
+                  </div>
+                  <div style="font-size:.85rem;color:#78350f;">
+                      La recepción <strong>${WMS.esc(rec?.numero_recepcion || '—')}</strong> está vinculada a la ODC ID ${odcId},
+                      que no pertenece a la empresa/sucursal activa o fue eliminada.
+                      Puede cerrar la recepción para conservar el inventario ya capturado,
+                      o eliminarla para revertir todo el inventario registrado.
+                  </div>
+              </div>
+
+              ${lineas.length > 0 ? `
+              <div class="card" style="margin-bottom:20px;">
+                  <div class="card-header"><span class="card-title">Líneas ya capturadas (${lineas.length})</span></div>
+                  <div class="table-container">
+                      <table class="erp-table">
+                          <thead><tr><th>Producto</th><th>Cant.</th><th>Lote</th><th>Pallet</th></tr></thead>
+                          <tbody>${rowsHtml}</tbody>
+                      </table>
+                  </div>
+              </div>` : ''}
+
+              <div style="display:flex;gap:12px;justify-content:flex-end;">
+                  <button class="btn btn-secondary" onclick="WMS_MODULES.recepcion.show_operativa()">
+                      <i class="fa-solid fa-arrow-left"></i> Volver al Monitor
+                  </button>
+                  ${recepcionId && rec?.estado !== 'Cerrada' ? `
+                  <button class="btn btn-warning" onclick="WMS_MODULES.recepcion._cerrarRecepcionOrfana(${recepcionId})">
+                      <i class="fa-solid fa-lock"></i> Cerrar Recepción
+                  </button>
+                  <button class="btn btn-danger" onclick="WMS_MODULES.recepcion._eliminarRecepcionOrfana(${recepcionId},'${WMS.esc(rec?.numero_recepcion||'')}')">
+                      <i class="fa-solid fa-trash"></i> Eliminar y Revertir Inventario
+                  </button>` : ''}
+              </div>
+          </div>`);
+  },
+
+  async _cerrarRecepcionOrfana(recepcionId) {
+      if (!confirm('¿Cerrar esta recepción? El inventario capturado quedará disponible en Patio.')) return;
+      try {
+          const r = await API.post('/recepciones/' + recepcionId + '/cerrar', {});
+          if (r.error) throw new Error(r.message);
+          WMS.toast('success', 'Recepción cerrada. Inventario conservado en Patio.');
+          this.show_operativa();
+      } catch(e) { WMS.toast('error', e.message || 'Error al cerrar'); }
+  },
+
+  async _eliminarRecepcionOrfana(recepcionId, numero) {
+      if (!confirm(`¿Eliminar la recepción ${numero} y revertir todo el inventario capturado? Esta acción es irreversible.`)) return;
+      try {
+          const r = await API.delete('/recepciones/' + recepcionId);
+          if (r.error) throw new Error(r.message);
+          WMS.toast('success', `Recepción ${numero} eliminada y stock revertido.`);
+          this.show_operativa();
+      } catch(e) { WMS.toast('error', e.message || 'Error al eliminar'); }
   },
 
   // ── Cuando cambia el producto seleccionado → actualizar unidades_caja ──────
@@ -1299,16 +1405,15 @@ WMS_MODULES.recepcion = {
       btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Guardando...';
 
       try {
-          // Enviamos cantidad_cajas + modo_cajas=1 para que el backend haga la conversión.
-          // También enviamos cantidad (unidades calculadas) como fallback legacy.
           const payload = {
               odc_id:         window._opCurrentOdcId,
               producto_id:    prodId,
-              cantidad_cajas: cantCajas,          // cajas físicas (nuevo campo)
-              modo_cajas:     1,                  // flag explícito de conversión
-              cantidad:       totalUnidades,       // unidades calculadas (compatibilidad)
+              cantidad_cajas: cantCajas,
+              modo_cajas:     1,
+              cantidad:       totalUnidades,
               lote,
               fecha_vencimiento: venc,
+              numero_pallet:  this._odcPalletNum || undefined,
           };
 
           const r = await API.post('/recepciones/detalles-operativa', payload);
@@ -1377,19 +1482,38 @@ WMS_MODULES.recepcion = {
                   <th>N° Recepción</th><th>Auxiliar</th><th>Estado</th>
                   <th>Fecha</th><th>Líneas</th><th>Acciones</th>
                 </tr></thead>
-                <tbody>${items.map(rc => `<tr>
-                  <td class="fw-800">${WMS.esc(rc.numero_recepcion)}</td>
+                <tbody>${items.map(rc => {
+                  const lineas = rc.detalles?.length || rc.detalles_count || 0;
+                  const estadoColor = rc.estado === 'Cerrada' ? '#166534' : rc.estado === 'Borrador' ? '#92400e' : '#1e40af';
+                  const estadoBg   = rc.estado === 'Cerrada' ? '#dcfce7' : rc.estado === 'Borrador' ? '#fef9c3' : '#dbeafe';
+                  return `<tr>
+                  <td class="fw-800" style="color:#0F4C81;">${WMS.esc(rc.numero_recepcion)}</td>
                   <td>${WMS.esc(rc.auxiliar?.nombre || '-')}</td>
-                  <td><span class="status-chip ${rc.estado === 'Cerrada' ? 'status-cerrada' : 'status-en-proceso'}">${rc.estado}</span></td>
+                  <td><span style="background:${estadoBg};color:${estadoColor};padding:2px 10px;border-radius:99px;font-size:.72rem;font-weight:700;">${rc.estado}</span></td>
                   <td>${WMS.formatDate(rc.fecha_movimiento)}</td>
-                  <td class="text-center">${rc.detalles?.length || rc.detalles_count || '-'}</td>
-                  <td>
+                  <td class="text-center"><strong>${lineas}</strong> línea${lineas !== 1 ? 's' : ''}</td>
+                  <td style="white-space:nowrap;display:flex;gap:4px;align-items:center;">
                     ${rc.estado === 'Borrador' ? `
                       <button class="btn btn-xs btn-primary-soft" onclick="WMS_MODULES.recepcion.abrirConsolaSinODC('${rc.id}')">
-                        <i class="fa-solid fa-play"></i> Retomar
-                      </button>` : ''}
+                        <i class="fa-solid fa-play"></i> Capturar
+                      </button>
+                      <button class="btn btn-xs" style="background:#dcfce7;color:#166534;border:none;border-radius:3px;padding:2px 8px;cursor:pointer;font-size:.72rem;"
+                        onclick="WMS_MODULES.recepcion._confirmarSinODC('${rc.id}','${WMS.esc(rc.numero_recepcion)}')">
+                        <i class="fa-solid fa-lock"></i> Confirmar
+                      </button>
+                      <button class="btn btn-xs" style="background:#fef2f2;color:#dc2626;border:none;border-radius:3px;padding:2px 8px;cursor:pointer;font-size:.72rem;"
+                        onclick="WMS_MODULES.recepcion._eliminarRecepcionSinODC('${rc.id}','${WMS.esc(rc.numero_recepcion)}')">
+                        <i class="fa-solid fa-trash"></i> Eliminar
+                      </button>` : `
+                      <button class="btn btn-xs btn-secondary-soft" onclick="WMS_MODULES.recepcion._verDetalleSinODC('${rc.id}')">
+                        <i class="fa-solid fa-eye"></i> Ver
+                      </button>
+                      <button class="btn btn-xs" style="background:#fef2f2;color:#dc2626;border:none;border-radius:3px;padding:2px 8px;cursor:pointer;font-size:.72rem;"
+                        onclick="WMS_MODULES.recepcion._eliminarRecepcionSinODC('${rc.id}','${WMS.esc(rc.numero_recepcion)}')" title="Eliminar recepción y revertir inventario">
+                        <i class="fa-solid fa-trash"></i> Eliminar
+                      </button>`}
                   </td>
-                </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin recepciones sin ODC registradas</td></tr>'}
+                </tr>`;}).join('') || '<tr><td colspan="6" class="table-empty">Sin recepciones sin ODC registradas</td></tr>'}
                 </tbody>
               </table>
             </div>
@@ -1401,6 +1525,8 @@ WMS_MODULES.recepcion = {
   // _sinOdcProds: caché de productos cargados para el autocompletado
   _sinOdcProds: [],
   _sinOdcRecepcionId: null,
+  _sinOdcPalletNum: null,
+  _odcPalletNum: null,
 
   _sodc_actualizarToolbar() {
     const id = this._sinOdcRecepcionId;
@@ -1422,12 +1548,30 @@ WMS_MODULES.recepcion = {
       this._sinOdcProds = prodR.data || prodR || [];
       this._sinOdcRecepcionId = recepcionId || null;
 
+      // Auto-asignar pallet: obtener próximo número al abrir consola nueva
+      if (!recepcionId) {
+        try {
+          const pr = await API.get('/recepciones/proximo-pallet');
+          this._sinOdcPalletNum = pr.proximo || 1;
+        } catch (_) { this._sinOdcPalletNum = 1; }
+      } else if (!this._sinOdcPalletNum) {
+        // Retomando sesión: reutilizar el pallet del último detalle si existe
+        try {
+          const pr = await API.get('/recepciones/proximo-pallet');
+          this._sinOdcPalletNum = pr.proximo || 1;
+        } catch (_) { this._sinOdcPalletNum = 1; }
+      }
+
       // Historial de capturas del día (recepcion en borrador sin ODC)
       let lineas = [];
       if (recepcionId) {
         try {
           const recR = await API.get('/recepciones/' + recepcionId);
           lineas = (recR.data?.detalles || []).slice().reverse();
+          // Reutilizar el pallet de la primera línea si existe
+          if (lineas.length > 0 && lineas[lineas.length - 1]?.numero_pallet) {
+            this._sinOdcPalletNum = lineas[lineas.length - 1].numero_pallet;
+          }
         } catch (_) {}
       }
 
@@ -1456,7 +1600,7 @@ WMS_MODULES.recepcion = {
                 </button>
               </div>
               <div style="font-size:10px;color:#6b7280;margin-top:4px;">
-                Formato: <code>CODIGO_PRODUCTO/FECHA_VENCIMIENTO</code> — El sistema extrae el producto y parsea la fecha automáticamente.
+                Formatos: <code>CODIGO,LOTE,FECHA_VENCIMIENTO</code> o <code>CODIGO/FECHA_VENCIMIENTO</code>.
               </div>
             </div>
 
@@ -1506,6 +1650,17 @@ WMS_MODULES.recepcion = {
               </select>
             </div>
 
+            <!-- Pallet asignado (auto-generado) -->
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px 14px;display:flex;align-items:center;gap:10px;">
+              <i class="fa-solid fa-pallet" style="color:#1d4ed8;font-size:1.1rem;"></i>
+              <div>
+                <div style="font-size:.7rem;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.05em;">Pallet Asignado</div>
+                <div style="font-size:1.2rem;font-weight:900;color:#1d4ed8;">#${this._sinOdcPalletNum || '—'}</div>
+              </div>
+              <div style="flex:1;"></div>
+              <div style="font-size:.65rem;color:#3b82f6;">Consecutivo automático</div>
+            </div>
+
             <!-- Botón Guardar -->
             <button class="btn btn-success" style="padding:14px;font-size:16px;font-weight:800;margin-top:4px;"
               onclick="WMS_MODULES.recepcion._enviarCapturaSinODC()">
@@ -1527,19 +1682,36 @@ WMS_MODULES.recepcion = {
                     <th style="padding:10px;text-align:left;">Producto</th>
                     <th style="padding:10px;text-align:center;">Cant.</th>
                     <th style="padding:10px;text-align:center;">Cajas</th>
+                    <th style="padding:10px;text-align:center;">Pallet</th>
                     <th style="padding:10px;text-align:left;">Lote</th>
                     <th style="padding:10px;text-align:left;">F. Venc.</th>
                     <th style="padding:10px;text-align:left;">Estado</th>
+                    <th style="padding:10px;text-align:center;">Acciones</th>
                   </tr></thead>
                   <tbody id="sodc-lines-body">
-                    ${lineas.map(l => `<tr style="border-bottom:1px solid #f1f5f9;">
+                    ${lineas.map(l => {
+                      const pb = l.numero_pallet
+                        ? `<span style="background:#dbeafe;color:#1d4ed8;padding:2px 7px;border-radius:99px;font-size:.7rem;font-weight:700;">#${l.numero_pallet}</span>`
+                        : `<span style="color:#94a3b8;font-size:.7rem;">—</span>`;
+                      return `<tr style="border-bottom:1px solid #f1f5f9;" data-det-id="${l.id}">
                       <td style="padding:9px 10px;font-weight:600;">${WMS.esc(l.producto?.nombre || '-')}</td>
                       <td style="padding:9px 10px;text-align:center;font-weight:800;color:#059669;">${l.cantidad_recibida}</td>
                       <td style="padding:9px 10px;text-align:center;">${l.cantidad_cajas || '-'}</td>
+                      <td style="padding:9px 10px;text-align:center;">${pb}</td>
                       <td style="padding:9px 10px;">${WMS.esc(l.lote || 'N/A')}</td>
                       <td style="padding:9px 10px;">${l.fecha_vencimiento ? WMS.formatDate(l.fecha_vencimiento) : '-'}</td>
                       <td style="padding:9px 10px;"><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#166534;">${WMS.esc(l.estado_mercancia || 'BuenEstado')}</span></td>
-                    </tr>`).join('')}
+                      <td style="padding:6px 10px;text-align:center;white-space:nowrap;">
+                        <button onclick="WMS_MODULES.recepcion._editarDetalleSinODC('${recepcionId}',${l.id},'${WMS.esc(l.producto?.nombre||'-').replace(/'/g,"\\'")}',${l.cantidad_recibida},${l.cajas_por_unidad||1})"
+                          style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;margin-right:3px;" title="Editar cantidad">
+                          <i class="fa-solid fa-pencil"></i>
+                        </button>
+                        <button onclick="WMS_MODULES.recepcion._eliminarDetalleSinODC('${recepcionId}',${l.id})"
+                          style="background:#fef2f2;color:#dc2626;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;" title="Eliminar línea">
+                          <i class="fa-solid fa-trash"></i>
+                        </button>
+                      </td>
+                    </tr>`;}).join('')}
                   </tbody>
                 </table>`}
             </div>
@@ -1579,12 +1751,26 @@ WMS_MODULES.recepcion = {
       // Rellenar fecha de vencimiento si viene en el QR
       const fechaInput  = document.getElementById('sodc-fecha-venc');
       const fechaInfo   = document.getElementById('sodc-fecha-info');
-      if (fechaVenc && fechaInput) {
-        fechaInput.value = fechaVenc;
-        if (fechaInfo) {
-          fechaInfo.style.display = 'block';
-          fechaInfo.innerHTML = `<i class="fa-solid fa-calendar-check"></i> Fecha parseada del QR: <b>${WMS.formatDate(fechaVenc)}</b> (texto original: "${WMS.esc(r.data.fecha_raw || '')}"))`;
+      if (fechaInput) {
+        if (fechaVenc) {
+          fechaInput.value = fechaVenc;
+          if (fechaInfo) {
+            fechaInfo.style.display = 'block';
+            fechaInfo.innerHTML = `<i class="fa-solid fa-calendar-check" style="color:#059669;"></i> Fecha QR: <b>${WMS.formatDate(fechaVenc)}</b>`;
+          }
+        } else if (r.data.fecha_raw) {
+          WMS.toast('warning', 'No se pudo reconocer el formato de fecha: ' + r.data.fecha_raw);
+          if (fechaInfo) {
+             fechaInfo.style.display = 'block';
+             fechaInfo.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;"></i> No se pudo parsear: <b>${WMS.esc(r.data.fecha_raw)}</b>`;
+          }
         }
+      }
+
+      // Rellenar lote si viene en el QR
+      const loteInput = document.getElementById('sodc-lote');
+      if (r.data.lote_raw && loteInput) {
+        loteInput.value = r.data.lote_raw;
       }
 
       this._actualizarPreviewSinODC();
@@ -1660,6 +1846,7 @@ WMS_MODULES.recepcion = {
     const lote      = document.getElementById('sodc-lote')?.value || '';
     const venc      = document.getElementById('sodc-fecha-venc')?.value || '';
     const estado    = document.getElementById('sodc-estado')?.value || 'BuenEstado';
+    const palletNum = this._sinOdcPalletNum || null;
 
     if (!prodId) return WMS.toast('warning', 'Seleccione un producto');
     if (cantCajas <= 0) return WMS.toast('warning', 'Cantidad debe ser mayor a cero');
@@ -1677,6 +1864,7 @@ WMS_MODULES.recepcion = {
         lote:           lote || undefined,
         fecha_vencimiento: venc || undefined,
         estado_mercancia: estado,
+        numero_pallet:  palletNum || undefined,
       });
       if (r.error) throw new Error(r.message);
 
@@ -1727,9 +1915,11 @@ WMS_MODULES.recepcion = {
           <th style="padding:10px;text-align:left;">Producto</th>
           <th style="padding:10px;text-align:center;">Cant.</th>
           <th style="padding:10px;text-align:center;">Cajas</th>
+          <th style="padding:10px;text-align:center;">Pallet</th>
           <th style="padding:10px;text-align:left;">Lote</th>
           <th style="padding:10px;text-align:left;">F. Venc.</th>
           <th style="padding:10px;text-align:left;">Estado</th>
+          <th style="padding:10px;text-align:center;">Acciones</th>
         </tr></thead>
         <tbody id="sodc-lines-body"></tbody>
       </table>`;
@@ -1738,16 +1928,37 @@ WMS_MODULES.recepcion = {
     const tbody = document.getElementById('sodc-lines-body');
     if (!tbody) return;
 
+    const recId  = this._sinOdcRecepcionId;
+    const detId  = det.id;
+    const upc    = det.cajas_por_unidad || 1;
+    const safeNm = (prodName || '-').replace(/'/g, "\\'");
+
     const tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid #f1f5f9';
     tr.style.background = '#f0fdf4';
+    if (detId) tr.setAttribute('data-det-id', detId);
+    const palletBadge = det.numero_pallet
+      ? `<span style="background:#dbeafe;color:#1d4ed8;padding:2px 7px;border-radius:99px;font-size:.7rem;font-weight:700;">#${det.numero_pallet}</span>`
+      : `<span style="color:#94a3b8;font-size:.7rem;">—</span>`;
     tr.innerHTML = `
       <td style="padding:9px 10px;font-weight:600;">${WMS.esc(prodName)}</td>
       <td style="padding:9px 10px;text-align:center;font-weight:800;color:#059669;">${det.cantidad_recibida || '-'}</td>
       <td style="padding:9px 10px;text-align:center;">${det.cantidad_cajas || '-'}</td>
+      <td style="padding:9px 10px;text-align:center;">${palletBadge}</td>
       <td style="padding:9px 10px;">${WMS.esc(det.lote || 'N/A')}</td>
       <td style="padding:9px 10px;">${det.fecha_vencimiento ? WMS.formatDate(det.fecha_vencimiento) : '-'}</td>
-      <td style="padding:9px 10px;"><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#166534;">${WMS.esc(det.estado_mercancia || 'BuenEstado')}</span></td>`;
+      <td style="padding:9px 10px;"><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#166534;">${WMS.esc(det.estado_mercancia || 'BuenEstado')}</span></td>
+      <td style="padding:6px 10px;text-align:center;white-space:nowrap;">
+        ${detId ? `
+        <button onclick="WMS_MODULES.recepcion._editarDetalleSinODC('${recId}',${detId},'${safeNm}',${det.cantidad_recibida||0},${upc})"
+          style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;margin-right:3px;" title="Editar cantidad">
+          <i class="fa-solid fa-pencil"></i>
+        </button>
+        <button onclick="WMS_MODULES.recepcion._eliminarDetalleSinODC('${recId}',${detId})"
+          style="background:#fef2f2;color:#dc2626;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;" title="Eliminar línea">
+          <i class="fa-solid fa-trash"></i>
+        </button>` : '-'}
+      </td>`;
     tbody.insertBefore(tr, tbody.firstChild);
     setTimeout(() => { tr.style.background = ''; }, 1500);
 
@@ -1763,11 +1974,144 @@ WMS_MODULES.recepcion = {
     try {
       const r = await API.post('/recepciones/' + id + '/cerrar', {});
       if (r.error) throw new Error(r.message);
-      WMS.toast('success', 'Recepción cerrada correctamente');
       this._sinOdcRecepcionId = null;
-      this.show_sin_odc();
+      if (confirm('Recepción cerrada. ¿Ir ahora a Almacenamiento → Ubicar Mercancía para dar ubicación a los productos?')) {
+        WMS.nav('almacenamiento', 'ubicar');
+      } else {
+        WMS.toast('success', 'Recepción cerrada. Los productos están en patio listos para ubicar.');
+        this.show_sin_odc();
+      }
     } catch (e) {
       WMS.toast('error', e.message || 'Error al cerrar la recepción');
+    }
+  },
+
+  async _confirmarSinODC(recepcionId, numero) {
+    if (!confirm(`¿Confirmar recepción ${numero}?\nYa no podrá agregar más líneas. Los productos quedarán en patio listos para ubicar.`)) return;
+    try {
+      const r = await API.post('/recepciones/' + recepcionId + '/cerrar', {});
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', 'Recepción confirmada. Productos en patio listos para ubicar.');
+      this.show_sin_odc();
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error al confirmar la recepción');
+    }
+  },
+
+  async _eliminarRecepcionSinODC(recepcionId, numero) {
+    if (!confirm(`¿Eliminar la recepción ${numero}?\n\nEsta acción es irreversible y revertirá todo el inventario registrado en esta recepción.`)) return;
+    try {
+      const r = await API.delete('/recepciones/' + recepcionId);
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', `Recepción ${numero} eliminada`);
+      this.show_sin_odc();
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error al eliminar la recepción');
+    }
+  },
+
+  async _verDetalleSinODC(recepcionId) {
+    WMS.spinner();
+    try {
+      const r = await API.get('/recepciones/' + recepcionId);
+      const rec = r.data || r;
+      const detalles = rec.detalles || [];
+      WMS.setContent(`
+        <div class="px-20 py-16">
+          <div class="card shadow-soft">
+            <div class="card-header d-flex justify-between align-center">
+              <span class="card-title fw-900 color-primary">
+                <i class="fa-solid fa-box-open"></i> ${WMS.esc(rec.numero_recepcion || '-')} — Recepción sin ODC
+              </span>
+              <span style="background:#dcfce7;color:#166534;padding:3px 12px;border-radius:99px;font-size:.72rem;font-weight:700;">
+                <i class="fa-solid fa-lock"></i> Confirmada
+              </span>
+            </div>
+            <div style="padding:12px 20px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#64748b;">
+              Auxiliar: <strong>${WMS.esc(rec.auxiliar?.nombre || '-')}</strong> &nbsp;·&nbsp;
+              Fecha: <strong>${WMS.formatDate(rec.fecha_movimiento)}</strong> &nbsp;·&nbsp;
+              ${detalles.length} línea${detalles.length !== 1 ? 's' : ''}
+            </div>
+            <div class="table-container">
+              <table class="erp-table">
+                <thead><tr>
+                  <th>Producto</th><th>Cantidad</th><th>Cajas</th><th>Lote</th><th>F. Vencimiento</th><th>Estado</th>
+                </tr></thead>
+                <tbody>
+                  ${detalles.length === 0
+                    ? '<tr><td colspan="6" class="table-empty">Sin líneas registradas</td></tr>'
+                    : detalles.map(l => `<tr>
+                        <td class="fw-600">${WMS.esc(l.producto?.nombre || '-')}</td>
+                        <td class="text-center fw-800" style="color:#059669;">${WMS.formatNum(l.cantidad_recibida)}</td>
+                        <td class="text-center">${l.cantidad_cajas || '-'}</td>
+                        <td>${WMS.esc(l.lote || 'N/A')}</td>
+                        <td>${l.fecha_vencimiento ? WMS.formatDate(l.fecha_vencimiento) : '-'}</td>
+                        <td><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#166534;">${WMS.esc(l.estado_mercancia || 'BuenEstado')}</span></td>
+                      </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>`);
+      WMS.setToolbar(`
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.recepcion.show_sin_odc()">
+          <i class="fa-solid fa-arrow-left"></i> Volver al Monitor
+        </button>`);
+    } catch (e) {
+      WMS.toast('error', 'Error cargando detalle: ' + (e.message || ''));
+    }
+  },
+
+  async _editarDetalleSinODC(recepcionId, detalleId, prodName, currentQty, upc) {
+    upc = parseInt(upc) || 1;
+    const labelQty = upc > 1 ? `Cajas (UxC: ${upc}, actual: ${Math.round(currentQty/upc)} cajas)` : `Cantidad en unidades (actual: ${currentQty})`;
+    const currentInput = upc > 1 ? Math.round(currentQty / upc) : currentQty;
+
+    WMS.showModal('Editar Cantidad — Sin ODC', `
+      <div style="font-size:13px;color:#64748b;margin-bottom:16px;padding:10px;background:#f8fafc;border-radius:6px;">
+        ${WMS.esc(prodName)}
+      </div>
+      <div class="form-group">
+        <label class="form-label">${labelQty}</label>
+        <input type="number" id="sodc-edit-qty" class="form-control" value="${currentInput}" min="1" style="font-size:1.1rem;font-weight:700;">
+      </div>`,
+      `<button class="btn btn-ghost" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+       <button class="btn btn-success" onclick="WMS_MODULES.recepcion._guardarEdicionDetalleSinODC('${recepcionId}',${detalleId},${upc})">
+         <i class="fa-solid fa-check"></i> Guardar
+       </button>`);
+    setTimeout(() => document.getElementById('sodc-edit-qty')?.select(), 100);
+  },
+
+  async _guardarEdicionDetalleSinODC(recepcionId, detalleId, upc) {
+    const input = document.getElementById('sodc-edit-qty');
+    const cajas = parseInt(input?.value || '0');
+    if (cajas <= 0) return WMS.toast('warning', 'La cantidad debe ser mayor a cero');
+    const cantidad = cajas * (parseInt(upc) || 1);
+    try {
+      const r = await API.patch('/recepciones/' + recepcionId + '/detalle/' + detalleId, { cantidad });
+      if (r.error) throw new Error(r.message);
+      WMS.closeModal('generic-modal');
+      WMS.toast('success', 'Cantidad actualizada correctamente');
+      this.abrirConsolaSinODC(recepcionId);
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error al actualizar la cantidad');
+    }
+  },
+
+  async _eliminarDetalleSinODC(recepcionId, detalleId) {
+    if (!confirm('¿Eliminar esta línea? El inventario será revertido automáticamente.')) return;
+    try {
+      const r = await API.delete('/recepciones/' + recepcionId + '/detalle/' + detalleId);
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', 'Línea eliminada correctamente');
+      if (r.data?.recepcion_eliminada) {
+        this._sinOdcRecepcionId = null;
+        this.show_sin_odc();
+      } else {
+        this.abrirConsolaSinODC(recepcionId);
+      }
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error al eliminar la línea');
     }
   },
 
@@ -1900,7 +2244,7 @@ WMS_MODULES.recepcion = {
             }).join('')
           )}
         </div>`);
-    } catch(e) { console.error(e); WMS.toast('error','Error cargando citas'); }
+    } catch(e) { if (e.isSessionExpired) return; console.error(e); WMS.toast('error','Error cargando citas'); }
   },
 
   _changeYmsMonth(dir) {
@@ -2267,6 +2611,10 @@ WMS_MODULES.recepcion = {
       const activas = Array.isArray(dash.activas) ? dash.activas : [];
       const tendencia = dash.tendencia || [];
       const categoriasStats = dash.categorias_stats || [];
+      const sinOdc = dash.sin_odc || {};
+      const sinOdcActivas = Array.isArray(sinOdc.activas) ? sinOdc.activas : [];
+      const sinOdcCerradasHoy = sinOdc.cerradas_hoy || 0;
+      const sinOdcLineasHoy = sinOdc.lineas_hoy || 0;
       const qrUrl = conn.mobile_url ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(conn.mobile_url)}` : '';
 
       WMS.setContent(`
@@ -2428,6 +2776,56 @@ WMS_MODULES.recepcion = {
             ` : `<div class="p-20 text-center text-muted">Panel restringido al Administrador</div>`}
           </div>
 
+          <!-- Sin-ODC Monitoring Panel -->
+          <div style="background:#fff;border-radius:4px;padding:20px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #f0fdf4;">
+              <div style="font-weight:900;color:#1e3a5f;display:flex;align-items:center;gap:10px;font-size:.9rem;text-transform:uppercase;letter-spacing:.5px;">
+                <i class="fa-solid fa-box-open" style="color:#059669;"></i> Monitor Recepciones sin ODC
+              </div>
+              <div style="display:flex;gap:10px;">
+                <div style="text-align:center;padding:6px 16px;background:#f0fdf4;border-radius:99px;">
+                  <span style="font-weight:900;color:#059669;font-size:1.1rem;">${sinOdcActivas.length}</span>
+                  <span style="font-size:.7rem;color:#6b7280;margin-left:4px;">activas</span>
+                </div>
+                <div style="text-align:center;padding:6px 16px;background:#eff6ff;border-radius:99px;">
+                  <span style="font-weight:900;color:#2563eb;font-size:1.1rem;">${sinOdcCerradasHoy}</span>
+                  <span style="font-size:.7rem;color:#6b7280;margin-left:4px;">cerradas hoy</span>
+                </div>
+                <div style="text-align:center;padding:6px 16px;background:#fef9c3;border-radius:99px;">
+                  <span style="font-weight:900;color:#92400e;font-size:1.1rem;">${sinOdcLineasHoy}</span>
+                  <span style="font-size:.7rem;color:#6b7280;margin-left:4px;">líneas hoy</span>
+                </div>
+                <button class="btn btn-xs btn-primary-soft" onclick="WMS.nav('recepcion','sin_odc')">
+                  <i class="fa-solid fa-arrow-up-right-from-square"></i> Gestionar
+                </button>
+              </div>
+            </div>
+            ${sinOdcActivas.length === 0
+              ? `<div style="text-align:center;padding:20px;color:#94a3b8;font-style:italic;">Sin recepciones activas sin ODC</div>`
+              : `<div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                  <thead><tr style="background:#f8fafc;">
+                    <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">N° Recepción</th>
+                    <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">Auxiliar</th>
+                    <th style="padding:8px 12px;text-align:center;color:#64748b;font-weight:700;">Líneas</th>
+                    <th style="padding:8px 12px;text-align:center;color:#64748b;font-weight:700;">Acción</th>
+                  </tr></thead>
+                  <tbody>
+                    ${sinOdcActivas.map((rc,i) => `<tr style="border-bottom:1px solid #f1f5f9;background:${i%2?'#f8fafc':'#fff'};">
+                      <td style="padding:8px 12px;"><span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;">${WMS.esc(rc.numero_recepcion||'-')}</span></td>
+                      <td style="padding:8px 12px;font-weight:600;color:#1e3a5f;">${WMS.esc(rc.auxiliar||'-')}</td>
+                      <td style="padding:8px 12px;text-align:center;font-weight:700;">${rc.lineas_count||0}</td>
+                      <td style="padding:8px 12px;text-align:center;">
+                        <button class="btn btn-xs btn-primary-soft" onclick="WMS.nav('recepcion','sin_odc')">
+                          <i class="fa-solid fa-eye"></i> Ver
+                        </button>
+                      </td>
+                    </tr>`).join('')}
+                  </tbody>
+                </table>
+              </div>`}
+          </div>
+
           <div style="background:#fff;border-radius:4px;padding:20px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #e2e8f0;">
               <div style="font-weight:800;color:#1e3a5f;"><i class="fa-solid fa-magnifying-glass-chart" style="color:#059669;margin-right:6px;"></i>Análisis por ODC — Tiempos y Faltantes por Línea</div>
@@ -2442,7 +2840,7 @@ WMS_MODULES.recepcion = {
 
       this.buildCategoryReceivedChart(categoriasStats);
       this.buildRecepcionTrendChart(tendencia);
-    } catch(e) { console.error(e); WMS.toast('error','Error cargando dashboard'); }
+    } catch(e) { if (e.isSessionExpired) return; console.error(e); WMS.toast('error','Error cargando dashboard'); }
   },
 
   _dashboardQuery() {
@@ -2643,7 +3041,7 @@ WMS_MODULES.recepcion = {
             </tfoot>
           </table>
         </div>`;
-    } catch(e) { console.error(e); cont.innerHTML = '<div style="padding:20px;color:#dc2626;">Error cargando detalle</div>'; }
+    } catch(e) { if (e.isSessionExpired) return; console.error(e); cont.innerHTML = '<div style="padding:20px;color:#dc2626;">Error cargando detalle</div>'; }
   },
 
   // ══════════════════════════════════════════════════════════════════════
@@ -2719,7 +3117,7 @@ WMS_MODULES.recepcion = {
             </div>
           </div>
         </div>`);
-    } catch(e) { console.error(e); WMS.toast('error','Error cargando devoluciones'); }
+    } catch(e) { if (e.isSessionExpired) return; console.error(e); WMS.toast('error','Error cargando devoluciones'); }
   },
 
   async verDevolucion(id) {
@@ -2918,7 +3316,7 @@ WMS_MODULES.recepcion = {
           this._onDevOdcChange(sel);
         }
       }
-    } catch(e) { console.error(e); WMS.toast('error','Error iniciando devolución'); }
+    } catch(e) { if (e.isSessionExpired) return; console.error(e); WMS.toast('error','Error iniciando devolución'); }
   },
 
   async _onDevOdcChange(sel) {
@@ -2986,9 +3384,11 @@ WMS_MODULES.recepcion = {
     tr.id = 'dev-manual-'+idx;
     tr.style.borderBottom = '1px solid #f1f5f9';
     tr.innerHTML = `
-      <td style="padding:6px 8px;">
-        <input class="form-control dev-prod-name" style="font-size:12px;" placeholder="Nombre del producto">
-        <input type="hidden" class="dev-pid" value="">
+      <td style="padding:6px 8px;position:relative;">
+        <input class="form-control dev-prod-name" id="dev-pn-${idx}" style="font-size:12px;" placeholder="Buscar producto..." autocomplete="off"
+               oninput="WMS_MODULES.recepcion._devProdInput('${idx}')">
+        <input type="hidden" class="dev-pid" id="dev-pid-${idx}" value="">
+        <div id="dev-drop-${idx}" style="display:none;position:absolute;left:0;right:0;z-index:200;background:#fff;border:1px solid #e2e8f0;border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,.12);max-height:200px;overflow-y:auto;top:100%;"></div>
       </td>
       <td style="padding:6px 8px;text-align:center;">
         <input type="number" class="form-control dev-qty" style="width:80px;margin:0 auto;text-align:center;font-size:12px;" min="1" value="1">
@@ -3016,6 +3416,57 @@ WMS_MODULES.recepcion = {
         <button class="btn btn-xs btn-danger-soft" onclick="this.closest('tr').remove()"><i class="fa-solid fa-times"></i></button>
       </td>`;
     tbody.appendChild(tr);
+  },
+
+  _devSearchTimers: {},
+  _devCache: {},
+
+  _devProdInput(idx) {
+    clearTimeout(this._devSearchTimers[idx]);
+    this._devSearchTimers[idx] = setTimeout(() => this._devSearchProduct(idx), 300);
+  },
+
+  async _devSearchProduct(idx) {
+    const input = document.getElementById('dev-pn-' + idx);
+    const drop  = document.getElementById('dev-drop-' + idx);
+    if (!input || !drop) return;
+    const q = input.value.trim();
+    if (q.length < 2) { drop.style.display = 'none'; return; }
+    try {
+      const r = await API.get('/param/productos/buscar?q=' + encodeURIComponent(q) + '&limit=10');
+      const items = Array.isArray(r.data) ? r.data : (Array.isArray(r) ? r : []);
+      this._devCache[idx] = items;
+      if (!items.length) {
+        drop.innerHTML = '<div style="padding:10px 14px;color:#94a3b8;font-size:12px;font-style:italic;">Sin resultados</div>';
+      } else {
+        drop.innerHTML = items.map((p, i) => `
+          <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:12px;"
+               onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background=''"
+               onclick="WMS_MODULES.recepcion._devSelectProduct('${idx}',${i})">
+            <div style="font-weight:600;color:#1e293b;">${WMS.esc(p.nombre || p.descripcion || '')}</div>
+            <div style="color:#64748b;font-size:11px;">Cód: ${WMS.esc(p.codigo_interno || '')}${p.ean_principal ? ' · EAN: ' + WMS.esc(p.ean_principal) : ''}</div>
+          </div>`).join('');
+      }
+      drop.style.display = 'block';
+      const closeHandler = (e) => {
+        if (!e.target.closest('#dev-drop-' + idx) && !e.target.closest('#dev-pn-' + idx)) {
+          drop.style.display = 'none';
+          document.removeEventListener('click', closeHandler);
+        }
+      };
+      document.addEventListener('click', closeHandler);
+    } catch(e) { if (e.isSessionExpired) return; }
+  },
+
+  _devSelectProduct(idx, i) {
+    const p     = (this._devCache[idx] || [])[i];
+    if (!p) return;
+    const input = document.getElementById('dev-pn-' + idx);
+    const pid   = document.getElementById('dev-pid-' + idx);
+    const drop  = document.getElementById('dev-drop-' + idx);
+    if (input) input.value = p.nombre || p.descripcion || '';
+    if (pid)   pid.value   = p.id;
+    if (drop)  drop.style.display = 'none';
   },
 
   async _guardarDevolucion() {

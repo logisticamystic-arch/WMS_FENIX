@@ -369,7 +369,10 @@ class InboundController extends BaseController
         try {
             Capsule::transaction(function () use ($detalle, $user) {
                 // 1. Marcar el detalle de la ODC como aprobado
-                $detalle->update(['aprobado_admin' => 1]);
+                $detalle->update([
+                    'aprobado_admin' => 1,
+                    'estado_aprobacion' => 'Aprobado'
+                ]);
                 
                 // 2. Buscar las recepciones asociadas a esta ODC y producto específico
                 $recepcionIds = Recepcion::where('odc_id', $detalle->orden_compra_id)->pluck('id');
@@ -429,7 +432,10 @@ class InboundController extends BaseController
 
         try {
             Capsule::transaction(function () use ($odc, $user) {
-                OrdenCompraDetalle::where('orden_compra_id', $odc->id)->update(['aprobado_admin' => 1]);
+                OrdenCompraDetalle::where('orden_compra_id', $odc->id)->update([
+                    'aprobado_admin' => 1,
+                    'estado_aprobacion' => 'Aprobado'
+                ]);
                 $recepcionIds = Recepcion::where('odc_id', $odc->id)->pluck('id');
                 RecepcionDetalle::whereIn('recepcion_id', $recepcionIds)->update(['aprobado_admin' => 1]);
 

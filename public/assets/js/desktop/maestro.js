@@ -41,6 +41,7 @@ WMS_MODULES.maestro = {
       { id: 'clientes', icon: 'fa-user-tie', title: 'Clientes', desc: 'Base de datos de clientes, carteras y puntos de entrega.' },
       { id: 'ubicaciones', icon: 'fa-map-pin', title: 'Ubicaciones', desc: 'Maestro de posiciones en bodega, zonas y capacidad.' },
       { id: 'proveedores', icon: 'fa-truck', title: 'Proveedores', desc: 'Gestión de proveedores, contactos y tiempos de entrega.' },
+      { id: 'impresoras', icon: 'fa-print', title: 'Impresoras', desc: 'Configuración de impresoras IP para rótulos y documentos.' },
       { id: 'permisos', icon: 'fa-shield-halved', title: 'Seguridad', desc: 'Matriz de permisos, acceso por roles y auditoría.' },
     ];
 
@@ -97,6 +98,7 @@ WMS_MODULES.maestro = {
       categorias: 'Categorías', marcas: 'Marcas', productos: 'Catálogo de Productos',
       clientes: 'Clientes', ubicaciones: 'Ubicaciones',
       proveedores: 'Proveedores', rutas: 'Rutas', permisos: 'Seguridad',
+      impresoras: 'Impresoras IP',
       sistema: 'Diagnóstico del Sistema'
     };
     return m[s] || s || 'Panel';
@@ -1033,8 +1035,8 @@ WMS_MODULES.maestro = {
                     <tr><th style="padding:6px 10px;">ID</th><th style="padding:6px 10px;">Categoría</th></tr>
                   </thead>
                   <tbody>
-                    \${cats.map(c => `<tr><td style="padding:6px 10px; font-weight:700; color:#ef4444;">\${c.id}</td><td style="padding:6px 10px;">\${WMS.esc(c.nombre)}</td></tr>`).join('')}
-                    \${cats.length === 0 ? '<tr><td colspan="2" style="padding:10px; text-align:center;">Sin categorías</td></tr>' : ''}
+                    ${cats.map(c => `<tr><td style="padding:6px 10px; font-weight:700; color:#ef4444;">${c.id}</td><td style="padding:6px 10px;">${WMS.esc(c.nombre)}</td></tr>`).join('')}
+                    ${cats.length === 0 ? '<tr><td colspan="2" style="padding:10px; text-align:center;">Sin categorías</td></tr>' : ''}
                   </tbody>
                 </table>
               </div>
@@ -1049,8 +1051,8 @@ WMS_MODULES.maestro = {
                     <tr><th style="padding:6px 10px;">ID</th><th style="padding:6px 10px;">Marca</th></tr>
                   </thead>
                   <tbody>
-                    \${marcas.map(m => `<tr><td style="padding:6px 10px; font-weight:700; color:#3b82f6;">\${m.id}</td><td style="padding:6px 10px;">\${WMS.esc(m.nombre)}</td></tr>`).join('')}
-                    \${marcas.length === 0 ? '<tr><td colspan="2" style="padding:10px; text-align:center;">Sin marcas</td></tr>' : ''}
+                    ${marcas.map(m => `<tr><td style="padding:6px 10px; font-weight:700; color:#3b82f6;">${m.id}</td><td style="padding:6px 10px;">${WMS.esc(m.nombre)}</td></tr>`).join('')}
+                    ${marcas.length === 0 ? '<tr><td colspan="2" style="padding:10px; text-align:center;">Sin marcas</td></tr>' : ''}
                   </tbody>
                 </table>
               </div>
@@ -1065,6 +1067,8 @@ WMS_MODULES.maestro = {
         </div>
       `;
       
+      this._plantillaCats = cats;
+      this._plantillaMarcas = marcas;
       WMS.showModal('Guía para Importar Productos', html);
     } catch(e) {
       WMS.toast('error', 'Error al cargar IDs para la plantilla');
@@ -1072,48 +1076,61 @@ WMS_MODULES.maestro = {
   },
   
   _generarCSVPlantilla() {
+    const cats = this._plantillaCats || [];
+    const marcas = this._plantillaMarcas || [];
+
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "=== RELACION DE CATEGORIAS ===\n";
+    csvContent += "ID;Nombre de Categoria\n";
+    if (cats.length === 0) csvContent += "Sin categorias registradas\n";
+    cats.forEach(c => { csvContent += `${c.id};${(c.nombre||'').replace(/;/g, '')}\n`; });
+    csvContent += "\n";
+
+    csvContent += "=== RELACION DE MARCAS ===\n";
+    csvContent += "ID;Nombre de Marca\n";
+    if (marcas.length === 0) csvContent += "Sin marcas registradas\n";
+    marcas.forEach(m => { csvContent += `${m.id};${(m.nombre||'').replace(/;/g, '')}\n`; });
+    csvContent += "\n";
+
+    csvContent += "=== PLANTILLA DE PRODUCTOS (Llene los datos debajo de las cabeceras) ===\n";
+
     const cabeceras = [
-      "ean", 
-      "referencia", 
-      "descripcion", 
+      "codigo_ean", 
+      "codigo_interno", 
+      "nombre", 
       "categoria_id", 
       "marca_id", 
       "unidad_medida", 
       "unidades_caja", 
-      "peso", 
-      "volumen", 
+      "peso_unitario", 
+      "volumen_unitario", 
       "stock_minimo", 
-      "maneja_lotes", 
-      "control_vencimiento"
-    ];
-    const ejemplo1 = [
-      "7701234567890", 
-      "REF001", 
-      "VINO TINTO MALBEC 750ML", 
-      "1", 
-      "2", 
-      "UN", 
-      "12", 
-      "1.50", 
-      "0.005", 
-      "10", 
-      "1", 
-      "1"
+      "controla_lote", 
+      "controla_vencimiento"
     ];
     
-    let csvContent = "data:text/csv;charset=utf-8," 
-      + cabeceras.join(";") + "\\n" 
-      + ejemplo1.join(";");
+    // 3 Examples
+    const catEj = cats[0]?.id || "1";
+    const marEj = marcas[0]?.id || "1";
+    
+    const ejemplo1 = ["7701234567890", "REF001", "VINO TINTO MALBEC 750ML", catEj, marEj, "UN", "12", "1.50", "0.005", "10", "1", "1"];
+    const ejemplo2 = ["7709876543210", "REF002", "ACEITE DE OLIVA EXTRA VIRGEN", catEj, marEj, "UN", "24", "0.80", "0.002", "50", "1", "1"];
+    const ejemplo3 = ["7705555555555", "REF003", "ARROZ BLANCO PREMIUM 1KG", catEj, marEj, "UN", "20", "1.00", "0.001", "100", "0", "0"];
+    
+    csvContent += cabeceras.join(";") + "\n";
+    csvContent += ejemplo1.join(";") + "\n";
+    csvContent += ejemplo2.join(";") + "\n";
+    csvContent += ejemplo3.join(";");
       
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "plantilla_productos.csv");
+    link.setAttribute("download", "plantilla_productos_relacionada.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     
-    WMS.toast('success', 'Plantilla descargada. Recuerde guardar como CSV delimitado por comas o punto y coma.');
+    WMS.toast('success', 'Plantilla descargada. Recuerde borrar las filas de ayuda antes de subir.');
   },
 
   _timerBuscar() {
@@ -2596,5 +2613,111 @@ WMS_MODULES.maestro = {
         btn.innerHTML = '<i class="fa-solid fa-upload"></i> Procesar Importación';
       }
     }
+  },
+
+  // ── IMPRESORAS ──────────────────────────────────────────────
+  async show_impresoras() {
+    WMS.setToolbar(`
+      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.formImpresora()"><i class="fa-solid fa-plus"></i> Nueva Impresora</button>
+    `);
+    WMS.spinner();
+    try {
+      const r = await API.get('/impresoras');
+      const items = r.data || r || [];
+      WMS.setContent(`
+        <div class="card">
+          <div class="card-header"><span class="card-title"><i class="fa-solid fa-print"></i> Maestro de Impresoras IP</span></div>
+          <div class="table-container">
+            <table class="erp-table">
+              <thead><tr><th>Nombre</th><th>Dirección IP</th><th>Puerto</th><th>Tipo</th><th>Módulos Asignados</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <tbody>${items.map(i => `<tr>
+                <td><strong>${WMS.esc(i.nombre)}</strong></td>
+                <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">${WMS.esc(i.ip)}</code></td>
+                <td>${i.puerto}</td>
+                <td><span class="badge ${i.tipo==='Rotulos'?'badge-info':i.tipo==='Despacho'?'badge-success':'badge-light'}">${WMS.esc(i.tipo)}</span></td>
+                <td><div style="display:flex;gap:4px;flex-wrap:wrap;">${(i.modulos||'').split(',').filter(Boolean).map(m => `<span class="badge badge-primary" style="font-size:10px;">${WMS.esc(m)}</span>`).join('') || '<span class="text-muted" style="font-size:10px;">Ninguno</span>'}</div></td>
+                <td><span class="status-badge ${i.activo?'success':'danger'}">${i.activo?'Activa':'Inactiva'}</span></td>
+                <td><div class="actions" style="display:flex;gap:4px;">
+                  <button class="btn btn-sm btn-info" onclick="WMS_MODULES.maestro.testImpresora(${i.id})" title="Prueba de Impresión" style="display:flex;align-items:center;gap:4px;">🖨️ <i class="fa-solid fa-print"></i> <span>Probar</span></button>
+                  <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.formImpresora(${JSON.stringify(i).replace(/"/g, '&quot;')})" style="display:flex;align-items:center;gap:4px;">✏️ <i class="fa-solid fa-edit"></i> <span>Editar</span></button>
+                  <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.eliminarImpresora(${i.id})" style="display:flex;align-items:center;gap:4px;">🗑️ <i class="fa-solid fa-trash"></i> <span>Borrar</span></button>
+                </div></td>
+              </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin impresoras configuradas</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
+      `);
+    } catch(e) { WMS.toast('error', 'Error cargando impresoras'); }
+  },
+
+  formImpresora(data = null) {
+    WMS.showRightPanel(data ? 'Editar Impresora' : 'Nueva Impresora', `
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Nombre <span class="required">*</span></label><input id="imp-nombre" class="form-control" value="${WMS.esc(data?.nombre||'')}"></div>
+        <div class="form-group"><label class="form-label">Dirección IP <span class="required">*</span></label><input id="imp-ip" class="form-control" placeholder="192.168.1.50" value="${WMS.esc(data?.ip||'')}"></div>
+        <div class="form-group"><label class="form-label">Puerto</label><input id="imp-puerto" type="number" class="form-control" value="${data?.puerto||9100}"></div>
+        <div class="form-group"><label class="form-label">Tipo</label>
+          <select id="imp-tipo" class="form-control">
+            <option value="General" ${data?.tipo==='General'?'selected':''}>General</option>
+            <option value="Rotulos" ${data?.tipo==='Rotulos'?'selected':''}>Rótulos / Etiquetas</option>
+            <option value="Despacho" ${data?.tipo==='Despacho'?'selected':''}>Documentos Despacho</option>
+          </select></div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label class="form-label">Asignar a Módulos</label>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; background:#f8fafc; padding:10px; border-radius:4px; border:1px solid #e2e8f0;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" name="imp-mod" value="rotulos" ${(data?.modulos||'').includes('rotulos')?'checked':''}> Módulo Rótulos</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" name="imp-mod" value="certificacion" ${(data?.modulos||'').includes('certificacion')?'checked':''}> Módulo Certificación</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" name="imp-mod" value="inventario" ${(data?.modulos||'').includes('inventario')?'checked':''}> Módulo Inventario</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" name="imp-mod" value="picking" ${(data?.modulos||'').includes('picking')?'checked':''}> Módulo Picking</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="imp-activo" ${data === null || data.activo ? 'checked' : ''}> Impresora Activa
+          </label>
+        </div>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">✖ Cancelar</button>
+       ${data ? `<button class="btn btn-info" onclick="WMS_MODULES.maestro.testImpresora(${data.id})">🖨️ <i class="fa-solid fa-print"></i> Probar</button>` : ''}
+       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.guardarImpresora(${data?.id||null})">💾 <i class="fa-solid fa-save"></i> Guardar</button>`);
+  },
+
+  async guardarImpresora(id) {
+    const mods = Array.from(document.querySelectorAll('input[name="imp-mod"]:checked')).map(cb => cb.value).join(',');
+    const payload = {
+      id,
+      nombre: document.getElementById('imp-nombre').value.trim(),
+      ip: document.getElementById('imp-ip').value.trim(),
+      puerto: document.getElementById('imp-puerto').value,
+      tipo: document.getElementById('imp-tipo').value,
+      modulos: mods,
+      activo: document.getElementById('imp-activo').checked
+    };
+    if (!payload.nombre || !payload.ip) return WMS.toast('warn', 'Nombre e IP son requeridos');
+    try {
+      const r = await API.post('/impresoras', payload);
+      if (r.error) WMS.toast('error', r.message);
+      else { WMS.toast('success', 'Impresora guardada'); WMS.closeRightPanel(); this.show_impresoras(); }
+    } catch(e) { 
+      WMS.toast('error', e.message || 'Error guardando impresora'); 
+    }
+  },
+
+  async eliminarImpresora(id) {
+    if (!confirm('¿Eliminar esta configuración de impresora?')) return;
+    try {
+      const r = await API.delete('/impresoras/' + id);
+      if (r.error) WMS.toast('error', r.message);
+      else { WMS.toast('success', 'Impresora eliminada'); this.show_impresoras(); }
+    } catch(e) { WMS.toast('error', 'Error eliminando impresora'); }
+  },
+
+  async testImpresora(id) {
+    WMS.toast('info', 'Enviando prueba...');
+    try {
+      const r = await API.post(`/impresoras/${id}/test-print`);
+      if (r.error) WMS.toast('error', r.message);
+      else WMS.toast('success', 'Prueba enviada correctamente');
+    } catch(e) { WMS.toast('error', 'Error de conexión con el servidor'); }
   },
 };

@@ -12,7 +12,7 @@ class OrdenCompra extends Model
     protected $table = 'ordenes_compra';
 
     protected $fillable = [
-        'empresa_id', 'proveedor_id', 'auxiliar_id', 'numero_odc',
+        'empresa_id', 'sucursal_id', 'proveedor_id', 'auxiliar_id', 'numero_odc',
         'fecha', 'fecha_esperada', 'estado', 'observaciones',
     ];
 
