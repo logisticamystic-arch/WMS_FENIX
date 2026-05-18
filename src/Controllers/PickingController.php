@@ -1642,17 +1642,26 @@ class PickingController extends BaseController
             'planilla' => $f->ordenPicking->planilla_numero ?? '–'
         ]);
 
-        // Ranking de Auxiliares (Pedidos, Líneas, Unidades)
+        // Ranking de Auxiliares (Pedidos, Líneas, Unidades, Tiempo Promedio)
         $stats['ranking_auxiliares'] = Capsule::table('personal as aux')
             ->join('picking_detalles as d', 'aux.id', '=', 'd.auxiliar_id')
             ->join('orden_pickings as o', 'd.orden_picking_id', '=', 'o.id')
             ->where('o.empresa_id', $empresaId)
+            ->where('o.sucursal_id', $user->sucursal_id)
             ->whereBetween('o.created_at', [$ini, $fin])
+            ->when($params['auxiliar_id'] ?? null, fn($q, $a) => $q->where('aux.id', $a))
             ->select(
+                'aux.id',
                 'aux.nombre',
                 Capsule::raw('COUNT(DISTINCT o.id) as pedidos'),
                 Capsule::raw('COUNT(d.id) as lineas'),
-                Capsule::raw('SUM(d.cantidad_pickeada) as unidades')
+                Capsule::raw('SUM(d.cantidad_pickeada) as unidades'),
+                Capsule::raw(
+                    'ROUND(AVG(CASE WHEN o.hora_fin IS NOT NULL AND o.hora_inicio IS NOT NULL
+                        AND o.hora_inicio != \'00:00:00\'
+                        THEN TIME_TO_SEC(TIMEDIFF(o.hora_fin, o.hora_inicio)) / 60
+                        ELSE NULL END), 1) as avg_minutos'
+                )
             )
             ->groupBy('aux.id', 'aux.nombre')
             ->orderByDesc('lineas')
