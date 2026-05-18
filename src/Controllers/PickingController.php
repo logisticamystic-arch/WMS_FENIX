@@ -2634,32 +2634,81 @@ class PickingController extends BaseController
      */
     public function confirmarConsolidado(Request $r, Response $res): Response
     {
-        $user = $r->getAttribute('user');
-        $body = $r->getParsedBody() ?? [];
-        $id   = $body['orden_id'] ?? null;
+        $user   = $r->getAttribute('user');
+        $body   = $r->getParsedBody() ?? [];
 
-        if (!$id) {
-            return $this->error($res, 'orden_id requerido.', 400);
+        $idsRaw        = $body['ids']            ?? null;
+        $cantidadTomada = (int)($body['cantidad_tomada'] ?? -1);
+
+        if (!$idsRaw) {
+            return $this->error($res, 'ids requerido.', 400);
+        }
+        if ($cantidadTomada < 0) {
+            return $this->error($res, 'cantidad_tomada requerida.', 400);
+        }
+
+        $ids = is_array($idsRaw)
+            ? array_filter(array_map('intval', $idsRaw))
+            : array_filter(array_map('intval', explode(',', (string)$idsRaw)));
+
+        if (empty($ids)) {
+            return $this->error($res, 'ids inválidos.', 400);
         }
 
         try {
-            $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
-                ->findOrFail($id);
+            // Load detalles scoped to this empresa via the parent order
+            $detalles = PickingDetalle::whereIn('id', $ids)
+                ->whereHas('ordenPicking', fn($q) => $q->where('empresa_id', $user->empresa_id))
+                ->orderBy('id')
+                ->get();
 
-            if ($orden->estado !== 'Completado') {
-                return $this->error($res, 'La orden no está completada.', 422);
+            if ($detalles->isEmpty()) {
+                return $this->error($res, 'Líneas no encontradas.', 404);
             }
 
-            $orden->estado = 'Consolidado';
-            $orden->save();
+            // Distribute cantidad_tomada FIFO across detalles
+            $restante  = $cantidadTomada;
+            $ordenIds  = [];
 
-            $this->audit($user, 'picking', 'confirmar_consolidado', 'ordenes_picking', $orden->id,
-                null, ['estado' => 'Completado'], "Consolidado confirmado #{$orden->id}");
+            foreach ($detalles as $det) {
+                $ordenIds[] = $det->orden_picking_id;
+                $tomar = min($restante, $det->cantidad_solicitada);
+                $det->cantidad_pickeada = $tomar;
+                $det->estado = ($tomar >= $det->cantidad_solicitada) ? 'Completado' : 'Faltante';
+                $det->save();
+                $restante = max(0, $restante - $tomar);
+            }
 
-            return $this->ok($res, $orden, 'Consolidado confirmado');
+            // Update each parent order
+            foreach (array_unique($ordenIds) as $ordenId) {
+                $orden = OrdenPicking::where('id', $ordenId)
+                    ->where('empresa_id', $user->empresa_id)
+                    ->first();
+                if (!$orden) continue;
+
+                if (empty($orden->hora_inicio) || $orden->hora_inicio === '00:00:00') {
+                    $orden->hora_inicio = date('H:i:s');
+                }
+                $orden->estado = 'EnProceso';
+
+                // If all detalles are in a terminal state, mark order complete
+                $total = PickingDetalle::where('orden_picking_id', $ordenId)->count();
+                $done  = PickingDetalle::where('orden_picking_id', $ordenId)
+                    ->whereIn('estado', ['Completado', 'Faltante', 'Anulado'])
+                    ->count();
+
+                if ($total > 0 && $done >= $total) {
+                    $orden->estado    = 'Completado';
+                    $orden->hora_fin  = date('H:i:s');
+                }
+
+                $orden->save();
+            }
+
+            return $this->ok($res, ['confirmados' => count($detalles)], 'Picking confirmado');
         } catch (\Exception $e) {
             error_log('PickingController::confirmarConsolidado error: ' . $e->getMessage());
-            return $this->error($res, 'Error al confirmar consolidado.', 500);
+            return $this->error($res, 'Error al confirmar picking.', 500);
         }
     }
 
