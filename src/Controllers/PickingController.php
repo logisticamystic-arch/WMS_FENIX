@@ -1161,26 +1161,13 @@ class PickingController extends BaseController
 
                 foreach ($lineasAbiertas as $linea) {
                     if ($linea->producto_id && $linea->cantidad_solicitada > 0) {
-                        $invReservas = Inventario::where('empresa_id',        $user->empresa_id)
-                            ->where('sucursal_id',        $user->sucursal_id)
-                            ->where('producto_id',        $linea->producto_id)
-                            ->where('cantidad_reservada', '>', 0)
-                            ->when($linea->ubicacion_id, fn($q) => $q->where('ubicacion_id', $linea->ubicacion_id))
-                            ->when($linea->lote,         fn($q) => $q->where('lote',         $linea->lote))
-                            ->lockForUpdate()
-                            ->get();
-
-                        $porLiberar = (int)$linea->cantidad_solicitada;
-                        foreach ($invReservas as $invR) {
-                            if ($porLiberar <= 0) break;
-                            $aLiberar = min((int)$invR->cantidad_reservada, $porLiberar);
-                            $invR->cantidad_reservada -= $aLiberar;
-                            $invR->save();
-                            $porLiberar -= $aLiberar;
-                        }
+                        $this->_releaseReserva(
+                            $user->empresa_id, $user->sucursal_id,
+                            $linea->producto_id, $linea->ubicacion_id, $linea->lote,
+                            (int)$linea->cantidad_solicitada
+                        );
                     }
-
-                    $linea->estado = 'Faltante';
+                    $linea->estado      = 'Faltante';
                     $linea->observacion = 'Orden completada manualmente';
                     $linea->save();
                 }
@@ -2399,25 +2386,12 @@ class PickingController extends BaseController
 
         try {
             Capsule::transaction(function () use ($linea, $obs, $orden, $user) {
-                // Release reservation created by asignarMultiple() for this line
                 if ($linea->producto_id && $linea->cantidad_solicitada > 0) {
-                    $invReservas = Inventario::where('empresa_id',        $user->empresa_id)
-                        ->where('sucursal_id',        $user->sucursal_id)
-                        ->where('producto_id',        $linea->producto_id)
-                        ->where('cantidad_reservada', '>', 0)
-                        ->when($linea->ubicacion_id, fn($q) => $q->where('ubicacion_id', $linea->ubicacion_id))
-                        ->when($linea->lote,         fn($q) => $q->where('lote',         $linea->lote))
-                        ->lockForUpdate()
-                        ->get();
-
-                    $porLiberar = (int)$linea->cantidad_solicitada;
-                    foreach ($invReservas as $invR) {
-                        if ($porLiberar <= 0) break;
-                        $aLiberar = min((int)$invR->cantidad_reservada, $porLiberar);
-                        $invR->cantidad_reservada -= $aLiberar;
-                        $invR->save();
-                        $porLiberar -= $aLiberar;
-                    }
+                    $this->_releaseReserva(
+                        $user->empresa_id, $user->sucursal_id,
+                        $linea->producto_id, $linea->ubicacion_id, $linea->lote,
+                        (int)$linea->cantidad_solicitada
+                    );
                 }
 
                 $linea->estado      = 'Faltante';
@@ -2762,26 +2736,11 @@ class PickingController extends BaseController
                     $liberarReserva  = (int)$det->cantidad_solicitada; // reserva original a liberar
 
                     // ── Fase 1: Liberar reserva completa ───────────────────────────────────
-                    // La reserva se creó en asignarMultiple() para cantidad_solicitada.
-                    // Al finalizar el picking (Completado o Faltante), la liberamos en su totalidad
-                    // para que el inventario no quede bloqueado indefinidamente.
-                    $invReservas = Inventario::where('empresa_id',       $user->empresa_id)
-                        ->where('sucursal_id',       $user->sucursal_id)
-                        ->where('producto_id',       $det->producto_id)
-                        ->where('cantidad_reservada', '>', 0)
-                        ->when($det->ubicacion_id, fn($q) => $q->where('ubicacion_id', $det->ubicacion_id))
-                        ->when($det->lote,         fn($q) => $q->where('lote',         $det->lote))
-                        ->lockForUpdate()
-                        ->get();
-
-                    $porLiberar = $liberarReserva;
-                    foreach ($invReservas as $invR) {
-                        if ($porLiberar <= 0) break;
-                        $aLiberar = min((int)$invR->cantidad_reservada, $porLiberar);
-                        $invR->cantidad_reservada -= $aLiberar;
-                        $invR->save();
-                        $porLiberar -= $aLiberar;
-                    }
+                    $this->_releaseReserva(
+                        $user->empresa_id, $user->sucursal_id,
+                        $det->producto_id, $det->ubicacion_id, $det->lote,
+                        $liberarReserva
+                    );
 
                     // ── Fase 2 + 3: Descontar stock real y registrar movimiento ────────────
                     $realmenteDescontado = 0; // unidades efectivamente retiradas del inventario
@@ -2862,23 +2821,7 @@ class PickingController extends BaseController
                         ->lockForUpdate()
                         ->first();
                     if (!$orden) continue;
-
-                    if (empty($orden->hora_inicio) || $orden->hora_inicio === '00:00:00') {
-                        $orden->hora_inicio = date('H:i:s');
-                    }
-                    $orden->estado = 'EnProceso';
-
-                    $total = PickingDetalle::where('orden_picking_id', $ordenId)->count();
-                    $done  = PickingDetalle::where('orden_picking_id', $ordenId)
-                        ->whereIn('estado', ['Completado', 'Faltante', 'Anulado'])
-                        ->count();
-
-                    if ($total > 0 && $done >= $total) {
-                        $orden->estado   = 'Completada';
-                        $orden->hora_fin = date('H:i:s');
-                    }
-
-                    $orden->save();
+                    $this->_closeOrdenIfDone($orden, true);
                 }
             });
 
@@ -3539,5 +3482,63 @@ class PickingController extends BaseController
         }
 
         return $this->ok($res, $results, 'Proceso de impresión completado');
+    }
+
+    // ── PRIVATE HELPERS ──────────────────────────────────────────────────────
+
+    /**
+     * Release cantidad_reservada rows inside an open transaction.
+     * Releases up to $cantidad units from matching inventario rows (lockForUpdate).
+     */
+    private function _releaseReserva(
+        int $empresaId, int $sucursalId, int $productoId,
+        ?int $ubicacionId, ?string $lote, int $cantidad
+    ): void {
+        if ($cantidad <= 0) return;
+
+        $rows = Inventario::where('empresa_id',        $empresaId)
+            ->where('sucursal_id',        $sucursalId)
+            ->where('producto_id',        $productoId)
+            ->where('cantidad_reservada', '>', 0)
+            ->when($ubicacionId, fn($q) => $q->where('ubicacion_id', $ubicacionId))
+            ->when($lote,        fn($q) => $q->where('lote',         $lote))
+            ->lockForUpdate()
+            ->get();
+
+        $porLiberar = $cantidad;
+        foreach ($rows as $row) {
+            if ($porLiberar <= 0) break;
+            $aLiberar = min((int)$row->cantidad_reservada, $porLiberar);
+            $row->cantidad_reservada -= $aLiberar;
+            $row->save();
+            $porLiberar -= $aLiberar;
+        }
+    }
+
+    /**
+     * Check whether all lines of an order are resolved and close it if so.
+     * Single-query check (COUNT + conditional SUM) instead of two separate COUNTs.
+     * Saves the order. Must be called inside an open transaction with lockForUpdate on $orden.
+     */
+    private function _closeOrdenIfDone(OrdenPicking $orden, bool $setHoraInicio = false): void
+    {
+        if ($setHoraInicio && (empty($orden->hora_inicio) || $orden->hora_inicio === '00:00:00')) {
+            $orden->hora_inicio = date('H:i:s');
+        }
+
+        $counts = PickingDetalle::where('orden_picking_id', $orden->id)
+            ->selectRaw('COUNT(*) as total, SUM(estado IN ("Completado","Faltante","Anulado")) as done')
+            ->first();
+
+        $total = (int)($counts->total ?? 0);
+        $done  = (int)($counts->done  ?? 0);
+
+        if ($total > 0 && $done >= $total) {
+            $orden->estado   = 'Completada';
+            $orden->hora_fin = date('H:i:s');
+        } else {
+            $orden->estado = 'EnProceso';
+        }
+        $orden->save();
     }
 }
