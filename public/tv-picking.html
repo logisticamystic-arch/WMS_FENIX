@@ -150,7 +150,6 @@
       <i class="fa-solid fa-rotate-right spin-icon" id="refresh-spin" style="display:none;"></i>
       <span id="next-refresh">Actualizando...</span>
     </div>
-    <div class="tv-live"><div class="tv-live-dot"></div> EN VIVO</div>
     <div>
       <div class="tv-clock" id="tv-clock">--:--:--</div>
       <div class="tv-date"  id="tv-date">---</div>
@@ -196,6 +195,10 @@
       <select id="f-ruta" class="filter-select">
         <option value="">Todas</option>
       </select>
+    </div>
+
+    <div class="tv-live" style="justify-content:center;padding:4px 0;">
+      <div class="tv-live-dot"></div> EN VIVO
     </div>
 
     <button class="btn-refresh" id="btn-refresh">
@@ -487,7 +490,7 @@ function renderKPIs(d) {
   setText('k-completadas', d.completadas || 0);
   const pctEl = document.getElementById('k-pct');
   if (pctEl) { pctEl.textContent = pct + '%'; pctEl.style.color = pctColor; }
-  setText('k-pct-sub',     `${fmt(compLin)} de ${fmt(totalLin)} líneas`);
+  setText('k-pct-sub',     `${fmt(compLin)} líneas completadas de ${fmt(totalLin)}`);
   setText('k-lineas-pend', fmt(pendLin));
   setText('k-uds-pend',    fmt(d.unidades_pendientes || 0));
   setText('k-faltantes',   (d.alertas_faltantes || []).length);
@@ -560,13 +563,13 @@ function renderPlanillasTable(planillas) {
 // ── GRÁFICAS ─────────────────────────────────────────────────────────────────
 const COLORS = ['#58a6ff','#3fb950','#d29922','#bc8cff','#ffa657','#79c0ff','#f0883e','#56d364','#db61a2','#e3b341'];
 
-function buildChart(id, wrapId, labels, data, unitLabel) {
+function buildChart(id, wrapId, labels, data, unitLabel, noDataMsg = 'Sin datos para el período seleccionado') {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
   const wrap = document.getElementById(wrapId);
   if (!wrap) return;
 
   if (!labels.length) {
-    wrap.innerHTML = '<div class="no-data">Sin datos para el período seleccionado</div>';
+    wrap.innerHTML = `<div class="no-data">${noDataMsg}</div>`;
     return;
   }
   if (!wrap.querySelector('canvas')) {
@@ -605,11 +608,11 @@ function buildChart(id, wrapId, labels, data, unitLabel) {
 function renderCharts(ranking) {
   const sorted    = [...(ranking || [])].sort((a, b) => (b.lineas || 0) - (a.lineas || 0));
   const names     = sorted.map(r => r.nombre || 'N/A');
-  buildChart('chart-lineas', 'wrap-lineas', names, sorted.map(r => r.lineas || 0), 'líneas');
+  buildChart('chart-lineas', 'wrap-lineas', names, sorted.map(r => r.lineas || 0), 'líneas', 'Sin datos hoy');
 
   const withTime  = sorted.filter(r => r.avg_minutos > 0);
   const timeNames = withTime.map(r => r.nombre || 'N/A');
-  buildChart('chart-tiempos', 'wrap-tiempos', timeNames, withTime.map(r => Math.round(r.avg_minutos || 0)), 'min promedio');
+  buildChart('chart-tiempos', 'wrap-tiempos', timeNames, withTime.map(r => Math.round(r.avg_minutos || 0)), 'min promedio', 'Sin datos de tiempo hoy');
 }
 
 // ── ALERTAS ──────────────────────────────────────────────────────────────────
@@ -645,15 +648,14 @@ async function loadPicking() {
 async function refresh() {
   const spin = document.getElementById('refresh-spin');
   if (spin) spin.style.display = 'inline-block';
-  try {
-    await loadPicking();
+  const [result] = await Promise.allSettled([loadPicking()]);
+  if (result.status === 'fulfilled') {
     hideError();
-  } catch(e) {
-    showError('Error al cargar datos: ' + e.message);
-  } finally {
-    if (spin) spin.style.display = 'none';
-    startCountdown();
+  } else {
+    showError('Error al cargar datos: ' + result.reason?.message);
   }
+  if (spin) spin.style.display = 'none';
+  startCountdown();
 }
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
