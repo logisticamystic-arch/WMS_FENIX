@@ -292,6 +292,7 @@ class InventarioController extends BaseController
                             $sub->whereNull('lote')->orWhere('lote', 'N/A');
                         })
                         ->where('estado', 'Disponible')
+                        ->lockForUpdate()
                         ->first();
 
                     if (!$destino) {
@@ -363,6 +364,7 @@ class InventarioController extends BaseController
                     ->where('ubicacion_id', $data['ubicacion_id'])
                     ->where('estado', 'Disponible')
                     ->when($data['lote'] ?? null, fn($q) => $q->where('lote', $data['lote']))
+                    ->lockForUpdate()
                     ->first();
 
                 $fvencParsed = $this->estandarizarFecha($data['fecha_vencimiento'] ?? null);
@@ -938,6 +940,7 @@ class InventarioController extends BaseController
                         ->where('ubicacion_id', $det->ubicacion_id)
                         ->where('estado', 'Disponible')
                         ->when($det->lote, fn($q) => $q->where('lote', $det->lote))
+                        ->lockForUpdate()
                         ->first();
 
                     if ($inv) {

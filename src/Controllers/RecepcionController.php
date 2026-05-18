@@ -866,6 +866,7 @@ class RecepcionController extends BaseController
                     ->where('ubicacion_id', $detalle->ubicacion_destino_id)
                     ->where('lote', $loteKey)
                     ->where('estado', 'Disponible')
+                    ->lockForUpdate()
                     ->first();
 
                 if ($inv) {
@@ -959,6 +960,7 @@ class RecepcionController extends BaseController
                 ->where('ubicacion_id', $detalle->ubicacion_destino_id)
                 ->where('lote', $loteKey)
                 ->where('estado', 'Disponible')
+                ->lockForUpdate()
                 ->first();
 
             if ($inv) {

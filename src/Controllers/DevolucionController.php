@@ -176,13 +176,22 @@ class DevolucionController extends BaseController
 
                 // Actualizar inventario en la ubicación destino virtual (Obsoleto o Patio)
                 if ($ubicacion_destino_id) {
-                    $inventario = Inventario::firstOrNew([
-                        'empresa_id' => $empresaId,
-                        'sucursal_id' => $sucursalId,
-                        'producto_id' => $linea['producto_id'],
-                        'ubicacion_id' => $ubicacion_destino_id,
-                        'lote' => $linea['lote'] ?? null
-                    ]);
+                    $inventario = Inventario::where('empresa_id', $empresaId)
+                        ->where('sucursal_id', $sucursalId)
+                        ->where('producto_id', $linea['producto_id'])
+                        ->where('ubicacion_id', $ubicacion_destino_id)
+                        ->where('lote', $linea['lote'] ?? null)
+                        ->lockForUpdate()
+                        ->first();
+                    if (!$inventario) {
+                        $inventario = new Inventario([
+                            'empresa_id'   => $empresaId,
+                            'sucursal_id'  => $sucursalId,
+                            'producto_id'  => $linea['producto_id'],
+                            'ubicacion_id' => $ubicacion_destino_id,
+                            'lote'         => $linea['lote'] ?? null,
+                        ]);
+                    }
                     if (!$inventario->exists) {
                         $inventario->cantidad = 0;
                         $inventario->cantidad_reservada = 0;
