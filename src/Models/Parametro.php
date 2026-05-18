@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class Parametro extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
     protected $table = 'parametros';
 
     protected $fillable = [
@@ -17,3 +20,5 @@ class Parametro extends Model
         return $this->belongsTo(Sucursal::class);
     }
 }
+
+

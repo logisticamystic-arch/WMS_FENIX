@@ -68,9 +68,9 @@ class ImportExportController extends BaseController
         
         // Row 8: Sample row
         if ($tipo === 'productos') {
-            $content .= "1;1;P001;Producto ProOriente;Ejemplo;UN;0.100;0.0010;1;1;365;Temp Ambiente;10.0;7701234567890\r\n";
+            $content .= "1;1;P001;Producto Fénix;Ejemplo;UN;0.100;0.0010;1;1;365;Temp Ambiente;10.0;7701234567890\r\n";
         } elseif ($tipo === 'clientes') {
-            $content .= "1;900000001;PROORIENTE SAS;CALLE 123;BOGOTA;3000000;ventas@prooriente.com;Contacto Ventas\r\n";
+            $content .= "1;900000001;Fénix SAS;CALLE 123;BOGOTA;3000000;ventas@Fénix.com;Contacto Ventas\r\n";
         }
 
         if (ob_get_length()) ob_clean();
@@ -120,12 +120,16 @@ class ImportExportController extends BaseController
 
         // Alias mapping for flexibility (lowercase always)
         $aliases = [
-            'codigo_interno' => ['codigo', 'ref', 'cod_interno', 'codigo_producto', 'identificador'],
+            'codigo_interno' => ['codigo', 'ref', 'referencia', 'cod_interno', 'codigo_producto', 'identificador'],
             'nombre'         => ['nombre', 'producto', 'descripcion', 'detalle'],
             'codigo_ean'     => ['ean', 'barcode', 'codigo_ean', 'codigo_barras'],
             'unidades_caja'  => ['unidades_caja', 'unidades x caja', 'uxc', 'caja', 'packaging', 'unidades xcaja'],
             'stock_minimo'   => ['stock_minimo', 'minimo', 'alerta_stock'],
-            'unidad_medida'  => ['unidad_medida', 'um', 'u.m', 'unidad']
+            'unidad_medida'  => ['unidad_medida', 'um', 'u.m', 'unidad'],
+            'peso_unitario'  => ['peso_unitario', 'peso', 'peso_kg', 'kg'],
+            'volumen_unitario' => ['volumen_unitario', 'volumen', 'volumen_m3', 'm3'],
+            'controla_lote'  => ['controla_lote', 'maneja_lotes', 'lote'],
+            'controla_vencimiento' => ['controla_vencimiento', 'control_vencimiento', 'vencimiento', 'maneja_vencimiento']
         ];
 
         foreach (array_slice($lines, 0, 15) as $idx => $line) {
@@ -215,6 +219,14 @@ class ImportExportController extends BaseController
                     if (!$codigo) { 
                         $summary['errors'][] = "Línea " . ($i + 2 + $headerRowIndex) . ": Código Interno vacío."; 
                         $summary['omitiendo']++; continue; 
+                    }
+                    
+                    // Si el usuario usa 'descripcion' como su nombre principal (y nombre está vacío)
+                    if (empty($row['nombre']) && !empty($row['descripcion'])) {
+                        $row['nombre'] = $row['descripcion'];
+                    }
+                    if (empty($row['nombre'])) {
+                        $row['nombre'] = 'Prod. ' . $codigo;
                     }
                     
                     $exists = $cacheProds[$codigo] ?? null;

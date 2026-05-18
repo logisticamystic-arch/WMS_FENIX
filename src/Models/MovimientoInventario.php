@@ -3,12 +3,15 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 /**
  * Immutable transaction log — no updates allowed
  */
 class MovimientoInventario extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
     // Only created_at, no updated_at (immutable)
     const UPDATED_AT = null;
 
@@ -68,3 +71,5 @@ class MovimientoInventario extends Model
         return $this->belongsTo(Personal::class, 'auxiliar_id');
     }
 }
+
+

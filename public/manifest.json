@@ -1,12 +1,12 @@
 {
-  "name": "WMS Pro Oriente",
-  "short_name": "ProWMS",
-  "description": "Sistema de Gestión de Almacenes — Pro Oriente",
-  "start_url": "/WMS_PROORIENTE/public/",
-  "scope": "/WMS_PROORIENTE/public/",
+  "name": "WMS Fénix",
+  "short_name": "FénixWMS",
+  "description": "Sistema de Gestión de Almacenes — WMS Fénix",
+  "start_url": "/WMS_FENIX/public/",
+  "scope": "/WMS_FENIX/public/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "background_color": "#0F4C81",
+  "theme_color": "#0F4C81",
   "icons": [
     {
       "src": "assets/icons/icon-192x192.png",

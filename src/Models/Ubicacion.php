@@ -3,9 +3,17 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class Ubicacion extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
+
+
+
+
+
     protected $table = 'ubicaciones';
 
     protected $fillable = [
@@ -80,4 +88,8 @@ class Ubicacion extends Model
         return true;
     }
 }
+
+
+
+
 

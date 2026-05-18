@@ -9,6 +9,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\Psr7\Response as SlimResponse;
 use Illuminate\Database\Capsule\Manager as Capsule;
+use App\Helpers\TenantContext;
 
 /**
  * TmsAuthMiddleware — Autenticación dual para rutas /api/tms/*.
@@ -42,7 +43,9 @@ class TmsAuthMiddleware
                 $request = $request
                     ->withAttribute('auth_type',  'jwt')
                     ->withAttribute('user',        $result['user'])
-                    ->withAttribute('empresa_id',  $result['user']->empresa_id);
+                    ->withAttribute('empresa_id',  $result['user']->empresa_id)
+                    ->withAttribute('sucursal_id', $result['user']->sucursal_id);
+                TenantContext::setCurrentTenant($result['user']->empresa_id, $result['user']->sucursal_id);
                 return $handler->handle($request);
             }
             // JWT present but invalid → fail immediately (don't fall through to ApiKey)

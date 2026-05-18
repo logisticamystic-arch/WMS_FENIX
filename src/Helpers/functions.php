@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Global helper functions for Prooriente WMS.
+ * Global helper functions for Fénix WMS.
  */
 
 if (!function_exists('wmsLog')) {

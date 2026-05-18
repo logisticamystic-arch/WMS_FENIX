@@ -23,9 +23,11 @@ class DespachoController extends BaseController
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
 
-        $despachos = Despacho::where('empresa_id', $user->empresa_id)
-            ->where('sucursal_id', $user->sucursal_id)
+        $despachos = Despacho::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->whereBetween('fecha_movimiento', [substr($ini, 0, 10), substr($fin, 0, 10)])
             ->when($params['estado'] ?? null, fn($q, $e) => $q->where('estado', $e))
             ->orderBy('fecha_movimiento', 'desc')
@@ -47,7 +49,10 @@ class DespachoController extends BaseController
     public function ver(Request $r, Response $res, array $a): Response
     {
         $user = $r->getAttribute('user');
-        $d    = Despacho::where('empresa_id', $user->empresa_id)
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
+        $d    = Despacho::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->with('certificaciones.producto')
             ->find($a['id']);
         if (!$d) return $this->notFound($res);
@@ -58,12 +63,14 @@ class DespachoController extends BaseController
     public function store(Request $r, Response $res): Response
     {
         $user = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
         $data = $r->getParsedBody() ?? [];
 
         try {
             $despacho = Despacho::create([
-                'empresa_id'      => $user->empresa_id,
-                'sucursal_id'     => $user->sucursal_id,
+                'empresa_id'      => $empresaId,
+                'sucursal_id'     => $sucursalId,
                 'numero_despacho' => 'DSP-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5)),
                 'cliente'         => $data['cliente']   ?? null,
                 'ruta'            => $data['ruta']      ?? null,
@@ -91,7 +98,11 @@ class DespachoController extends BaseController
     {
         $user     = $r->getAttribute('user');
         $data     = $r->getParsedBody() ?? [];
-        $despacho = Despacho::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
+        $despacho = Despacho::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find($a['id']);
 
         if (!$despacho) return $this->notFound($res);
         if ($despacho->estado === 'Despachado') {
@@ -104,7 +115,7 @@ class DespachoController extends BaseController
         }
 
         try {
-            Capsule::transaction(function () use ($despacho, $data, $user) {
+            Capsule::transaction(function () use ($despacho, $data, $user, $empresaId, $sucursalId) {
                 $cert = CertificacionDespacho::create([
                     'despacho_id'         => $despacho->id,
                     'producto_id'         => $data['producto_id'],
@@ -113,21 +124,34 @@ class DespachoController extends BaseController
                     'escaneado_por'       => $data['escaneado_por'],
                 ]);
 
+                // Descontar stock del inventario físico
+                $inv = \App\Models\Inventario::where('empresa_id', $empresaId)
+                    ->where('sucursal_id', $sucursalId)
+                    ->where('producto_id', $data['producto_id'])
+                    ->where('ubicacion_id', $data['ubicacion_id'] ?? null)
+                    ->lockForUpdate()
+                    ->first();
+                if ($inv) {
+                    $inv->cantidad = max(0, ($inv->cantidad ?? 0) - (int)$data['cantidad_certificada']);
+                    $inv->save();
+                }
+
                 // Registrar salida en movimiento_inventarios
                 MovimientoInventario::create([
-                    'empresa_id'           => $user->empresa_id,
-                    'sucursal_id'          => $user->sucursal_id,
+                    'empresa_id'           => $empresaId,
+                    'sucursal_id'          => $sucursalId,
                     'producto_id'          => $data['producto_id'],
                     'tipo_movimiento'      => 'SalidaDespacho',
                     'cantidad'             => (int)$data['cantidad_certificada'],
                     'ubicacion_origen_id'  => $data['ubicacion_id'] ?? null,
                     'ubicacion_destino_id' => null,
                     'lote'                 => $data['lote'] ?? null,
-                    'usuario_id'           => $user->id,
-                    'referencia'           => $despacho->numero_despacho,
+                    'auxiliar_id'          => $user->id,
+                    'referencia_tipo'      => 'despachos',
+                    'referencia_id'        => $despacho->id,
                     'observaciones'        => "Despacho {$despacho->numero_despacho}",
                     'fecha_movimiento'     => date('Y-m-d'),
-                    'hora_movimiento'      => date('H:i:s'),
+                    'hora_fin'             => date('H:i:s'),
                 ]);
 
                 if ($despacho->estado === 'Preparando') {
@@ -151,8 +175,12 @@ class DespachoController extends BaseController
         $user     = $r->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
         $data     = $r->getParsedBody() ?? [];
-        $despacho = Despacho::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $despacho = Despacho::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find($a['id']);
 
         if (!$despacho) return $this->notFound($res);
         if ($despacho->estado === 'Despachado') {
@@ -178,7 +206,11 @@ class DespachoController extends BaseController
         $user = $r->getAttribute('user');
         if ($deny = $this->requireAdmin($user, $res)) return $deny;
 
-        $despacho = Despacho::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
+        $despacho = Despacho::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find($a['id']);
         if (!$despacho) return $this->notFound($res);
         if ($despacho->estado === 'Despachado') {
             return $this->error($res, 'No se puede eliminar un despacho ya despachado');
@@ -198,7 +230,10 @@ class DespachoController extends BaseController
     public function reporte(Request $r, Response $res, array $a): Response
     {
         $user     = $r->getAttribute('user');
-        $despacho = Despacho::where('empresa_id', $user->empresa_id)
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
+        $despacho = Despacho::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->with('certificaciones.producto')
             ->find($a['id']);
         if (!$despacho) return $this->notFound($res);

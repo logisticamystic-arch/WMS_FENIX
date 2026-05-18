@@ -48,7 +48,7 @@
 
 # ── Reescritura de rutas para Slim 4 ─────────────────────────────────────────
 RewriteEngine On
-RewriteBase /WMS_PROORIENTE/public
+RewriteBase /WMS_FENIX/public
 
 # Pasa el header Authorization a PHP (necesario para JWT en Apache)
 RewriteCond %{HTTP:Authorization} ^(.*)

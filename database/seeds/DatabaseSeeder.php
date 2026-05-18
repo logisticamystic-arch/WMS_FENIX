@@ -9,10 +9,10 @@ class DatabaseSeeder
     {
         echo "  → Seeding empresa...\n";
         $empresa = Empresa::firstOrCreate(['nit' => '900000001'], [
-            'razon_social' => 'Prooriente WMS',
+            'razon_social' => 'WMS Fénix',
             'direccion' => 'Calle Principal #1',
             'telefono' => '3001234567',
-            'email' => 'admin@prooriente.com',
+            'email' => 'admin@wmsfenix.com',
             'activo' => true,
         ]);
 
@@ -105,6 +105,18 @@ class DatabaseSeeder
             'activo' => true,
         ]);
 
+        echo "  → Seeding SuperAdmin user (PIN: 0000)...\n";
+        Personal::firstOrCreate([
+            'empresa_id' => $empresa->id,
+            'documento' => 'SUPERADMIN',
+        ], [
+            'sucursal_id' => $sucursal->id,
+            'nombre' => 'SuperAdmin Global',
+            'pin' => Personal::hashPin('0000'),
+            'rol' => 'SuperAdmin',
+            'activo' => true,
+        ]);
+
         // Seed sample operators
         $operators = [
             ['documento' => 'AUX001', 'nombre' => 'Auxiliar Demo', 'rol' => 'Auxiliar', 'pin' => '0001'],
@@ -147,17 +159,19 @@ class DatabaseSeeder
             }
         }
 
-        // Grant all permissions to Admin role
-        echo "  → Granting all permissions to Admin role...\n";
+        // Grant all permissions to Admin and SuperAdmin roles
+        echo "  → Granting all permissions to Admin and SuperAdmin roles...\n";
         $allPermisos = Permiso::all();
-        foreach ($allPermisos as $permiso) {
-            RolPermiso::firstOrCreate([
-                'empresa_id' => $empresa->id,
-                'rol' => 'Admin',
-                'permiso_id' => $permiso->id,
-            ], [
-                'concedido' => true,
-            ]);
+        foreach (['Admin', 'SuperAdmin'] as $role) {
+            foreach ($allPermisos as $permiso) {
+                RolPermiso::firstOrCreate([
+                    'empresa_id' => $empresa->id,
+                    'rol' => $role,
+                    'permiso_id' => $permiso->id,
+                ], [
+                    'concedido' => true,
+                ]);
+            }
         }
 
         // Grant basic permissions to other roles

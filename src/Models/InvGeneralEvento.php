@@ -3,9 +3,17 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class InvGeneralEvento extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
+
+
+
+
+
     protected $table = 'inv_general_eventos';
     protected $fillable = ['empresa_id', 'sucursal_id', 'nombre', 'tipo', 'estado', 'fecha_programada', 'notas', 'creado_por'];
 
@@ -24,3 +32,7 @@ class InvGeneralEvento extends Model
         return $this->hasMany(InvGeneralDiferencia::class, 'evento_id');
     }
 }
+
+
+
+

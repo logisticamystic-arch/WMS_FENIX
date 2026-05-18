@@ -11,7 +11,7 @@ return [
             $table->string('nombre', 150);
             $table->string('documento', 20);
             $table->string('pin', 255); // hashed
-            $table->enum('rol', ['Admin', 'Supervisor', 'Auxiliar', 'Montacarguista', 'Analista']);
+            $table->enum('rol', ['Admin', 'SuperAdmin', 'Supervisor', 'Auxiliar', 'Montacarguista', 'Analista']);
             $table->boolean('activo')->default(true);
             $table->timestamp('ultimo_login')->nullable();
             $table->timestamps();

@@ -3,8 +3,11 @@
 namespace App\Controllers;
 
 use Psr\Http\Message\ResponseInterface as Response;
+use Psr\Http\Message\ServerRequestInterface as Request;
+use Illuminate\Database\Eloquent\Builder;
 use App\Helpers\AuditLogger;
 use App\Helpers\ExcelExporter;
+use App\Helpers\TenantContext;
 
 /**
  * BaseController — Clase base para todos los controladores WMS.
@@ -100,13 +103,62 @@ abstract class BaseController
 
     protected function isAdmin($user): bool
     {
-        return isset($user->rol) && strcasecmp($user->rol, 'Admin') === 0;
+        return isset($user->rol) && in_array($user->rol, ['Admin', 'SuperAdmin'], true);
+    }
+
+    protected function isSuperAdmin($user): bool
+    {
+        return isset($user->rol) && strcasecmp($user->rol, 'SuperAdmin') === 0;
     }
 
     protected function isSupervisorOrAbove($user): bool
     {
-        $rol = strtolower($user->rol ?? '');
-        return strpos($rol, 'admin') !== false || strpos($rol, 'super') !== false;
+        return isset($user->rol) && in_array($user->rol, [
+            'SuperAdmin', 'Admin', 'Supervisor', 'Jefe',
+        ], true);
+    }
+
+    protected function getEffectiveEmpresaId($user, Request $request): ?int
+    {
+        if ($this->isSuperAdmin($user) && isset($request->getQueryParams()['empresa_id'])) {
+            return (int)$request->getQueryParams()['empresa_id'];
+        }
+
+        return $request->getAttribute('empresa_id')
+            ?? $user->empresa_id ?? TenantContext::getEmpresaId();
+    }
+
+    protected function getEffectiveSucursalId($user, Request $request): ?int
+    {
+        if ($this->isSuperAdmin($user) && isset($request->getQueryParams()['sucursal_id'])) {
+            return (int)$request->getQueryParams()['sucursal_id'];
+        }
+
+        return $request->getAttribute('sucursal_id')
+            ?? $user->sucursal_id ?? TenantContext::getSucursalId();
+    }
+
+    protected function getEffectiveTenantIds($user, Request $request): array
+    {
+        return [
+            $this->getEffectiveEmpresaId($user, $request),
+            $this->getEffectiveSucursalId($user, $request),
+        ];
+    }
+
+    protected function addTenantConstraints(Builder $query, $user, Request $request): Builder
+    {
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
+
+        if ($empresaId !== null) {
+            $query->where($query->getModel()->getTable() . '.empresa_id', $empresaId);
+        }
+        if ($sucursalId !== null) {
+            $query->where($query->getModel()->getTable() . '.sucursal_id', $sucursalId);
+        }
+
+        return $query;
     }
 
     /**
@@ -116,7 +168,7 @@ abstract class BaseController
     protected function requireAdmin($user, Response $response): ?Response
     {
         if (!$this->isAdmin($user)) {
-            return $this->forbidden($response, 'Solo el Administrador puede realizar esta acción');
+            return $this->forbidden($response, 'Solo el Administrador o SuperAdmin puede realizar esta acción');
         }
         return null;
     }
@@ -126,6 +178,24 @@ abstract class BaseController
         if (!$this->isSupervisorOrAbove($user)) {
             return $this->forbidden($response, 'Se requiere rol Supervisor o Administrador');
         }
+        return null;
+    }
+
+    protected function requireSelectedTenantForSuperAdmin($user, Request $request, Response $response, bool $requireSucursal = false): ?Response
+    {
+        if (!$this->isSuperAdmin($user)) {
+            return null;
+        }
+
+        $params = $request->getQueryParams();
+        if (!isset($params['empresa_id']) || trim((string)$params['empresa_id']) === '') {
+            return $this->error($response, 'SuperAdmin debe filtrar la empresa con el parámetro empresa_id.');
+        }
+
+        if ($requireSucursal && (!isset($params['sucursal_id']) || trim((string)$params['sucursal_id']) === '')) {
+            return $this->error($response, 'SuperAdmin debe filtrar la sucursal con el parámetro sucursal_id.');
+        }
+
         return null;
     }
 

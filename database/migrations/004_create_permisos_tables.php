@@ -16,7 +16,7 @@ return [
         Capsule::schema()->create('rol_permisos', function ($table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('empresa_id');
-            $table->enum('rol', ['Admin', 'Supervisor', 'Auxiliar', 'Montacarguista', 'Analista']);
+            $table->enum('rol', ['Admin', 'SuperAdmin', 'Supervisor', 'Auxiliar', 'Montacarguista', 'Analista']);
             $table->unsignedBigInteger('permiso_id');
             $table->boolean('concedido')->default(true);
             $table->timestamps();

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 /**
  * AjusteInventario
@@ -21,6 +22,13 @@ use Illuminate\Database\Eloquent\Model;
  */
 class AjusteInventario extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
+
+
+
+
+
     // Sin updated_at — registro inmutable
     const UPDATED_AT = null;
 
@@ -117,3 +125,7 @@ class AjusteInventario extends Model
         return $query->whereIn('origen', [self::ORIGEN_CONTEO_LINEA, self::ORIGEN_CONTEO_TOTAL]);
     }
 }
+
+
+
+

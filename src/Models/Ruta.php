@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class Ruta extends Model
 {
+    use TenantScoped;
     protected $table = 'rutas';
     protected $fillable = [
         'empresa_id',
@@ -24,3 +26,5 @@ class Ruta extends Model
         return $this->hasMany(Cliente::class);
     }
 }
+
+

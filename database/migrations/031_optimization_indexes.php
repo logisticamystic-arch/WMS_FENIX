@@ -7,8 +7,15 @@ return [
         $addIdx = function($table, $indexName, $cols) use ($schema) {
             if (!$schema->hasTable($table)) return;
             foreach ($cols as $col) { if (!$schema->hasColumn($table, $col)) return; }
-            $exists = DB::select("SELECT COUNT(*) as cnt FROM pg_indexes WHERE tablename = ? AND indexname = ?", [$table, $indexName]);
-            if ($exists[0]->cnt > 0) return;
+            $driver = DB::getDriverName();
+            if ($driver === 'pgsql') {
+                $exists = DB::select("SELECT COUNT(*) as cnt FROM pg_indexes WHERE tablename = ? AND indexname = ?", [$table, $indexName]);
+                $alreadyExists = $exists[0]->cnt > 0;
+            } else {
+                $exists = DB::select("SHOW INDEX FROM `$table` WHERE Key_name = ?", [$indexName]);
+                $alreadyExists = count($exists) > 0;
+            }
+            if ($alreadyExists) return;
             $schema->table($table, function (Blueprint $t) use ($cols, $indexName) { $t->index($cols, $indexName); });
             echo "  [OK] $indexName añadido.\n";
         };

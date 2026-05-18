@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class Sucursal extends Model
 {
+    use TenantScoped;
+
     protected $table = 'sucursales';
 
     protected $fillable = [

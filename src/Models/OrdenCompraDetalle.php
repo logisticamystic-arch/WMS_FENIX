@@ -10,7 +10,8 @@ class OrdenCompraDetalle extends Model
 
     protected $fillable = [
         'orden_compra_id', 'producto_id', 'cantidad_solicitada', 'cantidad_recibida',
-        'aprobado_admin', 'novedad_motivo', 'novedad_observacion', 'cantidad_novedad',
+        'estado_aprobacion', 'aprobado_admin', 'novedad_motivo', 'novedad_observacion', 'cantidad_novedad',
+        'sucursal_id',
     ];
 
     protected $casts = [

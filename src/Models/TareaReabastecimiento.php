@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class TareaReabastecimiento extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
     protected $table = 'tarea_reabastecimientos';
 
     protected $fillable = [
@@ -44,3 +47,5 @@ class TareaReabastecimiento extends Model
         return $this->belongsTo(Personal::class, 'asignado_a');
     }
 }
+
+

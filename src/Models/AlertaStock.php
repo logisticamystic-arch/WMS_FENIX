@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class AlertaStock extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
     protected $table = 'alertas_stock';
 
     protected $fillable = [
@@ -24,3 +27,5 @@ class AlertaStock extends Model
         return $this->belongsTo(Personal::class, 'resuelta_por');
     }
 }
+
+

@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class AuditLog extends Model
 {
+    use TenantScoped;
+
     protected $table = 'audit_logs';
 
     public $timestamps = false; // tabla usa created_at manual

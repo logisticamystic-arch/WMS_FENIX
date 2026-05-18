@@ -5,8 +5,14 @@ return [
     'up' => function () {
         $schema = Capsule::schema();
         $idx = function(string $table, string $name) {
-            $r = Capsule::select("SELECT COUNT(*) as cnt FROM pg_indexes WHERE tablename = ? AND indexname = ?", [$table, $name]);
-            return $r[0]->cnt > 0;
+            $driver = Capsule::getDriverName();
+            if ($driver === 'pgsql') {
+                $r = Capsule::select("SELECT COUNT(*) as cnt FROM pg_indexes WHERE tablename = ? AND indexname = ?", [$table, $name]);
+                return $r[0]->cnt > 0;
+            } else {
+                $r = Capsule::select("SHOW INDEX FROM `$table` WHERE Key_name = ?", [$name]);
+                return count($r) > 0;
+            }
         };
         if (!$idx('inventarios', 'idx_inv_empresa_sucursal'))
             Capsule::statement('CREATE INDEX idx_inv_empresa_sucursal ON inventarios (empresa_id, sucursal_id)');
@@ -39,9 +45,13 @@ return [
         if ($schema->hasTable('sesion_asignaciones') && !$idx('sesion_asignaciones', 'idx_sasig_sesion_estado'))
             Capsule::statement('CREATE INDEX idx_sasig_sesion_estado ON sesion_asignaciones (sesion_id, estado)');
         if (!$idx('productos', 'idx_prod_nombre_busqueda')) {
-            try {
-                Capsule::statement("CREATE INDEX idx_prod_nombre_busqueda ON productos USING GIN (to_tsvector('simple', nombre))");
-            } catch (\Exception $e) {
+            if (Capsule::getDriverName() === 'pgsql') {
+                try {
+                    Capsule::statement("CREATE INDEX idx_prod_nombre_busqueda ON productos USING GIN (to_tsvector('simple', nombre))");
+                } catch (\Exception $e) {
+                    Capsule::statement('CREATE INDEX idx_prod_nombre_busqueda ON productos (nombre)');
+                }
+            } else {
                 Capsule::statement('CREATE INDEX idx_prod_nombre_busqueda ON productos (nombre)');
             }
         }

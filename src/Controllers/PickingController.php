@@ -26,7 +26,8 @@ class PickingController extends BaseController
 {
     // ── GET /api/picking ──────────────────────────────────────────────────────
     // Parámetros de filtro: estado, auxiliar_id, pasillo, marca_id, ubicacion,
-    //                       planilla, sin_auxiliar, fecha_inicio, fecha_fin, limit
+    //                       planilla, sin_auxiliar, fecha_inicio, fecha_fin, limit,
+    //                       solo_hoy, incluir_finalizados, sucursal_entrega, ruta, q
     public function listar(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
@@ -34,9 +35,21 @@ class PickingController extends BaseController
         [$ini, $fin] = $this->getDateRange($params);
         $limit = min((int)($params['limit'] ?? 100), 500);
 
+        $soloHoy           = !empty($params['solo_hoy']);
+        $incluirFinalizados = !empty($params['incluir_finalizados']);
+
+        $fechaDesdeFilter = $params['fecha_desde'] ?? null;
+        $fechaHastaFilter = $params['fecha_hasta'] ?? null;
+
         $q = OrdenPicking::where('orden_pickings.empresa_id', $user->empresa_id)
             ->where('orden_pickings.sucursal_id', $user->sucursal_id)
-            ->whereBetween('orden_pickings.created_at', [$ini, $fin])
+            ->when($fechaDesdeFilter && $fechaHastaFilter, fn($q) =>
+                $q->whereDate('orden_pickings.fecha_movimiento', '>=', $fechaDesdeFilter)
+                  ->whereDate('orden_pickings.fecha_movimiento', '<=', $fechaHastaFilter))
+            ->when(!$soloHoy && !($fechaDesdeFilter && $fechaHastaFilter),
+                fn($q) => $q->whereBetween('orden_pickings.created_at', [$ini, $fin]))
+            ->when($soloHoy && !($fechaDesdeFilter && $fechaHastaFilter),
+                fn($q) => $q->whereDate('orden_pickings.fecha_movimiento', date('Y-m-d')))
             ->when($params['estado'] ?? null, function($q, $e) {
                 if (strpos($e, ',') !== false) {
                     $q->whereIn('estado', explode(',', $e));
@@ -44,9 +57,29 @@ class PickingController extends BaseController
                     $q->where('estado', $e);
                 }
             })
+            ->when($soloHoy && !($fechaDesdeFilter && $fechaHastaFilter) && !isset($params['estado']) && !$incluirFinalizados,
+                fn($q) => $q->whereIn('orden_pickings.estado', ['Pendiente', 'EnProceso']))
             ->when($params['auxiliar_id']  ?? null, fn($q, $v) => $q->where('auxiliar_id', (int)$v))
-            ->when($params['sin_auxiliar'] ?? null, fn($q)     => $q->whereNull('auxiliar_id'))
-            ->when($params['cliente']      ?? null, fn($q, $v) => $q->where('cliente', 'like', "%$v%"));
+            ->when($params['sin_auxiliar'] ?? null, fn($q)     => $q->whereNull('orden_pickings.auxiliar_id'))
+            ->when($params['cliente']      ?? null, fn($q, $v) => $q->where('cliente', 'like', "%$v%"))
+            ->when($params['sucursal_entrega'] ?? null, function($q, $v) {
+                $q->where(fn($sq) =>
+                    $sq->where('orden_pickings.sucursal_entrega', 'like', "%$v%")
+                       ->orWhere(fn($sq2) =>
+                           $sq2->whereNull('orden_pickings.sucursal_entrega')
+                               ->where('orden_pickings.cliente', 'like', "%$v%")
+                       )
+                );
+            })
+            ->when($params['ruta'] ?? null, fn($q, $v) => $q->where('orden_pickings.ruta', 'like', "%$v%"))
+            ->when($params['q'] ?? null, function($q, $v) {
+                $q->where(fn($sq) => $sq
+                    ->where('orden_pickings.numero_pedido', 'like', "%$v%")
+                    ->orWhere('orden_pickings.cliente', 'like', "%$v%")
+                    ->orWhere('orden_pickings.sucursal_entrega', 'like', "%$v%")
+                    ->orWhere('orden_pickings.ruta', 'like', "%$v%")
+                );
+            });
 
         // Filtro específico para versión móvil: mostrar tareas del usuario conectado
         if (!empty($params['tiene_asignadas'])) {
@@ -97,6 +130,13 @@ class PickingController extends BaseController
         }
 
         $ordenes = $q->with(['auxiliar:id,nombre', 'detalles.producto:id,nombre,codigo_interno,unidades_caja', 'detalles.auxiliar:id,nombre'])
+            ->withCount([
+                'detalles as seco_count'        => fn($q) => $q->where('ambiente', 'Seco'),
+                'detalles as refrigerado_count' => fn($q) => $q->where('ambiente', 'Refrigerado'),
+                'detalles as congelado_count'   => fn($q) => $q->where('ambiente', 'Congelado'),
+                'detalles as total_count',
+            ])
+            ->orderByRaw('ISNULL(orden_pickings.sucursal_entrega) ASC, orden_pickings.sucursal_entrega ASC')
             ->orderBy('orden_pickings.prioridad')
             ->orderBy('orden_pickings.created_at', 'desc')
             ->limit($limit)
@@ -201,7 +241,9 @@ class PickingController extends BaseController
     }
 
     // ── POST /api/picking/asignar-multiple ────────────────────────────────────
-    // Asigna auxiliar y/o genera rutas para múltiples órdenes en un solo POST
+    // Asigna auxiliar, genera rutas FEFO, RESERVA inventario (cantidad_reservada)
+    // y registra faltantes automáticamente. El descuento real del stock solo
+    // ocurre cuando el auxiliar confirma la línea (confirmLine).
     public function asignarMultiple(Request $r, Response $res): Response
     {
         $user = $r->getAttribute('user');
@@ -221,32 +263,153 @@ class PickingController extends BaseController
             ->where('empresa_id', $user->empresa_id)
             ->get();
 
-        $resultados = ['asignadas' => 0, 'rutas_generadas' => 0, 'errores' => []];
+        $resultados = [
+            'asignadas'        => 0,
+            'rutas_generadas'  => 0,
+            'inventario_reservado' => 0,
+            'faltantes_detectados' => 0,
+            'errores'          => [],
+        ];
+
+        $now = date('Y-m-d H:i:s');
 
         /** @var OrdenPicking $orden */
         foreach ($ordenes as $orden) {
             try {
-                // Asignar auxiliar si se indicó
-                if ($auxiliarId !== null) {
-                    $orden->auxiliar_id = $auxiliarId;
-                    if ($separarConsolidado) {
-                        $orden->tipo_picking = 'Consolidado Almacenamiento';
+                Capsule::transaction(function () use ($orden, $auxiliarId, $separarConsolidado, $user, $now, &$resultados, $generarRuta) {
+                    // ── 1. Asignar auxiliar ──────────────────────────────────────
+                    if ($auxiliarId !== null) {
+                        $orden->auxiliar_id = $auxiliarId;
+                        if ($separarConsolidado) {
+                            $orden->tipo_picking = 'Consolidado Almacenamiento';
+                        }
+                        $orden->save();
+
+                        // Sincronizar auxiliar en todas las líneas de la orden
+                        Capsule::table('picking_detalles')
+                            ->where('orden_picking_id', $orden->id)
+                            ->update(['auxiliar_id' => $auxiliarId, 'updated_at' => $now]);
+
+                        $resultados['asignadas']++;
+                    }
+
+                    // ── 2. Reservar inventario (compromiso atómico) ──────────────
+                    // Cargamos todos los detalles pendientes de la orden
+                    $detalles = PickingDetalle::where('orden_picking_id', $orden->id)
+                        ->whereIn('estado', ['Pendiente', 'Creado'])
+                        ->get();
+
+                    $productoIds = $detalles->pluck('producto_id')->unique()->toArray();
+
+                    // Pre-carga batch de inventario disponible con lock pesimista
+                    $stockDisponible = Inventario::where('empresa_id', $user->empresa_id)
+                        ->where('sucursal_id', $user->sucursal_id)
+                        ->whereIn('producto_id', $productoIds)
+                        ->where('estado', 'Disponible')
+                        ->whereRaw('(cantidad - cantidad_reservada) > 0')
+                        ->lockForUpdate()
+                        ->orderByRaw('fecha_vencimiento IS NULL ASC')
+                        ->orderBy('fecha_vencimiento', 'ASC')
+                        ->get();
+
+                    $stockPorProducto = $stockDisponible->groupBy('producto_id');
+
+                    foreach ($detalles as $linea) {
+                        $cantidadNecesaria = $linea->cantidad_solicitada;
+                        $stockProducto = $stockPorProducto->get($linea->producto_id, collect());
+
+                        // Calcular disponible real (cantidad - reservada)
+                        $totalDisponible = $stockProducto->sum(fn($inv) => max(0, $inv->cantidad - $inv->cantidad_reservada));
+
+                        if ($totalDisponible >= $cantidadNecesaria) {
+                            // ── Caso A: Hay stock suficiente → RESERVAR (no descontar) ──
+                            $restante = $cantidadNecesaria;
+                            foreach ($stockProducto as $inv) {
+                                if ($restante <= 0) break;
+                                $disp = max(0, $inv->cantidad - $inv->cantidad_reservada);
+                                if ($disp <= 0) continue;
+
+                                $aReservar = min($disp, $restante);
+                                $inv->cantidad_reservada += $aReservar;
+                                $inv->save();
+                                $restante -= $aReservar;
+
+                                // Asignar la primera ubicación FEFO disponible a la línea
+                                if (!$linea->ubicacion_id) {
+                                    $linea->ubicacion_id      = $inv->ubicacion_id;
+                                    $linea->lote              = $inv->lote;
+                                    $linea->fecha_vencimiento = $inv->fecha_vencimiento;
+                                }
+                            }
+
+                            $linea->estado = 'EnProceso';
+                            $linea->save();
+                            $resultados['inventario_reservado'] += $cantidadNecesaria;
+                        } else {
+                            // ── Caso B: Stock insuficiente → Reservar parcial + Faltante ──
+                            $faltante = $cantidadNecesaria - $totalDisponible;
+
+                            // Reservar lo que haya disponible
+                            if ($totalDisponible > 0) {
+                                $restante = $totalDisponible;
+                                foreach ($stockProducto as $inv) {
+                                    if ($restante <= 0) break;
+                                    $disp = max(0, $inv->cantidad - $inv->cantidad_reservada);
+                                    if ($disp <= 0) continue;
+
+                                    $aReservar = min($disp, $restante);
+                                    $inv->cantidad_reservada += $aReservar;
+                                    $inv->save();
+                                    $restante -= $aReservar;
+
+                                    if (!$linea->ubicacion_id) {
+                                        $linea->ubicacion_id      = $inv->ubicacion_id;
+                                        $linea->lote              = $inv->lote;
+                                        $linea->fecha_vencimiento = $inv->fecha_vencimiento;
+                                    }
+                                }
+                                $resultados['inventario_reservado'] += (int)$totalDisponible;
+                            }
+
+                            // Registrar faltante automáticamente
+                            Capsule::table('picking_faltantes')->insert([
+                                'empresa_id'          => $user->empresa_id,
+                                'sucursal_id'         => $user->sucursal_id,
+                                'orden_picking_id'    => $orden->id,
+                                'producto_id'         => $linea->producto_id,
+                                'planilla_lote'       => $orden->planilla_lote ?? $orden->planilla_numero,
+                                'cantidad_solicitada' => $cantidadNecesaria,
+                                'cantidad_faltante'   => $faltante,
+                                'causa'               => 'Stock insuficiente al asignar planilla - Reserva automática',
+                                'created_at'          => $now,
+                                'updated_at'          => $now,
+                            ]);
+
+                            $linea->estado = 'Faltante';
+                            $linea->save();
+                            $resultados['faltantes_detectados']++;
+                        }
+                    }
+
+                    // ── 3. Actualizar estado de la orden ─────────────────────────
+                    $lineasEnProceso = PickingDetalle::where('orden_picking_id', $orden->id)
+                        ->where('estado', 'EnProceso')->count();
+                    $lineasFaltante  = PickingDetalle::where('orden_picking_id', $orden->id)
+                        ->where('estado', 'Faltante')->count();
+
+                    if ($lineasEnProceso > 0) {
+                        $orden->estado = 'EnProceso';
+                    } elseif ($lineasFaltante > 0) {
+                        $orden->estado = 'Faltante';
                     }
                     $orden->save();
 
-                    // Sincronizar auxiliar en todas las líneas de la orden
-                    Capsule::table('picking_detalles')
-                        ->where('orden_picking_id', $orden->id)
-                        ->update(['auxiliar_id' => $auxiliarId, 'updated_at' => date('Y-m-d H:i:s')]);
-
-                    $resultados['asignadas']++;
-                }
-
-                // Generar ruta FEFO si se solicitó y la orden está Pendiente
-                if ($generarRuta && $orden->estado === 'Pendiente') {
-                    $this->_generarRutaFEFO($orden, $user);
-                    $resultados['rutas_generadas']++;
-                }
+                    // Generar ruta FEFO adicional si se solicitó explícitamente
+                    if ($generarRuta && $orden->estado === 'Pendiente') {
+                        $this->_generarRutaFEFO($orden, $user);
+                        $resultados['rutas_generadas']++;
+                    }
+                });
             } catch (\Exception $e) {
                 $resultados['errores'][] = "Orden {$orden->numero_orden}: {$e->getMessage()}";
             }
@@ -258,7 +421,9 @@ class PickingController extends BaseController
                 $user->empresa_id,
                 $auxiliarId,
                 'Nuevas Órdenes de Picking',
-                "Se le han asignado {$resultados['asignadas']} órdenes para alistamiento.",
+                "Se le han asignado {$resultados['asignadas']} órdenes para alistamiento. " .
+                "{$resultados['inventario_reservado']} unidades reservadas, " .
+                "{$resultados['faltantes_detectados']} faltantes detectados.",
                 'picking',
                 $user->id,
                 'Picking',
@@ -270,14 +435,23 @@ class PickingController extends BaseController
             );
         }
 
+        // @audit — Registro profesional de la asignación masiva
         $this->audit($user, 'picking', 'asignar_multiple', 'orden_pickings', null,
-            null, $resultados, "Asignación masiva: {$resultados['asignadas']} órdenes");
+            null, $resultados,
+            "Asignación masiva: {$resultados['asignadas']} órdenes, " .
+            "{$resultados['inventario_reservado']} unidades reservadas, " .
+            "{$resultados['faltantes_detectados']} faltantes registrados");
 
-        return $this->ok($res, $resultados,
-            "{$resultados['asignadas']} asignadas, {$resultados['rutas_generadas']} rutas generadas");
+        $msg = "{$resultados['asignadas']} asignadas";
+        if ($resultados['inventario_reservado'] > 0) $msg .= ", {$resultados['inventario_reservado']} unidades reservadas";
+        if ($resultados['faltantes_detectados'] > 0) $msg .= ", {$resultados['faltantes_detectados']} faltantes";
+
+        return $this->ok($res, $resultados, $msg);
     }
 
     // ── Método privado: lógica FEFO reutilizable ──────────────────────────────
+    // OPTIMIZADO: pre-carga todo el inventario de los productos de la orden
+    // en una sola query agrupada, evitando N+1 (una query por línea antes).
     private function _generarRutaFEFO(OrdenPicking $orden, $user): array
     {
         $alertas = [];
@@ -285,26 +459,41 @@ class PickingController extends BaseController
         $now = date('Y-m-d H:i:s');
         $soloAlmacenamiento = ($orden->tipo_picking === 'Consolidado Almacenamiento');
 
-        Capsule::transaction(function () use ($orden, $user, &$alertas, $now, $soloAlmacenamiento) {
+        // ── PRE-CARGA BATCH DE INVENTARIOS (anti-N+1) ────────────────────────
+        // Obtiene todo el inventario disponible para los productos de la orden
+        // en una sola query con JOIN a ubicaciones, ordenado por FEFO.
+        $productoIds = $orden->detalles->pluck('producto_id')->unique()->toArray();
+
+        $todosLosStock = Inventario::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereIn('producto_id', $productoIds)
+            ->where('estado', 'Disponible')
+            ->where('cantidad', '>', 0)
+            ->with('ubicacion:id,tipo_ubicacion,codigo,zona')
+            // FEFO estricto: NULL fechas al final, luego ascendente por fecha
+            ->orderByRaw('fecha_vencimiento IS NULL ASC')
+            ->orderBy('fecha_vencimiento', 'ASC')
+            ->get();
+
+        // Indexar por producto_id para acceso O(1) en el foreach
+        $stockPorProducto = $todosLosStock->groupBy('producto_id');
+
+        Capsule::transaction(function () use ($orden, $user, &$alertas, $now,
+                                              $soloAlmacenamiento, $stockPorProducto) {
             foreach ($orden->detalles as $linea) {
                 $qtyEnPicking = 0;
+                $stockProducto = $stockPorProducto->get($linea->producto_id, collect());
 
                 if (!$soloAlmacenamiento) {
-                    // 1. Buscar en Zona de Picking (Prioridad 1)
-                    $pickingStock = Inventario::where('empresa_id', $user->empresa_id)
-                        ->where('sucursal_id', $user->sucursal_id)
-                        ->where('producto_id', $linea->producto_id)
-                        ->where('estado', 'Disponible')
-                        ->where('cantidad', '>', 0)
-                        ->whereHas('ubicacion', fn($q) => $q->where('tipo_ubicacion', 'Picking'))
-                        ->orderByRaw('fecha_vencimiento IS NULL ASC')
-                        ->orderBy('fecha_vencimiento')
-                        ->get();
+                    // 1. Buscar en Zona de Picking (Prioridad 1) — desde cache batch
+                    $pickingStock = $stockProducto->filter(
+                        fn($i) => ($i->ubicacion->tipo_ubicacion ?? '') === 'Picking'
+                    );
 
                     $qtyEnPicking = $pickingStock->sum('cantidad');
 
                     if ($qtyEnPicking >= $linea->cantidad_solicitada) {
-                        // Caso A: Hay suficiente en Picking
+                        // Caso A: Hay suficiente en Picking (FEFO ya ordenado en batch)
                         $first = $pickingStock->first();
                         $linea->ubicacion_id      = $first->ubicacion_id;
                         $linea->lote              = $first->lote;
@@ -316,21 +505,18 @@ class PickingController extends BaseController
                 }
 
                 // Caso B: Falta en Picking. Buscar en el resto de la bodega (Almacenamiento)
-                $qStockGlobal = Inventario::where('empresa_id', $user->empresa_id)
-                    ->where('sucursal_id', $user->sucursal_id)
-                    ->where('producto_id', $linea->producto_id)
-                    ->where('estado', 'Disponible')
-                    ->where('cantidad', '>', 0);
-                    
                 if ($soloAlmacenamiento) {
-                    $qStockGlobal->whereHas('ubicacion', fn($q) => $q->whereIn('tipo_ubicacion', ['Almacenamiento', 'Rack', 'Estante']));
+                    $stockGlobal = $stockProducto->filter(
+                        fn($i) => in_array($i->ubicacion->tipo_ubicacion ?? '',
+                                           ['Almacenamiento', 'Rack', 'Estante'])
+                    );
                 } else {
-                    $qStockGlobal->whereHas('ubicacion', fn($q) => $q->where('tipo_ubicacion', '!=', 'Picking'));
+                    $stockGlobal = $stockProducto->filter(
+                        fn($i) => ($i->ubicacion->tipo_ubicacion ?? '') !== 'Picking'
+                    );
                 }
 
-                $stockGlobal = $qStockGlobal->orderByRaw('fecha_vencimiento IS NULL ASC')
-                    ->orderBy('fecha_vencimiento')
-                    ->get();
+                // ── [resto del código sin cambios desde aquí] ─────────────────
 
                 $totalDisponible = $qtyEnPicking + $stockGlobal->sum('cantidad');
 
@@ -419,55 +605,247 @@ class PickingController extends BaseController
 
     // ── GET /api/picking/novedades-stock ──────────────────────────────────────
     // Retorna faltantes de stock registrados durante la generación de rutas FEFO.
-    // Filtros: fecha_inicio, fecha_fin, archivo_id, numero_planilla, export=excel
+    // Incluye stock actual en tiempo real para detectar productos reabastecidos.
+    // Filtros: fecha_inicio, fecha_fin, numero_planilla, producto, limit, export=excel
     public function novedadesStockLegacy(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
 
-        $rows = Capsule::table('picking_faltantes as f')
-            ->join('productos as p', 'f.producto_id', '=', 'p.id')
+        // Subquery para stock actual en tiempo real
+        $stockSubquery = Capsule::raw("(
+            SELECT COALESCE(SUM(i.cantidad - i.cantidad_reservada), 0)
+            FROM inventarios i
+            WHERE i.producto_id = f.producto_id
+              AND i.empresa_id = f.empresa_id
+              AND i.sucursal_id = f.sucursal_id
+              AND i.estado = 'Disponible'
+              AND (i.cantidad - i.cantidad_reservada) > 0
+        ) as stock_actual");
+
+        $query = Capsule::table('picking_faltantes as f')
+            ->join('productos as p',      'f.producto_id',       '=', 'p.id')
             ->leftJoin('orden_pickings as o', 'f.orden_picking_id', '=', 'o.id')
-            ->leftJoin('personal as aux', 'o.auxiliar_id', '=', 'aux.id')
+            ->leftJoin('personal as aux',    'o.auxiliar_id',       '=', 'aux.id')
             ->where('f.empresa_id',  $user->empresa_id)
             ->where('f.sucursal_id', $user->sucursal_id)
             ->whereBetween('f.created_at', [$ini . ' 00:00:00', $fin . ' 23:59:59'])
             ->when($params['numero_planilla'] ?? null, fn($q, $v) => $q->where('f.planilla_lote', $v))
+            ->when($params['producto'] ?? null, function($q, $v) {
+                $likeOp = (Capsule::connection()->getDriverName() === 'pgsql') ? 'ilike' : 'like';
+                $q->where(fn($sub) => $sub
+                    ->where('p.nombre', $likeOp, "%{$v}%")
+                    ->orWhere('p.codigo_interno', $likeOp, "%{$v}%")
+                );
+            })
             ->select(
+                'f.id',
                 'f.created_at',
+                'f.orden_picking_id',
+                'f.producto_id',
                 'f.planilla_lote as numero_planilla',
                 'o.cliente',
+                'o.numero_orden',
                 'o.asesor_comercial as asesor',
+                'aux.nombre as auxiliar',
                 'p.codigo_interno as producto_codigo',
                 'p.nombre as producto_nombre',
                 'f.cantidad_solicitada',
                 Capsule::raw('(f.cantidad_solicitada - f.cantidad_faltante) as stock_disponible'),
                 'f.cantidad_faltante',
-                'aux.nombre as auxiliar_nombre'
+                $stockSubquery
             )
-            ->orderBy('f.created_at', 'desc')
-            ->get();
+            ->orderBy('f.created_at', 'desc');
+
+        // Total sin límite (para el frontend)
+        $total = $query->count();
+
+        // Aplicar límite si se solicita (por defecto sin límite para export)
+        $limit = isset($params['limit']) ? (int)$params['limit'] : null;
+        if ($limit && ($params['export'] ?? '') !== 'excel') {
+            $query->limit($limit);
+        }
+
+        $rows = $query->get();
 
         if (($params['export'] ?? '') === 'excel') {
-            $headers = ['Fecha', 'Planilla', 'Cliente', 'Asesor/Comercial', 'Auxiliar',
-                        'Código', 'Producto', 'Solicitado', 'Stock Disponible', 'Faltante'];
+            $headers = ['Fecha', 'Planilla', 'Auxiliar', 'Cliente', 'Asesor/Comercial',
+                        'Código', 'Producto', 'Solicitado', 'Stock al Registrar', 'Faltante', 'Stock Actual'];
             $data = $rows->map(fn($row) => [
-                substr($row->created_at, 0, 10),
-                $row->numero_planilla   ?? '—',
-                $row->cliente           ?? '—',
-                $row->asesor            ?? '—',
-                $row->auxiliar_nombre   ?? '—',
-                $row->producto_codigo   ?? '—',
-                $row->producto_nombre   ?? '—',
+                substr($row->created_at ?? '', 0, 10),
+                $row->numero_planilla ?? '—',
+                $row->auxiliar        ?? '—',
+                $row->cliente         ?? '—',
+                $row->asesor          ?? '—',
+                $row->producto_codigo ?? '—',
+                $row->producto_nombre ?? '—',
                 $row->cantidad_solicitada,
                 $row->stock_disponible,
                 $row->cantidad_faltante,
+                $row->stock_actual ?? 0,
             ])->toArray();
             return $this->exportCsv($res, $headers, $data, 'faltantes_picking_' . date('Y-m-d'));
         }
 
-        return $this->ok($res, $rows);
+        return $this->ok($res, ['rows' => $rows, 'total' => $total]);
+    }
+
+    public function novedadesStock(Request $r, Response $res): Response
+    {
+        return $this->novedadesStockLegacy($r, $res);
+    }
+
+    // ── POST /api/picking/backorder ──────────────────────────────────────────
+    // Proceso de Backorder: re-asigna faltantes al picking cuando el inventario
+    // ha sido reabastecido. Reserva atómicamente, reactiva líneas de picking
+    // y elimina los registros de faltantes procesados.
+    public function procesarBackorder(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $data = $r->getParsedBody() ?? [];
+
+        $faltanteIds = array_map('intval', $data['faltante_ids'] ?? []);
+
+        if (empty($faltanteIds)) {
+            return $this->error($res, 'Seleccione al menos un faltante para procesar');
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $resultados = [
+            'procesados'     => 0,
+            'sin_stock'      => 0,
+            'reservados'     => 0,
+            'eliminados'     => 0,
+            'errores'        => [],
+            'detalle'        => [],
+        ];
+
+        // Cargar faltantes con validación de empresa
+        $faltantes = Capsule::table('picking_faltantes')
+            ->where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereIn('id', $faltanteIds)
+            ->get();
+
+        if ($faltantes->isEmpty()) {
+            return $this->error($res, 'No se encontraron faltantes válidos');
+        }
+
+        foreach ($faltantes as $falt) {
+            try {
+                Capsule::transaction(function () use ($falt, $user, $now, &$resultados) {
+                    $cantidadNecesaria = (int)$falt->cantidad_faltante;
+
+                    // ── 1. Verificar stock actual disponible (con lock pesimista) ──
+                    $stockDisponible = Inventario::where('empresa_id', $user->empresa_id)
+                        ->where('sucursal_id', $user->sucursal_id)
+                        ->where('producto_id', $falt->producto_id)
+                        ->where('estado', 'Disponible')
+                        ->whereRaw('(cantidad - cantidad_reservada) > 0')
+                        ->lockForUpdate()
+                        ->orderByRaw('fecha_vencimiento IS NULL ASC')
+                        ->orderBy('fecha_vencimiento', 'ASC')
+                        ->get();
+
+                    $totalDisponible = $stockDisponible->sum(fn($inv) => max(0, $inv->cantidad - $inv->cantidad_reservada));
+
+                    // Obtener nombre del producto para el detalle
+                    $producto = \App\Models\Producto::find($falt->producto_id);
+                    $nombreProducto = $producto->nombre ?? $producto->descripcion ?? "ID:{$falt->producto_id}";
+
+                    if ($totalDisponible < $cantidadNecesaria) {
+                        // Sin stock suficiente todavía
+                        $resultados['sin_stock']++;
+                        $resultados['detalle'][] = [
+                            'faltante_id' => $falt->id,
+                            'producto'    => $nombreProducto,
+                            'necesario'   => $cantidadNecesaria,
+                            'disponible'  => (int)$totalDisponible,
+                            'estado'      => 'sin_stock',
+                        ];
+                        return;
+                    }
+
+                    // ── 2. Reservar inventario FEFO ──────────────────────────────
+                    $restante = $cantidadNecesaria;
+                    $ubicacionAsignada = null;
+                    $loteAsignado = null;
+                    $fechaVencAsignada = null;
+
+                    foreach ($stockDisponible as $inv) {
+                        if ($restante <= 0) break;
+                        $disp = max(0, $inv->cantidad - $inv->cantidad_reservada);
+                        if ($disp <= 0) continue;
+
+                        $aReservar = min($disp, $restante);
+                        $inv->cantidad_reservada += $aReservar;
+                        $inv->save();
+                        $restante -= $aReservar;
+
+                        // Tomar la primera ubicación FEFO
+                        if (!$ubicacionAsignada) {
+                            $ubicacionAsignada  = $inv->ubicacion_id;
+                            $loteAsignado       = $inv->lote;
+                            $fechaVencAsignada  = $inv->fecha_vencimiento;
+                        }
+                    }
+
+                    $resultados['reservados'] += $cantidadNecesaria;
+
+                    // ── 3. Reactivar la línea de picking ─────────────────────────
+                    // Buscar la línea de detalle marcada como Faltante para este producto/orden
+                    $lineaFaltante = PickingDetalle::where('orden_picking_id', $falt->orden_picking_id)
+                        ->where('producto_id', $falt->producto_id)
+                        ->where('estado', 'Faltante')
+                        ->first();
+
+                    if ($lineaFaltante) {
+                        $lineaFaltante->estado            = 'EnProceso';
+                        $lineaFaltante->ubicacion_id      = $ubicacionAsignada;
+                        $lineaFaltante->lote              = $loteAsignado;
+                        $lineaFaltante->fecha_vencimiento = $fechaVencAsignada;
+                        $lineaFaltante->save();
+
+                        // Actualizar la orden si estaba en Faltante
+                        $orden = OrdenPicking::find($falt->orden_picking_id);
+                        if ($orden && in_array($orden->estado, ['Faltante', 'Completada'])) {
+                            $orden->estado = 'EnProceso';
+                            $orden->save();
+                        }
+                    }
+
+                    // ── 4. Eliminar el registro de faltante ─────────────────────
+                    Capsule::table('picking_faltantes')->where('id', $falt->id)->delete();
+                    $resultados['eliminados']++;
+
+                    $resultados['procesados']++;
+                    $resultados['detalle'][] = [
+                        'faltante_id' => $falt->id,
+                        'producto'    => $nombreProducto,
+                        'necesario'   => $cantidadNecesaria,
+                        'disponible'  => (int)$totalDisponible,
+                        'estado'      => 'backorder_ok',
+                    ];
+                });
+            } catch (\Exception $e) {
+                $resultados['errores'][] = "Faltante #{$falt->id}: {$e->getMessage()}";
+            }
+        }
+
+        // @audit — Registro profesional del backorder
+        $this->audit($user, 'picking', 'backorder', 'picking_faltantes', null,
+            ['faltante_ids' => $faltanteIds],
+            $resultados,
+            "Backorder: {$resultados['procesados']} procesados, " .
+            "{$resultados['reservados']} unidades reservadas, " .
+            "{$resultados['sin_stock']} sin stock aún");
+
+        $msg = "{$resultados['procesados']} faltante(s) procesados";
+        if ($resultados['sin_stock'] > 0) $msg .= ", {$resultados['sin_stock']} sin stock";
+        if ($resultados['reservados'] > 0) $msg .= ", {$resultados['reservados']} unidades reservadas";
+
+        return $this->ok($res, $resultados, $msg);
     }
 
     // ── GET /api/picking/{id} ─────────────────────────────────────────────────
@@ -475,11 +853,53 @@ class PickingController extends BaseController
     {
         $user  = $r->getAttribute('user');
         $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
-            ->with(['detalles.producto', 'detalles.ubicacion'])
             ->find($a['id']);
 
         if (!$orden) return $this->notFound($res);
-        return $this->ok($res, $orden);
+
+        // ── CTE anti-N+1: carga detalles + stock disponible en una sola query ─
+        // Sustituye el with(['detalles.producto','detalles.ubicacion']) que
+        // generaba una query extra por cada línea para obtener el stock.
+        if ($this->isPg()) {
+            $detalles = Capsule::select("
+                WITH stock_agg AS (
+                    SELECT
+                        producto_id,
+                        SUM(cantidad) FILTER (WHERE estado = 'Disponible') AS stock_disponible,
+                        MIN(fecha_vencimiento) FILTER (WHERE estado = 'Disponible'
+                                                        AND fecha_vencimiento IS NOT NULL
+                                                        AND fecha_vencimiento >= CURRENT_DATE) AS proximo_vencer,
+                        SUM(cantidad) FILTER (WHERE estado = 'Disponible'
+                                              AND fecha_vencimiento IS NOT NULL
+                                              AND fecha_vencimiento < CURRENT_DATE) AS stock_vencido
+                    FROM inventarios
+                    WHERE empresa_id = ? AND sucursal_id = ? AND cantidad > 0
+                    GROUP BY producto_id
+                )
+                SELECT
+                    pd.*,
+                    p.nombre            AS producto_nombre,
+                    p.codigo_interno    AS producto_codigo,
+                    p.unidades_caja     AS producto_unidades_caja,
+                    ub.codigo           AS ubicacion_codigo,
+                    ub.pasillo          AS ubicacion_pasillo,
+                    ub.zona             AS ubicacion_zona,
+                    COALESCE(sa.stock_disponible, 0) AS stock_disponible,
+                    sa.proximo_vencer,
+                    COALESCE(sa.stock_vencido, 0) AS stock_vencido
+                FROM picking_detalles pd
+                JOIN productos p    ON pd.producto_id  = p.id
+                LEFT JOIN ubicaciones ub ON pd.ubicacion_id = ub.id
+                LEFT JOIN stock_agg sa   ON sa.producto_id  = pd.producto_id
+                WHERE pd.orden_picking_id = ?
+                ORDER BY pd.id ASC
+            ", [$user->empresa_id, $user->sucursal_id, $orden->id]);
+        } else {
+            // MySQL fallback: eager loading estándar
+            $detalles = $orden->load(['detalles.producto', 'detalles.ubicacion'])->detalles;
+        }
+
+        return $this->ok($res, array_merge($orden->toArray(), ['detalles' => $detalles]));
     }
 
     // ── POST /api/picking ─────────────────────────────────────────────────────
@@ -494,17 +914,24 @@ class PickingController extends BaseController
 
         try {
             $orden = Capsule::transaction(function () use ($data, $user) {
+                $numeroOrden = !empty($data['numero_pedido'])
+                    ? trim($data['numero_pedido'])
+                    : 'PK-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
+
                 $orden = OrdenPicking::create([
-                    'empresa_id'     => $user->empresa_id,
-                    'sucursal_id'    => $user->sucursal_id,
-                    'numero_orden'   => 'PK-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5)),
-                    'cliente'        => $data['cliente'] ?? null,
-                    'estado'         => 'Pendiente',
-                    'prioridad'      => $data['prioridad'] ?? 5,
-                    'auxiliar_id'    => $data['auxiliar_id'] ?? null,
+                    'empresa_id'      => $user->empresa_id,
+                    'sucursal_id'     => $user->sucursal_id,
+                    'numero_orden'    => $numeroOrden,
+                    'numero_pedido'   => $data['numero_pedido'] ?? null,
+                    'cliente'         => $data['cliente'] ?? null,
+                    'sucursal_entrega'=> $data['sucursal_entrega'] ?? $data['cliente'] ?? null,
+                    'ruta'            => $data['ruta'] ?? null,
+                    'estado'          => 'Pendiente',
+                    'prioridad'       => $data['prioridad'] ?? 5,
+                    'auxiliar_id'     => $data['auxiliar_id'] ?? null,
                     'fecha_movimiento'=> date('Y-m-d'),
-                    'hora_inicio'    => date('H:i:s'),
-                    'fecha_requerida'=> $data['fecha_requerida'] ?? null,
+                    'hora_inicio'     => date('H:i:s'),
+                    'fecha_requerida' => date('Y-m-d'),
                 ]);
 
                 foreach ($data['detalles'] as $det) {
@@ -631,7 +1058,29 @@ class PickingController extends BaseController
 
         try {
             Capsule::transaction(function () use ($linea, $orden, $user, $cantidadTomada) {
-                // Descontar inventario — re-verificamos con bloqueo pesimista
+                // ── Fase 1: Liberar reserva (cantidad_reservada) ─────────────
+                // La reserva se creó en asignarMultiple; ahora la liberamos
+                // porque vamos a descontar el stock real.
+                $invReservas = Inventario::where('empresa_id',  $user->empresa_id)
+                    ->where('sucursal_id',  $user->sucursal_id)
+                    ->where('producto_id',  $linea->producto_id)
+                    ->where('estado',       'Disponible')
+                    ->where('cantidad_reservada', '>', 0)
+                    ->when($linea->ubicacion_id, fn($q) => $q->where('ubicacion_id', $linea->ubicacion_id))
+                    ->when($linea->lote, fn($q) => $q->where('lote', $linea->lote))
+                    ->lockForUpdate()
+                    ->get();
+
+                $reservaPorLiberar = $cantidadTomada;
+                foreach ($invReservas as $invR) {
+                    if ($reservaPorLiberar <= 0) break;
+                    $aLiberar = min($invR->cantidad_reservada, $reservaPorLiberar);
+                    $invR->cantidad_reservada -= $aLiberar;
+                    $invR->save();
+                    $reservaPorLiberar -= $aLiberar;
+                }
+
+                // ── Fase 2: Descontar inventario real ────────────────────────
                 $inv = Inventario::where('empresa_id',  $user->empresa_id)
                     ->where('sucursal_id',  $user->sucursal_id)
                     ->where('producto_id',  $linea->producto_id)
@@ -649,7 +1098,7 @@ class PickingController extends BaseController
                 if ($inv->cantidad === 0) $inv->delete();
                 else $inv->save();
 
-                // Registrar movimiento
+                // Registrar movimiento con auditoría completa
                 MovimientoInventario::create([
                     'empresa_id'           => $user->empresa_id,
                     'sucursal_id'          => $user->sucursal_id,
@@ -663,7 +1112,7 @@ class PickingController extends BaseController
                     'auxiliar_id'          => $user->id,
                     'referencia_tipo'      => 'OrdenPicking',
                     'referencia_id'        => $orden->id,
-                    'observaciones'        => "Picking orden {$orden->numero_orden}",
+                    'observaciones'        => "Picking orden {$orden->numero_orden} — Confirmación auxiliar",
                     'fecha_movimiento'     => date('Y-m-d'),
                     'hora_inicio'          => date('H:i:s'),
                 ]);
@@ -702,9 +1151,35 @@ class PickingController extends BaseController
         $orden = OrdenPicking::where('empresa_id', $user->empresa_id)->find($a['id']);
         if (!$orden) return $this->notFound($res);
 
-        $orden->estado   = 'Completada';
-        $orden->hora_fin = date('H:i:s');
-        $orden->save();
+        try {
+            Capsule::transaction(function () use ($orden, $user) {
+                // Release reservations and close any lines still open
+                $lineasAbiertas = PickingDetalle::where('orden_picking_id', $orden->id)
+                    ->whereIn('estado', ['Pendiente', 'EnProceso'])
+                    ->lockForUpdate()
+                    ->get();
+
+                foreach ($lineasAbiertas as $linea) {
+                    if ($linea->producto_id && $linea->cantidad_solicitada > 0) {
+                        $this->_releaseReserva(
+                            $user->empresa_id, $user->sucursal_id,
+                            $linea->producto_id, $linea->ubicacion_id, $linea->lote,
+                            (int)$linea->cantidad_solicitada
+                        );
+                    }
+                    $linea->estado      = 'Faltante';
+                    $linea->observacion = 'Orden completada manualmente';
+                    $linea->save();
+                }
+
+                $orden->estado   = 'Completada';
+                $orden->hora_fin = date('H:i:s');
+                $orden->save();
+            });
+        } catch (\Exception $e) {
+            error_log('PickingController::completar error: ' . $e->getMessage());
+            return $this->error($res, 'Error al completar orden: ' . $e->getMessage(), 500);
+        }
 
         $this->audit($user, 'picking', 'completar', 'orden_pickings', $orden->id,
             null, ['estado' => 'Completada'], "Orden picking {$orden->numero_orden} completada");
@@ -898,18 +1373,197 @@ class PickingController extends BaseController
 
         $orden = OrdenPicking::where('empresa_id', $user->empresa_id)->find($a['id']);
         if (!$orden) return $this->notFound($res);
-        if ($orden->estado === 'Completada') {
-            return $this->error($res, 'No se puede eliminar una orden completada');
+        if (in_array($orden->estado, ['Completada', 'Completado'])) {
+            return $this->error($res, 'No se puede anular una orden ya completada');
         }
 
         $snapshot = $orden->toArray();
-        $orden->detalles()->delete();
-        $orden->delete();
 
-        $this->audit($user, 'picking', 'eliminar', 'orden_pickings', $a['id'],
-            $snapshot, null, "Orden {$snapshot['numero_orden']} eliminada por Admin");
+        try {
+            Capsule::transaction(function () use ($orden, $user) {
+                $detalles = PickingDetalle::where('orden_picking_id', $orden->id)->get();
+                
+                foreach ($detalles as $linea) {
+                    if ($linea->estado === 'Anulado') continue;
 
-        return $this->ok($res, null, 'Orden eliminada');
+                    // 1. Revertir inventario real pickeado
+                    if ($linea->cantidad_pickeada > 0) {
+                        $invReal = Inventario::where('empresa_id', $user->empresa_id)
+                            ->where('sucursal_id', $user->sucursal_id)
+                            ->where('producto_id', $linea->producto_id)
+                            ->where('ubicacion_id', $linea->ubicacion_id)
+                            ->where('estado', 'Disponible')
+                            ->when($linea->lote, fn($q) => $q->where('lote', $linea->lote))
+                            ->lockForUpdate()
+                            ->first();
+                            
+                        if ($invReal) {
+                            $invReal->cantidad += $linea->cantidad_pickeada;
+                            $invReal->save();
+                        } else {
+                            Inventario::create([
+                                'empresa_id' => $user->empresa_id,
+                                'sucursal_id' => $user->sucursal_id,
+                                'producto_id' => $linea->producto_id,
+                                'ubicacion_id' => $linea->ubicacion_id,
+                                'lote' => $linea->lote,
+                                'fecha_vencimiento' => $linea->fecha_vencimiento ?? null,
+                                'cantidad' => $linea->cantidad_pickeada,
+                                'cantidad_reservada' => 0,
+                                'estado' => 'Disponible',
+                                'numero_pallet' => null,
+                            ]);
+                        }
+                    }
+
+                    // 2. Revertir reserva pendiente
+                    $pendiente = $linea->cantidad_solicitada - $linea->cantidad_pickeada;
+                    if ($pendiente > 0 && in_array($orden->estado, ['Asignado', 'EnProceso'])) {
+                        $invs = Inventario::where('empresa_id', $user->empresa_id)
+                            ->where('sucursal_id', $user->sucursal_id)
+                            ->where('producto_id', $linea->producto_id)
+                            ->where('cantidad_reservada', '>', 0)
+                            ->when($linea->ubicacion_id, fn($q) => $q->where('ubicacion_id', $linea->ubicacion_id))
+                            ->when($linea->lote, fn($q) => $q->where('lote', $linea->lote))
+                            ->lockForUpdate()
+                            ->get();
+                        
+                        foreach ($invs as $inv) {
+                            if ($pendiente <= 0) break;
+                            $aRevertir = min($inv->cantidad_reservada, $pendiente);
+                            $inv->cantidad_reservada -= $aRevertir;
+                            $inv->save();
+                            $pendiente -= $aRevertir;
+                        }
+                    }
+                    
+                    $linea->estado = 'Anulado';
+                    $linea->save();
+                }
+
+                if (in_array($orden->estado, ['EnProceso'])) {
+                    $orden->estado = 'Anulado';
+                    $orden->save();
+                } else {
+                    $orden->detalles()->delete();
+                    $orden->delete();
+                }
+            });
+
+            $this->audit($user, 'picking', 'eliminar', 'orden_pickings', $a['id'],
+                $snapshot, null, "Orden {$snapshot['numero_orden']} " . (in_array($orden->estado, ['EnProceso']) ? "anulada" : "eliminada") . " por Admin");
+
+            return $this->ok($res, null, 'Orden procesada correctamente');
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error al anular orden: ' . $e->getMessage());
+        }
+    }
+
+    // ── PUT /api/picking/{id} ─────────────────────────────────────────────────
+    public function actualizar(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        $data = $r->getParsedBody() ?? [];
+        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)->find($a['id']);
+        if (!$orden) return $this->notFound($res);
+
+        $snapshot = $orden->toArray();
+
+        if (isset($data['cliente'])) $orden->cliente = trim($data['cliente']);
+        if (isset($data['prioridad'])) $orden->prioridad = (int)$data['prioridad'];
+        if (isset($data['fecha_requerida'])) $orden->fecha_requerida = $data['fecha_requerida'];
+        if (isset($data['area_comercial'])) $orden->area_comercial = trim($data['area_comercial']);
+        if (isset($data['observaciones'])) $orden->observaciones = trim($data['observaciones']);
+
+        $orden->save();
+        $this->audit($user, 'picking', 'editar', 'orden_pickings', $orden->id, $snapshot, $orden->toArray(), 'Orden editada');
+
+        return $this->ok($res, $orden, 'Orden actualizada');
+    }
+
+    // ── POST /api/picking/{id}/lineas ─────────────────────────────────────────
+    public function agregarLinea(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        $data = $r->getParsedBody() ?? [];
+        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)->find($a['id']);
+        if (!$orden) return $this->notFound($res);
+
+        if (in_array($orden->estado, ['Completada', 'Completado', 'Anulado'])) {
+            return $this->error($res, "No se pueden agregar líneas a una orden en estado {$orden->estado}");
+        }
+
+        $prodId = (int)($data['producto_id'] ?? 0);
+        $cantidad = (float)($data['cantidad'] ?? 0);
+        if (!$prodId || $cantidad <= 0) {
+            return $this->error($res, 'Producto o cantidad inválida');
+        }
+
+        $prod = Producto::where('empresa_id', $user->empresa_id)->find($prodId);
+        if (!$prod) return $this->error($res, 'Producto no encontrado');
+
+        try {
+            $linea = Capsule::transaction(function () use ($orden, $prod, $cantidad, $user) {
+                $nl = PickingDetalle::create([
+                    'orden_picking_id'   => $orden->id,
+                    'producto_id'        => $prod->id,
+                    'cantidad_solicitada'=> $cantidad,
+                    'cantidad_pickeada'  => 0,
+                    'estado'             => 'Pendiente',
+                    'costo_unitario'     => $prod->peso_unitario ?? 0,
+                ]);
+
+                if (in_array($orden->estado, ['Asignado', 'EnProceso'])) {
+                    $stockDisponible = Inventario::where('empresa_id', $user->empresa_id)
+                        ->where('sucursal_id', $user->sucursal_id)
+                        ->where('producto_id', $prod->id)
+                        ->where('estado', 'Disponible')
+                        ->whereRaw('(cantidad - cantidad_reservada) > 0')
+                        ->lockForUpdate()
+                        ->orderByRaw('fecha_vencimiento IS NULL ASC')
+                        ->orderBy('fecha_vencimiento', 'ASC')
+                        ->get();
+
+                    $restante = $cantidad;
+                    foreach ($stockDisponible as $inv) {
+                        if ($restante <= 0) break;
+                        $disp = max(0, $inv->cantidad - $inv->cantidad_reservada);
+                        if ($disp <= 0) continue;
+
+                        $aReservar = min($disp, $restante);
+                        $inv->cantidad_reservada += $aReservar;
+                        $inv->save();
+                        $restante -= $aReservar;
+
+                        if (!$nl->ubicacion_id) {
+                            $nl->ubicacion_id = $inv->ubicacion_id;
+                            $nl->lote = $inv->lote;
+                            $nl->fecha_vencimiento = $inv->fecha_vencimiento;
+                        }
+                    }
+
+                    if ($restante > 0) {
+                        $nl->estado = 'Pendiente';
+                    } else {
+                        $nl->estado = 'EnProceso';
+                    }
+                    $nl->save();
+                }
+
+                if (!in_array($orden->estado, ['EnProceso', 'Asignado'])) {
+                    $orden->estado = 'Pendiente';
+                    $orden->save();
+                }
+
+                return $nl;
+            });
+
+            $this->audit($user, 'picking', 'agregar_linea', 'picking_detalles', $linea->id, null, $linea->toArray(), 'Línea agregada a orden ' . $orden->numero_orden);
+
+            return $this->created($res, $linea, 'Línea agregada correctamente');
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error al agregar línea: ' . $e->getMessage());
+        }
     }
 
     // ── GET /api/picking/dashboard ────────────────────────────────────────────
@@ -931,15 +1585,72 @@ class PickingController extends BaseController
                     ->where('planilla_numero', $p)
                     ->orWhere('area_comercial', 'like', "%$p%")
                 );
-            });
+            })
+            ->when($params['ruta'] ?? null, fn($q, $ruta) => $q->where('area_comercial', $ruta));
 
-        // KPIs Básicos
+        // KPIs Básicos — single query instead of 4
+        $counts = (clone $baseQ)->selectRaw(
+            'COUNT(*) as total_ordenes,
+             SUM(estado = "Pendiente") as pendientes,
+             SUM(estado = "EnProceso") as en_proceso,
+             SUM(estado = "Completada") as completadas'
+        )->first();
         $stats = [
-            'total_ordenes'   => (clone $baseQ)->count(),
-            'pendientes'      => (clone $baseQ)->where('estado', 'Pendiente')->count(),
-            'en_proceso'      => (clone $baseQ)->where('estado', 'EnProceso')->count(),
-            'completadas'     => (clone $baseQ)->where('estado', 'Completada')->count(),
+            'total_ordenes' => (int)($counts->total_ordenes ?? 0),
+            'pendientes'    => (int)($counts->pendientes    ?? 0),
+            'en_proceso'    => (int)($counts->en_proceso    ?? 0),
+            'completadas'   => (int)($counts->completadas   ?? 0),
         ];
+
+        // Líneas activas (pendientes + en proceso)
+        $ordenesActivasIds = (clone $baseQ)->whereIn('estado', ['Pendiente', 'EnProceso'])->pluck('id');
+        $stats['total_lineas_activas']    = PickingDetalle::whereIn('orden_picking_id', $ordenesActivasIds)->count();
+        $stats['lineas_pendientes']       = PickingDetalle::whereIn('orden_picking_id', $ordenesActivasIds)
+                                                ->whereIn('estado', ['Pendiente', 'Creado'])->count();
+        $stats['unidades_pendientes']     = (int) PickingDetalle::whereIn('orden_picking_id', $ordenesActivasIds)
+                                                ->whereIn('estado', ['Pendiente', 'Creado'])
+                                                ->sum('cantidad_solicitada');
+
+        // Planillas activas en vivo (agrupadas por planilla_numero)
+        $ordenesActivas = (clone $baseQ)
+            ->whereIn('estado', ['Pendiente', 'EnProceso'])
+            ->withCount([
+                'detalles as total_lineas',
+                'detalles as lineas_completadas' => fn($q) => $q->whereIn('estado', ['Completado', 'Faltante']),
+                'detalles as tiene_faltante_count' => fn($q) => $q->where('estado', 'Faltante'),
+            ])
+            ->with([
+                'detalles' => fn($q) => $q->select('id', 'orden_picking_id', 'auxiliar_id')
+                                           ->with('auxiliar:id,nombre'),
+            ])
+            ->get();
+
+        $stats['planillas_activas'] = $ordenesActivas
+            ->groupBy(fn($o) => $o->planilla_numero ?? $o->numero_orden)
+            ->map(function ($orders, $planillaKey) {
+                $first       = $orders->first();
+                $totalLineas = $orders->sum('total_lineas');
+                $lineasComp  = $orders->sum('lineas_completadas');
+                $estado      = $orders->contains(fn($o) => $o->estado === 'EnProceso') ? 'EnProceso' : 'Pendiente';
+                $horaInicio  = $orders->where('hora_inicio', '!=', '00:00:00')
+                                      ->min('hora_inicio');
+                $auxiliares  = $orders->flatMap(fn($o) => $o->detalles->pluck('auxiliar.nombre'))
+                                      ->filter()->unique()->values();
+                $tieneFalt   = $orders->sum('tiene_faltante_count') > 0;
+
+                return [
+                    'planilla_numero'    => $planillaKey,
+                    'estado'             => $estado,
+                    'ruta'               => $first->area_comercial,
+                    'hora_inicio'        => $horaInicio,
+                    'total_lineas'       => $totalLineas,
+                    'lineas_completadas' => $lineasComp,
+                    'auxiliares'         => $auxiliares,
+                    'tiene_faltante'     => $tieneFalt,
+                ];
+            })
+            ->sortBy(fn($p) => $p['estado'] === 'EnProceso' ? 0 : 1)
+            ->values();
 
         // Faltantes Críticos (Alertas)
         $stats['alertas_faltantes'] = PickingDetalle::whereHas('ordenPicking', function($q) use ($ini, $fin, $empresaId, $params, $user) {
@@ -952,6 +1663,7 @@ class PickingController extends BaseController
         })
         ->where('estado', 'Faltante')
         ->with(['producto:id,nombre,codigo_interno', 'ordenPicking:id,planilla_numero'])
+        ->limit(30)
         ->get()
         ->map(fn($f) => [
             'id'       => $f->id,
@@ -963,17 +1675,28 @@ class PickingController extends BaseController
             'planilla' => $f->ordenPicking->planilla_numero ?? '–'
         ]);
 
-        // Ranking de Auxiliares (Pedidos, Líneas, Unidades)
+        // Ranking de Auxiliares (Pedidos, Líneas, Unidades, Tiempo Promedio)
         $stats['ranking_auxiliares'] = Capsule::table('personal as aux')
             ->join('picking_detalles as d', 'aux.id', '=', 'd.auxiliar_id')
             ->join('orden_pickings as o', 'd.orden_picking_id', '=', 'o.id')
             ->where('o.empresa_id', $empresaId)
+            ->where('o.sucursal_id', $user->sucursal_id)
             ->whereBetween('o.created_at', [$ini, $fin])
+            ->when($params['auxiliar_id'] ?? null, fn($q, $a) => $q->where('aux.id', $a))
             ->select(
+                'aux.id',
                 'aux.nombre',
                 Capsule::raw('COUNT(DISTINCT o.id) as pedidos'),
                 Capsule::raw('COUNT(d.id) as lineas'),
-                Capsule::raw('SUM(d.cantidad_pickeada) as unidades')
+                Capsule::raw('SUM(d.cantidad_pickeada) as unidades'),
+                Capsule::raw(
+                    'ROUND(AVG(CASE WHEN o.hora_fin IS NOT NULL AND o.hora_inicio IS NOT NULL
+                        AND o.hora_inicio != \'00:00:00\'
+                        AND o.hora_fin    != \'00:00:00\'
+                        AND o.hora_fin     > o.hora_inicio
+                        THEN TIME_TO_SEC(TIMEDIFF(o.hora_fin, o.hora_inicio)) / 60
+                        ELSE NULL END), 1) as avg_minutos'
+                )
             )
             ->groupBy('aux.id', 'aux.nombre')
             ->orderByDesc('lineas')
@@ -1068,22 +1791,44 @@ class PickingController extends BaseController
         return $this->ok($res, $tareas);
     }
 
+    public function reabastecimientos(Request $r, Response $res): Response
+    {
+        return $this->reabastecimientosLegacy($r, $res);
+    }
+
     // ── GET /api/picking/template ─────────────────────────────────────────────
     // Plantilla con los campos requeridos para importación masiva
     public function getTemplate(Request $r, Response $res): Response
     {
         $headers = [
-            'Numero factura', 'Cliente', 'Documento', 'Direccion',
-            'Planilla', 'Asesor', 'Producto', 'Cantidad', 'Costo', 'Descuento'
+            'Num Pedido', 'Sucursal Entrega', 'Documento', 'Direccion',
+            'Planilla', 'Asesor', 'Referencia', 'Cantidad', 'Costo', 'Descuento'
         ];
-        $sample = [
-            'FACO259312', 'NESTOR HERNANDEZ', '70133976', 'CL 21 40 19',
-            '22275', 'TMD703 - CCO-YASMIN ALEXANDRA SOTO', '7702006207881', '1', '18117', '30'
+        $sample1 = [
+            'PED-00123', 'BODEGA NORTE', '70133976', 'CL 21 40 19',
+            '22275', 'TMD703 - SOTO', '7702006207881', '12', '18117', '30'
+        ];
+        $sample2 = [
+            'PED-00124', 'BODEGA SUR', '80045231', 'CR 5 12 34',
+            '22276', 'TMD405 - LOPEZ', '7703001140022', '6', '23500', '15'
         ];
 
         $content = "\xEF\xBB\xBF"; // UTF-8 BOM
+        $content .= "# Campos del sistema ─ Campos del archivo\r\n";
+        $content .= "# Numero Factura ─ Num Pedido\r\n";
+        $content .= "# Cliente ─ SUCURSAL ENTREGA\r\n";
+        $content .= "# Documento ─ (null / opcional)\r\n";
+        $content .= "# Direccion ─ (null / opcional)\r\n";
+        $content .= "# Planilla ─ Num Pedido (auto)\r\n";
+        $content .= "# Asesor ─ (null / opcional)\r\n";
+        $content .= "# Producto ─ Referencia\r\n";
+        $content .= "# Cantidad ─ UNID PEDIDO\r\n";
+        $content .= "# Costo ─ (null / opcional)\r\n";
+        $content .= "# Descuento ─ (null / opcional)\r\n";
+        $content .= "#\r\n";
         $content .= implode(';', $headers) . "\r\n";
-        $content .= implode(';', $sample) . "\r\n";
+        $content .= implode(';', $sample1) . "\r\n";
+        $content .= implode(';', $sample2) . "\r\n";
 
         if (ob_get_length()) ob_clean();
         $res->getBody()->write($content);
@@ -1093,9 +1838,10 @@ class PickingController extends BaseController
     }
 
     // ── POST /api/picking/importar ────────────────────────────────────────────
-    // Importación masiva desde archivo plano con mapeo inteligente de columnas:
-    // Num Factura, Cliente, Documento, Dirección, Planilla, Asesor,
-    // Producto (EAN/BARRAS), Cantidad, Costo, Descuento
+    // Importación masiva desde archivo plano con mapeo inteligente de columnas.
+    // Agrupa por sucursal_entrega → una Planilla por sucursal.
+    // Si la planilla ya existe en estado Pendiente: ACTUALIZA cantidades y agrega líneas nuevas.
+    // Productos no encontrados en catálogo → tabla picking_productos_pendientes.
     public function importarPedidos(Request $r, Response $res): Response
     {
         $user  = $r->getAttribute('user');
@@ -1106,34 +1852,32 @@ class PickingController extends BaseController
         }
 
         $contents = $file->getStream()->getContents();
-        // Detect and convert encoding
         if (!mb_detect_encoding($contents, 'UTF-8', true)) {
             $contents = mb_convert_encoding($contents, 'UTF-8', 'ISO-8859-1');
         }
 
-        // Split lines + strip BOM
         $allLines = explode("\n", str_replace(["\r\n", "\r"], "\n", $contents));
         $allLines = array_values(array_filter($allLines, fn($l) => trim($l) !== ''));
         if (count($allLines) < 2) return $this->error($res, 'El archivo no contiene datos');
 
-        // Detect delimiter from header line
-        $sep     = str_contains($allLines[0], ';') ? ';' : ',';
-        $rawHdr  = str_getcsv($allLines[0], $sep);
-        $headers = array_map(fn($h) => strtolower(trim($h, " \t\r\n\xEF\xBB\xBF")), $rawHdr);
+        $sep       = str_contains($allLines[0], ';') ? ';' : ',';
+        $rawHdr    = str_getcsv($allLines[0], $sep);
+        $headers   = array_map(fn($h) => strtolower(trim($h, " \t\r\n\xEF\xBB\xBF")), $rawHdr);
         $dataLines = array_slice($allLines, 1);
 
-        // ── Auto-detect column indices using aliases ────────────────────────
         $ALIASES = [
-            'numero_factura' => ['numero factura', 'num factura', 'factura', 'nro factura'],
-            'cliente'        => ['cliente', 'nombre cliente', 'razon social'],
-            'documento'      => ['documento', 'nit', 'cedula', 'cc'],
-            'direccion'      => ['direccion', 'dirección', 'dir'],
-            'planilla'       => ['planilla', 'planilla numero', 'num planilla'],
-            'asesor'         => ['asesor', 'comercial', 'vendedor'],
-            'producto'       => ['barras', 'ean', 'codigo barras', 'producto', 'codigo producto'],
-            'cantidad'       => ['cantidad', 'cant', 'qty', 'unidades'],
-            'costo'          => ['costo', 'precio', 'valor', 'cost'],
-            'descuento'      => ['descuento', 'desc', 'descto', 'dcto'],
+            'numero_factura'   => ['numero factura', 'num factura', 'factura', 'nro factura', 'num pedido', 'numero pedido', 'nro pedido', 'pedido'],
+            'cliente'          => ['cliente', 'nombre cliente', 'razon social'],
+            'sucursal_entrega' => ['sucursal entrega', 'sucursal_entrega', 'sucursal', 'punto entrega', 'destino', 'cliente entrega'],
+            'documento'        => ['documento', 'nit', 'cedula', 'cc'],
+            'direccion'        => ['direccion', 'dirección', 'dir'],
+            'planilla'         => ['planilla', 'planilla numero', 'num planilla', 'num pedido', 'numero pedido', 'nro planilla'],
+            'asesor'           => ['asesor', 'comercial', 'vendedor'],
+            'producto'         => ['referencia', 'ref', 'barras', 'ean', 'codigo barras', 'producto', 'codigo producto', 'codigo'],
+            'descripcion'      => ['descripcion', 'descripcion producto', 'nombre producto', 'nombre', 'detalle', 'articulo'],
+            'cantidad'         => ['cantidad', 'cant', 'qty', 'unidades', 'unid pedido', 'unid_pedido', 'unidades pedido'],
+            'costo'            => ['costo', 'precio', 'valor', 'cost'],
+            'descuento'        => ['descuento', 'desc', 'descto', 'dcto'],
         ];
 
         $colMap = [];
@@ -1149,19 +1893,20 @@ class PickingController extends BaseController
             }
         }
 
-        // Validate minimum required fields
         if (!isset($colMap['producto']) || !isset($colMap['cantidad'])) {
             return $this->error($res, 'No se pudieron detectar las columnas de Producto y Cantidad en el archivo. Verifique los encabezados.');
         }
 
-        // ── Pre-compute file-level audit totals ──────────────────────────
+        // ── Pre-audit totals + collect facturas ──────────────────────────────
         $auditArchivo = [
-            'lineas_archivo'    => count($dataLines),
-            'clientes_archivo'  => 0,
-            'cantidad_archivo'  => 0,
-            'valor_archivo'     => 0,
+            'lineas_archivo'   => count($dataLines),
+            'clientes_archivo' => 0,
+            'cantidad_archivo' => 0,
+            'valor_archivo'    => 0,
         ];
-        $clientesSet = [];
+        $clientesSet     = [];
+        $porSucursalArch = [];
+        $facturasSet     = [];
         foreach ($dataLines as $line) {
             $cols = str_getcsv($line, $sep);
             $row  = [];
@@ -1170,37 +1915,66 @@ class PickingController extends BaseController
             }
             if (empty(array_filter($row))) continue;
             if (!empty($row['cliente'])) $clientesSet[$row['cliente']] = true;
-            $cant = max(1, (int)($row['cantidad'] ?? 1));
+            $cant  = max(1, (int)($row['cantidad'] ?? 1));
             $costo = (float) str_replace(',', '.', str_replace('.', '', $row['costo'] ?? '0'));
             $auditArchivo['cantidad_archivo'] += $cant;
             $auditArchivo['valor_archivo']    += $cant * $costo;
+            $suc = trim($row['sucursal_entrega'] ?? $row['cliente'] ?? '') ?: '(Sin sucursal)';
+            $porSucursalArch[$suc] = ($porSucursalArch[$suc] ?? 0) + 1;
+            $nf = trim($row['numero_factura'] ?? $row['planilla'] ?? '');
+            if ($nf) $facturasSet[$nf] = true;
         }
         $auditArchivo['clientes_archivo'] = count($clientesSet);
 
+        // ── Build map: numero_pedido_ref → orden_picking_id (sólo Pendiente) ─
+        // Usamos esto para decidir si CREAR o ACTUALIZAR una planilla.
+        $facturasOrdenMap = [];   // nf => orden_picking_id
+        $facturasEnArchivo = array_keys($facturasSet);
+        if (!empty($facturasEnArchivo)) {
+            try {
+                $rows = Capsule::table('picking_detalles as pd')
+                    ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
+                    ->where('op.empresa_id', $user->empresa_id)
+                    ->where('op.sucursal_id', $user->sucursal_id)
+                    ->whereIn('pd.numero_pedido_ref', $facturasEnArchivo)
+                    ->whereIn('op.estado', ['Pendiente'])
+                    ->select('pd.numero_pedido_ref', 'pd.orden_picking_id')
+                    ->distinct()
+                    ->get();
+                foreach ($rows as $row) {
+                    $facturasOrdenMap[$row->numero_pedido_ref] = (int) $row->orden_picking_id;
+                }
+            } catch (\Throwable $ignored) {}
+        }
+
         $summary = [
-            'total'           => 0,
-            'total_lineas'    => 0,
-            'importadas'      => 0,
-            'errores'         => [],
+            'total'                    => 0,
+            'total_lineas'             => 0,
+            'importadas'               => 0,   // planillas nuevas creadas
+            'actualizadas'             => 0,   // planillas existentes actualizadas
+            'lineas_nuevas'            => 0,   // líneas añadidas a planillas existentes
+            'lineas_actualizadas'      => 0,   // líneas actualizadas (cantidad cambió)
+            'lineas_sin_cambio'        => 0,   // líneas ya existentes sin diferencia
+            'errores'                  => [],
+            'productos_pendientes'     => [],  // EANs no encontrados → staging
             'productos_no_encontrados' => 0,
-            'campos_detectados' => array_keys($colMap),
-            'cantidad_sistema'  => 0,
-            'valor_sistema'     => 0,
-            'clientes_sistema'  => [],
+            'campos_detectados'        => array_keys($colMap),
+            'cantidad_sistema'         => 0,
+            'valor_sistema'            => 0,
+            'clientes_sistema'         => [],
+            'por_sucursal_sistema'     => [],
         ];
 
-        // ── Group lines by Numero Factura → one OrdenPicking per factura ────
+        // ── Group lines by sucursal_entrega ───────────────────────────────────
         $grupos = [];
-        foreach ($dataLines as $lineNum => $line) {
+        foreach ($dataLines as $line) {
             $cols = str_getcsv($line, $sep);
             $row  = [];
             foreach ($colMap as $field => $idx) {
                 $row[$field] = isset($cols[$idx]) ? trim($cols[$idx]) : '';
             }
             if (empty(array_filter($row))) continue;
-
-            // Group key: Numero factura, fallback to planilla, fallback to auto-generated
-            $groupKey = $row['numero_factura'] ?? $row['planilla'] ?? ('IMP-' . date('Ymd') . '-' . ($lineNum + 1));
+            $groupKey = trim($row['sucursal_entrega'] ?? '') ?: trim($row['cliente'] ?? '') ?: '(Sin identificar)';
             $grupos[$groupKey][] = $row;
             $summary['total']++;
         }
@@ -1209,118 +1983,256 @@ class PickingController extends BaseController
             return $this->error($res, 'No se encontraron filas de datos en el archivo');
         }
 
-        // ── Process each group (factura) → create one OrdenPicking ──────────
-        foreach ($grupos as $factura => $filas) {
+        // ── Sequential planilla number (sólo para planillas NUEVAS) ──────────
+        $maxSeq = (int) OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->where('numero_orden', 'like', 'Planilla %')
+            ->selectRaw("COALESCE(MAX(CAST(SUBSTRING(numero_orden, 10) AS UNSIGNED)), 0) as max_seq")
+            ->value('max_seq');
+        $nextSeq = $maxSeq + 1;
+
+        $cleanNumber = function($val) {
+            if (empty($val)) return 0.0;
+            $val = str_replace('.', '', $val);
+            $val = str_replace(',', '.', $val);
+            return (float) $val;
+        };
+
+        // Helper: buscar producto por EAN/código interno
+        $buscarProducto = function(string $ean) use ($user): ?\App\Models\Producto {
+            if ($ean === '') return null;
+            $eanRec = \App\Models\ProductoEan::where('codigo_ean', $ean)->first();
+            if ($eanRec) {
+                $p = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($eanRec->producto_id);
+                if ($p) return $p;
+            }
+            $p = \App\Models\Producto::where('empresa_id', $user->empresa_id)
+                ->where('codigo_interno', $ean)->first();
+            if ($p) return $p;
+            if (strlen($ean) > 6) {
+                $eanRec = \App\Models\ProductoEan::where('codigo_ean', 'like', '%' . substr($ean, -10))->first();
+                if ($eanRec) {
+                    return \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($eanRec->producto_id);
+                }
+            }
+            return null;
+        };
+
+        // Helper: guardar en staging los productos no encontrados
+        $staging = function(string $ean, string $nfRef, string $sucursal, int $cantidad, string $descripcion = '') use ($user) {
+            if ($ean === '') return;
             try {
-                Capsule::transaction(function () use ($factura, $filas, $user, &$summary) {
-                    $fila0 = $filas[0];
+                $values = [
+                    'cantidad'          => $cantidad,
+                    'numero_factura'    => $nfRef ?: null,
+                    'sucursal_entrega'  => $sucursal,
+                    'importado_por'     => $user->id,
+                    'fecha_importacion' => date('Y-m-d'),
+                    'updated_at'        => date('Y-m-d H:i:s'),
+                    'created_at'        => date('Y-m-d H:i:s'),
+                ];
+                if ($descripcion !== '') $values['descripcion'] = $descripcion;
+                Capsule::table('picking_productos_pendientes')->updateOrInsert(
+                    ['empresa_id' => $user->empresa_id, 'sucursal_id' => $user->sucursal_id, 'ean_codigo' => $ean],
+                    $values
+                );
+            } catch (\Throwable $ignored) {}
+        };
 
-                    // Clean up cost values ("18,117.00" → 18117.00)
-                    $cleanNumber = function($val) {
-                        if (empty($val)) return 0;
-                        // Remove thousands separator dots, convert comma decimal to dot
-                        $val = str_replace('.', '', $val);  // Remove dots (thousands)
-                        $val = str_replace(',', '.', $val);  // Convert comma to dot (decimal)
-                        return (float) $val;
-                    };
+        // ── Process each sucursal group ───────────────────────────────────────
+        foreach ($grupos as $sucursal => $filas) {
 
-                    $orden = OrdenPicking::create([
-                        'empresa_id'       => $user->empresa_id,
-                        'sucursal_id'      => $user->sucursal_id,
-                        'numero_orden'     => 'PICK-' . date('Ymd') . '-' . strtoupper(substr(md5($factura . microtime()), 0, 5)),
-                        'numero_factura'   => $factura ?: null,
-                        'planilla_numero'  => $fila0['planilla'] ?? null,
-                        'planilla_lote'    => $fila0['planilla'] ?? null,
-                        'cliente'          => trim($fila0['cliente'] ?? ''),
-                        'direccion_cliente'=> trim($fila0['direccion'] ?? ''),
-                        'asesor_comercial' => trim($fila0['asesor'] ?? ''),
-                        'estado'           => 'Pendiente',
-                        'fecha_movimiento' => date('Y-m-d'),
-                        'hora_inicio'      => date('H:i:s'),
-                        'prioridad'        => 5,
-                        'auxiliar_id'      => null,
-                    ]);
+            // ¿Tiene esta sucursal una planilla existente (Pendiente)?
+            $ordenExistenteId = null;
+            foreach ($filas as $fila) {
+                $nf = trim($fila['numero_factura'] ?? $fila['planilla'] ?? '');
+                if ($nf && isset($facturasOrdenMap[$nf])) {
+                    $ordenExistenteId = $facturasOrdenMap[$nf];
+                    break;
+                }
+            }
 
-                    $lineasCreadas = 0;
-                    foreach ($filas as $fila) {
-                        // Resolver producto por código de barras (EAN)
-                        $prod = null;
-                        $ean  = trim($fila['producto'] ?? '');
+            if ($ordenExistenteId) {
+                // ════════════════════════════════════════════════════════
+                // MODO ACTUALIZACIÓN: planilla existente en Pendiente
+                // ════════════════════════════════════════════════════════
+                try {
+                    Capsule::transaction(function () use (
+                        $ordenExistenteId, $filas, $user, $sucursal,
+                        &$summary, $cleanNumber, $buscarProducto, $staging
+                    ) {
+                        // Cargar líneas existentes en mapa: "prod_id:nf" → detalle
+                        $lineasExistentes = PickingDetalle::where('orden_picking_id', $ordenExistenteId)->get();
+                        $lineasMap = [];
+                        foreach ($lineasExistentes as $l) {
+                            $k = $l->producto_id . ':' . ($l->numero_pedido_ref ?? '');
+                            $lineasMap[$k] = $l;
+                        }
 
-                        if ($ean) {
-                            // 1. Search by exact EAN in ProductoEan table
-                            $eanRec = \App\Models\ProductoEan::where('codigo_ean', $ean)->first();
-                            if ($eanRec) {
-                                $prod = \App\Models\Producto::where('empresa_id', $user->empresa_id)
-                                    ->find($eanRec->producto_id);
-                            }
+                        foreach ($filas as $fila) {
+                            $ean        = trim($fila['producto'] ?? '');
+                            $nfRef      = trim($fila['numero_factura'] ?? $fila['planilla'] ?? '');
+                            $cantidad   = max(1, (int)($fila['cantidad'] ?? 1));
+                            $costo      = $cleanNumber($fila['costo'] ?? '0');
+                            $descuento  = (float)($fila['descuento'] ?? 0);
+                            $descripcion= trim($fila['descripcion'] ?? '');
 
-                            // 2. Fallback: search by codigo_interno
+                            $prod = $buscarProducto($ean);
                             if (!$prod) {
-                                $prod = \App\Models\Producto::where('empresa_id', $user->empresa_id)
-                                    ->where('codigo_interno', $ean)->first();
+                                $summary['productos_no_encontrados']++;
+                                $summary['productos_pendientes'][] = [
+                                    'ean' => $ean, 'numero_factura' => $nfRef, 'sucursal' => $sucursal, 'cantidad' => $cantidad,
+                                ];
+                                $staging($ean, $nfRef, $sucursal, $cantidad, $descripcion);
+                                continue;
                             }
 
-                            // 3. Fallback: partial EAN match (trimming leading zeros/characters)
-                            if (!$prod && strlen($ean) > 6) {
-                                $eanRec = \App\Models\ProductoEan::where('codigo_ean', 'like', "%" . substr($ean, -10))->first();
-                                if ($eanRec) {
-                                    $prod = \App\Models\Producto::where('empresa_id', $user->empresa_id)
-                                        ->find($eanRec->producto_id);
+                            $key = $prod->id . ':' . $nfRef;
+                            if (isset($lineasMap[$key])) {
+                                // Línea ya existe — actualizar cantidad si cambió
+                                $linea = $lineasMap[$key];
+                                if ($linea->cantidad_solicitada != $cantidad && $linea->estado === 'Pendiente') {
+                                    $linea->cantidad_solicitada = $cantidad;
+                                    $linea->costo_unitario      = $costo ?: $linea->costo_unitario;
+                                    $linea->descuento_porc      = $descuento ?: $linea->descuento_porc;
+                                    $linea->save();
+                                    $summary['lineas_actualizadas']++;
+                                } else {
+                                    $summary['lineas_sin_cambio']++;
                                 }
+                            } else {
+                                // Línea nueva para este producto/factura en planilla existente
+                                PickingDetalle::create([
+                                    'orden_picking_id'    => $ordenExistenteId,
+                                    'producto_id'         => $prod->id,
+                                    'cantidad_solicitada' => $cantidad,
+                                    'cantidad_pickeada'   => 0,
+                                    'costo_unitario'      => $costo,
+                                    'descuento_porc'      => $descuento,
+                                    'estado'              => 'Pendiente',
+                                    'ambiente'            => $this->_clasificarAmbiente('', $prod->categoria ?? ''),
+                                    'numero_pedido_ref'   => $nfRef ?: null,
+                                ]);
+                                $summary['lineas_nuevas']++;
+                                $summary['total_lineas']++;
+                            }
+
+                            $summary['cantidad_sistema'] += $cantidad;
+                            $summary['valor_sistema']    += $cantidad * $costo;
+                            if (!empty(trim($fila['cliente'] ?? ''))) {
+                                $summary['clientes_sistema'][trim($fila['cliente'])] = true;
                             }
                         }
 
-                        if (!$prod) {
-                            $summary['productos_no_encontrados']++;
-                            continue; // Skip unresolvable products
-                        }
+                        $summary['por_sucursal_sistema'][$sucursal] =
+                            ($summary['por_sucursal_sistema'][$sucursal] ?? 0) + $summary['lineas_nuevas'];
+                    });
+                    $summary['actualizadas']++;
+                } catch (\Exception $e) {
+                    $summary['errores'][] = "Actualizar '{$sucursal}': " . $e->getMessage();
+                }
 
-                        $cantidad  = max(1, (int)($fila['cantidad'] ?? 1));
-                        $costo     = $cleanNumber($fila['costo'] ?? '0');
-                        $descuento = (float)($fila['descuento'] ?? 0);
+            } else {
+                // ════════════════════════════════════════════════════════
+                // MODO CREACIÓN: planilla nueva
+                // ════════════════════════════════════════════════════════
+                try {
+                    Capsule::transaction(function () use (
+                        $sucursal, $filas, $user, &$summary, &$nextSeq,
+                        $cleanNumber, $buscarProducto, $staging
+                    ) {
+                        $fila0 = $filas[0];
 
-                        PickingDetalle::create([
-                            'orden_picking_id'   => $orden->id,
-                            'producto_id'        => $prod->id,
-                            'cantidad_solicitada'=> $cantidad,
-                            'cantidad_pickeada'  => 0,
-                            'costo_unitario'     => $costo,
-                            'descuento_porc'     => $descuento,
-                            'estado'             => 'Pendiente',
+                        $orden = OrdenPicking::create([
+                            'empresa_id'        => $user->empresa_id,
+                            'sucursal_id'       => $user->sucursal_id,
+                            'numero_orden'      => 'Planilla ' . $nextSeq,
+                            'numero_factura'    => null,
+                            'planilla_numero'   => $fila0['planilla'] ?? null,
+                            'planilla_lote'     => null,
+                            'cliente'           => trim($fila0['cliente'] ?? ''),
+                            'sucursal_entrega'  => trim($fila0['sucursal_entrega'] ?? '') ?: $sucursal,
+                            'direccion_cliente' => trim($fila0['direccion'] ?? ''),
+                            'asesor_comercial'  => trim($fila0['asesor'] ?? ''),
+                            'estado'            => 'Pendiente',
+                            'fecha_movimiento'  => date('Y-m-d'),
+                            'hora_inicio'       => date('H:i:s'),
+                            'prioridad'         => 5,
+                            'auxiliar_id'       => null,
                         ]);
+                        $nextSeq++;
 
-                        $lineasCreadas++;
-                        $summary['cantidad_sistema'] += $cantidad;
-                        $summary['valor_sistema']    += $cantidad * $costo;
-                        if (!empty(trim($fila0['cliente'] ?? ''))) {
-                            $summary['clientes_sistema'][trim($fila0['cliente'])] = true;
+                        $lineasCreadas = 0;
+                        foreach ($filas as $fila) {
+                            $ean        = trim($fila['producto'] ?? '');
+                            $nfRef      = trim($fila['numero_factura'] ?? $fila['planilla'] ?? '');
+                            $cantidad   = max(1, (int)($fila['cantidad'] ?? 1));
+                            $costo      = $cleanNumber($fila['costo'] ?? '0');
+                            $descuento  = (float)($fila['descuento'] ?? 0);
+                            $descripcion= trim($fila['descripcion'] ?? '');
+
+                            $prod = $buscarProducto($ean);
+                            if (!$prod) {
+                                $summary['productos_no_encontrados']++;
+                                $summary['productos_pendientes'][] = [
+                                    'ean' => $ean, 'numero_factura' => $nfRef, 'sucursal' => $sucursal, 'cantidad' => $cantidad,
+                                ];
+                                $staging($ean, $nfRef, $sucursal, $cantidad, $descripcion);
+                                continue;
+                            }
+
+                            PickingDetalle::create([
+                                'orden_picking_id'    => $orden->id,
+                                'producto_id'         => $prod->id,
+                                'cantidad_solicitada' => $cantidad,
+                                'cantidad_pickeada'   => 0,
+                                'costo_unitario'      => $costo,
+                                'descuento_porc'      => $descuento,
+                                'estado'              => 'Pendiente',
+                                'ambiente'            => $this->_clasificarAmbiente('', $prod->categoria ?? ''),
+                                'numero_pedido_ref'   => $nfRef ?: null,
+                            ]);
+                            $lineasCreadas++;
+                            $summary['total_lineas']++;
+                            $summary['cantidad_sistema'] += $cantidad;
+                            $summary['valor_sistema']    += $cantidad * $costo;
+                            if (!empty(trim($fila['cliente'] ?? ''))) {
+                                $summary['clientes_sistema'][trim($fila['cliente'])] = true;
+                            }
                         }
-                    }
 
-                    $summary['total_lineas'] += $lineasCreadas;
+                        if ($lineasCreadas === 0) {
+                            $orden->delete();
+                            $nextSeq--;
+                            throw new \Exception('Ningún producto fue encontrado en el catálogo');
+                        }
 
-                    // If no lines were created, delete the empty order
-                    if ($lineasCreadas === 0) {
-                        $orden->delete();
-                        throw new \Exception('Ningún producto fue encontrado en el catálogo');
-                    }
-                });
-                $summary['importadas']++;
-            } catch (\Exception $e) {
-                $summary['errores'][] = "Factura {$factura}: " . $e->getMessage();
+                        $summary['por_sucursal_sistema'][$sucursal] =
+                            ($summary['por_sucursal_sistema'][$sucursal] ?? 0) + $lineasCreadas;
+                    });
+                    $summary['importadas']++;
+                } catch (\Exception $e) {
+                    $summary['errores'][] = "Sucursal '{$sucursal}': " . $e->getMessage();
+                }
             }
         }
 
-        $msg = "Importación completada: {$summary['importadas']} orden(es) de picking creada(s)";
-        if ($summary['productos_no_encontrados'] > 0) {
-            $msg .= ". {$summary['productos_no_encontrados']} producto(s) no encontrado(s)";
-        }
-        if (!empty($summary['errores'])) {
-            $msg .= ". Errores: " . count($summary['errores']);
-        }
+        // ── Mensaje de resumen ────────────────────────────────────────────────
+        $partes = [];
+        if ($summary['importadas'] > 0)
+            $partes[] = "{$summary['importadas']} planilla(s) nueva(s)";
+        if ($summary['actualizadas'] > 0)
+            $partes[] = "{$summary['actualizadas']} planilla(s) actualizada(s)";
+        if ($summary['lineas_actualizadas'] > 0)
+            $partes[] = "{$summary['lineas_actualizadas']} línea(s) con cantidad actualizada";
+        if ($summary['lineas_nuevas'] > 0)
+            $partes[] = "{$summary['lineas_nuevas']} línea(s) agregada(s) a planillas existentes";
+        if ($summary['productos_no_encontrados'] > 0)
+            $partes[] = "{$summary['productos_no_encontrados']} producto(s) sin codificar (guardados en pendientes)";
+        if (!empty($summary['errores']))
+            $partes[] = count($summary['errores']) . ' error(es)';
+        $msg = 'Importación completada: ' . implode(', ', $partes ?: ['sin cambios']);
 
-        // Build audit comparison
         $audit = [
             'archivo' => $auditArchivo,
             'sistema' => [
@@ -1331,22 +2243,131 @@ class PickingController extends BaseController
             ],
         ];
         $audit['diferencias'] = [
-            'lineas'    => $auditArchivo['lineas_archivo'] - $summary['total_lineas'],
-            'clientes'  => $auditArchivo['clientes_archivo'] - count($summary['clientes_sistema']),
-            'cantidad'  => $auditArchivo['cantidad_archivo'] - $summary['cantidad_sistema'],
-            'valor'     => round($auditArchivo['valor_archivo'] - $summary['valor_sistema'], 2),
+            'lineas'   => $auditArchivo['lineas_archivo'] - $summary['total_lineas'],
+            'clientes' => $auditArchivo['clientes_archivo'] - count($summary['clientes_sistema']),
+            'cantidad' => $auditArchivo['cantidad_archivo'] - $summary['cantidad_sistema'],
+            'valor'    => round($auditArchivo['valor_archivo'] - $summary['valor_sistema'], 2),
         ];
-        unset($summary['clientes_sistema']); // don't send raw set
+        $audit['por_sucursal'] = [
+            'archivo' => $porSucursalArch,
+            'sistema' => $summary['por_sucursal_sistema'],
+        ];
+        unset($summary['clientes_sistema'], $summary['por_sucursal_sistema']);
 
         $response = $res;
         $response->getBody()->write(json_encode([
-            'error'     => false,
-            'importadas'=> $summary['importadas'],
-            'message'   => $msg,
-            'data'      => $summary,
-            'audit'     => $audit,
+            'error'      => false,
+            'importadas' => $summary['importadas'],
+            'message'    => $msg,
+            'data'       => $summary,
+            'audit'      => $audit,
         ]));
         return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    // ── GET /api/picking/productos-pendientes ─────────────────────────────────
+    public function listarProductosPendientes(Request $r, Response $res): Response
+    {
+        $user  = $r->getAttribute('user');
+        $items = Capsule::table('picking_productos_pendientes')
+            ->where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->orderBy('updated_at', 'desc')
+            ->get();
+        return $this->ok($res, $items);
+    }
+
+    // ── DELETE /api/picking/productos-pendientes/{id} ─────────────────────────
+    public function eliminarProductoPendiente(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        $deleted = Capsule::table('picking_productos_pendientes')
+            ->where('id', $a['id'])
+            ->where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->delete();
+        if (!$deleted) return $this->notFound($res, 'Registro no encontrado');
+        return $this->ok($res, null, 'Eliminado');
+    }
+
+    // ── DELETE /api/picking/productos-pendientes ──────────────────────────────
+    public function limpiarProductosPendientes(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
+        Capsule::table('picking_productos_pendientes')
+            ->where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->delete();
+        return $this->ok($res, null, 'Tabla limpiada');
+    }
+
+    // ── PATCH /api/picking/{id}/linea/{lineaId} ──────────────────────────────
+    public function actualizarLinea(Request $r, Response $res, array $a): Response
+    {
+        $user    = $r->getAttribute('user');
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
+        $ordenId = (int)($a['id'] ?? 0);
+        $lineaId = (int)($a['lineaId'] ?? 0);
+        $body    = (array)($r->getParsedBody() ?? []);
+
+        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->find($ordenId);
+        if (!$orden) return $this->notFound($res);
+        if ($orden->estado !== 'Pendiente') {
+            return $this->error($res, 'Solo se pueden editar órdenes en estado Pendiente');
+        }
+
+        $linea = PickingDetalle::where('orden_picking_id', $ordenId)->find($lineaId);
+        if (!$linea) return $this->notFound($res);
+        if ($linea->estado !== 'Pendiente') {
+            return $this->error($res, 'Solo se pueden editar líneas en estado Pendiente');
+        }
+
+        $cantidad = (int)($body['cantidad_solicitada'] ?? 0);
+        if ($cantidad < 1) return $this->error($res, 'La cantidad debe ser mayor a 0');
+
+        $linea->cantidad_solicitada = $cantidad;
+        if (isset($body['costo_unitario']) && $body['costo_unitario'] !== '') {
+            $linea->costo_unitario = (float)$body['costo_unitario'];
+        }
+        $linea->save();
+
+        return $this->ok($res, ['linea' => $linea->toArray()], 'Cantidad actualizada');
+    }
+
+    // ── DELETE /api/picking/{id}/linea/{lineaId} ─────────────────────────────
+    public function eliminarLinea(Request $r, Response $res, array $a): Response
+    {
+        $user    = $r->getAttribute('user');
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
+        $ordenId = (int)($a['id'] ?? 0);
+        $lineaId = (int)($a['lineaId'] ?? 0);
+
+        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->find($ordenId);
+        if (!$orden) return $this->notFound($res);
+        if ($orden->estado !== 'Pendiente') {
+            return $this->error($res, 'Solo se pueden eliminar líneas de órdenes en estado Pendiente');
+        }
+
+        $linea = PickingDetalle::where('orden_picking_id', $ordenId)->find($lineaId);
+        if (!$linea) return $this->notFound($res);
+        if ((int)$linea->cantidad_pickeada > 0) {
+            return $this->error($res, 'No se puede eliminar una línea con cantidades ya pickeadas');
+        }
+
+        $linea->delete();
+
+        $restantes = PickingDetalle::where('orden_picking_id', $ordenId)->count();
+        if ($restantes === 0) {
+            $orden->delete();
+            return $this->ok($res, ['orden_eliminada' => true], 'Línea eliminada. La planilla quedó vacía y fue eliminada.');
+        }
+
+        return $this->ok($res, ['orden_eliminada' => false], 'Línea eliminada');
     }
 
     // ── POST /api/picking/{id}/marcar-faltante ───────────────────────────────
@@ -1363,18 +2384,33 @@ class PickingController extends BaseController
         $linea = PickingDetalle::where('orden_picking_id', $orden->id)->find($lineaId);
         if (!$linea) return $this->notFound($res, 'Línea no encontrada');
 
-        $linea->estado      = 'Faltante';
-        $linea->observacion = $obs ?: 'Sin stock disponible';
-        $linea->save();
+        try {
+            Capsule::transaction(function () use ($linea, $obs, $orden, $user) {
+                if ($linea->producto_id && $linea->cantidad_solicitada > 0) {
+                    $this->_releaseReserva(
+                        $user->empresa_id, $user->sucursal_id,
+                        $linea->producto_id, $linea->ubicacion_id, $linea->lote,
+                        (int)$linea->cantidad_solicitada
+                    );
+                }
 
-        // Si todas las líneas están resueltas, cerrar la orden
-        $abiertas = PickingDetalle::where('orden_picking_id', $orden->id)
-            ->whereIn('estado', ['Pendiente', 'EnProceso'])
-            ->count();
-        if ($abiertas === 0) {
-            $orden->estado   = 'Completada';
-            $orden->hora_fin = date('H:i:s');
-            $orden->save();
+                $linea->estado      = 'Faltante';
+                $linea->observacion = $obs ?: 'Sin stock disponible';
+                $linea->save();
+
+                // Si todas las líneas están resueltas, cerrar la orden
+                $abiertas = PickingDetalle::where('orden_picking_id', $orden->id)
+                    ->whereIn('estado', ['Pendiente', 'EnProceso'])
+                    ->count();
+                if ($abiertas === 0) {
+                    $orden->estado   = 'Completada';
+                    $orden->hora_fin = date('H:i:s');
+                    $orden->save();
+                }
+            });
+        } catch (\Exception $e) {
+            error_log('PickingController::marcarFaltante error: ' . $e->getMessage());
+            return $this->error($res, 'Error al marcar faltante: ' . $e->getMessage(), 500);
         }
 
         $this->audit($user, 'picking', 'marcar_faltante', 'picking_detalles', $linea->id,
@@ -1405,9 +2441,14 @@ class PickingController extends BaseController
                         ->where('producto_id',  $tarea->producto_id)
                         ->where('ubicacion_id', $tarea->ubicacion_origen_id)
                         ->where('estado', 'Disponible')
+                        ->lockForUpdate()
                         ->first();
 
-                    if ($origen && $origen->cantidad >= $tarea->cantidad) {
+                    if (!$origen || $origen->cantidad < $tarea->cantidad) {
+                        throw new \Exception('Stock insuficiente en origen para completar el reabastecimiento');
+                    }
+
+                    if ($origen->cantidad >= $tarea->cantidad) {
                         $origen->cantidad -= $tarea->cantidad;
                         if ($origen->cantidad === 0) $origen->delete();
                         else $origen->save();
@@ -1459,6 +2500,7 @@ class PickingController extends BaseController
     {
         $user = $r->getAttribute('user');
         
+        // COALESCE ensures orders without planilla_numero get their own entry using numero_orden
         $planillas = OrdenPicking::where('empresa_id', $user->empresa_id)
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('estado', ['Pendiente', 'EnProceso'])
@@ -1466,16 +2508,22 @@ class PickingController extends BaseController
                 $q->where('auxiliar_id', $user->id)
                   ->orWhereHas('detalles', fn($dq) => $dq->where('auxiliar_id', $user->id));
             })
-            ->select('planilla_numero')
+            ->selectRaw('COALESCE(planilla_numero, numero_orden) as planilla_numero')
             ->selectRaw('MAX(area_comercial) as ruta')
             ->selectRaw('MAX(hora_inicio) as hora_inicio')
-            ->groupBy('planilla_numero')
-            ->orderBy('planilla_numero', 'desc')
+            ->groupByRaw('COALESCE(planilla_numero, numero_orden)')
+            ->orderByRaw('COALESCE(planilla_numero, numero_orden) DESC')
             ->get();
 
         // Calcular métricas para cada planilla
         foreach ($planillas as $p) {
-            $detalles = PickingDetalle::whereHas('ordenPicking', fn($q) => $q->where('planilla_numero', $p->planilla_numero))
+            // Search by both planilla_numero and numero_orden (fallback)
+            $detalles = PickingDetalle::whereHas('ordenPicking', fn($q) =>
+                $q->where(function($sq) use ($p) {
+                    $sq->where('planilla_numero', $p->planilla_numero)
+                       ->orWhere('numero_orden', $p->planilla_numero);
+                })
+            )
                 ->join('productos', 'picking_detalles.producto_id', '=', 'productos.id')
                 ->where('picking_detalles.auxiliar_id', $user->id)
                 ->whereIn('picking_detalles.estado', ['Pendiente', 'EnProceso', 'Completado', 'Faltante'])
@@ -1505,17 +2553,21 @@ class PickingController extends BaseController
         $estado = $r->getQueryParams()['estado'] ?? 'Pendiente,EnProceso';
         $estados = explode(',', $estado);
 
-        if (!$numero) return $this->error($res, 'Número de planilla requerido.', 400);
+        if (!$numero || $numero === 'null') return $this->error($res, 'Número de planilla requerido.', 400);
 
         try {
-            // Consolidar por Producto + Ubicación
+            // Consolidar por Producto + Ubicación; busca por planilla_numero o numero_orden (fallback)
             $detalles = PickingDetalle::join('orden_pickings', 'picking_detalles.orden_picking_id', '=', 'orden_pickings.id')
                 ->leftJoin('productos', 'picking_detalles.producto_id', '=', 'productos.id')
                 ->leftJoin('ubicaciones', 'picking_detalles.ubicacion_id', '=', 'ubicaciones.id')
                 ->where('orden_pickings.empresa_id', $user->empresa_id)
-                ->where('orden_pickings.planilla_numero', $numero)
+                ->where(function($q) use ($numero) {
+                    $q->where('orden_pickings.planilla_numero', $numero)
+                      ->orWhere('orden_pickings.numero_orden', $numero);
+                })
                 ->whereIn('picking_detalles.estado', $estados)
                 ->select(
+                    'picking_detalles.producto_id',
                     'productos.nombre as producto_nombre',
                     'productos.codigo_interno as producto_codigo',
                     'productos.unidades_caja',
@@ -1523,29 +2575,60 @@ class PickingController extends BaseController
                     'ubicaciones.id as ubicacion_id',
                     'picking_detalles.lote',
                     'picking_detalles.fecha_vencimiento',
-                    Capsule::raw('SUM(picking_detalles.cantidad_total) as cantidad_total'),
+                    Capsule::raw('SUM(picking_detalles.cantidad_solicitada) as cantidad_total'),
                     Capsule::raw('SUM(picking_detalles.cantidad_pickeada) as cantidad_pick'),
                     Capsule::raw($this->isPg() ? 'STRING_AGG(picking_detalles.id::text, \',\') as ids' : 'GROUP_CONCAT(picking_detalles.id) as ids')
                 )
                 ->groupBy(
-                    'productos.id', 
-                    'productos.nombre', 
-                    'productos.codigo_interno', 
-                    'productos.unidades_caja', 
-                    'ubicaciones.id', 
+                    'picking_detalles.producto_id',
+                    'productos.id',
+                    'productos.nombre',
+                    'productos.codigo_interno',
+                    'productos.unidades_caja',
+                    'ubicaciones.id',
                     'ubicaciones.codigo',
-                    'picking_detalles.lote', 
+                    'picking_detalles.lote',
                     'picking_detalles.fecha_vencimiento'
                 )
                 ->orderBy(Capsule::raw('SUM(picking_detalles.cantidad_pickeada)'), 'asc')
                 ->orderBy('ubicaciones.codigo')
                 ->get();
 
+            // Fallback de ubicación: líneas sin ubicacion_id asignada → buscar en stock actual
+            $sinUbic = $detalles->filter(fn($d) => !$d->ubicacion_id)
+                                ->pluck('producto_id')->unique()->values();
+            if ($sinUbic->isNotEmpty()) {
+                $stockMap = Inventario::where('empresa_id', $user->empresa_id)
+                    ->where('sucursal_id', $user->sucursal_id)
+                    ->whereIn('producto_id', $sinUbic)
+                    ->where('estado', 'Disponible')
+                    ->where('cantidad', '>', 0)
+                    ->with('ubicacion:id,codigo')
+                    ->orderByRaw('fecha_vencimiento IS NULL ASC')
+                    ->orderBy('fecha_vencimiento', 'ASC')
+                    ->get()
+                    ->groupBy('producto_id')
+                    ->map(fn($g) => $g->first()->ubicacion?->codigo);
+
+                $detalles->transform(function ($it) use ($stockMap) {
+                    if (!$it->ubicacion_id) {
+                        $it->ubicacion_codigo = $stockMap->get($it->producto_id);
+                    }
+                    return $it;
+                });
+            }
+
             // Formatear para el Wizard Móvil (Cajas / Picos)
             $detalles->transform(function($it) {
-                $factor = (int)($it->unidades_caja ?: 1);
-                $it->cajas = floor($it->cantidad_total / $factor);
-                $it->picos = $it->cantidad_total % $factor;
+                $factor = (int)($it->unidades_caja ?: 0);
+                if ($factor <= 1) {
+                    // Sin empaque definido: todo se muestra como unidades sueltas
+                    $it->cajas = 0;
+                    $it->picos = (int)$it->cantidad_total;
+                } else {
+                    $it->cajas = (int)floor($it->cantidad_total / $factor);
+                    $it->picos = (int)($it->cantidad_total % $factor);
+                }
                 return $it;
             });
 
@@ -1565,21 +2648,26 @@ class PickingController extends BaseController
         $user   = $r->getAttribute('user');
         $numero = $a['numero'] ?? null;
 
-        if (!$numero) {
+        if (!$numero || $numero === 'null') {
             return $this->error($res, 'Número de planilla requerido.', 400);
         }
 
         try {
             $updated = OrdenPicking::where('empresa_id', $user->empresa_id)
-                ->where('planilla_numero', $numero)
+                ->where(function($q) use ($numero) {
+                    $q->where('planilla_numero', $numero)
+                      ->orWhere('numero_orden', $numero);
+                })
                 ->where('auxiliar_id', $user->id)
                 ->whereNull('hora_inicio')
                 ->update(['hora_inicio' => date('H:i:s'), 'estado' => 'EnProceso']);
 
             if ($updated === 0) {
-                // Already started or not assigned
                 $exists = OrdenPicking::where('empresa_id', $user->empresa_id)
-                    ->where('planilla_numero', $numero)->exists();
+                    ->where(function($q) use ($numero) {
+                        $q->where('planilla_numero', $numero)
+                          ->orWhere('numero_orden', $numero);
+                    })->exists();
                 if (!$exists) {
                     return $this->notFound($res, 'Planilla no encontrada.');
                 }
@@ -1599,32 +2687,153 @@ class PickingController extends BaseController
      */
     public function confirmarConsolidado(Request $r, Response $res): Response
     {
-        $user = $r->getAttribute('user');
-        $body = $r->getParsedBody() ?? [];
-        $id   = $body['orden_id'] ?? null;
+        $user           = $r->getAttribute('user');
+        $body           = $r->getParsedBody() ?? [];
+        $idsRaw         = $body['ids']            ?? null;
+        $cantidadTomada = (int)($body['cantidad_tomada'] ?? -1);
 
-        if (!$id) {
-            return $this->error($res, 'orden_id requerido.', 400);
+        if (!$idsRaw) {
+            return $this->error($res, 'ids requerido.', 400);
+        }
+        if ($cantidadTomada <= 0) {
+            return $this->error($res, 'cantidad_tomada debe ser mayor a 0.', 400);
+        }
+
+        $ids = is_array($idsRaw)
+            ? array_filter(array_map('intval', $idsRaw))
+            : array_filter(array_map('intval', explode(',', (string)$idsRaw)));
+
+        if (empty($ids)) {
+            return $this->error($res, 'ids inválidos.', 400);
+        }
+
+        // Load detalles scoped to this empresa (outside transaction — read only)
+        $detalles = PickingDetalle::whereIn('id', $ids)
+            ->whereHas('ordenPicking', fn($q) => $q->where('empresa_id', $user->empresa_id))
+            ->orderBy('id')
+            ->get();
+
+        if ($detalles->isEmpty()) {
+            return $this->error($res, 'Líneas no encontradas.', 404);
+        }
+
+        // Distribute cantidad_tomada FIFO (determine amounts before entering transaction)
+        $restante    = $cantidadTomada;
+        $asignaciones = [];
+        foreach ($detalles as $det) {
+            $tomar = min($restante, $det->cantidad_solicitada);
+            $asignaciones[$det->id] = $tomar;
+            $restante = max(0, $restante - $tomar);
         }
 
         try {
-            $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
-                ->findOrFail($id);
+            Capsule::transaction(function () use ($detalles, $asignaciones, $user) {
 
-            if ($orden->estado !== 'Completado') {
-                return $this->error($res, 'La orden no está completada.', 422);
-            }
+                $ordenIds = [];
 
-            $orden->estado = 'Consolidado';
-            $orden->save();
+                foreach ($detalles as $det) {
+                    $tomarInventario = $asignaciones[$det->id]; // unidades físicamente tomadas
+                    $liberarReserva  = (int)$det->cantidad_solicitada; // reserva original a liberar
 
-            $this->audit($user, 'picking', 'confirmar_consolidado', 'ordenes_picking', $orden->id,
-                null, ['estado' => 'Completado'], "Consolidado confirmado #{$orden->id}");
+                    // ── Fase 1: Liberar reserva completa ───────────────────────────────────
+                    $this->_releaseReserva(
+                        $user->empresa_id, $user->sucursal_id,
+                        $det->producto_id, $det->ubicacion_id, $det->lote,
+                        $liberarReserva
+                    );
 
-            return $this->ok($res, $orden, 'Consolidado confirmado');
+                    // ── Fase 2 + 3: Descontar stock real y registrar movimiento ────────────
+                    $realmenteDescontado = 0; // unidades efectivamente retiradas del inventario
+
+                    if ($tomarInventario > 0) {
+                        $inv = Inventario::where('empresa_id', $user->empresa_id)
+                            ->where('sucursal_id', $user->sucursal_id)
+                            ->where('producto_id', $det->producto_id)
+                            ->where('estado',      'Disponible')
+                            ->when($det->ubicacion_id, fn($q) => $q->where('ubicacion_id', $det->ubicacion_id))
+                            ->when($det->lote,         fn($q) => $q->where('lote',         $det->lote))
+                            ->lockForUpdate()
+                            ->orderBy('fecha_vencimiento', 'asc')
+                            ->orderBy('id', 'asc')
+                            ->first();
+
+                        // FEFO fallback: si la ubicación exacta no tiene stock, buscar otra
+                        if (!$inv || $inv->cantidad <= 0) {
+                            $inv = Inventario::where('empresa_id', $user->empresa_id)
+                                ->where('sucursal_id', $user->sucursal_id)
+                                ->where('producto_id', $det->producto_id)
+                                ->where('estado',      'Disponible')
+                                ->where('cantidad',    '>', 0)
+                                ->when($det->lote, fn($q) => $q->where('lote', $det->lote))
+                                ->lockForUpdate()
+                                ->orderBy('fecha_vencimiento', 'asc')
+                                ->orderBy('id', 'asc')
+                                ->first();
+                        }
+
+                        if ($inv) {
+                            // Cap descuento at available stock — picking_detalles reflects reality
+                            $descuento = min($tomarInventario, (int)$inv->cantidad);
+                            $inv->cantidad -= $descuento;
+                            if ($inv->cantidad <= 0) {
+                                $inv->delete();
+                            } else {
+                                $inv->save();
+                            }
+                            $realmenteDescontado = $descuento;
+
+                            MovimientoInventario::create([
+                                'empresa_id'          => $user->empresa_id,
+                                'sucursal_id'         => $user->sucursal_id,
+                                'producto_id'         => $det->producto_id,
+                                'tipo_movimiento'     => 'SalidaPicking',
+                                'cantidad'            => $descuento,
+                                'ubicacion_origen_id' => $inv->ubicacion_id,
+                                'lote'                => $det->lote,
+                                'fecha_vencimiento'   => $det->fecha_vencimiento,
+                                'auxiliar_id'         => $user->id,
+                                'referencia_tipo'     => 'OrdenPicking',
+                                'referencia_id'       => $det->orden_picking_id,
+                                'observaciones'       => 'Picking consolidado',
+                                'fecha_movimiento'    => date('Y-m-d'),
+                                'hora_inicio'         => date('H:i:s'),
+                            ]);
+                        } else {
+                            error_log("[confirmarConsolidado] Sin inventario para producto_id={$det->producto_id}"
+                                . " ubicacion_id={$det->ubicacion_id} lote={$det->lote}");
+                        }
+                    }
+
+                    // ── Fase 4: Actualizar detalle ──────────────────────────────────────────
+                    // cantidad_pickeada = lo que físicamente se retiró del inventario
+                    $det->cantidad_pickeada = $realmenteDescontado;
+                    $det->estado = ($realmenteDescontado >= $det->cantidad_solicitada)
+                        ? 'Completado' : 'Faltante';
+                    $det->save();
+
+                    $ordenIds[] = $det->orden_picking_id;
+                }
+
+                // ── Fase 5: Actualizar órdenes padre ───────────────────────────────────────
+                foreach (array_unique($ordenIds) as $ordenId) {
+                    $orden = OrdenPicking::where('id', $ordenId)
+                        ->where('empresa_id', $user->empresa_id)
+                        ->lockForUpdate()
+                        ->first();
+                    if (!$orden) continue;
+                    $this->_closeOrdenIfDone($orden, true);
+                }
+            });
+
+            $this->audit($user, 'picking', 'confirmar_consolidado', 'picking_detalles', null,
+                null, ['ids' => implode(',', $ids), 'cantidad_tomada' => $cantidadTomada],
+                'Picking consolidado confirmado — ' . count($detalles) . ' líneas');
+
+            return $this->ok($res, ['confirmados' => count($detalles)], 'Picking confirmado');
+
         } catch (\Exception $e) {
             error_log('PickingController::confirmarConsolidado error: ' . $e->getMessage());
-            return $this->error($res, 'Error al confirmar consolidado.', 500);
+            return $this->error($res, 'Error al confirmar picking: ' . $e->getMessage(), 500);
         }
     }
 
@@ -1660,241 +2869,676 @@ class PickingController extends BaseController
 
     /**
      * GET /api/picking/reporte
-     * Retorna una tabla HTML con el resumen operativo del picking.
+     * Retorna resumen operativo del picking con filtros de fecha, ruta y sucursal_entrega.
      */
     public function reporte(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
-        
-        // Rango de fechas
-        $ini = $params['fecha_desde'] ?? date('Y-m-d');
-        $fin = $params['fecha_hasta'] ?? date('Y-m-d');
-        
-        $rows = Capsule::table('picking_detalles as d')
-            ->join('orden_pickings as o', 'd.orden_picking_id', '=', 'o.id')
-            ->join('productos as p', 'd.producto_id', '=', 'p.id')
-            ->leftJoin('personal as aux', 'd.auxiliar_id', '=', 'aux.id')
-            ->leftJoin('ubicaciones as u', 'd.ubicacion_id', '=', 'u.id')
-            ->where('o.empresa_id', $user->empresa_id)
-            ->where('o.sucursal_id', $user->sucursal_id)
-            ->whereBetween('o.created_at', [$ini . ' 00:00:00', $fin . ' 23:59:59'])
-            ->select(
-                'o.planilla_numero',
-                'o.cliente',
-                'p.nombre as producto',
-                'p.codigo_interno as ean',
-                'd.cantidad_solicitada',
-                'd.cantidad_pickeada',
-                'u.codigo as ubicacion',
-                'aux.nombre as auxiliar',
-                'd.estado',
-                'd.updated_at'
-            )
-            ->orderBy('o.created_at', 'desc')
-            ->get();
 
-        if ($rows->isEmpty()) {
-            return $this->ok($res, ['html' => '<div class="alert alert-info">Sin movimientos de picking en el rango seleccionado.</div>']);
+        $fechaDesde = $params['fecha_desde'] ?? null;
+        $fechaHasta = $params['fecha_hasta'] ?? null;
+
+        if (!$fechaDesde || !$fechaHasta) {
+            return $this->ok($res, [
+                'ordenes'     => [],
+                'resumen'     => ['total'=>0,'completadas'=>0,'faltantes'=>0,'duracion_prom_min'=>0],
+                'fecha_desde' => $fechaDesde,
+                'fecha_hasta' => $fechaHasta,
+            ]);
         }
 
-        $html = '<div class="table-responsive"><table class="table table-sm table-hover table-bordered table-striped" style="font-size:0.85rem;">';
-        $html .= '<thead class="table-dark"><tr>
-                    <th>Planilla</th><th>Cliente</th><th>Producto</th><th>Solic.</th><th>Pick.</th><th>Ubica.</th><th>Auxiliar</th><th>Estado</th><th>Fecha/Hora</th>
-                  </tr></thead><tbody>';
-
-        foreach ($rows as $row) {
-            $badgeColor = match($row->estado) {
-                'Completado', 'Completada' => 'success',
-                'Faltante'   => 'danger',
-                'EnProceso'  => 'warning',
-                default      => 'secondary'
-            };
-            $fechaShort = substr($row->updated_at, 5, 11);
-            $html .= "<tr>
-                        <td><b>" . ($row->planilla_numero ?: '-') . "</b></td>
-                        <td style='max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;'>" . htmlspecialchars($row->cliente ?? '-') . "</td>
-                        <td><small>($row->ean)</small> $row->producto</td>
-                        <td class='text-center'>$row->cantidad_solicitada</td>
-                        <td class='text-center'>$row->cantidad_pickeada</td>
-                        <td class='text-center'><code>" . ($row->ubicacion ?: '-') . "</code></td>
-                        <td>" . ($row->auxiliar ?: '-') . "</td>
-                        <td><span class='badge bg-$badgeColor'>$row->estado</span></td>
-                        <td><small>$fechaShort</small></td>
-                      </tr>";
-        }
-        $html .= '</tbody></table></div>';
-        return $this->ok($res, ['html' => $html]);
-    }
-
-    /**
-     * GET /api/picking/novedades-stock
-     * Detecta faltantes comparando lo solicitado vs disponible en picking.
-     */
-    public function novedadesStock(Request $r, Response $res): Response
-    {
         try {
-            $user = $r->getAttribute('user');
-            
-            // Unidades pedidas pendientes vs Unidades en ubicaciones de Picking
-            $faltantes = Capsule::table('picking_detalles as d')
-                ->join('orden_pickings as o', 'o.id', '=', 'd.orden_picking_id')
-                ->join('productos as p', 'p.id', '=', 'd.producto_id')
-                ->leftJoin('inventarios as i', function($j) {
-                    $j->on('i.producto_id', '=', 'd.producto_id')
-                      ->on('i.ubicacion_id', '=', 'd.ubicacion_id');
-                })
-                ->where('o.empresa_id', $user->empresa_id)
-                ->whereIn('d.estado', ['Pendiente', 'Faltante'])
-                ->select(
-                    'p.id as producto_id',
-                    'p.nombre as producto',
-                    'p.codigo_interno as codigo',
-                    'o.planilla_numero',
-                    Capsule::raw('SUM(d.cantidad_solicitada - d.cantidad_pickeada) as cantidad_pedida'),
-                    Capsule::raw('COALESCE(SUM(i.cantidad), 0) as cantidad_disponible'),
-                    // Subconsulta para ver si hay stock en otras ubicaciones (Reserva/Pulmón)
-                    Capsule::raw("(SELECT COALESCE(SUM(inv2.cantidad), 0) 
-                                   FROM inventarios inv2 
-                                   JOIN ubicaciones u2 ON u2.id = inv2.ubicacion_id 
-                                   WHERE inv2.producto_id = p.id 
-                                     AND u2.tipo_ubicacion != 'Picking'
-                                     AND inv2.empresa_id = o.empresa_id) as cantidad_en_reserva")
-                )
-                ->groupBy('p.id', 'p.nombre', 'p.codigo_interno', 'o.planilla_numero', 'o.empresa_id')
-                ->havingRaw('SUM(d.cantidad_solicitada - d.cantidad_pickeada) > COALESCE(SUM(i.cantidad), 0)')
-                ->get();
+            $q = OrdenPicking::where('empresa_id', $user->empresa_id)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->whereBetween('fecha_movimiento', [$fechaDesde, $fechaHasta])
+                ->when($params['ruta'] ?? null,
+                    fn($q, $v) => $q->where('ruta', 'like', "%$v%"))
+                ->when($params['sucursal_entrega'] ?? null,
+                    fn($q, $v) => $q->where('sucursal_entrega', 'like', "%$v%"))
+                ->withCount([
+                    'detalles as completadas_count' => fn($q) => $q->where('estado', 'Completado'),
+                    'detalles as faltantes_count'   => fn($q) => $q->where('estado', 'Faltante'),
+                    'detalles as total_lineas_count',
+                ])
+                ->with([
+                    'detalles.auxiliar:id,nombre',
+                    'auxiliar:id,nombre',
+                ])
+                ->orderBy('fecha_movimiento', 'DESC')
+                ->orderBy('created_at', 'DESC');
 
-            return $this->ok($res, $faltantes);
-        } catch (\Exception $e) {
-            error_log('PickingController::novedadesStock error: ' . $e->getMessage());
-            return $this->error($res, $e->getMessage(), 500);
-        }
-    }
+            $ordenes = $q->get();
 
-    /**
-     * GET /api/picking/reabastecimientos
-     * Lista tareas de reabastecimiento activas.
-     */
-    public function reabastecimientos(Request $r, Response $res): Response
-    {
-        try {
-            $user = $r->getAttribute('user');
-            $tasks = Capsule::table('tarea_reabastecimientos as t')
-                ->join('productos as p', 'p.id', '=', 't.producto_id')
-                ->leftJoin('ubicaciones as uo', 'uo.id', '=', 't.ubicacion_origen_id')
-                ->leftJoin('ubicaciones as ud', 'ud.id', '=', 't.ubicacion_destino_id')
-                ->where('t.empresa_id', $user->empresa_id)
-                ->where('t.estado', '!=', 'Completada')
-                ->select(
-                    't.id',
-                    'p.nombre as producto',
-                    'uo.codigo as ubicacion_origen',
-                    'ud.codigo as ubicacion_destino',
-                    't.cantidad',
-                    't.estado',
-                    't.created_at'
-                )
-                ->orderBy('t.created_at', 'desc')
-                ->get();
+            $rows = $ordenes->map(function($o) {
+                $auxNombres = $o->detalles->pluck('auxiliar.nombre')
+                    ->filter()->unique()->values()->join(', ');
+                if (!$auxNombres && $o->auxiliar) $auxNombres = $o->auxiliar->nombre;
 
-            return $this->ok($res, $tasks);
-        } catch (\Exception $e) {
-             error_log('PickingController::reabastecimientos error: ' . $e->getMessage());
-             return $this->error($res, $e->getMessage(), 500);
-        }
-    }
-
-    /**
-     * POST /api/picking/reabastecimientos/auto
-     * Genera automáticamente una tarea de reabastecimiento si hay stock en reserva.
-     */
-    public function autoReabastecer(Request $r, Response $res): Response
-    {
-        try {
-            $user = $r->getAttribute('user');
-            $data = $r->getParsedBody();
-            $productoId = $data['producto_id'] ?? null;
-
-            if (!$productoId) return $this->error($res, "Producto no especificado");
-
-            return Capsule::transaction(function() use ($res, $user, $productoId) {
-                // 1. Buscar ubicación de picking para este producto (donde debería estar)
-                $dest = Capsule::table('ubicaciones')
-                    ->where('empresa_id', $user->empresa_id)
-                    ->where('tipo_ubicacion', 'Picking')
-                    ->where('activo', true)
-                    // Podríamos filtrar por producto si las ubicaciones están asignadas
-                    ->first(); 
-
-                if (!$dest) {
-                    // Si no hay asignada, buscar la primera de picking disponible
-                    $dest = Capsule::table('ubicaciones')
-                        ->where('empresa_id', $user->empresa_id)
-                        ->where('tipo_ubicacion', 'Picking')
-                        ->first();
+                $durMin = null;
+                if ($o->hora_inicio && $o->hora_fin) {
+                    $ini = strtotime($o->fecha_movimiento . ' ' . $o->hora_inicio);
+                    $fin = strtotime($o->fecha_movimiento . ' ' . $o->hora_fin);
+                    if ($fin > $ini) $durMin = round(($fin - $ini) / 60);
                 }
 
-                // 2. Buscar ubicación de reserva con stock
-                $origen = Capsule::table('inventarios as i')
-                    ->join('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
-                    ->where('i.producto_id', $productoId)
-                    ->where('u.tipo_ubicacion', '!=', 'Picking')
-                    ->where('i.cantidad', '>', 0)
-                    ->select('i.ubicacion_id', 'i.cantidad', 'u.codigo as ubicacion_codigo')
-                    ->orderBy('i.cantidad', 'desc')
-                    ->first();
-
-                if (!$origen) {
-                    return $this->error($res, "No hay stock disponible en ubicaciones de reserva para este producto.");
-                }
-
-                // 3. Crear la tarea de reabastecimiento
-                $cantidadSugerida = min($origen->cantidad, 50); // Por ejemplo, máximo 50 unidades o lo que haya en reserva
-                
-                $id = Capsule::table('tarea_reabastecimientos')->insertGetId([
-                    'empresa_id' => $user->empresa_id,
-                    'producto_id' => $productoId,
-                    'ubicacion_origen_id' => $origen->ubicacion_id,
-                    'ubicacion_destino_id' => $dest->id,
-                    'cantidad' => $cantidadSugerida,
-                    'completada' => false,
-                    'created_at' => date('Y-m-d H:i:s'),
-                    'updated_at' => date('Y-m-d H:i:s')
-                ]);
-
-                return $this->ok($res, [
-                    'message' => 'Tarea de reabastecimiento creada desde ' . $origen->ubicacion_codigo,
-                    'tarea_id' => $id
-                ]);
+                $total = $o->total_lineas_count ?: 0;
+                $comp  = $o->completadas_count  ?: 0;
+                return [
+                    'id'               => $o->id,
+                    'fecha'            => $o->fecha_movimiento,
+                    'numero_orden'     => $o->numero_orden,
+                    'numero_pedido'    => $o->numero_pedido,
+                    'cliente'          => $o->cliente,
+                    'sucursal_entrega' => $o->sucursal_entrega,
+                    'ruta'             => $o->ruta,
+                    'estado'           => $o->estado,
+                    'total_lineas'     => $total,
+                    'completadas'      => $comp,
+                    'faltantes'        => $o->faltantes_count ?: 0,
+                    'pct_cumplimiento' => $total > 0 ? round($comp / $total * 100, 1) : 0,
+                    'auxiliares'       => $auxNombres ?: '—',
+                    'hora_inicio'      => $o->hora_inicio,
+                    'hora_fin'         => $o->hora_fin,
+                    'duracion_min'     => $durMin,
+                ];
             });
 
+            $duraciones  = $rows->pluck('duracion_min')->filter();
+            $durPromedio = $duraciones->isNotEmpty() ? round($duraciones->avg()) : 0;
+
+            return $this->ok($res, [
+                'ordenes'     => $rows->values(),
+                'resumen'     => [
+                    'total'             => $rows->count(),
+                    'completadas'       => $rows->where('estado','Completada')->count(),
+                    'faltantes'         => $rows->sum('faltantes'),
+                    'duracion_prom_min' => $durPromedio,
+                ],
+                'fecha_desde' => $fechaDesde,
+                'fecha_hasta' => $fechaHasta,
+            ]);
         } catch (\Exception $e) {
+            error_log('reporte error: ' . $e->getMessage());
+            return $this->error($res, 'Error generando reporte.', 500);
+        }
+    }
+
+    private function _clasificarAmbiente(string $zona, string $categoria): string
+    {
+        $z = strtolower($zona);
+        $c = strtolower($categoria);
+        if (str_contains($z, 'congel') || str_contains($c, 'congel')) return 'Congelado';
+        if (str_contains($z, 'refrig') || str_contains($z, 'frio') || str_contains($z, 'frío') ||
+            str_contains($z, 'lácteo') || str_contains($z, 'lacteo') ||
+            str_contains($c, 'refrig') || str_contains($c, 'frio') || str_contains($c, 'lácteo') ||
+            str_contains($c, 'lacteo')) return 'Refrigerado';
+        return 'Seco';
+    }
+
+    private function _reservarInventarioBatch(array $ordenIds, object $user): void
+    {
+        $now      = date('Y-m-d H:i:s');
+        $detalles = PickingDetalle::whereIn('orden_picking_id', $ordenIds)
+            ->where('estado', 'EnProceso')
+            ->whereNotNull('auxiliar_id')
+            ->get();
+
+        if ($detalles->isEmpty()) return;
+
+        $productoIds     = $detalles->pluck('producto_id')->unique()->toArray();
+        $stockDisponible = Inventario::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereIn('producto_id', $productoIds)
+            ->where('estado', 'Disponible')
+            ->whereRaw('(cantidad - cantidad_reservada) > 0')
+            ->lockForUpdate()
+            ->orderByRaw('fecha_vencimiento IS NULL ASC')
+            ->orderBy('fecha_vencimiento', 'ASC')
+            ->get();
+
+        $stockPorProducto = $stockDisponible->groupBy('producto_id');
+        foreach ($detalles as $linea) {
+            $restante = (float)$linea->cantidad_solicitada;
+            foreach ($stockPorProducto->get($linea->producto_id, collect()) as $inv) {
+                if ($restante <= 0) break;
+                $disponible = max(0, $inv->cantidad - $inv->cantidad_reservada);
+                if ($disponible <= 0) continue;
+                $reservar                = min($disponible, $restante);
+                $inv->cantidad_reservada += $reservar;
+                $inv->save();
+                $restante -= $reservar;
+            }
+        }
+    }
+
+    public function asignarPorAmbiente(Request $r, Response $res): Response
+    {
+        $user     = $r->getAttribute('user');
+        $data     = $r->getParsedBody() ?? [];
+        $ordenIds = array_map('intval', $data['orden_ids'] ?? []);
+        $modo     = $data['modo'] ?? 'ambiente';
+        $config   = $data['config'] ?? [];
+        $ruta     = trim($data['ruta'] ?? '');
+
+        if (empty($ordenIds))           return $this->error($res, 'Se requieren orden_ids');
+        if (!in_array($modo, ['ambiente','pasillo']))
+                                        return $this->error($res, 'Modo inválido: use "ambiente" o "pasillo"');
+
+        try {
+            $resultado = Capsule::transaction(function () use ($ordenIds, $modo, $config, $ruta, $user) {
+                $now = date('Y-m-d H:i:s');
+
+                // 1+2. Cargar TODAS las líneas con lock pesimista y detectar colisiones en PHP
+                $todasLineas = Capsule::table('picking_detalles as pd')
+                    ->join('orden_pickings as op', 'pd.orden_picking_id', '=', 'op.id')
+                    ->leftJoin('ubicaciones as u', 'pd.ubicacion_id', '=', 'u.id')
+                    ->leftJoin('productos as pr', 'pd.producto_id', '=', 'pr.id')
+                    ->leftJoin('categoria_productos as cat', 'pr.categoria_id', '=', 'cat.id')
+                    ->where('op.empresa_id', $user->empresa_id)
+                    ->where('op.sucursal_id', $user->sucursal_id)
+                    ->whereIn('pd.orden_picking_id', $ordenIds)
+                    ->select(['pd.id','pd.orden_picking_id','pd.auxiliar_id','pd.estado','u.zona','u.pasillo','cat.nombre as categoria'])
+                    ->lockForUpdate()
+                    ->get();
+
+                $colisionIds = $todasLineas->filter(fn($l) => $l->auxiliar_id !== null)
+                    ->pluck('orden_picking_id')->unique()->values();
+                if ($colisionIds->isNotEmpty()) {
+                    throw new \RuntimeException(json_encode([
+                        'tipo'      => 'colision',
+                        'orden_ids' => $colisionIds->toArray(),
+                    ]));
+                }
+
+                $lineas = $todasLineas->filter(fn($l) => $l->estado === 'Pendiente' && $l->auxiliar_id === null);
+
+                // 3. Clasificar cada línea por ambiente
+                foreach ($lineas as $linea) {
+                    $linea->amb = $this->_clasificarAmbiente($linea->zona ?? '', $linea->categoria ?? '');
+                }
+
+                // 4. Determinar auxiliar por línea
+                $porAuxiliar  = [];  // [auxId => [lineaId,...]]
+                $porAmbiente  = ['Seco' => 0, 'Refrigerado' => 0, 'Congelado' => 0];
+                $sinAuxiliar  = 0;
+
+                foreach ($lineas as $linea) {
+                    if ($modo === 'ambiente') {
+                        $auxId = $config[$linea->amb]['auxiliar_id'] ?? null;
+                    } else {
+                        $auxId = null;
+                        foreach (($config['rangos'] ?? []) as $rng) {
+                            if (($linea->pasillo ?? '') >= ($rng['pasillo_desde'] ?? '') &&
+                                ($linea->pasillo ?? '') <= ($rng['pasillo_hasta'] ?? '')) {
+                                $auxId = $rng['auxiliar_id'] ?? null;
+                                break;
+                            }
+                        }
+                    }
+                    if ($auxId) {
+                        $porAuxiliar[$auxId][] = $linea->id;
+                        $porAmbiente[$linea->amb] = ($porAmbiente[$linea->amb] ?? 0) + 1;
+                    } else {
+                        // Sin auxiliar: actualizar solo el campo ambiente
+                        Capsule::table('picking_detalles')
+                            ->where('id', $linea->id)
+                            ->update(['ambiente' => $linea->amb, 'updated_at' => $now]);
+                        $sinAuxiliar++;
+                    }
+                }
+
+                // 5. UPDATE picking_detalles por auxiliar
+                $totalAsignadas = 0;
+                $ambPorId = collect($lineas)->pluck('amb', 'id')->toArray();
+                foreach ($porAuxiliar as $auxId => $ids) {
+                    foreach ($ids as $lineaId) {
+                        Capsule::table('picking_detalles')
+                            ->where('id', $lineaId)
+                            ->update([
+                                'auxiliar_id' => $auxId,
+                                'ambiente'    => $ambPorId[$lineaId] ?? 'Seco',
+                                'estado'      => 'EnProceso',
+                                'updated_at'  => $now,
+                            ]);
+                    }
+                    $totalAsignadas += count($ids);
+                }
+
+                // 6. Actualizar orden_pickings: estado + ruta + orden_logico
+                foreach ($ordenIds as $i => $ordId) {
+                    $upd = ['estado' => 'EnProceso', 'updated_at' => $now, 'orden_logico' => $i + 1];
+                    if ($ruta) $upd['ruta'] = $ruta;
+                    Capsule::table('orden_pickings')->where('id', $ordId)->update($upd);
+                }
+
+                // 7. Reservar inventario
+                $this->_reservarInventarioBatch($ordenIds, $user);
+
+                // 8. Log de auditoría
+                Capsule::table('picking_asignaciones_log')->insert([
+                    'empresa_id'   => $user->empresa_id,
+                    'sucursal_id'  => $user->sucursal_id,
+                    'ordenes_json' => json_encode($ordenIds),
+                    'modo'         => $modo,
+                    'config_json'  => json_encode($config),
+                    'lineas_total' => $totalAsignadas,
+                    'ruta'         => $ruta ?: null,
+                    'asignado_por' => $user->id,
+                    'created_at'   => $now,
+                ]);
+
+                return [
+                    'asignadas'    => $totalAsignadas,
+                    'por_ambiente' => $porAmbiente,
+                    'sin_auxiliar' => $sinAuxiliar,
+                    'ordenes'      => count($ordenIds),
+                ];
+            });
+
+            return $this->ok($res, $resultado, 'Asignación completada');
+
+        } catch (\RuntimeException $e) {
+            $decoded = json_decode($e->getMessage(), true);
+            if (($decoded['tipo'] ?? '') === 'colision') {
+                $payload = json_encode(['error' => 'Algunos pedidos ya tienen líneas asignadas.', 'orden_ids_en_conflicto' => $decoded['orden_ids']], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $res->getBody()->write($payload);
+                return $res->withStatus(409)->withHeader('Content-Type', 'application/json');
+            }
             return $this->error($res, $e->getMessage(), 500);
+        } catch (\Exception $e) {
+            error_log('asignarPorAmbiente error: ' . $e->getMessage());
+            return $this->error($res, 'Error en asignación: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function asignarRutaOrden(Request $r, Response $res, array $a): Response
+    {
+        $user  = $r->getAttribute('user');
+        $data  = $r->getParsedBody() ?? [];
+        $ruta  = trim($data['ruta'] ?? '');
+        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->find((int)$a['id']);
+        if (!$orden) return $this->notFound($res);
+        $orden->ruta = $ruta ?: null;
+        $orden->save();
+        return $this->ok($res, ['id' => $orden->id, 'ruta' => $orden->ruta], 'Ruta actualizada');
+    }
+
+    // ── CERTIFICACIÓN POR SUCURSAL ───────────────────────────────────────────
+    
+    public function certPendientes(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        
+        $sucursales = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->where('estado', 'Completada')
+            ->where('estado_certificacion', 'Pendiente')
+            ->select('sucursal_entrega', Capsule::raw('COUNT(*) as total_pedidos'), Capsule::raw('SUM( (SELECT COUNT(*) FROM picking_detalles WHERE orden_picking_id = orden_pickings.id) ) as total_lineas'))
+            ->groupBy('sucursal_entrega')
+            ->get();
+            
+        return $this->ok($res, $sucursales);
+    }
+
+    public function certDetalle(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        $sucursal = urldecode($a['sucursal']);
+        
+        $detalles = PickingDetalle::whereHas('ordenPicking', function($q) use ($user, $sucursal) {
+                $q->where('empresa_id', $user->empresa_id)
+                  ->where('sucursal_id', $user->sucursal_id)
+                  ->where('sucursal_entrega', $sucursal)
+                  ->where('estado', 'Completada')
+                  ->where('estado_certificacion', 'Pendiente');
+            })
+            ->with(['producto:id,nombre,codigo_interno,codigo_barras', 'ordenPicking:id,numero_orden,cliente'])
+            ->get();
+            
+        // Consolidation by product
+        $consolidado = [];
+        foreach ($detalles as $d) {
+            $pid = $d->producto_id;
+            if (!isset($consolidado[$pid])) {
+                $consolidado[$pid] = [
+                    'producto_id' => $pid,
+                    'nombre'      => $d->producto->nombre ?? 'Desconocido',
+                    'codigo'      => $d->producto->codigo_interno ?? $d->producto->codigo_barras ?? '-',
+                    'ean'         => $d->producto->codigo_barras ?? '-',
+                    'cantidad_pickeada' => 0,
+                    'cantidad_certificada' => 0,
+                    'detalles_ids' => []
+                ];
+            }
+            $consolidado[$pid]['cantidad_pickeada']    += (float)$d->cantidad_pickeada;
+            $consolidado[$pid]['cantidad_certificada'] += (float)$d->cantidad_certificada;
+            $consolidado[$pid]['detalles_ids'][]       = $d->id;
+        }
+        
+        return $this->ok($res, array_values($consolidado));
+    }
+
+    public function certConfirmar(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $data = $r->getParsedBody();
+        
+        $productoId = $data['producto_id'];
+        $sucursal   = $data['sucursal_entrega'];
+        $cantidad   = (float)$data['cantidad'];
+        
+        $detalles = PickingDetalle::where('producto_id', $productoId)
+            ->whereHas('ordenPicking', function($q) use ($user, $sucursal) {
+                $q->where('empresa_id', $user->empresa_id)
+                  ->where('sucursal_id', $user->sucursal_id)
+                  ->where('sucursal_entrega', $sucursal)
+                  ->where('estado', 'Completada')
+                  ->where('estado_certificacion', 'Pendiente');
+            })
+            ->orderBy('id', 'asc')
+            ->get();
+            
+        if ($detalles->isEmpty()) return $this->error($res, 'No se encontraron líneas pendientes para certificar');
+
+        Capsule::transaction(function() use ($detalles, $cantidad) {
+            $restante = $cantidad;
+            foreach ($detalles as $d) {
+                $capacidad = (float)$d->cantidad_pickeada;
+                $tomar = min($restante, $capacidad);
+                $d->cantidad_certificada = $tomar;
+                $d->estado_certificacion = ($tomar >= $capacidad) ? 'Certificado' : 'Diferencia';
+                $d->save();
+                $restante -= $tomar;
+            }
+        });
+        
+        return $this->ok($res, null, 'Certificación de producto registrada');
+    }
+
+    public function certFinalizar(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $data = $r->getParsedBody();
+        $sucursal = $data['sucursal_entrega'];
+        
+        $ordenes = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->where('sucursal_entrega', $sucursal)
+            ->where('estado', 'Completada')
+            ->where('estado_certificacion', 'Pendiente')
+            ->get();
+            
+        if ($ordenes->isEmpty()) return $this->error($res, 'No hay órdenes pendientes para finalizar');
+
+        Capsule::transaction(function() use ($ordenes, $user) {
+            foreach ($ordenes as $o) {
+                $o->estado_certificacion = 'Certificada';
+                $o->fecha_certificacion  = date('Y-m-d H:i:s');
+                $o->certificador_id      = $user->id;
+                $o->save();
+                
+                // Audit differences as novedades
+                foreach ($o->detalles as $d) {
+                    $diff = (float)$d->cantidad_pickeada - (float)$d->cantidad_certificada;
+                    if ($diff != 0) {
+                        $this->audit($user, 'picking', 'novedad_certificacion', 'picking_detalles', $d->id,
+                            ['pick' => $d->cantidad_pickeada], ['cert' => $d->cantidad_certificada],
+                            "Diferencia en certificación: Pedido {$o->numero_orden}, Producto ID {$d->producto_id}. Faltan " . abs($diff));
+                    }
+                }
+            }
+        });
+        
+        return $this->ok($res, null, 'Certificación de sucursal finalizada correctamente');
+    }
+
+    // ── PUT /api/picking/{id}/auxiliar ───────────────────────────────────────
+    // Cambia el auxiliar cuando ninguna línea ha iniciado picking
+    public function cambiarAuxiliar(Request $r, Response $res, array $a): Response
+    {
+        $user       = $r->getAttribute('user');
+        $data       = $r->getParsedBody() ?? [];
+        $nuevoAuxId = isset($data['auxiliar_id']) ? (int)$data['auxiliar_id'] : null;
+
+        if (!$nuevoAuxId) {
+            return $this->error($res, 'Se requiere auxiliar_id');
+        }
+
+        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->find((int)$a['id']);
+
+        if (!$orden) return $this->notFound($res);
+
+        $lineasActivas = PickingDetalle::where('orden_picking_id', $orden->id)
+            ->whereNotIn('estado', ['Pendiente', 'Creado'])
+            ->count();
+
+        if ($lineasActivas > 0) {
+            return $this->error($res,
+                'No se puede cambiar el auxiliar: el picking ya inició en algunas líneas. Use "Agregar Auxiliar" para distribuir las líneas restantes.',
+                422);
+        }
+
+        $anteriorAuxId = $orden->auxiliar_id;
+        $now = date('Y-m-d H:i:s');
+
+        Capsule::transaction(function () use ($orden, $nuevoAuxId, $now) {
+            $orden->auxiliar_id = $nuevoAuxId;
+            $orden->save();
+            Capsule::table('picking_detalles')
+                ->where('orden_picking_id', $orden->id)
+                ->update(['auxiliar_id' => $nuevoAuxId, 'updated_at' => $now]);
+        });
+
+        \App\Controllers\NotificacionesController::crear(
+            $user->empresa_id, $nuevoAuxId,
+            'Orden de Picking Asignada',
+            "Se le ha asignado la orden {$orden->numero_orden} para alistamiento.",
+            'picking', $user->id, 'Picking', $orden->id, 'viewPicking', 'Picking',
+            true, $user->sucursal_id
+        );
+
+        $this->audit($user, 'picking', 'cambiar_auxiliar', 'orden_pickings', $orden->id,
+            ['auxiliar_id' => $anteriorAuxId], ['auxiliar_id' => $nuevoAuxId],
+            "Auxiliar cambiado en orden {$orden->numero_orden}");
+
+        return $this->ok($res, null, 'Auxiliar actualizado correctamente');
+    }
+
+    // ── POST /api/picking/{id}/auxiliar ──────────────────────────────────────
+    // Agrega auxiliar y le asigna la mitad de las líneas pendientes (sin duplicar productos)
+    public function agregarAuxiliar(Request $r, Response $res, array $a): Response
+    {
+        $user       = $r->getAttribute('user');
+        $data       = $r->getParsedBody() ?? [];
+        $nuevoAuxId = isset($data['auxiliar_id']) ? (int)$data['auxiliar_id'] : null;
+
+        if (!$nuevoAuxId) {
+            return $this->error($res, 'Se requiere auxiliar_id');
+        }
+
+        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->find((int)$a['id']);
+
+        if (!$orden) return $this->notFound($res);
+
+        if (!in_array($orden->estado, ['EnProceso', 'Pendiente', 'Asignado'])) {
+            return $this->error($res, 'El pedido no está en un estado que permita agregar auxiliares');
+        }
+
+        // Líneas pendientes ordenadas por zona+pasillo para respetar el recorrido de bodega
+        $lineasPendientes = Capsule::table('picking_detalles as pd')
+            ->leftJoin('ubicaciones as u', 'pd.ubicacion_id', '=', 'u.id')
+            ->where('pd.orden_picking_id', $orden->id)
+            ->whereIn('pd.estado', ['Pendiente', 'Creado'])
+            ->select(['pd.id'])
+            ->orderByRaw("COALESCE(u.zona, 'ZZZ') ASC")
+            ->orderByRaw("COALESCE(u.pasillo, 'ZZZ') ASC")
+            ->pluck('pd.id');
+
+        if ($lineasPendientes->isEmpty()) {
+            return $this->error($res, 'No hay líneas pendientes para distribuir', 422);
+        }
+
+        $total = $lineasPendientes->count();
+        $mitad = (int)ceil($total / 2);
+        // La segunda mitad va al nuevo auxiliar
+        $paraNuevo = $lineasPendientes->slice($mitad)->values()->toArray();
+
+        $now = date('Y-m-d H:i:s');
+
+        Capsule::transaction(function () use ($paraNuevo, $nuevoAuxId, $now) {
+            Capsule::table('picking_detalles')
+                ->whereIn('id', $paraNuevo)
+                ->update(['auxiliar_id' => $nuevoAuxId, 'updated_at' => $now]);
+        });
+
+        \App\Controllers\NotificacionesController::crear(
+            $user->empresa_id, $nuevoAuxId,
+            'Tareas de Picking Asignadas',
+            "Se le han asignado " . count($paraNuevo) . " líneas pendientes en el pedido {$orden->numero_orden}.",
+            'picking', $user->id, 'Picking', $orden->id, 'viewPicking', 'Picking',
+            true, $user->sucursal_id
+        );
+
+        $this->audit($user, 'picking', 'agregar_auxiliar', 'orden_pickings', $orden->id,
+            null,
+            ['nuevo_auxiliar_id' => $nuevoAuxId, 'lineas_asignadas' => count($paraNuevo)],
+            "Auxiliar adicional en orden {$orden->numero_orden}: {$mitad} existente + " . count($paraNuevo) . " nuevas");
+
+        return $this->ok($res, [
+            'lineas_reasignadas'       => count($paraNuevo),
+            'lineas_auxiliar_original' => $total - count($paraNuevo),
+            'total_pendientes'         => $total,
+        ], count($paraNuevo) . ' líneas asignadas al nuevo auxiliar');
+    }
+
+    public function imprimirCertificado(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        $sucursal = urldecode($a['sucursal']);
+        
+        // 1. Get info to print
+        $ordenes = OrdenPicking::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->where('sucursal_entrega', $sucursal)
+            ->where('estado_certificacion', 'Certificada')
+            ->get();
+
+        if ($ordenes->isEmpty()) return $this->error($res, 'No se encontraron órdenes certificadas para esta sucursal');
+
+        $totalLineas = PickingDetalle::whereIn('orden_picking_id', $ordenes->pluck('id'))->count();
+        
+        // 2. Get printers assigned to the 'certificacion' module
+        $pRotulos = \App\Models\Impresora::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->where('modulos', 'LIKE', '%certificacion%')
+            ->where('tipo', 'Rotulos')
+            ->where('activo', true)
+            ->first();
+            
+        $pDespacho = \App\Models\Impresora::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->where('modulos', 'LIKE', '%certificacion%')
+            ->where('tipo', 'Despacho')
+            ->where('activo', true)
+            ->first();
+
+        $results = [];
+
+        // 3. Print Label (ZPL)
+        if ($pRotulos) {
+            $zpl = \App\Helpers\PrintHelper::generateZPL($sucursal, [
+                'pedidos' => $ordenes->count(),
+                'lineas'  => $totalLineas
+            ]);
+            $results['label'] = \App\Helpers\PrintHelper::sendToPrinter($pRotulos->ip, $pRotulos->puerto, $zpl);
+        } else {
+            $results['label'] = ['error' => true, 'message' => 'No hay impresora de rótulos configurada'];
+        }
+
+        // 4. Print Document (Mockup or ESC/POS if applicable)
+        if ($pDespacho) {
+            $text = "--- DOCUMENTO DE DESPACHO ---\n";
+            $text .= "Sucursal: $sucursal\n";
+            $text .= "Fecha: " . date('Y-m-d H:i') . "\n";
+            $text .= "-----------------------------\n";
+            foreach($ordenes as $o) {
+                $text .= "Orden: {$o->numero_orden} - {$o->cliente}\n";
+            }
+            $text .= "-----------------------------\n";
+            $text .= "Total Pedidos: " . $ordenes->count() . "\n";
+            $text .= "Total Lineas: $totalLineas\n";
+            $text .= "\n\n\n\n"; // Space for cutter
+            
+            $results['document'] = \App\Helpers\PrintHelper::sendToPrinter($pDespacho->ip, $pDespacho->puerto, $text);
+        } else {
+            $results['document'] = ['error' => true, 'message' => 'No hay impresora de despacho configurada'];
+        }
+
+        return $this->ok($res, $results, 'Proceso de impresión completado');
+    }
+
+    // ── PRIVATE HELPERS ──────────────────────────────────────────────────────
+
+    /**
+     * Release cantidad_reservada rows inside an open transaction.
+     * Releases up to $cantidad units from matching inventario rows (lockForUpdate).
+     */
+    private function _releaseReserva(
+        int $empresaId, int $sucursalId, int $productoId,
+        ?int $ubicacionId, ?string $lote, int $cantidad
+    ): void {
+        if ($cantidad <= 0) return;
+
+        $rows = Inventario::where('empresa_id',        $empresaId)
+            ->where('sucursal_id',        $sucursalId)
+            ->where('producto_id',        $productoId)
+            ->where('cantidad_reservada', '>', 0)
+            ->when($ubicacionId, fn($q) => $q->where('ubicacion_id', $ubicacionId))
+            ->when($lote,        fn($q) => $q->where('lote',         $lote))
+            ->lockForUpdate()
+            ->get();
+
+        $porLiberar = $cantidad;
+        foreach ($rows as $row) {
+            if ($porLiberar <= 0) break;
+            $aLiberar = min((int)$row->cantidad_reservada, $porLiberar);
+            $row->cantidad_reservada -= $aLiberar;
+            $row->save();
+            $porLiberar -= $aLiberar;
         }
     }
 
     /**
-     * POST /api/picking/reabast/{id}/completar
-     * Marca una tarea de reabastecimiento como completada.
+     * Check whether all lines of an order are resolved and close it if so.
+     * Single-query check (COUNT + conditional SUM) instead of two separate COUNTs.
+     * Saves the order. Must be called inside an open transaction with lockForUpdate on $orden.
      */
-    public function completarReabast(Request $r, Response $res, array $args): Response
+    private function _closeOrdenIfDone(OrdenPicking $orden, bool $setHoraInicio = false): void
     {
-        try {
-            $id = $args['id'];
-            $user = $r->getAttribute('user');
-
-            Capsule::table('tarea_reabastecimientos')
-                ->where('id', $id)
-                ->where('empresa_id', $user->empresa_id)
-                ->update([
-                    'completada' => true,
-                    'updated_at' => date('Y-m-d H:i:s')
-                ]);
-
-            return $this->ok($res, ['message' => 'Reabastecimiento completado.']);
-        } catch (\Exception $e) {
-            return $this->error($res, $e->getMessage(), 500);
+        if ($setHoraInicio && (empty($orden->hora_inicio) || $orden->hora_inicio === '00:00:00')) {
+            $orden->hora_inicio = date('H:i:s');
         }
+
+        $counts = PickingDetalle::where('orden_picking_id', $orden->id)
+            ->selectRaw('COUNT(*) as total, SUM(estado IN ("Completado","Faltante","Anulado")) as done')
+            ->first();
+
+        $total = (int)($counts->total ?? 0);
+        $done  = (int)($counts->done  ?? 0);
+
+        if ($total > 0 && $done >= $total) {
+            $orden->estado   = 'Completada';
+            $orden->hora_fin = date('H:i:s');
+        } else {
+            $orden->estado = 'EnProceso';
+        }
+        $orden->save();
     }
 }

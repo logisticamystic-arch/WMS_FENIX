@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class RolPermiso extends Model
 {
+    use TenantScoped;
     protected $table = 'rol_permisos';
 
     protected $fillable = [
@@ -26,3 +28,5 @@ class RolPermiso extends Model
         return $this->belongsTo(Permiso::class);
     }
 }
+
+

@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class Marca extends Model
 {
+    use TenantScoped;
     protected $table = 'marcas';
 
     protected $fillable = [
@@ -26,3 +28,5 @@ class Marca extends Model
         return $this->hasMany(Producto::class);
     }
 }
+
+

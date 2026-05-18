@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class CategoriaProducto extends Model
 {
+    use TenantScoped;
     protected $table = 'categoria_productos';
 
     protected $fillable = [
@@ -21,3 +23,5 @@ class CategoriaProducto extends Model
         return $this->hasMany(Producto::class, 'categoria_id');
     }
 }
+
+

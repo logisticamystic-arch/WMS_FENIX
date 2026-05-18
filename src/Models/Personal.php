@@ -3,9 +3,17 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class Personal extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
+
+
+
+
+
     protected $table = 'personal';
 
     protected $fillable = [
@@ -21,10 +29,21 @@ class Personal extends Model
 
     // Roles constants
     const ROL_ADMIN = 'Admin';
+    const ROL_SUPERADMIN = 'SuperAdmin';
     const ROL_SUPERVISOR = 'Supervisor';
     const ROL_AUXILIAR = 'Auxiliar';
     const ROL_MONTACARGUISTA = 'Montacarguista';
     const ROL_ANALISTA = 'Analista';
+
+    public function isSuperAdmin(): bool
+    {
+        return strcasecmp($this->rol ?? '', self::ROL_SUPERADMIN) === 0;
+    }
+
+    public function isAdminOrSuperAdmin(): bool
+    {
+        return $this->isSuperAdmin() || strcasecmp($this->rol ?? '', self::ROL_ADMIN) === 0;
+    }
 
     public function empresa()
     {
@@ -67,6 +86,10 @@ class Personal extends Model
      */
     public function hasPermission(string $modulo, string $accion): bool
     {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
         return RolPermiso::where('empresa_id', $this->empresa_id)
             ->where('rol', $this->rol)
             ->whereHas('permiso', function ($q) use ($modulo, $accion) {
@@ -76,3 +99,7 @@ class Personal extends Model
             ->exists();
     }
 }
+
+
+
+

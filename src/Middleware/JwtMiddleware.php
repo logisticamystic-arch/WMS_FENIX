@@ -9,6 +9,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\Psr7\Response as SlimResponse;
 use Illuminate\Database\Capsule\Manager as Capsule;
+use App\Helpers\TenantContext;
 
 /**
  * JwtMiddleware — Autentica el Bearer token en cada request protegida.
@@ -82,7 +83,12 @@ class JwtMiddleware
         }
 
         // ── 5. Inyectar usuario en la request ──────────────────────────────────
-        $request = $request->withAttribute('user', $user);
+        $request = $request
+            ->withAttribute('user', $user)
+            ->withAttribute('empresa_id', $user->empresa_id)
+            ->withAttribute('sucursal_id', $user->sucursal_id);
+
+        TenantContext::setCurrentTenant($user->empresa_id, $user->sucursal_id);
 
         return $handler->handle($request);
     }

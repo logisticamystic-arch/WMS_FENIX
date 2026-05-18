@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class Devolucion extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
     protected $table = 'devoluciones';
 
     protected $fillable = [
@@ -61,3 +64,5 @@ class Devolucion extends Model
         return sprintf('%s-%s-%04d', $prefix, $date, $last + 1);
     }
 }
+
+

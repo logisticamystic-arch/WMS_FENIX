@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class Cita extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
     protected $table = 'citas';
 
     protected $fillable = [
@@ -35,3 +38,5 @@ class Cita extends Model
         return $this->hasMany(Recepcion::class);
     }
 }
+
+

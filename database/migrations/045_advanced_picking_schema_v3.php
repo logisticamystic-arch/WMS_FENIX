@@ -1,6 +1,6 @@
 <?php
 /**
- * Migration 045 — Advanced Picking Schema (ProOriente Enterprise)
+ * Migration 045 — Advanced Picking Schema (Fénix Enterprise)
  * Adds financial/logistic fields and shortage audit table.
  */
 use Illuminate\Database\Capsule\Manager as DB;

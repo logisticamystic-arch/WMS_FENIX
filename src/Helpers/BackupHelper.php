@@ -14,7 +14,7 @@ namespace App\Helpers;
  *   \App\Helpers\BackupHelper::listar();  // lista backups existentes
  *
  * Uso desde cron (Windows Task Scheduler en XAMPP):
- *   php C:\xampp\htdocs\WMS_PROORIENTE\scripts\backup.php
+ *   php C:\xampp\htdocs\WMS_FENIX\scripts\backup.php
  */
 class BackupHelper
 {
@@ -91,7 +91,7 @@ class BackupHelper
             'driver'    => $env('DB_DRIVER', 'mysql'),
             'host'      => $env('DB_HOST', '127.0.0.1'),
             'port'      => $env('DB_PORT', '3306'),
-            'name'      => $env('DB_NAME', 'WMS_PROORIENTE'),
+            'name'      => $env('DB_NAME', 'WMS_FENIX'),
             'user'      => $env('DB_USER', 'root'),
             'pass'      => $env('DB_PASS', ''),
             'retention' => $env('BACKUP_RETENTION_DAYS', '30'),

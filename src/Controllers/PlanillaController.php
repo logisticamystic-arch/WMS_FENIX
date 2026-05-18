@@ -783,6 +783,20 @@ class PlanillaController extends BaseController
                         'updated_at'          => $now,
                     ]);
                 }
+                
+                // Sincronizar con planillas_picking para el módulo de Waves
+                DB::table('planillas_picking')->updateOrInsert(
+                    ['empresa_id' => $user->empresa_id, 'numero' => $planillaLabel],
+                    [
+                        'sucursal_id' => $user->sucursal_id,
+                        'cliente'     => 'Consolidado ' . $planillaLabel,
+                        'estado'      => 'Pendiente',
+                        'total_lineas'=> count($sumados),
+                        'prioridad'   => 5,
+                        'created_at'  => $now,
+                        'updated_at'  => $now
+                    ]
+                );
                 $creadas[] = $ordenId;
 
             } else {
@@ -840,6 +854,20 @@ class PlanillaController extends BaseController
                             'updated_at'          => $now,
                         ]);
                     }
+
+                    // Sincronizar con planillas_picking para el módulo de Waves
+                    DB::table('planillas_picking')->updateOrInsert(
+                        ['empresa_id' => $user->empresa_id, 'numero' => $numPlanilla],
+                        [
+                            'sucursal_id' => $user->sucursal_id,
+                            'cliente'     => 'Planilla ' . $numPlanilla,
+                            'estado'      => 'Pendiente',
+                            'total_lineas'=> count($sumados),
+                            'prioridad'   => 5,
+                            'created_at'  => $now,
+                            'updated_at'  => $now
+                        ]
+                    );
                     $creadas[] = $ordenId;
                 }
             }

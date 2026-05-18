@@ -75,7 +75,13 @@ class ParametrosController extends BaseController
          $user = $request->getAttribute('user');
          $params = $request->getQueryParams();
          try {
-             $query = \App\Models\Sucursal::where('empresa_id', $user->empresa_id);
+             $query = \App\Models\Sucursal::query();
+
+             if ($this->isSuperAdmin($user) && !empty($params['empresa_id'])) {
+                 $query->where('empresa_id', $params['empresa_id']);
+             } else {
+                 $query->where('empresa_id', $user->empresa_id);
+             }
              
              if (isset($params['activo'])) {
                  $query->where('activo', filter_var($params['activo'], FILTER_VALIDATE_BOOLEAN));
@@ -642,12 +648,20 @@ class ParametrosController extends BaseController
      */
     public function getProductoEans(Request $request, Response $response, array $args): Response
     {
-        $productId = $args['id'];
+        $user      = $request->getAttribute('user');
+        $productId = (int)$args['id'];
+
+        // Verify the product belongs to the user's company
+        $producto = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($productId);
+        if (!$producto) {
+            return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
+        }
+
         $eans = \App\Models\ProductoEan::where('producto_id', $productId)
             ->where('activo', true)
             ->orderBy('es_principal', 'desc')
             ->get();
-            
+
         return $this->json($response, ['error' => false, 'data' => $eans]);
     }
 
@@ -656,10 +670,16 @@ class ParametrosController extends BaseController
      */
     public function addProductoEan(Request $request, Response $response, array $args): Response
     {
-        $productId = $args['id'];
-        $data = $request->getParsedBody();
-        $eanCode = $data['codigo_ean'] ?? '';
-        
+        $user      = $request->getAttribute('user');
+        $productId = (int)$args['id'];
+        $data      = $request->getParsedBody();
+        $eanCode   = $data['codigo_ean'] ?? '';
+
+        $producto = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($productId);
+        if (!$producto) {
+            return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
+        }
+
         if (empty($eanCode)) {
             return $this->json($response, ['error' => true, 'message' => 'Código EAN es requerido'], 400);
         }
@@ -684,16 +704,24 @@ class ParametrosController extends BaseController
      */
     public function updateProductoEan(Request $request, Response $response, array $args): Response
     {
-        $eanId = $args['ean_id'];
-        $data = $request->getParsedBody();
-        $eanCode = $data['codigo_ean'] ?? '';
+        $user      = $request->getAttribute('user');
+        $productId = (int)$args['id'];
+        $eanId     = (int)$args['ean_id'];
+        $data      = $request->getParsedBody();
+        $eanCode   = $data['codigo_ean'] ?? '';
+
+        // Verify ownership via producto → empresa_id
+        $producto = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($productId);
+        if (!$producto) {
+            return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
+        }
 
         if (empty($eanCode)) {
             return $this->json($response, ['error' => true, 'message' => 'Código EAN es requerido'], 400);
         }
 
         try {
-            $ean = \App\Models\ProductoEan::find($eanId);
+            $ean = \App\Models\ProductoEan::where('producto_id', $productId)->find($eanId);
             if (!$ean) {
                 return $this->json($response, ['error' => true, 'message' => 'EAN no encontrado'], 404);
             }
@@ -713,9 +741,17 @@ class ParametrosController extends BaseController
      */
     public function deleteProductoEan(Request $request, Response $response, array $args): Response
     {
-        $eanId = $args['ean_id'];
-        
-        $ean = \App\Models\ProductoEan::find($eanId);
+        $user      = $request->getAttribute('user');
+        $productId = (int)$args['id'];
+        $eanId     = (int)$args['ean_id'];
+
+        // Verify ownership via producto → empresa_id
+        $producto = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($productId);
+        if (!$producto) {
+            return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
+        }
+
+        $ean = \App\Models\ProductoEan::where('producto_id', $productId)->find($eanId);
         if ($ean) {
             if ($ean->es_principal) {
                 return $this->json($response, ['error' => true, 'message' => 'No se puede eliminar el EAN principal'], 400);
@@ -849,39 +885,42 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         $data = $request->getParsedBody();
         try {
-            // Pre-generar código para validar duplicidad
-            $modulo = $data['modulo'] ?? '01';
-            $mStr   = str_pad($modulo, 2, '0', STR_PAD_LEFT);
-            $pasillo = strtoupper($data['pasillo'] ?? '');
-            $nivel   = strtoupper($data['nivel'] ?? '');
-            $codigo  = "WP/EX/" . $pasillo . "-" . $mStr . "-" . $nivel;
+            $zona    = strtoupper(trim($data['zona'] ?? ''));
+            $pasillo = strtoupper(trim($data['pasillo'] ?? ''));
+            $modulo  = str_pad($data['modulo'] ?? '01', 2, '0', STR_PAD_LEFT);
+            $nivel   = strtoupper(trim($data['nivel'] ?? ''));
+
+            // Código = zona/pasillo-modulo-nivel (si el cliente ya lo envía, usarlo directamente)
+            if (!empty($data['codigo'])) {
+                $codigo = trim($data['codigo']);
+            } else {
+                $parts = array_filter([$pasillo, $modulo, $nivel]);
+                $codigo = $zona . '/' . implode('-', $parts);
+            }
 
             $exists = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id)
                 ->where('sucursal_id', $data['sucursal_id'])
                 ->where('codigo', $codigo)
                 ->exists();
-            
+
             if ($exists) {
                 return $this->json($response, ['error' => true, 'message' => "La ubicación {$codigo} ya existe en esta sucursal."], 400);
             }
 
             $u = new \App\Models\Ubicacion();
-            $u->empresa_id = $user->empresa_id;
-            $u->sucursal_id = $data['sucursal_id'];
-            $u->zona = $data['zona'];
-            $u->pasillo = $data['pasillo'];
-            $u->modulo = $data['modulo'] ?? '00';
-            $u->nivel = $data['nivel'];
-            
-            // Auto-generate code: WP/EX/PASILLO-MODULO-NIVEL
-            $mStr = str_pad($u->modulo, 2, '0', STR_PAD_LEFT);
-            $u->codigo = "WP/EX/" . strtoupper($u->pasillo) . "-" . $mStr . "-" . strtoupper($u->nivel);
-            
-            $u->posicion = $data['posicion'] ?? null;
-            $u->tipo_ubicacion = $data['tipo_ubicacion'] ?? 'Almacenamiento';
-            $u->capacidad_maxima = $data['capacidad_maxima'] ?? 0;
-            $u->activo = 1;
+            $u->empresa_id      = $user->empresa_id;
+            $u->sucursal_id     = $data['sucursal_id'];
+            $u->zona            = $data['zona'];
+            $u->pasillo         = $data['pasillo'];
+            $u->modulo          = $data['modulo'] ?? '01';
+            $u->nivel           = $data['nivel'];
+            $u->codigo          = $codigo;
+            $u->posicion        = $data['posicion'] ?? null;
+            $u->tipo_ubicacion  = $data['tipo_ubicacion'] ?? 'Almacenamiento';
+            $u->capacidad_maxima = (int)($data['capacidad_maxima'] ?? 0);
+            $u->activo          = 1;
             $u->save();
+
             return $this->json($response, ['error' => false, 'message' => 'Ubicación creada: ' . $u->codigo, 'data' => $u]);
         } catch (\Exception $e) {
             return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 400);
@@ -1158,7 +1197,7 @@ class ParametrosController extends BaseController
     public function editEmpresa(Request $request, Response $response, array $args): Response
     {
         $user = $request->getAttribute('user');
-        if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
+        if (!$this->isSuperAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Solo SuperAdmin puede modificar empresas'], 403);
         $e = \App\Models\Empresa::find($args['id']);
         if (!$e) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
         $data = $request->getParsedBody();
@@ -1175,7 +1214,7 @@ class ParametrosController extends BaseController
     public function deleteEmpresa(Request $request, Response $response, array $args): Response
     {
         $user = $request->getAttribute('user');
-        if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
+        if (!$this->isSuperAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Solo SuperAdmin puede desactivar empresas'], 403);
         $e = \App\Models\Empresa::find($args['id']);
         if (!$e) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
         $e->activo = 0; $e->save();
@@ -1211,7 +1250,7 @@ class ParametrosController extends BaseController
         if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
         $u = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id)->find($args['id']);
         if (!$u) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
-        $u->estado = 'Inactiva'; $u->save();
+        $u->activo = false; $u->save();
         return $this->json($response, ['error' => false, 'message' => 'Ubicación desactivada']);
     }
 

@@ -16,9 +16,11 @@ class CitaController extends BaseController
     public function index(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
 
-        $citas = Cita::where('empresa_id', $user->empresa_id)
-            ->where('sucursal_id', $user->sucursal_id)
+        $citas = Cita::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->orderBy('fecha', 'asc')
             ->orderBy('hora_programada', 'asc')
             ->get();
@@ -36,7 +38,9 @@ class CitaController extends BaseController
     public function store(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
+
         // Todos los roles autenticados pueden programar citas
 
         $data = $request->getParsedBody();
@@ -49,8 +53,8 @@ class CitaController extends BaseController
         try {
             // Validar disponibilidad de horario (máximo 2 citas por hora)
             $maxCitasPorHora = 2;
-            $ocupadas = Cita::where('empresa_id', $user->empresa_id)
-                ->where('sucursal_id', $user->sucursal_id)
+            $ocupadas = Cita::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
                 ->where('fecha', $data['fecha'])
                 ->where('hora_programada', $data['hora_programada'])
                 ->whereIn('estado', ['Programada', 'EnPatio', 'EnCurso'])
@@ -66,7 +70,7 @@ class CitaController extends BaseController
             // Resolver nombre del proveedor: acepta nombre libre o proveedor_id
             $nombreProv = trim($data['proveedor'] ?? '');
             if (!empty($data['proveedor_id'])) {
-                $prov = \App\Models\Proveedor::where('empresa_id', $user->empresa_id)
+                $prov = \App\Models\Proveedor::where('empresa_id', $empresaId)
                     ->find((int)$data['proveedor_id']);
                 if ($prov) $nombreProv = $prov->razon_social;
             }
@@ -75,8 +79,8 @@ class CitaController extends BaseController
             }
 
             $cita = new Cita();
-            $cita->empresa_id     = $user->empresa_id;
-            $cita->sucursal_id    = $user->sucursal_id;
+            $cita->empresa_id     = $empresaId;
+            $cita->sucursal_id    = $sucursalId;
             $cita->proveedor      = $nombreProv;
             $cita->fecha          = $data['fecha'];
             $cita->hora_programada= $data['hora_programada'];
@@ -107,11 +111,15 @@ class CitaController extends BaseController
     {
         $user = $request->getAttribute('user');
         $id = $args['id'] ?? null;
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
 
         // Supervisor/Admin o el auxiliar responsable puede editar
 
-        $cita = Cita::find($id);
-        if (!$cita || $cita->empresa_id !== $user->empresa_id || $cita->sucursal_id !== $user->sucursal_id) {
+        $cita = Cita::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find($id);
+        if (!$cita) {
             return $this->json($response, ['error' => true, 'message' => 'Cita no encontrada.'], 404);
         }
 
@@ -144,6 +152,8 @@ class CitaController extends BaseController
     {
         $user = $request->getAttribute('user');
         $id = $args['id'] ?? null;
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
 
         // Solo supervisores pueden cancelar citas
         $rol = strtolower($user->rol ?? '');
@@ -151,8 +161,10 @@ class CitaController extends BaseController
             return $this->json($response, ['error' => true, 'message' => 'Se requiere rol Supervisor o Administrador'], 403);
         }
 
-        $cita = Cita::find($id);
-        if (!$cita || $cita->empresa_id !== $user->empresa_id) {
+        $cita = Cita::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find($id);
+        if (!$cita) {
             return $this->json($response, ['error' => true, 'message' => 'Cita no encontrada.'], 404);
         }
 
@@ -174,12 +186,14 @@ class CitaController extends BaseController
         $user = $request->getAttribute('user');
         $params = $request->getQueryParams();
         $fecha = $params['fecha'] ?? date('Y-m-d');
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
 
         // Configuración: max citas por hora (podría venir de DB/config)
         $maxCitasPorHora = 2; 
 
-        $ocupacion = Cita::where('empresa_id', $user->empresa_id)
-            ->where('sucursal_id', $user->sucursal_id)
+        $ocupacion = Cita::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->where('fecha', $fecha)
             ->whereIn('estado', ['Programada', 'EnCurso'])
             ->select('hora_programada', Capsule::raw('count(*) as total'))
@@ -202,9 +216,13 @@ class CitaController extends BaseController
     {
         $user = $request->getAttribute('user');
         $id = $args['id'] ?? null;
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
 
-        $cita = Cita::find($id);
-        if (!$cita || $cita->empresa_id !== $user->empresa_id) {
+        $cita = Cita::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find($id);
+        if (!$cita) {
             return $this->json($response, ['error' => true, 'message' => 'Cita no encontrada.'], 404);
         }
 
@@ -228,9 +246,13 @@ class CitaController extends BaseController
         $user = $request->getAttribute('user');
         $id = $args['id'] ?? null;
         $data = $request->getParsedBody();
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
 
-        $cita = Cita::find($id);
-        if (!$cita || $cita->empresa_id !== $user->empresa_id) {
+        $cita = Cita::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find($id);
+        if (!$cita) {
             return $this->json($response, ['error' => true, 'message' => 'Cita no encontrada.'], 404);
         }
 

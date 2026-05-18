@@ -3,7 +3,11 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 return [
     'up' => function () {
         try { Capsule::statement('ALTER TABLE picking_detalles DROP CONSTRAINT IF EXISTS picking_detalles_ubicacion_id_foreign'); } catch (\Exception $e) {}
-        Capsule::statement('ALTER TABLE picking_detalles ALTER COLUMN ubicacion_id DROP NOT NULL');
+        if (Capsule::getDriverName() === 'pgsql') {
+            Capsule::statement('ALTER TABLE picking_detalles ALTER COLUMN ubicacion_id DROP NOT NULL');
+        } else {
+            Capsule::statement('ALTER TABLE picking_detalles MODIFY COLUMN ubicacion_id BIGINT UNSIGNED NULL');
+        }
         try { Capsule::statement('ALTER TABLE picking_detalles ADD CONSTRAINT picking_detalles_ubicacion_id_foreign FOREIGN KEY (ubicacion_id) REFERENCES ubicaciones(id) ON DELETE SET NULL'); } catch (\Exception $e) {}
         if (!Capsule::schema()->hasTable('picking_novedades_stock')) {
             Capsule::schema()->create('picking_novedades_stock', function ($table) {

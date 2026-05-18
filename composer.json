@@ -1,6 +1,6 @@
-{
-    "name": "prooriente/wms",
-    "description": "WMS Core Module - Prooriente",
+﻿{
+    "name": "Fénix/wms",
+    "description": "WMS Core Module - Fénix",
     "type": "project",
     "require": {
         "php": ">=8.1",

@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class OrdenPicking extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
     protected $table = 'orden_pickings';
 
     protected $fillable = [
@@ -13,6 +16,7 @@ class OrdenPicking extends Model
         'direccion_cliente', 'asesor_comercial', 'area_comercial', 'numero_pedido',
         'planilla_numero', 'planilla_lote', 'estado', 'prioridad', 'auxiliar_id',
         'fecha_movimiento', 'hora_inicio', 'hora_fin', 'fecha_requerida',
+        'sucursal_entrega', 'ruta', 'orden_logico',
     ];
 
     protected $casts = [
@@ -55,3 +59,4 @@ class OrdenPicking extends Model
         return sprintf('%s-%s-%04d', $prefix, $date, $last + 1);
     }
 }
+

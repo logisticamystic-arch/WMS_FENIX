@@ -1,5 +1,5 @@
 RewriteEngine On
 
 # Redirect everything to public/index.php except existing files
-RewriteCond %{REQUEST_URI} !^/Prooriente/public/
+RewriteCond %{REQUEST_URI} !^/WMS_FENIX/public/
 RewriteRule ^(.*)$ public/$1 [L]

@@ -3,9 +3,17 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class Recepcion extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
+
+
+
+
+
     protected $table = 'recepciones';
 
     protected $fillable = [
@@ -61,9 +69,14 @@ class Recepcion extends Model
     {
         $prefix = 'REC';
         $date = date('Ymd');
-        $last = self::where('sucursal_id', $sucursalId)
+        $maxSeq = self::where('sucursal_id', $sucursalId)
             ->where('numero_recepcion', 'like', "{$prefix}-{$date}-%")
-            ->count();
-        return sprintf('%s-%s-%04d', $prefix, $date, $last + 1);
+            ->selectRaw('MAX(CAST(SUBSTRING_INDEX(numero_recepcion, \'-\', -1) AS UNSIGNED)) as max_seq')
+            ->value('max_seq');
+        return sprintf('%s-%s-%04d', $prefix, $date, ($maxSeq ?? 0) + 1);
     }
 }
+
+
+
+

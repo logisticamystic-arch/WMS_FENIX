@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 /**
  * SesionInventario
@@ -15,6 +16,13 @@ use Illuminate\Database\Eloquent\Model;
  */
 class SesionInventario extends Model
 {
+    use TenantScoped;
+    protected static bool $tenantUsesSucursal = true;
+
+
+
+
+
     protected $table = 'sesiones_inventario';
 
     protected $fillable = [
@@ -162,3 +170,7 @@ class SesionInventario extends Model
         return ['ok' => empty($diferencias), 'diferencias' => $diferencias];
     }
 }
+
+
+
+

@@ -41,6 +41,7 @@ WMS_MODULES.maestro = {
       { id: 'clientes', icon: 'fa-user-tie', title: 'Clientes', desc: 'Base de datos de clientes, carteras y puntos de entrega.' },
       { id: 'ubicaciones', icon: 'fa-map-pin', title: 'Ubicaciones', desc: 'Maestro de posiciones en bodega, zonas y capacidad.' },
       { id: 'proveedores', icon: 'fa-truck', title: 'Proveedores', desc: 'Gestión de proveedores, contactos y tiempos de entrega.' },
+      { id: 'impresoras', icon: 'fa-print', title: 'Impresoras', desc: 'Configuración de impresoras IP para rótulos y documentos.' },
       { id: 'permisos', icon: 'fa-shield-halved', title: 'Seguridad', desc: 'Matriz de permisos, acceso por roles y auditoría.' },
     ];
 
@@ -60,7 +61,7 @@ WMS_MODULES.maestro = {
          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:20px;">
             ${cards.map(c => c._admin ? `
                <div class="landing-card" onclick="WMS.nav('maestro','${c.id}')"
-                    style="background:linear-gradient(135deg,#0f172a,#1e3a5f); border:1px solid #334155; border-radius:16px; padding:20px; cursor:pointer; transition:all .2s ease; display:flex; flex-direction:column; gap:12px; box-shadow:0 4px 12px rgba(0,0,0,0.25);">
+                    style="background:linear-gradient(135deg,#0f172a,#1e3a5f); border:1px solid #334155; border-radius:4px; padding:20px; cursor:pointer; transition:all .2s ease; display:flex; flex-direction:column; gap:12px; box-shadow:0 4px 12px rgba(0,0,0,0.25);">
                   <div style="width:48px; height:48px; border-radius:12px; background:rgba(99,102,241,0.25); color:#818cf8; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">
                      <i class="fa-solid ${c.icon}"></i>
                   </div>
@@ -73,7 +74,7 @@ WMS_MODULES.maestro = {
                   </div>
                </div>
             ` : `
-               <div class="landing-card" onclick="WMS.nav('maestro','${c.id}')" style="background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:20px; cursor:pointer; transition:all .2s ease; display:flex; flex-direction:column; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+               <div class="landing-card" onclick="WMS.nav('maestro','${c.id}')" style="background:#fff; border:1px solid #e2e8f0; border-radius:4px; padding:20px; cursor:pointer; transition:all .2s ease; display:flex; flex-direction:column; gap:12px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
                   <div style="width:48px; height:48px; border-radius:12px; background:var(--primary-soft); color:var(--primary); display:flex; align-items:center; justify-content:center; font-size:1.2rem;">
                      <i class="fa-solid ${c.icon}"></i>
                   </div>
@@ -97,6 +98,7 @@ WMS_MODULES.maestro = {
       categorias: 'Categorías', marcas: 'Marcas', productos: 'Catálogo de Productos',
       clientes: 'Clientes', ubicaciones: 'Ubicaciones',
       proveedores: 'Proveedores', rutas: 'Rutas', permisos: 'Seguridad',
+      impresoras: 'Impresoras IP',
       sistema: 'Diagnóstico del Sistema'
     };
     return m[s] || s || 'Panel';
@@ -104,48 +106,74 @@ WMS_MODULES.maestro = {
 
   // ── EMPRESA ──────────────────────────────────────────────────
   async show_empresa() {
-    WMS.setToolbar(`<button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaEmpresa()"><i class="fa-solid fa-plus"></i> Nueva Empresa</button>`);
+    WMS.setToolbar(`<button class="btn btn-primary btn-sm" style="border-radius:4px;" onclick="WMS_MODULES.maestro.nuevaEmpresa()"><i class="fa-solid fa-plus"></i> Nueva Empresa</button>`);
     WMS.spinner();
     try {
       const r     = await API.get('/param/empresas');
       const items = r.data || r || [];
       WMS.setContent(`
-        <div class="card">
-          <div class="card-header"><span class="card-title"><i class="fa-solid fa-building"></i> Empresas</span></div>
-          <div class="table-container">
-            <table class="data-table">
+        <div class="md-container">
+          <div class="md-master erp-card">
+            <table class="erp-table">
               <thead><tr><th>NIT</th><th>Razón Social</th><th>Teléfono</th><th>Email</th><th>Estado</th><th>Acciones</th></tr></thead>
-              <tbody>${items.length === 0
-                ? '<tr><td colspan="6" class="table-empty">Sin registros</td></tr>'
-                : items.map(e => `<tr>
-                    <td><span class="badge badge-info">${WMS.esc(e.nit || '')}</span></td>
-                    <td><strong>${WMS.esc(e.razon_social || '')}</strong></td>
-                    <td>${WMS.esc(e.telefono || '-')}</td>
-                    <td>${WMS.esc(e.email || '-')}</td>
-                    <td><span class="status-chip ${e.activo ? 'status-cerrada' : 'status-cancelada'}">${e.activo ? 'Activa' : 'Inactiva'}</span></td>
-                    <td><div class="actions">
-                      <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editEmpresa(${e.id})"><i class="fa-solid fa-pen"></i></button>
-                      <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteEmpresa(${e.id},'${WMS.esc(e.razon_social || '')}')"><i class="fa-solid fa-trash"></i></button>
+              <tbody id="empresa-tbody">${items.length === 0
+                ? '<tr><td colspan="6" class="table-empty" style="text-align:center; padding:30px;">Sin registros</td></tr>'
+                : items.map(e => `<tr class="main-row" id="row-emp-${e.id}" onclick="WMS_MODULES.maestro.editEmpresa(${e.id})">
+                    <td><span class="badge badge-info" style="border-radius:4px; font-family:monospace;">${WMS.esc(e.nit || '')}</span></td>
+                    <td style="font-weight:600; color:#1e293b;">${WMS.esc(e.razon_social || '')}</td>
+                    <td style="color:#64748b;">${WMS.esc(e.telefono || '-')}</td>
+                    <td style="color:#64748b;">${WMS.esc(e.email || '-')}</td>
+                    <td><span class="status-chip ${e.activo ? 'status-cerrada' : 'status-cancelada'}" style="border-radius:4px;">${e.activo ? 'Activa' : 'Inactiva'}</span></td>
+                    <td onclick="event.stopPropagation()"><div class="actions">
+                      <button class="btn btn-sm btn-danger" style="border-radius:4px;" onclick="WMS_MODULES.maestro.deleteEmpresa(${e.id},'${WMS.esc(e.razon_social || '')}')"><i class="fa-solid fa-trash"></i></button>
                     </div></td>
                   </tr>`).join('')}
               </tbody>
             </table>
           </div>
+          
+          <!-- Side Panel / Drawer -->
+          <div id="empresa-drawer" class="md-drawer">
+            <div class="drawer-header">
+              <h3 class="drawer-title"><i class="fa-solid fa-building" style="color:#3b82f6; margin-right:8px;"></i> <span id="drawer-empresa-title">Empresa</span></h3>
+              <button class="drawer-close" onclick="WMS_MODULES.maestro.closeDrawerEmpresa()"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="drawer-body" id="drawer-empresa-content"></div>
+            <div class="drawer-footer">
+              <button class="btn btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.maestro.closeDrawerEmpresa()">Cancelar</button>
+              <button id="btn-save-empresa" class="btn btn-primary" style="border-radius:4px;"><i class="fa-solid fa-save"></i> Guardar</button>
+            </div>
+          </div>
         </div>`);
     } catch (e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
   },
+  
+  closeDrawerEmpresa() {
+    const drawer = document.getElementById('empresa-drawer');
+    if (drawer) drawer.classList.remove('open');
+    document.querySelectorAll('#empresa-tbody tr').forEach(r => r.style.background = '');
+  },
 
   nuevaEmpresa() {
-    WMS.showModal('Nueva Empresa', `
-      <div class="form-grid form-grid-2">
-        <div class="form-group"><label class="form-label">NIT <span class="required">*</span></label><input id="f-nit" class="form-control" placeholder="900000001-1"></div>
-        <div class="form-group"><label class="form-label">RAZÓN SOCIAL <span class="required">*</span></label><input id="f-rs" class="form-control" placeholder="Nombre completo de la empresa"></div>
-        <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-dir" class="form-control" placeholder="Calle 1 # 2-3"></div>
-        <div class="form-group"><label class="form-label">TELÉFONO</label><input id="f-tel" class="form-control" placeholder="+57 300 000 0000"></div>
-        <div class="form-group" style="grid-column:1/-1;"><label class="form-label">EMAIL</label><input id="f-email" class="form-control" type="email" placeholder="contacto@empresa.com"></div>
-      </div>`,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveEmpresa(null)"><i class="fa-solid fa-save"></i> Guardar</button>`);
+    this.closeDrawerEmpresa();
+    const drawer = document.getElementById('empresa-drawer');
+    const content = document.getElementById('drawer-empresa-content');
+    const title = document.getElementById('drawer-empresa-title');
+    const btnSave = document.getElementById('btn-save-empresa');
+    if (!drawer) return;
+    
+    title.textContent = 'Nueva Empresa';
+    content.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="form-group"><label class="form-label">NIT <span class="required" style="color:#ef4444;">*</span></label><input id="f-nit" class="form-control" placeholder="Ej: 900000001-1"></div>
+        <div class="form-group"><label class="form-label">RAZÓN SOCIAL <span class="required" style="color:#ef4444;">*</span></label><input id="f-rs" class="form-control" placeholder="Nombre de la empresa"></div>
+        <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-dir" class="form-control" placeholder="Dirección"></div>
+        <div class="form-group"><label class="form-label">TELÉFONO</label><input id="f-tel" class="form-control" placeholder="Teléfono"></div>
+        <div class="form-group"><label class="form-label">EMAIL</label><input id="f-email" class="form-control" type="email" placeholder="contacto@empresa.com"></div>
+      </div>
+    `;
+    btnSave.onclick = () => WMS_MODULES.maestro.saveEmpresa(null);
+    drawer.classList.add('open');
   },
 
   async saveEmpresa(id) {
@@ -160,26 +188,39 @@ WMS_MODULES.maestro = {
     try {
       const r = id ? await API.put('/param/empresas/' + id, data) : await API.post('/param/empresas', data);
       if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', id ? 'Empresa actualizada' : 'Empresa creada'); WMS.closeModal('generic-modal'); this.show_empresa(); }
+      else { WMS.toast('success', id ? 'Empresa actualizada' : 'Empresa creada'); this.closeDrawerEmpresa(); this.show_empresa(); }
     } catch (e) { WMS.toast('error', 'Error de conexión'); }
   },
 
   async editEmpresa(id) {
+    this.closeDrawerEmpresa();
+    const row = document.getElementById(`row-emp-${id}`);
+    if (row) row.style.background = '#e0f2fe';
+    
+    const drawer = document.getElementById('empresa-drawer');
+    const content = document.getElementById('drawer-empresa-content');
+    const title = document.getElementById('drawer-empresa-title');
+    const btnSave = document.getElementById('btn-save-empresa');
+    if (!drawer) return;
+
     try {
       const r     = await API.get('/param/empresas');
       const items = r.data || r || [];
       const e     = items.find(x => x.id == id);
       if (!e) return;
-      WMS.showModal('Editar Empresa', `
-        <div class="form-grid form-grid-2">
-          <div class="form-group"><label class="form-label">NIT</label><input id="f-nit" class="form-control" value="${WMS.esc(e.nit || '')}"></div>
-          <div class="form-group"><label class="form-label">RAZÓN SOCIAL</label><input id="f-rs" class="form-control" value="${WMS.esc(e.razon_social || '')}"></div>
+      
+      title.textContent = 'Editar Empresa';
+      content.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div class="form-group"><label class="form-label">NIT <span class="required" style="color:#ef4444;">*</span></label><input id="f-nit" class="form-control" value="${WMS.esc(e.nit || '')}"></div>
+          <div class="form-group"><label class="form-label">RAZÓN SOCIAL <span class="required" style="color:#ef4444;">*</span></label><input id="f-rs" class="form-control" value="${WMS.esc(e.razon_social || '')}"></div>
           <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-dir" class="form-control" value="${WMS.esc(e.direccion || '')}"></div>
           <div class="form-group"><label class="form-label">TELÉFONO</label><input id="f-tel" class="form-control" value="${WMS.esc(e.telefono || '')}"></div>
-          <div class="form-group" style="grid-column:1/-1;"><label class="form-label">EMAIL</label><input id="f-email" class="form-control" value="${WMS.esc(e.email || '')}"></div>
-        </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-         <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveEmpresa(${id})"><i class="fa-solid fa-save"></i> Actualizar</button>`);
+          <div class="form-group"><label class="form-label">EMAIL</label><input id="f-email" class="form-control" value="${WMS.esc(e.email || '')}"></div>
+        </div>
+      `;
+      btnSave.onclick = () => WMS_MODULES.maestro.saveEmpresa(id);
+      drawer.classList.add('open');
     } catch (ex) { WMS.toast('error', 'Error cargando datos'); }
   },
 
@@ -192,35 +233,54 @@ WMS_MODULES.maestro = {
 
   // ── SUCURSALES ───────────────────────────────────────────────
   async show_sucursales() {
-    WMS.setToolbar(`<button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaSucursal()"><i class="fa-solid fa-plus"></i> Nueva Sucursal</button>`);
+    WMS.setToolbar(`<button class="btn btn-primary btn-sm" style="border-radius:4px;" onclick="WMS_MODULES.maestro.nuevaSucursal()"><i class="fa-solid fa-plus"></i> Nueva Sucursal</button>`);
     WMS.spinner();
     const [rs, es] = await Promise.all([API.get('/param/sucursales'), API.get('/param/empresas')]);
     const items    = rs.data || rs || [];
     const empresas = es.data || es || [];
     WMS.setContent(`
-      <div class="card">
-        <div class="card-header"><span class="card-title"><i class="fa-solid fa-store"></i> Sucursales / Bodegas</span></div>
-        <div class="table-container">
-          <table class="data-table">
+      <div class="md-container">
+        <div class="md-master erp-card">
+          <table class="erp-table">
             <thead><tr><th>Código</th><th>Nombre</th><th>Empresa</th><th>Ciudad</th><th>Estado</th><th>Acciones</th></tr></thead>
-            <tbody>${items.map(s => `<tr>
-              <td><span class="badge badge-gray">${WMS.esc(s.codigo || '-')}</span></td>
-              <td><strong>${WMS.esc(s.nombre || '')}</strong></td>
-              <td>${WMS.esc(empresas.find(e => e.id == s.empresa_id)?.razon_social || s.empresa_id || '-')}</td>
-              <td>${WMS.esc(s.ciudad || '-')}</td>
-              <td><span class="status-chip ${s.activo ? 'status-cerrada' : 'status-cancelada'}">${s.activo ? 'Activa' : 'Inactiva'}</span></td>
-              <td><div class="actions">
-                <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editSucursal(${s.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
-                <button class="btn btn-sm ${s.activo ? 'btn-warning' : 'btn-success'}" onclick="WMS_MODULES.maestro.toggleEstadoSucursal(${s.id}, ${s.activo ? 0 : 1})" title="${s.activo ? 'Desactivar' : 'Activar'}">
-                  <i class="fa-solid ${s.activo ? 'fa-ban' : 'fa-check'}"></i>
-                </button>
-                <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteSucursal(${s.id},'${WMS.esc(s.nombre || '')}')" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
-              </div></td>
-            </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin sucursales</td></tr>'}
+            <tbody id="sucursales-tbody">${items.length === 0
+              ? '<tr><td colspan="6" class="table-empty" style="text-align:center; padding:30px;">Sin sucursales</td></tr>'
+              : items.map(s => `<tr class="main-row" id="row-suc-${s.id}" onclick="WMS_MODULES.maestro.editSucursal(${s.id})">
+                <td><span class="badge badge-gray" style="border-radius:4px; font-family:monospace;">${WMS.esc(s.codigo || '-')}</span></td>
+                <td style="font-weight:600; color:#1e293b;">${WMS.esc(s.nombre || '')}</td>
+                <td style="color:#64748b;">${WMS.esc(empresas.find(e => e.id == s.empresa_id)?.razon_social || s.empresa_id || '-')}</td>
+                <td style="color:#64748b;">${WMS.esc(s.ciudad || '-')}</td>
+                <td><span class="status-chip ${s.activo ? 'status-cerrada' : 'status-cancelada'}" style="border-radius:4px;">${s.activo ? 'Activa' : 'Inactiva'}</span></td>
+                <td onclick="event.stopPropagation()"><div class="actions">
+                  <button class="btn btn-sm ${s.activo ? 'btn-warning' : 'btn-success'}" style="border-radius:4px;" onclick="WMS_MODULES.maestro.toggleEstadoSucursal(${s.id}, ${s.activo ? 0 : 1})" title="${s.activo ? 'Desactivar' : 'Activar'}">
+                    <i class="fa-solid ${s.activo ? 'fa-ban' : 'fa-check'}"></i>
+                  </button>
+                  <button class="btn btn-sm btn-danger" style="border-radius:4px;" onclick="WMS_MODULES.maestro.deleteSucursal(${s.id},'${WMS.esc(s.nombre || '')}')" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
+                </div></td>
+              </tr>`).join('')}
             </tbody>
           </table>
         </div>
+        
+        <!-- Side Panel / Drawer -->
+        <div id="sucursal-drawer" class="md-drawer">
+          <div class="drawer-header">
+            <h3 class="drawer-title"><i class="fa-solid fa-store" style="color:#3b82f6; margin-right:8px;"></i> <span id="drawer-sucursal-title">Sucursal</span></h3>
+            <button class="drawer-close" onclick="WMS_MODULES.maestro.closeDrawerSucursal()"><i class="fa-solid fa-times"></i></button>
+          </div>
+          <div class="drawer-body" id="drawer-sucursal-content"></div>
+          <div class="drawer-footer">
+            <button class="btn btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.maestro.closeDrawerSucursal()">Cancelar</button>
+            <button id="btn-save-sucursal" class="btn btn-primary" style="border-radius:4px;"><i class="fa-solid fa-save"></i> Guardar</button>
+          </div>
+        </div>
       </div>`);
+  },
+
+  closeDrawerSucursal() {
+    const drawer = document.getElementById('sucursal-drawer');
+    if (drawer) drawer.classList.remove('open');
+    document.querySelectorAll('#sucursales-tbody tr').forEach(r => r.style.background = '');
   },
 
   async toggleEstadoSucursal(id, nuevoEstado) {
@@ -232,24 +292,38 @@ WMS_MODULES.maestro = {
   },
 
   async nuevaSucursal() {
+    this.closeDrawerSucursal();
     const es      = await API.get('/param/empresas');
     const empresas = es.data || es || [];
-    WMS.showModal('Nueva Sucursal', `
-      <div class="form-grid form-grid-2">
-        <div class="form-group"><label class="form-label">CÓDIGO <span class="required">*</span></label><input id="f-scod" class="form-control" placeholder="BOG01"></div>
-        <div class="form-group"><label class="form-label">NOMBRE <span class="required">*</span></label><input id="f-snom" class="form-control" placeholder="Bodega Principal"></div>
-        <div class="form-group"><label class="form-label">EMPRESA <span class="required">*</span></label>
+    
+    const drawer = document.getElementById('sucursal-drawer');
+    const content = document.getElementById('drawer-sucursal-content');
+    const title = document.getElementById('drawer-sucursal-title');
+    const btnSave = document.getElementById('btn-save-sucursal');
+    if (!drawer) return;
+
+    title.textContent = 'Nueva Sucursal';
+    content.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="form-group"><label class="form-label">CÓDIGO <span class="required" style="color:#ef4444;">*</span></label><input id="f-scod" class="form-control" placeholder="Ej: BOG01"></div>
+        <div class="form-group"><label class="form-label">NOMBRE <span class="required" style="color:#ef4444;">*</span></label><input id="f-snom" class="form-control" placeholder="Nombre de la bodega"></div>
+        <div class="form-group"><label class="form-label">EMPRESA <span class="required" style="color:#ef4444;">*</span></label>
           <select id="f-semp" class="form-control"><option value="">-- Seleccione --</option>
             ${empresas.map(e => `<option value="${e.id}">${WMS.esc(e.razon_social)}</option>`).join('')}
           </select></div>
-        <div class="form-group"><label class="form-label">CIUDAD</label><input id="f-scity" class="form-control" placeholder="Bogotá"></div>
-        <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-sdir" class="form-control" placeholder="Dirección"></div>
-        <div class="form-group"><label class="form-label">ESTADO</label>
-          <select id="f-sact" class="form-control"><option value="1">Activa</option><option value="0">Inactiva</option></select>
+        <div class="form-group"><label class="form-label">CIUDAD</label><input id="f-scity" class="form-control" placeholder="Ciudad"></div>
+        <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-sdir" class="form-control" placeholder="Dirección física"></div>
+        <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:4px; margin-top:10px;">
+           <div>
+             <span style="font-weight:600; color:#334155; font-size:0.9rem; display:block;">Estado Activo</span>
+             <span style="font-size:0.8rem; color:#64748b;">Si está inactiva, no se podrá operar.</span>
+           </div>
+           <label class="wms-switch"><input type="checkbox" id="f-sact" checked><span class="slider"></span></label>
         </div>
-      </div>`,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveSucursal(null)"><i class="fa-solid fa-save"></i> Guardar</button>`);
+      </div>
+    `;
+    btnSave.onclick = () => WMS_MODULES.maestro.saveSucursal(null);
+    drawer.classList.add('open');
   },
 
   async saveSucursal(id) {
@@ -259,43 +333,57 @@ WMS_MODULES.maestro = {
       empresa_id: document.getElementById('f-semp')?.value,
       ciudad:     document.getElementById('f-scity')?.value.trim(),
       direccion:  document.getElementById('f-sdir')?.value.trim(),
-      activo:     document.getElementById('f-sact')?.value === "1" ? 1 : 0
+      activo:     document.getElementById('f-sact')?.checked ? 1 : 0
     };
     if (!data.codigo || !data.nombre || !data.empresa_id) { WMS.toast('warning', 'Código, Nombre y Empresa son obligatorios'); return; }
     try {
       const r = id ? await API.put('/param/sucursales/' + id, data) : await API.post('/param/sucursales', data);
       if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', id ? 'Sucursal actualizada' : 'Sucursal creada'); WMS.closeModal('generic-modal'); this.show_sucursales(); }
+      else { WMS.toast('success', id ? 'Sucursal actualizada' : 'Sucursal creada'); this.closeDrawerSucursal(); this.show_sucursales(); }
     } catch (e) { WMS.toast('error', 'Error de conexión'); }
   },
 
   // FIX: editSucursal era un stub; ahora carga datos y pre-llena el modal
   async editSucursal(id) {
+    this.closeDrawerSucursal();
+    const row = document.getElementById(`row-suc-${id}`);
+    if (row) row.style.background = '#e0f2fe';
+    
+    const drawer = document.getElementById('sucursal-drawer');
+    const content = document.getElementById('drawer-sucursal-content');
+    const title = document.getElementById('drawer-sucursal-title');
+    const btnSave = document.getElementById('btn-save-sucursal');
+    if (!drawer) return;
+
     try {
       const [rs, es] = await Promise.all([API.get('/param/sucursales'), API.get('/param/empresas')]);
       const items    = rs.data || rs || [];
       const empresas = es.data || es || [];
       const s        = items.find(x => x.id == id);
       if (!s) { WMS.toast('error', 'Sucursal no encontrada'); return; }
-      WMS.showModal('Editar Sucursal', `
-        <div class="form-grid form-grid-2">
-          <div class="form-group"><label class="form-label">CÓDIGO <span class="required">*</span></label><input id="f-scod" class="form-control" value="${WMS.esc(s.codigo || '')}"></div>
-          <div class="form-group"><label class="form-label">NOMBRE <span class="required">*</span></label><input id="f-snom" class="form-control" value="${WMS.esc(s.nombre || '')}"></div>
-          <div class="form-group"><label class="form-label">EMPRESA <span class="required">*</span></label>
+      
+      title.textContent = 'Editar Sucursal';
+      content.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div class="form-group"><label class="form-label">CÓDIGO <span class="required" style="color:#ef4444;">*</span></label><input id="f-scod" class="form-control" value="${WMS.esc(s.codigo || '')}"></div>
+          <div class="form-group"><label class="form-label">NOMBRE <span class="required" style="color:#ef4444;">*</span></label><input id="f-snom" class="form-control" value="${WMS.esc(s.nombre || '')}"></div>
+          <div class="form-group"><label class="form-label">EMPRESA <span class="required" style="color:#ef4444;">*</span></label>
             <select id="f-semp" class="form-control">
               ${empresas.map(e => `<option value="${e.id}" ${e.id == s.empresa_id ? 'selected' : ''}>${WMS.esc(e.razon_social)}</option>`).join('')}
             </select></div>
           <div class="form-group"><label class="form-label">CIUDAD</label><input id="f-scity" class="form-control" value="${WMS.esc(s.ciudad || '')}"></div>
           <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-sdir" class="form-control" value="${WMS.esc(s.direccion || '')}"></div>
-          <div class="form-group"><label class="form-label">ESTADO</label>
-            <select id="f-sact" class="form-control">
-              <option value="1" ${s.activo ? 'selected' : ''}>Activa</option>
-              <option value="0" ${!s.activo ? 'selected' : ''}>Inactiva</option>
-            </select>
+          <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:4px; margin-top:10px;">
+             <div>
+               <span style="font-weight:600; color:#334155; font-size:0.9rem; display:block;">Estado Activo</span>
+               <span style="font-size:0.8rem; color:#64748b;">Si está inactiva, no se podrá operar.</span>
+             </div>
+             <label class="wms-switch"><input type="checkbox" id="f-sact" ${s.activo ? 'checked' : ''}><span class="slider"></span></label>
           </div>
-        </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-         <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveSucursal(${id})"><i class="fa-solid fa-save"></i> Actualizar</button>`);
+        </div>
+      `;
+      btnSave.onclick = () => WMS_MODULES.maestro.saveSucursal(id);
+      drawer.classList.add('open');
     } catch (ex) { WMS.toast('error', 'Error cargando sucursal'); }
   },
 
@@ -310,41 +398,87 @@ WMS_MODULES.maestro = {
   // ── PERSONAL ─────────────────────────────────────────────────
   async show_personal() {
     WMS.setToolbar(`
-      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-personal" placeholder="Buscar personal..." oninput="WMS_MODULES.maestro.filtrarPersonal(this.value)"></div>
-      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevoPersonal()"><i class="fa-solid fa-plus"></i> Nuevo Personal</button>`);
+      <div style="display:flex;align-items:center;gap:12px;width:100%;">
+        <div style="position:relative; flex:1; max-width: 400px;">
+          <i class="fa-solid fa-search" style="position:absolute; left:10px; top:10px; color:#94a3b8;"></i>
+          <input id="search-personal" class="form-control" style="padding-left:32px; border-radius:4px;" placeholder="Buscar personal..." oninput="WMS_MODULES.maestro.filtrarPersonal(this.value)">
+        </div>
+        <button class="btn btn-primary btn-sm" style="border-radius:4px;" onclick="WMS_MODULES.maestro.nuevoPersonal()"><i class="fa-solid fa-plus"></i> Nuevo Personal</button>
+      </div>`);
     WMS.spinner();
     try {
       const r = await API.get('/param/personal');
       this._personalData = r.data || r || [];
+
+      WMS.setContent(`
+        <div class="md-container">
+          <!-- Master View -->
+          <div class="md-master erp-card">
+            <table class="erp-table">
+              <thead>
+                <tr>
+                  <th>Documento</th>
+                  <th>Nombre</th>
+                  <th>Rol</th>
+                  <th>Sucursal</th>
+                  <th>Último Login</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="personal-tbody">
+                <!-- Contenido generado dinamicamente -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Side Panel / Drawer View -->
+          <div id="personal-drawer" class="md-drawer">
+            <div class="drawer-header">
+              <h3 class="drawer-title"><i class="fa-solid fa-user" style="color:#3b82f6; margin-right:8px;"></i> <span id="drawer-personal-title">Personal</span></h3>
+              <button class="drawer-close" onclick="WMS_MODULES.maestro.closeDrawerPersonal()"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="drawer-body" id="drawer-personal-content">
+              <!-- Formulario inyectado -->
+            </div>
+            <div class="drawer-footer" id="drawer-personal-actions">
+               <button class="btn btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.maestro.closeDrawerPersonal()">Limpiar</button>
+               <button class="btn btn-primary" style="border-radius:4px;" id="btn-save-personal"><i class="fa-solid fa-save"></i> Guardar Personal</button>
+            </div>
+          </div>
+        </div>
+      `);
       this.renderPersonal(this._personalData);
-    } catch (e) { WMS.setContent('<div class="m-empty">Error de conexión</div>'); }
+    } catch (e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
   },
 
   renderPersonal(items) {
     const rolColors = { Admin: 'badge-danger', Supervisor: 'badge-warning', Auxiliar: 'badge-info', Montacarguista: 'badge-success', Analista: 'badge-purple' };
-    WMS.setContent(`
-      <div class="card">
-        <div class="card-header"><span class="card-title"><i class="fa-solid fa-users"></i> Personal (${items.length})</span></div>
-        <div class="table-container">
-          <table class="data-table">
-            <thead><tr><th>Documento</th><th>Nombre</th><th>Rol</th><th>Sucursal</th><th>Último Login</th><th>Estado</th><th>Acciones</th></tr></thead>
-            <tbody>${items.map(p => `<tr>
-              <td><span class="badge badge-gray" style="font-family:monospace;">${WMS.esc(p.documento || '')}</span></td>
-              <td><strong>${WMS.esc(p.nombre || '')}</strong></td>
-              <td><span class="badge ${rolColors[p.rol] || 'badge-gray'}">${WMS.esc(p.rol || '')}</span></td>
-              <td>${WMS.esc(p.sucursal?.nombre || p.sucursal_id || '-')}</td>
-              <td class="text-sm text-muted">${WMS.formatDateTime(p.ultimo_login) || '-'}</td>
-              <td><span class="status-chip ${p.activo ? 'status-cerrada' : 'status-cancelada'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
-              <td><div class="actions">
-                <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editPersonal(${p.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
-                <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.gestionarPermisos(${p.id},'${WMS.esc(p.nombre || '')}')" title="Permisos individuales"><i class="fa-solid fa-shield-halved"></i></button>
-                <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deletePersonal(${p.id},'${WMS.esc(p.nombre || '')}')"><i class="fa-solid fa-trash"></i></button>
-              </div></td>
-            </tr>`).join('') || '<tr><td colspan="7" class="table-empty">Sin personal registrado</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </div>`);
+    const tbody = document.getElementById('personal-tbody');
+    if (!tbody) return; // Puede que el HTML no se haya cargado todavía
+
+    tbody.innerHTML = items.map(p => `
+      <tr class="main-row" id="row-pers-${p.id}" onclick="WMS_MODULES.maestro.editPersonal(${p.id})">
+        <td><span style="font-family:monospace; color:#475569; font-weight:500;">${WMS.esc(p.documento || '')}</span></td>
+        <td style="font-weight:600; color:#1e293b;">${WMS.esc(p.nombre || '')}</td>
+        <td><span class="badge ${rolColors[p.rol] || 'badge-gray'}" style="border-radius:4px;">${WMS.esc(p.rol || '')}</span></td>
+        <td style="color:#64748b;">${WMS.esc(p.sucursal?.nombre || p.sucursal_id || '-')}</td>
+        <td class="text-sm" style="color:#64748b;">${WMS.formatDateTime(p.ultimo_login) || '-'}</td>
+        <td><span class="status-chip ${p.activo ? 'status-cerrada' : 'status-cancelada'}" style="border-radius:4px;">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
+        <td>
+          <div class="actions" onclick="event.stopPropagation()">
+            <button class="btn btn-sm btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.maestro.gestionarPermisos(${p.id},'${WMS.esc(p.nombre || '')}')" title="Permisos individuales"><i class="fa-solid fa-shield-halved"></i></button>
+            <button class="btn btn-sm btn-danger" style="border-radius:4px;" onclick="WMS_MODULES.maestro.deletePersonal(${p.id},'${WMS.esc(p.nombre || '')}')" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `).join('') || '<tr><td colspan="7" class="table-empty">Sin personal registrado con los filtros aplicados</td></tr>';
+  },
+
+  closeDrawerPersonal() {
+    const drawer = document.getElementById('personal-drawer');
+    if (drawer) drawer.classList.remove('open');
+    document.querySelectorAll('#personal-tbody tr').forEach(r => r.style.background = '');
   },
 
   filtrarPersonal(q) {
@@ -356,25 +490,47 @@ WMS_MODULES.maestro = {
   },
 
   async nuevoPersonal() {
+    this.closeDrawerPersonal();
     const ss  = await API.get('/param/sucursales?activo=1');
     const suc = ss.data || ss || [];
-    WMS.showModal('Nuevo Personal', `
-      <div class="form-grid form-grid-2">
-        <div class="form-group"><label class="form-label">DOCUMENTO <span class="required">*</span></label><input id="f-pdoc" class="form-control" placeholder="Número de documento"></div>
-        <div class="form-group"><label class="form-label">NOMBRE COMPLETO <span class="required">*</span></label><input id="f-pnom" class="form-control" placeholder="Nombre y apellidos"></div>
-        <div class="form-group"><label class="form-label">ROL <span class="required">*</span></label>
+    
+    const drawer = document.getElementById('personal-drawer');
+    const title = document.getElementById('drawer-personal-title');
+    const content = document.getElementById('drawer-personal-content');
+    const btnSave = document.getElementById('btn-save-personal');
+    
+    if (!drawer) return;
+
+    title.textContent = 'Nuevo Personal';
+    content.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div style="background:#f1f5f9; padding:12px; border-radius:4px; margin-bottom:8px;">
+           <span style="font-size:0.85rem; color:#475569;">Complete la información obligatoria marcada con (*).</span>
+        </div>
+        <div class="form-group"><label class="form-label">DOCUMENTO <span class="required" style="color:#ef4444;">*</span></label><input id="f-pdoc" class="form-control" placeholder="Ej: 1012345678"></div>
+        <div class="form-group"><label class="form-label">NOMBRE COMPLETO <span class="required" style="color:#ef4444;">*</span></label><input id="f-pnom" class="form-control" placeholder="Nombres y apellidos"></div>
+        <div class="form-group"><label class="form-label">ROL <span class="required" style="color:#ef4444;">*</span></label>
           <select id="f-prol" class="form-control">
             <option value="">-- Seleccione --</option>
             ${['Admin', 'Supervisor', 'Auxiliar', 'Montacarguista', 'Analista'].map(r => `<option value="${r}">${r}</option>`).join('')}
           </select></div>
         <div class="form-group"><label class="form-label">SUCURSAL</label>
-          <select id="f-psuc" class="form-control"><option value="">-- Seleccione --</option>
+          <select id="f-psuc" class="form-control"><option value="">-- Sin asignar --</option>
             ${suc.map(s => `<option value="${s.id}">${WMS.esc(s.nombre)}</option>`).join('')}
           </select></div>
-        <div class="form-group" style="grid-column:1/-1;"><label class="form-label">PIN (4-6 DÍGITOS) <span class="required">*</span></label><input id="f-ppin" class="form-control" type="password" maxlength="6" placeholder="••••"></div>
-      </div>`,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.savePersonal(null)"><i class="fa-solid fa-save"></i> Crear</button>`);
+        <div class="form-group"><label class="form-label">PIN DE ACCESO (4-6 DÍGITOS) <span class="required" style="color:#ef4444;">*</span></label><input id="f-ppin" class="form-control" type="password" maxlength="6" placeholder="••••"></div>
+        <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:4px; margin-top:10px;">
+           <div>
+             <span style="font-weight:600; color:#334155; font-size:0.9rem; display:block;">Estado del Usuario</span>
+             <span style="font-size:0.8rem; color:#64748b;">Si está inactivo, no podrá ingresar al sistema.</span>
+           </div>
+           <label class="wms-switch"><input type="checkbox" id="f-pact" checked><span class="slider"></span></label>
+        </div>
+      </div>
+    `;
+    
+    btnSave.onclick = () => WMS_MODULES.maestro.savePersonal(null);
+    drawer.classList.add('open');
   },
 
   async savePersonal(id) {
@@ -383,16 +539,48 @@ WMS_MODULES.maestro = {
       nombre:      document.getElementById('f-pnom')?.value.trim(),
       rol:         document.getElementById('f-prol')?.value,
       sucursal_id: document.getElementById('f-psuc')?.value || null,
-      pin:         document.getElementById('f-ppin')?.value
+      pin:         document.getElementById('f-ppin')?.value,
+      activo:      document.getElementById('f-pact')?.checked ? 1 : 0
     };
     if (!data.documento || !data.nombre || !data.rol) { WMS.toast('warning', 'Documento, Nombre y Rol son obligatorios'); return; }
+    
+    // El PIN es obligatorio solo para nuevos usuarios
+    if (!id && !data.pin) { WMS.toast('warning', 'El PIN de acceso es obligatorio para nuevos usuarios'); return; }
+
+    const btn = document.getElementById('btn-save-personal');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner sm"></div> Guardando...'; }
+
     const r = id ? await API.put('/param/personal/' + id, data) : await API.post('/param/personal', data);
+    
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-save"></i> Guardar Personal'; }
+    
     if (r.error) WMS.toast('error', r.message);
-    else { WMS.toast('success', id ? 'Personal actualizado' : 'Personal creado'); WMS.closeModal('generic-modal'); this.show_personal(); }
+    else { 
+      WMS.toast('success', id ? 'Personal actualizado correctamente' : 'Personal creado correctamente'); 
+      this.closeDrawerPersonal(); 
+      this.show_personal(); 
+    }
   },
 
-  // FIX: editPersonal era un stub; ahora carga datos reales y abre modal pre-llenado
+  // FIX: editPersonal carga datos reales y abre Drawer pre-llenado
   async editPersonal(id) {
+    this.closeDrawerPersonal();
+    
+    document.querySelectorAll('#personal-tbody tr').forEach(r => r.style.background = '');
+    const row = document.getElementById(`row-pers-${id}`);
+    if (row) row.style.background = '#e0f2fe';
+
+    const drawer = document.getElementById('personal-drawer');
+    const title = document.getElementById('drawer-personal-title');
+    const content = document.getElementById('drawer-personal-content');
+    const btnSave = document.getElementById('btn-save-personal');
+
+    if (!drawer) return;
+
+    title.textContent = 'Editar Personal';
+    content.innerHTML = `<div style="padding:40px; text-align:center;"><div class="spinner"></div><p style="margin-top:10px; color:#64748b;">Cargando datos...</p></div>`;
+    drawer.classList.add('open');
+
     try {
       const [pr, ss] = await Promise.all([
         API.get('/param/personal'), 
@@ -402,17 +590,22 @@ WMS_MODULES.maestro = {
       const suc      = ss.data || ss || [];
       const p        = personal.find(x => x.id == id);
       
-      // FIX: si el usuario ya tiene una sucursal inactiva, ésta no vendría en el ?activo=1.
-      // Para evitar que el select quede vacío o salte a otra, si p.sucursal existe, la añadimos.
       if (p && p.sucursal && !suc.find(s => s.id == p.sucursal_id)) {
         suc.push(p.sucursal);
       }
-      if (!p) { WMS.toast('error', 'Usuario no encontrado'); return; }
-      WMS.showModal('Editar Personal', `
-        <div class="form-grid form-grid-2">
-          <div class="form-group"><label class="form-label">DOCUMENTO</label><input id="f-pdoc" class="form-control" value="${WMS.esc(p.documento || '')}"></div>
-          <div class="form-group"><label class="form-label">NOMBRE COMPLETO <span class="required">*</span></label><input id="f-pnom" class="form-control" value="${WMS.esc(p.nombre || '')}"></div>
-          <div class="form-group"><label class="form-label">ROL <span class="required">*</span></label>
+      if (!p) { 
+        content.innerHTML = `<div class="text-danger" style="padding:20px;">Usuario no encontrado.</div>`;
+        return; 
+      }
+      
+      content.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div style="background:#f1f5f9; padding:12px; border-radius:4px; margin-bottom:8px;">
+             <span style="font-size:0.85rem; color:#475569;">Modifique los datos logísticos del usuario.</span>
+          </div>
+          <div class="form-group"><label class="form-label">DOCUMENTO <span class="required" style="color:#ef4444;">*</span></label><input id="f-pdoc" class="form-control" value="${WMS.esc(p.documento || '')}"></div>
+          <div class="form-group"><label class="form-label">NOMBRE COMPLETO <span class="required" style="color:#ef4444;">*</span></label><input id="f-pnom" class="form-control" value="${WMS.esc(p.nombre || '')}"></div>
+          <div class="form-group"><label class="form-label">ROL <span class="required" style="color:#ef4444;">*</span></label>
             <select id="f-prol" class="form-control">
               ${['Admin', 'Supervisor', 'Auxiliar', 'Montacarguista', 'Analista'].map(r => `<option value="${r}" ${p.rol === r ? 'selected' : ''}>${r}</option>`).join('')}
             </select></div>
@@ -420,11 +613,21 @@ WMS_MODULES.maestro = {
             <select id="f-psuc" class="form-control"><option value="">-- Sin asignar --</option>
               ${suc.map(s => `<option value="${s.id}" ${s.id == p.sucursal_id ? 'selected' : ''}>${WMS.esc(s.nombre)}</option>`).join('')}
             </select></div>
-          <div class="form-group" style="grid-column:1/-1;"><label class="form-label">NUEVO PIN (dejar vacío para no cambiar)</label><input id="f-ppin" class="form-control" type="password" maxlength="6" placeholder="Dejar vacío para mantener actual"></div>
-        </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-         <button class="btn btn-primary" onclick="WMS_MODULES.maestro.savePersonal(${id})"><i class="fa-solid fa-save"></i> Actualizar</button>`);
-    } catch (ex) { WMS.toast('error', 'Error cargando datos del personal'); }
+          <div class="form-group"><label class="form-label">NUEVO PIN (dejar vacío para no cambiar)</label><input id="f-ppin" class="form-control" type="password" maxlength="6" placeholder="Dejar vacío para mantener actual"></div>
+          <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:4px; margin-top:10px;">
+             <div>
+               <span style="font-weight:600; color:#334155; font-size:0.9rem; display:block;">Estado del Usuario</span>
+               <span style="font-size:0.8rem; color:#64748b;">Si está inactivo, no podrá ingresar al sistema.</span>
+             </div>
+             <label class="wms-switch"><input type="checkbox" id="f-pact" ${p.activo ? 'checked' : ''}><span class="slider"></span></label>
+          </div>
+        </div>
+      `;
+      
+      btnSave.onclick = () => WMS_MODULES.maestro.savePersonal(id);
+    } catch (ex) { 
+      content.innerHTML = `<div class="text-danger" style="padding:20px;">Error cargando datos del personal</div>`;
+    }
   },
 
   deletePersonal(id, n) {
@@ -534,7 +737,7 @@ WMS_MODULES.maestro = {
       <div class="card">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-tags"></i> Categorías (${items.length})</span></div>
         <div class="table-container">
-          <table class="data-table">
+          <table class="erp-table">
             <thead><tr><th>Nombre</th><th>Descripción</th><th>Acciones</th></tr></thead>
             <tbody>${items.map(c => `<tr>
               <td><strong>${WMS.esc(c.nombre || c.marca || '')}</strong></td>
@@ -607,7 +810,7 @@ WMS_MODULES.maestro = {
         <div class="card">
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-copyright"></i> Marcas (${items.length})</span></div>
           <div class="table-container">
-            <table class="data-table">
+            <table class="erp-table">
               <thead><tr><th>Nombre</th><th>Proveedor (Opcional)</th><th>Estado</th><th>Acciones</th></tr></thead>
               <tbody>${items.map(m => `<tr>
                 <td><strong>${WMS.esc(m.nombre || '')}</strong></td>
@@ -686,6 +889,7 @@ WMS_MODULES.maestro = {
       <div class="actions" style="display:flex;gap:12px;align-items:center;">
         <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.show_productos()"><i class="fa-solid fa-plus"></i> Registrar Nuevo</button>
         <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.consultar_productos()"><i class="fa-solid fa-search"></i> Consultar Catálogo</button>
+        <button class="btn btn-info btn-sm" onclick="WMS_MODULES.maestro.descargarPlantillaProductos()"><i class="fa-solid fa-file-csv"></i> Plantilla CSV</button>
         <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.importarGenerico('productos')"><i class="fa-solid fa-file-import"></i> Importar CSV</button>
         <button class="btn btn-success btn-sm" onclick="WMS_MODULES.maestro.exportarExcel()"><i class="fa-solid fa-file-excel"></i> Exportar Todo</button>
       </div>`);
@@ -722,7 +926,7 @@ WMS_MODULES.maestro = {
               <div class="form-group"><label class="form-label">PESO BRUTO (kg)</label><input id="f-ppeso" class="form-control" type="number" step="0.01" value="0.00"></div>
               <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.0001" value="0.0000"></div>
               
-              <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:15px; border-radius:10px; border:1px solid #e2e8f0;">
+              <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:15px; border-radius:4px; border:1px solid #e2e8f0;">
                 <div style="display:flex;flex-direction:column;gap:5px;">
                   <span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;">Stock Mínimo</span>
                   <input id="f-pmin" class="form-control sm" type="number" step="0.01" value="0">
@@ -785,6 +989,9 @@ WMS_MODULES.maestro = {
         <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.show_productos()">
           <i class="fa-solid fa-plus"></i> Nuevo
         </button>
+        <button class="btn btn-info btn-sm" onclick="WMS_MODULES.maestro.descargarPlantillaProductos()" title="Descargar plantilla de importación">
+          <i class="fa-solid fa-file-csv"></i> Plantilla
+        </button>
         <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.importarGenerico('productos')" title="Importar desde CSV">
           <i class="fa-solid fa-file-import"></i> Importar
         </button>
@@ -803,6 +1010,127 @@ WMS_MODULES.maestro = {
             </div>
          </div>
       </div>`);
+  },
+
+  async descargarPlantillaProductos() {
+    WMS.spinner();
+    try {
+      const [cr, mr] = await Promise.all([API.get('/param/categorias'), API.get('/param/marcas')]);
+      const cats   = cr.data || cr || [];
+      const marcas = mr.data || mr || [];
+      
+      let html = `
+        <div style="padding:10px;">
+          <div class="alert alert-info" style="margin-bottom:15px; border-left:4px solid #3b82f6;">
+            <strong>¡Atención!</strong> Para que la importación sea exitosa, los campos de <strong>categoria_id</strong> y <strong>marca_id</strong> deben contener el número de ID que aparece en las siguientes tablas, no el nombre en texto.
+          </div>
+          
+          <div style="display:flex; gap:20px;">
+            <!-- Categorias -->
+            <div style="flex:1;">
+              <h4 style="font-size:0.95rem; font-weight:700; color:#1e293b; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:5px;">IDs de Categorías</h4>
+              <div style="max-height:250px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:4px;">
+                <table class="erp-table" style="font-size:0.85rem; width:100%;">
+                  <thead style="background:#f1f5f9; position:sticky; top:0;">
+                    <tr><th style="padding:6px 10px;">ID</th><th style="padding:6px 10px;">Categoría</th></tr>
+                  </thead>
+                  <tbody>
+                    ${cats.map(c => `<tr><td style="padding:6px 10px; font-weight:700; color:#ef4444;">${c.id}</td><td style="padding:6px 10px;">${WMS.esc(c.nombre)}</td></tr>`).join('')}
+                    ${cats.length === 0 ? '<tr><td colspan="2" style="padding:10px; text-align:center;">Sin categorías</td></tr>' : ''}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            <!-- Marcas -->
+            <div style="flex:1;">
+              <h4 style="font-size:0.95rem; font-weight:700; color:#1e293b; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:5px;">IDs de Marcas</h4>
+              <div style="max-height:250px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:4px;">
+                <table class="erp-table" style="font-size:0.85rem; width:100%;">
+                  <thead style="background:#f1f5f9; position:sticky; top:0;">
+                    <tr><th style="padding:6px 10px;">ID</th><th style="padding:6px 10px;">Marca</th></tr>
+                  </thead>
+                  <tbody>
+                    ${marcas.map(m => `<tr><td style="padding:6px 10px; font-weight:700; color:#3b82f6;">${m.id}</td><td style="padding:6px 10px;">${WMS.esc(m.nombre)}</td></tr>`).join('')}
+                    ${marcas.length === 0 ? '<tr><td colspan="2" style="padding:10px; text-align:center;">Sin marcas</td></tr>' : ''}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          
+          <div style="margin-top:20px; text-align:center;">
+             <button class="btn btn-success" style="border-radius:4px; padding:10px 20px; font-weight:700;" onclick="WMS_MODULES.maestro._generarCSVPlantilla()">
+               <i class="fa-solid fa-download"></i> DESCARGAR PLANTILLA CSV DE EJEMPLO
+             </button>
+          </div>
+        </div>
+      `;
+      
+      this._plantillaCats = cats;
+      this._plantillaMarcas = marcas;
+      WMS.showModal('Guía para Importar Productos', html);
+    } catch(e) {
+      WMS.toast('error', 'Error al cargar IDs para la plantilla');
+    }
+  },
+  
+  _generarCSVPlantilla() {
+    const cats = this._plantillaCats || [];
+    const marcas = this._plantillaMarcas || [];
+
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "=== RELACION DE CATEGORIAS ===\n";
+    csvContent += "ID;Nombre de Categoria\n";
+    if (cats.length === 0) csvContent += "Sin categorias registradas\n";
+    cats.forEach(c => { csvContent += `${c.id};${(c.nombre||'').replace(/;/g, '')}\n`; });
+    csvContent += "\n";
+
+    csvContent += "=== RELACION DE MARCAS ===\n";
+    csvContent += "ID;Nombre de Marca\n";
+    if (marcas.length === 0) csvContent += "Sin marcas registradas\n";
+    marcas.forEach(m => { csvContent += `${m.id};${(m.nombre||'').replace(/;/g, '')}\n`; });
+    csvContent += "\n";
+
+    csvContent += "=== PLANTILLA DE PRODUCTOS (Llene los datos debajo de las cabeceras) ===\n";
+
+    const cabeceras = [
+      "codigo_ean", 
+      "codigo_interno", 
+      "nombre", 
+      "categoria_id", 
+      "marca_id", 
+      "unidad_medida", 
+      "unidades_caja", 
+      "peso_unitario", 
+      "volumen_unitario", 
+      "stock_minimo", 
+      "controla_lote", 
+      "controla_vencimiento"
+    ];
+    
+    // 3 Examples
+    const catEj = cats[0]?.id || "1";
+    const marEj = marcas[0]?.id || "1";
+    
+    const ejemplo1 = ["7701234567890", "REF001", "VINO TINTO MALBEC 750ML", catEj, marEj, "UN", "12", "1.50", "0.005", "10", "1", "1"];
+    const ejemplo2 = ["7709876543210", "REF002", "ACEITE DE OLIVA EXTRA VIRGEN", catEj, marEj, "UN", "24", "0.80", "0.002", "50", "1", "1"];
+    const ejemplo3 = ["7705555555555", "REF003", "ARROZ BLANCO PREMIUM 1KG", catEj, marEj, "UN", "20", "1.00", "0.001", "100", "0", "0"];
+    
+    csvContent += cabeceras.join(";") + "\n";
+    csvContent += ejemplo1.join(";") + "\n";
+    csvContent += ejemplo2.join(";") + "\n";
+    csvContent += ejemplo3.join(";");
+      
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "plantilla_productos_relacionada.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    WMS.toast('success', 'Plantilla descargada. Recuerde borrar las filas de ayuda antes de subir.');
   },
 
   _timerBuscar() {
@@ -851,7 +1179,7 @@ WMS_MODULES.maestro = {
           </div>
         </div>
         <div class="table-container" style="max-height:600px; overflow-y:auto;">
-          <table class="data-table">
+          <table class="erp-table">
             <thead style="position:sticky; top:0; z-index:10; background:#f8fafc;">
                <tr><th>Referencia/EAN</th><th>Descripción</th><th>Categoría/Marca</th><th>Estado</th><th>Acciones</th></tr>
             </thead>
@@ -938,7 +1266,7 @@ WMS_MODULES.maestro = {
         <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.001" placeholder="0.000"></div>
         <div class="form-group"><label class="form-label">UNIDADES X CAJA</label><input id="f-puxc" class="form-control" type="number" value="1" min="1"></div>
         
-        <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:10px; border-radius:10px; margin-top:5px;">
+        <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:10px; border-radius:4px; margin-top:5px;">
            <div style="display:flex;flex-direction:column;gap:5px;">
               <span style="font-size:.78rem;font-weight:600;color:#475569;">Stock Mínimo</span>
               <input id="f-pmin" class="form-control sm" type="number" step="0.01" value="0">
@@ -1012,7 +1340,7 @@ WMS_MODULES.maestro = {
           <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.001" value="${p.volumen_unitario || ''}"></div>
           <div class="form-group"><label class="form-label">UNIDADES X CAJA</label><input id="f-puxc" class="form-control" type="number" value="${p.unidades_caja || 1}" min="1"></div>
           
-          <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:10px; border-radius:10px; margin-top:5px;">
+          <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:10px; border-radius:4px; margin-top:5px;">
              <div style="display:flex;flex-direction:column;gap:5px;">
                 <span style="font-size:.78rem;font-weight:600;color:#475569;">Stock Mínimo</span>
                 <input id="f-pmin" class="form-control sm" type="number" step="0.01" value="${p.stock_minimo || 0}">
@@ -1038,7 +1366,7 @@ WMS_MODULES.maestro = {
     WMS.showModal(`EANs de: ${WMS.esc(nombre)}`, `
       <div style="margin-bottom:14px;"><strong>${eans.length}</strong> EAN(s) asociado(s)</div>
       <div class="table-container">
-        <table class="data-table">
+        <table class="erp-table">
           <thead><tr><th>EAN</th><th>Descripción</th><th>Acciones</th></tr></thead>
           <tbody>${eans.map(e => `<tr>
             <td style="font-family:monospace;">${WMS.esc(e.codigo_ean || e.ean || '')}</td>
@@ -1140,7 +1468,7 @@ WMS_MODULES.maestro = {
       <div class="card">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-map-pin"></i> Ubicaciones (<span id="ubi-count">${items.length}</span>)</span></div>
         <div class="table-container">
-          <table class="data-table" id="ubi-table">
+          <table class="erp-table" id="ubi-table">
             <thead><tr><th>Código</th><th>Zona</th><th style="width:80px;">Pasillo</th><th style="width:80px;">Mód.</th><th style="width:80px;">Niv.</th><th>Tipo</th><th>Clase</th><th>M3</th><th>Cant. Máx.</th><th>Activo</th><th>Acciones</th></tr></thead>
             <tbody id="ubi-tbody">
               ${hasData ? this._renderUbiRows(items, tipoColor, estadoClass) : '<tr><td colspan="11" class="table-empty"><div class="py-20 text-center"><i class="fa-solid fa-magnifying-glass fa-2x mb-12" style="opacity:.3"></i><p>Ingrese un criterio de búsqueda o haga clic en "Cargar Todo" para ver las ubicaciones.</p></div></td></tr>'}
@@ -1284,7 +1612,7 @@ WMS_MODULES.maestro = {
       pasillo:         pas,
       modulo:          mod,
       nivel:           niv,
-      codigo:          [pas, mod, niv].filter(Boolean).join('-'),
+      codigo:          zona + '/' + [pas, mod, niv].filter(Boolean).join('-'),
       tipo_ubicacion:  document.getElementById('f-utip')?.value,
       clase:           document.getElementById('f-ucla')?.value,
       capacidad_maxima: parseInt(document.getElementById('f-ucap')?.value) || 0,
@@ -1468,7 +1796,7 @@ WMS_MODULES.maestro = {
       <div class="card">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-truck"></i> Proveedores (${items.length})</span></div>
         <div class="table-container">
-          <table class="data-table">
+          <table class="erp-table">
             <thead><tr><th>NIT</th><th>Razón Social</th><th>Contacto</th><th>Teléfono</th><th>Email</th><th>Acciones</th></tr></thead>
             <tbody>${items.map(p => `<tr>
               <td style="font-family:monospace;">${WMS.esc(p.nit || '-')}</td>
@@ -1554,7 +1882,7 @@ WMS_MODULES.maestro = {
       <div class="card">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-route"></i> Rutas (${items.length})</span></div>
         <div class="table-container">
-          <table class="data-table">
+          <table class="erp-table">
             <thead><tr><th>Nombre / Código</th><th>Comercial</th><th>Frecuencia</th><th>Acciones</th></tr></thead>
             <tbody>${items.map(r => `<tr>
               <td><strong>${WMS.esc(r.nombre || r.codigo || '')}</strong></td>
@@ -1585,7 +1913,7 @@ WMS_MODULES.maestro = {
           </select></div>
         <div class="form-group" id="frec-detail-group" style="display:none; grid-column:1/-1;">
            <label class="form-label" id="frec-detail-label">Detalle de frecuencia</label>
-           <div id="frec-detail-container" style="display:flex; flex-wrap:wrap; gap:8px; background:#f1f5f9; padding:10px; border-radius:8px;"></div>
+           <div id="frec-detail-container" style="display:flex; flex-wrap:wrap; gap:8px; background:#f1f5f9; padding:10px; border-radius:4px;"></div>
         </div>
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
@@ -1671,7 +1999,7 @@ WMS_MODULES.maestro = {
             </select></div>
           <div class="form-group" id="frec-detail-group" style="display:none; grid-column:1/-1;">
              <label class="form-label" id="frec-detail-label">Detalle de frecuencia</label>
-             <div id="frec-detail-container" style="display:flex; flex-wrap:wrap; gap:8px; background:#f1f5f9; padding:10px; border-radius:8px;"></div>
+             <div id="frec-detail-container" style="display:flex; flex-wrap:wrap; gap:8px; background:#f1f5f9; padding:10px; border-radius:4px;"></div>
           </div>
         </div>`,
         `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
@@ -1797,7 +2125,7 @@ WMS_MODULES.maestro = {
       <div class="card">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-user-tie"></i> Clientes (${items.length})</span></div>
         <div class="table-container">
-          <table class="data-table">
+          <table class="erp-table">
             <thead><tr><th>NIT</th><th>Razón Social</th><th>Ciudad</th><th>Contacto</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody>${items.map(c => `<tr>
               <td><span class="badge badge-gray" style="font-family:monospace;">${WMS.esc(c.nit || '')}</span></td>
@@ -1881,7 +2209,7 @@ WMS_MODULES.maestro = {
 
         <!-- Header -->
         <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px; padding:20px 24px;
-                    background:linear-gradient(135deg,#0f172a,#1e3a5f); border-radius:16px; box-shadow:0 4px 16px rgba(0,0,0,0.2);">
+                    background:linear-gradient(135deg,#0f172a,#1e3a5f); border-radius:4px; box-shadow:0 4px 16px rgba(0,0,0,0.2);">
           <div style="width:52px;height:52px;border-radius:14px;background:rgba(99,102,241,0.3);display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:#818cf8;">
             <i class="fa-solid fa-stethoscope"></i>
           </div>
@@ -1894,7 +2222,7 @@ WMS_MODULES.maestro = {
         <!-- Resumen KPIs -->
         <div id="diag-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:24px;">
           ${['Controladores OK','Errores','Advertencias','Rutas OK','Rutas Errores'].map((label,i) => `
-            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;text-align:center;">
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:16px 18px;text-align:center;">
               <div id="diag-kpi-${i}" style="font-size:2rem;font-weight:900;color:#94a3b8;">—</div>
               <div style="font-size:11px;color:#64748b;margin-top:4px;">${label}</div>
             </div>
@@ -1920,7 +2248,7 @@ WMS_MODULES.maestro = {
             <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
               <i class="fa-solid fa-file-code" style="margin-right:6px;color:#0ea5e9;"></i>Controladores PHP
             </div>
-            <div id="diag-ctrl-table" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;"></div>
+            <div id="diag-ctrl-table" style="border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;"></div>
           </div>
 
           <!-- Rutas -->
@@ -1928,7 +2256,7 @@ WMS_MODULES.maestro = {
             <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
               <i class="fa-solid fa-route" style="margin-right:6px;color:#f59e0b;"></i>Validación de Rutas
             </div>
-            <div id="diag-routes-box" style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;background:#fff;"></div>
+            <div id="diag-routes-box" style="border:1px solid #e2e8f0;border-radius:4px;padding:16px;background:#fff;"></div>
           </div>
         </div>
 
@@ -2211,7 +2539,7 @@ WMS_MODULES.maestro = {
     const token = localStorage.getItem('wms_token') || '';
 
     try {
-      const url = '/WMS_PROORIENTE/public/api/param/import-export/upload/' + tipo;
+      const url = '/WMS_FENIX/public/api/param/import-export/upload/' + tipo;
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token },
@@ -2249,19 +2577,19 @@ WMS_MODULES.maestro = {
              </span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:8px;margin-bottom:14px;">
-            <div style="padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;text-align:center;">
+            <div style="padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;text-align:center;">
               <div style="font-size:20px;font-weight:800;color:#475569;">${total}</div>
               <div style="font-size:9px;color:#64748b;font-weight:700;">TOTAL</div>
             </div>
-            <div style="padding:10px;background:#f0fdf4;border-radius:8px;text-align:center;border:1px solid #dcfce7;">
+            <div style="padding:10px;background:#f0fdf4;border-radius:4px;text-align:center;border:1px solid #dcfce7;">
               <div style="font-size:20px;font-weight:800;color:#16a34a;">${success}</div>
               <div style="font-size:9px;color:#16a34a;font-weight:700;">NUEVOS</div>
             </div>
-            <div style="padding:10px;background:#eff6ff;border-radius:8px;text-align:center;border:1px solid #dbeafe;">
+            <div style="padding:10px;background:#eff6ff;border-radius:4px;text-align:center;border:1px solid #dbeafe;">
               <div style="font-size:20px;font-weight:800;color:#2563eb;">${updated}</div>
               <div style="font-size:9px;color:#2563eb;font-weight:700;">ACTUALIZADOS</div>
             </div>
-            <div style="padding:10px;background:#fef2f2;border-radius:8px;text-align:center;border:1px solid #fee2e2;">
+            <div style="padding:10px;background:#fef2f2;border-radius:4px;text-align:center;border:1px solid #fee2e2;">
               <div style="font-size:20px;font-weight:800;color:#dc2626;">${errsArray.length + skipped}</div>
               <div style="font-size:9px;color:#dc2626;font-weight:700;">AVISOS</div>
             </div>
@@ -2285,5 +2613,111 @@ WMS_MODULES.maestro = {
         btn.innerHTML = '<i class="fa-solid fa-upload"></i> Procesar Importación';
       }
     }
+  },
+
+  // ── IMPRESORAS ──────────────────────────────────────────────
+  async show_impresoras() {
+    WMS.setToolbar(`
+      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.formImpresora()"><i class="fa-solid fa-plus"></i> Nueva Impresora</button>
+    `);
+    WMS.spinner();
+    try {
+      const r = await API.get('/impresoras');
+      const items = r.data || r || [];
+      WMS.setContent(`
+        <div class="card">
+          <div class="card-header"><span class="card-title"><i class="fa-solid fa-print"></i> Maestro de Impresoras IP</span></div>
+          <div class="table-container">
+            <table class="erp-table">
+              <thead><tr><th>Nombre</th><th>Dirección IP</th><th>Puerto</th><th>Tipo</th><th>Módulos Asignados</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <tbody>${items.map(i => `<tr>
+                <td><strong>${WMS.esc(i.nombre)}</strong></td>
+                <td><code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">${WMS.esc(i.ip)}</code></td>
+                <td>${i.puerto}</td>
+                <td><span class="badge ${i.tipo==='Rotulos'?'badge-info':i.tipo==='Despacho'?'badge-success':'badge-light'}">${WMS.esc(i.tipo)}</span></td>
+                <td><div style="display:flex;gap:4px;flex-wrap:wrap;">${(i.modulos||'').split(',').filter(Boolean).map(m => `<span class="badge badge-primary" style="font-size:10px;">${WMS.esc(m)}</span>`).join('') || '<span class="text-muted" style="font-size:10px;">Ninguno</span>'}</div></td>
+                <td><span class="status-badge ${i.activo?'success':'danger'}">${i.activo?'Activa':'Inactiva'}</span></td>
+                <td><div class="actions" style="display:flex;gap:4px;">
+                  <button class="btn btn-sm btn-info" onclick="WMS_MODULES.maestro.testImpresora(${i.id})" title="Prueba de Impresión" style="display:flex;align-items:center;gap:4px;">🖨️ <i class="fa-solid fa-print"></i> <span>Probar</span></button>
+                  <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.formImpresora(${JSON.stringify(i).replace(/"/g, '&quot;')})" style="display:flex;align-items:center;gap:4px;">✏️ <i class="fa-solid fa-edit"></i> <span>Editar</span></button>
+                  <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.eliminarImpresora(${i.id})" style="display:flex;align-items:center;gap:4px;">🗑️ <i class="fa-solid fa-trash"></i> <span>Borrar</span></button>
+                </div></td>
+              </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin impresoras configuradas</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
+      `);
+    } catch(e) { WMS.toast('error', 'Error cargando impresoras'); }
+  },
+
+  formImpresora(data = null) {
+    WMS.showRightPanel(data ? 'Editar Impresora' : 'Nueva Impresora', `
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Nombre <span class="required">*</span></label><input id="imp-nombre" class="form-control" value="${WMS.esc(data?.nombre||'')}"></div>
+        <div class="form-group"><label class="form-label">Dirección IP <span class="required">*</span></label><input id="imp-ip" class="form-control" placeholder="192.168.1.50" value="${WMS.esc(data?.ip||'')}"></div>
+        <div class="form-group"><label class="form-label">Puerto</label><input id="imp-puerto" type="number" class="form-control" value="${data?.puerto||9100}"></div>
+        <div class="form-group"><label class="form-label">Tipo</label>
+          <select id="imp-tipo" class="form-control">
+            <option value="General" ${data?.tipo==='General'?'selected':''}>General</option>
+            <option value="Rotulos" ${data?.tipo==='Rotulos'?'selected':''}>Rótulos / Etiquetas</option>
+            <option value="Despacho" ${data?.tipo==='Despacho'?'selected':''}>Documentos Despacho</option>
+          </select></div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label class="form-label">Asignar a Módulos</label>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; background:#f8fafc; padding:10px; border-radius:4px; border:1px solid #e2e8f0;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" name="imp-mod" value="rotulos" ${(data?.modulos||'').includes('rotulos')?'checked':''}> Módulo Rótulos</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" name="imp-mod" value="certificacion" ${(data?.modulos||'').includes('certificacion')?'checked':''}> Módulo Certificación</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" name="imp-mod" value="inventario" ${(data?.modulos||'').includes('inventario')?'checked':''}> Módulo Inventario</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" name="imp-mod" value="picking" ${(data?.modulos||'').includes('picking')?'checked':''}> Módulo Picking</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="imp-activo" ${data === null || data.activo ? 'checked' : ''}> Impresora Activa
+          </label>
+        </div>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">✖ Cancelar</button>
+       ${data ? `<button class="btn btn-info" onclick="WMS_MODULES.maestro.testImpresora(${data.id})">🖨️ <i class="fa-solid fa-print"></i> Probar</button>` : ''}
+       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.guardarImpresora(${data?.id||null})">💾 <i class="fa-solid fa-save"></i> Guardar</button>`);
+  },
+
+  async guardarImpresora(id) {
+    const mods = Array.from(document.querySelectorAll('input[name="imp-mod"]:checked')).map(cb => cb.value).join(',');
+    const payload = {
+      id,
+      nombre: document.getElementById('imp-nombre').value.trim(),
+      ip: document.getElementById('imp-ip').value.trim(),
+      puerto: document.getElementById('imp-puerto').value,
+      tipo: document.getElementById('imp-tipo').value,
+      modulos: mods,
+      activo: document.getElementById('imp-activo').checked
+    };
+    if (!payload.nombre || !payload.ip) return WMS.toast('warn', 'Nombre e IP son requeridos');
+    try {
+      const r = await API.post('/impresoras', payload);
+      if (r.error) WMS.toast('error', r.message);
+      else { WMS.toast('success', 'Impresora guardada'); WMS.closeRightPanel(); this.show_impresoras(); }
+    } catch(e) { 
+      WMS.toast('error', e.message || 'Error guardando impresora'); 
+    }
+  },
+
+  async eliminarImpresora(id) {
+    if (!confirm('¿Eliminar esta configuración de impresora?')) return;
+    try {
+      const r = await API.delete('/impresoras/' + id);
+      if (r.error) WMS.toast('error', r.message);
+      else { WMS.toast('success', 'Impresora eliminada'); this.show_impresoras(); }
+    } catch(e) { WMS.toast('error', 'Error eliminando impresora'); }
+  },
+
+  async testImpresora(id) {
+    WMS.toast('info', 'Enviando prueba...');
+    try {
+      const r = await API.post(`/impresoras/${id}/test-print`);
+      if (r.error) WMS.toast('error', r.message);
+      else WMS.toast('success', 'Prueba enviada correctamente');
+    } catch(e) { WMS.toast('error', 'Error de conexión con el servidor'); }
   },
 };

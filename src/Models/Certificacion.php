@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\TenantScoped;
 
 class Certificacion extends Model
 {
+    use TenantScoped;
     protected $table = 'certificaciones';
 
     protected $fillable = [
@@ -27,3 +29,5 @@ class Certificacion extends Model
         return $this->hasMany(CertificacionDetalle::class, 'certificacion_id');
     }
 }
+
+
