@@ -1659,6 +1659,8 @@ class PickingController extends BaseController
                 Capsule::raw(
                     'ROUND(AVG(CASE WHEN o.hora_fin IS NOT NULL AND o.hora_inicio IS NOT NULL
                         AND o.hora_inicio != \'00:00:00\'
+                        AND o.hora_fin    != \'00:00:00\'
+                        AND o.hora_fin     > o.hora_inicio
                         THEN TIME_TO_SEC(TIMEDIFF(o.hora_fin, o.hora_inicio)) / 60
                         ELSE NULL END), 1) as avg_minutos'
                 )
