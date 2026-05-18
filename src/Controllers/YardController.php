@@ -399,6 +399,22 @@ class YardController extends BaseController
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
 
+        $isPg = $this->isPg();
+        if ($isPg) {
+            $puntual  = "EXTRACT(EPOCH FROM (entrada_real::timestamp - fecha_cita::timestamp))/60 <= 15";
+            $espera   = "EXTRACT(EPOCH FROM (inicio_op_real::timestamp - entrada_real::timestamp))/60";
+            $duracion = "EXTRACT(EPOCH FROM (fin_op_real::timestamp - inicio_op_real::timestamp))/60";
+            $roundFn  = fn($e) => "ROUND(CAST($e AS NUMERIC), 1)";
+        } else {
+            $puntual  = "TIMESTAMPDIFF(MINUTE, fecha_cita, entrada_real) <= 15";
+            $espera   = "TIMESTAMPDIFF(MINUTE, entrada_real, inicio_op_real)";
+            $duracion = "TIMESTAMPDIFF(MINUTE, inicio_op_real, fin_op_real)";
+            $roundFn  = fn($e) => "ROUND($e, 1)";
+        }
+        $avgTurnaround = $roundFn("AVG(CASE WHEN turnaround_min IS NOT NULL THEN turnaround_min END)");
+        $avgEspera     = $roundFn("AVG(CASE WHEN inicio_op_real IS NOT NULL AND entrada_real IS NOT NULL THEN $espera END)");
+        $avgDuracion   = $roundFn("AVG(CASE WHEN fin_op_real IS NOT NULL AND inicio_op_real IS NOT NULL THEN $duracion END)");
+
         $kpis = Capsule::table('yard_appointments')
             ->where('empresa_id',  $user->empresa_id)
             ->where('sucursal_id', $user->sucursal_id)
@@ -409,22 +425,12 @@ class YardController extends BaseController
                 COUNT(CASE WHEN estado = 'No Show'                                  THEN 1 END) AS no_show,
                 COUNT(CASE WHEN estado = 'Cancelado'                                THEN 1 END) AS canceladas,
                 COUNT(CASE WHEN estado IN ('Programado','En Patio','Operando')       THEN 1 END) AS en_proceso,
-                -- Turnaround (entrada → salida)
-                ROUND(AVG(CASE WHEN turnaround_min IS NOT NULL THEN turnaround_min END), 1) AS avg_turnaround_min,
-                MIN(CASE WHEN turnaround_min IS NOT NULL THEN turnaround_min END)           AS min_turnaround_min,
-                MAX(CASE WHEN turnaround_min IS NOT NULL THEN turnaround_min END)           AS max_turnaround_min,
-                -- Puntualidad (llegada vs cita programada) — TIMESTAMPDIFF compatible MySQL y PostgreSQL via Eloquent
-                COUNT(CASE WHEN entrada_real IS NOT NULL
-                              AND TIMESTAMPDIFF(MINUTE, fecha_cita, entrada_real) <= 15
-                           THEN 1 END) AS llegadas_a_tiempo,
-                -- Tiempo de espera en muelle (entrada → inicio op)
-                ROUND(AVG(CASE WHEN inicio_op_real IS NOT NULL AND entrada_real IS NOT NULL
-                               THEN TIMESTAMPDIFF(MINUTE, entrada_real, inicio_op_real)
-                          END), 1) AS avg_espera_muelle_min,
-                -- Duración de operación (inicio → fin)
-                ROUND(AVG(CASE WHEN fin_op_real IS NOT NULL AND inicio_op_real IS NOT NULL
-                               THEN TIMESTAMPDIFF(MINUTE, inicio_op_real, fin_op_real)
-                          END), 1) AS avg_duracion_op_min
+                $avgTurnaround AS avg_turnaround_min,
+                MIN(CASE WHEN turnaround_min IS NOT NULL THEN turnaround_min END) AS min_turnaround_min,
+                MAX(CASE WHEN turnaround_min IS NOT NULL THEN turnaround_min END) AS max_turnaround_min,
+                COUNT(CASE WHEN entrada_real IS NOT NULL AND $puntual THEN 1 END) AS llegadas_a_tiempo,
+                $avgEspera AS avg_espera_muelle_min,
+                $avgDuracion AS avg_duracion_op_min
             ")
             ->first();
 

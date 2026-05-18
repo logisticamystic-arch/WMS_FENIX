@@ -136,7 +136,9 @@ class PickingController extends BaseController
                 'detalles as congelado_count'   => fn($q) => $q->where('ambiente', 'Congelado'),
                 'detalles as total_count',
             ])
-            ->orderByRaw('ISNULL(orden_pickings.sucursal_entrega) ASC, orden_pickings.sucursal_entrega ASC')
+            ->orderByRaw($this->isPg()
+                ? '(orden_pickings.sucursal_entrega IS NULL) ASC, orden_pickings.sucursal_entrega ASC NULLS LAST'
+                : 'ISNULL(orden_pickings.sucursal_entrega) ASC, orden_pickings.sucursal_entrega ASC')
             ->orderBy('orden_pickings.prioridad')
             ->orderBy('orden_pickings.created_at', 'desc')
             ->limit($limit)
@@ -1987,7 +1989,9 @@ class PickingController extends BaseController
         $maxSeq = (int) OrdenPicking::where('empresa_id', $user->empresa_id)
             ->where('sucursal_id', $user->sucursal_id)
             ->where('numero_orden', 'like', 'Planilla %')
-            ->selectRaw("COALESCE(MAX(CAST(SUBSTRING(numero_orden, 10) AS UNSIGNED)), 0) as max_seq")
+            ->selectRaw($this->isPg()
+                ? "COALESCE(MAX(CAST(SUBSTRING(numero_orden FROM 10) AS INTEGER)), 0) as max_seq"
+                : "COALESCE(MAX(CAST(SUBSTRING(numero_orden, 10) AS UNSIGNED)), 0) as max_seq")
             ->value('max_seq');
         $nextSeq = $maxSeq + 1;
 
@@ -3527,7 +3531,9 @@ class PickingController extends BaseController
         }
 
         $counts = PickingDetalle::where('orden_picking_id', $orden->id)
-            ->selectRaw('COUNT(*) as total, SUM(estado IN ("Completado","Faltante","Anulado")) as done')
+            ->selectRaw($this->isPg()
+                ? "COUNT(*) as total, SUM(CASE WHEN estado IN ('Completado','Faltante','Anulado') THEN 1 ELSE 0 END) as done"
+                : 'COUNT(*) as total, SUM(estado IN ("Completado","Faltante","Anulado")) as done')
             ->first();
 
         $total = (int)($counts->total ?? 0);

@@ -444,7 +444,7 @@ class RecepcionController extends BaseController
         } elseif (!empty($data['ubicacion_destino_codigo'])) {
             $codigo = trim(strtoupper($data['ubicacion_destino_codigo']));
             $ubicacionDestinoId = Ubicacion::where('sucursal_id', $user->sucursal_id)
-                ->whereRaw('REPLACE(UPPER(codigo), "-", "") = ?', [str_replace('-', '', $codigo)])
+                ->whereRaw("REPLACE(UPPER(codigo), '-', '') = ?", [str_replace('-', '', $codigo)])
                 ->value('id');
         }
 
@@ -739,7 +739,7 @@ class RecepcionController extends BaseController
         } elseif (!empty($data['ubicacion_destino_codigo'])) {
             $codigo = trim(strtoupper($data['ubicacion_destino_codigo']));
             $ubicacionDestinoId = Ubicacion::where('sucursal_id', $user->sucursal_id)
-                ->whereRaw('REPLACE(UPPER(codigo), "-", "") = ?', [str_replace('-', '', $codigo)])
+                ->whereRaw("REPLACE(UPPER(codigo), '-', '') = ?", [str_replace('-', '', $codigo)])
                 ->value('id');
         }
         if (!$ubicacionDestinoId) {

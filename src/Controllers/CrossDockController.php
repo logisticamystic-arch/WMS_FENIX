@@ -122,7 +122,7 @@ class CrossDockController extends BaseController
         }
 
         try {
-            $id = Capsule::transaction(function () use ($body, $user) {
+            $id = Capsule::transaction(function () use ($body, $user, $empresaId, $sucursalId) {
                 $id = Capsule::table('cross_dock_ordenes')->insertGetId([
                     'empresa_id'     => $empresaId,
                     'sucursal_id'    => $sucursalId,
