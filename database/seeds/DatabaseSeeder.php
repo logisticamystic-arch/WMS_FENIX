@@ -23,7 +23,7 @@ class DatabaseSeeder
         ], [
             'nombre' => 'CEDI Principal',
             'direccion' => 'Zona Industrial',
-            'ciudad' => 'Bucaramanga',
+            'ciudad' => 'Medellin',
             'tipo' => 'CEDI',
             'activo' => true,
         ]);
