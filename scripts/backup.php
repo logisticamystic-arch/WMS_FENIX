@@ -1,6 +1,6 @@
-<?php
+﻿<?php
 /**
- * scripts/backup.php — Backup diario automático WMS ProOriente
+ * scripts/backup.php — Backup diario automático WMS Fénix
  *
  * ┌─────────────────────────────────────────────────────────────┐
  * │  PROGRAMAR EN WINDOWS (XAMPP) — Task Scheduler              │
@@ -11,11 +11,11 @@
  * │     Desencadenador: Diario → 02:00 a.m.                     │
  * │     Acción: Iniciar programa                                │
  * │       Programa: C:\xampp\php\php.exe                        │
- * │       Argumentos: C:\xampp\htdocs\WMS_PROORIENTE\scripts\backup.php
+ * │       Argumentos: C:\xampp\htdocs\WMS_Fénix\scripts\backup.php
  * │  3. En "Condiciones" desmarcar "Solo con corriente alterna" │
  * │                                                             │
  * │  También ejecutable manualmente:                            │
- * │    cd C:\xampp\htdocs\WMS_PROORIENTE                        │
+ * │    cd C:\xampp\htdocs\WMS_Fénix                        │
  * │    C:\xampp\php\php.exe scripts\backup.php                  │
  * └─────────────────────────────────────────────────────────────┘
  */

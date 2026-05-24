@@ -1,6 +1,6 @@
-<?php return array(
+﻿<?php return array(
     'root' => array(
-        'name' => 'prooriente/wms',
+        'name' => 'Fénix/wms',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
         'reference' => 'e8e38a43d4bf23acbaff5f8b62d2964b99b7d8fe',
@@ -199,7 +199,7 @@
             'aliases' => array(),
             'dev_requirement' => false,
         ),
-        'prooriente/wms' => array(
+        'Fénix/wms' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
             'reference' => 'e8e38a43d4bf23acbaff5f8b62d2964b99b7d8fe',

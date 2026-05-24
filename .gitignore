@@ -1,11 +1,44 @@
-vendor/
-logs/*.log
+# ── Dependencias ─────────────────────────────────────────────
+/vendor/
+node_modules/
+
+# ── Variables de entorno (nunca al repo) ─────────────────────
 .env
 .env.local
-*.DS_Store
-WMS_PROORIENTE/
-WMS_PROORIENTE_BACKUP/
+.env.production
 
-# Python cache
+# ── Logs y backups (archivos generados) ──────────────────────
+logs/*.log
+backups/*.sql
+backups/*.gz
+backups/*.tar.gz
+
+# ── Herramientas de desarrollo Claude AI ─────────────────────
+.claude/settings.local.json
+.superpowers/
+Skills/
+
+# ── Python cache ─────────────────────────────────────────────
 __pycache__/
 *.pyc
+*.pyo
+
+# ── OS ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.DS_Store
+
+# ── IDE ──────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Uploads generados por usuarios ───────────────────────────
+public/uploads/devoluciones/*.jpg
+public/uploads/devoluciones/*.png
+public/uploads/devoluciones/*.jpeg
+
+# ── Proyectos legacy ─────────────────────────────────────────
+WMS_PROORIENTE/
+WMS_PROORIENTE_BACKUP/

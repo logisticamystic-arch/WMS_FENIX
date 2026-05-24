@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * ml_nightly_runner.php — Tarea nocturna de Inteligencia ML
  *
@@ -10,7 +10,7 @@
  *
  * Configuración en XAMPP (Task Scheduler de Windows):
  *   Programa: C:\xampp\php\php.exe
- *   Argumentos: C:\xampp\htdocs\WMS_PROORIENTE\tools\ml_nightly_runner.php
+ *   Argumentos: C:\xampp\htdocs\WMS_Fénix\tools\ml_nightly_runner.php
  *   Hora sugerida: 02:00 AM (baja actividad de usuarios)
  *
  * También se puede invocar manualmente:
