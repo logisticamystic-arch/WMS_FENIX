@@ -1,60 +1,83 @@
-﻿<?php
+<?php
 /**
- * scripts/backup.php — Backup diario automático WMS Fénix
+ * scripts/backup.php — Punto de entrada para backup automático diario WMS Fénix
  *
- * ┌─────────────────────────────────────────────────────────────┐
- * │  PROGRAMAR EN WINDOWS (XAMPP) — Task Scheduler              │
- * │                                                             │
- * │  1. Abrir "Programador de tareas" de Windows                │
- * │  2. Crear tarea básica:                                     │
- * │     Nombre: WMS Backup Diario                               │
- * │     Desencadenador: Diario → 02:00 a.m.                     │
- * │     Acción: Iniciar programa                                │
- * │       Programa: C:\xampp\php\php.exe                        │
- * │       Argumentos: C:\xampp\htdocs\WMS_Fénix\scripts\backup.php
- * │  3. En "Condiciones" desmarcar "Solo con corriente alterna" │
- * │                                                             │
- * │  También ejecutable manualmente:                            │
- * │    cd C:\xampp\htdocs\WMS_Fénix                        │
- * │    C:\xampp\php\php.exe scripts\backup.php                  │
- * └─────────────────────────────────────────────────────────────┘
+ * Ejecuta: backup de PostgreSQL (comprimido, formato custom) + archivos uploads/
+ *
+ * ─── CÓMO PROGRAMARLO ────────────────────────────────────────────────────────
+ *
+ * WINDOWS (desarrollo XAMPP):
+ *   Ejecutar UNA sola vez como Administrador en PowerShell:
+ *     cd C:\xampp\htdocs\WMS_FENIX
+ *     powershell -ExecutionPolicy Bypass -File scripts\setup-scheduler-windows.ps1
+ *   Esto crea la tarea "WMS Fénix — Backup Diario" a las 04:00 AM.
+ *
+ * LINUX / UBUNTU (producción):
+ *   Ejecutar UNA sola vez como root o con sudo:
+ *     bash /var/www/WMS_FENIX/scripts/setup-cron-linux.sh
+ *   Esto instala el cron en /etc/cron.d/wms-backup (04:00 AM diario).
+ *
+ * PRUEBA MANUAL (cualquier plataforma):
+ *   C:\xampp\php\php.exe scripts\backup.php         (Windows)
+ *   php scripts/backup.php                           (Linux)
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
-// ── Bootstrap ────────────────────────────────────────────────────────────────
 $rootDir = dirname(__DIR__);
 chdir($rootDir);
 
-// Cargar .env
+// ── Cargar .env manualmente (sin Slim) ───────────────────────────────────────
 if (file_exists($rootDir . '/.env')) {
     foreach (file($rootDir . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
-        if (str_starts_with(trim($line), '#') || !str_contains($line, '=')) continue;
+        $line = trim($line);
+        if ($line === '' || str_starts_with($line, '#') || !str_contains($line, '=')) continue;
         [$k, $v] = explode('=', $line, 2);
-        $k = trim($k); $v = trim($v);
+        $k = trim($k);
+        $v = trim($v, " \t\"'");
         if (!isset($_ENV[$k])) {
-            $_ENV[$k] = $v;
+            $_ENV[$k]    = $v;
+            $_SERVER[$k] = $v;
             putenv("{$k}={$v}");
         }
     }
 }
 
-// Autoloader
+// ── Autoloader ───────────────────────────────────────────────────────────────
 require_once $rootDir . '/vendor/autoload.php';
+require_once $rootDir . '/src/Helpers/BackupHelper.php';
+
+// ── Log helper ───────────────────────────────────────────────────────────────
+$logFile = $rootDir . '/backups/backup.log';
+
+function bkpLog(string $level, string $msg, string $logFile): void
+{
+    $line = '[' . date('Y-m-d H:i:s') . "] [{$level}] {$msg}" . PHP_EOL;
+    echo $line;
+    @file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
+}
+
+// Rotar log si supera 5 MB
+if (file_exists($logFile) && filesize($logFile) > 5 * 1024 * 1024) {
+    rename($logFile, str_replace('.log', '_' . date('Ymd') . '.log', $logFile));
+}
 
 // ── Ejecutar backup ───────────────────────────────────────────────────────────
-$helper = \App\Helpers\BackupHelper::class;
-// Requiere carga manual porque no arrancamos Slim
-require_once $rootDir . '/src/Helpers/BackupHelper.php';
+bkpLog('INFO', '=== Inicio backup WMS Fénix ===', $logFile);
 
 try {
     $result = \App\Helpers\BackupHelper::run();
-    $msg = "[OK] " . date('Y-m-d H:i:s') . " — Backup generado: {$result['archivo']} ({$result['tamaño_kb']} KB)\n";
-    echo $msg;
-    // Append a log de backups
-    file_put_contents($rootDir . '/backups/backup.log', $msg, FILE_APPEND);
+
+    $db    = $result['db'];
+    $files = $result['files'];
+
+    bkpLog('OK', "BD → {$db['archivo']} ({$db['tamaño_kb']} KB) | Archivos → {$files['archivo']} ({$files['tamaño_kb']} KB) | Total: {$result['total_kb']} KB", $logFile);
+    bkpLog('INFO', '=== Backup completado con éxito ===', $logFile);
+
     exit(0);
-} catch (\Exception $e) {
-    $msg = "[ERROR] " . date('Y-m-d H:i:s') . " — {$e->getMessage()}\n";
-    echo $msg;
-    file_put_contents($rootDir . '/backups/backup.log', $msg, FILE_APPEND);
+
+} catch (\Throwable $e) {
+    bkpLog('ERROR', $e->getMessage(), $logFile);
+    bkpLog('ERROR', '=== Backup FALLÓ ===', $logFile);
     exit(1);
 }

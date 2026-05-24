@@ -9,9 +9,9 @@ node_modules/
 
 # ── Logs y backups (archivos generados) ──────────────────────
 logs/*.log
-backups/*.sql
-backups/*.gz
-backups/*.tar.gz
+backups/backup*.log
+backups/db/
+backups/files/
 
 # ── Herramientas de desarrollo Claude AI ─────────────────────
 .claude/settings.local.json
