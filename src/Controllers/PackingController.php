@@ -90,7 +90,7 @@ class PackingController extends BaseController
                     'pi.id', 'pi.unidad_id', 'pi.producto_id',
                     'p.nombre as producto_nombre', 'p.codigo_interno as codigo',
                     'pi.cantidad', 'pi.lote', 'pi.fecha_vencimiento', 'pi.separador_id',
-                    Capsule::raw("CONCAT(per.nombres, ' ', COALESCE(per.apellidos,'')) as separador_nombre"),
+                    Capsule::raw("CONCAT(COALESCE(per.nombres,''), ' ', COALESCE(per.apellidos,'')) as separador_nombre"),
                 ])
                 ->get()
                 ->groupBy('unidad_id')
@@ -205,8 +205,9 @@ class PackingController extends BaseController
         if (!$item) return $this->notFound($res);
 
         $unidad = PackingUnidad::find($item->unidad_id);
-        if (!$unidad || $unidad->estado !== 'Abierta') {
-            return $this->error($res, 'Solo se pueden eliminar ítems de una unidad abierta');
+        if (!$unidad) return $this->notFound($res);
+        if ($unidad->estado !== 'Abierta') {
+            return $this->error($res, 'Solo se pueden eliminar ítems de una unidad abierta', 422);
         }
         $sesion = PackingSesion::where('empresa_id', $user->empresa_id)
             ->where('sucursal_id', $user->sucursal_id)
@@ -263,17 +264,8 @@ class PackingController extends BaseController
         if (!$sesion) return $this->notFound($res);
         if ($sesion->estado === 'Completada') return $this->error($res, 'Sesión ya finalizada', 409);
 
-        $pickeados = $this->_getProductosPickados($user->empresa_id, $user->sucursal_id, $sesion->sucursal_entrega);
-        $empacados = $this->_getProductosEmpacados($sesion->id);
-        $totalPend = 0.0;
-        foreach ($pickeados as $pid => $pick) {
-            $totalPend += max(0, round((float)$pick->total_pickeado - ($empacados[$pid] ?? 0), 3));
-        }
-        if ($totalPend > 0.001) {
-            return $this->error($res, "Quedan {$totalPend} unidades sin empacar", 422);
-        }
-
         return Capsule::transaction(function () use ($sesion, $user, $res) {
+            // Step 1: Auto-close or delete the open unit
             $openUnidad = PackingUnidad::where('sesion_id', $sesion->id)->where('estado', 'Abierta')->first();
             if ($openUnidad) {
                 $itemCount = PackingItem::where('unidad_id', $openUnidad->id)->count();
@@ -288,6 +280,18 @@ class PackingController extends BaseController
                 }
             }
 
+            // Step 2: Re-validate pending items inside transaction (TOCTOU fix)
+            $pickeados = $this->_getProductosPickados($user->empresa_id, $user->sucursal_id, $sesion->sucursal_entrega);
+            $empacados = $this->_getProductosEmpacados($sesion->id);
+            $totalPend = 0.0;
+            foreach ($pickeados as $pid => $pick) {
+                $totalPend += max(0, round((float)$pick->total_pickeado - ($empacados[$pid] ?? 0), 3));
+            }
+            if ($totalPend > 0.001) {
+                return $this->error($res, "Quedan {$totalPend} unidades sin empacar", 422);
+            }
+
+            // Step 3: Mark session complete + run certFinalizar logic
             $sesion->estado = 'Completada';
             $sesion->save();
 
@@ -312,7 +316,7 @@ class PackingController extends BaseController
                             'picking_detalles', $d->id,
                             ['pick' => $d->cantidad_pickeada],
                             ['cert' => $d->cantidad_certificada],
-                            "Diferencia en certificación: Pedido {$o->numero_orden}. Faltan " . abs($diff)
+                            "Diferencia en certificación: Pedido {$o->numero_orden}, Producto ID {$d->producto_id}. Faltan " . abs($diff)
                         );
                     }
                 }
@@ -341,6 +345,7 @@ class PackingController extends BaseController
             ->where('sucursal_id', $user->sucursal_id)
             ->find((int)$a['id']);
         if (!$sesion) return $this->notFound($res);
+        if ($sesion->estado === 'Completada') return $this->error($res, 'No se puede modificar una sesión finalizada', 409);
 
         $sesion->impresora_sticker_id = $data['impresora_sticker_id'] ?? null;
         $sesion->impresora_doc_id     = $data['impresora_doc_id'] ?? null;
