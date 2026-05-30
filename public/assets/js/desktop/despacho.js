@@ -129,7 +129,7 @@ WMS_MODULES.despacho = {
           </div>
           <div style="display:flex;gap:10px;justify-content:flex-end;">
             <button class="btn btn-secondary btn-sm" onclick="document.getElementById('packing-dialog-overlay').remove()">Cancelar</button>
-            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho._confirmarDialogPacking('${WMS.esc(sucursal)}')">
+            <button class="btn btn-primary btn-sm" data-sucursal="${WMS.esc(sucursal)}" onclick="WMS_MODULES.despacho._confirmarDialogPacking(this.dataset.sucursal)">
               <i class="fa-solid fa-play"></i> Iniciar
             </button>
           </div>
@@ -1093,6 +1093,7 @@ WMS_MODULES.despacho = {
 
   async show_packing(sesionId) {
     WMS.spinner();
+    this._packingState = { sesionId: null, sesionData: null, unitsWithItems: {} };
     try {
       const r = await API.get('/packing/sesion/' + sesionId);
       if (r.error) { WMS.toast('error', r.message); return; }
@@ -1193,7 +1194,8 @@ WMS_MODULES.despacho = {
           <input type="number" id="pk-qty-${p.producto_id}" min="0.001" max="${p.pendiente}" step="0.001"
             value="${p.pendiente}" style="width:90px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
           <button class="btn btn-primary btn-sm" style="font-size:11px;"
-            onclick="WMS_MODULES.despacho.agregarItemPacking(${sesionId}, ${p.producto_id}, '${WMS.esc(p.nombre)}')">
+            data-sesion="${sesionId}" data-producto="${p.producto_id}"
+            onclick="WMS_MODULES.despacho.agregarItemPacking(+this.dataset.sesion, +this.dataset.producto)">
             <i class="fa-solid fa-plus"></i> Agregar
           </button>
         </div>` : '<span style="font-size:11px;color:#16a34a;"><i class="fa-solid fa-check"></i> Completado</span>'}
@@ -1221,7 +1223,7 @@ WMS_MODULES.despacho = {
     if (!closed.length) return '';
     return `<div class="card">
       <div class="card-header"><span class="card-title"><i class="fa-solid fa-layer-group"></i> Unidades Cerradas (${closed.length})</span>
-        <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.despacho._imprimirTodasPacking('${tipoUp}')">
+        <button class="btn btn-sm btn-outline-primary" data-tipo="${tipoUp}" onclick="WMS_MODULES.despacho._imprimirTodasPacking(this.dataset.tipo)">
           <i class="fa-solid fa-print"></i> Imprimir Todas</button>
       </div>
       <div class="table-container">
@@ -1241,7 +1243,7 @@ WMS_MODULES.despacho = {
     </div>`;
   },
 
-  async agregarItemPacking(sesionId, productoId, nombre) {
+  async agregarItemPacking(sesionId, productoId) {
     const qty = parseFloat(document.getElementById('pk-qty-' + productoId)?.value || 0);
     if (!qty || qty <= 0) { WMS.toast('error', 'Ingrese una cantidad válida'); return; }
     try {
@@ -1250,7 +1252,7 @@ WMS_MODULES.despacho = {
         cantidad:    qty,
       });
       if (r.error) { WMS.toast('error', r.message); return; }
-      WMS.toast('success', nombre + ' agregado');
+      WMS.toast('success', 'Ítem agregado');
       await this.show_packing(sesionId);
     } catch(e) { WMS.toast('error', 'Error al agregar'); }
   },
@@ -1290,6 +1292,7 @@ WMS_MODULES.despacho = {
     const html  = this._buildStickerHtml(unidad, sesionData.sesion, items, size);
     const win   = window.open('', '_blank', 'width=680,height=500');
     if (win) { win.document.write(html); win.document.close(); }
+    else { WMS.toast('error', 'El navegador bloqueó la ventana emergente. Permita popups para este sitio.'); }
   },
 
   _imprimirTodasPacking(tipoUp) {
@@ -1303,6 +1306,7 @@ WMS_MODULES.despacho = {
     const html = this._wrapPrintPage(parts, 'letter');
     const win  = window.open('', '_blank', 'width=680,height=500');
     if (win) { win.document.write(html); win.document.close(); }
+    else { WMS.toast('error', 'El navegador bloqueó la ventana emergente. Permita popups para este sitio.'); }
   },
 
   _buildStickerHtml(unidad, sesion, items, size) {
@@ -1401,13 +1405,13 @@ td { padding:2px 4px; border-bottom:1px dotted #e2e8f0; font-size:10px; }
           <div style="font-size:48px;color:#16a34a;margin-bottom:12px;">✓</div>
           <h3 style="margin:0 0 6px;">Certificación Finalizada</h3>
           <p style="color:#475569;margin:0 0 20px;">
-            <strong>${sesion.sucursal_entrega}</strong> — ${totales.num_unidades} ${tipoUp}(s)
+            <strong>${WMS.esc(sesion.sucursal_entrega)}</strong> — ${totales.num_unidades} ${tipoUp}(s)
           </p>
           <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
             <button class="btn btn-primary" onclick="WMS_MODULES.despacho._abrirDocumento(${sesion.id})">
               <i class="fa-solid fa-file-alt"></i> Ver Documento de Packing
             </button>
-            <button class="btn btn-outline-primary" onclick="WMS_MODULES.despacho._imprimirTodasPacking('${tipoUp}')">
+            <button class="btn btn-outline-primary" data-tipo="${tipoUp}" onclick="WMS_MODULES.despacho._imprimirTodasPacking(this.dataset.tipo)">
               <i class="fa-solid fa-print"></i> Imprimir Todos los Stickers
             </button>
             <button class="btn btn-secondary" onclick="WMS_MODULES.despacho.show_certificacion()">
@@ -1514,6 +1518,7 @@ function toggleLandscape() {
 </body></html>`;
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
+    else { WMS.toast('error', 'El navegador bloqueó la ventana emergente. Permita popups para este sitio.'); }
   },
 
 };
