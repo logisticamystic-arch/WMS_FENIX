@@ -531,7 +531,7 @@ WMS_MODULES.despacho = {
   async despacharCargue(id) {
     if (!confirm('¿Confirmar despacho? El vehículo saldrá con las planillas asignadas.')) return;
     try {
-      const r = await API.put('/despachos/' + id, { estado: 'Despachado' });
+      const r = await API.post('/despachos/' + id + '/cerrar', {});
       if (r.error) WMS.toast('error', r.message);
       else { WMS.toast('success', 'Despacho confirmado'); this.show_cargue(); }
     } catch(e) { WMS.toast('error', 'Error'); }

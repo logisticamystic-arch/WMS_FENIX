@@ -1895,7 +1895,7 @@ WMS_MODULES.picking = {
 
   async _mostrarAgregarLineaPedido(id) {
     try {
-      const r = await API.get('/maestro/productos');
+      const r = await API.get('/param/productos');
       const productos = r.data || r || [];
       WMS.showModal('Agregar Línea a Pedido #' + id, `
         <div class="form-group">

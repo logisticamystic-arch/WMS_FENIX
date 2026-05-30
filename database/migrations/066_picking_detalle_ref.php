@@ -17,7 +17,12 @@ return [
                 }
             });
             try {
-                Capsule::statement('ALTER TABLE picking_detalles ADD INDEX idx_pd_ref (numero_pedido_ref(50))');
+                $isPg = Capsule::connection()->getDriverName() === 'pgsql';
+                if ($isPg) {
+                    Capsule::statement('CREATE INDEX IF NOT EXISTS idx_pd_ref ON picking_detalles (numero_pedido_ref)');
+                } else {
+                    Capsule::statement('ALTER TABLE picking_detalles ADD INDEX idx_pd_ref (numero_pedido_ref(50))');
+                }
             } catch (\Exception $e) {}
         }
     },

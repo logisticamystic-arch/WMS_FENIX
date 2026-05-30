@@ -115,7 +115,8 @@ if ($SkipDbRestore) {
     # Buscar el backup más reciente en backups/db/
     $backupDir = "$AppPath\backups\db"
     if (Test-Path $backupDir) {
-        $latestBackup = Get-ChildItem "$backupDir\dia_*.dump" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        # Acepta tanto el patrón del exportador (DbName_Timestamp.dump) como el backup diario (dia_*.dump)
+        $latestBackup = Get-ChildItem "$backupDir\*.dump" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if ($latestBackup) {
             Write-Host "    Restaurando desde: $($latestBackup.FullName)" -ForegroundColor Yellow
             & $pgRestoreExe -h 127.0.0.1 -U $DbUser -d $DbName -F c --no-owner --no-privileges "$($latestBackup.FullName)" 2>&1
@@ -173,6 +174,16 @@ $updates = @{
     "APP_ENV"              = "production"
     "APP_DEBUG"            = "false"
     "APP_URL"              = $AppUrl
+    "CORS_ALLOWED_ORIGINS" = $AppUrl
+}
+
+# JWT_SECRET: generar uno nuevo si no fue provisto
+$jwtSecretCurrent = if ($envContent -match '(?m)^JWT_SECRET=(.+)$') { $Matches[1] } else { '' }
+if ($jwtSecretCurrent -eq '' -or $jwtSecretCurrent -eq 'CAMBIAR_POR_CLAVE_SEGURA_32_CHARS_MINIMO') {
+    $jwtBytes = New-Object byte[] 48
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($jwtBytes)
+    $updates["JWT_SECRET"] = [Convert]::ToBase64String($jwtBytes)
+    Write-Warn "JWT_SECRET generado automáticamente — guárdalo en un lugar seguro"
 }
 
 foreach ($key in $updates.Keys) {
@@ -245,7 +256,7 @@ if (Test-Path $apacheConf) {
 # ── 10. Ejecutar migraciones pendientes ───────────────────────────────────────
 Write-Step 10 "Ejecutando migraciones de BD"
 
-$migrationsUrl = "$AppUrl".Replace("public", "public/api/migrations-run.php")
+$migrationsUrl = $AppUrl.TrimEnd('/') + '/../api/migrations-run.php'
 Write-Host "    URL de migraciones: $migrationsUrl" -ForegroundColor Yellow
 Write-Host "    Puedes ejecutarlas desde el navegador (solo localhost):"
 Write-Host "    $migrationsUrl" -ForegroundColor Cyan

@@ -28,6 +28,11 @@ class FefoEngine
         $this->sucursalId = $sucursalId;
     }
 
+    private function isPg(): bool
+    {
+        return Capsule::connection()->getDriverName() === 'pgsql';
+    }
+
     // ── 1. SUGERENCIA DE LOTES EN ORDEN FEFO ──────────────────────────────────
 
     /**
@@ -192,7 +197,9 @@ class FefoEngine
                 'i.fecha_vencimiento',
                 Capsule::raw('SUM(i.cantidad) as stock_total'),
                 Capsule::raw('SUM(i.cantidad - i.cantidad_reservada) as stock_disponible'),
-                Capsule::raw('DATEDIFF(i.fecha_vencimiento, CURDATE()) as dias_para_vencer'),
+                Capsule::raw($this->isPg()
+                    ? "(i.fecha_vencimiento::date - CURRENT_DATE) as dias_para_vencer"
+                    : "DATEDIFF(i.fecha_vencimiento, CURDATE()) as dias_para_vencer"),
             ])
             ->groupBy('i.producto_id', 'p.nombre', 'p.codigo_interno', 'i.lote', 'i.fecha_vencimiento')
             ->get()
@@ -240,7 +247,9 @@ class FefoEngine
                 Capsule::raw('MIN(i.fecha_vencimiento) as proximo_vencimiento'),
             ])
             ->groupBy('i.producto_id', 'p.nombre', 'p.codigo_interno')
-            ->orderByRaw('MIN(i.fecha_vencimiento) IS NULL, MIN(i.fecha_vencimiento) ASC')
+            ->orderByRaw($this->isPg()
+                ? 'MIN(i.fecha_vencimiento) ASC NULLS LAST'
+                : 'MIN(i.fecha_vencimiento) IS NULL, MIN(i.fecha_vencimiento) ASC')
             ->limit(100)
             ->get();
 

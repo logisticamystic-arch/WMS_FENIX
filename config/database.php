@@ -37,6 +37,12 @@ $config = [
 if ($driver === 'pgsql') {
     $config['charset']  = $env('DB_CHARSET', 'utf8');
     $config['sslmode']  = $env('DB_SSLMODE', 'prefer');
+    // Equivalente al MYSQL_ATTR_INIT_COMMAND: fuerza zona horaria Bogotá en cada conexión PG
+    $config['options'][\PDO::ATTR_PERSISTENT] = false; // persistent + pgsql causa problemas de timezone
+    $config['options']['application_name'] = 'WMS_FENIX';
+    // Timezone se aplica vía afterConnect en bootstrap/app.php o directamente aquí:
+    $config['search_path'] = 'public';
+    $config['timezone'] = 'America/Bogota';
 } else {
     // MySQL / MariaDB
     $config['charset']   = $env('DB_CHARSET',    'utf8mb4');

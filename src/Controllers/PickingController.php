@@ -1692,12 +1692,19 @@ class PickingController extends BaseController
                 Capsule::raw('COUNT(d.id) as lineas'),
                 Capsule::raw('SUM(d.cantidad_pickeada) as unidades'),
                 Capsule::raw(
-                    'ROUND(AVG(CASE WHEN o.hora_fin IS NOT NULL AND o.hora_inicio IS NOT NULL
-                        AND o.hora_inicio != \'00:00:00\'
-                        AND o.hora_fin    != \'00:00:00\'
+                    $this->isPg()
+                    ? "ROUND(AVG(CASE WHEN o.hora_fin IS NOT NULL AND o.hora_inicio IS NOT NULL
+                        AND o.hora_inicio != '00:00:00'
+                        AND o.hora_fin    != '00:00:00'
+                        AND o.hora_fin     > o.hora_inicio
+                        THEN EXTRACT(EPOCH FROM (o.hora_fin::time - o.hora_inicio::time)) / 60
+                        ELSE NULL END), 1) as avg_minutos"
+                    : "ROUND(AVG(CASE WHEN o.hora_fin IS NOT NULL AND o.hora_inicio IS NOT NULL
+                        AND o.hora_inicio != '00:00:00'
+                        AND o.hora_fin    != '00:00:00'
                         AND o.hora_fin     > o.hora_inicio
                         THEN TIME_TO_SEC(TIMEDIFF(o.hora_fin, o.hora_inicio)) / 60
-                        ELSE NULL END), 1) as avg_minutos'
+                        ELSE NULL END), 1) as avg_minutos"
                 )
             )
             ->groupBy('aux.id', 'aux.nombre')

@@ -28,10 +28,17 @@ return [
                     $table->integer('orden_logico')->nullable()->after('ruta');
                 }
             });
-            // Índices via raw para evitar conflictos con Blueprint
-            try { Capsule::statement('ALTER TABLE orden_pickings ADD INDEX idx_pick_ruta (empresa_id,sucursal_id,ruta(50))'); } catch (\Exception $e) {}
-            try { Capsule::statement('ALTER TABLE orden_pickings ADD INDEX idx_pick_suc (empresa_id,sucursal_id,sucursal_entrega(100))'); } catch (\Exception $e) {}
-            try { Capsule::statement('ALTER TABLE orden_pickings ADD INDEX idx_pick_fecha_est (empresa_id,sucursal_id,fecha_movimiento,estado)'); } catch (\Exception $e) {}
+            // Índices via raw — sintaxis difiere entre MySQL (prefix length) y PostgreSQL
+            $isPg = Capsule::connection()->getDriverName() === 'pgsql';
+            if ($isPg) {
+                try { Capsule::statement('CREATE INDEX IF NOT EXISTS idx_pick_ruta ON orden_pickings (empresa_id,sucursal_id,ruta)'); } catch (\Exception $e) {}
+                try { Capsule::statement('CREATE INDEX IF NOT EXISTS idx_pick_suc ON orden_pickings (empresa_id,sucursal_id,sucursal_entrega)'); } catch (\Exception $e) {}
+                try { Capsule::statement('CREATE INDEX IF NOT EXISTS idx_pick_fecha_est ON orden_pickings (empresa_id,sucursal_id,fecha_movimiento,estado)'); } catch (\Exception $e) {}
+            } else {
+                try { Capsule::statement('ALTER TABLE orden_pickings ADD INDEX idx_pick_ruta (empresa_id,sucursal_id,ruta(50))'); } catch (\Exception $e) {}
+                try { Capsule::statement('ALTER TABLE orden_pickings ADD INDEX idx_pick_suc (empresa_id,sucursal_id,sucursal_entrega(100))'); } catch (\Exception $e) {}
+                try { Capsule::statement('ALTER TABLE orden_pickings ADD INDEX idx_pick_fecha_est (empresa_id,sucursal_id,fecha_movimiento,estado)'); } catch (\Exception $e) {}
+            }
         }
 
         // 2. Columna ambiente en picking_detalles

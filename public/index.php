@@ -451,6 +451,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
 
     // Módulo: Recepción (Inbound)
     $group->get('/recepciones/proximo-pallet', [\App\Controllers\RecepcionController::class, 'getProximoPallet']);
+    $group->get('/recepcion/kpis', [\App\Controllers\RecepcionController::class, 'kpis']);
     $group->get('/recepcion/control-panel', [\App\Controllers\RecepcionController::class, 'getControlPanelData']);
     $group->get('/recepciones', [\App\Controllers\RecepcionController::class, 'index']);
     $group->post('/recepciones', [\App\Controllers\RecepcionController::class, 'store']);
@@ -606,8 +607,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->post('/asignar-consolidado', [\App\Controllers\PickingController::class, 'asignarConsolidado']);
         $group->post('/assign', [\App\Controllers\PickingController::class, 'assignLines']);
         $group->post('/transfer', [\App\Controllers\PickingController::class, 'transferTasks']);
-        $group->post('/reabastecimientos/auto', [\App\Controllers\PickingController::class, 'autoReabastecer']);
         $group->get('/reabastecimientos', [\App\Controllers\PickingController::class, 'reabastecimientos']);
+        $group->post('/reabast/{id}/completar', [\App\Controllers\PickingController::class, 'completarReabastLegacy']);
         $group->get('/novedades-stock',   [\App\Controllers\PickingController::class, 'novedadesStock']);
         $group->post('/backorder',         [\App\Controllers\PickingController::class, 'procesarBackorder']);
         $group->get('/reporte',           [\App\Controllers\PickingController::class, 'reporte']);

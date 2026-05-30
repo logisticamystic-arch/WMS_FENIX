@@ -15,7 +15,13 @@ return [
     'debug'     => filter_var($env('APP_DEBUG', 'false'), FILTER_VALIDATE_BOOLEAN),
     'url'       => $env('APP_URL',   'http://localhost/WMS_FENIX/public'),
     'jwt' => [
-        'secret' => $env('JWT_SECRET', 'change_this_secret'),
+        'secret' => (function() use ($env) {
+            $s = $env('JWT_SECRET', '');
+            if ($s === '' || $s === 'change_this_secret' || $s === 'CAMBIAR_POR_CLAVE_SEGURA_32_CHARS_MINIMO') {
+                throw new \RuntimeException('JWT_SECRET no configurado — edite .env antes de iniciar');
+            }
+            return $s;
+        })(),
         'expiry' => (int)($env('JWT_EXPIRY', 28800)),
     ],
     'uploads' => [

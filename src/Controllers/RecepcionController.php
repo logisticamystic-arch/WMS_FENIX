@@ -1390,6 +1390,46 @@ class RecepcionController extends BaseController
     // ══════════════════════════════════════════════════
 
 /**
+     * GET /api/recepcion/kpis — resumen rápido para la pantalla de inicio del módulo
+     */
+    public function kpis(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $hoy  = date('Y-m-d');
+
+        $recHoy = Recepcion::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereDate('created_at', $hoy)
+            ->count();
+
+        $pendientes = Recepcion::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereIn('estado', ['Borrador', 'EnProceso'])
+            ->count();
+
+        $citasHoy = Capsule::table('citas')
+            ->where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereDate('fecha_cita', $hoy)
+            ->count();
+
+        $palletsPatio = Capsule::table('lotes')
+            ->join('ubicaciones', 'ubicaciones.id', '=', 'lotes.ubicacion_id')
+            ->where('lotes.empresa_id', $user->empresa_id)
+            ->where('lotes.sucursal_id', $user->sucursal_id)
+            ->where('ubicaciones.tipo_ubicacion', 'patio')
+            ->where('lotes.cantidad_actual', '>', 0)
+            ->count();
+
+        return $this->ok($res, [
+            'rec_hoy'      => $recHoy,
+            'pendientes'   => $pendientes,
+            'citas_hoy'    => $citasHoy,
+            'pallets_patio'=> $palletsPatio,
+        ]);
+    }
+
+    /**
      * GET /api/recepcion/dashboard
      */
     public function dashboard(Request $r, Response $res): Response

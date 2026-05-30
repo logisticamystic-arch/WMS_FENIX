@@ -50,6 +50,16 @@ if ($eventsEnabled) {
 $capsule->setAsGlobal();
 $capsule->bootEloquent();
 
+// PostgreSQL: SET TIME ZONE para cada conexión nueva (equivalente al MYSQL_ATTR_INIT_COMMAND de MySQL)
+if (($dbConfig['driver'] ?? 'mysql') === 'pgsql') {
+    Capsule::connection()->afterCommit(function() {});  // no-op; hook pgsql timezone below
+    try {
+        Capsule::connection()->statement("SET TIME ZONE 'America/Bogota'");
+    } catch (\Exception $e) {
+        // no bloquea arranque si la conexión aún no está lista
+    }
+}
+
 // ── Verificación de conexión en entorno de desarrollo ─────────────────────────
 // Solo comprueba en local para no añadir latencia en producción.
 $appEnv = getenv('APP_ENV') ?: ($_ENV['APP_ENV'] ?? 'production');
