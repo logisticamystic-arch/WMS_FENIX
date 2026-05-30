@@ -87,11 +87,73 @@ WMS_MODULES.despacho = {
   async iniciarCertificacion(sucursal) {
     WMS.spinner();
     try {
-      const r = await API.get('/picking/certificacion/detalle/' + encodeURIComponent(sucursal));
-      const lineas = r.data || r || [];
-      
-      this._renderCertInterface(sucursal, lineas);
-    } catch(e) { WMS.toast('error', 'Error al cargar detalles'); }
+      const imps = (await API.get('/impresoras')).data || [];
+      this._showPackingDialog(sucursal, imps);
+    } catch(e) { WMS.toast('error', 'Error al cargar impresoras'); }
+  },
+
+  _showPackingDialog(sucursal, impresoras) {
+    const mkOpts = (tipo) => impresoras
+      .filter(i => !i.tipos_trabajo?.length || i.tipos_trabajo.includes(tipo))
+      .map(i => `<option value="${i.id}">${WMS.esc(i.nombre)}</option>`)
+      .join('');
+
+    const html = `
+      <div id="packing-dialog-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;display:flex;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:28px 32px;min-width:420px;max-width:500px;box-shadow:0 8px 40px rgba(0,0,0,.25);">
+          <h3 style="margin:0 0 20px;color:#1e293b;font-size:17px;">
+            <i class="fa-solid fa-boxes-packing"></i> Iniciar Packing — <span style="color:#1e40af;">${WMS.esc(sucursal)}</span>
+          </h3>
+          <div style="margin-bottom:16px;">
+            <label style="font-weight:600;font-size:13px;display:block;margin-bottom:8px;">Tipo de empaque</label>
+            <div style="display:flex;gap:16px;">
+              ${['canasta','caja','paquete'].map((t,i) => `
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
+                  <input type="radio" name="pk-tipo" value="${t}" ${i===0?'checked':''}> ${t.charAt(0).toUpperCase()+t.slice(1)}
+                </label>`).join('')}
+            </div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="font-weight:600;font-size:13px;display:block;margin-bottom:5px;">Impresora stickers</label>
+            <select id="pd-imp-sticker" class="form-control" style="width:100%;">
+              <option value="">— Sin impresora —</option>
+              ${mkOpts('sticker_packing')}
+            </select>
+          </div>
+          <div style="margin-bottom:22px;">
+            <label style="font-weight:600;font-size:13px;display:block;margin-bottom:5px;">Impresora documento</label>
+            <select id="pd-imp-doc" class="form-control" style="width:100%;">
+              <option value="">— Sin impresora —</option>
+              ${mkOpts('documento_packing')}
+            </select>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('packing-dialog-overlay').remove()">Cancelar</button>
+            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho._confirmarDialogPacking('${WMS.esc(sucursal)}')">
+              <i class="fa-solid fa-play"></i> Iniciar
+            </button>
+          </div>
+        </div>
+      </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+  },
+
+  async _confirmarDialogPacking(sucursal) {
+    const tipo       = document.querySelector('input[name="pk-tipo"]:checked')?.value || 'caja';
+    const impSticker = document.getElementById('pd-imp-sticker')?.value || null;
+    const impDoc     = document.getElementById('pd-imp-doc')?.value || null;
+    document.getElementById('packing-dialog-overlay')?.remove();
+    WMS.spinner();
+    try {
+      const r = await API.post('/packing/sesion', {
+        sucursal_entrega:     sucursal,
+        tipo_empaque:         tipo,
+        impresora_sticker_id: impSticker || null,
+        impresora_doc_id:     impDoc || null,
+      });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      await this.show_packing(r.data.sesion_id);
+    } catch(e) { WMS.toast('error', 'Error al iniciar sesión de packing'); }
   },
 
   _renderCertInterface(sucursal, lineas) {
