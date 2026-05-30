@@ -22,7 +22,7 @@ class ImpresoraController extends BaseController
             if ($isPg) {
                 $query->whereRaw("tipos_trabajo @> ?::jsonb", [json_encode([$tipoFiltro])]);
             } else {
-                $query->whereRaw("JSON_CONTAINS(tipos_trabajo, ?)", [json_encode([$tipoFiltro])]);
+                $query->whereRaw("JSON_CONTAINS(tipos_trabajo, ?)", [json_encode($tipoFiltro)]);
             }
         }
 
