@@ -1088,4 +1088,432 @@ WMS_MODULES.despacho = {
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>`);
   },
 
+  // ── PACKING SCREEN ─────────────────────────────────────────────────────────
+  _packingState: { sesionId: null, sesionData: null, unitsWithItems: {} },
+
+  async show_packing(sesionId) {
+    WMS.spinner();
+    try {
+      const r = await API.get('/packing/sesion/' + sesionId);
+      if (r.error) { WMS.toast('error', r.message); return; }
+      this._packingState.sesionId  = sesionId;
+      this._packingState.sesionData = r.data;
+      // Seed closed units' items from API response
+      (r.data.unidades || []).forEach(u => {
+        if (u.estado === 'Cerrada') this._packingState.unitsWithItems[u.id] = u.items || [];
+      });
+      this._renderPackingScreen(r.data);
+    } catch(e) { WMS.toast('error', 'Error al cargar sesión de packing'); }
+  },
+
+  _renderPackingScreen(data) {
+    const { sesion, totales, productos, unidades, unidad_abierta } = data;
+    const tipo      = sesion.tipo_empaque;
+    const tipoUp    = tipo.charAt(0).toUpperCase() + tipo.slice(1);
+    const unitAb    = unidades.find(u => u.id === unidad_abierta);
+    const consec    = unitAb ? String(unitAb.consecutivo).padStart(3,'0') : '---';
+    const pendiente = totales.pendiente;
+    const btnFin    = pendiente > 0 ? 'disabled' : '';
+
+    WMS.setToolbar(`
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.despacho.show_certificacion()">
+        <i class="fa-solid fa-arrow-left"></i> Volver
+      </button>`);
+
+    WMS.setContent(`
+      <div id="packing-wrap">
+        <!-- TOP BAR -->
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+          <div style="flex:1;display:flex;gap:20px;font-size:13px;">
+            <span>Pendiente: <strong id="pk-stat-pend" style="color:${pendiente>0?'#dc2626':'#16a34a'};">${WMS.formatNum(pendiente)}</strong></span>
+            <span>Empacado: <strong id="pk-stat-emp">${WMS.formatNum(totales.total_empacado)}</strong></span>
+            <span>Unidades: <strong id="pk-stat-units">${totales.num_unidades}</strong></span>
+          </div>
+          <button id="pk-btn-finalizar" class="btn btn-success btn-sm" ${btnFin}
+            onclick="WMS_MODULES.despacho.finalizarPacking(${sesion.id})">
+            <i class="fa-solid fa-flag-checkered"></i> Finalizar Certificación
+          </button>
+        </div>
+
+        <!-- TWO PANELS -->
+        <div style="display:grid;grid-template-columns:1fr 400px;gap:14px;align-items:start;">
+          <!-- LEFT: productos pendientes -->
+          <div class="card" style="min-height:400px;">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+              <span class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Productos Pendientes</span>
+              <span style="font-size:12px;color:#64748b;">${tipoUp} actual: <strong>#${consec}</strong></span>
+            </div>
+            <div id="pk-left-content" style="padding:0 8px 8px;">
+              ${this._buildProductosList(productos, sesion.id)}
+            </div>
+          </div>
+
+          <!-- RIGHT: unidad actual -->
+          <div class="card" style="min-height:400px;">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;" id="pk-right-header">
+              <span class="card-title"><i class="fa-solid fa-box"></i> ${tipoUp} #${consec}</span>
+              <span class="status-chip status-creada">Abierta</span>
+            </div>
+            <div id="pk-right-content" style="padding:0 8px;">
+              ${this._buildItemsTable(unitAb?.items || [])}
+            </div>
+            <div style="padding:10px 12px;border-top:1px solid #e2e8f0;">
+              <button class="btn btn-warning btn-sm" style="width:100%;"
+                onclick="WMS_MODULES.despacho.cerrarUnidadPacking(${unidad_abierta})">
+                <i class="fa-solid fa-box-archive"></i> Cerrar unidad e imprimir sticker
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- UNIDADES CERRADAS -->
+        <div id="pk-closed-list" style="margin-top:14px;">
+          ${this._buildClosedList(unidades, tipoUp, sesion.id)}
+        </div>
+      </div>`);
+  },
+
+  _buildProductosList(productos, sesionId) {
+    if (!productos.length) return '<p class="table-empty">Sin productos</p>';
+    return productos.map(p => `
+      <div class="pk-prod-row" style="padding:8px;border-bottom:1px solid #f1f5f9;" id="pk-prod-${p.producto_id}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <div>
+            <div style="font-weight:600;font-size:13px;">${WMS.esc(p.nombre)}</div>
+            <div style="font-size:11px;color:#64748b;">${WMS.esc(p.codigo||'-')}</div>
+          </div>
+          <div style="text-align:right;font-size:12px;">
+            <div>Pick: <strong>${WMS.formatNum(p.total_pickeado)}</strong></div>
+            <div>Emp: ${WMS.formatNum(p.total_empacado)}</div>
+            <div style="color:${p.pendiente>0?'#dc2626':'#16a34a'};font-weight:700;">Pend: ${WMS.formatNum(p.pendiente)}</div>
+          </div>
+        </div>
+        ${p.pendiente > 0 ? `
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="number" id="pk-qty-${p.producto_id}" min="0.001" max="${p.pendiente}" step="0.001"
+            value="${p.pendiente}" style="width:90px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
+          <button class="btn btn-primary btn-sm" style="font-size:11px;"
+            onclick="WMS_MODULES.despacho.agregarItemPacking(${sesionId}, ${p.producto_id}, '${WMS.esc(p.nombre)}')">
+            <i class="fa-solid fa-plus"></i> Agregar
+          </button>
+        </div>` : '<span style="font-size:11px;color:#16a34a;"><i class="fa-solid fa-check"></i> Completado</span>'}
+      </div>`).join('');
+  },
+
+  _buildItemsTable(items) {
+    if (!items.length) return '<p style="padding:12px;color:#94a3b8;font-size:12px;text-align:center;">Unidad vacía</p>';
+    return `<table class="erp-table" style="font-size:11px;">
+      <thead><tr><th>Ref.</th><th>Producto</th><th class="text-center">Cant.</th><th>Lote</th><th></th></tr></thead>
+      <tbody>${items.map(i => `<tr>
+        <td><code>${WMS.esc(i.codigo||'-')}</code></td>
+        <td>${WMS.esc(i.producto_nombre||i.nombre||'-')}</td>
+        <td class="text-center fw-700">${WMS.formatNum(i.cantidad)}</td>
+        <td style="font-size:10px;">${WMS.esc(i.lote||'-')}</td>
+        <td><button class="btn btn-danger" style="padding:2px 6px;font-size:10px;"
+          onclick="WMS_MODULES.despacho.eliminarItemPacking(${i.id})">
+          <i class="fa-solid fa-trash"></i></button></td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  },
+
+  _buildClosedList(unidades, tipoUp, sesionId) {
+    const closed = unidades.filter(u => u.estado === 'Cerrada');
+    if (!closed.length) return '';
+    return `<div class="card">
+      <div class="card-header"><span class="card-title"><i class="fa-solid fa-layer-group"></i> Unidades Cerradas (${closed.length})</span>
+        <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.despacho._imprimirTodasPacking('${tipoUp}')">
+          <i class="fa-solid fa-print"></i> Imprimir Todas</button>
+      </div>
+      <div class="table-container">
+        <table class="erp-table" style="font-size:12px;">
+          <thead><tr><th>Unidad</th><th class="text-center">Ítems</th><th class="text-center">Total Uds.</th><th>Hora cierre</th><th>Acciones</th></tr></thead>
+          <tbody>${closed.map(u => `<tr>
+            <td><strong>${tipoUp} #${String(u.consecutivo).padStart(3,'0')}</strong></td>
+            <td class="text-center">${(u.items||[]).length}</td>
+            <td class="text-center fw-700">${WMS.formatNum(u.total_unidades)}</td>
+            <td style="font-size:11px;">${u.closed_at ? u.closed_at.substring(11,16) : '-'}</td>
+            <td><button class="btn btn-sm btn-outline-secondary"
+              onclick="WMS_MODULES.despacho._imprimirStickerUnidad(${u.id}, 'letter')">
+              <i class="fa-solid fa-print"></i> Sticker</button></td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
+  },
+
+  async agregarItemPacking(sesionId, productoId, nombre) {
+    const qty = parseFloat(document.getElementById('pk-qty-' + productoId)?.value || 0);
+    if (!qty || qty <= 0) { WMS.toast('error', 'Ingrese una cantidad válida'); return; }
+    try {
+      const r = await API.post('/packing/sesion/' + sesionId + '/item', {
+        producto_id: productoId,
+        cantidad:    qty,
+      });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success', nombre + ' agregado');
+      await this.show_packing(sesionId);
+    } catch(e) { WMS.toast('error', 'Error al agregar'); }
+  },
+
+  async eliminarItemPacking(itemId) {
+    const { sesionId } = this._packingState;
+    try {
+      const r = await API.delete('/packing/item/' + itemId);
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success', 'Ítem eliminado');
+      await this.show_packing(sesionId);
+    } catch(e) { WMS.toast('error', 'Error al eliminar'); }
+  },
+
+  async cerrarUnidadPacking(unidadId) {
+    const { sesionId, sesionData } = this._packingState;
+    // Save current items before closing (for sticker generation)
+    const currentUnit = (sesionData.unidades || []).find(u => u.id === unidadId);
+    if (currentUnit) {
+      this._packingState.unitsWithItems[unidadId] = currentUnit.items || [];
+    }
+    try {
+      const r = await API.post('/packing/unidad/' + unidadId + '/cerrar', {});
+      if (r.error) { WMS.toast('error', r.message); return; }
+      // Auto-print sticker for closed unit
+      this._imprimirStickerUnidad(unidadId, 'letter');
+      WMS.toast('success', r.message || 'Unidad cerrada');
+      await this.show_packing(sesionId);
+    } catch(e) { WMS.toast('error', 'Error al cerrar unidad'); }
+  },
+
+  _imprimirStickerUnidad(unidadId, size) {
+    const { sesionData, unitsWithItems } = this._packingState;
+    const unidad = (sesionData.unidades || []).find(u => u.id === unidadId);
+    if (!unidad) { WMS.toast('error', 'Unidad no encontrada'); return; }
+    const items = unitsWithItems[unidadId] || unidad.items || [];
+    const html  = this._buildStickerHtml(unidad, sesionData.sesion, items, size);
+    const win   = window.open('', '_blank', 'width=680,height=500');
+    if (win) { win.document.write(html); win.document.close(); }
+  },
+
+  _imprimirTodasPacking(tipoUp) {
+    const { sesionData, unitsWithItems } = this._packingState;
+    const closed = (sesionData.unidades || []).filter(u => u.estado === 'Cerrada');
+    const parts  = closed.map(u => {
+      const items = unitsWithItems[u.id] || u.items || [];
+      return this._buildStickerBlock(u, sesionData.sesion, items)
+           + '<div style="page-break-after:always;"></div>';
+    }).join('');
+    const html = this._wrapPrintPage(parts, 'letter');
+    const win  = window.open('', '_blank', 'width=680,height=500');
+    if (win) { win.document.write(html); win.document.close(); }
+  },
+
+  _buildStickerHtml(unidad, sesion, items, size) {
+    return this._wrapPrintPage(this._buildStickerBlock(unidad, sesion, items), size, true);
+  },
+
+  _buildStickerBlock(unidad, sesion, items) {
+    const tipo    = sesion.tipo_empaque;
+    const tipoUp  = tipo.charAt(0).toUpperCase() + tipo.slice(1);
+    const consec  = String(unidad.consecutivo).padStart(3, '0');
+    const cert    = WMS.esc(sesion.certificador_nombre || '-');
+    const fecha   = new Date().toLocaleDateString('es-CO');
+    const hora    = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+    const total   = (unidad.total_unidades || items.reduce((s, i) => s + (parseFloat(i.cantidad)||0), 0)).toFixed(2);
+    const rows    = items.map(i => `
+      <tr>
+        <td>${WMS.esc(i.codigo||'-')}</td>
+        <td>${WMS.esc(i.producto_nombre||i.nombre||'-')}</td>
+        <td style="text-align:right;font-weight:700;">${parseFloat(i.cantidad||0).toFixed(2)}</td>
+        <td>${WMS.esc(i.lote||'-')}</td>
+        <td>${i.fecha_vencimiento ? new Date(i.fecha_vencimiento+'T00:00').toLocaleDateString('es-CO',{month:'short',year:'2-digit'}) : '-'}</td>
+      </tr>`).join('');
+
+    return `<div class="sticker">
+      <div class="st-header">
+        <span class="st-tipo">${tipoUp} #${consec}</span>
+        <span>WMS Fénix</span>
+      </div>
+      <div class="st-suc">Sucursal: <strong>${WMS.esc(sesion.sucursal_entrega)}</strong></div>
+      <table>
+        <thead><tr><th>Ref.</th><th>Descripción</th><th>Cant.</th><th>Lote</th><th>Vence</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="st-footer">
+        <div class="st-total">Total unidades: ${total}</div>
+        <div>Certificador: ${cert}</div>
+        <div>Fecha: ${fecha} &nbsp; Hora: ${hora}</div>
+      </div>
+    </div>`;
+  },
+
+  _wrapPrintPage(content, size, autoprint) {
+    const sizes = { media_carta: '5.5in 8.5in', a5: 'A5', letter: 'letter' };
+    const margins = { letter: '12mm' };
+    const pageSize = sizes[size] || 'letter';
+    const margin   = margins[size] || '8mm';
+    const script   = autoprint !== false ? '<script>window.onload=()=>window.print();<\/script>' : '';
+    return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<style>
+@page { size: ${pageSize}; margin: ${margin}; }
+@media print { .no-print { display:none; } }
+body { font-family: Arial, sans-serif; font-size: 11px; margin: 0; }
+.sticker { border: 2px solid #1e293b; padding: 8px; margin-bottom: 8px; }
+.st-header { display:flex; justify-content:space-between; font-weight:bold; font-size:13px; border-bottom:1px solid #334155; padding-bottom:5px; margin-bottom:5px; }
+.st-tipo { font-size:15px; color:#1e40af; }
+.st-suc { font-size:12px; color:#475569; margin-bottom:4px; }
+table { width:100%; border-collapse:collapse; margin:5px 0; }
+th { background:#f1f5f9; font-size:10px; padding:3px 4px; text-align:left; }
+td { padding:2px 4px; border-bottom:1px dotted #e2e8f0; font-size:10px; }
+.st-footer { border-top:1px solid #334155; padding-top:4px; margin-top:4px; font-size:10px; color:#475569; }
+.st-total { font-size:13px; font-weight:bold; color:#1e293b; margin-bottom:2px; }
+.no-print { margin:8px 0; text-align:center; }
+</style>${script}
+</head><body>${content}
+<div class="no-print"><button onclick="window.print()">Imprimir</button></div>
+</body></html>`;
+  },
+
+  async finalizarPacking(sesionId) {
+    if (!confirm('¿Finalizar la certificación de packing? Esta acción no se puede deshacer.')) return;
+    WMS.spinner();
+    try {
+      const r = await API.post('/packing/sesion/' + sesionId + '/finalizar', {});
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success', 'Certificación finalizada — ' + r.data.total_unidades + ' unidades de empaque');
+      // Refresh packing screen to show document panel
+      const sr = await API.get('/packing/sesion/' + sesionId);
+      if (!sr.error) {
+        this._packingState.sesionData = sr.data;
+        this._mostrarPanelDocumento(sr.data);
+      } else {
+        this.show_certificacion();
+      }
+    } catch(e) { WMS.toast('error', 'Error al finalizar'); }
+  },
+
+  _mostrarPanelDocumento(data) {
+    const { sesion, totales } = data;
+    const tipoUp = sesion.tipo_empaque.charAt(0).toUpperCase() + sesion.tipo_empaque.slice(1);
+    WMS.setContent(`
+      <div class="card" style="max-width:700px;margin:0 auto;">
+        <div class="card-header" style="background:#16a34a;color:#fff;">
+          <span class="card-title"><i class="fa-solid fa-circle-check"></i> Packing Completado</span>
+        </div>
+        <div style="padding:24px;text-align:center;">
+          <div style="font-size:48px;color:#16a34a;margin-bottom:12px;">✓</div>
+          <h3 style="margin:0 0 6px;">Certificación Finalizada</h3>
+          <p style="color:#475569;margin:0 0 20px;">
+            <strong>${sesion.sucursal_entrega}</strong> — ${totales.num_unidades} ${tipoUp}(s)
+          </p>
+          <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+            <button class="btn btn-primary" onclick="WMS_MODULES.despacho._abrirDocumento(${sesion.id})">
+              <i class="fa-solid fa-file-alt"></i> Ver Documento de Packing
+            </button>
+            <button class="btn btn-outline-primary" onclick="WMS_MODULES.despacho._imprimirTodasPacking('${tipoUp}')">
+              <i class="fa-solid fa-print"></i> Imprimir Todos los Stickers
+            </button>
+            <button class="btn btn-secondary" onclick="WMS_MODULES.despacho.show_certificacion()">
+              <i class="fa-solid fa-arrow-left"></i> Volver a Certificación
+            </button>
+          </div>
+        </div>
+      </div>`);
+  },
+
+  _abrirDocumento(sesionId) {
+    const { sesionData, unitsWithItems } = this._packingState;
+    const { sesion, unidades } = sesionData;
+    const tipoUp = sesion.tipo_empaque.charAt(0).toUpperCase() + sesion.tipo_empaque.slice(1);
+    const cert   = WMS.esc(sesion.certificador_nombre || '-');
+    const emp    = WMS.esc(sesion.empresa_nombre || 'WMS Fénix');
+    const fecha  = new Date().toLocaleString('es-CO');
+
+    const closed = (unidades || []).filter(u => u.estado === 'Cerrada');
+
+    // Collect unique separadores
+    const seps = new Set();
+    closed.forEach(u => {
+      (unitsWithItems[u.id] || u.items || []).forEach(i => {
+        if (i.separador_nombre?.trim()) seps.add(i.separador_nombre.trim());
+      });
+    });
+    const sepStr = [...seps].join(', ') || 'N/A';
+
+    // Build table rows
+    let prevConsec = null;
+    let rowClass   = 'even';
+    const rows = closed.flatMap(u => {
+      if (u.consecutivo !== prevConsec) {
+        rowClass   = rowClass === 'even' ? 'odd' : 'even';
+        prevConsec = u.consecutivo;
+      }
+      const consec = String(u.consecutivo).padStart(3,'0');
+      return (unitsWithItems[u.id] || u.items || []).map(i => `
+        <tr class="${rowClass}">
+          <td>#${consec}</td><td>${tipoUp}</td>
+          <td>${WMS.esc(i.codigo||'-')}</td>
+          <td>${WMS.esc(i.producto_nombre||i.nombre||'-')}</td>
+          <td style="text-align:right;">${parseFloat(i.cantidad||0).toFixed(2)}</td>
+          <td>${WMS.esc(i.lote||'-')}</td>
+          <td>${i.fecha_vencimiento ? new Date(i.fecha_vencimiento+'T00:00').toLocaleDateString('es-CO',{month:'short',year:'numeric'}) : '-'}</td>
+        </tr>`);
+    }).join('');
+
+    const totalUnidades = closed.length;
+    const totalProd     = closed.reduce((s, u) => s + (u.total_unidades || 0), 0).toFixed(2);
+    const allCodigos    = new Set(closed.flatMap(u => (unitsWithItems[u.id] || u.items || []).map(i => i.codigo)));
+    const totalRefs     = allCodigos.size;
+
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<style>
+@page { size: letter; margin: 12mm; }
+@media print { .no-print { display:none; } }
+body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; }
+.doc-header { border-bottom: 2px solid #1e40af; padding-bottom: 8px; margin-bottom: 12px; display:flex; justify-content:space-between; align-items:flex-start; }
+.doc-title { font-size:16px; font-weight:bold; color:#1e40af; margin:0 0 4px; }
+.doc-meta { font-size:10px; color:#475569; margin-top:3px; }
+.doc-meta span { display:inline-block; margin-right:12px; }
+table { width:100%; border-collapse:collapse; margin:10px 0; }
+th { background:#1e40af; color:#fff; font-size:10px; padding:4px 6px; text-align:left; }
+td { padding:3px 6px; font-size:10px; border-bottom:1px solid #e2e8f0; }
+tr.even td { background:#f8faff; } tr.odd td { background:#fff; }
+.doc-footer { border-top:2px solid #1e40af; margin-top:12px; padding-top:8px; display:flex; gap:16px; flex-wrap:wrap; }
+.foot-box .label { font-size:9px; color:#64748b; }
+.foot-box .val   { font-weight:bold; font-size:13px; }
+.no-print { margin:12px 0; text-align:center; }
+</style>
+<script>
+function toggleLandscape() {
+  const rule = Array.from(document.styleSheets[0].cssRules).find(r => r.cssText?.includes('@page'));
+  if (rule) rule.style.cssText = rule.style.cssText.includes('landscape')
+    ? rule.style.cssText.replace('landscape','portrait')
+    : rule.style.cssText.replace('portrait','landscape');
+}
+<\/script>
+</head><body>
+<div class="doc-header">
+  <div>
+    <div class="doc-title">DOCUMENTO DE PACKING</div>
+    <div class="doc-meta"><span><strong>${emp}</strong></span><span>Sucursal: <strong>${WMS.esc(sesion.sucursal_entrega)}</strong></span><span>Tipo: <strong>${tipoUp}</strong></span></div>
+    <div class="doc-meta"><span>Fecha/Hora: ${fecha}</span><span>Certificador: <strong>${cert}</strong></span><span>Separadores: ${WMS.esc(sepStr)}</span></div>
+  </div>
+  <div class="no-print">
+    <button onclick="toggleLandscape()" style="margin-right:6px;">Girar</button>
+    <button onclick="window.print()">Imprimir</button>
+  </div>
+</div>
+<table>
+  <thead><tr><th>Unidad</th><th>Tipo</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Lote</th><th>Vence</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div class="doc-footer">
+  <div class="foot-box"><div class="label">Unidades de empaque</div><div class="val">${totalUnidades}</div></div>
+  <div class="foot-box"><div class="label">Total uds. producto</div><div class="val">${totalProd}</div></div>
+  <div class="foot-box"><div class="label">Referencias distintas</div><div class="val">${totalRefs}</div></div>
+  <div class="foot-box"><div class="label">Separó</div><div class="val" style="font-size:11px;">${WMS.esc(sepStr)}</div></div>
+  <div class="foot-box"><div class="label">Certificó</div><div class="val" style="font-size:11px;">${cert}</div></div>
+</div>
+</body></html>`;
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (win) { win.document.write(html); win.document.close(); }
+  },
+
 };
