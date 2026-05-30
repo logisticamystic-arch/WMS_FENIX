@@ -2676,6 +2676,21 @@ WMS_MODULES.maestro = {
             <input type="checkbox" id="imp-activo" ${data === null || data.activo ? 'checked' : ''}> Impresora Activa
           </label>
         </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label class="form-label">Tipos de trabajo</label>
+          <div style="display:flex;gap:16px;">
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" id="imp-tipo-sticker" value="sticker_packing"
+                ${(data?.tipos_trabajo||[]).includes('sticker_packing') ? 'checked' : ''}>
+              Stickers de packing
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" id="imp-tipo-doc" value="documento_packing"
+                ${(data?.tipos_trabajo||[]).includes('documento_packing') ? 'checked' : ''}>
+              Documento de packing
+            </label>
+          </div>
+        </div>
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">✖ Cancelar</button>
        ${data ? `<button class="btn btn-info" onclick="WMS_MODULES.maestro.testImpresora(${data.id})">🖨️ <i class="fa-solid fa-print"></i> Probar</button>` : ''}
@@ -2691,6 +2706,10 @@ WMS_MODULES.maestro = {
       puerto: document.getElementById('imp-puerto').value,
       tipo: document.getElementById('imp-tipo').value,
       modulos: mods,
+      tipos_trabajo: [
+        ...( document.getElementById('imp-tipo-sticker')?.checked ? ['sticker_packing'] : [] ),
+        ...( document.getElementById('imp-tipo-doc')?.checked     ? ['documento_packing'] : [] ),
+      ],
       activo: document.getElementById('imp-activo').checked
     };
     if (!payload.nombre || !payload.ip) return WMS.toast('warn', 'Nombre e IP son requeridos');
