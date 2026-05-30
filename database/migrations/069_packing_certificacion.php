@@ -31,7 +31,7 @@ return [
             $schema->create('packing_unidades', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('sesion_id');
-                $table->smallInteger('consecutivo');
+                $table->unsignedSmallInteger('consecutivo');
                 $table->enum('estado', ['Abierta', 'Cerrada'])->default('Abierta');
                 $table->decimal('total_unidades', 12, 3)->default(0);
                 $table->boolean('sticker_impreso')->default(false);
@@ -65,6 +65,7 @@ return [
                 Capsule::statement("ALTER TABLE impresoras ALTER COLUMN tipos_trabajo SET NOT NULL");
             } else {
                 Capsule::statement("UPDATE impresoras SET tipos_trabajo = '[]' WHERE tipos_trabajo IS NULL");
+                // MySQL 8: JSON columns cannot carry a literal DEFAULT — application layer must always supply the value
                 Capsule::statement("ALTER TABLE impresoras MODIFY COLUMN tipos_trabajo JSON NOT NULL");
             }
         }
