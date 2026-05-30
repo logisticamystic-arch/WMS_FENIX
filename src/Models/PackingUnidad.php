@@ -12,6 +12,7 @@ class PackingUnidad extends Model
         'sesion_id', 'consecutivo', 'estado', 'total_unidades', 'sticker_impreso', 'closed_at',
     ];
     protected $casts = [
+        'consecutivo'    => 'integer',
         'sticker_impreso' => 'boolean',
         'total_unidades'  => 'float',
     ];

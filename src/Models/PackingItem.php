@@ -13,6 +13,7 @@ class PackingItem extends Model
         'lote', 'fecha_vencimiento', 'separador_id', 'cantidad',
     ];
     protected $casts = [
-        'cantidad' => 'float',
+        'cantidad'          => 'float',
+        'fecha_vencimiento' => 'date',
     ];
 }

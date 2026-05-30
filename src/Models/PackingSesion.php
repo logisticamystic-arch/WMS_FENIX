@@ -12,6 +12,14 @@ class PackingSesion extends Model
         'certificador_id', 'impresora_sticker_id', 'impresora_doc_id', 'estado',
     ];
 
+    protected $casts = [
+        'empresa_id'           => 'integer',
+        'sucursal_id'          => 'integer',
+        'certificador_id'      => 'integer',
+        'impresora_sticker_id' => 'integer',
+        'impresora_doc_id'     => 'integer',
+    ];
+
     public function unidades()
     {
         return $this->hasMany(PackingUnidad::class, 'sesion_id');
