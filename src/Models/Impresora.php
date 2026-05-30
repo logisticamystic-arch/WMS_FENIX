@@ -12,11 +12,13 @@ class Impresora extends Model
     protected $table = 'impresoras';
 
     protected $fillable = [
-        'empresa_id', 'sucursal_id', 'nombre', 'ip', 'puerto', 'tipo', 'modulos', 'activo'
+        'empresa_id', 'sucursal_id', 'nombre', 'ip', 'puerto',
+        'tipo', 'modulos', 'tipos_trabajo', 'activo',
     ];
 
     protected $casts = [
-        'activo' => 'boolean',
-        'puerto' => 'integer',
+        'activo'        => 'boolean',
+        'puerto'        => 'integer',
+        'tipos_trabajo' => 'array',
     ];
 }
