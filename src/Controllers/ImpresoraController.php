@@ -11,9 +11,22 @@ class ImpresoraController extends BaseController
     public function listar(Request $r, Response $res): Response
     {
         $user = $r->getAttribute('user');
-        $impresoras = Impresora::where('empresa_id', $user->empresa_id)
-            ->where('sucursal_id', $user->sucursal_id)
-            ->get();
+        $params     = $r->getQueryParams();
+        $tipoFiltro = $params['tipo_trabajo'] ?? null;
+
+        $query = Impresora::where('empresa_id', $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id);
+
+        if ($tipoFiltro) {
+            $isPg = \Illuminate\Database\Capsule\Manager::connection()->getDriverName() === 'pgsql';
+            if ($isPg) {
+                $query->whereRaw("tipos_trabajo @> ?::jsonb", [json_encode([$tipoFiltro])]);
+            } else {
+                $query->whereRaw("JSON_CONTAINS(tipos_trabajo, ?)", [json_encode([$tipoFiltro])]);
+            }
+        }
+
+        $impresoras = $query->get();
         return $this->ok($res, $impresoras);
     }
 
@@ -25,17 +38,23 @@ class ImpresoraController extends BaseController
         $id = ($data['id'] === 'null' || !$data['id']) ? null : $data['id'];
         $sucursalId = $user->sucursal_id ?: ($data['sucursal_id'] ?? 1);
 
+        $tiposTrabajo = $data['tipos_trabajo'] ?? [];
+        if (is_string($tiposTrabajo)) {
+            $tiposTrabajo = json_decode($tiposTrabajo, true) ?? [];
+        }
+
         $impresora = Impresora::updateOrCreate(
             ['id' => $id],
             [
-                'empresa_id'  => $user->empresa_id,
-                'sucursal_id' => $sucursalId,
-                'nombre'      => $data['nombre'],
-                'ip'          => $data['ip'],
-                'puerto'      => $data['puerto'] ?? 9100,
-                'tipo'        => $data['tipo'] ?? 'General',
-                'modulos'     => $data['modulos'] ?? '',
-                'activo'      => isset($data['activo']) ? (bool)$data['activo'] : true,
+                'empresa_id'    => $user->empresa_id,
+                'sucursal_id'   => $sucursalId,
+                'nombre'        => $data['nombre'],
+                'ip'            => $data['ip'],
+                'puerto'        => $data['puerto'] ?? 9100,
+                'tipo'          => $data['tipo'] ?? 'General',
+                'modulos'       => $data['modulos'] ?? '',
+                'tipos_trabajo' => $tiposTrabajo,
+                'activo'        => isset($data['activo']) ? (bool)$data['activo'] : true,
             ]
         );
 

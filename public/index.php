@@ -641,6 +641,17 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->get('/certificacion/imprimir/{sucursal}', [\App\Controllers\PickingController::class, 'imprimirCertificado']);
     });
 
+    // ── Packing & Certificación ───────────────────────────────────────────────
+    $group->group('/packing', function ($group) {
+        $group->post('/sesion',                      [\App\Controllers\PackingController::class, 'iniciarSesion']);
+        $group->get('/sesion/{id}',                  [\App\Controllers\PackingController::class, 'getSesion']);
+        $group->post('/sesion/{id}/item',            [\App\Controllers\PackingController::class, 'agregarItem']);
+        $group->post('/sesion/{id}/finalizar',       [\App\Controllers\PackingController::class, 'finalizarSesion']);
+        $group->put('/sesion/{id}/impresoras',       [\App\Controllers\PackingController::class, 'actualizarImpresoras']);
+        $group->delete('/item/{id}',                 [\App\Controllers\PackingController::class, 'eliminarItem']);
+        $group->post('/unidad/{id}/cerrar',          [\App\Controllers\PackingController::class, 'cerrarUnidad']);
+    });
+
     // Módulo: Impresoras
     $group->group('/impresoras', function($group) {
         $group->get('', [\App\Controllers\ImpresoraController::class, 'listar']);
