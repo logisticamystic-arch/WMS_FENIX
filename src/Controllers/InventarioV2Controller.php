@@ -50,7 +50,7 @@ class InventarioV2Controller extends BaseController
             $user   = $req->getAttribute('user');
             $params = $req->getQueryParams();
 
-            $q = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $q = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->with(['creadoPor:id,nombre', 'ajustadoPor:id,nombre'])
                 ->withCount([
@@ -106,7 +106,7 @@ class InventarioV2Controller extends BaseController
 
         try {
             $sesion = SesionInventario::create([
-                'empresa_id'       => $this->getEffectiveEmpresaId($user, $request),
+                'empresa_id'       => $this->getEffectiveEmpresaId($user, $req),
                 'sucursal_id'      => $user->sucursal_id,
                 'nombre'           => trim($data['nombre']),
                 'descripcion'      => $data['descripcion'] ?? null,
@@ -136,7 +136,7 @@ class InventarioV2Controller extends BaseController
         $user   = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
             ->where('sucursal_id', $user->sucursal_id)
             ->find($args['id']);
 
@@ -187,7 +187,7 @@ class InventarioV2Controller extends BaseController
     {
         try {
             $user = $req->getAttribute('user');
-            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->with([
                     'creadoPor:id,nombre',
@@ -215,7 +215,7 @@ class InventarioV2Controller extends BaseController
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
         try {
-            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->find($args['id']);
 
@@ -255,7 +255,7 @@ class InventarioV2Controller extends BaseController
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
         try {
-            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->find($args['id']);
 
@@ -288,7 +288,7 @@ class InventarioV2Controller extends BaseController
      */
     private function bloquearUbicacionesDeInstruccion(SesionAsignacion $asig, $user)
     {
-        $query = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $query = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                           ->where('sucursal_id', $user->sucursal_id);
 
         if ($asig->tipo_instruccion === SesionAsignacion::INSTRUCCION_PASILLO) {
@@ -312,7 +312,7 @@ class InventarioV2Controller extends BaseController
     private function liberarUbicacionesDeSesion(SesionInventario $sesion, $user)
     {
         foreach ($sesion->asignaciones as $asig) {
-            $query = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $query = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                               ->where('sucursal_id', $user->sucursal_id)
                               ->where('estado', Ubicacion::ESTADO_LOCKED);
 
@@ -350,7 +350,7 @@ class InventarioV2Controller extends BaseController
         $user = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
             ->where('sucursal_id', $user->sucursal_id)
             ->find($args['id']);
 
@@ -446,7 +446,7 @@ class InventarioV2Controller extends BaseController
                 ])
                 ->where(function ($q) use ($user) {
                     $q->whereHas('sesion', function ($sq) use ($user) {
-                        $sq->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                        $sq->where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                            ->where('sucursal_id', $user->sucursal_id)
                            ->where('estado', SesionInventario::ESTADO_EN_CURSO);
                     });
@@ -612,7 +612,7 @@ class InventarioV2Controller extends BaseController
             $user   = $req->getAttribute('user');
             $params = $req->getQueryParams();
 
-            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->with(['creadoPor:id,nombre', 'ajustadoPor:id,nombre', 'asignaciones.auxiliar:id,nombre'])
                 ->find($args['id']);
@@ -803,7 +803,7 @@ class InventarioV2Controller extends BaseController
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
         $linea = SesionLinea::with('sesion')->find($args['id']);
-        if (!$linea || $linea->sesion->empresa_id !== $this->getEffectiveEmpresaId($user, $request)) {
+        if (!$linea || $linea->sesion->empresa_id !== $this->getEffectiveEmpresaId($user, $req)) {
             return $this->notFound($res);
         }
         if ($linea->estado === SesionLinea::ESTADO_ELIMINADO) {
@@ -824,7 +824,7 @@ class InventarioV2Controller extends BaseController
         // Cambio de Producto
         if (!empty($data['nuevo_producto_codigo'])) {
             $codigoProd = strtoupper(trim($data['nuevo_producto_codigo']));
-            $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->whereRaw("UPPER(codigo_interno) = ?", [$codigoProd])->first();
             if (!$prod) return $this->error($res, "Producto no encontrado: {$codigoProd}");
             $auditDataOld['producto_id'] = $linea->producto_id;
@@ -836,7 +836,7 @@ class InventarioV2Controller extends BaseController
         if (!empty($data['nueva_ubicacion_codigo'])) {
             $codigoUbic = strtoupper(trim($data['nueva_ubicacion_codigo']));
             $ubic = Ubicacion::whereRaw("UPPER(codigo) = ?", [$codigoUbic])
-                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->first();
             if (!$ubic) return $this->error($res, "Ubicación no encontrada: {$codigoUbic}");
             $auditDataOld['ubicacion_id'] = $linea->ubicacion_id;
@@ -888,7 +888,7 @@ class InventarioV2Controller extends BaseController
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
         $linea = SesionLinea::with('sesion')->find($args['id']);
-        if (!$linea || $linea->sesion->empresa_id !== $this->getEffectiveEmpresaId($user, $request)) {
+        if (!$linea || $linea->sesion->empresa_id !== $this->getEffectiveEmpresaId($user, $req)) {
             return $this->notFound($res);
         }
         if ($linea->estado === SesionLinea::ESTADO_ELIMINADO) {
@@ -922,7 +922,7 @@ class InventarioV2Controller extends BaseController
         $user = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
             ->where('sucursal_id', $user->sucursal_id)
             ->find($args['id']);
 
@@ -976,7 +976,7 @@ class InventarioV2Controller extends BaseController
         $user = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
             ->where('sucursal_id', $user->sucursal_id)
             ->find($args['id']);
 
@@ -1311,7 +1311,7 @@ class InventarioV2Controller extends BaseController
         $user = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
             ->where('sucursal_id', $user->sucursal_id)
             ->find($args['id']);
 
@@ -1414,7 +1414,7 @@ class InventarioV2Controller extends BaseController
                       : null;
 
                 // Buscar registro de inventario existente
-                $invQuery = Inventario::where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+                $invQuery = Inventario::where('empresa_id',  $this->getEffectiveEmpresaId($user, $req))
                     ->where('sucursal_id',  $user->sucursal_id)
                     ->where('producto_id',  $data['producto_id']);
 
@@ -1448,7 +1448,7 @@ class InventarioV2Controller extends BaseController
                 }
                 // Si no hay ubicación y no hay registro, buscar la primera ubicación activa
                 if (!$ubicacionId) {
-                    $primeraUbi = \App\Models\Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                    $primeraUbi = \App\Models\Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                         ->where('sucursal_id', $user->sucursal_id)
                         ->where('activo', true)
                         ->first();
@@ -1470,7 +1470,7 @@ class InventarioV2Controller extends BaseController
                     }
                 } elseif ($cantidadNueva > 0) {
                     Inventario::create([
-                        'empresa_id'        => $this->getEffectiveEmpresaId($user, $request),
+                        'empresa_id'        => $this->getEffectiveEmpresaId($user, $req),
                         'sucursal_id'       => $user->sucursal_id,
                         'producto_id'       => $data['producto_id'],
                         'ubicacion_id'      => $ubicacionId,
@@ -1488,7 +1488,7 @@ class InventarioV2Controller extends BaseController
 
                 $cantMov = abs($diferencia);
                 $mov = MovimientoInventario::create([
-                    'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
+                    'empresa_id'           => $this->getEffectiveEmpresaId($user, $req),
                     'sucursal_id'          => $user->sucursal_id,
                     'producto_id'          => $data['producto_id'],
                     'tipo_movimiento'      => $tipoMov,
@@ -1506,7 +1506,7 @@ class InventarioV2Controller extends BaseController
 
                 // Registro inmutable en ajustes_inventario
                 $ajuste = AjusteInventario::create([
-                    'empresa_id'       => $this->getEffectiveEmpresaId($user, $request),
+                    'empresa_id'       => $this->getEffectiveEmpresaId($user, $req),
                     'sucursal_id'      => $user->sucursal_id,
                     'origen'           => AjusteInventario::ORIGEN_CORRECCION,
                     'movimiento_id'    => $mov->id,
@@ -1553,7 +1553,7 @@ class InventarioV2Controller extends BaseController
             $params = $req->getQueryParams();
             [$ini, $fin] = $this->getDateRange($params);
 
-            $q = AjusteInventario::where('ajustes_inventario.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $q = AjusteInventario::where('ajustes_inventario.empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->where('ajustes_inventario.sucursal_id', $user->sucursal_id)
                 ->join('productos',   'ajustes_inventario.producto_id',  '=', 'productos.id')
                 ->join('ubicaciones', 'ajustes_inventario.ubicacion_id', '=', 'ubicaciones.id')
@@ -1638,7 +1638,7 @@ class InventarioV2Controller extends BaseController
 
             [$ini, $fin] = $this->getDateRange($params);
 
-            $movimientos = MovimientoInventario::where('movimiento_inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $movimientos = MovimientoInventario::where('movimiento_inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->where('movimiento_inventarios.sucursal_id', $user->sucursal_id)
                 ->where('movimiento_inventarios.producto_id', $params['producto_id'])
                 ->join('productos', 'movimiento_inventarios.producto_id', '=', 'productos.id')
@@ -1758,7 +1758,7 @@ class InventarioV2Controller extends BaseController
                 $int90 = "DATE_ADD(CURDATE(), INTERVAL 90 DAY)";
             }
 
-            $query = Inventario::where('inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $query = Inventario::where('inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->where('inventarios.sucursal_id', $user->sucursal_id)
                 ->whereNotNull('inventarios.fecha_vencimiento')
                 ->where('inventarios.cantidad', '>', 0)
@@ -1855,7 +1855,7 @@ class InventarioV2Controller extends BaseController
             $user   = $req->getAttribute('user');
             $params = $req->getQueryParams();
 
-            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->with(['creadoPor:id,nombre', 'ajustadoPor:id,nombre'])
                 ->find($args['id']);
@@ -1963,7 +1963,7 @@ class InventarioV2Controller extends BaseController
         // Quitamos restricción de supervisor para permitir el uso desde dispositivos móviles (Auxiliares)
         // if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
             ->where('sucursal_id', $user->sucursal_id)
             ->find($args['id']);
 
@@ -1986,16 +1986,16 @@ class InventarioV2Controller extends BaseController
             $uCod = strtoupper(trim($data['ubicacion_codigo']));
 
             if ($pId) {
-                $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($pId);
+                $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))->find($pId);
             } else {
-                $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                     ->whereRaw("UPPER(codigo_interno) = ?", [$pCod])->first();
             }
 
             if (!$prod) return $this->error($res, "Producto no encontrado.");
 
             $ubic = Ubicacion::whereRaw("UPPER(codigo) = ?", [$uCod])
-                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->first();
             if (!$ubic) return $this->error($res, "Ubicación no encontrada: {$uCod}");
 
@@ -2006,7 +2006,7 @@ class InventarioV2Controller extends BaseController
             // Obtener stock SNAPSHOT actual (al momento de este ingreso)
             $stockSnapshot = Inventario::where('producto_id', $prod->id)
                 ->where('ubicacion_id', $ubic->id)
-                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->when($lote, fn($q) => $q->where('lote', $lote))
                 ->sum('cantidad');

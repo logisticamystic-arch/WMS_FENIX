@@ -25,14 +25,14 @@ class ReplenishmentController extends BaseController
 
         if ($tareasEncontradas > 0) {
             // 2. Buscar Montacarguistas reales por campo 'rol'
-            $operarios = Personal::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $operarios = Personal::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->where('rol', 'Montacarguista')
                 ->where('activo', 1)
                 ->get();
 
             foreach ($operarios as $op) {
                 Notificacion::create([
-                    'empresa_id'  => $this->getEffectiveEmpresaId($user, $request),
+                    'empresa_id'  => $this->getEffectiveEmpresaId($user, $req),
                     'sucursal_id' => $user->sucursal_id,
                     'personal_id' => $op->id,
                     'titulo'      => 'Reabastecimiento Necesario',
