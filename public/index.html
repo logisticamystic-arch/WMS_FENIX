@@ -161,6 +161,9 @@
         <button class="module-tab" data-module="rotulos" onclick="WMS.nav('rotulos')">
           <i class="fa-solid fa-barcode"></i><span>Rótulos</span>
         </button>
+        <button class="module-tab" data-module="devoluciones" onclick="WMS.nav('devoluciones')">
+          <i class="fa-solid fa-rotate-left"></i><span>Devoluciones</span>
+        </button>
       </nav>
 
       <!-- Header derecho -->
@@ -1011,6 +1014,7 @@
       _notifInterval: null,
       _notifOpen: false,
       _expiryPendingCount: 0,
+      _devolucionPendingCount: 0,
       _confirmCallback: null,
 
       // ── Inicialización ────────────────────────────────────
@@ -1597,6 +1601,7 @@
           rotacion:      'assets/js/desktop/rotacion.js',
           logistica:     'assets/js/desktop/logistica-avanzada.js',
           rotulos:       'assets/js/desktop/rotulos.js',
+          devoluciones:  'assets/js/desktop/devoluciones.js',
         };
 
         if (scripts[module]) {
@@ -1624,7 +1629,7 @@
         const curEl   = document.getElementById('bc-current');
         const backBtn = document.getElementById('btn-back-breadcrumb');
 
-        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', inventario:'Inventario', reportes:'Reportes', inteligencia:'Inteligencia ML', logistica:'Logística Pro', rotacion:'Rotación ML', rotulos:'Rótulos' };
+        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', inventario:'Inventario', reportes:'Reportes', inteligencia:'Inteligencia ML', logistica:'Logística Pro', rotacion:'Rotación ML', rotulos:'Rótulos', devoluciones:'Devoluciones' };
         modEl.textContent = labels[mod] || mod.toUpperCase();
 
         if (sub) {
@@ -1863,6 +1868,14 @@
               ]
             },
           ],
+          devoluciones: [
+            {
+              section: 'DEVOLUCIONES', items: [
+                { icon: 'fa-rotate-left',   label: 'Listado',          action: "WMS.nav('devoluciones','lista')"  },
+                { icon: 'fa-plus-circle',   label: 'Nueva Devolución', action: "WMS.nav('devoluciones','nueva')"  },
+              ]
+            },
+          ],
           logistica: [
             {
               section: 'AVANZADA', items: [
@@ -1915,8 +1928,8 @@
         });
         const sidebarContentEl = document.getElementById('sidebar-content');
         const sidebarTitleEl   = document.getElementById('sidebar-module-title');
-        const modIcons = { inicio:'fa-house', maestro:'fa-database', recepcion:'fa-truck-ramp-box', almacenamiento:'fa-warehouse', picking:'fa-boxes-stacked', despacho:'fa-truck-fast', inventario:'fa-clipboard-list', reportes:'fa-chart-column', inteligencia:'fa-brain', logistica:'fa-truck-fast', rotulos:'fa-barcode' };
-        const modLabels = { inicio:'INICIO', maestro:'MAESTROS', recepcion:'RECEPCIÓN & YMS', almacenamiento:'ALMACENAMIENTO', picking:'PICKING', despacho:'DESPACHO & TMS', inventario:'INVENTARIOS', reportes:'REPORTES', inteligencia:'INTELIGENCIA ML', logistica:'LOGÍSTICA PRO', rotulos:'RÓTULOS' };
+        const modIcons = { inicio:'fa-house', maestro:'fa-database', recepcion:'fa-truck-ramp-box', almacenamiento:'fa-warehouse', picking:'fa-boxes-stacked', despacho:'fa-truck-fast', inventario:'fa-clipboard-list', reportes:'fa-chart-column', inteligencia:'fa-brain', logistica:'fa-truck-fast', rotulos:'fa-barcode', devoluciones:'fa-rotate-left' };
+        const modLabels = { inicio:'INICIO', maestro:'MAESTROS', recepcion:'RECEPCIÓN & YMS', almacenamiento:'ALMACENAMIENTO', picking:'PICKING', despacho:'DESPACHO & TMS', inventario:'INVENTARIOS', reportes:'REPORTES', inteligencia:'INTELIGENCIA ML', logistica:'LOGÍSTICA PRO', rotulos:'RÓTULOS', devoluciones:'DEVOLUCIONES' };
         if (sidebarContentEl) sidebarContentEl.innerHTML = html;
         if (sidebarTitleEl) sidebarTitleEl.innerHTML = `<i class="fa-solid ${modIcons[module]||'fa-circle'}" style="margin-right:8px;opacity:.7"></i>${modLabels[module]||module.toUpperCase()}`;
       },
@@ -1958,6 +1971,13 @@
               if (!ea.error && Array.isArray(ea.data)) {
                 totalBadge += ea.data.length;
                 this._expiryPendingCount = ea.data.length;
+              }
+            } catch(_) {}
+            try {
+              const rd = await API.get('/devoluciones?estado=PendienteAprobacion&por_pagina=200');
+              if (!rd.error && Array.isArray(rd.data)) {
+                totalBadge += rd.data.length;
+                this._devolucionPendingCount = rd.data.length;
               }
             } catch(_) {}
           }
@@ -2075,6 +2095,30 @@
               list.insertAdjacentHTML('afterbegin', expiryHtml);
             }
           } catch(_) {}
+
+          // Append devolucion pending-approval cards
+          try {
+            const rd = await API.get('/devoluciones?estado=PendienteAprobacion&por_pagina=200');
+            if (!rd.error && rd.data && rd.data.length > 0) {
+              const devHtml = rd.data.map(dv => `
+                <div class="notif-item unread" id="dev-card-${dv.id}">
+                  <div class="notif-item-icon alerta"><i class="fa-solid fa-rotate-left"></i></div>
+                  <div class="notif-body">
+                    <div class="notif-titulo">📦 ${this.esc(dv.numero_devolucion)} — ${this.esc(dv.tipo)}</div>
+                    <div class="notif-mensaje">${dv.detalles ? dv.detalles.length : 0} ítem(s) · Motivo: ${this.esc(dv.motivo_general || '')}</div>
+                    <div class="notif-actions" style="margin-top:6px;display:flex;gap:6px;">
+                      <button class="btn btn-sm btn-success" onclick="WMS._aprobarDevolucion(${dv.id},this)">
+                        <i class="fa-solid fa-check"></i> Aprobar
+                      </button>
+                      <button class="btn btn-sm btn-danger" onclick="WMS._rechazarDevolucion(${dv.id},this)">
+                        <i class="fa-solid fa-times"></i> Rechazar
+                      </button>
+                    </div>
+                  </div>
+                </div>`).join('');
+              list.insertAdjacentHTML('afterbegin', devHtml);
+            }
+          } catch(_) {}
         }
       },
 
@@ -2116,6 +2160,30 @@
           this._expiryPendingCount = Math.max(0, this._expiryPendingCount - 1);
           this.loadBadge();
         } catch(e) { this.toast('error', 'Error al resolver'); btn.disabled = false; }
+      },
+
+      async _aprobarDevolucion(id, btn) {
+        btn.disabled = true;
+        try {
+          const r = await API.post('/devoluciones/' + id + '/aprobar', {});
+          if (r.error) { this.toast('error', r.message); btn.disabled = false; return; }
+          document.getElementById('dev-card-' + id)?.remove();
+          this.toast('success', 'Devolución aprobada');
+          this._devolucionPendingCount = Math.max(0, this._devolucionPendingCount - 1);
+          this.loadBadge();
+        } catch(e) { this.toast('error', 'Error al aprobar'); btn.disabled = false; }
+      },
+
+      async _rechazarDevolucion(id, btn) {
+        btn.disabled = true;
+        try {
+          const r = await API.post('/devoluciones/' + id + '/rechazar', {});
+          if (r.error) { this.toast('error', r.message); btn.disabled = false; return; }
+          document.getElementById('dev-card-' + id)?.remove();
+          this.toast('success', 'Devolución rechazada');
+          this._devolucionPendingCount = Math.max(0, this._devolucionPendingCount - 1);
+          this.loadBadge();
+        } catch(e) { this.toast('error', 'Error al rechazar'); btn.disabled = false; }
       },
 
       async marcarTodasLeidas() {
