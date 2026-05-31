@@ -17,20 +17,28 @@ class DevolucionController extends BaseController
      */
     public function index(Request $request, Response $response): Response
     {
-        $user = $request->getAttribute('user');
-        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $user       = $request->getAttribute('user');
+        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
         $sucursalId = $this->getEffectiveSucursalId($user, $request);
-        try {
-            $devoluciones = Devolucion::where('empresa_id', $empresaId)
-                ->where('sucursal_id', $sucursalId)
-                ->orderBy('created_at', 'desc')
-                ->limit(100)
-                ->get();
-            return $this->json($response, ['error' => false, 'data' => $devoluciones]);
-        } catch (\Exception $e) {
-            error_log('DevolucionController::index error: ' . $e->getMessage());
-            return $this->json($response, ['error' => true, 'message' => 'Error al obtener devoluciones.'], 500);
+        $params     = $request->getQueryParams();
+
+        $q = Devolucion::with('detalles')
+            ->where('empresa_id',  $empresaId)
+            ->where('sucursal_id', $sucursalId);
+
+        if (!empty($params['tipo']))   $q->where('tipo',   $params['tipo']);
+        if (!empty($params['estado'])) $q->where('estado', $params['estado']);
+        if (!empty($params['desde']))  $q->where('created_at', '>=', $params['desde'] . ' 00:00:00');
+        if (!empty($params['hasta']))  $q->where('created_at', '<=', $params['hasta'] . ' 23:59:59');
+        if (!empty($params['q'])) {
+            $sq = $params['q'];
+            $q->where(fn($qb) => $qb->where('numero_devolucion', 'like', "%{$sq}%")
+                                    ->orWhere('referencia_externa', 'like', "%{$sq}%")
+                                    ->orWhere('motivo_general', 'like', "%{$sq}%"));
         }
+
+        $devoluciones = $q->orderBy('created_at', 'desc')->limit(200)->get();
+        return $this->ok($response, $devoluciones);
     }
 
     /**
@@ -91,127 +99,81 @@ class DevolucionController extends BaseController
      */
     public function store(Request $request, Response $response): Response
     {
-        $user = $request->getAttribute('user');
-        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $request);
-        
-        // Cualquier usuario autenticado puede registrar devoluciones
+        $user       = $request->getAttribute('user');
+        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
+        $data       = $request->getParsedBody() ?? [];
 
-        $data = $request->getParsedBody();
-
-        $tipo = $data['tipo'] ?? 'ReingresoBuenEstado';
-        $motivo_general = $data['motivo_general'] ?? '';
-        $detalles = $data['detalles'] ?? [];
-
-        if (empty($detalles) || !is_array($detalles)) {
-            return $this->json($response, ['error' => true, 'message' => 'Debe incluir al menos un producto a devolver.'], 400);
+        if ($deny = $this->requireFields($data, ['tipo', 'motivo_general', 'detalles'], $response)) {
+            return $deny;
         }
 
-        \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
+        $tiposValidos = ['AProveedorAveria','AProveedorVencido','ReingresoBuenEstado','cliente','proveedor','interna'];
+        if (!in_array($data['tipo'], $tiposValidos, true)) {
+            return $this->error($response, 'tipo inválido');
+        }
 
-        try {
-            $devolucion = new Devolucion();
-            $devolucion->empresa_id = $empresaId;
-            $devolucion->sucursal_id = $sucursalId;
-            $devolucion->recepcion_id = $data['recepcion_id'] ?? null;
-            $devolucion->proveedor = $data['proveedor'] ?? null;
-            $devolucion->numero_devolucion = 'DEV-' . time() . '-' . rand(10,99);
-            $devolucion->tipo = $tipo;
-            $devolucion->estado = 'Procesada'; // Directamente procesada por ahora
-            $devolucion->motivo_general = $motivo_general;
-            $devolucion->auxiliar_id = $user->id;
-            $devolucion->fecha_movimiento = date('Y-m-d');
-            $devolucion->hora_inicio = date('H:i:s');
-            $devolucion->hora_fin = date('H:i:s');
-            $devolucion->save();
+        $detalles = $data['detalles'] ?? [];
+        if (empty($detalles) || !is_array($detalles)) {
+            return $this->error($response, 'Debe incluir al menos un producto a devolver');
+        }
 
-            // Buscar la ubicación virtual adecuada (OBSOLETO o PATIO)
-            $ubicacion_obsoleto = Ubicacion::where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)->where('tipo_ubicacion', 'Patio')->where('codigo', 'OBSOLETO')->first();
-            $ubicacion_patio = Ubicacion::where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)->where('tipo_ubicacion', 'Patio')->where('codigo', 'PATIO')->first();
+        return \Illuminate\Database\Capsule\Manager::transaction(function () use (
+            $user, $empresaId, $sucursalId, $data, $detalles, $response
+        ) {
+            $numero = Devolucion::generarNumero($empresaId);
 
-            foreach ($detalles as $idx => $linea) {
-                $lineaNum = $idx + 1;
-                if (empty($linea['producto_id']) || !is_numeric($linea['producto_id'])) {
-                    \Illuminate\Database\Capsule\Manager::connection()->rollBack();
-                    return $this->json($response, ['error' => true, 'message' => "Línea {$lineaNum}: producto_id inválido."], 400);
-                }
-                $cantidad = (int)($linea['cantidad'] ?? 0);
-                if ($cantidad <= 0) {
-                    \Illuminate\Database\Capsule\Manager::connection()->rollBack();
-                    return $this->json($response, ['error' => true, 'message' => "Línea {$lineaNum}: la cantidad debe ser mayor a cero."], 400);
-                }
+            $dev = Devolucion::create([
+                'empresa_id'         => $empresaId,
+                'sucursal_id'        => $sucursalId,
+                'numero_devolucion'  => $numero,
+                'tipo'               => $data['tipo'],
+                'estado'             => Devolucion::ESTADO_PENDIENTE,
+                'motivo_general'     => $data['motivo_general'],
+                'referencia_externa' => $data['referencia_externa'] ?? null,
+                'auxiliar_id'        => $user->id,
+                'solicitado_por'     => $user->id,
+                'fecha_movimiento'   => date('Y-m-d'),
+                'hora_inicio'        => date('H:i:s'),
+                'recepcion_id'       => $data['recepcion_id'] ?? null,
+                'proveedor'          => $data['proveedor'] ?? null,
+            ]);
 
-                $destino = $linea['destino'] ?? 'InventarioObsoleto';
-                $ubicacion_destino_id = ($destino === 'InventarioObsoleto') ? ($ubicacion_obsoleto ? $ubicacion_obsoleto->id : null) : ($ubicacion_patio ? $ubicacion_patio->id : null);
-
-                $detalle = new DevolucionDetalle();
-                $detalle->devolucion_id = $devolucion->id;
-                $detalle->producto_id = (int)$linea['producto_id'];
-                $detalle->lote = $linea['lote'] ?? null;
-                $detalle->fecha_vencimiento = $linea['fecha_vencimiento'] ?? null;
-                $detalle->cantidad = $cantidad;
-                $detalle->motivo = $linea['motivo'] ?? 'Otro';
-                $detalle->detalle_motivo = $linea['detalle_motivo'] ?? null;
-                $detalle->destino = $destino;
-                $detalle->ubicacion_destino_id = $ubicacion_destino_id;
-                $detalle->save();
-
-                // Registrar en MovimientoInventario
-                $movimiento = new MovimientoInventario();
-                $movimiento->empresa_id = $empresaId;
-                $movimiento->sucursal_id = $sucursalId;
-                $movimiento->producto_id = $linea['producto_id'];
-                $movimiento->ubicacion_origen_id = null; // Viene del usuario/proveedor o zona perdida
-                $movimiento->ubicacion_destino_id = $ubicacion_destino_id;
-                $movimiento->tipo_movimiento = 'Devolucion';
-                $movimiento->cantidad = $cantidad;
-                $movimiento->lote = $linea['lote'] ?? null;
-                $movimiento->fecha_vencimiento = $linea['fecha_vencimiento'] ?? null;
-                $movimiento->referencia_tipo = 'devolucion';
-                $movimiento->referencia_id = $devolucion->id;
-                $movimiento->auxiliar_id = $user->id;
-                $movimiento->fecha_movimiento = date('Y-m-d');
-                $movimiento->hora_inicio = $devolucion->hora_inicio;
-                $movimiento->hora_fin = $devolucion->hora_fin;
-                $movimiento->save();
-
-                // Actualizar inventario en la ubicación destino virtual (Obsoleto o Patio)
-                if ($ubicacion_destino_id) {
-                    $inventario = Inventario::where('empresa_id', $empresaId)
-                        ->where('sucursal_id', $sucursalId)
-                        ->where('producto_id', $linea['producto_id'])
-                        ->where('ubicacion_id', $ubicacion_destino_id)
-                        ->where('lote', $linea['lote'] ?? null)
-                        ->lockForUpdate()
-                        ->first();
-                    if (!$inventario) {
-                        $inventario = new Inventario([
-                            'empresa_id'   => $empresaId,
-                            'sucursal_id'  => $sucursalId,
-                            'producto_id'  => $linea['producto_id'],
-                            'ubicacion_id' => $ubicacion_destino_id,
-                            'lote'         => $linea['lote'] ?? null,
-                        ]);
-                    }
-                    if (!$inventario->exists) {
-                        $inventario->cantidad = 0;
-                        $inventario->cantidad_reservada = 0;
-                        $inventario->estado = ($destino === 'InventarioObsoleto') ? 'Obsoleto' : 'Disponible';
-                    }
-                    if (!empty($linea['fecha_vencimiento'])) {
-                        $inventario->fecha_vencimiento = $linea['fecha_vencimiento'];
-                    }
-                    $inventario->cantidad += $cantidad;
-                    $inventario->save();
-                }
+            foreach ($detalles as $d) {
+                DevolucionDetalle::create([
+                    'devolucion_id'     => $dev->id,
+                    'producto_id'       => (int)$d['producto_id'],
+                    'lote'              => $d['lote'] ?? null,
+                    'fecha_vencimiento' => $d['fecha_vencimiento'] ?? null,
+                    'cantidad'          => (float)($d['cantidad'] ?? 0),
+                    'condicion'         => $d['condicion'] ?? null,
+                    'motivo'            => $d['motivo'] ?? 'Otro',
+                    'detalle_motivo'    => $d['motivo_item'] ?? null,
+                    'destino'           => null,
+                ]);
             }
 
-            \Illuminate\Database\Capsule\Manager::connection()->commit();
+            // Notificar a supervisores via anomaly_flags
+            if (\Illuminate\Database\Capsule\Manager::schema()->hasTable('anomaly_flags')) {
+                \Illuminate\Database\Capsule\Manager::table('anomaly_flags')->insert([
+                    'empresa_id'     => $empresaId,
+                    'sucursal_id'    => $sucursalId,
+                    'tipo'           => 'devolucion',
+                    'severidad'      => 'media',
+                    'titulo'         => "Devolución {$numero} — aprobación requerida",
+                    'descripcion'    => count($detalles) . ' ítem(s). Motivo: ' . mb_substr($data['motivo_general'], 0, 100),
+                    'datos_anomalia' => json_encode(['devolucion_id' => $dev->id, 'tipo' => $data['tipo']], JSON_UNESCAPED_UNICODE),
+                    'estado'         => 'pendiente',
+                    'created_at'     => date('Y-m-d H:i:s'),
+                    'updated_at'     => date('Y-m-d H:i:s'),
+                ]);
+            }
 
-            return $this->json($response, ['error' => false, 'message' => 'Devolución procesada. Inventario actualizado.', 'data' => $devolucion], 201);
-        } catch (\Exception $e) {
-            \Illuminate\Database\Capsule\Manager::connection()->rollBack();
-            return $this->json($response, ['error' => true, 'message' => 'Error al procesar devolución: ' . $e->getMessage()], 500);
-        }
+            $this->audit($user, 'devoluciones', 'crear', 'devoluciones', $dev->id,
+                null, ['numero' => $numero, 'tipo' => $dev->tipo]);
+
+            return $this->created($response, ['devolucion_id' => $dev->id, 'numero' => $numero], 'Devolución registrada');
+        });
     }
 
     // ── GET /api/devoluciones/odc/{odcId} ────────────────────────────────────
@@ -338,6 +300,238 @@ class DevolucionController extends BaseController
         } catch (\Exception $e) {
             return $this->json($response, ['error' => true, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    // ── POST /api/devoluciones/{id}/aprobar ───────────────────────────────────
+    public function aprobar(Request $request, Response $response, array $args): Response
+    {
+        $user       = $request->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $response)) return $deny;
+        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
+
+        $dev = Devolucion::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find((int)($args['id'] ?? 0));
+        if (!$dev) return $this->notFound($response);
+        if ($dev->estado !== Devolucion::ESTADO_PENDIENTE) {
+            return $this->error($response, 'La devolución no está en estado PendienteAprobacion', 409);
+        }
+
+        $dev->estado      = Devolucion::ESTADO_APROBADA;
+        $dev->aprobado_por = $user->id;
+        $dev->aprobado_at  = date('Y-m-d H:i:s');
+        $dev->save();
+
+        $this->audit($user, 'devoluciones', 'aprobar', 'devoluciones', $dev->id,
+            ['estado' => Devolucion::ESTADO_PENDIENTE], ['estado' => Devolucion::ESTADO_APROBADA]);
+
+        return $this->ok($response, null, 'Devolución aprobada');
+    }
+
+    // ── POST /api/devoluciones/{id}/rechazar ──────────────────────────────────
+    public function rechazar(Request $request, Response $response, array $args): Response
+    {
+        $user       = $request->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $response)) return $deny;
+        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
+        $data       = $request->getParsedBody() ?? [];
+
+        $dev = Devolucion::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find((int)($args['id'] ?? 0));
+        if (!$dev) return $this->notFound($response);
+        if ($dev->estado !== Devolucion::ESTADO_PENDIENTE) {
+            return $this->error($response, 'La devolución no está en estado PendienteAprobacion', 409);
+        }
+
+        $dev->estado        = Devolucion::ESTADO_RECHAZADA;
+        $dev->aprobado_por  = $user->id;
+        $dev->aprobado_at   = date('Y-m-d H:i:s');
+        $dev->observaciones = $data['motivo_rechazo'] ?? null;
+        $dev->save();
+
+        $this->audit($user, 'devoluciones', 'rechazar', 'devoluciones', $dev->id,
+            ['estado' => Devolucion::ESTADO_PENDIENTE], ['estado' => Devolucion::ESTADO_RECHAZADA]);
+
+        return $this->ok($response, null, 'Devolución rechazada');
+    }
+
+    // ── POST /api/devoluciones/{id}/anular ────────────────────────────────────
+    public function anular(Request $request, Response $response, array $args): Response
+    {
+        $user       = $request->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $response)) return $deny;
+        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
+
+        $dev = Devolucion::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find((int)($args['id'] ?? 0));
+        if (!$dev) return $this->notFound($response);
+        if (in_array($dev->estado, [Devolucion::ESTADO_PROCESADA, Devolucion::ESTADO_ANULADA], true)) {
+            return $this->error($response, 'No se puede anular una devolución ya procesada o anulada', 409);
+        }
+
+        $dev->estado = Devolucion::ESTADO_ANULADA;
+        $dev->save();
+
+        $this->audit($user, 'devoluciones', 'anular', 'devoluciones', $dev->id,
+            ['estado' => $dev->getOriginal('estado')], ['estado' => Devolucion::ESTADO_ANULADA]);
+
+        return $this->ok($response, null, 'Devolución anulada');
+    }
+
+    // ── POST /api/devoluciones/{id}/procesar ──────────────────────────────────
+    public function procesar(Request $request, Response $response, array $args): Response
+    {
+        $user       = $request->getAttribute('user');
+        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
+        $data       = $request->getParsedBody() ?? [];
+
+        $dev = Devolucion::with('detalles')
+            ->where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find((int)($args['id'] ?? 0));
+        if (!$dev) return $this->notFound($response);
+        if ($dev->estado !== Devolucion::ESTADO_APROBADA) {
+            return $this->error($response, 'La devolución debe estar en estado Aprobada', 409);
+        }
+
+        $itemDecisiones = [];
+        foreach ($data['items'] ?? [] as $it) {
+            $itemDecisiones[(int)$it['id']] = $it['destino'] ?? null;
+        }
+
+        $destinosValidos = [DevolucionDetalle::DESTINO_RESTOCK, DevolucionDetalle::DESTINO_DESCARTE, DevolucionDetalle::DESTINO_PROVEEDOR];
+
+        foreach ($dev->detalles as $det) {
+            $destino = $itemDecisiones[$det->id] ?? null;
+            if (!in_array($destino, $destinosValidos, true)) {
+                return $this->error($response, 'Todos los ítems deben tener destino asignado (restock, descarte o proveedor)', 422);
+            }
+        }
+
+        return \Illuminate\Database\Capsule\Manager::transaction(function () use (
+            $dev, $user, $empresaId, $sucursalId, $itemDecisiones, $response
+        ) {
+            $devProveedorId    = null;
+            $devProveedorItems = [];
+
+            foreach ($dev->detalles as $det) {
+                $destino      = $itemDecisiones[$det->id];
+                $det->destino = $destino;
+                $det->save();
+
+                if ($destino === DevolucionDetalle::DESTINO_RESTOCK) {
+                    $inv = \Illuminate\Database\Capsule\Manager::table('inventarios')
+                        ->where('empresa_id',  $empresaId)
+                        ->where('sucursal_id', $sucursalId)
+                        ->where('producto_id', $det->producto_id)
+                        ->where('lote',        $det->lote)
+                        ->where('estado',      'Disponible')
+                        ->first();
+
+                    if ($inv) {
+                        \Illuminate\Database\Capsule\Manager::table('inventarios')
+                            ->where('id', $inv->id)
+                            ->update(['cantidad' => $inv->cantidad + $det->cantidad, 'updated_at' => date('Y-m-d H:i:s')]);
+                    } else {
+                        \Illuminate\Database\Capsule\Manager::table('inventarios')->insert([
+                            'empresa_id'         => $empresaId,
+                            'sucursal_id'        => $sucursalId,
+                            'producto_id'        => $det->producto_id,
+                            'lote'               => $det->lote,
+                            'fecha_vencimiento'  => $det->fecha_vencimiento,
+                            'cantidad'           => $det->cantidad,
+                            'cantidad_reservada' => 0,
+                            'estado'             => 'Disponible',
+                            'created_at'         => date('Y-m-d H:i:s'),
+                            'updated_at'         => date('Y-m-d H:i:s'),
+                        ]);
+                    }
+
+                    \Illuminate\Database\Capsule\Manager::table('movimiento_inventarios')->insert([
+                        'empresa_id'        => $empresaId,
+                        'sucursal_id'       => $sucursalId,
+                        'producto_id'       => $det->producto_id,
+                        'tipo_movimiento'   => 'Devolucion',
+                        'cantidad'          => $det->cantidad,
+                        'lote'              => $det->lote,
+                        'fecha_vencimiento' => $det->fecha_vencimiento,
+                        'referencia_tipo'   => 'devolucion',
+                        'referencia_id'     => $dev->id,
+                        'auxiliar_id'       => $user->id,
+                        'fecha_movimiento'  => date('Y-m-d'),
+                        'hora_inicio'       => date('H:i:s'),
+                        'observaciones'     => "Restock devolución {$dev->numero_devolucion}",
+                        'created_at'        => date('Y-m-d H:i:s'),
+                    ]);
+
+                } elseif ($destino === DevolucionDetalle::DESTINO_DESCARTE) {
+                    \Illuminate\Database\Capsule\Manager::table('movimiento_inventarios')->insert([
+                        'empresa_id'        => $empresaId,
+                        'sucursal_id'       => $sucursalId,
+                        'producto_id'       => $det->producto_id,
+                        'tipo_movimiento'   => 'AjusteNegativo',
+                        'cantidad'          => -abs($det->cantidad),
+                        'lote'              => $det->lote,
+                        'fecha_vencimiento' => $det->fecha_vencimiento,
+                        'referencia_tipo'   => 'devolucion',
+                        'referencia_id'     => $dev->id,
+                        'auxiliar_id'       => $user->id,
+                        'fecha_movimiento'  => date('Y-m-d'),
+                        'hora_inicio'       => date('H:i:s'),
+                        'observaciones'     => "Descarte devolución {$dev->numero_devolucion}",
+                        'created_at'        => date('Y-m-d H:i:s'),
+                    ]);
+
+                } elseif ($destino === DevolucionDetalle::DESTINO_PROVEEDOR) {
+                    $devProveedorItems[] = $det;
+                }
+            }
+
+            if (!empty($devProveedorItems)) {
+                $numProv = Devolucion::generarNumero($empresaId);
+                $devProv = Devolucion::create([
+                    'empresa_id'        => $empresaId,
+                    'sucursal_id'       => $sucursalId,
+                    'numero_devolucion' => $numProv,
+                    'tipo'              => Devolucion::TIPO_PROVEEDOR,
+                    'estado'            => Devolucion::ESTADO_PENDIENTE,
+                    'motivo_general'    => "Generada automáticamente desde {$dev->numero_devolucion}",
+                    'auxiliar_id'       => $user->id,
+                    'solicitado_por'    => $user->id,
+                    'fecha_movimiento'  => date('Y-m-d'),
+                    'hora_inicio'       => date('H:i:s'),
+                ]);
+                foreach ($devProveedorItems as $det) {
+                    DevolucionDetalle::create([
+                        'devolucion_id'     => $devProv->id,
+                        'producto_id'       => $det->producto_id,
+                        'lote'              => $det->lote,
+                        'fecha_vencimiento' => $det->fecha_vencimiento,
+                        'cantidad'          => $det->cantidad,
+                        'condicion'         => $det->condicion,
+                        'motivo'            => $det->motivo ?? 'Otro',
+                        'destino'           => null,
+                    ]);
+                }
+                $devProveedorId = $devProv->id;
+            }
+
+            $dev->estado       = Devolucion::ESTADO_PROCESADA;
+            $dev->procesado_por = $user->id;
+            $dev->procesado_at  = date('Y-m-d H:i:s');
+            $dev->save();
+
+            $this->audit($user, 'devoluciones', 'procesar', 'devoluciones', $dev->id,
+                ['estado' => Devolucion::ESTADO_APROBADA], ['estado' => Devolucion::ESTADO_PROCESADA]);
+
+            return $this->ok($response, ['devolucion_proveedor_id' => $devProveedorId], 'Devolución procesada correctamente');
+        });
     }
 
     /**
