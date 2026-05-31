@@ -3,6 +3,7 @@
 namespace App\Helpers;
 
 use Illuminate\Database\Capsule\Manager as Capsule;
+use App\Helpers\ExpiryGuard;
 
 /**
  * FefoEngine — Motor de rotación FEFO (First Expiry, First Out).
@@ -54,6 +55,9 @@ class FefoEngine
      */
     public function getSuggestedLots(int $productoId, float $cantidadRequerida): array
     {
+        // Lazy auto-quarantine: marks expired inventory before suggesting lots
+        (new ExpiryGuard($this->empresaId, $this->sucursalId))->autoQuarantine();
+
         $rows = Capsule::table('inventarios as i')
             ->leftJoin('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
             ->where('i.empresa_id',  $this->empresaId)
