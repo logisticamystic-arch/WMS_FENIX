@@ -1,8 +1,7 @@
 <?php
-
+// src/Models/Devolucion.php
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use App\Models\Concerns\TenantScoped;
 
 class Devolucion extends BaseModel
@@ -13,56 +12,52 @@ class Devolucion extends BaseModel
 
     protected $fillable = [
         'empresa_id', 'sucursal_id', 'recepcion_id', 'odc_id', 'numero_devolucion',
-        'proveedor', 'tipo', 'auxiliar_id',
+        'proveedor', 'referencia_externa', 'tipo', 'auxiliar_id', 'solicitado_por',
         'fecha_movimiento', 'hora_inicio', 'hora_fin',
-        'estado', 'motivo_general', 'fotos_json',
-        'autorizado_por', 'fecha_autorizacion', 'fecha_devolucion', 'observaciones',
+        'estado', 'motivo_general', 'fotos_json', 'observaciones',
+        'autorizado_por', 'fecha_autorizacion', 'fecha_devolucion',
+        'aprobado_por', 'procesado_por', 'aprobado_at', 'procesado_at',
     ];
 
     protected $casts = [
         'fecha_movimiento'   => 'date',
         'fecha_autorizacion' => 'datetime',
+        'aprobado_at'        => 'datetime',
+        'procesado_at'       => 'datetime',
         'fotos_json'         => 'array',
     ];
 
-    const TIPO_AVERIA = 'AProveedorAveria';
-    const TIPO_VENCIDO = 'AProveedorVencido';
+    // Tipos legacy (proveedor)
+    const TIPO_AVERIA    = 'AProveedorAveria';
+    const TIPO_VENCIDO   = 'AProveedorVencido';
     const TIPO_REINGRESO = 'ReingresoBuenEstado';
 
-    public function empresa()
-    {
-        return $this->belongsTo(Empresa::class);
-    }
+    // Tipos nuevos
+    const TIPO_CLIENTE   = 'cliente';
+    const TIPO_PROVEEDOR = 'proveedor';
+    const TIPO_INTERNA   = 'interna';
 
-    public function sucursal()
-    {
-        return $this->belongsTo(Sucursal::class);
-    }
+    // Estados
+    const ESTADO_PENDIENTE = 'PendienteAprobacion';
+    const ESTADO_APROBADA  = 'Aprobada';
+    const ESTADO_PROCESADA = 'Procesada';
+    const ESTADO_RECHAZADA = 'Rechazada';
+    const ESTADO_ANULADA   = 'Anulada';
 
-    public function recepcion()
-    {
-        return $this->belongsTo(Recepcion::class);
-    }
+    public function empresa()    { return $this->belongsTo(Empresa::class); }
+    public function sucursal()   { return $this->belongsTo(Sucursal::class); }
+    public function recepcion()  { return $this->belongsTo(Recepcion::class); }
+    public function auxiliar()   { return $this->belongsTo(Personal::class, 'auxiliar_id'); }
+    public function solicitante(){ return $this->belongsTo(Personal::class, 'solicitado_por'); }
+    public function aprobador()  { return $this->belongsTo(Personal::class, 'aprobado_por'); }
+    public function detalles()   { return $this->hasMany(DevolucionDetalle::class); }
 
-    public function auxiliar()
+    public static function generarNumero(int $empresaId): string
     {
-        return $this->belongsTo(Personal::class, 'auxiliar_id');
-    }
-
-    public function detalles()
-    {
-        return $this->hasMany(DevolucionDetalle::class);
-    }
-
-    public static function generarNumero(int $sucursalId): string
-    {
-        $prefix = 'DEV';
-        $date = date('Ymd');
-        $last = self::where('sucursal_id', $sucursalId)
-            ->where('numero_devolucion', 'like', "{$prefix}-{$date}-%")
+        $year = date('Y');
+        $last = self::where('empresa_id', $empresaId)
+            ->where('numero_devolucion', 'like', "DEV-{$year}-%")
             ->count();
-        return sprintf('%s-%s-%04d', $prefix, $date, $last + 1);
+        return sprintf('DEV-%s-%04d', $year, $last + 1);
     }
 }
-
-
