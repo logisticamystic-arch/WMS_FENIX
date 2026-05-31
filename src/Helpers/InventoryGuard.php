@@ -3,8 +3,6 @@
 namespace App\Helpers;
 
 use Illuminate\Database\Capsule\Manager as Capsule;
-use App\Helpers\ExpiryGuard;
-use App\Helpers\ExpiryResult;
 
 /**
  * InventoryGuard — Motor de reglas duras de integridad de inventario.
@@ -18,6 +16,9 @@ use App\Helpers\ExpiryResult;
  *  R06 — No se pueden reservar unidades en cuarentena u obsoleto
  *  R07 — Doble conteo: detecta si ya se reservó/confirmó el mismo lote-ubicación en paralelo
  *  R08 — FEFO: picking debe respetar el lote de mayor proximidad a vencimiento
+ *  R09 — fecha_vencimiento obligatoria si control_vencimientos = 1
+ *  R10 — producto vencido (fecha_vencimiento < hoy) — bloqueado, sin excepciones
+ *  R11 — producto próximo a vencer (1–5 días) — requiere aprobación del supervisor
  *
  * Uso:
  *   $guard = new InventoryGuard($user->empresa_id, $user->sucursal_id, $user->id);
@@ -125,6 +126,9 @@ class InventoryGuard
             }
 
             if ($result->status === ExpiryResult::PENDING) {
+                // R11 returns a custom shape (not via deny()) because it carries approval metadata
+                // that PickingController reads directly. Callers must branch on 'pending_approval'
+                // before assuming the standard deny() contract.
                 return [
                     'ok'              => false,
                     'regla'           => 'R11',
