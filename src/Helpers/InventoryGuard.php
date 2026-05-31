@@ -3,6 +3,8 @@
 namespace App\Helpers;
 
 use Illuminate\Database\Capsule\Manager as Capsule;
+use App\Helpers\ExpiryGuard;
+use App\Helpers\ExpiryResult;
 
 /**
  * InventoryGuard — Motor de reglas duras de integridad de inventario.
@@ -108,10 +110,36 @@ class InventoryGuard
         // R08 — advertencia FEFO (no bloquea, solo advierte para el log)
         $fefoWarning = $this->checkFefoCompliance($rows, $lote);
 
+        // R10/R11 — Expiry check (after stock validation)
+        if (!empty($rows) && $lote !== null && $this->usuarioId !== null) {
+            $guard  = new ExpiryGuard($this->empresaId, $this->sucursalId);
+            $result = $guard->check($productoId, $lote, $this->usuarioId);
+
+            if ($result->status === ExpiryResult::BLOCKED) {
+                return $this->deny('R10', $result->message, [
+                    'producto_id'    => $productoId,
+                    'lote'           => $lote,
+                    'dias_restantes' => $result->diasRestantes,
+                    'code'           => 'PRODUCT_EXPIRED',
+                ]);
+            }
+
+            if ($result->status === ExpiryResult::PENDING) {
+                return [
+                    'ok'              => false,
+                    'regla'           => 'R11',
+                    'pending_approval'=> true,
+                    'aprobacion_id'   => $result->aprobacionId,
+                    'message'         => $result->message,
+                    'dias_restantes'  => $result->diasRestantes,
+                ];
+            }
+        }
+
         return [
-            'ok'              => true,
+            'ok'               => true,
             'stock_disponible' => $stockDisponible,
-            'fefo_warning'    => $fefoWarning,
+            'fefo_warning'     => $fefoWarning,
         ];
     }
 
