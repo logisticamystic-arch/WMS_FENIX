@@ -141,7 +141,7 @@ class DespachoController extends BaseController
                     'empresa_id'           => $empresaId,
                     'sucursal_id'          => $sucursalId,
                     'producto_id'          => $data['producto_id'],
-                    'tipo_movimiento'      => 'SalidaDespacho',
+                    'tipo_movimiento'      => 'Salida',
                     'cantidad'             => (int)$data['cantidad_certificada'],
                     'ubicacion_origen_id'  => $data['ubicacion_id'] ?? null,
                     'ubicacion_destino_id' => null,
