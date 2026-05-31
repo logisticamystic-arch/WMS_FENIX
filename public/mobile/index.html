@@ -1480,6 +1480,7 @@ const MWMS = {
     this.loading(true);
     try {
       const r = await mApi('GET', '/recepciones/buscar-qr?q=' + encodeURIComponent(qr));
+      if (r.error) throw new Error(r.message || 'Producto no encontrado');
       const p = r.data.producto;
       this._devQrProd = { id: p.id, nombre: p.nombre };
       document.getElementById('dv-m-qr').value = '';

@@ -506,6 +506,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/devoluciones', [\App\Controllers\DevolucionController::class, 'store']);
     $group->post('/devoluciones/desde-recepcion', [\App\Controllers\DevolucionController::class, 'desdeRecepcion']);
     $group->post('/devoluciones/desde-odc', [\App\Controllers\DevolucionController::class, 'desdeOdcMovil']);
+    $group->get('/devoluciones/odc/{odcId}', [\App\Controllers\DevolucionController::class, 'getByOdc']);
+    $group->get('/devoluciones/resumen/proveedor/{proveedor_id}', [\App\Controllers\DevolucionController::class, 'resumenProveedor']);
     $group->get('/devoluciones/{id}', [\App\Controllers\DevolucionController::class, 'ver']);
     $group->post('/devoluciones/{id}/autorizar', [\App\Controllers\DevolucionController::class, 'autorizar']);
     $group->post('/devoluciones/{id}/completar', [\App\Controllers\DevolucionController::class, 'completar']);
@@ -513,9 +515,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/devoluciones/{id}/rechazar', [\App\Controllers\DevolucionController::class, 'rechazar']);
     $group->post('/devoluciones/{id}/procesar', [\App\Controllers\DevolucionController::class, 'procesar']);
     $group->post('/devoluciones/{id}/anular',   [\App\Controllers\DevolucionController::class, 'anular']);
-    $group->get('/devoluciones/resumen/proveedor/{proveedor_id}', [\App\Controllers\DevolucionController::class, 'resumenProveedor']);
     $group->delete('/devoluciones/{id}', [\App\Controllers\DevolucionController::class, 'eliminar']);
-    $group->get('/devoluciones/odc/{odcId}', [\App\Controllers\DevolucionController::class, 'getByOdc']);
 
     // Módulo: Inventario
     $group->group('/inventario', function(\Slim\Routing\RouteCollectorProxy $g) {

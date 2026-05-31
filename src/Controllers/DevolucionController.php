@@ -388,15 +388,20 @@ class DevolucionController extends BaseController
             ->where('sucursal_id', $sucursalId)
             ->find((int)($args['id'] ?? 0));
         if (!$dev) return $this->notFound($response);
-        if (in_array($dev->estado, [Devolucion::ESTADO_PROCESADA, Devolucion::ESTADO_ANULADA], true)) {
-            return $this->error($response, 'No se puede anular una devolución ya procesada o anulada', 409);
+        if (in_array($dev->estado, [
+            Devolucion::ESTADO_PROCESADA,
+            Devolucion::ESTADO_ANULADA,
+            Devolucion::ESTADO_RECHAZADA,
+        ], true)) {
+            return $this->error($response, 'No se puede anular una devolución ya procesada, rechazada o anulada', 409);
         }
 
+        $estadoAnterior = $dev->estado;
         $dev->estado = Devolucion::ESTADO_ANULADA;
         $dev->save();
 
         $this->audit($user, 'devoluciones', 'anular', 'devoluciones', $dev->id,
-            ['estado' => $dev->getOriginal('estado')], ['estado' => Devolucion::ESTADO_ANULADA]);
+            ['estado' => $estadoAnterior], ['estado' => Devolucion::ESTADO_ANULADA]);
 
         return $this->ok($response, null, 'Devolución anulada');
     }
@@ -689,7 +694,7 @@ class DevolucionController extends BaseController
         \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
         try {
             // Generar número de devolución único
-            $numeroDevolucion = Devolucion::generarNumero($sucursalId);
+            $numeroDevolucion = Devolucion::generarNumero($empresaId);
 
             $devolucion = new Devolucion();
             $devolucion->empresa_id      = $empresaId;
