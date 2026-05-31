@@ -2046,6 +2046,35 @@
         </div>`;
           }).join('');
         } catch (e) { list.innerHTML = '<div class="search-no-results">Error de conexión</div>'; }
+
+        // Append expiry approval cards for supervisor-level roles
+        const expiryRol = _wmsUser?.rol ?? '';
+        const expiryPrivileged = ['Admin', 'Supervisor', 'SuperAdmin', 'Jefe'];
+        if (expiryPrivileged.includes(expiryRol)) {
+          try {
+            const ea = await API.get('/aprobaciones/vencimiento/pendientes');
+            if (!ea.error && ea.data && ea.data.length > 0) {
+              const expiryHtml = ea.data.map(ap => `
+                <div class="notif-item unread" id="expiry-card-${ap.id}">
+                  <div class="notif-item-icon alerta"><i class="fa-solid fa-clock"></i></div>
+                  <div class="notif-body">
+                    <div class="notif-titulo">⚠ Producto próximo a vencer (${ap.dias_restantes} días)</div>
+                    <div class="notif-mensaje">${this.esc(ap.producto_nombre)} — Lote: ${this.esc(ap.lote)}</div>
+                    <div class="notif-mensaje" style="color:#64748b;font-size:.72rem;">Solicitado por: ${this.esc(ap.auxiliar_nombre)} · ${this.tiempoRelativo(ap.created_at)}</div>
+                    <div class="notif-actions" style="margin-top:6px;display:flex;gap:6px;">
+                      <button class="btn btn-sm btn-success" onclick="WMS._resolverVencimiento(${ap.id},'aprobada',this)">
+                        <i class="fa-solid fa-check"></i> Aprobar
+                      </button>
+                      <button class="btn btn-sm btn-danger" onclick="WMS._resolverVencimiento(${ap.id},'rechazada',this)">
+                        <i class="fa-solid fa-times"></i> Rechazar
+                      </button>
+                    </div>
+                  </div>
+                </div>`).join('');
+              list.insertAdjacentHTML('afterbegin', expiryHtml);
+            }
+          } catch(_) {}
+        }
       },
 
       toggleNotifPanel() {
@@ -2074,6 +2103,18 @@
         e.stopPropagation();
         await API.put('/notificaciones/' + id + '/completar', {});
         this.loadNotifications();
+      },
+
+      async _resolverVencimiento(id, decision, btn) {
+        btn.disabled = true;
+        try {
+          const r = await API.post('/aprobaciones/' + id + '/resolver', { decision });
+          if (r.error) { this.toast('error', r.message); btn.disabled = false; return; }
+          document.getElementById('expiry-card-' + id)?.remove();
+          this.toast('success', decision === 'aprobada' ? 'Solicitud aprobada' : 'Solicitud rechazada');
+          this._expiryPendingCount = Math.max(0, this._expiryPendingCount - 1);
+          this.loadBadge();
+        } catch(e) { this.toast('error', 'Error al resolver'); btn.disabled = false; }
       },
 
       async marcarTodasLeidas() {
