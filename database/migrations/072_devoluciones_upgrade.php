@@ -46,7 +46,7 @@ return [
                 $t->unsignedBigInteger('solicitado_por')->nullable()->after('auxiliar_id');
             }
             if (!$schema->hasColumn('devoluciones', 'aprobado_por')) {
-                $t->unsignedBigInteger('aprobado_por')->nullable()->after('odc_id');
+                $t->unsignedBigInteger('aprobado_por')->nullable();
             }
             if (!$schema->hasColumn('devoluciones', 'procesado_por')) {
                 $t->unsignedBigInteger('procesado_por')->nullable()->after('aprobado_por');
