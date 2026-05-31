@@ -19,7 +19,7 @@ class OutboundController extends BaseController
         $data = $request->getParsedBody();
 
         $cert = Certificacion::create([
-            'empresa_id' => $user->empresa_id,
+            'empresa_id' => $this->getEffectiveEmpresaId($user, $request),
             'usuario_id' => $user->id,
             'tipo' => $data['tipo'], // 'Consolidado' or 'Detalle'
             'fecha_inicio' => date('Y-m-d H:i:s'),
@@ -75,7 +75,7 @@ class OutboundController extends BaseController
     public function getCertificacionesReport(Request $request, Response $response): Response
     {
         $user  = $request->getAttribute('user');
-        $certs = Certificacion::where('empresa_id', $user->empresa_id)
+        $certs = Certificacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->with(['detalles.producto', 'detalles.cliente'])
             ->orderBy('created_at', 'desc')
             ->get();

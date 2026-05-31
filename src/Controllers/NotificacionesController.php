@@ -21,7 +21,7 @@ class NotificacionesController extends BaseController
         $perPage = min(50, max(10, (int)($params['por_pagina'] ?? 20)));
 
         $query = DB::table('notificaciones')
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('personal_id', $user->id)
             ->orderBy('created_at', 'desc');
 
@@ -34,7 +34,7 @@ class NotificacionesController extends BaseController
 
         // Badge count (total no leídas)
         $badge = DB::table('notificaciones')
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('personal_id', $user->id)
             ->where('leida', false)
             ->count();
@@ -61,13 +61,13 @@ class NotificacionesController extends BaseController
         $user = $request->getAttribute('user');
 
         $count = DB::table('notificaciones')
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('personal_id', $user->id)
             ->where('leida', false)
             ->count();
 
         $pendientes = DB::table('notificaciones')
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('personal_id', $user->id)
             ->where('leida', false)
             ->where('completada', false)
@@ -94,7 +94,7 @@ class NotificacionesController extends BaseController
 
         $rows = DB::table('notificaciones')
             ->where('id', $id)
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('personal_id', $user->id)
             ->update(['leida' => true, 'leida_en' => date('Y-m-d H:i:s')]);
 
@@ -109,7 +109,7 @@ class NotificacionesController extends BaseController
         $user = $request->getAttribute('user');
 
         DB::table('notificaciones')
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('personal_id', $user->id)
             ->where('leida', false)
             ->update(['leida' => true, 'leida_en' => date('Y-m-d H:i:s')]);
@@ -127,7 +127,7 @@ class NotificacionesController extends BaseController
 
         $rows = DB::table('notificaciones')
             ->where('id', $id)
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('personal_id', $user->id)
             ->update([
                 'leida'     => true,
@@ -148,7 +148,7 @@ class NotificacionesController extends BaseController
 
         DB::table('notificaciones')
             ->where('id', $id)
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('personal_id', $user->id)
             ->delete();
 
@@ -182,7 +182,7 @@ class NotificacionesController extends BaseController
         $rows = [];
         foreach ($personalIds as $pid) {
             $rows[] = [
-                'empresa_id'      => $user->empresa_id,
+                'empresa_id'      => $this->getEffectiveEmpresaId($user, $request),
                 'sucursal_id'     => $user->sucursal_id,
                 'personal_id'     => (int)$pid,
                 'emisor_id'       => $user->id,

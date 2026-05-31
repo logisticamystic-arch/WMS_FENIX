@@ -53,7 +53,7 @@ class RecepcionController extends BaseController
         $params = $request->getQueryParams();
         $limit  = min((int)($params['limit'] ?? 50), 200);
 
-        $query = Recepcion::where('empresa_id', $user->empresa_id)
+        $query = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->withCount('detalles')
             ->orderBy('id', 'desc')
             ->limit($limit);
@@ -94,7 +94,7 @@ class RecepcionController extends BaseController
         $user = $request->getAttribute('user');
         $id   = (int)$args['id'];
 
-        $recepcion = Recepcion::with(['detalles.producto', 'detalles.ubicacionDestino'])->where('empresa_id', $user->empresa_id)->find($id);
+        $recepcion = Recepcion::with(['detalles.producto', 'detalles.ubicacionDestino'])->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
         if (!$recepcion) {
             return $this->json($response, ['error' => true, 'message' => 'Recepción no encontrada'], 404);
         }
@@ -111,7 +111,7 @@ class RecepcionController extends BaseController
         $user = $request->getAttribute('user');
         $max  = (int)Capsule::table('recepcion_detalles')
             ->join('recepciones', 'recepcion_detalles.recepcion_id', '=', 'recepciones.id')
-            ->where('recepciones.empresa_id', $user->empresa_id)
+            ->where('recepciones.empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('recepciones.sucursal_id', $user->sucursal_id)
             ->max('recepcion_detalles.numero_pallet');
             
@@ -129,7 +129,7 @@ class RecepcionController extends BaseController
         $user = $request->getAttribute('user');
         $id   = (int)$args['id'];
 
-        $recepcion = Recepcion::with('detalles')->where('empresa_id', $user->empresa_id)->find($id);
+        $recepcion = Recepcion::with('detalles')->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
         if (!$recepcion) {
             return $this->json($response, ['error' => true, 'message' => 'Recepción no encontrada'], 404);
         }
@@ -141,7 +141,7 @@ class RecepcionController extends BaseController
                 foreach ($recepcion->detalles as $detalle) {
                     if (!$detalle->aprobado_admin) continue; // sólo líneas que crearon stock
                     $loteKey = $detalle->lote ?? 'N/A';
-                    $inv = \App\Models\Inventario::where('empresa_id', $user->empresa_id)
+                    $inv = \App\Models\Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                         ->where('sucursal_id', $user->sucursal_id)
                         ->where('producto_id', $detalle->producto_id)
                         ->where('ubicacion_id', $detalle->ubicacion_destino_id)
@@ -160,7 +160,7 @@ class RecepcionController extends BaseController
                         }
 
                         \App\Models\MovimientoInventario::create([
-                            'empresa_id'           => $user->empresa_id,
+                            'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
                             'sucursal_id'          => $user->sucursal_id,
                             'producto_id'          => $detalle->producto_id,
                             'tipo_movimiento'      => 'AjusteNegativo',
@@ -210,7 +210,7 @@ class RecepcionController extends BaseController
 
         if ($cita_id) {
             $cita = Cita::find($cita_id);
-            if (!$cita || $cita->empresa_id !== $user->empresa_id || $cita->sucursal_id !== $user->sucursal_id) {
+            if (!$cita || $cita->empresa_id !== $this->getEffectiveEmpresaId($user, $request) || $cita->sucursal_id !== $user->sucursal_id) {
                 return $this->json($response, ['error' => true, 'message' => 'Cita inválida.'], 400);
             }
             $cita->estado = 'EnCurso';
@@ -218,7 +218,7 @@ class RecepcionController extends BaseController
         }
 
         $recepcion = new Recepcion();
-        $recepcion->empresa_id = $user->empresa_id;
+        $recepcion->empresa_id = $this->getEffectiveEmpresaId($user, $request);
         $recepcion->sucursal_id = $user->sucursal_id;
         $recepcion->cita_id = $cita_id;
         // Generate unique recepcion number
@@ -249,7 +249,7 @@ class RecepcionController extends BaseController
         $id = $args['id'] ?? null;
 
         $recepcion = Recepcion::find($id);
-        if (!$recepcion || $recepcion->empresa_id !== $user->empresa_id || $recepcion->sucursal_id !== $user->sucursal_id || $recepcion->estado !== 'Borrador') {
+        if (!$recepcion || $recepcion->empresa_id !== $this->getEffectiveEmpresaId($user, $request) || $recepcion->sucursal_id !== $user->sucursal_id || $recepcion->estado !== 'Borrador') {
             return $this->json($response, ['error' => true, 'message' => 'Recepción inválida o ya cerrada.'], 400);
         }
 
@@ -286,7 +286,7 @@ class RecepcionController extends BaseController
         // FEFO Validation for Inbound
         $fecha_vencimiento = $this->estandarizarFecha($data['fecha_vencimiento'] ?? null);
         
-        $guard = new InventoryGuard($user->empresa_id, $user->sucursal_id, $user->id);
+        $guard = new InventoryGuard($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $user->id);
         $checkDate = $guard->checkExpirationMandatory($producto_id, $fecha_vencimiento);
         if (!$checkDate['ok']) {
             return $this->json($response, ['error' => true, 'message' => $checkDate['message']], 422);
@@ -336,7 +336,7 @@ class RecepcionController extends BaseController
             }
         }
 
-        $odc = OrdenCompra::where('empresa_id', $user->empresa_id)->find((int)$data['odc_id']);
+        $odc = OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find((int)$data['odc_id']);
         if (!$odc) {
             return $this->json($response, ['error' => true, 'message' => 'ODC no encontrada'], 404);
         }
@@ -355,7 +355,7 @@ class RecepcionController extends BaseController
             }
         }
 
-        $producto = Producto::where('empresa_id', $user->empresa_id)->find((int)$data['producto_id']);
+        $producto = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find((int)$data['producto_id']);
         if (!$producto) {
             return $this->json($response, ['error' => true, 'message' => 'Producto inválido'], 404);
         }
@@ -378,7 +378,7 @@ class RecepcionController extends BaseController
             ->first();
 
         if ($detalleOdc) {
-            $guard = new InventoryGuard($user->empresa_id, $user->sucursal_id, $user->id);
+            $guard = new InventoryGuard($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $user->id);
             $check = $guard->canReceive($detalleOdc->id, $cantidad);
             if (!$check['ok']) {
                 return $this->json($response, [
@@ -388,7 +388,7 @@ class RecepcionController extends BaseController
             }
         }
 
-        $recepcion = Recepcion::where('empresa_id', $user->empresa_id)
+        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('odc_id', $odc->id)
             ->where('auxiliar_id', $user->id)
@@ -397,7 +397,7 @@ class RecepcionController extends BaseController
 
         if (!$recepcion) {
             $recepcion = new Recepcion();
-            $recepcion->empresa_id = $user->empresa_id;
+            $recepcion->empresa_id = $this->getEffectiveEmpresaId($user, $request);
             $recepcion->sucursal_id = $user->sucursal_id;
             $recepcion->odc_id = $odc->id;
             $recepcion->numero_recepcion = Recepcion::generarNumero($user->sucursal_id);
@@ -432,7 +432,7 @@ class RecepcionController extends BaseController
         $detalle->novedad_motivo = $data['novedad_motivo'] ?? null;
 
         // Validar mandatorio R09
-        $guard = new InventoryGuard($user->empresa_id, $user->sucursal_id, $user->id);
+        $guard = new InventoryGuard($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $user->id);
         $checkDate = $guard->checkExpirationMandatory($producto->id, $detalle->fecha_vencimiento);
         if (!$checkDate['ok']) {
             return $this->json($response, ['error' => true, 'message' => $checkDate['message']], 422);
@@ -472,7 +472,7 @@ class RecepcionController extends BaseController
 
             // 1. Registrar Movimiento de Entrada
             \App\Models\MovimientoInventario::create([
-                'empresa_id'  => $user->empresa_id,
+                'empresa_id'  => $this->getEffectiveEmpresaId($user, $request),
                 'sucursal_id' => $user->sucursal_id,
                 'producto_id' => $producto->id,
                 'tipo_movimiento' => 'Entrada',
@@ -488,7 +488,7 @@ class RecepcionController extends BaseController
 
             // 2. Afectar Tabla de Inventarios (Disponible en Patio)
             $inv = \App\Models\Inventario::firstOrNew([
-                'empresa_id'   => $user->empresa_id,
+                'empresa_id'   => $this->getEffectiveEmpresaId($user, $request),
                 'sucursal_id'  => $user->sucursal_id,
                 'producto_id'  => $producto->id,
                 'ubicacion_id' => $ubicacionDestinoId,
@@ -582,23 +582,23 @@ class RecepcionController extends BaseController
             // 1. EAN exacto
             $eanRec = \App\Models\ProductoEan::where('codigo_ean', $code)->first();
             if ($eanRec) {
-                $prod = Producto::where('empresa_id', $user->empresa_id)->find($eanRec->producto_id);
+                $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($eanRec->producto_id);
             }
             // 2. código_interno exacto
             if (!$prod) {
-                $prod = Producto::where('empresa_id', $user->empresa_id)
+                $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                     ->where('codigo_interno', $code)->first();
             }
             // 3. EAN sufijo (últimos 10 chars)
             if (!$prod && strlen($code) > 6) {
                 $eanRec = \App\Models\ProductoEan::where('codigo_ean', 'like', '%' . substr($code, -10))->first();
                 if ($eanRec) {
-                    $prod = Producto::where('empresa_id', $user->empresa_id)->find($eanRec->producto_id);
+                    $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($eanRec->producto_id);
                 }
             }
             // 4. Búsqueda por nombre si no era un código (fallback texto libre)
             if (!$prod) {
-                $prod = Producto::where('empresa_id', $user->empresa_id)
+                $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                     ->where(function($q) use ($code) {
                         $q->where('nombre', 'like', "%{$code}%")
                           ->orWhere('codigo_interno', 'like', "%{$code}%");
@@ -686,7 +686,7 @@ class RecepcionController extends BaseController
             return $this->json($response, ['error' => true, 'message' => 'Campos requeridos: producto_id, cantidad'], 400);
         }
 
-        $producto = Producto::where('empresa_id', $user->empresa_id)->find((int)$data['producto_id']);
+        $producto = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find((int)$data['producto_id']);
         if (!$producto) {
             return $this->json($response, ['error' => true, 'message' => 'Producto inválido'], 404);
         }
@@ -701,7 +701,7 @@ class RecepcionController extends BaseController
 
         // Validar fecha de vencimiento (si el producto la requiere)
         $fechaVenc = $this->estandarizarFecha($data['fecha_vencimiento'] ?? null);
-        $guard = new InventoryGuard($user->empresa_id, $user->sucursal_id, $user->id);
+        $guard = new InventoryGuard($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $user->id);
         $checkDate = $guard->checkExpirationMandatory($producto->id, $fechaVenc);
         if (!$checkDate['ok']) {
             return $this->json($response, ['error' => true, 'message' => $checkDate['message']], 422);
@@ -709,7 +709,7 @@ class RecepcionController extends BaseController
 
         // Buscar o crear Recepción sin ODC del día en Borrador para este auxiliar
         $hoy = date('Y-m-d');
-        $recepcion = Recepcion::where('empresa_id', $user->empresa_id)
+        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereNull('odc_id')
             ->where('auxiliar_id', $user->id)
@@ -719,7 +719,7 @@ class RecepcionController extends BaseController
 
         if (!$recepcion) {
             $recepcion = new Recepcion();
-            $recepcion->empresa_id       = $user->empresa_id;
+            $recepcion->empresa_id       = $this->getEffectiveEmpresaId($user, $request);
             $recepcion->sucursal_id      = $user->sucursal_id;
             $recepcion->odc_id           = null;
             $recepcion->numero_recepcion = Recepcion::generarNumero($user->sucursal_id);
@@ -768,7 +768,7 @@ class RecepcionController extends BaseController
             \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
 
             \App\Models\MovimientoInventario::create([
-                'empresa_id'           => $user->empresa_id,
+                'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
                 'sucursal_id'          => $user->sucursal_id,
                 'producto_id'          => $producto->id,
                 'tipo_movimiento'      => 'Entrada',
@@ -783,7 +783,7 @@ class RecepcionController extends BaseController
             ]);
 
             $inv = \App\Models\Inventario::firstOrNew([
-                'empresa_id'    => $user->empresa_id,
+                'empresa_id'    => $this->getEffectiveEmpresaId($user, $request),
                 'sucursal_id'   => $user->sucursal_id,
                 'producto_id'   => $producto->id,
                 'ubicacion_id'  => $ubicacionDestinoId,
@@ -826,7 +826,7 @@ class RecepcionController extends BaseController
         $detalleId   = (int)($a['detalleId'] ?? 0);
         $body        = (array)($r->getParsedBody() ?? []);
 
-        $recepcion = Recepcion::where('empresa_id', $user->empresa_id)
+        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereNull('odc_id')
             ->where('estado', 'Borrador')
@@ -860,7 +860,7 @@ class RecepcionController extends BaseController
             if (abs($delta) > 0.001) {
                 $loteKey = $detalle->lote ?? 'N/A';
 
-                $inv = \App\Models\Inventario::where('empresa_id', $user->empresa_id)
+                $inv = \App\Models\Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                     ->where('sucursal_id', $user->sucursal_id)
                     ->where('producto_id', $detalle->producto_id)
                     ->where('ubicacion_id', $detalle->ubicacion_destino_id)
@@ -874,7 +874,7 @@ class RecepcionController extends BaseController
                     $inv->save();
                 } elseif ($delta > 0) {
                     $inv = new \App\Models\Inventario([
-                        'empresa_id'         => $user->empresa_id,
+                        'empresa_id'         => $this->getEffectiveEmpresaId($user, $request),
                         'sucursal_id'        => $user->sucursal_id,
                         'producto_id'        => $detalle->producto_id,
                         'ubicacion_id'       => $detalle->ubicacion_destino_id,
@@ -888,7 +888,7 @@ class RecepcionController extends BaseController
                 }
 
                 \App\Models\MovimientoInventario::create([
-                    'empresa_id'           => $user->empresa_id,
+                    'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
                     'sucursal_id'          => $user->sucursal_id,
                     'producto_id'          => $detalle->producto_id,
                     'tipo_movimiento'      => $delta >= 0 ? 'AjustePositivo' : 'AjusteNegativo',
@@ -929,7 +929,7 @@ class RecepcionController extends BaseController
         $recepcionId = (int)($a['id']        ?? 0);
         $detalleId   = (int)($a['detalleId'] ?? 0);
 
-        $recepcion = Recepcion::where('empresa_id', $user->empresa_id)
+        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereNull('odc_id')
             ->where('estado', 'Borrador')
@@ -954,7 +954,7 @@ class RecepcionController extends BaseController
             $loteKey = $detalle->lote ?? 'N/A';
 
             // Revertir inventario
-            $inv = \App\Models\Inventario::where('empresa_id', $user->empresa_id)
+            $inv = \App\Models\Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('producto_id', $detalle->producto_id)
                 ->where('ubicacion_id', $detalle->ubicacion_destino_id)
@@ -975,7 +975,7 @@ class RecepcionController extends BaseController
 
             // Log de reversa
             \App\Models\MovimientoInventario::create([
-                'empresa_id'           => $user->empresa_id,
+                'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
                 'sucursal_id'          => $user->sucursal_id,
                 'producto_id'          => $detalle->producto_id,
                 'tipo_movimiento'      => 'AjusteNegativo',
@@ -1139,7 +1139,7 @@ class RecepcionController extends BaseController
 
         // Verificar que pertenece a la misma empresa
         $recepcion = $detalle->recepcion;
-        if (!$recepcion || $recepcion->empresa_id != $user->empresa_id) {
+        if (!$recepcion || $recepcion->empresa_id != $this->getEffectiveEmpresaId($user, $request)) {
             return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
         }
 
@@ -1240,7 +1240,7 @@ class RecepcionController extends BaseController
 
         // Verificar que el pallet pertenece a la empresa del usuario
         $recepcion = \App\Models\Recepcion::find($det->recepcion_id);
-        if (!$recepcion || $recepcion->empresa_id != $user->empresa_id) {
+        if (!$recepcion || $recepcion->empresa_id != $this->getEffectiveEmpresaId($user, $request)) {
             return $this->json($response, ['error' => true, 'message' => 'No autorizado'], 403);
         }
 
@@ -1318,7 +1318,7 @@ class RecepcionController extends BaseController
 
         // Verificar empresa
         $recepcion = \App\Models\Recepcion::find($det->recepcion_id);
-        if (!$recepcion || $recepcion->empresa_id != $user->empresa_id) {
+        if (!$recepcion || $recepcion->empresa_id != $this->getEffectiveEmpresaId($user, $request)) {
             return $this->json($response, ['error' => true, 'message' => 'No autorizado'], 403);
         }
 
@@ -1397,25 +1397,25 @@ class RecepcionController extends BaseController
         $user = $r->getAttribute('user');
         $hoy  = date('Y-m-d');
 
-        $recHoy = Recepcion::where('empresa_id', $user->empresa_id)
+        $recHoy = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereDate('created_at', $hoy)
             ->count();
 
-        $pendientes = Recepcion::where('empresa_id', $user->empresa_id)
+        $pendientes = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('estado', ['Borrador', 'EnProceso'])
             ->count();
 
         $citasHoy = Capsule::table('citas')
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereDate('fecha_cita', $hoy)
             ->count();
 
         $palletsPatio = Capsule::table('lotes')
             ->join('ubicaciones', 'ubicaciones.id', '=', 'lotes.ubicacion_id')
-            ->where('lotes.empresa_id', $user->empresa_id)
+            ->where('lotes.empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('lotes.sucursal_id', $user->sucursal_id)
             ->where('ubicaciones.tipo_ubicacion', 'patio')
             ->where('lotes.cantidad_actual', '>', 0)
@@ -1437,7 +1437,7 @@ class RecepcionController extends BaseController
         $user = $r->getAttribute('user');
 
         // 1. Recepciones activas (Borrador o EnProceso)
-        $activasQuery = Recepcion::where('empresa_id', $user->empresa_id)
+        $activasQuery = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('estado', ['Borrador', 'EnProceso'])
             ->with(['auxiliar:id,nombre', 'cita'])
@@ -1533,7 +1533,7 @@ class RecepcionController extends BaseController
                     $q->select(Capsule::raw(1))
                       ->from('recepciones as r')
                       ->whereColumn('r.id', 'rd.recepcion_id')
-                      ->where('r.empresa_id', $user->empresa_id)
+                      ->where('r.empresa_id', $this->getEffectiveEmpresaId($user, $request))
                       ->where('r.sucursal_id', $user->sucursal_id);
                 })
                 ->groupBy('cat.id', 'cat.nombre')
@@ -1578,7 +1578,7 @@ class RecepcionController extends BaseController
                 ],
                 'pwa_stats'      => [
                     'recepciones_hoy' => $totalCerradasHoy->count(),
-                    'odc_pendientes'  => OrdenCompra::where('empresa_id', $user->empresa_id)->whereIn('estado', ['Confirmada', 'En Proceso'])->count(),
+                    'odc_pendientes'  => OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->whereIn('estado', ['Confirmada', 'En Proceso'])->count(),
                     'total_horas'     => $totalHorasEjecutadas . "h",
                     'total_lineas'    => $lineasTotales,
                     'promedio_tiempo' => $lineasTotales > 0 ? round(($totalHorasEjecutadas * 60) / $lineasTotales, 1) . "m" : "0m",
@@ -1598,7 +1598,7 @@ class RecepcionController extends BaseController
         $user = $request->getAttribute('user');
         $recepcionId = $args['id'] ?? null;
 
-        $recepcion = Recepcion::where('empresa_id', $user->empresa_id)
+        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->with(['auxiliar:id,nombre', 'cita', 'detalles'])
             ->find($recepcionId);
@@ -1674,7 +1674,7 @@ class RecepcionController extends BaseController
         $user = $request->getAttribute('user');
         $odcId = $args['id'] ?? null;
 
-        $odc = OrdenCompra::where('empresa_id', $user->empresa_id)
+        $odc = OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->with('detalles')
             ->find($odcId);
 
@@ -1754,7 +1754,7 @@ public function getControlPanelData(Request $request, Response $response): Respo
         $categoriaId = $params['categoria_id'] ?? null;
 
         try {
-            $query = OrdenCompra::where('ordenes_compra.empresa_id', $user->empresa_id)
+            $query = OrdenCompra::where('ordenes_compra.empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->whereIn('ordenes_compra.estado', ['En Proceso', 'Confirmada']);
 
             if ($odcId) {
@@ -1790,7 +1790,7 @@ public function getControlPanelData(Request $request, Response $response): Respo
             $hoy = Carbon::now();
             $fechaLimite = Carbon::now()->addDays(60);
 
-            $inventarios = Inventario::where('empresa_id', $user->empresa_id)
+            $inventarios = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->whereNotNull('fecha_vencimiento')
                 ->whereBetween('fecha_vencimiento', [$hoy->format('Y-m-d'), $fechaLimite->format('Y-m-d')])
@@ -1817,9 +1817,9 @@ public function getControlPanelData(Request $request, Response $response): Respo
             });
 
             $kpis['proximos_vencer'] = $proximosVencer->count();
-            $ranking = $this->getAuxiliarRanking($user->empresa_id, $user->sucursal_id, $params);
+            $ranking = $this->getAuxiliarRanking($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $params);
 
-            $filters = $this->getAvailableFilters($user->empresa_id, $user->sucursal_id);
+            $filters = $this->getAvailableFilters($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id);
 
             return $this->ok($response, [
                 'odcs' => $odcs,
@@ -1957,7 +1957,7 @@ public function getControlPanelData(Request $request, Response $response): Respo
 
         $linea = OrdenCompraDetalle::with('ordenCompra')->find($lineaId);
 
-        if (!$linea || $linea->ordenCompra->empresa_id !== $user->empresa_id) {
+        if (!$linea || $linea->ordenCompra->empresa_id !== $this->getEffectiveEmpresaId($user, $request)) {
             return $this->error($response, 'Línea de ODC no encontrada o no autorizada.', 404);
         }
 
@@ -2027,7 +2027,7 @@ public function getControlPanelData(Request $request, Response $response): Respo
         $data = $request->getParsedBody();
 
         $odc = OrdenCompra::find($odcId);
-        if (!$odc || $odc->empresa_id !== $user->empresa_id) {
+        if (!$odc || $odc->empresa_id !== $this->getEffectiveEmpresaId($user, $request)) {
             return $this->error($response, 'ODC no encontrada.', 404);
         }
         if ($odc->estado !== 'En Proceso') {
@@ -2056,7 +2056,7 @@ public function getControlPanelData(Request $request, Response $response): Respo
         $data = $request->getParsedBody();
 
         $linea = OrdenCompraDetalle::with('ordenCompra')->find($lineaId);
-        if (!$linea || $linea->ordenCompra->empresa_id !== $user->empresa_id) {
+        if (!$linea || $linea->ordenCompra->empresa_id !== $this->getEffectiveEmpresaId($user, $request)) {
             return $this->error($response, 'Línea no encontrada.', 404);
         }
 
@@ -2078,7 +2078,7 @@ public function getControlPanelData(Request $request, Response $response): Respo
         $lineaId = $args['id'];
 
         $linea = OrdenCompraDetalle::with('ordenCompra')->find($lineaId);
-        if (!$linea || $linea->ordenCompra->empresa_id !== $user->empresa_id) {
+        if (!$linea || $linea->ordenCompra->empresa_id !== $this->getEffectiveEmpresaId($user, $request)) {
             return $this->error($response, 'Línea no encontrada.', 404);
         }
 

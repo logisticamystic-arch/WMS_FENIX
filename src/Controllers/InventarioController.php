@@ -358,7 +358,7 @@ class InventarioController extends BaseController
 
         try {
             Capsule::transaction(function () use ($data, $user) {
-                $inv = Inventario::where('empresa_id',   $user->empresa_id)
+                $inv = Inventario::where('empresa_id',   $this->getEffectiveEmpresaId($user, $request))
                     ->where('sucursal_id',  $user->sucursal_id)
                     ->where('producto_id',  $data['producto_id'])
                     ->where('ubicacion_id', $data['ubicacion_id'])
@@ -371,7 +371,7 @@ class InventarioController extends BaseController
                 
                 // Validación R09 para ajustes positivos o creación
                 if ($data['cantidad_nueva'] > 0) {
-                    $guard = new InventoryGuard($user->empresa_id, $user->sucursal_id, $user->id);
+                    $guard = new InventoryGuard($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $user->id);
                     $checkDate = $guard->checkExpirationMandatory($data['producto_id'], $fvencParsed);
                     if (!$checkDate['ok']) {
                         throw new \Exception($checkDate['message']);
@@ -385,7 +385,7 @@ class InventarioController extends BaseController
                 if (!$inv) {
                     if ($cantidadNueva > 0) {
                         Inventario::create([
-                            'empresa_id'       => $user->empresa_id,
+                            'empresa_id'       => $this->getEffectiveEmpresaId($user, $request),
                             'sucursal_id'      => $user->sucursal_id,
                             'producto_id'      => $data['producto_id'],
                             'ubicacion_id'     => $data['ubicacion_id'],
@@ -436,7 +436,7 @@ class InventarioController extends BaseController
             $params = $req->getQueryParams();
             [$ini, $fin] = $this->getDateRange($params);
 
-            $q = MovimientoInventario::where('movimiento_inventarios.empresa_id', $user->empresa_id)
+            $q = MovimientoInventario::where('movimiento_inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('movimiento_inventarios.sucursal_id', $user->sucursal_id)
                 ->join('productos', 'movimiento_inventarios.producto_id', '=', 'productos.id')
                 ->leftJoin('personal', 'movimiento_inventarios.auxiliar_id', '=', 'personal.id')
@@ -538,7 +538,7 @@ class InventarioController extends BaseController
                 $tipoInterno = $tipoMap[$tipoInput] ?? 'Ciclico';
 
                 $conteo = ConteoInventario::create([
-                    'empresa_id'      => $user->empresa_id,
+                    'empresa_id'      => $this->getEffectiveEmpresaId($user, $request),
                     'sucursal_id'     => $user->sucursal_id,
                     'analista_id'     => $user->id,
                     'tipo_conteo'     => in_array($tipoInput, ['General', 'PorUbicacion', 'PorReferencia']) ? $tipoInput : 'General',
@@ -559,7 +559,7 @@ class InventarioController extends BaseController
                     // Enviar notificaciones a los auxiliares
                     foreach ($data['auxiliares_ids'] as $auxId) {
                         \App\Models\Notificacion::create([
-                            'empresa_id' => $user->empresa_id,
+                            'empresa_id' => $this->getEffectiveEmpresaId($user, $request),
                             'sucursal_id' => $user->sucursal_id,
                             'personal_id' => $auxId,
                             'emisor_id' => $user->id,
@@ -577,7 +577,7 @@ class InventarioController extends BaseController
                 // 3. Pre-poblar líneas si es General o Wall-to-Wall (Opcional, para conteo guiado)
                 // Si el usuario envió filtros específicos (pasillo, etc)
                 if ($tipoInterno === 'General' || !empty($data['filtro_pasillo']) || !empty($data['filtro_ubicaciones'])) {
-                    $q = Inventario::where('empresa_id', $user->empresa_id)
+                    $q = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                         ->where('sucursal_id', $user->sucursal_id)
                         ->where('estado', 'Disponible');
                     
@@ -618,7 +618,7 @@ class InventarioController extends BaseController
     {
         $user   = $req->getAttribute('user');
         $data   = $req->getParsedBody() ?? [];
-        $conteo = ConteoInventario::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $conteo = ConteoInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
 
         if (!$conteo) return $this->notFound($res);
         if ($conteo->estado !== 'EnConteo') {
@@ -637,7 +637,7 @@ class InventarioController extends BaseController
         if (!empty($data['ubicacion_id']) && is_numeric($data['ubicacion_id'])) {
             $ubicacionId = (int)$data['ubicacion_id'];
         } elseif (!empty($data['ubicacion_codigo'])) {
-            $ubic = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id)
+            $ubic = \App\Models\Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('codigo', trim($data['ubicacion_codigo']))
                 ->first();
@@ -651,7 +651,7 @@ class InventarioController extends BaseController
 
         // Snapshot de sistema si no existe previo
         $cantSistema = (float)Inventario::where([
-            'empresa_id'  => $user->empresa_id,
+            'empresa_id'  => $this->getEffectiveEmpresaId($user, $request),
             'sucursal_id' => $user->sucursal_id,
             'producto_id' => $productoId,
             'ubicacion_id'=> $ubicacionId,
@@ -707,7 +707,7 @@ class InventarioController extends BaseController
         $user = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $conteo = ConteoInventario::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $conteo = ConteoInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$conteo) return $this->notFound($res);
 
         try {
@@ -776,7 +776,7 @@ class InventarioController extends BaseController
     {
         $user = $req->getAttribute('user');
         try {
-            $q = ConteoInventario::where('empresa_id', $user->empresa_id)
+            $q = ConteoInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->with(['analista', 'auxiliares']);
             
@@ -818,7 +818,7 @@ class InventarioController extends BaseController
     {
         $user = $req->getAttribute('user');
         try {
-            $niveles = NivelReposicion::where('empresa_id', $user->empresa_id)
+            $niveles = NivelReposicion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->with(['producto', 'ubicacion'])
                 ->get();
@@ -835,7 +835,7 @@ class InventarioController extends BaseController
     public function getDashboard(Request $req, Response $res): Response
     {
         $user = $req->getAttribute('user');
-        $eId  = $user->empresa_id;
+        $eId  = $this->getEffectiveEmpresaId($user, $request);
         $sId  = $user->sucursal_id;
 
         $data = [
@@ -862,7 +862,7 @@ class InventarioController extends BaseController
     public function getDashboardData(Request $req, Response $res, array $a): Response
     {
         $user   = $req->getAttribute('user');
-        $conteo = ConteoInventario::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $conteo = ConteoInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$conteo) return $this->notFound($res);
 
         try {
@@ -914,7 +914,7 @@ class InventarioController extends BaseController
         $user = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $conteo = ConteoInventario::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $conteo = ConteoInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$conteo) return $this->notFound($res);
         if ($conteo->estado !== 'EnConteo') {
             return $this->error($res, 'El conteo no está activo');
@@ -934,7 +934,7 @@ class InventarioController extends BaseController
                     $tipo = $diferencia > 0 ? 'AjustePositivo' : 'AjusteNegativo';
 
                     // Actualizar inventario
-                    $inv = Inventario::where('empresa_id',   $user->empresa_id)
+                    $inv = Inventario::where('empresa_id',   $this->getEffectiveEmpresaId($user, $request))
                         ->where('sucursal_id',  $user->sucursal_id)
                         ->where('producto_id',  $det->producto_id)
                         ->where('ubicacion_id', $det->ubicacion_id)
@@ -949,7 +949,7 @@ class InventarioController extends BaseController
                         else $inv->save();
                     } elseif ($det->cantidad_fisica > 0) {
                         Inventario::create([
-                            'empresa_id'   => $user->empresa_id,
+                            'empresa_id'   => $this->getEffectiveEmpresaId($user, $request),
                             'sucursal_id'  => $user->sucursal_id,
                             'producto_id'  => $det->producto_id,
                             'ubicacion_id' => $det->ubicacion_id,
@@ -960,7 +960,7 @@ class InventarioController extends BaseController
                     }
 
                     MovimientoInventario::create([
-                        'empresa_id'           => $user->empresa_id,
+                        'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
                         'sucursal_id'          => $user->sucursal_id,
                         'producto_id'          => $det->producto_id,
                         'tipo_movimiento'      => $tipo,
@@ -997,7 +997,7 @@ class InventarioController extends BaseController
         $user = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $conteo = ConteoInventario::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $conteo = ConteoInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$conteo) return $this->notFound($res);
 
         $data = $req->getParsedBody() ?? [];
@@ -1013,7 +1013,7 @@ class InventarioController extends BaseController
             // Notify added auxiliaries
             foreach ($ids as $auxId) {
                 \App\Models\Notificacion::firstOrCreate(
-                    ['empresa_id' => $user->empresa_id, 'personal_id' => $auxId,
+                    ['empresa_id' => $this->getEffectiveEmpresaId($user, $request), 'personal_id' => $auxId,
                      'referencia_tipo' => 'Conteo', 'referencia_id' => $conteo->id],
                     [
                         'emisor_id' => $user->id,
@@ -1047,7 +1047,7 @@ class InventarioController extends BaseController
         try {
             $nivel = NivelReposicion::updateOrCreate(
                 [
-                    'empresa_id'   => $user->empresa_id,
+                    'empresa_id'   => $this->getEffectiveEmpresaId($user, $request),
                     'sucursal_id'  => $user->sucursal_id,
                     'producto_id'  => $data['producto_id'],
                     'ubicacion_id' => $data['ubicacion_id'],
@@ -1081,7 +1081,7 @@ class InventarioController extends BaseController
     public function getEventos(Request $r, Response $res): Response
     {
         $user = $r->getAttribute('user');
-        $eventos = InvGeneralEvento::where('empresa_id', $user->empresa_id)
+        $eventos = InvGeneralEvento::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->orderBy('id', 'desc')
             ->get();
@@ -1104,7 +1104,7 @@ class InventarioController extends BaseController
         }
 
         $e = new InvGeneralEvento();
-        $e->empresa_id = $user->empresa_id;
+        $e->empresa_id = $this->getEffectiveEmpresaId($user, $request);
         $e->sucursal_id = $user->sucursal_id;
         $e->nombre = $data['nombre'];
         $e->tipo = $data['tipo'] ?? 'Comparacion';
@@ -1140,7 +1140,7 @@ class InventarioController extends BaseController
 
         // Optional: Trigger push notification task using NotificacionModel
         \App\Models\Notificacion::create([
-            'empresa_id' => $user->empresa_id,
+            'empresa_id' => $this->getEffectiveEmpresaId($user, $request),
             'sucursal_id' => $user->sucursal_id,
             'emisor_id' => $user->id,
             'personal_id' => $data['personal_id'],
@@ -1196,7 +1196,7 @@ class InventarioController extends BaseController
             $c->save();
 
             // Sincronizar con Mesa de Control (Diferencias)
-            $this->sincronizarMesaDiferencia($eventoId, $ubicacionId, $productoId, $lote, $vencimiento, $cantidad, $ciclo, $user->empresa_id);
+            $this->sincronizarMesaDiferencia($eventoId, $ubicacionId, $productoId, $lote, $vencimiento, $cantidad, $ciclo, $this->getEffectiveEmpresaId($user, $request));
 
             return $this->ok($res, $c, 'Conteo registrado con éxito');
 
@@ -1266,7 +1266,7 @@ class InventarioController extends BaseController
     public function getActaHtml(Request $r, Response $res, array $args): Response
     {
         $user = $r->getAttribute('user');
-        $evento = InvGeneralEvento::where('empresa_id', $user->empresa_id)
+        $evento = InvGeneralEvento::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('id', $args['id'])
             ->first();
 
@@ -1275,7 +1275,7 @@ class InventarioController extends BaseController
             return $res->withStatus(404)->withHeader('Content-Type', 'text/html');
         }
 
-        $empresa = Empresa::find($user->empresa_id);
+        $empresa = Empresa::find($this->getEffectiveEmpresaId($user, $request));
         
         // Obtener SOLO las diferencias donde cantidad_sistema != cantidad_final_aprobada 
         // y estado = Aprobada (o sea, ya se definió cuál es la cifra final física).

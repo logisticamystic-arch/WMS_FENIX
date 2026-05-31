@@ -126,7 +126,7 @@ class DashboardController extends BaseController
         $hoyStr = \Carbon\Carbon::now()->format('Y-m-d');
         $en60DiasStr = \Carbon\Carbon::now()->addDays(60)->format('Y-m-d');
 
-        $inventariosVenc = Inventario::where('empresa_id', $user->empresa_id)
+        $inventariosVenc = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $sucursal)
             ->whereNotNull('fecha_vencimiento')
             ->whereBetween('fecha_vencimiento', [$hoyStr, $en60DiasStr])
@@ -220,7 +220,7 @@ class DashboardController extends BaseController
             $hoy      = date('Y-m-d');
 
             // KPIs básicos
-            $productos   = Producto::where('empresa_id', $user->empresa_id)->where('activo', 1)->count();
+            $productos   = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->where('activo', 1)->count();
             $recepciones = Recepcion::where('sucursal_id', $sucursal)->whereDate('created_at', $hoy)->count();
             $pickings    = OrdenPicking::where('sucursal_id', $sucursal)->whereDate('created_at', $hoy)->count();
             $ubicaciones = Ubicacion::where('sucursal_id', $sucursal)->where('activo', 1)->count();
@@ -250,7 +250,7 @@ class DashboardController extends BaseController
             // Solo contamos productos que han sido ingresados al WMS (existen en la tabla inventarios)
             $prodStats = DB::table('productos as p')
                 ->join('inventarios as i', 'p.id', '=', 'i.producto_id')
-                ->where('p.empresa_id', $user->empresa_id)
+                ->where('p.empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('p.activo', 1)
                 ->where('i.sucursal_id', $sucursal)
                 ->select('p.id', 'p.stock_minimo', DB::raw("SUM(i.cantidad) as total_qty"))

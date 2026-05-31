@@ -283,7 +283,7 @@ class InboundController extends BaseController
         $user = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $odc = OrdenCompra::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $odc = OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$odc) return $this->notFound($res);
 
         $data = $req->getParsedBody() ?? [];
@@ -329,7 +329,7 @@ class InboundController extends BaseController
     public function iniciarReciboODC(Request $req, Response $res, array $a): Response
     {
         $user = $req->getAttribute('user');
-        $odc  = OrdenCompra::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $odc  = OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$odc) return $this->notFound($res);
         if ($odc->estado === 'Confirmada') {
             $odc->update(['estado' => 'En Proceso']);
@@ -357,7 +357,7 @@ class InboundController extends BaseController
 
         $detId = $a['id'];
         $detalle = OrdenCompraDetalle::with('ordenCompra')->find($detId);
-        if (!$detalle || $detalle->ordenCompra->empresa_id !== $user->empresa_id) return $this->notFound($res);
+        if (!$detalle || $detalle->ordenCompra->empresa_id !== $this->getEffectiveEmpresaId($user, $request)) return $this->notFound($res);
 
         wmsLog('INFO', "Iniciando aprobacion de linea ODC", [
             'odc_id'      => $detalle->orden_compra_id,
@@ -389,7 +389,7 @@ class InboundController extends BaseController
                     // Mover stock de "En Patio" a "Disponible"
                     // Usamos Query Builder para ser explicitos con los estados
                     $affected = Capsule::table('inventarios')
-                        ->where('empresa_id',  $user->empresa_id)
+                        ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
                         ->where('sucursal_id', $user->sucursal_id)
                         ->where('producto_id', $dr->producto_id)
                         ->where('ubicacion_id', $dr->ubicacion_destino_id)
@@ -421,7 +421,7 @@ class InboundController extends BaseController
         $user = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $odc = OrdenCompra::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $odc = OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$odc) return $this->notFound($res);
 
         wmsLog('INFO', "Iniciando aprobacion TOTAL de ODC", [
@@ -441,7 +441,7 @@ class InboundController extends BaseController
 
                 $prodIds = OrdenCompraDetalle::where('orden_compra_id', $odc->id)->pluck('producto_id');
                 $affected = Capsule::table('inventarios')
-                    ->where('empresa_id', $user->empresa_id)
+                    ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                     ->where('sucursal_id', $user->sucursal_id)
                     ->whereIn('producto_id', $prodIds)
                     ->where('estado', 'En Patio')
@@ -463,7 +463,7 @@ class InboundController extends BaseController
     public function cerrarOrdenCompra(Request $req, Response $res, array $a): Response
     {
         $user = $req->getAttribute('user');
-        $odc = OrdenCompra::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $odc = OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$odc) {
             return $this->notFound($res);
         }
@@ -502,7 +502,7 @@ class InboundController extends BaseController
             'detalles.producto',
             'recepciones.detalles.producto',
             'recepciones.auxiliar',
-        ])->where('empresa_id', $user->empresa_id)->find($a['id']);
+        ])->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
 
         if (!$odc) return $this->notFound($res);
 
@@ -607,7 +607,7 @@ class InboundController extends BaseController
     public function exportarODC(Request $req, Response $res, array $a): Response
     {
         $user = $req->getAttribute('user');
-        $odc  = OrdenCompra::where('empresa_id', $user->empresa_id)
+        $odc  = OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->with(['proveedor', 'detalles.producto'])
             ->find($a['id']);
 
@@ -669,12 +669,12 @@ class InboundController extends BaseController
                     $fila0 = $filas[0];
                     $proveedor = null;
                     if (!empty($fila0['proveedor_nit'])) {
-                        $proveedor = Proveedor::where('empresa_id', $user->empresa_id)
+                        $proveedor = Proveedor::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                             ->where('nit', $fila0['proveedor_nit'])->first();
                     }
 
                     $odc = OrdenCompra::create([
-                        'empresa_id'     => $user->empresa_id,
+                        'empresa_id'     => $this->getEffectiveEmpresaId($user, $request),
                         'sucursal_id'    => $user->sucursal_id,
                         'numero_odc'     => $numOdc,
                         'proveedor_id'   => $proveedor?->id,
@@ -685,7 +685,7 @@ class InboundController extends BaseController
                     ]);
 
                     foreach ($filas as $fila) {
-                        $prod = Producto::where('empresa_id', $user->empresa_id)
+                        $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                             ->where('codigo_interno', $fila['producto_codigo'] ?? '')->first();
                         if (!$prod) continue;
 
@@ -718,7 +718,7 @@ class InboundController extends BaseController
             return $this->ok($res, []);
         }
 
-        $productos = Producto::where('empresa_id', $user->empresa_id)
+        $productos = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('activo', 1)
             ->where(function ($query) use ($q) {
                 $query->where('codigo_interno', 'LIKE', "%{$q}%")
@@ -739,7 +739,7 @@ class InboundController extends BaseController
             return $this->forbidden($res, 'Se requiere rol Supervisor o Administrador para reabrir una ODC');
         }
 
-        $odc = OrdenCompra::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $odc = OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$odc) return $this->notFound($res);
 
         if ($odc->estado !== 'Cerrada') {

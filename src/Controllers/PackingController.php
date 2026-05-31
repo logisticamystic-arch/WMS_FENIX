@@ -27,7 +27,7 @@ class PackingController extends BaseController
             return $this->error($res, 'tipo_empaque inválido. Valores: canasta, caja, paquete');
         }
 
-        $existing = PackingSesion::where('empresa_id', $user->empresa_id)
+        $existing = PackingSesion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('sucursal_entrega', $data['sucursal_entrega'])
             ->where('estado', 'EnProceso')
@@ -38,7 +38,7 @@ class PackingController extends BaseController
 
         return Capsule::transaction(function () use ($user, $data, $res) {
             $sesion = PackingSesion::create([
-                'empresa_id'           => $user->empresa_id,
+                'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
                 'sucursal_id'          => $user->sucursal_id,
                 'sucursal_entrega'     => $data['sucursal_entrega'],
                 'tipo_empaque'         => $data['tipo_empaque'],
@@ -65,7 +65,7 @@ class PackingController extends BaseController
     public function getSesion(Request $r, Response $res, array $a): Response
     {
         $user   = $r->getAttribute('user');
-        $sesion = PackingSesion::where('empresa_id', $user->empresa_id)
+        $sesion = PackingSesion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->find((int)$a['id']);
         if (!$sesion) return $this->notFound($res);
@@ -107,7 +107,7 @@ class PackingController extends BaseController
         $unidadAbierta = $allUnidades->firstWhere('estado', 'Abierta');
 
         $pickeados = $this->_getProductosPickados(
-            $user->empresa_id, $user->sucursal_id, $sesion->sucursal_entrega
+            $this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $sesion->sucursal_entrega
         );
         $empacados = $this->_getProductosEmpacados($sesion->id);
 
@@ -155,7 +155,7 @@ class PackingController extends BaseController
 
         if ($deny = $this->requireFields($data, ['producto_id', 'cantidad'], $res)) return $deny;
 
-        $sesion = PackingSesion::where('empresa_id', $user->empresa_id)
+        $sesion = PackingSesion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->find((int)$a['id']);
         if (!$sesion) return $this->notFound($res);
@@ -169,7 +169,7 @@ class PackingController extends BaseController
         if ($cantidad <= 0) return $this->error($res, 'La cantidad debe ser mayor a 0');
 
         $pickeados = $this->_getProductosPickados(
-            $user->empresa_id, $user->sucursal_id, $sesion->sucursal_entrega
+            $this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $sesion->sucursal_entrega
         );
         if (!isset($pickeados[$productoId])) {
             return $this->error($res, 'El producto no pertenece a los pedidos de esta sucursal', 422);
@@ -183,12 +183,12 @@ class PackingController extends BaseController
         }
 
         [$lote, $fechaVenc, $separadorId, $detalleId] = $this->_resolveFromPicking(
-            $productoId, $sesion->sucursal_entrega, $user->empresa_id, $user->sucursal_id
+            $productoId, $sesion->sucursal_entrega, $this->getEffectiveEmpresaId($user, $request), $user->sucursal_id
         );
 
         // R10/R11 — Expiry check before adding item to packing
         if ($lote !== null) {
-            $expiryGuard = new ExpiryGuard($user->empresa_id, $user->sucursal_id);
+            $expiryGuard = new ExpiryGuard($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id);
             $expiryResult = $expiryGuard->check((int)$productoId, $lote, $user->id);
 
             if ($expiryResult->status === ExpiryResult::BLOCKED) {
@@ -233,7 +233,7 @@ class PackingController extends BaseController
         if ($unidad->estado !== 'Abierta') {
             return $this->error($res, 'Solo se pueden eliminar ítems de una unidad abierta', 422);
         }
-        $sesion = PackingSesion::where('empresa_id', $user->empresa_id)
+        $sesion = PackingSesion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->find($unidad->sesion_id);
         if (!$sesion) return $this->forbidden($res);
@@ -250,7 +250,7 @@ class PackingController extends BaseController
         if (!$unidad) return $this->notFound($res);
         if ($unidad->estado === 'Cerrada') return $this->error($res, 'La unidad ya está cerrada', 409);
 
-        $sesion = PackingSesion::where('empresa_id', $user->empresa_id)
+        $sesion = PackingSesion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->find($unidad->sesion_id);
         if (!$sesion) return $this->forbidden($res);
@@ -282,7 +282,7 @@ class PackingController extends BaseController
     public function finalizarSesion(Request $r, Response $res, array $a): Response
     {
         $user   = $r->getAttribute('user');
-        $sesion = PackingSesion::where('empresa_id', $user->empresa_id)
+        $sesion = PackingSesion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->find((int)$a['id']);
         if (!$sesion) return $this->notFound($res);
@@ -305,7 +305,7 @@ class PackingController extends BaseController
             }
 
             // Step 2: Re-validate pending items inside transaction (TOCTOU fix)
-            $pickeados = $this->_getProductosPickados($user->empresa_id, $user->sucursal_id, $sesion->sucursal_entrega);
+            $pickeados = $this->_getProductosPickados($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $sesion->sucursal_entrega);
             $empacados = $this->_getProductosEmpacados($sesion->id);
             $totalPend = 0.0;
             foreach ($pickeados as $pid => $pick) {
@@ -319,7 +319,7 @@ class PackingController extends BaseController
             $sesion->estado = 'Completada';
             $sesion->save();
 
-            $ordenes = OrdenPicking::where('empresa_id', $user->empresa_id)
+            $ordenes = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('sucursal_entrega', $sesion->sucursal_entrega)
                 ->where('estado', 'Completada')
@@ -365,7 +365,7 @@ class PackingController extends BaseController
     {
         $user   = $r->getAttribute('user');
         $data   = $r->getParsedBody() ?? [];
-        $sesion = PackingSesion::where('empresa_id', $user->empresa_id)
+        $sesion = PackingSesion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->find((int)$a['id']);
         if (!$sesion) return $this->notFound($res);
@@ -404,7 +404,7 @@ class PackingController extends BaseController
 
         $builder = Capsule::table('packing_sesiones as ps')
             ->leftJoinSub($counts, 'cnt', 'cnt.sesion_id', '=', 'ps.id')
-            ->where('ps.empresa_id', $user->empresa_id)
+            ->where('ps.empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('ps.sucursal_id', $user->sucursal_id)
             ->select(
                 'ps.*',

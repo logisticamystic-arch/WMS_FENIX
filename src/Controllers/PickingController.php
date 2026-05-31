@@ -41,7 +41,7 @@ class PickingController extends BaseController
         $fechaDesdeFilter = $params['fecha_desde'] ?? null;
         $fechaHastaFilter = $params['fecha_hasta'] ?? null;
 
-        $q = OrdenPicking::where('orden_pickings.empresa_id', $user->empresa_id)
+        $q = OrdenPicking::where('orden_pickings.empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('orden_pickings.sucursal_id', $user->sucursal_id)
             ->when($fechaDesdeFilter && $fechaHastaFilter, fn($q) =>
                 $q->whereDate('orden_pickings.fecha_movimiento', '>=', $fechaDesdeFilter)
@@ -164,7 +164,7 @@ class PickingController extends BaseController
     {
         $user = $r->getAttribute('user');
 
-        $ordenes = OrdenPicking::where('empresa_id', $user->empresa_id)
+        $ordenes = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('estado', ['Pendiente', 'EnProceso'])
             ->with(['detalles.producto', 'detalles.auxiliar:id,nombre', 'auxiliar:id,nombre'])
@@ -232,7 +232,7 @@ class PickingController extends BaseController
             return $this->error($res, 'Seleccione órdenes y proporcione un nombre de ruta');
         }
 
-        $updated = OrdenPicking::where('empresa_id', $user->empresa_id)
+        $updated = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->whereIn('id', $ordenIds)
             ->update(['area_comercial' => $ruta]);
 
@@ -262,7 +262,7 @@ class PickingController extends BaseController
         }
 
         $ordenes = OrdenPicking::whereIn('id', $ordenIds)
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->get();
 
         $resultados = [
@@ -304,7 +304,7 @@ class PickingController extends BaseController
                     $productoIds = $detalles->pluck('producto_id')->unique()->toArray();
 
                     // Pre-carga batch de inventario disponible con lock pesimista
-                    $stockDisponible = Inventario::where('empresa_id', $user->empresa_id)
+                    $stockDisponible = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                         ->where('sucursal_id', $user->sucursal_id)
                         ->whereIn('producto_id', $productoIds)
                         ->where('estado', 'Disponible')
@@ -375,7 +375,7 @@ class PickingController extends BaseController
 
                             // Registrar faltante automáticamente
                             Capsule::table('picking_faltantes')->insert([
-                                'empresa_id'          => $user->empresa_id,
+                                'empresa_id'          => $this->getEffectiveEmpresaId($user, $request),
                                 'sucursal_id'         => $user->sucursal_id,
                                 'orden_picking_id'    => $orden->id,
                                 'producto_id'         => $linea->producto_id,
@@ -420,7 +420,7 @@ class PickingController extends BaseController
         // Notificar al auxiliar si hubo asignaciones
         if ($auxiliarId !== null && $resultados['asignadas'] > 0) {
             \App\Controllers\NotificacionesController::crear(
-                $user->empresa_id,
+                $this->getEffectiveEmpresaId($user, $request),
                 $auxiliarId,
                 'Nuevas Órdenes de Picking',
                 "Se le han asignado {$resultados['asignadas']} órdenes para alistamiento. " .
@@ -466,7 +466,7 @@ class PickingController extends BaseController
         // en una sola query con JOIN a ubicaciones, ordenado por FEFO.
         $productoIds = $orden->detalles->pluck('producto_id')->unique()->toArray();
 
-        $todosLosStock = Inventario::where('empresa_id', $user->empresa_id)
+        $todosLosStock = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('producto_id', $productoIds)
             ->where('estado', 'Disponible')
@@ -527,7 +527,7 @@ class PickingController extends BaseController
                     $faltante = $linea->cantidad_solicitada - $totalDisponible;
                     
                     Capsule::table('picking_faltantes')->insert([
-                        'empresa_id'          => $user->empresa_id,
+                        'empresa_id'          => $this->getEffectiveEmpresaId($user, $request),
                         'sucursal_id'         => $user->sucursal_id,
                         'orden_picking_id'    => $orden->id,
                         'producto_id'         => $linea->producto_id,
@@ -564,7 +564,7 @@ class PickingController extends BaseController
                             ->first(); // TODO: Podría ser la ubicación habitual del producto
 
                         TareaReabastecimiento::create([
-                            'empresa_id'           => $user->empresa_id,
+                            'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
                             'sucursal_id'          => $user->sucursal_id,
                             'orden_picking_id'     => $orden->id,
                             'producto_id'          => $linea->producto_id,
@@ -630,7 +630,7 @@ class PickingController extends BaseController
             ->join('productos as p',      'f.producto_id',       '=', 'p.id')
             ->leftJoin('orden_pickings as o', 'f.orden_picking_id', '=', 'o.id')
             ->leftJoin('personal as aux',    'o.auxiliar_id',       '=', 'aux.id')
-            ->where('f.empresa_id',  $user->empresa_id)
+            ->where('f.empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('f.sucursal_id', $user->sucursal_id)
             ->whereBetween('f.created_at', [$ini . ' 00:00:00', $fin . ' 23:59:59'])
             ->when($params['numero_planilla'] ?? null, fn($q, $v) => $q->where('f.planilla_lote', $v))
@@ -725,7 +725,7 @@ class PickingController extends BaseController
 
         // Cargar faltantes con validación de empresa
         $faltantes = Capsule::table('picking_faltantes')
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('id', $faltanteIds)
             ->get();
@@ -740,7 +740,7 @@ class PickingController extends BaseController
                     $cantidadNecesaria = (int)$falt->cantidad_faltante;
 
                     // ── 1. Verificar stock actual disponible (con lock pesimista) ──
-                    $stockDisponible = Inventario::where('empresa_id', $user->empresa_id)
+                    $stockDisponible = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                         ->where('sucursal_id', $user->sucursal_id)
                         ->where('producto_id', $falt->producto_id)
                         ->where('estado', 'Disponible')
@@ -854,7 +854,7 @@ class PickingController extends BaseController
     public function detalle(Request $r, Response $res, array $a): Response
     {
         $user  = $r->getAttribute('user');
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->find($a['id']);
 
         if (!$orden) return $this->notFound($res);
@@ -895,7 +895,7 @@ class PickingController extends BaseController
                 LEFT JOIN stock_agg sa   ON sa.producto_id  = pd.producto_id
                 WHERE pd.orden_picking_id = ?
                 ORDER BY pd.id ASC
-            ", [$user->empresa_id, $user->sucursal_id, $orden->id]);
+            ", [$this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $orden->id]);
         } else {
             // MySQL fallback: eager loading estándar
             $detalles = $orden->load(['detalles.producto', 'detalles.ubicacion'])->detalles;
@@ -927,7 +927,7 @@ class PickingController extends BaseController
                 }
 
                 $orden = OrdenPicking::create([
-                    'empresa_id'      => $user->empresa_id,
+                    'empresa_id'      => $this->getEffectiveEmpresaId($user, $request),
                     'sucursal_id'     => $user->sucursal_id,
                     'numero_orden'    => $numeroOrden,
                     'numero_pedido'   => $data['numero_pedido'] ?? null,
@@ -976,7 +976,7 @@ class PickingController extends BaseController
         $user  = $r->getAttribute('user');
         $data  = $r->getParsedBody() ?? [];
 
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->with('detalles')
             ->find($a['orden_id']);
 
@@ -993,7 +993,7 @@ class PickingController extends BaseController
 
             // Notify the auxiliary
             \App\Controllers\NotificacionesController::crear(
-                $user->empresa_id,
+                $this->getEffectiveEmpresaId($user, $request),
                 $auxId,
                 'Nueva Ruta de Picking',
                 "Se le ha asignado la ruta para la orden {$orden->numero_orden}. Por favor inicie el picking.",
@@ -1032,7 +1032,7 @@ class PickingController extends BaseController
     {
         $user  = $r->getAttribute('user');
         $data  = $r->getParsedBody() ?? [];
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)->find($a['orden_id']);
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['orden_id']);
 
         if (!$orden) return $this->notFound($res);
         if (!in_array($orden->estado, ['EnProceso', 'Pendiente'])) {
@@ -1054,7 +1054,7 @@ class PickingController extends BaseController
         if ($cantidadTomada <= 0) return $this->error($res, 'Cantidad inválida');
 
         // ── Guard de integridad pre-transacción ──────────────────────────────
-        $guard = new InventoryGuard($user->empresa_id, $user->sucursal_id, $user->id);
+        $guard = new InventoryGuard($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $user->id);
         $check = $guard->canPick(
             $linea->producto_id,
             $cantidadTomada,
@@ -1085,7 +1085,7 @@ class PickingController extends BaseController
                 // ── Fase 1: Liberar reserva (cantidad_reservada) ─────────────
                 // La reserva se creó en asignarMultiple; ahora la liberamos
                 // porque vamos a descontar el stock real.
-                $invReservas = Inventario::where('empresa_id',  $user->empresa_id)
+                $invReservas = Inventario::where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
                     ->where('sucursal_id',  $user->sucursal_id)
                     ->where('producto_id',  $linea->producto_id)
                     ->where('estado',       'Disponible')
@@ -1105,7 +1105,7 @@ class PickingController extends BaseController
                 }
 
                 // ── Fase 2: Descontar inventario real ────────────────────────
-                $inv = Inventario::where('empresa_id',  $user->empresa_id)
+                $inv = Inventario::where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
                     ->where('sucursal_id',  $user->sucursal_id)
                     ->where('producto_id',  $linea->producto_id)
                     ->where('ubicacion_id', $linea->ubicacion_id)
@@ -1129,7 +1129,7 @@ class PickingController extends BaseController
 
                 // Registrar movimiento con auditoría completa
                 MovimientoInventario::create([
-                    'empresa_id'           => $user->empresa_id,
+                    'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
                     'sucursal_id'          => $user->sucursal_id,
                     'producto_id'          => $linea->producto_id,
                     'tipo_movimiento'      => 'Picking',
@@ -1177,7 +1177,7 @@ class PickingController extends BaseController
     public function completar(Request $r, Response $res, array $a): Response
     {
         $user  = $r->getAttribute('user');
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$orden) return $this->notFound($res);
 
         try {
@@ -1191,7 +1191,7 @@ class PickingController extends BaseController
                 foreach ($lineasAbiertas as $linea) {
                     if ($linea->producto_id && $linea->cantidad_solicitada > 0) {
                         $this->_releaseReserva(
-                            $user->empresa_id, $user->sucursal_id,
+                            $this->getEffectiveEmpresaId($user, $request), $user->sucursal_id,
                             $linea->producto_id, $linea->ubicacion_id, $linea->lote,
                             (int)$linea->cantidad_solicitada
                         );
@@ -1323,7 +1323,7 @@ class PickingController extends BaseController
     public function siguienteLinea(Request $r, Response $res, array $a): Response
     {
         $user  = $r->getAttribute('user');
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)->find($a['orden_id']);
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['orden_id']);
         if (!$orden) return $this->notFound($res);
 
         // Siguiente línea no confirmada, ordenada por ubicacion_id (sigue la ruta FEFO)
@@ -1400,7 +1400,7 @@ class PickingController extends BaseController
         $user = $r->getAttribute('user');
         if ($deny = $this->requireAdmin($user, $res)) return $deny;
 
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$orden) return $this->notFound($res);
         if (in_array($orden->estado, ['Completada', 'Completado'])) {
             return $this->error($res, 'No se puede anular una orden ya completada');
@@ -1417,7 +1417,7 @@ class PickingController extends BaseController
 
                     // 1. Revertir inventario real pickeado
                     if ($linea->cantidad_pickeada > 0) {
-                        $invReal = Inventario::where('empresa_id', $user->empresa_id)
+                        $invReal = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                             ->where('sucursal_id', $user->sucursal_id)
                             ->where('producto_id', $linea->producto_id)
                             ->where('ubicacion_id', $linea->ubicacion_id)
@@ -1431,7 +1431,7 @@ class PickingController extends BaseController
                             $invReal->save();
                         } else {
                             Inventario::create([
-                                'empresa_id' => $user->empresa_id,
+                                'empresa_id' => $this->getEffectiveEmpresaId($user, $request),
                                 'sucursal_id' => $user->sucursal_id,
                                 'producto_id' => $linea->producto_id,
                                 'ubicacion_id' => $linea->ubicacion_id,
@@ -1448,7 +1448,7 @@ class PickingController extends BaseController
                     // 2. Revertir reserva pendiente
                     $pendiente = $linea->cantidad_solicitada - $linea->cantidad_pickeada;
                     if ($pendiente > 0 && in_array($orden->estado, ['Asignado', 'EnProceso'])) {
-                        $invs = Inventario::where('empresa_id', $user->empresa_id)
+                        $invs = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                             ->where('sucursal_id', $user->sucursal_id)
                             ->where('producto_id', $linea->producto_id)
                             ->where('cantidad_reservada', '>', 0)
@@ -1493,7 +1493,7 @@ class PickingController extends BaseController
     {
         $user = $r->getAttribute('user');
         $data = $r->getParsedBody() ?? [];
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$orden) return $this->notFound($res);
 
         $snapshot = $orden->toArray();
@@ -1515,7 +1515,7 @@ class PickingController extends BaseController
     {
         $user = $r->getAttribute('user');
         $data = $r->getParsedBody() ?? [];
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$orden) return $this->notFound($res);
 
         if (in_array($orden->estado, ['Completada', 'Completado', 'Anulado'])) {
@@ -1528,7 +1528,7 @@ class PickingController extends BaseController
             return $this->error($res, 'Producto o cantidad inválida');
         }
 
-        $prod = Producto::where('empresa_id', $user->empresa_id)->find($prodId);
+        $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($prodId);
         if (!$prod) return $this->error($res, 'Producto no encontrado');
 
         try {
@@ -1543,7 +1543,7 @@ class PickingController extends BaseController
                 ]);
 
                 if (in_array($orden->estado, ['Asignado', 'EnProceso'])) {
-                    $stockDisponible = Inventario::where('empresa_id', $user->empresa_id)
+                    $stockDisponible = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                         ->where('sucursal_id', $user->sucursal_id)
                         ->where('producto_id', $prod->id)
                         ->where('estado', 'Disponible')
@@ -1601,7 +1601,7 @@ class PickingController extends BaseController
         $user = $r->getAttribute('user');
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
-        $empresaId = $user->empresa_id;
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
 
         // Base query para filtros del dashboard
         $baseQ = OrdenPicking::where('empresa_id', $empresaId)
@@ -1817,7 +1817,7 @@ class PickingController extends BaseController
     public function reabastecimientosLegacy(Request $r, Response $res): Response
     {
         $user  = $r->getAttribute('user');
-        $tareas = TareaReabastecimiento::where('empresa_id', $user->empresa_id)
+        $tareas = TareaReabastecimiento::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('estado', ['Pendiente', 'EnProceso'])
             ->with(['ordenPicking:id,planilla'])
@@ -1970,7 +1970,7 @@ class PickingController extends BaseController
             try {
                 $rows = Capsule::table('picking_detalles as pd')
                     ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
-                    ->where('op.empresa_id', $user->empresa_id)
+                    ->where('op.empresa_id', $this->getEffectiveEmpresaId($user, $request))
                     ->where('op.sucursal_id', $user->sucursal_id)
                     ->whereIn('pd.numero_pedido_ref', $facturasEnArchivo)
                     ->whereIn('op.estado', ['Pendiente'])
@@ -2020,7 +2020,7 @@ class PickingController extends BaseController
         }
 
         // ── Sequential planilla number (sólo para planillas NUEVAS) ──────────
-        $maxSeq = (int) OrdenPicking::where('empresa_id', $user->empresa_id)
+        $maxSeq = (int) OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('numero_orden', 'like', 'Planilla %')
             ->selectRaw($this->isPg()
@@ -2041,16 +2041,16 @@ class PickingController extends BaseController
             if ($ean === '') return null;
             $eanRec = \App\Models\ProductoEan::where('codigo_ean', $ean)->first();
             if ($eanRec) {
-                $p = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($eanRec->producto_id);
+                $p = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($eanRec->producto_id);
                 if ($p) return $p;
             }
-            $p = \App\Models\Producto::where('empresa_id', $user->empresa_id)
+            $p = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('codigo_interno', $ean)->first();
             if ($p) return $p;
             if (strlen($ean) > 6) {
                 $eanRec = \App\Models\ProductoEan::where('codigo_ean', 'like', '%' . substr($ean, -10))->first();
                 if ($eanRec) {
-                    return \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($eanRec->producto_id);
+                    return \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($eanRec->producto_id);
                 }
             }
             return null;
@@ -2071,7 +2071,7 @@ class PickingController extends BaseController
                 ];
                 if ($descripcion !== '') $values['descripcion'] = $descripcion;
                 Capsule::table('picking_productos_pendientes')->updateOrInsert(
-                    ['empresa_id' => $user->empresa_id, 'sucursal_id' => $user->sucursal_id, 'ean_codigo' => $ean],
+                    ['empresa_id' => $this->getEffectiveEmpresaId($user, $request), 'sucursal_id' => $user->sucursal_id, 'ean_codigo' => $ean],
                     $values
                 );
             } catch (\Throwable $ignored) {}
@@ -2182,7 +2182,7 @@ class PickingController extends BaseController
                         $fila0 = $filas[0];
 
                         $orden = OrdenPicking::create([
-                            'empresa_id'        => $user->empresa_id,
+                            'empresa_id'        => $this->getEffectiveEmpresaId($user, $request),
                             'sucursal_id'       => $user->sucursal_id,
                             'numero_orden'      => 'Planilla ' . $nextSeq,
                             'numero_factura'    => null,
@@ -2308,7 +2308,7 @@ class PickingController extends BaseController
     {
         $user  = $r->getAttribute('user');
         $items = Capsule::table('picking_productos_pendientes')
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->orderBy('updated_at', 'desc')
             ->get();
@@ -2321,7 +2321,7 @@ class PickingController extends BaseController
         $user = $r->getAttribute('user');
         $deleted = Capsule::table('picking_productos_pendientes')
             ->where('id', $a['id'])
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->delete();
         if (!$deleted) return $this->notFound($res, 'Registro no encontrado');
@@ -2334,7 +2334,7 @@ class PickingController extends BaseController
         $user = $r->getAttribute('user');
         if ($deny = $this->requireAdmin($user, $res)) return $deny;
         Capsule::table('picking_productos_pendientes')
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->delete();
         return $this->ok($res, null, 'Tabla limpiada');
@@ -2349,7 +2349,7 @@ class PickingController extends BaseController
         $lineaId = (int)($a['lineaId'] ?? 0);
         $body    = (array)($r->getParsedBody() ?? []);
 
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->find($ordenId);
         if (!$orden) return $this->notFound($res);
@@ -2383,7 +2383,7 @@ class PickingController extends BaseController
         $ordenId = (int)($a['id'] ?? 0);
         $lineaId = (int)($a['lineaId'] ?? 0);
 
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->find($ordenId);
         if (!$orden) return $this->notFound($res);
@@ -2413,7 +2413,7 @@ class PickingController extends BaseController
     {
         $user  = $r->getAttribute('user');
         $data  = $r->getParsedBody() ?? [];
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)->find($a['id']);
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
         if (!$orden) return $this->notFound($res);
 
         $lineaId = (int)($data['linea_id'] ?? 0);
@@ -2426,7 +2426,7 @@ class PickingController extends BaseController
             Capsule::transaction(function () use ($linea, $obs, $orden, $user) {
                 if ($linea->producto_id && $linea->cantidad_solicitada > 0) {
                     $this->_releaseReserva(
-                        $user->empresa_id, $user->sucursal_id,
+                        $this->getEffectiveEmpresaId($user, $request), $user->sucursal_id,
                         $linea->producto_id, $linea->ubicacion_id, $linea->lote,
                         (int)$linea->cantidad_solicitada
                     );
@@ -2461,7 +2461,7 @@ class PickingController extends BaseController
     public function completarReabastLegacy(Request $r, Response $res, array $a): Response
     {
         $user  = $r->getAttribute('user');
-        $tarea = TareaReabastecimiento::where('empresa_id', $user->empresa_id)
+        $tarea = TareaReabastecimiento::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->find($a['id']);
         if (!$tarea) return $this->notFound($res);
@@ -2474,7 +2474,7 @@ class PickingController extends BaseController
             Capsule::transaction(function () use ($tarea, $user) {
                 // Move stock from source to destination
                 if ($tarea->ubicacion_origen_id && $tarea->ubicacion_destino_id && $tarea->producto_id) {
-                    $origen = Inventario::where('empresa_id',  $user->empresa_id)
+                    $origen = Inventario::where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
                         ->where('sucursal_id',  $user->sucursal_id)
                         ->where('producto_id',  $tarea->producto_id)
                         ->where('ubicacion_id', $tarea->ubicacion_origen_id)
@@ -2492,7 +2492,7 @@ class PickingController extends BaseController
                         else $origen->save();
 
                         $destino = Inventario::firstOrNew([
-                            'empresa_id'   => $user->empresa_id,
+                            'empresa_id'   => $this->getEffectiveEmpresaId($user, $request),
                             'sucursal_id'  => $user->sucursal_id,
                             'producto_id'  => $tarea->producto_id,
                             'ubicacion_id' => $tarea->ubicacion_destino_id,
@@ -2502,7 +2502,7 @@ class PickingController extends BaseController
                         $destino->save();
 
                         MovimientoInventario::create([
-                            'empresa_id'           => $user->empresa_id,
+                            'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
                             'sucursal_id'          => $user->sucursal_id,
                             'producto_id'          => $tarea->producto_id,
                             'tipo_movimiento'      => 'Traslado',
@@ -2539,7 +2539,7 @@ class PickingController extends BaseController
         $user = $r->getAttribute('user');
         
         // COALESCE ensures orders without planilla_numero get their own entry using numero_orden
-        $planillas = OrdenPicking::where('empresa_id', $user->empresa_id)
+        $planillas = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('estado', ['Pendiente', 'EnProceso'])
             ->where(function($q) use ($user) {
@@ -2598,7 +2598,7 @@ class PickingController extends BaseController
             $detalles = PickingDetalle::join('orden_pickings', 'picking_detalles.orden_picking_id', '=', 'orden_pickings.id')
                 ->leftJoin('productos', 'picking_detalles.producto_id', '=', 'productos.id')
                 ->leftJoin('ubicaciones', 'picking_detalles.ubicacion_id', '=', 'ubicaciones.id')
-                ->where('orden_pickings.empresa_id', $user->empresa_id)
+                ->where('orden_pickings.empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where(function($q) use ($numero) {
                     $q->where('orden_pickings.planilla_numero', $numero)
                       ->orWhere('orden_pickings.numero_orden', $numero);
@@ -2636,7 +2636,7 @@ class PickingController extends BaseController
             $sinUbic = $detalles->filter(fn($d) => !$d->ubicacion_id)
                                 ->pluck('producto_id')->unique()->values();
             if ($sinUbic->isNotEmpty()) {
-                $stockMap = Inventario::where('empresa_id', $user->empresa_id)
+                $stockMap = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                     ->where('sucursal_id', $user->sucursal_id)
                     ->whereIn('producto_id', $sinUbic)
                     ->where('estado', 'Disponible')
@@ -2691,7 +2691,7 @@ class PickingController extends BaseController
         }
 
         try {
-            $updated = OrdenPicking::where('empresa_id', $user->empresa_id)
+            $updated = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where(function($q) use ($numero) {
                     $q->where('planilla_numero', $numero)
                       ->orWhere('numero_orden', $numero);
@@ -2701,7 +2701,7 @@ class PickingController extends BaseController
                 ->update(['hora_inicio' => date('H:i:s'), 'estado' => 'EnProceso']);
 
             if ($updated === 0) {
-                $exists = OrdenPicking::where('empresa_id', $user->empresa_id)
+                $exists = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                     ->where(function($q) use ($numero) {
                         $q->where('planilla_numero', $numero)
                           ->orWhere('numero_orden', $numero);
@@ -2747,7 +2747,7 @@ class PickingController extends BaseController
 
         // Load detalles scoped to this empresa (outside transaction — read only)
         $detalles = PickingDetalle::whereIn('id', $ids)
-            ->whereHas('ordenPicking', fn($q) => $q->where('empresa_id', $user->empresa_id))
+            ->whereHas('ordenPicking', fn($q) => $q->where('empresa_id', $this->getEffectiveEmpresaId($user, $request)))
             ->orderBy('id')
             ->get();
 
@@ -2775,7 +2775,7 @@ class PickingController extends BaseController
 
                     // ── Fase 1: Liberar reserva completa ───────────────────────────────────
                     $this->_releaseReserva(
-                        $user->empresa_id, $user->sucursal_id,
+                        $this->getEffectiveEmpresaId($user, $request), $user->sucursal_id,
                         $det->producto_id, $det->ubicacion_id, $det->lote,
                         $liberarReserva
                     );
@@ -2784,7 +2784,7 @@ class PickingController extends BaseController
                     $realmenteDescontado = 0; // unidades efectivamente retiradas del inventario
 
                     if ($tomarInventario > 0) {
-                        $inv = Inventario::where('empresa_id', $user->empresa_id)
+                        $inv = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                             ->where('sucursal_id', $user->sucursal_id)
                             ->where('producto_id', $det->producto_id)
                             ->where('estado',      'Disponible')
@@ -2797,7 +2797,7 @@ class PickingController extends BaseController
 
                         // FEFO fallback: si la ubicación exacta no tiene stock, buscar otra
                         if (!$inv || $inv->cantidad <= 0) {
-                            $inv = Inventario::where('empresa_id', $user->empresa_id)
+                            $inv = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                                 ->where('sucursal_id', $user->sucursal_id)
                                 ->where('producto_id', $det->producto_id)
                                 ->where('estado',      'Disponible')
@@ -2821,7 +2821,7 @@ class PickingController extends BaseController
                             $realmenteDescontado = $descuento;
 
                             MovimientoInventario::create([
-                                'empresa_id'          => $user->empresa_id,
+                                'empresa_id'          => $this->getEffectiveEmpresaId($user, $request),
                                 'sucursal_id'         => $user->sucursal_id,
                                 'producto_id'         => $det->producto_id,
                                 'tipo_movimiento'     => 'Picking',
@@ -2855,7 +2855,7 @@ class PickingController extends BaseController
                 // ── Fase 5: Actualizar órdenes padre ───────────────────────────────────────
                 foreach (array_unique($ordenIds) as $ordenId) {
                     $orden = OrdenPicking::where('id', $ordenId)
-                        ->where('empresa_id', $user->empresa_id)
+                        ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                         ->lockForUpdate()
                         ->first();
                     if (!$orden) continue;
@@ -2891,7 +2891,7 @@ class PickingController extends BaseController
         }
 
         try {
-            $updated = OrdenPicking::where('empresa_id', $user->empresa_id)
+            $updated = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->whereIn('id', $ids)
                 ->update(['auxiliar_id' => $auxiliarId]);
 
@@ -2927,7 +2927,7 @@ class PickingController extends BaseController
         }
 
         try {
-            $q = OrdenPicking::where('empresa_id', $user->empresa_id)
+            $q = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->whereBetween('fecha_movimiento', [$fechaDesde, $fechaHasta])
                 ->when($params['ruta'] ?? null,
@@ -3025,7 +3025,7 @@ class PickingController extends BaseController
         if ($detalles->isEmpty()) return;
 
         $productoIds     = $detalles->pluck('producto_id')->unique()->toArray();
-        $stockDisponible = Inventario::where('empresa_id', $user->empresa_id)
+        $stockDisponible = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('producto_id', $productoIds)
             ->where('estado', 'Disponible')
@@ -3073,7 +3073,7 @@ class PickingController extends BaseController
                     ->leftJoin('ubicaciones as u', 'pd.ubicacion_id', '=', 'u.id')
                     ->leftJoin('productos as pr', 'pd.producto_id', '=', 'pr.id')
                     ->leftJoin('categoria_productos as cat', 'pr.categoria_id', '=', 'cat.id')
-                    ->where('op.empresa_id', $user->empresa_id)
+                    ->where('op.empresa_id', $this->getEffectiveEmpresaId($user, $request))
                     ->where('op.sucursal_id', $user->sucursal_id)
                     ->whereIn('pd.orden_picking_id', $ordenIds)
                     ->select(['pd.id','pd.orden_picking_id','pd.auxiliar_id','pd.estado','u.zona','u.pasillo','cat.nombre as categoria'])
@@ -3155,7 +3155,7 @@ class PickingController extends BaseController
 
                 // 8. Log de auditoría
                 Capsule::table('picking_asignaciones_log')->insert([
-                    'empresa_id'   => $user->empresa_id,
+                    'empresa_id'   => $this->getEffectiveEmpresaId($user, $request),
                     'sucursal_id'  => $user->sucursal_id,
                     'ordenes_json' => json_encode($ordenIds),
                     'modo'         => $modo,
@@ -3195,7 +3195,7 @@ class PickingController extends BaseController
         $user  = $r->getAttribute('user');
         $data  = $r->getParsedBody() ?? [];
         $ruta  = trim($data['ruta'] ?? '');
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->find((int)$a['id']);
         if (!$orden) return $this->notFound($res);
@@ -3210,7 +3210,7 @@ class PickingController extends BaseController
     {
         $user = $r->getAttribute('user');
         
-        $sucursales = OrdenPicking::where('empresa_id', $user->empresa_id)
+        $sucursales = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('estado', 'Completada')
             ->where('estado_certificacion', 'Pendiente')
@@ -3227,7 +3227,7 @@ class PickingController extends BaseController
         $sucursal = urldecode($a['sucursal']);
         
         $detalles = PickingDetalle::whereHas('ordenPicking', function($q) use ($user, $sucursal) {
-                $q->where('empresa_id', $user->empresa_id)
+                $q->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                   ->where('sucursal_id', $user->sucursal_id)
                   ->where('sucursal_entrega', $sucursal)
                   ->where('estado', 'Completada')
@@ -3270,7 +3270,7 @@ class PickingController extends BaseController
         
         $detalles = PickingDetalle::where('producto_id', $productoId)
             ->whereHas('ordenPicking', function($q) use ($user, $sucursal) {
-                $q->where('empresa_id', $user->empresa_id)
+                $q->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                   ->where('sucursal_id', $user->sucursal_id)
                   ->where('sucursal_entrega', $sucursal)
                   ->where('estado', 'Completada')
@@ -3302,7 +3302,7 @@ class PickingController extends BaseController
         $data = $r->getParsedBody();
         $sucursal = $data['sucursal_entrega'];
         
-        $ordenes = OrdenPicking::where('empresa_id', $user->empresa_id)
+        $ordenes = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('sucursal_entrega', $sucursal)
             ->where('estado', 'Completada')
@@ -3345,7 +3345,7 @@ class PickingController extends BaseController
             return $this->error($res, 'Se requiere auxiliar_id');
         }
 
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->find((int)$a['id']);
 
@@ -3373,7 +3373,7 @@ class PickingController extends BaseController
         });
 
         \App\Controllers\NotificacionesController::crear(
-            $user->empresa_id, $nuevoAuxId,
+            $this->getEffectiveEmpresaId($user, $request), $nuevoAuxId,
             'Orden de Picking Asignada',
             "Se le ha asignado la orden {$orden->numero_orden} para alistamiento.",
             'picking', $user->id, 'Picking', $orden->id, 'viewPicking', 'Picking',
@@ -3399,7 +3399,7 @@ class PickingController extends BaseController
             return $this->error($res, 'Se requiere auxiliar_id');
         }
 
-        $orden = OrdenPicking::where('empresa_id', $user->empresa_id)
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->find((int)$a['id']);
 
@@ -3437,7 +3437,7 @@ class PickingController extends BaseController
         });
 
         \App\Controllers\NotificacionesController::crear(
-            $user->empresa_id, $nuevoAuxId,
+            $this->getEffectiveEmpresaId($user, $request), $nuevoAuxId,
             'Tareas de Picking Asignadas',
             "Se le han asignado " . count($paraNuevo) . " líneas pendientes en el pedido {$orden->numero_orden}.",
             'picking', $user->id, 'Picking', $orden->id, 'viewPicking', 'Picking',
@@ -3462,7 +3462,7 @@ class PickingController extends BaseController
         $sucursal = urldecode($a['sucursal']);
         
         // 1. Get info to print
-        $ordenes = OrdenPicking::where('empresa_id', $user->empresa_id)
+        $ordenes = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('sucursal_entrega', $sucursal)
             ->where('estado_certificacion', 'Certificada')
@@ -3473,14 +3473,14 @@ class PickingController extends BaseController
         $totalLineas = PickingDetalle::whereIn('orden_picking_id', $ordenes->pluck('id'))->count();
         
         // 2. Get printers assigned to the 'certificacion' module
-        $pRotulos = \App\Models\Impresora::where('empresa_id', $user->empresa_id)
+        $pRotulos = \App\Models\Impresora::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('modulos', 'LIKE', '%certificacion%')
             ->where('tipo', 'Rotulos')
             ->where('activo', true)
             ->first();
             
-        $pDespacho = \App\Models\Impresora::where('empresa_id', $user->empresa_id)
+        $pDespacho = \App\Models\Impresora::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('modulos', 'LIKE', '%certificacion%')
             ->where('tipo', 'Despacho')

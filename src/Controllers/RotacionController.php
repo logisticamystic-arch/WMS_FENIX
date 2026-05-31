@@ -42,7 +42,7 @@ class RotacionController extends BaseController
         }
 
         $q = Capsule::table('mv_rotacion_productos')
-            ->where('empresa_id',  $user->empresa_id)
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id);
 
         // Filtros
@@ -81,7 +81,7 @@ class RotacionController extends BaseController
 
         // Resumen general
         $resumen = Capsule::table('mv_rotacion_productos')
-            ->where('empresa_id',  $user->empresa_id)
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->selectRaw("
                 COUNT(*) AS total_productos,
@@ -115,7 +115,7 @@ class RotacionController extends BaseController
 
         $q = Capsule::table('clasificaciones_abc_xyz as c')
             ->join('productos as p', 'c.producto_id', '=', 'p.id')
-            ->where('c.empresa_id',  $user->empresa_id)
+            ->where('c.empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('c.sucursal_id', $user->sucursal_id)
             ->where('c.vigente', true)
             ->select(
@@ -142,7 +142,7 @@ class RotacionController extends BaseController
 
         // Distribución de segmentos
         $distribucion = Capsule::table('clasificaciones_abc_xyz')
-            ->where('empresa_id',  $user->empresa_id)
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('vigente', true)
             ->selectRaw("
@@ -179,7 +179,7 @@ class RotacionController extends BaseController
         if ($this->isPg()) {
             $result = Capsule::selectOne(
                 'SELECT ejecutar_abc_xyz(?, ?, ?) AS procesados',
-                [$user->empresa_id, $user->sucursal_id, $meses]
+                [$this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $meses]
             );
             $procesados = $result ? $result->procesados : 0;
             try {
@@ -189,7 +189,7 @@ class RotacionController extends BaseController
             }
         } else {
             // Motor ABC-XYZ nativo PHP para MySQL (negativo = clasificación provisional sin ventas)
-            $raw        = $this->_ejecutarAbcXyzMysql($user->empresa_id, $user->sucursal_id, $meses);
+            $raw        = $this->_ejecutarAbcXyzMysql($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $meses);
             $provisional = $raw < 0;
             $procesados  = abs($raw);
         }
@@ -387,7 +387,7 @@ class RotacionController extends BaseController
 
         $result = Capsule::selectOne(
             'SELECT poblar_ventas_ml(?, ?, ?, ?) AS insertados',
-            [$user->empresa_id, $user->sucursal_id, $desde, $hasta]
+            [$this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $desde, $hasta]
         );
 
         $insertados = $result ? $result->insertados : 0;
@@ -438,7 +438,7 @@ class RotacionController extends BaseController
         }
 
         $productos = Capsule::table('mv_rotacion_productos')
-            ->where('empresa_id',  $user->empresa_id)
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('score_riesgo', '>=', (int)($params['min_score'] ?? 40))
             ->orderBy('score_riesgo', 'desc')
@@ -462,7 +462,7 @@ class RotacionController extends BaseController
         }
 
         $productos = Capsule::table('mv_rotacion_productos')
-            ->where('empresa_id',   $user->empresa_id)
+            ->where('empresa_id',   $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id',  $user->sucursal_id)
             ->whereNotNull('dias_cobertura')
             ->where('dias_cobertura', '<', $umbral)
@@ -486,7 +486,7 @@ class RotacionController extends BaseController
         $limit  = min((int)($params['limit'] ?? 20), 100);
 
         $ejecuciones = Capsule::table('ejecuciones_ml')
-            ->where('empresa_id',  $user->empresa_id)
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->when(!empty($params['tipo']), fn($q) => $q->where('tipo', $params['tipo']))
             ->orderBy('inicio_at', 'desc')
@@ -504,7 +504,7 @@ class RotacionController extends BaseController
 
         $items = Capsule::table('clasificaciones_abc_xyz as c')
             ->join('productos as p', 'c.producto_id', '=', 'p.id')
-            ->where('c.empresa_id',  $user->empresa_id)
+            ->where('c.empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('c.sucursal_id', $user->sucursal_id)
             ->where('c.vigente', true)
             ->select(

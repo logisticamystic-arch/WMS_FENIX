@@ -41,7 +41,7 @@ class AnomalyController extends BaseController
         // Cargar inventarios con fecha de vencimiento próxima
         $inventarios = Capsule::table('inventarios as i')
             ->join('productos as p', 'p.id', '=', 'i.producto_id')
-            ->where('i.empresa_id',  $user->empresa_id)
+            ->where('i.empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('i.sucursal_id', $user->sucursal_id)
             ->where('i.cantidad', '>', 0)
             ->whereNotNull('i.fecha_vencimiento')
@@ -66,7 +66,7 @@ class AnomalyController extends BaseController
         // Para cada producto obtener consumo histórico (últimos 30 días)
         $productos = [];
         foreach ($inventarios as $inv) {
-            $consumo = $this->getConsumoDiario($user->empresa_id, $user->sucursal_id, $inv->producto_id);
+            $consumo = $this->getConsumoDiario($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id, $inv->producto_id);
             $productos[] = [
                 'producto_id'       => $inv->producto_id,
                 'nombre'            => $inv->nombre . ($inv->referencia ? " ({$inv->referencia})" : ''),
@@ -78,7 +78,7 @@ class AnomalyController extends BaseController
         }
 
         $payload = json_encode([
-            'empresa_id'  => $user->empresa_id,
+            'empresa_id'  => $this->getEffectiveEmpresaId($user, $request),
             'sucursal_id' => $user->sucursal_id,
             'productos'   => $productos,
         ]);
@@ -93,7 +93,7 @@ class AnomalyController extends BaseController
 
         // Persistir predicciones en BD para histórico
         $predictions = $result['predictions'] ?? [];
-        $this->savePredictions($predictions, $user->empresa_id, $user->sucursal_id);
+        $this->savePredictions($predictions, $this->getEffectiveEmpresaId($user, $request), $user->sucursal_id);
 
         // ── Notificaciones automáticas a supervisores ────────────────────────
         // Solo alertar si hay productos en nivel crítico o alto
@@ -110,7 +110,7 @@ class AnomalyController extends BaseController
             }, array_values($enRiesgo));
 
             NotificationService::alertarVencimientos(
-                $user->empresa_id,
+                $this->getEffectiveEmpresaId($user, $request),
                 $user->sucursal_id,
                 $enRiesgo
             );
@@ -130,7 +130,7 @@ class AnomalyController extends BaseController
 
         // Cargar movimientos recientes
         $movimientos = Capsule::table('movimiento_inventarios')
-            ->where('empresa_id',  $user->empresa_id)
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('fecha_movimiento', '>=', $desde)
             ->select(['id', 'producto_id', 'tipo_movimiento', 'cantidad', 'fecha_movimiento', 'auxiliar_id as usuario_id', 'referencia_tipo'])
@@ -140,7 +140,7 @@ class AnomalyController extends BaseController
 
         // Cargar ajustes del período (movimientos tipo Ajuste con cantidad negativa)
         $ajustes = Capsule::table('movimiento_inventarios')
-            ->where('empresa_id',  $user->empresa_id)
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('tipo_movimiento', 'Ajuste')
             ->where('fecha_movimiento', '>=', $desde)
@@ -156,7 +156,7 @@ class AnomalyController extends BaseController
             ->get()->toArray();
 
         $payload = json_encode([
-            'empresa_id'  => $user->empresa_id,
+            'empresa_id'  => $this->getEffectiveEmpresaId($user, $request),
             'sucursal_id' => $user->sucursal_id,
             'movimientos' => array_map(fn($r) => (array)$r, $movimientos),
             'ajustes'     => array_map(fn($r) => (array)$r, $ajustes),
@@ -169,12 +169,12 @@ class AnomalyController extends BaseController
 
         // Persistir anomalías en BD
         $anomalias = $result['anomalias'] ?? [];
-        $guardadas = $this->saveAnomalias($anomalias, $user->empresa_id, $user->sucursal_id);
+        $guardadas = $this->saveAnomalias($anomalias, $this->getEffectiveEmpresaId($user, $request), $user->sucursal_id);
 
         // ── Notificaciones automáticas a supervisores ────────────────────────
         if (!empty($anomalias)) {
             NotificationService::alertarAnomalias(
-                $user->empresa_id,
+                $this->getEffectiveEmpresaId($user, $request),
                 $user->sucursal_id,
                 $anomalias
             );
@@ -193,7 +193,7 @@ class AnomalyController extends BaseController
         [$page, $perPage] = $this->getPagination($params, 20);
 
         $q = Capsule::table('anomaly_flags')
-            ->where('empresa_id', $user->empresa_id);
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request));
 
         if (!empty($params['estado']))    $q->where('estado',    $params['estado']);
         if (!empty($params['severidad'])) $q->where('severidad', $params['severidad']);
@@ -226,7 +226,7 @@ class AnomalyController extends BaseController
 
         $rows = Capsule::table('anomaly_flags')
             ->where('id', $id)
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->update([
                 'estado'          => $estado,
                 'revisado_por'    => $user->id,
@@ -248,7 +248,7 @@ class AnomalyController extends BaseController
         $params = $req->getQueryParams();
         $dias   = min(180, max(1, (int)($params['dias'] ?? 30)));
 
-        $fefo   = new FefoEngine($user->empresa_id, $user->sucursal_id);
+        $fefo   = new FefoEngine($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id);
         $alertas = $fefo->getExpiryAlerts($dias);
 
         // Clasificar por nivel
@@ -273,7 +273,7 @@ class AnomalyController extends BaseController
         $params = $req->getQueryParams();
         $dias   = min(365, max(7, (int)($params['dias_sin_movimiento'] ?? 60)));
 
-        $fefo   = new FefoEngine($user->empresa_id, $user->sucursal_id);
+        $fefo   = new FefoEngine($this->getEffectiveEmpresaId($user, $request), $user->sucursal_id);
         $reporte = $fefo->getRotationReport($dias);
 
         return $this->ok($res, $reporte);
@@ -289,7 +289,7 @@ class AnomalyController extends BaseController
         [$desde, $hasta]  = $this->getDateRange($params);
 
         $q = Capsule::table('inventory_guard_log')
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->whereBetween('created_at', [$desde, $hasta]);
 
         if (!empty($params['operacion'])) $q->where('operacion', $params['operacion']);

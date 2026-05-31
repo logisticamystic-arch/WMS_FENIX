@@ -35,7 +35,7 @@ class WaveController extends BaseController
         [$ini, $fin] = $this->getDateRange($params);
 
         $q = Capsule::table('wave_picking as w')
-            ->where('w.empresa_id',  $user->empresa_id)
+            ->where('w.empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('w.sucursal_id', $user->sucursal_id)
             ->whereBetween('w.created_at', [$ini, $fin]);
 
@@ -58,7 +58,7 @@ class WaveController extends BaseController
         $user  = $r->getAttribute('user');
         $wave  = Capsule::table('wave_picking')
             ->where('id',          $a['id'])
-            ->where('empresa_id',  $user->empresa_id)
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->first();
 
         if (!$wave) return $this->notFound($res);
@@ -110,7 +110,7 @@ class WaveController extends BaseController
 
                 // Verificar que las planillas pertenecen a la empresa y están Pendientes
                 $planillasValidas = Capsule::table('planillas_picking')
-                    ->where('empresa_id',  $user->empresa_id)
+                    ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
                     ->where('sucursal_id', $user->sucursal_id)
                     ->whereIn('id', $planillasIds)
                     ->where('estado', 'Pendiente')
@@ -125,7 +125,7 @@ class WaveController extends BaseController
                     ->sum('total_lineas') ?? 0;
 
                 $id = Capsule::table('wave_picking')->insertGetId([
-                    'empresa_id'      => $user->empresa_id,
+                    'empresa_id'      => $this->getEffectiveEmpresaId($user, $request),
                     'sucursal_id'     => $user->sucursal_id,
                     'numero'          => $body['numero'],
                     'nombre'          => $body['nombre']   ?? null,
@@ -164,7 +164,7 @@ class WaveController extends BaseController
     public function iniciar(Request $r, Response $res, array $a): Response
     {
         $user = $r->getAttribute('user');
-        $wave = $this->_getWave($a['id'], $user->empresa_id);
+        $wave = $this->_getWave($a['id'], $this->getEffectiveEmpresaId($user, $request));
         if (!$wave) return $this->notFound($res);
 
         if ($wave->estado !== 'Preparando') {
@@ -184,7 +184,7 @@ class WaveController extends BaseController
     public function completar(Request $r, Response $res, array $a): Response
     {
         $user = $r->getAttribute('user');
-        $wave = $this->_getWave($a['id'], $user->empresa_id);
+        $wave = $this->_getWave($a['id'], $this->getEffectiveEmpresaId($user, $request));
         if (!$wave) return $this->notFound($res);
 
         if ($wave->estado !== 'En Proceso') {
@@ -207,7 +207,7 @@ class WaveController extends BaseController
         $user = $r->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $wave = $this->_getWave($a['id'], $user->empresa_id);
+        $wave = $this->_getWave($a['id'], $this->getEffectiveEmpresaId($user, $request));
         if (!$wave) return $this->notFound($res);
 
         if (in_array($wave->estado, ['Completado', 'Cancelado'])) {
@@ -233,7 +233,7 @@ class WaveController extends BaseController
 
         // Obtener planillas pendientes
         $planillasPendientes = Capsule::table('planillas_picking')
-            ->where('empresa_id',  $user->empresa_id)
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('estado', 'Pendiente')
             ->orderBy('prioridad', 'asc')
@@ -272,7 +272,7 @@ class WaveController extends BaseController
                 $numero = 'WV-' . date('Ymd') . '-' . str_pad($wavesCreadas + 1, 3, '0', STR_PAD_LEFT);
 
                 $id = Capsule::table('wave_picking')->insertGetId([
-                    'empresa_id'      => $user->empresa_id,
+                    'empresa_id'      => $this->getEffectiveEmpresaId($user, $request),
                     'sucursal_id'     => $user->sucursal_id,
                     'numero'          => $numero,
                     'nombre'          => "Auto-{$criterio}: {$grupoKey}",
@@ -317,7 +317,7 @@ class WaveController extends BaseController
         [$ini, $fin] = $this->getDateRange($params);
 
         $kpis = Capsule::table('wave_picking')
-            ->where('empresa_id',  $user->empresa_id)
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereBetween('created_at', [$ini, $fin])
             ->selectRaw("
@@ -344,7 +344,7 @@ class WaveController extends BaseController
         [$ini, $fin] = $this->getDateRange($params);
 
         $waves = Capsule::table('wave_picking')
-            ->where('empresa_id',  $user->empresa_id)
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereBetween('created_at', [$ini, $fin])
             ->orderBy('created_at', 'desc')

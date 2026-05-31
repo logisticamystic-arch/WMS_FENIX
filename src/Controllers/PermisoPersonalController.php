@@ -22,7 +22,7 @@ class PermisoPersonalController extends BaseController
         $personalId = (int)$args['id'];
 
         // Load the person
-        $persona = DB::table('personal')->where('id', $personalId)->where('empresa_id', $user->empresa_id)->first();
+        $persona = DB::table('personal')->where('id', $personalId)->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->first();
         if (!$persona) {
             return $this->json($response, ['error' => true, 'message' => 'Personal no encontrado'], 404);
         }
@@ -35,7 +35,7 @@ class PermisoPersonalController extends BaseController
         if (!empty($persona->rol)) {
             $rolPermisos = DB::table('rol_permisos as rp')
                 ->join('permisos as p', 'p.id', '=', 'rp.permiso_id')
-                ->where('rp.empresa_id', $user->empresa_id)
+                ->where('rp.empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('rp.rol', $persona->rol)
                 ->select('p.modulo', 'p.accion', 'rp.concedido')
                 ->get();
@@ -47,7 +47,7 @@ class PermisoPersonalController extends BaseController
 
         // 3. Get individual overrides
         $overrides = DB::table('personal_permisos')
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('personal_id', $personalId)
             ->get();
         $overrideMap = [];
@@ -106,7 +106,7 @@ class PermisoPersonalController extends BaseController
         }
 
         $existing = DB::table('personal_permisos')
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('personal_id', $personalId)
             ->where('modulo', $modulo)
             ->where('accion', $accion)
@@ -119,7 +119,7 @@ class PermisoPersonalController extends BaseController
             ]);
         } else {
             DB::table('personal_permisos')->insert([
-                'empresa_id'  => $user->empresa_id,
+                'empresa_id'  => $this->getEffectiveEmpresaId($user, $request),
                 'personal_id' => $personalId,
                 'modulo'      => $modulo,
                 'accion'      => $accion,
@@ -145,7 +145,7 @@ class PermisoPersonalController extends BaseController
         }
 
         $deleted = DB::table('personal_permisos')
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('personal_id', $personalId)
             ->delete();
 

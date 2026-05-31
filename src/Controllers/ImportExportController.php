@@ -51,11 +51,11 @@ class ImportExportController extends BaseController
         // Row 5: Reference Data (Table)
         $refTable = "";
         if ($tipo === 'productos') {
-            $cats   = \App\Models\CategoriaProducto::where('empresa_id', $user->empresa_id)->get(['id', 'nombre']);
-            $marcas = \App\Models\Marca::where('empresa_id', $user->empresa_id)->get(['id', 'nombre']);
+            $cats   = \App\Models\CategoriaProducto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->get(['id', 'nombre']);
+            $marcas = \App\Models\Marca::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->get(['id', 'nombre']);
             $refTable = "CATÁLOGOS — [CATEGORÍAS] : " . $cats->map(fn($c) => "{$c->id}={$c->nombre}")->implode(', ') . " | [MARCAS] : " . $marcas->map(fn($m) => "{$m->id}={$m->nombre}")->implode(', ');
         } elseif ($tipo === 'clientes') {
-            $rutas = \App\Models\Ruta::where('empresa_id', $user->empresa_id)->get(['id', 'nombre']);
+            $rutas = \App\Models\Ruta::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->get(['id', 'nombre']);
             $refTable = "CATÁLOGOS — [RUTAS] : " . $rutas->map(fn($r) => "{$r->id}={$r->nombre}")->implode(', ');
         }
         $help[] = $refTable; // This is row 5
@@ -179,11 +179,11 @@ class ImportExportController extends BaseController
         $cacheEans  = []; // [codigo_ean => producto_id]
 
         if ($tipo === 'productos') {
-            foreach (\App\Models\Producto::where('empresa_id', $user->empresa_id)->get() as $p) {
+            foreach (\App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->get() as $p) {
                 $cacheProds[$p->codigo_interno] = $p;
             }
         } elseif ($tipo === 'clientes') {
-            foreach (\App\Models\Cliente::where('empresa_id', $user->empresa_id)->get() as $c) {
+            foreach (\App\Models\Cliente::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->get() as $c) {
                 $cacheClis[$c->nit] = $c;
             }
         }
@@ -198,7 +198,7 @@ class ImportExportController extends BaseController
             }
 
             if (empty($row)) continue;
-            $row['empresa_id'] = $user->empresa_id;
+            $row['empresa_id'] = $this->getEffectiveEmpresaId($user, $request);
             try {
                 // Limpiar valores (incluyendo errores de Excel como #N/D o #N/A)
                 foreach($row as $fld => $val) {
@@ -294,7 +294,7 @@ class ImportExportController extends BaseController
         $productos = \App\Models\Producto::with(['marca', 'categoria', 'eans' => function ($q) {
             $q->where('es_principal', true)->where('activo', true);
         }])
-        ->where('empresa_id', $user->empresa_id)
+        ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
         ->orderBy('codigo_interno')
         ->get();
 

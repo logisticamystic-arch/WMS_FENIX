@@ -85,7 +85,7 @@ class ParametrosController extends BaseController
              if ($this->isSuperAdmin($user) && !empty($params['empresa_id'])) {
                  $query->where('empresa_id', $params['empresa_id']);
              } else {
-                 $query->where('empresa_id', $user->empresa_id);
+                 $query->where('empresa_id', $this->getEffectiveEmpresaId($user, $request));
              }
              
              if (isset($params['activo'])) {
@@ -118,7 +118,7 @@ class ParametrosController extends BaseController
 
          try {
              $suc = new \App\Models\Sucursal();
-             $suc->empresa_id = $user->empresa_id;
+             $suc->empresa_id = $this->getEffectiveEmpresaId($user, $request);
              $suc->codigo = $codigo;
              $suc->nombre = $nombre;
              $suc->direccion = $data['direccion'] ?? null;
@@ -144,7 +144,7 @@ class ParametrosController extends BaseController
          $data = $request->getParsedBody();
 
          try {
-             $suc = \App\Models\Sucursal::where('empresa_id', $user->empresa_id)->find($id);
+             $suc = \App\Models\Sucursal::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
              if (!$suc) return $this->json($response, ['error' => true, 'message' => 'Sucursal no encontrada'], 404);
 
              if (isset($data['codigo'])) $suc->codigo = $data['codigo'];
@@ -176,7 +176,7 @@ class ParametrosController extends BaseController
 
         try {
             // Buscamos productos que coincidan por nombre, descripción, código interno o eans asociados
-            $query = \App\Models\Producto::where('empresa_id', $user->empresa_id);
+            $query = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request));
 
             // Si no hay búsqueda ni filtros, ordenamos por los más recientes por defecto para "Ver Todos"
             if (empty($q) && empty($catId) && empty($marId)) {
@@ -237,7 +237,7 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         try {
             // Mostrar todas las marcas en maestros (activas e inactivas)
-            $marcas = \App\Models\Marca::where('empresa_id', $user->empresa_id)->get();
+            $marcas = \App\Models\Marca::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->get();
             return $this->json($response, ['error' => false, 'data' => $marcas]);
         } catch (\Exception $e) {
             error_log('getMarcas error: ' . $e->getMessage());
@@ -262,7 +262,7 @@ class ParametrosController extends BaseController
         }
 
         // Verificar duplicado (case-insensitive)
-        $existe = \App\Models\Marca::where('empresa_id', $user->empresa_id)
+        $existe = \App\Models\Marca::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->whereRaw('LOWER(nombre) = ?', [strtolower($nombre)])
             ->exists();
         if ($existe) {
@@ -271,7 +271,7 @@ class ParametrosController extends BaseController
 
         try {
             $marca = new \App\Models\Marca();
-            $marca->empresa_id = $user->empresa_id;
+            $marca->empresa_id = $this->getEffectiveEmpresaId($user, $request);
             $marca->nombre = $nombre;
             $marca->activo = true;
             $marca->save();
@@ -291,11 +291,11 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         $data = $request->getParsedBody() ?? [];
         try {
-            $marca = \App\Models\Marca::where('empresa_id', $user->empresa_id)->find($args['id']);
+            $marca = \App\Models\Marca::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($args['id']);
             if (!$marca) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
             if (isset($data['nombre']) && !empty(trim($data['nombre']))) {
                 $nombre = trim($data['nombre']);
-                $existe = \App\Models\Marca::where('empresa_id', $user->empresa_id)
+                $existe = \App\Models\Marca::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                     ->whereRaw('LOWER(nombre) = ?', [strtolower($nombre)])
                     ->where('id', '!=', $marca->id)
                     ->exists();
@@ -318,7 +318,7 @@ class ParametrosController extends BaseController
     {
         $user = $request->getAttribute('user');
         try {
-            $marca = \App\Models\Marca::where('empresa_id', $user->empresa_id)->find($args['id']);
+            $marca = \App\Models\Marca::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($args['id']);
             if (!$marca) return $this->json($response, ['error' => true, 'message' => 'Marca no encontrada'], 404);
             
             // Verificar si hay productos asociados antes de eliminar
@@ -341,7 +341,7 @@ class ParametrosController extends BaseController
     {
         $user = $request->getAttribute('user');
         try {
-            $productos = \App\Models\Producto::where('empresa_id', $user->empresa_id)
+            $productos = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->with(['marca', 'categoria', 'eans' => fn($q) => $q->where('activo', true)])
                 ->get();
             return $this->json($response, ['error' => false, 'data' => $productos]);
@@ -360,7 +360,7 @@ class ParametrosController extends BaseController
         $id = $args['id'];
 
         try {
-            $producto = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($id);
+            $producto = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
             if (!$producto) {
                 return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado.'], 404);
             }
@@ -384,7 +384,7 @@ class ParametrosController extends BaseController
     public function getCategorias(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        $cats = \App\Models\CategoriaProducto::where('empresa_id', $user->empresa_id)
+        $cats = \App\Models\CategoriaProducto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->orderBy('nombre')->get();
         return $this->json($response, ['error' => false, 'data' => $cats]);
     }
@@ -403,7 +403,7 @@ class ParametrosController extends BaseController
             return $this->json($response, ['error' => true, 'message' => 'El nombre es requerido'], 400);
         }
         $cat = \App\Models\CategoriaProducto::create([
-            'empresa_id'               => $user->empresa_id,
+            'empresa_id'               => $this->getEffectiveEmpresaId($user, $request),
             'nombre'                   => $data['nombre'],
             'descripcion'              => $data['descripcion'] ?? null,
             'requiere_foto_vencimiento'=> filter_var($data['requiere_foto_vencimiento'] ?? false, FILTER_VALIDATE_BOOLEAN),
@@ -420,7 +420,7 @@ class ParametrosController extends BaseController
         if (!$this->isAdmin($user)) {
             return $this->json($response, ['error' => true, 'message' => 'Solo administradores'], 403);
         }
-        $cat = \App\Models\CategoriaProducto::where('empresa_id', $user->empresa_id)->find($args['id']);
+        $cat = \App\Models\CategoriaProducto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($args['id']);
         if (!$cat) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
         $data = $request->getParsedBody();
         if (!empty($data['nombre'])) $cat->nombre = $data['nombre'];
@@ -441,7 +441,7 @@ class ParametrosController extends BaseController
         if (!$this->isAdmin($user)) {
             return $this->json($response, ['error' => true, 'message' => 'Solo administradores'], 403);
         }
-        $cat = \App\Models\CategoriaProducto::where('empresa_id', $user->empresa_id)->find($args['id']);
+        $cat = \App\Models\CategoriaProducto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($args['id']);
         if (!$cat) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
         // Desasignar productos de esta categoría antes de eliminar
         \App\Models\Producto::where('categoria_id', $cat->id)->update(['categoria_id' => null]);
@@ -472,7 +472,7 @@ class ParametrosController extends BaseController
          Capsule::beginTransaction();
          try {
              $prod = new \App\Models\Producto();
-             $prod->empresa_id = $user->empresa_id;
+             $prod->empresa_id = $this->getEffectiveEmpresaId($user, $request);
              $prod->codigo_interno = $interno;
              $prod->nombre = $data['nombre'] ?? '';
              $prod->descripcion = $data['descripcion'] ?? null;
@@ -522,7 +522,7 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         $id = $args['id'];
         try {
-            $prod = \App\Models\Producto::where('empresa_id', $user->empresa_id)->with(['categoria', 'marca'])->find($id);
+            $prod = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->with(['categoria', 'marca'])->find($id);
             if (!$prod) return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
             
             // Adjuntar EANs
@@ -553,7 +553,7 @@ class ParametrosController extends BaseController
          }
          
          try {
-             $prod = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($productId);
+             $prod = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($productId);
              if (!$prod) {
                  return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
              }
@@ -611,7 +611,7 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         
         try {
-            $prod = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($id);
+            $prod = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
             if (!$prod) return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
             
             $prod->activo = $prod->activo ? 0 : 1;
@@ -637,7 +637,7 @@ class ParametrosController extends BaseController
             return $this->json($response, ['error' => true, 'message' => 'Acceso denegado. Solo administradores.'], 403);
         }
 
-        $prod = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($args['id']);
+        $prod = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($args['id']);
         if (!$prod) {
             return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
         }
@@ -657,7 +657,7 @@ class ParametrosController extends BaseController
         $productId = (int)$args['id'];
 
         // Verify the product belongs to the user's company
-        $producto = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($productId);
+        $producto = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($productId);
         if (!$producto) {
             return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
         }
@@ -680,7 +680,7 @@ class ParametrosController extends BaseController
         $data      = $request->getParsedBody();
         $eanCode   = $data['codigo_ean'] ?? '';
 
-        $producto = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($productId);
+        $producto = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($productId);
         if (!$producto) {
             return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
         }
@@ -716,7 +716,7 @@ class ParametrosController extends BaseController
         $eanCode   = $data['codigo_ean'] ?? '';
 
         // Verify ownership via producto → empresa_id
-        $producto = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($productId);
+        $producto = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($productId);
         if (!$producto) {
             return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
         }
@@ -751,7 +751,7 @@ class ParametrosController extends BaseController
         $eanId     = (int)$args['ean_id'];
 
         // Verify ownership via producto → empresa_id
-        $producto = \App\Models\Producto::where('empresa_id', $user->empresa_id)->find($productId);
+        $producto = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($productId);
         if (!$producto) {
             return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
         }
@@ -776,7 +776,7 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         $rol = $request->getQueryParams()['rol'] ?? null;
         
-        $query = \App\Models\Personal::where('empresa_id', $user->empresa_id);
+        $query = \App\Models\Personal::where('empresa_id', $this->getEffectiveEmpresaId($user, $request));
         
         if ($rol) {
             $query->where('rol', $rol);
@@ -799,7 +799,7 @@ class ParametrosController extends BaseController
         $data = $request->getParsedBody();
         try {
             $p = new \App\Models\Personal();
-            $p->empresa_id = $user->empresa_id;
+            $p->empresa_id = $this->getEffectiveEmpresaId($user, $request);
             $p->sucursal_id = $data['sucursal_id'] ?? null;
             $p->nombre = $data['nombre'];
             $p->documento = $data['documento'];
@@ -826,7 +826,7 @@ class ParametrosController extends BaseController
         $id = $args['id'];
         $data = $request->getParsedBody();
         try {
-            $p = \App\Models\Personal::where('empresa_id', $user->empresa_id)->find($id);
+            $p = \App\Models\Personal::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
             if (!$p) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
             if (isset($data['nombre'])) $p->nombre = $data['nombre'];
             if (isset($data['sucursal_id'])) $p->sucursal_id = $data['sucursal_id'] ?: null;
@@ -849,7 +849,7 @@ class ParametrosController extends BaseController
         $user   = $request->getAttribute('user');
         $params = $request->getQueryParams();
 
-        $query = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id);
+        $query = \App\Models\Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request));
 
         // Exact code match (used by mobile app to resolve scanned código)
         // Normalize: remove dashes for flexible scanning
@@ -903,7 +903,7 @@ class ParametrosController extends BaseController
                 $codigo = $zona . '/' . implode('-', $parts);
             }
 
-            $exists = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id)
+            $exists = \App\Models\Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('sucursal_id', $data['sucursal_id'])
                 ->where('codigo', $codigo)
                 ->exists();
@@ -913,7 +913,7 @@ class ParametrosController extends BaseController
             }
 
             $u = new \App\Models\Ubicacion();
-            $u->empresa_id      = $user->empresa_id;
+            $u->empresa_id      = $this->getEffectiveEmpresaId($user, $request);
             $u->sucursal_id     = $data['sucursal_id'];
             $u->zona            = $data['zona'];
             $u->pasillo         = $data['pasillo'];
@@ -941,7 +941,7 @@ class ParametrosController extends BaseController
         $id = $args['id'];
         $data = $request->getParsedBody();
         try {
-            $u = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id)->find($id);
+            $u = \App\Models\Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
             if (!$u) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
             
             if (isset($data['zona'])) $u->zona = $data['zona'];
@@ -972,7 +972,7 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         $id = $args['id'];
         try {
-            $u = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id)->find($id);
+            $u = \App\Models\Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
             if (!$u) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
             
             $u->activo = $u->activo ? 0 : 1;
@@ -991,7 +991,7 @@ class ParametrosController extends BaseController
     public function getProveedores(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        $provs = \App\Models\Proveedor::where('empresa_id', $user->empresa_id)->get();
+        $provs = \App\Models\Proveedor::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->get();
         return $this->json($response, ['error' => false, 'data' => $provs]);
     }
 
@@ -1012,7 +1012,7 @@ class ParametrosController extends BaseController
         }
         try {
             $p = new \App\Models\Proveedor();
-            $p->empresa_id = $user->empresa_id;
+            $p->empresa_id = $this->getEffectiveEmpresaId($user, $request);
             $p->nit = $nit;
             $p->razon_social = $razonSocial;
             $p->telefono = $data['telefono'] ?? null;
@@ -1035,7 +1035,7 @@ class ParametrosController extends BaseController
         $id = $args['id'];
         $data = $request->getParsedBody();
         try {
-            $p = \App\Models\Proveedor::where('empresa_id', $user->empresa_id)->find($id);
+            $p = \App\Models\Proveedor::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
             if (!$p) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
             if (isset($data['nit'])) $p->nit = $data['nit'];
             if (isset($data['razon_social'])) $p->razon_social = $data['razon_social'];
@@ -1078,7 +1078,7 @@ class ParametrosController extends BaseController
         $allPermisos = \App\Models\Permiso::orderBy('modulo')->orderBy('accion')->get();
 
         // 2. Obtener los permisos concedidos para este rol en esta empresa
-        $grantedIds = \App\Models\RolPermiso::where('empresa_id', $user->empresa_id)
+        $grantedIds = \App\Models\RolPermiso::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('rol', $rol)
             ->where('concedido', true)
             ->pluck('permiso_id')
@@ -1114,14 +1114,14 @@ class ParametrosController extends BaseController
         $concedido = $data['concedido'] ?? false;
 
         try {
-            $rp = \App\Models\RolPermiso::where('empresa_id', $user->empresa_id)
+            $rp = \App\Models\RolPermiso::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('rol', $rol)
                 ->where('permiso_id', $permisoId)
                 ->first();
 
             if (!$rp) {
                 $rp = new \App\Models\RolPermiso();
-                $rp->empresa_id = $user->empresa_id;
+                $rp->empresa_id = $this->getEffectiveEmpresaId($user, $request);
                 $rp->rol = $rol;
                 $rp->permiso_id = $permisoId;
             }
@@ -1141,7 +1141,7 @@ class ParametrosController extends BaseController
     public function getRutas(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        $rutas = Ruta::where('empresa_id', $user->empresa_id)->orderBy('nombre')->get();
+        $rutas = Ruta::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->orderBy('nombre')->get();
         return $this->json($response, ['error' => false, 'data' => $rutas]);
     }
 
@@ -1160,7 +1160,7 @@ class ParametrosController extends BaseController
 
         try {
             $ruta = new Ruta();
-            $ruta->empresa_id = $user->empresa_id;
+            $ruta->empresa_id = $this->getEffectiveEmpresaId($user, $request);
             $ruta->nombre = $nombre;
             $ruta->comercial = trim($data['comercial'] ?? '');
             $ruta->frecuencia = trim($data['frecuencia'] ?? '');
@@ -1181,7 +1181,7 @@ class ParametrosController extends BaseController
     {
         $user = $request->getAttribute('user');
         $id = $args['id'];
-        $ruta = Ruta::where('id', $id)->where('empresa_id', $user->empresa_id)->first();
+        $ruta = Ruta::where('id', $id)->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->first();
         if (!$ruta) return $this->json($response, ['error' => true, 'message' => 'Ruta no encontrada'], 404);
 
         $data = $request->getParsedBody();
@@ -1231,7 +1231,7 @@ class ParametrosController extends BaseController
     {
         $user = $request->getAttribute('user');
         if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
-        $s = \App\Models\Sucursal::where('empresa_id', $user->empresa_id)->find($args['id']);
+        $s = \App\Models\Sucursal::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($args['id']);
         if (!$s) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
         $s->activo = 0; $s->save();
         return $this->json($response, ['error' => false, 'message' => 'Sucursal desactivada']);
@@ -1242,7 +1242,7 @@ class ParametrosController extends BaseController
     {
         $user = $request->getAttribute('user');
         if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
-        $p = \App\Models\Personal::where('empresa_id', $user->empresa_id)->find($args['id']);
+        $p = \App\Models\Personal::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($args['id']);
         if (!$p) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
         $p->activo = 0; $p->save();
         return $this->json($response, ['error' => false, 'message' => 'Colaborador desactivado']);
@@ -1253,7 +1253,7 @@ class ParametrosController extends BaseController
     {
         $user = $request->getAttribute('user');
         if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
-        $u = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id)->find($args['id']);
+        $u = \App\Models\Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($args['id']);
         if (!$u) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
         $u->activo = false; $u->save();
         return $this->json($response, ['error' => false, 'message' => 'Ubicación desactivada']);
@@ -1265,7 +1265,7 @@ class ParametrosController extends BaseController
     public function getZonas(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        $zonas = \App\Models\Zona::where('empresa_id', $user->empresa_id)
+        $zonas = \App\Models\Zona::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                                  ->orderBy('codigo')
                                  ->get();
         return $this->json($response, ['error' => false, 'data' => $zonas]);
@@ -1280,7 +1280,7 @@ class ParametrosController extends BaseController
         $data = $request->getParsedBody();
         try {
             $z = new \App\Models\Zona();
-            $z->empresa_id = $user->empresa_id;
+            $z->empresa_id = $this->getEffectiveEmpresaId($user, $request);
             $z->codigo = strtoupper(trim($data['codigo']));
             $z->descripcion = $data['descripcion'] ?? null;
             $z->save();
@@ -1299,7 +1299,7 @@ class ParametrosController extends BaseController
         $id = $args['id'];
         $data = $request->getParsedBody();
         try {
-            $z = \App\Models\Zona::where('empresa_id', $user->empresa_id)->find($id);
+            $z = \App\Models\Zona::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
             if (!$z) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
 
             if (isset($data['codigo'])) $z->codigo = strtoupper(trim($data['codigo']));
@@ -1318,11 +1318,11 @@ class ParametrosController extends BaseController
     {
         $user = $request->getAttribute('user');
         if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
-        $z = \App\Models\Zona::where('empresa_id', $user->empresa_id)->find($args['id']);
+        $z = \App\Models\Zona::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($args['id']);
         if (!$z) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
 
         // Check if zone is being used by locations
-        $ubicacionesCount = \App\Models\Ubicacion::where('empresa_id', $user->empresa_id)
+        $ubicacionesCount = \App\Models\Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                                                 ->where('zona', $z->codigo)
                                                 ->count();
         if ($ubicacionesCount > 0) {
@@ -1338,7 +1338,7 @@ class ParametrosController extends BaseController
     {
         $user = $request->getAttribute('user');
         if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
-        $p = \App\Models\Proveedor::where('empresa_id', $user->empresa_id)->find($args['id']);
+        $p = \App\Models\Proveedor::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($args['id']);
         if (!$p) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
         $p->activo = 0; $p->save();
         return $this->json($response, ['error' => false, 'message' => 'Proveedor desactivado']);
@@ -1353,7 +1353,7 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         $proveedorId = $args['id'] ?? null;
 
-        $proveedor = \App\Models\Proveedor::where('empresa_id', $user->empresa_id)
+        $proveedor = \App\Models\Proveedor::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->find($proveedorId);
 
         if (!$proveedor) {
@@ -1361,20 +1361,20 @@ class ParametrosController extends BaseController
         }
 
         // 1. Cálculo de cumplimiento de ODCs (Órdenes de Compra)
-        $totalOdc = \App\Models\OrdenCompra::where('empresa_id', $user->empresa_id)
+        $totalOdc = \App\Models\OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('proveedor_id', $proveedor->id)
             ->count();
-        $odcCompletadas = \App\Models\OrdenCompra::where('empresa_id', $user->empresa_id)
+        $odcCompletadas = \App\Models\OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('proveedor_id', $proveedor->id)
             ->where('estado', 'Cerrada')
             ->count();
         $pctCumplimientoOdc = $totalOdc > 0 ? round(($odcCompletadas / $totalOdc) * 100, 1) : 0;
 
         // 2. Cálculo de cumplimiento de Citas (YMS - Yard Management System)
-        $totalCitas = \App\Models\Cita::where('empresa_id', $user->empresa_id)
+        $totalCitas = \App\Models\Cita::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('proveedor', $proveedor->razon_social)
             ->count();
-        $citasCompletadas = \App\Models\Cita::where('empresa_id', $user->empresa_id)
+        $citasCompletadas = \App\Models\Cita::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('proveedor', $proveedor->razon_social)
             ->where('estado', 'Completada')
             ->count();
@@ -1383,20 +1383,20 @@ class ParametrosController extends BaseController
         // 3. Cálculo de calidad (receptions en buen estado vs problemas)
         $totalLineasRecepcion = Capsule::table('recepcion_detalles as rd')
             ->join('recepciones as r', 'rd.recepcion_id', '=', 'r.id')
-            ->where('r.empresa_id', $user->empresa_id)
+            ->where('r.empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->whereHas('cita', function($q) use ($proveedor) {
                 $q->where('proveedor', $proveedor->razon_social);
             })
             ->count() ?? 0;
         $lineasBuenEstado = Capsule::table('recepcion_detalles as rd')
             ->join('recepciones as r', 'rd.recepcion_id', '=', 'r.id')
-            ->where('r.empresa_id', $user->empresa_id)
+            ->where('r.empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('rd.estado', 'BuenEstado')
             ->count() ?? 0;
         $pctCalidad = $totalLineasRecepcion > 0 ? round(($lineasBuenEstado / $totalLineasRecepcion) * 100, 1) : 0;
 
         // 4. Evaluaciones directas de citas (1-10 scale)
-        $evaluaciones = \App\Models\Cita::where('empresa_id', $user->empresa_id)
+        $evaluaciones = \App\Models\Cita::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('proveedor', $proveedor->razon_social)
             ->where('estado', 'Completada')
             ->whereNotNull('evaluacion_proveedor')
@@ -1427,7 +1427,7 @@ class ParametrosController extends BaseController
                 Capsule::raw('SUM(CASE WHEN estado = "Completada" THEN 1 ELSE 0 END) as citas_completadas'),
                 Capsule::raw('AVG(evaluacion_proveedor) as eval_promedio')
             )
-            ->where('empresa_id', $user->empresa_id)
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('proveedor', $proveedor->razon_social)
             ->whereDate('created_at', '>=', $hace30Dias)
             ->groupBy('fecha')
@@ -1479,7 +1479,7 @@ class ParametrosController extends BaseController
     {
         $user = $request->getAttribute('user');
         try {
-            $clientes = Cliente::where('empresa_id', $user->empresa_id)
+            $clientes = Cliente::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('activo', 1)
                 ->with('ruta')
                 ->get();
@@ -1502,12 +1502,12 @@ class ParametrosController extends BaseController
             }
 
             // Validar NIT duplicado en la misma empresa
-            if (Cliente::where('empresa_id', $user->empresa_id)->where('nit', $data['nit'])->exists()) {
+            if (Cliente::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->where('nit', $data['nit'])->exists()) {
                 return $this->json($response, ['error' => true, 'message' => 'Ya existe un cliente con este NIT'], 409);
             }
 
             $c = new Cliente();
-            $c->empresa_id = $user->empresa_id;
+            $c->empresa_id = $this->getEffectiveEmpresaId($user, $request);
             $c->nit = trim($data['nit']);
             $c->razon_social = trim($data['razon_social']);
             $c->ciudad = $data['ciudad'] ?? null;
@@ -1534,7 +1534,7 @@ class ParametrosController extends BaseController
         $id   = $args['id'];
         $data = $request->getParsedBody();
         try {
-            $cliente = \App\Models\Cliente::where('empresa_id', $user->empresa_id)->findOrFail($id);
+            $cliente = \App\Models\Cliente::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->findOrFail($id);
             if (isset($data['nit']))              $cliente->nit             = trim($data['nit']);
             if (isset($data['razon_social']))     $cliente->razon_social    = trim($data['razon_social']);
             if (isset($data['ciudad']))           $cliente->ciudad          = $data['ciudad'];
@@ -1559,7 +1559,7 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         $id   = $args['id'];
         try {
-            $cliente = \App\Models\Cliente::where('empresa_id', $user->empresa_id)->findOrFail($id);
+            $cliente = \App\Models\Cliente::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->findOrFail($id);
             $cliente->delete();
             return $this->json($response, ['error' => false, 'message' => 'Cliente eliminado']);
         } catch (\Exception $e) {
@@ -1575,7 +1575,7 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         $id   = $args['id'];
         try {
-            $ruta = \App\Models\Ruta::where('empresa_id', $user->empresa_id)->findOrFail($id);
+            $ruta = \App\Models\Ruta::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->findOrFail($id);
             $ruta->delete();
             return $this->json($response, ['error' => false, 'message' => 'Ruta eliminada']);
         } catch (\Exception $e) {
