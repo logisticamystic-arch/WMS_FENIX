@@ -1745,6 +1745,19 @@ class InventarioV2Controller extends BaseController
             $hoy = date('Y-m-d');
             $limite = date('Y-m-d', strtotime("+{$diasAlerta} days"));
 
+            $driver = Capsule::connection()->getDriverName();
+            if ($driver === 'pgsql') {
+                $diasRestantesExpr = "(inventarios.fecha_vencimiento::date - CURRENT_DATE)";
+                $int30 = "CURRENT_DATE + INTERVAL '30 days'";
+                $int60 = "CURRENT_DATE + INTERVAL '60 days'";
+                $int90 = "CURRENT_DATE + INTERVAL '90 days'";
+            } else {
+                $diasRestantesExpr = "DATEDIFF(inventarios.fecha_vencimiento, CURDATE())";
+                $int30 = "DATE_ADD(CURDATE(), INTERVAL 30 DAY)";
+                $int60 = "DATE_ADD(CURDATE(), INTERVAL 60 DAY)";
+                $int90 = "DATE_ADD(CURDATE(), INTERVAL 90 DAY)";
+            }
+
             $query = Inventario::where('inventarios.empresa_id', $user->empresa_id)
                 ->where('inventarios.sucursal_id', $user->sucursal_id)
                 ->whereNotNull('inventarios.fecha_vencimiento')
@@ -1761,12 +1774,12 @@ class InventarioV2Controller extends BaseController
                     'inventarios.fecha_vencimiento',
                     'inventarios.cantidad',
                     'ubicaciones.codigo as ubicacion',
-                    Capsule::raw("(inventarios.fecha_vencimiento::date - CURRENT_DATE) as dias_restantes"),
+                    Capsule::raw("{$diasRestantesExpr} as dias_restantes"),
                     Capsule::raw("CASE
                         WHEN inventarios.fecha_vencimiento < '{$hoy}' THEN 'VENCIDO'
-                        WHEN inventarios.fecha_vencimiento <= (CURRENT_DATE + INTERVAL '30 days') THEN 'CRITICO'
-                        WHEN inventarios.fecha_vencimiento <= (CURRENT_DATE + INTERVAL '60 days') THEN 'ALERTA'
-                        WHEN inventarios.fecha_vencimiento <= (CURRENT_DATE + INTERVAL '90 days') THEN 'PROXIMO'
+                        WHEN inventarios.fecha_vencimiento <= {$int30} THEN 'CRITICO'
+                        WHEN inventarios.fecha_vencimiento <= {$int60} THEN 'ALERTA'
+                        WHEN inventarios.fecha_vencimiento <= {$int90} THEN 'PROXIMO'
                         ELSE 'OK'
                     END as semaforo")
                 );
