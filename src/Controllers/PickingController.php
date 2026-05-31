@@ -1062,6 +1062,17 @@ class PickingController extends BaseController
             $linea->ubicacion_id
         );
         if (!$check['ok']) {
+            if (!empty($check['pending_approval'])) {
+                $body = $res->getBody();
+                $body->write(json_encode([
+                    'error'         => false,
+                    'status'        => 'pending_approval',
+                    'aprobacion_id' => $check['aprobacion_id'],
+                    'message'       => $check['message'],
+                    'dias_restantes'=> $check['dias_restantes'],
+                ], JSON_UNESCAPED_UNICODE));
+                return $res->withHeader('Content-Type', 'application/json')->withStatus(202);
+            }
             return $this->error($res, $check['message'], 422);
         }
         if (!empty($check['fefo_warning'])) {
@@ -1130,6 +1141,17 @@ class PickingController extends BaseController
                     'hora_inicio'          => date('H:i:s'),
                 ]);
 
+                // Store fecha_vencimiento from inventory for traceability
+                if (!$linea->fecha_vencimiento && $linea->lote) {
+                    $fv = \Illuminate\Database\Capsule\Manager::table('inventarios')
+                        ->where('empresa_id',  $user->empresa_id)
+                        ->where('sucursal_id', $user->sucursal_id)
+                        ->where('producto_id', $linea->producto_id)
+                        ->where('lote',        $linea->lote)
+                        ->whereNotNull('fecha_vencimiento')
+                        ->value('fecha_vencimiento');
+                    if ($fv) $linea->fecha_vencimiento = $fv;
+                }
                 $linea->cantidad_pickeada = $cantidadTomada;
                 $linea->estado = $cantidadTomada >= $linea->cantidad_solicitada
                     ? 'Completado' : 'Faltante';
