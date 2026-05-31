@@ -1334,7 +1334,6 @@
         const errEl = document.getElementById('login-error');
         errEl.style.display = 'none';
         if (!doc) { errEl.textContent = 'Ingrese su número de documento.'; errEl.style.display = 'block'; return; }
-        if (!empresaId) { errEl.textContent = 'Seleccione la empresa antes de ingresar.'; errEl.style.display = 'block'; return; }
         if (this._pin.length < 4) { errEl.textContent = 'Ingrese su PIN de 4 dígitos.'; errEl.style.display = 'block'; return; }
         const btn = document.getElementById('btn-login-desktop');
         btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verificando...';
@@ -1468,7 +1467,7 @@
           const data = await r.json();
           const empresas = data.data || data.empresas || [];
           empresaSel.innerHTML = '<option value="">— Seleccione una empresa —</option>' +
-            empresas.map(e => `<option value="${e.id}" data-nombre="${e.razon_social}">${e.razon_social} (NIT: ${e.nit||'—'})</option>`).join('');
+            empresas.map(e => `<option value="${e.id}" data-nombre="${e.razon_social}">${e.razon_social} (NIT: ${e.nit||'—'})${e.activo ? '' : ' [Inactiva]'}</option>`).join('');
           if (_wmsEmpresaFiltro?.id) {
             empresaSel.value = _wmsEmpresaFiltro.id;
             await loadSucursales(_wmsEmpresaFiltro.id);
@@ -1801,6 +1800,7 @@
             {
               section: 'OPERACIÓN', items: [
                 { icon: 'fa-clipboard-check', label: 'Certificación', action: "WMS.nav('despacho','certificacion')" },
+                { icon: 'fa-boxes-packing', label: 'Packing', action: "WMS.nav('despacho','packing')" },
                 { icon: 'fa-truck-loading', label: 'Planilla de Cargue', action: "WMS.nav('despacho','cargue')" },
               ]
             },

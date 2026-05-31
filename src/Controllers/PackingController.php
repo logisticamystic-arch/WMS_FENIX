@@ -354,6 +354,40 @@ class PackingController extends BaseController
         return $this->ok($res, $sesion, 'Impresoras actualizadas');
     }
 
+    // ── GET /api/packing/sesiones ───────────────────────────────────────────
+    public function listarSesiones(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $q = $r->getQueryParams();
+
+        $desde = $q['desde'] ?? null;
+        $hasta = $q['hasta'] ?? null;
+        $pedido = $q['pedido'] ?? null;
+        $sucursal = $q['sucursal'] ?? null;
+        $sesionId = $q['sesion_id'] ?? null;
+
+        $builder = Capsule::table('packing_sesiones as ps')
+            ->leftJoin('packing_unidades as pu', 'pu.sesion_id', '=', 'ps.id')
+            ->leftJoin('packing_items as pi', 'pi.unidad_id', '=', 'pu.id')
+            ->leftJoin('picking_detalles as pd', 'pd.id', '=', 'pi.picking_detalle_id')
+            ->leftJoin('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
+            ->where('ps.empresa_id', $user->empresa_id)
+            ->where('ps.sucursal_id', $user->sucursal_id)
+            ->select('ps.*', Capsule::raw('COUNT(DISTINCT pu.id) as num_unidades'), Capsule::raw('COUNT(DISTINCT op.id) as num_pedidos'))
+            ->groupBy('ps.id')
+            ->orderBy('ps.created_at', 'desc')
+            ->limit(200);
+
+        if ($sesionId) $builder->where('ps.id', (int)$sesionId);
+        if ($sucursal) $builder->where('ps.sucursal_entrega', 'like', "%{$sucursal}%");
+        if ($desde) $builder->whereDate('ps.created_at', '>=', $desde);
+        if ($hasta) $builder->whereDate('ps.created_at', '<=', $hasta);
+        if ($pedido) $builder->whereRaw('op.numero_orden LIKE ?', ["%{$pedido}%"]);
+
+        $rows = $builder->get();
+        return $this->ok($res, $rows);
+    }
+
     // ── PRIVATE HELPERS ───────────────────────────────────────────────────────
 
     private function _getProductosPickados(int $empresaId, int $sucursalId, string $sucursalEntrega): array

@@ -645,6 +645,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->group('/packing', function ($group) {
         $group->post('/sesion',                      [\App\Controllers\PackingController::class, 'iniciarSesion']);
         $group->get('/sesion/{id}',                  [\App\Controllers\PackingController::class, 'getSesion']);
+        $group->get('/sesiones',                     [\App\Controllers\PackingController::class, 'listarSesiones']);
         $group->post('/sesion/{id}/item',            [\App\Controllers\PackingController::class, 'agregarItem']);
         $group->post('/sesion/{id}/finalizar',       [\App\Controllers\PackingController::class, 'finalizarSesion']);
         $group->put('/sesion/{id}/impresoras',       [\App\Controllers\PackingController::class, 'actualizarImpresoras']);

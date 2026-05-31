@@ -19,7 +19,12 @@ class ParametrosController extends BaseController
     {
         $user = $request->getAttribute('user');
         try {
-            $empresas = \App\Models\Empresa::where('activo', true)->get();
+            $isSuperAdmin = $user && strcasecmp($user->rol ?? '', 'SuperAdmin') === 0;
+            $query = \App\Models\Empresa::query();
+            if (!$isSuperAdmin) {
+                $query->where('activo', true);
+            }
+            $empresas = $query->orderBy('razon_social')->get();
             return $this->json($response, ['error' => false, 'data' => $empresas]);
         } catch (\Exception $e) {
             error_log('getEmpresas error: ' . $e->getMessage());

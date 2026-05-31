@@ -1,6 +1,6 @@
 /* ============================================================
    WMS Desktop — Módulo DESPACHO & TMS
-   Sub-vistas: certificacion | cargue | dashboard | tms
+   Sub-vistas: certificacion | packing | cargue | dashboard | tms
    ============================================================ */
 WMS_MODULES.despacho = {
   load(sub) {
@@ -8,7 +8,7 @@ WMS_MODULES.despacho = {
     WMS.renderSidebar('despacho');
     const s = sub || 'certificacion';
     const fn = {
-      certificacion: this.show_certificacion, cargue: this.show_cargue,
+      certificacion: this.show_certificacion, packing: this.show_packing_menu, cargue: this.show_cargue,
       dashboard: this.show_dashboard, tms: this.show_tms,
     };
     (fn[s]?.bind(this) || fn.certificacion.bind(this))();
@@ -38,7 +38,7 @@ WMS_MODULES.despacho = {
   },
 
   subLabel(s) {
-    const m = { certificacion:'Certificación de Pedidos', cargue:'Planilla de Cargue',
+    const m = { certificacion:'Certificación de Pedidos', packing:'Packing', cargue:'Planilla de Cargue',
       dashboard:'Dashboard Certificación', tms:'Integración TMS' };
     return m[s] || s || 'Panel';
   },
@@ -59,6 +59,12 @@ WMS_MODULES.despacho = {
         <div class="filter-bar">
           <div class="search-bar"><i class="fa-solid fa-search"></i>
             <input placeholder="Buscar sucursal..." oninput="WMS_MODULES.despacho.filterTable(this.value,'cert-table')">
+          </div>
+        </div>
+        <div class="alert-box" style="margin-bottom:14px;padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;color:#1e40af;display:flex;align-items:center;gap:10px;">
+          <i class="fa-solid fa-boxes-packing"></i>
+          <div>
+            El proceso de <strong>Packing</strong> se inicia desde esta vista. Selecciona una sucursal y haz clic en <strong>Iniciar Certificación</strong> para ver la pantalla de packing.
           </div>
         </div>
         <div class="card">
@@ -82,6 +88,125 @@ WMS_MODULES.despacho = {
           </div>
         </div>`);
     } catch(e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
+  },
+
+  show_packing_menu() {
+    WMS.setToolbar(`
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.despacho.show_packing_menu()"><i class="fa-solid fa-rotate"></i> Refrescar</button>
+    `);
+    WMS.setContent(`
+      <div class="card" style="max-width:960px;margin:0 auto;">
+        <div class="card-header"><span class="card-title"><i class="fa-solid fa-boxes-packing"></i> Packing</span></div>
+        <div style="padding:18px;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn btn-primary" onclick="WMS_MODULES.despacho.show_certificacion()"><i class="fa-solid fa-play"></i> Iniciar/Continuar Certificación</button>
+          <button class="btn btn-outline-primary" onclick="WMS_MODULES.despacho.show_packing_reprint()"><i class="fa-solid fa-print"></i> Reimprimir Rótulos / Buscar</button>
+        </div>
+      </div>`);
+  },
+
+  show_packing_reprint() {
+    WMS.setToolbar(`
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.despacho.show_packing_menu()"><i class="fa-solid fa-arrow-left"></i> Volver</button>
+    `);
+    WMS.setContent(`
+      <div class="card" style="max-width:1100px;margin:0 auto;">
+        <div class="card-header"><span class="card-title"><i class="fa-solid fa-print"></i> Reimprimir Rótulos</span></div>
+        <div style="padding:18px;">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
+            <div><label class="fw-700">Desde</label><input type="date" id="pk-filter-desde" class="form-control"></div>
+            <div><label class="fw-700">Hasta</label><input type="date" id="pk-filter-hasta" class="form-control"></div>
+            <div style="min-width:220px;"><label class="fw-700">Sucursal entrega</label><input type="text" id="pk-filter-sucursal" class="form-control" placeholder="Nombre sucursal"></div>
+            <div><label class="fw-700">Pedido</label><input type="text" id="pk-filter-pedido" class="form-control" placeholder="N° pedido"></div>
+            <div><label class="fw-700">N° Packing (ID)</label><input type="text" id="pk-filter-sesion" class="form-control" placeholder="ID sesión"></div>
+            <div style="display:flex;align-items:flex-end;"><button class="btn btn-primary" onclick="WMS_MODULES.despacho._searchPackingSessions()">Buscar</button></div>
+          </div>
+          <div id="pk-search-results"></div>
+        </div>
+      </div>`);
+  },
+
+  async _searchPackingSessions() {
+    const desde = document.getElementById('pk-filter-desde').value;
+    const hasta = document.getElementById('pk-filter-hasta').value;
+    const sucursal = document.getElementById('pk-filter-sucursal').value.trim();
+    const pedido = document.getElementById('pk-filter-pedido').value.trim();
+    const sesion = document.getElementById('pk-filter-sesion').value.trim();
+    WMS.spinner();
+    try {
+      const q = new URLSearchParams();
+      if (desde) q.append('desde', desde);
+      if (hasta) q.append('hasta', hasta);
+      if (sucursal) q.append('sucursal', sucursal);
+      if (pedido) q.append('pedido', pedido);
+      if (sesion) q.append('sesion_id', sesion);
+      const r = await API.get('/packing/sesiones?' + q.toString());
+      const rows = r.data || [];
+      this._renderPackingSearchResults(rows);
+    } catch(e) { WMS.toast('error', 'Error buscando sesiones'); }
+    finally { WMS.spinner(false); }
+  },
+
+  _renderPackingSearchResults(rows) {
+    if (!rows || rows.length === 0) {
+      document.getElementById('pk-search-results').innerHTML = '<div class="m-empty"><i class="fa-solid fa-boxes-packing"></i><p>No se encontraron sesiones</p></div>';
+      return;
+    }
+    const html = [`<div class="table-container"><table class="erp-table"><thead><tr><th>ID</th><th>Sucursal</th><th>Tipo</th><th>Estado</th><th>Unidad(s)</th><th>Pedidos</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody>`];
+    rows.forEach(r => {
+      html.push(`<tr>
+        <td>${r.id}</td>
+        <td>${WMS.esc(r.sucursal_entrega)}</td>
+        <td>${WMS.esc(r.tipo_empaque)}</td>
+        <td>${WMS.esc(r.estado)}</td>
+        <td class="text-center">${r.num_unidades||0}</td>
+        <td class="text-center">${r.num_pedidos||0}</td>
+        <td>${WMS.esc(r.created_at||r.updated_at||'')}</td>
+        <td>
+          <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.despacho._openPackingSession(${r.id})"><i class="fa-solid fa-eye"></i></button>
+          <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.despacho._printPackingSession(${r.id})"><i class="fa-solid fa-print"></i> Stickers</button>
+        </td>
+      </tr>`);
+    });
+    html.push('</tbody></table></div>');
+    document.getElementById('pk-search-results').innerHTML = html.join('');
+  },
+
+  async _openPackingSession(id) {
+    WMS.spinner();
+    try {
+      const r = await API.get('/packing/sesion/' + id);
+      if (!r.data) { WMS.toast('error', 'Sesión no encontrada'); return; }
+      this._packingState.sesionId  = id;
+      this._packingState.sesionData = r.data;
+      (r.data.unidades || []).forEach(u => {
+        this._packingState.unitsWithItems[u.id] = u.items || [];
+      });
+      if (r.data.sesion?.estado === 'Completada') {
+        this._mostrarPanelDocumento(r.data);
+      } else {
+        this._renderPackingScreen(r.data);
+      }
+    } catch(e) { WMS.toast('error', 'Error cargando sesión'); }
+    finally { WMS.spinner(false); }
+  },
+
+  async _printPackingSession(id) {
+    WMS.spinner();
+    try {
+      const r = await API.get('/packing/sesion/' + id);
+      if (!r.data) return WMS.toast('error', 'Sesión no encontrada');
+      const data = r.data;
+      const closed = (data.unidades||[]).filter(u => u.estado === 'Cerrada');
+      const parts = closed.map(u => {
+        const items = (u.items||[]);
+        return this._buildStickerBlock(u, data.sesion, items) + '<div style="page-break-after:always;"></div>';
+      }).join('');
+      const html = this._wrapPrintPage(parts, 'letter');
+      const win = window.open('', '_blank', 'width=680,height=500');
+      if (win) { win.document.write(html); win.document.close(); }
+      else WMS.toast('error', 'Popup bloqueado, permita ventanas emergentes');
+    } catch(e) { WMS.toast('error', 'Error imprimiendo sesión'); }
+    finally { WMS.spinner(false); }
   },
 
   async iniciarCertificacion(sucursal) {
@@ -1099,9 +1224,9 @@ WMS_MODULES.despacho = {
       if (r.error) { WMS.toast('error', r.message); return; }
       this._packingState.sesionId  = sesionId;
       this._packingState.sesionData = r.data;
-      // Seed closed units' items from API response
+      // Seed all units' items from API response
       (r.data.unidades || []).forEach(u => {
-        if (u.estado === 'Cerrada') this._packingState.unitsWithItems[u.id] = u.items || [];
+        this._packingState.unitsWithItems[u.id] = u.items || [];
       });
       this._renderPackingScreen(r.data);
     } catch(e) { WMS.toast('error', 'Error al cargar sesión de packing'); }
@@ -1229,15 +1354,39 @@ WMS_MODULES.despacho = {
       <div class="table-container">
         <table class="erp-table" style="font-size:12px;">
           <thead><tr><th>Unidad</th><th class="text-center">Ítems</th><th class="text-center">Total Uds.</th><th>Hora cierre</th><th>Acciones</th></tr></thead>
-          <tbody>${closed.map(u => `<tr>
-            <td><strong>${tipoUp} #${String(u.consecutivo).padStart(3,'0')}</strong></td>
-            <td class="text-center">${(u.items||[]).length}</td>
-            <td class="text-center fw-700">${WMS.formatNum(u.total_unidades)}</td>
-            <td style="font-size:11px;">${u.closed_at ? u.closed_at.substring(11,16) : '-'}</td>
-            <td><button class="btn btn-sm btn-outline-secondary"
-              onclick="WMS_MODULES.despacho._imprimirStickerUnidad(${u.id}, 'letter')">
-              <i class="fa-solid fa-print"></i> Sticker</button></td>
-          </tr>`).join('')}</tbody>
+          <tbody>${closed.map(u => {
+            const items = u.items || [];
+            return `
+              <tr>
+                <td><strong>${tipoUp} #${String(u.consecutivo).padStart(3,'0')}</strong></td>
+                <td class="text-center">${items.length}</td>
+                <td class="text-center fw-700">${WMS.formatNum(u.total_unidades)}</td>
+                <td style="font-size:11px;">${u.closed_at ? u.closed_at.substring(11,16) : '-'}</td>
+                <td><div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.despacho.toggleClosedUnitItems(${u.id})">
+                      <i class="fa-solid fa-eye"></i> Ver ítems</button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.despacho._imprimirStickerUnidad(${u.id}, 'letter')">
+                      <i class="fa-solid fa-print"></i> Sticker</button>
+                  </div></td>
+              </tr>
+              <tr id="pk-closed-items-${u.id}" style="display:none;">
+                <td colspan="5" style="padding:0;border:none;">
+                  <div style="padding:10px 12px;background:#f8fafc;border-top:1px solid #e2e8f0;">
+                    ${items.length ? `
+                      <table class="erp-table" style="width:100%;font-size:11px;margin:0;">
+                        <thead><tr><th>Ref.</th><th>Producto</th><th class="text-center">Cant.</th><th>Lote</th><th>Vence</th></tr></thead>
+                        <tbody>${items.map(i => `<tr>
+                            <td><code>${WMS.esc(i.codigo||'-')}</code></td>
+                            <td>${WMS.esc(i.producto_nombre||i.nombre||'-')}</td>
+                            <td class="text-center fw-700">${WMS.formatNum(i.cantidad)}</td>
+                            <td>${WMS.esc(i.lote||'-')}</td>
+                            <td>${i.fecha_vencimiento ? new Date(i.fecha_vencimiento+'T00:00').toLocaleDateString('es-CO',{month:'short',year:'2-digit'}) : '-'}</td>
+                          </tr>`).join('')}</tbody>
+                      </table>` : '<div style="font-size:12px;color:#475569;">Esta unidad no tiene ítems registrados.</div>'}
+                  </div>
+                </td>
+              </tr>`;
+          }).join('')}</tbody>
         </table>
       </div>
     </div>`;
@@ -1307,6 +1456,12 @@ WMS_MODULES.despacho = {
     const win  = window.open('', '_blank', 'width=680,height=500');
     if (win) { win.document.write(html); win.document.close(); }
     else { WMS.toast('error', 'El navegador bloqueó la ventana emergente. Permita popups para este sitio.'); }
+  },
+
+  toggleClosedUnitItems(unitId) {
+    const row = document.getElementById('pk-closed-items-' + unitId);
+    if (!row) return;
+    row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
   },
 
   _buildStickerHtml(unidad, sesion, items, size) {
