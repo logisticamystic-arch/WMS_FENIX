@@ -2028,8 +2028,8 @@
           this.updateBadge(r.badge);
           if (!r.data || r.data.length === 0) {
             list.innerHTML = '<div class="table-empty"><i class="fa-regular fa-bell"></i>Sin notificaciones</div>';
-            return;
-          }
+            // do not return — expiry approval cards still need to be appended below
+          } else {
           const iconMap = { tarea: 'fa-list-check tarea', picking: 'fa-boxes-stacked picking', alerta: 'fa-triangle-exclamation alerta', info: 'fa-info-circle info', recibo: 'fa-truck-ramp-box recibo', inventario: 'fa-clipboard-list inventario' };
           list.innerHTML = r.data.map(n => {
             const ic = iconMap[n.tipo] || 'fa-bell info';
@@ -2045,6 +2045,7 @@
           </div>
         </div>`;
           }).join('');
+          } // end else (has notifications)
         } catch (e) { list.innerHTML = '<div class="search-no-results">Error de conexión</div>'; }
 
         // Append expiry approval cards for supervisor-level roles
@@ -2058,7 +2059,7 @@
                 <div class="notif-item unread" id="expiry-card-${ap.id}">
                   <div class="notif-item-icon alerta"><i class="fa-solid fa-clock"></i></div>
                   <div class="notif-body">
-                    <div class="notif-titulo">⚠ Producto próximo a vencer (${ap.dias_restantes} días)</div>
+                    <div class="notif-titulo">⚠ Producto próximo a vencer (${parseInt(ap.dias_restantes, 10) || 0} días)</div>
                     <div class="notif-mensaje">${this.esc(ap.producto_nombre)} — Lote: ${this.esc(ap.lote)}</div>
                     <div class="notif-mensaje" style="color:#64748b;font-size:.72rem;">Solicitado por: ${this.esc(ap.auxiliar_nombre)} · ${this.tiempoRelativo(ap.created_at)}</div>
                     <div class="notif-actions" style="margin-top:6px;display:flex;gap:6px;">
