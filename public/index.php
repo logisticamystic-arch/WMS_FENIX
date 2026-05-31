@@ -653,6 +653,12 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->post('/unidad/{id}/cerrar',          [\App\Controllers\PackingController::class, 'cerrarUnidad']);
     });
 
+    // Módulo: Aprobaciones de Vencimiento
+    $group->get('/aprobaciones/vencimiento/pendientes', [\App\Controllers\AprobacionController::class, 'pendientes']);
+    $group->post('/aprobaciones/{id}/resolver',          [\App\Controllers\AprobacionController::class, 'resolver']);
+    $group->get('/aprobaciones/{id}/estado',             [\App\Controllers\AprobacionController::class, 'estado']);
+    $group->delete('/aprobaciones/{id}',                 [\App\Controllers\AprobacionController::class, 'cancelar']);
+
     // Módulo: Impresoras
     $group->group('/impresoras', function($group) {
         $group->get('', [\App\Controllers\ImpresoraController::class, 'listar']);
