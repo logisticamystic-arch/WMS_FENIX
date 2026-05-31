@@ -286,6 +286,8 @@ const MWMS = {
     _expiryPollTimer: null,
     _expiryAprobacionId: null,
     _expiryOnApproved: null,
+    _devItems: [],
+    _devQrProd: null,
 
   init() { 
     // Listeners para cambios de conexión
@@ -372,6 +374,7 @@ const MWMS = {
       { id:'ce', l:'Certificar', i:'fa-clipboard-check',      c:'rose',    a:'viewCert' },
       { id:'iv', l:'Inventario', i:'fa-rotate',               c:'indigo',  a:'viewInventario' },
       { id:'ci', l:'Consultar',  i:'fa-magnifying-glass-location', c:'cyan', a:'viewConsultaInteligente' },
+      { id:'dv', l:'Devolución',  i:'fa-rotate-left',              c:'amber', a:'viewDevolucion' },
     ];
     document.getElementById('m-content').innerHTML = `
       <div class="op-view">
@@ -1400,6 +1403,154 @@ const MWMS = {
       this.toast(`✓ Devolución ${json.data?.numero_devolucion} registrada`, 'success');
     } catch(e) { this.toast(e.message, 'error'); }
     this.loading(false);
+  },
+
+  // ─── DEVOLUCIÓN CLIENTE ──────────────────────────────────────────────
+  viewDevolucion() {
+    this._devItems  = [];
+    this._devQrProd = null;
+    document.getElementById('m-title').textContent = 'Devolución';
+    document.getElementById('nav-home').classList.remove('active');
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <h2 style="font-size:1rem;font-weight:800;margin:0;">Registrar Devolución</h2>
+            <p style="font-size:.72rem;color:#64748b;margin:3px 0 0;">Solo devoluciones Cliente → WMS</p>
+          </div>
+          <button class="m-btn secondary sm" onclick="MWMS.showHome()">Volver</button>
+        </div>
+
+        <!-- QR Input -->
+        <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px;margin-bottom:12px;">
+          <div class="m-label" style="color:#065f46;margin-bottom:6px;"><i class="fa-solid fa-qrcode"></i> Escanear QR / Código</div>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="dv-m-qr" class="m-input-full" placeholder="Escanee QR o código del producto"
+              onkeydown="if(event.key==='Enter'){MWMS._dvBuscarQr();}"
+              style="flex:1;">
+            <button class="m-btn primary sm" onclick="MWMS._dvBuscarQr()" style="white-space:nowrap;">
+              <i class="fa-solid fa-magnifying-glass"></i>
+            </button>
+          </div>
+          <div id="dv-m-prod-found" style="display:none;margin-top:8px;font-size:.75rem;color:#15803d;font-weight:600;"></div>
+        </div>
+
+        <!-- Campos del ítem -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+          <div>
+            <div class="m-label">Lote</div>
+            <input type="text" id="dv-m-lote" class="m-input-full" placeholder="Lote (opcional)">
+          </div>
+          <div>
+            <div class="m-label">Cant.</div>
+            <input type="number" id="dv-m-cant" class="m-input-full" min="0.001" step="0.001" placeholder="0">
+          </div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div class="m-label">Condición</div>
+          <select id="dv-m-cond" class="m-input-full">
+            <option value="bueno">Bueno</option>
+            <option value="dañado">Dañado</option>
+            <option value="vencido">Vencido</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+        <button class="m-btn primary" onclick="MWMS._dvAgregarItem()" style="width:100%;margin-bottom:14px;">
+          <i class="fa-solid fa-plus"></i> Agregar producto
+        </button>
+
+        <!-- Lista de ítems -->
+        <div id="dv-m-items" style="margin-bottom:12px;"></div>
+
+        <!-- Motivo + submit -->
+        <div style="margin-bottom:10px;">
+          <div class="m-label">Motivo general *</div>
+          <textarea id="dv-m-motivo" class="m-input-full" rows="2" placeholder="Razón de la devolución..." style="resize:none;"></textarea>
+        </div>
+        <button class="m-btn primary" id="dv-m-submit" onclick="MWMS._dvEnviar()" style="width:100%;">
+          <i class="fa-solid fa-paper-plane"></i> Enviar Devolución
+        </button>
+      </div>`;
+    this._dvRenderItems();
+  },
+
+  async _dvBuscarQr() {
+    const qr = document.getElementById('dv-m-qr')?.value?.trim();
+    if (!qr) return;
+    this.loading(true);
+    try {
+      const r = await mApi('GET', '/recepciones/buscar-qr?q=' + encodeURIComponent(qr));
+      const p = r.data.producto;
+      this._devQrProd = { id: p.id, nombre: p.nombre };
+      document.getElementById('dv-m-qr').value = '';
+      document.getElementById('dv-m-lote').value = r.data.lote_raw || '';
+      document.getElementById('dv-m-prod-found').textContent = '✓ ' + p.nombre + (r.data.lote_raw ? ' · Lote: ' + r.data.lote_raw : '');
+      document.getElementById('dv-m-prod-found').style.display = 'block';
+      document.getElementById('dv-m-cant').focus();
+      this.toast(p.nombre, 'success');
+    } catch(e) {
+      this.toast('Producto no encontrado', 'error');
+    } finally { this.loading(false); }
+  },
+
+  _dvAgregarItem() {
+    if (!this._devQrProd) { this.toast('Busque un producto primero', 'error'); return; }
+    const cant = parseFloat(document.getElementById('dv-m-cant')?.value || 0);
+    if (!cant || cant <= 0) { this.toast('Ingrese cantidad', 'error'); return; }
+    this._devItems.push({
+      producto_id: this._devQrProd.id,
+      nombre:      this._devQrProd.nombre,
+      lote:        document.getElementById('dv-m-lote')?.value || null,
+      cantidad:    cant,
+      condicion:   document.getElementById('dv-m-cond')?.value || 'bueno',
+      motivo:      'Otro',
+    });
+    this._devQrProd = null;
+    document.getElementById('dv-m-prod-found').style.display = 'none';
+    document.getElementById('dv-m-lote').value  = '';
+    document.getElementById('dv-m-cant').value  = '';
+    this._dvRenderItems();
+  },
+
+  _dvRenderItems() {
+    const el = document.getElementById('dv-m-items');
+    if (!el) return;
+    if (!this._devItems.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+      ${this._devItems.map((it,i) => `
+        <div style="padding:8px 12px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;font-size:.78rem;">
+          <div>
+            <div style="font-weight:700;">${this.esc(it.nombre)}</div>
+            <div style="color:#64748b;">Lote: ${it.lote||'-'} · ${it.condicion} · ${it.cantidad} uds</div>
+          </div>
+          <button onclick="MWMS._dvQuitarItem(${i})" style="background:none;border:none;color:#dc2626;font-size:1rem;cursor:pointer;">✕</button>
+        </div>`).join('')}
+    </div>`;
+  },
+
+  _dvQuitarItem(i) { this._devItems.splice(i, 1); this._dvRenderItems(); },
+
+  async _dvEnviar() {
+    const motivo = document.getElementById('dv-m-motivo')?.value?.trim();
+    if (!motivo) { this.toast('Ingrese el motivo', 'error'); return; }
+    if (!this._devItems.length) { this.toast('Agregue al menos un producto', 'error'); return; }
+    const btn = document.getElementById('dv-m-submit');
+    if (btn) btn.disabled = true;
+    this.loading(true);
+    try {
+      const r = await mApi('POST', '/devoluciones', {
+        tipo:           'cliente',
+        motivo_general: motivo,
+        detalles:       this._devItems,
+      });
+      this.toast('Devolución ' + r.data.numero + ' registrada', 'success');
+      this._devItems  = [];
+      this._devQrProd = null;
+      this.showHome();
+    } catch(e) {
+      this.toast(e.message || 'Error al enviar', 'error');
+      if (btn) btn.disabled = false;
+    } finally { this.loading(false); }
   },
 
   // ─── CONSULTA INTELIGENTE ─────────────────────────────────────────────
