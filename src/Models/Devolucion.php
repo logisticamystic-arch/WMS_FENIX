@@ -38,6 +38,7 @@ class Devolucion extends BaseModel
     const TIPO_INTERNA   = 'interna';
 
     // Estados
+    const ESTADO_BORRADOR  = 'Borrador';
     const ESTADO_PENDIENTE = 'PendienteAprobacion';
     const ESTADO_APROBADA  = 'Aprobada';
     const ESTADO_PROCESADA = 'Procesada';
@@ -50,6 +51,7 @@ class Devolucion extends BaseModel
     public function auxiliar()   { return $this->belongsTo(Personal::class, 'auxiliar_id'); }
     public function solicitante(){ return $this->belongsTo(Personal::class, 'solicitado_por'); }
     public function aprobador()  { return $this->belongsTo(Personal::class, 'aprobado_por'); }
+    public function procesador() { return $this->belongsTo(Personal::class, 'procesado_por'); }
     public function detalles()   { return $this->hasMany(DevolucionDetalle::class); }
 
     public static function generarNumero(int $empresaId): string
