@@ -1010,6 +1010,7 @@
       _sub: null,
       _notifInterval: null,
       _notifOpen: false,
+      _expiryPendingCount: 0,
       _confirmCallback: null,
 
       // ── Inicialización ────────────────────────────────────
@@ -1946,7 +1947,22 @@
         try {
           const r = await API.get('/notificaciones/badge');
           if (r.error) return;
-          this.updateBadge(r.badge);
+          let totalBadge = r.badge;
+
+          // Expiry approvals count — only visible to Admin/Supervisor
+          const rol = _wmsUser?.rol ?? '';
+          if (rol === 'Admin' || rol === 'Supervisor' || rol === 'SuperAdmin') {
+            try {
+              const ea = await API.get('/aprobaciones/vencimiento/pendientes');
+              if (!ea.error && Array.isArray(ea.data)) {
+                totalBadge += ea.data.length;
+                this._expiryPendingCount = ea.data.length;
+              }
+            } catch(_) {}
+          }
+
+          this.updateBadge(totalBadge);
+          this._lastNotifCnt = r.badge;
 
           // ── Alertas críticas de Inteligencia ML ──────────────────────────
           // Si llegaron notificaciones nuevas no leídas del módulo inteligencia,
@@ -1987,7 +2003,6 @@
               }
             } catch(_) {}
           }
-          this._lastNotifCnt = r.badge;
         } catch (e) { }
       },
 
