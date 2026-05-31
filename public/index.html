@@ -1949,9 +1949,10 @@
           if (r.error) return;
           let totalBadge = r.badge;
 
-          // Expiry approvals count — only visible to Admin/Supervisor
+          // Expiry approvals count — only visible to supervisor-level roles
           const rol = _wmsUser?.rol ?? '';
-          if (rol === 'Admin' || rol === 'Supervisor' || rol === 'SuperAdmin') {
+          const privileged = ['Admin', 'Supervisor', 'SuperAdmin', 'Jefe'];
+          if (privileged.includes(rol)) {
             try {
               const ea = await API.get('/aprobaciones/vencimiento/pendientes');
               if (!ea.error && Array.isArray(ea.data)) {
@@ -1962,13 +1963,13 @@
           }
 
           this.updateBadge(totalBadge);
+          const prev = this._lastNotifCnt || 0;
           this._lastNotifCnt = r.badge;
 
           // ── Alertas críticas de Inteligencia ML ──────────────────────────
           // Si llegaron notificaciones nuevas no leídas del módulo inteligencia,
           // mostrar un toast urgente con la primera para que el supervisor no
           // tenga que abrir el panel de notificaciones.
-          const prev = this._lastNotifCnt || 0;
           if (r.badge > prev && r.badge > 0) {
             // Revisar si hay pendientes del módulo inteligencia
             try {
