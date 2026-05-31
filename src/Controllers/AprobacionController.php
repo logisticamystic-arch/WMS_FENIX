@@ -87,11 +87,16 @@ class AprobacionController extends BaseController
     {
         $user = $r->getAttribute('user');
 
-        $aprobacion = AprobacionVencimiento::find((int)$a['id']);
+        $empresaId  = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
+
+        $aprobacion = AprobacionVencimiento::where('empresa_id',  $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find((int)$a['id']);
         if (!$aprobacion) return $this->notFound($res);
 
         // Solo el solicitante o un supervisor puede consultar
-        $isSupervisor = in_array($user->rol ?? '', ['Admin', 'Supervisor', 'SuperAdmin']);
+        $isSupervisor = $this->isSupervisorOrAbove($user);
         if (!$isSupervisor && $aprobacion->solicitado_por !== $user->id) {
             return $this->forbidden($res);
         }
@@ -109,7 +114,9 @@ class AprobacionController extends BaseController
     {
         $user = $r->getAttribute('user');
 
-        $aprobacion = AprobacionVencimiento::where('solicitado_por', $user->id)
+        $aprobacion = AprobacionVencimiento::where('empresa_id',  $user->empresa_id)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->where('solicitado_por', $user->id)
             ->where('estado', 'pendiente')
             ->find((int)$a['id']);
 
