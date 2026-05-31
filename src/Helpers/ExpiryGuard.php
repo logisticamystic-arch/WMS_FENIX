@@ -75,6 +75,27 @@ class ExpiryGuard
                 return new ExpiryResult(ExpiryResult::OK);
             }
 
+            // Reuse existing pending request rather than creating duplicates in supervisor queue
+            $pending = Capsule::table('aprobaciones_vencimiento')
+                ->where('empresa_id',  $this->empresaId)
+                ->where('sucursal_id', $this->sucursalId)
+                ->where('producto_id', $productoId)
+                ->where('lote',        $lote)
+                ->where('estado',      'pendiente')
+                ->orderBy('created_at', 'desc')
+                ->first();
+
+            if ($pending) {
+                return new ExpiryResult(
+                    ExpiryResult::PENDING,
+                    aprobacionId: $pending->id,
+                    message: "Producto próximo a vencer ({$diasRestantes} días). Esperando autorización del supervisor.",
+                    productName: $nombre,
+                    lote: $lote,
+                    diasRestantes: $diasRestantes
+                );
+            }
+
             $aprobacionId = Capsule::table('aprobaciones_vencimiento')->insertGetId([
                 'empresa_id'    => $this->empresaId,
                 'sucursal_id'   => $this->sucursalId,
