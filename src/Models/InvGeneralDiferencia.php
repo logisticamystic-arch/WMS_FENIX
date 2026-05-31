@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class InvGeneralDiferencia extends Model
+class InvGeneralDiferencia extends BaseModel
 {
     protected $table = 'inv_general_diferencias';
     protected $fillable = [

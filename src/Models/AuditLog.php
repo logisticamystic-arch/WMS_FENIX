@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Concerns\TenantScoped;
 
-class AuditLog extends Model
+class AuditLog extends BaseModel
 {
     use TenantScoped;
 

@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class ConteoDetalle extends Model
+class ConteoDetalle extends BaseModel
 {
     protected $table = 'conteo_detalles';
 

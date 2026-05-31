@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class InvGeneralConteo extends Model
+class InvGeneralConteo extends BaseModel
 {
     protected $table = 'inv_general_conteos';
     protected $fillable = ['evento_id', 'personal_id', 'ubicacion_id', 'producto_id', 'lote', 'fecha_vencimiento', 'cantidad', 'ciclo'];

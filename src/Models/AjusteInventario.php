@@ -20,7 +20,7 @@ use App\Models\Concerns\TenantScoped;
  * Todos los ajustes crean también un MovimientoInventario del tipo
  * AjustePositivo o AjusteNegativo para que aparezcan en el Kardex.
  */
-class AjusteInventario extends Model
+class AjusteInventario extends BaseModel
 {
     use TenantScoped;
     protected static bool $tenantUsesSucursal = true;

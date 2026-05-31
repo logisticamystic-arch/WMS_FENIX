@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Concerns\TenantScoped;
 
-class Ruta extends Model
+class Ruta extends BaseModel
 {
     use TenantScoped;
     protected $table = 'rutas';

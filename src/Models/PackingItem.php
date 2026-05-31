@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class PackingItem extends Model
+class PackingItem extends BaseModel
 {
     protected $table      = 'packing_items';
     public    $timestamps = false;

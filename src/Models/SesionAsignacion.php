@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Model;
  * Cuando la asignación es creada el sistema envía una notificación al auxiliar.
  * El auxiliar sólo ve en su módil las asignaciones con estado != Finalizado.
  */
-class SesionAsignacion extends Model
+class SesionAsignacion extends BaseModel
 {
     protected $table = 'sesion_asignaciones';
 

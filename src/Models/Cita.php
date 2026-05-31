@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Concerns\TenantScoped;
 
-class Cita extends Model
+class Cita extends BaseModel
 {
     use TenantScoped;
     protected static bool $tenantUsesSucursal = true;

@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Concerns\TenantScoped;
 
-class RolPermiso extends Model
+class RolPermiso extends BaseModel
 {
     use TenantScoped;
     protected $table = 'rol_permisos';

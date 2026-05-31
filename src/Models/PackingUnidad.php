@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class PackingUnidad extends Model
+class PackingUnidad extends BaseModel
 {
     protected $table      = 'packing_unidades';
     public    $timestamps = false;

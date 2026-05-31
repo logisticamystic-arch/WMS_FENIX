@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class PickingDetalle extends Model
+class PickingDetalle extends BaseModel
 {
     protected $table = 'picking_detalles';
 

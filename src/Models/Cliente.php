@@ -4,7 +4,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Concerns\TenantScoped;
 
-class Cliente extends Model
+class Cliente extends BaseModel
 {
     use TenantScoped;
     protected $table = 'clientes';

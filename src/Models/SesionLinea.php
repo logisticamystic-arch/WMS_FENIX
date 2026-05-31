@@ -16,7 +16,7 @@ use Carbon\Carbon;
  *  - El admin puede editar cantidad_contada; queda registro del valor original.
  *  - La diferencia = cantidad_contada - cantidad_sistema (puede ser + o -).
  */
-class SesionLinea extends Model
+class SesionLinea extends BaseModel
 {
     protected $table = 'sesion_lineas';
     protected $primaryKey = 'id';

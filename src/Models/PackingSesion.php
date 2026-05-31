@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class PackingSesion extends Model
+class PackingSesion extends BaseModel
 {
     protected $table    = 'packing_sesiones';
     protected $fillable = [

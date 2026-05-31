@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class ProductoEan extends Model
+class ProductoEan extends BaseModel
 {
     protected $table = 'producto_eans';
 

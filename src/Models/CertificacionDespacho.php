@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class CertificacionDespacho extends Model
+class CertificacionDespacho extends BaseModel
 {
     protected $table = 'certificacion_despachos';
 

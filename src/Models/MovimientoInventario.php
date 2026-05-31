@@ -8,7 +8,7 @@ use App\Models\Concerns\TenantScoped;
 /**
  * Immutable transaction log — no updates allowed
  */
-class MovimientoInventario extends Model
+class MovimientoInventario extends BaseModel
 {
     use TenantScoped;
     protected static bool $tenantUsesSucursal = true;

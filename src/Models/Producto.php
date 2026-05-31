@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Concerns\TenantScoped;
 
-class Producto extends Model
+class Producto extends BaseModel
 {
     use TenantScoped;
 

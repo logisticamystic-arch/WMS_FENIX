@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Concerns\TenantScoped;
 
-class CategoriaProducto extends Model
+class CategoriaProducto extends BaseModel
 {
     use TenantScoped;
     protected $table = 'categoria_productos';

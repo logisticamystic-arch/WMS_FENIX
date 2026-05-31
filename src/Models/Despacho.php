@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Concerns\TenantScoped;
 
-class Despacho extends Model
+class Despacho extends BaseModel
 {
     use TenantScoped;
     protected static bool $tenantUsesSucursal = true;

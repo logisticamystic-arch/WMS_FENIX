@@ -14,7 +14,7 @@ use App\Models\Concerns\TenantScoped;
  * Estados del flujo:
  *   Borrador → EnCurso → PendienteAjuste → Ajustado → Cerrado
  */
-class SesionInventario extends Model
+class SesionInventario extends BaseModel
 {
     use TenantScoped;
     protected static bool $tenantUsesSucursal = true;
