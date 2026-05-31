@@ -70,7 +70,7 @@ class PackingController extends BaseController
 
         $certificador = Capsule::table('personal')->find($sesion->certificador_id);
         $certNombre   = $certificador
-            ? trim($certificador->nombres . ' ' . $certificador->apellidos)
+            ? trim($certificador->nombre)
             : 'N/A';
 
         $empresa   = Capsule::table('empresas')->find($sesion->empresa_id);
@@ -90,7 +90,7 @@ class PackingController extends BaseController
                     'pi.id', 'pi.unidad_id', 'pi.producto_id',
                     'p.nombre as producto_nombre', 'p.codigo_interno as codigo',
                     'pi.cantidad', 'pi.lote', 'pi.fecha_vencimiento', 'pi.separador_id',
-                    Capsule::raw("CONCAT(COALESCE(per.nombres,''), ' ', COALESCE(per.apellidos,'')) as separador_nombre"),
+                    Capsule::raw("COALESCE(per.nombre,'') as separador_nombre"),
                 ])
                 ->get()
                 ->groupBy('unidad_id')
@@ -366,15 +366,28 @@ class PackingController extends BaseController
         $sucursal = $q['sucursal'] ?? null;
         $sesionId = $q['sesion_id'] ?? null;
 
-        $builder = Capsule::table('packing_sesiones as ps')
-            ->leftJoin('packing_unidades as pu', 'pu.sesion_id', '=', 'ps.id')
+        $counts = Capsule::table('packing_unidades as pu')
             ->leftJoin('packing_items as pi', 'pi.unidad_id', '=', 'pu.id')
             ->leftJoin('picking_detalles as pd', 'pd.id', '=', 'pi.picking_detalle_id')
             ->leftJoin('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
+            ->select(
+                'pu.sesion_id',
+                Capsule::raw('COUNT(DISTINCT pu.id) as num_unidades'),
+                Capsule::raw('COUNT(DISTINCT op.id) as num_pedidos'),
+                Capsule::raw('COALESCE(SUM(pi.cantidad), 0) as total_empacado')
+            )
+            ->groupBy('pu.sesion_id');
+
+        $builder = Capsule::table('packing_sesiones as ps')
+            ->leftJoinSub($counts, 'cnt', 'cnt.sesion_id', '=', 'ps.id')
             ->where('ps.empresa_id', $user->empresa_id)
             ->where('ps.sucursal_id', $user->sucursal_id)
-            ->select('ps.*', Capsule::raw('COUNT(DISTINCT pu.id) as num_unidades'), Capsule::raw('COUNT(DISTINCT op.id) as num_pedidos'))
-            ->groupBy('ps.id')
+            ->select(
+                'ps.*',
+                Capsule::raw('COALESCE(cnt.num_unidades, 0) as num_unidades'),
+                Capsule::raw('COALESCE(cnt.num_pedidos, 0) as num_pedidos'),
+                Capsule::raw('COALESCE(cnt.total_empacado, 0) as total_empacado')
+            )
             ->orderBy('ps.created_at', 'desc')
             ->limit(200);
 
@@ -382,7 +395,15 @@ class PackingController extends BaseController
         if ($sucursal) $builder->where('ps.sucursal_entrega', 'like', "%{$sucursal}%");
         if ($desde) $builder->whereDate('ps.created_at', '>=', $desde);
         if ($hasta) $builder->whereDate('ps.created_at', '<=', $hasta);
-        if ($pedido) $builder->whereRaw('op.numero_orden LIKE ?', ["%{$pedido}%"]);
+        if ($pedido) $builder->whereExists(function ($sub) use ($pedido) {
+            $sub->select(Capsule::raw(1))
+                ->from('packing_unidades as pu2')
+                ->join('packing_items as pi2', 'pi2.unidad_id', '=', 'pu2.id')
+                ->join('picking_detalles as pd2', 'pd2.id', '=', 'pi2.picking_detalle_id')
+                ->join('orden_pickings as op2', 'op2.id', '=', 'pd2.orden_picking_id')
+                ->whereColumn('pu2.sesion_id', 'ps.id')
+                ->where('op2.numero_orden', 'like', "%{$pedido}%");
+        });
 
         $rows = $builder->get();
         return $this->ok($res, $rows);
@@ -404,10 +425,10 @@ class PackingController extends BaseController
                 'pd.producto_id',
                 'p.nombre as producto_nombre',
                 'p.codigo_interno as codigo',
-                'p.codigo_barras as ean',
+                Capsule::raw("NULL as ean"),
                 Capsule::raw('SUM(pd.cantidad_pickeada) as total_pickeado'),
             ])
-            ->groupBy('pd.producto_id', 'p.nombre', 'p.codigo_interno', 'p.codigo_barras')
+            ->groupBy('pd.producto_id', 'p.nombre', 'p.codigo_interno')
             ->get()
             ->keyBy('producto_id')
             ->toArray();
