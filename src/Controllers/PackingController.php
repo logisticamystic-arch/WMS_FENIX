@@ -8,6 +8,8 @@ use App\Models\PackingUnidad;
 use App\Models\PackingItem;
 use App\Models\OrdenPicking;
 use Illuminate\Database\Capsule\Manager as Capsule;
+use App\Helpers\ExpiryGuard;
+use App\Helpers\ExpiryResult;
 
 class PackingController extends BaseController
 {
@@ -183,6 +185,28 @@ class PackingController extends BaseController
         [$lote, $fechaVenc, $separadorId, $detalleId] = $this->_resolveFromPicking(
             $productoId, $sesion->sucursal_entrega, $user->empresa_id, $user->sucursal_id
         );
+
+        // R10/R11 — Expiry check before adding item to packing
+        if ($lote !== null) {
+            $expiryGuard = new ExpiryGuard($user->empresa_id, $user->sucursal_id);
+            $expiryResult = $expiryGuard->check((int)$productoId, $lote, $user->id);
+
+            if ($expiryResult->status === ExpiryResult::BLOCKED) {
+                return $this->error($res, $expiryResult->message, 422);
+            }
+
+            if ($expiryResult->status === ExpiryResult::PENDING) {
+                $body = $res->getBody();
+                $body->write(json_encode([
+                    'error'         => false,
+                    'status'        => 'pending_approval',
+                    'aprobacion_id' => $expiryResult->aprobacionId,
+                    'message'       => $expiryResult->message,
+                    'dias_restantes'=> $expiryResult->diasRestantes,
+                ], JSON_UNESCAPED_UNICODE));
+                return $res->withHeader('Content-Type', 'application/json')->withStatus(202);
+            }
+        }
 
         $item = PackingItem::create([
             'unidad_id'          => $unidad->id,
