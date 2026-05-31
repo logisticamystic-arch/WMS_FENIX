@@ -1122,6 +1122,11 @@ class PickingController extends BaseController
                 if ($inv->cantidad === 0) $inv->delete();
                 else $inv->save();
 
+                // Stamp fecha_vencimiento before recording the movement (reuses $inv already fetched)
+                if (!$linea->fecha_vencimiento && $inv && $inv->fecha_vencimiento) {
+                    $linea->fecha_vencimiento = $inv->fecha_vencimiento;
+                }
+
                 // Registrar movimiento con auditoría completa
                 MovimientoInventario::create([
                     'empresa_id'           => $user->empresa_id,
@@ -1141,17 +1146,6 @@ class PickingController extends BaseController
                     'hora_inicio'          => date('H:i:s'),
                 ]);
 
-                // Store fecha_vencimiento from inventory for traceability
-                if (!$linea->fecha_vencimiento && $linea->lote) {
-                    $fv = \Illuminate\Database\Capsule\Manager::table('inventarios')
-                        ->where('empresa_id',  $user->empresa_id)
-                        ->where('sucursal_id', $user->sucursal_id)
-                        ->where('producto_id', $linea->producto_id)
-                        ->where('lote',        $linea->lote)
-                        ->whereNotNull('fecha_vencimiento')
-                        ->value('fecha_vencimiento');
-                    if ($fv) $linea->fecha_vencimiento = $fv;
-                }
                 $linea->cantidad_pickeada = $cantidadTomada;
                 $linea->estado = $cantidadTomada >= $linea->cantidad_solicitada
                     ? 'Completado' : 'Faltante';

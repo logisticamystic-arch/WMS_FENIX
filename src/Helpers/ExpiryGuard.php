@@ -5,26 +5,6 @@ namespace App\Helpers;
 use Illuminate\Database\Capsule\Manager as Capsule;
 
 /**
- * ExpiryResult — value object returned by ExpiryGuard::check().
- * status: OK | BLOCKED | PENDING
- */
-class ExpiryResult
-{
-    public const OK      = 'OK';
-    public const BLOCKED = 'BLOCKED';
-    public const PENDING = 'PENDING';
-
-    public function __construct(
-        public readonly string  $status,
-        public readonly ?int    $aprobacionId  = null,
-        public readonly ?string $message       = null,
-        public readonly ?string $productName   = null,
-        public readonly ?string $lote          = null,
-        public readonly ?int    $diasRestantes = null
-    ) {}
-}
-
-/**
  * ExpiryGuard — Central expiry enforcement service.
  *
  * R10: fecha_vencimiento < today  → BLOCKED (no exceptions)

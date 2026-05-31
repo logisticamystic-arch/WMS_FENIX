@@ -22,6 +22,7 @@ class FefoEngine
 {
     private int $empresaId;
     private int $sucursalId;
+    private static array $_quarantinedThisRequest = [];
 
     public function __construct(int $empresaId, int $sucursalId)
     {
@@ -55,8 +56,15 @@ class FefoEngine
      */
     public function getSuggestedLots(int $productoId, float $cantidadRequerida): array
     {
-        // Lazy auto-quarantine: marks expired inventory before suggesting lots
-        (new ExpiryGuard($this->empresaId, $this->sucursalId))->autoQuarantine();
+        // Lazy auto-quarantine: runs at most once per empresa+sucursal per request
+        $quarantineKey = "{$this->empresaId}:{$this->sucursalId}";
+        if (!isset(self::$_quarantinedThisRequest[$quarantineKey])) {
+            self::$_quarantinedThisRequest[$quarantineKey] = true;
+            $quarantined = (new ExpiryGuard($this->empresaId, $this->sucursalId))->autoQuarantine();
+            if ($quarantined > 0) {
+                error_log("[ExpiryGuard] autoQuarantine: {$quarantined} lotes marcados como Cuarentena (empresa={$this->empresaId}, sucursal={$this->sucursalId})");
+            }
+        }
 
         $rows = Capsule::table('inventarios as i')
             ->leftJoin('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
