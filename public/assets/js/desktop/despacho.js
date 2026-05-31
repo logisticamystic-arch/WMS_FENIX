@@ -19,6 +19,9 @@ WMS_MODULES.despacho = {
 
   // ── Auto-refresh certificación (proceso crítico, máx 5 usuarios) ──────────
   _certInterval: null,
+  _expiryPollTimer: null,
+  _expiryAprobacionId: null,
+  _expiryOnApproved: null,
   startAutoRefresh() {
     this.stopAutoRefresh();
     this._certInterval = setInterval(() => {
@@ -1401,6 +1404,17 @@ WMS_MODULES.despacho = {
         cantidad:    qty,
       });
       if (r.error) { WMS.toast('error', r.message); return; }
+      if (r.status === 'pending_approval') {
+        this._showExpiryWaitModal(r.aprobacion_id, r.message, async () => {
+          const r2 = await API.post('/packing/sesion/' + sesionId + '/item', {
+            producto_id: productoId,
+            cantidad:    qty,
+          });
+          if (!r2.error) { WMS.toast('success', 'Ítem agregado'); await this.show_packing(sesionId); }
+          else WMS.toast('error', r2.message);
+        });
+        return;
+      }
       WMS.toast('success', 'Ítem agregado');
       await this.show_packing(sesionId);
     } catch(e) { WMS.toast('error', 'Error al agregar'); }
@@ -1674,6 +1688,59 @@ function toggleLandscape() {
     const win = window.open('', '_blank', 'width=900,height=700');
     if (win) { win.document.write(html); win.document.close(); }
     else { WMS.toast('error', 'El navegador bloqueó la ventana emergente. Permita popups para este sitio.'); }
+  },
+
+  // ── EXPIRY APPROVAL WAITING MODAL ──────────────────────────────────────────
+  _showExpiryWaitModal(aprobacionId, message, onApproved) {
+    this._expiryAprobacionId = aprobacionId;
+    this._expiryOnApproved   = onApproved;
+    const modalId = 'expiry-wait-modal';
+    document.getElementById(modalId)?.remove();
+    document.body.insertAdjacentHTML('beforeend', `
+      <div id="${modalId}" style="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);
+        display:flex;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:28px;max-width:360px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+          <div style="font-size:2.5rem;margin-bottom:12px;">⏳</div>
+          <div style="font-weight:700;font-size:1rem;margin-bottom:8px;">Esperando aprobación del supervisor</div>
+          <div style="font-size:.85rem;color:#64748b;margin-bottom:20px;">${WMS.esc(message)}</div>
+          <button onclick="WMS_MODULES.despacho._cancelarExpiryWait()" style="background:#ef4444;color:#fff;
+            border:none;border-radius:6px;padding:8px 20px;cursor:pointer;font-size:.85rem;">
+            Cancelar solicitud
+          </button>
+        </div>
+      </div>`);
+    this._expiryPollTimer = setInterval(() => this._pollExpiryWait(), 10000);
+  },
+
+  async _pollExpiryWait() {
+    if (!this._expiryAprobacionId) return;
+    try {
+      const r = await API.get('/aprobaciones/' + this._expiryAprobacionId + '/estado');
+      if (r.data?.estado === 'aprobada') {
+        this._closeExpiryWaitModal();
+        WMS.toast('success', 'Solicitud aprobada. Continuando...');
+        if (this._expiryOnApproved) await this._expiryOnApproved();
+      } else if (r.data?.estado === 'rechazada') {
+        this._closeExpiryWaitModal();
+        WMS.toast('error', 'Solicitud rechazada por el supervisor.');
+      }
+    } catch(_) {}
+  },
+
+  _closeExpiryWaitModal() {
+    clearInterval(this._expiryPollTimer);
+    this._expiryPollTimer    = null;
+    this._expiryAprobacionId = null;
+    this._expiryOnApproved   = null;
+    document.getElementById('expiry-wait-modal')?.remove();
+  },
+
+  async _cancelarExpiryWait() {
+    if (this._expiryAprobacionId) {
+      try { await API.delete('/aprobaciones/' + this._expiryAprobacionId); } catch(_) {}
+    }
+    this._closeExpiryWaitModal();
+    WMS.toast('warning', 'Solicitud de vencimiento cancelada');
   },
 
 };
