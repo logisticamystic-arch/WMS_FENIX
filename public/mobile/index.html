@@ -283,6 +283,9 @@ async function mApi(method, path, data=null, _retries=0) {
 
 const MWMS = {
   _pin: '', _timer: null, _lastCnt: 0, _sCb: null, _dCb: null, _op: null,
+    _expiryPollTimer: null,
+    _expiryAprobacionId: null,
+    _expiryOnApproved: null,
 
   init() { 
     // Listeners para cambios de conexión
@@ -2846,16 +2849,37 @@ const MWMS = {
     const nQty = parseInt(qty);
     if (isNaN(nQty) || nQty <= 0) return this.toast("Cantidad inválida", "error");
 
+    const ordenId  = d.orden.id;
+    const lineaId  = d.linea.id;
     this.loading(true);
     try {
-      await mApi('POST', `/picking/${d.orden.id}/confirmar-linea`, { 
-        linea_id: d.linea.id, 
-        cantidad_tomada: nQty 
+      const r = await mApi('POST', `/picking/${ordenId}/confirmar-linea`, {
+        linea_id: lineaId,
+        cantidad_tomada: nQty
       });
+      if (r.status === 'pending_approval') {
+        this.loading(false);
+        this._showExpiryModal(r.aprobacion_id, r.message, async () => {
+          this.loading(true);
+          try {
+            await mApi('POST', `/picking/${ordenId}/confirmar-linea`, {
+              linea_id: lineaId,
+              cantidad_tomada: nQty
+            });
+            this.toast("Línea confirmada", "success");
+            this.goPK(ordenId);
+          } catch(e) {
+            this.toast(e.message, "error");
+          } finally {
+            this.loading(false);
+          }
+        });
+        return;
+      }
       this.toast("Línea confirmada", "success");
-      this.goPK(d.orden.id);
-    } catch(e) { 
-        this.toast(e.message, "error"); 
+      this.goPK(ordenId);
+    } catch(e) {
+        this.toast(e.message, "error");
     } finally {
         this.loading(false);
     }
@@ -3117,7 +3141,49 @@ const MWMS = {
   },
   toast(m,t='info'){ const c=document.getElementById('m-toast'), e=document.createElement('div'); e.className='m-toast-item '+t; e.innerHTML=m; c.appendChild(e); setTimeout(()=>{e.style.opacity='0';setTimeout(()=>e.remove(),500);},3000); },
   esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); },
-  showNotif() { this.viewNotifications(); }
+  showNotif() { this.viewNotifications(); },
+
+    _showExpiryModal(aprobacionId, message, onApproved) {
+      this._expiryAprobacionId = aprobacionId;
+      this._expiryOnApproved   = onApproved;
+      document.getElementById('m-expiry-msg').textContent = message;
+      const modal = document.getElementById('m-expiry-modal');
+      modal.style.display = 'flex';
+      this._expiryPollTimer = setInterval(() => this._pollExpiry(), 10000);
+    },
+
+    async _pollExpiry() {
+      if (!this._expiryAprobacionId) return;
+      try {
+        const r = await mApi('GET', '/aprobaciones/' + this._expiryAprobacionId + '/estado');
+        if (r.data?.estado === 'aprobada') {
+          this._closeExpiryModal();
+          this.toast('Solicitud aprobada. Continuando...', 'success');
+          if (this._expiryOnApproved) await this._expiryOnApproved();
+        } else if (r.data?.estado === 'rechazada') {
+          this._closeExpiryModal();
+          this.toast('Solicitud rechazada por el supervisor.', 'error');
+        }
+      } catch(_) {}
+    },
+
+    _closeExpiryModal() {
+      clearInterval(this._expiryPollTimer);
+      this._expiryPollTimer    = null;
+      this._expiryAprobacionId = null;
+      this._expiryOnApproved   = null;
+      const modal = document.getElementById('m-expiry-modal');
+      if (modal) modal.style.display = 'none';
+    },
+
+    async _cancelarExpiry() {
+      if (!this._expiryAprobacionId) return;
+      try {
+        await mApi('DELETE', '/aprobaciones/' + this._expiryAprobacionId);
+      } catch(_) {}
+      this._closeExpiryModal();
+      this.toast('Solicitud cancelada', 'info');
+    },
 };
 
 document.addEventListener('DOMContentLoaded',()=>{
@@ -3139,5 +3205,19 @@ document.addEventListener('DOMContentLoaded',()=>{
   }
 });
 </script>
+
+<!-- Expiry waiting modal -->
+<div id="m-expiry-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);
+  align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;padding:24px;max-width:320px;width:90%;text-align:center;">
+    <div style="font-size:2rem;margin-bottom:12px;">⏳</div>
+    <div style="font-weight:700;font-size:1rem;margin-bottom:6px;">Esperando aprobación del supervisor</div>
+    <div id="m-expiry-msg" style="font-size:.85rem;color:#64748b;margin-bottom:16px;"></div>
+    <button onclick="MWMS._cancelarExpiry()" style="background:#ef4444;color:#fff;border:none;
+      border-radius:6px;padding:8px 16px;cursor:pointer;font-size:.85rem;">
+      Cancelar solicitud
+    </button>
+  </div>
+</div>
 </body>
 </html>
