@@ -118,8 +118,18 @@ class DevolucionController extends BaseController
             return $this->error($response, 'Debe incluir al menos un producto a devolver');
         }
 
-        return \Illuminate\Database\Capsule\Manager::transaction(function () use (
-            $user, $empresaId, $sucursalId, $data, $detalles, $response
+        // Validate items before entering the transaction
+        foreach ($detalles as $i => $d) {
+            if (empty($d['producto_id']) || !is_numeric($d['producto_id'])) {
+                return $this->error($response, 'Línea ' . ($i + 1) . ': producto_id inválido', 422);
+            }
+            if (empty($d['cantidad']) || (float)$d['cantidad'] <= 0) {
+                return $this->error($response, 'Línea ' . ($i + 1) . ': cantidad debe ser mayor a cero', 422);
+            }
+        }
+
+        [$devId, $numero] = \Illuminate\Database\Capsule\Manager::transaction(function () use (
+            $user, $empresaId, $sucursalId, $data, $detalles
         ) {
             $numero = Devolucion::generarNumero($empresaId);
 
@@ -153,7 +163,15 @@ class DevolucionController extends BaseController
                 ]);
             }
 
-            // Notificar a supervisores via anomaly_flags
+            return [$dev->id, $numero];
+        });
+
+        // Audit (non-transactional — always fires after successful commit)
+        $this->audit($user, 'devoluciones', 'crear', 'devoluciones', $devId,
+            null, ['numero' => $numero, 'tipo' => $data['tipo']]);
+
+        // Notify supervisors — best-effort, does not roll back the devolucion if it fails
+        try {
             if (\Illuminate\Database\Capsule\Manager::schema()->hasTable('anomaly_flags')) {
                 \Illuminate\Database\Capsule\Manager::table('anomaly_flags')->insert([
                     'empresa_id'     => $empresaId,
@@ -162,18 +180,17 @@ class DevolucionController extends BaseController
                     'severidad'      => 'media',
                     'titulo'         => "Devolución {$numero} — aprobación requerida",
                     'descripcion'    => count($detalles) . ' ítem(s). Motivo: ' . mb_substr($data['motivo_general'], 0, 100),
-                    'datos_anomalia' => json_encode(['devolucion_id' => $dev->id, 'tipo' => $data['tipo']], JSON_UNESCAPED_UNICODE),
+                    'datos_anomalia' => json_encode(['devolucion_id' => $devId, 'tipo' => $data['tipo']], JSON_UNESCAPED_UNICODE),
                     'estado'         => 'pendiente',
                     'created_at'     => date('Y-m-d H:i:s'),
                     'updated_at'     => date('Y-m-d H:i:s'),
                 ]);
             }
+        } catch (\Exception $e) {
+            error_log('store devolucion: anomaly_flag insert failed: ' . $e->getMessage());
+        }
 
-            $this->audit($user, 'devoluciones', 'crear', 'devoluciones', $dev->id,
-                null, ['numero' => $numero, 'tipo' => $dev->tipo]);
-
-            return $this->created($response, ['devolucion_id' => $dev->id, 'numero' => $numero], 'Devolución registrada');
-        });
+        return $this->created($response, ['devolucion_id' => $devId, 'numero' => $numero], 'Devolución registrada');
     }
 
     // ── GET /api/devoluciones/odc/{odcId} ────────────────────────────────────
@@ -347,6 +364,7 @@ class DevolucionController extends BaseController
         }
 
         $dev->estado        = Devolucion::ESTADO_RECHAZADA;
+        // Reuse aprobado_por/aprobado_at to record who acted — estado=Rechazada disambiguates
         $dev->aprobado_por  = $user->id;
         $dev->aprobado_at   = date('Y-m-d H:i:s');
         $dev->observaciones = $data['motivo_rechazo'] ?? null;
@@ -432,6 +450,7 @@ class DevolucionController extends BaseController
                         ->where('producto_id', $det->producto_id)
                         ->where('lote',        $det->lote)
                         ->where('estado',      'Disponible')
+                        ->lockForUpdate()
                         ->first();
 
                     if ($inv) {
