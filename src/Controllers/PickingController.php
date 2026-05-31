@@ -920,6 +920,12 @@ class PickingController extends BaseController
                     ? trim($data['numero_pedido'])
                     : 'PK-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
 
+                if (OrdenPicking::where('numero_orden', $numeroOrden)->exists()) {
+                    throw new \RuntimeException(
+                        "Ya existe una orden con el número '{$numeroOrden}'. Use un número de pedido diferente."
+                    );
+                }
+
                 $orden = OrdenPicking::create([
                     'empresa_id'      => $user->empresa_id,
                     'sucursal_id'     => $user->sucursal_id,
@@ -954,7 +960,12 @@ class PickingController extends BaseController
                 null, $orden->toArray(), "Orden picking {$orden->numero_orden} creada");
 
             return $this->created($res, $orden->load('detalles'));
+        } catch (\RuntimeException $e) {
+            return $this->error($res, $e->getMessage());
         } catch (\Exception $e) {
+            if (str_contains($e->getMessage(), '1062') || str_contains($e->getMessage(), 'Duplicate entry')) {
+                return $this->error($res, "Ya existe una orden con ese número de pedido. Use un número diferente.");
+            }
             return $this->error($res, $e->getMessage());
         }
     }
