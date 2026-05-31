@@ -1714,12 +1714,15 @@ function toggleLandscape() {
 
   async _pollExpiryWait() {
     if (!this._expiryAprobacionId) return;
+    const idSnapshot = this._expiryAprobacionId;
     try {
-      const r = await API.get('/aprobaciones/' + this._expiryAprobacionId + '/estado');
+      const r = await API.get('/aprobaciones/' + idSnapshot + '/estado');
+      if (this._expiryAprobacionId !== idSnapshot) return; // cancelled mid-flight
       if (r.data?.estado === 'aprobada') {
+        const cb = this._expiryOnApproved;
         this._closeExpiryWaitModal();
         WMS.toast('success', 'Solicitud aprobada. Continuando...');
-        if (this._expiryOnApproved) await this._expiryOnApproved();
+        if (cb) await cb();
       } else if (r.data?.estado === 'rechazada') {
         this._closeExpiryWaitModal();
         WMS.toast('error', 'Solicitud rechazada por el supervisor.');

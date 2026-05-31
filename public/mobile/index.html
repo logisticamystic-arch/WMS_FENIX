@@ -3154,12 +3154,15 @@ const MWMS = {
 
     async _pollExpiry() {
       if (!this._expiryAprobacionId) return;
+      const idSnapshot = this._expiryAprobacionId;
       try {
-        const r = await mApi('GET', '/aprobaciones/' + this._expiryAprobacionId + '/estado');
+        const r = await mApi('GET', '/aprobaciones/' + idSnapshot + '/estado');
+        if (this._expiryAprobacionId !== idSnapshot) return; // cancelled mid-flight
         if (r.data?.estado === 'aprobada') {
+          const cb = this._expiryOnApproved;
           this._closeExpiryModal();
           this.toast('Solicitud aprobada. Continuando...', 'success');
-          if (this._expiryOnApproved) await this._expiryOnApproved();
+          if (cb) await cb();
         } else if (r.data?.estado === 'rechazada') {
           this._closeExpiryModal();
           this.toast('Solicitud rechazada por el supervisor.', 'error');
