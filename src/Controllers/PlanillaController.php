@@ -25,7 +25,7 @@ class PlanillaController extends BaseController
     {
         $user = $r->getAttribute('user');
         $archivos = DB::table('archivos_planilla')
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->orderBy('created_at', 'desc')
             ->get();
@@ -37,7 +37,7 @@ class PlanillaController extends BaseController
     {
         $user    = $r->getAttribute('user');
         $archivo = DB::table('archivos_planilla')
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->find((int)$a['id']);
         if (!$archivo) return $this->notFound($res);
 
@@ -156,7 +156,7 @@ class PlanillaController extends BaseController
 
             $now2 = date('Y-m-d H:i:s');
             $archivo = DB::table('archivos_planilla')->insertGetId([
-                'empresa_id'      => $this->getEffectiveEmpresaId($user, $request),
+                'empresa_id'      => $this->getEffectiveEmpresaId($user, $r),
                 'sucursal_id'     => $user->sucursal_id,
                 'nombre_archivo'  => $originalName,
                 'total_lineas'    => 0,
@@ -202,7 +202,7 @@ class PlanillaController extends BaseController
 
                 $lineas[] = [
                     'archivo_id'      => $archivo,
-                    'empresa_id'      => $this->getEffectiveEmpresaId($user, $request),
+                    'empresa_id'      => $this->getEffectiveEmpresaId($user, $r),
                     'sucursal_id'     => $user->sucursal_id,
                     'numero_factura'  => $colMap['numero_factura']  !== null ? ($cols[$colMap['numero_factura']]  ?? null) : null,
                     'documento'       => $colMap['documento']       !== null ? ($cols[$colMap['documento']]       ?? null) : null,
@@ -272,7 +272,7 @@ class PlanillaController extends BaseController
         }
 
         $archivo = DB::table('archivos_planilla')
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->find($archivoId);
         if (!$archivo) return $this->notFound($res, 'Archivo no encontrado');
 
@@ -303,7 +303,7 @@ class PlanillaController extends BaseController
             DB::beginTransaction();
 
             $certId = DB::table('cert_planillas')->insertGetId([
-                'empresa_id'      => $this->getEffectiveEmpresaId($user, $request),
+                'empresa_id'      => $this->getEffectiveEmpresaId($user, $r),
                 'sucursal_id'     => $user->sucursal_id,
                 'archivo_id'      => $archivoId,
                 'numero_planilla' => $numeroPlanilla,
@@ -366,7 +366,7 @@ class PlanillaController extends BaseController
         $data   = $r->getParsedBody() ?? [];
 
         $cert = DB::table('cert_planillas')
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->find($certId);
         if (!$cert) return $this->notFound($res);
         if ($cert->estado !== 'EnProceso') {
@@ -455,7 +455,7 @@ class PlanillaController extends BaseController
         $data   = $r->getParsedBody() ?? [];
 
         $cert = DB::table('cert_planillas')
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->find($certId);
         if (!$cert) return $this->notFound($res);
         if ($cert->estado !== 'EnProceso') {
@@ -504,7 +504,7 @@ class PlanillaController extends BaseController
 
         // Only show archivos that are Separado or further (picking complete)
         $archivos = DB::table('archivos_planilla')
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->whereIn('estado', ['Separado', 'EnCertificacion', 'Certificada'])
             ->orderBy('created_at', 'desc')
             ->limit(10)
@@ -590,7 +590,7 @@ class PlanillaController extends BaseController
 
         $cert = DB::table('cert_planillas as c')
             ->leftJoin('personal as p', 'c.auxiliar_id', '=', 'p.id')
-            ->where('c.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('c.empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('c.id', $certId)
             ->select('c.*', 'p.nombre as auxiliar_nombre')
             ->first();
@@ -617,7 +617,7 @@ class PlanillaController extends BaseController
         $archivoId = (int)($params['archivo_id'] ?? 0);
 
         $q = DB::table('archivos_planilla')
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->orderBy('created_at', 'desc');
         if ($archivoId) $q->where('id', $archivoId);
@@ -712,7 +712,7 @@ class PlanillaController extends BaseController
         if (!$auxiliarId) return $this->error($res, 'auxiliar_id requerido');
 
         $archivo = DB::table('archivos_planilla')
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->find($archivoId);
         if (!$archivo) return $this->notFound($res, 'Archivo no encontrado');
 
@@ -745,7 +745,7 @@ class PlanillaController extends BaseController
                     : 'CONSOLIDADO';
 
                 $ordenId = DB::table('orden_pickings')->insertGetId([
-                    'empresa_id'       => $this->getEffectiveEmpresaId($user, $request),
+                    'empresa_id'       => $this->getEffectiveEmpresaId($user, $r),
                     'sucursal_id'      => $user->sucursal_id,
                     'numero_orden'     => $numeroOrden,
                     'cliente'          => 'Consolidado ' . $planillaLabel,
@@ -771,7 +771,7 @@ class PlanillaController extends BaseController
                 }
 
                 foreach ($sumados as $item) {
-                    $productoId = $this->_resolveProducto($this->getEffectiveEmpresaId($user, $request), $item['codigo'], $item['nombre']);
+                    $productoId = $this->_resolveProducto($this->getEffectiveEmpresaId($user, $r), $item['codigo'], $item['nombre']);
                     DB::table('picking_detalles')->insert([
                         'orden_picking_id'    => $ordenId,
                         'producto_id'         => $productoId ?? 1,
@@ -786,7 +786,7 @@ class PlanillaController extends BaseController
                 
                 // Sincronizar con planillas_picking para el módulo de Waves
                 DB::table('planillas_picking')->updateOrInsert(
-                    ['empresa_id' => $this->getEffectiveEmpresaId($user, $request), 'numero' => $planillaLabel],
+                    ['empresa_id' => $this->getEffectiveEmpresaId($user, $r), 'numero' => $planillaLabel],
                     [
                         'sucursal_id' => $user->sucursal_id,
                         'cliente'     => 'Consolidado ' . $planillaLabel,
@@ -816,7 +816,7 @@ class PlanillaController extends BaseController
 
                     $numeroOrden = 'PK-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
                     $ordenId = DB::table('orden_pickings')->insertGetId([
-                        'empresa_id'       => $this->getEffectiveEmpresaId($user, $request),
+                        'empresa_id'       => $this->getEffectiveEmpresaId($user, $r),
                         'sucursal_id'      => $user->sucursal_id,
                         'numero_orden'     => $numeroOrden,
                         'cliente'          => 'Planilla ' . $numPlanilla,
@@ -842,7 +842,7 @@ class PlanillaController extends BaseController
                     }
 
                     foreach ($sumados as $item) {
-                        $productoId = $this->_resolveProducto($this->getEffectiveEmpresaId($user, $request), $item['codigo'], $item['nombre']);
+                        $productoId = $this->_resolveProducto($this->getEffectiveEmpresaId($user, $r), $item['codigo'], $item['nombre']);
                         DB::table('picking_detalles')->insert([
                             'orden_picking_id'    => $ordenId,
                             'producto_id'         => $productoId ?? 1,
@@ -857,7 +857,7 @@ class PlanillaController extends BaseController
 
                     // Sincronizar con planillas_picking para el módulo de Waves
                     DB::table('planillas_picking')->updateOrInsert(
-                        ['empresa_id' => $this->getEffectiveEmpresaId($user, $request), 'numero' => $numPlanilla],
+                        ['empresa_id' => $this->getEffectiveEmpresaId($user, $r), 'numero' => $numPlanilla],
                         [
                             'sucursal_id' => $user->sucursal_id,
                             'cliente'     => 'Planilla ' . $numPlanilla,
@@ -885,7 +885,7 @@ class PlanillaController extends BaseController
 
             // Notify the auxiliary
             \App\Controllers\NotificacionesController::crear(
-                $this->getEffectiveEmpresaId($user, $request),
+                $this->getEffectiveEmpresaId($user, $r),
                 $auxiliarId,
                 'Nuevas Planillas para Picking',
                 "Se le han asignado " . count($creadas) . " planillas para alistamiento (Picking).",
@@ -947,7 +947,7 @@ class PlanillaController extends BaseController
         $certId = (int)$a['id'];
 
         $cert = DB::table('cert_planillas')
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('id', $certId)
             ->first();
         if (!$cert) return $this->notFound($res);
@@ -989,7 +989,7 @@ class PlanillaController extends BaseController
         $data   = $r->getParsedBody() ?? [];
 
         $cert = DB::table('cert_planillas')
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('id', $certId)
             ->first();
         if (!$cert) return $this->notFound($res);
@@ -1029,7 +1029,7 @@ class PlanillaController extends BaseController
         $planillas = $data['planillas'] ?? null; // null = all
 
         $archivo = DB::table('archivos_planilla')
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->find($archivoId);
         if (!$archivo) return $this->notFound($res, 'Archivo no encontrado');
 

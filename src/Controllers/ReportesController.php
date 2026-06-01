@@ -39,7 +39,7 @@ class ReportesController extends BaseController
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
 
-        $stock = Inventario::where('inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $stock = Inventario::where('inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('inventarios.sucursal_id', $user->sucursal_id)
             ->join('productos', 'inventarios.producto_id', '=', 'productos.id')
             ->join('ubicaciones', 'inventarios.ubicacion_id', '=', 'ubicaciones.id')
@@ -104,7 +104,7 @@ class ReportesController extends BaseController
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
 
-        $recepciones = Recepcion::where('recepciones.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $recepciones = Recepcion::where('recepciones.empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('recepciones.sucursal_id', $user->sucursal_id)
             ->whereBetween('recepciones.created_at', [$ini, $fin])
             ->when(!empty($params['numero_odc']), function ($q) use ($params) {
@@ -175,7 +175,7 @@ class ReportesController extends BaseController
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
 
-        $despachos = Despacho::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $despachos = Despacho::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereBetween('fecha_movimiento', [substr($ini, 0, 10), substr($fin, 0, 10)])
             ->with('certificaciones.producto')
@@ -210,7 +210,7 @@ class ReportesController extends BaseController
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
 
-        $devs = Devolucion::where('devoluciones.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $devs = Devolucion::where('devoluciones.empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->whereBetween('devoluciones.created_at', [$ini, $fin])
             ->with('detalles.producto')
             ->orderBy('devoluciones.created_at', 'desc')
@@ -252,7 +252,7 @@ class ReportesController extends BaseController
             ->join('productos as p', 'd.producto_id', '=', 'p.id')
             ->leftJoin('ubicaciones as u', 'd.ubicacion_id', '=', 'u.id')
             ->leftJoin('personal as aux', 'd.auxiliar_id', '=', 'aux.id')
-            ->where('o.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('o.empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('o.sucursal_id', $user->sucursal_id)
             ->whereBetween('o.created_at', [$ini, $fin])
             ->select(
@@ -305,7 +305,7 @@ class ReportesController extends BaseController
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
 
-        $conteos = ConteoInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $conteos = ConteoInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereBetween('created_at', [$ini, $fin])
             ->with('detalles.producto')
@@ -342,7 +342,7 @@ class ReportesController extends BaseController
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
 
-        $q = OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $q = OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->whereBetween('created_at', [$ini, $fin])
             ->with(['proveedor', 'detalles.producto']);
 
@@ -413,7 +413,7 @@ class ReportesController extends BaseController
 
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
-        $eId = $this->getEffectiveEmpresaId($user, $request);
+        $eId = $this->getEffectiveEmpresaId($user, $r);
         $sId = $user->sucursal_id;
         $hoy = date('Y-m-d');
 
@@ -469,7 +469,7 @@ class ReportesController extends BaseController
 
         $logs = Capsule::table('audit_logs')
             ->leftJoin('personal', 'audit_logs.usuario_id', '=', 'personal.id')
-            ->where('audit_logs.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('audit_logs.empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->whereBetween('audit_logs.created_at', [$ini, $fin])
             ->when($params['modulo'] ?? null, fn($q, $m) => $q->where('modulo', $m))
             ->when($params['usuario_id'] ?? null, fn($q, $u) => $q->where('audit_logs.usuario_id', $u))
@@ -498,7 +498,7 @@ class ReportesController extends BaseController
         $params = $r->getQueryParams();
         $dias   = (int)($params['dias'] ?? 365); // Default a un año para ver más datos
 
-        $query = Inventario::where('inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $query = Inventario::where('inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('inventarios.sucursal_id', $user->sucursal_id)
             ->join('productos', 'inventarios.producto_id', '=', 'productos.id')
             ->join('ubicaciones', 'inventarios.ubicacion_id', '=', 'ubicaciones.id')
@@ -575,7 +575,7 @@ class ReportesController extends BaseController
     public function dashboardBI(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
-        $eId    = $this->getEffectiveEmpresaId($user, $request);
+        $eId    = $this->getEffectiveEmpresaId($user, $r);
         $params = $r->getQueryParams();
 
         // Filtros globales recibidos desde el Frontend
@@ -767,7 +767,7 @@ class ReportesController extends BaseController
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
-        $eId = $this->getEffectiveEmpresaId($user, $request);
+        $eId = $this->getEffectiveEmpresaId($user, $r);
         $sId = $user->sucursal_id;
 
         // Proveedores con al menos una ODC en el período.
@@ -871,13 +871,13 @@ class ReportesController extends BaseController
             ->leftJoin(Capsule::raw(
                 '(SELECT producto_id, SUM(cantidad) as total
                   FROM inventarios
-                  WHERE empresa_id = ' . (int)$this->getEffectiveEmpresaId($user, $request) . '
+                  WHERE empresa_id = ' . (int)$this->getEffectiveEmpresaId($user, $r) . '
                     AND sucursal_id = ' . (int)$user->sucursal_id . "
                     AND estado = 'Disponible'
                   GROUP BY producto_id
                 ) as inv"
             ), 'p.id', '=', 'inv.producto_id')
-            ->where('nr.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('nr.empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('nr.sucursal_id', $user->sucursal_id)
             ->where('nr.activo', true)
             ->select(
@@ -927,7 +927,7 @@ class ReportesController extends BaseController
         $params = $r->getQueryParams();
         $fecha  = $params['fecha'] ?? date('Y-m-d');
 
-        $ordenes = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $ordenes = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('estado', ['Pendiente', 'EnCurso'])
             ->whereDate('created_at', $fecha)
@@ -979,7 +979,7 @@ class ReportesController extends BaseController
 
         $query = DB::table('lineas_planilla as lp')
             ->leftJoin('archivos_planilla as ap', 'ap.id', '=', 'lp.archivo_id')
-            ->where('ap.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('ap.empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('ap.sucursal_id', $user->sucursal_id);
 
         if (!empty($params['planilla_id'])) {

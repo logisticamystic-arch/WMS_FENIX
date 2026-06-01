@@ -31,7 +31,7 @@ class UbicacionesController extends BaseController
         $limit  = min((int)($params['limit'] ?? 200), 1000);
 
         $q = Capsule::table('ubicaciones as ub')
-            ->where('ub.empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('ub.empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('ub.sucursal_id', $user->sucursal_id)
             ->where('ub.activa', true);
 
@@ -73,7 +73,7 @@ class UbicacionesController extends BaseController
         $user = $r->getAttribute('user');
         $ub   = Capsule::table('ubicaciones')
             ->where('id',          $a['id'])
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->first();
 
         if (!$ub) return $this->notFound($res);
@@ -115,7 +115,7 @@ class UbicacionesController extends BaseController
 
         // Verificar unicidad del código
         $existe = Capsule::table('ubicaciones')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('codigo',      $body['codigo'])
             ->exists();
@@ -125,7 +125,7 @@ class UbicacionesController extends BaseController
         }
 
         $id = Capsule::table('ubicaciones')->insertGetId([
-            'empresa_id'      => $this->getEffectiveEmpresaId($user, $request),
+            'empresa_id'      => $this->getEffectiveEmpresaId($user, $r),
             'sucursal_id'     => $user->sucursal_id,
             'codigo'          => $body['codigo'],
             'pasillo'         => $body['pasillo'],
@@ -172,7 +172,7 @@ class UbicacionesController extends BaseController
 
         Capsule::table('ubicaciones')
             ->where('id',         $a['id'])
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->update($campos);
 
         $this->audit($user, 'ubicaciones', 'actualizar', 'ubicaciones', $a['id']);
@@ -195,7 +195,7 @@ class UbicacionesController extends BaseController
 
         Capsule::table('ubicaciones')
             ->where('id',         $a['id'])
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->update(['estado' => $body['estado'], 'updated_at' => date('Y-m-d H:i:s')]);
 
         $this->audit($user, 'ubicaciones', 'estado', 'ubicaciones', $a['id'],
@@ -223,7 +223,7 @@ class UbicacionesController extends BaseController
         // Desactivación lógica
         Capsule::table('ubicaciones')
             ->where('id',         $a['id'])
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->update(['activa' => false, 'updated_at' => date('Y-m-d H:i:s')]);
 
         $this->audit($user, 'ubicaciones', 'eliminar', 'ubicaciones', $a['id']);
@@ -238,7 +238,7 @@ class UbicacionesController extends BaseController
         $params = $r->getQueryParams();
 
         $items = Capsule::table('ubicaciones')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('activa', true)
             ->where('estado', 'Disponible')
@@ -258,7 +258,7 @@ class UbicacionesController extends BaseController
         $user = $r->getAttribute('user');
 
         $porZona = Capsule::table('ubicaciones')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('activa', true)
             ->selectRaw("
@@ -275,7 +275,7 @@ class UbicacionesController extends BaseController
             ->get();
 
         $porPasillo = Capsule::table('ubicaciones')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('activa', true)
             ->selectRaw("
@@ -296,7 +296,7 @@ class UbicacionesController extends BaseController
         $user = $r->getAttribute('user');
 
         $items = Capsule::table('ubicaciones')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('activa', true)
             ->orderBy('pasillo')->orderBy('estanteria')->orderBy('nivel')
@@ -346,7 +346,7 @@ class UbicacionesController extends BaseController
                         $codigo = sprintf('%s/%02d-%02d-%02d', strtoupper($zona), $est, $niv, $pos);
 
                         $existe = Capsule::table('ubicaciones')
-                            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+                            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
                             ->where('sucursal_id', $user->sucursal_id)
                             ->where('codigo', $codigo)
                             ->exists();
@@ -354,7 +354,7 @@ class UbicacionesController extends BaseController
                         if ($existe) continue;
 
                         Capsule::table('ubicaciones')->insert([
-                            'empresa_id'     => $this->getEffectiveEmpresaId($user, $request),
+                            'empresa_id'     => $this->getEffectiveEmpresaId($user, $r),
                             'sucursal_id'    => $user->sucursal_id,
                             'codigo'         => $codigo,
                             'pasillo'        => strtoupper($pasillo),

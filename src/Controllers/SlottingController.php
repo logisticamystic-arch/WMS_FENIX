@@ -37,7 +37,7 @@ class SlottingController extends BaseController
         $q = Capsule::table('ubicaciones_optimas as uo')
             ->join('productos as p',   'uo.producto_id',  '=', 'p.id')
             ->join('ubicaciones as ub', 'uo.ubicacion_id', '=', 'ub.id')
-            ->where('uo.empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('uo.empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('uo.sucursal_id', $user->sucursal_id)
             ->where('uo.vigente', true)
             ->select(
@@ -86,7 +86,7 @@ class SlottingController extends BaseController
 
         // 1. Obtener clasificación ABC-XYZ vigente
         $clasificaciones = Capsule::table('clasificaciones_abc_xyz')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('vigente', true)
             ->get()
@@ -98,7 +98,7 @@ class SlottingController extends BaseController
 
         // 2. Obtener ubicaciones disponibles agrupadas por zona
         $ubicaciones = Capsule::table('ubicaciones')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('activa', true)
             ->whereIn('tipo_ubicacion', ['Picking'])
@@ -139,7 +139,7 @@ class SlottingController extends BaseController
 
                 // Verificar ubicación actual para detectar cambio necesario
                 $actual = Capsule::table('ubicaciones_optimas')
-                    ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+                    ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
                     ->where('sucursal_id', $user->sucursal_id)
                     ->where('producto_id', $clas->producto_id)
                     ->where('vigente', true)
@@ -193,7 +193,7 @@ class SlottingController extends BaseController
 
         $asig = Capsule::table('ubicaciones_optimas')
             ->where('id',         $a['id'])
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->first();
 
         if (!$asig) return $this->notFound($res);
@@ -222,7 +222,7 @@ class SlottingController extends BaseController
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
         Capsule::table('ubicaciones_optimas')->where('id', $a['id'])
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->update(['vigente' => false, 'vigente_hasta' => date('Y-m-d')]);
 
         $this->audit($user, 'slotting', 'rechazar', 'ubicaciones_optimas', $a['id']);
@@ -273,7 +273,7 @@ class SlottingController extends BaseController
               )
             ORDER BY c.total_valor DESC
             LIMIT 100
-        ", [$this->getEffectiveEmpresaId($user, $request), $user->sucursal_id]);
+        ", [$this->getEffectiveEmpresaId($user, $r), $user->sucursal_id]);
 
         return $this->ok($res, ['sugerencias' => $sugerencias, 'total' => count($sugerencias)]);
     }
@@ -285,7 +285,7 @@ class SlottingController extends BaseController
         $user = $r->getAttribute('user');
 
         $ubicaciones = Capsule::table('ubicaciones as ub')
-            ->where('ub.empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('ub.empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('ub.sucursal_id', $user->sucursal_id)
             ->where('ub.activa', true)
             ->leftJoin('ubicaciones_optimas as uo',
@@ -312,7 +312,7 @@ class SlottingController extends BaseController
         $mapa = $ubicaciones->groupBy('pasillo');
 
         $resumen = Capsule::table('ubicaciones')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('activa', true)
             ->selectRaw("
@@ -335,7 +335,7 @@ class SlottingController extends BaseController
         $items = Capsule::table('ubicaciones_optimas as uo')
             ->join('productos as p',    'uo.producto_id',  '=', 'p.id')
             ->join('ubicaciones as ub', 'uo.ubicacion_id', '=', 'ub.id')
-            ->where('uo.empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('uo.empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('uo.sucursal_id', $user->sucursal_id)
             ->where('uo.vigente', true)
             ->select('p.codigo_interno', 'p.nombre', 'uo.segmento',
@@ -402,7 +402,7 @@ class SlottingController extends BaseController
     {
         // Desactivar asignación anterior
         Capsule::table('ubicaciones_optimas')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('producto_id', $productoId)
             ->where('vigente', true)
@@ -410,7 +410,7 @@ class SlottingController extends BaseController
 
         // Insertar nueva asignación (requiere aprobación de supervisor)
         Capsule::table('ubicaciones_optimas')->insert([
-            'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
+            'empresa_id'           => $this->getEffectiveEmpresaId($user, $r),
             'sucursal_id'          => $user->sucursal_id,
             'producto_id'          => $productoId,
             'ubicacion_id'         => $ubicacionId,

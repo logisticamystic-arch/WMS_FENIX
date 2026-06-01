@@ -27,7 +27,7 @@ class PutawayController extends BaseController
             $stock = DB::table('inventarios as i')
                 ->join('productos as p', 'p.id', '=', 'i.producto_id')
                 ->leftJoin('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
-                ->where('i.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                ->where('i.empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('i.sucursal_id', $user->sucursal_id)
                 ->where('i.cantidad', '>', 0)
                 ->where(function ($q) {
@@ -75,14 +75,14 @@ class PutawayController extends BaseController
         }
 
         try {
-            $ubicaciones = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $ubicaciones = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('tipo_ubicacion', 'Almacenamiento')
                 ->where('activo', 1)
                 ->get();
 
             $stockPorUbicacion = DB::table('inventarios')
-                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('cantidad', '>', 0)
                 ->select('ubicacion_id', DB::raw('SUM(cantidad) as total'))
@@ -93,7 +93,7 @@ class PutawayController extends BaseController
             // Existing locations for this product (consolidation priority)
             $existentes = DB::table('inventarios as i')
                 ->join('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
-                ->where('i.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                ->where('i.empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('i.sucursal_id', $user->sucursal_id)
                 ->where('i.producto_id', $productoId)
                 ->where('i.cantidad', '>', 0)
@@ -167,7 +167,7 @@ class PutawayController extends BaseController
             DB::beginTransaction();
 
             // Verificar ubicación destino pertenece a empresa/sucursal
-            $destino = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $destino = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('tipo_ubicacion', 'Almacenamiento')
                 ->find($ubicacionDestId);
@@ -179,7 +179,7 @@ class PutawayController extends BaseController
 
             // Descontar del origen (patio) si se especificó
             if ($ubicacionOrigId) {
-                $invOrigen = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                $invOrigen = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                     ->where('sucursal_id', $user->sucursal_id)
                     ->where('producto_id', $productoId)
                     ->where('ubicacion_id', $ubicacionOrigId)
@@ -207,7 +207,7 @@ class PutawayController extends BaseController
 
             // Acreditar en destino
             $invDest = Inventario::firstOrNew([
-                'empresa_id'   => $this->getEffectiveEmpresaId($user, $request),
+                'empresa_id'   => $this->getEffectiveEmpresaId($user, $r),
                 'sucursal_id'  => $user->sucursal_id,
                 'producto_id'  => $productoId,
                 'ubicacion_id' => $ubicacionDestId,
@@ -224,7 +224,7 @@ class PutawayController extends BaseController
 
             // Registro de movimiento
             MovimientoInventario::create([
-                'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
+                'empresa_id'           => $this->getEffectiveEmpresaId($user, $r),
                 'sucursal_id'          => $user->sucursal_id,
                 'producto_id'          => $productoId,
                 'ubicacion_origen_id'  => $ubicacionOrigId,
@@ -283,7 +283,7 @@ class PutawayController extends BaseController
             if ($eanModel) {
                 $productoId = $eanModel->producto_id;
             } else {
-                $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                $prod = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                     ->where('codigo_interno', $ean)->where('activo', 1)->first();
                 if (!$prod) {
                     return $this->error($res, "Producto no encontrado para el código: {$ean}", 404);
@@ -292,14 +292,14 @@ class PutawayController extends BaseController
             }
 
             // Resolver códigos de ubicación → IDs
-            $origen = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $origen = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('codigo', $codOrigen)->first();
             if (!$origen) {
                 return $this->error($res, "Ubicación origen '{$codOrigen}' no encontrada.", 404);
             }
 
-            $destino = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $destino = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('codigo', $codDestino)->first();
             if (!$destino) {
@@ -309,7 +309,7 @@ class PutawayController extends BaseController
             DB::beginTransaction();
 
             // Stock en origen
-            $invOrigen = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $invOrigen = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('producto_id', $productoId)
                 ->where('ubicacion_id', $origen->id)
@@ -333,7 +333,7 @@ class PutawayController extends BaseController
 
             // Acreditar en destino
             $invDest = Inventario::firstOrNew([
-                'empresa_id'   => $this->getEffectiveEmpresaId($user, $request),
+                'empresa_id'   => $this->getEffectiveEmpresaId($user, $r),
                 'sucursal_id'  => $user->sucursal_id,
                 'producto_id'  => $productoId,
                 'ubicacion_id' => $destino->id,
@@ -351,7 +351,7 @@ class PutawayController extends BaseController
             $invDest->save();
 
             MovimientoInventario::create([
-                'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
+                'empresa_id'           => $this->getEffectiveEmpresaId($user, $r),
                 'sucursal_id'          => $user->sucursal_id,
                 'producto_id'          => $productoId,
                 'ubicacion_origen_id'  => $origen->id,
@@ -403,7 +403,7 @@ class PutawayController extends BaseController
 
             // Fallback por codigo_interno
             if (!$producto) {
-                $producto = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                $producto = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                     ->where('codigo_interno', $ean)->where('activo', 1)->first();
             }
 
@@ -414,7 +414,7 @@ class PutawayController extends BaseController
             // Stock en patio
             $stockPatio = DB::table('inventarios as i')
                 ->join('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
-                ->where('i.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                ->where('i.empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('i.sucursal_id', $user->sucursal_id)
                 ->where('i.producto_id', $producto->id)
                 ->where('i.cantidad', '>', 0)

@@ -35,7 +35,7 @@ class ForecastController extends BaseController
         // Usar vista materializada si está disponible
         try {
             $usaMv = Capsule::table('mv_rotacion_productos')
-                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->exists();
         } catch (\Exception $e) {
             $usaMv = false;
@@ -43,7 +43,7 @@ class ForecastController extends BaseController
 
         if ($usaMv) {
             $q = Capsule::table('mv_rotacion_productos')
-                ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+                ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->whereNotNull('forecast_30d');
 
@@ -76,7 +76,7 @@ class ForecastController extends BaseController
         // Fallback: consulta directa a forecast_demanda
         $q = Capsule::table('forecast_demanda as f')
             ->join('productos as p', 'f.producto_id', '=', 'p.id')
-            ->where('f.empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('f.empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('f.sucursal_id', $user->sucursal_id)
             ->where('f.es_vigente',  true)
             ->where('f.horizonte_dias', (int)($params['horizonte'] ?? 30));
@@ -116,7 +116,7 @@ class ForecastController extends BaseController
         $params = $r->getQueryParams();
         $diasUmbral = (int)($params['dias'] ?? 14);
 
-        $empId   = $this->getEffectiveEmpresaId($user, $request);
+        $empId   = $this->getEffectiveEmpresaId($user, $r);
         $sucId   = $user->sucursal_id;
         $isPg    = $this->isPg();
         $segExpr = $isPg ? "(c.clase_abc || c.clase_xyz) AS segmento"
@@ -180,14 +180,14 @@ class ForecastController extends BaseController
 
         $producto = Capsule::table('productos')
             ->where('id', $a['producto_id'])
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->first(['id', 'nombre', 'codigo_interno']);
 
         if (!$producto) return $this->notFound($res);
 
         // Predicciones vigentes por horizonte
         $predicciones = Capsule::table('forecast_demanda')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('producto_id', $a['producto_id'])
             ->where('es_vigente',  true)
@@ -196,7 +196,7 @@ class ForecastController extends BaseController
 
         // Historial de ventas reales de ventas_agregadas_ml (últimos 12 meses)
         $historial = Capsule::table('ventas_agregadas_ml')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('producto_id', $a['producto_id'])
             ->where('periodo',     '>=', date('Y-m-d', strtotime('-12 months')))
@@ -205,7 +205,7 @@ class ForecastController extends BaseController
 
         // Clasificación ABC-XYZ actual
         $clasificacion = Capsule::table('clasificaciones_abc_xyz')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('producto_id', $a['producto_id'])
             ->where('vigente', true)
@@ -213,7 +213,7 @@ class ForecastController extends BaseController
 
         // Stock actual
         $stockActual = Capsule::table('inventarios')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('producto_id', $a['producto_id'])
             ->where('estado', 'Disponible')
@@ -250,7 +250,7 @@ class ForecastController extends BaseController
 
             // Marcar predicciones anteriores del mismo producto/horizonte como no vigentes
             Capsule::table('forecast_demanda')
-                ->where('empresa_id',    $this->getEffectiveEmpresaId($user, $request))
+                ->where('empresa_id',    $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id',   $user->sucursal_id)
                 ->where('producto_id',   (int)$item['producto_id'])
                 ->where('horizonte_dias',(int)$item['horizonte_dias'])
@@ -259,7 +259,7 @@ class ForecastController extends BaseController
 
             // Calcular alerta de quiebre
             $stockActual = Capsule::table('inventarios')
-                ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+                ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('producto_id', (int)$item['producto_id'])
                 ->where('estado', 'Disponible')
@@ -276,7 +276,7 @@ class ForecastController extends BaseController
             $puntoReorden = $demandaDia > 0 ? round($demandaDia * $leadTimeDias + ($stockSegSug ?? 0), 1) : null;
 
             Capsule::table('forecast_demanda')->insert([
-                'empresa_id'         => $this->getEffectiveEmpresaId($user, $request),
+                'empresa_id'         => $this->getEffectiveEmpresaId($user, $r),
                 'sucursal_id'        => $user->sucursal_id,
                 'producto_id'        => (int)$item['producto_id'],
                 'fecha_prediccion'   => $item['fecha_prediccion'],
@@ -329,7 +329,7 @@ class ForecastController extends BaseController
 
         // Obtener productos a procesar (por defecto solo clase A)
         $q = Capsule::table('clasificaciones_abc_xyz')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('vigente', true);
 
@@ -350,7 +350,7 @@ class ForecastController extends BaseController
         foreach ($productos as $productoId) {
             // Obtener serie temporal (últimos 12 meses de ventas mensuales)
             $serie = Capsule::table('ventas_agregadas_ml')
-                ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+                ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('producto_id', $productoId)
                 ->where('periodo',     '>=', date('Y-m-01', strtotime('-12 months')))
@@ -366,7 +366,7 @@ class ForecastController extends BaseController
 
             // Marcar predicciones anteriores como no vigentes
             Capsule::table('forecast_demanda')
-                ->where('empresa_id',    $this->getEffectiveEmpresaId($user, $request))
+                ->where('empresa_id',    $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id',   $user->sucursal_id)
                 ->where('producto_id',   $productoId)
                 ->where('horizonte_dias', $horizonte)
@@ -375,7 +375,7 @@ class ForecastController extends BaseController
 
             // Stock actual
             $stock = Capsule::table('inventarios')
-                ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+                ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('producto_id', $productoId)
                 ->where('estado', 'Disponible')
@@ -388,7 +388,7 @@ class ForecastController extends BaseController
             $puntoReorden = $demandaDia > 0 ? round($demandaDia * 7 + ($stockSeg ?? 0), 1) : null;
 
             Capsule::table('forecast_demanda')->insert([
-                'empresa_id'          => $this->getEffectiveEmpresaId($user, $request),
+                'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
                 'sucursal_id'         => $user->sucursal_id,
                 'producto_id'         => $productoId,
                 'fecha_prediccion'    => $fechaPred,
@@ -435,7 +435,7 @@ class ForecastController extends BaseController
         $user = $r->getAttribute('user');
 
         $metricas = Capsule::table('forecast_demanda')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('es_vigente',  true)
             ->whereNotNull('mape')
@@ -461,7 +461,7 @@ class ForecastController extends BaseController
 
         $items = Capsule::table('forecast_demanda as f')
             ->join('productos as p', 'f.producto_id', '=', 'p.id')
-            ->where('f.empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('f.empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('f.sucursal_id', $user->sucursal_id)
             ->where('f.es_vigente',  true)
             ->orderByRaw('f.alerta_quiebre DESC, f.dias_hasta_quiebre ASC NULLS LAST')

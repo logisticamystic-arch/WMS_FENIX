@@ -114,7 +114,7 @@ class AprobacionController extends BaseController
     {
         $user = $r->getAttribute('user');
 
-        $aprobacion = AprobacionVencimiento::where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+        $aprobacion = AprobacionVencimiento::where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('solicitado_por', $user->id)
             ->where('estado', 'pendiente')

@@ -14,7 +14,7 @@ class ImpresoraController extends BaseController
         $params     = $r->getQueryParams();
         $tipoFiltro = $params['tipo_trabajo'] ?? null;
 
-        $query = Impresora::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $query = Impresora::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id);
 
         if ($tipoFiltro) {
@@ -46,7 +46,7 @@ class ImpresoraController extends BaseController
         $impresora = Impresora::updateOrCreate(
             ['id' => $id],
             [
-                'empresa_id'    => $this->getEffectiveEmpresaId($user, $request),
+                'empresa_id'    => $this->getEffectiveEmpresaId($user, $r),
                 'sucursal_id'   => $sucursalId,
                 'nombre'        => $data['nombre'],
                 'ip'            => $data['ip'],
@@ -64,7 +64,7 @@ class ImpresoraController extends BaseController
     public function eliminar(Request $r, Response $res, array $a): Response
     {
         $user = $r->getAttribute('user');
-        $impresora = Impresora::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
+        $impresora = Impresora::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))->find($a['id']);
         if (!$impresora) return $this->notFound($res);
 
         $impresora->delete();
@@ -76,7 +76,7 @@ class ImpresoraController extends BaseController
         $user = $r->getAttribute('user');
         $data = $r->getParsedBody();
         
-        $impresora = Impresora::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $impresora = Impresora::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('modulos', 'LIKE', '%rotulos%')
             ->where('activo', true)
@@ -100,7 +100,7 @@ class ImpresoraController extends BaseController
     public function testPrint(Request $r, Response $res, array $a): Response
     {
         $user = $r->getAttribute('user');
-        $impresora = Impresora::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($a['id']);
+        $impresora = Impresora::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))->find($a['id']);
         
         if (!$impresora) return $this->notFound($res);
 

@@ -39,7 +39,7 @@ class YardController extends BaseController
         [$ini, $fin] = $this->getDateRange($params);
 
         $q = Capsule::table('yard_appointments as y')
-            ->where('y.empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('y.empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('y.sucursal_id', $user->sucursal_id)
             ->whereBetween(
                 Capsule::raw('DATE(y.fecha_cita)'),
@@ -81,7 +81,7 @@ class YardController extends BaseController
         $user = $r->getAttribute('user');
         $cita = Capsule::table('yard_appointments')
             ->where('id',          $a['id'])
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->first();
 
         if (!$cita) return $this->notFound($res);
@@ -142,7 +142,7 @@ class YardController extends BaseController
 
         try {
             $id = Capsule::table('yard_appointments')->insertGetId([
-                'empresa_id'     => $this->getEffectiveEmpresaId($user, $request),
+                'empresa_id'     => $this->getEffectiveEmpresaId($user, $r),
                 'sucursal_id'    => $user->sucursal_id,
                 'numero'         => $body['numero'],
                 'transportista'  => $body['transportista'] ?? null,
@@ -175,7 +175,7 @@ class YardController extends BaseController
 
         $cita = Capsule::table('yard_appointments')
             ->where('id',         $a['id'])
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->first();
 
         if (!$cita) return $this->notFound($res);
@@ -210,7 +210,7 @@ class YardController extends BaseController
         $user = $r->getAttribute('user');
         $body = (array)($r->getParsedBody() ?? []);
 
-        $cita = $this->_getCita($a['id'], $this->getEffectiveEmpresaId($user, $request));
+        $cita = $this->_getCita($a['id'], $this->getEffectiveEmpresaId($user, $r));
         if (!$cita) return $this->notFound($res);
 
         if ($cita->estado !== 'Programado') {
@@ -243,7 +243,7 @@ class YardController extends BaseController
         $user = $r->getAttribute('user');
         $body = (array)($r->getParsedBody() ?? []);
 
-        $cita = $this->_getCita($a['id'], $this->getEffectiveEmpresaId($user, $request));
+        $cita = $this->_getCita($a['id'], $this->getEffectiveEmpresaId($user, $r));
         if (!$cita) return $this->notFound($res);
 
         if ($cita->estado !== 'En Patio') {
@@ -268,7 +268,7 @@ class YardController extends BaseController
         $user = $r->getAttribute('user');
         $body = (array)($r->getParsedBody() ?? []);
 
-        $cita = $this->_getCita($a['id'], $this->getEffectiveEmpresaId($user, $request));
+        $cita = $this->_getCita($a['id'], $this->getEffectiveEmpresaId($user, $r));
         if (!$cita) return $this->notFound($res);
 
         if ($cita->estado !== 'Operando') {
@@ -297,7 +297,7 @@ class YardController extends BaseController
         $user = $r->getAttribute('user');
         $body = (array)($r->getParsedBody() ?? []);
 
-        $cita = $this->_getCita($a['id'], $this->getEffectiveEmpresaId($user, $request));
+        $cita = $this->_getCita($a['id'], $this->getEffectiveEmpresaId($user, $r));
         if (!$cita) return $this->notFound($res);
 
         if (!in_array($cita->estado, ['En Patio', 'Operando'])) {
@@ -335,7 +335,7 @@ class YardController extends BaseController
         $user = $r->getAttribute('user');
         $body = (array)($r->getParsedBody() ?? []);
 
-        $cita = $this->_getCita($a['id'], $this->getEffectiveEmpresaId($user, $request));
+        $cita = $this->_getCita($a['id'], $this->getEffectiveEmpresaId($user, $r));
         if (!$cita) return $this->notFound($res);
 
         if (in_array($cita->estado, ['Completado', 'Cancelado'])) {
@@ -361,7 +361,7 @@ class YardController extends BaseController
 
         // Citas activas en este momento por muelle
         $activas = Capsule::table('yard_appointments')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereNotNull('muelle')
             ->whereIn('estado', ['En Patio', 'Operando', 'Programado'])
@@ -376,7 +376,7 @@ class YardController extends BaseController
 
         // Citas programadas para las próximas 4 horas (cola)
         $proximas = Capsule::table('yard_appointments')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('estado', 'Programado')
             ->whereBetween('fecha_cita', [
@@ -416,7 +416,7 @@ class YardController extends BaseController
         $avgDuracion   = $roundFn("AVG(CASE WHEN fin_op_real IS NOT NULL AND inicio_op_real IS NOT NULL THEN $duracion END)");
 
         $kpis = Capsule::table('yard_appointments')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereBetween('fecha_cita', [$ini, $fin])
             ->selectRaw("
@@ -436,7 +436,7 @@ class YardController extends BaseController
 
         // Distribución por tipo
         $porTipo = Capsule::table('yard_appointments')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereBetween('fecha_cita', [$ini, $fin])
             ->selectRaw("
@@ -458,7 +458,7 @@ class YardController extends BaseController
         [$ini, $fin] = $this->getDateRange($params);
 
         $citas = Capsule::table('yard_appointments')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereBetween('fecha_cita', [$ini, $fin])
             ->orderBy('fecha_cita', 'desc')
@@ -497,7 +497,7 @@ class YardController extends BaseController
         $fin    = date('Y-m-d H:i:s', strtotime($fechaCita) + ($durMin * 60));
 
         return Capsule::table('yard_appointments')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('muelle',      $muelle)
             ->whereNotIn('estado', ['Completado', 'Cancelado', 'No Show'])
@@ -511,7 +511,7 @@ class YardController extends BaseController
     {
         // Actualizar ocupación_pct de la ubicación de tipo muelle si existe
         Capsule::table('ubicaciones')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('codigo', $muelle)
             ->where('tipo_ubicacion', 'Recepcion')

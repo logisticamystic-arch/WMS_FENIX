@@ -826,7 +826,7 @@ class RecepcionController extends BaseController
         $detalleId   = (int)($a['detalleId'] ?? 0);
         $body        = (array)($r->getParsedBody() ?? []);
 
-        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereNull('odc_id')
             ->where('estado', 'Borrador')
@@ -860,7 +860,7 @@ class RecepcionController extends BaseController
             if (abs($delta) > 0.001) {
                 $loteKey = $detalle->lote ?? 'N/A';
 
-                $inv = \App\Models\Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                $inv = \App\Models\Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                     ->where('sucursal_id', $user->sucursal_id)
                     ->where('producto_id', $detalle->producto_id)
                     ->where('ubicacion_id', $detalle->ubicacion_destino_id)
@@ -874,7 +874,7 @@ class RecepcionController extends BaseController
                     $inv->save();
                 } elseif ($delta > 0) {
                     $inv = new \App\Models\Inventario([
-                        'empresa_id'         => $this->getEffectiveEmpresaId($user, $request),
+                        'empresa_id'         => $this->getEffectiveEmpresaId($user, $r),
                         'sucursal_id'        => $user->sucursal_id,
                         'producto_id'        => $detalle->producto_id,
                         'ubicacion_id'       => $detalle->ubicacion_destino_id,
@@ -888,7 +888,7 @@ class RecepcionController extends BaseController
                 }
 
                 \App\Models\MovimientoInventario::create([
-                    'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
+                    'empresa_id'           => $this->getEffectiveEmpresaId($user, $r),
                     'sucursal_id'          => $user->sucursal_id,
                     'producto_id'          => $detalle->producto_id,
                     'tipo_movimiento'      => $delta >= 0 ? 'AjustePositivo' : 'AjusteNegativo',
@@ -929,7 +929,7 @@ class RecepcionController extends BaseController
         $recepcionId = (int)($a['id']        ?? 0);
         $detalleId   = (int)($a['detalleId'] ?? 0);
 
-        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereNull('odc_id')
             ->where('estado', 'Borrador')
@@ -954,7 +954,7 @@ class RecepcionController extends BaseController
             $loteKey = $detalle->lote ?? 'N/A';
 
             // Revertir inventario
-            $inv = \App\Models\Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $inv = \App\Models\Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('producto_id', $detalle->producto_id)
                 ->where('ubicacion_id', $detalle->ubicacion_destino_id)
@@ -975,7 +975,7 @@ class RecepcionController extends BaseController
 
             // Log de reversa
             \App\Models\MovimientoInventario::create([
-                'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
+                'empresa_id'           => $this->getEffectiveEmpresaId($user, $r),
                 'sucursal_id'          => $user->sucursal_id,
                 'producto_id'          => $detalle->producto_id,
                 'tipo_movimiento'      => 'AjusteNegativo',
@@ -1397,25 +1397,25 @@ class RecepcionController extends BaseController
         $user = $r->getAttribute('user');
         $hoy  = date('Y-m-d');
 
-        $recHoy = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $recHoy = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereDate('created_at', $hoy)
             ->count();
 
-        $pendientes = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $pendientes = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('estado', ['Borrador', 'EnProceso'])
             ->count();
 
         $citasHoy = Capsule::table('citas')
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereDate('fecha_cita', $hoy)
             ->count();
 
         $palletsPatio = Capsule::table('lotes')
             ->join('ubicaciones', 'ubicaciones.id', '=', 'lotes.ubicacion_id')
-            ->where('lotes.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('lotes.empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('lotes.sucursal_id', $user->sucursal_id)
             ->where('ubicaciones.tipo_ubicacion', 'patio')
             ->where('lotes.cantidad_actual', '>', 0)
@@ -1437,7 +1437,7 @@ class RecepcionController extends BaseController
         $user = $r->getAttribute('user');
 
         // 1. Recepciones activas (Borrador o EnProceso)
-        $activasQuery = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+        $activasQuery = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('estado', ['Borrador', 'EnProceso'])
             ->with(['auxiliar:id,nombre', 'cita'])
@@ -1533,7 +1533,7 @@ class RecepcionController extends BaseController
                     $q->select(Capsule::raw(1))
                       ->from('recepciones as r')
                       ->whereColumn('r.id', 'rd.recepcion_id')
-                      ->where('r.empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                      ->where('r.empresa_id', $this->getEffectiveEmpresaId($user, $r))
                       ->where('r.sucursal_id', $user->sucursal_id);
                 })
                 ->groupBy('cat.id', 'cat.nombre')
@@ -1578,7 +1578,7 @@ class RecepcionController extends BaseController
                 ],
                 'pwa_stats'      => [
                     'recepciones_hoy' => $totalCerradasHoy->count(),
-                    'odc_pendientes'  => OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->whereIn('estado', ['Confirmada', 'En Proceso'])->count(),
+                    'odc_pendientes'  => OrdenCompra::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))->whereIn('estado', ['Confirmada', 'En Proceso'])->count(),
                     'total_horas'     => $totalHorasEjecutadas . "h",
                     'total_lineas'    => $lineasTotales,
                     'promedio_tiempo' => $lineasTotales > 0 ? round(($totalHorasEjecutadas * 60) / $lineasTotales, 1) . "m" : "0m",
