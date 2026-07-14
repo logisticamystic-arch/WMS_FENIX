@@ -1623,6 +1623,9 @@ class PickingController extends BaseController
         if ($orden->estado_certificacion === 'Certificada') {
             return $this->error($res, 'No se puede reabrir una orden ya certificada.', 422);
         }
+        if (!empty($orden->estado_despacho)) {
+            return $this->error($res, "No se puede reabrir una orden ya {$orden->estado_despacho}.", 422);
+        }
 
         try {
             Capsule::transaction(function () use ($orden) {
@@ -1871,6 +1874,9 @@ class PickingController extends BaseController
         if (in_array($orden->estado, ['Completada', 'Completado'])) {
             return $this->error($res, 'No se puede anular una orden ya completada');
         }
+        if (!empty($orden->estado_despacho)) {
+            return $this->error($res, "No se puede anular una orden ya {$orden->estado_despacho}");
+        }
 
         $snapshot = $orden->toArray();
 
@@ -2006,6 +2012,10 @@ class PickingController extends BaseController
         $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))->find($a['id']);
         if (!$orden) return $this->notFound($res);
 
+        if (!empty($orden->estado_despacho)) {
+            return $this->error($res, "No se puede editar una orden ya {$orden->estado_despacho}");
+        }
+
         $snapshot = $orden->toArray();
 
         if (isset($data['cliente'])) $orden->cliente = trim($data['cliente']);
@@ -2030,6 +2040,9 @@ class PickingController extends BaseController
 
         if (in_array($orden->estado, ['Completada', 'Completado', 'Anulado'])) {
             return $this->error($res, "No se pueden agregar líneas a una orden en estado {$orden->estado}");
+        }
+        if (!empty($orden->estado_despacho)) {
+            return $this->error($res, "No se pueden agregar líneas a una orden ya {$orden->estado_despacho}");
         }
 
         $prodId = (int)($data['producto_id'] ?? 0);
@@ -2502,7 +2515,7 @@ class PickingController extends BaseController
                 ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
                 ->where('op.empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('op.sucursal_id', $user->sucursal_id)
-                ->whereNotIn('op.estado', ['Anulada', 'Cancelada'])
+                ->whereNotIn('op.estado', ['Anulado', 'Cancelada'])
                 ->whereNotNull('pd.numero_pedido_ref')
                 ->select('pd.numero_pedido_ref', 'pd.producto_id', 'pd.cantidad_solicitada')
                 ->get();
@@ -2658,7 +2671,8 @@ class PickingController extends BaseController
                 ->where('sucursal_id', $importSucursalId)
                 ->where('sucursal_entrega', $sucursal)
                 ->where('fecha_movimiento', $importHoy)
-                ->whereNotIn('estado', ['Anulada', 'Cancelada'])
+                ->whereNotIn('estado', ['Anulado', 'Cancelada'])
+                ->whereNull('estado_despacho')
                 ->whereNotNull('planilla_numero')
                 ->where('planilla_numero', 'like', 'Planilla %')
                 ->value('planilla_numero');
@@ -2964,8 +2978,8 @@ class PickingController extends BaseController
                   AND inv.estado      = 'Disponible'
             WHERE op.empresa_id  = " . (int)$empresaId . "
               {$sucursalWhere}
-              AND op.estado NOT IN ('Completada','Completado','Cancelado','Anulada')
-              AND pd.estado NOT IN ('Completada','Completado','Cancelado')
+              AND op.estado NOT IN ('Completada','Cancelada','Anulado')
+              AND pd.estado NOT IN ('Completado','Anulado')
               {$extraWhere}
             GROUP BY p.id, p.codigo_interno, p.nombre,
                      op.sucursal_entrega,
@@ -3104,6 +3118,9 @@ class PickingController extends BaseController
         if (!in_array($orden->estado, ['Pendiente', 'EnProceso'])) {
             return $this->error($res, 'Solo se pueden editar órdenes en estado Pendiente o EnProceso');
         }
+        if (!empty($orden->estado_despacho)) {
+            return $this->error($res, "No se puede editar una orden ya {$orden->estado_despacho}");
+        }
 
         // Pendiente: Supervisor o Admin pueden editar; EnProceso: solo Admin
         if ($orden->estado === 'Pendiente') {
@@ -3143,6 +3160,9 @@ class PickingController extends BaseController
         if (!$orden) return $this->notFound($res);
         if (!in_array($orden->estado, ['Pendiente', 'EnProceso'])) {
             return $this->error($res, 'Solo se pueden eliminar líneas de órdenes en estado Pendiente o EnProceso');
+        }
+        if (!empty($orden->estado_despacho)) {
+            return $this->error($res, "No se pueden eliminar líneas de una orden ya {$orden->estado_despacho}");
         }
 
         // Pendiente: Supervisor o Admin pueden eliminar; EnProceso: solo Admin
@@ -4803,7 +4823,7 @@ class PickingController extends BaseController
             ->where('op.sucursal_id',     $sucursalId)
             ->where('op.sucursal_entrega', $sucursal)
             ->where('op.estado', 'Completada')
-            ->whereNotIn('pd.estado', ['Anulada'])
+            ->whereNotIn('pd.estado', ['Anulado'])
             ->select(
                 'op.id as orden_id',
                 'op.numero_pedido',
@@ -6743,7 +6763,7 @@ class PickingController extends BaseController
             ->join('productos as p',       'p.id',  '=', 'pd.producto_id')
             ->where('op.empresa_id',  $empresaId)
             ->where('op.sucursal_id', $sucursalId)
-            ->whereNotIn('op.estado', ['Anulada', 'Cancelada'])
+            ->whereNotIn('op.estado', ['Anulado', 'Cancelada'])
             ->select(
                 'p.id as producto_id',
                 'p.codigo_interno as codigo',
@@ -6972,7 +6992,7 @@ class PickingController extends BaseController
             return $this->notFound($res, 'Línea de picking no encontrada');
         }
 
-        if (in_array($detalle->estado, ['Completada', 'Anulada'], true)) {
+        if (in_array($detalle->estado, ['Completado', 'Anulado'], true)) {
             return $this->error($res, "No se puede editar una línea en estado '{$detalle->estado}'");
         }
 

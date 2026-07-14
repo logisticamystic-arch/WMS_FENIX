@@ -261,9 +261,22 @@ class DespachoController extends BaseController
             return $this->error($res, 'Debe seleccionar al menos un pedido');
         }
 
+        // Verifica que las ordenes sean válidas y de la misma empresa/sucursal
+        $ordenesCheck = OrdenPicking::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->whereIn('id', $ordenIds)
+            ->get();
+        foreach ($ordenesCheck as $orden) {
+            if ($orden->estado !== 'Completada') {
+                return $this->error($res, "La orden {$orden->numero_orden} no está Completada y no puede despacharse");
+            }
+            if (!empty($orden->estado_despacho)) {
+                return $this->error($res, "La orden {$orden->numero_orden} ya fue {$orden->estado_despacho}");
+            }
+        }
+
         try {
             Capsule::transaction(function () use ($despacho, $ordenIds, $empresaId, $sucursalId) {
-                // Verifica que las ordenes sean válidas y de la misma empresa/sucursal
                 $ordenes = OrdenPicking::where('empresa_id', $empresaId)
                     ->where('sucursal_id', $sucursalId)
                     ->whereIn('id', $ordenIds)
