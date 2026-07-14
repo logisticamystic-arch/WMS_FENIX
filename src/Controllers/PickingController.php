@@ -3457,14 +3457,20 @@ class PickingController extends BaseController
                     'ubicaciones.id',
                     'ubicaciones.codigo',
                     'ubicaciones.pasillo',
+                    'ubicaciones.modulo',
                     'ubicaciones.posicion',
                     'ubicaciones.nivel',
                     'picking_detalles.lote',
                     'picking_detalles.fecha_vencimiento'
                 )
-                // FEFO primero → luego ruta física óptima (pasillo → posicion → nivel → codigo)
+                // Ruta física de recorrido en bodega: ambiente (zona de temperatura) →
+                // pasillo → módulo → nivel, para que el auxiliar no zigzaguee entre
+                // pasillos/módulos. El FEFO se conserva como desempate dentro del mismo
+                // tramo de ruta, y se resuelve por ubicación específica en el split de
+                // stock alternativo más abajo (fifo_split) cuando falta stock en el sitio asignado.
+                ->orderByRaw('MAX(picking_detalles.ambiente) ASC NULLS LAST')
+                ->orderByRaw('ubicaciones.pasillo ASC NULLS LAST, ubicaciones.modulo ASC NULLS LAST, ubicaciones.nivel ASC NULLS LAST, ubicaciones.posicion ASC NULLS LAST, ubicaciones.codigo ASC NULLS LAST')
                 ->orderByRaw('picking_detalles.fecha_vencimiento ASC NULLS LAST')
-                ->orderByRaw('ubicaciones.pasillo ASC NULLS LAST, ubicaciones.posicion ASC NULLS LAST, ubicaciones.nivel ASC NULLS LAST, ubicaciones.codigo ASC NULLS LAST')
                 ->orderBy('productos.codigo_interno', 'asc')
                 ->get();
 
