@@ -810,7 +810,7 @@ class PackingController extends BaseController
             $ordenesObj = OrdenPicking::where('empresa_id', $empresaId)
                 ->where('sucursal_id', $user->sucursal_id)
                 ->whereIn('id', $sesionOrdenIds)
-                ->get(['id', 'numero_orden', 'planilla_numero', 'fecha_movimiento']);
+                ->get(['id', 'numero_orden', 'numero_factura', 'planilla_numero', 'fecha_movimiento']);
         } else {
             // Fallback: órdenes certificadas del cliente en la fecha de creación de la sesión
             $ordenesObj = OrdenPicking::where('empresa_id', $empresaId)
@@ -818,17 +818,18 @@ class PackingController extends BaseController
                 ->where('sucursal_entrega', $sesion->sucursal_entrega)
                 ->where('estado_certificacion', 'Certificada')
                 ->whereDate('fecha_movimiento', $sesionFecha)
-                ->get(['id', 'numero_orden', 'planilla_numero', 'fecha_movimiento']);
+                ->get(['id', 'numero_orden', 'numero_factura', 'planilla_numero', 'fecha_movimiento']);
         }
 
         $ordenIds    = $ordenesObj->pluck('id')->toArray();
-        
+
         // Obtener planillas únicas reales asociadas
         $planillas   = $ordenesObj->pluck('planilla_numero')->map(fn($v) => trim($v ?? ''))->filter()->unique()->toArray();
         $planillaStr = !empty($planillas) ? implode(', ', $planillas) : 'N/A';
 
-        // Obtener números de pedido (numero_orden) únicos asociados
-        $pedidos     = $ordenesObj->pluck('numero_orden')->map(fn($v) => trim($v ?? ''))->filter()->unique()->toArray();
+        // Obtener números de pedido del cliente (numero_factura = "Num Pedido" del cliente);
+        // si una orden no tiene numero_factura (creada manualmente), se usa numero_orden como respaldo.
+        $pedidos     = $ordenesObj->map(fn($o) => trim($o->numero_factura ?: $o->numero_orden ?: ''))->filter()->unique()->toArray();
         $pedidosStr  = !empty($pedidos) ? implode(', ', $pedidos) : 'N/A';
 
         // Agotados: productos que no pudieron pickearse por falta de inventario
