@@ -2237,6 +2237,7 @@ class InventarioV2Controller extends BaseController
             $ronda = (int)$data['ronda'];
             $lote  = !empty($data['lote']) ? $data['lote'] : null;
             $fv    = !empty($data['fecha_vencimiento']) ? $data['fecha_vencimiento'] : null;
+            $asignacionId = !empty($data['asignacion_id']) ? (int)$data['asignacion_id'] : null;
 
             // Obtener stock SNAPSHOT actual (al momento de este ingreso)
             $stockSnapshot = (int) Inventario::where('producto_id', $prod->id)
@@ -2246,7 +2247,7 @@ class InventarioV2Controller extends BaseController
                 ->when($lote, fn($q) => $q->where('lote', $lote))
                 ->sum('cantidad');
 
-            $cantidadContada = (int)$data['cantidad'];
+            $cantidadContada = (float)$data['cantidad'];
 
             // Crear o actualizar la línea — auxiliar_id en criterio de búsqueda
             // para que cada auxiliar tenga su propia línea por producto+ubicación+ronda.
@@ -2261,6 +2262,7 @@ class InventarioV2Controller extends BaseController
                     'estado'       => SesionLinea::ESTADO_ACTIVO,
                 ],
                 [
+                    'asignacion_id'     => $asignacionId,
                     'cantidad_contada'  => $cantidadContada,
                     'cantidad_sistema'  => $stockSnapshot,
                     'diferencia'        => $cantidadContada - $stockSnapshot,

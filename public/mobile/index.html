@@ -4299,9 +4299,18 @@ const MWMS = {
           <input type="date" id="iv-ref-fv" class="m-input-full" placeholder="O seleccione fecha arriba">
         </div>
 
+        <input type="hidden" id="iv-ref-upc" value="${parseInt(prod.unidades_caja || 1)}">
         <div class="op-card">
-          <div class="m-label">Cantidad contada <span style="color:#dc2626;">*</span></div>
-          <input type="number" id="iv-ref-cant" class="m-input-full" placeholder="0" min="0" step="0.001">
+          <div class="m-label" id="iv-ref-cant-label">${parseInt(prod.unidades_caja || 1) > 1 ? 'Cajas' : 'Cantidad (unidades)'} <span style="color:#dc2626;">*</span></div>
+          <input type="number" id="iv-ref-cant" class="m-input-full" placeholder="0" min="0" step="0.001" oninput="MWMS._ivRefUpdPreview()">
+          <div id="iv-ref-conv-preview" style="display:${parseInt(prod.unidades_caja || 1) > 1 ? 'block' : 'none'};margin-top:6px;padding:8px;background:#eff6ff;border-radius:6px;font-size:.78rem;color:#1e40af;font-weight:600;">
+            <i class="fa-solid fa-calculator"></i> <span id="iv-ref-conv-text"></span>
+          </div>
+        </div>
+
+        <div class="op-card" id="iv-ref-saldos-group" style="border-left:3px solid #d97706;display:${parseInt(prod.unidades_caja || 1) > 1 ? 'block' : 'none'};">
+          <div class="m-label" style="color:#d97706;"><i class="fa-solid fa-cubes-stacked"></i> Saldos (Sueltos)</div>
+          <input type="number" id="iv-ref-saldos" class="m-input-full" value="0" min="0" step="0.001" placeholder="0" oninput="MWMS._ivRefUpdPreview()">
         </div>
 
         <button id="iv-ref-submit-btn" onclick="MWMS.ivRefSubmitLine()"
@@ -4349,14 +4358,28 @@ const MWMS = {
     } catch(_) { cont.innerHTML = ''; }
   },
 
+  _ivRefUpdPreview() {
+    const upc    = Math.max(1, parseInt(document.getElementById('iv-ref-upc')?.value || 1));
+    const cant   = parseFloat(document.getElementById('iv-ref-cant')?.value   || 0) || 0;
+    const saldos = parseFloat(document.getElementById('iv-ref-saldos')?.value || 0) || 0;
+    const el = document.getElementById('iv-ref-conv-text');
+    if (!el || upc <= 1) return;
+    const total = Math.round((cant * upc + saldos) * 1000) / 1000;
+    el.textContent = `${cant} cajas × ${upc} + ${saldos} sueltos = ${total} UND/TOTAL`;
+  },
+
   async ivRefSubmitLine() {
-    const ubic = (document.getElementById('iv-ref-ubic')?.value || '').trim().toUpperCase();
-    const fv   = document.getElementById('iv-ref-fv')?.value || '';
-    const cant = document.getElementById('iv-ref-cant')?.value;
+    const ubic   = (document.getElementById('iv-ref-ubic')?.value || '').trim().toUpperCase();
+    const fv     = document.getElementById('iv-ref-fv')?.value || '';
+    const cant   = parseFloat(document.getElementById('iv-ref-cant')?.value   || 0) || 0;
+    const saldos = parseFloat(document.getElementById('iv-ref-saldos')?.value || 0) || 0;
+    const upc    = Math.max(1, parseInt(document.getElementById('iv-ref-upc')?.value || 1));
     const fvObligatorio = this._op.fv_obligatorio !== false;
 
+    const totalUnidades = upc > 1 ? (cant * upc + saldos) : cant;
+
+    if (totalUnidades < 0 || (cant <= 0 && saldos <= 0)) return this.toast('Ingrese una cantidad válida', 'warning');
     if (!ubic) return this.toast('Ingrese el código de ubicación', 'warning');
-    if (!cant || parseFloat(cant) < 0) return this.toast('Ingrese una cantidad válida', 'warning');
     if (fvObligatorio && !fv) return this.toast('La fecha de vencimiento es obligatoria', 'warning');
 
     const btn = document.getElementById('iv-ref-submit-btn');
@@ -4366,15 +4389,17 @@ const MWMS = {
       await mApi('POST', `/v2/inventario/sesiones/${this._op.id}/conteo-manual`, {
         producto_codigo:   this._ivRefProdCodigo,
         ubicacion_codigo:  ubic,
-        cantidad:          parseFloat(cant),
+        cantidad:          Math.round(totalUnidades * 1000) / 1000,
         fecha_vencimiento: fv || null,
         lote:              null,
         ronda:             this._op.ronda_actual || 1,
       });
       this.toast('Conteo guardado', 'success');
-      document.getElementById('iv-ref-ubic').value  = '';
-      document.getElementById('iv-ref-fv').value    = '';
-      document.getElementById('iv-ref-cant').value  = '';
+      document.getElementById('iv-ref-ubic').value   = '';
+      document.getElementById('iv-ref-fv').value     = '';
+      document.getElementById('iv-ref-cant').value   = '';
+      document.getElementById('iv-ref-saldos').value = '0';
+      this._ivRefUpdPreview();
       document.getElementById('iv-ref-ubic').focus();
       this._ivRefLoadLines(this._ivRefAsigId);
     } catch(e) {
