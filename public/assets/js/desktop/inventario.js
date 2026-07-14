@@ -1707,6 +1707,7 @@ WMS_MODULES.inventario = {
         <label class="form-label">Producto (EAN, Código o Nombre) *</label>
         <input type="text" id="m-conteo-p-ac" class="form-control" placeholder="Escriba para buscar..." autocomplete="off">
         <input type="hidden" id="m-conteo-prod-id">
+        <input type="hidden" id="m-conteo-prod-upc" value="1">
       </div>
 
       <div class="form-group" style="margin-bottom:12px;">
@@ -1725,8 +1726,8 @@ WMS_MODULES.inventario = {
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
-        <div class="form-group">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div class="form-group" id="m-conteo-cantidad-wrap">
           <label class="form-label">Cantidad Contada (Decimal permitido) *</label>
           <input type="number" id="m-conteo-cant" class="form-control" placeholder="0" min="0" step="0.01">
         </div>
@@ -1739,6 +1740,7 @@ WMS_MODULES.inventario = {
           </select>
         </div>
       </div>
+      <div id="m-conteo-preview" style="display:none;font-size:.78rem;color:#475569;margin:-6px 0 14px;"></div>
 
       <div id="m-conteo-prod-info" class="hidden" style="margin-bottom:16px;padding:12px;background:#f1f5f9;border-radius:4px;font-size:.78rem;border-left:4px solid #3b82f6;">
          <div style="font-weight:700;color:#1e293b;" id="m-conteo-p-name"></div>
@@ -1764,11 +1766,63 @@ WMS_MODULES.inventario = {
                 document.getElementById('m-conteo-p-name').textContent = p.descripcion;
                 document.getElementById('m-conteo-p-stock').textContent = `Saldos sistema: ${p.stock || 0} Uds`;
                 document.getElementById('m-conteo-prod-info').classList.remove('hidden');
+                const upc = Math.max(1, parseInt(p.unidades_caja) || 1);
+                document.getElementById('m-conteo-prod-upc').value = upc;
+                this._conteoRenderCantidadInputs(upc);
                 document.getElementById('m-conteo-u-ac').focus();
             });
         }
         document.getElementById('m-conteo-p-ac').focus();
     }, 200);
+  },
+
+  /** Reemplaza el bloque de cantidad del conteo manual según UPC (mismo criterio que Corrección Manual) */
+  _conteoRenderCantidadInputs(upc) {
+    const wrap = document.getElementById('m-conteo-cantidad-wrap');
+    if (!wrap) return;
+    if (upc > 1) {
+      wrap.innerHTML = `
+        <label class="form-label">Cantidad Contada *</label>
+        <div style="display:flex;gap:8px;">
+          <div style="flex:1;">
+            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">Cajas</label>
+            <input id="m-conteo-cajas" type="number" class="form-control" min="0" step="1" value="0"
+              oninput="WMS_MODULES.inventario._conteoCalcPreview()" placeholder="0">
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">Saldos</label>
+            <input id="m-conteo-saldos" type="number" class="form-control" min="0" step="1" value="0"
+              oninput="WMS_MODULES.inventario._conteoCalcPreview()" placeholder="0">
+          </div>
+        </div>
+        <input type="hidden" id="m-conteo-cant" value="0">`;
+    } else {
+      wrap.innerHTML = `
+        <label class="form-label">Cantidad Contada (Decimal permitido) *</label>
+        <input id="m-conteo-cant" type="number" class="form-control" min="0" step="0.01" placeholder="0"
+          oninput="WMS_MODULES.inventario._conteoCalcPreview()">
+        <input type="hidden" id="m-conteo-cajas" value="0">
+        <input type="hidden" id="m-conteo-saldos" value="0">`;
+    }
+    this._conteoCalcPreview();
+  },
+
+  _conteoCalcPreview() {
+    const upc = Math.max(1, parseInt(document.getElementById('m-conteo-prod-upc')?.value || '1') || 1);
+    const preview = document.getElementById('m-conteo-preview');
+    if (!preview) return;
+    if (upc > 1) {
+      const cajas  = parseFloat(document.getElementById('m-conteo-cajas')?.value  || '0') || 0;
+      const saldos = parseFloat(document.getElementById('m-conteo-saldos')?.value || '0') || 0;
+      const total  = cajas * upc + saldos;
+      const cantEl = document.getElementById('m-conteo-cant');
+      if (cantEl) cantEl.value = total;
+      preview.style.display = 'block';
+      preview.innerHTML = `<b>UND/TOTAL:</b> ${cajas} cajas × ${upc} u/caja + ${saldos} saldos = `
+        + `<b style="color:#1e40af;font-size:1.05em;">${total.toFixed(2)}</b>`;
+    } else {
+      preview.style.display = 'none';
+    }
   },
 
   async _saveConteoManual(id) {
