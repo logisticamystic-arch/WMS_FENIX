@@ -765,8 +765,8 @@ class InventarioV2Controller extends BaseController
             if (($params['export'] ?? '') === 'excel') {
                 $headers = [
                     'Ronda', 'Fecha/Hora', 'Auxiliar', 'Código', 'Producto', 'Ubicación',
-                    'Lote', 'F.Vencimiento', 'Días Vida Útil',
-                    'Cajas', 'Saldos', 'Cant. Contada', 'Cant. Sistema', 'Diferencia', 'Ajustado',
+                    'Lote', 'F.Vencimiento', 'Días V.U.',
+                    'Cajas', 'Saldos', 'UND/TOTAL', 'Sistema', 'Diferencia', 'Ajustado',
                 ];
                 $rows = $lineas->map(fn($l) => [
                     $l->ronda,

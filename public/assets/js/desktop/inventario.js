@@ -729,6 +729,12 @@ WMS_MODULES.inventario = {
     window.open(`${API_BASE}/v2/inventario/vencimientos?export=excel&token=${encodeURIComponent(token)}`, '_blank');
   },
 
+  async exportConteoV2(id, ronda) {
+    const token = localStorage.getItem('wms_token') || '';
+    const rondaParam = ronda ? `&ronda=${ronda}` : '';
+    window.open(`${API_BASE}/v2/inventario/sesiones/${id}/dashboard?export=excel${rondaParam}&token=${encodeURIComponent(token)}`, '_blank');
+  },
+
   // ── INVENTARIO CÍCLICO / GENERAL ─────────────────────────────
   async show_ciclico() { this.show_sesiones(); },
 
@@ -1278,8 +1284,12 @@ WMS_MODULES.inventario = {
                 <th>PRODUCTO / REFERENCIA</th>
                 <th>UBICACIÓN</th>
                 <th>LOTE / VENC.</th>
-                <th>DIAS V.U.</th>
-                <th class="text-center">CANT. CONTADA</th>
+                <th class="text-center">DIAS V.U.</th>
+                <th class="text-center">CAJAS</th>
+                <th class="text-center">SALDOS</th>
+                <th class="text-center">UND/TOTAL</th>
+                <th class="text-center">SISTEMA</th>
+                <th class="text-center">DIFERENCIA</th>
                 ${d.sesion.num_conteos > 1 ? `
                   <th class="text-center">R1</th>
                   <th class="text-center">R2</th>
@@ -1291,6 +1301,9 @@ WMS_MODULES.inventario = {
               ${lineas.map(l => {
                 const color_vu = l.dias_vida_util <= 15 ? '#ef4444' : l.dias_vida_util <= 30 ? '#f59e0b' : '#10b981';
                 const has_diff = (l.diferencia !== 0);
+                const dif = parseFloat(l.diferencia || 0);
+                const difColor = dif === 0 ? '#10b981' : (dif > 0 ? '#0284c7' : '#ef4444');
+                const difTxt   = dif === 0 ? '0' : (dif > 0 ? '+' + dif : dif);
                 return `
                   <tr data-diff="${has_diff?'1':'0'}" id="linea-row-${l.id}">
                     <td><small>${WMS.esc(l.auxiliar||'-')}</small></td>
@@ -1301,8 +1314,12 @@ WMS_MODULES.inventario = {
                     </td>
                     <td><b style="font-size:.8rem;color:#1e293b">${WMS.esc(l.ubicacion||'-')}</b></td>
                     <td><small>${WMS.esc(l.lote)}<br>${WMS.formatDate(l.fecha_vencimiento)}</small></td>
-                    <td><b style="color:${color_vu}">${l.dias_vida_util}d</b></td>
-                    <td class="text-center"><b style="font-size:1.1rem;color:#1d4ed8">${parseFloat(l.cantidad_contada)}</b></td>
+                    <td class="text-center"><b style="color:${color_vu}">${l.dias_vida_util}d</b></td>
+                    <td class="text-center">${l.cantidad_cajas ?? '—'}</td>
+                    <td class="text-center">${l.saldos ?? '—'}</td>
+                    <td class="text-center"><b style="font-size:1.1rem;color:#1d4ed8" title="UND/TOTAL">${parseFloat(l.cantidad_contada)}</b></td>
+                    <td class="text-center" style="color:#64748b">${parseFloat(l.cantidad_sistema)}</td>
+                    <td class="text-center"><b style="color:${difColor}">${difTxt}</b></td>
                     ${d.sesion.num_conteos > 1 ? `
                       <td class="text-center" style="background:#f8fafc;font-weight:600">${l.ronda===1?l.cantidad_contada:'-'}</td>
                       <td class="text-center" style="background:#f8fafc;font-weight:600">${l.ronda===2?l.cantidad_contada:'-'}</td>
@@ -1323,7 +1340,7 @@ WMS_MODULES.inventario = {
                     </td>
                   </tr>
                 `;
-              }).join('') || `<tr><td colspan="12" style="padding:40px;text-align:center;color:#94a3b8">No hay líneas registradas</td></tr>`}
+              }).join('') || `<tr><td colspan="${d.sesion.num_conteos > 1 ? 14 : 12}" style="padding:40px;text-align:center;color:#94a3b8">No hay líneas registradas</td></tr>`}
             </tbody>
           </table>
         </div>
