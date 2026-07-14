@@ -1095,6 +1095,9 @@ WMS_MODULES.inventario = {
                 <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._showConteoManualModal(${id})">
                   <i class="fa-solid fa-plus-circle"></i> NUEVO CONTEO
                 </button>
+                <button class="btn btn-success btn-sm" onclick="WMS_MODULES.inventario.exportConteoV2(${id}, ${ronda || 1})">
+                  <i class="fa-solid fa-file-excel"></i> EXPORTAR EXCEL
+                </button>
                 ${['Ajustado', 'EnCurso', 'PendienteAjuste'].includes(sesion.estado) ? `
                 <button class="btn btn-success btn-sm" onclick="WMS_MODULES.inventario._cerrarSesion(${id})">
                   <i class="fa-solid fa-lock-check"></i> FINALIZAR
