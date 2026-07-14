@@ -853,7 +853,6 @@ class PackingController extends BaseController
         $fecha      = date('d/m/Y H:i', strtotime($sesion->created_at));
         $tipoEmp    = strtoupper($sesion->tipo_empaque);
         $clienteNom = $sesion->sucursal_entrega;
-        $numPedidos = implode(', ', $ordenes);
 
         // Logo embebido como base64 para evitar problemas de ruta en ventana de impresión
         $logoFile = dirname(__DIR__, 2) . '/logo.jpg';
