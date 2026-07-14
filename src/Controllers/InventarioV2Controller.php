@@ -514,7 +514,7 @@ class InventarioV2Controller extends BaseController
                 ->whereIn('estado', ['Notificado', 'EnConteo'])
                 ->with([
                     'sesion:id,nombre,tipo,empresa_id,sucursal_id',
-                    'producto:id,nombre,codigo_interno',
+                    'producto:id,nombre,codigo_interno,unidades_caja,factor_udm,unidad_contenido,controla_vencimiento',
                 ])
                 ->where(function ($q) use ($user, $req) {
                     $q->whereHas('sesion', function ($sq) use ($user, $req) {
@@ -659,7 +659,11 @@ class InventarioV2Controller extends BaseController
         $lineas = SesionLinea::where('asignacion_id', $asignacion->id)
             ->where('estado', 'Activo')->count();
 
-        if ($lineas === 0) {
+        // Para asignaciones de tipo "Referencia" (verificar una referencia puntual)
+        // se permite finalizar sin ninguna línea registrada: es el caso de negocio
+        // en que la referencia enviada a contar no tiene existencia física alguna.
+        // Para Pasillo/Módulo/Libre se mantiene la exigencia de al menos una línea.
+        if ($lineas === 0 && $asignacion->tipo_instruccion !== SesionAsignacion::INSTRUCCION_REFERENCIA) {
             return $this->error($res, 'Debe registrar al menos una línea antes de finalizar');
         }
 
@@ -667,10 +671,27 @@ class InventarioV2Controller extends BaseController
         $asignacion->finalizado_at = date('Y-m-d H:i:s');
         $asignacion->save();
 
-        // Verificar si toda la sesión puede pasar a PendienteAjuste
-        $this->verificarCompletitudSesion($asignacion->sesion);
+        // Verificar si toda la sesión puede pasar a PendienteAjuste (no crítico:
+        // un fallo aquí no debe impedir que el conteo del auxiliar quede finalizado)
+        try {
+            $this->verificarCompletitudSesion($asignacion->sesion, $asignacion->ronda);
+        } catch (\Throwable $e) {
+            error_log("verificarCompletitudSesion asignacion={$asignacion->id}: " . $e->getMessage());
+        }
 
         return $this->ok($res, null, 'Conteo finalizado correctamente');
+    }
+
+    /**
+     * Si todas las asignaciones de la ronda ya finalizaron, pasa la sesión a PendienteAjuste.
+     */
+    private function verificarCompletitudSesion(SesionInventario $sesion, int $ronda): void
+    {
+        if ($sesion->estado !== SesionInventario::ESTADO_EN_CURSO) return;
+        if ($sesion->rondaCompleta($ronda)) {
+            $sesion->estado = SesionInventario::ESTADO_PENDIENTE_AJUSTE;
+            $sesion->save();
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -1134,8 +1155,14 @@ class InventarioV2Controller extends BaseController
         // ── Detectar referencias no contadas (análisis ML de ausencia física) ──
         $noContadas = $this->detectarReferenciasNoContadas($sesion, $rondaFinal);
 
+        // ── Detectar asignaciones "por Referencia" confirmadas sin existencia física:
+        //    el auxiliar finalizó (con 0 líneas o líneas en 0) sin encontrar la referencia
+        //    en ninguna ubicación visitada → se fuerza a 0 en TODAS las ubicaciones donde
+        //    el sistema todavía muestra stock de esa referencia (no solo la visitada). ──
+        $sinExistencia = $this->detectarReferenciasSinExistencia($sesion, $rondaFinal, $noContadas);
+
         try {
-            $resultado = Capsule::transaction(function () use ($sesion, $lineas, $noContadas, $user) {
+            $resultado = Capsule::transaction(function () use ($sesion, $lineas, $noContadas, $sinExistencia, $user) {
                 $ajustes          = [];
                 $ajustesCero      = [];
                 $stockResumen     = [];
@@ -1169,6 +1196,26 @@ class InventarioV2Controller extends BaseController
                         'cantidad_nueva'=> 0,
                         'diferencia'    => $aj->diferencia,
                         'tipo'          => 'ml_ausencia',
+                    ];
+                }
+
+                // 3. Ajustar referencias confirmadas sin existencia (asignación tipo Referencia)
+                //    → poner en 0 y eliminar en TODAS las ubicaciones del sistema
+                foreach ($sinExistencia as $lineaVirtual) {
+                    $aj = $this->ejecutarAjuste(
+                        $sesion, $lineaVirtual, $user,
+                        AjusteInventario::ORIGEN_CONTEO_TOTAL,
+                        true, // esCeroForzado = true
+                        'Referencia confirmada sin existencia física en toda la bodega'
+                    );
+                    $ajustesCero[] = $aj;
+                    $stockResumen[] = [
+                        'producto_id'   => $lineaVirtual->producto_id,
+                        'ubicacion_id'  => $lineaVirtual->ubicacion_id,
+                        'lote'          => $lineaVirtual->lote,
+                        'cantidad_nueva'=> 0,
+                        'diferencia'    => $aj->diferencia,
+                        'tipo'          => 'referencia_sin_existencia',
                     ];
                 }
 
@@ -1220,7 +1267,8 @@ class InventarioV2Controller extends BaseController
         SesionLinea $linea,
         $user,
         string $origen,
-        bool $esCeroForzado = false   // true cuando se detecta ausencia física ML
+        bool $esCeroForzado = false,   // true cuando se detecta ausencia física ML
+        ?string $motivoExtra = null    // texto adicional para el motivo del ajuste (auditoría)
     ): AjusteInventario {
 
         // ── 1. Obtener stock REAL y ACTUAL del sistema (puede diferir del snapshot) ──
@@ -1279,7 +1327,7 @@ class InventarioV2Controller extends BaseController
             : MovimientoInventario::TIPO_AJUSTE_NEGATIVO;
 
         $motivoMov = $esCeroForzado
-            ? "Ajuste ML — referencia no contada (ausencia física detectada) — Sesión #{$sesion->id}: {$sesion->nombre}"
+            ? ($motivoExtra ?? "Ajuste ML — referencia no contada (ausencia física detectada)") . " — Sesión #{$sesion->id}: {$sesion->nombre}"
             : "Ajuste de inventario — Sesión #{$sesion->id}: {$sesion->nombre} (Ronda {$linea->ronda})";
 
         $mov = MovimientoInventario::create([
@@ -1302,7 +1350,7 @@ class InventarioV2Controller extends BaseController
 
         // ── 6. Registro inmutable en ajustes_inventario (trazabilidad completa) ──
         $motivoAjuste = $esCeroForzado
-            ? "ML-Ausencia física: referencia presente en sistema pero no contada — sesión: {$sesion->nombre}"
+            ? ($motivoExtra ?? "ML-Ausencia física: referencia presente en sistema pero no contada") . " — sesión: {$sesion->nombre}"
             : "Ajuste por conteo físico — sesión: {$sesion->nombre} (Ronda {$linea->ronda})";
 
         $ajuste = AjusteInventario::create([
@@ -1405,6 +1453,83 @@ class InventarioV2Controller extends BaseController
         }
 
         return $noContadas;
+    }
+
+    /**
+     * Para asignaciones de tipo "Referencia" (verificar una referencia puntual,
+     * sin importar ubicación): si el total contado por esa asignación es 0
+     * (ya sea porque no se registró ninguna línea, o porque las líneas registradas
+     * están en 0), se asume confirmado que la referencia no tiene existencia física
+     * y se fuerza a 0 el stock del producto en TODAS las ubicaciones donde el sistema
+     * todavía lo muestra — no solo en la ubicación puntual que el auxiliar haya visitado.
+     *
+     * @param array $yaCubiertas Líneas virtuales ya generadas por detectarReferenciasNoContadas(),
+     *                           para no duplicar el ajuste sobre la misma producto+ubicación+lote.
+     * @return array Lista de SesionLinea virtuales (cantidad_contada = 0) para ajustar
+     */
+    private function detectarReferenciasSinExistencia(SesionInventario $sesion, int $rondaFinal, array $yaCubiertas = []): array
+    {
+        $asignacionesReferencia = SesionAsignacion::where('sesion_id', $sesion->id)
+            ->where('ronda', $rondaFinal)
+            ->where('tipo_instruccion', SesionAsignacion::INSTRUCCION_REFERENCIA)
+            ->where('estado', SesionAsignacion::ESTADO_FINALIZADO)
+            ->whereNotNull('producto_id')
+            ->get();
+
+        if ($asignacionesReferencia->isEmpty()) return [];
+
+        $vistos = [];
+        foreach ($yaCubiertas as $lv) {
+            $vistos[$lv->producto_id . '|' . $lv->ubicacion_id . '|' . ($lv->lote ?? '')] = true;
+        }
+
+        $sinExistencia = [];
+        foreach ($asignacionesReferencia as $asig) {
+            $totalContado = (float) SesionLinea::where('sesion_id', $sesion->id)
+                ->where('asignacion_id', $asig->id)
+                ->where('estado', SesionLinea::ESTADO_ACTIVO)
+                ->sum('cantidad_contada');
+
+            if ($totalContado > 0) continue; // sí hay existencia confirmada, no forzar nada
+
+            $ubicIdsCubiertas = SesionLinea::where('sesion_id', $sesion->id)
+                ->where('asignacion_id', $asig->id)
+                ->where('estado', SesionLinea::ESTADO_ACTIVO)
+                ->pluck('ubicacion_id')
+                ->toArray();
+
+            $inventarios = Capsule::table('inventarios')
+                ->where('empresa_id',  $sesion->empresa_id)
+                ->where('sucursal_id', $sesion->sucursal_id)
+                ->where('producto_id', $asig->producto_id)
+                ->where('cantidad', '>', 0)
+                ->when(!empty($ubicIdsCubiertas), fn($q) => $q->whereNotIn('ubicacion_id', $ubicIdsCubiertas))
+                ->select('producto_id', 'ubicacion_id', 'lote', 'fecha_vencimiento', 'cantidad')
+                ->get();
+
+            foreach ($inventarios as $inv) {
+                $clave = $inv->producto_id . '|' . $inv->ubicacion_id . '|' . ($inv->lote ?? '');
+                if (isset($vistos[$clave])) continue;
+                $vistos[$clave] = true;
+
+                $lineaVirtual                    = new SesionLinea();
+                $lineaVirtual->sesion_id         = $sesion->id;
+                $lineaVirtual->producto_id       = $inv->producto_id;
+                $lineaVirtual->ubicacion_id      = $inv->ubicacion_id;
+                $lineaVirtual->lote              = $inv->lote;
+                $lineaVirtual->fecha_vencimiento = $inv->fecha_vencimiento;
+                $lineaVirtual->cantidad_contada  = 0;
+                $lineaVirtual->cantidad_sistema  = $inv->cantidad;
+                $lineaVirtual->diferencia        = -(float)$inv->cantidad;
+                $lineaVirtual->ronda             = $rondaFinal;
+                $lineaVirtual->auxiliar_id       = $asig->auxiliar_id;
+                $lineaVirtual->estado            = SesionLinea::ESTADO_ACTIVO;
+                $lineaVirtual->id                = 0; // virtual, no persiste
+                $sinExistencia[] = $lineaVirtual;
+            }
+        }
+
+        return $sinExistencia;
     }
 
     // ════════════════════════════════════════════════════════════════════════
