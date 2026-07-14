@@ -87,6 +87,16 @@ WMS_MODULES.inicio = {
     WMS.setContent(`
 <div class="pro-dashboard">
 
+  ${errorCarga ? `
+  <div class="inv2-alert" style="margin-bottom:16px;">
+    <i class="fa-solid fa-triangle-exclamation fa-lg"></i>
+    <div>
+      <b>No se pudieron cargar los datos del dashboard:</b> ${WMS.esc(errorCarga)}.
+      Los indicadores de abajo pueden estar incompletos o en cero.
+      <button class="btn btn-xs btn-outline-danger" style="margin-left:8px;" onclick="WMS_MODULES.inicio.render()">Reintentar</button>
+    </div>
+  </div>` : ''}
+
   <!-- BANNER -->
   <div class="pro-welcome-banner">
     <div>
@@ -422,13 +432,18 @@ WMS_MODULES.inicio = {
   /* ── Actividad reciente ────────────────────────────────────── */
   async _loadActivity() {
     let items = [];
+    let errorCarga = null;
     try {
       const r = await API.get('/dashboard/actividad');
       items = (r.data || r || []).slice(0, 10);
-    } catch(_) {}
+    } catch(e) { errorCarga = e.message || 'Error de conexión'; }
 
     const el = document.getElementById('activity-list');
     if (!el) return;
+    if (errorCarga) {
+      el.innerHTML = `<div class="pro-empty-state"><div class="icon">⚠️</div><p>No se pudo cargar la actividad reciente</p><small style="color:#94a3b8">${WMS.esc(errorCarga)}</small></div>`;
+      return;
+    }
     if (!items.length) {
       el.innerHTML = `<div class="pro-empty-state"><div class="icon">📭</div><p>Sin actividad reciente</p></div>`;
       return;

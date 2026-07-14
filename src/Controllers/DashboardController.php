@@ -103,7 +103,7 @@ class DashboardController extends BaseController
             ->where('inventarios.sucursal_id', $sucursal)
             ->where('inventarios.cantidad', '>', 0)
             ->select(
-                DB::raw('COALESCE(categoria_productos.nombre, "Sin Categoría") as categoria'),
+                DB::raw("COALESCE(categoria_productos.nombre, 'Sin Categoría') as categoria"),
                 'productos.nombre as producto_nombre',
                 'productos.codigo_interno as producto_codigo',
                 DB::raw('SUM(inventarios.cantidad) as cant_producto')
