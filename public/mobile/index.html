@@ -4389,6 +4389,8 @@ const MWMS = {
         producto_codigo:   this._ivRefProdCodigo,
         ubicacion_codigo:  ubic,
         cantidad:          Math.round(totalUnidades * 1000) / 1000,
+        cantidad_cajas:    upc > 1 ? cant : null,
+        saldos:            upc > 1 ? saldos : null,
         fecha_vencimiento: fv || null,
         lote:              null,
         ronda:             this._op.ronda_actual || 1,
@@ -4541,6 +4543,8 @@ const MWMS = {
           producto_codigo:   prod.codigo_interno,
           ubicacion_codigo:  loc.codigo,
           cantidad:          r.q,
+          cantidad_cajas:    r.cantidad_cajas ?? null,
+          saldos:            r.saldos ?? null,
           lote:              null,
           fecha_vencimiento: r.fv || null,
           ronda:             this._op.ronda_actual || 1

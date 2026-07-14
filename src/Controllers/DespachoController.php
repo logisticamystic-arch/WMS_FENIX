@@ -19,26 +19,44 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 class DespachoController extends BaseController
 {
     // ── GET /api/despachos ────────────────────────────────────────────────────
+    // Por defecto (sin fecha_inicio/fecha_fin) muestra SOLO el día actual — la vista
+    // principal es operativa (qué se despacha HOY), no un histórico. El rango de
+    // fechas y la sucursal (solo SuperAdmin, ver getEffectiveSucursalId) son filtros
+    // explícitos que el usuario puede aplicar dinámicamente desde la UI.
     public function listar(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
-        [$ini, $fin] = $this->getDateRange($params);
-        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $hoy    = date('Y-m-d');
+        $ini    = substr($params['fecha_inicio'] ?? $params['desde'] ?? $params['from'] ?? $hoy, 0, 10);
+        $fin    = substr($params['fecha_fin']    ?? $params['hasta'] ?? $params['to']   ?? $hoy, 0, 10);
+        $empresaId  = $this->getEffectiveEmpresaId($user, $r);
         $sucursalId = $this->getEffectiveSucursalId($user, $r);
 
         $despachos = Despacho::where('empresa_id', $empresaId)
             ->where('sucursal_id', $sucursalId)
-            ->whereBetween('fecha_movimiento', [substr($ini, 0, 10), substr($fin, 0, 10)])
+            ->whereBetween('fecha_movimiento', [$ini, $fin])
             ->when($params['estado'] ?? null, fn($q, $e) => $q->where('estado', $e))
+            ->with(['ordenes:id,despacho_id,numero_orden,estado_certificacion'])
             ->orderBy('fecha_movimiento', 'desc')
             ->get();
 
+        // Resumen de certificación por despacho (para la columna "Estado Certificación" del listado)
+        $despachos->each(function ($d) {
+            $ordenes = $d->ordenes;
+            $total   = $ordenes->count();
+            $certificadas = $ordenes->where('estado_certificacion', 'Certificada')->count();
+            $d->estado_certificacion_resumen = $total === 0
+                ? 'Sin pedidos'
+                : ($certificadas === $total ? 'Certificado' : "{$certificadas}/{$total} certificados");
+            unset($d->ordenes);
+        });
+
         if (($params['export'] ?? '') === 'excel') {
-            $headers = ['# Despacho', 'Cliente', 'Ruta', 'Estado', 'Bultos', 'Peso (kg)', 'Fecha'];
+            $headers = ['# Despacho', 'Cliente', 'Ruta', 'Estado', 'Certificación', 'Bultos', 'Peso (kg)', 'Fecha'];
             $rows = $despachos->map(fn($d) => [
                 $d->numero_despacho, $d->cliente ?? '—', $d->ruta ?? '—',
-                $d->estado, $d->total_bultos, $d->peso_total, $d->fecha_movimiento,
+                $d->estado, $d->estado_certificacion_resumen, $d->total_bultos, $d->peso_total, $d->fecha_movimiento,
             ])->toArray();
             return $this->exportCsv($res, $headers, $rows, 'despachos_' . date('Y-m-d'));
         }
