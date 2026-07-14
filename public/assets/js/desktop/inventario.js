@@ -2205,51 +2205,83 @@ WMS_MODULES.inventario = {
 
         <div style="border-top:1px solid #e2e8f0;padding-top:14px;">
           <div style="font-size:.72rem;font-weight:700;color:#64748b;margin-bottom:10px;letter-spacing:.5px;">
-            <i class="fa-solid fa-plus" style="color:#1a56db;"></i> AGREGAR REFERENCIA
+            <i class="fa-solid fa-plus" style="color:#1a56db;"></i> AGREGAR REFERENCIAS
           </div>
-          <div class="form-grid form-grid-2">
-            <div class="form-group" style="grid-column:1/-1">
-              <label class="form-label">Producto <span class="required">*</span></label>
-              <input id="ciclic-ref-prod-ac" class="form-control" placeholder="Buscar por nombre o código...">
-              <input id="ciclic-ref-prod-id" type="hidden">
-            </div>
-            <div class="form-group" style="grid-column:1/-1">
-              <label class="form-label">Auxiliar que contará <span class="required">*</span></label>
-              <select id="ciclic-ref-aux" class="form-control">
-                <option value="">Seleccionar auxiliar...</option>
-                ${auxiliares.map(a => `<option value="${a.id}">${WMS.esc(a.nombre)}</option>`).join('')}
-              </select>
-            </div>
-          </div>
+          <div id="ciclic-ref-rows" style="display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto;"></div>
+          <button class="btn btn-sm btn-outline-primary mt-8" onclick="WMS_MODULES.inventario._addCiclicRefRow()">
+            <i class="fa-solid fa-plus"></i> Agregar otra fila
+          </button>
         </div>`,
         `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>
-         <button class="btn btn-primary" onclick="WMS_MODULES.inventario._guardarCiclicRef(${sesionId})">
-           <i class="fa-solid fa-plus"></i> Agregar Referencia
+         <button class="btn btn-primary" onclick="WMS_MODULES.inventario._guardarCiclicRefs(${sesionId})">
+           <i class="fa-solid fa-save"></i> Guardar Referencias
          </button>`);
 
-      setTimeout(() => {
-        const ac = document.getElementById('ciclic-ref-prod-ac');
-        if (ac) WMS.initProductAutocomplete(ac, p => {
-          ac.value = `[${p.codigo_interno}] ${p.descripcion}`;
-          document.getElementById('ciclic-ref-prod-id').value = p.id;
-        });
-      }, 200);
+      this._ciclicAuxCache = auxiliares;
+      this._addCiclicRefRow();
     } catch(e) { WMS.toast('error', e.message || 'Error cargando sesión'); }
   },
 
-  async _guardarCiclicRef(sesionId) {
-    const prodId = document.getElementById('ciclic-ref-prod-id')?.value;
-    const auxId  = document.getElementById('ciclic-ref-aux')?.value;
-    if (!prodId) return WMS.toast('warning', 'Seleccione un producto');
-    if (!auxId)  return WMS.toast('warning', 'Seleccione un auxiliar');
-    try {
-      await API.post(`/v2/inventario/sesiones/${sesionId}/asignaciones`, {
-        auxiliar_id:      parseInt(auxId),
-        ronda:            1,
-        tipo_instruccion: 'Referencia',
-        producto_id:      parseInt(prodId),
+  _addCiclicRefRow() {
+    const cont = document.getElementById('ciclic-ref-rows');
+    if (!cont) return;
+    const auxiliares = this._ciclicAuxCache || [];
+    const div = document.createElement('div');
+    div.className = 'ciclic-ref-row';
+    div.style.cssText = 'display:grid;grid-template-columns:2fr 1fr auto;gap:8px;align-items:end;background:#f8fafc;padding:8px;border-radius:6px;border:1px solid #e2e8f0';
+    div.innerHTML = `
+      <div>
+        <label style="font-size:.72rem;font-weight:600;color:#64748b;">Producto</label>
+        <input class="form-control ciclic-ref-prod-ac" placeholder="Buscar por nombre o código...">
+        <input class="ciclic-ref-prod-id" type="hidden">
+      </div>
+      <div>
+        <label style="font-size:.72rem;font-weight:600;color:#64748b;">Auxiliar</label>
+        <select class="form-control ciclic-ref-aux">
+          <option value="">Seleccionar...</option>
+          ${auxiliares.map(a => `<option value="${a.id}">${WMS.esc(a.nombre)}</option>`).join('')}
+        </select>
+      </div>
+      <div style="padding-bottom:2px">
+        <button class="btn btn-sm btn-outline-danger" onclick="this.closest('.ciclic-ref-row').remove()">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>`;
+    cont.appendChild(div);
+    const ac    = div.querySelector('.ciclic-ref-prod-ac');
+    const idInp = div.querySelector('.ciclic-ref-prod-id');
+    setTimeout(() => {
+      WMS.initProductAutocomplete(ac, p => {
+        ac.value = `[${p.codigo_interno}] ${p.descripcion}`;
+        idInp.value = p.id;
       });
-      WMS.toast('success', 'Referencia agregada');
+    }, 50);
+  },
+
+  async _guardarCiclicRefs(sesionId) {
+    const rows = document.querySelectorAll('.ciclic-ref-row');
+    const items = [];
+    let filaIncompleta = false;
+    rows.forEach(row => {
+      const prodId = row.querySelector('.ciclic-ref-prod-id')?.value;
+      const auxId  = row.querySelector('.ciclic-ref-aux')?.value;
+      if (!prodId && !auxId) return; // fila vacía sin tocar, se ignora
+      if (!prodId || !auxId) { filaIncompleta = true; return; }
+      items.push({ producto_id: parseInt(prodId), auxiliar_id: parseInt(auxId) });
+    });
+    if (filaIncompleta) return WMS.toast('warning', 'Complete producto y auxiliar en cada fila, o elimine las que no vaya a usar');
+    if (items.length === 0) return WMS.toast('warning', 'Agregue al menos una referencia con producto y auxiliar');
+
+    try {
+      for (const item of items) {
+        await API.post(`/v2/inventario/sesiones/${sesionId}/asignaciones`, {
+          auxiliar_id:      item.auxiliar_id,
+          ronda:            1,
+          tipo_instruccion: 'Referencia',
+          producto_id:      item.producto_id,
+        });
+      }
+      WMS.toast('success', `${items.length} referencia(s) agregada(s)`);
       this._ciclicoRefs(sesionId);
     } catch(e) { WMS.toast('error', e.message); }
   },
