@@ -44,6 +44,7 @@ class DashboardController extends BaseController
 
         // 3. Bajo Stock (Fixed: Start from productos to include zero-stock items)
         $bajoStockQuery = DB::table('productos')
+            ->where('productos.empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->leftJoin('inventarios', function($join) use ($sucursal) {
                 $join->on('productos.id', '=', 'inventarios.producto_id')
                      ->where('inventarios.sucursal_id', '=', $sucursal);
@@ -56,12 +57,14 @@ class DashboardController extends BaseController
         $bajoStock = $bajoStockQuery->get()->count();
 
         // 4. Certificaciones (Planillas)
-        $certPendientes = DB::table('cert_planillas')->where('sucursal_id', $sucursal)->where('estado', 'EnProceso')->count();
-        $certCompletadas = DB::table('cert_planillas')->where('sucursal_id', $sucursal)->where('estado', 'Completada')->where('fecha', $hoy)->count();
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $certPendientes = DB::table('cert_planillas')->where('empresa_id', $empresaId)->where('sucursal_id', $sucursal)->where('estado', 'EnProceso')->count();
+        $certCompletadas = DB::table('cert_planillas')->where('empresa_id', $empresaId)->where('sucursal_id', $sucursal)->where('estado', 'Completada')->where('fecha', $hoy)->count();
 
         // 5. Ocupación (%) - Cálculo basado en inventario real
         $totalUbicaciones = Ubicacion::where('sucursal_id', $sucursal)->where('activo', 1)->count();
         $ubicacionesOcupadas = DB::table('inventarios')
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $sucursal)
             ->where('cantidad', '>', 0)
             ->distinct()
@@ -75,6 +78,7 @@ class DashboardController extends BaseController
 
         // 6b. Bajo Stock - Lista Detallada
         $bajoStockList = DB::table('productos')
+            ->where('productos.empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->leftJoin('inventarios', function($join) use ($sucursal) {
                 $join->on('productos.id', '=', 'inventarios.producto_id')
                      ->where('inventarios.sucursal_id', '=', $sucursal);
@@ -95,6 +99,7 @@ class DashboardController extends BaseController
         $invCategoricoRaw = DB::table('inventarios')
             ->join('productos', 'inventarios.producto_id', '=', 'productos.id')
             ->leftJoin('categoria_productos', 'productos.categoria_id', '=', 'categoria_productos.id')
+            ->where('inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('inventarios.sucursal_id', $sucursal)
             ->where('inventarios.cantidad', '>', 0)
             ->select(
@@ -161,6 +166,7 @@ class DashboardController extends BaseController
         $actividad = DB::table('movimiento_inventarios')
             ->join('personal', 'movimiento_inventarios.auxiliar_id', '=', 'personal.id')
             ->join('productos', 'movimiento_inventarios.producto_id', '=', 'productos.id')
+            ->where('movimiento_inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('movimiento_inventarios.sucursal_id', $sucursal)
             ->where('movimiento_inventarios.created_at', '>=', $hace3Dias)
             ->select(
@@ -225,6 +231,7 @@ class DashboardController extends BaseController
             $pickings    = OrdenPicking::where('sucursal_id', $sucursal)->whereDate('created_at', $hoy)->count();
             $ubicaciones = Ubicacion::where('sucursal_id', $sucursal)->where('activo', 1)->count();
             $alertas     = DB::table('productos')
+                ->where('productos.empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->leftJoin('inventarios', function ($j) use ($sucursal) {
                     $j->on('productos.id', '=', 'inventarios.producto_id')
                       ->where('inventarios.sucursal_id', '=', $sucursal);

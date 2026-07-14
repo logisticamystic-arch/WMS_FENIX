@@ -136,8 +136,10 @@ class TmsAuthMiddleware
     private static function getSecret(): string
     {
         if (self::$jwtSecret === null) {
-            self::$jwtSecret = getenv('JWT_SECRET')
-                ?: ($_ENV['JWT_SECRET'] ?? ($_SERVER['JWT_SECRET'] ?? 'change_this_secret'));
+            self::$jwtSecret = getenv('JWT_SECRET') ?: ($_ENV['JWT_SECRET'] ?? ($_SERVER['JWT_SECRET'] ?? null));
+            if (!self::$jwtSecret) {
+                throw new \RuntimeException('JWT_SECRET no está configurado en el entorno. Defínelo en el archivo .env');
+            }
         }
         return self::$jwtSecret;
     }

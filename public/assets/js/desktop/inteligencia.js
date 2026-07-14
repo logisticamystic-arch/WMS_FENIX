@@ -502,9 +502,9 @@ WMS_MODULES.inteligencia = {
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Escaneando…'; }
     try {
       const r = await API.get('/inteligencia/anomalias/scan');
-      // r.data contiene el $result del controlador
+      // r.data contiene el $result del controlador (campo: guardadas_en_bd)
       const resData = r.data || r;
-      const n = resData.nuevas || resData.insertadas || 0;
+      const n = resData.guardadas_en_bd ?? resData.nuevas ?? resData.insertadas ?? 0;
       WMS.toast(`Escaneo completado — ${n} anomalía(s) nueva(s) detectada(s)`, n > 0 ? 'warning' : 'success');
       this.renderAnomalias();
     } catch(e) {
@@ -552,7 +552,7 @@ WMS_MODULES.inteligencia = {
     try {
       const [ra, rr] = await Promise.all([
         API.get('/inteligencia/fefo/alertas'),
-        API.get(`/inteligencia/fefo/rotacion?dias=${dias}`),
+        API.get(`/inteligencia/fefo/rotacion?dias_sin_movimiento=${dias}`),
       ]);
       const resA = ra.data || ra;
       const resR = rr.data || rr;
@@ -745,8 +745,8 @@ WMS_MODULES.inteligencia = {
         </td>
         <td>
           <div style="display:flex;align-items:center;gap:8px;">
-            <div class="user-avatar" style="width:24px;height:24px;font-size:.6rem;">${(g.usuario?.nombre || 'U')[0]}</div>
-            <div style="font-size:.8rem;font-weight:600;">${WMS.esc(g.usuario?.nombre || g.usuario_id || '—')}</div>
+            <div class="user-avatar" style="width:24px;height:24px;font-size:.6rem;">${String(g.usuario_id || 'U')[0]}</div>
+            <div style="font-size:.8rem;font-weight:600;">ID: ${WMS.esc(String(g.usuario_id || '—'))}</div>
           </div>
         </td>
         <td style="font-size:.78rem;color:#64748b;">${this._fmtDate(g.created_at)}</td>
@@ -873,7 +873,8 @@ WMS_MODULES.inteligencia = {
     let data = [];
     try {
       const r = await API.get('/inteligencia/performance');
-      const resData = r.data || r;
+      // Controlador devuelve: { dias, total_registros, por_endpoint: [...] }
+      const resData = (r.data && typeof r.data === 'object') ? r.data : r;
       data = resData.por_endpoint || (Array.isArray(resData) ? resData : []);
     } catch (e) {
       WMS.setContent(`<div class="m-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>${e.message}</p></div>`);
@@ -885,29 +886,31 @@ WMS_MODULES.inteligencia = {
       return;
     }
 
-    // Cálculos KPI
+    // Cálculos KPI — API devuelve avg_ms, max_ms, total_llamadas (no llamadas)
     const avgLatency = data.reduce((acc, p) => acc + (parseFloat(p.avg_ms || p.duracion_ms) || 0), 0) / data.length;
     const slowEndpoints = data.filter(p => (p.avg_ms || p.duracion_ms) > 2000).length;
-    const totalRequests = data.reduce((acc, p) => acc + (parseInt(p.llamadas) || 1), 0);
+    const totalRequests = data.reduce((acc, p) => acc + (parseInt(p.total_llamadas || p.llamadas) || 1), 0);
     const maxLat = Math.max(...data.map(p => parseFloat(p.max_ms || p.duracion_ms) || 0));
 
     const durColor = ms => ms >= 5000 ? '#ef4444' : ms >= 3000 ? '#f59e0b' : '#3b82f6';
 
+    // API devuelve: endpoint_pattern, total_llamadas, avg_ms, max_ms, min_ms, avg_memoria_kb
+    // No devuelve metodo (no está en GROUP BY del controlador) ni ultima_vez
     const rows = data.map(p => `
       <tr>
-        <td class="text-center"><span class="badge badge-gray" style="font-family:monospace;">${WMS.esc(p.metodo)}</span></td>
+        <td class="text-center"><span class="badge badge-gray" style="font-family:monospace;">—</span></td>
         <td>
-          <div style="font-family:var(--font-mono);font-size:.75rem;color:#1e293b;word-break:break-all;">${WMS.esc(p.endpoint_pattern || p.endpoint)}</div>
+          <div style="font-family:var(--font-mono);font-size:.75rem;color:#1e293b;word-break:break-all;">${WMS.esc(p.endpoint_pattern || p.endpoint || '—')}</div>
         </td>
         <td class="text-end fw-bold" style="color:${durColor(p.avg_ms || p.duracion_ms)}; font-size:.9rem;">
-          ${Math.round(p.avg_ms || p.duracion_ms)} <small>ms</small>
+          ${Math.round(p.avg_ms || p.duracion_ms || 0)} <small>ms</small>
         </td>
-        <td class="text-end fw-bold text-muted">${p.llamadas || 1}</td>
+        <td class="text-end fw-bold text-muted">${p.total_llamadas || p.llamadas || 1}</td>
         <td class="text-end fw-bold" style="color:${durColor(p.max_ms || p.duracion_ms)};">
-          ${Math.round(p.max_ms || p.duracion_ms)} <small>ms</small>
+          ${Math.round(p.max_ms || p.duracion_ms || 0)} <small>ms</small>
         </td>
         <td style="font-size:.78rem;color:#64748b;">
-          <i class="fa-regular fa-clock me-1"></i> ${this._fmtDate(p.ultima_vez || p.created_at)}
+          <i class="fa-solid fa-memory me-1"></i> ${Math.round(p.avg_memoria_kb || 0)} KB avg
         </td>
       </tr>
     `).join('');

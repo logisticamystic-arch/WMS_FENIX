@@ -19,6 +19,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <!-- JsBarcode — generación CODE128 para rótulos -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+  <!-- SweetAlert2 — dialogs modales (causales, confirmaciones) -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="assets/js/DataCache.js"></script>
   <script src="assets/js/CacheHelpers.js"></script>
 
@@ -126,45 +129,8 @@
         </div>
       </div>
 
-      <!-- Módulos principales en el header -->
-      <nav class="header-modules" id="header-modules">
-        <button class="module-tab active" data-module="inicio" onclick="WMS.nav('inicio')">
-          <i class="fa-solid fa-house"></i><span>Inicio</span>
-        </button>
-        <button class="module-tab" data-module="maestro" onclick="WMS.nav('maestro')">
-          <i class="fa-solid fa-database"></i><span>Maestro</span>
-        </button>
-        <button class="module-tab" data-module="recepcion" onclick="WMS.nav('recepcion')">
-          <i class="fa-solid fa-truck-ramp-box"></i><span>Recepción & YMS</span>
-        </button>
-        <button class="module-tab" data-module="almacenamiento" onclick="WMS.nav('almacenamiento')">
-          <i class="fa-solid fa-warehouse"></i><span>Almacenamiento</span>
-        </button>
-        <button class="module-tab" data-module="picking" onclick="WMS.nav('picking')">
-          <i class="fa-solid fa-boxes-stacked"></i><span>Picking</span>
-        </button>
-        <button class="module-tab" data-module="despacho" onclick="WMS.nav('despacho')">
-          <i class="fa-solid fa-truck-fast"></i><span>Despacho & TMS</span>
-        </button>
-        <button class="module-tab" data-module="inventario" onclick="WMS.nav('inventario')">
-          <i class="fa-solid fa-clipboard-list"></i><span>Inventarios</span>
-        </button>
-        <button class="module-tab" data-module="reportes" onclick="WMS.nav('reportes')">
-          <i class="fa-solid fa-chart-column"></i><span>Reportes</span>
-        </button>
-        <button class="module-tab" data-module="inteligencia" onclick="WMS.nav('inteligencia')">
-          <i class="fa-solid fa-brain"></i><span>Inteligencia ML</span>
-        </button>
-        <button class="module-tab" data-module="logistica" onclick="WMS.nav('logistica')">
-          <i class="fa-solid fa-truck-fast"></i><span>Logística Pro</span>
-        </button>
-        <button class="module-tab" data-module="rotulos" onclick="WMS.nav('rotulos')">
-          <i class="fa-solid fa-barcode"></i><span>Rótulos</span>
-        </button>
-        <button class="module-tab" data-module="devoluciones" onclick="WMS.nav('devoluciones')">
-          <i class="fa-solid fa-rotate-left"></i><span>Devoluciones</span>
-        </button>
-      </nav>
+      <!-- Espacio flex para empujar header-right a la derecha -->
+      <div style="flex:1;"></div>
 
       <!-- Header derecho -->
       <div class="header-right">
@@ -222,13 +188,79 @@
     <!-- BODY = SIDEBAR + CONTENT -->
     <div class="app-body">
 
-      <!-- SIDEBAR -->
+      <!-- SIDEBAR fijo — todo visible, submenús colapsables -->
       <aside class="app-sidebar" id="app-sidebar">
-        <div class="sidebar-header">
-          <div class="sidebar-module-title" id="sidebar-module-title">INICIO</div>
-        </div>
-        <div id="sidebar-content">
-          <!-- Llenado dinámicamente por JS según módulo activo -->
+        <nav class="nav-modules" id="nav-modules">
+
+          <button class="nm-item active" data-module="inicio" onclick="WMS.nav('inicio')">
+            <i class="fa-solid fa-house"></i><span>Inicio</span>
+          </button>
+
+          <button class="nm-item" data-module="maestro" onclick="WMS.nav('maestro')">
+            <i class="fa-solid fa-database"></i><span>Maestros</span>
+          </button>
+
+          <button class="nm-item" data-module="recepcion" onclick="WMS.nav('recepcion')">
+            <i class="fa-solid fa-truck-ramp-box"></i><span>Recepcion</span>
+          </button>
+
+          <button class="nm-item" data-module="almacenamiento" onclick="WMS.nav('almacenamiento')">
+            <i class="fa-solid fa-warehouse"></i><span>Almacenamiento</span>
+          </button>
+
+          <button class="nm-item" data-module="picking" onclick="WMS.nav('picking')">
+            <i class="fa-solid fa-boxes-stacked"></i><span>Picking</span>
+          </button>
+
+          <button class="nm-item" data-module="despacho" onclick="WMS.nav('despacho')">
+            <i class="fa-solid fa-truck-fast"></i><span>Despacho</span>
+          </button>
+
+          <button class="nm-item" data-module="devoluciones" onclick="WMS.nav('devoluciones')">
+            <i class="fa-solid fa-rotate-left"></i><span>Devoluciones</span>
+          </button>
+
+          <button class="nm-item" data-module="inventario" onclick="WMS.nav('inventario')">
+            <i class="fa-solid fa-clipboard-list"></i><span>Inventarios</span>
+          </button>
+
+          <button class="nm-item" data-module="rotulos" onclick="WMS.nav('rotulos')">
+            <i class="fa-solid fa-barcode"></i><span>Rotulos</span>
+          </button>
+
+          <button class="nm-item" data-module="reportes" onclick="WMS.nav('reportes')">
+            <i class="fa-solid fa-chart-column"></i><span>Reportes</span>
+          </button>
+
+          <button class="nm-item" data-module="inteligencia" onclick="WMS.nav('inteligencia')">
+            <i class="fa-solid fa-brain"></i><span>Inteligencia ML</span>
+          </button>
+
+          <button class="nm-item" data-module="logistica" onclick="WMS.nav('logistica')">
+            <i class="fa-solid fa-truck-fast"></i><span>Logistica Avanzada</span>
+          </button>
+
+          <button class="nm-item" data-module="consulta-rapida" onclick="WMS.nav('consulta-rapida')">
+            <i class="fa-solid fa-magnifying-glass"></i><span>Consulta Rápida</span>
+          </button>
+
+          <button class="nm-item" data-module="trazabilidad" onclick="WMS.nav('trazabilidad')">
+            <i class="fa-solid fa-timeline"></i><span>Trazabilidad</span>
+          </button>
+
+          <button class="nm-item" data-module="chat-ia" onclick="WMS.nav('chat-ia')">
+            <i class="fa-solid fa-robot"></i><span>FENIX IA</span>
+          </button>
+        </nav>
+
+        <!-- Submenú colapsable del módulo activo -->
+        <div class="sidebar-sub" id="sidebar-sub">
+          <button class="sidebar-sub-toggle" id="sidebar-sub-toggle" onclick="WMS.toggleSidebarSub()">
+            <span id="sidebar-module-title">INICIO</span>
+            <i class="fa-solid fa-chevron-down sidebar-sub-arrow"></i>
+          </button>
+          <div class="sidebar-sub-items" id="sidebar-content">
+          </div>
         </div>
       </aside>
 
@@ -303,6 +335,9 @@
       <div class="notif-panel-footer">
         <button class="btn btn-sm btn-secondary" onclick="WMS.loadNotifications(true)">
           <i class="fa-solid fa-rotate"></i> Actualizar
+        </button>
+        <button class="btn btn-sm btn-secondary" onclick="WMS.eliminarTodasLeidas()" style="color:#ef4444;" title="Eliminar notificaciones ya leídas del historial">
+          <i class="fa-solid fa-trash-can"></i> Limpiar leídas
         </button>
       </div>
     </aside>
@@ -935,6 +970,7 @@
             }
             const _err = new Error(errorMsg);
             _err.status = res.status;
+            _err.data = json?.data ?? null;
             throw _err;
           }
           
@@ -1095,6 +1131,9 @@
           'assets/js/desktop/inicio.js',
           'assets/js/desktop/inteligencia.js',
           'assets/js/desktop/rotulos.js',
+          'assets/js/desktop/consulta-rapida.js',
+          'assets/js/desktop/trazabilidad.js',
+          'assets/js/desktop/chat-ia.js',
         ];
         this._preloadCancelled = false;
         let i = 0;
@@ -1144,7 +1183,7 @@
           const q = input.value.trim();
           if (q.length < 2) { close(); return; }
           timer = setTimeout(async () => {
-            const r = await API.get('/param/productos/buscar', 'q=' + encodeURIComponent(q));
+            const r = await API.get('/param/productos/buscar', 'q=' + encodeURIComponent(q) + '&limit=200');
             results = r.data || r || [];
             if (results.length === 0) {
                resDiv.innerHTML = '<div style="padding:10px;text-align:center;font-size:11px;color:#94a3b8;"><i class="fa-solid fa-circle-exclamation"></i> Sin resultados</div>';
@@ -1577,10 +1616,13 @@
         this._sub = effectiveSub;
         this.currentSubModule = effectiveSub;
 
-        // Update active tab en el header
-        document.querySelectorAll('.module-tab').forEach(t => {
+        // Update active en nav-modules
+        document.querySelectorAll('.nm-item[data-module]').forEach(t => {
           t.classList.toggle('active', t.dataset.module === module);
         });
+        // Expandir submenú al navegar
+        const sidebarSubEl = document.getElementById('sidebar-sub');
+        if (sidebarSubEl) sidebarSubEl.classList.remove('collapsed');
 
         // Render sidebar inmediatamente (feedback visual instantáneo)
         this.renderSidebar(module);
@@ -1602,6 +1644,9 @@
           logistica:     'assets/js/desktop/logistica-avanzada.js',
           rotulos:       'assets/js/desktop/rotulos.js',
           devoluciones:  'assets/js/desktop/devoluciones.js',
+          'consulta-rapida': 'assets/js/desktop/consulta-rapida.js',
+          'trazabilidad':    'assets/js/desktop/trazabilidad.js',
+          'chat-ia':         'assets/js/desktop/chat-ia.js',
         };
 
         if (scripts[module]) {
@@ -1629,7 +1674,7 @@
         const curEl   = document.getElementById('bc-current');
         const backBtn = document.getElementById('btn-back-breadcrumb');
 
-        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', inventario:'Inventario', reportes:'Reportes', inteligencia:'Inteligencia ML', logistica:'Logística Pro', rotacion:'Rotación ML', rotulos:'Rótulos', devoluciones:'Devoluciones' };
+        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', inventario:'Inventario', reportes:'Reportes', inteligencia:'Inteligencia ML', logistica:'Logística Pro', rotacion:'Rotación ML', rotulos:'Rótulos', devoluciones:'Devoluciones', 'consulta-rapida':'Consulta Rápida', trazabilidad:'Trazabilidad', 'chat-ia':'FENIX IA' };
         modEl.textContent = labels[mod] || mod.toUpperCase();
 
         if (sub) {
@@ -1742,9 +1787,12 @@
                 { icon: 'fa-copyright', label: 'Marcas', action: "WMS.nav('maestro','marcas')" },
                 { icon: 'fa-box', label: 'Productos', action: "WMS.nav('maestro','productos')" },
                 { icon: 'fa-user-tie', label: 'Clientes', action: "WMS.nav('maestro','clientes')" },
+                { icon: 'fa-temperature-half', label: 'Ambientes', action: "WMS.nav('maestro','ambientes')" },
+                { icon: 'fa-map', label: 'Zonas', action: "WMS.nav('maestro','zonas')" },
                 { icon: 'fa-map-pin', label: 'Ubicaciones', action: "WMS.nav('maestro','ubicaciones')" },
                 { icon: 'fa-truck', label: 'Proveedores', action: "WMS.nav('maestro','proveedores')" },
                 { icon: 'fa-route', label: 'Rutas', action: "WMS.nav('maestro','rutas')" },
+                { icon: 'fa-list-check', label: 'Causales de Novedad', action: "WMS.nav('maestro','causales-novedad')" },
                 { icon: 'fa-print', label: 'Impresoras IP', action: "WMS.nav('maestro','impresoras')" },
               ]
             },
@@ -1762,6 +1810,7 @@
                 { icon: 'fa-calendar-check', label: 'Citas YMS', action: "WMS.nav('recepcion','citas')" },
                 { icon: 'fa-truck-ramp-box', label: 'Recepción Operativa', action: "WMS.nav('recepcion','operativa')" },
                 { icon: 'fa-box-open', label: 'Recepción sin ODC', action: "WMS.nav('recepcion','sin_odc')" },
+                { icon: 'fa-boxes-stacked', label: 'Misceláneos', action: "WMS.nav('recepcion','miscelaneos')" },
                 { icon: 'fa-rotate-left', label: 'Devolución Proveedor', action: "WMS.nav('recepcion','devoluciones')" },
               ]
             },
@@ -1777,7 +1826,13 @@
               section: 'OPERACIÓN', items: [
                 { icon: 'fa-boxes-stacked', label: 'Ubicar Mercancía', action: "WMS.nav('almacenamiento','ubicar')" },
                 { icon: 'fa-arrow-right-arrow-left', label: 'Transferir', action: "WMS.nav('almacenamiento','transferir')" },
+                { icon: 'fa-arrow-right-from-bracket', label: 'Traspaso a Cliente', action: "WMS.nav('almacenamiento','traspaso')" },
                 { icon: 'fa-map', label: 'Ubicación Detalle', action: "WMS.nav('almacenamiento','mapa')" },
+              ]
+            },
+            {
+              section: 'CALIDAD', items: [
+                { icon: 'fa-ban', label: 'Bloqueo de Productos', action: "WMS.nav('almacenamiento','bloqueos')" },
               ]
             },
             {
@@ -1792,6 +1847,7 @@
                 { icon: 'fa-file-import', label: 'Pedidos', action: "WMS.nav('picking','pedidos')" },
                 { icon: 'fa-list-check', label: 'Asignación', action: "WMS.nav('picking','asignacion')" },
                 { icon: 'fa-triangle-exclamation', label: 'Faltantes', action: "WMS.nav('picking','faltantes')" },
+                { icon: 'fa-box-open', label: 'Agotados', action: "WMS.nav('picking','agotados')" },
               ]
             },
             {
@@ -1799,6 +1855,9 @@
                 { icon: 'fa-gauge', label: 'Dashboard Picking', action: "WMS.nav('picking','dashboard')" },
                 { icon: 'fa-file-excel', label: 'Reporte Picking', action: "WMS.nav('picking','reporte')" },
                 { icon: 'fa-triangle-exclamation', label: 'Prod. Sin Codificar', action: "WMS.nav('picking','pendientes')" },
+                { icon: 'fa-boxes-stacked', label: 'Reservas', action: "WMS.nav('picking','reservas')" },
+                { icon: 'fa-magnifying-glass-chart', label: 'Consulta de Picking', action: "WMS.nav('picking','consulta')" },
+                { icon: 'fa-circle-exclamation', label: 'Novedades de Picking', action: "WMS.nav('picking','novedades')" },
               ]
             },
           ],
@@ -1821,13 +1880,13 @@
             {
               section: 'CONTEOS', items: [
                 { icon: 'fa-rotate', label: 'Admin Conteos', action: "WMS.nav('inventario','ciclico')" },
-                { icon: 'fa-upload', label: 'Cargue de Saldo', action: "WMS.nav('inventario','cargue')" },
               ]
             },
             {
               section: 'GESTIÓN', items: [
                 { icon: 'fa-gauge', label: 'Dashboard Inventario', action: "WMS.nav('inventario','dashboard')" },
                 { icon: 'fa-sliders', label: 'Ajuste Manual', action: "WMS.nav('inventario','ajuste')" },
+                { icon: 'fa-location-crosshairs', label: 'Ajustes x Ubicación', action: "WMS.nav('inventario','ajuste-ubicacion')" },
               ]
             },
             {
@@ -1909,6 +1968,31 @@
               ]
             },
           ],
+          'consulta-rapida': [
+            {
+              section: 'BÚSQUEDA', items: [
+                { icon: 'fa-magnifying-glass', label: 'Buscar Referencia', action: "WMS.nav('consulta-rapida')" },
+              ]
+            },
+          ],
+          'trazabilidad': [
+            {
+              section: 'TRAZABILIDAD', items: [
+                { icon: 'fa-barcode',      label: 'Por Referencia', action: "WMS_MODULES['trazabilidad']?.load('producto')" },
+                { icon: 'fa-location-dot', label: 'Por Ubicación',  action: "WMS_MODULES['trazabilidad']?.load('ubicacion')" },
+              ]
+            },
+          ],
+          'chat-ia': [
+            {
+              section: 'FENIX IA', items: [
+                { icon: 'fa-comments',       label: 'Chat General',        action: "WMS_MODULES['chat-ia']?.load('general')" },
+                { icon: 'fa-boxes-stacked',  label: 'Consultar Picking',   action: "WMS_MODULES['chat-ia']?.load('picking')" },
+                { icon: 'fa-clipboard-list', label: 'Consultar Inventario',action: "WMS_MODULES['chat-ia']?.load('inventario')" },
+                { icon: 'fa-truck-fast',     label: 'Consultar Despacho',  action: "WMS_MODULES['chat-ia']?.load('despacho')" },
+              ]
+            },
+          ],
         };
 
         const menu = menus[module] || [];
@@ -1928,8 +2012,8 @@
         });
         const sidebarContentEl = document.getElementById('sidebar-content');
         const sidebarTitleEl   = document.getElementById('sidebar-module-title');
-        const modIcons = { inicio:'fa-house', maestro:'fa-database', recepcion:'fa-truck-ramp-box', almacenamiento:'fa-warehouse', picking:'fa-boxes-stacked', despacho:'fa-truck-fast', inventario:'fa-clipboard-list', reportes:'fa-chart-column', inteligencia:'fa-brain', logistica:'fa-truck-fast', rotulos:'fa-barcode', devoluciones:'fa-rotate-left' };
-        const modLabels = { inicio:'INICIO', maestro:'MAESTROS', recepcion:'RECEPCIÓN & YMS', almacenamiento:'ALMACENAMIENTO', picking:'PICKING', despacho:'DESPACHO & TMS', inventario:'INVENTARIOS', reportes:'REPORTES', inteligencia:'INTELIGENCIA ML', logistica:'LOGÍSTICA PRO', rotulos:'RÓTULOS', devoluciones:'DEVOLUCIONES' };
+        const modIcons = { inicio:'fa-house', maestro:'fa-database', recepcion:'fa-truck-ramp-box', almacenamiento:'fa-warehouse', picking:'fa-boxes-stacked', despacho:'fa-truck-fast', inventario:'fa-clipboard-list', reportes:'fa-chart-column', inteligencia:'fa-brain', logistica:'fa-truck-fast', rotulos:'fa-barcode', devoluciones:'fa-rotate-left', 'consulta-rapida':'fa-magnifying-glass', trazabilidad:'fa-timeline', 'chat-ia':'fa-robot' };
+        const modLabels = { inicio:'INICIO', maestro:'MAESTROS', recepcion:'RECEPCIÓN & YMS', almacenamiento:'ALMACENAMIENTO', picking:'PICKING', despacho:'DESPACHO & TMS', inventario:'INVENTARIOS', reportes:'REPORTES', inteligencia:'INTELIGENCIA ML', logistica:'LOGÍSTICA PRO', rotulos:'RÓTULOS', devoluciones:'DEVOLUCIONES', 'consulta-rapida':'CONSULTA RÁPIDA', trazabilidad:'TRAZABILIDAD', 'chat-ia':'FENIX IA' };
         if (sidebarContentEl) sidebarContentEl.innerHTML = html;
         if (sidebarTitleEl) sidebarTitleEl.innerHTML = `<i class="fa-solid ${modIcons[module]||'fa-circle'}" style="margin-right:8px;opacity:.7"></i>${modLabels[module]||module.toUpperCase()}`;
       },
@@ -2042,26 +2126,35 @@
         const list = document.getElementById('notif-list');
         list.innerHTML = '<div class="search-loading"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</div>';
         try {
-          const r = await API.get('/notificaciones', 'pagina=1&por_pagina=30');
+          const r = await API.get('/notificaciones', 'pagina=1&por_pagina=50&no_leidas=true');
           if (r.error) { list.innerHTML = '<div class="search-no-results">Error al cargar</div>'; return; }
-          document.getElementById('notif-panel-count').textContent = `${r.badge} sin leer · ${r.paginacion.total} total`;
+          document.getElementById('notif-panel-count').textContent = `${r.badge} sin leer`;
           this.updateBadge(r.badge);
           if (!r.data || r.data.length === 0) {
             list.innerHTML = '<div class="table-empty"><i class="fa-regular fa-bell"></i>Sin notificaciones</div>';
             // do not return — expiry approval cards still need to be appended below
           } else {
           const iconMap = { tarea: 'fa-list-check tarea', picking: 'fa-boxes-stacked picking', alerta: 'fa-triangle-exclamation alerta', info: 'fa-info-circle info', recibo: 'fa-truck-ramp-box recibo', inventario: 'fa-clipboard-list inventario' };
+          const moduloLabel = { picking:'Picking', inventario:'Inventario', tarea:'Tarea', inteligencia:'ML', maestro:'Maestro', despacho:'Despacho', devoluciones:'Devolución' };
+          const moduloColor = { picking:'#0369a1', inventario:'#16a34a', tarea:'#7c3aed', inteligencia:'#dc2626', maestro:'#92400e', despacho:'#0891b2', devoluciones:'#d97706' };
           list.innerHTML = r.data.map(n => {
             const ic = iconMap[n.tipo] || 'fa-bell info';
             const [icClass, typeClass] = ic.split(' ');
             const tiempo = this.tiempoRelativo(n.created_at);
-            return `<div class="notif-item${n.leida ? '' : ' unread'}" onclick="WMS.marcarLeida(${n.id},this)">
+            const modKey = (n.modulo || '').toLowerCase();
+            const modLabel = moduloLabel[modKey] || n.modulo || '';
+            const modColor = moduloColor[modKey] || '#475569';
+            const showFinalizar = n.tipo === 'tarea' && !n.completada;
+            return `<div class="notif-item${n.leida ? '' : ' unread'}" id="notif-card-${n.id}" style="position:relative;" onclick="WMS.marcarLeida(${n.id},this)">
+          <button onclick="event.stopPropagation();WMS.eliminarNotif(${n.id},document.getElementById('notif-card-${n.id}'))"
+            style="position:absolute;top:5px;right:7px;background:none;border:none;color:#94a3b8;font-size:1.1rem;cursor:pointer;line-height:1;padding:2px 4px;border-radius:3px;" title="Descartar">×</button>
           <div class="notif-item-icon ${typeClass}"><i class="fa-solid ${icClass}"></i></div>
           <div class="notif-body">
-            <div class="notif-titulo">${this.esc(n.titulo)}</div>
+            ${modLabel ? `<div style="margin-bottom:3px;"><span style="background:${modColor}18;color:${modColor};border:1px solid ${modColor}30;border-radius:3px;padding:1px 6px;font-size:.64rem;font-weight:700;letter-spacing:.4px;">${modLabel.toUpperCase()}</span></div>` : ''}
+            <div class="notif-titulo" style="padding-right:18px;">${this.esc(n.titulo)}</div>
             <div class="notif-mensaje">${this.esc(n.mensaje)}</div>
             <div class="notif-time">${tiempo}</div>
-            ${!n.completada && n.tipo === 'tarea' ? `<div class="notif-actions"><button class="btn btn-sm btn-success" onclick="WMS.completarNotif(${n.id},event)"><i class="fa-solid fa-check"></i> Gestionar</button></div>` : ''}
+            ${showFinalizar ? `<div class="notif-actions"><button class="btn btn-sm btn-success" style="font-size:.72rem;" onclick="event.stopPropagation();WMS.completarNotif(${n.id},this)"><i class="fa-solid fa-check-double"></i> Finalizar</button></div>` : (n.completada ? `<div style="font-size:.65rem;color:#16a34a;margin-top:4px;"><i class="fa-solid fa-check-circle"></i> Completada</div>` : '')}
           </div>
         </div>`;
           }).join('');
@@ -2139,15 +2232,45 @@
       },
 
       async marcarLeida(id, el) {
-        await API.put('/notificaciones/' + id + '/leer', {});
-        if (el) el.classList.remove('unread');
-        this.loadBadge();
+        if (el) { el.style.transition = 'opacity .3s'; el.style.opacity = '0'; }
+        try {
+          await API.put('/notificaciones/' + id + '/leer', {});
+          setTimeout(() => el?.remove(), 300);
+          this.loadBadge();
+        } catch(e) {
+          if (el) el.style.opacity = '1';
+        }
       },
 
-      async completarNotif(id, e) {
-        e.stopPropagation();
-        await API.put('/notificaciones/' + id + '/completar', {});
-        this.loadNotifications();
+      async eliminarNotif(id, el) {
+        if (el) { el.style.transition = 'opacity .2s'; el.style.opacity = '0'; }
+        try {
+          await API.delete('/notificaciones/' + id);
+          setTimeout(() => el?.remove(), 200);
+          this.loadBadge();
+        } catch(e) {
+          if (el) el.style.opacity = '1';
+          this.toast('error', 'No se pudo descartar');
+        }
+      },
+
+      async eliminarTodasLeidas() {
+        try {
+          const r = await API.delete('/notificaciones/limpiar-leidas');
+          this.toast('success', r.message || 'Historial limpiado');
+          this.loadNotifications();
+        } catch(e) { this.toast('error', 'Error al limpiar historial'); }
+      },
+
+      async completarNotif(id, btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        try {
+            await API.put('/notificaciones/' + id + '/completar', {});
+            const card = btn.closest('.notif-item');
+            if (card) { card.style.transition = 'opacity .3s'; card.style.opacity = '0'; setTimeout(() => card.remove(), 300); }
+            this.loadBadge();
+        } catch(e) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check-double"></i> Finalizar'; }
       },
 
       async _resolverVencimiento(id, decision, btn) {
@@ -2188,11 +2311,15 @@
 
       async marcarTodasLeidas() {
         await API.put('/notificaciones/leer-todas', {});
-        this.loadNotifications();
         this.updateBadge(0);
+        await this.loadNotifications();
       },
 
       // ── User menu ─────────────────────────────────────────
+      toggleSidebarSub() {
+        document.getElementById('sidebar-sub').classList.toggle('collapsed');
+      },
+
       toggleUserMenu() {
         const m = document.getElementById('user-menu');
         m.style.display = m.style.display === 'block' ? 'none' : 'block';
@@ -2313,7 +2440,7 @@
           dropdownEl.innerHTML = '<div class="search-loading"><i class="fa-solid fa-spinner fa-spin"></i> Buscando...</div>';
           _timer = setTimeout(async () => {
             try {
-              const r = await API.get('/param/productos/buscar', 'q=' + encodeURIComponent(q) + '&limit=10');
+              const r = await API.get('/param/productos/buscar', 'q=' + encodeURIComponent(q) + '&limit=200');
               if (!r.data || r.data.length === 0) {
                 dropdownEl.innerHTML = '<div class="search-no-results">Sin resultados</div>'; return;
               }
@@ -2355,7 +2482,7 @@
           dropdown.innerHTML = '<div class="search-loading"><i class="fa-solid fa-spinner fa-spin"></i> Buscando...</div>';
           _timer = setTimeout(async () => {
             try {
-              const r = await API.get('/param/productos/buscar', 'q=' + encodeURIComponent(q) + '&limit=10');
+              const r = await API.get('/param/productos/buscar', 'q=' + encodeURIComponent(q) + '&limit=200');
               if (!r.data || r.data.length === 0) {
                 dropdown.innerHTML = '<div class="search-no-results">Sin resultados para "' + this.esc(q) + '"</div>';
                 return;
@@ -2426,22 +2553,7 @@
         document.getElementById('toolbar-actions').innerHTML = actions;
       },
 
-      setBreadcrumb(module, sub) {
-        const labels = { inicio: 'Inicio', maestro: 'Maestro', recepcion: 'Recepción & YMS', almacenamiento: 'Almacenamiento', picking: 'Picking', despacho: 'Despacho & TMS', inventario: 'Inventarios', reportes: 'Reportes' };
-        const bcModuleEl = document.getElementById('bc-module');
-        const bcCurrentEl = document.getElementById('bc-current');
-        
-        if (bcModuleEl) {
-          bcModuleEl.innerHTML = `<span class="bc-link" onclick="WMS.nav('${module}')">${labels[module] || module}</span>`;
-        }
-        if (bcCurrentEl) {
-          if (sub) {
-            bcCurrentEl.innerHTML = `<span class="bc-link" onclick="WMS.nav('${module}','${sub}')">${sub}</span>`;
-          } else {
-            bcCurrentEl.textContent = 'PanelPrincipal';
-          }
-        }
-      },
+      /* setBreadcrumb duplicado eliminado — la versión correcta está en línea ~1647 */
 
       // ── Button loading state helpers ──────────────────────
       btnLoading(btn, isLoading, originalHTML) {
@@ -2481,7 +2593,9 @@
 
       getToday() {
         return new Date().toISOString().split('T')[0];
-      }
+      },
+
+      get user() { return _wmsUser; }
     };
 
     // ── Login event listeners ──────────────────────────────
@@ -2497,4 +2611,5 @@
     document.addEventListener('DOMContentLoaded', () => WMS.init());
 
   </script>
-</bo
+</body>
+</html>

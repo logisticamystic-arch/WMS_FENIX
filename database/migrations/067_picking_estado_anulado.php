@@ -7,14 +7,16 @@ return [
         if ($isPg) {
             // PostgreSQL: ALTER TYPE para CHECK constraint (no usa ENUM nativo)
             Capsule::statement("ALTER TABLE picking_detalles ALTER COLUMN estado TYPE VARCHAR(30)");
+            Capsule::statement("ALTER TABLE picking_detalles DROP CONSTRAINT IF EXISTS picking_detalles_estado_check");
             Capsule::statement("ALTER TABLE picking_detalles DROP CONSTRAINT IF EXISTS chk_picking_detalles_estado");
-            Capsule::statement("ALTER TABLE picking_detalles ADD CONSTRAINT chk_picking_detalles_estado
+            Capsule::statement("ALTER TABLE picking_detalles ADD CONSTRAINT picking_detalles_estado_check
                 CHECK (estado IN ('Pendiente','EnProceso','Completado','Faltante','Anulado'))");
             Capsule::statement("ALTER TABLE picking_detalles ALTER COLUMN estado SET DEFAULT 'Pendiente'");
 
             Capsule::statement("ALTER TABLE orden_pickings ALTER COLUMN estado TYPE VARCHAR(30)");
+            Capsule::statement("ALTER TABLE orden_pickings DROP CONSTRAINT IF EXISTS orden_pickings_estado_check");
             Capsule::statement("ALTER TABLE orden_pickings DROP CONSTRAINT IF EXISTS chk_orden_pickings_estado");
-            Capsule::statement("ALTER TABLE orden_pickings ADD CONSTRAINT chk_orden_pickings_estado
+            Capsule::statement("ALTER TABLE orden_pickings ADD CONSTRAINT orden_pickings_estado_check
                 CHECK (estado IN ('Pendiente','EnProceso','Completada','Cancelada','Anulado'))");
             Capsule::statement("ALTER TABLE orden_pickings ALTER COLUMN estado SET DEFAULT 'Pendiente'");
         } else {

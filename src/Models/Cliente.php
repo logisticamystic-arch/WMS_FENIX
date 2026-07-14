@@ -18,7 +18,13 @@ class Cliente extends BaseModel
         'telefono',
         'email',
         'contacto_nombre',
-        'activo'
+        'latitud',
+        'longitud',
+        'horario',
+        'frecuencia_tipo',
+        'frecuencia_config',
+        'frecuencia',
+        'activo',
     ];
 
     public function ruta()

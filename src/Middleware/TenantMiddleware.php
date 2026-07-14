@@ -18,13 +18,23 @@ class TenantMiddleware
 
         if ($user && isset($user->rol) && strcasecmp($user->rol, 'SuperAdmin') === 0) {
             $query = $request->getQueryParams();
-            // SuperAdmin sees all companies by default; empresa_id can be scoped via query param
-            $empresaId = (isset($query['empresa_id']) && $query['empresa_id'] !== '')
-                ? (int)$query['empresa_id']
-                : null;
-            $sucursalId = (isset($query['sucursal_id']) && $query['sucursal_id'] !== '')
-                ? (int)$query['sucursal_id']
-                : null;
+            // SuperAdmin: use query param override if provided
+            if (isset($query['empresa_id']) && $query['empresa_id'] !== '') {
+                $empresaId = (int)$query['empresa_id'];
+                
+                // Si el SuperAdmin cambia de empresa, ignorar su sucursal original del JWT
+                // a menos que la provea explícitamente en el query string.
+                if (isset($query['sucursal_id']) && $query['sucursal_id'] !== '') {
+                    $sucursalId = (int)$query['sucursal_id'];
+                } else {
+                    $sucursalId = null;
+                }
+            } else {
+                // else: keep $empresaId and $sucursalId from JWT
+                if (isset($query['sucursal_id']) && $query['sucursal_id'] !== '') {
+                    $sucursalId = (int)$query['sucursal_id'];
+                }
+            }
         }
 
         if ($empresaId !== null) {

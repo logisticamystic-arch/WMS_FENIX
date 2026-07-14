@@ -22,11 +22,11 @@ WMS_MODULES.picking = {
       pedidos: this.show_pedidos, asignacion: this.show_asignacion,
       faltantes: this.show_faltantes, dashboard: this.show_dashboard,
       reporte: this.show_reporte, pendientes: this.show_productos_pendientes,
+      reservas: this.show_reservas, agotados: this.show_agotados,
+      consulta: this.show_consulta, novedades: this.show_novedades,
     };
     (fn[s]?.bind(this) || fn.pedidos.bind(this))();
-    // Auto-refresh solo en Dashboard (sincronización periódica)
-    if (s === 'dashboard') this.startAutoRefresh(s);
-    else this.stopAutoRefresh();
+    this.stopAutoRefresh();
   },
 
   // ── Auto-refresh picking (proceso crítico, máx 5 usuarios) ───────────────
@@ -52,7 +52,9 @@ WMS_MODULES.picking = {
 
   subLabel(s) {
     const m = { pedidos:'Pedidos / Planillas', asignacion:'Asignación de Picking',
-      faltantes:'Faltantes de Stock', dashboard:'Dashboard Picking', reporte:'Reporte Picking' };
+      faltantes:'Faltantes de Stock', dashboard:'Dashboard Picking', reporte:'Reporte Picking',
+      pendientes:'Prod. Sin Codificar', reservas:'Reservas', agotados:'Módulo de Agotados',
+      consulta:'Consulta de Picking', novedades:'Novedades de Picking' };
     return m[s] || s || 'Panel';
   },
 
@@ -211,7 +213,8 @@ WMS_MODULES.picking = {
 
   /** Renderiza una fila de planilla de forma reutilizable */
   _renderPlanillaRow(g, options = {}) {
-    const isDash  = options.isDashboard || false;
+    const isDash   = options.isDashboard || false;
+    const planKey  = g.planilla.replace(/[^a-zA-Z0-9]/g, '_');
     const auxArr  = [...g.auxiliares];
     const auxList = auxArr.length
       ? auxArr.map(n => `<span style="display:inline-flex;align-items:center;gap:3px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:3px;padding:1px 6px;font-size:.68rem;font-weight:600;color:#166534;margin:1px;"><i class="fa-solid fa-user" style="font-size:.6rem;"></i>${WMS.esc(n)}</span>`).join(' ')
@@ -242,8 +245,8 @@ WMS_MODULES.picking = {
       return `
       <tr style="border-bottom:1px solid #e2e8f0;">
         <td style="padding:5px 8px;"><b style="color:#1e293b">${WMS.esc(pr.nombre)}</b></td>
-        <td style="padding:5px 8px;text-align:center;font-weight:600;">${WMS.formatNum(pr.cantidad_total)}</td>
-        <td style="padding:5px 8px;text-align:center;">${this._fmtCantidad(pr.cantidad_total, pr.unidades_caja)}</td>
+        <td style="padding:5px 8px;text-align:center;font-weight:600;">${this._fmtCantidad(pr.cantidad_total, pr.unidades_caja)}</td>
+        <td style="padding:5px 8px;text-align:center;">${this._fmtCantidad(Math.max(0, (parseFloat(pr.cantidad_total)||0) - (parseFloat(pr.cantidad_pendiente)||0)), pr.unidades_caja)}</td>
         <td style="padding:5px 8px;text-align:center;color:#dc3545;font-weight:600;">${WMS.formatNum(pr.cantidad_pendiente)}</td>
         <td style="padding:5px 8px;text-align:center;font-size:11px;">${WMS.esc([...pr.auxiliares].join(', ') || '-')}</td>
         <td style="padding:5px 8px;text-align:center;font-size:11px;color:#2563eb;font-weight:700;">${pr.hora_fin || '-'}</td>
@@ -262,6 +265,7 @@ WMS_MODULES.picking = {
           <span class="badge badge-info" style="font-size:11.5px;font-weight:700;">#${WMS.esc(g.planilla)}</span>
         </div>
       </td>
+      <td style="white-space:nowrap;font-size:12px;font-weight:600;color:#1d4ed8;">${g.ordenes?.[0]?.fecha_requerida ? WMS.formatDate(g.ordenes[0].fecha_requerida) : '—'}</td>
       <td style="font-size:11px;font-weight:600;">${WMS.esc([...g.clientes].join(', ') || '-')}</td>
       <td><span style="font-size:11px;font-weight:600;color:#64748b;">${WMS.esc(g.ruta)}</span></td>
       <td class="text-center"><b>${g.total_lineas - g.lineas_pendientes}</b> / ${g.total_lineas}</td>
@@ -278,9 +282,9 @@ WMS_MODULES.picking = {
       <td class="text-center"><span style="font-family:monospace;font-size:11px;">${inicioOp || '-'}</span></td>
       <td>
         ${!isDash ? `
-          <div class="actions" style="gap:4px;">
-            <button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.asignarRutaPlanilla('${WMS.esc(g.planilla)}',${ordenIdsJson})"><i class="fa-solid fa-route"></i></button>
-            <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.picking.asignarPlanilla('${WMS.esc(g.planilla)}',${ordenIdsJson})"><i class="fa-solid fa-user-check"></i> Asignar</button>
+          <div class="actions" style="gap:4px;flex-wrap:wrap;">
+            ${g.estado === 'EnProceso' ? `<button class="btn btn-sm btn-success" onclick="WMS_MODULES.picking._cerrarPlanilla('${WMS.esc(g.planilla)}')"><i class="fa-solid fa-check-double"></i> Cerrar</button>` : ''}
+            ${g.estado === 'Completado' ? `<button class="btn btn-sm btn-warning" onclick="WMS_MODULES.picking._reabrirPlanilla(${ordenIdsJson})"><i class="fa-solid fa-rotate-left"></i> Reabrir</button>` : ''}
           </div>
         ` : `
           <div class="text-right">
@@ -290,13 +294,58 @@ WMS_MODULES.picking = {
       </td>
     </tr>
     <tr id="sub-plan-${WMS.esc(g.planilla)}" style="display:none;background:#f8fafc;" data-estado="${g.estado}">
-      <td colspan="10" style="padding:0 8px 10px 42px;">
+      <td colspan="11" style="padding:0 8px 10px 42px;">
         <div style="border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;background:#fff;box-shadow:inset 0 2px 4px rgba(0,0,0,.02)">
+          ${g.ordenes && g.ordenes.length > 0 ? (() => {
+            const asignados = g.ordenes.filter(o => o.auxiliar?.nombre).length;
+            const sinAsig   = g.ordenes.length - asignados;
+            return `
+          <div style="background:#eff6ff;border-bottom:1px solid #bfdbfe;padding:8px 12px;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+              <span style="font-size:10px;font-weight:700;color:#1e40af;text-transform:uppercase;">Pedidos de la planilla:</span>
+              ${sinAsig > 0 ? `<span style="background:#fef3c7;color:#92400e;border-radius:3px;padding:1px 7px;font-size:10px;font-weight:700;"><i class="fa-solid fa-triangle-exclamation"></i> ${sinAsig} sin asignar</span>` : ''}
+              ${asignados > 0 ? `<span style="background:#dcfce7;color:#166534;border-radius:3px;padding:1px 7px;font-size:10px;font-weight:700;"><i class="fa-solid fa-check"></i> ${asignados} asignado(s)</span>` : ''}
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              ${g.ordenes.map(o => {
+                const aux       = o.auxiliar?.nombre || null;
+                const auxId     = parseInt(o.id) || 0;
+                const nf        = o.numero_factura ? ` · ${WMS.esc(o.numero_factura)}` : '';
+                const esPend    = o.estado === 'Pendiente';
+                const esProceso = o.estado === 'EnProceso';
+                return `<div style="background:#fff;border:1px solid #bfdbfe;border-radius:6px;padding:8px 10px;min-width:190px;max-width:260px;display:flex;flex-direction:column;gap:5px;box-shadow:0 1px 3px rgba(0,0,0,.06);">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                    <span style="font-weight:700;font-size:11px;color:#1e40af;">${WMS.esc(String(o.numero_orden || o.id))}${nf}</span>
+                    <span style="font-size:9px;font-weight:600;padding:1px 6px;border-radius:3px;white-space:nowrap;
+                      ${esPend ? 'background:#fef9c3;color:#854d0e;' : esProceso ? 'background:#dbeafe;color:#1e40af;' : 'background:#dcfce7;color:#166534;'}">
+                      ${WMS.esc(o.estado||'—')}
+                    </span>
+                  </div>
+                  <div style="font-size:9px;font-weight:600;white-space:nowrap;${aux ? 'color:#166534;' : 'color:#92400e;font-style:italic;'}">
+                    <i class="fa-solid ${aux ? 'fa-user' : 'fa-user-slash'}" style="font-size:8px;"></i>
+                    ${aux ? WMS.esc(aux) : 'Sin asignar'}
+                  </div>
+                  <div style="display:flex;gap:4px;margin-top:2px;">
+                    <button title="Ver / editar líneas del pedido" onclick="WMS_MODULES.picking._abrirEditorInline(${auxId},'${planKey}')"
+                      style="flex:1;background:#eff6ff;border:1px solid #bfdbfe;border-radius:3px;padding:3px 8px;cursor:pointer;color:#1e40af;font-size:.7rem;font-weight:600;">
+                      <i class="fa-solid fa-list-check"></i> Ver / Editar
+                    </button>
+                    <button title="Eliminar pedido" onclick="WMS_MODULES.picking._anularPedido(${auxId})"
+                      style="background:#fff1f2;border:1px solid #fecdd3;border-radius:3px;padding:3px 8px;cursor:pointer;color:#991b1b;font-size:.7rem;">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+          })() : ''}
+          <div id="ied-${planKey}" style="display:none;padding:10px 14px;border-top:1px solid #bfdbfe;background:#f0f7ff;"></div>
           <table style="width:100%;border-collapse:collapse;font-size:11px;">
             <thead style="background:#f1f5f9;color:#64748b;font-weight:700;text-transform:uppercase;font-size:10px;">
               <tr>
                 <th style="padding:6px 8px;">Producto</th>
-                <th style="padding:6px 8px;text-align:center;">Total</th>
+                <th style="padding:6px 8px;text-align:center;">UND/TOTAL</th>
                 <th style="padding:6px 8px;text-align:center;">Separación</th>
                 <th style="padding:6px 8px;text-align:center;color:#dc3545;">Pend.</th>
                 <th style="padding:6px 8px;text-align:center;">Auxiliar</th>
@@ -340,9 +389,13 @@ WMS_MODULES.picking = {
     if (f.sucursal_entrega)    params.set('sucursal_entrega', f.sucursal_entrega);
     if (f.fecha_desde)         params.set('fecha_desde', f.fecha_desde);
     if (f.fecha_hasta)         params.set('fecha_hasta', f.fecha_hasta);
-    params.set('limit', '200');
+    params.set('limit', '500');
 
     try {
+      if (!this._ambientesCache) {
+        const ar = await API.get('/param/ambientes');
+        this._ambientesCache = ar.data || ar || [];
+      }
       const r = await API.get('/picking?' + params.toString());
       const ordenes = r.data || r || [];
       this._renderPedidosTabla(ordenes);
@@ -352,7 +405,21 @@ WMS_MODULES.picking = {
   },
 
   _renderPedidosTabla(ordenes) {
+    // Ordenar: prioridad desc (alta primero), luego fecha_pedido asc (más antigua primero)
+    ordenes = [...ordenes].sort((a, b) => {
+      const pa = parseInt(a.prioridad) || 0;
+      const pb = parseInt(b.prioridad) || 0;
+      if (pb !== pa) return pb - pa;
+      const fa = a.fecha_pedido || a.created_at || '';
+      const fb = b.fecha_pedido || b.created_at || '';
+      return fa < fb ? -1 : fa > fb ? 1 : 0;
+    });
     const f = this._pedidosFiltros || {};
+    const defaultIconos = {seco:'🌡️',refrigerado:'❄️',congelado:'🧊'};
+    const defaultColores = {seco:'#92400e',refrigerado:'#0369a1',congelado:'#7c3aed'};
+    const ambientes = (this._ambientesCache || []).length > 0
+      ? this._ambientesCache
+      : [{codigo:'SECO',color:'#92400e',icono:''},{codigo:'REFRIGERADO',color:'#0369a1',icono:''},{codigo:'CONGELADO',color:'#7c3aed',icono:''}];
 
     const estadoBadge = (e) => {
       const map = {
@@ -366,69 +433,8 @@ WMS_MODULES.picking = {
       return `<span style="${s};padding:2px 8px;border-radius:3px;font-size:.72rem;font-weight:600;">${WMS.esc(e)}</span>`;
     };
 
-    const rows = ordenes.map(o => {
-      const seco    = o.seco_count || 0;
-      const frio    = o.refrigerado_count || 0;
-      const cong    = o.congelado_count || 0;
-      const total   = o.total_count || o.detalles?.length || 0;
-      const auxNom  = o.auxiliar?.nombre || null;
-      const auxId   = parseInt(o.id) || 0;
-      const auxChip = auxNom
-        ? `<div style="display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:3px;padding:2px 8px;font-size:.72rem;font-weight:600;color:#166534;">
-             <i class="fa-solid fa-user" style="font-size:.65rem;"></i>${WMS.esc(auxNom)}
-           </div>`
-        : `<span style="color:#94a3b8;font-size:.72rem;font-style:italic;">Sin asignar</span>`;
-      const esPendiente  = o.estado === 'Pendiente';
-      const esProceso    = o.estado === 'EnProceso';
-      return `
-        <tr id="main-row-${auxId}" class="erp-table-row clickable main-row" onclick="WMS_MODULES.picking._toggleExpandRow(this, ${auxId})" style="cursor:pointer;">
-          <td style="padding:8px 12px;">
-            <div style="font-weight:700;color:#0F4C81;">${WMS.esc(o.numero_pedido||o.numero_orden||'—')}</div>
-            <div style="font-size:.7rem;color:#64748b;">${WMS.esc(o.planilla_lote||'')}</div>
-          </td>
-          <td style="padding:8px 12px;">
-            <div style="font-weight:600;">${WMS.esc(o.sucursal_entrega||o.cliente||'—')}</div>
-            <div style="font-size:.7rem;color:#64748b;">${WMS.esc(o.cliente||'')}</div>
-          </td>
-          <td style="padding:8px 12px;">
-            ${o.ruta
-              ? `<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:3px;font-size:.72rem;">${WMS.esc(o.ruta)}</span>`
-              : `<button class="btn btn-outline-primary btn-sm" style="font-size:.7rem;padding:2px 8px;" onclick="event.stopPropagation();WMS_MODULES.picking._asignarRutaInline(${auxId}, this)">+ Ruta</button>`
-            }
-          </td>
-          <td style="padding:8px 12px;">${auxChip}</td>
-          <td style="padding:8px 12px;text-align:center;font-weight:700;color:#92400e;">${seco||'—'}</td>
-          <td style="padding:8px 12px;text-align:center;font-weight:700;color:#0369a1;">${frio||'—'}</td>
-          <td style="padding:8px 12px;text-align:center;font-weight:700;color:#7c3aed;">${cong||'—'}</td>
-          <td style="padding:8px 12px;text-align:center;font-weight:700;">${total}</td>
-          <td style="padding:8px 12px;">${estadoBadge(o.estado)}</td>
-          <td style="padding:8px 12px;text-align:center;white-space:nowrap;">
-            ${esPendiente ? `<button title="Editar cantidades" onclick="event.stopPropagation();WMS_MODULES.picking._abrirEditar(${auxId})"
-              style="background:#eff6ff;border:none;border-radius:3px;padding:4px 8px;cursor:pointer;color:#1e40af;font-size:.75rem;margin-right:4px;">
-              <i class="fa-solid fa-pencil"></i>
-            </button>
-            <button title="Cambiar auxiliar" onclick="event.stopPropagation();WMS_MODULES.picking._abrirCambiarAuxiliar(${auxId},'${WMS.esc(auxNom||'').replace(/'/g,'\\\'')}')"
-              style="background:#fef9c3;border:none;border-radius:3px;padding:4px 8px;cursor:pointer;color:#854d0e;font-size:.75rem;margin-right:4px;">
-              <i class="fa-solid fa-user-pen"></i>
-            </button>` : ''}
-            ${esProceso ? `<button title="Agregar auxiliar" onclick="event.stopPropagation();WMS_MODULES.picking._abrirAgregarAuxiliar(${auxId})"
-              style="background:#dcfce7;border:none;border-radius:3px;padding:4px 8px;cursor:pointer;color:#166534;font-size:.75rem;margin-right:4px;">
-              <i class="fa-solid fa-user-plus"></i>
-            </button>` : ''}
-            <button title="Eliminar" onclick="event.stopPropagation();WMS_MODULES.picking._eliminarOrden(${auxId})"
-              style="background:#fee2e2;border:none;border-radius:3px;padding:4px 8px;cursor:pointer;color:#991b1b;font-size:.75rem;">
-              <i class="fa-solid fa-trash"></i>
-            </button>
-          </td>
-        </tr>
-        <tr id="expand-${o.id}" style="display:none;">
-          <td colspan="10" style="padding:0;background:#f8fafc;">
-            <div id="expand-content-${o.id}" style="padding:12px 24px;border-top:1px solid #e2e8f0;">
-              <div style="color:#64748b;font-size:.78rem;">Cargando detalle...</div>
-            </div>
-          </td>
-        </tr>`;
-    }).join('');
+    const grupos = this._agruparPorPlanilla(ordenes);
+    const rows = grupos.map(g => this._renderPlanillaRow(g)).join('');
 
     const rutasUnicas     = [...new Set(ordenes.map(o=>o.ruta).filter(Boolean))];
     const sucursalesUnicas = [...new Set(ordenes.map(o=>o.sucursal_entrega||o.cliente).filter(Boolean))];
@@ -488,20 +494,21 @@ WMS_MODULES.picking = {
             <table class="erp-table">
               <thead>
                 <tr>
-                  <th style="padding:10px 12px;">N° Pedido</th>
-                  <th style="padding:10px 12px;">Sucursal Entrega</th>
+                  <th style="padding:10px 12px;width:30px;"></th>
+                  <th style="padding:10px 12px;">Planilla</th>
+                  <th style="padding:10px 12px;">Fecha</th>
+                  <th style="padding:10px 12px;">Cliente</th>
                   <th style="padding:10px 12px;">Ruta</th>
-                  <th style="padding:10px 12px;">Auxiliar</th>
-                  <th style="padding:10px 12px;text-align:center;" title="Líneas Seco">🌡️ Seco</th>
-                  <th style="padding:10px 12px;text-align:center;" title="Líneas Refrigerado">❄️ Frío</th>
-                  <th style="padding:10px 12px;text-align:center;" title="Líneas Congelado">🧊 Cong.</th>
-                  <th style="padding:10px 12px;text-align:center;">Total</th>
+                  <th style="padding:10px 12px;text-align:center;">Progreso</th>
+                  <th style="padding:10px 12px;text-align:center;">%</th>
                   <th style="padding:10px 12px;">Estado</th>
+                  <th style="padding:10px 12px;">Auxiliar</th>
+                  <th style="padding:10px 12px;text-align:center;">Hr. Inicio</th>
                   <th style="padding:10px 12px;text-align:center;">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                ${rows || '<tr><td colspan="10" style="text-align:center;padding:32px;color:#94a3b8;">Sin pedidos activos hoy. Use los filtros para buscar.</td></tr>'}
+                ${rows || `<tr><td colspan="11" style="text-align:center;padding:32px;color:#94a3b8;">Sin pedidos activos hoy. Use los filtros para buscar.</td></tr>`}
               </tbody>
             </table>
           </div>
@@ -539,7 +546,7 @@ WMS_MODULES.picking = {
           </td>
           <td style="padding:5px 10px;font-size:.78rem;text-align:center;">
             ${editable && lineaPend
-              ? `<input type="number" min="1" id="qty-${parseInt(d.id)||0}" value="${parseInt(d.cantidad_solicitada)||0}"
+              ? `<input type="number" min="0.001" step="0.001" id="qty-${parseInt(d.id)||0}" value="${parseFloat(d.cantidad_solicitada)||0}"
                    style="width:70px;text-align:center;border:1px solid #cbd5e1;border-radius:3px;padding:2px 4px;font-size:.78rem;"
                    onkeydown="if(event.key==='Enter')WMS_MODULES.picking._guardarCantidadLinea(${parseInt(o.id)||0},${parseInt(d.id)||0})">`
               : WMS.esc(d.cantidad_solicitada ?? 0)
@@ -582,7 +589,13 @@ WMS_MODULES.picking = {
             ${editable ? '<th style="padding:5px 10px;font-size:.7rem;text-align:center;">Acciones</th>' : ''}
           </tr></thead>
           <tbody>${lineas||`<tr><td colspan="${editable?7:6}" style="text-align:center;color:#94a3b8;padding:12px;">Sin líneas</td></tr>`}</tbody>
-        </table>`;
+        </table>
+        ${editable ? `<div style="margin-top:8px;text-align:right;">
+          <button onclick="WMS_MODULES.picking._dlgAgregarRef(${parseInt(o.id)||0}, true)"
+            style="background:#059669;color:#fff;border:none;border-radius:4px;padding:5px 14px;font-size:.78rem;cursor:pointer;font-weight:600;">
+            <i class="fa-solid fa-plus"></i> Agregar referencia
+          </button>
+        </div>` : ''}`;
     } catch(e) {
       content.innerHTML = '<div style="color:#ef4444;font-size:.78rem;padding:8px;">Error cargando detalle</div>';
     }
@@ -703,8 +716,8 @@ WMS_MODULES.picking = {
   async _guardarCantidadLinea(ordenId, lineaId) {
     const input = document.getElementById('qty-' + lineaId);
     if (!input) return;
-    const cantidad = parseInt(input.value);
-    if (!cantidad || cantidad < 1) { WMS.toast('warning', 'Cantidad inválida'); return; }
+    const cantidad = parseFloat(input.value);
+    if (!cantidad || cantidad <= 0) { WMS.toast('warning', 'Cantidad inválida'); return; }
     try {
       await API.patch('/picking/' + ordenId + '/linea/' + lineaId, { cantidad_solicitada: cantidad });
       WMS.toast('success', 'Cantidad actualizada');
@@ -715,7 +728,16 @@ WMS_MODULES.picking = {
   },
 
   async _eliminarLinea(ordenId, lineaId) {
-    if (!confirm('¿Eliminar esta línea del pedido?')) return;
+    const { isConfirmed } = await Swal.fire({
+      title: '¿Eliminar línea?',
+      text: 'Se revertirá la reserva de inventario para esta referencia.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-trash-can"></i> Eliminar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc2626',
+    });
+    if (!isConfirmed) return;
     try {
       const r = await API.delete('/picking/' + ordenId + '/linea/' + lineaId);
       WMS.toast('success', r.message || 'Línea eliminada');
@@ -724,8 +746,11 @@ WMS_MODULES.picking = {
         if (expandRow) expandRow.style.display = 'none';
         const mainRow = document.getElementById('main-row-' + ordenId);
         if (mainRow) mainRow.classList.remove('selected');
+        WMS.closeRightPanel();
         this._cargarPedidos();
       } else {
+        const p = this._detallePicking;
+        if (p?.id) { const updated = await API.get('/picking/' + p.id); this._detallePicking = updated.data || updated; this._renderDetallePicking(p.id, this._detallePicking); }
         await this._recargarExpandRow(ordenId);
       }
     } catch(e) {
@@ -776,52 +801,516 @@ WMS_MODULES.picking = {
   },
 
   // ── VER DETALLE ORDEN ─────────────────────────────────────────────────────
+  _detallePicking: null,
   async verDetalle(id) {
     try {
       const r = await API.get('/picking/' + id);
       const p = r.data || r;
-      const lineas = p.lineas || p.detalles || [];
-      const self = this;
-      WMS.showRightPanel('Detalle Picking — ' + (p.planilla_numero || ('#' + id)), `
-        <div class="form-grid form-grid-2" style="margin-bottom:16px;">
-          <div><label class="form-label">Planilla</label><p><span class="badge badge-info">${WMS.esc(p.planilla_numero||'N/A')}</span></p></div>
-          <div><label class="form-label">Cliente</label><p>${WMS.esc(p.cliente||'-')}</p></div>
-          <div><label class="form-label">Ruta</label><p>${WMS.esc(p.ruta||'-')}</p></div>
-          <div><label class="form-label">Estado</label><p><span class="badge badge-info">${WMS.esc(p.estado||'')}</span></p></div>
-          <div><label class="form-label">Auxiliar</label><p>${WMS.esc(p.auxiliar||p.usuario||'-')}</p></div>
-          ${p.observaciones ? `<div style="grid-column:1/-1;"><label class="form-label">Observaciones</label><p>${WMS.esc(p.observaciones)}</p></div>` : ''}
-        </div>
-        <div class="table-container">
-          <table class="erp-table">
-            <thead><tr>
-              <th>Producto</th><th>Ubicación</th>
-              <th style="text-align:center;">Pedido</th>
-              <th style="text-align:center;">Cajas + Picos</th>
-              <th style="text-align:center;">Confirmado</th>
-              <th>Estado Línea</th>
-            </tr></thead>
-            <tbody>${lineas.map(l => {
-              const upc = l.unidades_caja || l.producto?.unidades_caja || 1;
-              const prodNombre = l.producto?.nombre || l.descripcion || '-';
-              const cantSol = l.cantidad_solicitada || l.cantidad_pedida || l.cantidad || 0;
-              return `<tr>
-                <td>${WMS.esc(prodNombre)}</td>
-                <td><span class="badge badge-info">${WMS.esc(l.ubicacion?.codigo || l.ubicacion || '-')}</span></td>
-                <td style="text-align:center;">${WMS.formatNum(cantSol)}</td>
-                <td style="text-align:center;">${self._fmtCantidad(cantSol, upc)}</td>
-                <td style="text-align:center;">${WMS.formatNum(l.cantidad_pickeada||l.cantidad_confirmada||0)}</td>
-                <td><span class="badge ${(l.estado==='Completado'||l.completada)?'badge-success':((l.estado==='Faltante'||l.faltante)?'badge-danger':'badge-warning')}">
-                  ${(l.estado==='Completado'||l.completada)?'Completado':((l.estado==='Faltante'||l.faltante)?'Faltante':'Pendiente')}
-                </span></td>
-              </tr>`;
-            }).join('') || '<tr><td colspan="6" class="table-empty">Sin líneas</td></tr>'}
-            </tbody>
-          </table>
-        </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cerrar</button>
-         ${p.estado==='Asignado'||p.estado==='EnProceso' ? `<button class="btn btn-warning" onclick="WMS_MODULES.picking.transferir(${p.id})"><i class="fa-solid fa-right-left"></i> Transferir</button>` : ''}
-         ${p.estado==='EnProceso' ? `<button class="btn btn-success" onclick="WMS_MODULES.picking.completarPicking(${id})"><i class="fa-solid fa-check-double"></i> Completar</button>` : ''}`);
+      this._detallePicking = p;
+      this._renderDetallePicking(id, p);
     } catch(e) { WMS.toast('error', 'Error cargando detalle'); }
+  },
+
+  _renderDetallePicking(id, p) {
+    const lineas = p.lineas || p.detalles || [];
+    const self = this;
+    const esEditable = ['Pendiente','Asignado','EnProceso'].includes(p.estado);
+    const esCompletada = p.estado === 'Completada';
+    const puedeReabrir = esCompletada && p.estado_certificacion !== 'Certificada';
+
+    const filas = lineas.map((l, idx) => {
+      const upc = l.unidades_caja || l.producto?.unidades_caja || 1;
+      const prodNombre = l.producto?.nombre || l.descripcion || '-';
+      const cantSol = l.cantidad_solicitada || l.cantidad_pedida || l.cantidad || 0;
+      const cantPick = l.cantidad_pickeada || l.cantidad_confirmada || 0;
+      const lEst = l.estado || '';
+      const isOpen = lEst === 'Pendiente' || lEst === 'EnProceso';
+      const badgeCls = lEst === 'Completado' ? 'badge-success' : lEst === 'Faltante' ? 'badge-danger' : 'badge-warning';
+      const acciones = '';
+      return `<tr>
+        <td>
+          <div style="font-size:12px;font-weight:600;">${WMS.esc(prodNombre)}</div>
+          <div style="font-size:10px;color:#94a3b8;">${WMS.esc(l.ubicacion?.codigo || l.ubicacion || '—')}</div>
+          ${acciones}
+        </td>
+        <td style="text-align:center;">${WMS.formatNum(cantSol)}</td>
+        <td style="text-align:center;">${self._fmtCantidad(cantSol, upc)}</td>
+        <td style="text-align:center;font-weight:700;color:${cantPick>0?'#059669':'#94a3b8'}">${WMS.formatNum(cantPick)}</td>
+        <td><span class="badge ${badgeCls}">${lEst||'Pendiente'}</span></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="5" class="table-empty">Sin líneas</td></tr>';
+
+    WMS.showRightPanel('Detalle Picking — ' + (p.planilla_numero || ('#' + id)), `
+      <div class="form-grid form-grid-2" style="margin-bottom:14px;">
+        <div><label class="form-label">Planilla</label><p><span class="badge badge-info">${WMS.esc(p.planilla_numero||'N/A')}</span></p></div>
+        <div><label class="form-label">Cliente</label><p>${WMS.esc(p.cliente||'-')}</p></div>
+        <div><label class="form-label">Ruta</label><p>${WMS.esc(p.ruta||'-')}</p></div>
+        <div><label class="form-label">Estado</label><p><span class="badge badge-info">${WMS.esc(p.estado||'')}</span></p></div>
+        <div><label class="form-label">Auxiliar</label><p>${WMS.esc(p.auxiliar||p.usuario||'-')}</p></div>
+        ${p.sucursal_entrega ? `<div><label class="form-label">Sucursal Entrega</label><p>${WMS.esc(p.sucursal_entrega)}</p></div>` : ''}
+      </div>
+      ${esEditable ? `<div style="background:#fffbeb;border:1px solid #fbbf24;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:#92400e;">
+        <i class="fa-solid fa-circle-info"></i> Usa los botones por línea para separar cantidades o marcar agotados.
+      </div>` : ''}
+      <div class="table-container" style="overflow-x:auto;">
+        <table class="erp-table" style="font-size:12px;">
+          <thead><tr>
+            <th>Producto / Ubicación</th>
+            <th style="text-align:center;">Pedido</th>
+            <th style="text-align:center;">Cajas+Picos</th>
+            <th style="text-align:center;">Pickeado</th>
+            <th>Estado</th>
+          </tr></thead>
+          <tbody>${filas}</tbody>
+        </table>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cerrar</button>
+       ${puedeReabrir ? `<button class="btn btn-warning" onclick="WMS_MODULES.picking._reabrirOrden(${id})"><i class="fa-solid fa-rotate-left"></i> Reabrir</button>` : ''}
+       ${esEditable ? `<button class="btn btn-danger" onclick="WMS_MODULES.picking._anularPedido(${id})"><i class="fa-solid fa-trash"></i> Anular</button>` : ''}
+       ${esEditable ? `<button class="btn btn-info" onclick="WMS_MODULES.picking._dlgAgregarRef(${id})"><i class="fa-solid fa-plus"></i> Agregar Ref.</button>` : ''}
+       ${esEditable ? `<button class="btn btn-success" onclick="WMS_MODULES.picking.completarPicking(${id})"><i class="fa-solid fa-check-double"></i> Cerrar Picking</button>` : ''}`);
+  },
+
+  async _dlgConfirmarLinea(lineaId, nombre, cantSol, upc) {
+    const { value, isConfirmed } = await Swal.fire({
+      title: 'Separar producto',
+      html: `<p style="font-size:13px;margin-bottom:10px;"><b>${WMS.esc(nombre)}</b></p>
+             <p style="font-size:12px;color:#64748b;margin-bottom:8px;">Solicitado: <b>${WMS.formatNum(cantSol)}</b> und (${this._fmtCantidad(cantSol,upc)})</p>
+             <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">Cantidad separada (unidades):</label>
+             <input id="pk-sep-qty" type="number" min="0" step="0.01" value="${cantSol}"
+               class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;">`,
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-check"></i> Confirmar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#059669',
+      preConfirm: () => {
+        const v = parseFloat(document.getElementById('pk-sep-qty')?.value);
+        if (!v || v <= 0) { Swal.showValidationMessage('Ingresa una cantidad mayor a 0'); return false; }
+        return v;
+      }
+    });
+    if (!isConfirmed || !value) return;
+    try {
+      const r = await API.post('/picking/confirmar-consolidado', { ids: String(lineaId), cantidad_tomada: value });
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', 'Línea confirmada');
+      const p = this._detallePicking;
+      if (p?.id) { const updated = await API.get('/picking/' + p.id); this._detallePicking = updated.data || updated; this._renderDetallePicking(p.id, this._detallePicking); }
+    } catch(e) { WMS.toast('error', e.message || 'Error al confirmar'); }
+  },
+
+  async _dlgAgotadoLinea(lineaId, nombre) {
+    const { value: obs, isConfirmed } = await Swal.fire({
+      title: '<span style="color:#dc2626;"><i class="fa-solid fa-ban"></i> Marcar Agotado</span>',
+      html: `<p style="font-size:13px;margin-bottom:10px;"><b>${WMS.esc(nombre)}</b></p>
+             <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">Observación (opcional):</label>
+             <input id="pk-ago-obs" class="swal2-input" placeholder="Sin stock físico en bodega"
+               style="margin:0;width:100%;box-sizing:border-box;">`,
+      showCancelButton: true,
+      confirmButtonText: 'Confirmar Agotado',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#7f1d1d',
+      preConfirm: () => document.getElementById('pk-ago-obs')?.value?.trim() || 'Sin stock físico'
+    });
+    if (!isConfirmed) return;
+    try {
+      const r = await API.post('/picking/marcar-agotado-consolidado', { ids: String(lineaId), observacion: obs });
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', 'Línea marcada como agotada');
+      const p = this._detallePicking;
+      if (p?.id) { const updated = await API.get('/picking/' + p.id); this._detallePicking = updated.data || updated; this._renderDetallePicking(p.id, this._detallePicking); }
+    } catch(e) { WMS.toast('error', e.message || 'Error al marcar agotado'); }
+  },
+
+  async _reabrirOrden(id) {
+    if (!confirm('¿Reabrir esta orden de picking? Volverá a estado EnProceso para continuar el alistamiento.')) return;
+    try {
+      const r = await API.post('/picking/' + id + '/reabrir', {});
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', 'Orden reabierta');
+      WMS.closeRightPanel();
+      this.show_pedidos();
+    } catch(e) { WMS.toast('error', e.message || 'Error al reabrir'); }
+  },
+
+  async _dlgEditarCantidad(lineaId, ordenId, nombre, cantSolActual, upc) {
+    const upcVal = Math.max(1, parseInt(upc) || 1);
+    const { value: nuevaCant, isConfirmed } = await Swal.fire({
+      title: 'Editar cantidad solicitada',
+      html: `<p style="font-size:13px;margin-bottom:10px;"><b>${WMS.esc(nombre)}</b></p>
+             <p style="font-size:12px;color:#64748b;margin-bottom:8px;">
+               Actual: <b>${WMS.formatNum(cantSolActual)}</b> cajas
+               ${upcVal > 1 ? `&nbsp;·&nbsp;<b>${WMS.formatNum(cantSolActual * upcVal)}</b> und` : ''}
+             </p>
+             <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">Nueva cantidad (cajas):</label>
+             <input id="pk-edit-qty" type="number" min="0.001" step="0.001" value="${cantSolActual}"
+               class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;">
+             ${upcVal > 1 ? '<div style="font-size:11px;color:#64748b;margin-top:6px;">1 caja = ' + upcVal + ' unidades</div>' : ''}`,
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-floppy-disk"></i> Guardar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#1d4ed8',
+      preConfirm: () => {
+        const v = parseFloat(document.getElementById('pk-edit-qty')?.value);
+        if (!v || v <= 0) { Swal.showValidationMessage('Ingresa una cantidad mayor a 0'); return false; }
+        return v;
+      }
+    });
+    if (!isConfirmed || !nuevaCant) return;
+    try {
+      const r = await API.patch('/picking/' + ordenId + '/linea/' + lineaId, { cantidad_solicitada: nuevaCant });
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', 'Cantidad actualizada');
+      const p = this._detallePicking;
+      if (p?.id) { const u = await API.get('/picking/' + p.id); this._detallePicking = u.data || u; this._renderDetallePicking(p.id, this._detallePicking); }
+    } catch(e) { WMS.toast('error', e.message || 'Error actualizando cantidad'); }
+  },
+
+  async _dlgAgregarRef(ordenId, desdeExpand = false) {
+    const { value: payload, isConfirmed } = await Swal.fire({
+      title: '<i class="fa-solid fa-plus" style="color:#059669;"></i> Agregar referencia',
+      html: '<div style="text-align:left;">' +
+              '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">Producto <span style="color:red">*</span></label>' +
+              '<input id="ar-search" class="swal2-input" style="margin:0 0 4px;width:100%;box-sizing:border-box;" placeholder="Buscar por código o nombre...">' +
+              '<div id="ar-res" style="max-height:150px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:8px;display:none;font-size:12px;"></div>' +
+              '<div id="ar-sel" style="font-size:11px;color:#059669;font-weight:700;min-height:18px;margin-bottom:8px;"></div>' +
+              '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">Cantidad (cajas) <span style="color:red">*</span></label>' +
+              '<input id="ar-qty" type="number" min="0.001" step="0.001" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" placeholder="0">' +
+            '</div>',
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-plus"></i> Agregar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#059669',
+      didOpen: () => {
+        window._arProdId = null;
+        let t;
+        const res = document.getElementById('ar-res');
+        // Delegación de clicks en el contenedor — evita el bug de comillas en onclick inline
+        res.addEventListener('click', (e) => {
+          const item = e.target.closest('[data-prod-id]');
+          if (!item) return;
+          window._arProdId = parseInt(item.dataset.prodId);
+          document.getElementById('ar-sel').textContent = '✓ ' + item.dataset.prodNombre;
+          res.style.display = 'none';
+        });
+        document.getElementById('ar-search').addEventListener('input', (e) => {
+          clearTimeout(t);
+          const q = e.target.value.trim();
+          if (q.length < 2) { res.style.display = 'none'; res.innerHTML = ''; return; }
+          t = setTimeout(async () => {
+            try {
+              const r = await API.get('/param/productos/buscar', 'q=' + encodeURIComponent(q) + '&limit=10');
+              const items = Array.isArray(r.data) ? r.data : (Array.isArray(r) ? r : []);
+              res.style.display = items.length ? 'block' : 'none';
+              res.innerHTML = items.map(pr =>
+                `<div data-prod-id="${pr.id}" data-prod-nombre="${WMS.esc(pr.nombre||'')}"
+                   style="padding:6px 10px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
+                   onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#fff'">
+                  <b>${WMS.esc(pr.codigo||pr.codigo_interno||String(pr.id))}</b> — ${WMS.esc(pr.nombre||'')}
+                </div>`
+              ).join('') || '<div style="padding:8px;color:#94a3b8;">Sin resultados</div>';
+            } catch {}
+          }, 300);
+        });
+      },
+      preConfirm: () => {
+        const prodId = parseInt(window._arProdId);
+        const qty    = parseFloat(document.getElementById('ar-qty')?.value);
+        if (!prodId) { Swal.showValidationMessage('Selecciona un producto de la lista'); return false; }
+        if (!qty || qty <= 0) { Swal.showValidationMessage('Ingresa una cantidad mayor a 0'); return false; }
+        return { producto_id: prodId, cantidad: qty };
+      }
+    });
+    delete window._arProdId;
+    if (!isConfirmed || !payload) return;
+    try {
+      const r = await API.post('/picking/' + ordenId + '/lineas', payload);
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', r.message || 'Referencia agregada al picking');
+      // Refrescar editor inline si está abierto para este pedido
+      if (this._inlineEditorOrdenId === ordenId && this._inlineEditorPlanKey) {
+        await this._abrirEditorInline(ordenId, this._inlineEditorPlanKey);
+        return;
+      }
+      // Actualizar fila expandida si está abierta (compatibilidad)
+      if (desdeExpand || document.getElementById('expand-' + ordenId)?.style.display !== 'none') {
+        await this._recargarExpandRow(ordenId);
+      }
+      // Actualizar panel derecho si está abierto con este pedido
+      const p = this._detallePicking;
+      if (p?.id === ordenId || (p?.id && !desdeExpand)) {
+        const u = await API.get('/picking/' + (p.id || ordenId));
+        this._detallePicking = u.data || u;
+        this._renderDetallePicking(p.id || ordenId, this._detallePicking);
+      }
+    } catch(e) { WMS.toast('error', e.message || 'Error agregando referencia'); }
+  },
+
+  // ── EDITOR INLINE DE PEDIDO (dentro del sub-panel de planilla) ────────────
+  _inlineEditorOrdenId: null,
+  _inlineEditorPlanKey: null,
+
+  async _abrirEditorInline(ordenId, planKey) {
+    const cont = document.getElementById('ied-' + planKey);
+    if (!cont) { this.verDetalle(ordenId); return; }
+    // Mismo pedido ya visible → cerrar
+    if (this._inlineEditorOrdenId === ordenId && cont.style.display !== 'none') {
+      cont.style.display = 'none';
+      this._inlineEditorOrdenId = null;
+      this._inlineEditorPlanKey = null;
+      return;
+    }
+    this._inlineEditorOrdenId = ordenId;
+    this._inlineEditorPlanKey = planKey;
+    cont.style.display = '';
+    cont.innerHTML = '<div style="padding:12px;color:#64748b;font-size:.78rem;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando pedido...</div>';
+    try {
+      const r = await API.get('/picking/' + ordenId);
+      this._renderEditorInline(r.data || r, planKey, cont);
+    } catch(e) {
+      cont.innerHTML = '<div style="padding:12px;color:#dc2626;font-size:.78rem;"><i class="fa-solid fa-circle-exclamation"></i> Error cargando el pedido</div>';
+    }
+  },
+
+  _renderEditorInline(o, planKey, cont) {
+    const id = o.id;
+    const esEditable = o.estado === 'Pendiente';
+    const lineas = o.detalles || o.lineas || [];
+
+    // cantidad_solicitada = CAJAS; cantidad_pickeada = CAJAS
+    // UPC (unidades_caja) viene del producto; se usa para mostrar la conversión a unidades
+    const filas = lineas.map(d => {
+      const nom   = d.producto?.nombre || d.descripcion || '—';
+      const upc   = Math.max(1, parseInt(d.producto?.unidades_caja || d.unid_pedido_empaque) || 1);
+      const csol  = parseFloat(d.cantidad_solicitada) || 0;   // cajas
+      const cpick = parseFloat(d.cantidad_pickeada)   || 0;   // cajas
+      const cpend = Math.max(0, csol - cpick);                // cajas pendientes
+      const isPend = d.estado === 'Pendiente';
+      const bStyle = d.estado === 'Completado' ? 'background:#dcfce7;color:#166534;'
+                   : d.estado === 'Faltante'   ? 'background:#fee2e2;color:#991b1b;'
+                   :                             'background:#fef9c3;color:#854d0e;';
+      // Helper visual: convierte cajas a unidades para el operario
+      const cajasAUnd = (caj) => upc > 1 ? `<span style="font-size:.65rem;color:#64748b;">${caj * upc} und</span>` : '';
+
+      return `<tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:6px 10px;font-size:.78rem;font-weight:600;">${WMS.esc(nom)}
+          ${upc > 1 ? `<div style="font-size:.65rem;color:#64748b;">UPC: ${upc} und/caj</div>` : ''}
+        </td>
+        <td style="padding:6px 8px;text-align:center;">
+          ${esEditable && isPend
+            ? `<div style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;">
+                 <input type="number" min="0.001" step="0.001" id="ied-qty-${d.id}" value="${csol}"
+                   onkeydown="if(event.key==='Enter')WMS_MODULES.picking._guardarLineaInline(${id},${d.id},'${planKey}')"
+                   style="width:72px;text-align:center;border:1px solid #cbd5e1;border-radius:4px;padding:3px 6px;font-size:.8rem;font-weight:700;">
+                 <span style="font-size:.63rem;color:#64748b;font-weight:600;">cajas</span>
+                 ${cajasAUnd(csol)}
+               </div>`
+            : `<div style="font-weight:700;font-size:.8rem;">${WMS.formatNum(csol)} caj</div>
+               ${cajasAUnd(csol)}`}
+        </td>
+        <td style="padding:6px 8px;text-align:center;font-size:.78rem;">
+          <div style="font-weight:700;color:${cpick>0?'#059669':'#94a3b8'};">${WMS.formatNum(cpick)} caj</div>
+          ${cajasAUnd(cpick)}
+        </td>
+        <td style="padding:6px 8px;text-align:center;font-size:.78rem;">
+          <div style="font-weight:700;color:${cpend>0?'#dc2626':'#94a3b8'};">${WMS.formatNum(cpend)} caj</div>
+          ${cajasAUnd(cpend)}
+        </td>
+        <td style="padding:6px 8px;font-size:.75rem;color:#64748b;">${WMS.esc(d.ambiente||'—')}</td>
+        <td style="padding:6px 8px;"><span style="font-size:.7rem;font-weight:600;padding:1px 6px;border-radius:3px;${bStyle}">${WMS.esc(d.estado||'Pendiente')}</span></td>
+        <td style="padding:6px 8px;text-align:center;white-space:nowrap;">
+          ${esEditable && isPend ? `
+            <button title="Guardar cantidad" onclick="WMS_MODULES.picking._guardarLineaInline(${id},${d.id},'${planKey}')"
+              style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:3px;padding:3px 8px;cursor:pointer;color:#166534;font-size:.7rem;margin-right:3px;">
+              <i class="fa-solid fa-check"></i>
+            </button>
+            <button title="Eliminar línea" onclick="WMS_MODULES.picking._eliminarLineaInline(${id},${d.id},'${planKey}')"
+              style="background:#fee2e2;border:1px solid #fecaca;border-radius:3px;padding:3px 8px;cursor:pointer;color:#991b1b;font-size:.7rem;">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>` : '<span style="color:#94a3b8;font-size:.7rem;">—</span>'}
+        </td>
+      </tr>`;
+    }).join('') || `<tr><td colspan="7" style="text-align:center;padding:12px;color:#94a3b8;font-size:.78rem;">Sin líneas</td></tr>`;
+
+    cont.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-weight:700;font-size:.78rem;color:#1e40af;">
+          <i class="fa-solid fa-list-check"></i> ${WMS.esc(o.numero_orden||'')} — ${WMS.esc(o.sucursal_entrega||o.cliente||'')}
+          ${esEditable ? `<span style="font-size:.68rem;background:#dcfce7;color:#166534;padding:1px 6px;border-radius:3px;margin-left:6px;">Editable</span>` : ''}
+        </div>
+        <button onclick="document.getElementById('ied-${planKey}').style.display='none';WMS_MODULES.picking._inlineEditorOrdenId=null;"
+          style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:.9rem;" title="Cerrar">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:4px;background:#fff;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead style="background:#f1f5f9;font-size:.7rem;text-transform:uppercase;color:#64748b;font-weight:700;">
+            <tr>
+              <th style="padding:6px 10px;text-align:left;">Producto / UPC</th>
+              <th style="padding:6px 8px;text-align:center;">Solicitado<br><span style="font-weight:400;text-transform:none;font-size:.62rem;">(ingresa en cajas)</span></th>
+              <th style="padding:6px 8px;text-align:center;">Pickeado</th>
+              <th style="padding:6px 8px;text-align:center;color:#dc2626;">Pendiente</th>
+              <th style="padding:6px 8px;">Ambiente</th>
+              <th style="padding:6px 8px;">Estado</th>
+              <th style="padding:6px 8px;text-align:center;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>${filas}</tbody>
+        </table>
+      </div>
+      ${esEditable ? `<div style="margin-top:8px;text-align:right;">
+        <button onclick="WMS_MODULES.picking._dlgAgregarRef(${id},false)"
+          style="background:#059669;color:#fff;border:none;border-radius:4px;padding:5px 14px;font-size:.78rem;cursor:pointer;font-weight:600;">
+          <i class="fa-solid fa-plus"></i> Agregar referencia
+        </button>
+      </div>` : ''}`;
+  },
+
+  async _guardarLineaInline(ordenId, lineaId, planKey) {
+    const input = document.getElementById('ied-qty-' + lineaId);
+    if (!input) return;
+    const cantidad = parseFloat(input.value);
+    if (!cantidad || cantidad <= 0) { WMS.toast('warning', 'Cantidad inválida'); return; }
+    try {
+      await API.patch('/picking/' + ordenId + '/linea/' + lineaId, { cantidad_solicitada: cantidad });
+      WMS.toast('success', 'Cantidad actualizada');
+      // Recargar toda la tabla para actualizar progreso/pendiente en la fila de planilla
+      await this._cargarPedidos();
+      // Re-abrir el editor inline en la planilla recién recargada
+      setTimeout(() => {
+        const cont = document.getElementById('ied-' + planKey);
+        if (cont) this._abrirEditorInline(ordenId, planKey);
+      }, 150);
+    } catch(e) { WMS.toast('error', e.message || 'Error actualizando cantidad'); }
+  },
+
+  async _eliminarLineaInline(ordenId, lineaId, planKey) {
+    const { isConfirmed } = await Swal.fire({
+      title: '¿Eliminar línea?', text: 'Se revertirá la reserva de inventario para esta referencia.',
+      icon: 'warning', showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-trash-can"></i> Eliminar',
+      cancelButtonText: 'Cancelar', confirmButtonColor: '#dc2626',
+    });
+    if (!isConfirmed) return;
+    try {
+      const r = await API.delete('/picking/' + ordenId + '/linea/' + lineaId);
+      WMS.toast('success', r.message || 'Línea eliminada');
+      if (r.data?.orden_eliminada) {
+        const cont = document.getElementById('ied-' + planKey);
+        if (cont) cont.style.display = 'none';
+        this._inlineEditorOrdenId = null;
+        this._inlineEditorPlanKey = null;
+        this._cargarPedidos();
+      } else {
+        await this._abrirEditorInline(ordenId, planKey);
+      }
+    } catch(e) { WMS.toast('error', e.message || 'Error eliminando línea'); }
+  },
+
+  async _cerrarPlanilla(planilla) {
+    const ok = await Swal.fire({
+      title: '¿Cerrar planilla #' + planilla + '?',
+      html: 'Todas las líneas deben estar <b>separadas</b> o marcadas como <b>Faltante/Agotado</b>.<br>' +
+            'Líneas pendientes <b>bloquearán el cierre</b>.',
+      icon: 'warning', showCancelButton: true,
+      confirmButtonText: 'Sí, cerrar planilla', cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#059669',
+    });
+    if (!ok.isConfirmed) return;
+    try {
+      await API.post('/picking/planilla/' + planilla + '/completar', {});
+      WMS.toast('success', 'Planilla #' + planilla + ' cerrada');
+      this.show_pedidos();
+    } catch(e) {
+      const d = e.data || {};
+      const lineas = d.lineas_bloqueadas || [];
+      if (lineas.length) {
+        // Mostrar tabla con detalle de líneas bloqueantes
+        const filas = lineas.map(l =>
+          `<tr>
+            <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;">${WMS.esc(l.numero_orden||'')}</td>
+            <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;">${WMS.esc(l.codigo||'')}</td>
+            <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${WMS.esc(l.nombre_producto||'')}</td>
+            <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;text-align:center;">${l.cantidad_solicitada}</td>
+            <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;text-align:center;color:${l.cantidad_pickeada>0?'#16a34a':'#dc2626'};">${l.cantidad_pickeada}</td>
+            <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;"><span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px;">${WMS.esc(l.estado||'')}</span></td>
+          </tr>`
+        ).join('');
+
+        const html = `<p style="color:#6b7280;margin-bottom:8px;font-size:12px;">${WMS.esc(e.message||'')}</p>
+          <div style="overflow-x:auto;max-height:250px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr style="background:#f9fafb;">
+              <th style="padding:4px 7px;font-size:10px;color:#6b7280;text-align:left;">Pedido</th>
+              <th style="padding:4px 7px;font-size:10px;color:#6b7280;text-align:left;">Código</th>
+              <th style="padding:4px 7px;font-size:10px;color:#6b7280;text-align:left;">Producto</th>
+              <th style="padding:4px 7px;font-size:10px;color:#6b7280;text-align:center;">Solicitado</th>
+              <th style="padding:4px 7px;font-size:10px;color:#6b7280;text-align:center;">Pickeado</th>
+              <th style="padding:4px 7px;font-size:10px;color:#6b7280;text-align:left;">Estado</th>
+            </tr></thead>
+            <tbody>${filas}</tbody>
+          </table></div>`;
+
+        if (d.puede_forzar) {
+          const opciones = await Swal.fire({
+            title: `${lineas.length} línea(s) sin separar`,
+            html,
+            icon: 'warning',
+            width: '680px',
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: '<i class="fa-solid fa-lock-open"></i> Liberar líneas (reabrir)',
+            denyButtonText: '<i class="fa-solid fa-xmark-circle"></i> Forzar cierre (→ Agotado)',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#2563eb',
+            denyButtonColor: '#dc2626',
+          });
+          if (opciones.isConfirmed) {
+            // Liberar líneas para volver a separar
+            try {
+              const r2 = await API.post('/picking/planilla/' + planilla + '/liberar-vacias', {});
+              WMS.toast('success', `${r2.data?.liberadas||0} línea(s) liberadas — ya pueden separarse`);
+              this.show_pedidos();
+            } catch(e2) { WMS.toast('error', e2.message || 'Error al liberar'); }
+          } else if (opciones.isDenied) {
+            // Forzar cierre marcando todo como Agotado
+            try {
+              await API.post('/picking/planilla/' + planilla + '/completar?forzar=1', {});
+              WMS.toast('success', 'Planilla #' + planilla + ' cerrada (líneas → Agotado)');
+              this.show_pedidos();
+            } catch(e2) { WMS.toast('error', e2.message || 'Error al forzar cierre'); }
+          }
+        } else {
+          // Solo informar — el auxiliar debe resolver
+          await Swal.fire({
+            title: `${lineas.length} línea(s) sin separar`,
+            html,
+            icon: 'warning',
+            width: '680px',
+            confirmButtonText: 'Entendido',
+          });
+        }
+      } else {
+        WMS.toast('error', e.message || 'Error al cerrar planilla');
+      }
+    }
+  },
+
+  async _reabrirPlanilla(ordenIds) {
+    if (!Array.isArray(ordenIds) || !ordenIds.length) return;
+    const ok = await Swal.fire({
+      title: '¿Reabrir planilla?',
+      text: 'Todas las órdenes de la planilla volverán a estado EnProceso.',
+      icon: 'warning', showCancelButton: true,
+      confirmButtonText: 'Sí, reabrir', cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#d97706',
+    });
+    if (!ok.isConfirmed) return;
+    const results = await Promise.allSettled(ordenIds.map(id => API.post('/picking/' + id + '/reabrir', {})));
+    const ok2 = results.filter(r => r.status === 'fulfilled').length;
+    if (ok2 > 0) { WMS.toast('success', 'Planilla reabierta (' + ok2 + ' orden(es))'); this.show_pedidos(); }
+    else WMS.toast('error', results[0]?.reason?.message || 'No se pudo reabrir la planilla');
   },
 
   // ── ASIGNACIÓN POR PLANILLA ───────────────────────────────────────────────
@@ -844,7 +1333,8 @@ WMS_MODULES.picking = {
     WMS.showRightPanel(`Asignar Planilla: ${planilla}`, `
       <div style="margin-bottom:12px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;">
         <i class="fa-solid fa-layer-group"></i>
-        <strong>${ordenIds.length}</strong> orden(es) en esta planilla serán asignadas.
+        <strong>${ordenIds.length}</strong> pedido(s) en esta planilla serán asignados al auxiliar seleccionado.
+        <div style="margin-top:4px;font-size:11px;color:#3730a3;">Los pedidos ya asignados previamente serán reasignados.</div>
       </div>
 
       <div class="form-grid form-grid-2">
@@ -979,8 +1469,9 @@ WMS_MODULES.picking = {
         const data = r.data || {};
         const resMsg = [`Líneas asignadas: ${data.asignadas || 0}`];
         if (data.inventario_reservado > 0) resMsg.push(`${data.inventario_reservado} unidades reservadas`);
-        if (data.faltantes_detectados > 0) resMsg.push(`${data.faltantes_detectados} faltantes detectados`);
+        if (data.faltantes_detectados > 0) resMsg.push(`⚠ ${data.faltantes_detectados} agotados`);
         WMS.toast(data.faltantes_detectados > 0 ? 'warning' : 'success', resMsg.join(' • '));
+        if ((data.faltantes_detectados || 0) > 0) this._mostrarAlertaAgotados(data);
       } else {
         // Asignación dividida por pasillo
         const rows = document.querySelectorAll('.split-row');
@@ -1100,12 +1591,24 @@ WMS_MODULES.picking = {
   },
 
   async completarPicking(id) {
-    if (!confirm('¿Marcar este picking como completado?')) return;
+    const ok = await Swal.fire({
+      title: '¿Cerrar orden de picking?',
+      html: 'Todas las líneas deben estar <b>Separadas</b> o marcadas como <b>Faltante/Agotado</b>.<br>' +
+            'Líneas pendientes o en proceso <b>bloquearán el cierre</b>.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, cerrar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#059669',
+    });
+    if (!ok.isConfirmed) return;
     try {
       const r = await API.post('/picking/' + id + '/completar', {});
-      if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Picking completado'); WMS.closeRightPanel(); this.show_pedidos(); }
-    } catch(e) { WMS.toast('error', 'Error'); }
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success', 'Picking cerrado');
+      WMS.closeRightPanel();
+      this.show_pedidos();
+    } catch(e) { WMS.toast('error', e.message || 'Error al cerrar picking'); }
   },
 
   async deletePicking(id) {
@@ -1181,6 +1684,7 @@ WMS_MODULES.picking = {
               <thead>
                 <tr style="background:#eff6ff;">
                   <th style="padding:8px 10px;text-align:left;color:#64748b;font-weight:700;">Producto</th>
+                  <th style="padding:8px 10px;text-align:center;color:#64748b;font-weight:700;width:100px;">Ambiente</th>
                   <th style="padding:8px 10px;text-align:center;color:#64748b;font-weight:700;width:100px;">Cantidad</th>
                   <th style="padding:8px 10px;width:36px;"></th>
                 </tr>
@@ -1309,14 +1813,30 @@ WMS_MODULES.picking = {
                placeholder="Buscar producto por nombre o código..." autocomplete="off"
                oninput="WMS_MODULES.picking._pmProdInput('${idx}')">
         <input type="hidden" class="pm-pid" id="pm-pid-${idx}" value="">
+        <input type="hidden" class="pm-factor-udm" id="pm-fudm-${idx}" value="">
+        <input type="hidden" class="pm-unidad-cont" id="pm-ucont-${idx}" value="">
+        <input type="hidden" class="pm-ambiente" id="pm-amb-${idx}" value="">
         <div id="pm-drop-${idx}"
              style="display:none;position:absolute;left:0;right:0;z-index:300;background:#fff;
                     border:1px solid #e2e8f0;border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,.12);
                     max-height:220px;overflow-y:auto;top:calc(100% + 2px);min-width:340px;"></div>
       </td>
       <td style="padding:6px 8px;text-align:center;">
-        <input type="number" class="form-control pm-qty"
-               style="width:85px;margin:0 auto;text-align:center;font-size:12px;" min="1" value="1">
+        <span id="pm-amb-label-${idx}" style="font-size:11px;font-weight:600;padding:3px 6px;border-radius:12px;background:#f1f5f9;color:#64748b;">—</span>
+      </td>
+      <td style="padding:6px 8px;text-align:center;min-width:160px;">
+        <div id="pm-qty-wrap-${idx}">
+          <input type="number" class="form-control pm-qty"
+                 style="width:85px;margin:0 auto;text-align:center;font-size:12px;" min="0.001" step="0.001" value="1"
+                 oninput="WMS_MODULES.picking._pmActualizarUe('${idx}')">
+          <div id="pm-ue-row-${idx}" style="display:none;margin-top:4px;">
+            <div style="font-size:10px;color:#64748b;text-align:center;margin-bottom:2px;" id="pm-ue-label-${idx}">U/E:</div>
+            <input type="number" class="form-control pm-qty-ue"
+                   style="width:85px;margin:0 auto;text-align:center;font-size:12px;border-color:#86efac;" min="0.001" step="0.001"
+                   placeholder="U/E" id="pm-qty-ue-${idx}"
+                   oninput="WMS_MODULES.picking._pmUeToUnidades('${idx}')">
+          </div>
+        </div>
       </td>
       <td style="text-align:center;padding:6px;">
         <button class="btn btn-xs btn-danger-soft" onclick="this.closest('tr').remove()"
@@ -1338,7 +1858,7 @@ WMS_MODULES.picking = {
     const q = input.value.trim();
     if (q.length < 2) { drop.style.display = 'none'; return; }
     try {
-      const r = await API.get('/param/productos/buscar?q=' + encodeURIComponent(q) + '&limit=10');
+      const r = await API.get('/param/productos/buscar?q=' + encodeURIComponent(q) + '&limit=200');
       const items = Array.isArray(r.data) ? r.data : (Array.isArray(r) ? r : []);
       this._pmCache[idx] = items;
       if (!items.length) {
@@ -1373,12 +1893,55 @@ WMS_MODULES.picking = {
     const input = document.getElementById('pm-pn-' + idx);
     const pid   = document.getElementById('pm-pid-' + idx);
     const drop  = document.getElementById('pm-drop-' + idx);
+    const amb   = document.getElementById('pm-amb-' + idx);
+    const ambLbl= document.getElementById('pm-amb-label-' + idx);
+    
     if (input) input.value = p.nombre || p.descripcion || '';
     if (pid)   pid.value   = p.id;
+    if (amb)   amb.value   = p.ambiente_nombre || 'SECO';
+    if (ambLbl) {
+      const a = p.ambiente_nombre || 'SECO';
+      ambLbl.textContent = a;
+      if (a === 'REFRIGERADO') { ambLbl.style.background = '#dbeafe'; ambLbl.style.color = '#1e40af'; }
+      else if (a === 'CONGELADO') { ambLbl.style.background = '#f3e8ff'; ambLbl.style.color = '#6b21a8'; }
+      else { ambLbl.style.background = '#ffedd5'; ambLbl.style.color = '#9a3412'; }
+    }
     if (drop)  drop.style.display = 'none';
-    // Enfocar cantidad para flujo rápido
-    const tr  = document.getElementById('pm-line-' + idx);
-    if (tr) tr.querySelector('.pm-qty')?.select();
+
+    // Poblar factor_udm y mostrar campo U/E si aplica
+    const fudmInp  = document.getElementById('pm-fudm-' + idx);
+    const ucontInp = document.getElementById('pm-ucont-' + idx);
+    const ueRow    = document.getElementById('pm-ue-row-' + idx);
+    const ueLabel  = document.getElementById('pm-ue-label-' + idx);
+    const factorUdm     = parseFloat(p.factor_udm || 0);
+    const unidContenido = p.unidad_contenido || '';
+    if (fudmInp)  fudmInp.value  = factorUdm || '';
+    if (ucontInp) ucontInp.value = unidContenido;
+    if (ueRow) {
+      ueRow.style.display = factorUdm > 0 ? 'block' : 'none';
+      if (ueLabel && factorUdm > 0) ueLabel.textContent = `en ${unidContenido || 'U/E'} (×${factorUdm}):`;
+    }
+    // Enfocar campo U/E si existe, sino cantidad normal
+    if (factorUdm > 0) {
+      document.getElementById('pm-qty-ue-' + idx)?.select();
+    } else {
+      const tr = document.getElementById('pm-line-' + idx);
+      if (tr) tr.querySelector('.pm-qty')?.select();
+    }
+  },
+
+  _pmUeToUnidades(idx) {
+    const factorUdm = parseFloat(document.getElementById('pm-fudm-' + idx)?.value || '0') || 0;
+    const cantUe    = parseFloat(document.getElementById('pm-qty-ue-' + idx)?.value || '0') || 0;
+    const qtyInput  = document.getElementById('pm-line-' + idx)?.querySelector('.pm-qty');
+    if (!factorUdm || !qtyInput) return;
+    const unidades = cantUe > 0 ? cantUe / factorUdm : 0;
+    qtyInput.value = unidades > 0 ? unidades.toFixed(4).replace(/\.?0+$/, '') : '';
+  },
+
+  _pmActualizarUe(idx) {
+    const ueInput = document.getElementById('pm-qty-ue-' + idx);
+    if (ueInput) ueInput.value = '';
   },
 
   async _pmGuardar() {
@@ -1430,16 +1993,12 @@ WMS_MODULES.picking = {
 
   async importarPedidos() {
     const CAMPOS_REQUERIDOS = [
-      { key: 'numero_factura', label: 'Num Pedido',       icon: 'fa-file-invoice', color: '#6366f1' },
-      { key: 'cliente',        label: 'Sucursal Entrega', icon: 'fa-building',     color: '#0ea5e9' },
-      { key: 'documento',      label: 'Documento',        icon: 'fa-id-card',      color: '#8b5cf6' },
-      { key: 'direccion',      label: 'Dirección',        icon: 'fa-location-dot', color: '#f59e0b' },
-      { key: 'planilla',       label: 'Planilla',         icon: 'fa-layer-group',  color: '#10b981' },
-      { key: 'asesor',         label: 'Asesor',           icon: 'fa-user-tie',     color: '#ec4899' },
-      { key: 'producto',       label: 'Referencia (EAN)', icon: 'fa-barcode',      color: '#14b8a6' },
-      { key: 'cantidad',       label: 'UNID Pedido',      icon: 'fa-cubes',        color: '#f97316' },
-      { key: 'costo',          label: 'Costo',            icon: 'fa-dollar-sign',  color: '#22c55e' },
-      { key: 'descuento',      label: 'Descuento %',      icon: 'fa-percent',      color: '#ef4444' },
+      { key: 'numero_factura',      label: 'Num Pedido',          icon: 'fa-file-invoice', color: '#6366f1' },
+      { key: 'cliente',             label: 'Sucursal Entrega',    icon: 'fa-building',     color: '#0ea5e9' },
+      { key: 'producto',            label: 'Referencia (EAN)',    icon: 'fa-barcode',      color: '#14b8a6' },
+      { key: 'cantidad',            label: 'UNID Pedido',         icon: 'fa-cubes',        color: '#f97316' },
+      { key: 'unid_pedido_empaque', label: 'UNID Pedido Empaque', icon: 'fa-box',          color: '#8b5cf6' },
+      { key: 'unid_pedido_total',   label: 'UNID Pedido Total',   icon: 'fa-layer-group',  color: '#10b981' },
     ];
 
     const camposGrid = CAMPOS_REQUERIDOS.map(c => `
@@ -1464,17 +2023,17 @@ WMS_MODULES.picking = {
           <strong>Mapeo de Campos (Sistema ← Archivo):</strong>
           <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px 20px;margin-top:6px;font-size:11px;">
             <span>Numero Factura ← <strong>Num Pedido</strong></span>
-            <span>Cliente ← <strong>SUCURSAL ENTREGA</strong></span>
+            <span>Cliente ← <strong>Sucursal Entrega</strong></span>
             <span>Planilla ← <strong>Num Pedido</strong></span>
-            <span>Producto ← <strong>Referencia</strong></span>
-            <span>Cantidad ← <strong>UNID PEDIDO</strong></span>
-            <span>Documento, Direccion ← <em>opcionales</em></span>
+            <span>Producto ← <strong>Referencia (EAN)</strong></span>
+            <span>Cantidad ← <strong>UNID Pedido</strong></span>
+            <span>Empaque / Total ← <strong>UNID Pedido Empaque / Total</strong></span>
           </div>
         </div>
 
         <div style="margin-bottom:14px;">
           <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">
-            <i class="fa-solid fa-diagram-project" style="margin-right:6px;color:#6366f1;"></i>Campos que se extraerán del archivo
+            <i class="fa-solid fa-diagram-project" style="margin-right:6px;color:#6366f1;"></i>Columnas requeridas en el archivo
           </div>
           <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;">
             ${camposGrid}
@@ -1483,8 +2042,8 @@ WMS_MODULES.picking = {
 
         <div style="padding:10px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;font-size:12px;color:#92400e;margin-bottom:14px;">
           <i class="fa-solid fa-lightbulb" style="margin-right:6px;color:#f59e0b;"></i>
-          <strong>Nota:</strong> El archivo puede contener más columnas — el sistema solo extraerá los campos listados arriba.
-          Los pedidos se agrupan por <strong>Num Pedido</strong> para crear las órdenes de picking. Al asignar, el sistema reservará inventario y detectará faltantes automáticamente.
+          <strong>Nota:</strong> El archivo puede tener columnas adicionales — solo se leerán las 6 listadas arriba.
+          Los pedidos se agrupan por <strong>Num Pedido</strong>: varias filas del mismo número forman una sola orden con múltiples referencias. Al asignar, el sistema reserva inventario y detecta faltantes automáticamente.
         </div>
 
         <div class="form-group">
@@ -1555,32 +2114,29 @@ WMS_MODULES.picking = {
       const sep = lines[0].includes(';') ? ';' : ',';
       const headers = lines[0].split(sep).map(h => h.trim().replace(/^\uFEFF/, ''));
 
-      // Auto-detect column mappings (case-insensitive, partial match)
+      // Auto-detect column mappings — solo campos requeridos, aliases exactos para evitar falsos positivos
       const MAPEO = {
-        numero_factura: ['numero factura', 'num factura', 'factura', 'nro factura', 'num pedido', 'numero pedido', 'nro pedido', 'pedido'],
-        cliente:        ['cliente', 'nombre cliente', 'razon social', 'sucursal entrega', 'sucursal', 'punto entrega', 'destino'],
-        documento:      ['documento', 'nit', 'cedula', 'cc', 'rut'],
-        direccion:      ['direccion', 'dirección', 'dir', 'address'],
-        planilla:       ['planilla', 'planilla numero', 'num planilla', 'nro planilla', 'num pedido', 'numero pedido'],
-        asesor:         ['asesor', 'comercial', 'vendedor', 'asesor comercial'],
-        producto:       ['referencia', 'ref', 'barras', 'ean', 'codigo barras', 'codigo_barras', 'producto', 'codigo producto', 'codigo'],
-        cantidad:       ['cantidad', 'cant', 'qty', 'unidades', 'unid pedido', 'unid_pedido', 'unidades pedido'],
-        costo:          ['costo', 'precio', 'valor', 'cost', 'precio unitario'],
-        descuento:      ['descuento', 'desc', 'descto', 'discount', 'dcto'],
+        numero_factura:      ['num pedido', 'numero pedido', 'nro pedido', 'num factura', 'numero factura', 'nro factura', 'pedido', 'factura'],
+        cliente:             ['sucursal entrega', 'sucursal', 'cliente', 'nombre cliente', 'punto entrega', 'destino', 'razon social'],
+        producto:            ['referencia', 'ean', 'codigo barras', 'codigo_barras', 'codigo producto', 'cod producto', 'cod_producto'],
+        cantidad:            ['unid pedido', 'unid_pedido', 'cantidad', 'cant', 'qty', 'unidades pedido', 'unidades'],
+        unid_pedido_empaque: ['unid pedido empaque', 'unid_pedido_empaque', 'cajas pedidas', 'cajas pedido', 'unidades empaque', 'empaque'],
+        unid_pedido_total:   ['unid pedido total', 'unid_pedido_total', 'total unidades pedidas', 'unid total pedidas'],
       };
 
+      // Match: exacto primero; si no, partial solo para aliases largos (≥8 chars) para evitar colisiones
       const colMap = {};
       for (const [field, aliases] of Object.entries(MAPEO)) {
         const idx = headers.findIndex(h => {
           const hl = h.toLowerCase().trim();
-          return aliases.some(a => hl === a || hl.includes(a));
+          return aliases.some(a => hl === a || (a.length >= 8 && hl.includes(a)));
         });
         if (idx >= 0) colMap[field] = idx;
       }
 
       // Count mapped fields
       const mapped = Object.keys(colMap).length;
-      const total = Object.keys(MAPEO).length;
+      const total = Object.keys(MAPEO).length; // 6
 
       // Parse preview rows
       const previewRows = lines.slice(1, 6).map(l => l.split(sep));
@@ -1596,9 +2152,12 @@ WMS_MODULES.picking = {
       // Build preview table showing only the mapped columns
       const mappedFields = Object.entries(colMap);
       const fieldLabels = {
-        numero_factura: 'Num Pedido', cliente: 'Sucursal Entrega', documento: 'Documento',
-        direccion: 'Dirección', planilla: 'Planilla', asesor: 'Asesor',
-        producto: 'Referencia (EAN)', cantidad: 'UNID Pedido', costo: 'Costo', descuento: 'Descuento'
+        numero_factura:      'Num Pedido',
+        cliente:             'Sucursal Entrega',
+        producto:            'Referencia (EAN)',
+        cantidad:            'UNID Pedido',
+        unid_pedido_empaque: 'UNID Pedido Empaque',
+        unid_pedido_total:   'UNID Pedido Total',
       };
 
       let tableHtml = `<table style="width:100%;border-collapse:collapse;font-size:11px;">
@@ -1621,14 +2180,21 @@ WMS_MODULES.picking = {
       tableHtml += '</tbody></table>';
 
       document.getElementById('pick-preview-table').innerHTML = tableHtml;
+      const allOk = mapped === total;
       document.getElementById('pick-preview-summary').innerHTML = `
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;">
-          <span><i class="fa-solid fa-check-circle" style="color:#10b981;margin-right:4px;"></i><strong>${mapped}</strong> / ${total} campos detectados</span>
+          <span>
+            <i class="fa-solid ${allOk ? 'fa-circle-check' : 'fa-triangle-exclamation'}" style="color:${allOk ? '#10b981' : '#f59e0b'};margin-right:4px;"></i>
+            <strong>${mapped}</strong> / ${total} columnas requeridas detectadas
+          </span>
           <span><i class="fa-solid fa-file-lines" style="color:#3b82f6;margin-right:4px;"></i><strong>${allDataRows.length}</strong> líneas de datos</span>
           <span><i class="fa-solid fa-file-invoice" style="color:#6366f1;margin-right:4px;"></i><strong>${facturas.size}</strong> pedidos únicos (= órdenes picking)</span>
           <span><i class="fa-solid fa-grip-lines" style="color:#94a3b8;margin-right:4px;"></i>Separador: <code>${sep === ';' ? 'punto y coma (;)' : 'coma (,)'}</code></span>
         </div>
-        ${mapped < 5 ? `<div style="margin-top:8px;padding:6px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Advertencia: Se detectaron pocos campos. Verifique que el archivo tenga los encabezados correctos.</div>` : ''}
+        ${!allOk ? `<div style="margin-top:8px;padding:6px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;">
+          <i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>
+          <strong>Columnas no detectadas:</strong> ${Object.keys(MAPEO).filter(f => colMap[f] === undefined).map(f => fieldLabels[f]).join(', ')}. Verifique que los encabezados del archivo coincidan.
+        </div>` : ''}
       `;
 
       document.getElementById('pick-preview-section').style.display = 'block';
@@ -1709,6 +2275,37 @@ WMS_MODULES.picking = {
               </tbody>
             </table>
           </div>` : '';
+
+        // ML Análisis de reconciliación autónoma (debe declararse antes de summaryHtml)
+        const lineasArchivo = arch.lineas_archivo || 0;
+        const lineasSistema = sys.lineas_sistema || 0;
+        const excluidas = lineasArchivo - lineasSistema;
+        const mlIntegro = excluidas === 0 && noProd === 0 && errList.length === 0;
+        const mlBg     = mlIntegro ? '#f0fdf4' : '#fefce8';
+        const mlBorder = mlIntegro ? '#bbf7d0' : '#fde68a';
+        const mlColor  = mlIntegro ? '#166534' : '#92400e';
+        const mlLineas = excluidas > 0
+          ? `⚠ Líneas archivo: <strong>${lineasArchivo}</strong> → cargadas: <strong>${lineasSistema}</strong> <span style="color:#dc2626;">(${excluidas} excluidas)</span>`
+          : `✅ Líneas archivo: <strong>${lineasArchivo}</strong> → cargadas: <strong>${lineasSistema}</strong> <span style="color:#16a34a;">OK</span>`;
+        const mlRefs = noProd > 0
+          ? `⚠ Referencias sin codificar: <strong style="color:#d97706;">${noProd}</strong> — requieren creación`
+          : `✅ Referencias sin codificar: <strong>0</strong> <span style="color:#16a34a;">OK</span>`;
+        const mlConc = mlIntegro
+          ? '<div style="margin-top:6px;color:#166534;font-weight:600;">✅ Importación íntegra — líneas y referencias concuerdan.</div>'
+          : '<div style="margin-top:6px;color:#92400e;">⚠ Acción requerida: revise referencias sin codificar o líneas excluidas antes de asignar.</div>';
+        const mlHtml = `
+          <div style="margin-top:12px;padding:10px 14px;background:${mlBg};border:1px solid ${mlBorder};border-radius:6px;font-size:12px;">
+            <div style="font-weight:700;color:${mlColor};margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+              <i class="fa-solid fa-robot" style="font-size:14px;"></i> Análisis ML — Reconciliación de Importación
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;">
+              <span>${mlLineas}</span>
+              <span>${mlRefs}</span>
+              <span>${(j.importadas||0)>0?'✅':'ℹ'} Planillas nuevas: <strong>${j.importadas||0}</strong> · Actualizadas: <strong>${actualizadas}</strong></span>
+              <span>${errList.length===0?'✅':'❌'} Errores: <strong style="${errList.length>0?'color:#dc2626;':''}">${errList.length}</strong></span>
+            </div>
+            ${mlConc}
+          </div>`;
 
         // Build the professional summary HTML
         const summaryHtml = `
@@ -1808,6 +2405,7 @@ WMS_MODULES.picking = {
             </div>` : ''}
 
             ${errList.length > 0 ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><strong>Detalle de errores (' + errList.length + '):</strong><ul style="margin:4px 0 0;padding-left:16px;">' + errList.slice(0,15).map(e => '<li>' + WMS.esc(e) + '</li>').join('') + (errList.length > 15 ? '<li>... y ' + (errList.length-15) + ' más</li>' : '') + '</ul></div>' : ''}
+            ${mlHtml}
           </div>`;
 
         const modalTitle = zeroPedidos
@@ -1954,7 +2552,7 @@ WMS_MODULES.picking = {
 
   async _cargarAuxiliares() {
     try {
-      const r = await API.get('/param/personal?rol=auxiliar&limit=100');
+      const r = await API.get('/param/personal?rol=Auxiliar&limit=100');
       this._asigAuxiliares = r.data || r || [];
     } catch(e) { this._asigAuxiliares = []; }
   },
@@ -1976,9 +2574,12 @@ WMS_MODULES.picking = {
     if (f.sucursal_entrega) params.set('sucursal_entrega', f.sucursal_entrega);
     params.set('sin_auxiliar', '1');
     try {
+      if (!this._ambientesCache) {
+        const ar = await API.get('/param/ambientes');
+        this._ambientesCache = ar.data || ar || [];
+      }
       const r = await API.get('/picking?' + params.toString());
       this._asigOrdenes = r.data || r || [];
-      // Preserve only selections that still exist in the new result
       const validIds = new Set((this._asigOrdenes).map(o => o.id));
       for (const id of this._asigSeleccionados) {
         if (!validIds.has(id)) this._asigSeleccionados.delete(id);
@@ -1988,37 +2589,84 @@ WMS_MODULES.picking = {
   },
 
   _renderAsignacion() {
-    const ordenes = this._asigOrdenes;
+    const ordenes = this._asigOrdenes;  // ya filtrados: Pendiente + sin_auxiliar
     const f = this._asigFiltros || {};
-    const sucursales = [...new Set(ordenes.map(o=>o.sucursal_entrega||o.cliente).filter(Boolean))];
-    const rutas      = [...new Set(ordenes.map(o=>o.ruta).filter(Boolean))];
-
+    const defaultColores = {seco:'#92400e',refrigerado:'#0369a1',congelado:'#7c3aed'};
+    const defaultIconos  = {seco:'🌡️',refrigerado:'❄️',congelado:'🧊'};
+    const ambientes = (this._ambientesCache || []).length > 0
+      ? this._ambientesCache
+      : [{codigo:'SECO',color:'#92400e'},{codigo:'REFRIGERADO',color:'#0369a1'},{codigo:'CONGELADO',color:'#7c3aed'}];
     const auxOpts = this._asigAuxiliares.map(a =>
       `<option value="${parseInt(a.id)||0}">${WMS.esc(a.nombre)}</option>`).join('');
 
-    const rows = ordenes.map(o => {
-      const seco  = o.seco_count || 0;
-      const frio  = o.refrigerado_count || 0;
-      const cong  = o.congelado_count || 0;
-      const total = o.total_count || 0;
-      const sel   = this._asigSeleccionados.has(o.id);
+    // ── Agrupar pedidos pendientes por planilla_numero ───────────────────────
+    const planillasMap = {};
+    ordenes.forEach(o => {
+      const key = o.planilla_numero || o.numero_orden;
+      if (!planillasMap[key]) {
+        planillasMap[key] = {
+          planilla : key,
+          planKey  : key.replace(/[^a-zA-Z0-9]/g, '_'),
+          cliente  : o.sucursal_entrega || o.cliente || '—',
+          ruta     : o.ruta || '',
+          ordenes  : [],
+          ordenIds : [],
+          totalLineas: 0,
+        };
+        ambientes.forEach(a => { planillasMap[key][a.codigo.toLowerCase().replace(/ /g,'_') + '_count'] = 0; });
+      }
+      planillasMap[key].ordenes.push(o);
+      planillasMap[key].ordenIds.push(o.id);
+      planillasMap[key].totalLineas += (o.total_count || 0);
+      ambientes.forEach(a => {
+        const k = a.codigo.toLowerCase().replace(/ /g,'_') + '_count';
+        planillasMap[key][k] += (o[k] || 0);
+      });
+    });
+    const planillas  = Object.values(planillasMap);
+    const sucursales = [...new Set(ordenes.map(o=>o.sucursal_entrega||o.cliente).filter(Boolean))];
+    const rutas      = [...new Set(ordenes.map(o=>o.ruta).filter(Boolean))];
+
+    // ── Filas: una por planilla ──────────────────────────────────────────────
+    const rows = planillas.map(p => {
+      const todosSel  = p.ordenIds.length > 0 && p.ordenIds.every(id => this._asigSeleccionados.has(id));
+      const algunoSel = p.ordenIds.some(id => this._asigSeleccionados.has(id));
+      const ordenIdsJson = JSON.stringify(p.ordenIds);
+      const rowBg = todosSel ? 'background:#eff6ff;' : algunoSel ? 'background:#f0fdf4;' : '';
       return `
-        <tr style="${sel?'background:#eff6ff;':''}" id="asig-row-${parseInt(o.id)||0}">
+        <tr style="${rowBg}" id="asig-plan-${p.planKey}">
           <td style="padding:8px 12px;text-align:center;">
-            <input type="checkbox" ${sel?'checked':''} onchange="WMS_MODULES.picking._toggleAsig(${parseInt(o.id)||0},this.checked)">
+            <input type="checkbox" ${todosSel?'checked':''} title="Seleccionar planilla completa"
+              onchange="WMS_MODULES.picking._toggleAsigPlanilla('${p.planKey}',${ordenIdsJson},this.checked)">
           </td>
           <td style="padding:8px 12px;">
-            <div style="font-weight:700;color:#0F4C81;">${WMS.esc(o.numero_pedido||o.numero_orden||'—')}</div>
-            <div style="font-size:.7rem;color:#64748b;">${WMS.esc(o.cliente||'')}</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px;">
+              <span style="background:#1e3a8a;color:#fff;font-family:monospace;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:3px;">${WMS.esc(p.planilla)}</span>
+              ${p.ordenes.length > 1
+                ? `<span style="background:#fef3c7;color:#92400e;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:3px;"><i class="fa-solid fa-triangle-exclamation"></i> ${p.ordenes.length} pedidos pendientes</span>`
+                : `<span style="background:#f1f5f9;color:#64748b;font-size:.65rem;padding:1px 6px;border-radius:3px;">1 pedido</span>`}
+            </div>
+            <div style="font-size:.78rem;font-weight:600;color:#1e293b;">${WMS.esc(p.cliente)}</div>
           </td>
-          <td style="padding:8px 12px;">${WMS.esc(o.sucursal_entrega||o.cliente||'—')}</td>
           <td style="padding:8px 12px;">
-            ${o.ruta?`<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:3px;font-size:.72rem;">${WMS.esc(o.ruta)}</span>`:'—'}
+            ${p.ruta
+              ? `<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:3px;font-size:.72rem;">${WMS.esc(p.ruta)}</span>`
+              : '<span style="color:#94a3b8;font-size:.72rem;">—</span>'}
           </td>
-          <td style="padding:8px 12px;text-align:center;font-weight:700;color:#92400e;">${seco||'—'}</td>
-          <td style="padding:8px 12px;text-align:center;font-weight:700;color:#0369a1;">${frio||'—'}</td>
-          <td style="padding:8px 12px;text-align:center;font-weight:700;color:#7c3aed;">${cong||'—'}</td>
-          <td style="padding:8px 12px;text-align:center;font-weight:700;">${total}</td>
+          ${ambientes.map(a => {
+            const k   = a.codigo.toLowerCase().replace(/ /g,'_') + '_count';
+            const val = p[k] || 0;
+            const color = a.color || defaultColores[a.codigo.toLowerCase()] || '#475569';
+            return `<td style="padding:8px 12px;text-align:center;font-weight:700;color:${val>0?color:'#94a3b8'};">${val||'—'}</td>`;
+          }).join('')}
+          <td style="padding:8px 12px;text-align:center;font-weight:700;">${p.totalLineas}</td>
+          <td style="padding:8px 12px;text-align:center;">
+            <button title="Seleccionar y asignar esta planilla"
+              onclick="WMS_MODULES.picking._seleccionarYAsignarPlanilla('${p.planKey}',${ordenIdsJson})"
+              style="background:#0F4C81;color:#fff;border:none;border-radius:4px;padding:5px 12px;cursor:pointer;font-size:.72rem;font-weight:600;white-space:nowrap;">
+              <i class="fa-solid fa-user-check"></i> Asignar
+            </button>
+          </td>
         </tr>`;
     }).join('');
 
@@ -2027,11 +2675,11 @@ WMS_MODULES.picking = {
         <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
           <div class="card" style="margin:0;border-radius:0;flex:1;overflow:hidden;display:flex;flex-direction:column;">
             <div class="card-header" style="flex-shrink:0;">
-              <h5 class="card-title"><i class="fa-solid fa-user-check"></i> Asignación de Separación</h5>
-              <span style="font-size:.78rem;color:#64748b;">${f.fecha_desde && f.fecha_hasta ? WMS.esc(f.fecha_desde) + ' → ' + WMS.esc(f.fecha_hasta) : 'Hoy — pedidos pendientes'} — marque para asignar</span>
+              <h5 class="card-title"><i class="fa-solid fa-user-check"></i> Asignación por Planilla</h5>
+              <span style="font-size:.78rem;color:#64748b;">${f.fecha_desde && f.fecha_hasta ? WMS.esc(f.fecha_desde) + ' → ' + WMS.esc(f.fecha_hasta) : 'Hoy'} — ${planillas.length} planilla(s) con pedidos pendientes</span>
             </div>
             <div style="padding:10px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0;">
-              <input type="text" class="form-control" style="flex:1;min-width:180px;" placeholder="🔍 Buscar..."
+              <input type="text" class="form-control" style="flex:1;min-width:180px;" placeholder="🔍 Buscar planilla o cliente..."
                      value="${WMS.esc(f.q||'')}"
                      oninput="WMS_MODULES.picking._asigFiltros.q=this.value;clearTimeout(WMS_MODULES.picking._aqt);WMS_MODULES.picking._aqt=setTimeout(()=>WMS_MODULES.picking._cargarAsignacion(),350)">
               <input type="date" class="form-control" style="width:140px;" title="Fecha desde"
@@ -2041,49 +2689,51 @@ WMS_MODULES.picking = {
                      value="${WMS.esc(f.fecha_hasta||'')}"
                      onchange="WMS_MODULES.picking._asigFiltros.fecha_hasta=this.value;WMS_MODULES.picking._asigFiltros.solo_hoy=0;WMS_MODULES.picking._cargarAsignacion()">
               <button class="btn btn-xs btn-secondary" title="Volver a hoy"
-                      onclick="WMS_MODULES.picking._asigFiltros.fecha_desde='';WMS_MODULES.picking._asigFiltros.fecha_hasta='';WMS_MODULES.picking._asigFiltros.solo_hoy=1;WMS_MODULES.picking._cargarAsignacion()">
+                      onclick="WMS_MODULES.picking._asigFiltros={solo_hoy:1,q:'',ruta:'',sucursal_entrega:'',fecha_desde:'',fecha_hasta:''};WMS_MODULES.picking._cargarAsignacion()">
                 <i class="fa-solid fa-rotate-left"></i> Hoy
               </button>
-              <select class="form-control" style="width:160px;" onchange="WMS_MODULES.picking._asigFiltros.sucursal_entrega=this.value;WMS_MODULES.picking._cargarAsignacion()">
-                <option value="">Sucursal: Todas</option>
+              <select class="form-control" style="width:170px;" onchange="WMS_MODULES.picking._asigFiltros.sucursal_entrega=this.value;WMS_MODULES.picking._cargarAsignacion()">
+                <option value="">Cliente: Todos</option>
                 ${sucursales.map(s=>`<option value="${WMS.esc(s)}" ${f.sucursal_entrega===s?'selected':''}>${WMS.esc(s)}</option>`).join('')}
               </select>
-              <select class="form-control" style="width:140px;" onchange="WMS_MODULES.picking._asigFiltros.ruta=this.value;WMS_MODULES.picking._cargarAsignacion()">
-                <option value="">Ruta: Todas</option>
-                ${rutas.map(r=>`<option value="${WMS.esc(r)}" ${f.ruta===r?'selected':''}>${WMS.esc(r)}</option>`).join('')}
-              </select>
-              ${this._asigSeleccionados.size > 0 ?
-                `<span style="background:#0F4C81;color:#fff;padding:4px 12px;border-radius:4px;font-weight:600;font-size:.8rem;">${this._asigSeleccionados.size} sel.</span>` : ''}
+              ${this._asigSeleccionados.size > 0
+                ? `<span style="background:#0F4C81;color:#fff;padding:4px 12px;border-radius:4px;font-weight:600;font-size:.8rem;">${this._asigSeleccionados.size} pedido(s) seleccionados</span>`
+                : ''}
             </div>
             <div style="overflow:auto;flex:1;">
               <table class="erp-table">
                 <thead>
                   <tr>
                     <th style="padding:10px 12px;width:40px;">
-                      <input type="checkbox" onchange="WMS_MODULES.picking._toggleAsigTodos(this.checked)">
+                      <input type="checkbox" title="Seleccionar todas las planillas"
+                        onchange="WMS_MODULES.picking._toggleAsigTodos(this.checked)">
                     </th>
-                    <th style="padding:10px 12px;">N° Pedido</th>
-                    <th style="padding:10px 12px;">Sucursal</th>
+                    <th style="padding:10px 12px;">Planilla / Cliente</th>
                     <th style="padding:10px 12px;">Ruta</th>
-                    <th style="padding:10px 12px;text-align:center;">🌡️ Seco</th>
-                    <th style="padding:10px 12px;text-align:center;">❄️ Frío</th>
-                    <th style="padding:10px 12px;text-align:center;">🧊 Cong.</th>
-                    <th style="padding:10px 12px;text-align:center;">Total</th>
+                    ${ambientes.map(a => {
+                      const icon  = a.icono ? `<i class="fa-solid ${a.icono}"></i> ` : (defaultIconos[a.codigo.toLowerCase()]||'') + ' ';
+                      const color = a.color || defaultColores[a.codigo.toLowerCase()] || '#475569';
+                      return `<th style="padding:10px 12px;text-align:center;color:${color};">${icon}${WMS.esc(a.codigo)}</th>`;
+                    }).join('')}
+                    <th style="padding:10px 12px;text-align:center;">Líneas</th>
+                    <th style="padding:10px 12px;text-align:center;">Acción</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${rows || '<tr><td colspan="8" style="text-align:center;padding:32px;color:#94a3b8;">No hay pedidos pendientes hoy.</td></tr>'}
+                  ${rows || `<tr><td colspan="${6 + ambientes.length}" style="text-align:center;padding:32px;color:#94a3b8;"><i class="fa-solid fa-check-circle" style="color:#10b981;font-size:1.5rem;display:block;margin-bottom:8px;"></i>No hay planillas pendientes de asignar hoy.</td></tr>`}
                 </tbody>
                 ${this._asigSeleccionados.size > 0 ? `
                 <tfoot>
                   <tr style="background:#f0fdf4;border-top:2px solid #86efac;">
-                    <td colspan="4" style="padding:8px 12px;font-weight:700;font-size:.78rem;color:#166534;">
-                      ∑ ${this._asigSeleccionados.size} pedidos seleccionados
+                    <td colspan="3" style="padding:8px 12px;font-weight:700;font-size:.78rem;color:#166534;">
+                      ∑ ${this._asigSeleccionados.size} pedido(s) en selección
                     </td>
-                    <td style="padding:8px 12px;text-align:center;font-weight:900;color:#92400e;font-size:.9rem;" id="asig-tot-seco">—</td>
-                    <td style="padding:8px 12px;text-align:center;font-weight:900;color:#0369a1;font-size:.9rem;" id="asig-tot-frio">—</td>
-                    <td style="padding:8px 12px;text-align:center;font-weight:900;color:#7c3aed;font-size:.9rem;" id="asig-tot-cong">—</td>
+                    ${ambientes.map(a => {
+                      const color = a.color || defaultColores[a.codigo.toLowerCase()] || '#475569';
+                      return `<td style="padding:8px 12px;text-align:center;font-weight:900;color:${color};font-size:.9rem;" id="asig-tot-${a.codigo.toLowerCase().replace(/ /g,'_')}">—</td>`;
+                    }).join('')}
                     <td style="padding:8px 12px;text-align:center;font-weight:900;font-size:.9rem;" id="asig-tot-total">—</td>
+                    <td></td>
                   </tr>
                 </tfoot>` : ''}
               </table>
@@ -2098,6 +2748,12 @@ WMS_MODULES.picking = {
 
   _buildDrawerAsignacion(auxOpts) {
     const totales = this._calcularTotalesAmbiente();
+    const defaultIconos = {seco:'🌡️',refrigerado:'❄️',congelado:'🧊'};
+    const defaultColores = {seco:'#92400e',refrigerado:'#0369a1',congelado:'#7c3aed'};
+    const ambientes = (this._ambientesCache || []).length > 0
+      ? this._ambientesCache
+      : [{codigo:'SECO',color:'#92400e'},{codigo:'REFRIGERADO',color:'#0369a1'},{codigo:'CONGELADO',color:'#7c3aed'}];
+
     return `
       <div id="asig-drawer" style="width:260px;flex-shrink:0;border-left:2px solid #0F4C81;background:#fff;display:flex;flex-direction:column;max-height:calc(100vh - 140px);overflow-y:auto;">
         <div style="background:#0F4C81;color:#fff;padding:12px 14px;flex-shrink:0;">
@@ -2118,41 +2774,38 @@ WMS_MODULES.picking = {
               </button>
             </div>
           </div>
-          <div style="display:flex;gap:6px;">
-            <div style="flex:1;background:#fef3c7;border:1px solid #fde68a;border-radius:4px;padding:8px;text-align:center;">
-              <div style="font-size:.65rem;color:#92400e;font-weight:600;">🌡️ SECO</div>
-              <div style="font-size:1.3rem;font-weight:900;color:#92400e;" id="kpi-seco">${totales.seco}</div>
-              <div style="font-size:.6rem;color:#92400e;">líneas</div>
-            </div>
-            <div style="flex:1;background:#e0f2fe;border:1px solid #bae6fd;border-radius:4px;padding:8px;text-align:center;">
-              <div style="font-size:.65rem;color:#0369a1;font-weight:600;">❄️ FRÍO</div>
-              <div style="font-size:1.3rem;font-weight:900;color:#0369a1;" id="kpi-frio">${totales.frio}</div>
-              <div style="font-size:.6rem;color:#0369a1;">líneas</div>
-            </div>
-            <div style="flex:1;background:#ede9fe;border:1px solid #ddd6fe;border-radius:4px;padding:8px;text-align:center;">
-              <div style="font-size:.65rem;color:#7c3aed;font-weight:600;">🧊 CONG.</div>
-              <div style="font-size:1.3rem;font-weight:900;color:#7c3aed;" id="kpi-cong">${totales.cong}</div>
-              <div style="font-size:.6rem;color:#7c3aed;">líneas</div>
-            </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${ambientes.map(a => {
+              const key = a.codigo.toLowerCase().replace(/ /g,'_');
+              const color = a.color || defaultColores[a.codigo.toLowerCase()] || '#475569';
+              const icon = a.icono ? `<i class="fa-solid ${a.icono}"></i> ` : (defaultIconos[a.codigo.toLowerCase()] || '');
+              const count = totales[key] || 0;
+              return `<div style="flex:1;min-width:70px;background:${color}15;border:1px solid ${color}40;border-radius:4px;padding:8px;text-align:center;">
+                <div style="font-size:.65rem;color:${color};font-weight:600;">${icon} ${WMS.esc(a.codigo)}</div>
+                <div style="font-size:1.3rem;font-weight:900;color:${color};" id="kpi-${key}">${count}</div>
+                <div style="font-size:.6rem;color:${color};">líneas</div>
+              </div>`;
+            }).join('')}
           </div>
           <div id="config-ambiente">
-            ${[
-              {key:'Seco',        label:'🌡️ Seco',       count:totales.seco, borderColor:'#fde68a', bg:'#fffbeb', color:'#92400e'},
-              {key:'Refrigerado', label:'❄️ Refrigerado', count:totales.frio, borderColor:'#bae6fd', bg:'#f0f9ff', color:'#0369a1'},
-              {key:'Congelado',   label:'🧊 Congelado',   count:totales.cong, borderColor:'#ddd6fe', bg:'#faf5ff', color:'#7c3aed'},
-            ].map(env => `
-              <div style="margin-bottom:10px;">
+            ${ambientes.map(a => {
+              const key = a.codigo.toLowerCase().replace(/ /g,'_');
+              const color = a.color || defaultColores[a.codigo.toLowerCase()] || '#475569';
+              const icon = a.icono ? `<i class="fa-solid ${a.icono}"></i> ` : (defaultIconos[a.codigo.toLowerCase()] || '');
+              const count = totales[key] || 0;
+              return `<div style="margin-bottom:10px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                  <span style="font-size:.75rem;font-weight:700;color:${env.color};">${env.label}</span>
-                  <span style="font-size:.68rem;background:${env.bg};color:${env.color};border:1px solid ${env.borderColor};padding:1px 6px;border-radius:10px;">${WMS.esc(String(env.count))} lín.</span>
+                  <span style="font-size:.75rem;font-weight:700;color:${color};">${icon} ${WMS.esc(a.codigo)}</span>
+                  <span style="font-size:.68rem;background:${color}15;color:${color};border:1px solid ${color}40;padding:1px 6px;border-radius:10px;">${count} lín.</span>
                 </div>
-                <select class="form-control" id="aux-${env.key.toLowerCase()}"
-                  style="border-color:${env.borderColor};background:${env.bg};font-size:.78rem;"
-                  data-ambiente="${env.key}">
+                <select class="form-control" id="aux-${key}"
+                  style="border-color:${color}40;background:${color}08;font-size:.78rem;"
+                  data-ambiente="${WMS.esc(a.codigo)}">
                   <option value="">— Sin asignar —</option>
                   ${auxOpts}
                 </select>
-              </div>`).join('')}
+              </div>`;
+            }).join('')}
           </div>
           <div id="config-pasillo" style="display:none;">
             <div style="font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:8px;">Rangos de Pasillo</div>
@@ -2162,6 +2815,16 @@ WMS_MODULES.picking = {
             <button onclick="WMS_MODULES.picking._agregarRangoPasillo()" class="btn btn-outline-primary btn-sm" style="width:100%;margin-top:4px;font-size:.75rem;">
               + Agregar rango
             </button>
+          </div>
+          <div style="padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;">
+            <div style="font-size:.7rem;font-weight:700;color:#1d4ed8;text-transform:uppercase;margin-bottom:3px;">
+              <i class="fa-solid fa-user-shield"></i> Auxiliar de Respaldo
+            </div>
+            <div style="font-size:.63rem;color:#3b82f6;margin-bottom:5px;">Garantiza cobertura 100%: recibe líneas sin ambiente asignado.</div>
+            <select class="form-control" id="asig-fallback-aux" style="font-size:.78rem;">
+              <option value="">— Sin respaldo —</option>
+              ${auxOpts}
+            </select>
           </div>
           <div>
             <div style="font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:4px;">Nombre de Ruta</div>
@@ -2221,6 +2884,23 @@ WMS_MODULES.picking = {
     this._renderAsignacion();
   },
 
+  _toggleAsigPlanilla(planKey, ordenIds, checked) {
+    ordenIds.forEach(id => {
+      if (checked) this._asigSeleccionados.add(id);
+      else         this._asigSeleccionados.delete(id);
+    });
+    this._renderAsignacion();
+  },
+
+  _seleccionarYAsignarPlanilla(planKey, ordenIds) {
+    ordenIds.forEach(id => this._asigSeleccionados.add(id));
+    this._renderAsignacion();
+    setTimeout(() => {
+      const drawer = document.getElementById('asig-drawer');
+      if (drawer) drawer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 150);
+  },
+
   _toggleAsigTodos(checked) {
     if (checked) this._asigOrdenes.forEach(o => this._asigSeleccionados.add(o.id));
     else         this._asigSeleccionados.clear();
@@ -2228,28 +2908,34 @@ WMS_MODULES.picking = {
   },
 
   _calcularTotalesAmbiente() {
-    let seco = 0, frio = 0, cong = 0, total = 0;
+    const ambientes = (this._ambientesCache || []).length > 0
+      ? this._ambientesCache
+      : [{codigo:'SECO'},{codigo:'REFRIGERADO'},{codigo:'CONGELADO'}];
+    const result = { total: 0 };
     this._asigOrdenes
       .filter(o => this._asigSeleccionados.has(o.id))
       .forEach(o => {
-        seco  += o.seco_count || 0;
-        frio  += o.refrigerado_count || 0;
-        cong  += o.congelado_count || 0;
-        total += o.total_count || 0;
+        ambientes.forEach(a => {
+          const key = a.codigo.toLowerCase().replace(/ /g,'_');
+          result[key] = (result[key] || 0) + (o[key + '_count'] || 0);
+        });
+        result.total += o.total_count || 0;
       });
-    return { seco, frio, cong, total };
+    return result;
   },
 
   _actualizarTotalesAsig() {
     const t = this._calcularTotalesAmbiente();
     const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v||'—'; };
-    set('asig-tot-seco',  t.seco);
-    set('asig-tot-frio',  t.frio);
-    set('asig-tot-cong',  t.cong);
+    const ambientes = (this._ambientesCache || []).length > 0
+      ? this._ambientesCache
+      : [{codigo:'SECO'},{codigo:'REFRIGERADO'},{codigo:'CONGELADO'}];
+    ambientes.forEach(a => {
+      const key = a.codigo.toLowerCase().replace(/ /g,'_');
+      set('asig-tot-' + key, t[key] || 0);
+      set('kpi-' + key, t[key] || 0);
+    });
     set('asig-tot-total', t.total);
-    set('kpi-seco', t.seco);
-    set('kpi-frio', t.frio);
-    set('kpi-cong', t.cong);
   },
 
   async _confirmarAsignacion() {
@@ -2263,10 +2949,14 @@ WMS_MODULES.picking = {
 
     let config = {};
     if (modo === 'ambiente') {
-      ['Seco','Refrigerado','Congelado'].forEach(amb => {
-        const sel   = document.getElementById('aux-' + amb.toLowerCase());
+      const ambientes = (this._ambientesCache || []).length > 0
+        ? this._ambientesCache
+        : [{codigo:'SECO'},{codigo:'REFRIGERADO'},{codigo:'CONGELADO'}];
+      ambientes.forEach(a => {
+        const key = a.codigo.toLowerCase().replace(/ /g,'_');
+        const sel = document.getElementById('aux-' + key);
         const auxId = sel?.value ? parseInt(sel.value) : null;
-        config[amb] = { auxiliar_id: auxId };
+        config[a.codigo] = { auxiliar_id: auxId };
       });
     } else {
       const rangos = [];
@@ -2280,29 +2970,214 @@ WMS_MODULES.picking = {
       config = { rangos };
     }
 
+    const fallbackAuxId = parseInt(document.getElementById('asig-fallback-aux')?.value || 0) || null;
+
+    // Pre-flight: verificar cobertura antes de confirmar
+    if (modo === 'ambiente' && !fallbackAuxId) {
+      try {
+        const pf = await API.post('/picking/validar-cobertura', { orden_ids: ordenIds, modo, config });
+        const pd = pf.data || pf;
+        if (!pd.cobertura_completa) {
+          const sinCubrir = pd.sin_cubrir || 0;
+          const ambsSin   = (pd.ambientes_sin_auxiliar || []).join(', ') || 'N/A';
+          const ok = confirm(
+            `⚠ COBERTURA INCOMPLETA\n\n` +
+            `${sinCubrir} línea(s) quedarán SIN auxiliar asignado.\n` +
+            `Ambientes sin auxiliar: ${ambsSin}\n\n` +
+            `Seleccione un "Auxiliar de Respaldo" para garantizar 100% de cobertura.\n\n` +
+            `¿Continuar de todas formas sin respaldo?`
+          );
+          if (!ok) {
+            if (btn) btn.disabled = false;
+            return;
+          }
+        }
+      } catch (_pf) { /* pre-flight no disponible — continuar */ }
+    }
+
     try {
-      const r = await API.post('/picking/asignar-ambiente', { orden_ids: ordenIds, modo, config, ruta });
+      const r = await API.post('/picking/asignar-ambiente', { orden_ids: ordenIds, modo, config, ruta, auxiliar_fallback_id: fallbackAuxId });
       const d = r.data || r;
-      WMS.toast('success', `✓ ${WMS.esc(String(d.asignadas))} líneas asignadas a ${WMS.esc(String(d.ordenes))} pedidos`);
+      const partes = [`✓ ${d.asignadas || 0} líneas asignadas a ${d.ordenes || 0} pedidos`];
+      if (d.ya_asignadas > 0) partes.push(`${d.ya_asignadas} ya tenían auxiliar (omitidas)`);
+      if (d.sin_auxiliar > 0) {
+        partes.push(`⚠ ${d.sin_auxiliar} SIN auxiliar`);
+        WMS.toast('warning', partes.join(' · '));
+        this._mostrarAlertaSinAuxiliar(d);
+      } else {
+        WMS.toast('success', partes.join(' · '));
+      }
       this._asigSeleccionados.clear();
       await this._cargarAsignacion();
     } catch(e) {
-      if (e.status === 409 || (e.response && e.response.status === 409)) {
-        WMS.toast('error', 'Conflicto: algunos pedidos ya tienen líneas asignadas. Recargue la lista.');
-      } else {
-        WMS.toast('error', e.message || 'Error en asignación');
-      }
+      WMS.toast('error', e.message || 'Error en asignación');
       if (btn) btn.disabled = false;
     }
   },
 
+  // ── ALERTA LÍNEAS SIN AUXILIAR ────────────────────────────────────────────
+  async _mostrarAlertaSinAuxiliar(d) {
+    this._sinAuxiliarLineas = d.lineas_sin_auxiliar || [];  // guardado para _asignarFallback
+    const lineas = this._sinAuxiliarLineas;
+    const byAmb = {};
+    lineas.forEach(l => {
+      if (!byAmb[l.ambiente]) byAmb[l.ambiente] = [];
+      byAmb[l.ambiente].push(l);
+    });
+    const colores = { Seco: '#d97706', Refrigerado: '#0ea5e9', Congelado: '#8b5cf6' };
+    let tableHtml = lineas.length > 0 ? `
+      <div style="max-height:280px;overflow-y:auto;border:1px solid #fca5a5;border-radius:6px;margin-top:10px;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead style="background:#fef2f2;position:sticky;top:0;">
+            <tr>
+              <th style="padding:6px 10px;text-align:left;color:#991b1b;">Ambiente</th>
+              <th style="padding:6px 10px;text-align:left;color:#991b1b;">Producto</th>
+              <th style="padding:6px 10px;text-align:left;color:#991b1b;">Código</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${lineas.map(l => `<tr style="border-top:1px solid #fca5a5;">
+              <td style="padding:5px 10px;">
+                <span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;background:${colores[l.ambiente]||'#64748b'}20;color:${colores[l.ambiente]||'#64748b'};">${WMS.esc(l.ambiente)}</span>
+              </td>
+              <td style="padding:5px 10px;font-weight:600;color:#1e293b;">${WMS.esc(l.producto_nombre)}</td>
+              <td style="padding:5px 10px;font-family:monospace;font-size:11px;color:#64748b;">${WMS.esc(l.producto_codigo)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : '';
+
+    // Cargar auxiliares disponibles para seleccionar respaldo
+    let auxOptions = '<option value="">-- Seleccionar auxiliar de respaldo --</option>';
+    try {
+      const ra = await API.get('/param/personal?rol=Auxiliar&activo=1');
+      (ra.data || ra || []).forEach(a => {
+        auxOptions += `<option value="${a.id}">${WMS.esc(a.nombre)}</option>`;
+      });
+    } catch(_) {}
+
+    WMS.showModal(
+      '<i class="fa-solid fa-user-slash" style="color:#dc2626;margin-right:8px;"></i>Líneas sin Auxiliar Asignado',
+      `<div style="padding:12px 16px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;margin-bottom:10px;">
+        <div style="font-size:15px;font-weight:700;color:#991b1b;margin-bottom:4px;">
+          <i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;margin-right:6px;"></i>
+          ${d.sin_auxiliar} línea(s) quedaron SIN auxiliar asignado
+        </div>
+        <div style="font-size:12px;color:#7f1d1d;">
+          Estas líneas no serán separadas. Debe asignar un auxiliar de respaldo o configurar el ambiente correspondiente.
+        </div>
+      </div>
+      ${tableHtml}
+      <div style="margin-top:14px;padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;">
+        <label style="font-size:12px;font-weight:700;color:#1e40af;display:block;margin-bottom:6px;">
+          <i class="fa-solid fa-user-plus"></i> Asignar auxiliar de respaldo para estas ${d.sin_auxiliar} línea(s):
+        </label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="modal-fallback-aux" class="form-select" style="flex:1;">
+            ${auxOptions}
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.picking._asignarFallback()">
+            <i class="fa-solid fa-check"></i> Asignar
+          </button>
+        </div>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>`,
+      { width: '680px' }
+    );
+  },
+
+  async _asignarFallback() {
+    const auxId = parseInt(document.getElementById('modal-fallback-aux')?.value || 0);
+    if (!auxId) return WMS.toast('warning', 'Seleccione un auxiliar de respaldo');
+    const lineasArr = Array.isArray(this._sinAuxiliarLineas) ? this._sinAuxiliarLineas : [];
+    if (!lineasArr.length) return WMS.toast('warning', 'Sin líneas pendientes');
+    const ordenIds = [...new Set(lineasArr.map(l => l.orden_picking_id).filter(Boolean))];
+    if (!ordenIds.length) return WMS.toast('warning', 'No se pudieron determinar los pedidos');
+    try {
+      const r = await API.post('/picking/asignar-ambiente', {
+        orden_ids: ordenIds,
+        modo: 'ambiente',
+        config: {},
+        auxiliar_fallback_id: auxId,
+      });
+      const d = r.data || r;
+      WMS.toast('success', `${d.asignadas || lineasArr.length} líneas asignadas al auxiliar de respaldo`);
+      WMS.closeModal('generic-modal');
+      await this._cargarAsignacion();
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error al asignar respaldo');
+    }
+  },
+
+  // ── ALERTA VISUAL DE AGOTADOS ─────────────────────────────────────────────
+  async _mostrarAlertaAgotados(data) {
+    const faltantes = data.faltantes_detectados || 0;
+    let detallesHtml = '';
+    try {
+      const hoy = new Date().toISOString().slice(0,10);
+      const r = await API.get('/picking/novedades-stock', `fecha_inicio=${hoy}&fecha_fin=${hoy}&limit=50`);
+      const rows = (r.data?.rows || r.rows || []);
+      if (rows.length > 0) {
+        detallesHtml = `
+          <div style="margin-top:12px;max-height:260px;overflow-y:auto;border:1px solid #fed7aa;border-radius:4px;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead style="background:#fff7ed;position:sticky;top:0;">
+                <tr>
+                  <th style="padding:6px 10px;text-align:left;color:#92400e;">Producto</th>
+                  <th style="padding:6px 10px;text-align:right;color:#92400e;">Solicitado</th>
+                  <th style="padding:6px 10px;text-align:right;color:#92400e;">Disponible</th>
+                  <th style="padding:6px 10px;text-align:right;color:#dc2626;">Faltante</th>
+                  <th style="padding:6px 10px;text-align:right;color:#92400e;">Stock Actual</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map(f => `<tr style="border-top:1px solid #fed7aa;">
+                  <td style="padding:5px 10px;">
+                    <div style="font-weight:600;color:#1e293b;">${WMS.esc(f.producto_nombre || '')}</div>
+                    <div style="font-size:10px;color:#64748b;font-family:monospace;">${WMS.esc(f.producto_codigo || '')}</div>
+                  </td>
+                  <td style="padding:5px 10px;text-align:right;">${WMS.formatNum(f.cantidad_solicitada)}</td>
+                  <td style="padding:5px 10px;text-align:right;color:#16a34a;">${WMS.formatNum(f.stock_disponible)}</td>
+                  <td style="padding:5px 10px;text-align:right;font-weight:700;color:#dc2626;">${WMS.formatNum(f.cantidad_faltante)}</td>
+                  <td style="padding:5px 10px;text-align:right;${(f.stock_actual||0)>0?'color:#0ea5e9;':'color:#dc2626;font-weight:700;'}">${WMS.formatNum(f.stock_actual||0)}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      }
+    } catch(_) {}
+
+    WMS.showModal(
+      '<i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;margin-right:8px;"></i>Alerta de Agotados en Picking',
+      `<div style="padding:12px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;margin-bottom:12px;">
+        <div style="font-size:15px;font-weight:700;color:#92400e;margin-bottom:4px;">
+          <i class="fa-solid fa-box-open" style="margin-right:6px;color:#f59e0b;"></i>
+          ${faltantes} referencia(s) con inventario insuficiente
+        </div>
+        <div style="font-size:12px;color:#78350f;">
+          Estas referencias fueron enviadas a la tabla de agotados. El auxiliar no podrá separar estas unidades hasta que se realice un reabastecimiento.
+        </div>
+      </div>
+      ${detallesHtml}
+      <div style="margin-top:12px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:12px;color:#1e40af;">
+        <i class="fa-solid fa-lightbulb" style="margin-right:6px;"></i>
+        <strong>Siguiente paso:</strong> Vaya a <strong>Faltantes de Stock</strong> para procesar el backorder cuando llegue inventario.
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>
+       <button class="btn btn-warning" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking.load('faltantes');">
+         <i class="fa-solid fa-arrow-right"></i> Ver Faltantes
+       </button>`,
+      { width: '680px' }
+    );
+  },
+
   // ── FALTANTES ─────────────────────────────────────────────────────────────
-  _faltFilters: { ini: '', fin: '', planilla: '', producto: '', showAll: false },
+  _faltFilters: { ini: '', fin: '', planilla: '', producto: '', sucursal_entrega: '', showAll: false },
 
   async show_faltantes(filters = null) {
     if (filters) Object.assign(this._faltFilters, filters);
     const f = this._faltFilters;
-    if (!f.ini) f.ini = new Date(Date.now() - 30*24*3600*1000).toISOString().slice(0,10);
+    if (!f.ini) f.ini = WMS.getToday();
     if (!f.fin) f.fin = WMS.getToday();
 
     WMS.setToolbar(`
@@ -2311,11 +3186,15 @@ WMS_MODULES.picking = {
         <i class="fa-solid fa-arrow-rotate-left"></i> Procesar Backorder (<span id="bo-count">0</span>)
       </button>
       <button class="btn btn-success btn-sm" onclick="WMS_MODULES.picking._exportFaltantes()"><i class="fa-solid fa-file-excel"></i> Exportar Excel</button>
+      ${(WMS.user?.rol === 'Admin' || WMS.user?.rol === 'Supervisor') ? `
+      <button class="btn btn-danger btn-sm" onclick="WMS_MODULES.picking._limpiarFaltantes()">
+        <i class="fa-solid fa-trash"></i> Limpiar Faltantes
+      </button>` : ''}
     `);
     WMS.spinner();
     try {
       const limit = f.showAll ? '' : '&limit=50';
-      const qs = `fecha_inicio=${f.ini}&fecha_fin=${f.fin}&numero_planilla=${encodeURIComponent(f.planilla||'')}&producto=${encodeURIComponent(f.producto||'')}${limit}`;
+      const qs = `fecha_inicio=${f.ini}&fecha_fin=${f.fin}&numero_planilla=${encodeURIComponent(f.planilla||'')}&producto=${encodeURIComponent(f.producto||'')}&sucursal_entrega=${encodeURIComponent(f.sucursal_entrega||'')}${limit}`;
       const [faltR, reabast] = await Promise.all([
         API.get('/picking/novedades-stock', qs),
         API.get('/picking/reabastecimientos'),
@@ -2324,7 +3203,10 @@ WMS_MODULES.picking = {
       const falt  = Array.isArray(resp.rows) ? resp.rows : (Array.isArray(resp) ? resp : []);
       const total = resp.total ?? falt.length;
       const rea   = reabast.data || reabast || [];
-      const conStock = falt.filter(r => (r.stock_actual||0) >= (r.cantidad_faltante||1)).length;
+      const conStock = falt.filter(r => {
+        const upc = r.unidades_caja || 1;
+        return (r.stock_actual||0) >= (r.cantidad_faltante||0) * upc;
+      }).length;
 
       WMS.setContent(`
         <div style="display:flex;flex-direction:column;gap:16px;">
@@ -2343,6 +3225,13 @@ WMS_MODULES.picking = {
                 <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">PLANILLA</label>
                 <input id="falt-plan" class="form-control" placeholder="Nro planilla..." value="${WMS.esc(f.planilla||'')}">
               </div>
+              ${(WMS.user?.rol === 'Admin' || WMS.user?.rol === 'Supervisor') ? `
+              <div>
+                <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">SUCURSAL</label>
+                <select id="falt-suc" class="form-control" style="min-width:160px;">
+                  <option value="">Todas</option>
+                </select>
+              </div>` : ''}
               <div style="flex:2;min-width:200px;">
                 <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">PRODUCTO</label>
                 <div class="search-bar" style="margin:0;"><i class="fa-solid fa-search"></i>
@@ -2357,6 +3246,12 @@ WMS_MODULES.picking = {
               </button>
             </div>
           </div>
+
+          ${!f.showAll && falt.length >= 50 ? `<div style="padding:10px 16px;background:#fef9c3;border:1px solid #fde047;border-radius:6px;font-size:12px;color:#854d0e;display:flex;align-items:center;gap:8px;">
+            <i class="fa-solid fa-triangle-exclamation" style="font-size:15px;color:#f59e0b;"></i>
+            <span>Mostrando los primeros <strong>50</strong> faltantes. Puede haber mas registros.</span>
+            <button class="btn btn-xs btn-warning" style="margin-left:auto;" onclick="WMS_MODULES.picking.show_faltantes({showAll:true})">Ver Todos</button>
+          </div>` : ''}
 
           ${conStock > 0 ? `<div style="padding:10px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;font-size:12px;color:#166534;display:flex;align-items:center;gap:8px;">
             <i class="fa-solid fa-circle-check" style="font-size:16px;color:#22c55e;"></i>
@@ -2388,16 +3283,18 @@ WMS_MODULES.picking = {
                     </th>
                     <th>Fecha</th><th>Planilla</th><th>Auxiliar</th>
                     <th>Producto</th><th style="text-align:center;">Faltante</th>
-                    <th style="text-align:center;">Stock Actual</th>
-                    <th>Cliente</th>
+                    <th style="text-align:center;">Stock Disponible (cj/und)</th>
+                    <th>Sucursal Destino</th><th>Cliente</th>
                   </tr></thead>
                   <tbody>${falt.map(r => {
-                    const sa = r.stock_actual || 0;
-                    const cf = r.cantidad_faltante || 0;
-                    const ok = sa >= cf;
+                    const sa   = r.stock_actual || 0;
+                    const cf   = r.cantidad_faltante || 0;
+                    const upc  = r.unidades_caja || 1;
+                    const cfUnd = cf * upc; // cajas → unidades para comparar con stock_actual (und)
+                    const ok   = sa >= cfUnd;
                     return `<tr data-falt-id="${r.id}" data-has-stock="${ok?1:0}" style="${ok?'background:#f0fdf4;':''}">
                     <td style="text-align:center;" onclick="event.stopPropagation()">
-                      <input type="checkbox" class="falt-sel" value="${r.id}" onchange="WMS_MODULES.picking._onFaltCheck()"
+                      <input type="checkbox" class="falt-sel" value="${r.producto_id}" onchange="WMS_MODULES.picking._onFaltCheck()"
                              style="accent-color:#0070f2;width:14px;height:14px;">
                     </td>
                     <td style="font-size:11px;white-space:nowrap;">${WMS.formatDate(r.created_at?.slice(0,10)||'-')}</td>
@@ -2407,14 +3304,20 @@ WMS_MODULES.picking = {
                       <div style="font-weight:700;font-size:12px;">${WMS.esc(r.producto_nombre||'-')}</div>
                       <div style="font-size:10px;color:#64748b;">${WMS.esc(r.producto_codigo||'')}</div>
                     </td>
-                    <td style="text-align:center;"><span class="badge badge-danger">${WMS.formatNum(cf)}</span></td>
+                    <td style="text-align:center;">
+                      <span class="badge badge-danger">${WMS.formatNum(cf)} cj</span>
+                      ${upc > 1 ? `<div style="font-size:10px;color:#64748b;">${WMS.formatNum(cfUnd)} und</div>` : ''}
+                    </td>
                     <td style="text-align:center;">
                       ${ok
-                        ? `<span class="badge badge-success" title="Stock disponible para backorder"><i class="fa-solid fa-check" style="margin-right:3px;"></i>${WMS.formatNum(sa)}</span>`
-                        : `<span class="badge badge-danger" style="opacity:.7;" title="Stock insuficiente">${WMS.formatNum(sa)}</span>`}
+                        ? `<span class="badge badge-success" title="Stock disponible para backorder"><i class="fa-solid fa-check" style="margin-right:3px;"></i>${(sa/upc).toFixed(2)} cj</span>
+                           <div style="font-size:10px;color:#059669;">${WMS.formatNum(sa)} und</div>`
+                        : `<span class="badge badge-danger" style="opacity:.7;" title="Stock insuficiente">${(sa/upc).toFixed(2)} cj</span>
+                           <div style="font-size:10px;color:#94a3b8;">${WMS.formatNum(sa)} und</div>`}
                     </td>
+                    <td style="font-size:11px;">${WMS.esc(r.sucursal_entrega||'-')}</td>
                     <td style="font-size:11px;">${WMS.esc(r.cliente||'-')}</td>
-                  </tr>`;}).join('') || '<tr><td colspan="8" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
+                  </tr>`;}).join('') || '<tr><td colspan="9" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
                   </tbody>
                 </table>
               </div>
@@ -2440,6 +3343,9 @@ WMS_MODULES.picking = {
             </div>
           </div>
         </div>`);
+      if (WMS.user?.rol === 'Admin' || WMS.user?.rol === 'Supervisor') {
+        await this._loadSucursales();
+      }
     } catch(e) { if (e.isSessionExpired) return; console.error(e); WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando faltantes</p></div>'); }
   },
 
@@ -2470,7 +3376,7 @@ WMS_MODULES.picking = {
       `¿Reasignar <strong>${ids.length} faltante(s)</strong> al picking?<br><small>Solo se procesarán los que tengan stock disponible. Se reservará inventario y se reactivarán las líneas de picking.</small>`,
       async () => {
         try {
-          const r = await API.post('/picking/backorder', { faltante_ids: ids });
+          const r = await API.post('/picking/backorder', { producto_ids: ids });
           if (r.error) { WMS.toast('error', r.message); return; }
           const d = r.data || {};
           const msgs = [];
@@ -2484,29 +3390,68 @@ WMS_MODULES.picking = {
   },
 
   _applyFaltFilters() {
-    const ini   = document.getElementById('falt-ini')?.value  || '';
-    const fin   = document.getElementById('falt-fin')?.value  || '';
-    const plan  = document.getElementById('falt-plan')?.value || '';
-    const prod  = document.getElementById('falt-prod')?.value || '';
-    this.show_faltantes({ ini, fin, planilla: plan, producto: prod, showAll: false });
+    const ini        = document.getElementById('falt-ini')?.value  || '';
+    const fin        = document.getElementById('falt-fin')?.value  || '';
+    const plan       = document.getElementById('falt-plan')?.value || '';
+    const prod       = document.getElementById('falt-prod')?.value || '';
+    const sucursal_entrega = document.getElementById('falt-suc')?.value || '';
+    this.show_faltantes({ ini, fin, planilla: plan, producto: prod, sucursal_entrega, showAll: false });
   },
 
   _clearFaltFilters() {
-    this._faltFilters = { ini: '', fin: '', planilla: '', producto: '', showAll: false };
+    this._faltFilters = { ini: '', fin: '', planilla: '', producto: '', sucursal_entrega: '', showAll: false };
     this.show_faltantes();
+  },
+
+  async _limpiarFaltantes() {
+    const f = this._faltFilters;
+    const ini = f.ini || WMS.getToday();
+    const fin = f.fin || WMS.getToday();
+    const { isConfirmed } = await Swal.fire({
+      title: '¿Limpiar faltantes?',
+      text: `Eliminará los faltantes del período ${ini} al ${fin}. Esta acción no se puede deshacer.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, limpiar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#ef4444'
+    });
+    if (!isConfirmed) return;
+    try {
+      await API.delete(`/picking/faltantes?fecha_inicio=${ini}&fecha_fin=${fin}&sucursal_entrega=${encodeURIComponent(f.sucursal_entrega||'')}`);
+      WMS.toast('success', 'Faltantes eliminados del período');
+      this.show_faltantes();
+    } catch(e) { WMS.toast('error', 'Error al limpiar faltantes'); }
   },
 
   async _exportFaltantes() {
     const f = this._faltFilters;
-    const ini = f.ini || new Date(Date.now()-30*24*3600*1000).toISOString().slice(0,10);
+    const ini = f.ini || WMS.getToday();
     const fin = f.fin || WMS.getToday();
     const token = localStorage.getItem('wms_token') || '';
     const base = (window.API_BASE || '/WMS_FENIX/public/api');
-    const url = `${base}/picking/novedades-stock?fecha_inicio=${ini}&fecha_fin=${fin}&numero_planilla=${encodeURIComponent(f.planilla||'')}&producto=${encodeURIComponent(f.producto||'')}&export=excel`;
+    const url = `${base}/picking/novedades-stock?fecha_inicio=${ini}&fecha_fin=${fin}&numero_planilla=${encodeURIComponent(f.planilla||'')}&producto=${encodeURIComponent(f.producto||'')}&sucursal_entrega=${encodeURIComponent(f.sucursal_entrega||'')}&export=excel`;
     const a = document.createElement('a');
     a.href = url + '&_token=' + encodeURIComponent(token);
     a.download = `faltantes_${ini}_${fin}.csv`;
     a.click();
+  },
+
+  async _loadSucursales() {
+    try {
+      const resp = await API.get('/param/sucursales');
+      const sucursales = Array.isArray(resp) ? resp : (resp.data || []);
+      const sel = document.getElementById('falt-suc');
+      if (!sel) return;
+      const currentVal = this._faltFilters.sucursal_entrega || '';
+      const opts = sucursales.map(s => {
+        const nombre = s.nombre || s.name || String(s.id);
+        return `<option value="${WMS.esc(nombre)}" ${nombre === currentVal ? 'selected' : ''}>${WMS.esc(nombre)}</option>`;
+      }).join('');
+      sel.innerHTML = `<option value="">Todas</option>${opts}`;
+    } catch(e) {
+      console.error('Error cargando sucursales:', e);
+    }
   },
 
   async completarReabast(id) {
@@ -2515,6 +3460,159 @@ WMS_MODULES.picking = {
       if (r.error) WMS.toast('error', r.message);
       else { WMS.toast('success', 'Reabastecimiento completado'); this.show_faltantes(); }
     } catch(e) { WMS.toast('error', 'Error'); }
+  },
+
+  // ── MÓDULO AGOTADOS ───────────────────────────────────────────────────────
+  _agotFilters: { ini: '', fin: '', sucursal: '', referencia: '' },
+
+  async show_agotados(filters = null) {
+    if (filters) Object.assign(this._agotFilters, filters);
+    const f = this._agotFilters;
+    if (!f.ini) f.ini = new Date(Date.now() - 30*24*3600*1000).toISOString().slice(0,10);
+    if (!f.fin) f.fin = WMS.getToday();
+
+    WMS.setToolbar(`
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking.show_agotados()">
+        <i class="fa-solid fa-rotate"></i> Actualizar
+      </button>
+      <button class="btn btn-success btn-sm" onclick="WMS_MODULES.picking._exportAgotados()">
+        <i class="fa-solid fa-file-csv"></i> Exportar CSV
+      </button>
+    `);
+    WMS.spinner();
+    try {
+      const qs  = `fecha_inicio=${f.ini}&fecha_fin=${f.fin}&sucursal_entrega=${encodeURIComponent(f.sucursal||'')}&referencia=${encodeURIComponent(f.referencia||'')}`;
+      const r   = await API.get('/picking/agotados', qs);
+      const d   = r.data || {};
+      const rows = Array.isArray(d.rows) ? d.rows : [];
+      const sucs = Array.isArray(d.sucursales) ? d.sucursales : [];
+
+      const sucOptions = `<option value="">Todas las sucursales</option>` +
+        sucs.map(s => `<option value="${WMS.esc(s)}"${f.sucursal===s?' selected':''}>${WMS.esc(s)}</option>`).join('');
+
+      const totalCajas = rows.reduce((acc, row) => acc + (parseFloat(row.cantidad_faltante) || 0), 0);
+      const sucAfect   = new Set(rows.map(row => row.sucursal_entrega)).size;
+
+      WMS.setContent(`
+        <div style="display:flex;flex-direction:column;gap:16px;">
+
+          <div class="card" style="padding:14px 18px;">
+            <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+              <div>
+                <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">DESDE</label>
+                <input type="date" id="agot-ini" class="form-control" style="width:135px;" value="${f.ini}">
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">HASTA</label>
+                <input type="date" id="agot-fin" class="form-control" style="width:135px;" value="${f.fin}">
+              </div>
+              <div style="min-width:180px;">
+                <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">SUCURSAL</label>
+                <select id="agot-suc" class="form-control">${sucOptions}</select>
+              </div>
+              <div style="flex:2;min-width:200px;">
+                <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">REFERENCIA</label>
+                <div class="search-bar" style="margin:0;"><i class="fa-solid fa-search"></i>
+                  <input id="agot-ref" placeholder="Código o nombre..." value="${WMS.esc(f.referencia||'')}">
+                </div>
+              </div>
+              <button class="btn btn-primary" style="height:38px;padding:0 18px;" onclick="WMS_MODULES.picking._applyAgotFilters()">
+                <i class="fa-solid fa-filter"></i> Filtrar
+              </button>
+              <button class="btn btn-secondary" style="height:38px;padding:0 14px;" onclick="WMS_MODULES.picking._clearAgotFilters()" title="Limpiar">
+                <i class="fa-solid fa-broom"></i>
+              </button>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+            <div class="card" style="padding:14px 18px;text-align:center;">
+              <div style="font-size:2rem;font-weight:900;color:#dc2626;">${rows.length}</div>
+              <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Registros Agotados</div>
+            </div>
+            <div class="card" style="padding:14px 18px;text-align:center;">
+              <div style="font-size:2rem;font-weight:900;color:#f59e0b;">${WMS.formatNum(totalCajas)}</div>
+              <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Total Cajas Faltantes</div>
+            </div>
+            <div class="card" style="padding:14px 18px;text-align:center;">
+              <div style="font-size:2rem;font-weight:900;color:#0ea5e9;">${sucAfect}</div>
+              <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Sucursales Afectadas</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">
+                <i class="fa-solid fa-box-open" style="color:#dc2626;"></i> Agotados de Picking
+                <span style="font-size:11px;color:#64748b;font-weight:400;margin-left:6px;">${rows.length} registro(s)</span>
+              </span>
+            </div>
+            <div class="table-container" style="overflow-x:auto;">
+              <table class="erp-table" style="font-size:12px;">
+                <thead><tr>
+                  <th>Fecha</th>
+                  <th>Sucursal</th>
+                  <th>Pedido</th>
+                  <th>Planilla</th>
+                  <th>Cliente</th>
+                  <th>Producto</th>
+                  <th style="text-align:center;">Solicitado (cj)</th>
+                  <th style="text-align:center;">Faltante (cj)</th>
+                  <th>Causa</th>
+                </tr></thead>
+                <tbody>
+                  ${rows.map(row => `<tr>
+                    <td style="white-space:nowrap;font-size:11px;">${WMS.formatDate((row.fecha||'').slice(0,10))}</td>
+                    <td><span class="badge badge-info" style="font-size:11px;">${WMS.esc(row.sucursal_entrega||'-')}</span></td>
+                    <td style="font-family:monospace;font-size:11px;">${WMS.esc(row.numero_orden||'-')}</td>
+                    <td><span class="badge badge-secondary" style="font-size:11px;">${WMS.esc(row.planilla_numero||row.planilla_lote||'-')}</span></td>
+                    <td style="font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${WMS.esc(row.cliente||'')}">${WMS.esc(row.cliente||'-')}</td>
+                    <td>
+                      <div style="font-weight:700;color:#1e293b;">${WMS.esc(row.producto_nombre||'-')}</div>
+                      <div style="font-size:10px;color:#64748b;font-family:monospace;">${WMS.esc(row.producto_codigo||'')}</div>
+                    </td>
+                    <td style="text-align:center;">${WMS.formatNum(row.cantidad_solicitada)}</td>
+                    <td style="text-align:center;"><span class="badge badge-danger">${WMS.formatNum(row.cantidad_faltante)}</span></td>
+                    <td style="font-size:11px;color:#64748b;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${WMS.esc(row.causa||'')}">${WMS.esc(row.causa||'-')}</td>
+                  </tr>`).join('') || '<tr><td colspan="9" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin agotados en el período seleccionado</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>`);
+    } catch(e) {
+      if (e.isSessionExpired) return;
+      console.error(e);
+      WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando agotados</p></div>');
+    }
+  },
+
+  _applyAgotFilters() {
+    const ini = document.getElementById('agot-ini')?.value || '';
+    const fin = document.getElementById('agot-fin')?.value || '';
+    const suc = document.getElementById('agot-suc')?.value || '';
+    const ref = document.getElementById('agot-ref')?.value || '';
+    this.show_agotados({ ini, fin, sucursal: suc, referencia: ref });
+  },
+
+  _clearAgotFilters() {
+    this._agotFilters = { ini: '', fin: '', sucursal: '', referencia: '' };
+    this.show_agotados();
+  },
+
+  _exportAgotados() {
+    const f   = this._agotFilters;
+    const ini = f.ini || new Date(Date.now()-30*24*3600*1000).toISOString().slice(0,10);
+    const fin = f.fin || WMS.getToday();
+    const token = localStorage.getItem('wms_token') || '';
+    const base  = window.API_BASE || '/WMS_FENIX/public/api';
+    const url   = `${base}/picking/agotados?fecha_inicio=${ini}&fecha_fin=${fin}&sucursal_entrega=${encodeURIComponent(f.sucursal||'')}&referencia=${encodeURIComponent(f.referencia||'')}&export=csv&_token=${encodeURIComponent(token)}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `agotados_${ini}_${fin}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   },
 
   // ── DASHBOARD PICKING  ·  Command Center Logístico ───────────────────────
@@ -2557,9 +3655,12 @@ WMS_MODULES.picking = {
       const f_inicio = document.getElementById('dash-f-ini')?.value  || WMS.getToday();
       const f_fin    = document.getElementById('dash-f-fin')?.value  || WMS.getToday();
       const st_fil   = document.getElementById('dash-f-st')?.value   || '';
+      const suc_fil  = document.getElementById('dash-f-suc')?.value  || '';
+      const aux_fil  = document.getElementById('dash-f-aux')?.value  || '';
       const plan_fil = document.getElementById('dash-f-plan')?.value || '';
+      const ref_fil  = (document.getElementById('dash-f-ref')?.value || '').toLowerCase().trim();
 
-      const query = `fecha_inicio=${f_inicio}&fecha_fin=${f_fin}&estado=${st_fil}&planilla=${plan_fil}`;
+      const query = `fecha_inicio=${f_inicio}&fecha_fin=${f_fin}&estado=${st_fil}`;
       const [dash, allPicking] = await Promise.all([
         API.get('/picking/dashboard', query),
         API.get('/picking', query + '&limit=1000'),
@@ -2569,6 +3670,21 @@ WMS_MODULES.picking = {
       const all = allPicking.data || allPicking || [];
       const grupos = this._agruparPorPlanilla(all);
 
+      // Build filter option lists from full dataset
+      const sucursales = [...new Set(all.map(o => o.sucursal_entrega).filter(Boolean))].sort();
+      const auxiliares = [...new Set(all.map(o => o.auxiliar?.nombre || o.usuario).filter(Boolean))].sort();
+      const planillas  = [...new Set(all.map(o => o.planilla_numero || o.planilla_lote).filter(Boolean))].sort();
+
+      // Client-side filter grupos
+      let gruposVis = grupos;
+      if (suc_fil)  gruposVis = gruposVis.filter(g => g.ordenes.some(o => (o.sucursal_entrega||'') === suc_fil));
+      if (aux_fil)  gruposVis = gruposVis.filter(g => [...g.auxiliares].some(a => a === aux_fil));
+      if (plan_fil) gruposVis = gruposVis.filter(g => g.planilla === plan_fil);
+      if (ref_fil)  gruposVis = gruposVis.filter(g =>
+        g.planilla.toLowerCase().includes(ref_fil) ||
+        g.ordenes.some(o => (o.numero_orden||'').toLowerCase().includes(ref_fil) || (o.numero_pedido||'').toLowerCase().includes(ref_fil) || (o.ruta||'').toLowerCase().includes(ref_fil))
+      );
+
       // KPIs
       const totalL  = all.reduce((a,p) => a + parseInt(p.total_lineas||0), 0);
       const pendL   = all.reduce((a,p) => a + parseInt(p.lineas_pendientes||0), 0);
@@ -2576,7 +3692,7 @@ WMS_MODULES.picking = {
       const pctG    = totalL > 0 ? Math.round((okL / totalL) * 100) : 100;
       const stCount = { Pendiente: d.pendientes||0, EnProceso: d.en_proceso||0, Completado: d.completadas||0 };
 
-      const tableRows = grupos.map(g => this._renderPlanillaRow(g, { isDashboard: true })).join('');
+      const tableRows = gruposVis.map(g => this._renderPlanillaRow(g, { isDashboard: true })).join('');
 
       WMS.setContent(`
 <div class="pro-dashboard">
@@ -2587,9 +3703,27 @@ WMS_MODULES.picking = {
         <input type="date" id="dash-f-fin" class="form-control" style="width:130px;" value="${f_fin}" onchange="WMS_MODULES.picking.show_dashboard(true)">
       </div>
     </div>
-    <div class="filter-group" style="flex:1;"><label>BÚSQUEDA OPERACIONAL</label>
-      <div class="search-bar" style="max-width:400px;margin:0;"><i class="fa-solid fa-search"></i>
-        <input id="dash-f-plan" value="${plan_fil}" placeholder="Planilla, Ruta, Auxiliar..." onkeypress="if(event.key==='Enter')WMS_MODULES.picking.show_dashboard(true)">
+    <div class="filter-group"><label>SUCURSAL ENTREGA</label>
+      <select id="dash-f-suc" class="form-control" style="width:180px;" onchange="WMS_MODULES.picking.show_dashboard(true)">
+        <option value="">Todas</option>
+        ${sucursales.map(s=>`<option value="${WMS.esc(s)}" ${suc_fil===s?'selected':''}>${WMS.esc(s)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="filter-group"><label>AUXILIAR</label>
+      <select id="dash-f-aux" class="form-control" style="width:160px;" onchange="WMS_MODULES.picking.show_dashboard(true)">
+        <option value="">Todos</option>
+        ${auxiliares.map(a=>`<option value="${WMS.esc(a)}" ${aux_fil===a?'selected':''}>${WMS.esc(a)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="filter-group"><label>PLANILLA</label>
+      <select id="dash-f-plan" class="form-control" style="width:160px;" onchange="WMS_MODULES.picking.show_dashboard(true)">
+        <option value="">Todas</option>
+        ${planillas.map(p=>`<option value="${WMS.esc(p)}" ${plan_fil===p?'selected':''}>${WMS.esc(p)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="filter-group" style="flex:1;min-width:160px;"><label>REFERENCIA / PEDIDO</label>
+      <div class="search-bar" style="margin:0;min-width:160px;"><i class="fa-solid fa-search"></i>
+        <input id="dash-f-ref" placeholder="Pedido, ruta, planilla..." value="${WMS.esc(ref_fil)}" onkeypress="if(event.key==='Enter')WMS_MODULES.picking.show_dashboard(true)">
       </div>
     </div>
     <div class="filter-group"><label>ESTADO</label>
@@ -2693,11 +3827,11 @@ WMS_MODULES.picking = {
     <div class="table-container">
       <table class="erp-table" id="dash-table">
         <thead><tr>
-          <th>Planilla</th><th>Clientes / Sucursal</th><th>Ruta</th><th class="text-center">Avance</th>
+          <th>Planilla</th><th>Fecha Sep.</th><th>Clientes / Sucursal</th><th>Ruta</th><th class="text-center">Avance</th>
           <th style="min-width:130px;">Progreso</th><th>Estado</th><th>Encargado(s)</th>
           <th class="text-center">H. Inicio</th><th class="text-right">Obs</th>
         </tr></thead>
-        <tbody>${tableRows || '<tr><td colspan="9" class="table-empty">Sin planillas en este rango</td></tr>'}</tbody>
+        <tbody>${tableRows || '<tr><td colspan="10" class="table-empty">Sin planillas en este rango</td></tr>'}</tbody>
       </table>
     </div>
   </div>
@@ -2889,19 +4023,18 @@ WMS_MODULES.picking = {
             <div class="table-container">
               <table class="erp-table">
                 <thead><tr>
-                  <th>EAN / Código</th><th>Descripción</th><th>Última Factura</th><th>Sucursal</th>
-                  <th class="text-center">Cant.</th><th>Fecha Import.</th><th>Acciones</th>
+                  <th>COD</th><th>Descripción</th><th>Sucursal</th>
+                  <th>Fecha Importación</th><th class="text-center">Cantidad</th><th>Acciones</th>
                 </tr></thead>
                 <tbody>
                   ${items.length === 0
-                    ? '<tr><td colspan="7" class="table-empty"><i class="fa-solid fa-check-circle" style="color:#16a34a;"></i> No hay productos pendientes de codificación</td></tr>'
+                    ? '<tr><td colspan="6" class="table-empty"><i class="fa-solid fa-check-circle" style="color:#16a34a;"></i> No hay productos pendientes de codificación</td></tr>'
                     : items.map(it => `<tr>
                         <td class="fw-800" style="font-family:monospace;">${WMS.esc(it.ean_codigo)}</td>
-                        <td style="max-width:200px;white-space:normal;font-size:.8rem;">${WMS.esc(it.descripcion || '—')}</td>
-                        <td style="font-size:.8rem;">${WMS.esc(it.numero_factura || '—')}</td>
+                        <td style="max-width:220px;white-space:normal;font-size:.8rem;">${WMS.esc(it.descripcion || '—')}</td>
                         <td style="font-size:.8rem;">${WMS.esc(it.sucursal_entrega || '—')}</td>
-                        <td class="text-center">${it.cantidad || 1}</td>
                         <td style="font-size:.8rem;">${WMS.formatDate(it.fecha_importacion)}</td>
+                        <td class="text-center">${it.cantidad || 1}</td>
                         <td style="white-space:nowrap;">
                           <button title="Crear producto en catálogo"
                             onclick="WMS_MODULES.picking._crearProductoDesdePendiente(${parseInt(it.id)||0})"
@@ -3059,6 +4192,350 @@ WMS_MODULES.picking = {
       WMS.toast('success', 'Tabla limpiada');
       this.show_productos_pendientes(true);
     } catch (e) { WMS.toast('error', e.message); }
+  },
+
+  // ── MÓDULO RESERVAS ───────────────────────────────────────────────────────
+  _reservasData: [],          // cache de datos originales
+  _reservasSort: { col: 'diferencia', dir: 1 },  // columna activa y dirección
+
+  _reservasFiltros: { fecha_desde: '', fecha_hasta: '', sucursal_id: '' },
+
+  async show_reservas() {
+    WMS.setBreadcrumb('picking', 'Reservas');
+    WMS.setToolbar(`
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._cargarReservas()">
+        <i class="fa-solid fa-sync"></i> Actualizar
+      </button>
+      <button class="btn btn-sm" style="background:#16a34a;color:#fff;border:none;" onclick="WMS_MODULES.picking._exportarReservasCSV()">
+        <i class="fa-solid fa-file-csv"></i> Exportar CSV
+      </button>`);
+    const today = this.getToday();
+    const hace30 = new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
+    this._reservasFiltros = { fecha_desde: hace30, fecha_hasta: today, sucursal_id: '' };
+    await this._cargarReservas();
+  },
+
+  async _cargarReservas() {
+    WMS.spinner();
+    try {
+      const f = this._reservasFiltros || {};
+      const params = new URLSearchParams();
+      if (f.fecha_desde)  params.append('fecha_desde', f.fecha_desde);
+      if (f.fecha_hasta)  params.append('fecha_hasta', f.fecha_hasta);
+      if (f.sucursal_id)  params.append('sucursal_id', f.sucursal_id);
+      const qs = params.toString() ? '?' + params.toString() : '';
+      const r = await API.get('/picking/reservas' + qs);
+      // ok() envuelve: r.data = {data:[grupos], pagination:{}}  ⟶ extraer r.data.data
+      // Grupos: [{nombre_sucursal, referencias:[{...}]}]  ⟶ aplanar a items planos
+      const _rvGrupos = Array.isArray(r.data) ? r.data : (r.data?.data || []);
+      this._reservasData = _rvGrupos.flatMap(grupo =>
+        (grupo.referencias || []).map(ref => ({
+          codigo:            ref.codigo_producto,
+          descripcion:       ref.nombre_producto,
+          sucursal:          grupo.nombre_sucursal,
+          ubicacion:         ref.ubicacion_asignada || '',
+          cantidad_solicitada: ref.cantidad_solicitada,
+          separada:          ref.cantidad_separada,
+          pendiente:         ref.pendiente,
+          fecha_vencimiento: ref.fecha_vencimiento || '',
+          stock_total:       ref.stock_total,
+          stock_reservado:   (ref.stock_total || 0) - (ref.stock_disponible || 0),
+          stock_disponible:  ref.stock_disponible,
+          total_pedido:      ref.pendiente,
+          diferencia:        (ref.stock_disponible || 0) - (ref.pendiente || 0),
+        }))
+      );
+      this._reservasSort = { col: 'diferencia', dir: 1 };
+      this._renderReservas();
+    } catch (e) { WMS.toast('error', 'Error cargando reservas'); }
+  },
+
+  _exportarReservasCSV() {
+    const data = this._reservasData || [];
+    if (!data.length) { WMS.toast('warning', 'No hay datos para exportar'); return; }
+    const headers = ['Código','Descripción','Sucursal','Ubicación','Cant. Solicitada','Separada','Pendiente','Fecha Vencimiento','Stock Total','Stock Reservado','Stock Disponible','En Pedidos','Diferencia','Estado'];
+    const rows = data.map(it => {
+      const d = parseFloat(it.diferencia);
+      const estado = d < 0 ? 'AGOTADO' : d < parseFloat(it.total_pedido||0)*0.2 ? 'RIESGO' : 'OK';
+      return [
+        it.codigo||'', it.descripcion||'', it.sucursal||'', it.ubicacion||'',
+        it.cantidad_solicitada||'', it.separada||'', it.pendiente||'', it.fecha_vencimiento||'',
+        it.stock_total||'', it.stock_reservado||'', it.stock_disponible||'',
+        it.total_pedido||'', it.diferencia||'', estado
+      ].map(v => '"' + String(v).replace(/"/g,'""') + '"');
+    });
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'Reservas_Picking_' + this.getToday() + '.csv';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+    WMS.toast('success', 'CSV generado correctamente');
+  },
+
+  _renderReservas() {
+    const allItems = this._reservasData;
+    const agotados = allItems.filter(x => parseFloat(x.diferencia) <  0);
+    const riesgo   = allItems.filter(x => parseFloat(x.diferencia) >= 0 && parseFloat(x.diferencia) < parseFloat(x.total_pedido) * 0.2);
+    const ok       = allItems.filter(x => parseFloat(x.diferencia) >= parseFloat(x.total_pedido) * 0.2);
+
+    const estadoVal = it => {
+      const d = parseFloat(it.diferencia);
+      if (d < 0) return 0;
+      if (d < parseFloat(it.total_pedido) * 0.2) return 1;
+      return 2;
+    };
+    const estadoBadge = it => {
+      const v = estadoVal(it);
+      if (v === 0) return '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">AGOTADO</span>';
+      if (v === 1) return '<span style="background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">RIESGO</span>';
+      return '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">OK</span>';
+    };
+
+    const colDefs = [
+      { key:'codigo',          label:'COD',          type:'str',  align:'left'   },
+      { key:'descripcion',     label:'Descripción',  type:'str',  align:'left'   },
+      { key:'stock_total',     label:'Stock Total',  type:'num',  align:'right'  },
+      { key:'stock_reservado', label:'Reservado',    type:'num',  align:'right'  },
+      { key:'stock_disponible',label:'Disponible',   type:'num',  align:'right'  },
+      { key:'total_pedido',    label:'En Pedidos',   type:'num',  align:'right'  },
+      { key:'diferencia',      label:'Diferencia',   type:'num',  align:'right'  },
+      { key:'_estado',         label:'Estado',       type:'ord',  align:'center' },
+    ];
+
+    const sortIcon = col => {
+      if (this._reservasSort.col !== col) return '<i class="fa-solid fa-sort" style="opacity:.3;font-size:9px;margin-left:3px;"></i>';
+      return this._reservasSort.dir === 1
+        ? '<i class="fa-solid fa-sort-up" style="color:#6366f1;font-size:9px;margin-left:3px;"></i>'
+        : '<i class="fa-solid fa-sort-down" style="color:#6366f1;font-size:9px;margin-left:3px;"></i>';
+    };
+
+    const thStyle = align => {
+      const base = 'cursor:pointer;user-select:none;white-space:nowrap;padding:8px 10px;';
+      if (align === 'right')  return base + 'text-align:right;';
+      if (align === 'center') return base + 'text-align:center;';
+      return base + 'text-align:left;';
+    };
+
+    WMS.setContent(`
+      <div class="px-20 py-16">
+        <!-- KPIs -->
+        <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:130px;background:#fee2e2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;text-align:center;cursor:pointer;" onclick="WMS_MODULES.picking._filtrarReservasPorEstado('AGOTADO')">
+            <div style="font-size:26px;font-weight:900;color:#991b1b;" id="rv-cnt-agotado">${agotados.length}</div>
+            <div style="font-size:11px;color:#b91c1c;font-weight:600;">AGOTADOS</div>
+          </div>
+          <div style="flex:1;min-width:130px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;text-align:center;cursor:pointer;" onclick="WMS_MODULES.picking._filtrarReservasPorEstado('RIESGO')">
+            <div style="font-size:26px;font-weight:900;color:#854d0e;" id="rv-cnt-riesgo">${riesgo.length}</div>
+            <div style="font-size:11px;color:#92400e;font-weight:600;">EN RIESGO</div>
+          </div>
+          <div style="flex:1;min-width:130px;background:#dcfce7;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;text-align:center;cursor:pointer;" onclick="WMS_MODULES.picking._filtrarReservasPorEstado('OK')">
+            <div style="font-size:26px;font-weight:900;color:#166534;" id="rv-cnt-ok">${ok.length}</div>
+            <div style="font-size:11px;color:#15803d;font-weight:600;">CON STOCK</div>
+          </div>
+          <div style="flex:1;min-width:130px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;text-align:center;cursor:pointer;" onclick="WMS_MODULES.picking._filtrarReservasPorEstado('')">
+            <div style="font-size:26px;font-weight:900;color:#1e293b;" id="rv-cnt-total">${allItems.length}</div>
+            <div style="font-size:11px;color:#475569;font-weight:600;">TOTAL REFS</div>
+          </div>
+        </div>
+
+        <div class="card shadow-soft">
+          <div class="card-header d-flex justify-between align-center" style="flex-wrap:wrap;gap:8px;">
+            <span class="card-title fw-900 color-primary" style="flex-shrink:0;">
+              <i class="fa-solid fa-boxes-stacked" style="color:#6366f1;"></i> Reservas vs Inventario
+            </span>
+            <!-- Filtros -->
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <label style="font-size:11px;color:#64748b;white-space:nowrap;">Desde
+                <input id="rv-fecha-desde" type="date" value="${(this._reservasFiltros||{}).fecha_desde||''}"
+                  style="margin-left:4px;padding:4px 6px;border:1px solid #e2e8f0;border-radius:4px;font-size:11px;"
+                  onchange="WMS_MODULES.picking._reservasFiltros.fecha_desde=this.value;WMS_MODULES.picking._cargarReservas()" />
+              </label>
+              <label style="font-size:11px;color:#64748b;white-space:nowrap;">Hasta
+                <input id="rv-fecha-hasta" type="date" value="${(this._reservasFiltros||{}).fecha_hasta||''}"
+                  style="margin-left:4px;padding:4px 6px;border:1px solid #e2e8f0;border-radius:4px;font-size:11px;"
+                  onchange="WMS_MODULES.picking._reservasFiltros.fecha_hasta=this.value;WMS_MODULES.picking._cargarReservas()" />
+              </label>
+              <input id="rv-sucursal-filter" type="text" placeholder="Sucursal..."
+                style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:4px;font-size:12px;width:120px;"
+                value="${(this._reservasFiltros||{}).sucursal_id||''}"
+                oninput="WMS_MODULES.picking._reservasFiltros.sucursal_id=this.value;WMS_MODULES.picking._aplicarFiltrosReservas()" />
+              <div style="position:relative;">
+                <i class="fa-solid fa-search" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:11px;"></i>
+                <input id="rv-search" type="text" placeholder="Buscar por código o descripción..."
+                  style="padding:5px 10px 5px 26px;border:1px solid #e2e8f0;border-radius:4px;font-size:12px;width:220px;"
+                  oninput="WMS_MODULES.picking._aplicarFiltrosReservas()" />
+              </div>
+              <select id="rv-estado-filter" style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:4px;font-size:12px;"
+                onchange="WMS_MODULES.picking._aplicarFiltrosReservas()">
+                <option value="">Todos los estados</option>
+                <option value="AGOTADO">AGOTADO</option>
+                <option value="RIESGO">EN RIESGO</option>
+                <option value="OK">OK</option>
+              </select>
+              <button class="btn btn-sm" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;font-size:11px;padding:4px 10px;"
+                onclick="WMS_MODULES.picking._limpiarVistareservas()">
+                <i class="fa-solid fa-filter-circle-xmark"></i> Limpiar filtros
+              </button>
+            </div>
+          </div>
+          <div style="padding:7px 16px;background:#f0f9ff;border-bottom:1px solid #bae6fd;font-size:11px;color:#0369a1;">
+            <i class="fa-solid fa-circle-info"></i>
+            <strong>Disponible</strong> = stock menos reservas activas.
+            <strong>Diferencia negativa</strong> = más pedidos que stock disponible.
+            Haz clic en los encabezados para ordenar.
+          </div>
+          <div class="table-container" style="overflow-x:auto;">
+            <table class="erp-table" id="rv-table" style="width:100%;border-collapse:collapse;">
+              <thead><tr id="rv-thead">
+                ${colDefs.map(c => `
+                  <th style="${thStyle(c.align)}" onclick="WMS_MODULES.picking._sortReservas('${c.key}')">
+                    ${c.label}${sortIcon(c.key)}
+                  </th>`).join('')}
+              </tr></thead>
+              <tbody id="rv-tbody"></tbody>
+            </table>
+          </div>
+          <div id="rv-footer" style="padding:6px 14px;font-size:11px;color:#64748b;border-top:1px solid #f1f5f9;"></div>
+        </div>
+      </div>`);
+
+    this._aplicarFiltrosReservas();
+  },
+
+  _sortReservas(col) {
+    if (this._reservasSort.col === col) {
+      this._reservasSort.dir *= -1;
+    } else {
+      this._reservasSort.col = col;
+      this._reservasSort.dir = col === 'descripcion' || col === 'codigo' ? 1 : 1;
+    }
+    this._aplicarFiltrosReservas();
+    // Actualizar iconos en encabezados
+    const thead = document.getElementById('rv-thead');
+    if (!thead) return;
+    const cols = ['codigo','descripcion','stock_total','stock_reservado','stock_disponible','total_pedido','diferencia','_estado'];
+    thead.querySelectorAll('th').forEach((th, i) => {
+      const c = cols[i];
+      const icon = th.querySelector('i');
+      if (!icon) return;
+      if (c !== this._reservasSort.col) {
+        icon.className = 'fa-solid fa-sort';
+        icon.style.opacity = '.3';
+        icon.style.color = '';
+      } else {
+        icon.className = this._reservasSort.dir === 1 ? 'fa-solid fa-sort-up' : 'fa-solid fa-sort-down';
+        icon.style.opacity = '1';
+        icon.style.color = '#6366f1';
+      }
+    });
+  },
+
+  _filtrarReservasPorEstado(estado) {
+    const sel = document.getElementById('rv-estado-filter');
+    const inp = document.getElementById('rv-search');
+    if (sel) sel.value = estado;
+    if (inp) inp.value = '';
+    this._aplicarFiltrosReservas();
+  },
+
+  _limpiarVistareservas() {
+    const sel = document.getElementById('rv-estado-filter');
+    const inp = document.getElementById('rv-search');
+    if (sel) sel.value = '';
+    if (inp) inp.value = '';
+    this._reservasSort = { col: 'diferencia', dir: 1 };
+    this._aplicarFiltrosReservas();
+    // Resetear iconos
+    const thead = document.getElementById('rv-thead');
+    if (thead) {
+      thead.querySelectorAll('th i').forEach(icon => {
+        icon.className = 'fa-solid fa-sort';
+        icon.style.opacity = '.3';
+        icon.style.color = '';
+      });
+      const icons = thead.querySelectorAll('th i');
+      if (icons[6]) { icons[6].className = 'fa-solid fa-sort-up'; icons[6].style.opacity = '1'; icons[6].style.color = '#6366f1'; }
+    }
+  },
+
+  _aplicarFiltrosReservas() {
+    const busqueda  = (document.getElementById('rv-search')?.value || '').toLowerCase().trim();
+    const estadoFil = (document.getElementById('rv-estado-filter')?.value || '');
+
+    const estadoVal = it => {
+      const d = parseFloat(it.diferencia);
+      if (d < 0) return 'AGOTADO';
+      if (d < parseFloat(it.total_pedido) * 0.2) return 'RIESGO';
+      return 'OK';
+    };
+    const estadoBadge = it => {
+      const v = estadoVal(it);
+      if (v === 'AGOTADO') return '<span style="display:inline-block;background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">AGOTADO</span>';
+      if (v === 'RIESGO')  return '<span style="display:inline-block;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">RIESGO</span>';
+      return '<span style="display:inline-block;background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">OK</span>';
+    };
+
+    let items = this._reservasData.filter(it => {
+      if (busqueda && !(
+        (it.codigo||'').toLowerCase().includes(busqueda) ||
+        (it.descripcion||'').toLowerCase().includes(busqueda)
+      )) return false;
+      if (estadoFil && estadoVal(it) !== estadoFil) return false;
+      return true;
+    });
+
+    // Ordenar
+    const { col, dir } = this._reservasSort;
+    items = [...items].sort((a, b) => {
+      let va, vb;
+      if (col === '_estado') {
+        const ord = { AGOTADO: 0, RIESGO: 1, OK: 2 };
+        va = ord[estadoVal(a)] ?? 3;
+        vb = ord[estadoVal(b)] ?? 3;
+      } else if (col === 'codigo' || col === 'descripcion') {
+        va = (a[col] || '').toLowerCase();
+        vb = (b[col] || '').toLowerCase();
+        return dir * va.localeCompare(vb);
+      } else {
+        va = parseFloat(a[col]) || 0;
+        vb = parseFloat(b[col]) || 0;
+      }
+      return dir * (va < vb ? -1 : va > vb ? 1 : 0);
+    });
+
+    const tbody = document.getElementById('rv-tbody');
+    const footer = document.getElementById('rv-footer');
+    if (!tbody) return;
+
+    if (items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="table-empty" style="text-align:center;padding:24px;color:#94a3b8;"><i class="fa-solid fa-search"></i> Sin resultados para los filtros aplicados</td></tr>';
+      if (footer) footer.textContent = '0 referencias';
+      return;
+    }
+
+    tbody.innerHTML = items.map(it => {
+      const dif = parseFloat(it.diferencia) || 0;
+      const difColor = dif < 0 ? '#dc2626' : dif < parseFloat(it.total_pedido)*0.2 ? '#d97706' : '#16a34a';
+      return `<tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:7px 10px;font-family:monospace;font-weight:700;font-size:11px;text-align:left;white-space:nowrap;">${WMS.esc(it.codigo||'—')}</td>
+        <td style="padding:7px 10px;font-size:.8rem;text-align:left;max-width:240px;white-space:normal;word-break:break-word;">${WMS.esc(it.descripcion||'—')}</td>
+        <td style="padding:7px 10px;text-align:right;white-space:nowrap;">${WMS.formatNum(it.stock_total)}</td>
+        <td style="padding:7px 10px;text-align:right;color:#7c3aed;white-space:nowrap;">${WMS.formatNum(it.stock_reservado)}</td>
+        <td style="padding:7px 10px;text-align:right;color:#0369a1;font-weight:700;white-space:nowrap;">${WMS.formatNum(it.stock_disponible)}</td>
+        <td style="padding:7px 10px;text-align:right;color:#d97706;font-weight:700;white-space:nowrap;">${WMS.formatNum(it.total_pedido)}</td>
+        <td style="padding:7px 10px;text-align:right;color:${difColor};font-weight:800;white-space:nowrap;">${dif >= 0 ? '+' : ''}${WMS.formatNum(dif)}</td>
+        <td style="padding:7px 10px;text-align:center;white-space:nowrap;">${estadoBadge(it)}</td>
+      </tr>`;
+    }).join('');
+
+    if (footer) {
+      const total = this._reservasData.length;
+      footer.textContent = items.length === total
+        ? `${total} referencias`
+        : `${items.length} de ${total} referencias (filtrado)`;
+    }
   },
 
   // ── REPORTE HISTÓRICO ─────────────────────────────────────────────────────
@@ -3282,6 +4759,463 @@ WMS_MODULES.picking = {
       WMS.toast('error', 'Error generando Excel: ' + WMS.esc(e.message));
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-file-excel"></i> Excel'; }
+    }
+  },
+
+  // ── CONSULTA DE PICKING ───────────────────────────────────────────────────
+  _consultaPage: 1,
+  _consultaData: [],
+  _consultaTotal: 0,
+  _consultaPageSize: 50,
+  _consultaFiltros: { q: '', fecha_desde: '', fecha_hasta: '', estado: '' },
+
+  async show_consulta() {
+    WMS.setBreadcrumb('picking', 'Consulta de Picking');
+    WMS.setToolbar(`
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._cargarConsulta(1)">
+        <i class="fa-solid fa-sync"></i> Actualizar
+      </button>`);
+    const today = this.getToday();
+    const hace7 = new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0];
+    this._consultaFiltros = { q: '', fecha_desde: hace7, fecha_hasta: today, estado: '' };
+    this._consultaPage = 1;
+    WMS.setContent(`
+      <div class="px-20 py-16">
+        <!-- Filtros -->
+        <div class="card shadow-soft" style="margin-bottom:14px;">
+          <div class="card-header" style="padding:10px 16px;">
+            <span class="card-title fw-700"><i class="fa-solid fa-filter" style="color:#6366f1;"></i> Filtros</span>
+          </div>
+          <div style="padding:12px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:11px;color:#64748b;font-weight:600;">Búsqueda libre</label>
+              <div style="position:relative;">
+                <i class="fa-solid fa-search" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:11px;"></i>
+                <input id="cq-q" type="text" placeholder="Código, descripción, planilla..."
+                  style="padding:6px 10px 6px 28px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;width:220px;"
+                  onkeydown="if(event.key==='Enter')WMS_MODULES.picking._cargarConsulta(1)" />
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:11px;color:#64748b;font-weight:600;">Fecha desde</label>
+              <input id="cq-desde" type="date" value="${hace7}"
+                style="padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;" />
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:11px;color:#64748b;font-weight:600;">Fecha hasta</label>
+              <input id="cq-hasta" type="date" value="${today}"
+                style="padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;" />
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:11px;color:#64748b;font-weight:600;">Estado</label>
+              <select id="cq-estado" style="padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;">
+                <option value="">Todos</option>
+                <option value="pendiente">Pendiente</option>
+                <option value="parcial">Parcial</option>
+                <option value="completo">Completo</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.picking._cargarConsulta(1)">
+              <i class="fa-solid fa-magnifying-glass"></i> Buscar
+            </button>
+            <button class="btn btn-sm" style="background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;"
+              onclick="WMS_MODULES.picking._limpiarConsulta()">
+              <i class="fa-solid fa-filter-circle-xmark"></i> Limpiar
+            </button>
+          </div>
+        </div>
+        <!-- Tabla -->
+        <div class="card shadow-soft">
+          <div class="card-header d-flex justify-between align-center" style="flex-wrap:wrap;gap:8px;">
+            <span class="card-title fw-900 color-primary">
+              <i class="fa-solid fa-table" style="color:#6366f1;"></i> Productos en Picking
+            </span>
+            <span id="cq-resumen" style="font-size:11px;color:#64748b;"></span>
+          </div>
+          <div id="cq-contenido" style="padding:16px;">
+            <div style="text-align:center;padding:32px;color:#94a3b8;">
+              <i class="fa-solid fa-magnifying-glass" style="font-size:28px;"></i>
+              <div style="margin-top:8px;">Aplica los filtros y pulsa Buscar</div>
+            </div>
+          </div>
+          <!-- Paginación -->
+          <div id="cq-paginacion" style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;border-top:1px solid #f1f5f9;font-size:12px;color:#475569;"></div>
+        </div>
+      </div>`);
+  },
+
+  _limpiarConsulta() {
+    const today = this.getToday();
+    const hace7 = new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0];
+    const q = document.getElementById('cq-q'); if (q) q.value = '';
+    const d = document.getElementById('cq-desde'); if (d) d.value = hace7;
+    const h = document.getElementById('cq-hasta'); if (h) h.value = today;
+    const e = document.getElementById('cq-estado'); if (e) e.value = '';
+    const c = document.getElementById('cq-contenido');
+    if (c) c.innerHTML = '<div style="text-align:center;padding:32px;color:#94a3b8;"><i class="fa-solid fa-magnifying-glass" style="font-size:28px;"></i><div style="margin-top:8px;">Aplica los filtros y pulsa Buscar</div></div>';
+    const p = document.getElementById('cq-paginacion'); if (p) p.innerHTML = '';
+    const r = document.getElementById('cq-resumen'); if (r) r.textContent = '';
+  },
+
+  async _cargarConsulta(page) {
+    this._consultaPage = page || 1;
+    const q      = document.getElementById('cq-q')?.value?.trim() || '';
+    const desde  = document.getElementById('cq-desde')?.value || '';
+    const hasta  = document.getElementById('cq-hasta')?.value || '';
+    const estado = document.getElementById('cq-estado')?.value || '';
+    const params = new URLSearchParams({ page: this._consultaPage, limit: this._consultaPageSize });
+    if (q)      params.append('q', q);
+    if (desde)  params.append('fecha_desde', desde);
+    if (hasta)  params.append('fecha_hasta', hasta);
+    if (estado) params.append('estado', estado);
+
+    const contenido = document.getElementById('cq-contenido');
+    if (contenido) contenido.innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</div>';
+
+    try {
+      const r = await API.get('/picking/consulta?' + params.toString());
+      this._consultaData  = r.data || [];
+      this._consultaTotal = r.total || this._consultaData.length;
+      this._renderConsulta();
+    } catch (e) {
+      if (contenido) contenido.innerHTML = '<div style="text-align:center;padding:24px;color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Error cargando datos</div>';
+      WMS.toast('error', 'Error en consulta de picking');
+    }
+  },
+
+  _renderConsulta() {
+    const data = this._consultaData;
+    const total = this._consultaTotal;
+    const page  = this._consultaPage;
+    const limit = this._consultaPageSize;
+    const resumen = document.getElementById('cq-resumen');
+    const pag     = document.getElementById('cq-paginacion');
+    const cont    = document.getElementById('cq-contenido');
+    if (!cont) return;
+
+    if (resumen) resumen.textContent = total + ' producto(s) encontrado(s)';
+
+    if (!data.length) {
+      cont.innerHTML = '<div style="text-align:center;padding:32px;color:#94a3b8;"><i class="fa-solid fa-box-open" style="font-size:28px;"></i><div style="margin-top:8px;">Sin resultados para los filtros aplicados</div></div>';
+      if (pag) pag.innerHTML = '';
+      return;
+    }
+
+    const fmtN = v => { const n = parseFloat(v); return isNaN(n) ? '-' : n.toLocaleString('es-CO'); };
+    const estadoBadge = (sol, sep) => {
+      const s = parseFloat(sol)||0, p = parseFloat(sep)||0;
+      if (p <= 0)          return '<span style="background:#fee2e2;color:#991b1b;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;">PENDIENTE</span>';
+      if (p >= s)          return '<span style="background:#dcfce7;color:#166534;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;">COMPLETO</span>';
+      return '<span style="background:#fef9c3;color:#854d0e;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;">PARCIAL</span>';
+    };
+
+    const rows = data.map((prod, i) => {
+      const suc = prod.sucursales || [];
+      const detId = 'cq-det-' + i;
+      const sucRows = suc.map(s => `
+        <tr style="background:#f8fafc;">
+          <td style="padding:5px 10px 5px 36px;font-size:11px;color:#475569;">${WMS.esc ? WMS.esc(s.sucursal||'') : (s.sucursal||'')}</td>
+          <td style="padding:5px 10px;font-size:11px;text-align:center;color:#6366f1;">${WMS.esc ? WMS.esc(s.planilla||'') : (s.planilla||'')}</td>
+          <td style="padding:5px 10px;font-size:11px;text-align:right;">${fmtN(s.solicitada)}</td>
+          <td style="padding:5px 10px;font-size:11px;text-align:right;">${fmtN(s.separada)}</td>
+          <td style="padding:5px 10px;font-size:11px;text-align:right;">${fmtN((parseFloat(s.solicitada)||0)-(parseFloat(s.separada)||0))}</td>
+          <td style="padding:5px 10px;font-size:11px;text-align:center;">${estadoBadge(s.solicitada, s.separada)}</td>
+        </tr>`).join('');
+
+      const solTotal = prod.cant_solicitada_total || prod.sucursales?.reduce((a,s)=>a+(parseFloat(s.solicitada)||0),0) || 0;
+      const sepTotal = prod.cant_separada_total   || prod.sucursales?.reduce((a,s)=>a+(parseFloat(s.separada)||0),0)   || 0;
+      const pendTotal = (parseFloat(solTotal)||0) - (parseFloat(sepTotal)||0);
+      return `
+        <tr style="background:#fff;border-bottom:1px solid #f1f5f9;">
+          <td style="padding:8px 10px;font-size:12px;font-weight:700;">
+            <button onclick="WMS_MODULES.picking._toggleConsultaDet('${detId}')" style="background:none;border:none;cursor:pointer;padding:0 6px 0 0;color:#6366f1;" title="Expandir sucursales">
+              <i class="fa-solid fa-chevron-right" id="${detId}-icon" style="transition:transform .2s;font-size:11px;"></i>
+            </button>
+            ${WMS.esc ? WMS.esc(prod.codigo||'') : (prod.codigo||'')}
+          </td>
+          <td style="padding:8px 10px;font-size:12px;">${WMS.esc ? WMS.esc(prod.descripcion||'') : (prod.descripcion||'')}</td>
+          <td style="padding:8px 10px;font-size:12px;text-align:center;">${suc.length}</td>
+          <td style="padding:8px 10px;font-size:12px;text-align:right;">${fmtN(solTotal)}</td>
+          <td style="padding:8px 10px;font-size:12px;text-align:right;">${fmtN(sepTotal)}</td>
+          <td style="padding:8px 10px;font-size:12px;text-align:right;${pendTotal>0?'color:#ef4444;font-weight:700;':''}">${fmtN(pendTotal)}</td>
+        </tr>
+        <tr id="${detId}" style="display:none;">
+          <td colspan="6" style="padding:0;">
+            <table style="width:100%;border-collapse:collapse;border-top:1px solid #e2e8f0;">
+              <thead>
+                <tr style="background:#f0f4ff;">
+                  <th style="padding:5px 10px 5px 36px;font-size:10px;font-weight:700;text-align:left;color:#6366f1;">Sucursal</th>
+                  <th style="padding:5px 10px;font-size:10px;font-weight:700;text-align:center;color:#6366f1;">Planilla</th>
+                  <th style="padding:5px 10px;font-size:10px;font-weight:700;text-align:right;color:#6366f1;">Solicitada</th>
+                  <th style="padding:5px 10px;font-size:10px;font-weight:700;text-align:right;color:#6366f1;">Separada</th>
+                  <th style="padding:5px 10px;font-size:10px;font-weight:700;text-align:right;color:#6366f1;">Pendiente</th>
+                  <th style="padding:5px 10px;font-size:10px;font-weight:700;text-align:center;color:#6366f1;">Estado</th>
+                </tr>
+              </thead>
+              <tbody>${sucRows || '<tr><td colspan="6" style="padding:8px 16px;font-size:11px;color:#94a3b8;">Sin detalle de sucursales</td></tr>'}</tbody>
+            </table>
+          </td>
+        </tr>`;
+    }).join('');
+
+    cont.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
+              <th style="padding:9px 10px;font-size:11px;font-weight:700;text-align:left;white-space:nowrap;">Código</th>
+              <th style="padding:9px 10px;font-size:11px;font-weight:700;text-align:left;">Descripción</th>
+              <th style="padding:9px 10px;font-size:11px;font-weight:700;text-align:center;white-space:nowrap;">Total Sucursales</th>
+              <th style="padding:9px 10px;font-size:11px;font-weight:700;text-align:right;white-space:nowrap;">Cant. Solicitada</th>
+              <th style="padding:9px 10px;font-size:11px;font-weight:700;text-align:right;white-space:nowrap;">Cant. Separada</th>
+              <th style="padding:9px 10px;font-size:11px;font-weight:700;text-align:right;white-space:nowrap;">Pendiente</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+
+    // Paginación
+    if (pag) {
+      const totalPags = Math.ceil(total / limit);
+      const desde = ((page-1)*limit)+1;
+      const hasta  = Math.min(page*limit, total);
+      pag.innerHTML = `
+        <span>Mostrando ${desde}-${hasta} de ${total} registros (pág. ${page}/${totalPags||1})</span>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm" style="font-size:11px;padding:3px 10px;" ${page<=1?'disabled':''} onclick="WMS_MODULES.picking._cargarConsulta(${page-1})">
+            <i class="fa-solid fa-chevron-left"></i> Anterior
+          </button>
+          <button class="btn btn-sm" style="font-size:11px;padding:3px 10px;" ${page>=totalPags?'disabled':''} onclick="WMS_MODULES.picking._cargarConsulta(${page+1})">
+            Siguiente <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>`;
+    }
+  },
+
+  _toggleConsultaDet(id) {
+    const row  = document.getElementById(id);
+    const icon = document.getElementById(id + '-icon');
+    if (!row) return;
+    const hidden = row.style.display === 'none';
+    row.style.display = hidden ? '' : 'none';
+    if (icon) icon.style.transform = hidden ? 'rotate(90deg)' : '';
+  },
+
+  // ── NOVEDADES DE PICKING ──────────────────────────────────────────────────
+  _novedadesPage: 1,
+  _novedadesData: [],
+
+  async show_novedades() {
+    const rol = (WMS.user||{}).rol || '';
+    if (rol !== 'Admin' && rol !== 'SuperAdmin') {
+      WMS.setContent(`
+        <div class="px-20 py-16">
+          <div style="text-align:center;padding:48px;color:#ef4444;">
+            <i class="fa-solid fa-lock" style="font-size:36px;"></i>
+            <div style="margin-top:12px;font-size:16px;font-weight:700;">Acceso restringido</div>
+            <div style="margin-top:6px;font-size:13px;color:#64748b;">Este módulo es exclusivo para Administradores.</div>
+          </div>
+        </div>`);
+      return;
+    }
+    WMS.setBreadcrumb('picking', 'Novedades de Picking');
+    WMS.setToolbar(`
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._cargarNovedades(1)">
+        <i class="fa-solid fa-sync"></i> Actualizar
+      </button>`);
+    const today = this.getToday();
+    const hace30 = new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
+    WMS.setContent(`
+      <div class="px-20 py-16">
+        <div class="card shadow-soft" style="margin-bottom:14px;">
+          <div class="card-header" style="padding:10px 16px;">
+            <span class="card-title fw-700"><i class="fa-solid fa-filter" style="color:#6366f1;"></i> Filtros</span>
+          </div>
+          <div style="padding:12px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:11px;color:#64748b;font-weight:600;">Estado</label>
+              <select id="nv-estado" style="padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;">
+                <option value="">Todos</option>
+                <option value="Pendiente">Pendiente</option>
+                <option value="Resuelta">Resuelta</option>
+                <option value="Ignorada">Ignorada</option>
+              </select>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:11px;color:#64748b;font-weight:600;">Fecha desde</label>
+              <input id="nv-desde" type="date" value="${hace30}" style="padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;" />
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:11px;color:#64748b;font-weight:600;">Fecha hasta</label>
+              <input id="nv-hasta" type="date" value="${today}" style="padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;" />
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.picking._cargarNovedades(1)">
+              <i class="fa-solid fa-magnifying-glass"></i> Buscar
+            </button>
+          </div>
+        </div>
+        <div class="card shadow-soft">
+          <div class="card-header d-flex justify-between align-center">
+            <span class="card-title fw-900 color-primary">
+              <i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Novedades de Picking
+              <span id="nv-badge" style="display:none;background:#ef4444;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;margin-left:8px;"></span>
+            </span>
+            <span id="nv-resumen" style="font-size:11px;color:#64748b;"></span>
+          </div>
+          <div id="nv-contenido" style="padding:16px;">
+            <div style="text-align:center;padding:32px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</div>
+          </div>
+        </div>
+        <!-- Modal resolución/ignorar -->
+        <div id="nv-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center;">
+          <div style="background:#fff;border-radius:12px;padding:24px;width:440px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.18);">
+            <h3 id="nv-modal-title" style="margin:0 0 12px;font-size:15px;font-weight:700;color:#1e293b;"></h3>
+            <textarea id="nv-modal-nota" placeholder="Nota (opcional)..." rows="3"
+              style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;resize:vertical;"></textarea>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+              <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._cerrarNvModal()">Cancelar</button>
+              <button id="nv-modal-btn" class="btn btn-primary btn-sm" onclick="WMS_MODULES.picking._confirmarNvAccion()">Confirmar</button>
+            </div>
+          </div>
+        </div>
+      </div>`);
+    await this._cargarNovedades(1);
+  },
+
+  _nvAccion: null,
+  _nvId: null,
+
+  async _cargarNovedades(page) {
+    this._novedadesPage = page || 1;
+    const estado = document.getElementById('nv-estado')?.value || '';
+    const desde  = document.getElementById('nv-desde')?.value || '';
+    const hasta  = document.getElementById('nv-hasta')?.value || '';
+    const params = new URLSearchParams({ page: this._novedadesPage, limit: 50 });
+    if (estado) params.append('estado', estado);
+    if (desde)  params.append('fecha_desde', desde);
+    if (hasta)  params.append('fecha_hasta', hasta);
+
+    const cont = document.getElementById('nv-contenido');
+    if (cont) cont.innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</div>';
+
+    try {
+      const r = await API.get('/picking/novedades?' + params.toString());
+      // ok() envuelve en data: { data:[...], pagination:{} } — extraer el array interno
+      const _nvPayload = r.data || {};
+      this._novedadesData = Array.isArray(_nvPayload) ? _nvPayload : (_nvPayload.data || []);
+      const total = _nvPayload.pagination?.total ?? r.total ?? this._novedadesData.length;
+      const pendientes = this._novedadesData.filter(n => n.estado === 'Pendiente').length;
+
+      // Badge en resumen
+      const badge = document.getElementById('nv-badge');
+      if (badge) { badge.textContent = pendientes; badge.style.display = pendientes > 0 ? 'inline' : 'none'; }
+      const resumen = document.getElementById('nv-resumen');
+      if (resumen) resumen.textContent = total + ' novedad(es) encontrada(s)';
+
+      this._renderNovedades();
+    } catch (e) {
+      if (cont) cont.innerHTML = '<div style="text-align:center;padding:24px;color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Error cargando novedades</div>';
+      WMS.toast('error', 'Error cargando novedades');
+    }
+  },
+
+  _renderNovedades() {
+    const data = this._novedadesData;
+    const cont = document.getElementById('nv-contenido');
+    if (!cont) return;
+    if (!data.length) {
+      cont.innerHTML = '<div style="text-align:center;padding:32px;color:#94a3b8;"><i class="fa-solid fa-check-circle" style="font-size:28px;color:#22c55e;"></i><div style="margin-top:8px;">Sin novedades para los filtros aplicados</div></div>';
+      return;
+    }
+    const estadoBadge = e => {
+      if (e === 'Pendiente') return '<span style="background:#fef9c3;color:#854d0e;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700;">PENDIENTE</span>';
+      if (e === 'Resuelta')  return '<span style="background:#dcfce7;color:#166534;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESUELTA</span>';
+      return '<span style="background:#f1f5f9;color:#475569;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700;">IGNORADA</span>';
+    };
+    const esc = s => WMS.esc ? WMS.esc(s||'') : (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const rows = data.map(n => `
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:7px 10px;font-size:11px;white-space:nowrap;">${esc(n.fecha||'')}</td>
+        <td style="padding:7px 10px;font-size:11px;">${esc(n.archivo||'')}</td>
+        <td style="padding:7px 10px;font-size:11px;">${esc(n.planilla||'')}</td>
+        <td style="padding:7px 10px;font-size:11px;">${esc(n.sucursal||'')}</td>
+        <td style="padding:7px 10px;font-size:11px;font-weight:700;">${esc(n.codigo_producto||'')}</td>
+        <td style="padding:7px 10px;font-size:11px;">${esc(n.descripcion||'')}</td>
+        <td style="padding:7px 10px;font-size:11px;text-align:right;color:#ef4444;font-weight:700;">${n.cantidad_invalida||''}</td>
+        <td style="padding:7px 10px;font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(n.motivo||'')}">${esc(n.motivo||'')}</td>
+        <td style="padding:7px 10px;text-align:center;">${estadoBadge(n.estado)}</td>
+        <td style="padding:7px 10px;white-space:nowrap;">
+          ${n.estado === 'Pendiente' ? `
+            <button class="btn btn-sm" style="background:#22c55e;color:#fff;border:none;font-size:10px;padding:3px 8px;margin-right:4px;"
+              onclick="WMS_MODULES.picking._abrirNvModal(${n.id},'resolver')">
+              <i class="fa-solid fa-check"></i> Resolver
+            </button>
+            <button class="btn btn-sm" style="background:#94a3b8;color:#fff;border:none;font-size:10px;padding:3px 8px;"
+              onclick="WMS_MODULES.picking._abrirNvModal(${n.id},'ignorar')">
+              <i class="fa-solid fa-eye-slash"></i> Ignorar
+            </button>` : '<span style="color:#94a3b8;font-size:10px;">—</span>'}
+        </td>
+      </tr>`).join('');
+
+    cont.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
+              <th style="padding:8px 10px;font-size:10px;font-weight:700;text-align:left;white-space:nowrap;">Fecha</th>
+              <th style="padding:8px 10px;font-size:10px;font-weight:700;text-align:left;">Archivo</th>
+              <th style="padding:8px 10px;font-size:10px;font-weight:700;text-align:left;">Planilla</th>
+              <th style="padding:8px 10px;font-size:10px;font-weight:700;text-align:left;">Sucursal</th>
+              <th style="padding:8px 10px;font-size:10px;font-weight:700;text-align:left;">Cód. Producto</th>
+              <th style="padding:8px 10px;font-size:10px;font-weight:700;text-align:left;">Descripción</th>
+              <th style="padding:8px 10px;font-size:10px;font-weight:700;text-align:right;white-space:nowrap;">Cant. Inválida</th>
+              <th style="padding:8px 10px;font-size:10px;font-weight:700;text-align:left;">Motivo</th>
+              <th style="padding:8px 10px;font-size:10px;font-weight:700;text-align:center;">Estado</th>
+              <th style="padding:8px 10px;font-size:10px;font-weight:700;text-align:center;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  },
+
+  _abrirNvModal(id, accion) {
+    this._nvId     = id;
+    this._nvAccion = accion;
+    const modal = document.getElementById('nv-modal');
+    const title = document.getElementById('nv-modal-title');
+    const nota  = document.getElementById('nv-modal-nota');
+    const btn   = document.getElementById('nv-modal-btn');
+    if (!modal) return;
+    if (title) title.textContent = accion === 'resolver' ? 'Resolver novedad' : 'Ignorar novedad';
+    if (nota)  nota.value = '';
+    if (btn) {
+      btn.style.background = accion === 'resolver' ? '#22c55e' : '#94a3b8';
+      btn.textContent = accion === 'resolver' ? 'Confirmar resolución' : 'Confirmar ignorar';
+    }
+    modal.style.display = 'flex';
+  },
+
+  _cerrarNvModal() {
+    const modal = document.getElementById('nv-modal');
+    if (modal) modal.style.display = 'none';
+    this._nvId = null; this._nvAccion = null;
+  },
+
+  async _confirmarNvAccion() {
+    if (!this._nvId || !this._nvAccion) return;
+    const nota = document.getElementById('nv-modal-nota')?.value?.trim() || '';
+    const btn  = document.getElementById('nv-modal-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+    try {
+      await API.put(`/picking/novedades/${this._nvId}/resolver`, { accion: this._nvAccion, nota });
+      WMS.toast('success', this._nvAccion === 'resolver' ? 'Novedad resuelta' : 'Novedad ignorada');
+      this._cerrarNvModal();
+      await this._cargarNovedades(this._novedadesPage);
+    } catch (e) {
+      WMS.toast('error', 'Error al procesar la novedad');
+      if (btn) { btn.disabled = false; btn.textContent = 'Confirmar'; }
     }
   },
 

@@ -68,10 +68,14 @@ class Recepcion extends BaseModel
     public static function generarNumero(int $sucursalId): string
     {
         $prefix = 'REC';
-        $date = date('Ymd');
+        $date   = date('Ymd');
+        $isPg   = \Illuminate\Database\Capsule\Manager::connection()->getDriverName() === 'pgsql';
+        $expr   = $isPg
+            ? "MAX(CAST(REGEXP_REPLACE(numero_recepcion, '^.*-', '') AS INTEGER)) as max_seq"
+            : "MAX(CAST(SUBSTRING_INDEX(numero_recepcion, '-', -1) AS UNSIGNED)) as max_seq";
         $maxSeq = self::where('sucursal_id', $sucursalId)
             ->where('numero_recepcion', 'like', "{$prefix}-{$date}-%")
-            ->selectRaw('MAX(CAST(SUBSTRING_INDEX(numero_recepcion, \'-\', -1) AS UNSIGNED)) as max_seq')
+            ->selectRaw($expr)
             ->value('max_seq');
         return sprintf('%s-%s-%04d', $prefix, $date, ($maxSeq ?? 0) + 1);
     }

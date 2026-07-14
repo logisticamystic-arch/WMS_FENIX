@@ -13,8 +13,10 @@ class Ruta extends BaseModel
         'empresa_id',
         'nombre',
         'comercial',
-        'frecuencia', // Store as JSON or comma-separated string of days
-        'activo'
+        'frecuencia',
+        'frecuencia_tipo',
+        'frecuencia_config',
+        'activo',
     ];
 
     protected $casts = [

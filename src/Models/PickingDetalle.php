@@ -14,7 +14,25 @@ class PickingDetalle extends BaseModel
         'cantidad_solicitada', 'cantidad_pickeada', 'pasillo_lock', 'estado',
         'costo_unitario', 'descuento_porc', 'iva_porc', 'valor_iva', 'total_linea', 'devolucion_qty',
         'ambiente', 'numero_pedido_ref',
+        'unid_pedido_empaque', 'unid_pedido_total',
+        'cantidad_certificada', 'estado_certificacion',
+        'novedad',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $detalle) {
+            if (!empty($detalle->ambiente)) return;
+            if (!$detalle->producto_id) { $detalle->ambiente = 'Seco'; return; }
+            $prod = Producto::find($detalle->producto_id);
+            if ($prod && $prod->ambiente_id) {
+                $amb = Ambiente::find($prod->ambiente_id);
+                $detalle->ambiente = $amb?->codigo ?? 'Seco';
+            } else {
+                $detalle->ambiente = 'Seco';
+            }
+        });
+    }
 
     public function ordenPicking()
     {

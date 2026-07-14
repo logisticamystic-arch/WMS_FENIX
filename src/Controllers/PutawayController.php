@@ -34,6 +34,21 @@ class PutawayController extends BaseController
                     $q->where('u.tipo_ubicacion', 'Patio')
                       ->orWhereNull('i.ubicacion_id');
                 })
+                // Solo mostrar referencias de recepción sin ODC que hayan sido aprobadas
+                // por el admin. Si no viene de recepción sin ODC (sin numero_pallet o
+                // el pallet no está en recepcion_detalles sin ODC) se muestra siempre.
+                ->where(function ($q) {
+                    $q->whereNull('i.numero_pallet')  // sin pallet: no viene de recepción sin ODC
+                      ->orWhereNotExists(function ($sub) {
+                          // Existe algún detalle sin-ODC con este pallet que NO está aprobado
+                          $sub->from('recepcion_detalles as rd')
+                              ->join('recepciones as rec', 'rec.id', '=', 'rd.recepcion_id')
+                              ->whereNull('rec.odc_id')
+                              ->whereColumn('rd.numero_pallet', 'i.numero_pallet')
+                              ->whereColumn('rd.producto_id', 'i.producto_id')
+                              ->where('rd.aprobado_admin', false);
+                      });
+                })
                 ->select([
                     'i.id',
                     'i.producto_id',
@@ -153,11 +168,14 @@ class PutawayController extends BaseController
 
         $productoId      = (int)($data['producto_id'] ?? 0);
         $ubicacionDestId = (int)($data['ubicacion_destino_id'] ?? 0);
-        $cantidad        = (int)($data['cantidad'] ?? 0);
+        $cantidad        = (float)($data['cantidad'] ?? 0);
         $lote            = trim($data['lote'] ?? '') ?: null;
         $fechaVenc       = $data['fecha_vencimiento'] ?? null;
         $ubicacionOrigId = isset($data['ubicacion_origen_id']) && $data['ubicacion_origen_id']
             ? (int)$data['ubicacion_origen_id'] : null;
+        // Cajas y saldos desde el request (si vienen del móvil)
+        $cajasReq  = isset($data['cantidad_cajas']) ? (int)$data['cantidad_cajas'] : null;
+        $saldosReq = isset($data['saldos'])         ? (float)$data['saldos']       : null;
 
         if (!$productoId || !$ubicacionDestId || $cantidad <= 0) {
             return $this->error($res, 'producto_id, ubicacion_destino_id y cantidad > 0 son requeridos.', 400);
@@ -165,6 +183,12 @@ class PutawayController extends BaseController
 
         try {
             DB::beginTransaction();
+
+            // Resolver UPC del producto para cálculo de cajas/saldos
+            $producto  = \App\Models\Producto::select('id','unidades_caja')->find($productoId);
+            $upc       = max(1, (int)(($producto->unidades_caja ?? null) ?: 1));
+            $cajasMove = $cajasReq  ?? (int)floor($cantidad / $upc);
+            $saldosMove= $saldosReq ?? round(fmod($cantidad, (float)$upc), 4);
 
             // Verificar ubicación destino pertenece a empresa/sucursal
             $destino = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
@@ -191,17 +215,26 @@ class PutawayController extends BaseController
                     DB::rollBack();
                     return $this->error($res, 'Stock insuficiente en la ubicación de origen.', 400);
                 }
-
-                $invOrigen->cantidad -= $cantidad;
-                if ($invOrigen->cantidad <= 0) {
-                    $invOrigen->delete();
-                } else {
-                    $invOrigen->save();
+                if ((float)($invOrigen->cantidad_reservada ?? 0) > 0) {
+                    DB::rollBack();
+                    return $this->error($res, 'Hay stock reservado en esta ubicación. No se puede mover.', 422);
                 }
 
                 // Heredar fecha de vencimiento del origen si no viene en el request
                 if (!$fechaVenc && $invOrigen->fecha_vencimiento) {
                     $fechaVenc = $invOrigen->fecha_vencimiento;
+                }
+
+                $nuevoOrigen = round($invOrigen->cantidad - $cantidad, 4);
+                if ($nuevoOrigen <= 0) {
+                    $invOrigen->delete();
+                } else {
+                    $invOrigen->cantidad      = $nuevoOrigen;
+                    [$invOrigen->cantidad_cajas, $invOrigen->saldos] = [
+                        (int)floor($nuevoOrigen / $upc),
+                        round(fmod($nuevoOrigen, (float)$upc), 4),
+                    ];
+                    $invOrigen->save();
                 }
             }
 
@@ -215,11 +248,18 @@ class PutawayController extends BaseController
             ]);
             if (!$invDest->exists) {
                 $invDest->cantidad           = 0;
+                $invDest->cantidad_cajas     = 0;
+                $invDest->saldos             = 0;
                 $invDest->cantidad_reservada = 0;
                 $invDest->estado             = 'Disponible';
             }
             if ($fechaVenc) $invDest->fecha_vencimiento = $fechaVenc;
-            $invDest->cantidad += $cantidad;
+            $nuevaDest = round((float)($invDest->cantidad ?? 0) + $cantidad, 4);
+            $invDest->cantidad      = $nuevaDest;
+            [$invDest->cantidad_cajas, $invDest->saldos] = [
+                (int)floor($nuevaDest / $upc),
+                round(fmod($nuevaDest, (float)$upc), 4),
+            ];
             $invDest->save();
 
             // Registro de movimiento
@@ -231,6 +271,8 @@ class PutawayController extends BaseController
                 'ubicacion_destino_id' => $ubicacionDestId,
                 'tipo_movimiento'      => 'Traslado',
                 'cantidad'             => $cantidad,
+                'cantidad_cajas'       => $cajasMove,
+                'saldos'               => $saldosMove,
                 'lote'                 => $lote,
                 'fecha_vencimiento'    => $fechaVenc,
                 'referencia_tipo'      => 'putaway',
@@ -267,7 +309,7 @@ class PutawayController extends BaseController
         $codOrigen  = strtoupper(trim($data['codigo_origen']  ?? ''));
         $codDestino = strtoupper(trim($data['codigo_destino'] ?? ''));
         $ean        = trim($data['ean'] ?? '');
-        $cantidad   = (int)($data['cantidad'] ?? 0);
+        $cantidad   = (float)($data['cantidad'] ?? 0);
         $lote       = trim($data['lote'] ?? '') ?: null;
 
         if (empty($codOrigen) || empty($codDestino) || empty($ean) || $cantidad <= 0) {
@@ -324,10 +366,24 @@ class PutawayController extends BaseController
             $loteReal  = $invOrigen->lote;
             $fechaVenc = $invOrigen->fecha_vencimiento;
 
-            $invOrigen->cantidad -= $cantidad;
-            if ($invOrigen->cantidad <= 0) {
+            if ((float)($invOrigen->cantidad_reservada ?? 0) > 0) {
+                DB::rollBack();
+                return $this->error($res, 'Hay stock reservado en esta ubicación. No se puede mover.', 422);
+            }
+
+            // Resolver UPC para cajas/saldos
+            $productoT = \App\Models\Producto::select('id','unidades_caja')->find($productoId);
+            $upcT      = max(1, (int)(($productoT->unidades_caja ?? null) ?: 1));
+            $cajasT    = (int)floor($cantidad / $upcT);
+            $saldosT   = round(fmod($cantidad, (float)$upcT), 4);
+
+            $nuevoOrigenT = round((float)$invOrigen->cantidad - $cantidad, 4);
+            if ($nuevoOrigenT <= 0) {
                 $invOrigen->delete();
             } else {
+                $invOrigen->cantidad      = $nuevoOrigenT;
+                $invOrigen->cantidad_cajas= (int)floor($nuevoOrigenT / $upcT);
+                $invOrigen->saldos        = round(fmod($nuevoOrigenT, (float)$upcT), 4);
                 $invOrigen->save();
             }
 
@@ -343,11 +399,16 @@ class PutawayController extends BaseController
 
             if (!$invDest->exists) {
                 $invDest->cantidad           = 0;
+                $invDest->cantidad_cajas     = 0;
+                $invDest->saldos             = 0;
                 $invDest->cantidad_reservada = 0;
                 $invDest->estado             = 'Disponible';
             }
 
-            $invDest->cantidad += $cantidad;
+            $nuevoDestT       = round((float)($invDest->cantidad ?? 0) + $cantidad, 4);
+            $invDest->cantidad      = $nuevoDestT;
+            $invDest->cantidad_cajas= (int)floor($nuevoDestT / $upcT);
+            $invDest->saldos        = round(fmod($nuevoDestT, (float)$upcT), 4);
             $invDest->save();
 
             MovimientoInventario::create([
@@ -358,6 +419,8 @@ class PutawayController extends BaseController
                 'ubicacion_destino_id' => $destino->id,
                 'tipo_movimiento'      => 'Traslado',
                 'cantidad'             => $cantidad,
+                'cantidad_cajas'       => $cajasT,
+                'saldos'               => $saldosT,
                 'lote'                 => $loteReal,
                 'fecha_vencimiento'    => $fechaVenc,
                 'referencia_tipo'      => 'traslado',

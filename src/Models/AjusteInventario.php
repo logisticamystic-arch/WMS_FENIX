@@ -45,18 +45,24 @@ class AjusteInventario extends BaseModel
     ];
 
     protected $casts = [
-        'cantidad_fisica'  => 'integer',
-        'cantidad_sistema' => 'integer',
-        'diferencia'       => 'integer',
-        'fecha'            => 'date',
-        'fecha_vencimiento'=> 'date',
+        'cantidad_fisica'   => 'decimal:2',
+        'cantidad_sistema'  => 'decimal:2',
+        'diferencia'        => 'decimal:2',
+        'fecha'             => 'date',
+        'fecha_vencimiento' => 'date',
     ];
 
     // ── Constantes ─────────────────────────────────────────────────────────
-    const ORIGEN_MANUAL         = 'Manual';
-    const ORIGEN_CONTEO_LINEA   = 'ConteoLinea';
-    const ORIGEN_CONTEO_TOTAL   = 'ConteoTotal';
-    const ORIGEN_CORRECCION     = 'CorreccionAdmin';
+    const ORIGEN_MANUAL              = 'Manual';
+    const ORIGEN_CONTEO_LINEA        = 'ConteoLinea';
+    const ORIGEN_CONTEO_TOTAL        = 'ConteoTotal';
+    const ORIGEN_CORRECCION          = 'CorreccionAdmin';
+    const ORIGEN_INVENTARIO_GENERAL  = 'InventarioGeneral';
+    const ORIGEN_TRASLADO            = 'Traslado';
+    const ORIGEN_PICKING             = 'Picking';
+    const ORIGEN_RECEPCION           = 'Recepcion';
+    const ORIGEN_CONTEO              = 'Conteo';
+    const ORIGEN_AJUSTE_UBICACION    = 'AjusteUbicacion';
 
     const TIPO_ENTRADA = 'Entrada';
     const TIPO_SALIDA  = 'Salida';

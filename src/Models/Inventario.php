@@ -14,11 +14,15 @@ class Inventario extends BaseModel
     protected $fillable = [
         'empresa_id', 'sucursal_id', 'producto_id', 'ubicacion_id',
         'lote', 'fecha_vencimiento', 'cantidad', 'cantidad_reservada', 'estado',
-        'numero_pallet',
+        'numero_pallet', 'cantidad_cajas', 'saldos',
     ];
 
     protected $casts = [
-        'fecha_vencimiento' => 'date',
+        'fecha_vencimiento'  => 'date',
+        'cantidad'           => 'decimal:2',
+        'cantidad_reservada' => 'decimal:2',
+        'cantidad_cajas'     => 'integer',
+        'saldos'             => 'decimal:2',
     ];
 
     const ESTADO_DISPONIBLE = 'Disponible';
@@ -47,11 +51,49 @@ class Inventario extends BaseModel
     }
 
     /**
+     * und_total como float (alias semántico del campo 'cantidad')
+     */
+    public function getUndTotalAttribute(): float
+    {
+        return (float)$this->cantidad;
+    }
+
+    /**
+     * Etiqueta legible del desglose: "X cajas × Y u/e + Z sueltos = N UND/TOTAL"
+     * Si no hay desglose disponible retorna solo "N UND/TOTAL".
+     */
+    public function getDesgloseLabelAttribute(): string
+    {
+        $total = number_format((float)$this->cantidad, 2, '.', '');
+
+        if ((int)$this->cantidad_cajas > 0 && $this->relationLoaded('producto') && $this->producto) {
+            $cajas   = (int)$this->cantidad_cajas;
+            $ue      = max(1, (int)($this->producto->unidades_caja ?? 1));
+            $sueltos = number_format((float)$this->saldos, 2, '.', '');
+            return "{$cajas} cajas × {$ue} u/e + {$sueltos} sueltos = {$total} UND/TOTAL";
+        }
+
+        return "{$total} UND/TOTAL";
+    }
+
+    /**
+     * Array con el desglose completo: cajas, sueltos, und_total
+     */
+    public function getDesglosadoAttribute(): array
+    {
+        return [
+            'cajas'     => $this->cantidad_cajas,
+            'sueltos'   => (float)$this->saldos,
+            'und_total' => (float)$this->cantidad,
+        ];
+    }
+
+    /**
      * Available quantity (total - reserved)
      */
-    public function getCantidadDisponibleAttribute(): int
+    public function getCantidadDisponibleAttribute(): float
     {
-        return $this->cantidad - $this->cantidad_reservada;
+        return (float)$this->cantidad - (float)$this->cantidad_reservada;
     }
 
     /**
@@ -73,11 +115,21 @@ class Inventario extends BaseModel
 
     /**
      * Scope: Only available stock
+     *
+     * NOTA: El OR con saldos > 0 es intencional para cubrir sueltos sin caja
+     * completa. Si aparecen filas con cantidad = 0 y saldos > 0, es un error
+     * de sincronización en el proceso de ajuste, no en este scope.
+     *
+     * ADVERTENCIA: NO agregar SoftDeletes a este modelo ni a AjusteInventario
+     * ni a MovimientoInventario. Causaría doble conteo de stock en scopes
+     * que usen withTrashed() o whereNull('deleted_at') accidentalmente.
      */
     public function scopeDisponible($query)
     {
         return $query->where('estado', self::ESTADO_DISPONIBLE)
-            ->where('cantidad', '>', 0);
+            ->where(function ($q) {
+                $q->where('cantidad', '>', 0)->orWhere('saldos', '>', 0);
+            });
     }
 }
 

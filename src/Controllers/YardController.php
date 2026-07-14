@@ -65,8 +65,7 @@ class YardController extends BaseController
         }
 
         $total  = (clone $q)->count();
-        $citas  = $q->leftJoin('personal AS op', 'op.id', '=', 'y.creado_por')
-                    ->select('y.*', Capsule::raw('op.nombre AS operador_nombre'))
+        $citas  = $q->select('y.*')
                     ->orderBy('y.fecha_cita', 'asc')
                     ->limit($limit)
                     ->offset((int)($params['offset'] ?? 0))
@@ -88,11 +87,11 @@ class YardController extends BaseController
 
         // Timeline de eventos calculados
         $timeline = [];
-        if ($cita->llegada_est)    $timeline[] = ['evento' => 'Cita programada',       'ts' => $cita->fecha_cita,      'tipo' => 'plan'];
-        if ($cita->entrada_real)   $timeline[] = ['evento' => 'Entrada al patio',       'ts' => $cita->entrada_real,    'tipo' => 'real'];
-        if ($cita->inicio_op_real) $timeline[] = ['evento' => 'Inicio de operación',    'ts' => $cita->inicio_op_real,  'tipo' => 'real'];
-        if ($cita->fin_op_real)    $timeline[] = ['evento' => 'Fin de operación',        'ts' => $cita->fin_op_real,     'tipo' => 'real'];
-        if ($cita->salida_real)    $timeline[] = ['evento' => 'Salida del patio',        'ts' => $cita->salida_real,     'tipo' => 'real'];
+        $timeline[] = ['evento' => 'Cita programada',    'ts' => $cita->fecha_cita,      'tipo' => 'plan'];
+        if ($cita->entrada_real)   $timeline[] = ['evento' => 'Entrada al patio',    'ts' => $cita->entrada_real,    'tipo' => 'real'];
+        if ($cita->inicio_op_real) $timeline[] = ['evento' => 'Inicio de operación', 'ts' => $cita->inicio_op_real,  'tipo' => 'real'];
+        if ($cita->fin_op_real ?? null)    $timeline[] = ['evento' => 'Fin de operación',    'ts' => $cita->fin_op_real,     'tipo' => 'real'];
+        if ($cita->salida_real)    $timeline[] = ['evento' => 'Salida del patio',    'ts' => $cita->salida_real,     'tipo' => 'real'];
 
         // Demoras calculadas
         $demoras = [];
@@ -104,8 +103,9 @@ class YardController extends BaseController
             $diff = (strtotime($cita->inicio_op_real) - strtotime($cita->entrada_real)) / 60;
             $demoras['espera_muelle_min'] = round($diff);
         }
-        if ($cita->inicio_op_real && $cita->fin_op_real) {
-            $diff = (strtotime($cita->fin_op_real) - strtotime($cita->inicio_op_real)) / 60;
+        $finOp = $cita->fin_op_real ?? $cita->salida_real ?? null;
+        if ($cita->inicio_op_real && $finOp) {
+            $diff = (strtotime($finOp) - strtotime($cita->inicio_op_real)) / 60;
             $demoras['duracion_op_min'] = round($diff);
         }
 
@@ -132,7 +132,8 @@ class YardController extends BaseController
         // Verificar disponibilidad del muelle en la ventana horaria
         if (!empty($body['muelle'])) {
             $conflict = $this->_verificarConflictoMuelle(
-                $user, $body['muelle'], $body['fecha_cita'],
+                $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id,
+                $body['muelle'], $body['fecha_cita'],
                 $body['duracion_estimada_min'] ?? 60
             );
             if ($conflict) {
@@ -145,17 +146,15 @@ class YardController extends BaseController
                 'empresa_id'     => $this->getEffectiveEmpresaId($user, $r),
                 'sucursal_id'    => $user->sucursal_id,
                 'numero'         => $body['numero'],
-                'transportista'  => $body['transportista'] ?? null,
-                'placa_vehiculo' => $body['placa_vehiculo'] ?? null,
-                'conductor'      => $body['conductor']      ?? null,
-                'telefono'       => $body['telefono']       ?? null,
-                'fecha_cita'     => $body['fecha_cita'],
+                'transportista'   => $body['transportista']  ?? null,
+                'placa_vehiculo'  => $body['placa_vehiculo'] ?? null,
+                'conductor_cedula'=> $body['conductor_cedula'] ?? null,
+                'fecha_cita'      => $body['fecha_cita'],
                 'muelle'         => $body['muelle']         ?? null,
                 'tipo'           => $body['tipo'],
                 'estado'         => 'Programado',
-                'notas'          => $body['notas']          ?? null,
-                'creado_por'     => $user->id,
-                'created_at'     => date('Y-m-d H:i:s'),
+                'notas'      => $body['notas'] ?? null,
+                'created_at' => date('Y-m-d H:i:s'),
             ]);
 
             $this->audit($user, 'yard', 'crear', 'yard_appointments', $id,
@@ -185,13 +184,12 @@ class YardController extends BaseController
         }
 
         $campos = array_filter([
-            'fecha_cita'     => $body['fecha_cita']     ?? null,
-            'muelle'         => $body['muelle']         ?? null,
-            'transportista'  => $body['transportista']  ?? null,
-            'placa_vehiculo' => $body['placa_vehiculo'] ?? null,
-            'conductor'      => $body['conductor']      ?? null,
-            'telefono'       => $body['telefono']       ?? null,
-            'notas'          => $body['notas']          ?? null,
+            'fecha_cita'      => $body['fecha_cita']      ?? null,
+            'muelle'          => $body['muelle']           ?? null,
+            'transportista'   => $body['transportista']    ?? null,
+            'placa_vehiculo'  => $body['placa_vehiculo']   ?? null,
+            'conductor_cedula'=> $body['conductor_cedula'] ?? null,
+            'notas'           => $body['notas']            ?? null,
         ], fn($v) => $v !== null);
 
         if (!empty($campos)) {
@@ -281,8 +279,7 @@ class YardController extends BaseController
             : null;
 
         Capsule::table('yard_appointments')->where('id', $a['id'])->update([
-            'fin_op_real' => $ahora,
-            'estado'      => 'En Patio',
+            'estado' => 'En Patio',
         ]);
 
         $this->audit($user, 'yard', 'fin_op', 'yard_appointments', $a['id'],
@@ -316,7 +313,7 @@ class YardController extends BaseController
 
         // Liberar el muelle
         if ($cita->muelle) {
-            $this->_liberarMuelle($user, $cita->muelle);
+            $this->_liberarMuelle($this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, $cita->muelle);
         }
 
         $this->audit($user, 'yard', 'salida', 'yard_appointments', $a['id'],
@@ -403,17 +400,17 @@ class YardController extends BaseController
         if ($isPg) {
             $puntual  = "EXTRACT(EPOCH FROM (entrada_real::timestamp - fecha_cita::timestamp))/60 <= 15";
             $espera   = "EXTRACT(EPOCH FROM (inicio_op_real::timestamp - entrada_real::timestamp))/60";
-            $duracion = "EXTRACT(EPOCH FROM (fin_op_real::timestamp - inicio_op_real::timestamp))/60";
+            $duracion = "EXTRACT(EPOCH FROM (salida_real::timestamp - inicio_op_real::timestamp))/60";
             $roundFn  = fn($e) => "ROUND(CAST($e AS NUMERIC), 1)";
         } else {
             $puntual  = "TIMESTAMPDIFF(MINUTE, fecha_cita, entrada_real) <= 15";
             $espera   = "TIMESTAMPDIFF(MINUTE, entrada_real, inicio_op_real)";
-            $duracion = "TIMESTAMPDIFF(MINUTE, inicio_op_real, fin_op_real)";
+            $duracion = "TIMESTAMPDIFF(MINUTE, inicio_op_real, salida_real)";
             $roundFn  = fn($e) => "ROUND($e, 1)";
         }
         $avgTurnaround = $roundFn("AVG(CASE WHEN turnaround_min IS NOT NULL THEN turnaround_min END)");
         $avgEspera     = $roundFn("AVG(CASE WHEN inicio_op_real IS NOT NULL AND entrada_real IS NOT NULL THEN $espera END)");
-        $avgDuracion   = $roundFn("AVG(CASE WHEN fin_op_real IS NOT NULL AND inicio_op_real IS NOT NULL THEN $duracion END)");
+        $avgDuracion   = $roundFn("AVG(CASE WHEN salida_real IS NOT NULL AND inicio_op_real IS NOT NULL THEN $duracion END)");
 
         $kpis = Capsule::table('yard_appointments')
             ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
@@ -472,9 +469,9 @@ class YardController extends BaseController
 
         $rows = $citas->map(fn($c) => [
             $c->numero, $c->tipo, $c->transportista ?? '—', $c->placa_vehiculo ?? '—',
-            $c->conductor ?? '—', $c->muelle ?? '—',
+            $c->conductor_cedula ?? '—', $c->muelle ?? '—',
             $c->fecha_cita, $c->entrada_real ?? '—', $c->inicio_op_real ?? '—',
-            $c->fin_op_real ?? '—', $c->salida_real ?? '—',
+            $c->fin_op_real ?? $c->salida_real ?? '—', $c->salida_real ?? '—',
             $c->turnaround_min ?? '—', $c->estado,
         ])->toArray();
 
@@ -491,14 +488,14 @@ class YardController extends BaseController
             ->first();
     }
 
-    private function _verificarConflictoMuelle($user, string $muelle, string $fechaCita, int $durMin): bool
+    private function _verificarConflictoMuelle(int $empresaId, int $sucursalId, string $muelle, string $fechaCita, int $durMin): bool
     {
         $inicio = $fechaCita;
         $fin    = date('Y-m-d H:i:s', strtotime($fechaCita) + ($durMin * 60));
 
         return Capsule::table('yard_appointments')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
-            ->where('sucursal_id', $user->sucursal_id)
+            ->where('empresa_id',  $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->where('muelle',      $muelle)
             ->whereNotIn('estado', ['Completado', 'Cancelado', 'No Show'])
             ->where(fn($q) =>
@@ -507,12 +504,12 @@ class YardController extends BaseController
             ->exists();
     }
 
-    private function _liberarMuelle($user, string $muelle): void
+    private function _liberarMuelle(int $empresaId, int $sucursalId, string $muelle): void
     {
         // Actualizar ocupación_pct de la ubicación de tipo muelle si existe
         Capsule::table('ubicaciones')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
-            ->where('sucursal_id', $user->sucursal_id)
+            ->where('empresa_id',  $empresaId)
+            ->where('sucursal_id', $sucursalId)
             ->where('codigo', $muelle)
             ->where('tipo_ubicacion', 'Recepcion')
             ->update(['estado' => 'Disponible', 'ocupacion_pct' => 0]);

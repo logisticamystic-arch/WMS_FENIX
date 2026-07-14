@@ -12,8 +12,9 @@ class Despacho extends BaseModel
     protected $table = 'despachos';
 
     protected $fillable = [
-        'empresa_id', 'sucursal_id', 'numero_despacho', 'cliente', 'ruta',
-        'muelle_id', 'total_bultos', 'peso_total', 'estado',
+        'empresa_id', 'sucursal_id', 'numero_despacho', 'cliente', 'ruta', 'ruta_id',
+        'conductor', 'placa', 'planilla_id', 'auxiliares_json',
+        'muelle_id', 'total_bultos', 'peso_total', 'estado', 'observaciones',
         'auxiliar_id', 'fecha_movimiento', 'hora_inicio', 'hora_fin',
     ];
 
@@ -45,6 +46,17 @@ class Despacho extends BaseModel
     public function certificaciones()
     {
         return $this->hasMany(CertificacionDespacho::class);
+    }
+
+    public function rutaObj()
+    {
+        return $this->belongsTo(Ruta::class, 'ruta_id');
+    }
+
+    public function ordenes()
+    {
+        return $this->belongsToMany(OrdenPicking::class, 'despacho_ordenes', 'despacho_id', 'orden_picking_id')
+            ->withTimestamps();
     }
 
     public static function generarNumero(int $sucursalId): string

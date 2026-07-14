@@ -62,9 +62,26 @@ class PlanillaController extends BaseController
             ->get()
             ->keyBy('numero_planilla');
 
-        $planillasConEstado = $planillas->map(function ($p) use ($certs) {
-            $cert = $certs[$p->numero_planilla] ?? null;
-            $p->estado_cert = $cert ? $cert->estado : 'Pendiente';
+        // Cruce retroactivo con orden_pickings: si TODAS las órdenes de ese número de planilla
+        // están Certificadas en el flujo directo, forzar estado_cert = 'Completada' aunque
+        // cert_planillas no haya sido actualizado todavía (ej. por el bug hora_fin previo).
+        $planillaNumeros  = $planillas->pluck('numero_planilla')->toArray();
+        $certOrdenes = DB::table('orden_pickings')
+            ->whereIn('planilla_numero', $planillaNumeros)
+            ->where('empresa_id', $archivo->empresa_id)
+            ->select(
+                'planilla_numero',
+                DB::raw("MIN(CASE WHEN estado_certificacion = 'Certificada' THEN 1 ELSE 0 END) as todo_cert")
+            )
+            ->groupBy('planilla_numero')
+            ->get()
+            ->keyBy('planilla_numero');
+
+        $planillasConEstado = $planillas->map(function ($p) use ($certs, $certOrdenes) {
+            $cert    = $certs[$p->numero_planilla] ?? null;
+            $todoOK  = isset($certOrdenes[$p->numero_planilla])
+                       && (int)$certOrdenes[$p->numero_planilla]->todo_cert === 1;
+            $p->estado_cert = $todoOK ? 'Completada' : ($cert ? $cert->estado : 'Pendiente');
             $p->cert_id     = $cert ? $cert->id ?? null : null;
             return $p;
         });
@@ -489,8 +506,29 @@ class PlanillaController extends BaseController
                 ->update(['estado' => 'Certificada', 'updated_at' => date('Y-m-d H:i:s')]);
         }
 
-        return $this->ok($res, ['estado' => $estado, 'hay_novedad' => $hayNovedad],
-            $hayNovedad ? 'Certificación con novedades' : 'Certificación completada correctamente');
+        // Obtener faltantes de picking asociados a esta planilla
+        $archivoData = DB::table('archivos_planilla')->find($archivoId);
+        $faltantesPicking = DB::table('picking_faltantes as pf')
+            ->join('productos as p', 'p.id', '=', 'pf.producto_id')
+            ->where('pf.empresa_id', $archivoData->empresa_id)
+            ->where('pf.sucursal_id', $archivoData->sucursal_id ?? $cert->sucursal_id ?? null)
+            ->where(function($q) use ($cert) {
+                $q->where('pf.planilla_lote', $cert->numero_planilla)
+                  ->orWhere('pf.planilla_lote', 'LIKE', '%' . $cert->numero_planilla . '%');
+            })
+            ->select(
+                'pf.id', 'pf.created_at', 'pf.cantidad_solicitada', 'pf.cantidad_faltante',
+                'pf.causa', 'p.codigo_interno', 'p.nombre as producto_nombre'
+            )
+            ->orderBy('pf.created_at', 'desc')
+            ->get();
+
+        return $this->ok($res, [
+            'estado'            => $estado,
+            'hay_novedad'       => $hayNovedad,
+            'hay_pendiente'     => $hayPendiente,
+            'faltantes_picking' => $faltantesPicking,
+        ], $hayNovedad ? 'Certificación con novedades' : 'Certificación completada correctamente');
     }
 
     // ── GET /api/planillas/cert/dashboard ────────────────────────────────────
@@ -499,85 +537,80 @@ class PlanillaController extends BaseController
         $user = $r->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $params = $r->getQueryParams();
-        $archivoId = (int)($params['archivo_id'] ?? 0);
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $user->sucursal_id;
 
-        // Only show archivos that are Separado or further (picking complete)
-        $archivos = DB::table('archivos_planilla')
-            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
-            ->whereIn('estado', ['Separado', 'EnCertificacion', 'Certificada'])
-            ->orderBy('created_at', 'desc')
-            ->limit(10)
+        $ordenes = \Illuminate\Database\Capsule\Manager::table('orden_pickings')
+            ->where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->whereDate('fecha_movimiento', date('Y-m-d'))
             ->get();
 
-        if (!$archivoId && $archivos->isNotEmpty()) {
-            $archivoId = $archivos->first()->id;
-        }
-
-        $planillaStats = collect();
-        if ($archivoId) {
-            // Stats por planilla
-            $totalPorPlanilla = DB::table('lineas_planilla')
-                ->where('archivo_id', $archivoId)
-                ->select('numero_planilla',
-                    DB::raw('SUM(cantidad) as total_unidades'),
-                    DB::raw('COUNT(DISTINCT producto_codigo) as total_productos'))
-                ->groupBy('numero_planilla')
-                ->get()
-                ->keyBy('numero_planilla');
-
-            $certs = DB::table('cert_planillas as c')
-                ->leftJoin('personal as p', 'c.auxiliar_id', '=', 'p.id')
-                ->where('c.archivo_id', $archivoId)
-                ->select('c.*', 'p.nombre as auxiliar_nombre')
-                ->get()
-                ->keyBy('numero_planilla');
-
-            // Get all distinct planillas from lineas
-            $planillasNombres = DB::table('lineas_planilla')
-                ->where('archivo_id', $archivoId)
-                ->distinct()
-                ->pluck('numero_planilla');
-
-            $planillaStats = $planillasNombres->map(function ($np) use ($totalPorPlanilla, $certs, $archivoId) {
-                $stats = $totalPorPlanilla[$np] ?? null;
-                $cert  = $certs[$np] ?? null;
-
-                $novedades = 0;
-                if ($cert) {
-                    $novedades = DB::table('cert_planilla_det')
-                        ->where('cert_id', $cert->id)
-                        ->where('es_correcto', 0)
-                        ->where('cantidad_certificada', '>', 0)
-                        ->count();
-                }
-
-                return [
-                    'numero_planilla'    => $np,
-                    'total_unidades'     => $stats->total_unidades ?? 0,
-                    'total_productos'    => $stats->total_productos ?? 0,
-                    'estado_cert'        => $cert?->estado ?? 'Pendiente',
-                    'auxiliar'           => $cert?->auxiliar_nombre ?? null,
-                    'hora_inicio'        => $cert?->hora_inicio ?? null,
-                    'hora_fin'           => $cert?->hora_fin ?? null,
-                    'novedades'          => $novedades,
-                    'cert_id'            => $cert?->id ?? null,
-                ];
-            });
+        if ($ordenes->isEmpty()) {
+            $ordenes = \Illuminate\Database\Capsule\Manager::table('orden_pickings')
+                ->where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
+                ->orderBy('id', 'desc')
+                ->limit(50)
+                ->get();
         }
 
         $summary = [
-            'total'           => $planillaStats->count(),
-            'pendientes'      => $planillaStats->where('estado_cert', 'Pendiente')->count(),
-            'en_proceso'      => $planillaStats->where('estado_cert', 'EnProceso')->count(),
-            'completadas'     => $planillaStats->where('estado_cert', 'Completada')->count(),
-            'con_novedad'     => $planillaStats->where('estado_cert', 'ConNovedad')->count(),
+            'total'           => 0,
+            'pendientes'      => 0,
+            'en_proceso'      => 0,
+            'completadas'     => 0,
+            'con_novedad'     => 0,
         ];
 
+        $sesiones = \Illuminate\Database\Capsule\Manager::table('packing_sesiones')
+            ->where('empresa_id', $empresaId)
+            ->whereDate('created_at', date('Y-m-d'))
+            ->get();
+
+        $planillas = [];
+        $sucursales = $ordenes->pluck('sucursal_entrega')->unique();
+        
+        foreach ($sucursales as $suc) {
+            $sucOrdenes = $ordenes->where('sucursal_entrega', $suc);
+            
+            // Check statuses
+            $allCerts = true;
+            $anyProc  = $sesiones->where('sucursal_entrega', $suc)->where('estado', 'EnProceso')->count() > 0;
+            
+            foreach($sucOrdenes as $o) {
+                if ($o->estado_certificacion !== 'Certificada') {
+                    $allCerts = false;
+                    break;
+                }
+            }
+            
+            $est = 'Pendiente';
+            if ($allCerts) $est = 'Completada';
+            elseif ($anyProc) $est = 'EnProceso';
+            
+            if ($est === 'Pendiente') $summary['pendientes']++;
+            if ($est === 'Completada') $summary['completadas']++;
+            if ($est === 'EnProceso') $summary['en_proceso']++;
+            $summary['total']++;
+            
+            $planillas[] = [
+                'numero_planilla' => $suc,
+                'total_unidades'  => 0,
+                'total_productos' => 0,
+                'estado_cert'     => $est,
+                'auxiliar'        => null,
+                'hora_inicio'     => null,
+                'hora_fin'        => null,
+                'novedades'       => 0,
+                'cert_id'         => null
+            ];
+        }
+
         return $this->ok($res, [
-            'archivos'       => $archivos,
-            'archivo_id'     => $archivoId,
-            'planillas'      => $planillaStats->values(),
+            'archivos'       => [],
+            'archivo_id'     => null,
+            'planillas'      => $planillas,
             'summary'        => $summary,
         ]);
     }
@@ -772,13 +805,24 @@ class PlanillaController extends BaseController
 
                 foreach ($sumados as $item) {
                     $productoId = $this->_resolveProducto($this->getEffectiveEmpresaId($user, $r), $item['codigo'], $item['nombre']);
+                    
+                    $ambienteCodigo = 'SECO'; // default
+                    if ($productoId) {
+                        $prod = DB::table('productos')->find($productoId);
+                        if ($prod && $prod->ambiente_id) {
+                            $amb = DB::table('ambientes')->find($prod->ambiente_id);
+                            if ($amb) $ambienteCodigo = $amb->codigo;
+                        }
+                    }
+
                     DB::table('picking_detalles')->insert([
                         'orden_picking_id'    => $ordenId,
                         'producto_id'         => $productoId ?? 1,
                         'ubicacion_id'        => null,
-                        'cantidad_solicitada' => (int)ceil($item['cantidad']),
+                        'cantidad_solicitada' => ceil((float)$item['cantidad']),
                         'cantidad_pickeada'   => 0,
                         'estado'              => 'Pendiente',
+                        'ambiente'            => $ambienteCodigo,
                         'created_at'          => $now,
                         'updated_at'          => $now,
                     ]);
@@ -843,13 +887,24 @@ class PlanillaController extends BaseController
 
                     foreach ($sumados as $item) {
                         $productoId = $this->_resolveProducto($this->getEffectiveEmpresaId($user, $r), $item['codigo'], $item['nombre']);
+                        
+                        $ambienteCodigo = 'SECO'; // default
+                        if ($productoId) {
+                            $prod = DB::table('productos')->find($productoId);
+                            if ($prod && $prod->ambiente_id) {
+                                $amb = DB::table('ambientes')->find($prod->ambiente_id);
+                                if ($amb) $ambienteCodigo = $amb->codigo;
+                            }
+                        }
+
                         DB::table('picking_detalles')->insert([
                             'orden_picking_id'    => $ordenId,
                             'producto_id'         => $productoId ?? 1,
                             'ubicacion_id'        => null,
-                            'cantidad_solicitada' => (int)ceil($item['cantidad']),
+                            'cantidad_solicitada' => ceil((float)$item['cantidad']),
                             'cantidad_pickeada'   => 0,
                             'estado'              => 'Pendiente',
+                            'ambiente'            => $ambienteCodigo,
                             'created_at'          => $now,
                             'updated_at'          => $now,
                         ]);
@@ -995,7 +1050,7 @@ class PlanillaController extends BaseController
         if (!$cert) return $this->notFound($res);
 
         $lineaId  = (int)($data['linea_id'] ?? 0);
-        $cantidad = (int)($data['cantidad'] ?? 0);
+        $cantidad = (float)($data['cantidad'] ?? 0);
         $motivo   = trim($data['motivo'] ?? 'Corrección supervisión');
 
         if (!$lineaId) return $this->error($res, 'linea_id requerido');

@@ -27,4 +27,5 @@ return [
     'uploads' => [
         'productos' => __DIR__ . '/../public/uploads/productos/',
     ],
+    'allow_user_deletion' => filter_var($env('ALLOW_USER_DELETION', 'false'), FILTER_VALIDATE_BOOLEAN),
 ];

@@ -189,12 +189,12 @@ class InboundController extends BaseController
 
                             // Cantidades — cualquier usuario autenticado puede actualizar
                             if (array_key_exists('cantidad', $det)) {
-                                $updateData['cantidad_solicitada'] = (int)$det['cantidad'];
+                                $updateData['cantidad_solicitada'] = (float)$det['cantidad'];
                             } elseif (array_key_exists('cantidad_solicitada', $det)) {
-                                $updateData['cantidad_solicitada'] = (int)$det['cantidad_solicitada'];
+                                $updateData['cantidad_solicitada'] = (float)$det['cantidad_solicitada'];
                             }
                             if (array_key_exists('cantidad_recibida', $det)) {
-                                $updateData['cantidad_recibida'] = (int)$det['cantidad_recibida'];
+                                $updateData['cantidad_recibida'] = (float)$det['cantidad_recibida'];
                             }
 
                             // Novedad — cualquier usuario puede registrar novedades
@@ -205,7 +205,7 @@ class InboundController extends BaseController
                                 $updateData['novedad_observacion'] = $det['novedad_observacion'];
                             }
                             if (array_key_exists('cantidad_novedad', $det)) {
-                                $updateData['cantidad_novedad'] = (int)$det['cantidad_novedad'];
+                                $updateData['cantidad_novedad'] = (float)$det['cantidad_novedad'];
                             }
 
                             // Producto — solo supervisor
@@ -221,7 +221,7 @@ class InboundController extends BaseController
                             OrdenCompraDetalle::create([
                                 'orden_compra_id'     => $odc->id,
                                 'producto_id'         => $det['producto_id'],
-                                'cantidad_solicitada' => (int)($det['cantidad'] ?? 0),
+                                'cantidad_solicitada' => (float)($det['cantidad'] ?? 0),
                                 'cantidad_recibida'   => 0,
                             ]);
                         }
@@ -692,7 +692,7 @@ class InboundController extends BaseController
                         OrdenCompraDetalle::create([
                             'orden_compra_id'    => $odc->id,
                             'producto_id'        => $prod->id,
-                            'cantidad_solicitada'=> (int)($fila['cantidad'] ?? 0),
+                            'cantidad_solicitada'=> (float)($fila['cantidad'] ?? 0),
                             'cantidad_recibida'  => 0,
                             'precio_unitario'    => (float)($fila['precio_unitario'] ?? 0),
                         ]);

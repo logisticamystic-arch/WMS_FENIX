@@ -13,7 +13,7 @@ class Impresora extends BaseModel
 
     protected $fillable = [
         'empresa_id', 'sucursal_id', 'nombre', 'ip', 'puerto',
-        'tipo', 'modulos', 'tipos_trabajo', 'activo',
+        'tipo', 'lenguaje', 'modulos', 'tipos_trabajo', 'activo',
     ];
 
     protected $casts = [

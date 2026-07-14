@@ -156,6 +156,10 @@ class RecepcionController extends BaseController
                             $inv->delete();
                         } else {
                             $inv->cantidad = $newQty;
+                            // Recalcular descomposición UND/TOTAL tras anulación
+                            $_anulUpc        = max(1, (int)($detalle->cajas_por_unidad ?? 1));
+                            $inv->cantidad_cajas = (int)floor((float)$newQty / $_anulUpc);
+                            $inv->saldos         = fmod((float)$newQty, (float)$_anulUpc);
                             $inv->save();
                         }
 
@@ -166,7 +170,7 @@ class RecepcionController extends BaseController
                             'tipo_movimiento'      => 'AjusteNegativo',
                             'referencia_tipo'      => $recepcion->odc_id ? 'ODC' : 'SinODC',
                             'referencia_id'        => $recepcion->id,
-                            'cantidad'             => (int)round((float)$detalle->cantidad_recibida),
+                            'cantidad'             => (float)$detalle->cantidad_recibida,
                             'fecha_movimiento'     => date('Y-m-d'),
                             'hora_inicio'          => date('H:i:s'),
                             'ubicacion_destino_id' => $detalle->ubicacion_destino_id,
@@ -299,19 +303,26 @@ class RecepcionController extends BaseController
         // Blind mode logic: Only store expected if NOT in blind mode (handled by client, but we enforce)
         $detalle->cantidad_esperada  = $recepcion->modo_ciego ? 0 : ($data['cantidad_esperada'] ?? 0);
         $detalle->cantidad_recibida  = $cantidad_recibida;
-        $detalle->cantidad_cajas     = $cantidad_cajas ?? (int)ceil($cantidad_recibida / $cajasUnd);
+        $detalle->cantidad_cajas     = $cantidad_cajas ?? ceil((float)$cantidad_recibida / $cajasUnd);
         $detalle->cajas_por_unidad   = $cajasUnd;
         $detalle->lote = $data['lote'] ?? null;
         $detalle->fecha_vencimiento = $fecha_vencimiento;
         $detalle->estado_mercancia = $data['estado_mercancia'] ?? 'BuenEstado';
         $detalle->novedad_motivo = $data['novedad_motivo'] ?? null;
 
-        // Por defecto va a zona PATIO (Recepcion) o ubicacion default virtual
+        // Por defecto va a zona PATIO
         $patio_id = \App\Models\Ubicacion::where('sucursal_id', $user->sucursal_id)
                                 ->where('tipo_ubicacion', 'Patio')
                                 ->value('id');
-        $detalle->ubicacion_destino_id = $patio_id;
 
+        if (!$patio_id) {
+            return $this->json($response, [
+                'error'   => true,
+                'message' => 'No existe ubicación de tipo Patio para esta sucursal. Créela antes de registrar recepciones.',
+            ], 422);
+        }
+
+        $detalle->ubicacion_destino_id = $patio_id;
         $detalle->save();
 
         return $this->json($response, [
@@ -365,7 +376,7 @@ class RecepcionController extends BaseController
         // 'cantidad_cajas' se guarda como referencia del empaque original.
         $cajasUnd      = max(1, (int)($producto->unidades_caja ?? 1));
         $cantidad      = (float)($data['cantidad'] ?? 0);
-        $cantidadCajas = isset($data['cantidad_cajas']) ? (int)$data['cantidad_cajas'] : (int)ceil($cantidad / $cajasUnd);
+        $cantidadCajas = isset($data['cantidad_cajas']) ? (int)$data['cantidad_cajas'] : ceil((float)$cantidad / $cajasUnd);
 
         // Si el cliente explícitamente pide modo cajas (legacy), recalculamos
         if ($cantidad <= 0) {
@@ -454,6 +465,13 @@ class RecepcionController extends BaseController
                 ->value('id');
         }
 
+        if (!$ubicacionDestinoId) {
+            return $this->json($response, [
+                'error'   => true,
+                'message' => 'No existe ubicación de tipo Patio para esta sucursal. Créela antes de registrar recepciones.',
+            ], 422);
+        }
+
         $detalle->ubicacion_destino_id = $ubicacionDestinoId;
         $detalle->numero_pallet = !empty($data['numero_pallet']) ? (int)$data['numero_pallet'] : null;
         $detalle->aprobado_admin = 1; // Auto-aprobar para visibilidad inmediata en Patio
@@ -499,6 +517,10 @@ class RecepcionController extends BaseController
             $inv->cantidad           = ($inv->cantidad ?? 0) + $cantidad;
             $inv->cantidad_reservada = $inv->cantidad_reservada ?? 0;
             $inv->fecha_vencimiento  = $detalle->fecha_vencimiento ?? $inv->fecha_vencimiento;
+            // ── Arquitectura UND/TOTAL: descomponer cantidad en cajas + saldos ──
+            $_invCajasUnd        = max(1, (int)($producto->unidades_caja ?? 1));
+            $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $_invCajasUnd);
+            $inv->saldos         = fmod((float)$inv->cantidad, (float)$_invCajasUnd);
             $inv->save();
 
             \Illuminate\Database\Capsule\Manager::connection()->commit();
@@ -522,6 +544,11 @@ class RecepcionController extends BaseController
                     'cajas'          => $cantidadCajas,
                     'unidades_caja'  => $cajasUnd,
                     'total_unidades' => $cantidad,
+                ],
+                'inventario'    => [
+                    'cantidad'        => $inv->cantidad,
+                    'cantidad_cajas'  => $inv->cantidad_cajas,
+                    'saldos'          => $inv->saldos,
                 ],
             ]
         ], 201);
@@ -691,9 +718,16 @@ class RecepcionController extends BaseController
             return $this->json($response, ['error' => true, 'message' => 'Producto inválido'], 404);
         }
 
-        $cajasUnd      = max(1, (int)($producto->unidades_caja ?? 1));
-        $cantidad      = (float)$data['cantidad'];
-        $cantidadCajas = isset($data['cantidad_cajas']) ? (int)$data['cantidad_cajas'] : (int)ceil($cantidad / $cajasUnd);
+        $cajasUnd = max(1, (int)($producto->unidades_caja ?? 1));
+
+        // Priorizar ingreso por U/E: si viene cantidad_ue y el producto tiene factor_udm, convertir a unidades
+        if (!empty($data['cantidad_ue']) && $producto->tieneUdm()) {
+            $cantidad = $producto->calcularUnidades((float)$data['cantidad_ue']);
+        } else {
+            $cantidad = (float)$data['cantidad'];
+        }
+
+        $cantidadCajas = isset($data['cantidad_cajas']) ? (int)$data['cantidad_cajas'] : ceil((float)$cantidad / $cajasUnd);
 
         if ($cantidad <= 0) {
             return $this->json($response, ['error' => true, 'message' => 'La cantidad debe ser mayor a cero'], 400);
@@ -747,6 +781,13 @@ class RecepcionController extends BaseController
                 ->where('tipo_ubicacion', 'Patio')->value('id');
         }
 
+        if (!$ubicacionDestinoId) {
+            return $this->json($response, [
+                'error'   => true,
+                'message' => 'No existe ubicación de tipo Patio para esta sucursal. Créela antes de registrar recepciones.',
+            ], 422);
+        }
+
         $detalle = new RecepcionDetalle();
         $detalle->recepcion_id       = $recepcion->id;
         $detalle->producto_id        = $producto->id;
@@ -794,6 +835,17 @@ class RecepcionController extends BaseController
             $inv->cantidad           = ($inv->cantidad ?? 0) + $cantidad;
             $inv->cantidad_reservada = $inv->cantidad_reservada ?? 0;
             $inv->fecha_vencimiento  = $detalle->fecha_vencimiento ?? $inv->fecha_vencimiento;
+            // ── Arquitectura UND/TOTAL: leer cajas/saldos del body o inferir ──
+            $_bodyCajas  = isset($data['cantidad_cajas']) ? (int)$data['cantidad_cajas'] : 0;
+            $_bodySaldos = isset($data['saldos']) ? (float)$data['saldos'] : 0.0;
+            if ($_bodyCajas === 0 && $_bodySaldos == 0.0 && $inv->cantidad > 0) {
+                // Compatibilidad: inferir descomposición a partir del total acumulado
+                $_invUpc     = max(1, (int)($producto->unidades_caja ?? 1));
+                $_bodyCajas  = (int)floor((float)$inv->cantidad / $_invUpc);
+                $_bodySaldos = fmod((float)$inv->cantidad, (float)$_invUpc);
+            }
+            $inv->cantidad_cajas = $_bodyCajas;
+            $inv->saldos         = $_bodySaldos;
             $inv->save();
 
             \Illuminate\Database\Capsule\Manager::connection()->commit();
@@ -812,6 +864,11 @@ class RecepcionController extends BaseController
                     'cajas'          => $cantidadCajas,
                     'unidades_caja'  => $cajasUnd,
                     'total_unidades' => $cantidad,
+                ],
+                'inventario' => [
+                    'cantidad'       => $inv->cantidad,
+                    'cantidad_cajas' => $inv->cantidad_cajas,
+                    'saldos'         => $inv->saldos,
                 ],
             ],
         ], 201);
@@ -836,7 +893,7 @@ class RecepcionController extends BaseController
         }
 
         $rol = strtolower($user->rol ?? '');
-        if ($recepcion->auxiliar_id !== $user->id && !in_array($rol, ['admin','supervisor'])) {
+        if ($recepcion->auxiliar_id !== $user->id && !in_array($rol, ['admin','supervisor','superadmin'])) {
             return $this->json($res, ['error'=>true,'message'=>'No tiene permiso para modificar esta recepción'], 403);
         }
 
@@ -851,7 +908,7 @@ class RecepcionController extends BaseController
         }
 
         $upc         = max(1, (int)($detalle->cajas_por_unidad ?? 1));
-        $nuevasCajas = isset($body['cantidad_cajas']) ? (int)$body['cantidad_cajas'] : (int)ceil($nuevaCantidad / $upc);
+        $nuevasCajas = isset($body['cantidad_cajas']) ? (int)$body['cantidad_cajas'] : ceil((float)$nuevaCantidad / $upc);
         $delta       = $nuevaCantidad - (float)$detalle->cantidad_recibida;
 
         try {
@@ -871,8 +928,15 @@ class RecepcionController extends BaseController
 
                 if ($inv) {
                     $inv->cantidad = max(0, ($inv->cantidad ?? 0) + $delta);
+                    // Recalcular descomposición UND/TOTAL tras el ajuste
+                    $_ajusteUpc      = max(1, (int)($detalle->cajas_por_unidad ?? 1));
+                    $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $_ajusteUpc);
+                    $inv->saldos         = fmod((float)$inv->cantidad, (float)$_ajusteUpc);
                     $inv->save();
                 } elseif ($delta > 0) {
+                    $_ajusteUpc  = max(1, (int)($detalle->cajas_por_unidad ?? 1));
+                    $_ajusteCajas  = (int)floor((float)$delta / $_ajusteUpc);
+                    $_ajusteSaldos = fmod((float)$delta, (float)$_ajusteUpc);
                     $inv = new \App\Models\Inventario([
                         'empresa_id'         => $this->getEffectiveEmpresaId($user, $r),
                         'sucursal_id'        => $user->sucursal_id,
@@ -881,6 +945,8 @@ class RecepcionController extends BaseController
                         'lote'               => $loteKey,
                         'estado'             => 'Disponible',
                         'cantidad'           => $delta,
+                        'cantidad_cajas'     => $_ajusteCajas,
+                        'saldos'             => $_ajusteSaldos,
                         'cantidad_reservada' => 0,
                         'fecha_vencimiento'  => $detalle->fecha_vencimiento,
                     ]);
@@ -939,7 +1005,7 @@ class RecepcionController extends BaseController
         }
 
         $rol = strtolower($user->rol ?? '');
-        if ($recepcion->auxiliar_id !== $user->id && !in_array($rol, ['admin','supervisor'])) {
+        if ($recepcion->auxiliar_id !== $user->id && !in_array($rol, ['admin','supervisor','superadmin'])) {
             return $this->json($res, ['error'=>true,'message'=>'No tiene permiso para modificar esta recepción'], 403);
         }
 
@@ -969,6 +1035,10 @@ class RecepcionController extends BaseController
                     $inv->delete();
                 } else {
                     $inv->cantidad = $newQty;
+                    // Recalcular descomposición UND/TOTAL tras la reversa
+                    $_elimUpc        = max(1, (int)($detalle->cajas_por_unidad ?? 1));
+                    $inv->cantidad_cajas = (int)floor((float)$newQty / $_elimUpc);
+                    $inv->saldos         = fmod((float)$newQty, (float)$_elimUpc);
                     $inv->save();
                 }
             }
@@ -981,7 +1051,7 @@ class RecepcionController extends BaseController
                 'tipo_movimiento'      => 'AjusteNegativo',
                 'referencia_tipo'      => 'SinODC',
                 'referencia_id'        => $recepcion->id,
-                'cantidad'             => (int)round((float)$detalle->cantidad_recibida),
+                'cantidad'             => (float)$detalle->cantidad_recibida,
                 'fecha_movimiento'     => date('Y-m-d'),
                 'hora_inicio'          => date('H:i:s'),
                 'ubicacion_destino_id' => $detalle->ubicacion_destino_id,
@@ -1021,7 +1091,7 @@ class RecepcionController extends BaseController
         $user = $request->getAttribute('user');
         $id = $args['id'] ?? null;
 
-        $recepcion = Recepcion::with('detalles')->find($id);
+        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->with('detalles')->find($id);
         if (!$recepcion || $recepcion->sucursal_id !== $user->sucursal_id) {
             return $this->json($response, ['error' => true, 'message' => 'Recepción no encontrada.'], 404);
         }
@@ -1042,6 +1112,14 @@ class RecepcionController extends BaseController
             $patio = Ubicacion::where('sucursal_id', $recepcion->sucursal_id)
                 ->where('tipo_ubicacion', 'Patio')
                 ->first();
+
+            if (!$patio) {
+                \Illuminate\Database\Capsule\Manager::connection()->rollBack();
+                return $this->json($response, [
+                    'error'   => true,
+                    'message' => 'No existe ubicación de tipo Patio para esta sucursal. Créela en el módulo de Ubicaciones antes de confirmar recepciones.',
+                ], 422);
+            }
 
             $guard = new InventoryGuard(
                 $recepcion->empresa_id,
@@ -1100,6 +1178,10 @@ class RecepcionController extends BaseController
                     $inv->cantidad           = ($inv->cantidad ?? 0) + $linea->cantidad_recibida;
                     $inv->cantidad_reservada = $inv->cantidad_reservada ?? 0;
                     $inv->fecha_vencimiento  = $linea->fecha_vencimiento ?? $inv->fecha_vencimiento;
+                    // Recalcular descomposición UND/TOTAL
+                    $_confirmUpc         = max(1, (int)($linea->cajas_por_unidad ?? 1));
+                    $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $_confirmUpc);
+                    $inv->saldos         = fmod((float)$inv->cantidad, (float)$_confirmUpc);
                     $inv->save();
 
                     $linea->aprobado_admin = 1;
@@ -1132,16 +1214,17 @@ class RecepcionController extends BaseController
             return $this->json($response, ['error' => true, 'message' => 'Se requiere rol Supervisor o Administrador'], 403);
         }
 
-        $detalle = RecepcionDetalle::with('recepcion')->find($detalleId);
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $detalle = RecepcionDetalle::with('recepcion')
+            ->whereHas('recepcion', function($q) use ($empresaId) {
+                $q->where('empresa_id', $empresaId);
+            })
+            ->find($detalleId);
         if (!$detalle) {
             return $this->json($response, ['error' => true, 'message' => 'Detalle no encontrado'], 404);
         }
 
-        // Verificar que pertenece a la misma empresa
         $recepcion = $detalle->recepcion;
-        if (!$recepcion || $recepcion->empresa_id != $this->getEffectiveEmpresaId($user, $request)) {
-            return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
-        }
 
         if ($detalle->aprobado_admin) {
             return $this->json($response, ['error' => false, 'message' => 'Este pallet ya fue aprobado']);
@@ -1194,8 +1277,15 @@ class RecepcionController extends BaseController
                     $invDisp->cantidad           = ($invDisp->cantidad ?? 0) + $cantAprobada;
                     $invDisp->cantidad_reservada = $invDisp->cantidad_reservada ?? 0;
                     $invDisp->fecha_vencimiento  = $detalle->fecha_vencimiento ?? $invDisp->fecha_vencimiento;
+                    // Recalcular descomposición UND/TOTAL
+                    $_aprobUpc           = max(1, (int)($detalle->cajas_por_unidad ?? 1));
+                    $invDisp->cantidad_cajas = (int)floor((float)$invDisp->cantidad / $_aprobUpc);
+                    $invDisp->saldos         = fmod((float)$invDisp->cantidad, (float)$_aprobUpc);
                     $invDisp->save();
                 } else {
+                    $_aprobUpc2   = max(1, (int)($detalle->cajas_por_unidad ?? 1));
+                    $_aprobCajas2 = (int)floor((float)$detalle->cantidad_recibida / $_aprobUpc2);
+                    $_aprobSald2  = fmod((float)$detalle->cantidad_recibida, (float)$_aprobUpc2);
                     Inventario::firstOrCreate(
                         [
                             'empresa_id'   => $recepcion->empresa_id,
@@ -1207,6 +1297,8 @@ class RecepcionController extends BaseController
                         ],
                         [
                             'cantidad'           => $detalle->cantidad_recibida,
+                            'cantidad_cajas'     => $_aprobCajas2,
+                            'saldos'             => $_aprobSald2,
                             'cantidad_reservada' => 0,
                             'fecha_vencimiento'  => $detalle->fecha_vencimiento,
                         ]
@@ -1233,14 +1325,18 @@ class RecepcionController extends BaseController
         $user  = $request->getAttribute('user');
         $detId = (int)($args['id'] ?? 0);
 
-        $det = RecepcionDetalle::find($detId);
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+
+        // Buscar el detalle y su recepcion filtrando por empresa
+        $det = RecepcionDetalle::whereHas('recepcion', function($q) use ($empresaId) {
+            $q->where('empresa_id', $empresaId);
+        })->find($detId);
         if (!$det) {
             return $this->json($response, ['error' => true, 'message' => 'Pallet no encontrado'], 404);
         }
 
-        // Verificar que el pallet pertenece a la empresa del usuario
-        $recepcion = \App\Models\Recepcion::find($det->recepcion_id);
-        if (!$recepcion || $recepcion->empresa_id != $this->getEffectiveEmpresaId($user, $request)) {
+        $recepcion = $det->recepcion;
+        if (!$recepcion) {
             return $this->json($response, ['error' => true, 'message' => 'No autorizado'], 403);
         }
 
@@ -1285,6 +1381,10 @@ class RecepcionController extends BaseController
                     if ($inv->cantidad <= 0) {
                         $inv->delete();
                     } else {
+                        // Recalcular descomposición UND/TOTAL
+                        $_actDetUpc      = max(1, (int)($det->cajas_por_unidad ?? 1));
+                        $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $_actDetUpc);
+                        $inv->saldos         = fmod((float)$inv->cantidad, (float)$_actDetUpc);
                         $inv->save();
                     }
                 }
@@ -1311,14 +1411,17 @@ class RecepcionController extends BaseController
         $user  = $request->getAttribute('user');
         $detId = (int)($args['id'] ?? 0);
 
-        $det = RecepcionDetalle::find($detId);
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+
+        $det = RecepcionDetalle::whereHas('recepcion', function($q) use ($empresaId) {
+            $q->where('empresa_id', $empresaId);
+        })->find($detId);
         if (!$det) {
             return $this->json($response, ['error' => true, 'message' => 'Pallet no encontrado'], 404);
         }
 
-        // Verificar empresa
-        $recepcion = \App\Models\Recepcion::find($det->recepcion_id);
-        if (!$recepcion || $recepcion->empresa_id != $this->getEffectiveEmpresaId($user, $request)) {
+        $recepcion = $det->recepcion;
+        if (!$recepcion) {
             return $this->json($response, ['error' => true, 'message' => 'No autorizado'], 403);
         }
 
@@ -1344,7 +1447,7 @@ class RecepcionController extends BaseController
             return $this->json($response, ['error' => true, 'message' => 'Se requiere rol Supervisor o Administrador'], 403);
         }
 
-        $recepcion = Recepcion::with('detalles')->find($id);
+        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->with('detalles')->find($id);
         if (!$recepcion || $recepcion->sucursal_id !== $user->sucursal_id) {
             return $this->json($response, ['error' => true, 'message' => 'Recepción no encontrada.'], 404);
         }
@@ -1484,6 +1587,7 @@ class RecepcionController extends BaseController
         $eficiencia = Capsule::table('recepciones as r')
             ->join('personal as p', 'r.auxiliar_id', '=', 'p.id')
             ->select('p.nombre', Capsule::raw('COUNT(r.id) as total'))
+            ->where('r.empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('r.estado', 'Cerrada')
             ->where('r.sucursal_id', $user->sucursal_id)
             ->groupBy('p.id', 'p.nombre')
@@ -1492,6 +1596,7 @@ class RecepcionController extends BaseController
         // Tendencia diaria (últimos 7 días)
         $tendencia = Capsule::table('recepciones')
             ->select(Capsule::raw('DATE(created_at) as fecha'), Capsule::raw('COUNT(id) as total'))
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereDate('created_at', '>=', $sieteDiasAtras)
             ->groupBy('fecha')
@@ -1502,7 +1607,8 @@ class RecepcionController extends BaseController
             // Promedio de tiempo por línea global (hoy)
             $totalHorasEjecutadas = 0;
             $lineasTotales = 0;
-            $totalCerradasHoy = Recepcion::where('sucursal_id', $user->sucursal_id)
+            $totalCerradasHoy = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                ->where('sucursal_id', $user->sucursal_id)
                 ->where('estado', 'Cerrada')
                 ->whereDate('created_at', $hoy)
                 ->withCount('detalles')
@@ -1529,38 +1635,42 @@ class RecepcionController extends BaseController
                 ->join('productos as p', 'rd.producto_id', '=', 'p.id')
                 ->join('categoria_productos as cat', 'p.categoria_id', '=', 'cat.id')
                 ->select('cat.nombre as categoria', Capsule::raw('SUM(rd.cantidad_recibida) as total'))
-                ->whereExists(function($q) use ($user) {
+                ->whereExists(function($q) use ($user, $r) {
                     $q->select(Capsule::raw(1))
-                      ->from('recepciones as r')
-                      ->whereColumn('r.id', 'rd.recepcion_id')
-                      ->where('r.empresa_id', $this->getEffectiveEmpresaId($user, $r))
-                      ->where('r.sucursal_id', $user->sucursal_id);
+                      ->from('recepciones as rec')
+                      ->whereColumn('rec.id', 'rd.recepcion_id')
+                      ->where('rec.empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                      ->where('rec.sucursal_id', $user->sucursal_id);
                 })
                 ->groupBy('cat.id', 'cat.nombre')
                 ->orderBy('total', 'desc')
                 ->get();
 
             // Sin-ODC specific stats
-            $sinOdcActivas = Recepcion::where('sucursal_id', $user->sucursal_id)
+            $sinOdcActivas = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                ->where('sucursal_id', $user->sucursal_id)
                 ->whereNull('odc_id')
                 ->where('estado', 'Borrador')
+                ->with('auxiliar:id,nombre')
                 ->withCount('detalles')
                 ->get()
-                ->map(fn($r) => [
-                    'id'               => $r->id,
-                    'numero_recepcion' => $r->numero_recepcion,
-                    'auxiliar'         => $r->auxiliar->nombre ?? 'N/A',
-                    'lineas_count'     => $r->detalles_count,
-                    'hora_inicio'      => $r->hora_inicio,
-                    'fecha_movimiento' => $r->fecha_movimiento,
+                ->map(fn($rec) => [
+                    'id'               => $rec->id,
+                    'numero_recepcion' => $rec->numero_recepcion,
+                    'auxiliar'         => $rec->auxiliar->nombre ?? 'N/A',
+                    'lineas_count'     => $rec->detalles_count,
+                    'hora_inicio'      => $rec->hora_inicio,
+                    'fecha_movimiento' => $rec->fecha_movimiento,
                 ]);
-            $sinOdcCerradasHoy = Recepcion::where('sucursal_id', $user->sucursal_id)
+            $sinOdcCerradasHoy = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                ->where('sucursal_id', $user->sucursal_id)
                 ->whereNull('odc_id')
                 ->where('estado', 'Cerrada')
                 ->whereDate('fecha_movimiento', $hoy)
                 ->count();
             $sinOdcLineasHoy = (int) Capsule::table('recepcion_detalles as rd')
                 ->join('recepciones as r', 'r.id', '=', 'rd.recepcion_id')
+                ->where('r.empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('r.sucursal_id', $user->sucursal_id)
                 ->whereNull('r.odc_id')
                 ->whereDate('r.fecha_movimiento', $hoy)
@@ -1783,6 +1893,13 @@ public function getControlPanelData(Request $request, Response $response): Respo
                 'detalles.producto:id,nombre,codigo_interno'
             ])->select('ordenes_compra.*')->get();
 
+            // Normalizar proveedor: el frontend espera proveedor.nombre pero la BD guarda razon_social
+            $odcs->each(function($odc) {
+                if ($odc->proveedor) {
+                    $odc->proveedor->nombre = $odc->proveedor->razon_social;
+                }
+            });
+
             $kpis = $this->calculateKpis($odcs);
             $kpis['total_odcs'] = $odcs->count();
             $kpis['total_lineas'] = $odcs->sum(fn($odc) => $odc->detalles->count());
@@ -1901,20 +2018,24 @@ public function getControlPanelData(Request $request, Response $response): Respo
             $query->where('id', $params['auxiliar_id']);
         }
 
-        $auxiliares = $query->get(['id', 'nombre'])->map(function($aux) {
+        $auxiliares = $query->get(['id', 'nombre'])->map(function($aux) use ($empresaId, $sucursalId) {
             // Conteo de recepciones en proceso
             $aux->recepciones_count = Capsule::table('recepciones')
+                ->where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
                 ->where('auxiliar_id', $aux->id)
                 ->where('estado', 'En Proceso')
                 ->count();
-                
+
             // Suma de unidades recibidas (solo de recepciones en proceso)
             $aux->total_unidades_recibidas = Capsule::table('recepcion_detalles as rd')
                 ->join('recepciones as r', 'r.id', '=', 'rd.recepcion_id')
+                ->where('r.empresa_id', $empresaId)
+                ->where('r.sucursal_id', $sucursalId)
                 ->where('r.auxiliar_id', $aux->id)
                 ->where('r.estado', 'En Proceso')
                 ->sum('rd.cantidad_recibida') ?: 0;
-                
+
             return $aux;
         })->sortByDesc('total_unidades_recibidas')->values();
 
@@ -2034,7 +2155,7 @@ public function getControlPanelData(Request $request, Response $response): Respo
             return $this->error($response, 'Solo se pueden agregar líneas a ODC en proceso.', 400);
         }
 
-        $producto = Producto::find($data['producto_id']);
+        $producto = Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($data['producto_id']);
         if (!$producto) {
             return $this->error($response, 'Producto no encontrado.', 404);
         }

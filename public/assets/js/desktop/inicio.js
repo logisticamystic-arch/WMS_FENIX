@@ -52,7 +52,7 @@ WMS_MODULES.inicio = {
     /* Extraer valores con fallbacks */
     const productos   = stats.productos   || stats.total_productos  || 0;
     const recepciones = stats.recepciones || stats.rec_hoy          || 0;
-    const pickings    = stats.despachos   || stats.picking_hoy      || 0;
+    const pickings    = stats.pickings     || stats.despachos   || stats.picking_hoy || 0;
     const alertas     = stats.alertas     || stats.bajo_stock       || 0;
     const ubicaciones = stats.ubicaciones || stats.total_ubicaciones || 0;
 
@@ -60,7 +60,7 @@ WMS_MODULES.inicio = {
     const days7 = this._last7();
     const trendData = days7.map(d => {
       const found = trend.find(t => t.fecha === d || t.date === d);
-      return found ? (found.cantidad || found.total || found.count || 0) : 0;
+      return found ? (found.valor || found.cantidad || found.total || found.count || 0) : 0;
     });
     const trendLabels = days7.map(d => {
       const [,m,dd] = d.split('-');
@@ -430,8 +430,8 @@ WMS_MODULES.inicio = {
       return;
     }
 
-    const colorMap = { recepcion:'blue', picking:'purple', despacho:'red', inventario:'teal', maestro:'green', ajuste:'amber' };
-    const iconMap  = { recepcion:'fa-truck-ramp-box', picking:'fa-dolly', despacho:'fa-truck-fast', inventario:'fa-boxes-stacked', maestro:'fa-box', ajuste:'fa-pen-to-square' };
+    const colorMap = { recepcion:'blue', 'recepción':'blue', picking:'purple', despacho:'red', inventario:'teal', maestro:'green', ajuste:'amber' };
+    const iconMap  = { recepcion:'fa-truck-ramp-box', 'recepción':'fa-truck-ramp-box', picking:'fa-dolly', despacho:'fa-truck-fast', inventario:'fa-boxes-stacked', maestro:'fa-box', ajuste:'fa-pen-to-square' };
 
     el.innerHTML = items.map(it => {
       const tipo  = (it.tipo || 'inventario').toLowerCase();

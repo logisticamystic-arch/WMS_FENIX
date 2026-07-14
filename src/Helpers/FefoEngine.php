@@ -17,12 +17,22 @@ use App\Helpers\ExpiryGuard;
  *
  * FEFO es la regla de negocio más importante en un WMS con productos perecederos.
  * Cualquier violación debe quedar registrada y visible en el dashboard.
+ *
+ * REGLA DE APLICACIÓN:
+ *  - Productos con controla_vencimiento = true  → FEFO estricto (menor fecha_vencimiento primero).
+ *  - Productos con controla_vencimiento = false → ordenar por cantidad disponible DESC
+ *    (agotar el registro más lleno primero, sin importar fecha).
  */
 class FefoEngine
 {
     private int $empresaId;
     private int $sucursalId;
     private static array $_quarantinedThisRequest = [];
+
+    // Cantidad nominal "infinita" para consultas donde se quiere ver todos los lotes.
+    // Evita usar PHP_INT_MAX convertido a float (pierde precisión) o PHP_FLOAT_MAX
+    // (puede desbordar cálculos de pendiente en el loop).
+    private const LOTES_ALL_QTY = 999_999_999.0;
 
     public function __construct(int $empresaId, int $sucursalId)
     {
@@ -35,48 +45,75 @@ class FefoEngine
         return Capsule::connection()->getDriverName() === 'pgsql';
     }
 
+    /**
+     * Consulta el flag controla_vencimiento del producto desde la BD.
+     * Retorna true si el producto requiere control de fecha de vencimiento.
+     */
+    private function productoControlaVencimiento(int $productoId): bool
+    {
+        $row = Capsule::table('productos')
+            ->where('id', $productoId)
+            ->value('controla_vencimiento');
+
+        // NULL se interpreta como sin control (producto sin categoría perecedera)
+        return (bool)$row;
+    }
+
     // ── 1. SUGERENCIA DE LOTES EN ORDEN FEFO ──────────────────────────────────
 
     /**
      * Dado un producto y una cantidad requerida, retorna los lotes/ubicaciones
-     * en orden FEFO (menor fecha_vencimiento primero) para cubrir exactamente
-     * la cantidad pedida. Respeta el stock disponible (cantidad - cantidad_reservada).
+     * en el orden correcto para cubrir exactamente la cantidad pedida.
+     *
+     * ORDEN DE SELECCIÓN:
+     *  - controla_vencimiento = true  → FEFO estricto: menor fecha_vencimiento primero,
+     *    lotes sin fecha al final (no perecederos mezclados se consumen al último).
+     *  - controla_vencimiento = false → mayor cantidad disponible primero (vaciar
+     *    registros más llenos reduce fragmentación de inventario).
+     *
+     * INTEGRIDAD: la cantidad asignada (a_tomar) nunca supera el disponible real
+     * (cantidad - cantidad_reservada) de cada registro de inventario.
      *
      * Retorna:
      *   [
-     *     'ok'        => bool,
-     *     'lotes'     => [
+     *     'ok'           => bool,          // true si se cubrió la cantidad completa
+     *     'lotes'        => [
      *       [ 'inventario_id', 'lote', 'ubicacion_id', 'ubicacion_codigo',
      *         'fecha_vencimiento', 'disponible', 'a_tomar' ],
      *       ...
      *     ],
-     *     'faltante'  => float,   // 0 si se pudo cubrir completamente
-     *     'advertencias' => []
+     *     'faltante'     => float,          // 0 si se cubrió completamente
+     *     'advertencias' => string[],       // alertas de vencimiento próximo
+     *     'modo'         => 'fefo'|'qty',   // modo de selección aplicado
      *   ]
      */
     public function getSuggestedLots(int $productoId, float $cantidadRequerida): array
     {
-        // Lazy auto-quarantine: runs at most once per empresa+sucursal per request
+        // ── Auto-cuarentena preventiva (máximo una vez por request por empresa+sucursal) ──
+        // ExpiryGuard marca como Cuarentena los lotes cuya fecha_vencimiento ya pasó
+        // antes de que se consulten para picking. Esto evita que lotes vencidos aparezcan
+        // como "Disponible" en la sugerencia FEFO.
         $quarantineKey = "{$this->empresaId}:{$this->sucursalId}";
         if (!isset(self::$_quarantinedThisRequest[$quarantineKey])) {
             self::$_quarantinedThisRequest[$quarantineKey] = true;
             $quarantined = (new ExpiryGuard($this->empresaId, $this->sucursalId))->autoQuarantine();
             if ($quarantined > 0) {
-                error_log("[ExpiryGuard] autoQuarantine: {$quarantined} lotes marcados como Cuarentena (empresa={$this->empresaId}, sucursal={$this->sucursalId})");
+                error_log("[ExpiryGuard] autoQuarantine: {$quarantined} lotes marcados como Cuarentena"
+                    . " (empresa={$this->empresaId}, sucursal={$this->sucursalId})");
             }
         }
 
-        $rows = Capsule::table('inventarios as i')
+        // ── Determinar modo de selección según configuración del producto ──────
+        $controlaVencimiento = $this->productoControlaVencimiento($productoId);
+
+        $query = Capsule::table('inventarios as i')
             ->leftJoin('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
             ->where('i.empresa_id',  $this->empresaId)
             ->where('i.sucursal_id', $this->sucursalId)
             ->where('i.producto_id', $productoId)
             ->where('i.estado', 'Disponible')
+            // Integridad: solo filas con stock realmente disponible para consumir
             ->whereRaw('(i.cantidad - i.cantidad_reservada) > 0')
-            // FEFO: menor fecha_vencimiento primero; NULL al final (sin vencimiento)
-            ->orderByRaw('CASE WHEN i.fecha_vencimiento IS NULL THEN 1 ELSE 0 END')
-            ->orderBy('i.fecha_vencimiento', 'asc')
-            ->orderBy('i.created_at', 'asc')
             ->select([
                 'i.id as inventario_id',
                 'i.lote',
@@ -84,27 +121,55 @@ class FefoEngine
                 'u.codigo as ubicacion_codigo',
                 'i.fecha_vencimiento',
                 Capsule::raw('(i.cantidad - i.cantidad_reservada) as disponible'),
-            ])
-            ->get();
+            ]);
 
-        $lotes       = [];
-        $pendiente   = $cantidadRequerida;
+        if ($controlaVencimiento) {
+            // FEFO estricto: menor fecha_vencimiento primero.
+            // Los lotes SIN fecha van al final (son sustitutos no perecederos;
+            // consumirlos antes no aporta rotación de riesgo).
+            // Desempate: created_at ASC (FIFO dentro del mismo vencimiento).
+            $query
+                ->orderByRaw('CASE WHEN i.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
+                ->orderBy('i.fecha_vencimiento', 'asc')
+                ->orderBy('i.created_at', 'asc');
+        } else {
+            // Sin control de FV: priorizar registros con mayor stock disponible.
+            // Objetivo: reducir fragmentación vaciando primero los registros más llenos.
+            $query->orderByRaw('(i.cantidad - i.cantidad_reservada) DESC');
+        }
+
+        $rows = $query->get();
+
+        $lotes        = [];
+        $pendiente    = $cantidadRequerida;
         $advertencias = [];
 
         foreach ($rows as $row) {
             if ($pendiente <= 0) break;
 
+            // Integridad: disponible viene calculado en la query (cantidad - cantidad_reservada).
+            // El cast a float garantiza aritmética consistente con $pendiente.
             $disponible = (float)$row->disponible;
-            $aTomar     = min($disponible, $pendiente);
+
+            // Nunca asignar más de lo que hay en este registro (protección doble).
+            $aTomar = min($disponible, $pendiente);
             $pendiente -= $aTomar;
 
-            // Advertencia si el lote vence en menos de 15 días
-            if ($row->fecha_vencimiento) {
+            // Advertencia de vencimiento próximo (solo para productos con control de FV)
+            if ($controlaVencimiento && $row->fecha_vencimiento) {
                 $diasRestantes = (int)floor(
                     (strtotime($row->fecha_vencimiento) - time()) / 86400
                 );
-                if ($diasRestantes <= 15) {
-                    $advertencias[] = "Lote {$row->lote} vence en {$diasRestantes} días.";
+                if ($diasRestantes <= 0) {
+                    // Lote vencido que escapó al auto-quarantine (raza de carrera);
+                    // registrar como error para investigación posterior.
+                    error_log("[FefoEngine] ALERTA: lote vencido en sugerencia"
+                        . " | producto={$productoId} lote={$row->lote}"
+                        . " fecha={$row->fecha_vencimiento}"
+                        . " empresa={$this->empresaId} sucursal={$this->sucursalId}");
+                    $advertencias[] = "LOTE VENCIDO: {$row->lote} (venció hace " . abs($diasRestantes) . " día(s)).";
+                } elseif ($diasRestantes <= 15) {
+                    $advertencias[] = "Lote {$row->lote} vence en {$diasRestantes} día(s). Priorizar despacho.";
                 }
             }
 
@@ -119,11 +184,20 @@ class FefoEngine
             ];
         }
 
+        // Log de stock insuficiente para trazabilidad operativa
+        if ($pendiente > 0) {
+            error_log("[FefoEngine] Stock insuficiente"
+                . " | producto={$productoId}"
+                . " requerido={$cantidadRequerida} faltante=" . round($pendiente, 4)
+                . " empresa={$this->empresaId} sucursal={$this->sucursalId}");
+        }
+
         return [
             'ok'           => $pendiente <= 0,
             'lotes'        => $lotes,
             'faltante'     => round($pendiente, 4),
             'advertencias' => $advertencias,
+            'modo'         => $controlaVencimiento ? 'fefo' : 'qty',
         ];
     }
 
@@ -131,7 +205,10 @@ class FefoEngine
 
     /**
      * Dado un array de líneas de picking ya confirmadas, verifica si el
-     * conjunto respeta el orden FEFO.
+     * conjunto respeta el orden FEFO para cada producto.
+     *
+     * Solo valida productos con controla_vencimiento = true.
+     * Productos sin control de FV no tienen orden FEFO obligatorio.
      *
      * $lineas = [ ['producto_id'=>1, 'lote'=>'L001', 'fecha_vencimiento'=>'2024-06-01'], … ]
      *
@@ -141,32 +218,41 @@ class FefoEngine
     {
         $violations = [];
 
-        // Agrupar por producto
+        // Agrupar por producto para evaluar el orden FEFO de cada uno por separado
         $byProducto = [];
         foreach ($lineas as $l) {
             $byProducto[$l['producto_id']][] = $l;
         }
 
         foreach ($byProducto as $productoId => $items) {
-            // Obtener el lote FEFO correcto para este producto
-            $suggested = $this->getSuggestedLots($productoId, PHP_INT_MAX);
+            // Solo aplicar validación FEFO a productos que controlan vencimiento.
+            // Para los demás, el orden de picking no es una violación de negocio.
+            if (!$this->productoControlaVencimiento($productoId)) {
+                continue;
+            }
+
+            // Obtener el primer lote FEFO disponible en inventario.
+            // Se usa self::LOTES_ALL_QTY para recuperar todos los lotes sin
+            // truncar por cantidad (necesitamos el lote correcto, no la cobertura).
+            $suggested = $this->getSuggestedLots($productoId, self::LOTES_ALL_QTY);
             if (empty($suggested['lotes'])) continue;
 
-            $loteFefo = $suggested['lotes'][0]['lote'];
+            $loteFefo  = $suggested['lotes'][0]['lote'];
             $fechaFefo = $suggested['lotes'][0]['fecha_vencimiento'];
 
             foreach ($items as $item) {
                 if ($item['lote'] !== null && $item['lote'] !== $loteFefo) {
-                    // Verificar que el lote elegido tiene una fecha POSTERIOR al FEFO
+                    // Violación confirmada solo si la fecha del lote elegido es
+                    // POSTERIOR al lote FEFO (se tomó uno que vence más tarde).
                     $fechaElegida = $item['fecha_vencimiento'] ?? null;
                     if ($fechaElegida && $fechaFefo && $fechaElegida > $fechaFefo) {
                         $violations[] = [
-                            'producto_id'       => $productoId,
-                            'lote_elegido'      => $item['lote'],
-                            'fecha_elegida'     => $fechaElegida,
-                            'lote_fefo'         => $loteFefo,
-                            'fecha_fefo'        => $fechaFefo,
-                            'dias_diferencia'   => (int)floor(
+                            'producto_id'     => $productoId,
+                            'lote_elegido'    => $item['lote'],
+                            'fecha_elegida'   => $fechaElegida,
+                            'lote_fefo'       => $loteFefo,
+                            'fecha_fefo'      => $fechaFefo,
+                            'dias_diferencia' => (int)floor(
                                 (strtotime($fechaElegida) - strtotime($fechaFefo)) / 86400
                             ),
                         ];

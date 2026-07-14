@@ -59,6 +59,42 @@ if (($dbConfig['driver'] ?? 'mysql') === 'pgsql') {
     }
 }
 
+// ── Auto-fix: ampliar columnas zona/codigo en ubicaciones si son muy cortas ──
+try {
+    $pdo = Capsule::connection()->getPdo();
+    $check = $pdo->query("SELECT column_name, character_maximum_length FROM information_schema.columns WHERE table_name='ubicaciones' AND column_name IN ('zona','codigo')");
+    foreach ($check->fetchAll(\PDO::FETCH_ASSOC) as $col) {
+        if ($col['column_name'] === 'zona' && (int)$col['character_maximum_length'] < 50) {
+            $pdo->exec('ALTER TABLE ubicaciones ALTER COLUMN zona TYPE VARCHAR(50)');
+        }
+        if ($col['column_name'] === 'codigo' && (int)$col['character_maximum_length'] < 80) {
+            $pdo->exec('ALTER TABLE ubicaciones ALTER COLUMN codigo TYPE VARCHAR(80)');
+        }
+    }
+} catch (\Exception $e) {
+    // no bloquea arranque
+}
+
+// ── Auto-seed: crear ambientes por defecto si la tabla existe y está vacía ────
+try {
+    $pdo2 = Capsule::connection()->getPdo();
+    $hasTable = $pdo2->query("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='ambientes')")->fetchColumn();
+    if ($hasTable) {
+        $count = (int)$pdo2->query("SELECT COUNT(*) FROM ambientes")->fetchColumn();
+        if ($count === 0) {
+            $empresas = $pdo2->query("SELECT id FROM empresas LIMIT 10")->fetchAll(\PDO::FETCH_COLUMN);
+            foreach ($empresas as $empId) {
+                $stmt = $pdo2->prepare("INSERT INTO ambientes (empresa_id, codigo, descripcion, color, activo, created_at, updated_at) VALUES (?,?,?,?,true,NOW(),NOW())");
+                $stmt->execute([$empId, 'SECO', 'Productos temperatura ambiente', '#92400e']);
+                $stmt->execute([$empId, 'REFRIGERADO', 'Productos refrigerados 2-8°C', '#0369a1']);
+                $stmt->execute([$empId, 'CONGELADO', 'Productos congelados -18°C', '#7c3aed']);
+            }
+        }
+    }
+} catch (\Exception $e) {
+    // no bloquea arranque
+}
+
 // ── Verificación de conexión en entorno de desarrollo ─────────────────────────
 // Solo comprueba en local para no añadir latencia en producción.
 $appEnv = getenv('APP_ENV') ?: ($_ENV['APP_ENV'] ?? 'production');

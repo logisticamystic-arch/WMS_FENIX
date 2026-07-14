@@ -14,16 +14,27 @@ class ParametrosController extends BaseController
 {
     /**
      * GET /api/param/empresas
+     * Also used as public route: GET /api/auth/empresas (no JWT)
      */
     public function getEmpresas(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
         try {
-            $isSuperAdmin = $user && strcasecmp($user->rol ?? '', 'SuperAdmin') === 0;
             $query = \App\Models\Empresa::query();
-            if (!$isSuperAdmin) {
+
+            if (!$user) {
+                // Public route (login page) — return only active empresas
                 $query->where('activo', true);
+            } else {
+                $isSuperAdmin = strcasecmp($user->rol ?? '', 'SuperAdmin') === 0;
+                if (!$isSuperAdmin) {
+                    // Regular users only see their own empresa
+                    $query->where('activo', true)
+                          ->where('id', $user->empresa_id);
+                }
+                // SuperAdmin sees all empresas
             }
+
             $empresas = $query->orderBy('razon_social')->get();
             return $this->json($response, ['error' => false, 'data' => $empresas]);
         } catch (\Exception $e) {
@@ -72,6 +83,60 @@ class ParametrosController extends BaseController
         }
     }
 
+    /**
+     * PUT /api/param/empresas/{id}
+     */
+    public function editEmpresa(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isSuperAdmin($user)) {
+            return $this->json($response, ['error' => true, 'message' => 'Acceso denegado. Solo superadministradores.'], 403);
+        }
+
+        $id = $args['id'];
+        $data = $request->getParsedBody();
+
+        try {
+            $empresa = Empresa::find($id);
+            if (!$empresa) return $this->json($response, ['error' => true, 'message' => 'Empresa no encontrada'], 404);
+
+            if (isset($data['nit'])) $empresa->nit = $data['nit'];
+            if (isset($data['razon_social'])) $empresa->razon_social = $data['razon_social'];
+            if (isset($data['direccion'])) $empresa->direccion = $data['direccion'];
+            if (isset($data['telefono'])) $empresa->telefono = $data['telefono'];
+            if (isset($data['activo'])) $empresa->activo = filter_var($data['activo'], FILTER_VALIDATE_BOOLEAN);
+
+            $empresa->save();
+
+            return $this->json($response, ['error' => false, 'message' => 'Empresa actualizada', 'data' => $empresa]);
+        } catch (\Exception $e) {
+            return $this->json($response, ['error' => true, 'message' => 'Error al actualizar: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * DELETE /api/param/empresas/{id}
+     */
+    public function deleteEmpresa(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isSuperAdmin($user)) {
+            return $this->json($response, ['error' => true, 'message' => 'Acceso denegado. Solo superadministradores.'], 403);
+        }
+
+        try {
+            $e = Empresa::find($args['id']);
+            if (!$e) return $this->json($response, ['error' => true, 'message' => 'Empresa no encontrada'], 404);
+
+            $e->activo = false;
+            $e->save();
+
+            return $this->json($response, ['error' => false, 'message' => 'Empresa inactivada']);
+        } catch (\Exception $ex) {
+            return $this->json($response, ['error' => true, 'message' => 'Error al inactivar: ' . $ex->getMessage()], 500);
+        }
+    }
+
      /**
       * GET /api/param/sucursales
       */
@@ -82,11 +147,14 @@ class ParametrosController extends BaseController
          try {
              $query = \App\Models\Sucursal::query();
 
+             // SuperAdmin can filter by empresa_id, otherwise filter by user's empresa
              if ($this->isSuperAdmin($user) && !empty($params['empresa_id'])) {
                  $query->where('empresa_id', $params['empresa_id']);
-             } else {
+             } elseif (!$this->isSuperAdmin($user)) {
+                 // Regular users only see sucursales from their empresa
                  $query->where('empresa_id', $this->getEffectiveEmpresaId($user, $request));
              }
+             // SuperAdmin without empresa_id filter sees ALL sucursales
              
              if (isset($params['activo'])) {
                  $query->where('activo', filter_var($params['activo'], FILTER_VALIDATE_BOOLEAN));
@@ -170,56 +238,70 @@ class ParametrosController extends BaseController
     {
         $user = $request->getAttribute('user');
         $params = $request->getQueryParams();
-        $q     = trim($params['q'] ?? '');
-        $catId = $params['categoria_id'] ?? null;
-        $marId = $params['marca_id'] ?? null;
+        $q      = trim($params['q'] ?? '');
+        $catId  = $params['categoria_id'] ?? null;
+        $marId  = $params['marca_id'] ?? null;
+        $ambId  = $params['ambiente_id'] ?? null;
+        $udm    = trim($params['unidad_medida'] ?? '');
+        $activo = isset($params['activo']) && $params['activo'] !== ''
+                  ? filter_var($params['activo'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)
+                  : null;
 
         try {
             // Buscamos productos que coincidan por nombre, descripción, código interno o eans asociados
             $query = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request));
 
             // Si no hay búsqueda ni filtros, ordenamos por los más recientes por defecto para "Ver Todos"
-            if (empty($q) && empty($catId) && empty($marId)) {
+            if (empty($q) && empty($catId) && empty($marId) && empty($ambId) && empty($udm) && $activo === null) {
                 $query->orderBy('created_at', 'desc');
             }
 
             // Filtro por texto (EAN, Nombre, Referencia)
             if (!empty($q)) {
                 $query->where(function ($sub) use ($q) {
-                    $sub->where('nombre', 'like', "%$q%")
-                        ->orWhere('descripcion', 'like', "%$q%")
-                        ->orWhere('codigo_interno', 'like', "%$q%")
+                    $sub->where('nombre', 'ilike', "%$q%")
+                        ->orWhere('descripcion', 'ilike', "%$q%")
+                        ->orWhere('codigo_interno', 'ilike', "%$q%")
                         ->orWhereHas('eans', function ($e) use ($q) {
-                            $e->where('codigo_ean', 'like', "%$q%")
+                            $e->where('codigo_ean', 'ilike', "%$q%")
                               ->where('activo', true);
                         });
                 });
             }
 
             // Filtros dinámicos adicionales
-            if ($catId) $query->where('categoria_id', $catId);
-            if ($marId) $query->where('marca_id', $marId);
+            if ($catId)       $query->where('categoria_id', $catId);
+            if ($marId)       $query->where('marca_id', $marId);
+            if ($ambId)       $query->where('ambiente_id', $ambId);
+            if ($udm !== '')  $query->where('unidad_medida', 'ilike', $udm);
+            if ($activo !== null) $query->where('activo', $activo);
 
-            $productos = $query->with(['eanPrincipal', 'categoria', 'marca'])
-                ->limit($params['limit'] ?? 50)
+            $productos = $query->with(['eanPrincipal', 'categoria', 'marca', 'ambiente', 'fotos'])
+                ->limit($params['limit'] ?? 1000)
                 ->get();
 
-            // Formatear datos para el componente autocomplete dinámico (UX Premium)
             $data = $productos->map(function($p) {
-                // Cálculo de stock actual
                 $stock = \App\Models\Inventario::where('producto_id', $p->id)->sum('cantidad');
                 return [
-                    'id'               => $p->id,
-                    'nombre'           => $p->nombre,
-                    'descripcion'      => $p->descripcion ?: $p->nombre,
-                    'codigo_ean'       => $p->eanPrincipal ? $p->eanPrincipal->codigo_ean : $p->codigo_interno,
-                    'codigo_interno'   => $p->codigo_interno,
-                    'unidades_caja'    => (int)($p->unidades_caja ?: 1),
-                    'stock'            => (float)$stock,
-                    'activo'           => (bool)$p->activo,
-                    'categoria_nombre' => $p->categoria->nombre ?? '-',
-                    'marca_nombre'     => $p->marca->nombre ?? '-',
-                    'unidad_medida'    => $p->unidad_medida ?: 'UN'
+                    'id'                  => $p->id,
+                    'nombre'              => $p->nombre,
+                    'descripcion'         => $p->descripcion ?: $p->nombre,
+                    'codigo_ean'          => $p->eanPrincipal ? $p->eanPrincipal->codigo_ean : $p->codigo_interno,
+                    'codigo_interno'      => $p->codigo_interno,
+                    'unidades_caja'       => (int)($p->unidades_caja ?: 1),
+                    'factor_udm'          => $p->factor_udm ? (float)$p->factor_udm : null,
+                    'unidad_contenido'    => $p->unidad_contenido,
+                    'stock'               => (float)$stock,
+                    'activo'              => (bool)$p->activo,
+                    'controla_vencimiento'=> (bool)$p->controla_vencimiento,
+                    'controla_lote'       => (bool)$p->controla_lote,
+                    'categoria_nombre'    => $p->categoria->nombre ?? '-',
+                    'marca_nombre'        => $p->marca->nombre ?? '-',
+                    'ambiente_nombre'     => $p->ambiente->codigo ?? '-',
+                    'ambiente_color'      => $p->ambiente->color ?? null,
+                    'ambiente_id'         => $p->ambiente_id,
+                    'unidad_medida'       => $p->unidad_medida ?: 'UN',
+                    'fotos'               => $p->fotos
                 ];
             });
 
@@ -342,7 +424,7 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         try {
             $productos = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
-                ->with(['marca', 'categoria', 'eans' => fn($q) => $q->where('activo', true)])
+                ->with(['marca', 'categoria', 'eans' => fn($q) => $q->where('activo', true), 'fotos'])
                 ->get();
             return $this->json($response, ['error' => false, 'data' => $productos]);
         } catch (\Exception $e) {
@@ -483,11 +565,15 @@ class ParametrosController extends BaseController
              $prod->temperatura_almacen = $data['temperatura_almacen'] ?? null;
              $prod->marca_id = $data['marca_id'] ?? null;
              $prod->categoria_id = $data['categoria_id'] ?? null;
+             $prod->ambiente_id = !empty($data['ambiente_id']) ? (int)$data['ambiente_id'] : null;
              $prod->controla_lote = filter_var($data['maneja_lotes'] ?? false, FILTER_VALIDATE_BOOLEAN);
              $prod->controla_vencimiento = filter_var($data['controla_vencimiento'] ?? false, FILTER_VALIDATE_BOOLEAN);
              $prod->imagen_url = $data['imagen_url'] ?? null;
              $prod->stock_minimo = $data['stock_minimo'] ?? 0;
              $prod->unidades_caja = isset($data['unidades_caja']) ? (int)$data['unidades_caja'] : 1;
+             $prod->factor_udm = isset($data['factor_udm']) && $data['factor_udm'] !== '' && $data['factor_udm'] !== null
+                 ? (float)$data['factor_udm'] : null;
+             $prod->unidad_contenido = !empty($data['unidad_contenido']) ? $data['unidad_contenido'] : null;
              $prod->activo = true;
              $prod->save();
 
@@ -522,7 +608,7 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         $id = $args['id'];
         try {
-            $prod = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->with(['categoria', 'marca'])->find($id);
+            $prod = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->with(['categoria', 'marca', 'ambiente', 'fotos'])->find($id);
             if (!$prod) return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
             
             // Adjuntar EANs
@@ -570,12 +656,17 @@ class ParametrosController extends BaseController
              if (isset($data['temperatura_almacen'])) $prod->temperatura_almacen = $data['temperatura_almacen'];
              if (array_key_exists('marca_id', $data)) $prod->marca_id = $data['marca_id'] ?: null;
              if (array_key_exists('categoria_id', $data)) $prod->categoria_id = $data['categoria_id'] ?: null;
+             if (array_key_exists('ambiente_id', $data)) $prod->ambiente_id = !empty($data['ambiente_id']) ? (int)$data['ambiente_id'] : null;
              if (isset($data['maneja_lotes'])) $prod->controla_lote = filter_var($data['maneja_lotes'], FILTER_VALIDATE_BOOLEAN);
              if (isset($data['controla_vencimiento'])) $prod->controla_vencimiento = filter_var($data['controla_vencimiento'], FILTER_VALIDATE_BOOLEAN);
              if (isset($data['imagen_url'])) $prod->imagen_url = $data['imagen_url'];
              if (isset($data['activo'])) $prod->activo = filter_var($data['activo'], FILTER_VALIDATE_BOOLEAN);
              if (isset($data['stock_minimo'])) $prod->stock_minimo = (float)$data['stock_minimo'];
              if (isset($data['unidades_caja'])) $prod->unidades_caja = (int)$data['unidades_caja'];
+             if (array_key_exists('factor_udm', $data))
+                 $prod->factor_udm = $data['factor_udm'] !== '' && $data['factor_udm'] !== null ? (float)$data['factor_udm'] : null;
+             if (array_key_exists('unidad_contenido', $data))
+                 $prod->unidad_contenido = !empty($data['unidad_contenido']) ? $data['unidad_contenido'] : null;
 
              $prod->save();
 
@@ -776,7 +867,10 @@ class ParametrosController extends BaseController
         $user = $request->getAttribute('user');
         $rol = $request->getQueryParams()['rol'] ?? null;
         
-        $query = \App\Models\Personal::where('empresa_id', $this->getEffectiveEmpresaId($user, $request));
+        // Bypass TenantScoped so Admins/SuperAdmins can see global users (sucursal_id = null)
+        // and users from all sucursales within the company.
+        $query = \App\Models\Personal::withoutTenantScope()
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request));
         
         if ($rol) {
             $query->where('rol', $rol);
@@ -826,8 +920,11 @@ class ParametrosController extends BaseController
         $id = $args['id'];
         $data = $request->getParsedBody();
         try {
-            $p = \App\Models\Personal::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
+            $p = \App\Models\Personal::withoutTenantScope()
+                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                ->find($id);
             if (!$p) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
+            if (isset($data['documento'])) $p->documento = $data['documento'];
             if (isset($data['nombre'])) $p->nombre = $data['nombre'];
             if (isset($data['sucursal_id'])) $p->sucursal_id = $data['sucursal_id'] ?: null;
             if (isset($data['rol'])) $p->rol = $data['rol'];
@@ -849,14 +946,16 @@ class ParametrosController extends BaseController
         $user   = $request->getAttribute('user');
         $params = $request->getQueryParams();
 
-        $query = \App\Models\Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request));
+        $query = \App\Models\Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('sucursal_id', $this->getEffectiveSucursalId($user, $request));
 
         // Exact code match (used by mobile app to resolve scanned código)
         // Normalize: remove dashes for flexible scanning
         if (!empty($params['codigo'])) {
             $codNorm = preg_replace('/[^A-Za-z0-9]/', '', strtoupper($params['codigo']));
-            // Intentar primero coincidencia exacta, si no, buscar sufijo (ej: A01A coincide con WPEXA01A)
-            $query->whereRaw("REPLACE(REPLACE(UPPER(codigo), '-', ''), '/', '') LIKE ?", ["%{$codNorm}"]);
+            // Búsqueda flexible: normaliza quitando guiones/barras y el ambiente (ej: "010201" encuentra "SECO/01-02-01")
+            $query->whereRaw("REPLACE(REPLACE(UPPER(codigo), '-', ''), '/', '') LIKE ?", ["%{$codNorm}%"])
+                  ->orderByRaw("CASE WHEN REPLACE(REPLACE(UPPER(codigo),'-',''),'/','') = ? THEN 0 ELSE 1 END", [$codNorm]);
         }
         // Partial search
         if (!empty($params['q'])) {
@@ -1150,28 +1249,46 @@ class ParametrosController extends BaseController
      */
     public function createRuta(Request $request, Response $response): Response
     {
-        $user = $request->getAttribute('user');
-        $data = $request->getParsedBody();
+        $user   = $request->getAttribute('user');
+        $data   = $request->getParsedBody();
         $nombre = trim($data['nombre'] ?? '');
 
         if (empty($nombre)) {
             return $this->json($response, ['error' => true, 'message' => 'El nombre de la ruta es requerido.'], 400);
         }
-
         try {
-            $ruta = new Ruta();
+            $ruta            = new Ruta();
             $ruta->empresa_id = $this->getEffectiveEmpresaId($user, $request);
-            $ruta->nombre = $nombre;
+            $ruta->nombre    = $nombre;
             $ruta->comercial = trim($data['comercial'] ?? '');
-            $ruta->frecuencia = trim($data['frecuencia'] ?? '');
-            $ruta->activo = 1;
+            $ruta->activo    = 1;
             $ruta->save();
-
             return $this->json($response, ['error' => false, 'message' => 'Ruta creada', 'data' => $ruta], 201);
         } catch (\Exception $e) {
             error_log('createRuta error: ' . $e->getMessage());
             return $this->json($response, ['error' => true, 'message' => 'Error al crear ruta.'], 500);
         }
+    }
+
+    private function _buildFrecuenciaLabel(array $data): string
+    {
+        $tipo   = $data['frecuencia_tipo'] ?? 'Diario';
+        $config = json_decode($data['frecuencia_config'] ?? '{}', true) ?: [];
+
+        if ($tipo === 'Diario') {
+            $dias  = $config['dias'] ?? [];
+            $abrev = ['Lunes'=>'L','Martes'=>'M','Miércoles'=>'Mié','Jueves'=>'J','Viernes'=>'V','Sábado'=>'S','Domingo'=>'D'];
+            $label = implode(', ', array_map(fn($d) => $abrev[$d] ?? $d, $dias));
+            return $label ? "Diario: {$label}" : 'Diario';
+        }
+        $sub = $config['subtipo'] ?? '';
+        return match($sub) {
+            'Diario'    => 'Parcial - Diario',
+            'Semanal'   => 'Semanal - ' . ($config['dia'] ?? ''),
+            'Quincenal' => 'Quincenal',
+            'Mensual'   => 'Mensual - día ' . ($config['dia_mes'] ?? ''),
+            default     => 'Parcial',
+        };
     }
 
     /**
@@ -1180,51 +1297,19 @@ class ParametrosController extends BaseController
     public function updateRuta(Request $request, Response $response, array $args): Response
     {
         $user = $request->getAttribute('user');
-        $id = $args['id'];
+        $id   = $args['id'];
         $ruta = Ruta::where('id', $id)->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->first();
         if (!$ruta) return $this->json($response, ['error' => true, 'message' => 'Ruta no encontrada'], 404);
 
         $data = $request->getParsedBody();
-        if (isset($data['nombre'])) $ruta->nombre = $data['nombre'];
+        if (isset($data['nombre']))    $ruta->nombre    = $data['nombre'];
         if (isset($data['comercial'])) $ruta->comercial = $data['comercial'];
-        if (isset($data['frecuencia'])) $ruta->frecuencia = $data['frecuencia'];
-        if (isset($data['activo'])) $ruta->activo = $data['activo'] ? 1 : 0;
+        if (isset($data['activo']))    $ruta->activo    = $data['activo'] ? 1 : 0;
         $ruta->save();
 
-        return $this->json($response, ['error' => false, 'message' => 'Ruta actualizada']);
+        return $this->json($response, ['error' => false, 'message' => 'Ruta actualizada', 'data' => $ruta]);
     }
 
-    /* ========================================================= */
-    /* ==================== EMPRESAS ========================== */
-    /* ========================================================= */
-
-    // ── PUT /api/param/empresas/{id} ─────────────────────────────────────────
-    public function editEmpresa(Request $request, Response $response, array $args): Response
-    {
-        $user = $request->getAttribute('user');
-        if (!$this->isSuperAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Solo SuperAdmin puede modificar empresas'], 403);
-        $e = \App\Models\Empresa::find($args['id']);
-        if (!$e) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
-        $data = $request->getParsedBody();
-        if (isset($data['nit'])) $e->nit = trim($data['nit']);
-        if (isset($data['razon_social'])) $e->razon_social = trim($data['razon_social']);
-        if (isset($data['direccion'])) $e->direccion = trim($data['direccion']);
-        if (isset($data['telefono'])) $e->telefono = trim($data['telefono']);
-        if (isset($data['activo'])) $e->activo = $data['activo'] ? 1 : 0;
-        $e->save();
-        return $this->json($response, ['error' => false, 'message' => 'Empresa actualizada']);
-    }
-
-    // ── DELETE /api/param/empresas/{id} ──────────────────────────────────────
-    public function deleteEmpresa(Request $request, Response $response, array $args): Response
-    {
-        $user = $request->getAttribute('user');
-        if (!$this->isSuperAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Solo SuperAdmin puede desactivar empresas'], 403);
-        $e = \App\Models\Empresa::find($args['id']);
-        if (!$e) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
-        $e->activo = 0; $e->save();
-        return $this->json($response, ['error' => false, 'message' => 'Empresa desactivada']);
-    }
 
     // ── DELETE /api/param/sucursales/{id} ────────────────────────────────────
     public function deleteSucursal(Request $request, Response $response, array $args): Response
@@ -1241,11 +1326,36 @@ class ParametrosController extends BaseController
     public function deletePersonal(Request $request, Response $response, array $args): Response
     {
         $user = $request->getAttribute('user');
-        if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
-        $p = \App\Models\Personal::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($args['id']);
-        if (!$p) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
-        $p->activo = 0; $p->save();
-        return $this->json($response, ['error' => false, 'message' => 'Colaborador desactivado']);
+        if (!$this->isAdmin($user)) {
+            return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
+        }
+
+        $p = \App\Models\Personal::withoutTenantScope()
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->find($args['id']);
+        if (!$p) {
+            return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
+        }
+
+        if ($p->isSuperAdmin()) {
+            return $this->json($response, ['error' => true, 'message' => 'No se puede eliminar al usuario SuperAdmin global.'], 403);
+        }
+
+        if ($user->id == $p->id) {
+            return $this->json($response, ['error' => true, 'message' => 'No puede eliminarse a sí mismo.'], 400);
+        }
+
+        try {
+            \App\Models\PersonalPermiso::where('personal_id', $p->id)->delete();
+            \App\Models\Notificacion::where('personal_id', $p->id)->delete();
+            $p->delete();
+            return $this->json($response, ['error' => false, 'message' => 'Usuario eliminado permanentemente de la base de datos.']);
+        } catch (\Exception $e) {
+            return $this->json($response, [
+                'error' => true,
+                'message' => 'No se puede eliminar porque el usuario tiene registros asociados (recepciones, picking, inventarios, etc.). Puede desactivarlo en su lugar.'
+            ], 400);
+        }
     }
 
     // ── DELETE /api/param/ubicaciones/{id} ──────────────────────────────────
@@ -1277,16 +1387,24 @@ class ParametrosController extends BaseController
     public function createZona(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        $data = $request->getParsedBody();
+        $data = $request->getParsedBody() ?? [];
+        $codigo = strtoupper(trim($data['codigo'] ?? ''));
+        if ($codigo === '') {
+            return $this->json($response, ['error' => true, 'message' => 'El código de la zona es obligatorio'], 400);
+        }
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        if (\App\Models\Zona::where('empresa_id', $empresaId)->where('codigo', $codigo)->exists()) {
+            return $this->json($response, ['error' => true, 'message' => "Ya existe una zona con el código '{$codigo}'"], 409);
+        }
         try {
             $z = new \App\Models\Zona();
-            $z->empresa_id = $this->getEffectiveEmpresaId($user, $request);
-            $z->codigo = strtoupper(trim($data['codigo']));
+            $z->empresa_id = $empresaId;
+            $z->codigo     = $codigo;
             $z->descripcion = $data['descripcion'] ?? null;
             $z->save();
             return $this->json($response, ['error' => false, 'message' => 'Zona creada: ' . $z->codigo, 'data' => $z]);
         } catch (\Exception $e) {
-            return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 400);
+            return $this->json($response, ['error' => true, 'message' => 'Error al guardar la zona: ' . $e->getMessage()], 500);
         }
     }
 
@@ -1296,18 +1414,27 @@ class ParametrosController extends BaseController
     public function editZona(Request $request, Response $response, array $args): Response
     {
         $user = $request->getAttribute('user');
-        $id = $args['id'];
-        $data = $request->getParsedBody();
+        $id   = $args['id'];
+        $data = $request->getParsedBody() ?? [];
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $z = \App\Models\Zona::where('empresa_id', $empresaId)->find($id);
+        if (!$z) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
+        if (isset($data['codigo'])) {
+            $nuevoCodigo = strtoupper(trim($data['codigo']));
+            if ($nuevoCodigo === '') {
+                return $this->json($response, ['error' => true, 'message' => 'El código no puede estar vacío'], 400);
+            }
+            if ($nuevoCodigo !== $z->codigo && \App\Models\Zona::where('empresa_id', $empresaId)->where('codigo', $nuevoCodigo)->exists()) {
+                return $this->json($response, ['error' => true, 'message' => "Ya existe una zona con el código '{$nuevoCodigo}'"], 409);
+            }
+            $z->codigo = $nuevoCodigo;
+        }
+        if (array_key_exists('descripcion', $data)) $z->descripcion = $data['descripcion'];
         try {
-            $z = \App\Models\Zona::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
-            if (!$z) return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
-
-            if (isset($data['codigo'])) $z->codigo = strtoupper(trim($data['codigo']));
-            if (isset($data['descripcion'])) $z->descripcion = $data['descripcion'];
             $z->save();
             return $this->json($response, ['error' => false, 'message' => 'Zona actualizada: ' . $z->codigo]);
         } catch (\Exception $e) {
-            return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 400);
+            return $this->json($response, ['error' => true, 'message' => 'Error al actualizar la zona: ' . $e->getMessage()], 500);
         }
     }
 
@@ -1331,6 +1458,95 @@ class ParametrosController extends BaseController
 
         $z->delete();
         return $this->json($response, ['error' => false, 'message' => 'Zona eliminada']);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // ── AMBIENTES (CRUD) ─────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+
+    public function getAmbientes(Request $request, Response $response): Response
+    {
+        $user = $request->getAttribute('user');
+        $ambientes = \App\Models\Ambiente::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                                         ->withCount('productos')
+                                         ->orderBy('codigo')
+                                         ->get();
+        return $this->json($response, ['error' => false, 'data' => $ambientes]);
+    }
+
+    public function createAmbiente(Request $request, Response $response): Response
+    {
+        $user = $request->getAttribute('user');
+        $data = $request->getParsedBody() ?? [];
+        $codigo = strtoupper(trim($data['codigo'] ?? ''));
+        if ($codigo === '') {
+            return $this->json($response, ['error' => true, 'message' => 'El código del ambiente es obligatorio'], 400);
+        }
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        if (\App\Models\Ambiente::where('empresa_id', $empresaId)->where('codigo', $codigo)->exists()) {
+            return $this->json($response, ['error' => true, 'message' => "Ya existe un ambiente con el código '{$codigo}'"], 409);
+        }
+        try {
+            $a = new \App\Models\Ambiente();
+            $a->empresa_id  = $empresaId;
+            $a->codigo      = $codigo;
+            $a->descripcion = $data['descripcion'] ?? null;
+            $a->icono       = $data['icono'] ?? null;
+            $a->color       = $data['color'] ?? null;
+            $a->activo      = true;
+            $a->save();
+            return $this->json($response, ['error' => false, 'message' => 'Ambiente creado: ' . $a->codigo, 'data' => $a]);
+        } catch (\Exception $e) {
+            return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function editAmbiente(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $a = \App\Models\Ambiente::where('empresa_id', $empresaId)->find($args['id']);
+        if (!$a) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
+
+        $data = $request->getParsedBody() ?? [];
+        if (isset($data['codigo'])) {
+            $nuevoCodigo = strtoupper(trim($data['codigo']));
+            if ($nuevoCodigo === '') return $this->json($response, ['error' => true, 'message' => 'El código no puede estar vacío'], 400);
+            if ($nuevoCodigo !== $a->codigo && \App\Models\Ambiente::where('empresa_id', $empresaId)->where('codigo', $nuevoCodigo)->exists()) {
+                return $this->json($response, ['error' => true, 'message' => "Ya existe un ambiente con código '{$nuevoCodigo}'"], 409);
+            }
+            $a->codigo = $nuevoCodigo;
+        }
+        if (array_key_exists('descripcion', $data)) $a->descripcion = $data['descripcion'];
+        if (array_key_exists('icono', $data)) $a->icono = $data['icono'];
+        if (array_key_exists('color', $data)) $a->color = $data['color'];
+        if (isset($data['activo'])) $a->activo = filter_var($data['activo'], FILTER_VALIDATE_BOOLEAN);
+
+        try {
+            $a->save();
+            return $this->json($response, ['error' => false, 'message' => 'Ambiente actualizado', 'data' => $a]);
+        } catch (\Exception $e) {
+            return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function deleteAmbiente(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!$this->isAdmin($user)) return $this->json($response, ['error' => true, 'message' => 'Acceso denegado'], 403);
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $a = \App\Models\Ambiente::where('empresa_id', $empresaId)->find($args['id']);
+        if (!$a) return $this->json($response, ['error' => true, 'message' => 'No encontrado'], 404);
+
+        $productosCount = \App\Models\Producto::where('empresa_id', $empresaId)
+                                              ->where('ambiente_id', $a->id)
+                                              ->count();
+        if ($productosCount > 0) {
+            return $this->json($response, ['error' => true, 'message' => "No se puede eliminar: {$productosCount} productos usan este ambiente"], 400);
+        }
+
+        $a->delete();
+        return $this->json($response, ['error' => false, 'message' => 'Ambiente eliminado']);
     }
 
     // ── DELETE /api/param/proveedores/{id} ──────────────────────────────────
@@ -1500,26 +1716,31 @@ class ParametrosController extends BaseController
             if (empty($data['nit']) || empty($data['razon_social'])) {
                 return $this->json($response, ['error' => true, 'message' => 'NIT y Razón Social requeridos'], 400);
             }
-
-            // Validar NIT duplicado en la misma empresa
-            if (Cliente::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->where('nit', $data['nit'])->exists()) {
+            $empId = $this->getEffectiveEmpresaId($user, $request);
+            if (Cliente::where('empresa_id', $empId)->where('nit', $data['nit'])->exists()) {
                 return $this->json($response, ['error' => true, 'message' => 'Ya existe un cliente con este NIT'], 409);
             }
 
             $c = new Cliente();
-            $c->empresa_id = $this->getEffectiveEmpresaId($user, $request);
-            $c->nit = trim($data['nit']);
-            $c->razon_social = trim($data['razon_social']);
-            $c->ciudad = $data['ciudad'] ?? null;
-            $c->direccion = $data['direccion'] ?? null;
-            $c->telefono = $data['telefono'] ?? null;
-            $c->email = $data['email'] ?? null;
+            $c->empresa_id      = $empId;
+            $c->nit             = trim($data['nit']);
+            $c->razon_social    = trim($data['razon_social']);
+            $c->ciudad          = $data['ciudad'] ?? null;
+            $c->direccion       = $data['direccion'] ?? null;
+            $c->telefono        = $data['telefono'] ?? null;
+            $c->email           = $data['email'] ?? null;
             $c->contacto_nombre = $data['contacto_nombre'] ?? null;
-            $c->ruta_id = !empty($data['ruta_id']) ? (int)$data['ruta_id'] : null;
+            $c->ruta_id          = !empty($data['ruta_id']) ? (int)$data['ruta_id'] : null;
+            $c->horario          = $data['horario'] ?? null;
+            $c->latitud          = isset($data['latitud'])  && $data['latitud']  !== '' ? (float)$data['latitud']  : null;
+            $c->longitud         = isset($data['longitud']) && $data['longitud'] !== '' ? (float)$data['longitud'] : null;
+            $c->frecuencia_tipo  = $data['frecuencia_tipo']   ?? 'Diario';
+            $c->frecuencia_config= $data['frecuencia_config'] ?? null;
+            $c->frecuencia       = $this->_buildFrecuenciaLabel($data);
             $c->activo = 1;
             $c->save();
 
-            return $this->json($response, ['error' => false, 'message' => 'Cliente creado', 'data' => $c], 201);
+            return $this->json($response, ['error' => false, 'message' => 'Cliente creado', 'data' => $c->load('ruta')], 201);
         } catch (\Exception $e) {
             return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 500);
         }
@@ -1535,17 +1756,23 @@ class ParametrosController extends BaseController
         $data = $request->getParsedBody();
         try {
             $cliente = \App\Models\Cliente::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->findOrFail($id);
-            if (isset($data['nit']))              $cliente->nit             = trim($data['nit']);
-            if (isset($data['razon_social']))     $cliente->razon_social    = trim($data['razon_social']);
-            if (isset($data['ciudad']))           $cliente->ciudad          = $data['ciudad'];
-            if (isset($data['direccion']))        $cliente->direccion       = $data['direccion'];
-            if (isset($data['telefono']))         $cliente->telefono        = $data['telefono'];
-            if (isset($data['email']))            $cliente->email           = $data['email'];
-            if (isset($data['contacto_nombre']))  $cliente->contacto_nombre = $data['contacto_nombre'];
-            if (isset($data['ruta_id']))          $cliente->ruta_id         = !empty($data['ruta_id']) ? (int)$data['ruta_id'] : null;
-            if (isset($data['activo']))           $cliente->activo          = (bool)$data['activo'];
+            if (isset($data['nit']))             $cliente->nit             = trim($data['nit']);
+            if (isset($data['razon_social']))    $cliente->razon_social    = trim($data['razon_social']);
+            if (isset($data['ciudad']))          $cliente->ciudad          = $data['ciudad'];
+            if (isset($data['direccion']))       $cliente->direccion       = $data['direccion'];
+            if (isset($data['telefono']))        $cliente->telefono        = $data['telefono'];
+            if (isset($data['email']))           $cliente->email           = $data['email'];
+            if (isset($data['contacto_nombre'])) $cliente->contacto_nombre = $data['contacto_nombre'];
+            if (isset($data['ruta_id']))          $cliente->ruta_id          = !empty($data['ruta_id']) ? (int)$data['ruta_id'] : $cliente->ruta_id;
+            if (isset($data['horario']))          $cliente->horario          = $data['horario'];
+            if (array_key_exists('latitud', $data))   $cliente->latitud  = $data['latitud']  !== '' ? (float)$data['latitud']  : null;
+            if (array_key_exists('longitud', $data))  $cliente->longitud = $data['longitud'] !== '' ? (float)$data['longitud'] : null;
+            if (isset($data['frecuencia_tipo']))  $cliente->frecuencia_tipo  = $data['frecuencia_tipo'];
+            if (isset($data['frecuencia_config'])) $cliente->frecuencia_config = $data['frecuencia_config'];
+            if (isset($data['frecuencia_tipo']))  $cliente->frecuencia = $this->_buildFrecuenciaLabel($data);
+            if (isset($data['activo']))           $cliente->activo = (bool)$data['activo'];
             $cliente->save();
-            return $this->json($response, ['error' => false, 'message' => 'Cliente actualizado', 'data' => $cliente]);
+            return $this->json($response, ['error' => false, 'message' => 'Cliente actualizado', 'data' => $cliente->load('ruta')]);
         } catch (\Exception $e) {
             return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 500);
         }
@@ -1582,4 +1809,71 @@ class ParametrosController extends BaseController
             return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 500);
         }
     }
-} 
+
+    /**
+     * POST /api/param/productos/{id}/fotos
+     */
+    public function uploadProductoFotos(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        $id = $args['id'];
+        try {
+            $prod = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
+            if (!$prod) return $this->json($response, ['error' => true, 'message' => 'Producto no encontrado'], 404);
+
+            $files = $request->getUploadedFiles();
+            $uploadedFotos = [];
+            $uploadPath = dirname(__DIR__, 2) . '/public/uploads/productos/';
+
+            // Iterate over all uploaded files (supports 'fotos[]' array or single 'foto')
+            $fotosData = isset($files['fotos']) ? (is_array($files['fotos']) ? $files['fotos'] : [$files['fotos']]) : [];
+            if (isset($files['foto'])) {
+                $fotosData[] = $files['foto'];
+            }
+
+            foreach ($fotosData as $file) {
+                if ($file && $file->getError() === UPLOAD_ERR_OK) {
+                    $ext = pathinfo($file->getClientFilename(), PATHINFO_EXTENSION);
+                    $filename = sprintf('%d_%s.%s', $prod->id, uniqid(), $ext);
+                    $file->moveTo($uploadPath . $filename);
+
+                    $foto = new \App\Models\ProductoFoto();
+                    $foto->producto_id = $prod->id;
+                    $foto->url = '/uploads/productos/' . $filename;
+                    $foto->save();
+
+                    $uploadedFotos[] = $foto;
+                }
+            }
+
+            return $this->json($response, ['error' => false, 'message' => 'Fotos subidas con éxito', 'data' => $uploadedFotos], 201);
+        } catch (\Exception $e) {
+            return $this->json($response, ['error' => true, 'message' => 'Error al subir fotos: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * DELETE /api/param/productos/fotos/{foto_id}
+     */
+    public function deleteProductoFoto(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        $fotoId = $args['foto_id'];
+        try {
+            $foto = \App\Models\ProductoFoto::with('producto')->find($fotoId);
+            if (!$foto || $foto->producto->empresa_id !== $this->getEffectiveEmpresaId($user, $request)) {
+                return $this->json($response, ['error' => true, 'message' => 'Foto no encontrada o acceso denegado'], 404);
+            }
+
+            $filePath = dirname(__DIR__, 2) . '/public' . $foto->url;
+            if (file_exists($filePath)) {
+                @unlink($filePath);
+            }
+
+            $foto->delete();
+            return $this->json($response, ['error' => false, 'message' => 'Foto eliminada con éxito']);
+        } catch (\Exception $e) {
+            return $this->json($response, ['error' => true, 'message' => 'Error al eliminar foto: ' . $e->getMessage()], 500);
+        }
+    }
+}

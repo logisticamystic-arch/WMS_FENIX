@@ -20,7 +20,10 @@ abstract class BaseController
     public function json(Response $response, array $data, int $status = 200): Response
     {
         $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
+        return $response->withStatus($status)
+                        ->withHeader('Content-Type', 'application/json')
+                        ->withHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                        ->withHeader('Pragma', 'no-cache');
     }
 
     /**

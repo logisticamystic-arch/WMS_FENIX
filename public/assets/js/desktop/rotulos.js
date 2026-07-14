@@ -43,18 +43,51 @@ WMS_MODULES.rotulos = {
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;max-width:500px;">
               <div class="form-group" style="margin:0;">
                 <label class="form-label">Ancho (mm)</label>
-                <input id="rot-ancho" type="number" class="form-control" value="80" min="20" max="300"
+                <input id="rot-ancho" type="number" class="form-control" value="60" min="20" max="300"
                        oninput="WMS_MODULES.rotulos._actualizarPreviewProd()">
               </div>
               <div class="form-group" style="margin:0;">
                 <label class="form-label">Alto (mm)</label>
-                <input id="rot-alto" type="number" class="form-control" value="50" min="10" max="300"
+                <input id="rot-alto" type="number" class="form-control" value="30" min="10" max="300"
                        oninput="WMS_MODULES.rotulos._actualizarPreviewProd()">
               </div>
               <div class="form-group" style="margin:0;">
                 <label class="form-label">Copias</label>
                 <input id="rot-copias" type="number" class="form-control" value="1" min="1" max="200">
               </div>
+            </div>
+          </div>
+
+          <!-- Formato -->
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
+            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
+              <i class="fa-solid fa-rotate" style="color:#0F4C81;"></i> Formato del Rótulo
+            </div>
+            <div style="display:flex;gap:24px;flex-wrap:wrap;">
+              <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid #0F4C81;border-radius:4px;background:#fff;transition:border-color .2s;">
+                <input type="radio" name="rot-prod-formato" value="horizontal" checked
+                       onchange="WMS_MODULES.rotulos._onFormatoProdChange(this)">
+                <div>
+                  <div style="font-weight:700;font-size:.82rem;color:#1e293b;">
+                    <i class="fa-solid fa-arrows-left-right" style="color:#0F4C81;margin-right:5px;"></i> Horizontal
+                  </div>
+                  <div style="font-size:.72rem;color:#64748b;">Código de barras apaisado (ancho &gt; alto)</div>
+                </div>
+              </label>
+              <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid #e2e8f0;border-radius:4px;background:#fff;transition:border-color .2s;">
+                <input type="radio" name="rot-prod-formato" value="vertical"
+                       onchange="WMS_MODULES.rotulos._onFormatoProdChange(this)">
+                <div>
+                  <div style="font-weight:700;font-size:.82rem;color:#1e293b;">
+                    <i class="fa-solid fa-arrows-up-down" style="color:#0F4C81;margin-right:5px;"></i> Vertical
+                  </div>
+                  <div style="font-size:.72rem;color:#64748b;">Código de barras rotado 90° (para etiquetas de estante)</div>
+                </div>
+              </label>
+            </div>
+            <div id="rot-prod-formato-hint" style="margin-top:10px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:.78rem;color:#1e40af;display:none;">
+              <i class="fa-solid fa-circle-info"></i>
+              En formato vertical el código de barras se imprime girado 90°. Recomendado: Ancho 30-50 mm, Alto 80-120 mm.
             </div>
           </div>
 
@@ -188,20 +221,89 @@ WMS_MODULES.rotulos = {
     this._actualizarPreviewProd();
   },
 
-  _buildRotuloProd(nombre, codigoInterno, ean, anchomm, altomm) {
+  _onFormatoProdChange(radio) {
+    const hint = document.getElementById('rot-prod-formato-hint');
+    if (hint) hint.style.display = radio.value === 'vertical' ? 'block' : 'none';
+    document.querySelectorAll('input[name="rot-prod-formato"]').forEach(r => {
+      const card = r.closest('label');
+      if (card) card.style.borderColor = r.checked ? '#0F4C81' : '#e2e8f0';
+    });
+    this._actualizarPreviewProd();
+  },
+
+  _getFormatoProd() {
+    return document.querySelector('input[name="rot-prod-formato"]:checked')?.value || 'horizontal';
+  },
+
+  _buildRotuloProd(nombre, codigoInterno, ean, anchomm, altomm, formato = 'horizontal') {
+    return formato === 'vertical'
+      ? this._buildRotuloProdVertical(nombre, codigoInterno, ean, anchomm, altomm)
+      : this._buildRotuloProdHorizontal(nombre, codigoInterno, ean, anchomm, altomm);
+  },
+
+  _buildRotuloProdHorizontal(nombre, codigoInterno, ean, anchomm, altomm) {
+    const textH    = Math.max(4, Math.round(altomm * 0.18));
+    const barcodeH = altomm - textH;
     return `
-      <div style="width:${anchomm}mm;min-height:${altomm}mm;display:flex;flex-direction:column;
-        align-items:center;justify-content:space-between;padding:3mm;box-sizing:border-box;
-        border:0.5mm solid #000;font-family:Arial,sans-serif;page-break-after:always;
-        background:#fff;overflow:hidden;">
-        <div style="font-size:min(7pt,calc(${anchomm}mm*0.08));font-weight:700;text-align:center;
-          color:#000;line-height:1.3;max-width:100%;word-break:break-word;max-height:30%;overflow:hidden;">
-          ${WMS.esc(nombre||'')}
+      <div class="wms-label-single" style="width:${anchomm}mm;height:${altomm}mm;
+        display:flex;flex-direction:column;
+        align-items:center;justify-content:center;
+        box-sizing:border-box;
+        font-family:Arial,sans-serif;
+        background:#fff;overflow:hidden;flex-shrink:0;
+        padding:0;margin:0;">
+        <svg class="rot-barcode" data-value="${WMS.esc(ean)}"
+             data-anchomm="${anchomm}" data-altomm="${altomm}" data-barcodeh="${barcodeH}"
+             style="display:block;width:${anchomm}mm;height:${barcodeH}mm;
+             shape-rendering:crispEdges;-webkit-print-color-adjust:exact;print-color-adjust:exact;"></svg>
+        <div style="font-size:${Math.max(6, Math.min(12, Math.round(textH * 0.7)))}pt;
+          font-weight:900;color:#000;text-align:center;
+          letter-spacing:2px;font-family:'Courier New',monospace;
+          line-height:${textH}mm;height:${textH}mm;
+          margin:0;padding:0;width:100%;box-sizing:border-box;">
+          ${WMS.esc(ean||'')}
         </div>
-        <div style="font-size:min(5.5pt,calc(${anchomm}mm*0.065));color:#333;text-align:center;margin:1mm 0;">
-          COD: <strong>${WMS.esc(codigoInterno||'')}</strong>
+      </div>`;
+  },
+
+  _buildRotuloProdVertical(nombre, codigoInterno, ean, anchomm, altomm) {
+    const textW    = Math.max(6, Math.min(10, Math.round(anchomm * 0.25)));
+    const barcodeW = anchomm - textW - 0.5;
+    return `
+      <div class="wms-label-single" style="width:${anchomm}mm;height:${altomm}mm;
+        display:flex;flex-direction:row;
+        box-sizing:border-box;
+        border:0.5mm solid #000;font-family:Arial,sans-serif;
+        background:#fff;overflow:hidden;flex-shrink:0;">
+        <div style="width:${textW}mm;height:100%;
+          flex-shrink:0;
+          display:flex;align-items:center;justify-content:center;
+          border-right:0.3mm solid #ccc;
+          overflow:hidden;padding:2mm 0;">
+          <div style="
+            writing-mode:vertical-rl;
+            transform:rotate(180deg);
+            font-size:min(9pt,calc(${altomm}mm*0.08));
+            font-weight:900;
+            color:#000;
+            letter-spacing:1px;
+            font-family:monospace;
+            text-align:center;
+            white-space:nowrap;
+            overflow:hidden;">
+            ${WMS.esc(ean||'')}
+          </div>
         </div>
-        <svg class="rot-barcode" data-value="${WMS.esc(ean)}" style="max-width:95%;height:auto;max-height:55%;"></svg>
+        <div style="flex:1;height:100%;
+          display:flex;align-items:center;justify-content:center;
+          overflow:hidden;position:relative;">
+          <svg class="rot-barcode rot-barcode-v"
+               data-value="${WMS.esc(ean)}"
+               data-vertical="1"
+               data-anchomm="${barcodeW}"
+               data-altomm="${altomm}">
+          </svg>
+        </div>
       </div>`;
   },
 
@@ -209,14 +311,15 @@ WMS_MODULES.rotulos = {
     const sel  = document.getElementById('rot-ean-sel');
     const ean  = sel?.value;
     if (!ean || !this._selectedProd) return;
-    const nombre = document.getElementById('rot-prod-nombre')?.textContent || '';
-    const codigo = this._selectedProd.codigo_interno || '';
-    const ancho  = parseInt(document.getElementById('rot-ancho')?.value  || 80);
-    const alto   = parseInt(document.getElementById('rot-alto')?.value   || 50);
+    const nombre  = document.getElementById('rot-prod-nombre')?.textContent || '';
+    const codigo  = this._selectedProd.codigo_interno || '';
+    const ancho   = parseInt(document.getElementById('rot-ancho')?.value  || 60);
+    const alto    = parseInt(document.getElementById('rot-alto')?.value   || 30);
+    const formato = this._getFormatoProd();
     const area   = document.getElementById('rot-preview-area');
     const cont   = document.getElementById('rot-preview-container');
     if (!area || !cont) return;
-    cont.innerHTML = this._buildRotuloProd(nombre, codigo, ean, ancho, alto);
+    cont.innerHTML = this._buildRotuloProd(nombre, codigo, ean, ancho, alto, formato);
     this._renderBarcodes(cont);
     area.style.display = 'block';
   },
@@ -233,14 +336,16 @@ WMS_MODULES.rotulos = {
     const ean = document.getElementById('rot-ean-sel')?.value;
     if (!ean)               { WMS.toast('warning', 'Seleccione un EAN para imprimir'); return; }
     if (!this._selectedProd){ WMS.toast('warning', 'Seleccione un producto primero'); return; }
-    const nombre = document.getElementById('rot-prod-nombre')?.textContent || '';
-    const codigo = this._selectedProd.codigo_interno || '';
-    const ancho  = parseInt(document.getElementById('rot-ancho')?.value  || 80);
-    const alto   = parseInt(document.getElementById('rot-alto')?.value   || 50);
-    const copias = parseInt(document.getElementById('rot-copias')?.value || 1);
-    let html = '';
-    for (let i = 0; i < copias; i++) html += this._buildRotuloProd(nombre, codigo, ean, ancho, alto);
-    this._imprimir(html, ancho, alto);
+    const nombre  = document.getElementById('rot-prod-nombre')?.textContent || '';
+    const codigo  = this._selectedProd.codigo_interno || '';
+    const ancho   = parseInt(document.getElementById('rot-ancho')?.value  || 60);
+    const alto    = parseInt(document.getElementById('rot-alto')?.value   || 30);
+    const copias  = parseInt(document.getElementById('rot-copias')?.value || 1);
+    const formato = this._getFormatoProd();
+    const labels  = [];
+    for (let i = 0; i < copias; i++) labels.push({ ean, nombre, codigo });
+    const html = this._buildDualColumnHTMLProd(labels, ancho, alto, formato);
+    this._imprimir(html, ancho, alto, { dualColumn: true });
   },
 
   // ══════════════════════════════════════════════════════════════
@@ -272,6 +377,14 @@ WMS_MODULES.rotulos = {
           </div>
           <div class="card-body" style="display:flex;flex-direction:column;gap:18px;">
 
+            <!-- Configuración TSC TE200 -->
+            <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:4px;padding:12px 16px;margin-bottom:4px;">
+              <div style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:#065f46;">
+                <i class="fa-solid fa-print" style="color:#059669;"></i>
+                <strong>TSC TE200</strong> — Rollo de 2 etiquetas: 60 mm × 30 mm c/u
+              </div>
+            </div>
+
             <!-- Dimensiones y copias -->
             <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
               <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
@@ -280,12 +393,12 @@ WMS_MODULES.rotulos = {
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;max-width:500px;">
                 <div class="form-group" style="margin:0;">
                   <label class="form-label">Ancho (mm)</label>
-                  <input id="rotub-ancho" type="number" class="form-control" value="70" min="20" max="300"
+                  <input id="rotub-ancho" type="number" class="form-control" value="60" min="20" max="300"
                          oninput="WMS_MODULES.rotulos._actualizarPreviewUbi()">
                 </div>
                 <div class="form-group" style="margin:0;">
                   <label class="form-label">Alto (mm)</label>
-                  <input id="rotub-alto" type="number" class="form-control" value="40" min="10" max="300"
+                  <input id="rotub-alto" type="number" class="form-control" value="30" min="10" max="300"
                          oninput="WMS_MODULES.rotulos._actualizarPreviewUbi()">
                 </div>
                 <div class="form-group" style="margin:0;">
@@ -380,10 +493,9 @@ WMS_MODULES.rotulos = {
               La impresión masiva usa las dimensiones y formato configurados arriba en la sección individual.
             </div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:flex-end;flex-wrap:wrap;">
-              <!-- Tipo de agrupación -->
-              <div class="form-group" style="margin:0;">
-                <label class="form-label"><i class="fa-solid fa-filter"></i> Agrupar por</label>
+            <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+              <div class="form-group" style="margin:0;min-width:200px;">
+                <label class="form-label"><i class="fa-solid fa-filter"></i> Filtrar por</label>
                 <select id="rot-mas-tipo" class="form-control" onchange="WMS_MODULES.rotulos._actualizarFiltroMasivo()">
                   <option value="cedi">Todo el CEDI (${ubis.length} ubicaciones)</option>
                   <option value="pasillo">Por Pasillo</option>
@@ -392,26 +504,37 @@ WMS_MODULES.rotulos = {
                   <option value="ambiente">Por Ambiente / Zona</option>
                 </select>
               </div>
-              <!-- Valor del filtro -->
-              <div class="form-group" style="margin:0;" id="rot-mas-valor-wrap" style="display:none;">
-                <label class="form-label"><i class="fa-solid fa-sliders"></i> Valor</label>
-                <select id="rot-mas-valor" class="form-control" onchange="WMS_MODULES.rotulos._actualizarConteoMasivo()">
-                  <option value="">— Seleccione —</option>
-                </select>
-              </div>
-              <!-- Botón -->
-              <div>
-                <button class="btn btn-primary" onclick="WMS_MODULES.rotulos._imprimirMasivo()" style="white-space:nowrap;">
-                  <i class="fa-solid fa-print"></i> Imprimir Masivo
-                </button>
-              </div>
             </div>
 
-            <!-- Contador de ubicaciones -->
+            <div id="rot-mas-valor-wrap" style="display:none;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <label class="form-label" style="margin:0;"><i class="fa-solid fa-sliders"></i> Seleccione los valores a imprimir</label>
+                <div style="display:flex;gap:6px;">
+                  <button class="btn btn-outline-primary btn-sm" onclick="WMS_MODULES.rotulos._selectAllMasivo(true)" style="font-size:.72rem;padding:2px 8px;">
+                    <i class="fa-solid fa-check-double"></i> Todos
+                  </button>
+                  <button class="btn btn-outline-secondary btn-sm" onclick="WMS_MODULES.rotulos._selectAllMasivo(false)" style="font-size:.72rem;padding:2px 8px;">
+                    <i class="fa-solid fa-xmark"></i> Ninguno
+                  </button>
+                </div>
+              </div>
+              <div id="rot-mas-checks" style="display:flex;flex-wrap:wrap;gap:6px;max-height:180px;overflow-y:auto;
+                background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:10px;"></div>
+            </div>
+
             <div id="rot-mas-info" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;">
               <i class="fa-solid fa-location-dot" style="color:#0F4C81;font-size:1.1rem;"></i>
               <span style="font-weight:700;color:#1e293b;" id="rot-mas-count">${ubis.length}</span>
               <span style="color:#64748b;">ubicaciones seleccionadas</span>
+            </div>
+
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn btn-primary" onclick="WMS_MODULES.rotulos._imprimirMasivo()" style="white-space:nowrap;">
+                <i class="fa-solid fa-desktop"></i> Imprimir (Navegador)
+              </button>
+              <button class="btn btn-success" onclick="WMS_MODULES.rotulos._imprimirIPMasivo()" style="white-space:nowrap;">
+                <i class="fa-solid fa-print"></i> Impresión Térmica TSC
+              </button>
             </div>
 
           </div>
@@ -481,9 +604,9 @@ WMS_MODULES.rotulos = {
   },
 
   _actualizarFiltroMasivo() {
-    const tipo     = document.getElementById('rot-mas-tipo')?.value || 'cedi';
-    const wrap     = document.getElementById('rot-mas-valor-wrap');
-    const valorSel = document.getElementById('rot-mas-valor');
+    const tipo   = document.getElementById('rot-mas-tipo')?.value || 'cedi';
+    const wrap   = document.getElementById('rot-mas-valor-wrap');
+    const checks = document.getElementById('rot-mas-checks');
 
     if (tipo === 'cedi') {
       if (wrap) wrap.style.display = 'none';
@@ -493,53 +616,120 @@ WMS_MODULES.rotulos = {
 
     if (wrap) wrap.style.display = '';
     const values = this._getUniqueValues(tipo);
-    if (valorSel) {
-      valorSel.innerHTML = '<option value="">— Seleccione —</option>' +
-        values.map(v => `<option value="${WMS.esc(v)}">${WMS.esc(v)}</option>`).join('');
+    if (checks) {
+      checks.innerHTML = values.map(v => `
+        <label style="cursor:pointer;display:flex;align-items:center;gap:5px;padding:4px 10px;
+          background:#fff;border:1px solid #e2e8f0;border-radius:4px;font-size:.8rem;
+          font-family:'Courier New',monospace;font-weight:600;color:#1e293b;
+          user-select:none;transition:all .15s;"
+          onmouseover="this.style.borderColor='#0F4C81'" onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='#e2e8f0'">
+          <input type="checkbox" class="rot-mas-check" value="${WMS.esc(v)}"
+                 onchange="WMS_MODULES.rotulos._onCheckMasivo(this)">
+          ${WMS.esc(v)}
+        </label>`).join('');
     }
     this._actualizarConteoMasivo();
   },
 
+  _onCheckMasivo(cb) {
+    const label = cb.closest('label');
+    if (label) {
+      label.style.borderColor = cb.checked ? '#0F4C81' : '#e2e8f0';
+      label.style.background = cb.checked ? '#eff6ff' : '#fff';
+    }
+    this._actualizarConteoMasivo();
+  },
+
+  _selectAllMasivo(checked) {
+    document.querySelectorAll('.rot-mas-check').forEach(cb => {
+      cb.checked = checked;
+      this._onCheckMasivo(cb);
+    });
+  },
+
+  _getSelectedValues() {
+    return [...document.querySelectorAll('.rot-mas-check:checked')].map(cb => cb.value);
+  },
+
   _actualizarConteoMasivo() {
-    const tipo  = document.getElementById('rot-mas-tipo')?.value || 'cedi';
-    const valor = document.getElementById('rot-mas-valor')?.value || '';
+    const tipo    = document.getElementById('rot-mas-tipo')?.value || 'cedi';
     const countEl = document.getElementById('rot-mas-count');
-    const count = (tipo === 'cedi' || valor)
-      ? this._filtrarUbis(tipo, valor).length
+    if (tipo === 'cedi') {
+      if (countEl) countEl.textContent = this._ubiData.length;
+      return;
+    }
+    const selected = this._getSelectedValues();
+    const count = selected.length
+      ? selected.reduce((sum, val) => sum + this._filtrarUbis(tipo, val).length, 0)
       : 0;
     if (countEl) countEl.textContent = count;
   },
 
+  _getUbisMasivo() {
+    const tipo = document.getElementById('rot-mas-tipo')?.value || 'cedi';
+    if (tipo === 'cedi') return this._ubiData;
+    const selected = this._getSelectedValues();
+    if (!selected.length) return [];
+    let ubis = [];
+    selected.forEach(val => {
+      ubis = ubis.concat(this._filtrarUbis(tipo, val));
+    });
+    return ubis;
+  },
+
   _imprimirMasivo() {
-    const tipo  = document.getElementById('rot-mas-tipo')?.value  || 'cedi';
-    const valor = document.getElementById('rot-mas-valor')?.value || '';
-
-    if (tipo !== 'cedi' && !valor) {
-      WMS.toast('warning', 'Seleccione un valor de filtro antes de imprimir');
-      return;
-    }
-
-    const ubis = this._filtrarUbis(tipo, valor);
+    const ubis = this._getUbisMasivo();
     if (!ubis.length) {
-      WMS.toast('warning', 'No hay ubicaciones con ese filtro');
+      WMS.toast('warning', 'Seleccione al menos un valor para imprimir');
       return;
     }
 
-    const ancho  = parseInt(document.getElementById('rotub-ancho')?.value || 70);
-    const alto   = parseInt(document.getElementById('rotub-alto')?.value  || 40);
+    const ancho  = parseInt(document.getElementById('rotub-ancho')?.value || 60);
+    const alto   = parseInt(document.getElementById('rotub-alto')?.value  || 30);
     const formato = this._getFormatoUbi();
 
     WMS.toast('info', `Generando ${ubis.length} rótulo(s)...`);
 
-    // Ordenar: pasillo → módulo → nivel
     const sorted = [...ubis].sort((a, b) => (a.codigo||'').localeCompare(b.codigo||''));
-
     let html = '';
     sorted.forEach(u => {
-      html += this._buildRotuloUbi(u.codigo||'', u.zona||'', u.tipo_ubicacion||'', ancho, alto, formato);
+      html += this._buildRotuloUbi(u.codigo || '', u.zona || '', u.tipo_ubicacion || '', ancho, alto, formato);
     });
-
     this._imprimir(html, ancho, alto);
+  },
+
+  // ══════════════════════════════════════════════════════════════
+  //  DUAL COLUMN — agrupa etiquetas en pares (TSC TE200: 2×50mm)
+  // ══════════════════════════════════════════════════════════════
+
+  _buildDualColumnHTML(labels, anchomm, altomm, formato) {
+    let html = '';
+    for (let i = 0; i < labels.length; i += 2) {
+      const left  = labels[i];
+      const right = labels[i + 1];
+      html += `<div class="wms-label-row" style="display:flex;flex-wrap:nowrap;page-break-after:always;">`;
+      html += this._buildRotuloUbi(left.codigo, left.zona, left.tipo, anchomm, altomm, formato);
+      if (right) {
+        html += this._buildRotuloUbi(right.codigo, right.zona, right.tipo, anchomm, altomm, formato);
+      }
+      html += `</div>`;
+    }
+    return html;
+  },
+
+  _buildDualColumnHTMLProd(labels, anchomm, altomm, formato) {
+    let html = '';
+    for (let i = 0; i < labels.length; i += 2) {
+      const left  = labels[i];
+      const right = labels[i + 1];
+      html += `<div class="wms-label-row" style="display:flex;flex-wrap:nowrap;page-break-after:always;">`;
+      html += this._buildRotuloProd(left.nombre, left.codigo, left.ean, anchomm, altomm, formato);
+      if (right) {
+        html += this._buildRotuloProd(right.nombre, right.codigo, right.ean, anchomm, altomm, formato);
+      }
+      html += `</div>`;
+    }
+    return html;
   },
 
   // ══════════════════════════════════════════════════════════════
@@ -552,81 +742,106 @@ WMS_MODULES.rotulos = {
       : this._buildRotuloUbiHorizontal(codigo, zona, tipo, anchomm, altomm);
   },
 
-  /* ── Horizontal (layout original mejorado) ── */
+  /* ── Horizontal (QR izquierda + texto derecha en 2 líneas) ── */
   _buildRotuloUbiHorizontal(codigo, zona, tipo, anchomm, altomm) {
-    const infoLine = [zona, tipo].filter(Boolean).map(WMS.esc).join(' · ');
+    const qrSize = Math.round((altomm - 2) * 0.6);
+    const textW  = anchomm - qrSize - 2;
+    const fontSize1 = Math.max(6, Math.min(11, Math.round(textW * 0.28)));
+    const fontSize2 = Math.max(9, Math.min(18, Math.round(textW * 0.42)));
+    const ubicacion = (codigo || '').includes('/') ? codigo.split('/').slice(1).join('/') : codigo;
     return `
-      <div style="width:${anchomm}mm;min-height:${altomm}mm;
-        display:flex;flex-direction:column;
-        align-items:center;justify-content:space-between;
-        padding:3mm;box-sizing:border-box;
-        border:0.5mm solid #000;font-family:Arial,sans-serif;
-        page-break-after:always;background:#fff;overflow:hidden;">
-        ${infoLine ? `<div style="font-size:min(6pt,calc(${anchomm}mm*0.08));color:#555;text-align:center;flex-shrink:0;">${infoLine}</div>` : '<div></div>'}
-        <div style="width:100%;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:1mm 0;">
-          <svg class="rot-barcode" data-value="${WMS.esc(codigo)}" data-anchomm="${anchomm}"
-               style="display:block;"></svg>
-        </div>
-        <div style="font-size:min(10pt,calc(${anchomm}mm*0.12));font-weight:900;color:#000;text-align:center;
-          letter-spacing:2px;font-family:monospace;flex-shrink:0;">
-          ${WMS.esc(codigo||'')}
+      <div class="wms-label-single" style="width:${anchomm}mm;height:${altomm}mm;
+        display:flex;flex-direction:row;
+        align-items:center;justify-content:center;
+        box-sizing:border-box;
+        font-family:Arial,sans-serif;
+        background:#fff;overflow:hidden;flex-shrink:0;
+        padding:1mm;margin:0;page-break-after:always;gap:1mm;">
+        <div class="rot-qr" data-value="${WMS.esc(codigo)}"
+             style="width:${qrSize}mm;height:${qrSize}mm;flex-shrink:0;display:flex;align-items:center;justify-content:center;"></div>
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;
+          overflow:hidden;text-align:left;padding:0 1mm;">
+          <div style="font-size:${fontSize1}pt;font-weight:700;color:#333;
+            font-family:'Courier New',monospace;line-height:1.2;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${WMS.esc(zona||'')}
+          </div>
+          <div style="font-size:${fontSize2}pt;font-weight:900;color:#000;
+            letter-spacing:1px;font-family:'Courier New',monospace;line-height:1.2;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${WMS.esc(ubicacion||'')}
+          </div>
         </div>
       </div>`;
   },
 
-  /* ── Vertical (código de barras rotado 90° + código en texto vertical) ── */
+  /* ── Vertical (QR arriba + texto abajo en 2 líneas) ── */
   _buildRotuloUbiVertical(codigo, zona, tipo, anchomm, altomm) {
-    /* Franja izquierda para el texto del código en posición vertical.
-       ~25% del ancho, mínimo 6mm, máximo 10mm. */
-    const textW    = Math.max(6, Math.min(10, Math.round(anchomm * 0.25)));
-    const barcodeW = anchomm - textW - 0.5; // 0.5mm de separador
+    const qrSize = Math.round(anchomm * 0.35);
+    const textH  = altomm - qrSize - 2;
+    const fontSize1 = Math.max(5, Math.min(9, Math.round(anchomm * 0.14)));
+    const fontSize2 = Math.max(8, Math.min(14, Math.round(anchomm * 0.24)));
+    const ubicacion = (codigo || '').includes('/') ? codigo.split('/').slice(1).join('/') : codigo;
     return `
-      <div style="width:${anchomm}mm;height:${altomm}mm;
-        display:flex;flex-direction:row;
+      <div class="wms-label-single" style="width:${anchomm}mm;height:${altomm}mm;
+        display:flex;flex-direction:column;
+        align-items:center;justify-content:center;
         box-sizing:border-box;
-        border:0.5mm solid #000;font-family:Arial,sans-serif;
-        page-break-after:always;background:#fff;overflow:hidden;">
-
-        <!-- Franja izquierda: código de ubicación en posición vertical -->
-        <div style="width:${textW}mm;height:100%;
-          flex-shrink:0;
-          display:flex;align-items:center;justify-content:center;
-          border-right:0.3mm solid #ccc;
-          overflow:hidden;padding:2mm 0;">
-          <div style="
-            writing-mode:vertical-rl;
-            transform:rotate(180deg);
-            font-size:min(9pt,calc(${altomm}mm*0.08));
-            font-weight:900;
-            color:#000;
-            letter-spacing:1px;
-            font-family:monospace;
-            text-align:center;
-            white-space:nowrap;
-            overflow:hidden;">
-            ${WMS.esc(codigo||'')}
+        font-family:Arial,sans-serif;
+        background:#fff;overflow:hidden;flex-shrink:0;
+        padding:1mm;margin:0;page-break-after:always;gap:1mm;">
+        <div class="rot-qr" data-value="${WMS.esc(codigo)}"
+             style="width:${qrSize}mm;height:${qrSize}mm;flex-shrink:0;display:flex;align-items:center;justify-content:center;"></div>
+        <div style="display:flex;flex-direction:column;justify-content:center;
+          text-align:center;width:100%;overflow:hidden;">
+          <div style="font-size:${fontSize1}pt;font-weight:700;color:#333;
+            font-family:'Courier New',monospace;line-height:1.2;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${WMS.esc(zona||'')}
           </div>
-        </div>
-
-        <!-- Área del código de barras vertical (ocupa el resto del ancho) -->
-        <div style="flex:1;height:100%;
-          display:flex;align-items:center;justify-content:center;
-          overflow:hidden;position:relative;">
-          <svg class="rot-barcode rot-barcode-v"
-               data-value="${WMS.esc(codigo)}"
-               data-vertical="1"
-               data-anchomm="${barcodeW}"
-               data-altomm="${altomm}">
-          </svg>
+          <div style="font-size:${fontSize2}pt;font-weight:900;color:#000;
+            letter-spacing:1px;font-family:'Courier New',monospace;line-height:1.2;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${WMS.esc(ubicacion||'')}
+          </div>
         </div>
       </div>`;
   },
 
   // ══════════════════════════════════════════════════════════════
-  //  RENDERIZADO DE CÓDIGOS DE BARRAS
+  //  RENDERIZADO DE QR (ubicaciones)
+  // ══════════════════════════════════════════════════════════════
+
+  _renderQRCodes(container) {
+    if (typeof qrcode === 'undefined') return;
+    container.querySelectorAll('.rot-qr[data-value]').forEach(el => {
+      const val = el.dataset.value?.trim();
+      if (!val) return;
+      const size = el.offsetWidth || el.getBoundingClientRect().width || 100;
+      const typeNumber = val.length <= 10 ? 4 : val.length <= 20 ? 6 : 8;
+      const qr = qrcode(typeNumber, 'M');
+      qr.addData(val);
+      qr.make();
+      const cellSize = Math.max(2, Math.floor(size / qr.getModuleCount()));
+      const margin = Math.floor((size - cellSize * qr.getModuleCount()) / 2);
+      const imgTag = qr.createImgTag(cellSize, margin);
+      el.innerHTML = imgTag;
+      const img = el.querySelector('img');
+      if (img) {
+        img.style.width = '100%';
+        img.style.height = '100%';
+        img.style.imageRendering = 'pixelated';
+        img.style.display = 'block';
+      }
+    });
+  },
+
+  // ══════════════════════════════════════════════════════════════
+  //  RENDERIZADO DE CÓDIGOS DE BARRAS (productos)
   // ══════════════════════════════════════════════════════════════
 
   _renderBarcodes(container) {
+    this._renderQRCodes(container);
     if (typeof JsBarcode === 'undefined') {
       container.querySelectorAll('svg.rot-barcode').forEach(svg => {
         svg.innerHTML = `<text x="5" y="20" font-size="12" fill="#ef4444">[JsBarcode no cargado]</text>`;
@@ -648,15 +863,19 @@ WMS_MODULES.rotulos = {
           const px           = 3.7795;   // 1mm ≈ 3.7795 px a 96 dpi
           const targetHeight = Math.round((anchomm - 7) * px); // ancho disponible → altura del svg
 
+          const charCountV = val.length;
+          const barWv      = Math.max(1, Math.min(2.5, targetHeight / (charCountV * 11 + 35)));
+
           JsBarcode(svg, val, {
             format:       'CODE128',
-            width:        1.4,          // grosor de barra
-            height:       targetHeight, // altura del svg = futura anchura visual
-            displayValue: false,        // texto se muestra arriba como código grande
+            width:        barWv,
+            height:       targetHeight,
+            displayValue: false,
             margin:       2,
             background:   '#ffffff',
             lineColor:    '#000000',
           });
+          svg.style.shapeRendering = 'crispEdges';
 
           /* Aplicar rotación */
           svg.style.display         = 'block';
@@ -676,31 +895,42 @@ WMS_MODULES.rotulos = {
           }
 
         } else {
-          const hAncho = parseFloat(svg.dataset.anchomm || 70);
-          /* Grosor de barra adaptativo: más angosto en etiquetas pequeñas */
-          const barW   = Math.max(0.8, Math.min(1.5, hAncho * 0.016));
+          const hAncho     = parseFloat(svg.dataset.anchomm || 50);
+          const hAlto      = parseFloat(svg.dataset.altomm  || 70);
+          const barcodeHmm = parseFloat(svg.dataset.barcodeh || (hAlto * 0.82));
+          const dpi        = 203;
+          const pxPerMm    = dpi / 25.4;
+          const targetHpx  = Math.round(barcodeHmm * pxPerMm);
+          const targetWpx  = Math.round(hAncho * pxPerMm);
+          const charCount  = val.length;
+          const barW       = Math.max(1, Math.min(3, targetWpx / (charCount * 11 + 35)));
+
           JsBarcode(svg, val, {
             format:       'CODE128',
             width:        barW,
-            height:       44,
-            displayValue: true,
-            fontSize:     9,
-            margin:       3,
+            height:       targetHpx,
+            displayValue: false,
+            margin:       0,
+            marginTop:    0,
+            marginBottom: 0,
+            marginLeft:   0,
+            marginRight:  0,
             background:   '#ffffff',
             lineColor:    '#000000',
-            textMargin:   2,
           });
-          /* Hacer el SVG fluido: establecer viewBox y dejar que el contenedor
-             padre controle el ancho real via CSS width:100% */
-          const bW = svg.getAttribute('width');
-          const bH = svg.getAttribute('height');
+
+          const bW = parseFloat(svg.getAttribute('width'));
+          const bH = parseFloat(svg.getAttribute('height'));
           if (bW && bH) {
             svg.setAttribute('viewBox', `0 0 ${bW} ${bH}`);
-            svg.setAttribute('width', '100%');
-            svg.style.maxWidth  = Math.min(parseFloat(bW), hAncho * 3.3) + 'px';
-            svg.style.height    = 'auto';
-            svg.style.display   = 'block';
-            svg.style.margin    = '0 auto';
+            svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+            svg.removeAttribute('width');
+            svg.removeAttribute('height');
+            svg.style.width          = hAncho + 'mm';
+            svg.style.height         = barcodeHmm + 'mm';
+            svg.style.display        = 'block';
+            svg.style.margin         = '0 auto';
+            svg.style.shapeRendering = 'crispEdges';
           }
         }
       } catch(e) {
@@ -720,8 +950,8 @@ WMS_MODULES.rotulos = {
     const codigo  = opt.dataset.codigo || '';
     const zona    = opt.dataset.zona   || '';
     const tipo    = opt.dataset.tipo   || '';
-    const ancho   = parseInt(document.getElementById('rotub-ancho')?.value || 70);
-    const alto    = parseInt(document.getElementById('rotub-alto')?.value  || 40);
+    const ancho   = parseInt(document.getElementById('rotub-ancho')?.value  || 60);
+    const alto    = parseInt(document.getElementById('rotub-alto')?.value   || 30);
     const formato = this._getFormatoUbi();
 
     const area = document.getElementById('rotub-preview-area');
@@ -747,27 +977,53 @@ WMS_MODULES.rotulos = {
     const codigo  = opt.dataset.codigo || '';
     const zona    = opt.dataset.zona   || '';
     const tipo    = opt.dataset.tipo   || '';
-    const ancho   = parseInt(document.getElementById('rotub-ancho')?.value  || 70);
-    const alto    = parseInt(document.getElementById('rotub-alto')?.value   || 40);
+    const ancho   = parseInt(document.getElementById('rotub-ancho')?.value  || 60);
+    const alto    = parseInt(document.getElementById('rotub-alto')?.value   || 30);
     const copias  = parseInt(document.getElementById('rotub-copias')?.value || 1);
     const formato = this._getFormatoUbi();
 
-    let html = '';
-    for (let i = 0; i < copias; i++) html += this._buildRotuloUbi(codigo, zona, tipo, ancho, alto, formato);
-    this._imprimir(html, ancho, alto);
+    const labels = [];
+    for (let i = 0; i < copias; i++) labels.push({ codigo, zona, tipo });
+    const html = this._buildDualColumnHTML(labels, ancho, alto, formato);
+    this._imprimir(html, ancho, alto, { dualColumn: true });
   },
 
-  _imprimir(labelsHTML, anchomm, altomm) {
+  _imprimir(labelsHTML, anchomm, altomm, opts = {}) {
     document.getElementById('wms-print-area')?.remove();
     document.getElementById('wms-print-style')?.remove();
+
+    const dualCol = opts.dualColumn || false;
+    const pageW   = dualCol ? (anchomm * 2) : anchomm;
+    const pageH   = altomm;
+    const orientation = pageW >= pageH ? 'landscape' : 'portrait';
 
     const style = document.createElement('style');
     style.id = 'wms-print-style';
     style.textContent = `
       @media print {
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        body { margin: 0 !important; padding: 0 !important; }
         body > *:not(#wms-print-area) { display: none !important; }
-        #wms-print-area { display: flex !important; flex-wrap: wrap; align-items: flex-start; }
-        @page { size: ${anchomm}mm ${altomm}mm; margin: 0; }
+        #wms-print-area { display: flex !important; flex-wrap: wrap; align-items: flex-start; margin: 0; padding: 0; }
+        @page { size: ${pageW}mm ${pageH}mm ${orientation}; margin: 0; padding: 0; }
+        .wms-label-row { display: flex !important; flex-wrap: nowrap; page-break-after: always; margin: 0; padding: 0; }
+        .wms-label-single {
+          display: flex !important;
+          align-items: center !important; justify-content: center !important;
+          margin: 0 !important; padding: 0 !important;
+          overflow: visible !important;
+          page-break-after: always !important;
+        }
+        .rot-barcode {
+          shape-rendering: crispEdges !important;
+          image-rendering: -webkit-optimize-contrast !important;
+          image-rendering: pixelated !important;
+        }
+        .rot-qr img {
+          image-rendering: pixelated !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
       }
     `;
     document.head.appendChild(style);
@@ -798,15 +1054,38 @@ WMS_MODULES.rotulos = {
       const sel = document.getElementById('rotub-sel');
       const opt = sel?.options[sel.selectedIndex];
       if (!opt?.value) return WMS.toast('warning', 'Seleccione ubicación');
+      const copias = parseInt(document.getElementById('rotub-copias')?.value || 1);
+      payload.tipo = 'ubicacion';
       payload.codigo = opt.dataset.codigo || '';
       payload.zona   = opt.dataset.zona   || '';
+      payload.copias = copias;
     }
 
     WMS.spinner();
     try {
       const r = await API.post('/impresoras/imprimir-rotulo', payload);
-      if (r.error) WMS.toast('error', r.message);
-      else WMS.toast('success', r.message || 'Impresión enviada correctamente');
-    } catch(e) { WMS.toast('error', 'Error al conectar con el servidor de impresión'); }
+      WMS.toast('success', r.message || 'Impresión enviada correctamente');
+    } catch(e) { WMS.toast('error', e.message || 'Error al conectar con el servidor de impresión'); }
+  },
+
+  async _imprimirIPMasivo() {
+    const ubis = this._getUbisMasivo();
+    if (!ubis.length) {
+      WMS.toast('warning', 'Seleccione al menos un valor para imprimir');
+      return;
+    }
+
+    const sorted = [...ubis].sort((a, b) => (a.codigo||'').localeCompare(b.codigo||''));
+    const ubicaciones = sorted.map(u => ({ codigo: u.codigo || '', zona: u.zona || '' }));
+
+    WMS.spinner();
+    try {
+      const r = await API.post('/impresoras/imprimir-rotulo', {
+        tipo: 'ubicacion_masivo',
+        ubicaciones,
+        copias: 1
+      });
+      WMS.toast('success', r.message || `${ubicaciones.length} rótulo(s) enviados`);
+    } catch(e) { WMS.toast('error', e.message || 'Error al conectar con el servidor de impresión'); }
   },
 };

@@ -502,6 +502,10 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/certificaciones/{id}/end', [\App\Controllers\OutboundController::class, 'endCertificacion']);
 
     // Módulo: Devoluciones
+    $group->get('/devoluciones/causales',         [\App\Controllers\DevolucionController::class, 'getCausales']);
+    $group->post('/devoluciones/causales',        [\App\Controllers\DevolucionController::class, 'createCausal']);
+    $group->put('/devoluciones/causales/{id}',    [\App\Controllers\DevolucionController::class, 'updateCausal']);
+    $group->get('/devoluciones/dashboard',        [\App\Controllers\DevolucionController::class, 'getDashboard']);
     $group->get('/devoluciones', [\App\Controllers\DevolucionController::class, 'index']);
     $group->post('/devoluciones', [\App\Controllers\DevolucionController::class, 'store']);
     $group->post('/devoluciones/desde-recepcion', [\App\Controllers\DevolucionController::class, 'desdeRecepcion']);
@@ -530,9 +534,24 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $g->get('/niveles-reposicion', [\App\Controllers\InventarioController::class, 'getNivelesReposicion']);
         $g->post('/niveles-reposicion', [\App\Controllers\InventarioController::class, 'saveNivelReposicion']);
         $g->post('/ajuste', [\App\Controllers\InventarioController::class, 'ajusteManual']);
+        // ── Ajuste x Ubicación (flujo mobile → aprobación desktop) ─────────────
+        $g->get('/ajuste-ubicacion',                 [\App\Controllers\AjusteUbicacionController::class, 'listar']);
+        $g->post('/ajuste-ubicacion',                [\App\Controllers\AjusteUbicacionController::class, 'crear']);
+        $g->get('/ajuste-ubicacion/{id}',            [\App\Controllers\AjusteUbicacionController::class, 'detalle']);
+        $g->post('/ajuste-ubicacion/{id}/aprobar',   [\App\Controllers\AjusteUbicacionController::class, 'aprobar']);
+        $g->post('/ajuste-ubicacion/{id}/rechazar',  [\App\Controllers\AjusteUbicacionController::class, 'rechazar']);
         $g->get('/dashboard', [\App\Controllers\InventarioController::class, 'getDashboard']);
+        $g->get('/ubicaciones-en-cero', [\App\Controllers\InventarioController::class, 'getUbicacionesEnCero']);
         $g->get('/kardex', [\App\Controllers\InventarioController::class, 'getKardex']);
         $g->get('/mapa-detallado', [\App\Controllers\InventarioController::class, 'getMapaDetallado']);
+        $g->post('/vaciar-ubicacion',             [\App\Controllers\InventarioController::class, 'vaciarUbicacion']);
+        $g->post('/cargue-inicial/linea',        [\App\Controllers\InventarioController::class, 'agregarLineaCargue']);
+        $g->post('/cargue-inicial/aprobar-todo',  [\App\Controllers\InventarioController::class, 'aprobarTodoCargue']);
+        $g->post('/cargue-inicial/{id}/aprobar',  [\App\Controllers\InventarioController::class, 'aprobarLineaCargue']);
+        $g->delete('/cargue-inicial/{id}',        [\App\Controllers\InventarioController::class, 'eliminarLineaCargue']);
+        $g->get('/cargue-inicial/pendientes',     [\App\Controllers\InventarioController::class, 'getLineasPendientes']);
+        $g->get('/cargue-inicial',                [\App\Controllers\InventarioController::class, 'getCargueInicialKardex']);
+        $g->post('/reconciliar',                  [\App\Controllers\InventarioController::class, 'reconciliar']);
     });
 
     // Ruta directa para /api/inventario/traslado
@@ -561,6 +580,9 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // ── Análisis ML: referencias no contadas (preview, sin ejecutar ajuste) ─
     $group->get('/v2/inventario/sesiones/{id}/ml-analisis',    [\App\Controllers\InventarioV2Controller::class, 'mlAnalisis']);
     $group->post('/v2/inventario/sesiones/{id}/conteo-manual', [\App\Controllers\InventarioV2Controller::class, 'addManualLinea']);
+    $group->get('/v2/inventario/sesiones/{id}/mis-lineas',     [\App\Controllers\InventarioV2Controller::class, 'getMisLineas']);
+    $group->get('/v2/inventario/productos/{id}/fechas-vencimiento', [\App\Controllers\InventarioV2Controller::class, 'getUltimasFechasVencimiento']);
+    $group->get('/v2/inventario/productos/{id}/ubicaciones',        [\App\Controllers\InventarioV2Controller::class, 'getProductoUbicaciones']);
 
     // ── Asignaciones a auxiliares ───────────────────────────────────────────
     $group->post('/v2/inventario/sesiones/{id}/asignaciones',  [\App\Controllers\InventarioV2Controller::class, 'crearAsignacion']);
@@ -596,27 +618,51 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->post('', [\App\Controllers\PickingController::class, 'crearBatch']);
         $group->get('/template', [\App\Controllers\PickingController::class, 'getTemplate']);
         $group->post('/importar', [\App\Controllers\PickingController::class, 'importarPedidos']);
+        $group->get('/reservas',             [\App\Controllers\PickingController::class, 'reservas']);
         $group->get('/productos-pendientes', [\App\Controllers\PickingController::class, 'listarProductosPendientes']);
         $group->delete('/productos-pendientes', [\App\Controllers\PickingController::class, 'limpiarProductosPendientes']);
         $group->delete('/productos-pendientes/{id}', [\App\Controllers\PickingController::class, 'eliminarProductoPendiente']);
         $group->get('/dashboard', [\App\Controllers\PickingController::class, 'dashboard']);
         $group->get('/consolidados', [\App\Controllers\PickingController::class, 'consolidados']);
+        $group->get('/consolidado/{id}/remision', [\App\Controllers\PickingController::class, 'consolidadoRemision']);
         $group->post('/asignar-multiple', [\App\Controllers\PickingController::class, 'asignarMultiple']);
         $group->post('/asignar-ruta', [\App\Controllers\PickingController::class, 'asignarRuta']);
         $group->post('/asignar-ambiente', [\App\Controllers\PickingController::class, 'asignarPorAmbiente']);
+        $group->post('/validar-cobertura', [\App\Controllers\PickingController::class, 'validarCobertura']);
         $group->get('/mis-planillas', [\App\Controllers\PickingController::class, 'misPlanillas']);
         $group->get('/planilla/{numero}', [\App\Controllers\PickingController::class, 'planillaDetalles']);
         $group->post('/planilla/{numero}/iniciar', [\App\Controllers\PickingController::class, 'iniciarPlanilla']);
+        $group->post('/planilla/{numero}/completar', [\App\Controllers\PickingController::class, 'completarPlanilla']);
+        $group->post('/planilla/{numero}/liberar-vacias', [\App\Controllers\PickingController::class, 'liberarLineasVacias']);
+        $group->post('/planilla/{numero}/agregar-linea', [\App\Controllers\PickingController::class, 'agregarLineaPlanilla']);
+        $group->post('/planilla/{numero}/reemplazar-linea', [\App\Controllers\PickingController::class, 'reemplazarLineaPlanilla']);
+        $group->get('/parametros', [\App\Controllers\PickingController::class, 'getParametrosPicking']);
+        $group->put('/parametros', [\App\Controllers\PickingController::class, 'setParametrosPicking']);
         $group->post('/confirmar-consolidado', [\App\Controllers\PickingController::class, 'confirmarConsolidado']);
+        $group->post('/marcar-agotado-consolidado', [\App\Controllers\PickingController::class, 'marcarAgotadoConsolidado']);
+        $group->get('/agotados',                    [\App\Controllers\PickingController::class, 'getAgotados']);
         $group->post('/asignar-consolidado', [\App\Controllers\PickingController::class, 'asignarConsolidado']);
         $group->post('/assign', [\App\Controllers\PickingController::class, 'assignLines']);
         $group->post('/transfer', [\App\Controllers\PickingController::class, 'transferTasks']);
         $group->get('/reabastecimientos', [\App\Controllers\PickingController::class, 'reabastecimientos']);
         $group->post('/reabast/{id}/completar', [\App\Controllers\PickingController::class, 'completarReabastLegacy']);
         $group->get('/novedades-stock',   [\App\Controllers\PickingController::class, 'novedadesStock']);
+        $group->delete('/faltantes',      [\App\Controllers\PickingController::class, 'limpiarFaltantes']);
         $group->post('/backorder',         [\App\Controllers\PickingController::class, 'procesarBackorder']);
         $group->get('/reporte',           [\App\Controllers\PickingController::class, 'reporte']);
+        $group->get('/stock-alternativo',  [\App\Controllers\PickingController::class, 'stockAlternativo']);
+        $group->post('/reasignar-ubicacion', [\App\Controllers\PickingController::class, 'reasignarUbicacion']);
         
+        // Consulta dinámica picking (estáticas antes de /{id})
+        $group->get('/consulta', [\App\Controllers\PickingController::class, 'consultaPicking']);
+
+        // Novedades de picking (estáticas antes de /{id})
+        $group->get('/novedades', [\App\Controllers\PickingController::class, 'getNovedades']);
+        $group->put('/novedades/{id}/resolver', [\App\Controllers\PickingController::class, 'resolverNovedad']);
+
+        // Edición de líneas con ajuste de inventario
+        $group->put('/detalles/{id}/cantidad', [\App\Controllers\PickingController::class, 'editarLineaPicking']);
+
         // Edición de líneas individuales (requiere admin/supervisor)
         $group->patch('/{id}/linea/{lineaId}', [\App\Controllers\PickingController::class, 'actualizarLinea']);
         $group->delete('/{id}/linea/{lineaId}', [\App\Controllers\PickingController::class, 'eliminarLinea']);
@@ -634,27 +680,49 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->post('/{orden_id}/generar-ruta', [\App\Controllers\PickingController::class, 'generateRoute']);
         $group->post('/{orden_id}/confirmar-linea', [\App\Controllers\PickingController::class, 'confirmLine']);
         $group->post('/{id}/completar', [\App\Controllers\PickingController::class, 'completar']);
+        $group->post('/{id}/reabrir',   [\App\Controllers\PickingController::class, 'reabrir']);
         $group->post('/{id}/marcar-faltante', [\App\Controllers\PickingController::class, 'marcarFaltante']);
         $group->post('/{id}/lineas', [\App\Controllers\PickingController::class, 'agregarLinea']);
 
         // Certificación por Sucursal
-        $group->get('/certificacion/pendientes', [\App\Controllers\PickingController::class, 'certPendientes']);
-        $group->get('/certificacion/detalle/{sucursal}', [\App\Controllers\PickingController::class, 'certDetalle']);
-        $group->post('/certificacion/confirmar', [\App\Controllers\PickingController::class, 'certConfirmar']);
-        $group->post('/certificacion/finalizar', [\App\Controllers\PickingController::class, 'certFinalizar']);
-        $group->get('/certificacion/imprimir/{sucursal}', [\App\Controllers\PickingController::class, 'imprimirCertificado']);
+        $group->get('/certificacion/pendientes',             [\App\Controllers\PickingController::class, 'certPendientes']);
+        $group->get('/certificacion/certificadas',           [\App\Controllers\PickingController::class, 'certCertificadas']);
+        $group->get('/certificacion/detalle/{sucursal}',        [\App\Controllers\PickingController::class, 'certDetalle']);
+        $group->get('/certificacion/admin-detalle/{sucursal}',  [\App\Controllers\PickingController::class, 'certAdminDetalle']);
+        $group->put('/certificacion/admin-lote/{sucursal}',     [\App\Controllers\PickingController::class, 'certAdminLote']);
+        $group->post('/certificacion/confirmar',             [\App\Controllers\PickingController::class, 'certConfirmar']);
+        $group->post('/certificacion/finalizar',             [\App\Controllers\PickingController::class, 'certFinalizar']);
+        $group->post('/certificacion/resetear/{sucursal}',   [\App\Controllers\PickingController::class, 'resetearCertificacion']);
+        $group->get('/certificacion/imprimir/{sucursal}',    [\App\Controllers\PickingController::class, 'imprimirCertificado']);
+        $group->get('/certificacion/remision-multiple',      [\App\Controllers\PickingController::class, 'certRemisionMultiple']);
+        $group->get('/certificacion/remision/{sucursal}',   [\App\Controllers\PickingController::class, 'certRemisionDirecta']);
+        $group->get('/certificacion/vista-hoy',             [\App\Controllers\PickingController::class, 'certVistaHoy']);
+
+        // Certificaciones (admin)
+        $group->put('/{id}/certificaciones/{det_id}', [\App\Controllers\PickingController::class, 'editarCertificacion']);
+        $group->post('/{id}/recalcular-remision', [\App\Controllers\PickingController::class, 'recalcularRemision']);
     });
 
     // ── Packing & Certificación ───────────────────────────────────────────────
     $group->group('/packing', function ($group) {
+        $group->post('/autopack',                    [\App\Controllers\PackingController::class, 'autoPack']);
         $group->post('/sesion',                      [\App\Controllers\PackingController::class, 'iniciarSesion']);
-        $group->get('/sesion/{id}',                  [\App\Controllers\PackingController::class, 'getSesion']);
         $group->get('/sesiones',                     [\App\Controllers\PackingController::class, 'listarSesiones']);
+        $group->get('/sesion/activa/{sucursal}',     [\App\Controllers\PackingController::class, 'getSesionActiva']);
+        $group->get('/sesion/{id}',                  [\App\Controllers\PackingController::class, 'getSesion']);
         $group->post('/sesion/{id}/item',            [\App\Controllers\PackingController::class, 'agregarItem']);
         $group->post('/sesion/{id}/finalizar',       [\App\Controllers\PackingController::class, 'finalizarSesion']);
+        $group->post('/sesion/{id}/recertificar',    [\App\Controllers\PackingController::class, 'recertificar']);
+        $group->post('/sesion/{id}/reset',           [\App\Controllers\PackingController::class, 'resetCertificacion']);
+        $group->post('/sesion/{id}/cancelar',        [\App\Controllers\PackingController::class, 'cancelarSesion']);
+        $group->get('/sesion/{id}/remision',         [\App\Controllers\PackingController::class, 'getRemision']);
         $group->put('/sesion/{id}/impresoras',       [\App\Controllers\PackingController::class, 'actualizarImpresoras']);
         $group->delete('/item/{id}',                 [\App\Controllers\PackingController::class, 'eliminarItem']);
         $group->post('/unidad/{id}/cerrar',          [\App\Controllers\PackingController::class, 'cerrarUnidad']);
+        $group->get('/unidad/{id}/etiqueta',         [\App\Controllers\PackingController::class, 'getEtiquetaCanasta']);
+        $group->post('/unidad/{id}/imprimir',        [\App\Controllers\PackingController::class, 'imprimirEtiquetaRed']);
+        $group->get('/sesion/{id}/etiquetas',        [\App\Controllers\PackingController::class, 'getEtiquetasTodas']);
+        $group->get('/sesion/{id}/agotados',         [\App\Controllers\PackingController::class, 'agotadosSesion']);
     });
 
     // Módulo: Aprobaciones de Vencimiento
@@ -696,6 +764,9 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/despachos/{id}/reporte', [\App\Controllers\DespachoController::class, 'reporte']);
     $group->post('/despachos/{id}/certificar', [\App\Controllers\DespachoController::class, 'certify']);
     $group->post('/despachos/{id}/cerrar', [\App\Controllers\DespachoController::class, 'close']);
+    $group->post('/despachos/{id}/pedidos', [\App\Controllers\DespachoController::class, 'agregarPedidos']);
+    $group->delete('/despachos/{id}/pedidos/{orden_id}', [\App\Controllers\DespachoController::class, 'eliminarPedido']);
+    $group->post('/despachos/{id}/liquidar', [\App\Controllers\DespachoController::class, 'liquidar']);
     $group->delete('/despachos/{id}', [\App\Controllers\DespachoController::class, 'eliminar']);
 
     // Módulo: Almacenamiento / Putaway
@@ -723,6 +794,10 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/reportes/odc', [\App\Controllers\ReportesController::class, 'odcReporte']);
     $group->get('/reportes/vencimientos', [\App\Controllers\ReportesController::class, 'vencimientos']);
     $group->get('/reportes/agotados', [\App\Controllers\ReportesController::class, 'agotadosYBajoMinimo']);
+    $group->get('/reportes/agotados-demanda', [\App\Controllers\ReportesController::class, 'agotados']);
+    // Alias semánticos: stock-real y por-ubicacion
+    $group->get('/reportes/stock-real', [\App\Controllers\ReportesController::class, 'stockActual']);
+    $group->get('/reportes/por-ubicacion', [\App\Controllers\ReportesController::class, 'stockPorUbicacion']);
 
     // ── Reportes de Contingencia (imprimibles sin internet) ───────────────────
     $group->get('/reportes/contingencia/separacion', [\App\Controllers\ReportesController::class, 'contingenciaSeparacion']);
@@ -736,6 +811,37 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/dashboard', [\App\Controllers\DashboardController::class, 'index']);
     $group->get('/dashboard/summary', [\App\Controllers\DashboardController::class, 'summary']);
     $group->get('/dashboard/actividad', [\App\Controllers\DashboardController::class, 'actividad']);
+
+    // TV Dashboard — 4-secciones (Ingresos + Picking + Agotados + Alertas)
+    $group->get('/tv/dashboard', [\App\Controllers\DashboardTVController::class, 'getDashboardTV']);
+
+    // TV Dashboard — Tab Nivel de Servicio
+    $group->get('/tv/nivel-servicio', [\App\Controllers\DashboardTVController::class, 'nivelServicio']);
+
+    // TV Dashboard — Chart de ingresos por día/proveedor
+    $group->get('/tv/ingresos-chart', [\App\Controllers\DashboardTVController::class, 'ingresosChart']);
+
+    // Dashboard: KPI Nivel de Servicio
+    $group->get('/dashboard/nivel-servicio', [\App\Controllers\DashboardTVController::class, 'getNivelServicio']);
+
+    // Causales de Novedad (Picking/Agotados)
+    $group->get('/causales-novedad',         [\App\Controllers\CausalesController::class, 'index']);
+    $group->post('/causales-novedad',        [\App\Controllers\CausalesController::class, 'store']);
+    $group->put('/causales-novedad/{id}',    [\App\Controllers\CausalesController::class, 'update']);
+    $group->delete('/causales-novedad/{id}', [\App\Controllers\CausalesController::class, 'destroy']);
+
+    // Módulo: Consulta Rápida de Producto
+    $group->get('/consulta-rapida/buscar', [\App\Controllers\ConsultaRapidaController::class, 'buscar']);
+    $group->get('/consulta-rapida/{producto_id}', [\App\Controllers\ConsultaRapidaController::class, 'dashboard']);
+
+    // Módulo: Trazabilidad
+    $group->get('/trazabilidad/buscar-producto', [\App\Controllers\TrazabilidadController::class, 'buscarProducto']);
+    $group->get('/trazabilidad/buscar-ubicacion', [\App\Controllers\TrazabilidadController::class, 'buscarUbicacion']);
+    $group->get('/trazabilidad/producto/{id}', [\App\Controllers\TrazabilidadController::class, 'porProducto']);
+    $group->get('/trazabilidad/ubicacion/{id}', [\App\Controllers\TrazabilidadController::class, 'porUbicacion']);
+
+    // Módulo: Chat IA (FENIX IA)
+    $group->post('/chat-ia/mensaje', [\App\Controllers\ChatIAController::class, 'mensaje']);
 
     // Herramienta de desarrollo: Ejecutar migraciones pendientes (solo Admin)
     $group->post('/system/migrate', function (Request $request, Response $response) {
@@ -852,6 +958,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/notificaciones', [\App\Controllers\NotificacionesController::class, 'index']);
     $group->get('/notificaciones/badge', [\App\Controllers\NotificacionesController::class, 'badge']);
     $group->put('/notificaciones/leer-todas', [\App\Controllers\NotificacionesController::class, 'marcarTodasLeidas']);
+    $group->delete('/notificaciones/limpiar-leidas', [\App\Controllers\NotificacionesController::class, 'eliminarLeidas']);
     $group->put('/notificaciones/{id}/leer', [\App\Controllers\NotificacionesController::class, 'marcarLeida']);
     $group->put('/notificaciones/{id}/completar', [\App\Controllers\NotificacionesController::class, 'marcarCompletada']);
     $group->delete('/notificaciones/{id}', [\App\Controllers\NotificacionesController::class, 'eliminar']);
@@ -889,6 +996,10 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->put('/param/productos/{id}', [\App\Controllers\ParametrosController::class, 'editProducto']);
     $group->put('/param/productos/{id}/toggle-status', [\App\Controllers\ParametrosController::class, 'toggleStatusProducto']);
     $group->delete('/param/productos/{id}', [\App\Controllers\ParametrosController::class, 'deleteProducto']);
+    
+    // Fotos de producto
+    $group->post('/param/productos/{id}/fotos', [\App\Controllers\ParametrosController::class, 'uploadProductoFotos']);
+    $group->delete('/param/productos/fotos/{foto_id}', [\App\Controllers\ParametrosController::class, 'deleteProductoFoto']);
     $group->get('/param/categorias', [\App\Controllers\ParametrosController::class, 'getCategorias']);
     $group->post('/param/categorias', [\App\Controllers\ParametrosController::class, 'createCategoria']);
     $group->put('/param/categorias/{id}', [\App\Controllers\ParametrosController::class, 'editCategoria']);
@@ -906,6 +1017,10 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/param/zonas', [\App\Controllers\ParametrosController::class, 'createZona']);
     $group->put('/param/zonas/{id}', [\App\Controllers\ParametrosController::class, 'editZona']);
     $group->delete('/param/zonas/{id}', [\App\Controllers\ParametrosController::class, 'deleteZona']);
+    $group->get('/param/ambientes', [\App\Controllers\ParametrosController::class, 'getAmbientes']);
+    $group->post('/param/ambientes', [\App\Controllers\ParametrosController::class, 'createAmbiente']);
+    $group->put('/param/ambientes/{id}', [\App\Controllers\ParametrosController::class, 'editAmbiente']);
+    $group->delete('/param/ambientes/{id}', [\App\Controllers\ParametrosController::class, 'deleteAmbiente']);
     $group->get('/param/proveedores', [\App\Controllers\ParametrosController::class, 'getProveedores']);
     $group->post('/param/proveedores', [\App\Controllers\ParametrosController::class, 'createProveedor']);
     $group->put('/param/proveedores/{id}', [\App\Controllers\ParametrosController::class, 'editProveedor']);
@@ -929,6 +1044,32 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/param/import-export/template/{tipo}', [\App\Controllers\ImportExportController::class, 'getTemplate']);
     $group->get('/param/import-export/export/productos', [\App\Controllers\ImportExportController::class, 'exportProductos']);
     $group->post('/param/import-export/upload/{tipo}', [\App\Controllers\ImportExportController::class, 'uploadCSV']);
+    $group->post('/param/import-export/preview/{tipo}', [\App\Controllers\ImportExportController::class, 'previewCSV']);
+
+    // ── TRASPASOS ─────────────────────────────────────────────────────────────
+    $group->get('/traspasos', [\App\Controllers\TraspasoController::class, 'index']);
+    $group->get('/traspasos/motivos', [\App\Controllers\TraspasoController::class, 'motivos']);
+    $group->get('/traspasos/buscar-stock', [\App\Controllers\TraspasoController::class, 'buscarStock']);
+    $group->post('/traspasos', [\App\Controllers\TraspasoController::class, 'create']);
+
+    // ── BLOQUEO DE PRODUCTOS ─────────────────────────────────────────────────
+    $group->get('/bloqueos', [\App\Controllers\BloqueoController::class, 'index']);
+    $group->post('/bloqueos/producto/{id}', [\App\Controllers\BloqueoController::class, 'bloquearProducto']);
+    $group->delete('/bloqueos/producto/{id}', [\App\Controllers\BloqueoController::class, 'desbloquearProducto']);
+    $group->post('/bloqueos/lote', [\App\Controllers\BloqueoController::class, 'bloquearLote']);
+    $group->delete('/bloqueos/lote/{id}', [\App\Controllers\BloqueoController::class, 'desbloquearLote']);
+    $group->get('/bloqueos/inventario', [\App\Controllers\BloqueoController::class, 'inventarioBloqueado']);
+
+    // ── MISCELÁNEOS ────────────────────────────────────────────────────────────
+    $group->get('/miscelaneos', [\App\Controllers\MiscelaneoController::class, 'index']);
+    $group->get('/miscelaneos/{id}', [\App\Controllers\MiscelaneoController::class, 'show']);
+    $group->post('/miscelaneos', [\App\Controllers\MiscelaneoController::class, 'create']);
+    $group->put('/miscelaneos/{id}', [\App\Controllers\MiscelaneoController::class, 'update']);
+    $group->delete('/miscelaneos/{id}', [\App\Controllers\MiscelaneoController::class, 'delete']);
+    $group->post('/miscelaneos/{id}/fotos', [\App\Controllers\MiscelaneoController::class, 'uploadFotos']);
+    $group->delete('/miscelaneos/fotos/{foto_id}', [\App\Controllers\MiscelaneoController::class, 'deleteFoto']);
+    $group->post('/miscelaneos/{id}/despachar', [\App\Controllers\MiscelaneoController::class, 'marcarDespachado']);
+    $group->get('/miscelaneos/cliente/{cliente_id}/pendientes', [\App\Controllers\MiscelaneoController::class, 'pendientesPorCliente']);
 
     // ── INTELIGENCIA / ML / ANOMALÍAS ────────────────────────────────────────
     // Predicción de vencimientos (ML + EMA + regresión lineal)

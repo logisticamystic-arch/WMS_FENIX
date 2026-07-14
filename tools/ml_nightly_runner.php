@@ -74,15 +74,59 @@ $mlDir          = $root . '/tools/';
 $predictorScript = $mlDir . 'ml_expiry_predictor.py';
 $anomalyScript   = $mlDir . 'ml_anomaly_detector.py';
 
+// ── Detectar comando Python compatible con Windows y Linux ───────────────────
+function detectPython(): string
+{
+    if (PHP_OS_FAMILY !== 'Windows') {
+        return 'python3';
+    }
+    // Windows: buscar rutas comunes
+    $paths = [
+        'C:\Users\\' . get_current_user() . '\AppData\Local\Programs\Python\Python313\python.exe',
+        'C:\Users\\' . get_current_user() . '\AppData\Local\Programs\Python\Python312\python.exe',
+        'C:\Program Files\Python313\python.exe',
+        'C:\Program Files\Python312\python.exe',
+        'C:\Python313\python.exe',
+        'C:\Python312\python.exe',
+    ];
+    foreach ($paths as $p) {
+        if (file_exists($p)) return '"' . $p . '"';
+    }
+    exec('py --version 2>NUL', $out, $code);
+    if ($code === 0) return 'py';
+    exec('python --version 2>NUL', $out2, $code2);
+    if ($code2 === 0) return 'python';
+    return 'python3'; // fallback
+}
+
 // ── Función auxiliar: ejecutar script Python ──────────────────────────────────
 function runPython(string $script, string $jsonPayload, callable $log): ?array
 {
-    $escaped = escapeshellarg($jsonPayload);
-    $cmd     = "echo {$escaped} | python3 " . escapeshellarg($script) . " 2>/dev/null";
-    $output  = shell_exec($cmd);
+    $python  = detectPython();
+    $null    = PHP_OS_FAMILY === 'Windows' ? '2>NUL' : '2>/dev/null';
+    $tmpFile = tempnam(sys_get_temp_dir(), 'wms_ml_') . '.json';
+    file_put_contents($tmpFile, $jsonPayload);
 
-    if (!$output) {
-        $log('WARN', "Sin salida de: " . basename($script));
+    $cmd    = "{$python} -X utf8 " . escapeshellarg($script) . " < " . escapeshellarg($tmpFile) . " {$null}";
+    $output = null;
+    $pipes  = [];
+    $proc   = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+
+    if (!is_resource($proc)) {
+        @unlink($tmpFile);
+        $log('ERROR', "No se pudo iniciar Python para: " . basename($script));
+        return null;
+    }
+
+    stream_set_timeout($pipes[1], 60); // máximo 60 segundos
+    $output = stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $exitCode = proc_close($proc);
+    @unlink($tmpFile);
+
+    if ($exitCode !== 0 || !$output) {
+        $log('WARN', "Sin salida (exit={$exitCode}) de: " . basename($script));
         return null;
     }
 
@@ -186,7 +230,7 @@ foreach ($targets as $target) {
                         'nivel_riesgo'       => $p['nivel_riesgo']        ?? 'bajo',
                         'confianza'          => $p['confianza']           ?? 0.5,
                         'recomendaciones'    => json_encode($p['recomendaciones'] ?? []),
-                        'serie_consumo'      => json_encode($p['consumo_historico'] ?? []),
+                        'serie_consumo'      => json_encode($p['serie_consumo'] ?? $p['consumo_historico'] ?? []),
                         'calculado_at'       => $now,
                         'updated_at'         => $now,
                     ];

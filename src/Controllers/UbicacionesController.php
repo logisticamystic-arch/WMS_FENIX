@@ -32,7 +32,7 @@ class UbicacionesController extends BaseController
 
         $q = Capsule::table('ubicaciones as ub')
             ->where('ub.empresa_id',  $this->getEffectiveEmpresaId($user, $r))
-            ->where('ub.sucursal_id', $user->sucursal_id)
+            ->where('ub.sucursal_id', $this->getEffectiveSucursalId($user, $r))
             ->where('ub.activa', true);
 
         if (!empty($params['zona']))   $q->where('ub.zona',   $params['zona']);

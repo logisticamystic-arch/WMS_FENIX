@@ -45,6 +45,15 @@ class InventarioController extends BaseController
             return null; 
         }
     }
+    // ── Helper: calcular cajas y saldos desde und_total ─────────────────────
+    private function calcularCajasSaldos(float $cantidad, int $upc): array
+    {
+        $upc = max(1, $upc);
+        $cantCajas = (int)floor($cantidad / $upc);
+        $saldos    = fmod($cantidad, (float)$upc);
+        return [$cantCajas, round($saldos, 4)];
+    }
+
     // ── GET /api/inventario/stock ────────────────────────────────────────────
     public function getStock(Request $req, Response $res, array $args): Response
     {
@@ -70,7 +79,9 @@ class InventarioController extends BaseController
                 'productos.unidades_caja',
                 'ubicaciones.codigo as ubicacion_codigo',
                 'inventarios.numero_pallet',
-                'inventarios.*'
+                'inventarios.*',
+                'inventarios.cantidad_cajas',
+                'inventarios.saldos'
                 // OPTIMIZACIÓN: last_movement_at se obtiene en batch post-query
                 // (antes era un subquery correlacionado por fila = O(n) queries)
             );
@@ -152,17 +163,27 @@ class InventarioController extends BaseController
 
         $stock->transform(function ($item) use ($ventas) {
             $item->promedio_venta_mensual = $ventas[$item->producto_id] ?? 0;
+            // Enriquecer con campos und/total para el frontend
+            $upc = max(1, (int)($item->unidades_caja ?? 1));
+            $item->und_total = $item->cantidad;
+            $item->und_total_label = $item->cantidad . ' UND/TOTAL';
+            // Si los campos no existen aún en BD, derivarlos on-the-fly
+            if (is_null($item->cantidad_cajas) && is_null($item->saldos)) {
+                [$item->cantidad_cajas, $item->saldos] = $this->calcularCajasSaldos((float)$item->cantidad, $upc);
+            }
             return $item;
         });
 
         if (($params['export'] ?? '') === 'excel') {
-            $headers = ['Producto', 'Código', 'Ubicación', 'Lote', 'F.Vencimiento', 'Cantidad', 'Estado', 'Días p/Vencer'];
+            $headers = ['Producto', 'Código', 'Ubicación', 'Lote', 'F.Vencimiento', 'Cajas', 'Sueltos', 'UND/TOTAL', 'Estado', 'Días p/Vencer'];
             $rows = $stock->map(fn($i) => [
                 $i->producto_nombre,
                 $i->codigo_interno,
                 $i->ubicacion_codigo,
                 $i->lote ?? '—',
                 $i->fecha_vencimiento ?? '—',
+                $i->cantidad_cajas ?? 0,
+                $i->saldos ?? 0,
                 $i->cantidad,
                 $i->estado,
                 $i->fecha_vencimiento
@@ -191,7 +212,7 @@ class InventarioController extends BaseController
             if (empty($data[$f])) return $this->error($res, "Campo requerido: {$f}");
         }
 
-        $cantidad = (int)$data['cantidad'];
+        $cantidad = (float)$data['cantidad'];
         if ($cantidad <= 0) return $this->error($res, 'La cantidad debe ser mayor a 0');
 
         // ── Guard de integridad: verificar stock en origen antes de abrir la TX ─
@@ -261,10 +282,16 @@ class InventarioController extends BaseController
                     throw new \Exception('La ubicación de origen está bloqueada por un inventario activo.');
                 }
 
-                // Descontar origen
+                // Descontar origen y recalcular cajas/saldos
                 $origen->cantidad -= $cantidad;
-                if ($origen->cantidad === 0) $origen->delete();
-                else $origen->save();
+                if ((float)$origen->cantidad <= 0 && (float)($origen->cantidad_reservada ?? 0) <= 0) {
+                    $origen->delete();
+                } else {
+                    $productoOrigen = \App\Models\Producto::select('unidades_caja')->find($data['producto_id']);
+                    $upcOrigen = max(1, (int)(($productoOrigen->unidades_caja ?? null) ?: 1));
+                    [$origen->cantidad_cajas, $origen->saldos] = $this->calcularCajasSaldos((float)$origen->cantidad, $upcOrigen);
+                    $origen->save();
+                }
 
                 // Acumular en destino
                 if ($lote !== null) {
@@ -279,8 +306,11 @@ class InventarioController extends BaseController
                             'numero_pallet' => $data['numero_pallet'] ?? null,
                         ],
                         [
-                            'cantidad'          => 0,
-                            'fecha_vencimiento' => $fvenc,
+                            'cantidad'           => 0,
+                            'cantidad_reservada' => 0,
+                            'cantidad_cajas'     => 0,
+                            'saldos'             => 0,
+                            'fecha_vencimiento'  => $fvenc,
                         ]
                     );
                 } else {
@@ -310,11 +340,25 @@ class InventarioController extends BaseController
                     }
                 }
 
+                // Garantizar cantidad_reservada no nula (registros legacy sin ese campo)
+                if (is_null($destino->cantidad_reservada)) {
+                    $destino->cantidad_reservada = 0;
+                }
+
                 $destino->cantidad += $cantidad;
                 if ($fvenc) {
                     $destino->fecha_vencimiento = $fvenc;
                 }
+                // Recalcular cajas/saldos destino
+                $productoDestino = \App\Models\Producto::select('unidades_caja')->find($data['producto_id']);
+                $upcDestino = max(1, (int)(($productoDestino->unidades_caja ?? null) ?: 1));
+                [$destino->cantidad_cajas, $destino->saldos] = $this->calcularCajasSaldos((float)$destino->cantidad, $upcDestino);
                 $destino->save();
+
+                // Calcular cajas/saldos del movimiento para kardex
+                $productoMov = \App\Models\Producto::select('unidades_caja')->find($data['producto_id']);
+                $upcMov = max(1, (int)(($productoMov->unidades_caja ?? null) ?: 1));
+                [$cajasMov, $saldosMov] = $this->calcularCajasSaldos($cantidad, $upcMov);
 
                 // Movimiento trazable
                 MovimientoInventario::create([
@@ -323,11 +367,13 @@ class InventarioController extends BaseController
                     'producto_id'         => $data['producto_id'],
                     'tipo_movimiento'     => 'Traslado',
                     'cantidad'            => $cantidad,
+                    'cantidad_cajas'      => $cajasMov,
+                    'saldos'              => $saldosMov,
                     'ubicacion_origen_id' => $data['ubicacion_origen_id'],
                     'ubicacion_destino_id'=> $data['ubicacion_destino_id'],
                     'lote'                => $lote,
                     'fecha_vencimiento'   => $fvenc,
-                    'auxiliar_id'         => $user->id, 
+                    'auxiliar_id'         => $user->id,
                     'referencia_tipo'     => 'traslado',
                     'observaciones'       => $data['observaciones'] ?? null,
                     'fecha_movimiento'    => date('Y-m-d'),
@@ -357,7 +403,7 @@ class InventarioController extends BaseController
         }
 
         try {
-            Capsule::transaction(function () use ($data, $user) {
+            Capsule::transaction(function () use ($data, $user, $req) {
                 $inv = Inventario::where('empresa_id',   $this->getEffectiveEmpresaId($user, $req))
                     ->where('sucursal_id',  $user->sucursal_id)
                     ->where('producto_id',  $data['producto_id'])
@@ -379,43 +425,79 @@ class InventarioController extends BaseController
                 }
 
                 $cantidadAnterior = $inv ? $inv->cantidad : 0;
-                $cantidadNueva    = (int)$data['cantidad_nueva'];
-                $diferencia       = $cantidadNueva - $cantidadAnterior;
+                $cantidadNueva    = (float)$data['cantidad_nueva'];
+
+                if ($cantidadNueva < 0) {
+                    throw new \Exception('El sistema no permite dejar el stock en negativo.');
+                }
+
+                $diferencia = $cantidadNueva - $cantidadAnterior;
+
+                // Resolver upc del producto para cajas/saldos
+                $productoAjuste = \App\Models\Producto::select('unidades_caja')->find($data['producto_id']);
+                $upcAjuste = max(1, (int)(($productoAjuste->unidades_caja ?? null) ?: 1));
+
+                // Leer cajas/saldos del payload o calcularlos
+                if (isset($data['cantidad_cajas']) || isset($data['saldos'])) {
+                    $cantCajasAjuste = (int)($data['cantidad_cajas'] ?? (int)floor($cantidadNueva / $upcAjuste));
+                    $saldosAjuste    = round((float)($data['saldos'] ?? fmod($cantidadNueva, (float)$upcAjuste)), 4);
+                    // Validar consistencia: cajas*upc+saldos debe igualar cantidad_nueva
+                    $recalculada = ($cantCajasAjuste * $upcAjuste) + $saldosAjuste;
+                    if (abs($recalculada - $cantidadNueva) > 0.001) {
+                        throw new \Exception(
+                            "Inconsistencia: cantidad_cajas ({$cantCajasAjuste}) × upc ({$upcAjuste}) + saldos ({$saldosAjuste}) = {$recalculada} ≠ cantidad_nueva ({$cantidadNueva})"
+                        );
+                    }
+                } else {
+                    [$cantCajasAjuste, $saldosAjuste] = $this->calcularCajasSaldos($cantidadNueva, $upcAjuste);
+                }
 
                 if (!$inv) {
                     if ($cantidadNueva > 0) {
                         Inventario::create([
-                            'empresa_id'       => $this->getEffectiveEmpresaId($user, $req),
-                            'sucursal_id'      => $user->sucursal_id,
-                            'producto_id'      => $data['producto_id'],
-                            'ubicacion_id'     => $data['ubicacion_id'],
-                            'lote'             => $data['lote'] ?? null,
-                            'fecha_vencimiento'=> $fvencParsed,
-                            'cantidad'         => $cantidadNueva,
-                            'estado'           => 'Disponible',
+                            'empresa_id'         => $this->getEffectiveEmpresaId($user, $req),
+                            'sucursal_id'        => $user->sucursal_id,
+                            'producto_id'        => $data['producto_id'],
+                            'ubicacion_id'       => $data['ubicacion_id'],
+                            'lote'               => $data['lote'] ?? null,
+                            'fecha_vencimiento'  => $fvencParsed,
+                            'cantidad'           => $cantidadNueva,
+                            'cantidad_cajas'     => $cantCajasAjuste,
+                            'saldos'             => $saldosAjuste,
+                            'cantidad_reservada' => 0,
+                            'estado'             => 'Disponible',
                         ]);
                     }
                 } else {
-                    $inv->cantidad = $cantidadNueva;
-                    if ($cantidadNueva === 0) $inv->delete();
-                    else $inv->save();
+                    $inv->cantidad       = $cantidadNueva;
+                    $inv->cantidad_cajas = $cantCajasAjuste;
+                    $inv->saldos         = $saldosAjuste;
+                    if ($cantidadNueva === 0.0 && (float)($inv->cantidad_reservada ?? 0) <= 0) {
+                        $inv->delete();
+                    } else {
+                        $inv->save();
+                    }
                 }
 
                 $tipo = $diferencia >= 0 ? 'AjustePositivo' : 'AjusteNegativo';
+                // FIX: usar getEffectiveEmpresaId y sucursal_id directamente (evitar $empresaId/$sucursalId indefinidos en closure)
                 MovimientoInventario::create([
-                    'empresa_id'       => $empresaId,
-                    'sucursal_id'      => $sucursalId,
-                    'producto_id'      => $data['producto_id'],
-                    'tipo_movimiento'  => $tipo,
-                    'cantidad'         => abs($diferencia),
+                    'empresa_id'           => $this->getEffectiveEmpresaId($user, $req),
+                    'sucursal_id'          => $user->sucursal_id,
+                    'producto_id'          => $data['producto_id'],
+                    'tipo_movimiento'      => $tipo,
+                    'cantidad'             => abs($diferencia),
+                    'cantidad_cajas'       => $cantCajasAjuste,
+                    'saldos'               => $saldosAjuste,
                     'ubicacion_origen_id'  => $data['ubicacion_id'],
                     'ubicacion_destino_id' => $data['ubicacion_id'],
-                    'lote'             => $data['lote'] ?? null,
-                    'auxiliar_id'      => $user->id,
-                    'referencia_tipo'  => 'ajuste',
-                    'observaciones'    => $data['motivo'],
-                    'fecha_movimiento' => date('Y-m-d'),
-                    'hora_inicio'      => date('H:i:s'),
+                    'lote'                 => $data['lote'] ?? null,
+                    'fecha_vencimiento'    => $fvencParsed,
+                    'auxiliar_id'          => $user->id,
+                    'referencia_tipo'      => 'ajuste',
+                    'observaciones'        => $data['motivo'],
+                    'fecha_movimiento'     => date('Y-m-d'),
+                    'hora_inicio'          => date('H:i:s'),
                 ]);
             });
 
@@ -588,17 +670,22 @@ class InventarioController extends BaseController
                         $q->whereIn('ubicacion_id', $data['filtro_ubicaciones']);
                     }
 
-                    $items = $q->get();
+                    $items = $q->with('producto:id,unidades_caja')->get();
                     foreach ($items as $item) {
+                        $upcSnap = max(1, (int)(($item->producto->unidades_caja ?? null) ?: 1));
+                        [$cajasSnap, $saldosSnap] = $this->calcularCajasSaldos((float)$item->cantidad, $upcSnap);
                         ConteoDetalle::create([
-                            'conteo_id' => $conteo->id,
-                            'ronda' => 1,
-                            'ubicacion_id' => $item->ubicacion_id,
-                            'producto_id' => $item->producto_id,
-                            'lote' => $item->lote,
-                            'cantidad_sistema' => $item->cantidad,
-                            'cantidad_sistema_snapshot' => $item->cantidad,
-                            'estado' => 'Pendiente'
+                            'conteo_id'                => $conteo->id,
+                            'ronda'                    => 1,
+                            'ubicacion_id'             => $item->ubicacion_id,
+                            'producto_id'              => $item->producto_id,
+                            'lote'                     => $item->lote,
+                            'cantidad_sistema'         => $item->cantidad,
+                            'cantidad_sistema_snapshot'=> $item->cantidad,
+                            'estado'                   => 'Pendiente',
+                            // Snapshot de la descomposición al momento del conteo
+                            'cantidad_cajas_sistema'   => $cajasSnap,
+                            'saldos_sistema'           => $saldosSnap,
                         ]);
                     }
                 }
@@ -658,6 +745,11 @@ class InventarioController extends BaseController
             'estado'      => 'Disponible'
         ])->sum('cantidad');
 
+        // Calcular descomposición del sistema para comparación en frontend
+        $productoLinea = \App\Models\Producto::select('unidades_caja')->find($productoId);
+        $upcLinea = max(1, (int)(($productoLinea->unidades_caja ?? null) ?: 1));
+        [$cajasSistema, $saldosSistema] = $this->calcularCajasSaldos($cantSistema, $upcLinea);
+
         try {
             // Buscamos si ya existe la línea para esta ronda
             $linea = ConteoDetalle::where([
@@ -696,7 +788,14 @@ class InventarioController extends BaseController
                 ]);
             }
 
-            return $this->ok($res, $linea);
+            return $this->ok($res, [
+                'linea'              => $linea,
+                'und_total_sistema'  => $cantSistema,
+                'cajas_sistema'      => $cajasSistema,
+                'saldos_sistema'     => $saldosSistema,
+                'upc'                => $upcLinea,
+                'und_total_label'    => "{$cajasSistema} cajas x {$upcLinea} u/e + {$saldosSistema} sueltos = {$cantSistema} UND/TOTAL",
+            ]);
         } catch (\Throwable $e) {
             return $this->error($res, $e->getMessage());
         }
@@ -853,9 +952,76 @@ class InventarioController extends BaseController
                                         ->count('inventarios.ubicacion_id'),
             'movimientos_hoy'      => \App\Models\MovimientoInventario::where('empresa_id', $eId)->where('sucursal_id', $sId)
                                         ->whereDate('created_at', date('Y-m-d'))->count(),
+            'conteos_cero'         => Capsule::table('sesion_lineas as sl')
+                                        ->join('sesiones_inventario as si', 'si.id', '=', 'sl.sesion_id')
+                                        ->where('si.empresa_id', $eId)
+                                        ->where('si.sucursal_id', $sId)
+                                        ->whereIn('si.estado', ['EnCurso', 'PendienteAjuste'])
+                                        ->where('sl.estado', 'Activo')
+                                        ->where('sl.cantidad_contada', '<=', 0)
+                                        ->count(),
+            'ubicaciones_vacias'   => Capsule::table('ubicaciones as u')
+                                        ->where('u.empresa_id', $eId)
+                                        ->where('u.sucursal_id', $sId)
+                                        ->where('u.activo', 1)
+                                        ->whereNotExists(function ($q) use ($eId, $sId) {
+                                            $q->select(Capsule::raw(1))
+                                              ->from('inventarios as i')
+                                              ->whereColumn('i.ubicacion_id', 'u.id')
+                                              ->where('i.empresa_id', $eId)
+                                              ->where('i.sucursal_id', $sId)
+                                              ->where('i.cantidad', '>', 0);
+                                        })
+                                        ->count(),
         ];
 
         return $this->ok($res, $data);
+    }
+
+    // ── GET /api/inventario/ubicaciones-en-cero ──────────────────────────────
+    // Retorna sesion_lineas con cantidad_contada=0 en sesiones activas (para dashboard)
+    public function getUbicacionesEnCero(Request $req, Response $res): Response
+    {
+        $user = $req->getAttribute('user');
+        $eId  = $this->getEffectiveEmpresaId($user, $req);
+        $sId  = $user->sucursal_id;
+
+        $lineas = Capsule::table('sesion_lineas as sl')
+            ->join('sesiones_inventario as si', 'si.id', '=', 'sl.sesion_id')
+            ->join('productos as p',           'p.id',  '=', 'sl.producto_id')
+            ->join('ubicaciones as u',         'u.id',  '=', 'sl.ubicacion_id')
+            ->leftJoin('personal as aux',      'aux.id','=', 'sl.auxiliar_id')
+            ->where('si.empresa_id', $eId)
+            ->where('si.sucursal_id', $sId)
+            ->whereIn('si.estado', ['EnCurso', 'PendienteAjuste'])
+            ->where('sl.estado', 'Activo')
+            ->where('sl.cantidad_contada', '<=', 0)
+            ->whereRaw('(sl.ajustado IS NOT TRUE)')
+            ->select(
+                'sl.id as linea_id',
+                'sl.sesion_id',
+                'si.nombre as sesion_nombre',
+                'si.tipo as sesion_tipo',
+                'si.estado as sesion_estado',
+                'sl.producto_id',
+                'p.codigo_interno as producto_codigo',
+                'p.nombre as producto_nombre',
+                'sl.ubicacion_id',
+                'u.codigo as ubicacion_codigo',
+                'u.zona as ubicacion_zona',
+                'sl.auxiliar_id',
+                'aux.nombre as auxiliar_nombre',
+                'sl.cantidad_sistema',
+                'sl.cantidad_contada',
+                'sl.diferencia',
+                'sl.hora_conteo',
+                'sl.ronda'
+            )
+            ->orderBy('sl.hora_conteo', 'desc')
+            ->limit(300)
+            ->get();
+
+        return $this->ok($res, $lineas);
     }
 
     // ── GET /api/inventario/conteo/{id}/dashboard ─────────────────────────────
@@ -933,6 +1099,11 @@ class InventarioController extends BaseController
                     $diferencia = $det->cantidad_fisica - $det->cantidad_sistema;
                     $tipo = $diferencia > 0 ? 'AjustePositivo' : 'AjusteNegativo';
 
+                    // Resolver upc para cajas/saldos
+                    $productoFin = \App\Models\Producto::select('unidades_caja')->find($det->producto_id);
+                    $upcFin = max(1, (int)(($productoFin->unidades_caja ?? null) ?: 1));
+                    [$cajasFin, $saldosFin] = $this->calcularCajasSaldos((float)$det->cantidad_fisica, $upcFin);
+
                     // Actualizar inventario
                     $inv = Inventario::where('empresa_id',   $this->getEffectiveEmpresaId($user, $req))
                         ->where('sucursal_id',  $user->sucursal_id)
@@ -943,19 +1114,28 @@ class InventarioController extends BaseController
                         ->lockForUpdate()
                         ->first();
 
+                    // Capturar fecha_vencimiento antes de posible delete del $inv
+                    $fvConteo = $det->fv_leida ?? ($inv->fecha_vencimiento ?? null);
+
                     if ($inv) {
-                        $inv->cantidad = $det->cantidad_fisica;
+                        $inv->cantidad       = $det->cantidad_fisica;
+                        $inv->cantidad_cajas = $cajasFin;
+                        $inv->saldos         = $saldosFin;
                         if ($inv->cantidad <= 0) $inv->delete();
                         else $inv->save();
                     } elseif ($det->cantidad_fisica > 0) {
                         Inventario::create([
-                            'empresa_id'   => $this->getEffectiveEmpresaId($user, $req),
-                            'sucursal_id'  => $user->sucursal_id,
-                            'producto_id'  => $det->producto_id,
-                            'ubicacion_id' => $det->ubicacion_id,
-                            'lote'         => $det->lote,
-                            'cantidad'     => $det->cantidad_fisica,
-                            'estado'       => 'Disponible',
+                            'empresa_id'         => $this->getEffectiveEmpresaId($user, $req),
+                            'sucursal_id'        => $user->sucursal_id,
+                            'producto_id'        => $det->producto_id,
+                            'ubicacion_id'       => $det->ubicacion_id,
+                            'lote'               => $det->lote,
+                            'fecha_vencimiento'  => $det->fv_leida ?? null,
+                            'cantidad'           => $det->cantidad_fisica,
+                            'cantidad_cajas'     => $cajasFin,
+                            'saldos'             => $saldosFin,
+                            'cantidad_reservada' => 0,
+                            'estado'             => 'Disponible',
                         ]);
                     }
 
@@ -965,9 +1145,12 @@ class InventarioController extends BaseController
                         'producto_id'          => $det->producto_id,
                         'tipo_movimiento'      => $tipo,
                         'cantidad'             => abs($diferencia),
+                        'cantidad_cajas'       => $cajasFin,
+                        'saldos'               => $saldosFin,
                         'ubicacion_origen_id'  => $det->ubicacion_id,
                         'ubicacion_destino_id' => $det->ubicacion_id,
                         'lote'                 => $det->lote,
+                        'fecha_vencimiento'    => $fvConteo,
                         'auxiliar_id'          => $user->id,
                         'referencia_tipo'      => 'ConteoInventario',
                         'referencia_id'        => $conteo->id,
@@ -1081,7 +1264,7 @@ class InventarioController extends BaseController
     public function getEventos(Request $r, Response $res): Response
     {
         $user = $r->getAttribute('user');
-        $eventos = InvGeneralEvento::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
+        $eventos = InvGeneralEvento::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->orderBy('id', 'desc')
             ->get();
@@ -1104,7 +1287,7 @@ class InventarioController extends BaseController
         }
 
         $e = new InvGeneralEvento();
-        $e->empresa_id = $this->getEffectiveEmpresaId($user, $req);
+        $e->empresa_id = $this->getEffectiveEmpresaId($user, $r);
         $e->sucursal_id = $user->sucursal_id;
         $e->nombre = $data['nombre'];
         $e->tipo = $data['tipo'] ?? 'Comparacion';
@@ -1140,7 +1323,7 @@ class InventarioController extends BaseController
 
         // Optional: Trigger push notification task using NotificacionModel
         \App\Models\Notificacion::create([
-            'empresa_id' => $this->getEffectiveEmpresaId($user, $req),
+            'empresa_id' => $this->getEffectiveEmpresaId($user, $r),
             'sucursal_id' => $user->sucursal_id,
             'emisor_id' => $user->id,
             'personal_id' => $data['personal_id'],
@@ -1196,7 +1379,7 @@ class InventarioController extends BaseController
             $c->save();
 
             // Sincronizar con Mesa de Control (Diferencias)
-            $this->sincronizarMesaDiferencia($eventoId, $ubicacionId, $productoId, $lote, $vencimiento, $cantidad, $ciclo, $this->getEffectiveEmpresaId($user, $req));
+            $this->sincronizarMesaDiferencia($eventoId, $ubicacionId, $productoId, $lote, $vencimiento, $cantidad, $ciclo, $this->getEffectiveEmpresaId($user, $r));
 
             return $this->ok($res, $c, 'Conteo registrado con éxito');
 
@@ -1266,7 +1449,7 @@ class InventarioController extends BaseController
     public function getActaHtml(Request $r, Response $res, array $args): Response
     {
         $user = $r->getAttribute('user');
-        $evento = InvGeneralEvento::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
+        $evento = InvGeneralEvento::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('id', $args['id'])
             ->first();
 
@@ -1275,7 +1458,7 @@ class InventarioController extends BaseController
             return $res->withStatus(404)->withHeader('Content-Type', 'text/html');
         }
 
-        $empresa = Empresa::find($this->getEffectiveEmpresaId($user, $req));
+        $empresa = Empresa::find($this->getEffectiveEmpresaId($user, $r));
         
         // Obtener SOLO las diferencias donde cantidad_sistema != cantidad_final_aprobada 
         // y estado = Aprobada (o sea, ya se definió cuál es la cifra final física).
@@ -1448,27 +1631,32 @@ class InventarioController extends BaseController
             }
 
             $stock = $stockQuery->select(
-                    'ubicacion_id', 
+                    'ubicacion_id',
                     Capsule::raw('SUM(cantidad) as total_unidades'),
+                    Capsule::raw('SUM(COALESCE(cantidad_reservada, 0)) as total_reservado'),
+                    Capsule::raw('COUNT(DISTINCT producto_id) as total_refs'),
+                    Capsule::raw('SUM(COALESCE(cantidad_cajas, 0)) as total_cajas_db'),
+                    Capsule::raw('SUM(COALESCE(saldos, 0)) as total_sueltos_db'),
                     Capsule::raw('MIN(fecha_vencimiento) as proximo_vencimiento')
                 )
                 ->groupBy('ubicacion_id')
                 ->get()
                 ->keyBy('ubicacion_id');
 
-            // 2.1 Obtener detalle para calcular cajas (necesitamos el factor del producto)
+            // 2.1 Fallback: calcular cajas desde cantidad/upc solo cuando cantidad_cajas es NULL en BD
             $detalleStock = Capsule::table('inventarios')
                 ->join('productos', 'inventarios.producto_id', '=', 'productos.id')
                 ->where('inventarios.empresa_id', $empresaId)
                 ->where('inventarios.sucursal_id', $sucursalId)
+                ->whereNull('inventarios.cantidad_cajas')
                 ->select('inventarios.ubicacion_id', 'inventarios.cantidad', 'productos.unidades_caja')
                 ->get();
 
-            $cajasPorUbicacion = [];
+            $cajasLegacyPorUbicacion = [];
             foreach ($detalleStock as $ds) {
                 $factor = max(1, (int)$ds->unidades_caja);
                 $cajas = (float)$ds->cantidad / $factor;
-                $cajasPorUbicacion[$ds->ubicacion_id] = ($cajasPorUbicacion[$ds->ubicacion_id] ?? 0) + $cajas;
+                $cajasLegacyPorUbicacion[$ds->ubicacion_id] = ($cajasLegacyPorUbicacion[$ds->ubicacion_id] ?? 0) + $cajas;
             }
             
             // Si filtramos por producto, solo queremos las ubicaciones que tienen ese producto
@@ -1490,12 +1678,19 @@ class InventarioController extends BaseController
                 ->keyBy('ubicacion_destino_id');
 
             // 4. Mapear resultados
-            $data = $ubicaciones->map(function($u) use ($stock, $ultimosMovimientos, $cajasPorUbicacion) {
+            $data = $ubicaciones->map(function($u) use ($stock, $ultimosMovimientos, $cajasLegacyPorUbicacion) {
                 $s = $stock[$u->id] ?? null;
-                $totalStock = floatval($s->total_unidades ?? 0);
-                $capacidad  = floatval($u->capacidad_maxima ?? 0);
+                $totalStock  = floatval($s->total_unidades ?? 0);
+                $capacidad   = floatval($u->capacidad_maxima ?? 0);
                 $pctOcupacion = $capacidad > 0 ? round(($totalStock / $capacidad) * 100, 2) : 0;
-                
+
+                // Usar campos reales de BD; si son 0 (registros legacy sin migrar), usar cálculo derivado
+                $totalCajasDb   = floatval($s->total_cajas_db ?? 0);
+                $totalSueltosDb = floatval($s->total_sueltos_db ?? 0);
+                $totalCajas = $totalCajasDb > 0
+                    ? round($totalCajasDb, 2)
+                    : round($cajasLegacyPorUbicacion[$u->id] ?? 0, 2);
+
                 $ultimoMov = $ultimosMovimientos[$u->id]->ultimo_mov ?? null;
                 $diasSinMov = "N/A";
                 if ($ultimoMov) {
@@ -1506,9 +1701,18 @@ class InventarioController extends BaseController
                     'id'                 => $u->id,
                     'ubicacion'          => $u->codigo,
                     'posicion'           => $u->codigo,
+                    'zona'               => $u->zona    ?? null,
+                    'pasillo'            => $u->pasillo ?? null,
+                    'nivel'              => $u->nivel   ?? null,
+                    'estado_ubi'         => $u->estado  ?? 'Libre',
                     'tipo'               => $u->tipo_ubicacion ?? 'Almacenamiento',
                     'total_productos'    => $totalStock,
-                    'total_cajas'        => round($cajasPorUbicacion[$u->id] ?? 0, 2),
+                    'und_total'          => $totalStock,
+                    'und_total_label'    => $totalStock . ' UND/TOTAL',
+                    'total_cajas'        => $totalCajas,
+                    'total_sueltos'      => round($totalSueltosDb, 4),
+                    'total_reservado'    => floatval($s->total_reservado ?? 0),
+                    'total_refs'         => intval($s->total_refs ?? 0),
                     'ocupacion_pct'      => $pctOcupacion,
                     'proximo_vencimiento'=> $s->proximo_vencimiento ?? null,
                     'dias_sin_mov'       => $diasSinMov,
@@ -1519,6 +1723,673 @@ class InventarioController extends BaseController
             return $this->ok($res, $data);
         } catch (\Throwable $e) {
             return $this->error($res, $e->getMessage(), 500);
+        }
+    }
+
+    public function cargueInicial(Request $req, Response $res): Response
+    {
+        try {
+            $user  = $req->getAttribute('user');
+            $roles = ['Admin', 'Supervisor', 'SuperAdmin'];
+            if (!in_array($user->rol ?? '', $roles, true)) {
+                return $this->error($res, 'No autorizado', 403);
+            }
+
+            $empId = $this->getEffectiveEmpresaId($user, $req);
+            $sucId = $user->sucursal_id ?? null;
+
+            $body = $req->getParsedBody();
+            if (empty($body)) {
+                return $this->error($res, 'Body vacío o inválido', 400);
+            }
+
+            // Acepta un objeto único o un array de objetos
+            $lineas = isset($body[0]) ? $body : [$body];
+
+            $guard     = new InventoryGuard($empId, $sucId, $user->id);
+            $procesadas = 0;
+
+            foreach ($lineas as $linea) {
+                $productoId  = $linea['producto_id']  ?? null;
+                $ubicacionId = $linea['ubicacion_id'] ?? null;
+
+                if (empty($productoId) || empty($ubicacionId)) {
+                    return $this->error($res, 'producto_id y ubicacion_id son requeridos', 400);
+                }
+
+                $cantCajas = max(0, (int)($linea['cantidad_cajas'] ?? 0));
+                $saldos    = max(0.0, (float)($linea['saldos'] ?? 0));
+                $lote      = $linea['lote'] ?? null;
+
+                $producto = Producto::where('empresa_id', $empId)->find($productoId);
+                if (!$producto) {
+                    return $this->error($res, "Producto ID {$productoId} no encontrado", 404);
+                }
+
+                $fvencParsed = $this->estandarizarFecha($linea['fecha_vencimiento'] ?? null);
+
+                $expirationCheck = $guard->checkExpirationMandatory($productoId, $fvencParsed);
+                if (!$expirationCheck['ok']) {
+                    return $this->error($res, "Producto '{$producto->nombre}': " . $expirationCheck['message'], 400);
+                }
+
+                $upc      = max(1, (int)($producto->unidades_caja ?? 1));
+                $undTotal = ($cantCajas * $upc) + $saldos;
+
+                if ($undTotal <= 0) {
+                    return $this->error($res, "Producto '{$producto->nombre}': la cantidad total debe ser mayor a 0", 400);
+                }
+
+                // UPSERT en inventarios
+                $inventario = Inventario::where('empresa_id',   $empId)
+                    ->where('sucursal_id',  $sucId)
+                    ->where('producto_id',  $productoId)
+                    ->where('ubicacion_id', $ubicacionId)
+                    ->where('estado',       'Disponible')
+                    ->when($lote !== null, fn($q) => $q->where('lote', $lote))
+                    ->first();
+
+                $cantAnterior = 0.0;
+
+                if ($inventario) {
+                    $cantAnterior                    = (float)($inventario->cantidad ?? 0);
+                    $inventario->cantidad            = $undTotal;
+                    $inventario->cantidad_cajas      = $cantCajas;
+                    $inventario->saldos              = $saldos;
+                    $inventario->fecha_vencimiento   = $fvencParsed;
+                    $inventario->save();
+                } else {
+                    $inventario = Inventario::create([
+                        'empresa_id'         => $empId,
+                        'sucursal_id'        => $sucId,
+                        'producto_id'        => $productoId,
+                        'ubicacion_id'       => $ubicacionId,
+                        'lote'               => $lote,
+                        'fecha_vencimiento'  => $fvencParsed,
+                        'cantidad'           => $undTotal,
+                        'cantidad_cajas'     => $cantCajas,
+                        'saldos'             => $saldos,
+                        'cantidad_reservada' => 0,
+                        'estado'             => 'Disponible',
+                    ]);
+                }
+
+                MovimientoInventario::create([
+                    'empresa_id'           => $empId,
+                    'sucursal_id'          => $sucId,
+                    'producto_id'          => $productoId,
+                    'ubicacion_destino_id' => $ubicacionId,
+                    'tipo_movimiento'      => 'InvInicial',
+                    'cantidad'             => $undTotal,
+                    'lote'                 => $lote,
+                    'fecha_vencimiento'    => $fvencParsed,
+                    'referencia_tipo'      => 'cargue_inicial',
+                    'auxiliar_id'          => $user->id,
+                    'observaciones'        => "Cargue inicial: {$cantCajas} cajas + {$saldos} sueltos = {$undTotal} UND/TOTAL",
+                    'fecha_movimiento'     => date('Y-m-d'),
+                    'hora_inicio'          => date('H:i:s'),
+                ]);
+
+                $procesadas++;
+            }
+
+            $this->audit(
+                $user,
+                'Inventario',
+                'CargueInicial',
+                'inventarios',
+                null,
+                null,
+                ['procesadas' => $procesadas],
+                "Cargue inicial: {$procesadas} línea(s) procesada(s)"
+            );
+
+            return $this->ok($res, ['procesadas' => $procesadas], "Cargue inicial completado: {$procesadas} línea(s) procesada(s)");
+        } catch (\Throwable $e) {
+            return $this->error($res, $e->getMessage(), 500);
+        }
+    }
+
+    // ── POST /api/inventario/cargue-inicial/linea ────────────────────────────
+    // Guarda una línea en estado Pendiente (cualquier usuario autorizado)
+    public function agregarLineaCargue(Request $req, Response $res): Response
+    {
+        $user  = $req->getAttribute('user');
+        $empId = $this->getEffectiveEmpresaId($user, $req);
+        $sucId = $user->sucursal_id;
+        $data  = (array)($req->getParsedBody() ?? []);
+
+        $productoId  = (int)($data['producto_id']  ?? 0);
+        $ubicCodigo  = trim($data['ubicacion_codigo'] ?? '');
+        $cantCajas   = max(0, (int)($data['cantidad_cajas'] ?? 0));
+        $saldos      = max(0.0, (float)($data['saldos'] ?? 0));
+        $lote        = $data['lote'] ?? null;
+        $fvenc       = $this->estandarizarFecha($data['fecha_vencimiento'] ?? null);
+
+        if (!$productoId) return $this->error($res, 'producto_id requerido');
+        if (!$ubicCodigo) return $this->error($res, 'ubicacion_codigo requerida');
+
+        $producto = Producto::where('empresa_id', $empId)->find($productoId);
+        if (!$producto) return $this->error($res, "Producto #{$productoId} no encontrado", 404);
+
+        // Validar fecha vencimiento si el producto lo requiere
+        if ($producto->control_vencimientos && empty($fvenc)) {
+            return $this->error($res, "El producto \"{$producto->nombre}\" requiere fecha de vencimiento");
+        }
+
+        $upc      = max(1, (int)($producto->unidades_caja ?? 1));
+        $undTotal = ($cantCajas * $upc) + $saldos;
+        $esVaciado = ($undTotal <= 0); // und_total=0 → vaciado de ubicación
+
+        // Resolver ubicacion_id desde el código — acepta con/sin ambiente y sin guiones
+        $codNorm = preg_replace('/[^A-Za-z0-9]/', '', strtoupper($ubicCodigo));
+        $ubicacion = Capsule::table('ubicaciones')
+            ->where('empresa_id', $empId)
+            ->where(function($q) use ($sucId) { $q->where('sucursal_id', $sucId)->orWhereNull('sucursal_id'); })
+            ->where(function($q) use ($ubicCodigo, $codNorm) {
+                $q->where('codigo', $ubicCodigo)
+                  ->orWhere('codigo', 'ilike', $ubicCodigo)
+                  ->orWhereRaw("REPLACE(REPLACE(UPPER(codigo),'-',''),'/','') = ?", [$codNorm]);
+            })
+            ->orderByRaw("CASE WHEN codigo = ? THEN 0 WHEN REPLACE(REPLACE(UPPER(codigo),'-',''),'/','') = ? THEN 1 ELSE 2 END", [$ubicCodigo, $codNorm])
+            ->first(['id', 'codigo']);
+
+        $ahora = date('Y-m-d H:i:s');
+        $id = Capsule::table('cargue_inicial_lineas')->insertGetId([
+            'empresa_id'       => $empId,
+            'sucursal_id'      => $sucId,
+            'producto_id'      => $productoId,
+            'ubicacion_id'     => $ubicacion?->id,
+            'ubicacion_codigo' => $ubicacion?->codigo ?? $ubicCodigo,
+            'lote'             => $lote ?: null,
+            'fecha_vencimiento'=> $fvenc,
+            'cantidad_cajas'   => $cantCajas,
+            'saldos'           => $saldos,
+            'und_total'        => $undTotal,
+            'estado'           => 'Pendiente',
+            'creado_por'       => $user->id,
+            'created_at'       => $ahora,
+            'updated_at'       => $ahora,
+        ]);
+
+        $msg = $esVaciado ? 'Línea de vaciado agregada a pendientes' : 'Línea agregada a pendientes';
+        return $this->ok($res, [
+            'id'               => $id,
+            'producto'         => $producto->nombre,
+            'ubicacion_codigo' => $ubicacion?->codigo ?? $ubicCodigo,
+            'und_total'        => $undTotal,
+            'es_vaciado'       => $esVaciado,
+            'advertencia'      => $ubicacion ? null : "Ubicación \"{$ubicCodigo}\" no encontrada en el sistema — verifique el código",
+        ], $msg);
+    }
+
+    // ── GET /api/inventario/cargue-inicial/pendientes ────────────────────────
+    public function getLineasPendientes(Request $req, Response $res): Response
+    {
+        $user  = $req->getAttribute('user');
+        $empId = $this->getEffectiveEmpresaId($user, $req);
+        $sucId = $user->sucursal_id;
+        $params = $req->getQueryParams();
+        $estado = $params['estado'] ?? 'Pendiente';
+
+        $soloMio = !empty($params['mio']) && $params['mio'] == '1';
+
+        $q = Capsule::table('cargue_inicial_lineas as c')
+            ->join('productos as p', 'p.id', '=', 'c.producto_id')
+            ->leftJoin('ubicaciones as u', 'u.id', '=', 'c.ubicacion_id')
+            ->leftJoin('users as usr', 'usr.id', '=', 'c.creado_por')
+            ->where('c.empresa_id', $empId)
+            ->where('c.sucursal_id', $sucId)
+            ->where('c.estado', $estado)
+            ->select(
+                'c.id', 'c.producto_id', 'c.ubicacion_id', 'c.ubicacion_codigo',
+                'c.lote', 'c.fecha_vencimiento', 'c.cantidad_cajas', 'c.saldos',
+                'c.und_total', 'c.estado', 'c.creado_por', 'c.created_at',
+                'p.nombre as producto', 'p.codigo_interno as codigo', 'p.unidades_caja',
+                'u.codigo as ubicacion_validada',
+                Capsule::raw("COALESCE(usr.nombre, 'Usuario #' || c.creado_por::text) as nombre_usuario")
+            );
+
+        if ($soloMio) {
+            $q->where('c.creado_por', $user->id);
+        }
+
+        $lineas = $q->orderBy('c.created_at', 'desc')->get();
+
+        return $this->ok($res, ['lineas' => $lineas, 'total' => $lineas->count()]);
+    }
+
+    // ── POST /api/inventario/cargue-inicial/{id}/aprobar ─────────────────────
+    // Solo Admin/Supervisor — crea el inventario real y el movimiento InvInicial
+    public function aprobarLineaCargue(Request $req, Response $res, array $args): Response
+    {
+        $user  = $req->getAttribute('user');
+        if (!in_array($user->rol ?? '', ['Admin', 'Supervisor', 'SuperAdmin'], true)) {
+            return $this->error($res, 'Se requiere rol Admin o Supervisor', 403);
+        }
+        $empId = $this->getEffectiveEmpresaId($user, $req);
+        $sucId = $user->sucursal_id;
+        $id    = (int)($args['id'] ?? 0);
+
+        $linea = Capsule::table('cargue_inicial_lineas')
+            ->where('id', $id)->where('empresa_id', $empId)->where('estado', 'Pendiente')->first();
+        if (!$linea) return $this->error($res, 'Línea no encontrada o ya procesada', 404);
+
+        if (!$linea->ubicacion_id) {
+            return $this->error($res, "La ubicación \"{$linea->ubicacion_codigo}\" no está registrada en el sistema. Créela primero en Maestros.");
+        }
+
+        try {
+            $ahora     = date('Y-m-d H:i:s');
+            $undTotal  = (float)$linea->und_total;
+            $cantCajas = (int)$linea->cantidad_cajas;
+            $saldos    = (float)$linea->saldos;
+            $esVaciado = ($undTotal <= 0);
+
+            if ($esVaciado) {
+                // Vaciado: anular todo el inventario del producto en esa ubicación
+                $registros = Inventario::where('empresa_id',  $empId)
+                    ->where('sucursal_id',  $sucId)
+                    ->where('producto_id',  $linea->producto_id)
+                    ->where('ubicacion_id', $linea->ubicacion_id)
+                    ->where('estado',       'Disponible')
+                    ->when($linea->lote, fn($q) => $q->where('lote', $linea->lote))
+                    ->get();
+
+                foreach ($registros as $inv) {
+                    $cantPrev = (float)$inv->cantidad;
+                    if ($cantPrev <= 0) continue;
+                    $inv->cantidad = 0; $inv->cantidad_cajas = 0; $inv->saldos = 0;
+                    $inv->updated_at = $ahora; $inv->save();
+
+                    MovimientoInventario::create([
+                        'empresa_id'          => $empId,
+                        'sucursal_id'         => $sucId,
+                        'producto_id'         => $linea->producto_id,
+                        'ubicacion_origen_id' => $linea->ubicacion_id,
+                        'tipo_movimiento'     => 'AjusteNegativo',
+                        'cantidad'            => $cantPrev,
+                        'lote'                => $inv->lote,
+                        'fecha_vencimiento'   => $inv->fecha_vencimiento,
+                        'referencia_tipo'     => 'vaciado_ubicacion',
+                        'auxiliar_id'         => $user->id,
+                        'observaciones'       => "Vaciado de ubicación (cargue inicial): -{$cantPrev} und",
+                        'fecha_movimiento'    => date('Y-m-d'),
+                        'hora_inicio'         => date('H:i:s'),
+                    ]);
+                }
+            } else {
+                // Flujo normal: UPSERT en inventarios
+                $inv = Inventario::where('empresa_id',  $empId)
+                    ->where('sucursal_id',  $sucId)
+                    ->where('producto_id',  $linea->producto_id)
+                    ->where('ubicacion_id', $linea->ubicacion_id)
+                    ->where('estado',       'Disponible')
+                    ->when($linea->lote, fn($q) => $q->where('lote', $linea->lote))
+                    ->first();
+
+                if ($inv) {
+                    $inv->cantidad = $undTotal; $inv->cantidad_cajas = $cantCajas;
+                    $inv->saldos = $saldos; $inv->fecha_vencimiento = $linea->fecha_vencimiento;
+                    $inv->updated_at = $ahora; $inv->save();
+                } else {
+                    Inventario::create([
+                        'empresa_id'         => $empId, 'sucursal_id'        => $sucId,
+                        'producto_id'        => $linea->producto_id, 'ubicacion_id' => $linea->ubicacion_id,
+                        'lote'               => $linea->lote, 'fecha_vencimiento' => $linea->fecha_vencimiento,
+                        'cantidad'           => $undTotal, 'cantidad_cajas'     => $cantCajas,
+                        'saldos'             => $saldos, 'cantidad_reservada'  => 0, 'estado' => 'Disponible',
+                    ]);
+                }
+
+                MovimientoInventario::create([
+                    'empresa_id'           => $empId, 'sucursal_id'         => $sucId,
+                    'producto_id'          => $linea->producto_id, 'ubicacion_destino_id' => $linea->ubicacion_id,
+                    'tipo_movimiento'      => 'InvInicial', 'cantidad'             => $undTotal,
+                    'lote'                 => $linea->lote, 'fecha_vencimiento'    => $linea->fecha_vencimiento,
+                    'referencia_tipo'      => 'cargue_inicial', 'auxiliar_id'          => $user->id,
+                    'observaciones'        => "Inv inicial aprobado: {$cantCajas} cajas + {$saldos} sueltos = {$undTotal} UND/TOTAL",
+                    'fecha_movimiento'     => date('Y-m-d'), 'hora_inicio'          => date('H:i:s'),
+                ]);
+            }
+
+            // Marcar línea como Aprobada
+            Capsule::table('cargue_inicial_lineas')->where('id', $id)->update([
+                'estado'      => 'Aprobado',
+                'aprobado_por'=> $user->id,
+                'aprobado_at' => $ahora,
+                'updated_at'  => $ahora,
+            ]);
+
+            $msg = $esVaciado ? 'Ubicación vaciada y ajuste registrado' : 'Línea aprobada e inventario actualizado';
+            return $this->ok($res, ['id' => $id, 'es_vaciado' => $esVaciado], $msg);
+        } catch (\Throwable $e) {
+            return $this->error($res, $e->getMessage(), 500);
+        }
+    }
+
+    // ── POST /api/inventario/cargue-inicial/aprobar-todo ─────────────────────
+    public function aprobarTodoCargue(Request $req, Response $res): Response
+    {
+        $user  = $req->getAttribute('user');
+        if (!in_array($user->rol ?? '', ['Admin', 'Supervisor', 'SuperAdmin'], true)) {
+            return $this->error($res, 'Se requiere rol Admin o Supervisor', 403);
+        }
+        $empId = $this->getEffectiveEmpresaId($user, $req);
+        $sucId = $user->sucursal_id;
+
+        $lineas = Capsule::table('cargue_inicial_lineas')
+            ->where('empresa_id', $empId)->where('sucursal_id', $sucId)
+            ->where('estado', 'Pendiente')->get();
+
+        if ($lineas->isEmpty()) return $this->error($res, 'No hay líneas pendientes');
+
+        $aprobadas = 0; $errores = [];
+        foreach ($lineas as $linea) {
+            // Crear request fake para reutilizar aprobarLineaCargue
+            if (!$linea->ubicacion_id) {
+                $errores[] = "Línea #{$linea->id} ({$linea->ubicacion_codigo}): ubicación sin ID registrado";
+                continue;
+            }
+            try {
+                $ahora     = date('Y-m-d H:i:s');
+                $undTotal  = (float)$linea->und_total;
+                $cantCajas = (int)$linea->cantidad_cajas;
+                $saldos    = (float)$linea->saldos;
+                $esVaciado = ($undTotal <= 0);
+
+                if ($esVaciado) {
+                    $registros = Inventario::where('empresa_id', $empId)->where('sucursal_id', $sucId)
+                        ->where('producto_id', $linea->producto_id)->where('ubicacion_id', $linea->ubicacion_id)
+                        ->where('estado', 'Disponible')
+                        ->when($linea->lote, fn($q) => $q->where('lote', $linea->lote))->get();
+                    foreach ($registros as $inv) {
+                        $cantPrev = (float)$inv->cantidad;
+                        if ($cantPrev <= 0) continue;
+                        $inv->cantidad = 0; $inv->cantidad_cajas = 0; $inv->saldos = 0;
+                        $inv->updated_at = $ahora; $inv->save();
+                        MovimientoInventario::create([
+                            'empresa_id' => $empId, 'sucursal_id' => $sucId,
+                            'producto_id' => $linea->producto_id, 'ubicacion_origen_id' => $linea->ubicacion_id,
+                            'tipo_movimiento' => 'AjusteNegativo', 'cantidad' => $cantPrev,
+                            'lote' => $inv->lote, 'fecha_vencimiento' => $inv->fecha_vencimiento,
+                            'referencia_tipo' => 'vaciado_ubicacion', 'auxiliar_id' => $user->id,
+                            'observaciones' => "Vaciado de ubicación (cargue inicial): -{$cantPrev} und",
+                            'fecha_movimiento' => date('Y-m-d'), 'hora_inicio' => date('H:i:s'),
+                        ]);
+                    }
+                } else {
+                $inv = Inventario::where('empresa_id',  $empId)
+                    ->where('sucursal_id',  $sucId)
+                    ->where('producto_id',  $linea->producto_id)
+                    ->where('ubicacion_id', $linea->ubicacion_id)
+                    ->where('estado',       'Disponible')
+                    ->when($linea->lote, fn($q) => $q->where('lote', $linea->lote))
+                    ->first();
+
+                if ($inv) {
+                    $inv->cantidad = $undTotal; $inv->cantidad_cajas = $cantCajas;
+                    $inv->saldos = $saldos; $inv->fecha_vencimiento = $linea->fecha_vencimiento;
+                    $inv->updated_at = $ahora; $inv->save();
+                } else {
+                    Inventario::create([
+                        'empresa_id' => $empId, 'sucursal_id' => $sucId,
+                        'producto_id' => $linea->producto_id, 'ubicacion_id' => $linea->ubicacion_id,
+                        'lote' => $linea->lote, 'fecha_vencimiento' => $linea->fecha_vencimiento,
+                        'cantidad' => $undTotal, 'cantidad_cajas' => $cantCajas,
+                        'saldos' => $saldos, 'cantidad_reservada' => 0, 'estado' => 'Disponible',
+                    ]);
+                }
+                    MovimientoInventario::create([
+                        'empresa_id' => $empId, 'sucursal_id' => $sucId,
+                        'producto_id' => $linea->producto_id, 'ubicacion_destino_id' => $linea->ubicacion_id,
+                        'tipo_movimiento' => 'InvInicial', 'cantidad' => $undTotal,
+                        'lote' => $linea->lote, 'fecha_vencimiento' => $linea->fecha_vencimiento,
+                        'referencia_tipo' => 'cargue_inicial', 'auxiliar_id' => $user->id,
+                        'observaciones' => "Inv inicial: {$cantCajas} cajas + {$saldos} sueltos = {$undTotal} UND/TOTAL",
+                        'fecha_movimiento' => date('Y-m-d'), 'hora_inicio' => date('H:i:s'),
+                    ]);
+                } // fin else no-vaciado
+                Capsule::table('cargue_inicial_lineas')->where('id', $linea->id)->update([
+                    'estado' => 'Aprobado', 'aprobado_por' => $user->id, 'aprobado_at' => $ahora, 'updated_at' => $ahora,
+                ]);
+                $aprobadas++;
+            } catch (\Throwable $e) {
+                $errores[] = "Línea #{$linea->id}: " . $e->getMessage();
+            }
+        }
+
+        $this->audit($user, 'Inventario', 'AprobarTodoCargue', 'cargue_inicial_lineas', null,
+            null, ['aprobadas' => $aprobadas, 'errores' => count($errores)],
+            "Aprobación masiva cargue inicial: {$aprobadas} aprobadas");
+
+        return $this->ok($res, ['aprobadas' => $aprobadas, 'errores' => $errores],
+            "{$aprobadas} líneas aprobadas" . (count($errores) ? ' con ' . count($errores) . ' error(es)' : ''));
+    }
+
+    // ── POST /api/inventario/vaciar-ubicacion ────────────────────────────────
+    // Zeroes all inventory in a location and registers AjusteNegativo movements
+    public function vaciarUbicacion(Request $req, Response $res): Response
+    {
+        $user  = $req->getAttribute('user');
+        $empId = $this->getEffectiveEmpresaId($user, $req);
+        $sucId = $this->getEffectiveSucursalId($user, $req);
+        $data  = (array)($req->getParsedBody() ?? []);
+
+        // Resolver ubicación por ID o código
+        $ubicacionId = (int)($data['ubicacion_id'] ?? 0);
+        if (!$ubicacionId && !empty($data['ubicacion_codigo'])) {
+            $u = Capsule::table('ubicaciones')
+                ->where('empresa_id', $empId)
+                ->where(function($q) use ($sucId) { $q->where('sucursal_id', $sucId)->orWhereNull('sucursal_id'); })
+                ->where('codigo', 'ilike', trim($data['ubicacion_codigo']))
+                ->first(['id', 'codigo']);
+            $ubicacionId = $u?->id ?? 0;
+        }
+        if (!$ubicacionId) return $this->error($res, 'Ubicación no encontrada', 404);
+
+        $ahora     = date('Y-m-d H:i:s');
+        $registros = Inventario::where('empresa_id',  $empId)
+            ->where('sucursal_id',  $sucId)
+            ->where('ubicacion_id', $ubicacionId)
+            ->where('estado',       'Disponible')
+            ->where('cantidad',     '>', 0)
+            ->get();
+
+        if ($registros->isEmpty()) {
+            return $this->ok($res, ['ajustados' => 0], 'La ubicación ya está vacía — no había inventario');
+        }
+
+        $ajustados = 0;
+        foreach ($registros as $inv) {
+            $cantPrev = (float)$inv->cantidad;
+            $inv->cantidad = 0; $inv->cantidad_cajas = 0; $inv->saldos = 0;
+            $inv->updated_at = $ahora; $inv->save();
+
+            MovimientoInventario::create([
+                'empresa_id'          => $empId,
+                'sucursal_id'         => $sucId,
+                'producto_id'         => $inv->producto_id,
+                'ubicacion_origen_id' => $ubicacionId,
+                'tipo_movimiento'     => 'AjusteNegativo',
+                'cantidad'            => $cantPrev,
+                'lote'                => $inv->lote,
+                'fecha_vencimiento'   => $inv->fecha_vencimiento,
+                'referencia_tipo'     => 'vaciado_ubicacion',
+                'auxiliar_id'         => $user->id,
+                'observaciones'       => "Ubicación vaciada manualmente: -{$cantPrev} und",
+                'fecha_movimiento'    => date('Y-m-d'),
+                'hora_inicio'         => date('H:i:s'),
+            ]);
+            $ajustados++;
+        }
+
+        $this->audit($user, 'Inventario', 'VaciarUbicacion', 'inventarios', $ubicacionId,
+            null, ['ajustados' => $ajustados],
+            "Vaciado de ubicación ID={$ubicacionId}: {$ajustados} registro(s) en cero");
+
+        return $this->ok($res, ['ajustados' => $ajustados, 'ubicacion_id' => $ubicacionId],
+            "Ubicación vaciada: {$ajustados} registro(s) ajustado(s) a cero");
+    }
+
+    // ── DELETE /api/inventario/cargue-inicial/{id} ───────────────────────────
+    public function eliminarLineaCargue(Request $req, Response $res, array $args): Response
+    {
+        $user  = $req->getAttribute('user');
+        $empId = $this->getEffectiveEmpresaId($user, $req);
+        $id    = (int)($args['id'] ?? 0);
+
+        $linea = Capsule::table('cargue_inicial_lineas')
+            ->where('id', $id)->where('empresa_id', $empId)->where('estado', 'Pendiente')->first();
+        if (!$linea) return $this->error($res, 'Línea no encontrada o ya procesada', 404);
+
+        // Solo el creador o admin puede eliminar
+        $isAdmin = in_array($user->rol ?? '', ['Admin', 'Supervisor', 'SuperAdmin'], true);
+        if (!$isAdmin && $linea->creado_por != $user->id) {
+            return $this->error($res, 'Solo el creador o un Admin puede eliminar esta línea', 403);
+        }
+
+        Capsule::table('cargue_inicial_lineas')->where('id', $id)->delete();
+        return $this->ok($res, null, 'Línea eliminada');
+    }
+
+    // ── GET /api/inventario/cargue-inicial ───────────────────────────────────
+    // Devuelve el kardex filtrado por tipo InvInicial (historial de cargues iniciales)
+    public function getCargueInicialKardex(Request $req, Response $res): Response
+    {
+        $user   = $req->getAttribute('user');
+        $empId  = $this->getEffectiveEmpresaId($user, $req);
+        $sucId  = $user->sucursal_id;
+        $params = $req->getQueryParams();
+        $limit  = min((int)($params['limit'] ?? 200), 500);
+
+        try {
+            $q = Capsule::table('movimiento_inventarios as m')
+                ->join('productos as p', 'p.id', '=', 'm.producto_id')
+                ->leftJoin('ubicaciones as u', 'u.id', '=', 'm.ubicacion_destino_id')
+                ->where('m.empresa_id',      $empId)
+                ->where('m.sucursal_id',     $sucId)
+                ->where('m.tipo_movimiento', 'InvInicial')
+                ->select(
+                    'm.id', 'm.producto_id', 'm.ubicacion_destino_id as ubicacion_id',
+                    'm.cantidad', 'm.lote', 'm.fecha_vencimiento',
+                    'm.observaciones', 'm.fecha_movimiento as fecha',
+                    'p.nombre as producto', 'p.codigo_interno as codigo',
+                    'u.codigo as ubicacion'
+                )
+                ->orderBy('m.fecha_movimiento', 'desc')
+                ->orderBy('m.id', 'desc')
+                ->limit($limit)
+                ->offset((int)($params['offset'] ?? 0));
+
+            $total  = (clone $q)->count();
+            $lineas = $q->get();
+
+            return $this->ok($res, [
+                'lineas' => $lineas,
+                'total'  => $total,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->error($res, $e->getMessage(), 500);
+        }
+    }
+
+    // ── POST /api/inventario/reconciliar ────────────────────────────────────
+    /**
+     * Reconciliación de integridad del inventario. Solo Admin.
+     *
+     * Acción 1: Elimina registros muertos (cantidad <= 0 Y cantidad_reservada <= 0).
+     *           Estos son restos de picking que no se borraron correctamente.
+     * Acción 2: Corrige cantidad_reservada > cantidad (reserva mayor que el stock
+     *           físico existente) → ajusta cantidad_reservada = cantidad.
+     * Acción 3: Registra un log de auditoría con los conteos afectados.
+     */
+    public function reconciliar(Request $req, Response $res, array $args): Response
+    {
+        $user = $req->getAttribute('user');
+        if ($user->rol !== 'Admin') {
+            return $this->error($res, 'Solo el administrador puede ejecutar la reconciliación.', 403);
+        }
+
+        $empresaId  = $this->getEffectiveEmpresaId($user, $req);
+        $sucursalId = $user->sucursal_id;
+
+        try {
+            $resultado = Capsule::transaction(function () use ($empresaId, $sucursalId) {
+                // ── Acción 1: Eliminar registros muertos ──────────────────────
+                // Un registro muerto tiene cantidad <= 0 Y cantidad_reservada <= 0.
+                // No aporta stock real y contamina las vistas de inventario.
+                $muertos = Capsule::table('inventarios')
+                    ->where('empresa_id',  $empresaId)
+                    ->where('sucursal_id', $sucursalId)
+                    ->whereRaw('COALESCE(cantidad, 0) <= 0')
+                    ->whereRaw('COALESCE(cantidad_reservada, 0) <= 0')
+                    ->get(['id', 'producto_id', 'ubicacion_id', 'lote', 'cantidad', 'cantidad_reservada']);
+
+                $idsMuertos = $muertos->pluck('id')->all();
+                $eliminados = 0;
+                if (!empty($idsMuertos)) {
+                    $eliminados = Capsule::table('inventarios')
+                        ->whereIn('id', $idsMuertos)
+                        ->delete();
+                }
+
+                // ── Acción 2: Corregir cantidad_reservada > cantidad ──────────
+                // Esto ocurre cuando un picking libera stock pero no libera la
+                // reserva correctamente (race condition o bug previo).
+                $corruptos = Capsule::table('inventarios')
+                    ->where('empresa_id',  $empresaId)
+                    ->where('sucursal_id', $sucursalId)
+                    ->whereRaw('COALESCE(cantidad_reservada, 0) > COALESCE(cantidad, 0)')
+                    ->lockForUpdate()
+                    ->get(['id', 'producto_id', 'ubicacion_id', 'lote', 'cantidad', 'cantidad_reservada']);
+
+                $corregidos = 0;
+                foreach ($corruptos as $row) {
+                    Capsule::table('inventarios')
+                        ->where('id', $row->id)
+                        ->update([
+                            'cantidad_reservada' => max(0, (float)$row->cantidad),
+                            'updated_at'         => date('Y-m-d H:i:s'),
+                        ]);
+                    $corregidos++;
+                }
+
+                return [
+                    'eliminados'  => $eliminados,
+                    'corregidos'  => $corregidos,
+                    'detalle_muertos' => $muertos->map(fn($r) => [
+                        'id'          => $r->id,
+                        'producto_id' => $r->producto_id,
+                        'ubicacion_id'=> $r->ubicacion_id,
+                        'lote'        => $r->lote,
+                        'cantidad'    => $r->cantidad,
+                        'reservada'   => $r->cantidad_reservada,
+                    ])->values()->all(),
+                    'detalle_corregidos' => collect($corruptos)->map(fn($r) => [
+                        'id'                     => $r->id,
+                        'producto_id'            => $r->producto_id,
+                        'ubicacion_id'           => $r->ubicacion_id,
+                        'lote'                   => $r->lote,
+                        'cantidad'               => $r->cantidad,
+                        'cantidad_reservada_vieja' => $r->cantidad_reservada,
+                        'cantidad_reservada_nueva' => max(0, (float)$r->cantidad),
+                    ])->values()->all(),
+                ];
+            });
+
+            // ── Log de auditoría ──────────────────────────────────────────────
+            $msg = "Reconciliación inventario — eliminados: {$resultado['eliminados']}, corregidos: {$resultado['corregidos']}";
+            error_log("[RECONCILIACION] empresa={$empresaId} sucursal={$sucursalId} usuario={$user->id} — {$msg}");
+            $this->audit($user, 'inventario', 'reconciliar', 'inventarios', null, null, [
+                'eliminados' => $resultado['eliminados'],
+                'corregidos' => $resultado['corregidos'],
+            ], $msg);
+
+            return $this->ok($res, $resultado, $msg);
+        } catch (\Throwable $e) {
+            error_log('[RECONCILIACION ERROR] ' . $e->getMessage());
+            return $this->error($res, 'Error en reconciliación: ' . $e->getMessage(), 500);
         }
     }
 }

@@ -112,10 +112,11 @@ class SystemController extends BaseController
 
         if (function_exists('opcache_reset')) {
             opcache_reset();
-            return $this->json($response, ['error' => false, 'message' => 'OPcache limpiado exitosamente']);
+            return $this->json($response, ['error' => false, 'message' => 'OPcache limpiado. El servidor ya reconoce los últimos archivos PHP.']);
         }
 
-        return $this->json($response, ['error' => true, 'message' => 'OPcache no está habilitado'], 400);
+        // OPcache no está habilitado en este entorno (ej. XAMPP dev) — no es un error real
+        return $this->json($response, ['error' => false, 'message' => 'OPcache no está activo en este servidor. Los cambios PHP se aplican de inmediato sin caché.']);
     }
 
     public function limpiarLogs(Request $request, Response $response): Response

@@ -17,6 +17,8 @@ class OrdenPicking extends BaseModel
         'planilla_numero', 'planilla_lote', 'estado', 'prioridad', 'auxiliar_id',
         'fecha_movimiento', 'hora_inicio', 'hora_fin', 'fecha_requerida',
         'sucursal_entrega', 'ruta', 'orden_logico',
+        'estado_certificacion', 'fecha_certificacion', 'certificador_id', 'archivo_id',
+        'estado_despacho', 'despacho_id', 'cliente_id',
     ];
 
     protected $casts = [

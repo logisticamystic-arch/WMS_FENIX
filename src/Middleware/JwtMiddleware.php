@@ -83,12 +83,16 @@ class JwtMiddleware
         }
 
         // ── 5. Inyectar usuario en la request ──────────────────────────────────
+        // Use empresa_id from JWT (reflects login selection) over DB default
+        $jwtEmpresaId  = isset($decoded->emp) ? (int)$decoded->emp : $user->empresa_id;
+        $jwtSucursalId = isset($decoded->suc) ? (int)$decoded->suc : $user->sucursal_id;
+
         $request = $request
             ->withAttribute('user', $user)
-            ->withAttribute('empresa_id', $user->empresa_id)
-            ->withAttribute('sucursal_id', $user->sucursal_id);
+            ->withAttribute('empresa_id', $jwtEmpresaId)
+            ->withAttribute('sucursal_id', $jwtSucursalId);
 
-        TenantContext::setCurrentTenant($user->empresa_id, $user->sucursal_id);
+        TenantContext::setCurrentTenant($jwtEmpresaId, $jwtSucursalId);
 
         return $handler->handle($request);
     }
@@ -102,8 +106,10 @@ class JwtMiddleware
     private static function getSecret(): string
     {
         if (self::$jwtSecret === null) {
-            self::$jwtSecret = getenv('JWT_SECRET')
-                ?: ($_ENV['JWT_SECRET'] ?? ($_SERVER['JWT_SECRET'] ?? 'change_this_secret'));
+            self::$jwtSecret = getenv('JWT_SECRET') ?: ($_ENV['JWT_SECRET'] ?? ($_SERVER['JWT_SECRET'] ?? null));
+            if (!self::$jwtSecret) {
+                throw new \RuntimeException('JWT_SECRET no está configurado en el entorno. Defínelo en el archivo .env');
+            }
         }
         return self::$jwtSecret;
     }

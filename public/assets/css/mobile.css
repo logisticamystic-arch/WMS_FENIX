@@ -942,6 +942,29 @@ body {
   cursor: not-allowed;
 }
 
+/* Botón icono cuadrado (EAN +, acciones de fila) */
+.m-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: .9rem;
+  flex-shrink: 0;
+  transition: opacity .15s;
+}
+.m-btn-icon:active { opacity: .7; }
+.m-btn-icon.primary  { background: #0F4C81; color: #fff; }
+.m-btn-icon.success  { background: #059669; color: #fff; }
+.m-btn-icon.danger   { background: #dc2626; color: #fff; }
+.m-btn-icon.secondary{ background: #e2e8f0; color: #334155; }
+.m-btn-icon.sm       { width: 30px; height: 30px; font-size: .78rem; border-radius: 6px; }
+.m-btn-icon-sm       { display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:6px;border:none;cursor:pointer;font-size:.78rem;flex-shrink:0; }
+.m-btn-icon-sm.success { background:#059669;color:#fff; }
+
 /* ===== PROGRESS BAR ===== */
 .m-progress-bar {
   width: 100%;

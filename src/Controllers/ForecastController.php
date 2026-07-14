@@ -25,55 +25,14 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 class ForecastController extends BaseController
 {
     // ── GET /api/forecast ─────────────────────────────────────────────────────
-    // Dashboard: predicciones vigentes con score de riesgo
+    // Dashboard: predicciones vigentes de forecast_demanda
+    // (mv_rotacion_productos no existe en esta BD)
     public function index(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         $limit  = min((int)($params['limit'] ?? 50), 200);
 
-        // Usar vista materializada si está disponible
-        try {
-            $usaMv = Capsule::table('mv_rotacion_productos')
-                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
-                ->exists();
-        } catch (\Exception $e) {
-            $usaMv = false;
-        }
-
-        if ($usaMv) {
-            $q = Capsule::table('mv_rotacion_productos')
-                ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
-                ->where('sucursal_id', $user->sucursal_id)
-                ->whereNotNull('forecast_30d');
-
-            if (!empty($params['solo_alertas'])) {
-                $q->where('alerta_quiebre', true);
-            }
-            if (!empty($params['clase_abc'])) {
-                $q->where('clase_abc', strtoupper($params['clase_abc']));
-            }
-
-            $total = (clone $q)->count();
-            $items = $q->orderBy('score_riesgo', 'desc')
-                       ->limit($limit)
-                       ->offset((int)($params['offset'] ?? 0))
-                       ->get([
-                           'producto_id', 'producto_nombre', 'codigo',
-                           'clase_abc', 'clase_xyz', 'segmento',
-                           'stock_actual', 'forecast_30d', 'alerta_quiebre',
-                           'dias_hasta_quiebre', 'stock_seguridad_sug',
-                           'punto_reorden_sug', 'score_riesgo', 'dias_cobertura',
-                       ]);
-
-            return $this->ok($res, [
-                'predicciones' => $items,
-                'total'        => $total,
-                'fuente'       => 'mv_rotacion_productos',
-            ]);
-        }
-
-        // Fallback: consulta directa a forecast_demanda
         $q = Capsule::table('forecast_demanda as f')
             ->join('productos as p', 'f.producto_id', '=', 'p.id')
             ->where('f.empresa_id',  $this->getEffectiveEmpresaId($user, $r))
@@ -84,6 +43,18 @@ class ForecastController extends BaseController
         if (!empty($params['solo_alertas'])) {
             $q->where('f.alerta_quiebre', true);
         }
+        if (!empty($params['clase_abc'])) {
+            // Filtrar por clase ABC vía join con clasificaciones
+            $claseAbc = strtoupper($params['clase_abc']);
+            $q->whereExists(fn($sub) =>
+                $sub->from('clasificaciones_abc_xyz as c')
+                    ->whereColumn('c.producto_id', 'f.producto_id')
+                    ->where('c.empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                    ->where('c.sucursal_id', $user->sucursal_id)
+                    ->where('c.vigente', true)
+                    ->where('c.clase_abc', $claseAbc)
+            );
+        }
 
         $total = (clone $q)->count();
 
@@ -92,9 +63,14 @@ class ForecastController extends BaseController
             : 'f.alerta_quiebre DESC, ISNULL(f.dias_hasta_quiebre) ASC, f.dias_hasta_quiebre ASC';
 
         $items = $q->select(
-                    'f.*',
-                    'p.nombre as producto_nombre',
-                    'p.codigo_interno as codigo'
+                    'f.id', 'f.producto_id', 'f.fecha_prediccion', 'f.horizonte_dias',
+                    'f.cantidad_esperada', 'f.demanda_pred', 'f.nivel_confianza',
+                    'f.banda_inf_80', 'f.banda_sup_80', 'f.banda_inf_95', 'f.banda_sup_95',
+                    'f.modelo_usado', 'f.mape', 'f.rmse', 'f.score_confianza',
+                    'f.alerta_quiebre', 'f.dias_hasta_quiebre',
+                    'f.stock_seguridad_sug', 'f.punto_reorden_sug',
+                    'f.es_vigente', 'f.generado_at',
+                    'p.nombre as producto_nombre', 'p.codigo_interno as codigo'
                 )
                 ->orderByRaw($nullsLast)
                 ->limit($limit)
@@ -275,38 +251,39 @@ class ForecastController extends BaseController
             $stockSegSug  = $std > 0 ? round(1.65 * $std * sqrt($leadTimeDias), 1) : null;
             $puntoReorden = $demandaDia > 0 ? round($demandaDia * $leadTimeDias + ($stockSegSug ?? 0), 1) : null;
 
+            $demandaPred = (float)$item['demanda_pred'];
             Capsule::table('forecast_demanda')->insert([
-                'empresa_id'         => $this->getEffectiveEmpresaId($user, $r),
-                'sucursal_id'        => $user->sucursal_id,
-                'producto_id'        => (int)$item['producto_id'],
-                'fecha_prediccion'   => $item['fecha_prediccion'],
-                'horizonte_dias'     => (int)$item['horizonte_dias'],
-                'demanda_pred'       => (float)$item['demanda_pred'],
-                'banda_inf_80'       => $item['banda_inf_80'] ?? null,
-                'banda_sup_80'       => $item['banda_sup_80'] ?? null,
-                'banda_inf_95'       => $item['banda_inf_95'] ?? null,
-                'banda_sup_95'       => $item['banda_sup_95'] ?? null,
-                'modelo_usado'       => $item['modelo_usado'] ?? 'externo',
-                'mape'               => $item['mape']         ?? null,
-                'rmse'               => $item['rmse']         ?? null,
-                'score_confianza'    => $item['score_confianza'] ?? null,
-                'alerta_quiebre'     => $alertaQuiebre,
-                'dias_hasta_quiebre' => $alertaQuiebre ? $diasCobertura : null,
-                'stock_seguridad_sug'=> $stockSegSug,
-                'punto_reorden_sug'  => $puntoReorden,
-                'generado_at'        => $ahora,
-                'es_vigente'         => true,
+                'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
+                'sucursal_id'         => $user->sucursal_id,
+                'producto_id'         => (int)$item['producto_id'],
+                'fecha_prediccion'    => $item['fecha_prediccion'],
+                'horizonte_dias'      => (int)$item['horizonte_dias'],
+                'cantidad_esperada'   => $demandaPred,      // NOT NULL — usar demanda_pred como valor base
+                'demanda_pred'        => $demandaPred,
+                'demanda_std'         => $item['demanda_std'] ?? null,
+                'nivel_confianza'     => round(($item['score_confianza'] ?? 0.9) * 100, 2),
+                'banda_inf_80'        => $item['banda_inf_80'] ?? null,
+                'banda_sup_80'        => $item['banda_sup_80'] ?? null,
+                'banda_inf_95'        => $item['banda_inf_95'] ?? null,
+                'banda_sup_95'        => $item['banda_sup_95'] ?? null,
+                'modelo_usado'        => $item['modelo_usado'] ?? 'externo',
+                'mape'                => $item['mape']          ?? null,
+                'rmse'                => $item['rmse']          ?? null,
+                'score_confianza'     => $item['score_confianza'] ?? null,
+                'alerta_quiebre'      => $alertaQuiebre,
+                'dias_hasta_quiebre'  => $alertaQuiebre ? $diasCobertura : null,
+                'stock_seguridad_sug' => $stockSegSug,
+                'punto_reorden_sug'   => $puntoReorden,
+                'generado_at'         => $ahora,
+                'es_vigente'          => true,
+                'created_at'          => $ahora,
+                'updated_at'          => $ahora,
             ]);
 
             $insertados++;
         }
 
-        // Refrescar vista materializada si corresponde
-        if ($insertados > 0 && $this->isPg()) {
-            try {
-                Capsule::statement('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_rotacion_productos');
-            } catch (\Exception $e) { /* silencioso */ }
-        }
+        // mv_rotacion_productos no existe en esta BD — omitir refresh
 
         $this->audit($user, 'forecast', 'ingest', 'forecast_demanda', null,
             null, ['insertados' => $insertados],
@@ -387,13 +364,17 @@ class ForecastController extends BaseController
             $stockSeg     = $std > 0 ? round(1.65 * $std * sqrt(7), 1) : null;
             $puntoReorden = $demandaDia > 0 ? round($demandaDia * 7 + ($stockSeg ?? 0), 1) : null;
 
+            $predRedondeada = round($pred, 2);
             Capsule::table('forecast_demanda')->insert([
                 'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
                 'sucursal_id'         => $user->sucursal_id,
                 'producto_id'         => $productoId,
                 'fecha_prediccion'    => $fechaPred,
                 'horizonte_dias'      => $horizonte,
-                'demanda_pred'        => round($pred, 2),
+                'cantidad_esperada'   => $predRedondeada,   // NOT NULL — campo obligatorio
+                'demanda_pred'        => $predRedondeada,
+                'demanda_std'         => round($std, 4),
+                'nivel_confianza'     => 80.0,
                 'banda_inf_80'        => round(max(0, $pred - 1.28 * $std), 2),
                 'banda_sup_80'        => round($pred + 1.28 * $std, 2),
                 'banda_inf_95'        => round(max(0, $pred - 1.96 * $std), 2),
@@ -405,17 +386,14 @@ class ForecastController extends BaseController
                 'punto_reorden_sug'   => $puntoReorden,
                 'generado_at'         => $ahora,
                 'es_vigente'          => true,
+                'created_at'          => $ahora,
+                'updated_at'          => $ahora,
             ]);
 
             $procesados++;
         }
 
-        // Refrescar vista materializada
-        if ($procesados > 0 && $this->isPg()) {
-            try {
-                Capsule::statement('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_rotacion_productos');
-            } catch (\Exception $e) { /* silencioso */ }
-        }
+        // mv_rotacion_productos no existe en esta BD — omitir refresh
 
         $this->audit($user, 'forecast', 'calcular_interno', 'forecast_demanda', null,
             null, ['procesados' => $procesados, 'horizonte' => $horizonte],
@@ -464,7 +442,10 @@ class ForecastController extends BaseController
             ->where('f.empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('f.sucursal_id', $user->sucursal_id)
             ->where('f.es_vigente',  true)
-            ->orderByRaw('f.alerta_quiebre DESC, f.dias_hasta_quiebre ASC NULLS LAST')
+            ->orderByRaw($this->isPg()
+                ? 'f.alerta_quiebre DESC, f.dias_hasta_quiebre ASC NULLS LAST'
+                : 'f.alerta_quiebre DESC, ISNULL(f.dias_hasta_quiebre) ASC, f.dias_hasta_quiebre ASC'
+            )
             ->select(
                 'p.codigo_interno as codigo', 'p.nombre as producto',
                 'f.horizonte_dias', 'f.fecha_prediccion', 'f.demanda_pred',

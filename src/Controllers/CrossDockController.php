@@ -200,10 +200,11 @@ class CrossDockController extends BaseController
 
                 if (!$detalle) continue;
 
-                $estado = $cantReal >= $detalle->cantidad_esp ? 'Recibido'
-                        : ($cantReal > 0 ? 'Recibido' : 'Pendiente');
-
-                if ($cantReal > 0 && abs($cantReal - $detalle->cantidad_esp) > 0.01) {
+                if ($cantReal <= 0) {
+                    $estado = 'Pendiente';
+                } elseif (abs($cantReal - $detalle->cantidad_esp) <= 0.01) {
+                    $estado = 'Recibido';
+                } else {
                     $estado = 'Diferencia';
                 }
 

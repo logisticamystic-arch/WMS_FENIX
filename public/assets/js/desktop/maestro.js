@@ -39,8 +39,10 @@ WMS_MODULES.maestro = {
       { id: 'personal', icon: 'fa-users', title: 'Personal', desc: 'Administración de usuarios, auxiliares y roles operativos.' },
       { id: 'productos', icon: 'fa-box', title: 'Productos', desc: 'Catálogo maestro, gestión de EANs, categorías y marcas.' },
       { id: 'clientes', icon: 'fa-user-tie', title: 'Clientes', desc: 'Base de datos de clientes, carteras y puntos de entrega.' },
+      { id: 'ambientes', icon: 'fa-temperature-half', title: 'Ambientes', desc: 'Clasificación de temperatura: Seco, Refrigerado, Congelado.' },
       { id: 'ubicaciones', icon: 'fa-map-pin', title: 'Ubicaciones', desc: 'Maestro de posiciones en bodega, zonas y capacidad.' },
       { id: 'proveedores', icon: 'fa-truck', title: 'Proveedores', desc: 'Gestión de proveedores, contactos y tiempos de entrega.' },
+      { id: 'causales-novedad', icon: 'fa-list-check', title: 'Causales de Novedad', desc: 'Causas de agotados en picking: área responsable y si afectan el nivel de servicio.' },
       { id: 'impresoras', icon: 'fa-print', title: 'Impresoras', desc: 'Configuración de impresoras IP para rótulos y documentos.' },
       { id: 'permisos', icon: 'fa-shield-halved', title: 'Seguridad', desc: 'Matriz de permisos, acceso por roles y auditoría.' },
     ];
@@ -96,8 +98,8 @@ WMS_MODULES.maestro = {
     const m = {
       empresa: 'Empresa', sucursales: 'Sucursales', personal: 'Personal',
       categorias: 'Categorías', marcas: 'Marcas', productos: 'Catálogo de Productos',
-      clientes: 'Clientes', ubicaciones: 'Ubicaciones',
-      proveedores: 'Proveedores', rutas: 'Rutas', permisos: 'Seguridad',
+      clientes: 'Clientes', ambientes: 'Ambientes', ubicaciones: 'Ubicaciones',
+      proveedores: 'Proveedores', 'causales-novedad': 'Causales de Novedad', rutas: 'Rutas', permisos: 'Seguridad',
       impresoras: 'Impresoras IP',
       sistema: 'Diagnóstico del Sistema'
     };
@@ -105,15 +107,33 @@ WMS_MODULES.maestro = {
   },
 
   // ── EMPRESA ──────────────────────────────────────────────────
+  filtrarEmpresas(q) {
+    if (!this._empresasData) return;
+    const f = q.toLowerCase();
+    this.renderEmpresas(f
+      ? this._empresasData.filter(c => c.razon_social?.toLowerCase().includes(f) || c.nit?.includes(f))
+      : this._empresasData);
+  },
+
   async show_empresa() {
-    WMS.setToolbar(`<button class="btn btn-primary btn-sm" style="border-radius:4px;" onclick="WMS_MODULES.maestro.nuevaEmpresa()"><i class="fa-solid fa-plus"></i> Nueva Empresa</button>`);
+    WMS.setToolbar(`
+      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-emp" placeholder="Buscar por NIT o Razón Social..." oninput="WMS_MODULES.maestro.filtrarEmpresas(this.value)"></div>
+      <div class="actions" style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.show_empresa()" title="Actualizar"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaEmpresa()"><i class="fa-solid fa-plus"></i> Nueva Empresa</button>
+      </div>`);
     WMS.spinner();
     try {
       const r     = await API.get('/param/empresas');
-      const items = r.data || r || [];
-      WMS.setContent(`
-        <div class="md-container">
-          <div class="md-master erp-card">
+      this._empresasData = r.data || r || [];
+      this.renderEmpresas(this._empresasData);
+    } catch (e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
+  },
+
+  renderEmpresas(items) {
+    WMS.setContent(`
+        <div class="card">
+          <div class="table-container">
             <table class="erp-table">
               <thead><tr><th>NIT</th><th>Razón Social</th><th>Teléfono</th><th>Email</th><th>Estado</th><th>Acciones</th></tr></thead>
               <tbody id="empresa-tbody">${items.length === 0
@@ -125,7 +145,7 @@ WMS_MODULES.maestro = {
                     <td style="color:#64748b;">${WMS.esc(e.email || '-')}</td>
                     <td><span class="status-chip ${e.activo ? 'status-cerrada' : 'status-cancelada'}" style="border-radius:4px;">${e.activo ? 'Activa' : 'Inactiva'}</span></td>
                     <td onclick="event.stopPropagation()"><div class="actions">
-                      <button class="btn btn-sm btn-danger" style="border-radius:4px;" onclick="WMS_MODULES.maestro.deleteEmpresa(${e.id},'${WMS.esc(e.razon_social || '')}')"><i class="fa-solid fa-trash"></i></button>
+                      ${(typeof _wmsUser !== 'undefined' && _wmsUser?.rol === 'SuperAdmin') ? `<button class="btn btn-sm btn-danger" style="border-radius:4px;" onclick="WMS_MODULES.maestro.deleteEmpresa(${e.id},'${WMS.esc(e.razon_social || '')}')"><i class="fa-solid fa-trash"></i></button>` : ''}
                     </div></td>
                   </tr>`).join('')}
               </tbody>
@@ -145,7 +165,6 @@ WMS_MODULES.maestro = {
             </div>
           </div>
         </div>`);
-    } catch (e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
   },
   
   closeDrawerEmpresa() {
@@ -170,6 +189,7 @@ WMS_MODULES.maestro = {
         <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-dir" class="form-control" placeholder="Dirección"></div>
         <div class="form-group"><label class="form-label">TELÉFONO</label><input id="f-tel" class="form-control" placeholder="Teléfono"></div>
         <div class="form-group"><label class="form-label">EMAIL</label><input id="f-email" class="form-control" type="email" placeholder="contacto@empresa.com"></div>
+        <div class="form-group" style="display:none;"><input type="checkbox" id="f-eact" checked></div>
       </div>
     `;
     btnSave.onclick = () => WMS_MODULES.maestro.saveEmpresa(null);
@@ -183,6 +203,7 @@ WMS_MODULES.maestro = {
       direccion:    document.getElementById('f-dir')?.value.trim(),
       telefono:     document.getElementById('f-tel')?.value.trim(),
       email:        document.getElementById('f-email')?.value.trim(),
+      activo:       document.getElementById('f-eact') ? (document.getElementById('f-eact').checked ? 1 : 0) : 1
     };
     if (!data.nit || !data.razon_social) { WMS.toast('warning', 'NIT y Razón Social son obligatorios'); return; }
     try {
@@ -217,6 +238,13 @@ WMS_MODULES.maestro = {
           <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-dir" class="form-control" value="${WMS.esc(e.direccion || '')}"></div>
           <div class="form-group"><label class="form-label">TELÉFONO</label><input id="f-tel" class="form-control" value="${WMS.esc(e.telefono || '')}"></div>
           <div class="form-group"><label class="form-label">EMAIL</label><input id="f-email" class="form-control" value="${WMS.esc(e.email || '')}"></div>
+          <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:4px; margin-top:10px;">
+             <div>
+               <span style="font-weight:600; color:#334155; font-size:0.9rem; display:block;">Estado Activo</span>
+               <span style="font-size:0.8rem; color:#64748b;">Si está inactiva, sus sucursales y personal no operarán.</span>
+             </div>
+             <label class="wms-switch"><input type="checkbox" id="f-eact" ${e.activo ? 'checked' : ''}><span class="slider"></span></label>
+          </div>
         </div>
       `;
       btnSave.onclick = () => WMS_MODULES.maestro.saveEmpresa(id);
@@ -232,15 +260,33 @@ WMS_MODULES.maestro = {
   },
 
   // ── SUCURSALES ───────────────────────────────────────────────
+  filtrarSucursales(q) {
+    if (!this._sucursalesData) return;
+    const f = q.toLowerCase();
+    this.renderSucursales(f
+      ? this._sucursalesData.filter(s => s.nombre?.toLowerCase().includes(f) || s.codigo?.toLowerCase().includes(f))
+      : this._sucursalesData);
+  },
+
   async show_sucursales() {
-    WMS.setToolbar(`<button class="btn btn-primary btn-sm" style="border-radius:4px;" onclick="WMS_MODULES.maestro.nuevaSucursal()"><i class="fa-solid fa-plus"></i> Nueva Sucursal</button>`);
+    WMS.setToolbar(`
+      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-suc" placeholder="Buscar por Código o Nombre..." oninput="WMS_MODULES.maestro.filtrarSucursales(this.value)"></div>
+      <div class="actions" style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.show_sucursales()" title="Actualizar"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaSucursal()"><i class="fa-solid fa-plus"></i> Nueva Sucursal</button>
+      </div>`);
     WMS.spinner();
     const [rs, es] = await Promise.all([API.get('/param/sucursales'), API.get('/param/empresas')]);
-    const items    = rs.data || rs || [];
-    const empresas = es.data || es || [];
+    this._sucursalesData = rs.data || rs || [];
+    this._sucEmpresasData = es.data || es || [];
+    this.renderSucursales(this._sucursalesData);
+  },
+
+  renderSucursales(items) {
+    const empresas = this._sucEmpresasData || [];
     WMS.setContent(`
-      <div class="md-container">
-        <div class="md-master erp-card">
+      <div class="card">
+        <div class="table-container">
           <table class="erp-table">
             <thead><tr><th>Código</th><th>Nombre</th><th>Empresa</th><th>Ciudad</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody id="sucursales-tbody">${items.length === 0
@@ -411,9 +457,9 @@ WMS_MODULES.maestro = {
       this._personalData = r.data || r || [];
 
       WMS.setContent(`
-        <div class="md-container">
+        <div class="card">
           <!-- Master View -->
-          <div class="md-master erp-card">
+          <div class="table-container">
             <table class="erp-table">
               <thead>
                 <tr>
@@ -631,10 +677,10 @@ WMS_MODULES.maestro = {
   },
 
   deletePersonal(id, n) {
-    WMS.confirm('Eliminar Personal', `¿Eliminar a "<strong>${WMS.esc(n)}</strong>"?`, async () => {
+    WMS.confirm('Eliminar Personal', `¿Está seguro de eliminar permanentemente a "<strong>${WMS.esc(n)}</strong>" de la base de datos? Esta acción no se puede deshacer.`, async () => {
       const r = await API.delete('/param/personal/' + id);
       if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Personal eliminado'); this.show_personal(); }
+      else { WMS.toast('success', r.message || 'Usuario eliminado'); this.show_personal(); }
     });
   },
 
@@ -729,10 +775,21 @@ WMS_MODULES.maestro = {
 
   // ── CATEGORÍAS ───────────────────────────────────────────────
   async show_categorias() {
-    WMS.setToolbar(`<button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaCategoria()"><i class="fa-solid fa-plus"></i> Nueva Categoría</button>`);
+    WMS.setToolbar(`
+      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-categorias" placeholder="Buscar..." oninput="WMS_MODULES.maestro.filtrarCategorias(this.value)"></div>
+      <div class="actions" style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.show_categorias()" title="Actualizar"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaCategoria()"><i class="fa-solid fa-plus"></i> Nueva Categoria</button>
+      </div>`);
     WMS.spinner();
+    try {
     const r     = await API.get('/param/categorias');
-    const items = r.data || r || [];
+    this._categoriasData = r.data || r || [];
+      this.renderCategorias(this._categoriasData);
+    } catch (e) { WMS.setContent('<div class="m-empty">Error</div>'); }
+  },
+
+  renderCategorias(items) {
     WMS.setContent(`
       <div class="card">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-tags"></i> Categorías (${items.length})</span></div>
@@ -801,38 +858,46 @@ WMS_MODULES.maestro = {
 
   // ── MARCAS ───────────────────────────────────────────────────
   async show_marcas() {
-    WMS.setToolbar(`<button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaMarca()"><i class="fa-solid fa-plus"></i> Nueva Marca</button>`);
+    WMS.setToolbar(`
+      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-marcas" placeholder="Buscar..." oninput="WMS_MODULES.maestro.filtrarMarcas(this.value)"></div>
+      <div class="actions" style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.show_marcas()" title="Actualizar"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaMarca()"><i class="fa-solid fa-plus"></i> Nueva Marca</button>
+      </div>`);
     WMS.spinner();
     try {
       const r = await API.get('/param/marcas');
-      const items = r.data || r || [];
-      WMS.setContent(`
-        <div class="card">
-          <div class="card-header"><span class="card-title"><i class="fa-solid fa-copyright"></i> Marcas (${items.length})</span></div>
-          <div class="table-container">
-            <table class="erp-table">
-              <thead><tr><th>Nombre</th><th>Proveedor (Opcional)</th><th>Estado</th><th>Acciones</th></tr></thead>
-              <tbody>${items.map(m => `<tr>
-                <td><strong>${WMS.esc(m.nombre || '')}</strong></td>
-                <td>${WMS.esc(m.proveedor || '-')}</td>
-                <td><span class="status-chip ${m.activo ? 'status-confirmada' : 'status-cancelada'}">${m.activo ? 'Activa' : 'Inactiva'}</span></td>
-                <td><div class="actions">
-                  <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editMarca(${m.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
-                  <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteMarca(${m.id}, '${WMS.esc(m.nombre)}')"><i class="fa-solid fa-trash"></i></button>
-                </div></td>
-              </tr>`).join('') || '<tr><td colspan="4" class="table-empty">Sin marcas registradas</td></tr>'}
-              </tbody>
-            </table>
-          </div>
-        </div>`);
-    } catch (e) { WMS.setContent('<div class="m-empty">Error de conexión</div>'); }
+      this._marcasData = r.data || r || [];
+      this.renderMarcas(this._marcasData);
+    } catch (e) { WMS.setContent('<div class="m-empty">Error</div>'); }
+  },
+
+  renderMarcas(items) {
+    WMS.setContent(`
+      <div class="card">
+        <div class="card-header"><span class="card-title"><i class="fa-solid fa-tag"></i> Marcas (${items.length})</span></div>
+        <div class="table-container">
+          <table class="erp-table">
+            <thead><tr><th>Nombre</th><th>Descripción</th><th>Acciones</th></tr></thead>
+            <tbody>${items.map(m => `<tr>
+              <td><strong>${WMS.esc(m.nombre || m.marca || '')}</strong></td>
+              <td>${WMS.esc(m.descripcion || m.proveedor || '-')}</td>
+              <td><div class="actions">
+                <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editMarca(${m.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
+                <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteMarca(${m.id}, '${WMS.esc(m.nombre)}')"><i class="fa-solid fa-trash"></i></button>
+              </div></td>
+            </tr>`).join('') || '<tr><td colspan="3" class="table-empty">Sin marcas</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`);
   },
 
   nuevaMarca() {
     WMS.showModal('Nueva Marca', `
       <div class="form-grid">
-        <div class="form-group"><label class="form-label">NOMBRE DE MARCA <span class="required">*</span></label><input id="f-mnom" class="form-control" placeholder="Ej: Coca Cola, Nestlé..."></div>
-        <div class="form-group"><label class="form-label">PROVEEDOR ASOCIADO (OPCIONAL)</label><input id="f-mprov" class="form-control" placeholder="Nombre o ID del proveedor"></div>
+        <div class="form-group"><label class="form-label">NOMBRE DE MARCA <span class="required">*</span></label><input id="f-mnom" class="form-control" placeholder="Nombre marca"></div>
+        <div class="form-group"><label class="form-label">PROVEEDOR ASOCIADO (OPCIONAL)</label><input id="f-mprov" class="form-control" placeholder="Proveedor"></div>
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveMarca(null)"><i class="fa-solid fa-save"></i> Guardar</button>`);
@@ -843,6 +908,9 @@ WMS_MODULES.maestro = {
       nombre: document.getElementById('f-mnom')?.value.trim(),
       proveedor: document.getElementById('f-mprov')?.value.trim()
     };
+    if (id) {
+      data.activo = document.getElementById('f-mact')?.value === '1';
+    }
     if (!data.nombre) { WMS.toast('warning', 'El nombre es obligatorio'); return; }
     try {
       const r = id ? await API.put('/param/marcas/' + id, data) : await API.post('/param/marcas', data);
@@ -895,10 +963,11 @@ WMS_MODULES.maestro = {
       </div>`);
     WMS.spinner();
     try {
-      const [cr, mr] = await Promise.all([API.get('/param/categorias'), API.get('/param/marcas')]);
-      const cats   = cr.data || cr || [];
-      const marcas = mr.data || mr || [];
-      
+      const [cr, mr, ambs] = await Promise.all([API.get('/param/categorias'), API.get('/param/marcas'), API.get('/param/ambientes')]);
+      const cats     = cr.data || cr || [];
+      const marcas   = mr.data || mr || [];
+      const ambientes = ambs.data || ambs || [];
+
       WMS.setContent(`
         <div class="card" style="max-width:800px; margin: 0 auto;">
           <div class="card-header">
@@ -909,7 +978,7 @@ WMS_MODULES.maestro = {
             <div class="form-grid form-grid-2">
               <div class="form-group" style="grid-column:1/-1;"><label class="form-label">EAN / CÓDIGO INTERNO <span class="required">*</span></label><input id="f-pean" class="form-control" placeholder="770123..."></div>
               <div class="form-group" style="grid-column:1/-1;"><label class="form-label">NOMBRE DEL PRODUCTO <span class="required">*</span></label><input id="f-pdesc" class="form-control" placeholder="Ej: VINO TINTO MALBEC 750ML"></div>
-              
+
               <div class="form-group"><label class="form-label">CATEGORÍA</label>
                 <select id="f-pcat" class="form-control"><option value="">-- Seleccionar --</option>
                   ${cats.map(c => `<option value="${c.id}">${WMS.esc(c.nombre || '')}</option>`).join('')}
@@ -918,13 +987,29 @@ WMS_MODULES.maestro = {
                 <select id="f-pmar" class="form-control"><option value="">-- Seleccionar --</option>
                   ${marcas.map(m => `<option value="${m.id}">${WMS.esc(m.nombre)}</option>`).join('')}
                 </select></div>
-              
+              <div class="form-group"><label class="form-label">AMBIENTE <span class="required">*</span></label>
+                <select id="f-pamb" class="form-control"><option value="">-- Seleccionar --</option>
+                  ${ambientes.map(a => `<option value="${a.id}">${WMS.esc(a.codigo)}${a.descripcion ? ' - ' + WMS.esc(a.descripcion) : ''}</option>`).join('')}
+                </select></div>
+
               <div class="form-group"><label class="form-label">UNIDAD DE MEDIDA</label>
                 <select id="f-pum" class="form-control"><option>UN</option><option>KG</option><option>LT</option><option>CJ</option><option>BL</option></select></div>
-              <div class="form-group"><label class="form-label">UNIDADES X CAJA</label><input id="f-puxc" class="form-control" type="number" value="1" min="1"></div>
-              
+              <div class="form-group"><label class="form-label">U/E (Factor de empaque)</label><input id="f-puxc" class="form-control" type="number" value="1" min="1"></div>
+
               <div class="form-group"><label class="form-label">PESO BRUTO (kg)</label><input id="f-ppeso" class="form-control" type="number" step="0.01" value="0.00"></div>
               <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.0001" value="0.0000"></div>
+
+              <div class="form-group">
+                <label class="form-label" style="color:#7c3aed;font-weight:700;">FACTOR U/E <span style="font-size:10px;color:#94a3b8;">(cant. por unidad)</span></label>
+                <input id="f-pfudm" class="form-control" type="number" step="0.0001" min="0" placeholder="Ej: 3000 (para 3000g/u)">
+              </div>
+              <div class="form-group">
+                <label class="form-label" style="color:#7c3aed;font-weight:700;">UNIDAD CONTENIDO <span style="font-size:10px;color:#94a3b8;">(GR, ML, LT…)</span></label>
+                <select id="f-pucont" class="form-control">
+                  <option value="">-- Sin U/E --</option>
+                  <option>GR</option><option>KG</option><option>ML</option><option>LT</option><option>CM</option><option>MT</option>
+                </select>
+              </div>
               
               <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:15px; border-radius:4px; border:1px solid #e2e8f0;">
                 <div style="display:flex;flex-direction:column;gap:5px;">
@@ -1015,9 +1100,10 @@ WMS_MODULES.maestro = {
   async descargarPlantillaProductos() {
     WMS.spinner();
     try {
-      const [cr, mr] = await Promise.all([API.get('/param/categorias'), API.get('/param/marcas')]);
+      const [cr, mr, ar] = await Promise.all([API.get('/param/categorias'), API.get('/param/marcas'), API.get('/param/ambientes')]);
       const cats   = cr.data || cr || [];
       const marcas = mr.data || mr || [];
+      const ambientes = ar.data || ar || [];
       
       let html = `
         <div style="padding:10px;">
@@ -1057,6 +1143,21 @@ WMS_MODULES.maestro = {
                 </table>
               </div>
             </div>
+            <!-- Ambientes -->
+            <div style="flex:1;">
+              <h4 style="font-size:0.95rem; font-weight:700; color:#1e293b; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:5px;">Ambientes (ID o Código)</h4>
+              <div style="max-height:250px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:4px;">
+                <table class="erp-table" style="font-size:0.85rem; width:100%;">
+                  <thead style="background:#f1f5f9; position:sticky; top:0;">
+                    <tr><th style="padding:6px 10px;">ID</th><th style="padding:6px 10px;">Código</th></tr>
+                  </thead>
+                  <tbody>
+                    ${ambientes.map(a => `<tr><td style="padding:6px 10px; font-weight:700; color:#7c3aed;">${a.id}</td><td style="padding:6px 10px;">${WMS.esc(a.codigo)}</td></tr>`).join('')}
+                    ${ambientes.length === 0 ? '<tr><td colspan="2" style="padding:10px; text-align:center;">Sin ambientes</td></tr>' : ''}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
           
           <div style="margin-top:20px; text-align:center;">
@@ -1069,6 +1170,7 @@ WMS_MODULES.maestro = {
       
       this._plantillaCats = cats;
       this._plantillaMarcas = marcas;
+      this._plantillaAmbientes = ambientes;
       WMS.showModal('Guía para Importar Productos', html);
     } catch(e) {
       WMS.toast('error', 'Error al cargar IDs para la plantilla');
@@ -1076,8 +1178,9 @@ WMS_MODULES.maestro = {
   },
   
   _generarCSVPlantilla() {
-    const cats = this._plantillaCats || [];
-    const marcas = this._plantillaMarcas || [];
+    const cats     = this._plantillaCats      || [];
+    const marcas   = this._plantillaMarcas    || [];
+    const ambientes = this._plantillaAmbientes || [];
 
     let csvContent = "data:text/csv;charset=utf-8,";
     csvContent += "=== RELACION DE CATEGORIAS ===\n";
@@ -1092,31 +1195,41 @@ WMS_MODULES.maestro = {
     marcas.forEach(m => { csvContent += `${m.id};${(m.nombre||'').replace(/;/g, '')}\n`; });
     csvContent += "\n";
 
+    csvContent += "=== RELACION DE AMBIENTES ===\n";
+    csvContent += "ID;Codigo de Ambiente\n";
+    if (ambientes.length === 0) csvContent += "Sin ambientes registrados\n";
+    ambientes.forEach(a => { csvContent += `${a.id};${(a.codigo||'').replace(/;/g, '')}\n`; });
+    csvContent += "\n";
+
     csvContent += "=== PLANTILLA DE PRODUCTOS (Llene los datos debajo de las cabeceras) ===\n";
 
     const cabeceras = [
-      "codigo_ean", 
-      "codigo_interno", 
-      "nombre", 
-      "categoria_id", 
-      "marca_id", 
-      "unidad_medida", 
-      "unidades_caja", 
-      "peso_unitario", 
-      "volumen_unitario", 
-      "stock_minimo", 
-      "controla_lote", 
-      "controla_vencimiento"
+      "codigo_ean",
+      "codigo_interno",
+      "nombre",
+      "categoria_id",
+      "marca_id",
+      "ambiente_id",
+      "unidad_medida",
+      "unidades_caja",
+      "peso_unitario",
+      "volumen_unitario",
+      "stock_minimo",
+      "controla_lote",
+      "controla_vencimiento",
+      "vida_util_dias",
+      "temperatura_almacen",
     ];
-    
-    // 3 Examples
-    const catEj = cats[0]?.id || "1";
-    const marEj = marcas[0]?.id || "1";
-    
-    const ejemplo1 = ["7701234567890", "REF001", "VINO TINTO MALBEC 750ML", catEj, marEj, "UN", "12", "1.50", "0.005", "10", "1", "1"];
-    const ejemplo2 = ["7709876543210", "REF002", "ACEITE DE OLIVA EXTRA VIRGEN", catEj, marEj, "UN", "24", "0.80", "0.002", "50", "1", "1"];
-    const ejemplo3 = ["7705555555555", "REF003", "ARROZ BLANCO PREMIUM 1KG", catEj, marEj, "UN", "20", "1.00", "0.001", "100", "0", "0"];
-    
+
+    // Valores de ejemplo
+    const catEj = cats[0]?.id     || "1";
+    const marEj = marcas[0]?.id   || "1";
+    const ambEj = ambientes[0]?.codigo || "SECO";
+
+    const ejemplo1 = ["7701234567890", "REF001", "VINO TINTO MALBEC 750ML",       catEj, marEj, ambEj, "UN", "12", "1.50", "0.005", "10", "1", "1", "", "AMBIENTE"];
+    const ejemplo2 = ["7709876543210", "REF002", "ACEITE DE OLIVA EXTRA VIRGEN",   catEj, marEj, ambEj, "UN", "24", "0.80", "0.002", "50", "1", "1", "", "REFRIGERADO"];
+    const ejemplo3 = ["7705555555555", "REF003", "ARROZ BLANCO PREMIUM 1KG",       catEj, marEj, ambEj, "UN", "20", "1.00", "0.001", "100", "0", "0", "", "AMBIENTE"];
+
     csvContent += cabeceras.join(";") + "\n";
     csvContent += ejemplo1.join(";") + "\n";
     csvContent += ejemplo2.join(";") + "\n";
@@ -1181,7 +1294,7 @@ WMS_MODULES.maestro = {
         <div class="table-container" style="max-height:600px; overflow-y:auto;">
           <table class="erp-table">
             <thead style="position:sticky; top:0; z-index:10; background:#f8fafc;">
-               <tr><th>Referencia/EAN</th><th>Descripción</th><th>Categoría/Marca</th><th>Estado</th><th>Acciones</th></tr>
+               <tr><th>Referencia/EAN</th><th>Descripción</th><th>Categoría/Marca</th><th>Ambiente</th><th>Estado</th><th>Acciones</th></tr>
             </thead>
             <tbody>${items.map(p => `<tr>
               <td>
@@ -1190,22 +1303,29 @@ WMS_MODULES.maestro = {
               </td>
               <td>
                 <div style="font-weight:600; color:#1e293b;">${WMS.esc(p.descripcion || '')}</div>
-                <div style="font-size:10px; color:#64748b;">UxC: ${p.unidades_caja || 1} · UM: ${WMS.esc(p.unidad_medida || 'UN')}</div>
+                <div style="font-size:10px; color:#64748b;">U/E: ${p.unidades_caja || 1} · UM: ${WMS.esc(p.unidad_medida || 'UN')}</div>
               </td>
               <td>
                  <div style="font-size:11px; font-weight:700; color:#475569;">${WMS.esc(p.categoria_nombre || '-')}</div>
                  <div style="font-size:10px; color:#94a3b8;">${WMS.esc(p.marca_nombre || '-')}</div>
               </td>
+              <td>${p.ambiente_nombre && p.ambiente_nombre !== '-'
+                ? `<span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:.72rem;font-weight:700;color:${WMS.esc(p.ambiente_color||'#475569')};background:${WMS.esc(p.ambiente_color||'#475569')}15;border:1px solid ${WMS.esc(p.ambiente_color||'#475569')}40;">${WMS.esc(p.ambiente_nombre)}</span>`
+                : '<span style="color:#94a3b8;font-size:.72rem;">Sin asignar</span>'}</td>
               <td><span class="status-chip ${p.activo ? 'status-cerrada' : 'status-cancelada'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
               <td><div class="actions">
                 <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editProducto(${p.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
                 <button class="btn btn-sm ${p.activo ? 'btn-danger' : 'btn-success'}" onclick="WMS_MODULES.maestro.toggleEstadoProducto(${p.id})" title="${p.activo ? 'Desactivar' : 'Activar'}">
                    <i class="fa-solid ${p.activo ? 'fa-toggle-on' : 'fa-toggle-off'}"></i>
                 </button>
-                <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.verEans(${p.id},'${WMS.esc(p.descripcion || '')}')" title="EANs"><i class="fa-solid fa-barcode"></i></button>
+                <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.verEans(${p.id})" title="EANs"><i class="fa-solid fa-barcode"></i></button>
+                <button class="btn btn-sm btn-info" style="position:relative;" onclick="WMS_MODULES.maestro.verFotos(${p.id})" title="Fotos">
+                   <i class="fa-solid fa-image"></i>
+                   ${p.fotos && p.fotos.length ? `<span style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border-radius:10px;font-size:9px;padding:2px 5px;font-weight:bold;">${p.fotos.length}</span>` : ''}
+                </button>
                 <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteProducto(${p.id},'${WMS.esc(p.descripcion || '')}')" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
               </div></td>
-            </tr>`).join('') || '<tr><td colspan="5" class="table-empty">Sin productos que coincidan</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin productos que coincidan</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -1232,6 +1352,68 @@ WMS_MODULES.maestro = {
   },
 
 
+  async verFotos(id) {
+    try {
+      const r = await API.get('/param/productos/' + id);
+      const p = r.data || r || null;
+      if (!p) { WMS.toast('error', 'Producto no encontrado'); return; }
+      
+      const nombre = WMS.esc(p.descripcion || p.nombre || '');
+      const fotos = p.fotos || [];
+      const baseUrl = (typeof API_BASE !== 'undefined' ? API_BASE.replace('/api', '') : '');
+      
+      let html = '';
+      if(fotos.length) {
+        html = `<div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:15px; max-height:400px; overflow-y:auto; padding:10px; background:#f8fafc; border-radius:6px;">
+          ${fotos.map(f => {
+            const imgUrl = f.url.startsWith('http') ? f.url : (baseUrl + f.url);
+            return `<div style="border:1px solid #cbd5e1; border-radius:8px; overflow:hidden; background:#fff; padding:4px;">
+              <img src="${imgUrl}" style="height:150px; width:150px; object-fit:cover; cursor:pointer;" onclick="window.open('${imgUrl}','_blank')">
+            </div>`;
+          }).join('')}
+        </div>`;
+      } else {
+        html = '<div class="alert alert-info" style="margin-top:15px;">No hay fotos registradas para este producto.</div>';
+      }
+      
+      WMS.showModal('Fotos: ' + nombre, html, '<button class="btn btn-secondary" onclick="WMS.closeModal(\'generic-modal\')">Cerrar</button>');
+    } catch(e) {
+      WMS.toast('error', 'Error al cargar fotos');
+    }
+  },
+
+  async verEans(id) {
+    try {
+      // Re-fetch the product to get its name
+      const rp = await API.get('/param/productos/' + id);
+      const p = rp.data || rp || {};
+      const nombre = WMS.esc(p.descripcion || p.nombre || '');
+      
+      const r = await API.get('/param/productos/' + id + '/eans');
+      const eans = r.data || r || [];
+      
+      let html = '<div style="margin-top:15px; max-height:400px; overflow-y:auto;">';
+      if(eans.length) {
+        html += '<table class="table table-sm table-striped"><thead><tr><th>Código EAN</th><th>Tipo</th><th>Principal</th></tr></thead><tbody>';
+        html += eans.map(e => `
+          <tr>
+            <td style="font-weight:bold;">${WMS.esc(e.codigo_ean)}</td>
+            <td>${WMS.esc(e.tipo)}</td>
+            <td>${e.es_principal ? '<span class="badge bg-primary">Sí</span>' : '<span class="badge bg-secondary">No</span>'}</td>
+          </tr>
+        `).join('');
+        html += '</tbody></table>';
+      } else {
+        html += '<div class="alert alert-info">No hay códigos adicionales registrados.</div>';
+      }
+      html += '</div>';
+      
+      WMS.showModal('EANs: ' + nombre, html, '<button class="btn btn-secondary" onclick="WMS.closeModal(\'generic-modal\')">Cerrar</button>');
+    } catch(e) {
+      WMS.toast('error', 'Error al cargar EANs');
+    }
+  },
+
   async toggleEstadoProducto(id) {
     try {
       const r = await API.put(`/param/productos/${id}/toggle-status`);
@@ -1244,9 +1426,10 @@ WMS_MODULES.maestro = {
   },
 
   async nuevoProducto() {
-    const [cs, ms] = await Promise.all([API.get('/param/categorias'), API.get('/param/marcas')]);
+    const [cs, ms, ambs] = await Promise.all([API.get('/param/categorias'), API.get('/param/marcas'), API.get('/param/ambientes')]);
     const cats     = cs.data || cs || [];
     const marcas   = ms.data || ms || [];
+    const ambientes = ambs.data || ambs || [];
     WMS.showModal('Nuevo Producto', `
       <div class="form-grid form-grid-2">
         <div class="form-group" style="grid-column:1/-1;"><label class="form-label">EAN PRINCIPAL / CÓDIGO <span class="required">*</span></label><input id="f-pean" class="form-control" placeholder="7701234567890"></div>
@@ -1260,12 +1443,16 @@ WMS_MODULES.maestro = {
             ${marcas.map(m => `<option value="${m.id}">${WMS.esc(m.nombre)}</option>`).join('')}
           </select>
         </div>
+        <div class="form-group"><label class="form-label">AMBIENTE <span class="required">*</span></label>
+          <select id="f-pamb" class="form-control"><option value="">-- Seleccione --</option>
+            ${ambientes.map(a => `<option value="${a.id}">${WMS.esc(a.codigo)}${a.descripcion ? ' - ' + WMS.esc(a.descripcion) : ''}</option>`).join('')}
+          </select></div>
         <div class="form-group"><label class="form-label">UNIDAD DE MEDIDA</label>
           <select id="f-pum" class="form-control"><option>UN</option><option>KG</option><option>LT</option><option>ML</option><option>GR</option><option>CJ</option><option>BL</option></select></div>
         <div class="form-group"><label class="form-label">PESO (kg)</label><input id="f-ppeso" class="form-control" type="number" step="0.01" placeholder="0.00"></div>
         <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.001" placeholder="0.000"></div>
-        <div class="form-group"><label class="form-label">UNIDADES X CAJA</label><input id="f-puxc" class="form-control" type="number" value="1" min="1"></div>
-        
+        <div class="form-group"><label class="form-label">U/E (Factor de empaque)</label><input id="f-puxc" class="form-control" type="number" value="1" min="1"></div>
+
         <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:10px; border-radius:4px; margin-top:5px;">
            <div style="display:flex;flex-direction:column;gap:5px;">
               <span style="font-size:.78rem;font-weight:600;color:#475569;">Stock Mínimo</span>
@@ -1294,11 +1481,14 @@ WMS_MODULES.maestro = {
       descripcion:         document.getElementById('f-pdesc')?.value.trim(),
       categoria_id:        document.getElementById('f-pcat')?.value || null,
       marca_id:            document.getElementById('f-pmar')?.value || null,
+      ambiente_id:         document.getElementById('f-pamb')?.value || null,
       unidad_medida:       document.getElementById('f-pum')?.value,
       peso_unitario:       parseVal(document.getElementById('f-ppeso')?.value),
       volumen_unitario:    parseVal(document.getElementById('f-pvol')?.value),
       stock_minimo:        parseVal(document.getElementById('f-pmin')?.value),
       unidades_caja:       parseInt(document.getElementById('f-puxc')?.value || 1),
+      factor_udm:          parseVal(document.getElementById('f-pfudm')?.value) || null,
+      unidad_contenido:    document.getElementById('f-pucont')?.value || null,
       maneja_lotes:        document.getElementById('f-pmlot')?.checked ? 1 : 0,
       controla_vencimiento: document.getElementById('f-pcvenc')?.checked ? 1 : 0
     };
@@ -1312,13 +1502,15 @@ WMS_MODULES.maestro = {
 
   async editProducto(id) {
     try {
-      const [pr, cr, sr] = await Promise.all([
+      const [pr, cr, sr, ambs] = await Promise.all([
         API.get('/param/productos/' + id),
         API.get('/param/categorias'),
-        API.get('/param/sucursales?activo=1')
+        API.get('/param/sucursales?activo=1'),
+        API.get('/param/ambientes')
       ]);
       let p = pr.data || pr || null;
       if (!p) { WMS.toast('error', 'Producto no encontrado'); return; }
+      const ambientes = ambs.data || ambs || [];
       const cs = cr.data || cr || [];
       WMS.showModal('Editar Producto', `
         <div class="form-grid form-grid-2">
@@ -1332,14 +1524,29 @@ WMS_MODULES.maestro = {
             <select id="f-pmar" class="form-control"><option value="">-- Sin marca --</option>
               ${(await API.get('/param/marcas')).data?.map(m => `<option value="${m.id}" ${m.id == p.marca_id ? 'selected' : ''}>${WMS.esc(m.nombre)}</option>`).join('') || ''}
             </select></div>
+          <div class="form-group"><label class="form-label">AMBIENTE <span class="required">*</span></label>
+            <select id="f-pamb" class="form-control"><option value="">-- Seleccione --</option>
+              ${ambientes.map(a => `<option value="${a.id}" ${a.id == p.ambiente_id ? 'selected' : ''}>${WMS.esc(a.codigo)}${a.descripcion ? ' - ' + WMS.esc(a.descripcion) : ''}</option>`).join('')}
+            </select></div>
           <div class="form-group"><label class="form-label">UNIDAD DE MEDIDA</label>
             <select id="f-pum" class="form-control">
               ${['UN', 'KG', 'LT', 'ML', 'GR', 'CJ', 'BL', 'PQ', 'RO', 'PA'].map(u => `<option ${p.unidad_medida === u ? 'selected' : ''}>${u}</option>`).join('')}
             </select></div>
           <div class="form-group"><label class="form-label">PESO (kg)</label><input id="f-ppeso" class="form-control" type="number" step="0.01" value="${p.peso_unitario || ''}"></div>
           <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.001" value="${p.volumen_unitario || ''}"></div>
-          <div class="form-group"><label class="form-label">UNIDADES X CAJA</label><input id="f-puxc" class="form-control" type="number" value="${p.unidades_caja || 1}" min="1"></div>
-          
+          <div class="form-group"><label class="form-label">U/E (Factor de empaque)</label><input id="f-puxc" class="form-control" type="number" value="${p.unidades_caja || 1}" min="1"></div>
+          <div class="form-group">
+            <label class="form-label" style="color:#7c3aed;font-weight:700;">FACTOR U/E <span style="font-size:10px;color:#94a3b8;">(cant. por unidad)</span></label>
+            <input id="f-pfudm" class="form-control" type="number" step="0.0001" min="0" value="${p.factor_udm || ''}" placeholder="Ej: 3000">
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="color:#7c3aed;font-weight:700;">UNIDAD CONTENIDO</label>
+            <select id="f-pucont" class="form-control">
+              <option value="">-- Sin U/E --</option>
+              ${['GR','KG','ML','LT','CM','MT'].map(u => `<option ${p.unidad_contenido === u ? 'selected' : ''}>${u}</option>`).join('')}
+            </select>
+          </div>
+
           <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:10px; border-radius:4px; margin-top:5px;">
              <div style="display:flex;flex-direction:column;gap:5px;">
                 <span style="font-size:.78rem;font-weight:600;color:#475569;">Stock Mínimo</span>
@@ -1414,6 +1621,164 @@ WMS_MODULES.maestro = {
     });
   },
 
+  // ── AMBIENTES ──────────────────────────────────────────────
+  async show_ambientes() {
+    WMS.setToolbar(`
+      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-ambientes" placeholder="Buscar ambiente..." oninput="WMS_MODULES.maestro.filtrarAmbientes(this.value)"></div>
+      <div class="actions" style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.show_ambientes()" title="Actualizar"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.editAmbiente(null)"><i class="fa-solid fa-plus"></i> Nuevo Ambiente</button>
+      </div>`);
+    WMS.spinner();
+    try {
+      const r = await API.get('/param/ambientes');
+      this._ambientesData = r.data || r || [];
+      this.renderAmbientes(this._ambientesData);
+    } catch (e) {
+      WMS.setContent(`<div class="alert alert-danger m-3">Error cargando ambientes: ${e.message}</div>`);
+    }
+  },
+
+  renderAmbientes(items) {
+    WMS.setContent(`
+      <div class="card">
+        <div class="card-header"><span class="card-title"><i class="fa-solid fa-temperature-half"></i> Ambientes (${items.length})</span></div>
+        <div class="table-container">
+          <table class="erp-table">
+            <thead><tr><th>ID</th><th>CÓDIGO</th><th>DESCRIPCIÓN</th><th>COLOR</th><th>PRODUCTOS</th><th>ACCIONES</th></tr></thead>
+            <tbody>
+              ${items.map(a => `
+              <tr>
+                <td>${a.id}</td>
+                <td style="font-weight:700;">${WMS.esc(a.codigo)}</td>
+                <td>${WMS.esc(a.descripcion || '—')}</td>
+                <td>${a.color ? `<span style="display:inline-block;width:20px;height:20px;border-radius:4px;background:${WMS.esc(a.color)};border:1px solid #ccc;"></span> ${WMS.esc(a.color)}` : '—'}</td>
+                <td style="text-align:center;">${a.productos_count ?? '—'}</td>
+                <td><div class="actions">
+                  <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editAmbiente(${a.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
+                  <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteAmbiente(${a.id}, '${WMS.esc(a.codigo)}')" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
+                </div></td>
+              </tr>
+              `).join('') || '<tr><td colspan="6" class="table-empty">Sin ambientes registrados. Cree al menos: SECO, REFRIGERADO, CONGELADO.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`);
+  },
+
+  filtrarAmbientes(q) {
+    if (!this._ambientesData) return;
+    const f = q.toLowerCase();
+    this.renderAmbientes(f
+      ? this._ambientesData.filter(a => a.codigo?.toLowerCase().includes(f) || a.descripcion?.toLowerCase().includes(f))
+      : this._ambientesData);
+  },
+
+  async editAmbiente(id) {
+    let a = null;
+    if (id) {
+      const r = await API.get('/param/ambientes');
+      const all = r.data || r || [];
+      a = all.find(x => x.id == id);
+    }
+    WMS.showModal(id ? 'Editar Ambiente' : 'Nuevo Ambiente', `
+      <div class="form-grid form-grid-2">
+        <div class="form-group"><label class="form-label">CÓDIGO <span class="required">*</span></label>
+          <input id="f-amb-cod" class="form-control" value="${WMS.esc(a?.codigo || '')}" placeholder="Ej: SECO, REFRIGERADO, CONGELADO" style="text-transform:uppercase;"></div>
+        <div class="form-group"><label class="form-label">DESCRIPCIÓN</label>
+          <input id="f-amb-desc" class="form-control" value="${WMS.esc(a?.descripcion || '')}" placeholder="Descripción opcional"></div>
+        <div class="form-group"><label class="form-label">COLOR (hex)</label>
+          <input id="f-amb-color" class="form-control" type="color" value="${a?.color || '#92400e'}" style="height:38px;"></div>
+        <div class="form-group"><label class="form-label">ICONO (FA class)</label>
+          <input id="f-amb-icono" class="form-control" value="${WMS.esc(a?.icono || '')}" placeholder="fa-sun, fa-snowflake..."></div>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveAmbiente(${id || 'null'})"><i class="fa-solid fa-save"></i> Guardar</button>`);
+  },
+
+  async saveAmbiente(id) {
+    const data = {
+      codigo:      document.getElementById('f-amb-cod')?.value.trim().toUpperCase(),
+      descripcion: document.getElementById('f-amb-desc')?.value.trim(),
+      color:       document.getElementById('f-amb-color')?.value,
+      icono:       document.getElementById('f-amb-icono')?.value.trim(),
+    };
+    if (!data.codigo) { WMS.toast('warning', 'El código es obligatorio'); return; }
+    try {
+      const r = id ? await API.put('/param/ambientes/' + id, data) : await API.post('/param/ambientes', data);
+      if (r.error) WMS.toast('error', r.message);
+      else {
+        WMS.toast('success', id ? 'Ambiente actualizado' : 'Ambiente creado: ' + data.codigo);
+        WMS.closeModal('generic-modal');
+        this.show_ambientes();
+      }
+    } catch (e) { WMS.toast('error', 'Error de conexión'); }
+  },
+
+  async deleteAmbiente(id, codigo) {
+    if (!confirm('¿Seguro que desea eliminar el ambiente ' + codigo + '?')) return;
+    try {
+      const r = await API.delete('/param/ambientes/' + id);
+      if (r.error) WMS.toast('error', r.message);
+      else {
+        WMS.toast('success', 'Ambiente eliminado');
+        this.show_ambientes();
+      }
+    } catch (e) { WMS.toast('error', 'Error al eliminar'); }
+  },
+
+  // ── ZONAS ──────────────────────────────────────────────
+  async show_zonas() {
+    WMS.setToolbar(`
+      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-zonas" placeholder="Buscar zona..." oninput="WMS_MODULES.maestro.filtrarZonas(this.value)"></div>
+      <div class="actions" style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.show_zonas()" title="Actualizar"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.editZona(null)"><i class="fa-solid fa-plus"></i> Nueva Zona</button>
+      </div>`);
+    WMS.spinner();
+    try {
+      const r = await API.get('/param/zonas');
+      this._zonasData = r.data || r || [];
+      this.renderZonas(this._zonasData);
+    } catch (e) {
+      WMS.setContent(`<div class="alert alert-danger m-3">Error cargando zonas: ${e.message}</div>`);
+    }
+  },
+
+  renderZonas(items) {
+    const html = `
+      <div class="card">
+        <div class="card-header"><span class="card-title"><i class="fa-solid fa-map"></i> Zonas (${items.length})</span></div>
+        <div class="table-container">
+          <table class="erp-table">
+            <thead><tr><th>ID</th><th>CÓDIGO (ZONA)</th><th>DESCRIPCIÓN</th><th>ACCIONES</th></tr></thead>
+            <tbody>
+              ${items.map(z => `
+              <tr>
+                <td>${z.id}</td>
+                <td style="font-weight:700;">${WMS.esc(z.codigo)}</td>
+                <td>${WMS.esc(z.descripcion || '—')}</td>
+                <td><div class="actions">
+                  <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editZona(${z.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
+                  <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteZona(${z.id}, '${WMS.esc(z.codigo)}')" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
+                </div></td>
+              </tr>
+              `).join('') || '<tr><td colspan="4" class="table-empty">Sin zonas registradas</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    WMS.setContent(html);
+  },
+
+  filtrarZonas(q) {
+    if (!this._zonasData) return;
+    const f = q.toLowerCase();
+    this.renderZonas(f
+      ? this._zonasData.filter(z => z.codigo?.toLowerCase().includes(f) || z.descripcion?.toLowerCase().includes(f))
+      : this._zonasData);
+  },
+
   // ── UBICACIONES ──────────────────────────────────────────────
   async show_ubicaciones(forceLoad = false) {
     if (forceLoad || (this._ubiData && this._ubiData.length > 0)) {
@@ -1432,32 +1797,32 @@ WMS_MODULES.maestro = {
   },
 
   _renderUbiShell(items) {
-    // Extraer valores para filtros de los datos cargados (si los hay)
-    const pasillos = [...new Set(items.map(u => u.pasillo).filter(Boolean))].sort();
-    const modulos  = [...new Set(items.map(u => u.modulo).filter(Boolean))].sort();
-    const niveles  = [...new Set(items.map(u => u.nivel).filter(Boolean))].sort();
+    const zonas    = [...new Set(items.map(u => u.zona).filter(Boolean))].sort();
 
     WMS.setToolbar(`
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <select id="f-ubi-zona" class="form-control" style="width:150px;font-weight:600;" onchange="WMS_MODULES.maestro._updateUbiDynamicFilters(); WMS_MODULES.maestro.filterUbicaciones()">
+          <option value="">Todas las zonas</option>
+          ${zonas.map(z => `<option value="${WMS.esc(z)}">${WMS.esc(z)}</option>`).join('')}
+        </select>
         <div class="search-bar" style="min-width:200px;"><i class="fa-solid fa-search"></i>
           <input id="f-ubi-search" placeholder="Búsqueda inteligente..." oninput="WMS_MODULES.maestro.filterUbicaciones()">
         </div>
         <select id="f-ubi-pas" class="form-control" style="width:110px;" onchange="WMS_MODULES.maestro.filterUbicaciones()">
           <option value="">Pasillo...</option>
-          ${pasillos.map(p => `<option value="${WMS.esc(p)}">${WMS.esc(p)}</option>`).join('')}
         </select>
-        <select id="f-ubi-mod" class="form-control" style="width:110px;" onchange="WMS_MODULES.almacenamiento.filterUbicaciones()">
+        <select id="f-ubi-mod" class="form-control" style="width:110px;" onchange="WMS_MODULES.maestro.filterUbicaciones()">
           <option value="">Módulo...</option>
-          ${modulos.map(m => `<option value="${WMS.esc(m)}">${WMS.esc(m)}</option>`).join('')}
         </select>
         <select id="f-ubi-niv" class="form-control" style="width:100px;" onchange="WMS_MODULES.maestro.filterUbicaciones()">
           <option value="">Nivel...</option>
-          ${niveles.map(n => `<option value="${WMS.esc(n)}">${WMS.esc(n)}</option>`).join('')}
         </select>
         <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.importarUbicaciones()"><i class="fa-solid fa-file-import"></i> Importar</button>
         <button id="btn-load-ubis" class="btn btn-info-soft btn-sm" onclick="WMS_MODULES.maestro.show_ubicaciones(true)"><i class="fa-solid fa-sync"></i> Cargar Todo</button>
         <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaUbicacion()"><i class="fa-solid fa-plus"></i> Nueva</button>
       </div>`);
+
+    this._updateUbiDynamicFilters();
 
     const tipoColor = { Picking: 'badge-success', Almacenamiento: 'badge-info', Muelle: 'badge-warning', Carro: 'badge-purple', Patio: 'badge-gray' };
     const estadoClass = { Libre: 'status-cerrada', Ocupada: 'status-cancelada', Parcial: 'status-pendiente', Locked: 'status-cancelada' };
@@ -1545,6 +1910,29 @@ WMS_MODULES.maestro = {
     if (countEl) countEl.textContent = visibleCount;
   },
 
+  _updateUbiDynamicFilters() {
+    const zonaVal = document.getElementById('f-ubi-zona')?.value || '';
+    const data = zonaVal
+      ? (this._ubiData || []).filter(u => u.zona === zonaVal)
+      : (this._ubiData || []);
+
+    const pasillos = [...new Set(data.map(u => u.pasillo).filter(Boolean))].sort();
+    const modulos  = [...new Set(data.map(u => u.modulo).filter(Boolean))].sort();
+    const niveles  = [...new Set(data.map(u => u.nivel).filter(Boolean))].sort();
+
+    const populate = (id, label, values) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const cur = el.value;
+      el.innerHTML = `<option value="">${label}</option>` +
+        values.map(v => `<option value="${WMS.esc(v)}"${v === cur ? ' selected' : ''}>${WMS.esc(v)}</option>`).join('');
+    };
+
+    populate('f-ubi-pas', 'Pasillo...', pasillos);
+    populate('f-ubi-mod', 'Módulo...', modulos);
+    populate('f-ubi-niv', 'Nivel...', niveles);
+  },
+
   // FIX: formulario corregido con campos reales de la BD (zona NOT NULL, tipo_ubicacion ENUM, capacidad_maxima)
   async nuevaUbicacion() {
     const [ss, zs] = await Promise.all([
@@ -1628,52 +2016,199 @@ WMS_MODULES.maestro = {
     else { WMS.toast('success', 'Ubicación guardada'); WMS.closeModal('generic-modal'); this.show_ubicaciones(); }
   },
 
+  _importFile: null,
+
   importarUbicaciones() {
     WMS.showModal('Importar Ubicaciones', `
       <div class="alert alert-info" style="margin-bottom:15px; font-size:.85rem;">
         <i class="fa-solid fa-info-circle"></i> <strong>Instrucciones:</strong><br>
-        1. El archivo debe ser un CSV separado por punto y coma (;).<br>
-        2. Columnas obligatorias (en orden): <strong>zona;pasillo;modulo;nivel;tipo_ubicacion;capacidad_maxima;m3;clase;sucursal_id</strong><br>
-        3. Ejemplo: A;01;01;01;Picking;100;0.5;Normal;1
+        1. El archivo debe ser CSV separado por punto y coma (;) o coma (,).<br>
+        2. Columnas soportadas: <strong>zona, pasillo, modulo, nivel, posicion, tipo_ubicacion, capacidad_maxima, codigo</strong><br>
+        3. Si no incluye "codigo", se genera automáticamente: zona/pasillo-modulo-nivel<br>
+        4. Primero se muestra una vista previa para verificar antes de importar.
       </div>
       <div class="form-group">
         <label class="form-label">Seleccione el archivo CSV</label>
-        <input type="file" id="f-import-csv" class="form-control" accept=".csv">
+        <input type="file" id="f-import-csv" class="form-control" accept=".csv,.txt">
       </div>
       <div id="import-progress" style="display:none; margin-top:15px;">
-        <div class="spinner sm"></div> Procesando...
-      </div>`,
+        <div class="spinner sm"></div> <span id="import-progress-text">Analizando archivo...</span>
+      </div>
+      <div id="import-preview-area" style="display:none; margin-top:15px;"></div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.doImportUbicaciones()"><i class="fa-solid fa-upload"></i> Procesar</button>`);
+       <button class="btn btn-primary" id="btn-import-preview" onclick="WMS_MODULES.maestro.previewImportUbicaciones()"><i class="fa-solid fa-eye"></i> Vista Previa</button>
+       <button class="btn btn-success" id="btn-import-confirm" style="display:none;" onclick="WMS_MODULES.maestro.doImportUbicaciones()"><i class="fa-solid fa-upload"></i> Confirmar Importación</button>`);
   },
 
-  async doImportUbicaciones() {
+  async previewImportUbicaciones() {
     const file = document.getElementById('f-import-csv')?.files[0];
     if (!file) { WMS.toast('warning', 'Seleccione un archivo'); return; }
-    
+    this._importFile = file;
+
     const progress = document.getElementById('import-progress');
-    progress.style.display = 'block';
+    const progressText = document.getElementById('import-progress-text');
+    progress.style.display = 'flex';
+    progressText.textContent = 'Analizando archivo...';
 
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      const r = await fetch(API.url + '/param/import-export/upload/ubicaciones', {
+      const r = await fetch(API_BASE + '/param/import-export/preview/ubicaciones', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + API.token },
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') },
         body: formData
       });
       const res = await r.json();
       progress.style.display = 'none';
-      if (res.error) WMS.toast('error', res.message);
-      else {
-        WMS.toast('success', res.message);
-        WMS.closeModal('generic-modal');
-        this.show_ubicaciones();
+
+      if (res.error) { WMS.toast('error', res.message); return; }
+
+      const area = document.getElementById('import-preview-area');
+      const stats = res.stats;
+      const preview = res.preview || [];
+      const headers = res.headers || [];
+      const errors = res.errors || [];
+
+      let html = `
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:15px;">
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:10px;text-align:center;">
+            <div style="font-size:1.4rem;font-weight:900;color:#1d4ed8;">${stats.total}</div>
+            <div style="font-size:.75rem;color:#64748b;">Total filas</div>
+          </div>
+          <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:4px;padding:10px;text-align:center;">
+            <div style="font-size:1.4rem;font-weight:900;color:#059669;">${stats.nuevos}</div>
+            <div style="font-size:.75rem;color:#64748b;">Nuevas</div>
+          </div>
+          <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:4px;padding:10px;text-align:center;">
+            <div style="font-size:1.4rem;font-weight:900;color:#ea580c;">${stats.existentes}</div>
+            <div style="font-size:.75rem;color:#64748b;">Actualizarán</div>
+          </div>
+          <div style="background:${stats.errores ? '#fef2f2' : '#f8fafc'};border:1px solid ${stats.errores ? '#fecaca' : '#e2e8f0'};border-radius:4px;padding:10px;text-align:center;">
+            <div style="font-size:1.4rem;font-weight:900;color:${stats.errores ? '#dc2626' : '#94a3b8'};">${stats.errores}</div>
+            <div style="font-size:.75rem;color:#64748b;">Con errores</div>
+          </div>
+        </div>`;
+
+      if (errors.length) {
+        html += `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:10px;margin-bottom:12px;max-height:120px;overflow-y:auto;">
+          <div style="font-weight:700;color:#dc2626;font-size:.82rem;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation"></i> Errores detectados:</div>
+          ${errors.map(e => `<div style="font-size:.78rem;color:#991b1b;padding:2px 0;">• ${WMS.esc(e)}</div>`).join('')}
+        </div>`;
+      }
+
+      html += `<div style="font-weight:700;font-size:.82rem;color:#475569;margin-bottom:8px;"><i class="fa-solid fa-table"></i> Vista previa de datos (máx. 500 filas)</div>`;
+      html += `<div style="max-height:350px;overflow:auto;border:1px solid #e2e8f0;border-radius:4px;">
+        <table class="table" style="font-size:.75rem;margin:0;">
+          <thead style="position:sticky;top:0;background:#f1f5f9;z-index:1;">
+            <tr>
+              <th style="padding:6px 8px;white-space:nowrap;">Línea</th>
+              <th style="padding:6px 8px;white-space:nowrap;">Estado</th>
+              ${headers.map(h => `<th style="padding:6px 8px;white-space:nowrap;">${WMS.esc(h)}</th>`).join('')}
+              <th style="padding:6px 8px;">Observaciones</th>
+            </tr>
+          </thead>
+          <tbody>`;
+
+      preview.forEach(row => {
+        const bg = row.estado === 'error' ? '#fef2f2' : row.estado === 'existente' ? '#fff7ed' : '';
+        const badge = row.estado === 'nuevo'
+          ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:600;">NUEVO</span>'
+          : row.estado === 'existente'
+          ? '<span style="background:#ffedd5;color:#9a3412;padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:600;">ACTUALIZAR</span>'
+          : '<span style="background:#fecaca;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:600;">ERROR</span>';
+
+        html += `<tr style="background:${bg};">
+          <td style="padding:4px 8px;text-align:center;">${row.linea}</td>
+          <td style="padding:4px 8px;text-align:center;">${badge}</td>`;
+        headers.forEach(h => {
+          html += `<td style="padding:4px 8px;white-space:nowrap;">${WMS.esc(row.datos[h] || '')}</td>`;
+        });
+        html += `<td style="padding:4px 8px;color:#dc2626;font-size:.72rem;">${row.errores.map(e => WMS.esc(e)).join(', ')}</td></tr>`;
+      });
+
+      html += `</tbody></table></div>`;
+
+      if (stats.errores === stats.total) {
+        html += `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:12px;margin-top:12px;text-align:center;color:#dc2626;font-weight:700;">
+          Todas las filas tienen errores. Corrija el archivo y vuelva a intentar.
+        </div>`;
+      }
+
+      area.innerHTML = html;
+      area.style.display = 'block';
+
+      document.getElementById('btn-import-preview').style.display = 'none';
+      if (stats.errores < stats.total) {
+        document.getElementById('btn-import-confirm').style.display = '';
       }
     } catch (e) {
       progress.style.display = 'none';
-      WMS.toast('error', 'Error al subir archivo');
+      WMS.toast('error', 'Error al analizar archivo');
+    }
+  },
+
+  async doImportUbicaciones() {
+    if (!this._importFile) { WMS.toast('warning', 'No hay archivo cargado'); return; }
+
+    const btnConfirm = document.getElementById('btn-import-confirm');
+    if (btnConfirm) { btnConfirm.disabled = true; btnConfirm.innerHTML = '<div class="spinner sm"></div> Importando...'; }
+
+    const formData = new FormData();
+    formData.append('file', this._importFile);
+
+    try {
+      const r = await fetch(API_BASE + '/param/import-export/upload/ubicaciones', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') },
+        body: formData
+      });
+      const res = await r.json();
+
+      if (res.error) {
+        WMS.toast('error', res.message);
+        if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.innerHTML = '<i class="fa-solid fa-upload"></i> Confirmar Importación'; }
+        return;
+      }
+
+      const s = res.data || {};
+      const area = document.getElementById('import-preview-area');
+      area.innerHTML = `
+        <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:20px;text-align:center;">
+          <div style="font-size:2rem;margin-bottom:8px;"><i class="fa-solid fa-circle-check" style="color:#059669;"></i></div>
+          <div style="font-size:1.1rem;font-weight:700;color:#065f46;margin-bottom:12px;">Importación completada</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-width:500px;margin:0 auto;">
+            <div style="background:#fff;border-radius:4px;padding:8px;">
+              <div style="font-weight:900;font-size:1.2rem;color:#1e293b;">${s.total || 0}</div>
+              <div style="font-size:.72rem;color:#64748b;">Total</div>
+            </div>
+            <div style="background:#fff;border-radius:4px;padding:8px;">
+              <div style="font-weight:900;font-size:1.2rem;color:#059669;">${s.creados || 0}</div>
+              <div style="font-size:.72rem;color:#64748b;">Creadas</div>
+            </div>
+            <div style="background:#fff;border-radius:4px;padding:8px;">
+              <div style="font-weight:900;font-size:1.2rem;color:#ea580c;">${s.actualizados || 0}</div>
+              <div style="font-size:.72rem;color:#64748b;">Actualizadas</div>
+            </div>
+            <div style="background:#fff;border-radius:4px;padding:8px;">
+              <div style="font-weight:900;font-size:1.2rem;color:#dc2626;">${s.omitiendo || 0}</div>
+              <div style="font-size:.72rem;color:#64748b;">Omitidas</div>
+            </div>
+          </div>
+          ${(s.errors && s.errors.length) ? `
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:10px;margin-top:12px;text-align:left;max-height:150px;overflow-y:auto;">
+              <div style="font-weight:700;color:#dc2626;font-size:.8rem;margin-bottom:4px;">Detalle de errores:</div>
+              ${s.errors.map(e => `<div style="font-size:.75rem;color:#991b1b;padding:2px 0;">• ${WMS.esc(e)}</div>`).join('')}
+            </div>` : ''}
+        </div>`;
+
+      if (btnConfirm) btnConfirm.style.display = 'none';
+      this._importFile = null;
+
+      setTimeout(() => this.show_ubicaciones(), 3000);
+    } catch (e) {
+      WMS.toast('error', 'Error al importar');
+      if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.innerHTML = '<i class="fa-solid fa-upload"></i> Confirmar Importación'; }
     }
   },
 
@@ -1757,73 +2292,117 @@ WMS_MODULES.maestro = {
   },
 
   nuevaZona() {
-    WMS.showModal('Nueva Zona', `
-      <div class="form-grid form-grid-2">
-        <div class="form-group"><label class="form-label">CÓDIGO <span class="required">*</span></label><input id="f-zcod" class="form-control" placeholder="A, B, FRIA..." maxlength="10"></div>
-        <div class="form-group"><label class="form-label">DESCRIPCIÓN</label><input id="f-zdesc" class="form-control" placeholder="Descripción opcional"></div>
-      </div>`,
-      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveZona()"><i class="fa-solid fa-save"></i> Guardar</button>`);
+    this.editZona(null, 'ubicacion');
   },
 
-  async saveZona() {
+  async editZona(id, origin = 'maestro') {
+    let z = null;
+    if (id) {
+      try {
+        const r = await API.get('/param/zonas');
+        const zonas = r.data || r || [];
+        z = zonas.find(x => x.id == id);
+      } catch (e) { return WMS.toast('error', 'Error al obtener zona'); }
+    }
+    WMS.showModal(id ? 'Editar Zona' : 'Nueva Zona', `
+      <div class="form-grid form-grid-2">
+        <div class="form-group"><label class="form-label">CÓDIGO <span class="required">*</span></label><input id="f-zcod" class="form-control" value="${WMS.esc(z?.codigo || '')}" placeholder="Ej: CEDI, A, FRIA..." maxlength="20" style="text-transform:uppercase;" required></div>
+        <div class="form-group"><label class="form-label">DESCRIPCIÓN</label><input id="f-zdesc" class="form-control" value="${WMS.esc(z?.descripcion || '')}" placeholder="Descripción opcional"></div>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveZona(${id || 'null'}, '${origin}')"><i class="fa-solid fa-save"></i> Guardar</button>`);
+  },
+
+  async saveZona(id, origin = 'maestro') {
     const data = {
       codigo: document.getElementById('f-zcod')?.value.trim().toUpperCase(),
       descripcion: document.getElementById('f-zdesc')?.value.trim(),
     };
     if (!data.codigo) { WMS.toast('warning', 'El código es obligatorio'); return; }
     try {
-      const r = await API.post('/param/zonas', data);
+      const r = id ? await API.put('/param/zonas/' + id, data) : await API.post('/param/zonas', data);
       if (r.error) WMS.toast('error', r.message);
       else {
-        WMS.toast('success', 'Zona creada: ' + data.codigo);
+        WMS.toast('success', id ? 'Zona actualizada' : 'Zona creada: ' + data.codigo);
         WMS.closeModal('generic-modal');
-        // Refresh the ubicaciones form if it's open
-        if (document.getElementById('generic-modal')) {
-          this.nuevaUbicacion();
+        if (origin === 'ubicacion') {
+           this.nuevaUbicacion();
+        } else {
+           this.show_zonas();
         }
       }
     } catch (e) { WMS.toast('error', 'Error de conexión'); }
   },
 
+  async deleteZona(id, codigo) {
+    if (!confirm('¿Seguro que desea eliminar la zona ' + codigo + '?')) return;
+    try {
+      const r = await API.delete('/param/zonas/' + id);
+      if (r.error) WMS.toast('error', r.message);
+      else {
+        WMS.toast('success', 'Zona eliminada');
+        this.show_zonas();
+      }
+    } catch (e) { WMS.toast('error', 'Error al eliminar'); }
+  },
   // ── PROVEEDORES ──────────────────────────────────────────────
-  async show_proveedores() {
-    WMS.setToolbar(`<button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevoProveedor()"><i class="fa-solid fa-plus"></i> Nuevo Proveedor</button>`);
-    WMS.spinner();
-    const r     = await API.get('/param/proveedores');
-    const items = r.data || r || [];
-    WMS.setContent(`
-      <div class="card">
-        <div class="card-header"><span class="card-title"><i class="fa-solid fa-truck"></i> Proveedores (${items.length})</span></div>
-        <div class="table-container">
-          <table class="erp-table">
-            <thead><tr><th>NIT</th><th>Razón Social</th><th>Contacto</th><th>Teléfono</th><th>Email</th><th>Acciones</th></tr></thead>
-            <tbody>${items.map(p => `<tr>
-              <td style="font-family:monospace;">${WMS.esc(p.nit || '-')}</td>
-              <td><strong>${WMS.esc(p.razon_social || p.nombre || '')}</strong></td>
-              <td>${WMS.esc(p.contacto_nombre || p.contacto || '-')}</td>
-              <td>${WMS.esc(p.telefono || '-')}</td>
-              <td>${WMS.esc(p.email || '-')}</td>
-              <td><div class="actions">
-                <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editProveedor(${p.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
-                <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteProveedor(${p.id},'${WMS.esc(p.razon_social || p.nombre || '')}')"><i class="fa-solid fa-trash"></i></button>
-              </div></td>
-            </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin proveedores</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </div>`);
+  filtrarProveedores(q) {
+    if (!this._proveedoresData) return;
+    const f = q.toLowerCase();
+    this.renderProveedores(f
+      ? this._proveedoresData.filter(c => c.razon_social?.toLowerCase().includes(f) || c.nit?.includes(f))
+      : this._proveedoresData);
   },
 
-  // FIX: campos corregidos — razon_social (no nombre), contacto_nombre (no contacto), nit obligatorio
+  async show_proveedores() {
+    WMS.setToolbar(`
+      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-proveedores" placeholder="Buscar por NIT o Razón Social..." oninput="WMS_MODULES.maestro.filtrarProveedores(this.value)"></div>
+      <div class="actions" style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.show_proveedores()" title="Actualizar"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevoProveedor()"><i class="fa-solid fa-plus"></i> Nuevo Proveedor</button>
+      </div>`);
+    WMS.spinner();
+    try {
+      const r = await API.get('/param/proveedores');
+      this._proveedoresData = r.data || r || [];
+      this.renderProveedores(this._proveedoresData);
+    } catch (e) { WMS.setContent('<div class="m-empty">Error de conexión</div>'); }
+  },
+
+  renderProveedores(items) {
+    WMS.setContent(`
+        <div class="card">
+          <div class="table-container">
+            <table class="erp-table">
+              <thead><tr><th>NIT</th><th>Razón Social</th><th>Teléfono</th><th>Email</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <tbody>${items.length === 0
+                ? '<tr><td colspan="6" class="table-empty" style="text-align:center; padding:30px;">Sin proveedores registrados</td></tr>'
+                : items.map(e => `<tr class="main-row">
+                    <td><span class="badge badge-info" style="border-radius:4px; font-family:monospace;">${WMS.esc(e.nit || '')}</span></td>
+                    <td style="font-weight:600; color:#1e293b;">${WMS.esc(e.razon_social || '')}</td>
+                    <td style="color:#64748b;">${WMS.esc(e.telefono || '-')}</td>
+                    <td style="color:#64748b;">${WMS.esc(e.email || '-')}</td>
+                    <td><span class="status-chip ${e.activo ? 'status-cerrada' : 'status-cancelada'}" style="border-radius:4px;">${e.activo ? 'Activo' : 'Inactivo'}</span></td>
+                    <td><div class="actions">
+                      <button class="btn btn-sm btn-secondary" style="border-radius:4px;" onclick="WMS_MODULES.maestro.editProveedor(${e.id})"><i class="fa-solid fa-pen"></i></button>
+                      ${(typeof _wmsUser !== 'undefined' && _wmsUser?.rol === 'SuperAdmin') ? `<button class="btn btn-sm btn-danger" style="border-radius:4px;" onclick="WMS_MODULES.maestro.deleteProveedor(${e.id},'${WMS.esc(e.razon_social || '')}')"><i class="fa-solid fa-trash"></i></button>` : ''}
+                    </div></td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`);
+  },
+
   nuevoProveedor() {
     WMS.showModal('Nuevo Proveedor', `
-      <div class="form-grid form-grid-2">
-        <div class="form-group"><label class="form-label">NIT <span class="required">*</span></label><input id="f-vnit" class="form-control" placeholder="900000001-1"></div>
-        <div class="form-group"><label class="form-label">RAZÓN SOCIAL <span class="required">*</span></label><input id="f-vrs" class="form-control" placeholder="Nombre del proveedor"></div>
-        <div class="form-group"><label class="form-label">NOMBRE CONTACTO</label><input id="f-vcon" class="form-control" placeholder="Nombre del contacto principal"></div>
-        <div class="form-group"><label class="form-label">TELÉFONO</label><input id="f-vtel" class="form-control" placeholder="+57 300 000 0000"></div>
-        <div class="form-group" style="grid-column:1/-1;"><label class="form-label">EMAIL</label><input id="f-vmail" class="form-control" type="email" placeholder="ventas@proveedor.com"></div>
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="form-group"><label class="form-label">NIT <span class="required" style="color:#ef4444;">*</span></label><input id="f-pnit" class="form-control" placeholder="Ej: 900000001-1"></div>
+        <div class="form-group"><label class="form-label">RAZÓN SOCIAL <span class="required" style="color:#ef4444;">*</span></label><input id="f-prs" class="form-control" placeholder="Nombre del proveedor"></div>
+        <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-pdir" class="form-control" placeholder="Dirección"></div>
+        <div class="form-group"><label class="form-label">TELÉFONO</label><input id="f-ptel" class="form-control" placeholder="Teléfono"></div>
+        <div class="form-group"><label class="form-label">EMAIL</label><input id="f-pemail" class="form-control" type="email" placeholder="contacto@proveedor.com"></div>
+        <div class="form-group" style="display:none;"><input type="checkbox" id="f-pact" checked></div>
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveProveedor(null)"><i class="fa-solid fa-save"></i> Guardar</button>`);
@@ -1831,68 +2410,95 @@ WMS_MODULES.maestro = {
 
   async saveProveedor(id) {
     const data = {
-      nit:             document.getElementById('f-vnit')?.value.trim(),
-      razon_social:    document.getElementById('f-vrs')?.value.trim(),
-      contacto_nombre: document.getElementById('f-vcon')?.value.trim(),
-      telefono:        document.getElementById('f-vtel')?.value.trim(),
-      email:           document.getElementById('f-vmail')?.value.trim()
+      nit:          document.getElementById('f-pnit')?.value.trim(),
+      razon_social: document.getElementById('f-prs')?.value.trim(),
+      direccion:    document.getElementById('f-pdir')?.value.trim(),
+      telefono:     document.getElementById('f-ptel')?.value.trim(),
+      email:        document.getElementById('f-pemail')?.value.trim(),
+      activo:       document.getElementById('f-pact') ? (document.getElementById('f-pact').checked ? 1 : 0) : 1
     };
-    if (!data.nit)          { WMS.toast('warning', 'El NIT es obligatorio'); return; }
-    if (!data.razon_social) { WMS.toast('warning', 'La Razón Social es obligatoria'); return; }
-    const r = id ? await API.put('/param/proveedores/' + id, data) : await API.post('/param/proveedores', data);
-    if (r.error) WMS.toast('error', r.message);
-    else { WMS.toast('success', 'Proveedor guardado'); WMS.closeModal('generic-modal'); this.show_proveedores(); }
+    if (!data.nit || !data.razon_social) { WMS.toast('warning', 'NIT y Razón Social son obligatorios'); return; }
+    try {
+      const r = id ? await API.put('/param/proveedores/' + id, data) : await API.post('/param/proveedores', data);
+      if (r.error) WMS.toast('error', r.message);
+      else { WMS.toast('success', id ? 'Proveedor actualizado' : 'Proveedor creado'); WMS.closeModal('generic-modal'); this.show_proveedores(); }
+    } catch (e) { WMS.toast('error', 'Error de conexión'); }
   },
 
-  // FIX: editProveedor nuevo — carga datos reales y pre-llena modal con campos correctos
   async editProveedor(id) {
     try {
-      const r     = await API.get('/param/proveedores');
-      const items = r.data || r || [];
-      const p     = items.find(x => x.id == id);
-      if (!p) { WMS.toast('error', 'Proveedor no encontrado'); return; }
+      const e = this._proveedoresData?.find(x => x.id == id);
+      if (!e) return;
+      
       WMS.showModal('Editar Proveedor', `
-        <div class="form-grid form-grid-2">
-          <div class="form-group"><label class="form-label">NIT <span class="required">*</span></label><input id="f-vnit" class="form-control" value="${WMS.esc(p.nit || '')}"></div>
-          <div class="form-group"><label class="form-label">RAZÓN SOCIAL <span class="required">*</span></label><input id="f-vrs" class="form-control" value="${WMS.esc(p.razon_social || p.nombre || '')}"></div>
-          <div class="form-group"><label class="form-label">NOMBRE CONTACTO</label><input id="f-vcon" class="form-control" value="${WMS.esc(p.contacto_nombre || p.contacto || '')}"></div>
-          <div class="form-group"><label class="form-label">TELÉFONO</label><input id="f-vtel" class="form-control" value="${WMS.esc(p.telefono || '')}"></div>
-          <div class="form-group" style="grid-column:1/-1;"><label class="form-label">EMAIL</label><input id="f-vmail" class="form-control" type="email" value="${WMS.esc(p.email || '')}"></div>
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div class="form-group"><label class="form-label">NIT <span class="required" style="color:#ef4444;">*</span></label><input id="f-pnit" class="form-control" value="${WMS.esc(e.nit || '')}"></div>
+          <div class="form-group"><label class="form-label">RAZÓN SOCIAL <span class="required" style="color:#ef4444;">*</span></label><input id="f-prs" class="form-control" value="${WMS.esc(e.razon_social || '')}"></div>
+          <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-pdir" class="form-control" value="${WMS.esc(e.direccion || '')}"></div>
+          <div class="form-group"><label class="form-label">TELÉFONO</label><input id="f-ptel" class="form-control" value="${WMS.esc(e.telefono || '')}"></div>
+          <div class="form-group"><label class="form-label">EMAIL</label><input id="f-pemail" class="form-control" value="${WMS.esc(e.email || '')}"></div>
+          <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:4px; margin-top:10px;">
+             <div>
+               <span style="font-weight:600; color:#334155; font-size:0.9rem; display:block;">Estado Activo</span>
+             </div>
+             <label class="wms-switch"><input type="checkbox" id="f-pact" ${e.activo ? 'checked' : ''}><span class="slider"></span></label>
+          </div>
         </div>`,
         `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-         <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveProveedor(${id})"><i class="fa-solid fa-save"></i> Actualizar</button>`);
-    } catch (ex) { WMS.toast('error', 'Error cargando proveedor'); }
+         <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveProveedor(${id})"><i class="fa-solid fa-save"></i> Guardar</button>`);
+    } catch (ex) { WMS.toast('error', 'Error cargando datos'); }
   },
 
   deleteProveedor(id, n) {
-    WMS.confirm('Eliminar Proveedor', `¿Eliminar "<strong>${WMS.esc(n)}</strong>"?`, async () => {
-      const r = await API.delete('/param/proveedores/' + id);
-      if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Eliminado'); this.show_proveedores(); }
+    WMS.confirm('Eliminar Proveedor', `¿Seguro que desea eliminar a "${WMS.esc(n)}"?`, async () => {
+      try {
+        const r = await API.delete('/param/proveedores/' + id);
+        if (r.error) WMS.toast('error', r.message);
+        else { WMS.toast('success', 'Proveedor eliminado'); this.show_proveedores(); }
+      } catch(e) { WMS.toast('error', 'Error al eliminar'); }
     });
   },
 
   // ── RUTAS ────────────────────────────────────────────────────
+  filtrarRutas(q) {
+    if (!this._rutasData) return;
+    const f = q.toLowerCase();
+    this.renderRutas(f
+      ? this._rutasData.filter(r => r.nombre?.toLowerCase().includes(f) || r.comercial?.toLowerCase().includes(f))
+      : this._rutasData);
+  },
+
   async show_rutas() {
-    WMS.setToolbar(`<button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaRuta()"><i class="fa-solid fa-plus"></i> Nueva Ruta</button>`);
+    WMS.setToolbar(`
+      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-rutas" placeholder="Buscar ruta o comercial..." oninput="WMS_MODULES.maestro.filtrarRutas(this.value)"></div>
+      <div class="actions" style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.show_rutas()" title="Actualizar"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaRuta()"><i class="fa-solid fa-plus"></i> Nueva Ruta</button>
+      </div>`);
     WMS.spinner();
-    const r     = await API.get('/param/rutas');
-    const items = r.data || r || [];
+    try {
+      const r = await API.get('/param/rutas');
+      this._rutasData = r.data || r || [];
+      this.renderRutas(this._rutasData);
+    } catch (e) { WMS.setContent('<div class="m-empty">Error cargando rutas</div>'); }
+  },
+
+  renderRutas(items) {
     WMS.setContent(`
       <div class="card">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-route"></i> Rutas (${items.length})</span></div>
         <div class="table-container">
           <table class="erp-table">
-            <thead><tr><th>Nombre / Código</th><th>Comercial</th><th>Frecuencia</th><th>Acciones</th></tr></thead>
+            <thead><tr><th>Nombre</th><th>Comercial</th><th>Clientes</th><th>Acciones</th></tr></thead>
             <tbody>${items.map(r => `<tr>
-              <td><strong>${WMS.esc(r.nombre || r.codigo || '')}</strong></td>
-              <td>${WMS.esc(r.comercial || '-')}</td>
-              <td><span class="badge badge-info">${WMS.esc(r.frecuencia || '-')}</span></td>
+              <td><strong>${WMS.esc(r.nombre || '')}</strong></td>
+              <td style="font-size:.82rem;">${WMS.esc(r.comercial || '-')}</td>
+              <td><span class="badge badge-gray">${r.clientes_count ?? '—'}</span></td>
               <td><div class="actions">
                 <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editRuta(${r.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
                 <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteRuta(${r.id},'${WMS.esc(r.nombre || '')}')"><i class="fa-solid fa-trash"></i></button>
               </div></td>
-            </tr>`).join('') || '<tr><td colspan="4" class="table-empty">Sin rutas</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="4" class="table-empty">Sin rutas registradas</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -1902,123 +2508,86 @@ WMS_MODULES.maestro = {
   nuevaRuta() {
     WMS.showModal('Nueva Ruta', `
       <div class="form-grid form-grid-2">
-        <div class="form-group"><label class="form-label">NOMBRE / CÓDIGO <span class="required">*</span></label><input id="f-rnom" class="form-control" placeholder="RUTA-01 o Norte"></div>
-        <div class="form-group"><label class="form-label">COMERCIAL</label><input id="f-rcom" class="form-control" placeholder="Nombre del asesor"></div>
-        <div class="form-group" style="grid-column:1/-1;"><label class="form-label">FRECUENCIA <span class="required">*</span></label>
-          <select id="f-rfrec" class="form-control" onchange="WMS_MODULES.maestro.updateFrecUI(this.value)">
-            <option value="Diaria">Diaria</option>
-            <option value="Semanal">Semanal</option>
-            <option value="Quincenal">Quincenal</option>
-            <option value="Mensual">Mensual</option>
-          </select></div>
-        <div class="form-group" id="frec-detail-group" style="display:none; grid-column:1/-1;">
-           <label class="form-label" id="frec-detail-label">Detalle de frecuencia</label>
-           <div id="frec-detail-container" style="display:flex; flex-wrap:wrap; gap:8px; background:#f1f5f9; padding:10px; border-radius:4px;"></div>
-        </div>
+        <div class="form-group"><label class="form-label">NOMBRE <span class="required">*</span></label>
+          <input id="f-rnom" class="form-control" placeholder="RUTA-01 o Norte"></div>
+        <div class="form-group"><label class="form-label">COMERCIAL</label>
+          <input id="f-rcom" class="form-control" placeholder="Asesor responsable"></div>
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveRuta(null)"><i class="fa-solid fa-save"></i> Guardar</button>`);
-  },
-
-  updateFrecUI(val, savedVal = '') {
-    const group = document.getElementById('frec-detail-group');
-    const container = document.getElementById('frec-detail-container');
-    const label = document.getElementById('frec-detail-label');
-    if (!group || !container) return;
-
-    if (val === 'Diaria') { group.style.display = 'none'; return; }
-    group.style.display = 'block';
-    container.innerHTML = '';
-
-    if (val === 'Semanal') {
-      label.textContent = 'Seleccione el día de la semana';
-      const dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-      container.innerHTML = dias.map(d => `
-        <label style="font-size:.8rem; display:flex; align-items:center; gap:5px; cursor:pointer;">
-          <input type="radio" name="frec-day" value="${d}" ${savedVal === d ? 'checked' : ''}> ${d}
-        </label>`).join('');
-    } else if (val === 'Quincenal') {
-      label.textContent = 'Seleccione los días del mes (ej: 1 y 15)';
-      const vals = savedVal ? savedVal.split(',') : [];
-      container.innerHTML = Array.from({length: 31}, (_, i) => i + 1).map(d => `
-        <label style="font-size:.7rem; width:35px; height:35px; border:1px solid #cbd5e1; border-radius:4px; display:flex; align-items:center; justify-content:center; cursor:pointer; background:${vals.includes(String(d)) ? '#e2e8f0' : 'white'};">
-          <input type="checkbox" name="frec-days" value="${d}" ${vals.includes(String(d)) ? 'checked' : ''} style="display:none;" onchange="this.parentElement.style.background=this.checked?'#e2e8f0':'white'"> ${d}
-        </label>`).join('');
-    } else if (val === 'Mensual') {
-      label.textContent = 'Seleccione el mes sugerido';
-      const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-      container.innerHTML = meses.map(m => `
-        <label style="font-size:.8rem; display:flex; align-items:center; gap:5px; cursor:pointer;">
-          <input type="radio" name="frec-month" value="${m}" ${savedVal === m ? 'checked' : ''}> ${m}
-        </label>`).join('');
-    }
+       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveRuta(null)"><i class="fa-solid fa-save"></i> Guardar Ruta</button>`);
   },
 
   async saveRuta(id) {
-    const frecBase = document.getElementById('f-rfrec')?.value;
-    let frecFinal = frecBase;
-
-    if (frecBase === 'Semanal') {
-      const day = document.querySelector('input[name="frec-day"]:checked')?.value;
-      if (!day) { WMS.toast('warning', 'Seleccione el día de la semana'); return; }
-      frecFinal = `Semanal [${day}]`;
-    } else if (frecBase === 'Quincenal') {
-      const days = Array.from(document.querySelectorAll('input[name="frec-days"]:checked')).map(i => i.value);
-      if (days.length === 0) { WMS.toast('warning', 'Seleccione al menos un día'); return; }
-      frecFinal = `Quincenal [${days.join(',')}]`;
-    } else if (frecBase === 'Mensual') {
-      const month = document.querySelector('input[name="frec-month"]:checked')?.value;
-      if (!month) { WMS.toast('warning', 'Seleccione el mes'); return; }
-      frecFinal = `Mensual [${month}]`;
-    }
-
-    const data = {
-      nombre:    document.getElementById('f-rnom')?.value.trim(),
-      comercial: document.getElementById('f-rcom')?.value.trim(),
-      frecuencia: frecFinal
-    };
-    if (!data.nombre) { WMS.toast('warning', 'El nombre es obligatorio'); return; }
-    const r = id ? await API.put('/param/rutas/' + id, data) : await API.post('/param/rutas', data);
-    if (r.error) WMS.toast('error', r.message);
-    else { WMS.toast('success', 'Ruta guardada'); WMS.closeModal('generic-modal'); this.show_rutas(); }
+    const nombre = document.getElementById('f-rnom')?.value.trim();
+    const comerc = document.getElementById('f-rcom')?.value.trim() || '';
+    if (!nombre) { WMS.toast('warning','El nombre es obligatorio'); return; }
+    try {
+      const r = id
+        ? await API.put('/param/rutas/'+id, { nombre, comercial: comerc })
+        : await API.post('/param/rutas', { nombre, comercial: comerc });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success','Ruta guardada');
+      WMS.closeModal('generic-modal');
+      this.show_rutas();
+    } catch(e) { WMS.toast('error','Error guardando ruta'); }
   },
 
   async editRuta(id) {
     try {
-      const r     = await API.get('/param/rutas');
-      const items = r.data || r || [];
-      const rt    = items.find(x => x.id == id);
-      if (!rt) { WMS.toast('error', 'Ruta no encontrada'); return; }
+      const r  = await API.get('/param/rutas');
+      const rt = (r.data||r||[]).find(x => x.id == id);
+      if (!rt) { WMS.toast('error','Ruta no encontrada'); return; }
       WMS.showModal('Editar Ruta', `
         <div class="form-grid form-grid-2">
-          <div class="form-group"><label class="form-label">NOMBRE / CÓDIGO <span class="required">*</span></label><input id="f-rnom" class="form-control" value="${WMS.esc(rt.nombre || rt.codigo || '')}"></div>
-          <div class="form-group"><label class="form-label">COMERCIAL</label><input id="f-rcom" class="form-control" value="${WMS.esc(rt.comercial || '')}"></div>
-          <div class="form-group" style="grid-column:1/-1;"><label class="form-label">FRECUENCIA <span class="required">*</span></label>
-            <select id="f-rfrec" class="form-control" onchange="WMS_MODULES.maestro.updateFrecUI(this.value)">
-              ${['Diaria', 'Semanal', 'Quincenal', 'Mensual'].map(f => `<option ${rt.frecuencia?.startsWith(f) ? 'selected' : ''}>${f}</option>`).join('')}
-            </select></div>
-          <div class="form-group" id="frec-detail-group" style="display:none; grid-column:1/-1;">
-             <label class="form-label" id="frec-detail-label">Detalle de frecuencia</label>
-             <div id="frec-detail-container" style="display:flex; flex-wrap:wrap; gap:8px; background:#f1f5f9; padding:10px; border-radius:4px;"></div>
-          </div>
+          <div class="form-group"><label class="form-label">NOMBRE <span class="required">*</span></label>
+            <input id="f-rnom" class="form-control" value="${WMS.esc(rt.nombre||'')}"></div>
+          <div class="form-group"><label class="form-label">COMERCIAL</label>
+            <input id="f-rcom" class="form-control" value="${WMS.esc(rt.comercial||'')}"></div>
         </div>`,
         `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
          <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveRuta(${id})"><i class="fa-solid fa-save"></i> Actualizar</button>`);
-      
-      // Activar UI de detalle si no es diaria
-      if (rt.frecuencia && !rt.frecuencia.startsWith('Diaria')) {
-        const base = rt.frecuencia.split(' ')[0];
-        const val = rt.frecuencia.match(/\[(.*?)\]/)?.[1] || '';
-        this.updateFrecUI(base, val);
-      }
-    } catch (ex) { WMS.toast('error', 'Error cargando ruta'); }
+    } catch(e) { WMS.toast('error','Error cargando ruta'); }
   },
 
   deleteRuta(id, n) {
-    WMS.confirm('Eliminar Ruta', `¿Eliminar "${WMS.esc(n)}"?`, async () => {
-      const r = await API.delete('/param/rutas/' + id);
-      if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Ruta eliminada'); this.show_rutas(); }
+    WMS.confirm('Eliminar Ruta', `¿Eliminar "${WMS.esc(n)}"? Los clientes asociados quedarán sin ruta.`, async () => {
+      try {
+        const r = await API.delete('/param/rutas/'+id);
+        if (r.error) WMS.toast('error', r.message);
+        else { WMS.toast('success','Ruta eliminada'); this.show_rutas(); }
+      } catch(e) { WMS.toast('error','Error eliminando ruta'); }
+    });
+  },
+
+  // Helpers compartidos de frecuencia (usados por formulario de clientes)
+  _switchFrecTipo(tipo) {
+    document.getElementById('f-cfrec-tipo').value = tipo;
+    const btnD = document.getElementById('btn-cfrec-diario');
+    const btnP = document.getElementById('btn-cfrec-parcial');
+    if (btnD) { btnD.style.background = tipo==='Diario'?'#1e40af':'#f8fafc'; btnD.style.color = tipo==='Diario'?'#fff':'#374151'; btnD.style.fontWeight = tipo==='Diario'?'700':'400'; }
+    if (btnP) { btnP.style.background = tipo==='Parcial'?'#d97706':'#f8fafc'; btnP.style.color = tipo==='Parcial'?'#fff':'#374151'; btnP.style.fontWeight = tipo==='Parcial'?'700':'400'; }
+    const pd = document.getElementById('cpanel-frec-diario');
+    const pp = document.getElementById('cpanel-frec-parcial');
+    if (pd) pd.style.display = tipo==='Diario'  ? '' : 'none';
+    if (pp) pp.style.display = tipo==='Parcial' ? '' : 'none';
+  },
+
+  _switchSubtipo(sub) {
+    document.getElementById('f-cfrec-subtipo').value = sub;
+    ['diario','semanal','quincenal','mensual'].forEach(s => {
+      const btn = document.getElementById('cbtn-sub-'+s);
+      if (!btn) return;
+      const active = s === sub.toLowerCase();
+      const colMap = {diario:'#f59e0b',semanal:'#3b82f6',quincenal:'#8b5cf6',mensual:'#10b981'};
+      const col = colMap[s];
+      btn.style.borderColor = active ? col : '#e2e8f0';
+      btn.style.background  = active ? col+'22' : '#fff';
+      btn.style.color       = active ? col : '#374151';
+      btn.style.fontWeight  = active ? '700' : '400';
+    });
+    ['semanal','mensual','quincenal'].forEach(s => {
+      const el = document.getElementById('csub-panel-'+s);
+      if (el) el.style.display = (s === sub.toLowerCase()) ? '' : 'none';
     });
   },
 
@@ -2106,38 +2675,60 @@ WMS_MODULES.maestro = {
   // ── CLIENTES ────────────────────────────────────────────────
   async show_clientes() {
     WMS.setToolbar(`
-      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-cli" placeholder="Buscar por NIT o Razón Social..." oninput="WMS_MODULES.maestro.filtrarClientes(this.value)"></div>
+      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-cli" placeholder="Buscar por NIT, razón social o ruta..." oninput="WMS_MODULES.maestro.filtrarClientes(this.value)"></div>
       <div class="actions" style="display:flex;gap:8px;">
         <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.show_clientes()" title="Actualizar"><i class="fa-solid fa-rotate"></i></button>
         <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.importarGenerico('clientes')"><i class="fa-solid fa-file-import"></i> Importar</button>
-        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevoCliente()"><i class="fa-solid fa-plus"></i> Nuevo</button>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevoCliente()"><i class="fa-solid fa-plus"></i> Nuevo Cliente</button>
       </div>`);
     WMS.spinner();
     try {
-      const r = await API.get('/param/clientes');
-      this._clientesData = r.data || r || [];
+      const [rc, rr] = await Promise.all([
+        API.get('/param/clientes'),
+        API.get('/param/rutas'),
+      ]);
+      this._clientesData = rc.data || rc || [];
+      this._rutasData    = rr.data || rr || [];
       this.renderClientes(this._clientesData);
     } catch (e) { WMS.setContent('<div class="m-empty">Error de conexión</div>'); }
   },
 
   renderClientes(items) {
+    const mapsBtn = (c) => {
+      if (!c.latitud || !c.longitud) return '';
+      return `<a href="https://maps.google.com/?q=${c.latitud},${c.longitud}" target="_blank" class="btn btn-sm" style="background:#1a73e8;color:#fff;padding:3px 7px;" title="Ver en Google Maps"><i class="fa-solid fa-map-location-dot"></i></a>`;
+    };
+    const frecBadge = (c) => {
+      if (!c.frecuencia) return '<span style="color:#94a3b8;font-size:.73rem;">—</span>';
+      const color = c.frecuencia_tipo==='Diario' ? '#1e40af' : '#d97706';
+      return `<span style="font-size:.72rem;font-weight:600;color:${color};white-space:nowrap;">${WMS.esc(c.frecuencia)}</span>`;
+    };
     WMS.setContent(`
       <div class="card">
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-user-tie"></i> Clientes (${items.length})</span></div>
-        <div class="table-container">
+        <div class="table-container" style="overflow-x:auto;">
           <table class="erp-table">
-            <thead><tr><th>NIT</th><th>Razón Social</th><th>Ciudad</th><th>Contacto</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <thead><tr>
+              <th>NIT</th><th>Razón Social</th><th>Ruta</th><th>Frecuencia</th>
+              <th>Horario</th><th>Coords</th><th>Estado</th><th>Acciones</th>
+            </tr></thead>
             <tbody>${items.map(c => `<tr>
-              <td><span class="badge badge-gray" style="font-family:monospace;">${WMS.esc(c.nit || '')}</span></td>
-              <td><strong>${WMS.esc(c.razon_social || '')}</strong></td>
-              <td>${WMS.esc(c.ciudad || '-')}</td>
-              <td>${WMS.esc(c.contacto_nombre || '-')}</td>
-              <td><span class="status-chip ${c.activo ? 'status-cerrada' : 'status-cancelada'}">${c.activo ? 'Activo' : 'Inactivo'}</span></td>
-              <td><div class="actions">
+              <td><span class="badge badge-gray" style="font-family:monospace;">${WMS.esc(c.nit||'')}</span></td>
+              <td>
+                <strong>${WMS.esc(c.razon_social||'')}</strong>
+                ${c.contacto_nombre?`<br><span style="font-size:.73rem;color:#64748b;">${WMS.esc(c.contacto_nombre)}</span>`:''}
+              </td>
+              <td>${c.ruta?`<span class="badge badge-primary">${WMS.esc(c.ruta.nombre||'')}</span>`:'<span style="color:#f59e0b;font-size:.75rem;"><i class="fa-solid fa-triangle-exclamation"></i> Sin ruta</span>'}</td>
+              <td>${frecBadge(c)}</td>
+              <td style="font-size:.78rem;">${c.horario?`<span style="color:#1e40af;"><i class="fa-regular fa-clock"></i> ${WMS.esc(c.horario)}</span>`:'<span style="color:#94a3b8;">—</span>'}</td>
+              <td>${c.latitud&&c.longitud?`<span style="font-size:.73rem;color:#16a34a;white-space:nowrap;"><i class="fa-solid fa-location-dot"></i> ${parseFloat(c.latitud).toFixed(4)}, ${parseFloat(c.longitud).toFixed(4)}</span>`:'<span style="color:#94a3b8;font-size:.73rem;">—</span>'}</td>
+              <td><span class="status-chip ${c.activo?'status-cerrada':'status-cancelada'}">${c.activo?'Activo':'Inactivo'}</span></td>
+              <td><div class="actions" style="gap:3px;">
+                ${mapsBtn(c)}
                 <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editCliente(${c.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
-                <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteCliente(${c.id},'${WMS.esc(c.razon_social || '')}')"><i class="fa-solid fa-trash"></i></button>
+                <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteCliente(${c.id},'${WMS.esc(c.razon_social||'')}')"><i class="fa-solid fa-trash"></i></button>
               </div></td>
-            </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin clientes registrados</td></tr>'}
+            </tr>`).join('')||'<tr><td colspan="8" class="table-empty">Sin clientes registrados</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -2148,43 +2739,244 @@ WMS_MODULES.maestro = {
     if (!this._clientesData) return;
     const f = q.toLowerCase();
     this.renderClientes(f
-      ? this._clientesData.filter(c => c.razon_social?.toLowerCase().includes(f) || c.nit?.includes(f))
+      ? this._clientesData.filter(c =>
+          c.razon_social?.toLowerCase().includes(f) ||
+          c.nit?.includes(f) ||
+          c.ruta?.nombre?.toLowerCase().includes(f))
       : this._clientesData);
   },
 
+  _clienteModalBody(c = null, rutas = []) {
+    const rutaOpts = rutas.map(r =>
+      `<option value="${r.id}" ${c?.ruta_id==r.id?'selected':''}>${WMS.esc(r.nombre)}</option>`
+    ).join('');
+    const v = (field, def='') => c ? WMS.esc(c[field]||def) : def;
+
+    // Frecuencia guardada del cliente
+    const tipo    = c?.frecuencia_tipo || 'Diario';
+    const cfg     = c?.frecuencia_config
+      ? (typeof c.frecuencia_config === 'string' ? (() => { try { return JSON.parse(c.frecuencia_config); } catch(_){return {};} })() : c.frecuencia_config)
+      : {};
+    const DIAS_SEM = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+    const diasSel  = cfg.dias || [];
+    const diaSem   = cfg.dia  || '';
+    const diaMes   = cfg.dia_mes || '';
+    const subtipo  = cfg.subtipo || 'Diario';
+
+    const checkDias = DIAS_SEM.map(d =>
+      `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;background:${diasSel.includes(d)?'#dbeafe':'#f8fafc'};border:1px solid ${diasSel.includes(d)?'#93c5fd':'#e2e8f0'};border-radius:4px;padding:5px 10px;font-size:.8rem;">
+        <input type="checkbox" name="cfrec-dias" value="${d}" ${diasSel.includes(d)?'checked':''}
+          onchange="this.parentElement.style.background=this.checked?'#dbeafe':'#f8fafc';this.parentElement.style.borderColor=this.checked?'#93c5fd':'#e2e8f0';"> ${d}
+      </label>`
+    ).join('');
+
+    const radioSemana = DIAS_SEM.map(d =>
+      `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:.82rem;">
+        <input type="radio" name="cfrec-dia-sem" value="${d}" ${diaSem===d?'checked':''}> ${d}
+      </label>`
+    ).join('');
+
+    const numDias = Array.from({length:31},(_,i)=>i+1).map(n =>
+      `<label style="width:34px;height:34px;border:1px solid ${diaMes==n?'#3b82f6':'#e2e8f0'};border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:.75rem;font-weight:${diaMes==n?'700':'400'};background:${diaMes==n?'#eff6ff':'#fff'};">
+        <input type="radio" name="cfrec-dia-mes" value="${n}" ${diaMes==n?'checked':''} style="display:none;"
+          onchange="document.querySelectorAll('input[name=cfrec-dia-mes]').forEach(x=>{x.parentElement.style.background=x.checked?'#eff6ff':'#fff';x.parentElement.style.borderColor=x.checked?'#3b82f6':'#e2e8f0';x.parentElement.style.fontWeight=x.checked?'700':'400';})"> ${n}
+      </label>`
+    ).join('');
+
+    return `<div class="form-grid form-grid-2">
+
+      <div class="form-group"><label class="form-label">NIT <span class="required">*</span></label>
+        <input id="f-cnit" class="form-control" placeholder="900.000.000-1" maxlength="70" value="${v('nit')}"></div>
+
+      <div class="form-group"><label class="form-label">RAZÓN SOCIAL <span class="required">*</span></label>
+        <input id="f-crs" class="form-control" placeholder="Nombre completo" value="${v('razon_social')}"></div>
+
+      <div class="form-group" style="grid-column:1/-1;">
+        <label class="form-label"><i class="fa-solid fa-route" style="color:#1e40af;"></i> RUTA</label>
+        <select id="f-cruta" class="form-control">
+          <option value="">-- Sin ruta asignada --</option>
+          ${rutaOpts}
+        </select>
+      </div>
+
+      <!-- ── FRECUENCIA DE VISITA (por cliente) ────────────────── -->
+      <div class="form-group" style="grid-column:1/-1;">
+        <label class="form-label"><i class="fa-solid fa-calendar-days" style="color:#1e40af;"></i> FRECUENCIA DE VISITA <span class="required">*</span></label>
+        <div style="display:flex;gap:0;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:10px;">
+          <button type="button" id="btn-cfrec-diario" onclick="WMS_MODULES.maestro._switchFrecTipo('Diario')"
+            class="btn" style="flex:1;border-radius:0;border:none;padding:9px;font-size:.85rem;background:${tipo==='Diario'?'#1e40af':'#f8fafc'};color:${tipo==='Diario'?'#fff':'#374151'};font-weight:${tipo==='Diario'?'700':'400'};">
+            <i class="fa-solid fa-calendar-days"></i> Diario
+          </button>
+          <button type="button" id="btn-cfrec-parcial" onclick="WMS_MODULES.maestro._switchFrecTipo('Parcial')"
+            class="btn" style="flex:1;border-radius:0;border-left:1px solid #e2e8f0;border-right:none;border-top:none;border-bottom:none;padding:9px;font-size:.85rem;background:${tipo==='Parcial'?'#d97706':'#f8fafc'};color:${tipo==='Parcial'?'#fff':'#374151'};font-weight:${tipo==='Parcial'?'700':'400'};">
+            <i class="fa-solid fa-calendar-week"></i> Parcial
+          </button>
+        </div>
+        <input type="hidden" id="f-cfrec-tipo" value="${tipo}">
+
+        <!-- Panel Diario: checkboxes días semana -->
+        <div id="cpanel-frec-diario" style="${tipo==='Diario'?'':'display:none;'}">
+          <div style="display:flex;flex-wrap:wrap;gap:6px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:12px;">
+            ${checkDias}
+          </div>
+          <p style="font-size:.72rem;color:#64748b;margin-top:4px;"><i class="fa-solid fa-info-circle"></i> Días en que se visita este cliente semanalmente.</p>
+        </div>
+
+        <!-- Panel Parcial -->
+        <div id="cpanel-frec-parcial" style="${tipo==='Parcial'?'':'display:none;'}">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;">
+            ${[['Diario','fa-sun','#f59e0b'],['Semanal','fa-calendar-week','#3b82f6'],['Quincenal','fa-calendar-alt','#8b5cf6'],['Mensual','fa-calendar','#10b981']].map(([s,ico,col])=>`
+            <button type="button" id="cbtn-sub-${s.toLowerCase()}" onclick="WMS_MODULES.maestro._switchSubtipo('${s}')"
+              class="btn" style="border:2px solid ${subtipo===s?col:'#e2e8f0'};background:${subtipo===s?col+'22':'#fff'};color:${subtipo===s?col:'#374151'};padding:8px 4px;border-radius:6px;font-size:.78rem;font-weight:${subtipo===s?'700':'400'};">
+              <i class="fa-solid ${ico}" style="display:block;font-size:1.1em;margin-bottom:3px;"></i>${s}
+            </button>`).join('')}
+          </div>
+          <input type="hidden" id="f-cfrec-subtipo" value="${subtipo}">
+          <!-- Semanal -->
+          <div id="csub-panel-semanal" style="${subtipo==='Semanal'?'':'display:none;'}">
+            <label class="form-label" style="font-size:.8rem;">Día de la semana</label>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px;">${radioSemana}</div>
+          </div>
+          <!-- Mensual -->
+          <div id="csub-panel-mensual" style="${subtipo==='Mensual'?'':'display:none;'}">
+            <label class="form-label" style="font-size:.8rem;">Día del mes en que se visita</label>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px;">${numDias}</div>
+          </div>
+          <!-- Quincenal info -->
+          <div id="csub-panel-quincenal" style="${subtipo==='Quincenal'?'':'display:none;'}">
+            <div style="background:#f3e8ff;border:1px solid #d8b4fe;border-radius:6px;padding:10px;font-size:.82rem;color:#6d28d9;">
+              <i class="fa-solid fa-info-circle"></i> Quincenal: el cliente se visita cada 15 días.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group"><label class="form-label">CIUDAD</label>
+        <input id="f-ccity" class="form-control" placeholder="Ciudad" value="${v('ciudad')}"></div>
+
+      <div class="form-group"><label class="form-label">DIRECCIÓN</label>
+        <input id="f-cdir" class="form-control" placeholder="Dirección completa" value="${v('direccion')}"></div>
+
+      <div class="form-group"><label class="form-label">TELÉFONO</label>
+        <input id="f-ctel" class="form-control" placeholder="300 000 0000" value="${v('telefono')}"></div>
+
+      <div class="form-group"><label class="form-label">NOMBRE CONTACTO</label>
+        <input id="f-ccon" class="form-control" placeholder="Persona encargada" value="${v('contacto_nombre')}"></div>
+
+      <div class="form-group" style="grid-column:1/-1;">
+        <label class="form-label">EMAIL</label>
+        <input id="f-cmail" class="form-control" placeholder="email@ejemplo.com" value="${v('email')}"></div>
+
+      <div class="form-group" style="grid-column:1/-1;">
+        <label class="form-label"><i class="fa-regular fa-clock" style="color:#1e40af;"></i> HORARIO DE ATENCIÓN</label>
+        <input id="f-chorario" class="form-control" placeholder="Ej: Lun-Vie 8:00am-5:00pm · Sáb 8:00am-12:00pm" value="${v('horario')}">
+        <span class="form-hint">Horario en que el cliente recibe visitas / pedidos</span>
+      </div>
+
+      <div class="form-group" style="grid-column:1/-1;">
+        <label class="form-label"><i class="fa-solid fa-location-dot" style="color:#dc2626;"></i> COORDENADAS (Google Maps)</label>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;">
+          <input id="f-ccoordenadas" class="form-control" placeholder="4.7109886, -74.0721372" value="${c?.latitud&&c?.longitud ? c.latitud+', '+c.longitud : ''}">
+          <button type="button" class="btn btn-secondary" style="padding:8px 12px;" onclick="WMS_MODULES.maestro._previewMaps()" title="Previsualizar en Maps">
+            <i class="fa-solid fa-map-location-dot"></i>
+          </button>
+        </div>
+        <span class="form-hint"><i class="fa-solid fa-info-circle"></i> Tip: En Google Maps, clic derecho → "¿Qué hay aquí?" para obtener las coordenadas.</span>
+      </div>
+
+    </div>`;
+  },
+
+  _previewMaps() {
+    const raw = document.getElementById('f-ccoordenadas')?.value?.trim();
+    if (!raw) { WMS.toast('warning','Ingrese coordenadas'); return; }
+    const parts = raw.split(',');
+    if (parts.length < 2) { WMS.toast('warning','Formato: latitud, longitud'); return; }
+    const lat = parts[0].trim(), lng = parts[1].trim();
+    if (!lat || !lng) { WMS.toast('warning','Formato: latitud, longitud'); return; }
+    window.open(`https://maps.google.com/?q=${lat},${lng}`, '_blank');
+  },
+
   async nuevoCliente() {
-    WMS.showModal('Registrar Nuevo Cliente', `
-      <div class="form-grid form-grid-2">
-        <div class="form-group"><label class="form-label">NIT <span class="required">*</span></label><input id="f-cnit" class="form-control" placeholder="Ej: 900.000.000-1"></div>
-        <div class="form-group"><label class="form-label">RAZÓN SOCIAL <span class="required">*</span></label><input id="f-crs" class="form-control" placeholder="Nombre completo"></div>
-        <div class="form-group"><label class="form-label">CIUDAD</label><input id="f-ccity" class="form-control" placeholder="Ciudad"></div>
-        <div class="form-group"><label class="form-label">DIRECCIÓN</label><input id="f-cdir" class="form-control" placeholder="Dirección"></div>
-        <div class="form-group"><label class="form-label">TELÉFONO</label><input id="f-ctel" class="form-control" placeholder="300 000 0000"></div>
-        <div class="form-group"><label class="form-label">NOMBRE CONTACTO</label><input id="f-ccon" class="form-control" placeholder="Persona encargada"></div>
-        <div class="form-group" style="grid-column:1/-1;"><label class="form-label">EMAIL</label><input id="f-cmail" class="form-control" placeholder="email@ejemplo.com"></div>
-      </div>`,
+    const rutas = this._rutasData || [];
+    WMS.showModal('Registrar Nuevo Cliente', this._clienteModalBody(null, rutas),
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveCliente()"><i class="fa-solid fa-plus"></i> Guardar Cliente</button>`);
+       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveCliente(null)"><i class="fa-solid fa-plus"></i> Guardar Cliente</button>`);
+  },
+
+  async editCliente(id) {
+    try {
+      const rc = await API.get('/param/clientes');
+      const c  = (rc.data || rc || []).find(x => x.id == id);
+      if (!c) { WMS.toast('error','Cliente no encontrado'); return; }
+      const rutas = this._rutasData || [];
+      WMS.showModal('Editar Cliente', this._clienteModalBody(c, rutas),
+        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+         <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveCliente(${id})"><i class="fa-solid fa-save"></i> Actualizar</button>`);
+    } catch(e) { WMS.toast('error','Error cargando cliente'); }
   },
 
   async saveCliente(id = null) {
+    const nit          = document.getElementById('f-cnit')?.value?.trim();
+    const razon_social = document.getElementById('f-crs')?.value?.trim();
+    const ruta_id      = document.getElementById('f-cruta')?.value || '';
+    if (!nit || !razon_social) { WMS.toast('warning','NIT y Razón Social son requeridos'); return; }
+
+    // Recoger frecuencia
+    const frecTipo = document.getElementById('f-cfrec-tipo')?.value || 'Diario';
+    let frecConfig = {};
+    if (frecTipo === 'Diario') {
+      const dias = Array.from(document.querySelectorAll('input[name="cfrec-dias"]:checked')).map(i=>i.value);
+      if (!dias.length) { WMS.toast('warning','Seleccione al menos un día de visita'); return; }
+      frecConfig = { dias };
+    } else {
+      const subtipo = document.getElementById('f-cfrec-subtipo')?.value || 'Diario';
+      frecConfig = { subtipo };
+      if (subtipo === 'Semanal') {
+        const dia = document.querySelector('input[name="cfrec-dia-sem"]:checked')?.value;
+        if (!dia) { WMS.toast('warning','Seleccione el día de la semana'); return; }
+        frecConfig.dia = dia;
+      } else if (subtipo === 'Mensual') {
+        const diaMes = document.querySelector('input[name="cfrec-dia-mes"]:checked')?.value;
+        if (!diaMes) { WMS.toast('warning','Seleccione el día del mes'); return; }
+        frecConfig.dia_mes = parseInt(diaMes);
+      }
+    }
+
     const body = {
-      nit:             document.getElementById('f-cnit')?.value?.trim(),
-      razon_social:    document.getElementById('f-crs')?.value?.trim(),
+      nit, razon_social, ruta_id,
       ciudad:          document.getElementById('f-ccity')?.value?.trim(),
       direccion:       document.getElementById('f-cdir')?.value?.trim(),
       telefono:        document.getElementById('f-ctel')?.value?.trim(),
       contacto_nombre: document.getElementById('f-ccon')?.value?.trim(),
       email:           document.getElementById('f-cmail')?.value?.trim(),
-      activo:          document.getElementById('f-cact')?.value ?? 1
+      horario:         document.getElementById('f-chorario')?.value?.trim(),
+      ...(() => {
+        const raw = document.getElementById('f-ccoordenadas')?.value?.trim();
+        if (!raw) return { latitud: '', longitud: '' };
+        const p = raw.split(',');
+        return { latitud: p[0]?.trim() || '', longitud: p[1]?.trim() || '' };
+      })(),
+      frecuencia_tipo:   frecTipo,
+      frecuencia_config: JSON.stringify(frecConfig),
     };
-    if (!body.nit || !body.razon_social) return WMS.toast('warning', 'NIT y Razón Social son requeridos');
-    WMS.spinner();
     try {
-      const r = id ? await API.put('/param/clientes/' + id, body) : await API.post('/param/clientes', body);
-      if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Cliente guardado'); WMS.closeModal('generic-modal'); this.show_clientes(); }
-    } catch (e) { WMS.toast('error', 'Error guardando'); }
+      const r = id ? await API.put('/param/clientes/'+id, body) : await API.post('/param/clientes', body);
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success','Cliente guardado');
+      WMS.closeModal('generic-modal');
+      this.show_clientes();
+    } catch(e) { WMS.toast('error','Error guardando cliente'); }
+  },
+
+  deleteCliente(id, n) {
+    WMS.confirm('Eliminar Cliente', `¿Eliminar el cliente "${WMS.esc(n)}"?`, async () => {
+      try {
+        const r = await API.delete('/param/clientes/'+id);
+        if (r.error) WMS.toast('error', r.message);
+        else { WMS.toast('success','Cliente eliminado'); this.show_clientes(); }
+      } catch(e) { WMS.toast('error','Error eliminando cliente'); }
+    });
   },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -2656,11 +3448,17 @@ WMS_MODULES.maestro = {
         <div class="form-group"><label class="form-label">Nombre <span class="required">*</span></label><input id="imp-nombre" class="form-control" value="${WMS.esc(data?.nombre||'')}"></div>
         <div class="form-group"><label class="form-label">Dirección IP <span class="required">*</span></label><input id="imp-ip" class="form-control" placeholder="192.168.1.50" value="${WMS.esc(data?.ip||'')}"></div>
         <div class="form-group"><label class="form-label">Puerto</label><input id="imp-puerto" type="number" class="form-control" value="${data?.puerto||9100}"></div>
-        <div class="form-group"><label class="form-label">Tipo</label>
+        <div class="form-group"><label class="form-label">Propósito</label>
           <select id="imp-tipo" class="form-control">
-            <option value="General" ${data?.tipo==='General'?'selected':''}>General</option>
-            <option value="Rotulos" ${data?.tipo==='Rotulos'?'selected':''}>Rótulos / Etiquetas</option>
+            <option value="General"  ${data?.tipo==='General' ?'selected':''}>General</option>
+            <option value="Rotulos"  ${data?.tipo==='Rotulos' ?'selected':''}>Rótulos / Etiquetas</option>
             <option value="Despacho" ${data?.tipo==='Despacho'?'selected':''}>Documentos Despacho</option>
+          </select></div>
+        <div class="form-group"><label class="form-label">Lenguaje / Marca</label>
+          <select id="imp-lenguaje" class="form-control">
+            <option value="ZPL" ${(data?.lenguaje||'ZPL')==='ZPL'?'selected':''}>ZPL — Zebra</option>
+            <option value="TSC" ${data?.lenguaje==='TSC'           ?'selected':''}>TSPL — TSC / Argox</option>
+            <option value="EPL" ${data?.lenguaje==='EPL'           ?'selected':''}>EPL — Eltron legacy</option>
           </select></div>
         <div class="form-group" style="grid-column: span 2;">
           <label class="form-label">Asignar a Módulos</label>
@@ -2704,7 +3502,8 @@ WMS_MODULES.maestro = {
       nombre: document.getElementById('imp-nombre').value.trim(),
       ip: document.getElementById('imp-ip').value.trim(),
       puerto: document.getElementById('imp-puerto').value,
-      tipo: document.getElementById('imp-tipo').value,
+      tipo:     document.getElementById('imp-tipo').value,
+      lenguaje: document.getElementById('imp-lenguaje').value,
       modulos: mods,
       tipos_trabajo: [
         ...( document.getElementById('imp-tipo-sticker')?.checked ? ['sticker_packing'] : [] ),
@@ -2738,5 +3537,182 @@ WMS_MODULES.maestro = {
       if (r.error) WMS.toast('error', r.message);
       else WMS.toast('success', 'Prueba enviada correctamente');
     } catch(e) { WMS.toast('error', 'Error de conexión con el servidor'); }
+  },
+
+  // ── CAUSALES DE NOVEDAD ─────────────────────────────────────
+  show_causales_novedad() {
+    WMS.setToolbar(`
+      <div class="actions">
+        <button class="btn btn-primary" onclick="WMS_MODULES.maestro._nuevaCausal()">
+          <i class="fa-solid fa-plus"></i> Nueva Causal
+        </button>
+      </div>
+    `);
+    WMS.setContent(`<div id="causales-container" style="padding:20px;">
+      <div style="text-align:center;color:#64748b;padding:40px;">Cargando...</div>
+    </div>`);
+    this._loadCausales();
+  },
+
+  async _loadCausales() {
+    try {
+      const r = await API.get('/causales-novedad?incluir_inactivas=1');
+      const causales = r.data || r || [];
+      this._renderCausales(causales);
+    } catch(e) {
+      const c = document.getElementById('causales-container');
+      if (c) c.innerHTML = `<div style="color:#dc2626;padding:20px;">Error: ${WMS.esc(e.message)}</div>`;
+    }
+  },
+
+  _renderCausales(causales) {
+    const AREAS_CON_NS = ['CDP', 'Logistica'];
+    const rows = causales.map(c => {
+      const afecta = c.afecta_nivel_servicio || AREAS_CON_NS.includes(c.area_responsable);
+      const nsBadge = afecta
+        ? `<span class="badge badge-success" style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;">Sí — CDP/Logística</span>`
+        : `<span class="badge badge-light" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;">No afecta KPI</span>`;
+      const activoBadge = c.activo
+        ? `<span class="status-badge success">Activa</span>`
+        : `<span class="status-badge danger">Inactiva</span>`;
+      return `<tr>
+        <td><strong>${WMS.esc(c.nombre)}</strong></td>
+        <td>${WMS.esc(c.area_responsable)}</td>
+        <td>${nsBadge}</td>
+        <td>${activoBadge}</td>
+        <td>
+          <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro._editarCausal(${c.id})">
+            <i class="fa-solid fa-edit"></i> Editar
+          </button>
+        </td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="5" class="table-empty" style="text-align:center;padding:30px;">Sin causales registradas</td></tr>';
+
+    const container = document.getElementById('causales-container');
+    if (!container) return;
+    container.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-list-check"></i> Causales de Novedad</span>
+          <span style="font-size:.78rem;color:#64748b;">${causales.length} causal(es)</span>
+        </div>
+        <div class="table-container">
+          <table class="erp-table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Área Responsable</th>
+                <th>Afecta Nivel de Servicio</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  },
+
+  async _nuevaCausal() {
+    const { value: formValues, isConfirmed } = await Swal.fire({
+      title: 'Nueva Causal de Novedad',
+      html: `
+        <div style="text-align:left;">
+          <label style="font-size:.82rem;font-weight:700;color:#374151;display:block;margin-bottom:4px;">
+            Nombre <span style="color:#dc2626;">*</span>
+          </label>
+          <input id="causal-nombre" class="swal2-input" placeholder="Ej: Faltante en bodega..." style="margin:0 0 12px;width:100%;box-sizing:border-box;">
+          <label style="font-size:.82rem;font-weight:700;color:#374151;display:block;margin-bottom:4px;">
+            Área Responsable <span style="color:#dc2626;">*</span>
+          </label>
+          <select id="causal-area" class="swal2-select" style="width:100%;margin:0;">
+            <option value="">-- Seleccionar área --</option>
+            <option value="CDP">CDP</option>
+            <option value="Logistica">Logística</option>
+            <option value="Comercial">Comercial</option>
+            <option value="Operaciones">Operaciones</option>
+            <option value="Otro">Otro</option>
+          </select>
+        </div>`,
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-save"></i> Guardar',
+      cancelButtonText: 'Cancelar',
+      focusConfirm: false,
+      preConfirm: () => {
+        const nombre = document.getElementById('causal-nombre')?.value?.trim();
+        const area = document.getElementById('causal-area')?.value;
+        if (!nombre) { Swal.showValidationMessage('El nombre es obligatorio'); return false; }
+        if (!area) { Swal.showValidationMessage('Selecciona el área responsable'); return false; }
+        return { nombre, area_responsable: area };
+      }
+    });
+    if (!isConfirmed || !formValues) return;
+    try {
+      const r = await API.post('/causales-novedad', formValues);
+      if (r.error) { WMS.toast('error', r.message || 'Error al crear causal'); return; }
+      WMS.toast('success', 'Causal creada correctamente');
+      this._loadCausales();
+    } catch(e) { WMS.toast('error', e.message || 'Error al crear causal'); }
+  },
+
+  async _editarCausal(id) {
+    // Buscar en cache si ya tenemos el listado, sino hacer GET individual
+    let causal = null;
+    try {
+      const r = await API.get('/causales-novedad?incluir_inactivas=1');
+      const lista = r.data || r || [];
+      causal = lista.find(c => c.id == id);
+    } catch(_) {}
+    if (!causal) { WMS.toast('error', 'No se encontró la causal'); return; }
+
+    const AREAS_CON_NS = ['CDP', 'Logistica'];
+    const afecta = causal.afecta_nivel_servicio || AREAS_CON_NS.includes(causal.area_responsable);
+
+    const { value: formValues, isConfirmed } = await Swal.fire({
+      title: 'Editar Causal de Novedad',
+      html: `
+        <div style="text-align:left;">
+          <label style="font-size:.82rem;font-weight:700;color:#374151;display:block;margin-bottom:4px;">
+            Nombre <span style="color:#dc2626;">*</span>
+          </label>
+          <input id="causal-nombre" class="swal2-input" value="${WMS.esc(causal.nombre)}" style="margin:0 0 12px;width:100%;box-sizing:border-box;">
+          <label style="font-size:.82rem;font-weight:700;color:#374151;display:block;margin-bottom:4px;">
+            Área Responsable <span style="color:#dc2626;">*</span>
+          </label>
+          <select id="causal-area" class="swal2-select" style="width:100%;margin:0 0 12px;">
+            <option value="">-- Seleccionar área --</option>
+            <option value="CDP" ${causal.area_responsable==='CDP'?'selected':''}>CDP</option>
+            <option value="Logistica" ${causal.area_responsable==='Logistica'?'selected':''}>Logística</option>
+            <option value="Comercial" ${causal.area_responsable==='Comercial'?'selected':''}>Comercial</option>
+            <option value="Operaciones" ${causal.area_responsable==='Operaciones'?'selected':''}>Operaciones</option>
+            <option value="Otro" ${causal.area_responsable==='Otro'?'selected':''}>Otro</option>
+          </select>
+          <label style="font-size:.82rem;font-weight:700;color:#374151;display:block;margin-bottom:4px;">Estado</label>
+          <select id="causal-activo" class="swal2-select" style="width:100%;margin:0;">
+            <option value="1" ${causal.activo?'selected':''}>Activa</option>
+            <option value="0" ${!causal.activo?'selected':''}>Inactiva</option>
+          </select>
+          ${afecta ? '<p style="margin-top:10px;font-size:.75rem;color:#166534;background:#dcfce7;padding:6px 10px;border-radius:4px;"><i class="fa-solid fa-circle-check"></i> Esta área afecta el KPI de nivel de servicio</p>' : ''}
+        </div>`,
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-save"></i> Guardar Cambios',
+      cancelButtonText: 'Cancelar',
+      focusConfirm: false,
+      preConfirm: () => {
+        const nombre = document.getElementById('causal-nombre')?.value?.trim();
+        const area = document.getElementById('causal-area')?.value;
+        const activo = document.getElementById('causal-activo')?.value === '1';
+        if (!nombre) { Swal.showValidationMessage('El nombre es obligatorio'); return false; }
+        if (!area) { Swal.showValidationMessage('Selecciona el área responsable'); return false; }
+        return { nombre, area_responsable: area, activo };
+      }
+    });
+    if (!isConfirmed || !formValues) return;
+    try {
+      const r = await API.put(`/causales-novedad/${id}`, formValues);
+      if (r.error) { WMS.toast('error', r.message || 'Error al actualizar causal'); return; }
+      WMS.toast('success', 'Causal actualizada correctamente');
+      this._loadCausales();
+    } catch(e) { WMS.toast('error', e.message || 'Error al actualizar causal'); }
   },
 };

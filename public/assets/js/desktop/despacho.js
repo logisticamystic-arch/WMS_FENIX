@@ -12,33 +12,11 @@ WMS_MODULES.despacho = {
       dashboard: this.show_dashboard, tms: this.show_tms,
     };
     (fn[s]?.bind(this) || fn.certificacion.bind(this))();
-    // Certificación es proceso crítico: auto-refresh activo
-    if (s === 'certificacion') this.startAutoRefresh();
-    else this.stopAutoRefresh();
   },
 
-  // ── Auto-refresh certificación (proceso crítico, máx 5 usuarios) ──────────
-  _certInterval: null,
   _expiryPollTimer: null,
   _expiryAprobacionId: null,
   _expiryOnApproved: null,
-  startAutoRefresh() {
-    this.stopAutoRefresh();
-    this._certInterval = setInterval(() => {
-      if (WMS.currentModule !== 'despacho') { this.stopAutoRefresh(); return; }
-      if (WMS.currentSubModule === 'certificacion') this.show_certificacion(true);
-      else this.stopAutoRefresh();
-    }, 30000);
-    this._updateAutoRefreshBadge(true);
-  },
-  stopAutoRefresh() {
-    if (this._certInterval) { clearInterval(this._certInterval); this._certInterval = null; }
-    this._updateAutoRefreshBadge(false);
-  },
-  _updateAutoRefreshBadge(active) {
-    const badge = document.getElementById('cert-refresh-badge');
-    if (badge) badge.style.display = active ? 'inline-flex' : 'none';
-  },
 
   subLabel(s) {
     const m = { certificacion:'Certificación de Pedidos', packing:'Packing', cargue:'Planilla de Cargue',
@@ -46,51 +24,574 @@ WMS_MODULES.despacho = {
     return m[s] || s || 'Panel';
   },
 
+  // Filtros de fecha para certificaciones
+  _certFechaInicio: null,
+  _certFechaFin: null,
+
+  _certFechaParams() {
+    const fi = this._certFechaInicio;
+    const ff = this._certFechaFin;
+    const parts = [];
+    if (fi) parts.push('fecha_inicio=' + encodeURIComponent(fi));
+    if (ff) parts.push('fecha_fin='    + encodeURIComponent(ff));
+    return parts.length ? '?' + parts.join('&') : '';
+  },
+
+  _certSetFechaRapida(tipo) {
+    const hoy = new Date();
+    const fmt = d => d.toISOString().slice(0,10);
+    if (tipo === 'hoy') {
+      this._certFechaInicio = fmt(hoy);
+      this._certFechaFin    = fmt(hoy);
+    } else if (tipo === 'semana') {
+      const lun = new Date(hoy); lun.setDate(hoy.getDate() - hoy.getDay() + 1);
+      this._certFechaInicio = fmt(lun);
+      this._certFechaFin    = fmt(hoy);
+    } else if (tipo === 'todo') {
+      this._certFechaInicio = null;
+      this._certFechaFin    = null;
+    }
+    // Sync inputs
+    const fi = document.getElementById('cert-fi');
+    const ff = document.getElementById('cert-ff');
+    if (fi) fi.value = this._certFechaInicio || '';
+    if (ff) ff.value = this._certFechaFin    || '';
+    this.show_certificacion();
+  },
+
   // ── CERTIFICACIÓN (POR SUCURSAL) ───────────────────────────────
   async show_certificacion(silent = false) {
+    // Inicializar sin filtro de fecha para mostrar todos los pedidos pendientes de certificación
+    // (null/null = modo "Todo"; el usuario puede filtrar con los botones Hoy / Esta semana)
+    if (this._certFechaInicio === null || this._certFechaInicio === undefined) {
+      this._certFechaInicio = null;
+      this._certFechaFin    = null;
+    }
+    const fi = this._certFechaInicio || '';
+    const ff = this._certFechaFin    || '';
+
     WMS.setToolbar(`
-      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.show_certificacion()"><i class="fa-solid fa-rotate"></i> Actualizar</button>
-      <span id="cert-refresh-badge" style="display:inline-flex;align-items:center;gap:5px;background:#198754;color:#fff;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:600;">
-        <span style="width:7px;height:7px;border-radius:50%;background:#fff;animation:pulse-dot 1.2s infinite;display:inline-block;"></span> Auto 30s
+      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.show_certificacion()">
+        <i class="fa-solid fa-rotate"></i> Actualizar
+      </button>
+      <button class="btn btn-outline-success btn-sm" onclick="WMS_MODULES.despacho.imprimirRemisionesDirectasSeleccionadas()">
+        <i class="fa-solid fa-mobile-screen"></i> Imprimir móvil sel.
+      </button>
+      <span style="display:flex;align-items:center;gap:6px;margin-left:8px;">
+        <i class="fa-solid fa-calendar-days" style="color:#6b7280;font-size:12px;"></i>
+        <input type="date" id="cert-fi" value="${WMS.esc(fi)}"
+          style="font-size:11px;padding:2px 6px;border:1px solid #d1d5db;border-radius:5px;"
+          onchange="WMS_MODULES.despacho._certFechaInicio=this.value">
+        <span style="color:#9ca3af;font-size:11px;">—</span>
+        <input type="date" id="cert-ff" value="${WMS.esc(ff)}"
+          style="font-size:11px;padding:2px 6px;border:1px solid #d1d5db;border-radius:5px;"
+          onchange="WMS_MODULES.despacho._certFechaFin=this.value">
+        <button class="btn btn-sm btn-primary" style="font-size:10px;padding:2px 9px;"
+          onclick="WMS_MODULES.despacho.show_certificacion()">
+          <i class="fa-solid fa-search"></i> Buscar
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" style="font-size:10px;padding:2px 7px;"
+          onclick="WMS_MODULES.despacho._certSetFechaRapida('hoy')">Hoy</button>
+        <button class="btn btn-sm btn-outline-secondary" style="font-size:10px;padding:2px 7px;"
+          onclick="WMS_MODULES.despacho._certSetFechaRapida('semana')">Esta semana</button>
+        <button class="btn btn-sm btn-outline-secondary" style="font-size:10px;padding:2px 7px;"
+          onclick="WMS_MODULES.despacho._certSetFechaRapida('todo')">Todo</button>
       </span>`);
+
     if (!silent) WMS.spinner();
     try {
-      const r = await API.get('/picking/certificacion/pendientes');
-      const items = r.data || r || [];
-      
+      const params   = this._certFechaParams();
+      const qSes     = new URLSearchParams({ ctx: 'cert' });
+      if (this._certFechaInicio) qSes.append('fm_desde', this._certFechaInicio);
+      if (this._certFechaFin)    qSes.append('fm_hasta', this._certFechaFin);
+      const paramsSes = '?' + qSes.toString();
+
+      const fechaVista = this._certFechaInicio || new Date().toISOString().slice(0,10);
+      const [rPend, rSes, rCert, rVista] = await Promise.all([
+        API.get('/picking/certificacion/pendientes' + params),
+        API.get('/packing/sesiones' + paramsSes),
+        API.get('/picking/certificacion/certificadas' + params),
+        API.get('/picking/certificacion/vista-hoy?fecha=' + fechaVista),
+      ]);
+      const pendientes  = rPend.data  || [];
+      const todasSes    = rSes.data   || [];
+      const certDirect  = rCert.data  || [];
+      const vistaHoy    = rVista.data || [];
+      const activas     = todasSes.filter(s => s.estado === 'EnProceso');
+      const completadas = todasSes.filter(s => s.estado === 'Completada');
+
+      const huerfanas = completadas.filter(s =>
+        pendientes.find(p => p.sucursal_entrega === s.sucursal_entrega) &&
+        !activas.find(a => a.sucursal_entrega === s.sucursal_entrega)
+      );
+      const sucHuerfanas  = new Set(huerfanas.map(s => s.sucursal_entrega));
+      // Incluir huérfanas en la tabla de pendientes (sesión completada pero sin certificar)
+      const sinSesion     = pendientes.filter(p =>
+        !activas.find(s => s.sucursal_entrega === p.sucursal_entrega)
+      );
+      const completadasOk = completadas.filter(s => !sucHuerfanas.has(s.sucursal_entrega));
+      const certDirectMap = {};
+      certDirect.forEach(c => { certDirectMap[c.sucursal_entrega] = c; });
+      const certSinSesion = certDirect.filter(
+        c => !completadasOk.find(s => s.sucursal_entrega === c.sucursal_entrega)
+      );
+      const esAdmin = ['Admin','SuperAdmin'].includes(WMS.user?.rol);
+      const totalCert = completadasOk.length + certSinSesion.length;
+
       WMS.setContent(`
-        <div class="filter-bar">
-          <div class="search-bar"><i class="fa-solid fa-search"></i>
-            <input placeholder="Buscar sucursal..." oninput="WMS_MODULES.despacho.filterTable(this.value,'cert-table')">
+        <!-- ── Buscador global dinámico ── -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+          <div style="flex:1;position:relative;">
+            <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:13px;"></i>
+            <input id="cert-search" type="text" placeholder="Buscar cliente, sucursal o producto..."
+              style="width:100%;padding:8px 12px 8px 34px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;outline:none;transition:border .15s;"
+              oninput="WMS_MODULES.despacho._certFiltrarGlobal(this.value)"
+              onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e5e7eb'">
           </div>
+          <span id="cert-search-count" style="font-size:12px;color:#6b7280;white-space:nowrap;"></span>
         </div>
-        <div class="alert-box" style="margin-bottom:14px;padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;color:#1e40af;display:flex;align-items:center;gap:10px;">
-          <i class="fa-solid fa-boxes-packing"></i>
-          <div>
-            El proceso de <strong>Packing</strong> se inicia desde esta vista. Selecciona una sucursal y haz clic en <strong>Iniciar Certificación</strong> para ver la pantalla de packing.
+
+        ${activas.length ? `
+        <div class="card" style="margin-bottom:14px;border-left:4px solid #f59e0b;">
+          <div class="card-header" style="background:#fefce8;padding:10px 14px;">
+            <span class="card-title" style="color:#92400e;font-size:13px;">
+              <i class="fa-solid fa-spinner fa-spin"></i>&nbsp; En Proceso — ${activas.length} sesión(es) activa(s)
+            </span>
           </div>
-        </div>
-        <div class="card">
-          <div class="card-header"><span class="card-title"><i class="fa-solid fa-clipboard-check"></i> Pendientes por Certificar (${items.length})</span></div>
           <div class="table-container">
-            <table class="erp-table" id="cert-table">
-              <thead><tr><th>Sucursal de Entrega</th><th class="text-center">Pedidos</th><th class="text-center">Líneas Totales</th><th>Estado</th><th>Acciones</th></tr></thead>
-              <tbody>${items.map(s => `<tr>
-                <td><strong>${WMS.esc(s.sucursal_entrega || 'Sin Sucursal')}</strong></td>
-                <td class="text-center">${s.total_pedidos}</td>
-                <td class="text-center">${s.total_lineas}</td>
-                <td><span class="status-chip status-creada">Listo para Certificar</span></td>
-                <td><div class="actions">
-                  <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.despacho.iniciarCertificacion('${WMS.esc(s.sucursal_entrega)}')">
-                    <i class="fa-solid fa-barcode"></i> Iniciar Certificación
+            <table class="erp-table cert-searchable">
+              <thead><tr>
+                <th>Sucursal</th>
+                <th class="text-center">Canastas</th>
+                <th class="text-center">Uds. Empacadas</th>
+                <th style="width:180px;">Acciones</th>
+              </tr></thead>
+              <tbody>${activas.map(s => `<tr>
+                <td><strong>${WMS.esc(s.sucursal_entrega)}</strong></td>
+                <td class="text-center">${s.num_unidades}</td>
+                <td class="text-center">${s.total_empacado}</td>
+                <td>
+                  <button class="btn btn-sm btn-warning" onclick="WMS_MODULES.despacho.show_packing(${s.id})" style="margin-right:4px;">
+                    <i class="fa-solid fa-play"></i> Continuar
                   </button>
-                </div></td>
-              </tr>`).join('') || '<tr><td colspan="5" class="table-empty">Sin sucursales pendientes de certificación</td></tr>'}
+                  <button class="btn btn-sm btn-outline-danger" onclick="WMS_MODULES.despacho.cancelarSesionPacking(${s.id},'${WMS.esc(s.sucursal_entrega)}')">
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </td>
+              </tr>`).join('')}
               </tbody>
             </table>
           </div>
-        </div>`);
+        </div>` : ''}
+
+        <div class="card" style="margin-bottom:14px;">
+          <div class="card-header" style="padding:10px 14px;display:flex;align-items:center;gap:10px;">
+            <span class="card-title" style="font-size:13px;">
+              <i class="fa-solid fa-clipboard-list" style="color:#6366f1;"></i>&nbsp; Pendientes de Certificar
+            </span>
+            <span style="background:#e0e7ff;color:#4338ca;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;">${sinSesion.length}</span>
+          </div>
+          <div class="table-container">
+            <table class="erp-table cert-searchable" id="cert-table">
+              <thead><tr>
+                <th>Cliente / Planilla</th>
+                <th class="text-center">Ambientes</th>
+                <th class="text-center">Pedidos</th>
+                <th class="text-center">Líneas Cert.</th>
+                <th style="width:220px;">Acciones</th>
+              </tr></thead>
+              <tbody>${sinSesion.map(s => `<tr>
+                <td>
+                  <strong style="font-size:13px;">${WMS.esc(s.sucursal_entrega || 'Sin Cliente')}</strong>
+                  ${s.planilla_numero ? `<br><span style="display:inline-block;background:#1e3a8a;color:#fff;border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;font-weight:700;margin-top:2px;">${WMS.esc(s.planilla_numero)}</span>` : ''}
+                  ${s.planillas && s.planillas.length ? `<br><span style="font-size:10px;color:#64748b;">${s.planillas.map(p => WMS.esc(p)).join(' · ')}</span>` : ''}
+                </td>
+                <td class="text-center">
+                  ${(s.ambientes || 'Desconocido').split(',').map(a =>
+                    `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:4px;padding:1px 7px;font-size:10px;margin:1px;">${a.trim()}</span>`
+                  ).join('')}
+                </td>
+                <td class="text-center"><strong>${s.total_pedidos || '—'}</strong></td>
+                <td class="text-center"><strong>${s.total_lineas_cert || s.total_lineas || '—'}</strong></td>
+                <td>
+                  <button class="btn btn-sm btn-info" onclick="WMS_MODULES.despacho.verDetallesPendientes('${WMS.esc(s.sucursal_entrega)}')" style="margin-right:4px;">
+                    <i class="fa-solid fa-list"></i> Ver
+                  </button>
+                  <button class="btn btn-sm btn-success" onclick="WMS_MODULES.despacho.autoCertificar('${WMS.esc(s.sucursal_entrega)}')">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Cert.
+                  </button>
+                </td>
+              </tr>`).join('') || '<tr><td colspan="5" class="table-empty">Sin sucursales pendientes de certificar</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        ${huerfanas.length ? `
+        <div class="card" style="margin-bottom:14px;border:2px solid #f59e0b;">
+          <div class="card-header" style="background:#fffbeb;padding:10px 14px;">
+            <span class="card-title" style="color:#92400e;font-size:13px;">
+              <i class="fa-solid fa-triangle-exclamation"></i>&nbsp; Packing finalizado sin certificar (${huerfanas.length})
+            </span>
+            <span style="font-size:11px;color:#78350f;margin-left:8px;">La sesión terminó pero la certificación no se completó</span>
+          </div>
+          <div class="table-container">
+            <table class="erp-table cert-searchable">
+              <thead><tr><th>Sucursal</th><th class="text-center">Canastas</th><th style="width:140px;">Acciones</th></tr></thead>
+              <tbody>${huerfanas.map(s => `<tr>
+                <td><strong>${WMS.esc(s.sucursal_entrega)}</strong></td>
+                <td class="text-center">${s.num_unidades}</td>
+                <td>
+                  <button class="btn btn-sm btn-warning" onclick="WMS_MODULES.despacho.recertificarSesion(${s.id},'${WMS.esc(s.sucursal_entrega)}')">
+                    <i class="fa-solid fa-rotate"></i> Recertificar
+                  </button>
+                </td>
+              </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>` : ''}
+
+        ${totalCert ? `
+        <div class="card" style="margin-bottom:14px;border-left:4px solid #22c55e;">
+          <div class="card-header" style="background:#f0fdf4;padding:10px 14px;display:flex;align-items:center;gap:10px;">
+            <span class="card-title" style="color:#065f46;font-size:13px;">
+              <i class="fa-solid fa-check-double"></i>&nbsp; Certificaciones Completadas
+            </span>
+            <span style="background:#dcfce7;color:#15803d;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;">${totalCert}</span>
+            ${esAdmin ? `<span style="margin-left:auto;font-size:11px;color:#6b7280;">
+              <i class="fa-solid fa-circle-info"></i> Haz clic en <strong>Editar Cert.</strong> para modificar cantidades certificadas
+            </span>` : ''}
+          </div>
+          <div class="table-container">
+            <table class="erp-table cert-searchable" id="cert-table-done">
+              <thead><tr>
+                <th style="width:36px;text-align:center;">
+                  <input type="checkbox" id="cert-sel-all" title="Seleccionar todas"
+                    onchange="document.querySelectorAll('.cert-remision-check,.cert-remision-check-directa').forEach(cb=>cb.checked=this.checked)">
+                </th>
+                <th>Cliente / Sucursal</th>
+                <th class="text-center">Tipo</th>
+                <th class="text-center">Total ref.</th>
+                <th class="text-center">Fecha</th>
+                <th style="width:220px;">Acciones</th>
+              </tr></thead>
+              <tbody>
+              ${completadasOk.map(s => {
+                const fechaStr = (s.fecha_movimiento_pedido || certDirectMap[s.sucursal_entrega]?.fecha_movimiento || s.created_at || '').slice(0,10) || '—';
+                return `<tr>
+                  <td style="text-align:center;">
+                    <input type="checkbox" class="cert-remision-check" data-sesion-id="${s.id}">
+                  </td>
+                  <td>
+                    <strong style="font-size:13px;">${WMS.esc(s.sucursal_entrega)}</strong>
+                    <div style="font-size:10px;color:#6b7280;margin-top:1px;">${s.total_empacado || 0} uds empacadas</div>
+                  </td>
+                  <td class="text-center">
+                    <span style="background:#dcfce7;color:#15803d;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">
+                      <i class="fa-solid fa-box"></i> Packing
+                    </span>
+                  </td>
+                  <td class="text-center"><strong>${s.total_refs || 0}</strong></td>
+                  <td class="text-center" style="font-size:12px;color:#6b7280;">${fechaStr}</td>
+                  <td>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                      <button class="btn btn-sm btn-success" onclick="WMS_MODULES.despacho.imprimirRemision(${s.id})" title="Imprimir remisión">
+                        <i class="fa-solid fa-print"></i> Remisión
+                      </button>
+                      <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.despacho.imprimirTodosStickers(${s.id})" title="Stickers">
+                        <i class="fa-solid fa-tags"></i>
+                      </button>
+                      ${esAdmin ? `<button class="btn btn-sm btn-warning" onclick="WMS_MODULES.despacho.adminEditCert('${WMS.esc(s.sucursal_entrega)}')" title="Editar certificación">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                      </button>` : ''}
+                      <button class="btn btn-sm btn-outline-danger" onclick="WMS_MODULES.despacho.resetearCert(${s.id},'${WMS.esc(s.sucursal_entrega)}')" title="Resetear">
+                        <i class="fa-solid fa-rotate-left"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>`;
+              }).join('')}
+              ${certSinSesion.map(s => {
+                const fechaStr = (s.fecha_movimiento || '').slice(0,10) || '—';
+                return `<tr>
+                  <td style="text-align:center;">
+                    <input type="checkbox" class="cert-remision-check-directa" data-sucursal="${WMS.esc(s.sucursal_entrega)}">
+                  </td>
+                  <td>
+                    <strong style="font-size:13px;">${WMS.esc(s.sucursal_entrega || 'Sin Sucursal')}</strong>
+                    ${s.total_pedidos > 1 ? `<span style="display:inline-block;margin-left:5px;background:#fef9c3;color:#854d0e;border:1px solid #fde047;border-radius:10px;font-size:10px;font-weight:700;padding:1px 7px;">Re-cert.</span>` : ''}
+                    <div style="font-size:10px;color:#6b7280;margin-top:1px;">
+                      ${(s.ambientes || '').split(',').map(a => a.trim()).filter(Boolean).join(' · ') || 'Sin ambiente'}
+                    </div>
+                  </td>
+                  <td class="text-center">
+                    <span style="background:#e0e7ff;color:#4338ca;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">
+                      <i class="fa-solid fa-mobile-screen"></i> Móvil
+                    </span>
+                  </td>
+                  <td class="text-center"><strong>${s.total_lineas || 0}</strong></td>
+                  <td class="text-center" style="font-size:12px;color:#6b7280;">${fechaStr}</td>
+                  <td>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                      <button class="btn btn-sm btn-success" onclick="WMS_MODULES.despacho.imprimirRemisionDirecta('${WMS.esc(s.sucursal_entrega)}')" title="Imprimir remisión">
+                        <i class="fa-solid fa-print"></i> Remisión
+                      </button>
+                      ${esAdmin ? `<button class="btn btn-sm btn-warning" onclick="WMS_MODULES.despacho.adminEditCert('${WMS.esc(s.sucursal_entrega)}')" title="Editar certificación">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                      </button>` : ''}
+                      <button class="btn btn-sm btn-outline-danger" onclick="WMS_MODULES.despacho.resetearCertDirecta('${WMS.esc(s.sucursal_entrega)}')" title="Resetear">
+                        <i class="fa-solid fa-rotate-left"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>`;
+              }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>` : ''}
+
+        ${vistaHoy.length ? `
+        <div class="card" style="margin-bottom:14px;border-left:4px solid #6366f1;">
+          <div class="card-header" style="background:#f5f3ff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+            <span class="card-title" style="font-size:13px;cursor:pointer;" onclick="document.getElementById('vista-hoy-body').style.display=document.getElementById('vista-hoy-body').style.display==='none'?'':'none'">
+              <i class="fa-solid fa-chart-gantt" style="color:#6366f1;"></i>&nbsp; Vista General del Día
+            </span>
+            <span style="display:flex;gap:6px;align-items:center;">
+              <span style="background:#ede9fe;color:#5b21b6;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;">${vistaHoy.length} planillas</span>
+              <button class="btn btn-sm btn-outline-secondary" style="font-size:10px;padding:2px 7px;" onclick="document.getElementById('vista-hoy-body').style.display=document.getElementById('vista-hoy-body').style.display==='none'?'':'none'">
+                <i class="fa-solid fa-chevron-down"></i>
+              </button>
+            </span>
+          </div>
+          <div id="vista-hoy-body" style="display:none;overflow-x:auto;">
+            <table class="erp-table" style="font-size:12px;">
+              <thead><tr>
+                <th>Cliente / Planilla</th>
+                <th>Ambientes</th>
+                <th class="text-center">Estado Picking</th>
+                <th class="text-center">Estado Cert.</th>
+                <th class="text-center"># Órdenes</th>
+              </tr></thead>
+              <tbody>${vistaHoy.map(v => {
+                const colorGlobal = v.estado_global === 'Certificado' ? '#059669'
+                  : v.estado_global === 'ListoCert' ? '#2563eb'
+                  : v.estado_global === 'EnPicking' ? '#d97706'
+                  : '#6b7280';
+                const iconGlobal = v.estado_global === 'Certificado'
+                  ? '<i class="fa-solid fa-circle-check" style="color:#059669;"></i>'
+                  : v.estado_global === 'ListoCert'
+                  ? '<i class="fa-solid fa-circle-dot" style="color:#2563eb;"></i>'
+                  : v.estado_global === 'EnPicking'
+                  ? '<i class="fa-solid fa-spinner fa-spin" style="color:#d97706;"></i>'
+                  : '<i class="fa-solid fa-circle" style="color:#9ca3af;"></i>';
+                return `<tr style="border-left:3px solid ${colorGlobal};">
+                  <td>
+                    <strong>${WMS.esc(v.sucursal_entrega)}</strong>
+                    ${v.planilla_numero ? `<br><span style="font-size:10px;font-family:monospace;background:#e0e7ff;color:#3730a3;border-radius:3px;padding:1px 5px;">${WMS.esc(v.planilla_numero)}</span>` : ''}
+                  </td>
+                  <td style="font-size:11px;color:#64748b;max-width:200px;">${WMS.esc(v.ambientes || '—')}</td>
+                  <td class="text-center">
+                    ${v.estados.map(e => `<span style="display:inline-block;font-size:10px;border-radius:10px;padding:1px 7px;margin:1px;background:${e.picking==='Completada'?'#dcfce7':e.picking==='EnProceso'?'#fef9c3':'#f1f5f9'};color:${e.picking==='Completada'?'#065f46':e.picking==='EnProceso'?'#92400e':'#475569'};">${WMS.esc(e.picking)} (${e.cantidad})</span>`).join('')}
+                  </td>
+                  <td class="text-center">
+                    ${v.estados.map(e => `<span style="display:inline-block;font-size:10px;border-radius:10px;padding:1px 7px;margin:1px;background:${e.cert==='Certificada'?'#dcfce7':'#fef9c3'};color:${e.cert==='Certificada'?'#065f46':'#92400e'};">${WMS.esc(e.cert)} (${e.cantidad})</span>`).join('')}
+                  </td>
+                  <td class="text-center"><strong>${v.total_ordenes}</strong></td>
+                </tr>`;
+              }).join('')}</tbody>
+            </table>
+          </div>
+        </div>` : ''}
+      `);
     } catch(e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
+  },
+
+  _certFiltrarGlobal(q) {
+    const f = (q || '').toLowerCase().trim();
+    let visible = 0, total = 0;
+    document.querySelectorAll('.cert-searchable tbody tr').forEach(tr => {
+      if (tr.querySelector('td[colspan]')) return;
+      total++;
+      const match = !f || tr.textContent.toLowerCase().includes(f);
+      tr.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    const count = document.getElementById('cert-search-count');
+    if (count) count.textContent = f ? `${visible} de ${total} resultado(s)` : '';
+  },
+
+  filterTable(q, _tableId) { this._certFiltrarGlobal(q); },
+
+  _openPrint(url, titulo, autoPrint = false) {
+    const token = localStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+    const win = window.open('', '_blank');
+    if (!win) { WMS.toast('warning', 'Permite ventanas emergentes para imprimir'); return null; }
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}...</title></head>
+      <body style="font-family:sans-serif;padding:20px;color:#555;"><p>&#9203; Cargando ${titulo}...</p></body></html>`);
+    win.document.close();
+    fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(html => {
+        if (win.closed) return;
+        win.document.open(); win.document.write(html); win.document.close();
+        if (autoPrint) setTimeout(() => { if (!win.closed) win.print(); }, 700);
+      })
+      .catch(e => {
+        if (!win.closed) {
+          win.document.open();
+          win.document.write(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:20px;">
+            <h3 style="color:#dc2626;">Error al cargar ${titulo}</h3><p>${e.message}</p>
+            <p style="font-size:.8rem;color:#6b7280;">${url}</p></body></html>`);
+          win.document.close();
+        }
+        WMS.toast('error', 'Error: ' + e.message);
+      });
+    return win;
+  },
+
+  async imprimirRemision(sesionId) {
+    this._openPrint(`${API_BASE}/packing/sesion/${sesionId}/remision`, 'Remisión');
+  },
+
+  async imprimirRemisionDirecta(sucursal) {
+    const fecha = this._certFechaInicio || new Date().toISOString().slice(0, 10);
+    this._openPrint(`${API_BASE}/picking/certificacion/remision/${encodeURIComponent(sucursal)}?fecha=${fecha}`, 'Remisión');
+  },
+
+  async imprimirRemisionesDirectasSeleccionadas() {
+    const checks = document.querySelectorAll('.cert-remision-check-directa:checked');
+    if (!checks.length) {
+      WMS.toast('warning', 'Selecciona al menos un pedido móvil para imprimir');
+      return;
+    }
+    const fecha = this._certFechaInicio || new Date().toISOString().slice(0, 10);
+    const params = new URLSearchParams({ fecha });
+    checks.forEach(cb => params.append('sucursales[]', cb.dataset.sucursal));
+    const n = checks.length;
+    WMS.toast('info', `Generando remisión consolidada + ${n} individual(es)...`);
+    this._openPrint(`${API_BASE}/picking/certificacion/remision-multiple?${params}`, `Remisiones Múltiples (${n})`);
+  },
+
+  async imprimirRemisionesSeleccionadas() {
+    const checkboxes = document.querySelectorAll('.cert-remision-check:checked');
+    if (!checkboxes.length) {
+      WMS.toast('warning', 'Selecciona al menos una remisión para imprimir');
+      return;
+    }
+    const ids = Array.from(checkboxes).map(cb => cb.dataset.sesionId);
+    const token = localStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+
+    for (let i = 0; i < ids.length; i++) {
+      WMS.toast('info', `Imprimiendo ${i + 1} de ${ids.length}...`);
+      await new Promise(resolve => {
+        const url = `${API_BASE}/packing/sesion/${ids[i]}/remision`;
+        const win = window.open('', '_blank');
+        if (!win) { WMS.toast('warning', 'Permite ventanas emergentes para imprimir'); resolve(); return; }
+        win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Remisión ${i + 1}/${ids.length}</title></head>
+          <body style="font-family:sans-serif;padding:20px;color:#555;"><p>&#9203; Cargando remisión ${i + 1} de ${ids.length}...</p></body></html>`);
+        win.document.close();
+        let settled = false;
+        const done = () => { if (!settled) { settled = true; setTimeout(resolve, 300); } };
+        fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
+          .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+          .then(html => {
+            if (win.closed) { done(); return; }
+            win.document.open(); win.document.write(html); win.document.close();
+            setTimeout(() => {
+              if (!win.closed) {
+                win.addEventListener('afterprint', done, { once: true });
+                setTimeout(done, 8000);
+                win.print();
+              } else { done(); }
+            }, 700);
+          })
+          .catch(() => done());
+      });
+    }
+    WMS.toast('success', `${ids.length} remisión(es) enviada(s) a imprimir`);
+  },
+
+  async imprimirTodosStickers(sesionId) {
+    try {
+      const r = await API.get(`/packing/sesion/${sesionId}`);
+      const data = r.data || r;
+      const sesion   = data.sesion || {};
+      const unidades = (data.unidades || []).filter(u => u.estado === 'Cerrada');
+      if (!unidades.length) { WMS.toast('warning', 'No hay canastas cerradas'); return; }
+      const parts = unidades.map(u =>
+        this._buildStickerBlock(u, sesion, u.items || [])
+        + '<div style="page-break-after:always;"></div>'
+      ).join('');
+      const html = this._wrapPrintPage(parts, 'media_carta', true);
+      const win = window.open('', '_blank', 'width=700,height=600');
+      if (win) { win.document.write(html); win.document.close(); }
+      else WMS.toast('warning', 'Permite ventanas emergentes para imprimir');
+    } catch(e) { WMS.toast('error', 'Error al imprimir stickers: ' + e.message); }
+  },
+
+  async recertificarSesion(sesionId, sucursal) {
+    if (!confirm(`¿Recertificar "${sucursal}"?\n\nLa sesión de packing ya estaba finalizada. Se marcarán las órdenes como Certificadas.`)) return;
+    try {
+      const r = await API.post(`/packing/sesion/${sesionId}/recertificar`);
+      WMS.toast('success', r.message || 'Recertificación completada');
+      this.show_certificacion();
+    } catch(e) { WMS.toast('error', e.message || 'Error al recertificar'); }
+  },
+
+  async resetearCert(sesionId, sucursal) {
+    const ok = await Swal.fire({
+      title: '¿Resetear certificación?',
+      html: `Se borrará la sesión de packing de <b>${WMS.esc(sucursal)}</b>.<br>Los pedidos quedarán <b>Pendientes</b> de certificar de nuevo.`,
+      icon: 'warning', showCancelButton: true,
+      confirmButtonText: 'Sí, resetear', cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc2626',
+    });
+    if (!ok.isConfirmed) return;
+    try {
+      const r = await API.post(`/packing/sesion/${sesionId}/reset`);
+      WMS.toast('success', r.message || 'Certificación reseteada');
+      this.show_certificacion();
+    } catch(e) {
+      Swal.fire('Error al resetear', e.message || 'Error desconocido', 'error');
+    }
+  },
+
+  async resetearCertDirecta(sucursal) {
+    const ok = await Swal.fire({
+      title: '¿Resetear certificación?',
+      html: `Los pedidos de <b>${WMS.esc(sucursal)}</b> quedarán <b>Pendientes</b> de certificar de nuevo.`,
+      icon: 'warning', showCancelButton: true,
+      confirmButtonText: 'Sí, resetear', cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc2626',
+    });
+    if (!ok.isConfirmed) return;
+    try {
+      const r = await API.post(`/picking/certificacion/resetear/${encodeURIComponent(sucursal)}`);
+      WMS.toast('success', r.message || 'Certificación reseteada');
+      this.show_certificacion();
+    } catch(e) {
+      Swal.fire('Error al resetear', e.message || 'Error desconocido', 'error');
+    }
+  },
+
+  async cancelarSesionPacking(sesionId, sucursal) {
+    const ok = await Swal.fire({
+      title: '¿Cancelar sesión de packing?',
+      html: `Se eliminarán las canastas y los ítems de <b>${WMS.esc(sucursal)}</b>.<br><small>Las órdenes ya certificadas <b>no serán afectadas</b>.</small>`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, cancelar sesión',
+      cancelButtonText: 'No',
+      confirmButtonColor: '#dc2626',
+    });
+    if (!ok.isConfirmed) return;
+    try {
+      const r = await API.post(`/packing/sesion/${sesionId}/cancelar`);
+      WMS.toast('success', r.message || 'Sesión cancelada');
+      this.show_certificacion();
+    } catch(e) { WMS.toast('error', e.message || 'Error al cancelar sesión'); }
   },
 
   show_packing_menu() {
@@ -220,6 +721,28 @@ WMS_MODULES.despacho = {
     } catch(e) { WMS.toast('error', 'Error al cargar impresoras'); }
   },
 
+  async autoCertificar(sucursal) {
+    const ok = await Swal.fire({
+      title: '¿Auto-Certificar a una sola canasta?',
+      html: `Se creará una sesión, se empacarán todos los productos pendientes de <b>${WMS.esc(sucursal)}</b> en una sola canasta, y se finalizará automáticamente.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, Auto-Certificar',
+      cancelButtonText: 'Cancelar'
+    });
+    if (!ok.isConfirmed) return;
+    
+    WMS.spinner();
+    try {
+      const r = await API.post('/packing/autopack', { sucursal_entrega: sucursal, tipo_empaque: 'canasta' });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success', 'Certificación automática completada');
+      this.show_certificacion(); // recargar
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error en Auto-Certificación');
+    }
+  },
+
   _showPackingDialog(sucursal, impresoras) {
     const mkOpts = (tipo) => impresoras
       .filter(i => !i.tipos_trabajo?.length || i.tipos_trabajo.includes(tipo))
@@ -289,6 +812,14 @@ WMS_MODULES.despacho = {
     const certLines  = lineas.filter(l => l.cantidad_certificada > 0).length;
     const progress   = totalLines > 0 ? Math.round((certLines / totalLines) * 100) : 0;
 
+    const ambients = [...new Set(lineas.map(l => l.ambiente_nombre || 'Sin ambiente'))];
+    const ambientProgress = ambients.map(a => {
+       const lins = lineas.filter(l => (l.ambiente_nombre || 'Sin ambiente') === a);
+       const t = lins.length;
+       const c = lins.filter(l => l.cantidad_certificada > 0).length;
+       return { name: a, total: t, cert: c };
+    });
+
     WMS.setContent(`
       <div class="cert-workflow-container">
         <div class="cert-header">
@@ -318,12 +849,24 @@ WMS_MODULES.despacho = {
             <p class="text-muted text-sm" style="margin-top:8px;"><i class="fa-solid fa-keyboard"></i> También puede seleccionar un producto de la lista para certificarlo manualmente.</p>
           </div>
 
+          <div style="margin-top:15px; margin-bottom:10px; display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn btn-sm btn-primary cert-amb-tab" id="cert-tab-all" onclick="WMS_MODULES.despacho.filterCertAmbiente('')">
+              <i class="fa-solid fa-layer-group"></i> Todos (${certLines}/${totalLines})
+            </button>
+            ${ambientProgress.map(ap => `
+              <button class="btn btn-sm btn-outline-primary cert-amb-tab" id="cert-tab-${WMS.esc(ap.name)}" onclick="WMS_MODULES.despacho.filterCertAmbiente('${WMS.esc(ap.name)}')">
+                <i class="fa-solid fa-box"></i> ${WMS.esc(ap.name)} (${ap.cert}/${ap.total})
+              </button>
+            `).join('')}
+          </div>
+
           <div class="card" style="margin-top:20px;">
             <div class="table-container" style="max-height:calc(100vh - 350px); overflow-y:auto;">
               <table class="erp-table" id="table-cert-lines">
                 <thead>
                   <tr>
                     <th>Producto</th>
+                    <th class="text-center">Ambiente</th>
                     <th class="text-center">EAN/Código</th>
                     <th class="text-center">Pickeado</th>
                     <th class="text-center">Certificado</th>
@@ -337,10 +880,11 @@ WMS_MODULES.despacho = {
                     const diff = l.cantidad_pickeada - l.cantidad_certificada;
                     const st = l.cantidad_certificada === 0 ? 'pendiente' : (diff === 0 ? 'ok' : 'error');
                     return `
-                    <tr id="cert-row-${l.producto_id}" class="cert-row-${st}" data-ean="${WMS.esc(l.ean)}" data-codigo="${WMS.esc(l.codigo)}">
+                    <tr id="cert-row-${l.producto_id}" class="cert-row-${st}" data-ean="${WMS.esc(l.ean)}" data-codigo="${WMS.esc(l.codigo)}" data-ambiente="${WMS.esc(l.ambiente_nombre || 'Sin ambiente')}">
                       <td>
                         <div class="fw-700">${WMS.esc(l.nombre)}</div>
                       </td>
+                      <td class="text-center"><span class="badge" style="background-color:${l.ambiente_color||'#64748b'};color:#fff;">${WMS.esc(l.ambiente_nombre || 'Sin ambiente')}</span></td>
                       <td class="text-center"><code style="font-size:11px;">${WMS.esc(l.ean)}</code></td>
                       <td class="text-center fw-700" style="font-size:1.1rem;">${WMS.formatNum(l.cantidad_pickeada)}</td>
                       <td class="text-center fw-700" style="font-size:1.1rem; color:var(--primary);">${WMS.formatNum(l.cantidad_certificada)}</td>
@@ -381,6 +925,19 @@ WMS_MODULES.despacho = {
     
     // Auto-focus scanner
     setTimeout(() => document.getElementById('cert-scanner')?.focus(), 200);
+  },
+
+  filterCertAmbiente(amb) {
+    document.querySelectorAll('.cert-amb-tab').forEach(b => {
+      b.classList.remove('btn-primary'); b.classList.add('btn-outline-primary');
+    });
+    const btn = amb ? document.getElementById('cert-tab-'+amb) : document.getElementById('cert-tab-all');
+    if (btn) { btn.classList.remove('btn-outline-primary'); btn.classList.add('btn-primary'); }
+    
+    document.querySelectorAll('#table-cert-lines tbody tr').forEach(tr => {
+      if (!amb || tr.dataset.ambiente === amb) tr.style.display = '';
+      else tr.style.display = 'none';
+    });
   },
 
   async procesarEscaneo(sucursal) {
@@ -436,26 +993,71 @@ WMS_MODULES.despacho = {
 
   async finalizarCertificacion(sucursal) {
     if (!confirm('¿Desea finalizar la certificación de ' + sucursal + '? Se generarán las novedades si existen diferencias.')) return;
+
+    try {
+      const miscCheck = await API.get('/miscelaneos?pendientes_cliente=' + encodeURIComponent(sucursal));
+      const miscPend = miscCheck.data || [];
+      if (miscPend.length) {
+        const lista = miscPend.map(m => `• ${m.articulo} (${m.cantidad} ${m.unidad_medida||'UN'}) — Prov: ${m.proveedor}`).join('\n');
+        const incluir = confirm(`⚠️ MISCELÁNEOS PENDIENTES\n\nEste cliente tiene ${miscPend.length} misceláneo(s) pendiente(s) de envío:\n\n${lista}\n\n¿Desea continuar y despachar los misceláneos junto con este envío?`);
+        if (incluir) {
+          for (const m of miscPend) {
+            await API.post('/miscelaneos/' + m.id + '/despachar', {});
+          }
+        }
+      }
+    } catch(e) { /* continuar sin verificar misceláneos */ }
+
     WMS.spinner();
     try {
         const r = await API.post('/picking/certificacion/finalizar', { sucursal_entrega: sucursal });
-        if (r.error) WMS.toast('error', r.message);
-        else {
-            WMS.toast('success', 'Certificación finalizada exitosamente');
-            
-            // Intentar imprimir automáticamente
-            try {
-                const rp = await API.get('/picking/certificacion/imprimir/' + encodeURIComponent(sucursal));
-                if (rp.error) WMS.toast('warning', 'Certificado finalizado pero error en impresión: ' + rp.message);
-                else {
-                    const labelMsg = rp.label?.error ? 'Error Etiqueta: ' + rp.label.message : 'Etiqueta impresa OK';
-                    const docMsg   = rp.document?.error ? 'Error Documento: ' + rp.document.message : 'Documento impreso OK';
-                    WMS.toast('success', `Impresión: ${labelMsg} | ${docMsg}`);
-                }
-            } catch(e) { WMS.toast('warning', 'Error al intentar imprimir'); }
+        if (r.error) { WMS.toast('error', r.message); return; }
 
-            this.show_certificacion();
+        const data       = r.data  || {};
+        const totalFalt  = data.faltantes_detectados || 0;
+        const nuevosFalt = data.nuevos_faltantes     || 0;
+
+        WMS.toast('success', 'Certificación finalizada exitosamente');
+
+        // Intentar imprimir automáticamente
+        try {
+            const rp = await API.get('/picking/certificacion/imprimir/' + encodeURIComponent(sucursal));
+            if (rp.error) WMS.toast('warning', 'Certificado finalizado pero error en impresión: ' + rp.message);
+            else {
+                const labelMsg = rp.label?.error ? 'Error Etiqueta: ' + rp.label.message : 'Etiqueta impresa OK';
+                const docMsg   = rp.document?.error ? 'Error Documento: ' + rp.document.message : 'Documento impreso OK';
+                WMS.toast('success', `Impresión: ${labelMsg} | ${docMsg}`);
+            }
+        } catch(e) { WMS.toast('warning', 'Error al intentar imprimir'); }
+
+        // Mostrar modal de faltantes si los hay
+        if (totalFalt > 0) {
+            WMS.showModal(
+                '<i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;margin-right:8px;"></i>Faltantes Detectados en Certificación',
+                `<div style="padding:14px 18px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;margin-bottom:14px;">
+                  <div style="font-size:16px;font-weight:800;color:#92400e;margin-bottom:6px;">
+                    <i class="fa-solid fa-box-open" style="color:#f59e0b;margin-right:8px;"></i>
+                    ${totalFalt} referencia(s) con faltante en este despacho
+                  </div>
+                  <div style="font-size:13px;color:#78350f;line-height:1.6;">
+                    ${nuevosFalt > 0 ? `<strong>${nuevosFalt}</strong> faltante(s) recién capturado(s) al certificar.<br>` : ''}
+                    Estos artículos quedan registrados en el <strong>módulo de Agotados</strong> y aparecerán en la sección de agotados de la remisión.<br>
+                    Cuando llegue inventario puede liberarlos mediante el proceso de <strong>backorder</strong>.
+                  </div>
+                </div>
+                <div style="padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:12px;color:#1e40af;">
+                  <i class="fa-solid fa-lightbulb" style="margin-right:6px;"></i>
+                  <strong>Próximo paso:</strong> Revise el módulo <strong>Agotados</strong> en Picking para gestionar backorders o el módulo <strong>Faltantes</strong> para reprocesar.
+                </div>`,
+                `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>
+                 <button class="btn btn-warning" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking&&WMS_MODULES.picking.load('agotados');">
+                   <i class="fa-solid fa-box-open"></i> Ver Agotados
+                 </button>`,
+                { width: '600px' }
+            );
         }
+
+        this.show_certificacion();
     } catch(e) { WMS.toast('error', 'Error finalizando'); }
   },
 
@@ -544,6 +1146,242 @@ WMS_MODULES.despacho = {
     }
   },
 
+  async adminEditCert(sucursal) {
+    WMS.spinner();
+    try {
+      const r = await API.get('/picking/certificacion/admin-detalle/' + encodeURIComponent(sucursal));
+      const pedidos = r.data || [];
+      if (!pedidos.length) { WMS.toast('warning', 'No se encontraron líneas para esta sucursal'); return; }
+
+      const rows = [];
+      pedidos.forEach(p => {
+        (p.lineas || []).forEach(l => {
+          rows.push({
+            det_id: l.id, orden_id: p.id,
+            numero: p.numero_pedido || `#${p.id}`,
+            codigo: l.producto_codigo || '',
+            nombre: l.producto_nombre || '',
+            pickeado: parseFloat(l.cantidad_pickeada) || 0,
+            certificado: parseFloat(l.cantidad_certificada) || 0,
+            estado_cert: l.estado_certificacion || '',
+          });
+        });
+      });
+
+      this._certEditRows     = rows;
+      this._certEditSucursal = sucursal;
+
+      const totalLineas = rows.length;
+      const totalUds    = rows.reduce((s, r) => s + r.certificado, 0);
+
+      const bodyHTML = `
+        <div style="display:flex;align-items:center;gap:12px;padding:0 0 14px;border-bottom:1px solid #e5e7eb;margin-bottom:16px;">
+          <div style="flex:1;">
+            <div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Sucursal</div>
+            <div style="font-size:15px;font-weight:700;color:#111827;">${WMS.esc(sucursal)}</div>
+          </div>
+          <div style="text-align:center;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 16px;">
+            <div style="font-size:11px;color:#6b7280;">Líneas</div>
+            <div style="font-size:18px;font-weight:800;color:#15803d;">${totalLineas}</div>
+          </div>
+          <div style="text-align:center;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 16px;">
+            <div style="font-size:11px;color:#6b7280;">Uds. Certif.</div>
+            <div style="font-size:18px;font-weight:800;color:#1d4ed8;">${WMS.formatNum(totalUds)}</div>
+          </div>
+          <span id="cert-edit-badge" style="background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;border-radius:20px;font-size:11px;font-weight:700;padding:4px 12px;">
+            Sin cambios
+          </span>
+        </div>
+
+        <div style="overflow-x:auto;max-height:55vh;overflow-y:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+            <thead style="position:sticky;top:0;z-index:2;">
+              <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
+                <th style="padding:10px 8px;text-align:left;color:#475569;font-weight:600;white-space:nowrap;">Pedido</th>
+                <th style="padding:10px 8px;text-align:left;color:#475569;font-weight:600;">Código</th>
+                <th style="padding:10px 8px;text-align:left;color:#475569;font-weight:600;">Producto</th>
+                <th style="padding:10px 8px;text-align:center;color:#475569;font-weight:600;">Pickeado</th>
+                <th style="padding:10px 8px;text-align:center;color:#475569;font-weight:600;">Certificado</th>
+                <th style="padding:10px 8px;text-align:center;color:#475569;font-weight:600;min-width:120px;">Nueva Cant.</th>
+                <th style="padding:10px 8px;text-align:center;color:#475569;font-weight:600;">Diferencia</th>
+              </tr>
+            </thead>
+            <tbody id="cert-edit-tbody">
+              ${rows.map((row, i) => `
+              <tr id="cert-row-${i}" style="border-bottom:1px solid #f1f5f9;transition:background .15s,border-left .15s;border-left:3px solid transparent;">
+                <td style="padding:8px;font-size:11px;color:#6b7280;white-space:nowrap;">${WMS.esc(row.numero)}</td>
+                <td style="padding:8px;font-family:monospace;font-size:11px;color:#64748b;">${WMS.esc(row.codigo)}</td>
+                <td style="padding:8px;color:#1e293b;font-weight:500;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${WMS.esc(row.nombre)}">${WMS.esc(row.nombre)}</td>
+                <td style="padding:8px;text-align:center;font-weight:700;color:#2563eb;">${WMS.formatNum(row.pickeado)}</td>
+                <td style="padding:8px;text-align:center;color:${row.certificado>0?'#15803d':'#dc2626'};">${WMS.formatNum(row.certificado)}</td>
+                <td style="padding:8px;text-align:center;">
+                  <input id="ceq-${i}" type="number" min="0" step="0.001"
+                    value="${row.certificado}" data-orig="${row.certificado}" data-saved="0"
+                    style="width:100px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;text-align:center;font-size:12px;outline:none;transition:border .15s;"
+                    oninput="WMS_MODULES.despacho._certEditOnInput(${i})"
+                    onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'">
+                </td>
+                <td id="cert-diff-${i}" style="padding:8px;text-align:center;font-size:11px;color:#9ca3af;">—</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+
+      const footerHTML = `
+        <button class="btn btn-secondary btn-sm" onclick="WMS.closeModal('generic-modal')">
+          <i class="fa-solid fa-xmark"></i> Cerrar
+        </button>
+        <button id="cert-edit-save-btn" class="btn btn-primary btn-sm" disabled style="opacity:.5;margin-left:6px;"
+          onclick="WMS_MODULES.despacho._certEditGuardarLote()">
+          <i class="fa-solid fa-floppy-disk"></i> Sin cambios
+        </button>`;
+
+      WMS.showModal(`Editar Certificación`, bodyHTML, footerHTML, 'xl');
+
+    } catch(e) { WMS.toast('error', 'Error cargando detalle: ' + e.message); }
+    finally { WMS.spinner(false); }
+  },
+
+  _certEditOnInput(idx) {
+    const inp = document.getElementById(`ceq-${idx}`);
+    if (!inp) return;
+    inp.dataset.saved = '0';
+    const orig = parseFloat(inp.dataset.orig);
+    const cur  = parseFloat(inp.value);
+    const diff = cur - orig;
+    const changed = Math.abs(diff) > 0.001;
+
+    const row = document.getElementById(`cert-row-${idx}`);
+    if (row) {
+      row.style.background  = changed ? '#fffbeb' : '';
+      row.style.borderLeft  = changed ? '3px solid #f59e0b' : '3px solid transparent';
+    }
+    const diffEl = document.getElementById(`cert-diff-${idx}`);
+    if (diffEl) {
+      if (!changed) { diffEl.textContent = '—'; diffEl.style.color = '#9ca3af'; }
+      else {
+        diffEl.textContent = (diff > 0 ? '+' : '') + WMS.formatNum(diff);
+        diffEl.style.color  = diff > 0 ? '#dc2626' : '#15803d';
+        diffEl.style.fontWeight = '700';
+      }
+    }
+
+    const rows = this._certEditRows || [];
+    const total = rows.filter((_, i) => {
+      const el = document.getElementById(`ceq-${i}`);
+      return el && Math.abs(parseFloat(el.value) - _.certificado) > 0.001;
+    }).length;
+
+    const badge = document.getElementById('cert-edit-badge');
+    if (badge) {
+      badge.textContent  = total ? `${total} cambio(s) pendiente(s)` : 'Sin cambios';
+      badge.style.background  = total ? '#fef3c7' : '#f3f4f6';
+      badge.style.color       = total ? '#92400e' : '#6b7280';
+      badge.style.borderColor = total ? '#fcd34d' : '#e5e7eb';
+    }
+    const saveBtn = document.getElementById('cert-edit-save-btn');
+    if (saveBtn) {
+      saveBtn.innerHTML = total
+        ? `<i class="fa-solid fa-floppy-disk"></i> Guardar ${total} cambio(s)`
+        : '<i class="fa-solid fa-floppy-disk"></i> Sin cambios';
+      saveBtn.disabled     = total === 0;
+      saveBtn.style.opacity = total ? '1' : '0.5';
+    }
+  },
+
+  async _certEditGuardarLote() {
+    const rows    = this._certEditRows || [];
+    const sucursal = this._certEditSucursal || '';
+    const lineas  = [];
+
+    rows.forEach((row, i) => {
+      const inp   = document.getElementById(`ceq-${i}`);
+      if (!inp) return;
+      const nueva = parseFloat(inp.value);
+      if (isNaN(nueva) || nueva < 0) return;
+      if (Math.abs(nueva - row.certificado) > 0.001) {
+        lineas.push({ det_id: row.det_id, cantidad_certificada: nueva, _prev: row.certificado, _nombre: row.nombre });
+      }
+    });
+
+    if (!lineas.length) { WMS.toast('warning', 'No hay cambios para guardar'); return; }
+
+    const saveBtn = document.getElementById('cert-edit-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando...'; }
+
+    try {
+      const r = await API.put(`/picking/certificacion/admin-lote/${encodeURIComponent(sucursal)}`, { lineas });
+      const d = r.data || {};
+
+      // Actualizar estado en memoria y DOM
+      rows.forEach((row, i) => {
+        const inp = document.getElementById(`ceq-${i}`);
+        if (!inp) return;
+        const cambio = lineas.find(l => l.det_id === row.det_id);
+        if (!cambio) return;
+        const nueva = parseFloat(inp.value);
+        inp.dataset.saved = '1';
+        inp.dataset.orig  = nueva;
+        row.certificado   = nueva;
+        const tr = document.getElementById(`cert-row-${i}`);
+        if (tr) { tr.style.background = '#f0fdf4'; tr.style.borderLeft = '3px solid #22c55e'; }
+        const diffEl = document.getElementById(`cert-diff-${i}`);
+        if (diffEl) { diffEl.textContent = '✓'; diffEl.style.color = '#22c55e'; }
+        // Actualizar celda Certificado
+        const cells = tr ? tr.querySelectorAll('td') : [];
+        if (cells[4]) { cells[4].textContent = WMS.formatNum(nueva); cells[4].style.color = nueva > 0 ? '#15803d' : '#dc2626'; }
+      });
+
+      const badge = document.getElementById('cert-edit-badge');
+      if (badge) { badge.textContent = 'Guardado ✓'; badge.style.background = '#dcfce7'; badge.style.color = '#15803d'; badge.style.borderColor = '#86efac'; }
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Guardado'; saveBtn.style.opacity = '0.6'; }
+
+      // Resumen de auditoría
+      const resumenLineas = lineas.map(l => {
+        const diff = l.cantidad_certificada - l._prev;
+        return `<tr style="font-size:12px;">
+          <td style="padding:4px 8px;">${WMS.esc(l._nombre)}</td>
+          <td style="padding:4px 8px;text-align:center;">${WMS.formatNum(l._prev)}</td>
+          <td style="padding:4px 8px;text-align:center;font-weight:700;">${WMS.formatNum(l.cantidad_certificada)}</td>
+          <td style="padding:4px 8px;text-align:center;color:${diff>0?'#dc2626':'#15803d'};font-weight:700;">${diff>0?'+':''}${WMS.formatNum(diff)}</td>
+        </tr>`;
+      }).join('');
+
+      WMS.toast('success',
+        `${d.actualizadas || 0} línea(s) actualizada(s)` +
+        (d.inventario_ajustado ? ` · ${d.inventario_ajustado} ajuste(s) de inventario` : '') +
+        (d.ordenes_afectadas   ? ` · ${d.ordenes_afectadas} orden(es) recalculada(s)` : '')
+      );
+      this.show_certificacion();
+
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error al guardar');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i> Reintentar'; saveBtn.style.opacity = '1'; }
+    }
+  },
+
+  async _guardarCertEdit(ordenId, detId, idx) {
+    // Método legacy — redirige al flujo lote
+    this._certEditGuardarLote();
+  },
+
+  async _recalcularRemisionSucursal(sucursal) {
+    WMS.spinner();
+    try {
+      const r = await API.get('/picking/certificacion/admin-detalle/' + encodeURIComponent(sucursal));
+      const pedidos = r.data || [];
+      // Llamar en paralelo a todos los pedidos
+      const results = await Promise.allSettled(
+        pedidos.map(p => API.post(`/picking/${p.id}/recalcular-remision`, {}))
+      );
+      const ok = results.filter(r => r.status === 'fulfilled').length;
+      WMS.toast('success', `Remisión recalculada para ${ok} de ${pedidos.length} pedido(s).`);
+      WMS.closeRightPanel();
+      this.show_certificacion();
+    } catch(e) { WMS.toast('error', 'Error al recalcular: ' + e.message); }
+    finally { WMS.spinner(false); }
+  },
+
   async adminOverride(certId, detId, nombre, actual) {
     const nueva = prompt(`[ADMIN OVERRIDE] Corregir cantidad para:\n${nombre}\n\nCantidad actual registrada: ${actual}\nIngrese la cantidad real:`, actual);
     if (nueva === null || nueva === "" || isNaN(nueva)) return;
@@ -622,7 +1460,13 @@ WMS_MODULES.despacho = {
       const r = await API.get('/despachos', 'limit=100');
       const items = r.data || r || [];
       const stChip = s => {
-        const m = { Pendiente:'status-creada', 'En Cargue':'status-en-proceso', Despachado:'status-cerrada', Cancelado:'status-cancelada' };
+        const m = {
+          Preparando: 'status-creada',
+          Certificado: 'status-en-proceso',
+          Despachado: 'status-cerrada',
+          Entregado: 'status-completada',
+          Cancelado: 'status-cancelada',
+        };
         return `<span class="status-chip ${m[s]||'status-creada'}">${WMS.esc(s)}</span>`;
       };
       WMS.setContent(`
@@ -635,20 +1479,21 @@ WMS_MODULES.despacho = {
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-truck-loading"></i> Planillas de Cargue (${items.length})</span></div>
           <div class="table-container">
             <table class="erp-table" id="cargue-table">
-              <thead><tr><th>N° Planilla</th><th>Placa</th><th>Conductor</th><th>Ruta</th><th>Planillas Cert.</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr></thead>
+              <thead><tr><th>N° Despacho</th><th>Placa</th><th>Conductor</th><th>Ruta</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr></thead>
               <tbody>${items.map(d => `<tr>
-                <td><span class="badge badge-info">${WMS.esc(d.planilla_numero||d.numero||('#'+d.id))}</span></td>
+                <td><span class="badge badge-info">${WMS.esc(d.numero_despacho||('#'+d.id))}</span></td>
                 <td><strong>${WMS.esc(d.placa||'-')}</strong></td>
                 <td>${WMS.esc(d.conductor||'-')}</td>
                 <td>${WMS.esc(d.ruta||'-')}</td>
-                <td class="text-center">${d.total_planillas||d.planillas||0}</td>
-                <td>${stChip(d.estado||'Pendiente')}</td>
-                <td>${WMS.formatDate(d.created_at)||'-'}</td>
+                <td>${stChip(d.estado||'Preparando')}</td>
+                <td>${WMS.formatDate(d.fecha_movimiento)||'-'}</td>
                 <td><div class="actions">
-                  <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.despacho.verCargue(${d.id})"><i class="fa-solid fa-eye"></i></button>
-                  ${d.estado==='En Cargue'||d.estado==='Pendiente' ? `<button class="btn btn-sm btn-success" onclick="WMS_MODULES.despacho.despacharCargue(${d.id})"><i class="fa-solid fa-truck"></i> Despachar</button>` : ''}
+                  <button class="btn btn-sm btn-secondary" title="Ver detalle" onclick="WMS_MODULES.despacho.verCargue(${d.id})"><i class="fa-solid fa-eye"></i></button>
+                  ${d.estado !== 'Entregado' ? `<button class="btn btn-sm btn-info" title="Agregar pedidos" onclick="WMS_MODULES.despacho.agregarPedidosCargue(${d.id})"><i class="fa-solid fa-box-open"></i> Pedidos</button>` : ''}
+                  ${d.estado === 'Preparando' || d.estado === 'Certificado' ? `<button class="btn btn-sm btn-success" title="Despachar" onclick="WMS_MODULES.despacho.despacharCargue(${d.id})"><i class="fa-solid fa-truck"></i> Despachar</button>` : ''}
+                  ${d.estado === 'Despachado' ? `<button class="btn btn-sm btn-warning" title="Liquidar - marcar como Entregado" onclick="WMS_MODULES.despacho.liquidarCargue(${d.id})"><i class="fa-solid fa-clipboard-check"></i> Liquidar</button>` : ''}
                 </div></td>
-              </tr>`).join('') || '<tr><td colspan="8" class="table-empty">Sin planillas de cargue</td></tr>'}
+              </tr>`).join('') || '<tr><td colspan="7" class="table-empty">Sin planillas de cargue</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -656,32 +1501,42 @@ WMS_MODULES.despacho = {
     } catch(e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
   },
 
-  nuevoPlanillaCargue() {
+  async nuevoPlanillaCargue() {
+    // Carga rutas para el selector
+    let rutasOpts = '<option value="">Sin ruta específica</option>';
+    try {
+      const rr = await API.get('/param/rutas');
+      const rutas = rr.data || rr || [];
+      rutasOpts += rutas.map(rt => `<option value="${rt.id}">${WMS.esc(rt.nombre)}</option>`).join('');
+    } catch(e) { /* no rutas disponibles */ }
+
     WMS.showRightPanel('Nueva Planilla de Cargue', `
       <div class="form-grid form-grid-2">
         <div class="form-group"><label class="form-label">Placa del Vehículo <span class="required">*</span></label><input id="car-placa" class="form-control" placeholder="ABC-123"></div>
         <div class="form-group"><label class="form-label">Conductor <span class="required">*</span></label><input id="car-conductor" class="form-control" placeholder="Nombre del conductor"></div>
-        <div class="form-group"><label class="form-label">Ruta <span class="required">*</span></label><input id="car-ruta" class="form-control" placeholder="Ej: Bogotá Norte"></div>
-        <div class="form-group"><label class="form-label">N° Precinto</label><input id="car-precinto" class="form-control" placeholder="PRE-001"></div>
-        <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Observaciones</label><input id="car-obs" class="form-control" placeholder="Notas adicionales"></div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Ruta <span class="required">*</span></label>
+          <select id="car-ruta-id" class="form-control">${rutasOpts}</select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Observaciones</label><textarea id="car-obs" class="form-control" rows="2" placeholder="Notas adicionales"></textarea></div>
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.despacho.saveCargue()"><i class="fa-solid fa-save"></i> Crear Cargue</button>`);
   },
 
   async saveCargue() {
-    const placa = document.getElementById('car-placa')?.value.trim();
+    const placa     = document.getElementById('car-placa')?.value.trim();
     const conductor = document.getElementById('car-conductor')?.value.trim();
-    const ruta = document.getElementById('car-ruta')?.value.trim();
-    if (!placa || !conductor || !ruta) { WMS.toast('warning', 'Placa, Conductor y Ruta son requeridos'); return; }
+    const rutaId    = document.getElementById('car-ruta-id')?.value || null;
+    if (!placa || !conductor) { WMS.toast('warning', 'Placa y Conductor son requeridos'); return; }
     try {
       const r = await API.post('/despachos', {
-        placa, conductor, ruta,
-        numero_precinto: document.getElementById('car-precinto')?.value.trim()||null,
-        observaciones: document.getElementById('car-obs')?.value.trim()||null,
+        placa, conductor,
+        ruta_id: rutaId ? parseInt(rutaId) : null,
+        observaciones: document.getElementById('car-obs')?.value.trim() || null,
       });
       if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Cargue creado'); WMS.closeRightPanel(); this.show_cargue(); }
+      else { WMS.toast('success', 'Planilla de cargue creada'); WMS.closeRightPanel(); this.show_cargue(); }
     } catch(e) { WMS.toast('error', 'Error guardando'); }
   },
 
@@ -689,42 +1544,161 @@ WMS_MODULES.despacho = {
     try {
       const r = await API.get('/despachos/' + id);
       const d = r.data || r;
-      const planillas = d.planillas || d.detalles || [];
-      WMS.showRightPanel('Cargue #' + (d.planilla_numero || id), `
+      const ordenes = d.ordenes || [];
+      const stOrd = s => {
+        if (!s) return '-';
+        const col = { Despachado: '#3b82f6', Entregado: '#059669' };
+        return `<span style="color:${col[s]||'#64748b'};font-weight:700;">${WMS.esc(s)}</span>`;
+      };
+      const esEditable = d.estado !== 'Entregado';
+      WMS.showRightPanel(`Cargue: ${WMS.esc(d.numero_despacho||'#'+id)}`, `
         <div class="form-grid form-grid-2" style="margin-bottom:16px;">
-          <div><label class="form-label">Placa</label><p>${WMS.esc(d.placa||'-')}</p></div>
+          <div><label class="form-label">Placa</label><p><b>${WMS.esc(d.placa||'-')}</b></p></div>
           <div><label class="form-label">Conductor</label><p>${WMS.esc(d.conductor||'-')}</p></div>
-          <div><label class="form-label">Ruta</label><p>${WMS.esc(d.ruta||'-')}</p></div>
-          <div><label class="form-label">Estado</label><p><span class="badge badge-info">${WMS.esc(d.estado||'')}</span></p></div>
+          <div><label class="form-label">Ruta</label><p>${WMS.esc(d.ruta_obj?.nombre||d.ruta||'-')}</p></div>
+          <div><label class="form-label">Estado</label><p><b>${WMS.esc(d.estado||'')}</b></p></div>
+          ${d.observaciones ? `<div style="grid-column:1/-1;"><label class="form-label">Observaciones</label><p>${WMS.esc(d.observaciones)}</p></div>` : ''}
         </div>
+        <b style="display:block;margin-bottom:8px;">Pedidos asociados (${ordenes.length})</b>
         <div class="table-container">
           <table class="erp-table">
-            <thead><tr><th>Planilla</th><th>Cliente</th><th>Ruta</th><th>Estado</th></tr></thead>
-            <tbody>${planillas.map(p => `<tr>
-              <td>${WMS.esc(p.numero_planilla||('-'))}</td>
-              <td>${WMS.esc(p.cliente||'-')}</td>
-              <td>${WMS.esc(p.ruta||'-')}</td>
-              <td><span class="badge badge-success">${WMS.esc(p.estado||'')}</span></td>
-            </tr>`).join('') || '<tr><td colspan="4" class="table-empty">Sin planillas</td></tr>'}
+            <thead><tr><th>Planilla</th><th>Cliente / Sucursal</th><th>Estado despacho</th>${esEditable ? '<th></th>' : ''}</tr></thead>
+            <tbody>${ordenes.map(o => `<tr>
+              <td><span class="badge badge-info">${WMS.esc(o.planilla_numero||'#'+o.id)}</span></td>
+              <td>${WMS.esc(o.cliente||o.sucursal_entrega||'-')}</td>
+              <td>${stOrd(o.estado_despacho)}</td>
+              ${esEditable ? `<td><button class="btn btn-sm btn-danger" title="Quitar pedido" onclick="WMS_MODULES.despacho.quitarPedidoCargue(${id},${o.id})"><i class="fa-solid fa-xmark"></i></button></td>` : ''}
+            </tr>`).join('') || `<tr><td colspan="${esEditable?4:3}" class="table-empty">Sin pedidos asociados</td></tr>`}
             </tbody>
           </table>
         </div>`,
-        `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cerrar</button>`);
+        `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cerrar</button>
+         ${esEditable ? `<button class="btn btn-info" onclick="WMS.closeRightPanel();WMS_MODULES.despacho.agregarPedidosCargue(${id})"><i class="fa-solid fa-box-open"></i> Agregar Pedidos</button>` : ''}
+         ${d.estado==='Despachado' ? `<button class="btn btn-warning" onclick="WMS.closeRightPanel();WMS_MODULES.despacho.liquidarCargue(${id})"><i class="fa-solid fa-clipboard-check"></i> Liquidar</button>` : ''}
+         ${d.estado==='Preparando'||d.estado==='Certificado' ? `<button class="btn btn-success" onclick="WMS.closeRightPanel();WMS_MODULES.despacho.despacharCargue(${id})"><i class="fa-solid fa-truck"></i> Despachar</button>` : ''}`);
     } catch(e) { WMS.toast('error', 'Error cargando detalle'); }
   },
 
-  generarCargue(planillaId) {
-    this.nuevoPlanillaCargue();
-    // Pre-populate could be done here in a real flow
+  async agregarPedidosCargue(despachoId) {
+    WMS.spinner();
+    try {
+      // Carga ordenes certificadas y no despachadas aún
+      const [rDesp, rOrd] = await Promise.all([
+        API.get('/despachos/' + despachoId),
+        API.get('/picking', 'estado_certificacion=Certificada&sin_despacho=1&limit=200&incluir_finalizados=1'),
+      ]);
+      const despacho  = rDesp.data || rDesp;
+      const yaAsoc    = new Set((despacho.ordenes || []).map(o => o.id));
+      const ordenes   = (rOrd.data || rOrd || []).filter(o =>
+        !yaAsoc.has(o.id) && (!o.estado_despacho || o.estado_despacho === null)
+      );
+
+      WMS.setContent(`
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-box-open"></i> Agregar Pedidos a Cargue: ${WMS.esc(despacho.numero_despacho)}</span>
+          </div>
+          <div class="card-body">
+            <p style="color:#64748b;margin-bottom:12px;">Selecciona los pedidos certificados para asociar a esta planilla. El estado de los pedidos quedará como <b>Despachado</b>.</p>
+            <div class="filter-bar" style="margin-bottom:12px;">
+              <div class="search-bar"><i class="fa-solid fa-search"></i>
+                <input placeholder="Filtrar pedidos..." oninput="WMS_MODULES.despacho.filterTable(this.value,'add-ord-table')">
+              </div>
+            </div>
+            <div class="table-container">
+              <table class="erp-table" id="add-ord-table">
+                <thead><tr><th><input type="checkbox" id="chk-all-ord" onchange="document.querySelectorAll('.chk-ord').forEach(c=>c.checked=this.checked)"></th>
+                  <th>Planilla</th><th>Cliente / Sucursal</th><th>Fecha</th><th>Estado cert.</th></tr></thead>
+                <tbody>${ordenes.map(o => `<tr>
+                  <td><input type="checkbox" class="chk-ord" value="${o.id}"></td>
+                  <td><span class="badge badge-info">${WMS.esc(o.planilla_numero||'#'+o.id)}</span></td>
+                  <td>${WMS.esc(o.cliente||o.sucursal_entrega||'-')}</td>
+                  <td>${WMS.formatDate(o.fecha_movimiento)||'-'}</td>
+                  <td>${WMS.esc(o.estado_certificacion||'-')}</td>
+                </tr>`).join('') || '<tr><td colspan="5" class="table-empty">No hay pedidos disponibles para agregar</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-secondary" onclick="WMS_MODULES.despacho.show_cargue()">Cancelar</button>
+          <button class="btn btn-primary" onclick="WMS_MODULES.despacho._confirmarAgregarPedidos(${despachoId})">
+            <i class="fa-solid fa-save"></i> Asociar Seleccionados
+          </button>
+        </div>`);
+    } catch(e) { WMS.toast('error', 'Error cargando pedidos'); this.show_cargue(); }
+  },
+
+  async _confirmarAgregarPedidos(despachoId) {
+    const ids = Array.from(document.querySelectorAll('.chk-ord:checked')).map(c => parseInt(c.value));
+    if (!ids.length) { WMS.toast('warning', 'Selecciona al menos un pedido'); return; }
+    try {
+      const r = await API.post(`/despachos/${despachoId}/pedidos`, { orden_ids: ids });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success', `${ids.length} pedido(s) asociados — estado: Despachado`);
+      this.verCargue(despachoId);
+    } catch(e) { WMS.toast('error', 'Error al asociar pedidos'); }
+  },
+
+  async quitarPedidoCargue(despachoId, ordenId) {
+    const ok = await Swal.fire({
+      title: 'Quitar pedido',
+      text: '¿Quitar este pedido del cargue? Su estado de despacho se revertirá.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, quitar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc2626',
+    });
+    if (!ok.isConfirmed) return;
+    try {
+      const r = await API.delete(`/despachos/${despachoId}/pedidos/${ordenId}`);
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success', 'Pedido removido del cargue');
+      this.verCargue(despachoId);
+    } catch(e) { WMS.toast('error', 'Error'); }
   },
 
   async despacharCargue(id) {
-    if (!confirm('¿Confirmar despacho? El vehículo saldrá con las planillas asignadas.')) return;
+    const ok = await Swal.fire({
+      title: 'Confirmar despacho',
+      text: 'El vehículo saldrá. Los pedidos quedarán con estado Despachado.',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, despachar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#059669',
+    });
+    if (!ok.isConfirmed) return;
     try {
       const r = await API.post('/despachos/' + id + '/cerrar', {});
       if (r.error) WMS.toast('error', r.message);
       else { WMS.toast('success', 'Despacho confirmado'); this.show_cargue(); }
     } catch(e) { WMS.toast('error', 'Error'); }
+  },
+
+  async liquidarCargue(id) {
+    const ok = await Swal.fire({
+      title: 'Liquidar planilla de cargue',
+      text: 'Confirma que los pedidos fueron entregados. Esta acción cambia el estado a Entregado y no se puede revertir.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, liquidar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#d97706',
+    });
+    if (!ok.isConfirmed) return;
+    try {
+      const r = await API.post('/despachos/' + id + '/liquidar', {});
+      if (r.error) { await Swal.fire('Error', r.message, 'error'); return; }
+      WMS.toast('success', 'Planilla liquidada — pedidos marcados como Entregados');
+      this.show_cargue();
+    } catch(e) { WMS.toast('error', 'Error al liquidar'); }
+  },
+
+  generarCargue(planillaId) {
+    this.nuevoPlanillaCargue();
   },
 
   // ── DASHBOARD CERTIFICACIÓN — Professional Command Center ───────────────────
@@ -1253,16 +2227,43 @@ WMS_MODULES.despacho = {
       <div id="packing-wrap">
         <!-- TOP BAR -->
         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-          <div style="flex:1;display:flex;gap:20px;font-size:13px;">
+          <div style="flex:1;display:flex;gap:16px;font-size:13px;align-items:center;flex-wrap:wrap;">
             <span>Pendiente: <strong id="pk-stat-pend" style="color:${pendiente>0?'#dc2626':'#16a34a'};">${WMS.formatNum(pendiente)}</strong></span>
             <span>Empacado: <strong id="pk-stat-emp">${WMS.formatNum(totales.total_empacado)}</strong></span>
-            <span>Unidades: <strong id="pk-stat-units">${totales.num_unidades}</strong></span>
+            <span>Total pick: <strong>${WMS.formatNum(totales.total_pickeado)}</strong></span>
+            ${totales.num_unidades > 0 ? `
+            <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.despacho._showCanastasDetalle(${sesion.id})" style="font-size:11px;">
+              <i class="fa-solid fa-boxes-stacked"></i> Ver ${totales.num_unidades} unidad${totales.num_unidades!==1?'es':''} cerrada${totales.num_unidades!==1?'s':''}
+            </button>` : ''}
           </div>
           <button id="pk-btn-finalizar" class="btn btn-success btn-sm" ${btnFin}
             onclick="WMS_MODULES.despacho.finalizarPacking(${sesion.id})">
             <i class="fa-solid fa-flag-checkered"></i> Finalizar Certificación
           </button>
         </div>
+
+        <!-- RESUMEN POR AMBIENTE -->
+        ${(() => {
+          const ambs = {};
+          productos.forEach(p => {
+            const nombre = p.ambiente_nombre || 'Sin ambiente';
+            const color  = p.ambiente_color  || '#64748b';
+            if (!ambs[nombre]) ambs[nombre] = { nombre, color, pickeado: 0, empacado: 0 };
+            ambs[nombre].pickeado += Number(p.total_pickeado) || 0;
+            ambs[nombre].empacado += Number(p.total_empacado) || 0;
+          });
+          const cards = Object.values(ambs).map(amb => {
+            const pct = amb.pickeado > 0 ? Math.min(100, Math.round((amb.empacado / amb.pickeado) * 100)) : 0;
+            return `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;min-width:160px;">
+              <div style="font-size:11px;font-weight:700;color:${amb.color};margin-bottom:4px;">${WMS.esc(amb.nombre)}</div>
+              <div style="font-size:12px;">Pick: ${WMS.formatNum(amb.pickeado)} | Pack: ${WMS.formatNum(amb.empacado)}</div>
+              <div style="height:4px;background:#e2e8f0;border-radius:2px;margin-top:6px;">
+                <div style="height:100%;width:${pct}%;background:${amb.color};border-radius:2px;"></div>
+              </div>
+            </div>`;
+          }).join('');
+          return cards ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${cards}</div>` : '';
+        })()}
 
         <!-- TWO PANELS -->
         <div style="display:grid;grid-template-columns:1fr 400px;gap:14px;align-items:start;">
@@ -1272,7 +2273,14 @@ WMS_MODULES.despacho = {
               <span class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Productos Pendientes</span>
               <span style="font-size:12px;color:#64748b;">${tipoUp} actual: <strong>#${consec}</strong></span>
             </div>
-            <div id="pk-left-content" style="padding:0 8px 8px;">
+            <div style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">
+              <div class="search-bar" style="margin:0;">
+                <i class="fa-solid fa-search"></i>
+                <input id="pk-search" placeholder="Buscar producto o código..."
+                  oninput="WMS_MODULES.despacho._pkFiltrar(this.value)">
+              </div>
+            </div>
+            <div id="pk-left-content" style="padding:0 0 8px;">
               ${this._buildProductosList(productos, sesion.id)}
             </div>
           </div>
@@ -1287,47 +2295,105 @@ WMS_MODULES.despacho = {
               ${this._buildItemsTable(unitAb?.items || [])}
             </div>
             <div style="padding:10px 12px;border-top:1px solid #e2e8f0;">
-              <button class="btn btn-warning btn-sm" style="width:100%;"
-                onclick="WMS_MODULES.despacho.cerrarUnidadPacking(${unidad_abierta})">
-                <i class="fa-solid fa-box-archive"></i> Cerrar unidad e imprimir sticker
-              </button>
+              ${(unitAb?.items?.length || 0) > 0
+                ? `<button class="btn btn-warning btn-sm" style="width:100%;"
+                    onclick="WMS_MODULES.despacho.cerrarUnidadPacking(${unidad_abierta})">
+                    <i class="fa-solid fa-box-archive"></i> Cerrar unidad e imprimir sticker
+                   </button>`
+                : `<button class="btn btn-secondary btn-sm" style="width:100%;opacity:.5;cursor:not-allowed;" disabled>
+                    <i class="fa-solid fa-box-archive"></i> Agrega ítems antes de cerrar
+                   </button>`}
             </div>
           </div>
         </div>
 
-        <!-- UNIDADES CERRADAS -->
-        <div id="pk-closed-list" style="margin-top:14px;">
-          ${this._buildClosedList(unidades, tipoUp, sesion.id)}
-        </div>
       </div>`);
   },
 
   _buildProductosList(productos, sesionId) {
     if (!productos.length) return '<p class="table-empty">Sin productos</p>';
-    return productos.map(p => `
-      <div class="pk-prod-row" style="padding:8px;border-bottom:1px solid #f1f5f9;" id="pk-prod-${p.producto_id}">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <div>
-            <div style="font-weight:600;font-size:13px;">${WMS.esc(p.nombre)}</div>
-            <div style="font-size:11px;color:#64748b;">${WMS.esc(p.codigo||'-')}</div>
-          </div>
-          <div style="text-align:right;font-size:12px;">
-            <div>Pick: <strong>${WMS.formatNum(p.total_pickeado)}</strong></div>
-            <div>Emp: ${WMS.formatNum(p.total_empacado)}</div>
-            <div style="color:${p.pendiente>0?'#dc2626':'#16a34a'};font-weight:700;">Pend: ${WMS.formatNum(p.pendiente)}</div>
-          </div>
-        </div>
-        ${p.pendiente > 0 ? `
-        <div style="display:flex;gap:6px;align-items:center;">
-          <input type="number" id="pk-qty-${p.producto_id}" min="0.001" max="${p.pendiente}" step="0.001"
-            value="${p.pendiente}" style="width:90px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
-          <button class="btn btn-primary btn-sm" style="font-size:11px;"
-            data-sesion="${sesionId}" data-producto="${p.producto_id}"
-            onclick="WMS_MODULES.despacho.agregarItemPacking(+this.dataset.sesion, +this.dataset.producto)">
-            <i class="fa-solid fa-plus"></i> Agregar
-          </button>
-        </div>` : '<span style="font-size:11px;color:#16a34a;"><i class="fa-solid fa-check"></i> Completado</span>'}
-      </div>`).join('');
+
+    const pendientes = productos.filter(p => p.pendiente > 0);
+    const completos  = productos.filter(p => p.pendiente <= 0);
+
+    // Agrupar pendientes por ambiente
+    const grupos = {};
+    pendientes.forEach(p => {
+      const key = p.ambiente_nombre || 'Sin ambiente';
+      if (!grupos[key]) grupos[key] = { color: p.ambiente_color || '#64748b', items: [] };
+      grupos[key].items.push(p);
+    });
+
+    let html = '';
+
+    if (pendientes.length === 0) {
+      html += '<div style="padding:12px;text-align:center;color:#16a34a;font-weight:700;font-size:13px;"><i class="fa-solid fa-check-double"></i> Todos los productos empacados</div>';
+    }
+
+    for (const [ambNombre, grupo] of Object.entries(grupos)) {
+      html += `
+        <div class="pk-amb-header" style="padding:5px 10px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;border-top:1px solid #e2e8f0;display:flex;align-items:center;gap:8px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:${grupo.color};display:inline-block;flex-shrink:0;"></span>
+          <span style="font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.5px;">${WMS.esc(ambNombre)}</span>
+          <span style="font-size:10px;color:#94a3b8;margin-left:auto;">${grupo.items.length} ref(s)</span>
+        </div>`;
+      grupo.items.forEach(p => {
+        html += `
+          <div class="pk-prod-row" id="pk-prod-${p.producto_id}"
+            data-nombre="${WMS.esc((p.nombre||'').toLowerCase())}" data-codigo="${WMS.esc((p.codigo||'').toLowerCase())}"
+            data-amb="${WMS.esc(ambNombre)}"
+            style="padding:8px 10px 8px 18px;border-bottom:1px solid #f1f5f9;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${WMS.esc(p.nombre)}</div>
+                <div style="font-size:11px;color:#64748b;">${WMS.esc(p.codigo||'-')}</div>
+              </div>
+              <div style="text-align:right;font-size:12px;flex-shrink:0;margin-left:8px;">
+                <div>Pick: <strong>${WMS.formatNum(p.total_pickeado)}</strong></div>
+                <div style="color:#64748b;">Emp: ${WMS.formatNum(p.total_empacado)}</div>
+                <div style="color:#dc2626;font-weight:700;">Pend: ${WMS.formatNum(p.pendiente)}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input type="number" id="pk-qty-${p.producto_id}" min="0.001" max="${p.pendiente}" step="0.001"
+                value="${p.pendiente}" style="width:88px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
+              <button class="btn btn-primary btn-sm" style="font-size:11px;"
+                data-sesion="${sesionId}" data-producto="${p.producto_id}"
+                onclick="WMS_MODULES.despacho.agregarItemPacking(+this.dataset.sesion, +this.dataset.producto)">
+                <i class="fa-solid fa-plus"></i> Agregar
+              </button>
+            </div>
+          </div>`;
+      });
+    }
+
+    if (completos.length) {
+      html += `<div style="padding:6px 10px;background:#f0fdf4;border-top:2px solid #bbf7d0;margin-top:4px;">
+        <span style="font-size:11px;color:#16a34a;font-weight:700;">
+          <i class="fa-solid fa-check-double"></i> ${completos.length} producto(s) ya completados
+        </span>
+      </div>`;
+    }
+
+    return html;
+  },
+
+  _pkFiltrar(q) {
+    const term = (q || '').toLowerCase().trim();
+    document.querySelectorAll('.pk-prod-row').forEach(el => {
+      const match = !term || (el.dataset.nombre||'').includes(term) || (el.dataset.codigo||'').includes(term);
+      el.style.display = match ? '' : 'none';
+    });
+    // Ocultar cabeceras de ambiente si todos sus hijos están ocultos
+    document.querySelectorAll('.pk-amb-header').forEach(header => {
+      let next = header.nextElementSibling;
+      let hasVisible = false;
+      while (next && next.classList.contains('pk-prod-row')) {
+        if (next.style.display !== 'none') hasVisible = true;
+        next = next.nextElementSibling;
+      }
+      header.style.display = hasVisible ? '' : 'none';
+    });
   },
 
   _buildItemsTable(items) {
@@ -1395,6 +2461,86 @@ WMS_MODULES.despacho = {
     </div>`;
   },
 
+  async _showCanastasDetalle(sesionId) {
+    try {
+      const r = await API.get('/packing/sesion/' + sesionId);
+      if (r.error) { WMS.toast('error', r.message); return; }
+      const { sesion, unidades, productos } = r.data;
+      const tipoUp   = (sesion.tipo_empaque || 'canasta').charAt(0).toUpperCase() + sesion.tipo_empaque.slice(1);
+      const cerradas = unidades.filter(u => u.estado === 'Cerrada').sort((a, b) => a.consecutivo - b.consecutivo);
+      const abierta  = unidades.find(u => u.estado === 'Abierta');
+      const pendientes = productos.filter(p => p.pendiente > 0.001);
+
+      const fmtDesglose = it => {
+        const cj = it.cantidad_cajas || 0;
+        const sl = it.saldo || 0;
+        if (cj > 0 || sl > 0)
+          return `${cj > 0 ? cj + ' cj' : ''}${cj > 0 && sl > 0 ? ' + ' : ''}${sl > 0 ? sl + ' suelt.' : ''}`;
+        return WMS.formatNum(it.cantidad) + ' uds';
+      };
+
+      const rowsHtml = cerradas.map(u => {
+        const items    = u.items || [];
+        const totalUds = u.total_unidades ?? items.reduce((s, i) => s + (i.cantidad || 0), 0);
+        const horaC    = u.closed_at ? u.closed_at.substring(11, 16) : '—';
+        const detalleRows = items.length
+          ? items.map(i => `<tr>
+              <td><code style="font-size:11px;">${WMS.esc(i.codigo || '-')}</code></td>
+              <td style="font-size:12px;">${WMS.esc(i.producto_nombre || i.nombre || '-')}</td>
+              <td class="text-center fw-700" style="font-size:12px;">${fmtDesglose(i)}</td>
+              <td style="font-size:11px;color:#64748b;">${WMS.esc(i.lote || '-')}</td>
+            </tr>`).join('')
+          : `<tr><td colspan="4" style="text-align:center;color:#94a3b8;font-size:12px;">Sin ítems</td></tr>`;
+
+        return `
+          <div style="border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;overflow:hidden;">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:#f0fdf4;border-bottom:1px solid #bbf7d0;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <strong style="font-size:13px;color:#065f46;">${tipoUp} #${String(u.consecutivo).padStart(3,'0')}</strong>
+                <span style="font-size:11px;color:#6b7280;">${horaC}</span>
+                <span style="font-size:11px;background:#dcfce7;color:#15803d;border-radius:4px;padding:1px 6px;">${items.length} ítem(s)</span>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <span style="font-size:13px;font-weight:800;color:#059669;">${WMS.formatNum(totalUds)} uds</span>
+                <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.despacho._imprimirStickerUnidad(${u.id},'letter')">
+                  <i class="fa-solid fa-print"></i> Sticker
+                </button>
+              </div>
+            </div>
+            <div style="padding:0 12px 8px;">
+              <table class="erp-table" style="font-size:12px;margin-top:8px;">
+                <thead><tr><th>Ref.</th><th>Producto</th><th class="text-center">Cant.</th><th>Lote</th></tr></thead>
+                <tbody>${detalleRows}</tbody>
+              </table>
+            </div>
+          </div>`;
+      }).join('');
+
+      const abHtml = abierta ? `
+        <div style="border:1.5px dashed #d97706;border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <strong style="font-size:13px;color:#d97706;">${tipoUp} #${String(abierta.consecutivo).padStart(3,'0')} — Abierta</strong>
+            <span style="font-size:12px;color:#64748b;">${(abierta.items||[]).length} ítem(s) · ${pendientes.length} ref(s) pendiente(s)</span>
+          </div>
+          ${(abierta.items||[]).length ? this._buildItemsTable(abierta.items) : '<p style="font-size:12px;color:#94a3b8;margin:0;">Unidad vacía</p>'}
+        </div>` : '';
+
+      await Swal.fire({
+        title: `Detalle de ${tipoUp}s — ${WMS.esc(sesion.sucursal_entrega)}`,
+        width: 820,
+        html: `<div style="text-align:left;max-height:60vh;overflow-y:auto;padding-right:4px;">
+          ${abHtml}
+          ${cerradas.length ? `<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">${cerradas.length} unidad${cerradas.length!==1?'es':''} cerrada${cerradas.length!==1?'s':''}</div>` : ''}
+          ${rowsHtml || '<p style="text-align:center;color:#94a3b8;">No hay unidades cerradas</p>'}
+        </div>`,
+        showConfirmButton: false,
+        showCloseButton: true,
+      });
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error al cargar detalle');
+    }
+  },
+
   async agregarItemPacking(sesionId, productoId) {
     const qty = parseFloat(document.getElementById('pk-qty-' + productoId)?.value || 0);
     if (!qty || qty <= 0) { WMS.toast('error', 'Ingrese una cantidad válida'); return; }
@@ -1440,11 +2586,11 @@ WMS_MODULES.despacho = {
     try {
       const r = await API.post('/packing/unidad/' + unidadId + '/cerrar', {});
       if (r.error) { WMS.toast('error', r.message); return; }
-      // Auto-print sticker for closed unit
-      this._imprimirStickerUnidad(unidadId, 'letter');
+      // Auto-print sticker (media carta) al cerrar canasta
+      this._imprimirStickerUnidad(unidadId, 'media_carta');
       WMS.toast('success', r.message || 'Unidad cerrada');
       await this.show_packing(sesionId);
-    } catch(e) { WMS.toast('error', 'Error al cerrar unidad'); }
+    } catch(e) { WMS.toast('error', e.message || 'Error al cerrar unidad'); }
   },
 
   _imprimirStickerUnidad(unidadId, size) {
@@ -1502,7 +2648,7 @@ WMS_MODULES.despacho = {
     return `<div class="sticker">
       <div class="st-header">
         <span class="st-tipo">${tipoUp} #${consec}</span>
-        <span>WMS Fénix</span>
+        <img src="${location.origin}/WMS_FENIX/logo.jpg" style="height:26px;object-fit:contain;vertical-align:middle;" alt="Logo">
       </div>
       <div class="st-suc">Sucursal: <strong>${WMS.esc(sesion.sucursal_entrega)}</strong></div>
       <table>
@@ -1518,29 +2664,33 @@ WMS_MODULES.despacho = {
   },
 
   _wrapPrintPage(content, size, autoprint) {
-    const sizes = { media_carta: '5.5in 8.5in', a5: 'A5', letter: 'letter' };
-    const margins = { letter: '12mm' };
-    const pageSize = sizes[size] || 'letter';
-    const margin   = margins[size] || '8mm';
-    const script   = autoprint !== false ? '<script>window.onload=()=>window.print();<\/script>' : '';
+    // Rótulos de canasta → media carta (5.5×8.5 in) | Remisión → carta (8.5×11 in)
+    const pageSize = size === 'media_carta' ? '5.5in 8.5in' : (size === 'a5' ? 'A5' : 'letter');
+    const margin   = size === 'media_carta' ? '10mm 12mm' : '15mm 18mm';
+    const script   = autoprint !== false ? '<script>window.onload=()=>{window.focus();window.print();};<\/script>' : '';
     return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<title>${size === 'media_carta' ? 'Rótulo Canasta' : 'Documento Packing'}</title>
 <style>
 @page { size: ${pageSize}; margin: ${margin}; }
-@media print { .no-print { display:none; } }
-body { font-family: Arial, sans-serif; font-size: 11px; margin: 0; }
-.sticker { border: 2px solid #1e293b; padding: 8px; margin-bottom: 8px; }
-.st-header { display:flex; justify-content:space-between; font-weight:bold; font-size:13px; border-bottom:1px solid #334155; padding-bottom:5px; margin-bottom:5px; }
-.st-tipo { font-size:15px; color:#1e40af; }
-.st-suc { font-size:12px; color:#475569; margin-bottom:4px; }
-table { width:100%; border-collapse:collapse; margin:5px 0; }
-th { background:#f1f5f9; font-size:10px; padding:3px 4px; text-align:left; }
-td { padding:2px 4px; border-bottom:1px dotted #e2e8f0; font-size:10px; }
-.st-footer { border-top:1px solid #334155; padding-top:4px; margin-top:4px; font-size:10px; color:#475569; }
-.st-total { font-size:13px; font-weight:bold; color:#1e293b; margin-bottom:2px; }
-.no-print { margin:8px 0; text-align:center; }
+@media print { .no-print { display:none!important; } body { margin:0; } }
+body { font-family: Arial, sans-serif; font-size: 11px; margin: 0; color: #1e293b; }
+.sticker { border: 2px solid #1e293b; border-radius: 4px; padding: 10px 12px; margin-bottom: 10px; page-break-inside: avoid; }
+.st-header { display:flex; justify-content:space-between; align-items:baseline; font-weight:bold; font-size:14px; border-bottom:2px solid #1e3a5f; padding-bottom:6px; margin-bottom:6px; }
+.st-tipo { font-size:18px; font-weight:900; color:#1e40af; }
+.st-emp  { font-size:12px; color:#334155; }
+.st-suc  { font-size:12px; color:#475569; margin-bottom:6px; }
+.st-suc strong { color:#1e293b; font-size:13px; }
+table { width:100%; border-collapse:collapse; margin:6px 0; }
+th { background:#1e3a5f; color:#fff; font-size:10px; padding:4px 5px; text-align:left; }
+td { padding:3px 5px; border-bottom:1px solid #e2e8f0; font-size:10px; }
+tr:nth-child(even) td { background:#f8fafc; }
+.st-footer { border-top:2px solid #1e3a5f; padding-top:5px; margin-top:6px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px; font-size:10px; color:#475569; }
+.st-total { font-size:14px; font-weight:900; color:#1e293b; }
+.no-print { padding:10px; text-align:center; background:#f1f5f9; }
+.no-print button { padding:8px 20px; font-size:14px; cursor:pointer; background:#1e3a5f; color:#fff; border:none; border-radius:6px; }
 </style>${script}
 </head><body>${content}
-<div class="no-print"><button onclick="window.print()">Imprimir</button></div>
+<div class="no-print"><button onclick="window.print()">&#128424; Imprimir / Guardar PDF</button></div>
 </body></html>`;
   },
 
@@ -1562,33 +2712,86 @@ td { padding:2px 4px; border-bottom:1px dotted #e2e8f0; font-size:10px; }
     } catch(e) { WMS.toast('error', 'Error al finalizar'); }
   },
 
+  async _mostrarAgotadosSesion(sesionId) {
+    try {
+      const r = await API.get('/packing/sesion/' + sesionId + '/agotados');
+      const agotados = r.data || [];
+      const el = document.getElementById('pk-agotados-panel');
+      if (!el) return;
+      if (!agotados.length) {
+        el.innerHTML = '<p style="color:#16a34a;font-size:12px;text-align:center;padding:8px;"><i class="fa-solid fa-check-circle"></i> Sin productos agotados</p>';
+        return;
+      }
+      const rows = agotados.map(a => `<tr>
+        <td><code style="font-size:11px;">${WMS.esc(a.codigo || '-')}</code></td>
+        <td>${WMS.esc(a.producto_nombre || '-')}</td>
+        <td class="text-center fw-700">${WMS.formatNum(a.cantidad_solicitada)}</td>
+        <td class="text-center fw-700" style="color:#dc2626;">${WMS.formatNum(a.cantidad_faltante)}</td>
+        <td style="font-size:11px;color:#64748b;">${WMS.esc(a.causa || 'Sin stock')}</td>
+      </tr>`).join('');
+      el.innerHTML = `
+        <div class="table-container" style="max-height:260px;overflow-y:auto;">
+          <table class="erp-table" style="font-size:12px;">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Producto</th>
+                <th class="text-center">Solicitado</th>
+                <th class="text-center">Faltante</th>
+                <th>Causa</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    } catch(_) {}
+  },
+
   _mostrarPanelDocumento(data) {
     const { sesion, totales } = data;
     const tipoUp = sesion.tipo_empaque.charAt(0).toUpperCase() + sesion.tipo_empaque.slice(1);
     WMS.setContent(`
-      <div class="card" style="max-width:700px;margin:0 auto;">
-        <div class="card-header" style="background:#16a34a;color:#fff;">
-          <span class="card-title"><i class="fa-solid fa-circle-check"></i> Packing Completado</span>
+      <div style="max-width:700px;margin:0 auto;display:flex;flex-direction:column;gap:14px;">
+        <div class="card">
+          <div class="card-header" style="background:#16a34a;color:#fff;">
+            <span class="card-title"><i class="fa-solid fa-circle-check"></i> Packing Completado</span>
+          </div>
+          <div style="padding:24px;text-align:center;">
+            <div style="font-size:48px;color:#16a34a;margin-bottom:12px;">✓</div>
+            <h3 style="margin:0 0 6px;">Certificación Finalizada</h3>
+            <p style="color:#475569;margin:0 0 20px;">
+              <strong>${WMS.esc(sesion.sucursal_entrega)}</strong> — ${totales.num_unidades} ${tipoUp}(s)
+            </p>
+            <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+              <button class="btn btn-primary" onclick="WMS_MODULES.despacho._abrirDocumento(${sesion.id})">
+                <i class="fa-solid fa-file-alt"></i> Ver Documento de Packing
+              </button>
+              <button class="btn btn-outline-primary" data-tipo="${tipoUp}" onclick="WMS_MODULES.despacho._imprimirTodasPacking(this.dataset.tipo)">
+                <i class="fa-solid fa-print"></i> Imprimir Todos los Stickers
+              </button>
+              <button class="btn btn-success" onclick="WMS_MODULES.despacho.imprimirRemision(${sesion.id})">
+                <i class="fa-solid fa-print"></i> Imprimir Remisión
+              </button>
+              <button class="btn btn-secondary" onclick="WMS_MODULES.despacho.show_certificacion()">
+                <i class="fa-solid fa-arrow-left"></i> Volver a Certificación
+              </button>
+            </div>
+          </div>
         </div>
-        <div style="padding:24px;text-align:center;">
-          <div style="font-size:48px;color:#16a34a;margin-bottom:12px;">✓</div>
-          <h3 style="margin:0 0 6px;">Certificación Finalizada</h3>
-          <p style="color:#475569;margin:0 0 20px;">
-            <strong>${WMS.esc(sesion.sucursal_entrega)}</strong> — ${totales.num_unidades} ${tipoUp}(s)
-          </p>
-          <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
-            <button class="btn btn-primary" onclick="WMS_MODULES.despacho._abrirDocumento(${sesion.id})">
-              <i class="fa-solid fa-file-alt"></i> Ver Documento de Packing
-            </button>
-            <button class="btn btn-outline-primary" data-tipo="${tipoUp}" onclick="WMS_MODULES.despacho._imprimirTodasPacking(this.dataset.tipo)">
-              <i class="fa-solid fa-print"></i> Imprimir Todos los Stickers
-            </button>
-            <button class="btn btn-secondary" onclick="WMS_MODULES.despacho.show_certificacion()">
-              <i class="fa-solid fa-arrow-left"></i> Volver a Certificación
-            </button>
+        <div class="card">
+          <div class="card-header" style="background:#fef2f2;border-bottom:2px solid #fecaca;">
+            <span class="card-title" style="color:#991b1b;">
+              <i class="fa-solid fa-circle-exclamation"></i> Productos Agotados en este Despacho
+            </span>
+          </div>
+          <div id="pk-agotados-panel" style="padding:8px 12px;">
+            <p style="color:#94a3b8;font-size:12px;text-align:center;padding:8px;">
+              <i class="fa-solid fa-spinner fa-spin"></i> Cargando agotados...
+            </p>
           </div>
         </div>
       </div>`);
+    this._mostrarAgotadosSesion(sesion.id);
   },
 
   _abrirDocumento(sesionId) {
@@ -1665,7 +2868,7 @@ function toggleLandscape() {
 <div class="doc-header">
   <div>
     <div class="doc-title">DOCUMENTO DE PACKING</div>
-    <div class="doc-meta"><span><strong>${emp}</strong></span><span>Sucursal: <strong>${WMS.esc(sesion.sucursal_entrega)}</strong></span><span>Tipo: <strong>${tipoUp}</strong></span></div>
+    <div class="doc-meta"><span><img src="${location.origin}/WMS_FENIX/logo.jpg" style="height:38px;object-fit:contain;vertical-align:middle;" alt="Logo"></span><span>Sucursal: <strong>${WMS.esc(sesion.sucursal_entrega)}</strong></span><span>Tipo: <strong>${tipoUp}</strong></span></div>
     <div class="doc-meta"><span>Fecha/Hora: ${fecha}</span><span>Certificador: <strong>${cert}</strong></span><span>Separadores: ${WMS.esc(sepStr)}</span></div>
   </div>
   <div class="no-print">
@@ -1746,4 +2949,55 @@ function toggleLandscape() {
     WMS.toast('warning', 'Solicitud de vencimiento cancelada');
   },
 
+  async verDetallesPendientes(sucursal) {
+    WMS.spinner();
+    try {
+      const r = await API.get('/picking/certificacion/detalle/' + encodeURIComponent(sucursal));
+      const items = r.data || [];
+      
+      const porAmbiente = {};
+      items.forEach(it => {
+        const amb = it.ambiente_nombre || 'Sin Ambiente';
+        if(!porAmbiente[amb]) porAmbiente[amb] = [];
+        porAmbiente[amb].push(it);
+      });
+
+      let html = `<div style="max-height:60vh;overflow-y:auto;padding-right:10px;">`;
+      for(const [amb, prods] of Object.entries(porAmbiente)) {
+        html += `<h4 style="background:#e2e8f0;padding:6px;border-radius:4px;color:#1e293b;margin-top:10px;">${WMS.esc(amb)} <span class="badge" style="float:right;background:#0f4c81;">${prods.length} Refs</span></h4>
+        <table class="erp-table table-sm" style="margin-bottom:10px;">
+          <thead><tr><th>Producto</th><th class="text-center">Cant. Solicitada</th><th class="text-center">Cant. Pickeada</th></tr></thead>
+          <tbody>`;
+        prods.forEach(p => {
+          html += `<tr>
+            <td><div style="font-weight:700;">${WMS.esc(p.nombre)}</div><div style="font-size:11px;color:#64748b;">${WMS.esc(p.codigo)}</div></td>
+            <td class="text-center">${p.cantidad_esperada || 0}</td>
+            <td class="text-center" style="font-weight:700;color:#059669;">${p.cantidad_pickeada || 0}</td>
+          </tr>`;
+        });
+        html += `</tbody></table>`;
+      }
+      html += `</div>`;
+
+      const result = await Swal.fire({
+        title: 'Detalles por Ambiente: ' + sucursal,
+        html: html,
+        width: 800,
+        showDenyButton: true,
+        showCancelButton: true,
+        confirmButtonText: '<i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Certificar',
+        denyButtonText: '<i class="fa-solid fa-box-open"></i> Iniciar Packing',
+        cancelButtonText: 'Cerrar',
+        confirmButtonColor: '#059669',
+        denyButtonColor: '#0F4C81',
+      });
+      if (result.isConfirmed) {
+        WMS_MODULES.despacho.autoCertificar(sucursal);
+      } else if (result.isDenied) {
+        WMS_MODULES.despacho.iniciarCertificacion(sucursal);
+      }
+    } catch(e) {
+      WMS.showError('Error al obtener detalles', e);
+    }
+  }
 };

@@ -6,6 +6,7 @@ node_modules/
 .env
 .env.local
 .env.production
+.env.production.BACKUP
 
 # ── Logs y backups (archivos generados) ──────────────────────
 logs/*.log
@@ -42,3 +43,22 @@ public/uploads/devoluciones/*.jpeg
 # ── Proyectos legacy ─────────────────────────────────────────
 WMS_PROORIENTE/
 WMS_PROORIENTE_BACKUP/
+
+# ── Datos operativos / archivos generados en runtime ─────────
+monitor/reports/
+public/uploads/miscelaneos/
+public/uploads/productos/
+0807MEDELLIN.csv
+out_mobile.txt
+*.lock
+
+# ── Carpetas/archivos residuales ──────────────────────────────
+WMS FENIX/
+
+# ── Scripts sueltos de depuración en la raíz ──────────────────
+/test.php
+/test_*.php
+/check_col.php
+/fix_ambientes.php
+/fix_column.php
+/delete_old_picking.php

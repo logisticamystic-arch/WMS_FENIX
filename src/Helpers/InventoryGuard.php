@@ -164,10 +164,11 @@ class InventoryGuard
         }
 
         $params = [$this->empresaId, $this->sucursalId, $productoId, $ubicacionOrigenId];
-        $sql = "SELECT COALESCE(SUM(cantidad - cantidad_reservada), 0) as disponible
+        // Incluye 'En Patio' porque el módulo de ubicar traslada desde el patio al almacén
+        $sql = "SELECT COALESCE(SUM(cantidad - COALESCE(cantidad_reservada,0)), 0) as disponible
                 FROM inventarios
                 WHERE empresa_id = ? AND sucursal_id = ? AND producto_id = ?
-                  AND ubicacion_id = ? AND estado = 'Disponible'";
+                  AND ubicacion_id = ? AND estado IN ('Disponible','En Patio')";
 
         if ($lote !== null) {
             $sql    .= " AND lote = ?";
@@ -182,7 +183,8 @@ class InventoryGuard
         $row  = Capsule::connection()->selectOne($sql, $params);
         $disp = (float)($row->disponible ?? 0);
 
-        if ($cantidad > $disp) {
+        // Tolerancia de 0.01 para evitar falsos negativos por redondeo de punto flotante
+        if ($cantidad > $disp + 0.01) {
             return $this->deny('R02', sprintf(
                 'Traslado excede stock en ubicación origen. Pedido: %.2f — Disponible: %.2f.',
                 $cantidad, $disp

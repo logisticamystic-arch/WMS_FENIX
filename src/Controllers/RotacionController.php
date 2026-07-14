@@ -23,49 +23,58 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 class RotacionController extends BaseController
 {
     // ── GET /api/rotacion ─────────────────────────────────────────────────────
-    // Dashboard principal: datos de la vista materializada
+    // Dashboard principal: datos de clasificaciones_abc_xyz (la MV no existe en esta BD)
     public function index(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
 
-        // Verificar si la vista materializada existe y tiene datos
-        $mvExists = $this->mvExists();
+        $empId = $this->getEffectiveEmpresaId($user, $r);
+        $sucId = $user->sucursal_id;
 
-        if (!$mvExists) {
+        // Verificar si hay clasificación vigente
+        $hayClasificacion = Capsule::table('clasificaciones_abc_xyz')
+            ->where('empresa_id',  $empId)
+            ->where('sucursal_id', $sucId)
+            ->where('vigente', true)
+            ->exists();
+
+        if (!$hayClasificacion) {
             return $this->ok($res, [
-                'resumen'   => null,
-                'productos' => [],
-                'mv_disponible' => false,
-                'mensaje'   => 'Vista materializada no disponible. Ejecute POST /api/rotacion/abc-xyz/ejecutar primero.',
+                'resumen'        => null,
+                'productos'      => [],
+                'mv_disponible'  => false,
+                'mensaje'        => 'Sin clasificación ABC-XYZ vigente. Ejecute POST /api/rotacion/abc-xyz/ejecutar primero.',
             ]);
         }
 
-        $q = Capsule::table('mv_rotacion_productos')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
-            ->where('sucursal_id', $user->sucursal_id);
+        $q = Capsule::table('clasificaciones_abc_xyz as c')
+            ->join('productos as p', 'c.producto_id', '=', 'p.id')
+            ->where('c.empresa_id',  $empId)
+            ->where('c.sucursal_id', $sucId)
+            ->where('c.vigente', true)
+            ->select(
+                'c.producto_id', 'c.clase_abc', 'c.clase_xyz', 'c.segmento',
+                'c.total_valor', 'c.total_unidades', 'c.pct_valor', 'c.pct_unidades',
+                'c.cv_demanda', 'c.periodos', 'c.calculado_at',
+                'p.nombre as producto_nombre', 'p.codigo_interno as codigo'
+            );
 
         // Filtros
         if (!empty($params['segmento'])) {
-            $q->where('segmento', strtoupper($params['segmento']));
+            $q->where('c.segmento', strtoupper($params['segmento']));
         }
         if (!empty($params['clase_abc'])) {
-            $q->where('clase_abc', strtoupper($params['clase_abc']));
+            $q->where('c.clase_abc', strtoupper($params['clase_abc']));
         }
         if (!empty($params['clase_xyz'])) {
-            $q->where('clase_xyz', strtoupper($params['clase_xyz']));
-        }
-        if (!empty($params['alerta'])) {
-            $q->where('alerta_quiebre', true);
-        }
-        if (!empty($params['zona'])) {
-            $q->where('zona_recomendada', $params['zona']);
+            $q->where('c.clase_xyz', strtoupper($params['clase_xyz']));
         }
         if (!empty($params['q'])) {
             $search = '%' . $params['q'] . '%';
             $q->where(fn($sub) =>
-                $sub->where('producto_nombre', 'like', $search)
-                    ->orWhere('codigo', 'like', $search)
+                $sub->where('p.nombre', 'like', $search)
+                    ->orWhere('p.codigo_interno', 'like', $search)
             );
         }
 
@@ -73,24 +82,21 @@ class RotacionController extends BaseController
         $offset = (int)($params['offset'] ?? 0);
 
         $total    = (clone $q)->count();
-        $productos = $q->orderBy('score_riesgo', 'desc')
-                       ->orderBy('total_valor', 'desc')
+        $productos = $q->orderBy('c.total_valor', 'desc')
                        ->limit($limit)
                        ->offset($offset)
                        ->get();
 
         // Resumen general
-        $resumen = Capsule::table('mv_rotacion_productos')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
-            ->where('sucursal_id', $user->sucursal_id)
+        $resumen = Capsule::table('clasificaciones_abc_xyz')
+            ->where('empresa_id',  $empId)
+            ->where('sucursal_id', $sucId)
+            ->where('vigente', true)
             ->selectRaw("
                 COUNT(*) AS total_productos,
                 COUNT(CASE WHEN clase_abc = 'A' THEN 1 END) AS clase_a,
                 COUNT(CASE WHEN clase_abc = 'B' THEN 1 END) AS clase_b,
                 COUNT(CASE WHEN clase_abc = 'C' THEN 1 END) AS clase_c,
-                COUNT(CASE WHEN alerta_quiebre = TRUE THEN 1 END) AS con_alerta_quiebre,
-                COUNT(CASE WHEN score_riesgo >= 70 THEN 1 END) AS riesgo_alto,
-                COUNT(CASE WHEN dias_cobertura IS NOT NULL AND dias_cobertura < 7 THEN 1 END) AS cobertura_critica,
                 ROUND(SUM(total_valor), 2) AS valor_total_ventas,
                 MAX(calculado_at) AS ultima_actualizacion
             ")
@@ -119,13 +125,19 @@ class RotacionController extends BaseController
             ->where('c.sucursal_id', $user->sucursal_id)
             ->where('c.vigente', true)
             ->select(
-                'c.*',
+                'c.id', 'c.empresa_id', 'c.sucursal_id', 'c.producto_id',
+                'c.clase_abc', 'c.clase_xyz', 'c.segmento',
+                'c.total_valor', 'c.total_unidades',
+                'c.pct_valor', 'c.pct_unidades',
+                'c.cv_demanda', 'c.periodos',
+                'c.vigente', 'c.calculado_at',
+                'c.created_at', 'c.updated_at',
                 'p.nombre as producto_nombre',
                 'p.codigo_interno as codigo'
             );
 
         if (!empty($params['segmento'])) {
-            $q->whereRaw('CONCAT(c.clase_abc, c.clase_xyz) = ?', [strtoupper($params['segmento'])]);
+            $q->where('c.segmento', strtoupper($params['segmento']));
         }
         if (!empty($params['clase_abc'])) {
             $q->where('c.clase_abc', strtoupper($params['clase_abc']));
@@ -146,12 +158,12 @@ class RotacionController extends BaseController
             ->where('sucursal_id', $user->sucursal_id)
             ->where('vigente', true)
             ->selectRaw("
-                CONCAT(clase_abc, clase_xyz) AS segmento,
+                segmento,
                 COUNT(*) AS cantidad,
                 ROUND(SUM(total_valor), 2) AS valor_total
             ")
-            ->groupByRaw("CONCAT(clase_abc, clase_xyz)")
-            ->orderByRaw("CONCAT(clase_abc, clase_xyz)")
+            ->groupBy('segmento')
+            ->orderBy('segmento')
             ->get();
 
         return $this->ok($res, [
@@ -176,16 +188,21 @@ class RotacionController extends BaseController
             return $this->error($res, 'El parámetro meses debe estar entre 1 y 36');
         }
 
+        $provisional = false;
+
         if ($this->isPg()) {
-            $result = Capsule::selectOne(
-                'SELECT ejecutar_abc_xyz(?, ?, ?) AS procesados',
-                [$this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, $meses]
-            );
-            $procesados = $result ? $result->procesados : 0;
+            // Intentar función PG nativa; si no existe, usar el motor PHP
             try {
-                Capsule::statement('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_rotacion_productos');
+                $result = Capsule::selectOne(
+                    'SELECT ejecutar_abc_xyz(?, ?, ?) AS procesados',
+                    [$this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, $meses]
+                );
+                $procesados = $result ? $result->procesados : 0;
             } catch (\Exception $e) {
-                Capsule::statement('REFRESH MATERIALIZED VIEW mv_rotacion_productos');
+                // Función PG no disponible — usar motor PHP en modo PostgreSQL
+                $raw        = $this->_ejecutarAbcXyzMysql($this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, $meses);
+                $provisional = $raw < 0;
+                $procesados  = abs($raw);
             }
         } else {
             // Motor ABC-XYZ nativo PHP para MySQL (negativo = clasificación provisional sin ventas)
@@ -205,8 +222,7 @@ class RotacionController extends BaseController
         return $this->ok($res, [
             'productos_clasificados' => $procesados,
             'meses_analizados'       => $meses,
-            'mv_refrescada'          => $this->isPg(),
-            'provisional'            => $provisional ?? false,
+            'provisional'            => $provisional,
         ], $msg);
     }
 
@@ -216,6 +232,14 @@ class RotacionController extends BaseController
         $ahora = date('Y-m-d H:i:s');
 
         // 1. Ventas por producto/mes desde movimiento_inventarios
+        // DATE_TRUNC para PG, DATE_FORMAT para MySQL
+        $mesExpr = $this->isPg()
+            ? "DATE_TRUNC('month', m.fecha_movimiento)::date::text AS mes"
+            : "DATE_FORMAT(m.fecha_movimiento, '%Y-%m-01') AS mes";
+        $mesGrp = $this->isPg()
+            ? "DATE_TRUNC('month', m.fecha_movimiento)::date"
+            : "DATE_FORMAT(m.fecha_movimiento, '%Y-%m-01')";
+
         $ventas = Capsule::table('movimiento_inventarios as m')
             ->join('productos as p', 'p.id', '=', 'm.producto_id')
             ->where('m.empresa_id',  $empId)
@@ -227,10 +251,10 @@ class RotacionController extends BaseController
                 m.producto_id,
                 p.nombre AS nombre,
                 p.codigo_interno AS codigo,
-                DATE_FORMAT(m.fecha_movimiento, '%Y-%m-01') AS mes,
+                {$mesExpr},
                 SUM(ABS(m.cantidad)) AS unidades
             ")
-            ->groupByRaw("m.producto_id, p.nombre, p.codigo_interno, DATE_FORMAT(m.fecha_movimiento, '%Y-%m-01')")
+            ->groupByRaw("m.producto_id, p.nombre, p.codigo_interno, {$mesGrp}")
             ->get();
 
         if ($ventas->isEmpty()) {
@@ -238,12 +262,13 @@ class RotacionController extends BaseController
             return -$this->_clasificarInventarioSinVentas($empId, $sucId, $desde, $ahora);
         }
 
-        // 2. Precio/costo promedio por producto
+        // 2. Precio/costo promedio por producto (inventarios no tiene costo_unitario — usar saldos/cantidad)
         $precios = Capsule::table('inventarios')
             ->where('empresa_id',  $empId)
             ->where('sucursal_id', $sucId)
-            ->where('costo_unitario', '>', 0)
-            ->selectRaw('producto_id, AVG(costo_unitario) AS precio')
+            ->where('cantidad', '>', 0)
+            ->where('saldos', '>', 0)
+            ->selectRaw('producto_id, AVG(saldos / NULLIF(cantidad, 0)) AS precio')
             ->groupBy('producto_id')
             ->pluck('precio', 'producto_id');
 
@@ -292,26 +317,22 @@ class RotacionController extends BaseController
 
         // 5. Clasificación ABC (Pareto por valor)
         uasort($prods, fn($a, $b) => $b['valor_total'] <=> $a['valor_total']);
-        $totalValor = array_sum(array_column($prods, 'valor_total'));
-        $acum = 0;
+        $totalValor  = array_sum(array_column($prods, 'valor_total'));
+        $totalUnidades = array_sum(array_column($prods, 'total_uds'));
+        $acumValor = 0;
+        $acumUds   = 0;
         foreach ($prods as $pid => &$p) {
-            $acum  += $p['valor_total'];
-            $pct    = $totalValor > 0 ? ($acum / $totalValor * 100) : 100.0;
-            $p['pct_valor_acum'] = round($pct, 3);
-            $p['clase_abc']      = $pct <= 80 ? 'A' : ($pct <= 95 ? 'B' : 'C');
+            $acumValor += $p['valor_total'];
+            $acumUds   += $p['total_uds'];
+            $pctValor   = $totalValor > 0 ? ($acumValor / $totalValor * 100) : 100.0;
+            $pctUds     = $totalUnidades > 0 ? ($acumUds / $totalUnidades * 100) : 100.0;
+            $p['pct_valor']    = round($pctValor, 4);
+            $p['pct_unidades'] = round($pctUds, 4);
+            $p['clase_abc']    = $pctValor <= 80 ? 'A' : ($pctValor <= 95 ? 'B' : 'C');
         }
         unset($p);
 
-        // 6. Stock actual para rotación/cobertura
-        $stocks = Capsule::table('inventarios')
-            ->where('empresa_id',  $empId)
-            ->where('sucursal_id', $sucId)
-            ->where('cantidad', '>', 0)
-            ->selectRaw('producto_id, SUM(cantidad) AS stock')
-            ->groupBy('producto_id')
-            ->pluck('stock', 'producto_id');
-
-        // 7. Guardar (invalidar previas, insertar nuevas)
+        // 6. Guardar (invalidar previas, insertar nuevas)
         Capsule::table('clasificaciones_abc_xyz')
             ->where('empresa_id',  $empId)
             ->where('sucursal_id', $sucId)
@@ -320,49 +341,25 @@ class RotacionController extends BaseController
 
         $procesados = 0;
         foreach ($prods as $pid => $p) {
-            $stock   = (float)($stocks[$pid] ?? 0);
-            $rotAnual = ($p['demanda_media'] > 0 && $stock > 0)
-                ? round(($p['demanda_media'] * 12) / $stock, 2) : null;
-            $diasInv  = ($p['demanda_media'] > 0 && $stock > 0)
-                ? round(($stock / $p['demanda_media']) * 30, 1) : null;
-
-            $seg  = $p['clase_abc'] . $p['clase_xyz'];
-            $zona = match(true) {
-                $p['clase_abc'] === 'A' && $p['clase_xyz'] === 'X' => 'Zona A - Alta Prioridad',
-                $p['clase_abc'] === 'A' && $p['clase_xyz'] === 'Y' => 'Zona A - Monitoreo Activo',
-                $p['clase_abc'] === 'A' && $p['clase_xyz'] === 'Z' => 'Zona A - Control Especial',
-                $p['clase_abc'] === 'B'                            => 'Zona B - Revisión Periódica',
-                default                                            => 'Zona C - Control Mínimo',
-            };
-            $accion = match(true) {
-                $seg === 'AX' => 'Mantener stock óptimo; punto de reorden automático',
-                $seg === 'AY' => 'Revisar semanalmente; ajustar stock de seguridad',
-                $seg === 'AZ' => 'Revisión diaria; considerar hacer-a-pedido',
-                str_starts_with($seg, 'B') => 'Revisar quincenalmente; política de mínimos/máximos',
-                default => 'Revisar mensualmente; reducir stock a mínimo operativo',
-            };
+            $seg = $p['clase_abc'] . $p['clase_xyz'];
 
             Capsule::table('clasificaciones_abc_xyz')->insert([
-                'empresa_id'       => $empId,
-                'sucursal_id'      => $sucId,
-                'producto_id'      => $pid,
-                'clase_abc'        => $p['clase_abc'],
-                'clase_xyz'        => $p['clase_xyz'],
-                'total_valor'      => round($p['valor_total'], 2),
-                'pct_valor_acum'   => $p['pct_valor_acum'],
-                'demanda_media'    => round($p['demanda_media'], 4),
-                'coef_variacion'   => $p['coef_variacion'],
-                'meses_activos'    => $p['meses_activos'],
-                'rotacion_anual'   => $rotAnual,
-                'dias_inventario'  => $diasInv,
-                'zona_recomendada' => $zona,
-                'accion_sugerida'  => $accion,
-                'vigente'          => true,
-                'periodo_inicio'   => $desde,
-                'periodo_fin'      => date('Y-m-d'),
-                'calculado_at'     => $ahora,
-                'created_at'       => $ahora,
-                'updated_at'       => $ahora,
+                'empresa_id'     => $empId,
+                'sucursal_id'    => $sucId,
+                'producto_id'    => $pid,
+                'clase_abc'      => $p['clase_abc'],
+                'clase_xyz'      => $p['clase_xyz'],
+                'segmento'       => $seg,
+                'total_valor'    => round($p['valor_total'], 2),
+                'total_unidades' => round($p['total_uds'], 2),
+                'pct_valor'      => $p['pct_valor'],
+                'pct_unidades'   => $p['pct_unidades'],
+                'cv_demanda'     => $p['coef_variacion'],
+                'periodos'       => $p['meses_activos'],
+                'vigente'        => true,
+                'calculado_at'   => $ahora,
+                'created_at'     => $ahora,
+                'updated_at'     => $ahora,
             ]);
             $procesados++;
         }
@@ -381,16 +378,47 @@ class RotacionController extends BaseController
         $desde = $body['desde'] ?? date('Y-m-d', strtotime('-24 months'));
         $hasta = $body['hasta'] ?? date('Y-m-d');
 
-        if (!$this->isPg()) {
-            return $this->error($res, 'Esta función requiere PostgreSQL 16', 503);
+        $empId = $this->getEffectiveEmpresaId($user, $r);
+        $sucId = $user->sucursal_id;
+
+        // Agregar ventas desde movimiento_inventarios a ventas_agregadas_ml (nativo PHP, sin función PG)
+        $ventas = Capsule::table('movimiento_inventarios as m')
+            ->where('m.empresa_id',  $empId)
+            ->where('m.sucursal_id', $sucId)
+            ->whereIn('m.tipo_movimiento', ['Salida', 'Picking', 'Despacho'])
+            ->where('m.cantidad', '>', 0)
+            ->whereBetween('m.fecha_movimiento', [$desde . ' 00:00:00', $hasta . ' 23:59:59'])
+            ->selectRaw("
+                m.producto_id,
+                DATE_TRUNC('month', m.fecha_movimiento)::date AS periodo,
+                SUM(ABS(m.cantidad)) AS unidades_vendidas,
+                0 AS valor_vendido
+            ")
+            ->groupByRaw("m.producto_id, DATE_TRUNC('month', m.fecha_movimiento)::date")
+            ->get();
+
+        $insertados = 0;
+        $ahora = date('Y-m-d H:i:s');
+        foreach ($ventas as $v) {
+            try {
+                Capsule::table('ventas_agregadas_ml')->upsert(
+                    [
+                        'empresa_id'       => $empId,
+                        'sucursal_id'      => $sucId,
+                        'producto_id'      => $v->producto_id,
+                        'periodo'          => $v->periodo,
+                        'unidades_vendidas'=> (float)$v->unidades_vendidas,
+                        'valor_vendido'    => (float)$v->valor_vendido,
+                        'updated_at'       => $ahora,
+                    ],
+                    ['empresa_id', 'sucursal_id', 'producto_id', 'periodo'],
+                    ['unidades_vendidas', 'valor_vendido', 'updated_at']
+                );
+                $insertados++;
+            } catch (\Exception $e) {
+                error_log('poblarVentas upsert: ' . $e->getMessage());
+            }
         }
-
-        $result = Capsule::selectOne(
-            'SELECT poblar_ventas_ml(?, ?, ?, ?) AS insertados',
-            [$this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, $desde, $hasta]
-        );
-
-        $insertados = $result ? $result->insertados : 0;
 
         $this->audit($user, 'rotacion', 'poblar_ventas', 'ventas_agregadas_ml', null,
             null, ['insertados' => $insertados, 'desde' => $desde, 'hasta' => $hasta],
@@ -404,45 +432,59 @@ class RotacionController extends BaseController
     }
 
     // ── POST /api/rotacion/refresh-mv ────────────────────────────────────────
-    // Refresca manualmente la vista materializada
+    // La vista materializada mv_rotacion_productos no existe — re-ejecuta ABC-XYZ como equivalente
     public function refreshMv(Request $r, Response $res): Response
     {
         $user = $r->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        if (!$this->isPg()) {
-            return $this->error($res, 'Vista materializada solo disponible en PostgreSQL 16', 503);
-        }
-
         $start = microtime(true);
-        try {
-            Capsule::statement('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_rotacion_productos');
-        } catch (\Exception $e) {
-            Capsule::statement('REFRESH MATERIALIZED VIEW mv_rotacion_productos');
-        }
+        // Re-ejecutar el motor ABC-XYZ para mantener clasificación actualizada
+        $this->_ejecutarAbcXyzMysql(
+            $this->getEffectiveEmpresaId($user, $r),
+            $user->sucursal_id,
+            12
+        );
         $ms = round((microtime(true) - $start) * 1000);
 
-        return $this->ok($res, ['duracion_ms' => $ms], 'Vista materializada actualizada');
+        return $this->ok($res, ['duracion_ms' => $ms], 'Clasificación ABC-XYZ actualizada (equivalente a refresh MV)');
     }
 
     // ── GET /api/rotacion/riesgo ──────────────────────────────────────────────
-    // Top productos por score de riesgo (para panel de alertas prioritarias)
+    // Top productos por cv_demanda alto y clase_abc=A (mayor riesgo de quiebre)
     public function riesgo(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         $limit  = min((int)($params['limit'] ?? 20), 100);
 
-        if (!$this->mvExists()) {
+        $empId = $this->getEffectiveEmpresaId($user, $r);
+        $sucId = $user->sucursal_id;
+
+        $hayClasificacion = Capsule::table('clasificaciones_abc_xyz')
+            ->where('empresa_id', $empId)
+            ->where('sucursal_id', $sucId)
+            ->where('vigente', true)
+            ->exists();
+
+        if (!$hayClasificacion) {
             return $this->ok($res, ['productos' => [], 'mv_disponible' => false]);
         }
 
-        $productos = Capsule::table('mv_rotacion_productos')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
-            ->where('sucursal_id', $user->sucursal_id)
-            ->where('score_riesgo', '>=', (int)($params['min_score'] ?? 40))
-            ->orderBy('score_riesgo', 'desc')
-            ->orderBy('total_valor', 'desc')
+        // Productos de clase A con alta variación de demanda (mayor riesgo operativo)
+        $productos = Capsule::table('clasificaciones_abc_xyz as c')
+            ->join('productos as p', 'p.id', '=', 'c.producto_id')
+            ->where('c.empresa_id',  $empId)
+            ->where('c.sucursal_id', $sucId)
+            ->where('c.vigente', true)
+            ->where('c.clase_abc', 'A')
+            ->select(
+                'c.producto_id', 'p.nombre as producto_nombre', 'p.codigo_interno as codigo',
+                'c.clase_abc', 'c.clase_xyz', 'c.segmento',
+                'c.total_valor', 'c.cv_demanda', 'c.periodos', 'c.calculado_at'
+            )
+            ->orderBy('c.cv_demanda', 'desc')
+            ->orderBy('c.total_valor', 'desc')
             ->limit($limit)
             ->get();
 
@@ -450,24 +492,41 @@ class RotacionController extends BaseController
     }
 
     // ── GET /api/rotacion/cobertura-baja ─────────────────────────────────────
-    // Productos con días de cobertura por debajo del umbral
+    // Productos clase A/B con alta variación de demanda (posible quiebre de stock)
     public function coberturasBajas(Request $r, Response $res): Response
     {
         $user     = $r->getAttribute('user');
         $params   = $r->getQueryParams();
         $umbral   = (int)($params['dias'] ?? 7);
 
-        if (!$this->mvExists()) {
+        $empId = $this->getEffectiveEmpresaId($user, $r);
+        $sucId = $user->sucursal_id;
+
+        $hayClasificacion = Capsule::table('clasificaciones_abc_xyz')
+            ->where('empresa_id', $empId)
+            ->where('sucursal_id', $sucId)
+            ->where('vigente', true)
+            ->exists();
+
+        if (!$hayClasificacion) {
             return $this->ok($res, ['productos' => [], 'mv_disponible' => false]);
         }
 
-        $productos = Capsule::table('mv_rotacion_productos')
-            ->where('empresa_id',   $this->getEffectiveEmpresaId($user, $r))
-            ->where('sucursal_id',  $user->sucursal_id)
-            ->whereNotNull('dias_cobertura')
-            ->where('dias_cobertura', '<', $umbral)
-            ->orderBy('dias_cobertura', 'asc')
-            ->orderBy('clase_abc', 'asc')
+        // Productos con alta variación (cv_demanda > 1.0) en clases A o B
+        $productos = Capsule::table('clasificaciones_abc_xyz as c')
+            ->join('productos as p', 'p.id', '=', 'c.producto_id')
+            ->where('c.empresa_id',  $empId)
+            ->where('c.sucursal_id', $sucId)
+            ->where('c.vigente', true)
+            ->whereIn('c.clase_abc', ['A', 'B'])
+            ->where('c.cv_demanda', '>', 1.0)
+            ->select(
+                'c.producto_id', 'p.nombre as producto_nombre', 'p.codigo_interno as codigo',
+                'c.clase_abc', 'c.clase_xyz', 'c.segmento',
+                'c.total_valor', 'c.cv_demanda', 'c.periodos'
+            )
+            ->orderBy('c.clase_abc', 'asc')
+            ->orderBy('c.cv_demanda', 'desc')
             ->get();
 
         return $this->ok($res, [
@@ -478,20 +537,20 @@ class RotacionController extends BaseController
     }
 
     // ── GET /api/rotacion/ejecuciones ────────────────────────────────────────
-    // Log de ejecuciones del motor ML
+    // Log de ejecuciones del motor ML (desde audit_logs, tabla ejecuciones_ml no existe)
     public function ejecuciones(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         $limit  = min((int)($params['limit'] ?? 20), 100);
 
-        $ejecuciones = Capsule::table('ejecuciones_ml')
+        $ejecuciones = Capsule::table('audit_logs')
             ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
-            ->where('sucursal_id', $user->sucursal_id)
-            ->when(!empty($params['tipo']), fn($q) => $q->where('tipo', $params['tipo']))
-            ->orderBy('inicio_at', 'desc')
+            ->where('modulo', 'rotacion')
+            ->when(!empty($params['tipo']), fn($q) => $q->where('accion', $params['tipo']))
+            ->orderBy('created_at', 'desc')
             ->limit($limit)
-            ->get();
+            ->get(['id', 'accion as tipo', 'descripcion', 'datos_nuevos', 'created_at as inicio_at']);
 
         return $this->ok($res, ['ejecuciones' => $ejecuciones]);
     }
@@ -512,39 +571,32 @@ class RotacionController extends BaseController
                 'p.nombre as producto',
                 'c.clase_abc',
                 'c.clase_xyz',
-                Capsule::raw("CONCAT(c.clase_abc, c.clase_xyz) AS segmento"),
+                'c.segmento',
                 'c.total_valor',
-                'c.pct_valor_acum',
-                'c.demanda_media',
-                'c.coef_variacion',
-                'c.meses_activos',
-                'c.rotacion_anual',
-                'c.dias_inventario',
-                'c.zona_recomendada',
-                'c.accion_sugerida'
+                'c.total_unidades',
+                'c.pct_valor',
+                'c.pct_unidades',
+                'c.cv_demanda',
+                'c.periodos'
             )
             ->orderBy('c.total_valor', 'desc')
             ->get();
 
         $headers = [
             'Código', 'Producto', 'Clase ABC', 'Clase XYZ', 'Segmento',
-            'Valor Total Ventas', '% Acumulado', 'Demanda Media/Mes',
-            'Coef. Variación', 'Meses Activos', 'Rotación Anual',
-            'Días Inventario', 'Zona Recomendada', 'Acción Sugerida',
+            'Valor Total Ventas', 'Unidades Totales', '% Valor Acum.', '% Unidades Acum.',
+            'Coef. Variación Demanda', 'Períodos Activos',
         ];
 
         $rows = $items->map(fn($i) => [
             $i->codigo, $i->producto,
-            $i->clase_abc, $i->clase_xyz, $i->segmento,
+            $i->clase_abc, $i->clase_xyz, $i->segmento ?? ($i->clase_abc . $i->clase_xyz),
             number_format($i->total_valor, 2),
-            number_format($i->pct_valor_acum, 3) . '%',
-            number_format($i->demanda_media, 2),
-            number_format($i->coef_variacion, 4),
-            $i->meses_activos,
-            $i->rotacion_anual !== null ? number_format($i->rotacion_anual, 2) : '—',
-            $i->dias_inventario !== null ? number_format($i->dias_inventario, 1) : '—',
-            $i->zona_recomendada ?? '—',
-            $i->accion_sugerida ?? '—',
+            number_format($i->total_unidades, 2),
+            number_format($i->pct_valor, 3) . '%',
+            number_format($i->pct_unidades, 3) . '%',
+            number_format($i->cv_demanda, 4),
+            $i->periodos ?? 0,
         ])->toArray();
 
         return $this->exportCsv($res, $headers, $rows, 'rotacion_abc_xyz_' . date('Y-m-d'));
@@ -578,26 +630,22 @@ class RotacionController extends BaseController
         $procesados = 0;
         foreach ($inventario as $inv) {
             Capsule::table('clasificaciones_abc_xyz')->insert([
-                'empresa_id'       => $empId,
-                'sucursal_id'      => $sucId,
-                'producto_id'      => $inv->producto_id,
-                'clase_abc'        => 'C',
-                'clase_xyz'        => 'Z',
-                'total_valor'      => 0,
-                'pct_valor_acum'   => 100.0,
-                'demanda_media'    => 0,
-                'coef_variacion'   => 2.0,
-                'meses_activos'    => 0,
-                'rotacion_anual'   => null,
-                'dias_inventario'  => null,
-                'zona_recomendada' => 'Zona C - Control Mínimo',
-                'accion_sugerida'  => 'Sin historial de ventas — clasificación provisional CZ. Re-ejecutar tras registrar salidas.',
-                'vigente'          => true,
-                'periodo_inicio'   => $desde,
-                'periodo_fin'      => date('Y-m-d'),
-                'calculado_at'     => $ahora,
-                'created_at'       => $ahora,
-                'updated_at'       => $ahora,
+                'empresa_id'     => $empId,
+                'sucursal_id'    => $sucId,
+                'producto_id'    => $inv->producto_id,
+                'clase_abc'      => 'C',
+                'clase_xyz'      => 'Z',
+                'segmento'       => 'CZ',
+                'total_valor'    => 0,
+                'total_unidades' => (float)$inv->stock,
+                'pct_valor'      => 100.0,
+                'pct_unidades'   => 100.0,
+                'cv_demanda'     => 2.0,
+                'periodos'       => 0,
+                'vigente'        => true,
+                'calculado_at'   => $ahora,
+                'created_at'     => $ahora,
+                'updated_at'     => $ahora,
             ]);
             $procesados++;
         }
@@ -605,12 +653,13 @@ class RotacionController extends BaseController
         return $procesados;
     }
 
-    /** Verifica si la vista materializada existe y tiene filas. */
+    /** Verifica si hay clasificación ABC-XYZ vigente (la MV no existe en esta BD). */
     private function mvExists(): bool
     {
         try {
-            $count = Capsule::table('mv_rotacion_productos')->count();
-            return $count > 0;
+            return Capsule::table('clasificaciones_abc_xyz')
+                ->where('vigente', true)
+                ->exists();
         } catch (\Exception $e) {
             return false;
         }

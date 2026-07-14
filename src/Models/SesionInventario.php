@@ -30,18 +30,21 @@ class SesionInventario extends BaseModel
         'tipo', 'num_conteos', 'comparar_sistema', 'estado',
         'creado_por', 'ajustado_por',
         'fecha_inicio', 'fecha_cierre',
+        'fv_obligatorio',
     ];
 
     protected $casts = [
         'comparar_sistema' => 'boolean',
+        'fv_obligatorio'   => 'boolean',
         'num_conteos'      => 'integer',
         'fecha_inicio'     => 'date',
         'fecha_cierre'     => 'date',
     ];
 
     // ── Constantes ─────────────────────────────────────────────────────────
-    const TIPO_CICLICO  = 'Ciclico';
-    const TIPO_GENERAL  = 'General';
+    const TIPO_CICLICO        = 'Ciclico';
+    const TIPO_GENERAL        = 'General';
+    const TIPO_CARGUE_INICIAL = 'CargueInicial';
 
     const ESTADO_BORRADOR          = 'Borrador';
     const ESTADO_EN_CURSO          = 'EnCurso';

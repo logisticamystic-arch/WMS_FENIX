@@ -20,15 +20,19 @@ class MovimientoInventario extends BaseModel
     protected $fillable = [
         'empresa_id', 'sucursal_id', 'producto_id',
         'ubicacion_origen_id', 'ubicacion_destino_id',
-        'tipo_movimiento', 'cantidad', 'lote', 'fecha_vencimiento',
+        'tipo_movimiento', 'cantidad', 'cantidad_cajas', 'saldos',
+        'lote', 'fecha_vencimiento',
         'referencia_tipo', 'referencia_id',
         'auxiliar_id', 'fecha_movimiento', 'hora_inicio', 'hora_fin',
         'observaciones', 'numero_pallet',
     ];
 
     protected $casts = [
-        'fecha_movimiento' => 'date',
+        'fecha_movimiento'  => 'date',
         'fecha_vencimiento' => 'date',
+        'cantidad'          => 'decimal:2',
+        'cantidad_cajas'    => 'integer',
+        'saldos'            => 'decimal:2',
     ];
 
     // Movement type constants
@@ -39,7 +43,8 @@ class MovimientoInventario extends BaseModel
     const TIPO_AJUSTE_NEGATIVO = 'AjusteNegativo';
     const TIPO_PICKING = 'Picking';
     const TIPO_REABASTECIMIENTO = 'Reabastecimiento';
-    const TIPO_DEVOLUCION = 'Devolucion';
+    const TIPO_DEVOLUCION     = 'Devolucion';
+    const TIPO_CORRECCION     = 'CorreccionAdmin';
 
     public function empresa()
     {

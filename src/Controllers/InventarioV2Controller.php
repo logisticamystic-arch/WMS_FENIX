@@ -37,6 +37,23 @@ use Carbon\Carbon;
 class InventarioV2Controller extends BaseController
 {
     // ════════════════════════════════════════════════════════════════════════
+    //  ██████  HELPERS PRIVADOS
+    // ════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Busca una SesionInventario por ID respetando empresa.
+     * Para Admin/SuperAdmin no filtra por sucursal (pueden gestionar todas).
+     */
+    private function _findSesion(int $id, $user, Request $req): ?SesionInventario
+    {
+        $q = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req));
+        if (!in_array($user->rol ?? '', ['Admin', 'SuperAdmin'])) {
+            $q->where('sucursal_id', $user->sucursal_id);
+        }
+        return $q->find($id);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
     //  ██████  SESIONES
     // ════════════════════════════════════════════════════════════════════════
 
@@ -50,9 +67,11 @@ class InventarioV2Controller extends BaseController
             $user   = $req->getAttribute('user');
             $params = $req->getQueryParams();
 
-            $q = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                ->where('sucursal_id', $user->sucursal_id)
-                ->with(['creadoPor:id,nombre', 'ajustadoPor:id,nombre'])
+            $q = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req));
+            if (!in_array($user->rol ?? '', ['Admin', 'SuperAdmin'])) {
+                $q->where('sucursal_id', $user->sucursal_id);
+            }
+            $q->with(['creadoPor:id,nombre', 'ajustadoPor:id,nombre'])
                 ->withCount([
                     'asignaciones',
                     'lineas',
@@ -92,15 +111,15 @@ class InventarioV2Controller extends BaseController
             }
         }
 
-        if (!in_array($data['tipo'], ['Ciclico', 'General'])) {
-            return $this->error($res, "Tipo debe ser 'Ciclico' o 'General'");
+        if (!in_array($data['tipo'], ['Ciclico', 'General', 'CargueInicial'])) {
+            return $this->error($res, "Tipo debe ser 'Ciclico', 'General' o 'CargueInicial'");
         }
 
         $numConteos = (int)($data['num_conteos'] ?? 1);
         if ($data['tipo'] === 'General' && ($numConteos < 1 || $numConteos > 3)) {
             return $this->error($res, "Para inventario General, num_conteos debe ser 1, 2 o 3");
         }
-        if ($data['tipo'] === 'Ciclico') {
+        if (in_array($data['tipo'], ['Ciclico', 'CargueInicial'])) {
             $numConteos = 1;
         }
 
@@ -113,6 +132,10 @@ class InventarioV2Controller extends BaseController
                 'tipo'             => $data['tipo'],
                 'num_conteos'      => $numConteos,
                 'comparar_sistema' => filter_var($data['comparar_sistema'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                // CargueInicial siempre obliga FV; para otros tipos respeta el parámetro (default true)
+                'fv_obligatorio'   => $data['tipo'] === 'CargueInicial'
+                                      ? true
+                                      : filter_var($data['fv_obligatorio'] ?? true, FILTER_VALIDATE_BOOLEAN),
                 'estado'           => SesionInventario::ESTADO_BORRADOR,
                 'creado_por'       => $user->id,
                 'fecha_inicio'     => $data['fecha_inicio'] ?? date('Y-m-d'),
@@ -136,9 +159,11 @@ class InventarioV2Controller extends BaseController
         $user   = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-            ->where('sucursal_id', $user->sucursal_id)
-            ->find($args['id']);
+        $sesionQuery = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req));
+        if (!in_array($user->rol ?? '', ['Admin', 'SuperAdmin'])) {
+            $sesionQuery->where('sucursal_id', $user->sucursal_id);
+        }
+        $sesion = $sesionQuery->find($args['id']);
 
         if (!$sesion) return $this->notFound($res, 'Sesión no encontrada');
 
@@ -153,25 +178,26 @@ class InventarioV2Controller extends BaseController
 
         try {
             Capsule::transaction(function () use ($sesion, $user) {
-                $sesion->estado      = SesionInventario::ESTADO_EN_CURSO;
+                $sesion->estado       = SesionInventario::ESTADO_EN_CURSO;
                 $sesion->fecha_inicio = date('Y-m-d');
                 $sesion->save();
 
-                // Marcar asignaciones ronda 1 como notificadas
                 $asignaciones = $sesion->asignaciones()->where('ronda', 1)->get();
                 foreach ($asignaciones as $a) {
                     $a->estado        = SesionAsignacion::ESTADO_NOTIFICADO;
                     $a->notificado_at = date('Y-m-d H:i:s');
                     $a->save();
 
-                    // Bloquear ubicaciones según la instrucción
-                    $this->bloquearUbicacionesDeInstruccion($a, $user);
+                    // Bloqueo de ubicaciones: no crítico, no debe revertir la sesión
+                    try {
+                        $this->bloquearUbicacionesDeInstruccion($a, $user);
+                    } catch (\Throwable $bErr) {
+                        error_log("bloquearUbicaciones sesion={$sesion->id} asig={$a->id}: " . $bErr->getMessage());
+                    }
 
-                    // Crear notificación en sistema
                     $this->crearNotificacionAuxiliar($a, $sesion);
                 }
             });
-
 
             return $this->ok($res, $sesion->fresh()->load('asignaciones.auxiliar'), 'Sesión iniciada y auxiliares notificados');
         } catch (\Throwable $e) {
@@ -187,9 +213,11 @@ class InventarioV2Controller extends BaseController
     {
         try {
             $user = $req->getAttribute('user');
-            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                ->where('sucursal_id', $user->sucursal_id)
-                ->with([
+            $sesQ = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req));
+            if (!in_array($user->rol ?? '', ['Admin', 'SuperAdmin'])) {
+                $sesQ->where('sucursal_id', $user->sucursal_id);
+            }
+            $sesion = $sesQ->with([
                     'creadoPor:id,nombre',
                     'ajustadoPor:id,nombre',
                     'asignaciones.auxiliar:id,nombre',
@@ -215,31 +243,35 @@ class InventarioV2Controller extends BaseController
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
         try {
-            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                ->where('sucursal_id', $user->sucursal_id)
-                ->find($args['id']);
+            $sesQuery = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req));
+            if (!in_array($user->rol ?? '', ['Admin', 'SuperAdmin'])) {
+                $sesQuery->where('sucursal_id', $user->sucursal_id);
+            }
+            $sesion = $sesQuery->find($args['id']);
 
             if (!$sesion) return $this->notFound($res, "Sesión no encontrada");
 
-            // No permitir borrar si ya fue ajustada o cerrada
             if (in_array($sesion->estado, [SesionInventario::ESTADO_AJUSTADO, SesionInventario::ESTADO_CERRADO])) {
                 return $this->error($res, "No se puede eliminar la sesión '{$sesion->nombre}' porque ya ha sido finalizada o ajustada.");
             }
 
-            Capsule::transaction(function() use ($sesion, $user) {
-                // 1. Eliminar líneas de conteo
+            $nombre    = $sesion->nombre;
+            $sesionId  = $sesion->id;
+
+            Capsule::transaction(function() use ($sesion) {
                 SesionLinea::where('sesion_id', $sesion->id)->delete();
-                
-                // 2. Eliminar asignaciones
                 SesionAsignacion::where('sesion_id', $sesion->id)->delete();
-                
-                // 3. Eliminar la sesión misma
                 $sesion->delete();
-                
-                $this->audit($user, 'inventario_v2', 'eliminar_sesion', 'sesiones_inventario', $sesion->id, null, ["nombre" => $sesion->nombre]);
             });
 
-            return $this->ok($res, null, "Sesión '{$sesion->nombre}' eliminada correctamente");
+            // Audit fuera de la transacción: su fallo no debe revertir el delete
+            try {
+                $this->audit($user, 'inventario_v2', 'eliminar_sesion', 'sesiones_inventario', $sesionId, null, ["nombre" => $nombre]);
+            } catch (\Throwable $ae) {
+                error_log("audit eliminar_sesion: " . $ae->getMessage());
+            }
+
+            return $this->ok($res, null, "Sesión '{$nombre}' eliminada correctamente");
         } catch (\Throwable $e) {
             return $this->error($res, $e->getMessage(), 500);
         }
@@ -255,9 +287,7 @@ class InventarioV2Controller extends BaseController
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
         try {
-            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                ->where('sucursal_id', $user->sucursal_id)
-                ->find($args['id']);
+            $sesion = $this->_findSesion((int)$args['id'], $user, $req);
 
             if (!$sesion) return $this->notFound($res, "Sesión no encontrada");
 
@@ -288,8 +318,8 @@ class InventarioV2Controller extends BaseController
      */
     private function bloquearUbicacionesDeInstruccion(SesionAsignacion $asig, $user)
     {
-        $query = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                          ->where('sucursal_id', $user->sucursal_id);
+        $query = Ubicacion::where('empresa_id', $asig->sesion->empresa_id)
+                          ->where('sucursal_id', $asig->sesion->sucursal_id);
 
         if ($asig->tipo_instruccion === SesionAsignacion::INSTRUCCION_PASILLO) {
             $query->where('pasillo', $asig->pasillo);
@@ -297,13 +327,46 @@ class InventarioV2Controller extends BaseController
             $query->where('modulo', $asig->modulo);
         } elseif ($asig->tipo_instruccion === SesionAsignacion::INSTRUCCION_REFERENCIA) {
             $ubiIds = Inventario::where('producto_id', $asig->producto_id)
+                                ->where('empresa_id', $asig->sesion->empresa_id)
                                 ->pluck('ubicacion_id');
             $query->whereIn('id', $ubiIds);
         } else {
-            return; 
+            return;
         }
 
         $query->update(['estado' => Ubicacion::ESTADO_LOCKED]);
+    }
+
+    /**
+     * Crea una notificación para el auxiliar asignado a un conteo.
+     * No interrumpe el flujo si falla.
+     */
+    private function crearNotificacionAuxiliar(SesionAsignacion $asig, SesionInventario $sesion): void
+    {
+        try {
+            $tipoLabel = match($sesion->tipo) {
+                'CargueInicial' => 'Cargue Inicial',
+                'General'       => 'Inventario General',
+                default         => 'Conteo Cíclico',
+            };
+            Notificacion::create([
+                'empresa_id'      => $sesion->empresa_id,
+                'sucursal_id'     => $sesion->sucursal_id,
+                'personal_id'     => $asig->auxiliar_id,
+                'tipo'            => 'inventario',
+                'titulo'          => "{$tipoLabel}: {$sesion->nombre}",
+                'mensaje'         => 'Tienes una tarea de conteo asignada. ' . ($asig->descripcion_instruccion ?? ''),
+                'modulo'          => 'inventario',
+                'referencia_tipo' => 'sesion_inventario',
+                'referencia_id'   => $sesion->id,
+                'link_accion'     => 'inventario',
+                'sonido'          => true,
+                'leida'           => false,
+                'completada'      => false,
+            ]);
+        } catch (\Throwable $e) {
+            // Notificación no crítica — no interrumpir el flujo
+        }
     }
 
     /**
@@ -312,8 +375,8 @@ class InventarioV2Controller extends BaseController
     private function liberarUbicacionesDeSesion(SesionInventario $sesion, $user)
     {
         foreach ($sesion->asignaciones as $asig) {
-            $query = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                              ->where('sucursal_id', $user->sucursal_id)
+            $query = Ubicacion::where('empresa_id', $sesion->empresa_id)
+                              ->where('sucursal_id', $sesion->sucursal_id)
                               ->where('estado', Ubicacion::ESTADO_LOCKED);
 
             if ($asig->tipo_instruccion === SesionAsignacion::INSTRUCCION_PASILLO) {
@@ -322,6 +385,7 @@ class InventarioV2Controller extends BaseController
                 $query->where('modulo', $asig->modulo);
             } elseif ($asig->tipo_instruccion === SesionAsignacion::INSTRUCCION_REFERENCIA) {
                 $ubiIds = Inventario::where('producto_id', $asig->producto_id)
+                                    ->where('empresa_id', $sesion->empresa_id)
                                     ->pluck('ubicacion_id');
                 $query->whereIn('id', $ubiIds);
             } else {
@@ -350,9 +414,7 @@ class InventarioV2Controller extends BaseController
         $user = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-            ->where('sucursal_id', $user->sucursal_id)
-            ->find($args['id']);
+        $sesion = $this->_findSesion((int)$args['id'], $user, $req);
 
         if (!$sesion) return $this->notFound($res, 'Sesión no encontrada');
         if ($sesion->estado === SesionInventario::ESTADO_CERRADO) {
@@ -373,6 +435,9 @@ class InventarioV2Controller extends BaseController
         $tipoInstruccion = $data['tipo_instruccion'] ?? 'Libre';
         if (!in_array($tipoInstruccion, ['Pasillo', 'Modulo', 'Referencia', 'Libre'])) {
             return $this->error($res, "tipo_instruccion inválido");
+        }
+        if ($tipoInstruccion === 'Referencia' && empty($data['producto_id'])) {
+            return $this->error($res, 'Se requiere producto_id para tipo_instruccion Referencia');
         }
 
         try {
@@ -411,7 +476,14 @@ class InventarioV2Controller extends BaseController
         $user = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $asignacion = SesionAsignacion::find($args['id']);
+        $empresaId  = $this->getEffectiveEmpresaId($user, $req);
+        $esAdmin    = in_array($user->rol ?? '', ['Admin', 'SuperAdmin']);
+        $asignacion = SesionAsignacion::whereHas('sesion', function ($q) use ($user, $req, $empresaId, $esAdmin) {
+                $q->where('empresa_id', $empresaId);
+                if (!$esAdmin) {
+                    $q->where('sucursal_id', $user->sucursal_id);
+                }
+            })->find($args['id']);
         if (!$asignacion) return $this->notFound($res);
 
         $lineasCount = SesionLinea::where('asignacion_id', $asignacion->id)
@@ -444,8 +516,8 @@ class InventarioV2Controller extends BaseController
                     'sesion:id,nombre,tipo,empresa_id,sucursal_id',
                     'producto:id,nombre,codigo_interno',
                 ])
-                ->where(function ($q) use ($user) {
-                    $q->whereHas('sesion', function ($sq) use ($user) {
+                ->where(function ($q) use ($user, $req) {
+                    $q->whereHas('sesion', function ($sq) use ($user, $req) {
                         $sq->where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                            ->where('sucursal_id', $user->sucursal_id)
                            ->where('estado', SesionInventario::ESTADO_EN_CURSO);
@@ -474,7 +546,10 @@ class InventarioV2Controller extends BaseController
     public function iniciarConteo(Request $req, Response $res, array $args): Response
     {
         $user        = $req->getAttribute('user');
-        $asignacion  = SesionAsignacion::find($args['id']);
+        $asignacion  = SesionAsignacion::whereHas('sesion', function ($q) use ($user, $req) {
+                $q->where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
+                  ->where('sucursal_id', $user->sucursal_id);
+            })->find($args['id']);
 
         if (!$asignacion || $asignacion->auxiliar_id !== $user->id) {
             return $this->notFound($res, 'Asignación no encontrada o no pertenece a este usuario');
@@ -495,7 +570,11 @@ class InventarioV2Controller extends BaseController
     public function registrarLinea(Request $req, Response $res, array $args): Response
     {
         $user       = $req->getAttribute('user');
-        $asignacion = SesionAsignacion::with('sesion')->find($args['id']);
+        $asignacion = SesionAsignacion::with('sesion')
+            ->whereHas('sesion', function ($q) use ($user, $req) {
+                $q->where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
+                  ->where('sucursal_id', $user->sucursal_id);
+            })->find($args['id']);
 
         if (!$asignacion || $asignacion->auxiliar_id !== $user->id) {
             return $this->notFound($res, 'Asignación no encontrada');
@@ -512,7 +591,7 @@ class InventarioV2Controller extends BaseController
             }
         }
 
-        $cantidadContada = (int)$data['cantidad_contada'];
+        $cantidadContada = (float)$data['cantidad_contada'];
         if ($cantidadContada < 0) {
             return $this->error($res, 'La cantidad contada no puede ser negativa');
         }
@@ -567,7 +646,11 @@ class InventarioV2Controller extends BaseController
     public function finalizarAsignacion(Request $req, Response $res, array $args): Response
     {
         $user       = $req->getAttribute('user');
-        $asignacion = SesionAsignacion::with('sesion')->find($args['id']);
+        $asignacion = SesionAsignacion::with('sesion')
+            ->whereHas('sesion', function ($q) use ($user, $req) {
+                $q->where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
+                  ->where('sucursal_id', $user->sucursal_id);
+            })->find($args['id']);
 
         if (!$asignacion || $asignacion->auxiliar_id !== $user->id) {
             return $this->notFound($res, 'Asignación no encontrada');
@@ -612,10 +695,10 @@ class InventarioV2Controller extends BaseController
             $user   = $req->getAttribute('user');
             $params = $req->getQueryParams();
 
-            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                ->where('sucursal_id', $user->sucursal_id)
-                ->with(['creadoPor:id,nombre', 'ajustadoPor:id,nombre', 'asignaciones.auxiliar:id,nombre'])
-                ->find($args['id']);
+            $sesion = $this->_findSesion((int)$args['id'], $user, $req);
+            if ($sesion) {
+                $sesion->load(['creadoPor:id,nombre', 'ajustadoPor:id,nombre', 'asignaciones.auxiliar:id,nombre']);
+            }
 
             if (!$sesion) return $this->notFound($res);
 
@@ -703,6 +786,29 @@ class InventarioV2Controller extends BaseController
             $asignacionesTerminadas = $sesion->asignaciones()->where('ronda', $rondaFiltro)->where('estado', 'Finalizado')->count();
             $pctAvance = $asignacionesTotal > 0 ? round(($asignacionesTerminadas / $asignacionesTotal) * 100, 1) : 0;
 
+            // ── Ubicaciones en cero: el auxiliar contó 0 donde el sistema reporta stock ──
+            $ubicacionesEnCero = SesionLinea::where('sesion_lineas.sesion_id', $sesion->id)
+                ->where('sesion_lineas.estado', SesionLinea::ESTADO_ACTIVO)
+                ->where('sesion_lineas.cantidad_contada', 0)
+                ->where('sesion_lineas.cantidad_sistema', '>', 0)
+                ->when($rondaFiltro > 0, fn($q) => $q->where('sesion_lineas.ronda', $rondaFiltro))
+                ->join('productos',   'sesion_lineas.producto_id',  '=', 'productos.id')
+                ->join('ubicaciones', 'sesion_lineas.ubicacion_id', '=', 'ubicaciones.id')
+                ->join('personal',    'sesion_lineas.auxiliar_id',  '=', 'personal.id')
+                ->select(
+                    'sesion_lineas.id',
+                    'sesion_lineas.hora_conteo',
+                    'sesion_lineas.cantidad_sistema as stock_sistema',
+                    'sesion_lineas.ajustado',
+                    'sesion_lineas.lote',
+                    'productos.codigo_interno as codigo',
+                    'productos.nombre as producto',
+                    'ubicaciones.codigo as ubicacion',
+                    'personal.nombre as auxiliar'
+                )
+                ->orderBy('sesion_lineas.hora_conteo', 'desc')
+                ->get();
+
             // Consistencia entre rondas (solo para General con 2+ rondas)
             $consistencia = null;
             $necesitaTercerConteo = false;
@@ -741,8 +847,8 @@ class InventarioV2Controller extends BaseController
                     'ronda_1'      => (int)$r1,
                     'ronda_2'      => (int)$r2,
                     'ronda_3'      => (int)$r3,
-                    'sistema'      => (int)$ultimoConteo->cantidad_sistema,
-                    'diferencia'   => (int)($group->where('ronda', $group->max('ronda'))->sum('cantidad_contada') - $ultimoConteo->cantidad_sistema),
+                    'sistema'      => (float)$ultimoConteo->cantidad_sistema,
+                    'diferencia'   => (float)($group->where('ronda', $group->max('ronda'))->sum('cantidad_contada') - $ultimoConteo->cantidad_sistema),
                     // Sub-agrupación por Ubicación y Vencimiento para el detalle
                     'detalles'     => $group->groupBy(function($gl) {
                         return $gl->ubicacion_id . '_' . ($gl->fecha_vencimiento ?? 'N/A');
@@ -752,9 +858,9 @@ class InventarioV2Controller extends BaseController
                             'ubicacion'    => $sFirst->ubicacion->codigo,
                             'f_venc'       => $sFirst->fecha_vencimiento,
                             'dias_v_u'     => $sFirst->fecha_vencimiento ? Carbon::now()->startOfDay()->diffInDays(Carbon::parse($sFirst->fecha_vencimiento), false) : null,
-                            'r1'           => (int)$subGroup->where('ronda', 1)->sum('cantidad_contada'),
-                            'r2'           => (int)$subGroup->where('ronda', 2)->sum('cantidad_contada'),
-                            'r3'           => (int)$subGroup->where('ronda', 3)->sum('cantidad_contada'),
+                            'r1'           => (float)$subGroup->where('ronda', 1)->sum('cantidad_contada'),
+                            'r2'           => (float)$subGroup->where('ronda', 2)->sum('cantidad_contada'),
+                            'r3'           => (float)$subGroup->where('ronda', 3)->sum('cantidad_contada'),
                             'auxiliares'   => $subGroup->pluck('auxiliar.nombre')->unique()->values()->all(),
                             'ultimo_c'     => $subGroup->max('hora_conteo')
                         ];
@@ -775,12 +881,14 @@ class InventarioV2Controller extends BaseController
                     'asignaciones_total'        => $asignacionesTotal,
                     'asignaciones_terminadas'   => $asignacionesTerminadas,
                     'pct_avance'                => $pctAvance,
+                    'ubicaciones_vaciadas'      => $ubicacionesEnCero->count(),
                 ],
                 'matriz_conteo'        => $lineas,
                 'matriz_diferencias'   => $matrizDiff,
                 'matriz_consolidada'   => $consolidado,
                 'consistencia_rondas'  => $consistencia,
                 'necesita_tercer_conteo' => $necesitaTercerConteo,
+                'ubicaciones_en_cero'  => $ubicacionesEnCero,
             ]);
         } catch (\Throwable $e) {
             error_log('Dashboard error: ' . $e->getMessage());
@@ -819,7 +927,7 @@ class InventarioV2Controller extends BaseController
         }
 
         $auditDataOld = ['cantidad_contada' => $linea->cantidad_contada];
-        $auditDataNew = ['cantidad_contada' => (int)$data['cantidad_contada']];
+        $auditDataNew = ['cantidad_contada' => (float)$data['cantidad_contada']];
 
         // Cambio de Producto
         if (!empty($data['nuevo_producto_codigo'])) {
@@ -847,7 +955,9 @@ class InventarioV2Controller extends BaseController
             // Para V2 simplificado, buscaremos el stock actual de esa ubicación o mantendremos el snapshot 
             // En este sistema, cantidad_sistema se captura al momento del conteo.
             // Si re-ubicamos administrativamente, lo ideal es obtener el stock SNAPSHOT de esa ubicación.
-            $stockUbic = Inventario::where('producto_id', $linea->producto_id)
+            $stockUbic = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
+                ->where('sucursal_id', $user->sucursal_id)
+                ->where('producto_id', $linea->producto_id)
                 ->where('ubicacion_id', $ubic->id)
                 ->sum('cantidad');
             $linea->cantidad_sistema = $stockUbic;
@@ -859,7 +969,7 @@ class InventarioV2Controller extends BaseController
             $auditDataNew['fecha_vencimiento'] = $data['fecha_vencimiento'];
         }
 
-        $nueva = (int)$data['cantidad_contada'];
+        $nueva = (float)$data['cantidad_contada'];
         if ($nueva < 0) return $this->error($res, 'La cantidad no puede ser negativa');
 
         $linea->cantidad_original = $linea->cantidad_original ?? $linea->cantidad_contada;
@@ -922,9 +1032,7 @@ class InventarioV2Controller extends BaseController
         $user = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-            ->where('sucursal_id', $user->sucursal_id)
-            ->find($args['id']);
+        $sesion = $this->_findSesion((int)$args['id'], $user, $req);
 
         if (!$sesion) return $this->notFound($res, 'Sesión no encontrada');
 
@@ -976,9 +1084,7 @@ class InventarioV2Controller extends BaseController
         $user = $req->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-            ->where('sucursal_id', $user->sucursal_id)
-            ->find($args['id']);
+        $sesion = $this->_findSesion((int)$args['id'], $user, $req);
 
         if (!$sesion) return $this->notFound($res, 'Sesión no encontrada');
 
@@ -1153,14 +1259,17 @@ class InventarioV2Controller extends BaseController
         } elseif ($cantidadNueva > 0) {
             // Nueva referencia descubierta en conteo (no estaba en sistema)
             Inventario::create([
-                'empresa_id'        => $sesion->empresa_id,
-                'sucursal_id'       => $sesion->sucursal_id,
-                'producto_id'       => $linea->producto_id,
-                'ubicacion_id'      => $linea->ubicacion_id,
-                'lote'              => $linea->lote,
-                'fecha_vencimiento' => $linea->fecha_vencimiento,
-                'cantidad'          => $cantidadNueva,
-                'estado'            => 'Disponible',
+                'empresa_id'         => $sesion->empresa_id,
+                'sucursal_id'        => $sesion->sucursal_id,
+                'producto_id'        => $linea->producto_id,
+                'ubicacion_id'       => $linea->ubicacion_id,
+                'lote'               => $linea->lote,
+                'fecha_vencimiento'  => $linea->fecha_vencimiento,
+                'cantidad'           => $cantidadNueva,
+                'cantidad_reservada' => 0,
+                'cantidad_cajas'     => 0,
+                'saldos'             => 0,
+                'estado'             => 'Disponible',
             ]);
         }
 
@@ -1201,7 +1310,7 @@ class InventarioV2Controller extends BaseController
             'sucursal_id'       => $sesion->sucursal_id,
             'origen'            => $origen,
             'sesion_id'         => $sesion->id,
-            'linea_id'          => $linea->id,
+            'linea_id'          => $esCeroForzado ? null : $linea->id, // No line ID for virtual lines
             'movimiento_id'     => $mov->id,
             'producto_id'       => $linea->producto_id,
             'ubicacion_id'      => $linea->ubicacion_id,
@@ -1218,8 +1327,10 @@ class InventarioV2Controller extends BaseController
             'hora'              => date('H:i:s'),
         ]);
 
-        $linea->ajustado = true;
-        $linea->save();
+        if (!$esCeroForzado) {
+            $linea->ajustado = true;
+            $linea->save();
+        }
 
         return $ajuste;
     }
@@ -1309,11 +1420,8 @@ class InventarioV2Controller extends BaseController
     public function mlAnalisis(Request $req, Response $res, array $args): Response
     {
         $user = $req->getAttribute('user');
-        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-            ->where('sucursal_id', $user->sucursal_id)
-            ->find($args['id']);
+        $sesion = $this->_findSesion((int)$args['id'], $user, $req);
 
         if (!$sesion) return $this->notFound($res, 'Sesión no encontrada');
 
@@ -1332,9 +1440,11 @@ class InventarioV2Controller extends BaseController
             ));
 
             $productos  = empty($productoIds)  ? collect() :
-                Producto::whereIn('id', $productoIds)->get(['id','nombre','codigo_interno'])->keyBy('id');
+                Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
+                    ->whereIn('id', $productoIds)->get(['id','nombre','codigo_interno'])->keyBy('id');
             $ubicaciones = empty($ubicacionIds) ? collect() :
-                Ubicacion::whereIn('id', $ubicacionIds)->get(['id','codigo'])->keyBy('id');
+                Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
+                    ->whereIn('id', $ubicacionIds)->get(['id','codigo'])->keyBy('id');
 
             $data = array_map(function($l) use ($productos, $ubicaciones) {
                 return [
@@ -1398,8 +1508,8 @@ class InventarioV2Controller extends BaseController
             return $this->error($res, "tipo_ajuste debe ser 'Entrada' o 'Salida'");
         }
         // Validar que venga alguna cantidad
-        $cantidadIncremental = isset($data['cantidad'])     ? abs((int)$data['cantidad'])     : null;
-        $cantidadAbsoluta    = isset($data['cantidad_nueva']) ? (int)$data['cantidad_nueva'] : null;
+        $cantidadIncremental = isset($data['cantidad'])     ? abs((float)$data['cantidad'])     : null;
+        $cantidadAbsoluta    = isset($data['cantidad_nueva']) ? (float)$data['cantidad_nueva'] : null;
         if ($cantidadIncremental === null && $cantidadAbsoluta === null) {
             return $this->error($res, "Se requiere 'cantidad' o 'cantidad_nueva'");
         }
@@ -1408,7 +1518,7 @@ class InventarioV2Controller extends BaseController
         }
 
         try {
-            $result = Capsule::transaction(function () use ($data, $user, $cantidadIncremental, $cantidadAbsoluta) {
+            $result = Capsule::transaction(function () use ($data, $user, $req, $cantidadIncremental, $cantidadAbsoluta) {
                 $fv = !empty($data['fecha_vencimiento'])
                       ? Carbon::parse($data['fecha_vencimiento'])->format('Y-m-d')
                       : null;
@@ -1855,10 +1965,10 @@ class InventarioV2Controller extends BaseController
             $user   = $req->getAttribute('user');
             $params = $req->getQueryParams();
 
-            $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                ->where('sucursal_id', $user->sucursal_id)
-                ->with(['creadoPor:id,nombre', 'ajustadoPor:id,nombre'])
-                ->find($args['id']);
+            $sesion = $this->_findSesion((int)$args['id'], $user, $req);
+            if ($sesion) {
+                $sesion->load(['creadoPor:id,nombre', 'ajustadoPor:id,nombre']);
+            }
 
             if (!$sesion) return $this->notFound($res);
 
@@ -1891,7 +2001,9 @@ class InventarioV2Controller extends BaseController
                 ->orderBy('sesion_lineas.hora_conteo')
                 ->get();
 
-            $ajustes = AjusteInventario::where('sesion_id', $sesion->id)
+            $ajustes = AjusteInventario::where('ajustes_inventario.empresa_id', $this->getEffectiveEmpresaId($user, $req))
+                ->where('ajustes_inventario.sucursal_id', $user->sucursal_id)
+                ->where('sesion_id', $sesion->id)
                 ->join('productos',   'ajustes_inventario.producto_id',  '=', 'productos.id')
                 ->join('ubicaciones', 'ajustes_inventario.ubicacion_id', '=', 'ubicaciones.id')
                 ->join('personal',    'ajustes_inventario.ajustado_por', '=', 'personal.id')
@@ -1963,9 +2075,7 @@ class InventarioV2Controller extends BaseController
         // Quitamos restricción de supervisor para permitir el uso desde dispositivos móviles (Auxiliares)
         // if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        $sesion = SesionInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-            ->where('sucursal_id', $user->sucursal_id)
-            ->find($args['id']);
+        $sesion = $this->_findSesion((int)$args['id'], $user, $req);
 
         if (!$sesion) return $this->notFound($res, 'Sesión no encontrada');
         if (!in_array($sesion->estado, ['EnCurso', 'PendienteAjuste'])) {
@@ -2004,36 +2114,172 @@ class InventarioV2Controller extends BaseController
             $fv    = !empty($data['fecha_vencimiento']) ? $data['fecha_vencimiento'] : null;
 
             // Obtener stock SNAPSHOT actual (al momento de este ingreso)
-            $stockSnapshot = Inventario::where('producto_id', $prod->id)
+            $stockSnapshot = (int) Inventario::where('producto_id', $prod->id)
                 ->where('ubicacion_id', $ubic->id)
-                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                ->where('sucursal_id', $user->sucursal_id)
+                ->where('empresa_id', $sesion->empresa_id)
+                ->where('sucursal_id', $sesion->sucursal_id)
                 ->when($lote, fn($q) => $q->where('lote', $lote))
                 ->sum('cantidad');
 
-            $cantidadContada = (float)$data['cantidad'];
+            $cantidadContada = (int)$data['cantidad'];
 
-            // Crear o actualizar la línea
+            // Crear o actualizar la línea — auxiliar_id en criterio de búsqueda
+            // para que cada auxiliar tenga su propia línea por producto+ubicación+ronda.
             $linea = SesionLinea::updateOrCreate(
                 [
                     'sesion_id'    => $sesion->id,
+                    'auxiliar_id'  => $user->id,
                     'producto_id'  => $prod->id,
                     'ubicacion_id' => $ubic->id,
-                    'ronda'         => $ronda,
-                    'lote'          => $lote,
-                    'estado'        => SesionLinea::ESTADO_ACTIVO
+                    'ronda'        => $ronda,
+                    'lote'         => $lote,
+                    'estado'       => SesionLinea::ESTADO_ACTIVO,
                 ],
                 [
-                    'auxiliar_id'      => $user->id,
-                    'cantidad_contada' => $cantidadContada,
-                    'cantidad_sistema' => $stockSnapshot,
-                    'diferencia'       => $cantidadContada - $stockSnapshot,
-                    'fecha_vencimiento'=> $fv,
-                    'hora_conteo'      => date('Y-m-d H:i:s'),
+                    'cantidad_contada'  => $cantidadContada,
+                    'cantidad_sistema'  => $stockSnapshot,
+                    'diferencia'        => $cantidadContada - $stockSnapshot,
+                    'fecha_vencimiento' => $fv,
+                    'hora_conteo'       => date('Y-m-d H:i:s'),
                 ]
             );
 
             return $this->ok($res, $linea->fresh(['producto', 'ubicacion']), 'Conteo manual registrado.');
+        } catch (\Throwable $e) {
+            return $this->error($res, $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * GET /v2/inventario/sesiones/{id}/mis-lineas
+     * Líneas contadas por el auxiliar autenticado en esta sesión.
+     */
+    public function getMisLineas(Request $req, Response $res, array $args): Response
+    {
+        $user = $req->getAttribute('user');
+        $sesion = $this->_findSesion((int)$args['id'], $user, $req);
+        if (!$sesion) return $this->notFound($res, 'Sesión no encontrada');
+
+        try {
+            $lineas = SesionLinea::where('sesion_lineas.sesion_id', $sesion->id)
+                ->where('sesion_lineas.auxiliar_id', $user->id)
+                ->where('sesion_lineas.estado', SesionLinea::ESTADO_ACTIVO)
+                ->join('productos',   'sesion_lineas.producto_id',  '=', 'productos.id')
+                ->join('ubicaciones', 'sesion_lineas.ubicacion_id', '=', 'ubicaciones.id')
+                ->select(
+                    'sesion_lineas.id',
+                    'sesion_lineas.ronda',
+                    'sesion_lineas.cantidad_contada as cantidad',
+                    'sesion_lineas.lote',
+                    'sesion_lineas.fecha_vencimiento',
+                    'sesion_lineas.hora_conteo',
+                    'productos.nombre as producto_nombre',
+                    'productos.codigo_interno as producto_codigo',
+                    'ubicaciones.codigo as ubicacion_codigo'
+                )
+                ->orderBy('sesion_lineas.hora_conteo', 'desc')
+                ->limit(50)
+                ->get();
+
+            return $this->ok($res, $lineas);
+        } catch (\Throwable $e) {
+            return $this->error($res, $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * GET /v2/inventario/productos/{id}/fechas-vencimiento
+     * Retorna las últimas 3 fechas de vencimiento distintas que ha manejado
+     * un producto (en inventarios activos y en ajustes), opcionalmente filtrado
+     * por ubicacion_id, para que el auxiliar pueda seleccionar una.
+     */
+    public function getUltimasFechasVencimiento(Request $req, Response $res, array $args): Response
+    {
+        $user      = $req->getAttribute('user');
+        $productoId = (int)$args['id'];
+        $params    = $req->getQueryParams();
+        $ubicId    = !empty($params['ubicacion_id']) ? (int)$params['ubicacion_id'] : null;
+
+        try {
+            $empresaId  = $this->getEffectiveEmpresaId($user, $req);
+            $sucursalId = $user->sucursal_id;
+
+            // Consulta inventarios activos con esa referencia
+            $query = Inventario::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
+                ->where('producto_id', $productoId)
+                ->whereNotNull('fecha_vencimiento');
+
+            if ($ubicId) {
+                $query->where('ubicacion_id', $ubicId);
+            }
+
+            $fechas = $query
+                ->orderBy('fecha_vencimiento', 'asc')
+                ->pluck('fecha_vencimiento')
+                ->unique()
+                ->values()
+                ->take(3)
+                ->map(fn($f) => \Carbon\Carbon::parse($f)->format('Y-m-d'))
+                ->values()
+                ->toArray();
+
+            // Si no hay en inventarios activos, buscar en ajustes históricos
+            if (empty($fechas)) {
+                $fechas = \Illuminate\Database\Capsule\Manager::table('ajustes_inventario')
+                    ->where('empresa_id', $empresaId)
+                    ->where('sucursal_id', $sucursalId)
+                    ->where('producto_id', $productoId)
+                    ->whereNotNull('fecha_vencimiento')
+                    ->when($ubicId, fn($q) => $q->where('ubicacion_id', $ubicId))
+                    ->orderBy('fecha_vencimiento', 'asc')
+                    ->pluck('fecha_vencimiento')
+                    ->unique()
+                    ->take(3)
+                    ->map(fn($f) => \Carbon\Carbon::parse($f)->format('Y-m-d'))
+                    ->values()
+                    ->toArray();
+            }
+
+            return $this->ok($res, $fechas);
+        } catch (\Throwable $e) {
+            return $this->error($res, $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * GET /api/v2/inventario/productos/{id}/ubicaciones
+     * Ubicaciones con stock > 0 de un producto. Uso móvil en inventario cíclico por referencia.
+     */
+    public function getProductoUbicaciones(Request $req, Response $res, array $args): Response
+    {
+        $user       = $req->getAttribute('user');
+        $productoId = (int)$args['id'];
+
+        try {
+            $empresaId  = $this->getEffectiveEmpresaId($user, $req);
+            $sucursalId = $user->sucursal_id;
+
+            $rows = Inventario::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
+                ->where('producto_id', $productoId)
+                ->where('cantidad', '>', 0)
+                ->with('ubicacion:id,codigo,nombre')
+                ->get();
+
+            $ubicaciones = $rows->groupBy('ubicacion_id')->map(function ($items) {
+                $u = $items->first()->ubicacion;
+                return [
+                    'id'                => $u?->id,
+                    'codigo'            => $u?->codigo ?? '—',
+                    'nombre'            => $u?->nombre ?? '',
+                    'cantidad'          => round($items->sum('cantidad'), 3),
+                    'fecha_vencimiento' => $items->sortBy('fecha_vencimiento')
+                                                 ->first()?->fecha_vencimiento,
+                ];
+            })->values()->sortBy('codigo')->values();
+
+            return $this->ok($res, $ubicaciones);
         } catch (\Throwable $e) {
             return $this->error($res, $e->getMessage(), 500);
         }

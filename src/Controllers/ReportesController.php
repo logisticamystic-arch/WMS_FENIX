@@ -19,79 +19,136 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Capsule\Manager as DB;
 
 /**
- * ReportesController — 9 reportes filtrados por rango de fecha.
- * Todos exportables a Excel (CSV + BOM UTF-8).
+ * ReportesController — reportes filtrados por rango de fecha, referencia y ubicación.
+ * Todos exportables a CSV (UTF-8 BOM).
  * Solo Admin puede ver el reporte de audit_log.
  */
 class ReportesController extends BaseController
 {
+    // ── HELPER: Resolver ubicacion_id desde código ────────────────────────────
+    private function resolveUbicacionId(?string $codigo, int $empresaId): ?int
+    {
+        if (empty($codigo)) return null;
+        $ub = Capsule::table('ubicaciones')
+            ->where('empresa_id', $empresaId)
+            ->where('codigo', 'ILIKE', $codigo)
+            ->value('id');
+        return $ub ? (int)$ub : null;
+    }
+
     // ── 1. KARDEX ─────────────────────────────────────────────────────────────
     // Delegado a InventarioController::getKardex → /api/inventario/kardex
-    // Aquí mantenemos el endpoint de reportes como alias
     public function kardex(Request $r, Response $res): Response
     {
         return (new InventarioController())->getKardex($r, $res);
     }
 
-    // ── 2. STOCK ACTUAL ───────────────────────────────────────────────────────
+    // ── 2. STOCK REAL ─────────────────────────────────────────────────────────
+    // GET /api/reportes/stock
+    // Filtros: fecha_desde, fecha_hasta, referencia, ubicacion_codigo, ambiente_id,
+    //          estado, solo_proximos_vencer, solo_vencidos, limit
+    // Retorna SUM(cantidad) real desde la tabla inventarios por lote/ubicación.
     public function stockActual(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
+        $eId    = $this->getEffectiveEmpresaId($user, $r);
+        $sId    = $user->sucursal_id;
 
-        $stock = Inventario::where('inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $r))
-            ->where('inventarios.sucursal_id', $user->sucursal_id)
+        // Resolver ubicacion_id desde código si se envía como texto
+        $ubicacionId = $params['ubicacion_id'] ?? null;
+        if (empty($ubicacionId) && !empty($params['ubicacion_codigo'])) {
+            $ubicacionId = $this->resolveUbicacionId($params['ubicacion_codigo'], $eId);
+        }
+
+        // ── Stock real: SUM(i.cantidad) FROM inventarios i WHERE empresa_id=X AND sucursal_id=Y ──
+        // Agrupado por producto_id/ubicacion_id/lote para desglose preciso.
+        $stock = Inventario::where('inventarios.empresa_id', $eId)
+            ->where('inventarios.sucursal_id', $sId)
+            ->where('inventarios.cantidad', '>', 0)     // solo registros con stock real
             ->join('productos', 'inventarios.producto_id', '=', 'productos.id')
             ->join('ubicaciones', 'inventarios.ubicacion_id', '=', 'ubicaciones.id')
             ->leftJoin('marcas', 'productos.marca_id', '=', 'marcas.id')
+            ->leftJoin('ambientes', 'ubicaciones.ambiente_id', '=', 'ambientes.id')
             ->select(
-                'productos.codigo_interno',
-                'productos.nombre as producto',
-                'marcas.nombre as marca',
-                'ubicaciones.codigo as ubicacion',
+                'inventarios.id',
+                'inventarios.producto_id',
+                'inventarios.ubicacion_id',
                 'inventarios.lote',
                 'inventarios.fecha_vencimiento',
                 'inventarios.cantidad',
-                'inventarios.cantidad',
-                'inventarios.estado'
+                'inventarios.cantidad_cajas',
+                'inventarios.saldos',
+                'inventarios.estado',
+                'productos.codigo_interno',
+                'productos.nombre as producto',
+                'productos.unidades_caja',
+                'marcas.nombre as marca',
+                'ubicaciones.codigo as ubicacion',
+                'ubicaciones.codigo as ubicacion_codigo',
+                'ambientes.nombre as ambiente'
             )
-            ->when($params['estado'] ?? null, fn($q, $e) => $q->where('inventarios.estado', $e))
-            ->when($params['solo_proximos_vencer'] ?? null, function ($q) {
-                $hoy = \Carbon\Carbon::now()->format('Y-m-d');
+            // ── Filtro estado ──
+            ->when(!empty($params['estado']), fn($q) => $q->where('inventarios.estado', $params['estado']))
+            // ── Filtro fecha_desde / fecha_hasta (por fecha_vencimiento) ──
+            ->when(!empty($params['fecha_desde']), fn($q) => $q->where('inventarios.fecha_vencimiento', '>=', $params['fecha_desde']))
+            ->when(!empty($params['fecha_hasta']), fn($q) => $q->where('inventarios.fecha_vencimiento', '<=', $params['fecha_hasta']))
+            // ── Filtro por referencia: nombre ilike o codigo_interno ilike ──
+            ->when(!empty($params['referencia']), function ($q) use ($params) {
+                $v = '%' . $params['referencia'] . '%';
+                $q->where(function ($w) use ($v) {
+                    $w->where('productos.nombre', 'ILIKE', $v)
+                      ->orWhere('productos.codigo_interno', 'ILIKE', $v);
+                });
+            })
+            // ── Filtro por ubicacion_codigo (búsqueda parcial ILIKE) ──
+            ->when(!empty($params['ubicacion_codigo']) && !$ubicacionId, function ($q) use ($params) {
+                $q->where('ubicaciones.codigo', 'ILIKE', '%' . $params['ubicacion_codigo'] . '%');
+            })
+            ->when($ubicacionId, fn($q) => $q->where('inventarios.ubicacion_id', $ubicacionId))
+            // ── Filtro por ambiente_id ──
+            ->when(!empty($params['ambiente_id']), fn($q) => $q->where('ubicaciones.ambiente_id', $params['ambiente_id']))
+            // ── Proximos a vencer ──
+            ->when(!empty($params['solo_proximos_vencer']), function ($q) {
+                $hoy      = \Carbon\Carbon::now()->format('Y-m-d');
                 $en30Dias = \Carbon\Carbon::now()->addDays(30)->format('Y-m-d');
                 $q->whereNotNull('inventarios.fecha_vencimiento')
                   ->whereBetween('inventarios.fecha_vencimiento', [$hoy, $en30Dias]);
             })
-            ->when($params['solo_vencidos'] ?? null, function ($q) {
+            // ── Solo vencidos: fecha_vencimiento < CURRENT_DATE AND cantidad > 0 ──
+            ->when(!empty($params['solo_vencidos']), function ($q) {
                 $hoy = \Carbon\Carbon::now()->format('Y-m-d');
                 $q->whereNotNull('inventarios.fecha_vencimiento')
-                  ->where('inventarios.fecha_vencimiento', '<', $hoy);
+                  ->where('inventarios.fecha_vencimiento', '<', $hoy)
+                  ->where('inventarios.cantidad', '>', 0);
             })
             ->orderBy('inventarios.fecha_vencimiento')
+            ->limit(min((int)($params['limit'] ?? 2000), 5000))
             ->get();
 
-        // Calcular días por vencer en PHP para compatibilidad universal
-        $stock = $stock->map(function($item) {
+        // Calcular días por vencer en PHP (no usar DATE_DIFF para compatibilidad PG/MySQL)
+        $stock = $stock->map(function ($item) {
             $item->dias_vencer = null;
             if ($item->fecha_vencimiento) {
                 $fechaVen = \Carbon\Carbon::parse($item->fecha_vencimiento)->startOfDay();
-                $hoy = \Carbon\Carbon::now()->startOfDay();
+                $hoy      = \Carbon\Carbon::now()->startOfDay();
                 $item->dias_vencer = $hoy->diffInDays($fechaVen, false);
             }
             return $item;
         });
 
-
         if (($params['export'] ?? '') === 'excel') {
-            $headers = ['Código', 'Producto', 'Marca', 'Ubicación', 'Lote',
-                        'F.Vencimiento', 'Días p/Vencer', 'Cantidad', 'Estado'];
+            $headers = ['Código', 'Producto', 'Marca', 'Ubicación', 'Ambiente', 'Lote',
+                        'F.Vencimiento', 'Días p/Vencer', 'Cajas', 'Sueltos', 'UND/TOTAL', 'Estado'];
             $rows = $stock->map(fn($s) => [
-                $s->codigo_interno, $s->producto, $s->marca ?? '—', $s->ubicacion,
+                $s->codigo_interno, $s->producto, $s->marca ?? '—',
+                $s->ubicacion, $s->ambiente ?? '—',
                 $s->lote ?? '—', $s->fecha_vencimiento ?? '—',
                 $s->dias_vencer !== null ? $s->dias_vencer : '—',
+                $s->cantidad_cajas ?? 0, $s->saldos ?? 0,
                 $s->cantidad, $s->estado,
             ])->toArray();
-            return $this->exportCsv($res, $headers, $rows, 'stock_actual_' . date('Y-m-d'));
+            return $this->exportCsv($res, $headers, $rows, 'stock_real_' . date('Y-m-d'));
         }
 
         return $this->ok($res, $stock);
@@ -103,8 +160,15 @@ class ReportesController extends BaseController
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
+        $eId = $this->getEffectiveEmpresaId($user, $r);
 
-        $recepciones = Recepcion::where('recepciones.empresa_id', $this->getEffectiveEmpresaId($user, $r))
+        // Resolver ubicacion_id
+        $ubicacionId = $params['ubicacion_id'] ?? null;
+        if (empty($ubicacionId) && !empty($params['ubicacion_codigo'])) {
+            $ubicacionId = $this->resolveUbicacionId($params['ubicacion_codigo'], $eId);
+        }
+
+        $recepciones = Recepcion::where('recepciones.empresa_id', $eId)
             ->where('recepciones.sucursal_id', $user->sucursal_id)
             ->whereBetween('recepciones.created_at', [$ini, $fin])
             ->when(!empty($params['numero_odc']), function ($q) use ($params) {
@@ -116,19 +180,32 @@ class ReportesController extends BaseController
                 $q->where(function ($w) use ($params) {
                     $w->whereHas('ordenCompra', function ($q2) use ($params) {
                         $q2->whereHas('proveedor', function ($q3) use ($params) {
-                            $q3->where('razon_social', 'LIKE', "%{$params['proveedor']}%");
+                            $q3->where('razon_social', 'ILIKE', "%{$params['proveedor']}%");
                         });
                     })
                     ->orWhereHas('cita', function ($q2) use ($params) {
-                        $q2->where('proveedor', 'LIKE', "%{$params['proveedor']}%");
+                        $q2->where('proveedor', 'ILIKE', "%{$params['proveedor']}%");
                     });
                 });
             })
+            // Filtro por referencia/EAN/producto
+            ->when(!empty($params['referencia']), function ($q) use ($params) {
+                $v = $params['referencia'];
+                $q->whereHas('detalles.producto', function ($q2) use ($v) {
+                    $q2->where('nombre', 'ILIKE', "%$v%")
+                       ->orWhere('codigo_interno', 'ILIKE', "%$v%");
+                });
+            })
+            // Filtro legacy 'producto'
             ->when(!empty($params['producto']), function ($q) use ($params) {
                 $q->whereHas('detalles.producto', function ($q2) use ($params) {
-                    $q2->where('nombre', 'LIKE', "%{$params['producto']}%")
-                       ->orWhere('codigo_interno', 'LIKE', "%{$params['producto']}%");
+                    $q2->where('nombre', 'ILIKE', "%{$params['producto']}%")
+                       ->orWhere('codigo_interno', 'ILIKE', "%{$params['producto']}%");
                 });
+            })
+            // Filtro por ubicación (en detalles de recepción)
+            ->when($ubicacionId, function ($q) use ($ubicacionId) {
+                $q->whereHas('detalles', fn($q2) => $q2->where('ubicacion_id', $ubicacionId));
             })
             ->with(['detalles.producto', 'ordenCompra.proveedor', 'cita', 'auxiliar'])
             ->orderBy('recepciones.created_at', 'desc')
@@ -174,10 +251,25 @@ class ReportesController extends BaseController
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
+        $eId = $this->getEffectiveEmpresaId($user, $r);
 
-        $despachos = Despacho::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+        // Resolver ubicacion_id
+        $ubicacionId = $params['ubicacion_id'] ?? null;
+        if (empty($ubicacionId) && !empty($params['ubicacion_codigo'])) {
+            $ubicacionId = $this->resolveUbicacionId($params['ubicacion_codigo'], $eId);
+        }
+
+        $despachos = Despacho::where('empresa_id', $eId)
             ->where('sucursal_id', $user->sucursal_id)
             ->whereBetween('fecha_movimiento', [substr($ini, 0, 10), substr($fin, 0, 10)])
+            // Filtro por referencia/EAN/producto
+            ->when(!empty($params['referencia']), function ($q) use ($params) {
+                $v = $params['referencia'];
+                $q->whereHas('certificaciones.producto', function ($q2) use ($v) {
+                    $q2->where('nombre', 'ILIKE', "%$v%")
+                       ->orWhere('codigo_interno', 'ILIKE', "%$v%");
+                });
+            })
             ->with('certificaciones.producto')
             ->orderBy('fecha_movimiento', 'desc')
             ->get();
@@ -209,9 +301,18 @@ class ReportesController extends BaseController
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
+        $eId = $this->getEffectiveEmpresaId($user, $r);
 
-        $devs = Devolucion::where('devoluciones.empresa_id', $this->getEffectiveEmpresaId($user, $r))
+        $devs = Devolucion::where('devoluciones.empresa_id', $eId)
             ->whereBetween('devoluciones.created_at', [$ini, $fin])
+            // Filtro por referencia/EAN/producto
+            ->when(!empty($params['referencia']), function ($q) use ($params) {
+                $v = $params['referencia'];
+                $q->whereHas('detalles.producto', function ($q2) use ($v) {
+                    $q2->where('nombre', 'ILIKE', "%$v%")
+                       ->orWhere('codigo_interno', 'ILIKE', "%$v%");
+                });
+            })
             ->with('detalles.producto')
             ->orderBy('devoluciones.created_at', 'desc')
             ->get();
@@ -245,6 +346,13 @@ class ReportesController extends BaseController
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
+        $eId = $this->getEffectiveEmpresaId($user, $r);
+
+        // Resolver ubicacion_id
+        $ubicacionId = $params['ubicacion_id'] ?? null;
+        if (empty($ubicacionId) && !empty($params['ubicacion_codigo'])) {
+            $ubicacionId = $this->resolveUbicacionId($params['ubicacion_codigo'], $eId);
+        }
 
         // Búsqueda detallada por línea para el reporte
         $query = Capsule::table('picking_detalles as d')
@@ -252,7 +360,7 @@ class ReportesController extends BaseController
             ->join('productos as p', 'd.producto_id', '=', 'p.id')
             ->leftJoin('ubicaciones as u', 'd.ubicacion_id', '=', 'u.id')
             ->leftJoin('personal as aux', 'd.auxiliar_id', '=', 'aux.id')
-            ->where('o.empresa_id', $this->getEffectiveEmpresaId($user, $r))
+            ->where('o.empresa_id', $eId)
             ->where('o.sucursal_id', $user->sucursal_id)
             ->whereBetween('o.created_at', [$ini, $fin])
             ->select(
@@ -270,8 +378,18 @@ class ReportesController extends BaseController
                 'o.estado as orden_estado',
                 'd.estado as linea_estado'
             )
-            ->when($params['planilla_numero'] ?? null, fn($q, $v) => $q->where('o.planilla_numero', 'LIKE', "%$v%"))
-            ->when($params['ruta'] ?? null, fn($q, $v) => $q->where('o.area_comercial', 'LIKE', "%$v%"))
+            ->when($params['planilla_numero'] ?? null, fn($q, $v) => $q->where('o.planilla_numero', 'ILIKE', "%$v%"))
+            ->when($params['ruta'] ?? null, fn($q, $v) => $q->where('o.area_comercial', 'ILIKE', "%$v%"))
+            // Filtro por referencia/EAN/producto
+            ->when(!empty($params['referencia']), function ($q) use ($params) {
+                $v = $params['referencia'];
+                $q->where(function ($w) use ($v) {
+                    $w->where('p.nombre', 'ILIKE', "%$v%")
+                      ->orWhere('p.codigo_interno', 'ILIKE', "%$v%");
+                });
+            })
+            // Filtro por ubicación
+            ->when($ubicacionId, function ($q) use ($ubicacionId) { $q->where('d.ubicacion_id', $ubicacionId); })
             ->orderBy('o.planilla_numero', 'desc')
             ->orderBy('o.created_at', 'desc');
 
@@ -304,10 +422,29 @@ class ReportesController extends BaseController
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         [$ini, $fin] = $this->getDateRange($params);
+        $eId = $this->getEffectiveEmpresaId($user, $r);
 
-        $conteos = ConteoInventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+        // Resolver ubicacion_id
+        $ubicacionId = $params['ubicacion_id'] ?? null;
+        if (empty($ubicacionId) && !empty($params['ubicacion_codigo'])) {
+            $ubicacionId = $this->resolveUbicacionId($params['ubicacion_codigo'], $eId);
+        }
+
+        $conteos = ConteoInventario::where('empresa_id', $eId)
             ->where('sucursal_id', $user->sucursal_id)
             ->whereBetween('created_at', [$ini, $fin])
+            // Filtro por referencia/EAN/producto
+            ->when(!empty($params['referencia']), function ($q) use ($params) {
+                $v = $params['referencia'];
+                $q->whereHas('detalles.producto', function ($q2) use ($v) {
+                    $q2->where('nombre', 'ILIKE', "%$v%")
+                       ->orWhere('codigo_interno', 'ILIKE', "%$v%");
+                });
+            })
+            // Filtro por ubicación
+            ->when($ubicacionId, function ($q) use ($ubicacionId) {
+                $q->whereHas('detalles', fn($q2) => $q2->where('ubicacion_id', $ubicacionId));
+            })
             ->with('detalles.producto')
             ->orderBy('created_at', 'desc')
             ->get();
@@ -347,7 +484,16 @@ class ReportesController extends BaseController
             ->with(['proveedor', 'detalles.producto']);
 
         if (!empty($params['numero_odc'])) {
-            $q->where('numero_odc', 'LIKE', '%' . $params['numero_odc'] . '%');
+            $q->where('numero_odc', 'ILIKE', '%' . $params['numero_odc'] . '%');
+        }
+
+        // Filtro por referencia/EAN/producto
+        if (!empty($params['referencia'])) {
+            $v = $params['referencia'];
+            $q->whereHas('detalles.producto', function ($q2) use ($v) {
+                $q2->where('nombre', 'ILIKE', "%$v%")
+                   ->orWhere('codigo_interno', 'ILIKE', "%$v%");
+            });
         }
 
         $odcs = $q->orderBy('created_at', 'desc')->get();
@@ -361,23 +507,23 @@ class ReportesController extends BaseController
                     $dets = RecepcionDetalle::whereIn('recepcion_id', $recIds)->with('producto')->get();
                     if ($dets->isEmpty()) {
                         $rows[] = [
-                            $o->numero_odc, 
-                            $o->proveedor->razon_social ?? '-', 
-                            $o->fecha, 
+                            $o->numero_odc,
+                            $o->proveedor->razon_social ?? '-',
+                            $o->fecha,
                             $o->estado,
                             '-', '-', '-', '-', 0, '-', '-'
                         ];
                     } else {
                         foreach ($dets as $d) {
                             $rows[] = [
-                                $o->numero_odc, 
-                                $o->proveedor->razon_social ?? '-', 
+                                $o->numero_odc,
+                                $o->proveedor->razon_social ?? '-',
                                 $o->fecha,
                                 $o->estado,
-                                $d->pallet_id ?? 'Manual', 
-                                $d->producto->nombre ?? '-', 
+                                $d->pallet_id ?? 'Manual',
+                                $d->producto->nombre ?? '-',
                                 $d->producto->codigo_interno ?? '-',
-                                $d->lote ?? '-', 
+                                $d->lote ?? '-',
                                 $d->cantidad_recibida,
                                 $d->estado_mercancia ?? 'BuenEstado',
                                 $d->fecha_vencimiento ?? '-'
@@ -491,40 +637,78 @@ class ReportesController extends BaseController
         return $this->ok($res, $logs);
     }
 
-    // ── 11. REPORTE VECIMIENTOS ──────────────────────────────────────────────
+    // ── 11. REPORTE VENCIMIENTOS ─────────────────────────────────────────────
+    // GET /api/reportes/vencimientos
+    // Filtros: dias, fecha_desde, fecha_hasta, referencia, ubicacion_codigo,
+    //          ambiente_id, todo (sin límite de días)
+    // Condición canónica: WHERE fecha_vencimiento < CURRENT_DATE AND cantidad > 0
     public function vencimientos(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
-        $dias   = (int)($params['dias'] ?? 365); // Default a un año para ver más datos
+        $dias   = (int)($params['dias'] ?? 365);
+        $eId    = $this->getEffectiveEmpresaId($user, $r);
+        $sId    = $user->sucursal_id;
 
-        $query = Inventario::where('inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $r))
-            ->where('inventarios.sucursal_id', $user->sucursal_id)
+        // Resolver ubicacion_id desde código de ubicación
+        $ubicacionId = $params['ubicacion_id'] ?? null;
+        if (empty($ubicacionId) && !empty($params['ubicacion_codigo'])) {
+            $ubicacionId = $this->resolveUbicacionId($params['ubicacion_codigo'], $eId);
+        }
+
+        $query = Inventario::where('inventarios.empresa_id', $eId)
+            ->where('inventarios.sucursal_id', $sId)
             ->join('productos', 'inventarios.producto_id', '=', 'productos.id')
             ->join('ubicaciones', 'inventarios.ubicacion_id', '=', 'ubicaciones.id')
+            ->leftJoin('ambientes', 'ubicaciones.ambiente_id', '=', 'ambientes.id')
             ->whereNotNull('inventarios.fecha_vencimiento')
-            ->where('inventarios.cantidad', '>', 0);
+            ->where('inventarios.cantidad', '>', 0)   // solo stock con existencia real
+            // ── Filtro por referencia: nombre ilike o codigo_interno ilike ──
+            ->when(!empty($params['referencia']), function ($q) use ($params) {
+                $v = '%' . $params['referencia'] . '%';
+                $q->where(function ($w) use ($v) {
+                    $w->where('productos.nombre', 'ILIKE', $v)
+                      ->orWhere('productos.codigo_interno', 'ILIKE', $v);
+                });
+            })
+            // ── Filtro por ubicacion_codigo ──
+            ->when(!empty($params['ubicacion_codigo']) && !$ubicacionId, function ($q) use ($params) {
+                $q->where('ubicaciones.codigo', 'ILIKE', '%' . $params['ubicacion_codigo'] . '%');
+            })
+            ->when($ubicacionId, fn($q) => $q->where('inventarios.ubicacion_id', $ubicacionId))
+            // ── Filtro por ambiente_id ──
+            ->when(!empty($params['ambiente_id']), fn($q) => $q->where('ubicaciones.ambiente_id', $params['ambiente_id']))
+            // ── Filtro fecha_desde / fecha_hasta (rango sobre fecha_vencimiento) ──
+            ->when(!empty($params['fecha_desde']), fn($q) => $q->where('inventarios.fecha_vencimiento', '>=', $params['fecha_desde']))
+            ->when(!empty($params['fecha_hasta']), fn($q) => $q->where('inventarios.fecha_vencimiento', '<=', $params['fecha_hasta']));
 
-        if (!isset($params['todo'])) {
+        // Sin el flag 'todo', limitar al rango de días configurado
+        if (!isset($params['todo']) && empty($params['fecha_hasta'])) {
             $limite = \Carbon\Carbon::now()->addDays($dias)->format('Y-m-d');
             $query->where('inventarios.fecha_vencimiento', '<=', $limite);
         }
 
         $stock = $query->select(
-                'productos.nombre as producto',
-                'productos.nombre as producto_nombre', 
-                'productos.codigo_interno as codigo',
-                'ubicaciones.codigo as ubicacion',
-                'ubicaciones.codigo as ubicacion_codigo', 
+                'inventarios.id',
+                'inventarios.producto_id',
+                'inventarios.ubicacion_id',
                 'inventarios.lote',
                 'inventarios.fecha_vencimiento',
                 'inventarios.cantidad',
-                'inventarios.estado'
+                'inventarios.cantidad_cajas',
+                'inventarios.saldos',
+                'inventarios.estado',
+                'productos.nombre as producto',
+                'productos.nombre as producto_nombre',
+                'productos.codigo_interno as codigo',
+                'ubicaciones.codigo as ubicacion',
+                'ubicaciones.codigo as ubicacion_codigo',
+                'ambientes.nombre as ambiente'
             )
             ->orderBy('inventarios.fecha_vencimiento')
             ->get();
 
-        // Calcular días por vencer en PHP para compatibilidad universal
+        // Calcular días por vencer en PHP
         $stock = $stock->map(function($s) {
             $s->dias_vencer = null;
             if ($s->fecha_vencimiento) {
@@ -535,8 +719,7 @@ class ReportesController extends BaseController
             return $s;
         });
 
-
-        // Calcular resumen para los cuadros de mando
+        // Calcular resumen
         $resumen = [
             'vencido' => 0,
             'r0_30'   => 0,
@@ -578,21 +761,19 @@ class ReportesController extends BaseController
         $eId    = $this->getEffectiveEmpresaId($user, $r);
         $params = $r->getQueryParams();
 
-        // Filtros globales recibidos desde el Frontend
         $mes       = $params['mes'] ?? date('m');
         $anio      = $params['anio'] ?? date('Y');
         $categoria = $params['categoria'] ?? '';
         $producto  = $params['producto'] ?? '';
 
-        // 1. OBTENER ESTADÍSTICAS COMERCIALES (KARDEX/PICKING COMPLETADO)
-        // Ventas Mes a Mes (Ventas = Picking Completado)
+        // 1. OBTENER ESTADÍSTICAS COMERCIALES
         $qVentas = Capsule::table('picking_detalles as pd')
             ->join('orden_pickings as op', 'pd.orden_picking_id', '=', 'op.id')
             ->join('productos as p', 'pd.producto_id', '=', 'p.id')
             ->where('op.empresa_id', $eId)
             ->where('op.estado', 'Completada')
             ->whereYear('op.created_at', $anio);
-        
+
         if ($categoria) {
             $qVentas->where('p.categoria_id', $categoria);
         }
@@ -609,13 +790,11 @@ class ReportesController extends BaseController
             ->get()
             ->keyBy('mes');
 
-        
         $ventasArray = [];
         for ($i=1; $i<=12; $i++) {
             $ventasArray[] = (float)($ventasMesAMes->get($i)->total_ventas ?? 0);
         }
 
-        // Total Picking por de la Categoría seleccionada
         $qCategorias = Capsule::table('picking_detalles as pd')
             ->join('orden_pickings as op', 'pd.orden_picking_id', '=', 'op.id')
             ->join('productos as p', 'pd.producto_id', '=', 'p.id')
@@ -628,14 +807,13 @@ class ReportesController extends BaseController
         if ($categoria) {
             $qCategorias->where('p.categoria_id', $categoria);
         }
-        
+
         $picksPorCategoria = (clone $qCategorias)
             ->select('cp.nombre as categoria', Capsule::raw('SUM(pd.cantidad_pickeada) as total'))
             ->groupBy('cp.id', 'cp.nombre')
             ->orderBy('total', 'desc')
             ->get();
 
-        // Calcular crecimiento (Mes actual vs Mes Anterior)
         $mesAnterior = $mes - 1;
         $anioAnterior = $anio;
         if ($mesAnterior == 0) { $mesAnterior = 12; $anioAnterior--; }
@@ -658,7 +836,6 @@ class ReportesController extends BaseController
             $crecimiento = 100;
         }
 
-        // Baja Rotación
         $bajaRotacion = Capsule::table('inventarios as i')
             ->join('productos as p', 'i.producto_id', '=', 'p.id')
             ->leftJoin('categoria_productos as cp', 'p.categoria_id', '=', 'cp.id')
@@ -672,21 +849,20 @@ class ReportesController extends BaseController
                       ->where('op2.estado', 'Completada')
                       ->where('op2.created_at', '>=', \Carbon\Carbon::now()->subDays(90)->toDateString());
             })
-
             ->select('p.codigo_interno', 'p.nombre as producto', 'cp.nombre as categoria', Capsule::raw('SUM(i.cantidad) as stock_inmovilizado'))
             ->groupBy('p.id', 'p.codigo_interno', 'p.nombre', 'cp.nombre')
             ->orderBy('stock_inmovilizado', 'desc')
             ->limit(10)
             ->get();
 
-        // 2. FORECASTING (PROYECCIÓN MOCK LOCAL)
+        // 2. FORECASTING
         $forecastData = [];
         $meses = [];
         for ($i=1; $i<=12; $i++) {
             $real = $ventasMesAMes->get($i)->total_ventas ?? 0;
             if ($i <= $mes) {
                 $forecastData[] = null;
-                $meses[] = $real; 
+                $meses[] = $real;
             } else {
                 $last3 = array_slice($ventasArray, max(0, $mes-3), 3);
                 $avg = count($last3) > 0 ? array_sum($last3)/count($last3) : 0;
@@ -700,7 +876,6 @@ class ReportesController extends BaseController
             'forecast' => $forecastData
         ];
 
-        // Tendencia mensual de las top 5 categorías
         $qTopCategorias = Capsule::table('picking_detalles as pd')
             ->join('orden_pickings as op', 'pd.orden_picking_id', '=', 'op.id')
             ->join('productos as p', 'pd.producto_id', '=', 'p.id')
@@ -708,14 +883,14 @@ class ReportesController extends BaseController
             ->where('op.empresa_id', $eId)
             ->where('op.estado', 'Completada')
             ->whereYear('op.created_at', $anio);
-            
+
         $topCategorias = (clone $qTopCategorias)
             ->select('cp.id', 'cp.nombre', Capsule::raw('SUM(pd.cantidad_pickeada) as total'))
             ->groupBy('cp.id', 'cp.nombre')
             ->orderBy('total', 'desc')
             ->limit(5)
             ->get();
-            
+
         $tendenciaMensualCat = [];
         foreach ($topCategorias as $cat) {
             $tendenciaCatQuery = (clone $qTopCategorias)
@@ -727,12 +902,12 @@ class ReportesController extends BaseController
                 ->groupBy(Capsule::raw($this->isPg() ? "EXTRACT(MONTH FROM op.created_at)::int" : "MONTH(op.created_at)"))
                 ->get()
                 ->keyBy('mes');
-            
+
             $catData = [];
             for ($i = 1; $i <= 12; $i++) {
                 $catData[] = (float)($tendenciaCatQuery->get($i)->total ?? 0);
             }
-            
+
             $tendenciaMensualCat[] = [
                 'categoria' => $cat->nombre ?? 'Sin Categoria',
                 'data' => $catData
@@ -770,8 +945,6 @@ class ReportesController extends BaseController
         $eId = $this->getEffectiveEmpresaId($user, $r);
         $sId = $user->sucursal_id;
 
-        // Proveedores con al menos una ODC en el período.
-        // Recepciones se vinculan al proveedor a través de citas (rec.cita_id → cit → pv.razon_social)
         $proveedores = Capsule::table('proveedores as pv')
             ->leftJoin('ordenes_compra as odc', function ($j) use ($eId, $ini, $fin) {
                 $j->on('pv.id', '=', 'odc.proveedor_id')
@@ -790,6 +963,10 @@ class ReportesController extends BaseController
                   ->whereBetween('rec.created_at', [$ini, $fin]);
             })
             ->where('pv.empresa_id', $eId)
+            // Filtro por nombre de proveedor
+            ->when(!empty($params['proveedor']), function ($q) use ($params) {
+                $q->where('pv.razon_social', 'ILIKE', '%' . $params['proveedor'] . '%');
+            })
             ->select(
                 'pv.id',
                 'pv.razon_social as proveedor',
@@ -801,18 +978,17 @@ class ReportesController extends BaseController
                 Capsule::raw('COUNT(DISTINCT cit.id) as total_citas'),
                 Capsule::raw("SUM(CASE WHEN cit.estado IN ('Completada','Confirmada') THEN 1 ELSE 0 END) as citas_cumplidas"),
                 Capsule::raw("SUM(CASE WHEN cit.estado = 'Cancelada' THEN 1 ELSE 0 END) as citas_canceladas"),
-                Capsule::raw($this->isPg() 
-                    ? "AVG(EXTRACT(EPOCH FROM (cit.hora_inicio_descargue::timestamp - cit.hora_llegada::timestamp))/60) as avg_demora_atencion" 
+                Capsule::raw($this->isPg()
+                    ? "AVG(EXTRACT(EPOCH FROM (cit.hora_inicio_descargue::timestamp - cit.hora_llegada::timestamp))/60) as avg_demora_atencion"
                     : "AVG(TIMESTAMPDIFF(MINUTE, cit.hora_llegada, cit.hora_inicio_descargue)) as avg_demora_atencion"),
-                Capsule::raw($this->isPg() 
-                    ? "AVG(EXTRACT(EPOCH FROM (cit.hora_fin_descargue::timestamp - cit.hora_inicio_descargue::timestamp))/60) as avg_tiempo_operation" 
+                Capsule::raw($this->isPg()
+                    ? "AVG(EXTRACT(EPOCH FROM (cit.hora_fin_descargue::timestamp - cit.hora_inicio_descargue::timestamp))/60) as avg_tiempo_operation"
                     : "AVG(TIMESTAMPDIFF(MINUTE, cit.hora_inicio_descargue, cit.hora_fin_descargue)) as avg_tiempo_operation")
             )
             ->groupBy('pv.id', 'pv.razon_social', 'pv.nit')
             ->orderByRaw('total_odc DESC, total_recepciones DESC')
             ->get();
 
-        // Novedades de recepción: detalles con estado distinto a BuenEstado, vinculados por cita → proveedor
         $novedades = Capsule::table('recepcion_detalles as rd')
             ->join('recepciones as rec', 'rd.recepcion_id', '=', 'rec.id')
             ->join('citas as cit', 'rec.cita_id', '=', 'cit.id')
@@ -825,7 +1001,6 @@ class ReportesController extends BaseController
             ->get()
             ->keyBy('proveedor_id');
 
-        // Enriquecer con novedades y calcular tasa de cumplimiento
         $result = $proveedores->map(function ($p) use ($novedades) {
             $nov = $novedades->get($p->id);
             $p->novedades_recepcion = $nov ? $nov->novedades : 0;
@@ -860,44 +1035,143 @@ class ReportesController extends BaseController
         return $this->ok($res, $result);
     }
 
+    // ── 11b. STOCK POR UBICACIÓN (alias semántico → mapa-detallado) ──────────
+    // GET /api/reportes/por-ubicacion
+    // Filtros: ubicacion_codigo, ambiente_id, producto_id
+    // Lógica: JOIN inventarios + ubicaciones, SUM(cantidad) por ubicacion_id
+    public function stockPorUbicacion(Request $r, Response $res): Response
+    {
+        $user   = $r->getAttribute('user');
+        $params = $r->getQueryParams();
+        $eId    = $this->getEffectiveEmpresaId($user, $r);
+        $sId    = $user->sucursal_id;
+
+        $q = Capsule::table('inventarios as i')
+            ->join('ubicaciones as u', 'i.ubicacion_id', '=', 'u.id')
+            ->leftJoin('ambientes as a', 'u.ambiente_id', '=', 'a.id')
+            ->where('i.empresa_id', $eId)
+            ->where('i.sucursal_id', $sId)
+            ->where('i.cantidad', '>', 0)
+            // ── Filtro por producto_id ──
+            ->when(!empty($params['producto_id']), fn($q) => $q->where('i.producto_id', $params['producto_id']))
+            // ── Filtro por ubicacion_codigo (ILIKE parcial) ──
+            ->when(!empty($params['ubicacion_codigo']), function ($q) use ($params) {
+                $q->where('u.codigo', 'ILIKE', '%' . $params['ubicacion_codigo'] . '%');
+            })
+            // ── Filtro por ambiente_id ──
+            ->when(!empty($params['ambiente_id']), fn($q) => $q->where('u.ambiente_id', $params['ambiente_id']))
+            ->select(
+                'i.ubicacion_id',
+                'u.codigo as ubicacion',
+                'u.tipo_ubicacion as tipo',
+                'u.capacidad_maxima',
+                'a.nombre as ambiente',
+                // SUM(cantidad) — stock real agrupado por ubicación
+                Capsule::raw('SUM(i.cantidad) as total_unidades'),
+                Capsule::raw('SUM(COALESCE(i.cantidad_cajas, 0)) as total_cajas'),
+                Capsule::raw('SUM(COALESCE(i.saldos, 0)) as total_sueltos'),
+                Capsule::raw('COUNT(DISTINCT i.producto_id) as referencias'),
+                Capsule::raw('MIN(i.fecha_vencimiento) as proximo_vencimiento')
+            )
+            ->groupBy('i.ubicacion_id', 'u.codigo', 'u.tipo_ubicacion', 'u.capacidad_maxima', 'a.nombre')
+            ->orderByRaw('SUM(i.cantidad) DESC');
+
+        $resultado = $q->get()->map(function ($row) {
+            $cap = (float)($row->capacidad_maxima ?? 0);
+            $row->ocupacion_pct = $cap > 0 ? round(((float)$row->total_unidades / $cap) * 100, 2) : null;
+            return $row;
+        });
+
+        if (($params['export'] ?? '') === 'excel') {
+            $headers = ['Ubicación', 'Ambiente', 'Tipo', 'Referencias', 'UND/TOTAL',
+                        'Cajas', 'Sueltos', '% Ocupación', 'Próx. Vencimiento'];
+            $rows = $resultado->map(fn($r) => [
+                $r->ubicacion, $r->ambiente ?? '—', $r->tipo ?? '—', $r->referencias,
+                $r->total_unidades, $r->total_cajas, $r->total_sueltos,
+                $r->ocupacion_pct !== null ? $r->ocupacion_pct . '%' : '—',
+                $r->proximo_vencimiento ?? '—',
+            ])->toArray();
+            return $this->exportCsv($res, $headers, $rows, 'stock_por_ubicacion_' . date('Y-m-d'));
+        }
+
+        return $this->ok($res, $resultado);
+    }
+
     // ── 12. REPORTE AGOTADOS / BAJO MÍNIMO ───────────────────────────────────
+    // GET /api/reportes/agotados
+    // Filtros: referencia, ambiente_id
+    // Stock real: SUM(cantidad) FROM inventarios WHERE empresa_id=X AND sucursal_id=Y
+    //             AND estado='Disponible' GROUP BY producto_id
     public function agotadosYBajoMinimo(Request $r, Response $res): Response
     {
-        $user = $r->getAttribute('user');
-
-        // Productos con nivel de reposición configurado
-        $niveles = Capsule::table('niveles_reposicion as nr')
-            ->join('productos as p', 'nr.producto_id', '=', 'p.id')
-            ->leftJoin(Capsule::raw(
-                '(SELECT producto_id, SUM(cantidad) as total
-                  FROM inventarios
-                  WHERE empresa_id = ' . (int)$this->getEffectiveEmpresaId($user, $r) . '
-                    AND sucursal_id = ' . (int)$user->sucursal_id . "
-                    AND estado = 'Disponible'
-                  GROUP BY producto_id
-                ) as inv"
-            ), 'p.id', '=', 'inv.producto_id')
-            ->where('nr.empresa_id', $this->getEffectiveEmpresaId($user, $r))
-            ->where('nr.sucursal_id', $user->sucursal_id)
-            ->where('nr.activo', true)
-            ->select(
-                'p.nombre as producto', 'p.codigo_interno as codigo',
-                'nr.stock_minimo', 'nr.punto_reorden', 'nr.cantidad_reorden',
-                Capsule::raw('COALESCE(inv.total, 0) as stock_actual'),
-                Capsule::raw('CASE
-                    WHEN COALESCE(inv.total, 0) = 0 THEN "Agotado"
-                    WHEN COALESCE(inv.total, 0) <= nr.punto_reorden THEN "Punto Reorden"
-                    WHEN COALESCE(inv.total, 0) < nr.stock_minimo THEN "Bajo Mínimo"
-                    ELSE "OK"
-                END as alerta')
-            )
-            ->havingRaw("alerta != 'OK'")
-            ->orderByRaw($this->isPg()
-                ? "CASE alerta WHEN 'Agotado' THEN 1 WHEN 'Punto Reorden' THEN 2 WHEN 'Bajo Mínimo' THEN 3 ELSE 4 END"
-                : "FIELD(alerta, 'Agotado', 'Punto Reorden', 'Bajo Mínimo')")
-            ->get();
-
+        $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
+        $eId    = $this->getEffectiveEmpresaId($user, $r);
+        $sId    = (int)$user->sucursal_id;
+
+        // Subconsulta de stock real agrupado por producto (PostgreSQL compatible)
+        $stockSubquery = "(SELECT producto_id, SUM(cantidad) as total
+                          FROM inventarios
+                          WHERE empresa_id = {$eId}
+                            AND sucursal_id = {$sId}
+                            AND estado = 'Disponible'
+                            AND cantidad > 0
+                          GROUP BY producto_id) as inv";
+
+        $q = Capsule::table('niveles_reposicion as nr')
+            ->join('productos as p', 'nr.producto_id', '=', 'p.id')
+            ->leftJoin(Capsule::raw($stockSubquery), 'p.id', '=', 'inv.producto_id')
+            ->where('nr.empresa_id', $eId)
+            ->where('nr.sucursal_id', $sId)
+            ->where('nr.activo', true)
+            // ── Filtro por referencia: nombre ilike o codigo_interno ilike ──
+            ->when(!empty($params['referencia']), function ($q) use ($params) {
+                $v = '%' . $params['referencia'] . '%';
+                $q->where(function ($w) use ($v) {
+                    $w->where('p.nombre', 'ILIKE', $v)
+                      ->orWhere('p.codigo_interno', 'ILIKE', $v);
+                });
+            })
+            ->select(
+                'p.id as producto_id',
+                'p.nombre as producto',
+                'p.codigo_interno as codigo',
+                'nr.stock_minimo',
+                'nr.punto_reorden',
+                'nr.cantidad_reorden',
+                Capsule::raw('COALESCE(inv.total, 0) as stock_actual'),
+                // CASE con comillas simples: compatible con PostgreSQL y MySQL
+                Capsule::raw("CASE
+                    WHEN COALESCE(inv.total, 0) = 0 THEN 'Agotado'
+                    WHEN COALESCE(inv.total, 0) <= nr.punto_reorden THEN 'Punto Reorden'
+                    WHEN COALESCE(inv.total, 0) < nr.stock_minimo THEN 'Bajo Mínimo'
+                    ELSE 'OK'
+                END as alerta")
+            )
+            ->havingRaw("COALESCE(inv.total, 0) < nr.stock_minimo OR COALESCE(inv.total, 0) = 0")
+            ->orderByRaw("CASE
+                WHEN COALESCE(inv.total, 0) = 0 THEN 1
+                WHEN COALESCE(inv.total, 0) <= nr.punto_reorden THEN 2
+                WHEN COALESCE(inv.total, 0) < nr.stock_minimo THEN 3
+                ELSE 4 END ASC");
+
+        // ── Filtro por ambiente_id: JOIN con ubicaciones para filtrar por ambiente ──
+        if (!empty($params['ambiente_id'])) {
+            $ambId = (int)$params['ambiente_id'];
+            // Verificar qué productos tienen stock en ubicaciones del ambiente indicado
+            $productoIdsEnAmbiente = Capsule::table('inventarios as i')
+                ->join('ubicaciones as u', 'i.ubicacion_id', '=', 'u.id')
+                ->where('i.empresa_id', $eId)
+                ->where('i.sucursal_id', $sId)
+                ->where('u.ambiente_id', $ambId)
+                ->pluck('i.producto_id')
+                ->unique()
+                ->toArray();
+            $q->whereIn('p.id', $productoIdsEnAmbiente);
+        }
+
+        $niveles = $q->get();
+
         if (($params['export'] ?? '') === 'excel') {
             $headers = ['Producto', 'Código', 'Stock Actual', 'Stock Mínimo',
                         'Punto Reorden', 'Cant. a Pedir', 'Alerta'];
@@ -911,6 +1185,91 @@ class ReportesController extends BaseController
         return $this->ok($res, $niveles);
     }
 
+    // ── 14. REPORTE AGOTADOS POR DEMANDA (picking sin stock suficiente) ───────
+    /**
+     * GET /api/reportes/agotados
+     * Params opcionales: fecha_desde, fecha_hasta, tipo (todos|total|parcial), referencia
+     *
+     * Lógica: órdenes de picking que NO están completadas cuyos detalles
+     * tienen stock insuficiente o nulo en inventarios.
+     * Devuelve: producto_id, nombre, codigo_interno, cantidad_solicitada,
+     *           cantidad_disponible, deficit, tipo_agotado
+     */
+    public function agotados(Request $r, Response $res): Response
+    {
+        $user   = $r->getAttribute('user');
+        $params = $r->getQueryParams();
+        [$ini, $fin] = $this->getDateRange($params);
+        $eId = $this->getEffectiveEmpresaId($user, $r);
+        $sId = $user->sucursal_id;
+
+        $tipo = $params['tipo'] ?? 'todos'; // todos | total | parcial
+
+        $rows = Capsule::table('picking_detalles as pd')
+            ->join('orden_pickings as op', 'pd.orden_picking_id', '=', 'op.id')
+            ->join('productos as p', 'pd.producto_id', '=', 'p.id')
+            ->leftJoin(Capsule::raw(
+                "(SELECT producto_id, SUM(cantidad) as total
+                  FROM inventarios
+                  WHERE empresa_id = {$eId}
+                    AND sucursal_id = {$sId}
+                    AND estado = 'Disponible'
+                  GROUP BY producto_id
+                ) as inv"
+            ), 'p.id', '=', 'inv.producto_id')
+            ->where('op.empresa_id', $eId)
+            ->where('op.sucursal_id', $sId)
+            ->where('op.estado', '!=', 'Completada')
+            ->whereBetween('op.created_at', [$ini, $fin])
+            ->where(function ($q) {
+                // Solo donde hay déficit real
+                $q->whereRaw('COALESCE(inv.total, 0) < pd.cantidad_solicitada');
+            })
+            // Filtro por referencia
+            ->when(!empty($params['referencia']), function ($q) use ($params) {
+                $v = $params['referencia'];
+                $q->where(function ($w) use ($v) {
+                    $w->where('p.nombre', 'ILIKE', "%$v%")
+                      ->orWhere('p.codigo_interno', 'ILIKE', "%$v%");
+                });
+            })
+            ->select(
+                'p.id as producto_id',
+                'p.nombre',
+                'p.codigo_interno',
+                Capsule::raw('SUM(pd.cantidad_solicitada) as cantidad_solicitada'),
+                Capsule::raw('COALESCE(MAX(inv.total), 0) as cantidad_disponible'),
+                Capsule::raw('SUM(pd.cantidad_solicitada) - COALESCE(MAX(inv.total), 0) as deficit'),
+                Capsule::raw("CASE
+                    WHEN COALESCE(MAX(inv.total), 0) = 0 THEN 'agotado_total'
+                    ELSE 'agotado_parcial'
+                END as tipo_agotado")
+            )
+            ->groupBy('p.id', 'p.nombre', 'p.codigo_interno')
+            ->orderByRaw('deficit DESC')
+            ->get();
+
+        // Filtrar por tipo si se solicita
+        if ($tipo !== 'todos') {
+            $rows = $rows->filter(fn($row) => $row->tipo_agotado === $tipo)->values();
+        }
+
+        if (($params['export'] ?? '') === 'excel') {
+            $headers = ['Referencia', 'Nombre', 'Solicitado', 'Disponible', 'Déficit', 'Estado'];
+            $exportRows = $rows->map(fn($row) => [
+                $row->codigo_interno,
+                $row->nombre,
+                $row->cantidad_solicitada,
+                $row->cantidad_disponible,
+                $row->deficit,
+                $row->tipo_agotado === 'agotado_total' ? 'Agotado Total' : 'Agotado Parcial',
+            ])->toArray();
+            return $this->exportCsv($res, $headers, $exportRows, 'agotados_demanda_' . date('Y-m-d'));
+        }
+
+        return $this->ok($res, $rows);
+    }
+
     // ══════════════════════════════════════════════════════════════════════════
     //  REPORTES DE CONTINGENCIA — Operación sin Internet / Plan Manual
     // ══════════════════════════════════════════════════════════════════════════
@@ -918,8 +1277,6 @@ class ReportesController extends BaseController
     /**
      * GET /api/reportes/contingencia/separacion
      * ?fecha=YYYY-MM-DD  &formato=html|csv|json
-     *
-     * Planilla imprimible de órdenes de picking pendientes.
      */
     public function contingenciaSeparacion(Request $r, Response $res): Response
     {
@@ -968,8 +1325,6 @@ class ReportesController extends BaseController
     /**
      * GET /api/reportes/contingencia/certificacion
      * ?fecha=YYYY-MM-DD  &planilla_id=X  &formato=html|csv|json
-     *
-     * Planilla imprimible de certificación con líneas de verificación.
      */
     public function contingenciaCertificacion(Request $r, Response $res): Response
     {
@@ -995,7 +1350,6 @@ class ReportesController extends BaseController
             DB::raw('COALESCE((SELECT SUM(cpd.cantidad_certificada) FROM cert_planilla_det cpd JOIN cert_planillas cp2 ON cp2.id = cpd.cert_id WHERE cp2.numero_planilla = lp.numero_planilla AND cp2.archivo_id = lp.archivo_id AND cpd.producto_codigo = lp.producto_codigo), 0) as cantidad_certificada')
         ])->orderBy('lp.numero_planilla')->orderBy('lp.producto_nombre')->get();
 
-        // Enriquecer con diferencia
         $lineas = $lineas->map(function($l) {
             $l->cantidad_certificada = (float)$l->cantidad_certificada;
             $l->cantidad_planilla   = (float)$l->cantidad_planilla;
@@ -1064,18 +1418,18 @@ class ReportesController extends BaseController
   @media print{button{display:none!important}}
 </style></head><body>
 <div style="border-bottom:2px solid #000;padding-bottom:6px">
-  <h2>🏭 {$emp} — PLANILLA DE SEPARACIÓN / PICKING</h2>
+  <h2>WMS Fenix — PLANILLA DE SEPARACIÓN / PICKING</h2>
   <div class="meta">
     <span><b>Fecha:</b> {$fecha}</span>
     <span><b>Impreso:</b> {$impreso}</span>
     <span><b>Órdenes:</b> {$total}</span>
   </div>
 </div>
-<button onclick="window.print()" style="margin:10px 0 14px;padding:6px 18px;background:#1e3a5f;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">🖨 Imprimir Planilla</button>
+<button onclick="window.print()" style="margin:10px 0 14px;padding:6px 18px;background:#1e3a5f;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">Imprimir Planilla</button>
 <table>
   <thead><tr>
     <th>Orden</th><th>Prioridad</th><th>Operario</th><th>Producto</th><th>Código</th>
-    <th>Cant. Pedida</th><th>Cant. Alistada ✓</th><th>Ubicación</th><th>Observación</th>
+    <th>Cant. Pedida</th><th>Cant. Alistada</th><th>Ubicación</th><th>Observación</th>
   </tr></thead>
   <tbody>{$rows}</tbody>
 </table>
@@ -1105,8 +1459,8 @@ HTML;
                 $current = $idPlanilla;
             }
             $dif = (float)($l->diferencia ?? 0);
-            $difHtml = $dif != 0 
-                ? '<b style="color:#dc2626">' . $dif . '</b>' 
+            $difHtml = $dif != 0
+                ? '<b style="color:#dc2626">' . $dif . '</b>'
                 : '<span style="color:#64748b">0</span>';
 
             $rows .= '<tr>'
@@ -1122,7 +1476,7 @@ HTML;
         $emp = htmlspecialchars($user->empresa ?? 'Fénix WMS');
         $fecha = date('d/m/Y');
         $hora_gen = date('H:i:s');
-        
+
         return <<<HTML
 <!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
 <title>Certificación Contingencia — $emp</title>

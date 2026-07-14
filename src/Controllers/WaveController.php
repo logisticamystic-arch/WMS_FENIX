@@ -104,13 +104,15 @@ class WaveController extends BaseController
             return $this->error($res, 'Se requiere al menos una planilla');
         }
 
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+
         try {
-            $id = Capsule::transaction(function () use ($body, $user) {
+            $id = Capsule::transaction(function () use ($body, $user, $empresaId) {
                 $planillasIds = array_map('intval', $body['planillas']);
 
                 // Verificar que las planillas pertenecen a la empresa y están Pendientes
                 $planillasValidas = Capsule::table('planillas_picking')
-                    ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
+                    ->where('empresa_id',  $empresaId)
                     ->where('sucursal_id', $user->sucursal_id)
                     ->whereIn('id', $planillasIds)
                     ->where('estado', 'Pendiente')
@@ -125,7 +127,7 @@ class WaveController extends BaseController
                     ->sum('total_lineas') ?? 0;
 
                 $id = Capsule::table('wave_picking')->insertGetId([
-                    'empresa_id'      => $this->getEffectiveEmpresaId($user, $r),
+                    'empresa_id'      => $empresaId,
                     'sucursal_id'     => $user->sucursal_id,
                     'numero'          => $body['numero'],
                     'nombre'          => $body['nombre']   ?? null,
@@ -152,7 +154,7 @@ class WaveController extends BaseController
             });
 
             $this->audit($user, 'waves', 'crear', 'wave_picking', $id,
-                null, $body, "Wave {$body['numero']} creada con {$id} planillas");
+                null, $body, "Wave {$body['numero']} creada con " . count($body['planillas']) . " planillas");
 
             return $this->created($res, ['id' => $id], 'Wave de picking creada');
         } catch (\Exception $e) {
@@ -230,10 +232,11 @@ class WaveController extends BaseController
         $body     = (array)($r->getParsedBody() ?? []);
         $criterio = $body['criterio'] ?? 'zona';
         $maxPlanillas = (int)($body['max_planillas_por_wave'] ?? 10);
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
 
         // Obtener planillas pendientes
         $planillasPendientes = Capsule::table('planillas_picking')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
+            ->where('empresa_id',  $empresaId)
             ->where('sucursal_id', $user->sucursal_id)
             ->where('estado', 'Pendiente')
             ->orderBy('prioridad', 'asc')
@@ -272,7 +275,7 @@ class WaveController extends BaseController
                 $numero = 'WV-' . date('Ymd') . '-' . str_pad($wavesCreadas + 1, 3, '0', STR_PAD_LEFT);
 
                 $id = Capsule::table('wave_picking')->insertGetId([
-                    'empresa_id'      => $this->getEffectiveEmpresaId($user, $r),
+                    'empresa_id'      => $empresaId,
                     'sucursal_id'     => $user->sucursal_id,
                     'numero'          => $numero,
                     'nombre'          => "Auto-{$criterio}: {$grupoKey}",

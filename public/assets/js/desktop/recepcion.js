@@ -20,6 +20,7 @@ WMS_MODULES.recepcion = {
       citas:      this.show_citas,
       operativa:  this.show_operativa,
       sin_odc:    this.show_sin_odc,
+      miscelaneos:this.show_miscelaneos,
       devoluciones:this.show_devoluciones,
       dashboard:  this.show_dashboard,
       informe:    this.show_informe,
@@ -133,7 +134,8 @@ WMS_MODULES.recepcion = {
 
   subLabel(s) {
     const m = { odc:'Órdenes de Compra', citas:'Citas YMS', operativa:'Recepción Operativa',
-                sin_odc:'Recepción sin ODC', devoluciones:'Devolución Proveedor',
+                sin_odc:'Recepción sin ODC', miscelaneos:'Misceláneos',
+                devoluciones:'Devolución Proveedor',
                 dashboard:'Dashboard Recepción', informe:'Informe de Recibo' };
     return m[s] || s || 'Panel';
   },
@@ -1079,7 +1081,7 @@ WMS_MODULES.recepcion = {
       if (f_prod) params.push('producto=' + encodeURIComponent(f_prod));
       if (f_desde) params.push('fecha_inicio=' + encodeURIComponent(f_desde));
       if (f_hasta) params.push('fecha_fin=' + encodeURIComponent(f_hasta));
-      const token = localStorage.getItem('token')||'';
+      const token = localStorage.getItem('wms_token')||'';
       const url = `${API_BASE}/reportes/recepciones?export=excel${params.length?'&'+params.join('&'):''}&token=${encodeURIComponent(token)}`;
       window.open(url, '_blank');
     } catch(e) { WMS.toast('error','Error exportando'); }
@@ -1206,15 +1208,24 @@ WMS_MODULES.recepcion = {
                         </select>
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label" id="op-cant-label">Cajas a Recibir *</label>
-                        <input type="number" id="op-cant" class="form-control" value="1" min="1"
-                               oninput="WMS_MODULES.recepcion._actualizarPreviewUnidades()">
-                        <div id="op-conv-preview" style="display:none;margin-top:6px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;font-weight:600;">
-                            <i class="fa-solid fa-calculator"></i>
-                            <span id="op-conv-text">1 caja × 1 = 1 unidad</span>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                        <div class="form-group">
+                            <label class="form-label" id="op-cant-label">Empaques / Unidades *</label>
+                            <input type="number" id="op-cant" class="form-control" value="1" min="0"
+                                   oninput="WMS_MODULES.recepcion._actualizarPreviewUnidades()">
+                            <input type="hidden" id="op-upc" value="1">
                         </div>
-                        <input type="hidden" id="op-upc" value="1">
+                        <div class="form-group" id="op-saldos-group" style="display:none;">
+                            <label class="form-label" style="color:#d97706;">Saldos (Sueltos)</label>
+                            <input type="number" id="op-saldos" class="form-control" value="0" min="0"
+                                   oninput="WMS_MODULES.recepcion._actualizarPreviewUnidades()">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div id="op-conv-preview" style="display:none;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;font-weight:600;">
+                            <i class="fa-solid fa-calculator"></i>
+                            <span id="op-conv-text">Total: 1.00 unidades</span>
+                        </div>
                     </div>
 
                     <div class="form-group">
@@ -1366,22 +1377,30 @@ WMS_MODULES.recepcion = {
 
       const label    = document.getElementById('op-cant-label');
       const preview  = document.getElementById('op-conv-preview');
-      if (label)   label.textContent = upc > 1 ? 'Cajas a Recibir *' : 'Cantidad a Recibir (unidades) *';
+      const saldosGrp= document.getElementById('op-saldos-group');
+      if (label)   label.textContent = upc > 1 ? 'Cant. Empaques / Cajas *' : 'Cantidad (unidades completas) *';
       if (preview) preview.style.display = upc > 1 ? 'block' : 'none';
+      if (saldosGrp) saldosGrp.style.display = upc > 1 ? 'block' : 'none';
 
       this._actualizarPreviewUnidades();
   },
 
   // ── Actualizar el preview de conversión cajas → unidades ─────────────────
   _actualizarPreviewUnidades() {
-      const cajas   = parseInt(document.getElementById('op-cant')?.value || '0') || 0;
+      const cajas   = parseFloat(document.getElementById('op-cant')?.value || '0') || 0;
+      const saldos  = parseFloat(document.getElementById('op-saldos')?.value || '0') || 0;
       const upc     = parseInt(document.getElementById('op-upc')?.value  || '1') || 1;
-      const unidades = cajas * upc;
+      
+      let unidades = cajas;
+      if (upc > 1 && saldos > 0) {
+          unidades = cajas + (saldos / upc);
+      }
+
       const span     = document.getElementById('op-conv-text');
       const preview  = document.getElementById('op-conv-preview');
       if (span && upc > 1) {
           const plural = cajas === 1 ? 'caja' : 'cajas';
-          span.textContent = `${cajas} ${plural} × ${upc} = ${WMS.formatNum(unidades)} unidades`;
+          span.textContent = `Total calculado: ${unidades.toFixed(2).replace(/\.00$/, '')} unidades`;
       }
       if (preview) preview.style.display = upc > 1 ? 'block' : 'none';
   },
@@ -1391,15 +1410,20 @@ WMS_MODULES.recepcion = {
       const originalText = btn.innerHTML;
 
       const prodId = document.getElementById('op-prod')?.value;
-      const cantCajas = parseInt(document.getElementById('op-cant')?.value || 0);
+      const cantCajas = parseFloat(document.getElementById('op-cant')?.value || 0);
+      const saldos = parseFloat(document.getElementById('op-saldos')?.value || 0);
       const upc = parseInt(document.getElementById('op-upc')?.value || '1') || 1;
       const lote = document.getElementById('op-lote')?.value || '';
       const venc = document.getElementById('op-fecha-venc')?.value || '';
 
       if (!prodId) return WMS.toast('warning', 'Seleccione un producto a capturar.');
-      if (cantCajas <= 0) return WMS.toast('warning', 'Cantidad debe ser mayor a cero.');
+      if ((cantCajas <= 0 && saldos <= 0) || isNaN(cantCajas) || isNaN(saldos)) return WMS.toast('warning', 'Cantidad debe ser mayor a cero.');
 
-      const totalUnidades = cantCajas * upc;
+      let totalUnidades = cantCajas;
+      if (upc > 1) {
+          totalUnidades = cantCajas * upc + saldos;
+      }
+      totalUnidades = parseFloat(totalUnidades.toFixed(2));
 
       btn.disabled = true;
       btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Guardando...';
@@ -1408,7 +1432,8 @@ WMS_MODULES.recepcion = {
           const payload = {
               odc_id:         window._opCurrentOdcId,
               producto_id:    prodId,
-              cantidad_cajas: cantCajas,
+              cantidad_cajas: upc > 1 ? Math.floor(cantCajas) : 0,
+              saldos:         upc > 1 ? saldos : 0,
               modo_cajas:     1,
               cantidad:       totalUnidades,
               lote,
@@ -1496,6 +1521,9 @@ WMS_MODULES.recepcion = {
                     ${rc.estado === 'Borrador' ? `
                       <button class="btn btn-xs btn-primary-soft" onclick="WMS_MODULES.recepcion.abrirConsolaSinODC('${rc.id}')">
                         <i class="fa-solid fa-play"></i> Capturar
+                      </button>
+                      <button class="btn btn-xs btn-secondary-soft" onclick="WMS_MODULES.recepcion._verDetalleSinODC('${rc.id}')">
+                        <i class="fa-solid fa-eye"></i> Detalle
                       </button>
                       <button class="btn btn-xs" style="background:#dcfce7;color:#166534;border:none;border-radius:3px;padding:2px 8px;cursor:pointer;font-size:.72rem;"
                         onclick="WMS_MODULES.recepcion._confirmarSinODC('${rc.id}','${WMS.esc(rc.numero_recepcion)}')">
@@ -1607,25 +1635,48 @@ WMS_MODULES.recepcion = {
             <!-- Producto -->
             <div class="form-group">
               <label class="form-label">Producto <span style="color:#ef4444">*</span></label>
-              <div style="position:relative;">
-                <input type="text" id="sodc-prod-search" class="form-control" placeholder="Buscar por nombre, EAN o código..."
-                  autocomplete="off" oninput="WMS_MODULES.recepcion._buscarProdSinODC(this.value)">
-                <div id="sodc-prod-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:4px;box-shadow:0 8px 16px rgba(0,0,0,.12);z-index:1000;max-height:200px;overflow-y:auto;"></div>
+              <div style="display:flex;gap:6px;">
+                <input type="text" id="sodc-prod-search" class="form-control" placeholder="Seleccione producto..." readonly
+                  style="cursor:pointer;background:#fff;" onclick="WMS_MODULES.recepcion._abrirPickerProductoSinODC()">
+                <button type="button" onclick="WMS_MODULES.recepcion._abrirPickerProductoSinODC()"
+                  style="background:#0F4C81;color:#fff;border:none;border-radius:4px;padding:0 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+                  <i class="fa-solid fa-magnifying-glass"></i> Buscar
+                </button>
               </div>
               <input type="hidden" id="sodc-prod-id">
               <div id="sodc-prod-info" style="display:none;margin-top:6px;padding:8px 12px;background:#f1f5f9;border-radius:4px;font-size:12px;"></div>
             </div>
 
-            <!-- Cantidad + Conversión -->
-            <div class="form-group">
-              <label class="form-label" id="sodc-cant-label">Cantidad a Recibir *</label>
-              <input type="number" id="sodc-cant" class="form-control" value="1" min="1"
+            <!-- Campo U/E (solo visible si producto tiene factor_udm) -->
+            <div class="form-group" id="sodc-ue-group" style="display:none;">
+              <label class="form-label" id="sodc-ue-label">Cantidad en U/E *</label>
+              <input type="number" id="sodc-cant-ue" class="form-control" value="" min="0.001" step="0.001"
                 oninput="WMS_MODULES.recepcion._actualizarPreviewSinODC()">
-              <div id="sodc-conv-preview" style="display:none;margin-top:6px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;font-weight:600;">
-                <i class="fa-solid fa-calculator"></i> <span id="sodc-conv-text"></span>
+              <div id="sodc-ue-preview" style="margin-top:5px;padding:7px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:4px;font-size:12px;color:#166534;font-weight:600;display:none;">
+                <i class="fa-solid fa-arrows-left-right"></i> <span id="sodc-ue-conv-text"></span>
               </div>
-              <input type="hidden" id="sodc-upc" value="1">
             </div>
+
+            <!-- Cantidad + Saldos + Conversión -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label" id="sodc-cant-label">Cajas / Unidades *</label>
+                <input type="number" id="sodc-cant" class="form-control" value="1" min="0" step="0.001"
+                  oninput="WMS_MODULES.recepcion._actualizarPreviewSinODC()">
+              </div>
+              <div class="form-group" id="sodc-saldos-group" style="margin:0;">
+                <label class="form-label" style="color:#d97706;">Saldos (Sueltos)</label>
+                <input type="number" id="sodc-saldos" class="form-control" value="0" min="0" step="0.001"
+                  oninput="WMS_MODULES.recepcion._actualizarPreviewSinODC()"
+                  placeholder="0">
+              </div>
+            </div>
+            <div id="sodc-conv-preview" style="display:none;margin-top:6px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;font-weight:600;">
+              <i class="fa-solid fa-calculator"></i> <span id="sodc-conv-text"></span>
+            </div>
+            <input type="hidden" id="sodc-upc" value="1">
+            <input type="hidden" id="sodc-factor-udm" value="">
+            <input type="hidden" id="sodc-unidad-contenido" value="">
 
             <!-- Lote -->
             <div class="form-group">
@@ -1782,90 +1833,227 @@ WMS_MODULES.recepcion = {
     }
   },
 
-  _buscarProdSinODC(q) {
-    const dd = document.getElementById('sodc-prod-dropdown');
-    if (!dd) return;
-    if (q.length < 2) { dd.style.display = 'none'; return; }
-    const ql = q.toLowerCase();
-    const matches = this._sinOdcProds.filter(p =>
-      (p.nombre || '').toLowerCase().includes(ql) ||
-      (p.codigo_interno || '').toLowerCase().includes(ql) ||
-      (p.ean || '').toLowerCase().includes(ql)
-    ).slice(0, 10);
-    if (!matches.length) { dd.style.display = 'none'; return; }
-    dd.style.display = 'block';
-    dd.innerHTML = matches.map(p => `
-      <div onclick="WMS_MODULES.recepcion._seleccionarProdSinODC(${p.id})"
-        style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:13px;"
-        onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
-        <div style="font-weight:600;">${WMS.esc(p.nombre)}</div>
-        <div style="font-size:11px;color:#64748b;">${WMS.esc(p.codigo_interno || '')} · UxC: ${p.unidades_caja || 1}</div>
-      </div>`).join('');
+  _abrirPickerProductoSinODC() {
+    if (document.getElementById('sodc-prod-modal')) return; // ya abierto
+
+    const overlay = document.createElement('div');
+    overlay.id = 'sodc-prod-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:48px 16px 16px;';
+
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:10px;width:min(680px,100%);max-height:calc(100vh - 64px);display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.3);overflow:hidden;">
+        <!-- Cabecera -->
+        <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;background:#0f172a;border-radius:10px 10px 0 0;display:flex;align-items:center;gap:12px;">
+          <div style="flex:1;position:relative;">
+            <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:13px;"></i>
+            <input type="text" id="sodc-modal-q"
+              style="width:100%;border:2px solid #334155;border-radius:6px;padding:9px 12px 9px 34px;font-size:14px;box-sizing:border-box;background:#1e293b;color:#fff;outline:none;"
+              placeholder="Buscar por nombre, código EAN..." autocomplete="off">
+          </div>
+          <button onclick="document.getElementById('sodc-prod-modal')?.remove()"
+            style="background:#334155;border:none;color:#94a3b8;border-radius:6px;width:36px;height:36px;cursor:pointer;font-size:16px;flex-shrink:0;">✕</button>
+        </div>
+        <!-- Contador -->
+        <div id="sodc-modal-count" style="padding:6px 16px;font-size:11px;font-weight:700;color:#0F4C81;background:#eff6ff;border-bottom:1px solid #bfdbfe;">
+          Cargando productos…
+        </div>
+        <!-- Lista -->
+        <div id="sodc-modal-list" style="overflow-y:auto;flex:1;"></div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+    const qInput    = document.getElementById('sodc-modal-q');
+    const listEl    = document.getElementById('sodc-modal-list');
+    const countEl   = document.getElementById('sodc-modal-count');
+
+    const renderRows = (items) => {
+      const n = items.length;
+      countEl.textContent = n === 0 ? 'Sin resultados' : `${n} producto${n !== 1 ? 's' : ''} encontrado${n !== 1 ? 's' : ''}`;
+      if (!n) {
+        listEl.innerHTML = `<div style="padding:32px;text-align:center;color:#94a3b8;font-size:13px;">
+          <i class="fa-solid fa-circle-exclamation" style="font-size:2rem;margin-bottom:8px;display:block;"></i>
+          Sin coincidencias. Intente otro término.
+        </div>`;
+        return;
+      }
+      listEl.innerHTML = items.map(p => {
+        const ean = p.codigo_ean || (Array.isArray(p.eans) && p.eans.length ? p.eans[0].codigo_ean : '') || '';
+        const cat = p.categoria_nombre || (p.categoria && p.categoria.nombre) || '';
+        return `<div onclick="WMS_MODULES.recepcion._seleccionarProdSinODC(${p.id});document.getElementById('sodc-prod-modal')?.remove();"
+          style="padding:10px 16px;cursor:pointer;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:12px;"
+          onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background=''">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;color:#0f172a;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${WMS.esc(p.nombre)}</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px;">
+              ${p.codigo_interno ? WMS.esc(p.codigo_interno) : ''}
+              ${ean ? ' &nbsp;·&nbsp; EAN: ' + WMS.esc(ean) : ''}
+              &nbsp;·&nbsp; UxC: ${p.unidades_caja || 1}
+              ${cat ? ' &nbsp;·&nbsp; ' + WMS.esc(cat) : ''}
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    };
+
+    // Render inicial: todos los productos A-Z
+    const todosAZ = [...(this._sinOdcProds || [])].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+    this._sinOdcLastResults = todosAZ;
+    renderRows(todosAZ);
+
+    // Búsqueda con debounce: server-side para tener todos los resultados
+    let timer;
+    qInput.addEventListener('input', async () => {
+      clearTimeout(timer);
+      const q = qInput.value.trim();
+      if (!q) { renderRows(todosAZ); return; }
+      countEl.textContent = 'Buscando…';
+      timer = setTimeout(async () => {
+        try {
+          const r = await API.get('/param/productos/buscar?q=' + encodeURIComponent(q) + '&limit=1000');
+          const hits = Array.isArray(r.data) ? r.data : [];
+          this._sinOdcLastResults = hits;
+          const known = new Set((this._sinOdcProds || []).map(x => x.id));
+          hits.forEach(p => { if (!known.has(p.id)) this._sinOdcProds.push(p); });
+          renderRows(hits);
+        } catch (_) {
+          const ql = q.toLowerCase();
+          const hits = todosAZ.filter(p =>
+            (p.nombre         || '').toLowerCase().includes(ql) ||
+            (p.codigo_interno || '').toLowerCase().includes(ql) ||
+            (Array.isArray(p.eans) && p.eans.some(e => (e.codigo_ean || '').toLowerCase().includes(ql))) ||
+            (p.codigo_ean     || '').toLowerCase().includes(ql)
+          );
+          this._sinOdcLastResults = hits;
+          renderRows(hits);
+        }
+      }, 250);
+    });
+
+    setTimeout(() => qInput.focus(), 80);
   },
 
   _seleccionarProdSinODC(id) {
-    const p = this._sinOdcProds.find(x => x.id === id || x.id === String(id));
+    const sid = String(id);
+    const allCache = [...(this._sinOdcLastResults || []), ...(this._sinOdcProds || [])];
+    const p = allCache.find(x => String(x.id) === sid);
     if (!p) return;
     const searchInput = document.getElementById('sodc-prod-search');
     const hiddenId    = document.getElementById('sodc-prod-id');
     const prodInfo    = document.getElementById('sodc-prod-info');
     const upcInput    = document.getElementById('sodc-upc');
-    const dd          = document.getElementById('sodc-prod-dropdown');
 
     if (searchInput) searchInput.value = p.nombre;
     if (hiddenId)    hiddenId.value    = p.id;
     if (upcInput)    upcInput.value    = p.unidades_caja || 1;
-    if (dd)          dd.style.display  = 'none';
+
+    // Poblar datos U/E
+    const factorUdmInp   = document.getElementById('sodc-factor-udm');
+    const unidContInp    = document.getElementById('sodc-unidad-contenido');
+    const ueGroup        = document.getElementById('sodc-ue-group');
+    const ueLabel        = document.getElementById('sodc-ue-label');
+    const factorUdm      = parseFloat(p.factor_udm || 0);
+    const unidContenido  = p.unidad_contenido || '';
+    if (factorUdmInp)  factorUdmInp.value  = factorUdm || '';
+    if (unidContInp)   unidContInp.value   = unidContenido;
+    if (ueGroup) {
+      ueGroup.style.display = factorUdm > 0 ? 'block' : 'none';
+      if (factorUdm > 0 && ueLabel) ueLabel.textContent = `Cantidad en U/E (${unidContenido || 'UDM'}) *`;
+    }
+    // Limpiar campo U/E al cambiar producto
+    const ueInput = document.getElementById('sodc-cant-ue');
+    if (ueInput) ueInput.value = '';
+
     if (prodInfo) {
       prodInfo.style.display = 'block';
-      prodInfo.innerHTML = `<i class="fa-solid fa-check-circle" style="color:#059669;"></i> <b>${WMS.esc(p.nombre)}</b> · Cód: ${WMS.esc(p.codigo_interno || '-')} · UxC: ${p.unidades_caja || 1}`;
+      const udmInfo = factorUdm > 0 ? ` · U/E: ×${factorUdm} ${unidContenido}` : '';
+      prodInfo.innerHTML = `<i class="fa-solid fa-check-circle" style="color:#059669;"></i> <b>${WMS.esc(p.nombre)}</b> · Cód: ${WMS.esc(p.codigo_interno || '-')} · UxC: ${p.unidades_caja || 1}${udmInfo}`;
     }
     this._actualizarPreviewSinODC();
-    document.getElementById('sodc-cant')?.focus();
+    // Si tiene U/E, enfocar ese campo primero
+    const focusTarget = factorUdm > 0 ? 'sodc-cant-ue' : 'sodc-cant';
+    document.getElementById(focusTarget)?.focus();
   },
 
   _actualizarPreviewSinODC() {
-    const cajas   = parseInt(document.getElementById('sodc-cant')?.value || '0') || 0;
-    const upc     = parseInt(document.getElementById('sodc-upc')?.value  || '1') || 1;
-    const preview = document.getElementById('sodc-conv-preview');
-    const span    = document.getElementById('sodc-conv-text');
-    const label   = document.getElementById('sodc-cant-label');
-    if (label)   label.textContent = upc > 1 ? 'Cajas a Recibir *' : 'Cantidad a Recibir (unidades) *';
+    const cajas      = parseFloat(document.getElementById('sodc-cant')?.value    || '0') || 0;
+    const saldos     = parseFloat(document.getElementById('sodc-saldos')?.value  || '0') || 0;
+    const upc        = parseInt(document.getElementById('sodc-upc')?.value        || '1') || 1;
+    const factorUdm  = parseFloat(document.getElementById('sodc-factor-udm')?.value || '0') || 0;
+    const unidCont   = document.getElementById('sodc-unidad-contenido')?.value   || 'UDM';
+    const cantUe     = parseFloat(document.getElementById('sodc-cant-ue')?.value  || '0') || 0;
+    const preview    = document.getElementById('sodc-conv-preview');
+    const span       = document.getElementById('sodc-conv-text');
+    const label      = document.getElementById('sodc-cant-label');
+    const saldosGrp  = document.getElementById('sodc-saldos-group');
+    const uePreview  = document.getElementById('sodc-ue-preview');
+    const ueConvText = document.getElementById('sodc-ue-conv-text');
+
+    if (label) label.textContent = upc > 1 ? 'Cajas *' : 'Cantidad (unidades) *';
+
+    // Preview cajas + saldos → total unidades
     if (preview) preview.style.display = upc > 1 ? 'block' : 'none';
     if (span && upc > 1) {
-      const plural = cajas === 1 ? 'caja' : 'cajas';
-      span.textContent = `${cajas} ${plural} × ${upc} = ${WMS.formatNum(cajas * upc)} unidades`;
+      const total = cajas * upc + saldos;
+      const saldosTxt = saldos > 0 ? ` + ${saldos} sueltos` : '';
+      span.textContent = `${cajas} cajas × ${upc} u/e${saldosTxt} = ${WMS.formatNum(total)} UND/TOTAL`;
+    }
+
+    // Preview U/E → unidades (auto-rellena campo cajas con el equivalente)
+    if (uePreview && ueConvText && factorUdm > 0) {
+      if (cantUe > 0) {
+        const unidades = cantUe / factorUdm;
+        ueConvText.textContent = `${WMS.formatNum(cantUe)} ${unidCont} ÷ ${factorUdm} = ${WMS.formatNum(unidades)} unidades`;
+        uePreview.style.display = 'block';
+        const cantInput = document.getElementById('sodc-cant');
+        if (cantInput) cantInput.value = unidades.toFixed(4).replace(/\.?0+$/, '') || '0';
+      } else {
+        uePreview.style.display = 'none';
+      }
     }
   },
 
   async _enviarCapturaSinODC() {
     const btn = event.currentTarget;
     const prodId    = document.getElementById('sodc-prod-id')?.value;
-    const cantCajas = parseInt(document.getElementById('sodc-cant')?.value || '0');
-    const upc       = parseInt(document.getElementById('sodc-upc')?.value  || '1') || 1;
+    const cantCajas = parseFloat(document.getElementById('sodc-cant')?.value    || '0');
+    const saldos    = parseFloat(document.getElementById('sodc-saldos')?.value  || '0') || 0;
+    const upc       = parseInt(document.getElementById('sodc-upc')?.value        || '1') || 1;
     const lote      = document.getElementById('sodc-lote')?.value || '';
     const venc      = document.getElementById('sodc-fecha-venc')?.value || '';
     const estado    = document.getElementById('sodc-estado')?.value || 'BuenEstado';
     const palletNum = this._sinOdcPalletNum || null;
+    const factorUdm = parseFloat(document.getElementById('sodc-factor-udm')?.value || '0') || 0;
+    const cantUe    = parseFloat(document.getElementById('sodc-cant-ue')?.value  || '0') || 0;
 
     if (!prodId) return WMS.toast('warning', 'Seleccione un producto');
-    if (cantCajas <= 0) return WMS.toast('warning', 'Cantidad debe ser mayor a cero');
+    const hayUe = factorUdm > 0 && cantUe > 0;
+    if (!hayUe && cantCajas <= 0 && saldos <= 0) return WMS.toast('warning', 'Cantidad debe ser mayor a cero');
 
-    const totalUnidades = cantCajas * upc;
+    // Total en unidades: prioridad U/E > cajas+saldos > unidades directas
+    const totalUnidades = hayUe
+      ? cantUe / factorUdm
+      : (upc > 1 ? cantCajas * upc + saldos : cantCajas);
     const original = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Guardando...';
 
     try {
-      const r = await API.post('/recepciones/sin-odc', {
+      const payload = {
         producto_id:    prodId,
-        cantidad_cajas: cantCajas,
+        cantidad_cajas: upc > 1 ? Math.floor(cantCajas) : 0,
+        saldos:         upc > 1 ? saldos : 0,
         cantidad:       totalUnidades,
         lote:           lote || undefined,
         fecha_vencimiento: venc || undefined,
         estado_mercancia: estado,
         numero_pallet:  palletNum || undefined,
-      });
+      };
+      if (factorUdm > 0 && cantUe > 0) {
+        payload.cantidad_ue = cantUe;
+      }
+      const r = await API.post('/recepciones/sin-odc', payload);
       if (r.error) throw new Error(r.message);
 
       // Guardar id de recepción; si es la primera línea, actualizar toolbar para mostrar botón Cerrar
@@ -1878,13 +2066,19 @@ WMS_MODULES.recepcion = {
 
       // Limpiar campos (no el producto, para captura rápida del mismo ítem)
       const cantInput = document.getElementById('sodc-cant');
+      const ueInput   = document.getElementById('sodc-cant-ue');
       const loteInput = document.getElementById('sodc-lote');
       const fechaInput = document.getElementById('sodc-fecha-venc');
       const fechaInfo  = document.getElementById('sodc-fecha-info');
-      if (cantInput)  cantInput.value  = '1';
+      const uePreview  = document.getElementById('sodc-ue-preview');
+      if (cantInput)  cantInput.value  = factorUdm > 0 ? '' : '1';
+      if (ueInput)    ueInput.value    = '';
       if (loteInput)  loteInput.value  = '';
       if (fechaInput) fechaInput.value = '';
       if (fechaInfo)  { fechaInfo.style.display = 'none'; }
+      if (uePreview)  uePreview.style.display = 'none';
+      // Reenfocar campo primario
+      document.getElementById(factorUdm > 0 ? 'sodc-cant-ue' : 'sodc-cant')?.focus();
 
       const conv = r.data?.conversion;
       const msgCajas = upc > 1
@@ -1913,7 +2107,7 @@ WMS_MODULES.recepcion = {
       container.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
         <thead style="background:#f1f5f9;"><tr>
           <th style="padding:10px;text-align:left;">Producto</th>
-          <th style="padding:10px;text-align:center;">Cant.</th>
+          <th style="padding:10px;text-align:center;">UND/TOTAL</th>
           <th style="padding:10px;text-align:center;">Cajas</th>
           <th style="padding:10px;text-align:center;">Pallet</th>
           <th style="padding:10px;text-align:left;">Lote</th>
@@ -1987,7 +2181,71 @@ WMS_MODULES.recepcion = {
   },
 
   async _confirmarSinODC(recepcionId, numero) {
-    if (!confirm(`¿Confirmar recepción ${numero}?\nYa no podrá agregar más líneas. Los productos quedarán en patio listos para ubicar.`)) return;
+    // Cargar detalles antes de pedir confirmación
+    WMS.spinner();
+    let detalles = [];
+    try {
+      const r = await API.get('/recepciones/' + recepcionId);
+      const rec = r.data || r;
+      detalles = rec.detalles || [];
+    } catch (e) {
+      WMS.toast('error', 'No se pudieron cargar los detalles de la recepción');
+      return;
+    }
+
+    if (detalles.length === 0) {
+      const ok = await Swal.fire({
+        icon: 'warning',
+        title: `Confirmar ${WMS.esc(numero)}`,
+        html: '<p style="color:#92400e;font-size:13px;">Esta recepción no tiene líneas registradas.<br>¿Desea confirmarla de todas formas?</p>',
+        showCancelButton: true,
+        confirmButtonText: '<i class="fa-solid fa-lock"></i> Confirmar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#166534',
+        cancelButtonColor: '#64748b',
+      });
+      if (!ok.isConfirmed) return;
+    } else {
+      const filasHtml = detalles.map(l => `
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:5px 8px;font-weight:600;color:#1e3a5f;">${WMS.esc(l.producto?.codigo_interno || '-')}</td>
+          <td style="padding:5px 8px;">${WMS.esc(l.producto?.nombre || '-')}</td>
+          <td style="padding:5px 8px;text-align:center;font-weight:700;color:#059669;">${WMS.formatNum(l.cantidad_recibida)}</td>
+          <td style="padding:5px 8px;text-align:center;">${WMS.esc(l.lote || '-')}</td>
+        </tr>`).join('');
+
+      const ok = await Swal.fire({
+        title: `Confirmar recepción ${WMS.esc(numero)}`,
+        html: `
+          <p style="font-size:12px;color:#64748b;margin-bottom:10px;text-align:left;">
+            Los siguientes <strong>${detalles.length}</strong> producto${detalles.length !== 1 ? 's' : ''} quedarán en patio listos para ubicar:
+          </p>
+          <div style="overflow-x:auto;max-height:320px;overflow-y:auto;">
+            <table style="width:100%;font-size:12px;text-align:left;border-collapse:collapse;">
+              <thead>
+                <tr style="background:#f8fafc;position:sticky;top:0;">
+                  <th style="padding:6px 8px;color:#64748b;font-weight:700;border-bottom:2px solid #e2e8f0;">Código</th>
+                  <th style="padding:6px 8px;color:#64748b;font-weight:700;border-bottom:2px solid #e2e8f0;">Producto</th>
+                  <th style="padding:6px 8px;color:#64748b;font-weight:700;border-bottom:2px solid #e2e8f0;text-align:center;">Cantidad</th>
+                  <th style="padding:6px 8px;color:#64748b;font-weight:700;border-bottom:2px solid #e2e8f0;text-align:center;">Lote</th>
+                </tr>
+              </thead>
+              <tbody>${filasHtml}</tbody>
+            </table>
+          </div>
+          <p style="font-size:11px;color:#dc2626;margin-top:10px;text-align:left;">
+            <i class="fa-solid fa-triangle-exclamation"></i> Ya no podrá agregar más líneas a esta recepción.
+          </p>`,
+        showCancelButton: true,
+        confirmButtonText: '<i class="fa-solid fa-lock"></i> Confirmar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#166534',
+        cancelButtonColor: '#64748b',
+        width: '600px',
+      });
+      if (!ok.isConfirmed) return;
+    }
+
     try {
       const r = await API.post('/recepciones/' + recepcionId + '/cerrar', {});
       if (r.error) throw new Error(r.message);
@@ -2023,8 +2281,8 @@ WMS_MODULES.recepcion = {
               <span class="card-title fw-900 color-primary">
                 <i class="fa-solid fa-box-open"></i> ${WMS.esc(rec.numero_recepcion || '-')} — Recepción sin ODC
               </span>
-              <span style="background:#dcfce7;color:#166534;padding:3px 12px;border-radius:99px;font-size:.72rem;font-weight:700;">
-                <i class="fa-solid fa-lock"></i> Confirmada
+              <span style="background:${rec.estado === 'Cerrada' ? '#dcfce7' : '#fef9c3'};color:${rec.estado === 'Cerrada' ? '#166534' : '#92400e'};padding:3px 12px;border-radius:99px;font-size:.72rem;font-weight:700;">
+                <i class="fa-solid fa-${rec.estado === 'Cerrada' ? 'lock' : 'edit'}"></i> ${rec.estado === 'Cerrada' ? 'Confirmada' : 'En Proceso (Borrador)'}
               </span>
             </div>
             <div style="padding:12px 20px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#64748b;">
@@ -2035,11 +2293,11 @@ WMS_MODULES.recepcion = {
             <div class="table-container">
               <table class="erp-table">
                 <thead><tr>
-                  <th>Producto</th><th>Cantidad</th><th>Cajas</th><th>Lote</th><th>F. Vencimiento</th><th>Estado</th>
+                  <th>Producto</th><th>Cantidad</th><th>Cajas</th><th>Lote</th><th>F. Vencimiento</th><th>Estado</th><th>Acciones</th>
                 </tr></thead>
                 <tbody>
                   ${detalles.length === 0
-                    ? '<tr><td colspan="6" class="table-empty">Sin líneas registradas</td></tr>'
+                    ? '<tr><td colspan="7" class="table-empty">Sin líneas registradas</td></tr>'
                     : detalles.map(l => `<tr>
                         <td class="fw-600">${WMS.esc(l.producto?.nombre || '-')}</td>
                         <td class="text-center fw-800" style="color:#059669;">${WMS.formatNum(l.cantidad_recibida)}</td>
@@ -2047,6 +2305,17 @@ WMS_MODULES.recepcion = {
                         <td>${WMS.esc(l.lote || 'N/A')}</td>
                         <td>${l.fecha_vencimiento ? WMS.formatDate(l.fecha_vencimiento) : '-'}</td>
                         <td><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#166534;">${WMS.esc(l.estado_mercancia || 'BuenEstado')}</span></td>
+                        <td style="white-space:nowrap;">
+                          ${rec.estado === 'Borrador' ? `
+                          <button onclick="WMS_MODULES.recepcion._editarDetalleSinODC('${recepcionId}',${l.id},'${WMS.esc(l.producto?.nombre||'-').replace(/'/g,"\\'")}',${l.cantidad_recibida},${l.cajas_por_unidad||1},'ver')"
+                            style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;margin-right:3px;" title="Editar">
+                            <i class="fa-solid fa-pencil"></i>
+                          </button>
+                          <button onclick="WMS_MODULES.recepcion._eliminarDetalleSinODC('${recepcionId}',${l.id},'ver')"
+                            style="background:#fef2f2;color:#dc2626;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;" title="Eliminar">
+                            <i class="fa-solid fa-trash"></i>
+                          </button>` : `<span style="font-size:11px;color:#94a3b8;">Sin acciones</span>`}
+                        </td>
                       </tr>`).join('')}
                 </tbody>
               </table>
@@ -2062,7 +2331,7 @@ WMS_MODULES.recepcion = {
     }
   },
 
-  async _editarDetalleSinODC(recepcionId, detalleId, prodName, currentQty, upc) {
+  async _editarDetalleSinODC(recepcionId, detalleId, prodName, currentQty, upc, returnMode='captura') {
     upc = parseInt(upc) || 1;
     const labelQty = upc > 1 ? `Cajas (UxC: ${upc}, actual: ${Math.round(currentQty/upc)} cajas)` : `Cantidad en unidades (actual: ${currentQty})`;
     const currentInput = upc > 1 ? Math.round(currentQty / upc) : currentQty;
@@ -2076,13 +2345,13 @@ WMS_MODULES.recepcion = {
         <input type="number" id="sodc-edit-qty" class="form-control" value="${currentInput}" min="1" style="font-size:1.1rem;font-weight:700;">
       </div>`,
       `<button class="btn btn-ghost" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-success" onclick="WMS_MODULES.recepcion._guardarEdicionDetalleSinODC('${recepcionId}',${detalleId},${upc})">
+       <button class="btn btn-success" onclick="WMS_MODULES.recepcion._guardarEdicionDetalleSinODC('${recepcionId}',${detalleId},${upc},'${returnMode}')">
          <i class="fa-solid fa-check"></i> Guardar
        </button>`);
     setTimeout(() => document.getElementById('sodc-edit-qty')?.select(), 100);
   },
 
-  async _guardarEdicionDetalleSinODC(recepcionId, detalleId, upc) {
+  async _guardarEdicionDetalleSinODC(recepcionId, detalleId, upc, returnMode='captura') {
     const input = document.getElementById('sodc-edit-qty');
     const cajas = parseInt(input?.value || '0');
     if (cajas <= 0) return WMS.toast('warning', 'La cantidad debe ser mayor a cero');
@@ -2092,13 +2361,14 @@ WMS_MODULES.recepcion = {
       if (r.error) throw new Error(r.message);
       WMS.closeModal('generic-modal');
       WMS.toast('success', 'Cantidad actualizada correctamente');
-      this.abrirConsolaSinODC(recepcionId);
+      if (returnMode === 'ver') this._verDetalleSinODC(recepcionId);
+      else this.abrirConsolaSinODC(recepcionId);
     } catch (e) {
       WMS.toast('error', e.message || 'Error al actualizar la cantidad');
     }
   },
 
-  async _eliminarDetalleSinODC(recepcionId, detalleId) {
+  async _eliminarDetalleSinODC(recepcionId, detalleId, returnMode='captura') {
     if (!confirm('¿Eliminar esta línea? El inventario será revertido automáticamente.')) return;
     try {
       const r = await API.delete('/recepciones/' + recepcionId + '/detalle/' + detalleId);
@@ -2107,6 +2377,8 @@ WMS_MODULES.recepcion = {
       if (r.data?.recepcion_eliminada) {
         this._sinOdcRecepcionId = null;
         this.show_sin_odc();
+      } else if (returnMode === 'ver') {
+        this._verDetalleSinODC(recepcionId);
       } else {
         this.abrirConsolaSinODC(recepcionId);
       }
@@ -3519,5 +3791,452 @@ WMS_MODULES.recepcion = {
       if (this._sub === 'odc') this.show_odc();
       else this.verODC(id);
     } catch(e) { WMS.toast('error', 'Error al reabrir: ' + e.message); }
+  },
+
+  // ══════════════════════════════════════════════════════════════
+  //  MISCELÁNEOS
+  // ══════════════════════════════════════════════════════════════
+
+  _miscData: [],
+
+  async show_miscelaneos() {
+    WMS.setBreadcrumb('recepcion', 'Misceláneos');
+    WMS.setToolbar(`
+      <button class="pro-btn-refresh" onclick="WMS_MODULES.recepcion.show_miscelaneos()">
+        <span class="spin"><i class="fa-solid fa-rotate-right"></i></span> Actualizar
+      </button>
+    `);
+    WMS.spinner();
+    try {
+      const r = await API.get('/miscelaneos');
+      this._miscData = r.data || [];
+      const items = this._miscData;
+      const baseUrl = window.location.origin + '/WMS_FENIX/public';
+
+      const ESTADO_CFG = {
+        Recibido:   { color:'#3b82f6', bg:'#eff6ff', icon:'fa-inbox' },
+        Asignado:   { color:'#f59e0b', bg:'#fffbeb', icon:'fa-user-check' },
+        Despachado: { color:'#22c55e', bg:'#f0fdf4', icon:'fa-truck' },
+      };
+      const badgeEstado = (e) => {
+        const c = ESTADO_CFG[e] || { color:'#94a3b8', bg:'#f8fafc', icon:'fa-circle' };
+        return `<span style="background:${c.bg};color:${c.color};border:1px solid ${c.color}44;padding:3px 10px;border-radius:20px;font-size:.73rem;font-weight:700;white-space:nowrap;">
+          <i class="fa-solid ${c.icon}" style="font-size:.65rem;margin-right:3px;"></i>${e}</span>`;
+      };
+
+      const visible = this._miscFiltro ? items.filter(i => i.estado === this._miscFiltro) : items;
+
+      WMS.setContent(`
+        <div class="animate-fade-in" style="display:flex;flex-direction:column;gap:16px;">
+
+          <!-- Header -->
+          <div style="background:linear-gradient(135deg,#1e40af,#2563eb);border-radius:12px;padding:20px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+            <div style="display:flex;align-items:center;gap:14px;">
+              <div style="width:48px;height:48px;background:rgba(255,255,255,.15);border-radius:12px;display:flex;align-items:center;justify-content:center;">
+                <i class="fa-solid fa-boxes-stacked" style="color:#fff;font-size:20px;"></i>
+              </div>
+              <div>
+                <div style="color:#fff;font-weight:800;font-size:1.1rem;">Recepción de Misceláneos</div>
+                <div style="color:#bfdbfe;font-size:.8rem;">${items.length} registro${items.length!==1?'s':''} en total</div>
+              </div>
+            </div>
+            <button class="btn btn-primary" onclick="WMS_MODULES.recepcion._miscNuevo()" style="background:rgba(255,255,255,.2);border:1.5px solid rgba(255,255,255,.5);color:#fff;font-weight:700;">
+              <i class="fa-solid fa-plus"></i> Nueva Recepción
+            </button>
+          </div>
+
+          <!-- KPIs -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;">
+            ${[
+              { label:'Recibidos',   val: items.filter(i=>i.estado==='Recibido').length,   color:'#3b82f6', icon:'fa-inbox' },
+              { label:'Asignados',   val: items.filter(i=>i.estado==='Asignado').length,   color:'#f59e0b', icon:'fa-user-check' },
+              { label:'Despachados', val: items.filter(i=>i.estado==='Despachado').length, color:'#22c55e', icon:'fa-truck' },
+            ].map(k => `
+              <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:box-shadow .15s;"
+                   onclick="WMS_MODULES.recepcion._miscFiltrar('${k.label===''?'':k.label.slice(0,-1)}')"
+                   onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,.08)'" onmouseout="this.style.boxShadow=''">
+                <div style="width:36px;height:36px;background:${k.color}18;border-radius:8px;display:flex;align-items:center;justify-content:center;">
+                  <i class="fa-solid ${k.icon}" style="color:${k.color};font-size:15px;"></i>
+                </div>
+                <div>
+                  <div style="font-size:1.4rem;font-weight:800;color:${k.color};line-height:1;">${k.val}</div>
+                  <div style="font-size:.72rem;color:#64748b;">${k.label}</div>
+                </div>
+              </div>`).join('')}
+          </div>
+
+          <!-- Filtros -->
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <span style="font-size:.78rem;color:#64748b;font-weight:600;">Filtrar:</span>
+            <button class="btn btn-sm ${!this._miscFiltro?'btn-primary':'btn-outline-secondary'}" onclick="WMS_MODULES.recepcion._miscFiltrar('')">Todos</button>
+            <button class="btn btn-sm ${this._miscFiltro==='Recibido'?'btn-primary':'btn-outline-secondary'}" onclick="WMS_MODULES.recepcion._miscFiltrar('Recibido')">Recibidos</button>
+            <button class="btn btn-sm ${this._miscFiltro==='Asignado'?'btn-warning':'btn-outline-secondary'}" onclick="WMS_MODULES.recepcion._miscFiltrar('Asignado')">Asignados</button>
+            <button class="btn btn-sm ${this._miscFiltro==='Despachado'?'btn-success':'btn-outline-secondary'}" onclick="WMS_MODULES.recepcion._miscFiltrar('Despachado')">Despachados</button>
+            <span style="margin-left:auto;font-size:.78rem;color:#94a3b8;">${visible.length} resultado${visible.length!==1?'s':''}</span>
+          </div>
+
+          <!-- Cards grid -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;">
+            ${visible.length ? visible.map(i => {
+              const foto = (i.fotos||[]).length ? baseUrl + i.fotos[0].url : null;
+              const ec = ESTADO_CFG[i.estado] || { color:'#94a3b8', bg:'#f8fafc' };
+              return `
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);transition:box-shadow .15s;"
+                     onmouseover="this.style.boxShadow='0 6px 20px rgba(0,0,0,.1)'" onmouseout="this.style.boxShadow='0 1px 4px rgba(0,0,0,.06)'">
+
+                  <!-- Card top: foto + info principal -->
+                  <div style="display:flex;gap:0;">
+                    <!-- Foto / placeholder -->
+                    <div style="width:100px;min-height:100px;flex-shrink:0;background:#f1f5f9;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:${foto?'pointer':'default'};"
+                         ${foto?`onclick="WMS_MODULES.recepcion._miscVerFotos(${i.id})"`:''}>
+                      ${foto
+                        ? `<img src="${foto}" style="width:100%;height:100%;object-fit:cover;" loading="lazy">`
+                        : `<div style="text-align:center;color:#cbd5e1;"><i class="fa-solid fa-image" style="font-size:28px;display:block;margin-bottom:4px;"></i><span style="font-size:.65rem;">Sin foto</span></div>`
+                      }
+                    </div>
+
+                    <!-- Info -->
+                    <div style="flex:1;padding:12px 14px;display:flex;flex-direction:column;gap:4px;min-width:0;">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                        <span style="font-size:.72rem;font-weight:700;color:#64748b;font-family:monospace;">${WMS.esc(i.numero_recepcion||'')}</span>
+                        ${badgeEstado(i.estado)}
+                      </div>
+                      <div style="font-weight:700;font-size:.9rem;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${WMS.esc(i.articulo||'')}">
+                        ${WMS.esc(i.articulo||'Sin descripción')}
+                      </div>
+                      <div style="font-size:.78rem;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                        <i class="fa-solid fa-industry" style="margin-right:3px;color:#94a3b8;"></i>${WMS.esc(i.proveedor||'—')}
+                      </div>
+                      <div style="display:flex;align-items:center;gap:10px;margin-top:2px;">
+                        <span style="background:#f0fdf4;color:#15803d;border:1px solid #86efac;border-radius:6px;padding:2px 10px;font-size:.78rem;font-weight:700;">
+                          <i class="fa-solid fa-hashtag" style="font-size:.65rem;"></i> ${i.cantidad} ${i.unidad_medida||'UN'}
+                        </span>
+                        ${(i.fotos||[]).length > 1 ? `<span style="font-size:.72rem;color:#3b82f6;cursor:pointer;" onclick="WMS_MODULES.recepcion._miscVerFotos(${i.id})"><i class="fa-solid fa-images"></i> +${(i.fotos||[]).length - 1} foto${(i.fotos||[]).length-1!==1?'s':''}</span>` : ''}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Sucursal entrega -->
+                  <div style="border-top:1px solid #f1f5f9;padding:8px 14px;background:#fafafa;display:flex;align-items:center;gap:8px;min-height:34px;">
+                    ${i.cliente_nombre
+                      ? `<i class="fa-solid fa-location-dot" style="color:#3b82f6;font-size:.8rem;"></i>
+                         <span style="font-size:.78rem;font-weight:600;color:#1d4ed8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${WMS.esc(i.cliente_nombre)}</span>`
+                      : `<i class="fa-solid fa-location-dot" style="color:#cbd5e1;font-size:.8rem;"></i>
+                         <span style="font-size:.78rem;color:#94a3b8;font-style:italic;">Sin sucursal asignada</span>`
+                    }
+                    <span style="margin-left:auto;font-size:.7rem;color:#94a3b8;">${i.created_at ? new Date(i.created_at).toLocaleDateString('es-CO') : ''}</span>
+                  </div>
+
+                  <!-- Acciones -->
+                  <div style="border-top:1px solid #f1f5f9;padding:8px 14px;display:flex;gap:6px;">
+                    <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.recepcion._miscEditar(${i.id})" style="flex:1;font-size:.75rem;">
+                      <i class="fa-solid fa-pen"></i> Editar
+                    </button>
+                    ${(i.fotos||[]).length ? `
+                    <button class="btn btn-sm btn-outline-info" onclick="WMS_MODULES.recepcion._miscVerFotos(${i.id})" style="font-size:.75rem;" title="Ver todas las fotos">
+                      <i class="fa-solid fa-images"></i>
+                    </button>` : ''}
+                    ${i.estado !== 'Despachado' ? `
+                    <button class="btn btn-sm btn-outline-danger" onclick="WMS_MODULES.recepcion._miscEliminar(${i.id},'${WMS.esc(i.articulo||'')}')" style="font-size:.75rem;" title="Eliminar">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>` : ''}
+                  </div>
+                </div>`;
+            }).join('') : `
+              <div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:#94a3b8;">
+                <i class="fa-solid fa-boxes-stacked" style="font-size:3rem;display:block;margin-bottom:12px;opacity:.4;"></i>
+                <div style="font-size:.9rem;">Sin misceláneos${this._miscFiltro?' en estado '+this._miscFiltro:' registrados'}</div>
+              </div>`}
+          </div>
+        </div>`);
+    } catch(e) { WMS.toast('error', 'Error cargando misceláneos'); }
+  },
+
+  _miscFiltro: '',
+  _miscFiltrar(estado) {
+    this._miscFiltro = estado;
+    this.show_miscelaneos();
+  },
+
+  async _miscNuevo() {
+    let clientes = [];
+    try { const r = await API.get('/param/clientes'); clientes = r.data || r || []; } catch(e) {}
+
+    WMS.showModal('Nueva Recepción de Misceláneo', `
+      <div style="display:flex;flex-direction:column;gap:0;">
+
+        <div style="background:linear-gradient(135deg,#1e40af,#2563eb);border-radius:8px 8px 0 0;padding:16px 20px;margin:-20px -20px 20px;display:flex;align-items:center;gap:12px;">
+          <div style="width:42px;height:42px;background:rgba(255,255,255,.15);border-radius:50%;display:flex;align-items:center;justify-content:center;">
+            <i class="fa-solid fa-boxes-packing" style="color:#fff;font-size:18px;"></i>
+          </div>
+          <div>
+            <div style="color:#fff;font-weight:700;font-size:1rem;">Ingresar Misceláneo</div>
+            <div style="color:#bfdbfe;font-size:.78rem;">Complete todos los campos obligatorios</div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px;padding:0 4px;">
+
+          <div style="background:#eff6ff;border:1.5px solid #3b82f6;border-radius:8px;padding:14px 16px;">
+            <label class="form-label" style="color:#1d4ed8;font-weight:700;margin-bottom:6px;">
+              <i class="fa-solid fa-location-dot"></i> Sucursal de Entrega <span class="required">*</span>
+            </label>
+            <select id="misc-cliente" class="form-control" style="border-color:#3b82f6;">
+              <option value="">— Seleccione el punto de entrega —</option>
+              ${clientes.map(c => `<option value="${c.id}" data-nombre="${WMS.esc(c.razon_social||c.nombre||'')}">${WMS.esc(c.razon_social||c.nombre||'')}</option>`).join('')}
+            </select>
+          </div>
+
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
+            <div style="font-size:.8rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">
+              <i class="fa-solid fa-truck-ramp-box"></i> Datos del Artículo
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Proveedor <span class="required">*</span></label>
+              <input id="misc-proveedor" class="form-control" placeholder="Nombre del proveedor o empresa">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Artículo / Descripción <span class="required">*</span></label>
+              <input id="misc-articulo" class="form-control" placeholder="Descripción del artículo recibido">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">Cantidad <span class="required">*</span></label>
+                <input id="misc-cantidad" type="number" class="form-control" min="0.01" step="0.01" value="1">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">Unidad Medida</label>
+                <select id="misc-um" class="form-control">
+                  <option value="UN">Unidades</option><option value="KG">Kilos</option>
+                  <option value="LT">Litros</option><option value="MT">Metros</option>
+                  <option value="CJ">Cajas</option><option value="GL">Galón</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Observaciones</label>
+              <textarea id="misc-obs" class="form-control" rows="2" placeholder="Notas adicionales..."></textarea>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label"><i class="fa-solid fa-camera"></i> Fotos del artículo</label>
+              <input id="misc-fotos" type="file" class="form-control" accept="image/*" multiple>
+              <div style="font-size:.72rem;color:#94a3b8;margin-top:4px;">Puede adjuntar múltiples imágenes</div>
+            </div>
+          </div>
+
+        </div>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+       <button class="btn btn-primary" id="btn-misc-save" onclick="WMS_MODULES.recepcion._miscGuardar()"><i class="fa-solid fa-save"></i> Registrar Ingreso</button>`);
+  },
+
+  async _miscGuardar() {
+    const proveedor  = document.getElementById('misc-proveedor')?.value.trim();
+    const articulo   = document.getElementById('misc-articulo')?.value.trim();
+    const cantidad   = parseFloat(document.getElementById('misc-cantidad')?.value) || 0;
+    const clienteSel = document.getElementById('misc-cliente');
+    const clienteId  = clienteSel?.value || '';
+    const clienteNom = clienteSel?.options[clienteSel.selectedIndex]?.dataset?.nombre || clienteSel?.options[clienteSel.selectedIndex]?.text || '';
+    if (!clienteId) { WMS.toast('warning', 'Seleccione la Sucursal de Entrega'); document.getElementById('misc-cliente')?.focus(); return; }
+    if (!proveedor || !articulo || cantidad <= 0) { WMS.toast('warning', 'Proveedor, artículo y cantidad son obligatorios'); return; }
+
+    const btn = document.getElementById('btn-misc-save');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner sm"></div> Guardando...'; }
+
+    try {
+      const r = await API.post('/miscelaneos', {
+        proveedor, articulo, cantidad,
+        unidad_medida: document.getElementById('misc-um')?.value || 'UN',
+        observaciones: document.getElementById('misc-obs')?.value.trim() || null,
+        cliente_id:    clienteId,
+        cliente_nombre: clienteNom,
+      });
+
+      if (r.error) { WMS.toast('error', r.message); return; }
+      const miscId = r.data?.id;
+
+      const filesInput = document.getElementById('misc-fotos');
+      if (filesInput?.files.length && miscId) {
+        const formData = new FormData();
+        for (const f of filesInput.files) formData.append('fotos[]', f);
+        await fetch(API_BASE + '/miscelaneos/' + miscId + '/fotos', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') },
+          body: formData
+        });
+      }
+
+      WMS.toast('success', r.message || 'Misceláneo recibido');
+      WMS.closeModal('generic-modal');
+      this.show_miscelaneos();
+    } catch(e) { WMS.toast('error', 'Error al guardar'); }
+    finally { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-save"></i> Guardar'; } }
+  },
+
+  async _miscEditar(id) {
+    try {
+      const [rItem, rCli] = await Promise.all([
+        API.get('/miscelaneos/' + id),
+        API.get('/param/clientes'),
+      ]);
+      const i = rItem.data;
+      if (!i) { WMS.toast('error', 'No encontrado'); return; }
+      const cls = rCli.data || rCli || [];
+      const baseUrl = window.location.origin + '/WMS_FENIX/public';
+
+      WMS.showModal('Editar Misceláneo', `
+        <div style="display:flex;flex-direction:column;gap:0;">
+
+          <!-- Header -->
+          <div style="background:linear-gradient(135deg,#0f766e,#0d9488);border-radius:8px 8px 0 0;padding:16px 20px;margin:-20px -20px 20px;display:flex;align-items:center;gap:12px;">
+            <div style="width:42px;height:42px;background:rgba(255,255,255,.15);border-radius:50%;display:flex;align-items:center;justify-content:center;">
+              <i class="fa-solid fa-pen-to-square" style="color:#fff;font-size:18px;"></i>
+            </div>
+            <div>
+              <div style="color:#fff;font-weight:700;font-size:1rem;">Editar — ${WMS.esc(i.numero_recepcion||'')}</div>
+              <div style="color:#99f6e4;font-size:.78rem;">${WMS.esc(i.articulo||'')}</div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:14px;padding:0 4px;">
+
+            <!-- Sucursal entrega (primero, destacado) -->
+            <div style="background:#eff6ff;border:1.5px solid #3b82f6;border-radius:8px;padding:14px 16px;">
+              <label class="form-label" style="color:#1d4ed8;font-weight:700;margin-bottom:6px;">
+                <i class="fa-solid fa-location-dot"></i> Sucursal de Entrega <span class="required">*</span>
+              </label>
+              <select id="misc-e-cliente" class="form-control" style="border-color:#3b82f6;">
+                <option value="">— Seleccione el punto de entrega —</option>
+                ${cls.map(c => `<option value="${c.id}" data-nombre="${WMS.esc(c.razon_social||c.nombre||'')}" ${c.id==i.cliente_id?'selected':''}>${WMS.esc(c.razon_social||c.nombre||'')}</option>`).join('')}
+              </select>
+            </div>
+
+            <!-- Datos del artículo -->
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
+              <div style="font-size:.8rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">
+                <i class="fa-solid fa-truck-ramp-box"></i> Datos del Artículo
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">Proveedor <span class="required">*</span></label>
+                <input id="misc-e-prov" class="form-control" value="${WMS.esc(i.proveedor||'')}" placeholder="Nombre del proveedor o empresa">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">Artículo / Descripción <span class="required">*</span></label>
+                <input id="misc-e-art" class="form-control" value="${WMS.esc(i.articulo||'')}" placeholder="Descripción del artículo">
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Cantidad <span class="required">*</span></label>
+                  <input id="misc-e-cant" type="number" class="form-control" value="${i.cantidad}" min="0.01" step="0.01">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Unidad Medida</label>
+                  <select id="misc-e-um" class="form-control">
+                    ${['UN','KG','LT','MT','CJ','GL'].map(u => `<option value="${u}" ${i.unidad_medida===u?'selected':''}>${u}</option>`).join('')}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Observaciones + fotos -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">Observaciones</label>
+                <textarea id="misc-e-obs" class="form-control" rows="2" placeholder="Notas adicionales...">${WMS.esc(i.observaciones||'')}</textarea>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label"><i class="fa-solid fa-camera"></i> Agregar más fotos</label>
+                <input id="misc-e-fotos" type="file" class="form-control" accept="image/*" multiple>
+                <div style="font-size:.72rem;color:#94a3b8;margin-top:4px;">Las fotos existentes se conservan</div>
+              </div>
+            </div>
+
+            <!-- Fotos actuales -->
+            ${(i.fotos||[]).length ? `
+              <div>
+                <label class="form-label" style="color:#475569;font-weight:600;"><i class="fa-solid fa-images"></i> Fotos actuales (${i.fotos.length})</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+                  ${i.fotos.map(f => `
+                    <div style="position:relative;width:80px;height:80px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);">
+                      <img src="${baseUrl + f.url}" style="width:100%;height:100%;object-fit:cover;cursor:pointer;"
+                           onclick="window.open('${baseUrl + f.url}','_blank')">
+                      <button style="position:absolute;top:3px;right:3px;background:#ef4444;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;line-height:20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.3);"
+                        onclick="WMS_MODULES.recepcion._miscBorrarFoto(${f.id},${id})">×</button>
+                    </div>`).join('')}
+                </div>
+              </div>` : ''}
+
+          </div>
+        </div>`,
+        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+         <button class="btn btn-primary" onclick="WMS_MODULES.recepcion._miscActualizar(${id})"><i class="fa-solid fa-save"></i> Guardar Cambios</button>`);
+    } catch(e) { WMS.toast('error', 'Error cargando datos'); }
+  },
+
+  async _miscActualizar(id) {
+    const clienteSel = document.getElementById('misc-e-cliente');
+    const clienteId  = clienteSel?.value || null;
+    const clienteNom = clienteSel?.options[clienteSel.selectedIndex]?.dataset?.nombre || clienteSel?.options[clienteSel.selectedIndex]?.text || '';
+
+    try {
+      const r = await API.put('/miscelaneos/' + id, {
+        proveedor:      document.getElementById('misc-e-prov')?.value.trim(),
+        articulo:       document.getElementById('misc-e-art')?.value.trim(),
+        cantidad:       parseFloat(document.getElementById('misc-e-cant')?.value) || 0,
+        unidad_medida:  document.getElementById('misc-e-um')?.value,
+        observaciones:  document.getElementById('misc-e-obs')?.value.trim() || null,
+        cliente_id:     clienteId,
+        cliente_nombre: clienteId ? clienteNom : null,
+      });
+
+      const filesInput = document.getElementById('misc-e-fotos');
+      if (filesInput?.files.length) {
+        const formData = new FormData();
+        for (const f of filesInput.files) formData.append('fotos[]', f);
+        await fetch(API_BASE + '/miscelaneos/' + id + '/fotos', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') },
+          body: formData
+        });
+      }
+
+      if (r.error) WMS.toast('error', r.message);
+      else { WMS.toast('success', 'Misceláneo actualizado'); WMS.closeModal('generic-modal'); this.show_miscelaneos(); }
+    } catch(e) { WMS.toast('error', 'Error al actualizar'); }
+  },
+
+  async _miscBorrarFoto(fotoId, miscId) {
+    try {
+      await API.delete('/miscelaneos/fotos/' + fotoId);
+      WMS.toast('success', 'Foto eliminada');
+      this._miscEditar(miscId);
+    } catch(e) { WMS.toast('error', 'Error al eliminar foto'); }
+  },
+
+  async _miscVerFotos(id) {
+    const item = this._miscData.find(i => i.id === id);
+    if (!item || !(item.fotos||[]).length) { WMS.toast('info', 'Sin fotos registradas'); return; }
+    const baseUrl = window.location.origin + '/WMS_FENIX/public';
+    WMS.showModal('Fotos — ' + (item.articulo||''), `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;">
+        ${item.fotos.map((f,i) => `
+          <div style="border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;">
+            <img src="${baseUrl + f.url}" style="width:100%;height:150px;object-fit:cover;cursor:pointer;"
+                 onclick="window.open('${baseUrl + f.url}','_blank')">
+            <div style="padding:4px 8px;font-size:.72rem;color:#64748b;text-align:center;">Foto ${i+1}</div>
+          </div>`).join('')}
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>`);
+  },
+
+  _miscEliminar(id, nombre) {
+    WMS.confirm('Eliminar Misceláneo', `¿Eliminar "<strong>${WMS.esc(nombre)}</strong>"? Esta acción no se puede deshacer.`, async () => {
+      const r = await API.delete('/miscelaneos/' + id);
+      if (r.error) WMS.toast('error', r.message);
+      else { WMS.toast('success', 'Eliminado'); this.show_miscelaneos(); }
+    });
   }
 };

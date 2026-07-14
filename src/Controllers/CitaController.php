@@ -84,7 +84,7 @@ class CitaController extends BaseController
             $cita->proveedor      = $nombreProv;
             $cita->fecha          = $data['fecha'];
             $cita->hora_programada= $data['hora_programada'];
-            $cita->cantidad_cajas = (int)($data['cantidad_cajas'] ?? 0);
+            $cita->cantidad_cajas = ceil((float)($data['cantidad_cajas'] ?? 0));
             $cita->tipo_vehiculo  = $data['tipo_vehiculo'] ?? null;
             $cita->kilos          = $data['kilos'] ?? 0;
             $cita->odc            = $data['odc'] ?? null;

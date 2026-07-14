@@ -28,6 +28,7 @@ class SlottingController extends BaseController
     private const ZONA_PRIORIDAD = ['oro' => 1, 'plata' => 2, 'bronce' => 3, 'frio' => 4, 'peligroso' => 5];
 
     // ── GET /api/slotting ─────────────────────────────────────────────────────
+    // Columnas reales: ubicacion_sugerida_id, score_afinidad, motivo_recomendacion
     public function index(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
@@ -35,24 +36,27 @@ class SlottingController extends BaseController
         $limit  = min((int)($params['limit'] ?? 100), 500);
 
         $q = Capsule::table('ubicaciones_optimas as uo')
-            ->join('productos as p',   'uo.producto_id',  '=', 'p.id')
-            ->join('ubicaciones as ub', 'uo.ubicacion_id', '=', 'ub.id')
+            ->join('productos as p',   'uo.producto_id',         '=', 'p.id')
+            ->join('ubicaciones as ub', 'uo.ubicacion_sugerida_id', '=', 'ub.id')
+            ->join('clasificaciones_abc_xyz as c',
+                fn($j) => $j->on('c.producto_id', '=', 'uo.producto_id')
+                             ->where('c.vigente', true))
             ->where('uo.empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('uo.sucursal_id', $user->sucursal_id)
-            ->where('uo.vigente', true)
             ->select(
-                'uo.*',
+                'uo.id', 'uo.producto_id', 'uo.ubicacion_sugerida_id',
+                'uo.score_afinidad', 'uo.motivo_recomendacion',
+                'uo.created_at', 'uo.updated_at',
                 'p.nombre as producto_nombre',
                 'p.codigo_interno as codigo',
                 'ub.codigo as ubicacion_codigo',
                 'ub.zona as zona_actual',
-                'ub.pasillo',
-                'ub.nivel',
-                'ub.distancia_muelle'
+                'ub.pasillo', 'ub.nivel', 'ub.distancia_muelle',
+                'c.segmento', 'c.clase_abc', 'c.clase_xyz'
             );
 
         if (!empty($params['segmento'])) {
-            $q->where('uo.segmento', strtoupper($params['segmento']));
+            $q->where('c.segmento', strtoupper($params['segmento']));
         }
         if (!empty($params['zona'])) {
             $q->where('ub.zona', $params['zona']);
@@ -66,7 +70,7 @@ class SlottingController extends BaseController
         }
 
         $total = (clone $q)->count();
-        $items = $q->orderBy('uo.score_asignacion', 'desc')
+        $items = $q->orderBy('uo.score_afinidad', 'desc')
                    ->limit($limit)
                    ->offset((int)($params['offset'] ?? 0))
                    ->get();
@@ -101,7 +105,8 @@ class SlottingController extends BaseController
             ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('activa', true)
-            ->whereIn('tipo_ubicacion', ['Picking'])
+            ->where('tipo_ubicacion', 'Picking')
+            ->whereIn('estado', ['Libre', 'Parcial'])
             ->orderBy('distancia_muelle', 'asc')
             ->orderBy('accesibilidad', 'desc')
             ->get()
@@ -116,7 +121,7 @@ class SlottingController extends BaseController
 
         foreach ($ordenSegmentos as $seg) {
             $productosSegmento = $clasificaciones->filter(
-                fn($c) => ($c->clase_abc . $c->clase_xyz) === $seg
+                fn($c) => ($c->segmento ?? ($c->clase_abc . $c->clase_xyz)) === $seg
             );
 
             // Zona ideal para cada segmento
@@ -137,32 +142,38 @@ class SlottingController extends BaseController
                 // Score de asignación (0–10)
                 $score = $this->_calcularScore($clas, $ub, $zonaIdeal);
 
-                // Verificar ubicación actual para detectar cambio necesario
+                // Verificar asignación actual para detectar cambio necesario
                 $actual = Capsule::table('ubicaciones_optimas')
                     ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
                     ->where('sucursal_id', $user->sucursal_id)
                     ->where('producto_id', $clas->producto_id)
-                    ->where('vigente', true)
+                    ->orderBy('created_at', 'desc')
                     ->first();
 
-                $necesitaCambio = !$actual || $actual->ubicacion_id !== $ub->id;
+                $necesitaCambio = !$actual || $actual->ubicacion_sugerida_id !== $ub->id;
 
                 $sugerencias[] = [
                     'producto_id'          => $clas->producto_id,
-                    'ubicacion_id'         => $ub->id,
+                    'ubicacion_sugerida_id'=> $ub->id,
                     'ubicacion_codigo'     => $ub->codigo,
                     'segmento'             => $seg,
                     'zona_recomendada'     => $zonaIdeal,
-                    'score_asignacion'     => $score,
+                    'score_afinidad'       => $score,
                     'necesita_cambio'      => $necesitaCambio,
-                    'ubicacion_actual'     => $actual ? $actual->ubicacion_id : null,
+                    'ubicacion_actual_id'  => $actual ? $actual->ubicacion_sugerida_id : null,
                     'motivo'               => "Segmento {$seg} → zona {$zonaIdeal} (score: {$score})",
                 ];
 
                 // Si no es solo sugerencias, aplicar directamente
                 if (!$soloSugerencias) {
-                    $this->_aplicarAsignacion($user, $clas->producto_id, $ub->id, $seg, $score,
-                        "Segmento {$seg} → zona {$zonaIdeal} (score: {$score})");
+                    $this->_aplicarAsignacion(
+                        $this->getEffectiveEmpresaId($user, $r),
+                        $user->sucursal_id,
+                        $clas->producto_id,
+                        $ub->id,
+                        $score,
+                        "Segmento {$seg} → zona {$zonaIdeal} (score: {$score})"
+                    );
                 }
             }
         }
@@ -185,7 +196,7 @@ class SlottingController extends BaseController
     }
 
     // ── POST /api/slotting/aprobar/{id} ───────────────────────────────────────
-    // Supervisor aprueba manualmente una sugerencia de cambio de ubicación
+    // Supervisor aprueba una sugerencia: actualiza motivo_recomendacion con la aprobación
     public function aprobar(Request $r, Response $res, array $a): Response
     {
         $user = $r->getAttribute('user');
@@ -198,16 +209,11 @@ class SlottingController extends BaseController
 
         if (!$asig) return $this->notFound($res);
 
+        // Anotar aprobación en motivo_recomendacion (no hay columnas de aprobación en el esquema real)
+        $motivoActual = $asig->motivo_recomendacion ?? '';
         Capsule::table('ubicaciones_optimas')->where('id', $a['id'])->update([
-            'vigente'       => true,
-            'aprobado_por'  => $user->id,
-            'aprobado_at'   => date('Y-m-d H:i:s'),
-        ]);
-
-        // Actualizar zona de la ubicación física
-        Capsule::table('ubicaciones')->where('id', $asig->ubicacion_id)->update([
-            'producto_id' => $asig->producto_id,
-            'updated_at'  => date('Y-m-d H:i:s'),
+            'motivo_recomendacion' => $motivoActual . ' [APROBADO por usuario_id=' . $user->id . ' el ' . date('Y-m-d H:i:s') . ']',
+            'updated_at'           => date('Y-m-d H:i:s'),
         ]);
 
         $this->audit($user, 'slotting', 'aprobar', 'ubicaciones_optimas', $a['id']);
@@ -221,9 +227,13 @@ class SlottingController extends BaseController
         $user = $r->getAttribute('user');
         if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
-        Capsule::table('ubicaciones_optimas')->where('id', $a['id'])
+        // Eliminar la sugerencia rechazada (no hay columna vigente en el esquema real)
+        $deleted = Capsule::table('ubicaciones_optimas')
+            ->where('id',         $a['id'])
             ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
-            ->update(['vigente' => false, 'vigente_hasta' => date('Y-m-d')]);
+            ->delete();
+
+        if (!$deleted) return $this->notFound($res);
 
         $this->audit($user, 'slotting', 'rechazar', 'ubicaciones_optimas', $a['id']);
 
@@ -240,13 +250,14 @@ class SlottingController extends BaseController
             return $this->error($res, 'Requiere PostgreSQL', 503);
         }
 
-        // Detecta productos en zona incorrecta comparando segmento vs zona actual
+        // Detecta productos en zona incorrecta comparando segmento vs zona sugerida
+        // Usa columnas reales: ubicacion_sugerida_id, score_afinidad (no vigente/ubicacion_id)
         $sugerencias = Capsule::select("
             SELECT
                 c.producto_id,
                 p.nombre AS producto_nombre,
                 p.codigo_interno AS codigo,
-                (c.clase_abc || c.clase_xyz) AS segmento,
+                c.segmento,
                 ub_actual.zona AS zona_actual,
                 CASE
                     WHEN c.clase_abc = 'A' THEN 'oro'
@@ -254,15 +265,16 @@ class SlottingController extends BaseController
                     ELSE 'bronce'
                 END AS zona_recomendada,
                 c.total_valor,
-                uo.score_asignacion
+                uo.score_afinidad
             FROM clasificaciones_abc_xyz c
             JOIN productos p ON c.producto_id = p.id
-            LEFT JOIN ubicaciones_optimas uo
-                ON  uo.producto_id   = c.producto_id
-                AND uo.empresa_id    = c.empresa_id
-                AND uo.sucursal_id   = c.sucursal_id
-                AND uo.vigente       = TRUE
-            LEFT JOIN ubicaciones ub_actual ON ub_actual.id = uo.ubicacion_id
+            LEFT JOIN (
+                SELECT DISTINCT ON (producto_id) *
+                FROM ubicaciones_optimas
+                WHERE empresa_id = ? AND sucursal_id = ?
+                ORDER BY producto_id, created_at DESC
+            ) uo ON uo.producto_id = c.producto_id
+            LEFT JOIN ubicaciones ub_actual ON ub_actual.id = uo.ubicacion_sugerida_id
             WHERE c.empresa_id  = ?
               AND c.sucursal_id = ?
               AND c.vigente     = TRUE
@@ -273,7 +285,10 @@ class SlottingController extends BaseController
               )
             ORDER BY c.total_valor DESC
             LIMIT 100
-        ", [$this->getEffectiveEmpresaId($user, $r), $user->sucursal_id]);
+        ", [
+            $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id,
+            $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id,
+        ]);
 
         return $this->ok($res, ['sugerencias' => $sugerencias, 'total' => count($sugerencias)]);
     }
@@ -284,13 +299,18 @@ class SlottingController extends BaseController
     {
         $user = $r->getAttribute('user');
 
+        // Usar DISTINCT ON para obtener la última sugerencia por ubicación
+        $empId = $this->getEffectiveEmpresaId($user, $r);
+        $sucId = $user->sucursal_id;
+
         $ubicaciones = Capsule::table('ubicaciones as ub')
-            ->where('ub.empresa_id',  $this->getEffectiveEmpresaId($user, $r))
-            ->where('ub.sucursal_id', $user->sucursal_id)
+            ->where('ub.empresa_id',  $empId)
+            ->where('ub.sucursal_id', $sucId)
             ->where('ub.activa', true)
             ->leftJoin('ubicaciones_optimas as uo',
-                fn($j) => $j->on('uo.ubicacion_id', '=', 'ub.id')
-                             ->where('uo.vigente', true))
+                fn($j) => $j->on('uo.ubicacion_sugerida_id', '=', 'ub.id')
+                             ->where('uo.empresa_id', $empId)
+                             ->where('uo.sucursal_id', $sucId))
             ->leftJoin('productos as p', 'uo.producto_id', '=', 'p.id')
             ->leftJoin('clasificaciones_abc_xyz as c',
                 fn($j) => $j->on('c.producto_id', '=', 'uo.producto_id')
@@ -300,8 +320,8 @@ class SlottingController extends BaseController
                 'ub.nivel', 'ub.posicion', 'ub.zona', 'ub.estado',
                 'ub.ocupacion_pct', 'ub.capacidad_kg', 'ub.capacidad_m3',
                 'p.nombre as producto_nombre', 'p.codigo_interno as producto_codigo',
-                Capsule::raw("(c.clase_abc || c.clase_xyz) AS segmento"),
-                'uo.score_asignacion'
+                'c.segmento',
+                'uo.score_afinidad'
             )
             ->orderBy('ub.pasillo')
             ->orderBy('ub.estanteria')
@@ -333,24 +353,31 @@ class SlottingController extends BaseController
         $user = $r->getAttribute('user');
 
         $items = Capsule::table('ubicaciones_optimas as uo')
-            ->join('productos as p',    'uo.producto_id',  '=', 'p.id')
-            ->join('ubicaciones as ub', 'uo.ubicacion_id', '=', 'ub.id')
+            ->join('productos as p',   'uo.producto_id',          '=', 'p.id')
+            ->join('ubicaciones as ub', 'uo.ubicacion_sugerida_id', '=', 'ub.id')
+            ->join('clasificaciones_abc_xyz as c',
+                fn($j) => $j->on('c.producto_id', '=', 'uo.producto_id')
+                             ->where('c.vigente', true))
             ->where('uo.empresa_id',  $this->getEffectiveEmpresaId($user, $r))
             ->where('uo.sucursal_id', $user->sucursal_id)
-            ->where('uo.vigente', true)
-            ->select('p.codigo_interno', 'p.nombre', 'uo.segmento',
-                     'ub.codigo as ubicacion', 'ub.zona', 'ub.pasillo',
-                     'uo.score_asignacion', 'uo.motivo', 'uo.vigente_desde')
-            ->orderBy('uo.score_asignacion', 'desc')
+            ->select(
+                'p.codigo_interno', 'p.nombre',
+                'c.segmento', 'c.clase_abc', 'c.clase_xyz',
+                'ub.codigo as ubicacion', 'ub.zona', 'ub.pasillo',
+                'uo.score_afinidad', 'uo.motivo_recomendacion', 'uo.created_at as vigente_desde'
+            )
+            ->orderBy('uo.score_afinidad', 'desc')
             ->get();
 
-        $headers = ['Código Producto', 'Producto', 'Segmento', 'Ubicación',
-                    'Zona', 'Pasillo', 'Score', 'Motivo', 'Vigente Desde'];
+        $headers = ['Código Producto', 'Producto', 'Segmento', 'Clase ABC', 'Clase XYZ',
+                    'Ubicación', 'Zona', 'Pasillo', 'Score Afinidad', 'Motivo', 'Fecha Sugerencia'];
 
         $rows = $items->map(fn($i) => [
-            $i->codigo_interno, $i->nombre, $i->segmento ?? '—', $i->ubicacion,
-            $i->zona, $i->pasillo, $i->score_asignacion ?? '—',
-            $i->motivo ?? '—', $i->vigente_desde ?? '—',
+            $i->codigo_interno, $i->nombre,
+            $i->segmento ?? ($i->clase_abc . $i->clase_xyz), $i->clase_abc, $i->clase_xyz,
+            $i->ubicacion, $i->zona, $i->pasillo,
+            $i->score_afinidad ?? '—',
+            $i->motivo_recomendacion ?? '—', $i->vigente_desde ?? '—',
         ])->toArray();
 
         return $this->exportCsv($res, $headers, $rows, 'slotting_' . date('Y-m-d'));
@@ -380,9 +407,13 @@ class SlottingController extends BaseController
 
         // +2 si la zona de la ubicación coincide con la ideal
         $zonaUb = $ubicacion->zona ?? 'bronce';
-        if ($zonaUb === $zonaIdeal) $score += 2.0;
-        elseif (self::ZONA_PRIORIDAD[$zonaUb] ?? 5 < self::ZONA_PRIORIDAD[$zonaIdeal] ?? 5) $score += 0.5;
-        else $score -= 1.0;
+        if ($zonaUb === $zonaIdeal) {
+            $score += 2.0;
+        } elseif ((self::ZONA_PRIORIDAD[$zonaUb] ?? 5) < (self::ZONA_PRIORIDAD[$zonaIdeal] ?? 5)) {
+            $score += 0.5;
+        } else {
+            $score -= 1.0;
+        }
 
         // +1 si tiene alta accesibilidad
         if (($ubicacion->accesibilidad ?? 3) >= 4) $score += 1.0;
@@ -392,35 +423,34 @@ class SlottingController extends BaseController
         elseif (($ubicacion->distancia_muelle ?? 999) < 50) $score += 0.5;
 
         // -1 si el coeficiente de variación es alto (demanda errática = difícil planificar)
-        if (($clasificacion->coef_variacion ?? 0) > 1.0) $score -= 1.0;
+        // Columna real en clasificaciones_abc_xyz: cv_demanda (no coef_variacion)
+        if (($clasificacion->cv_demanda ?? 0) > 1.0) $score -= 1.0;
 
         return round(min(max($score, 0), 10), 2);
     }
 
-    private function _aplicarAsignacion($user, int $productoId, int $ubicacionId,
-                                         string $segmento, float $score, string $motivo): void
+    // Firma corregida: recibe $empId y $sucId directamente (no $user ni $r)
+    // Usa columnas reales: ubicacion_sugerida_id, score_afinidad, motivo_recomendacion
+    private function _aplicarAsignacion(int $empId, int $sucId, int $productoId,
+                                         int $ubicacionId, float $score, string $motivo): void
     {
-        // Desactivar asignación anterior
+        // Eliminar sugerencia anterior del mismo producto (no hay columna vigente)
         Capsule::table('ubicaciones_optimas')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
-            ->where('sucursal_id', $user->sucursal_id)
+            ->where('empresa_id',  $empId)
+            ->where('sucursal_id', $sucId)
             ->where('producto_id', $productoId)
-            ->where('vigente', true)
-            ->update(['vigente' => false, 'vigente_hasta' => date('Y-m-d')]);
+            ->delete();
 
-        // Insertar nueva asignación (requiere aprobación de supervisor)
+        // Insertar nueva sugerencia usando columnas reales de la tabla
         Capsule::table('ubicaciones_optimas')->insert([
-            'empresa_id'           => $this->getEffectiveEmpresaId($user, $r),
-            'sucursal_id'          => $user->sucursal_id,
-            'producto_id'          => $productoId,
-            'ubicacion_id'         => $ubicacionId,
-            'segmento'             => $segmento,
-            'score_asignacion'     => $score,
-            'motivo'               => $motivo,
-            'vigente_desde'        => date('Y-m-d'),
-            'vigente'              => true,
-            'creado_at'            => date('Y-m-d H:i:s'),
-            'creado_por'           => 'motor_slotting',
+            'empresa_id'            => $empId,
+            'sucursal_id'           => $sucId,
+            'producto_id'           => $productoId,
+            'ubicacion_sugerida_id' => $ubicacionId,
+            'score_afinidad'        => $score,
+            'motivo_recomendacion'  => $motivo,
+            'created_at'            => date('Y-m-d H:i:s'),
+            'updated_at'            => date('Y-m-d H:i:s'),
         ]);
     }
 

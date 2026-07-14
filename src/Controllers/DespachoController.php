@@ -8,11 +8,12 @@ use App\Models\Despacho;
 use App\Models\CertificacionDespacho;
 use App\Models\Inventario;
 use App\Models\MovimientoInventario;
+use App\Models\OrdenPicking;
 use Illuminate\Database\Capsule\Manager as Capsule;
 
 /**
  * DespachoController — Preparación, certificación y cierre de despachos.
- * Flujo: Preparando → Certificado → Despachado
+ * Flujo: Preparando → Certificado → Despachado → Entregado (liquidar)
  * Cada transición queda en audit_logs y movimiento_inventarios.
  */
 class DespachoController extends BaseController
@@ -53,7 +54,11 @@ class DespachoController extends BaseController
         $sucursalId = $this->getEffectiveSucursalId($user, $r);
         $d    = Despacho::where('empresa_id', $empresaId)
             ->where('sucursal_id', $sucursalId)
-            ->with('certificaciones.producto')
+            ->with([
+                'certificaciones.producto',
+                'ordenes:id,numero_orden,planilla_numero,cliente,sucursal_entrega,estado,estado_certificacion,estado_despacho,fecha_movimiento',
+                'rutaObj:id,nombre',
+            ])
             ->find($a['id']);
         if (!$d) return $this->notFound($res);
         return $this->ok($res, $d);
@@ -71,12 +76,20 @@ class DespachoController extends BaseController
             $despacho = Despacho::create([
                 'empresa_id'      => $empresaId,
                 'sucursal_id'     => $sucursalId,
-                'numero_despacho' => 'DSP-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5)),
-                'cliente'         => $data['cliente']   ?? null,
-                'ruta'            => $data['ruta']      ?? null,
-                'muelle_id'       => $data['muelle_id'] ?? null,
+                'numero_despacho' => Despacho::generarNumero($sucursalId),
+                'cliente'         => $data['cliente']      ?? null,
+                'ruta_id'         => !empty($data['ruta_id']) ? (int)$data['ruta_id'] : null,
+                'ruta'            => $data['ruta'] ?? (
+                    !empty($data['ruta_id'])
+                        ? (\App\Models\Ruta::find((int)$data['ruta_id'])?->nombre ?? null)
+                        : null
+                ),
+                'conductor'       => $data['conductor']    ?? null,
+                'placa'           => $data['placa']        ?? null,
+                'muelle_id'       => $data['muelle_id']    ?? null,
                 'total_bultos'    => $data['total_bultos'] ?? 0,
                 'peso_total'      => $data['peso_total']   ?? 0,
+                'observaciones'   => $data['observaciones'] ?? null,
                 'auxiliar_id'     => $data['auxiliar_id']  ?? null,
                 'fecha_movimiento'=> $data['fecha']        ?? date('Y-m-d'),
                 'hora_inicio'     => date('H:i:s'),
@@ -120,7 +133,7 @@ class DespachoController extends BaseController
                     'despacho_id'         => $despacho->id,
                     'producto_id'         => $data['producto_id'],
                     'lote'                => $data['lote'] ?? null,
-                    'cantidad_certificada'=> (int)$data['cantidad_certificada'],
+                    'cantidad_certificada'=> (float)$data['cantidad_certificada'],
                     'escaneado_por'       => $data['escaneado_por'],
                 ]);
 
@@ -132,7 +145,7 @@ class DespachoController extends BaseController
                     ->lockForUpdate()
                     ->first();
                 if ($inv) {
-                    $inv->cantidad = max(0, ($inv->cantidad ?? 0) - (int)$data['cantidad_certificada']);
+                    $inv->cantidad = max(0, ($inv->cantidad ?? 0) - (float)$data['cantidad_certificada']);
                     $inv->save();
                 }
 
@@ -142,7 +155,7 @@ class DespachoController extends BaseController
                     'sucursal_id'          => $sucursalId,
                     'producto_id'          => $data['producto_id'],
                     'tipo_movimiento'      => 'Salida',
-                    'cantidad'             => (int)$data['cantidad_certificada'],
+                    'cantidad'             => (float)$data['cantidad_certificada'],
                     'ubicacion_origen_id'  => $data['ubicacion_id'] ?? null,
                     'ubicacion_destino_id' => null,
                     'lote'                 => $data['lote'] ?? null,
@@ -224,6 +237,141 @@ class DespachoController extends BaseController
             $snapshot, null, "Despacho {$snapshot['numero_despacho']} eliminado por Admin");
 
         return $this->ok($res, null, 'Despacho eliminado');
+    }
+
+    // ── POST /api/despachos/{id}/pedidos ─────────────────────────────────────
+    // Asocia ordenes de picking al despacho y las marca como 'Despachado'.
+    public function agregarPedidos(Request $r, Response $res, array $a): Response
+    {
+        $user      = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId= $this->getEffectiveSucursalId($user, $r);
+        $data      = $r->getParsedBody() ?? [];
+
+        $despacho = Despacho::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find($a['id']);
+        if (!$despacho) return $this->notFound($res);
+        if ($despacho->estado === 'Entregado') {
+            return $this->error($res, 'El despacho ya fue liquidado');
+        }
+
+        $ordenIds = array_filter(array_map('intval', (array)($data['orden_ids'] ?? [])));
+        if (empty($ordenIds)) {
+            return $this->error($res, 'Debe seleccionar al menos un pedido');
+        }
+
+        try {
+            Capsule::transaction(function () use ($despacho, $ordenIds, $empresaId, $sucursalId) {
+                // Verifica que las ordenes sean válidas y de la misma empresa/sucursal
+                $ordenes = OrdenPicking::where('empresa_id', $empresaId)
+                    ->where('sucursal_id', $sucursalId)
+                    ->whereIn('id', $ordenIds)
+                    ->get();
+
+                foreach ($ordenes as $orden) {
+                    // Evita duplicados con sincronización sin detach
+                    Capsule::table('despacho_ordenes')->insertOrIgnore([
+                        'despacho_id'      => $despacho->id,
+                        'orden_picking_id' => $orden->id,
+                        'created_at'       => date('Y-m-d H:i:s'),
+                        'updated_at'       => date('Y-m-d H:i:s'),
+                    ]);
+                    // Marca la orden como Despachada
+                    $orden->estado_despacho = 'Despachado';
+                    $orden->despacho_id     = $despacho->id;
+                    $orden->save();
+                }
+            });
+
+            $this->audit($user, 'despacho', 'agregar_pedidos', 'despachos', $despacho->id,
+                null, ['orden_ids' => $ordenIds],
+                "Pedidos " . implode(',', $ordenIds) . " asociados al despacho {$despacho->numero_despacho}");
+
+            $despacho->load('ordenes');
+            return $this->ok($res, $despacho, 'Pedidos asociados correctamente');
+        } catch (\Exception $e) {
+            return $this->error($res, $e->getMessage());
+        }
+    }
+
+    // ── DELETE /api/despachos/{id}/pedidos/{orden_id} ─────────────────────────
+    public function eliminarPedido(Request $r, Response $res, array $a): Response
+    {
+        $user      = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId= $this->getEffectiveSucursalId($user, $r);
+
+        $despacho = Despacho::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find($a['id']);
+        if (!$despacho) return $this->notFound($res);
+        if ($despacho->estado === 'Entregado') {
+            return $this->error($res, 'No se puede modificar un despacho liquidado');
+        }
+
+        $ordenId = (int)$a['orden_id'];
+        Capsule::table('despacho_ordenes')
+            ->where('despacho_id', $despacho->id)
+            ->where('orden_picking_id', $ordenId)
+            ->delete();
+
+        // Revierte estado_despacho si no está en otro despacho
+        $enOtro = Capsule::table('despacho_ordenes')
+            ->where('orden_picking_id', $ordenId)
+            ->exists();
+        if (!$enOtro) {
+            OrdenPicking::where('id', $ordenId)
+                ->update(['estado_despacho' => null, 'despacho_id' => null]);
+        }
+
+        return $this->ok($res, null, 'Pedido removido del despacho');
+    }
+
+    // ── POST /api/despachos/{id}/liquidar ─────────────────────────────────────
+    // Liquida el despacho: marca estado='Entregado' y ordenes como 'Entregado'.
+    public function liquidar(Request $r, Response $res, array $a): Response
+    {
+        $user      = $r->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId= $this->getEffectiveSucursalId($user, $r);
+
+        $despacho = Despacho::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find($a['id']);
+        if (!$despacho) return $this->notFound($res);
+        if ($despacho->estado === 'Entregado') {
+            return $this->error($res, 'El despacho ya fue liquidado');
+        }
+
+        try {
+            Capsule::transaction(function () use ($despacho) {
+                $despacho->estado   = 'Entregado';
+                $despacho->hora_fin = date('H:i:s');
+                $despacho->save();
+
+                // Marca todas las ordenes del despacho como Entregadas
+                $ordenIds = Capsule::table('despacho_ordenes')
+                    ->where('despacho_id', $despacho->id)
+                    ->pluck('orden_picking_id')
+                    ->toArray();
+
+                if (!empty($ordenIds)) {
+                    OrdenPicking::whereIn('id', $ordenIds)
+                        ->update(['estado_despacho' => 'Entregado']);
+                }
+            });
+
+            $this->audit($user, 'despacho', 'liquidar', 'despachos', $despacho->id,
+                ['estado' => 'Despachado'], ['estado' => 'Entregado'],
+                "Despacho {$despacho->numero_despacho} liquidado — pedidos marcados Entregado");
+
+            return $this->ok($res, $despacho, 'Despacho liquidado. Los pedidos han sido marcados como Entregados.');
+        } catch (\Exception $e) {
+            return $this->error($res, $e->getMessage());
+        }
     }
 
     // ── GET /api/despachos/{id}/reporte ──────────────────────────────────────

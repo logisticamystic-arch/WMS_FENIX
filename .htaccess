@@ -1,5 +1,5 @@
 RewriteEngine On
 
-# Redirect everything to public/index.php except existing files
-RewriteCond %{REQUEST_URI} !^/WMS_FENIX/public/
-RewriteRule ^(.*)$ public/$1 [L]
+RewriteCond %{REQUEST_URI} !^/WMS_FENIX/public/ [NC]
+RewriteCond %{REQUEST_URI} !^/WMS_FENIX/monitor/ [NC]
+RewriteRule ^(.*)$ /WMS_FENIX/public/$1 [R=301,L]

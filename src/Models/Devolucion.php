@@ -17,6 +17,8 @@ class Devolucion extends BaseModel
         'estado', 'motivo_general', 'fotos_json', 'observaciones',
         'autorizado_por', 'fecha_autorizacion', 'fecha_devolucion',
         'aprobado_por', 'procesado_por', 'aprobado_at', 'procesado_at',
+        'causal_devolucion_id', 'responsable_devolucion', 'ubicacion_patio_id',
+        'cliente_origen_id', 'sucursal_origen_id',
     ];
 
     protected $casts = [
@@ -52,7 +54,9 @@ class Devolucion extends BaseModel
     public function solicitante(){ return $this->belongsTo(Personal::class, 'solicitado_por'); }
     public function aprobador()  { return $this->belongsTo(Personal::class, 'aprobado_por'); }
     public function procesador() { return $this->belongsTo(Personal::class, 'procesado_por'); }
-    public function detalles()   { return $this->hasMany(DevolucionDetalle::class); }
+    public function detalles()        { return $this->hasMany(DevolucionDetalle::class); }
+    public function causal()          { return $this->belongsTo(CausalDevolucion::class, 'causal_devolucion_id'); }
+    public function ubicacionPatio()  { return $this->belongsTo(Ubicacion::class, 'ubicacion_patio_id'); }
 
     public static function generarNumero(int $empresaId): string
     {
