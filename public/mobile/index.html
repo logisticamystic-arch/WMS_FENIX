@@ -4336,7 +4336,8 @@ const MWMS = {
     const cont = document.getElementById('iv-ref-lines-here');
     if (!cont) return;
     try {
-      const r = await mApi('GET', `/v2/inventario/sesiones/${this._op.id}/mis-lineas`, asigId ? `asignacion_id=${asigId}` : '');
+      const qs = asigId ? `?asignacion_id=${asigId}` : '';
+      const r = await mApi('GET', `/v2/inventario/sesiones/${this._op.id}/mis-lineas${qs}`);
       const lines = r.data || [];
       if (!lines.length) { cont.innerHTML = ''; return; }
       cont.innerHTML = `
@@ -4391,6 +4392,7 @@ const MWMS = {
         fecha_vencimiento: fv || null,
         lote:              null,
         ronda:             this._op.ronda_actual || 1,
+        asignacion_id:     this._ivRefAsigId,
       });
       this.toast('Conteo guardado', 'success');
       document.getElementById('iv-ref-ubic').value   = '';
