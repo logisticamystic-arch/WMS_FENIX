@@ -3528,7 +3528,8 @@ const MWMS = {
         cantidad_cajas:       upc > 1 ? cajas : 0,
         saldos:               saldos,
         lote:                 s.lote,
-        fecha_vencimiento:    s.fecha_vencimiento
+        fecha_vencimiento:    s.fecha_vencimiento,
+        numero_pallet:        s.numero_pallet
       });
       this.toast("Traslado registrado correctamente","success");
       this.showHome();
