@@ -5487,109 +5487,115 @@ const MWMS = {
       document.getElementById('m-content').innerHTML = `
         <div class="op-view" style="padding-bottom:20px;">
 
-          <!-- ── Cabecera: ubicación + planilla ── -->
-          <div style="background:#0f172a;color:#fff;margin:-10px -10px 12px;padding:12px 14px;">
+          <!-- ── Cabecera compacta: cliente + acciones ── -->
+          <div style="background:#0f172a;color:#fff;margin:-10px -10px 8px;padding:8px 10px;">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
               <div style="flex:1;min-width:0;">
-                <div style="font-size:.5rem;font-weight:700;opacity:.5;text-transform:uppercase;letter-spacing:.5px;">DIRÍGETE A</div>
-                ${it.ubicacion_codigo
-                  ? `<div style="font-size:1.3rem;font-weight:900;font-family:monospace;letter-spacing:1px;white-space:nowrap;line-height:1.1;" id="pk-ubi-txt">
-                       ${this._shortUbic(it.ubicacion_codigo)}
-                     </div>`
-                  : `<div style="font-size:.9rem;color:#fbbf24;font-weight:800;"><i class="fa-solid fa-triangle-exclamation"></i> SIN UBICACIÓN</div>`
-                }
+                <div style="font-size:.5rem;font-weight:700;opacity:.55;text-transform:uppercase;letter-spacing:.5px;">CLIENTE</div>
+                <div style="font-size:.82rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.esc(sucEnt || 'Sin cliente asignado')}</div>
               </div>
-              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
-                <div style="font-size:.88rem;font-weight:900;font-family:monospace;background:rgba(255,255,255,.12);border-radius:5px;padding:2px 8px;">${planillaNumero}</div>
-                ${tienesFotos
-                  ? `<button onclick="MWMS.viewProductoDetail(${it.producto_id},'MWMS.renderPKConsolidado(MWMS._itemsPlanilla[MWMS._idxActual],\\'${planillaNumero}\\')')"
-                       style="background:#0284c7;border:none;color:#fff;border-radius:6px;padding:4px 10px;font-size:.68rem;font-weight:800;cursor:pointer;">
-                       <i class="fa-solid fa-camera"></i> ${numFotos}
-                     </button>`
-                  : ''}
-              </div>
+              <div style="font-size:.8rem;font-weight:900;font-family:monospace;background:rgba(255,255,255,.12);border-radius:5px;padding:3px 8px;flex-shrink:0;">${planillaNumero}</div>
             </div>
-            ${sucEnt ? `
-            <div style="margin-top:8px;background:rgba(59,130,246,.2);border:1px solid rgba(59,130,246,.3);border-radius:5px;padding:4px 10px;display:flex;align-items:center;gap:6px;">
-              <i class="fa-solid fa-location-dot" style="color:#60a5fa;font-size:.7rem;"></i>
-              <span style="color:#bfdbfe;font-size:.68rem;font-weight:700;">ENTREGA:</span>
-              <span style="color:#fff;font-size:.72rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.esc(sucEnt)}</span>
-            </div>` : ''}
+            <div style="display:flex;gap:5px;margin-top:6px;">
+              <button onclick="MWMS._pkVerAlternativas(${it.producto_id},'${it.lote||''}',${it.ubicacion_id||'null'})"
+                style="flex:1;background:rgba(59,130,246,.18);border:1px solid #3b82f6;color:#93c5fd;border-radius:6px;padding:6px 2px;font-size:.6rem;font-weight:800;cursor:pointer;line-height:1.2;">
+                <i class="fa-solid fa-magnifying-glass-location"></i><br>UBICACIÓN
+              </button>
+              ${['Admin','Supervisor','SuperAdmin'].includes(_mUser?.rol) ? `
+              <button onclick="MWMS._pkReemplazarProducto('${planillaNumero}','${it.ids}')"
+                style="flex:1;background:rgba(217,119,6,.18);border:1px solid #d97706;color:#fde68a;border-radius:6px;padding:6px 2px;font-size:.6rem;font-weight:800;cursor:pointer;line-height:1.2;">
+                <i class="fa-solid fa-arrow-right-arrow-left"></i><br>REEMPLAZAR
+              </button>` : ''}
+              <button onclick="MWMS.viewPlanilla('${planillaNumero}')"
+                style="flex:1;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.3);color:#e2e8f0;border-radius:6px;padding:6px 2px;font-size:.6rem;font-weight:800;cursor:pointer;line-height:1.2;">
+                <i class="fa-solid fa-list-ul"></i><br>LISTA
+              </button>
+            </div>
           </div>
 
-          <!-- ── Producto: nombre + SKU + lote + vencimiento ── -->
-          <div class="op-card" style="padding:12px 14px;margin-bottom:10px;">
-            <div style="font-weight:800;color:#1e293b;font-size:1rem;line-height:1.25;margin-bottom:5px;">${this.esc(it.producto_nombre)}</div>
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.7rem;color:#64748b;margin-bottom:8px;">
+          <!-- ── Principal: ubicación + vencimiento + producto ── -->
+          <div class="op-card" style="padding:9px 12px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+              ${it.ubicacion_codigo
+                ? `<div id="pk-ubi-txt" style="font-size:1.25rem;font-weight:900;font-family:monospace;color:#0F4C81;letter-spacing:.5px;line-height:1.1;">${this._shortUbic(it.ubicacion_codigo)}</div>`
+                : `<div style="font-size:.85rem;color:#dc2626;font-weight:800;"><i class="fa-solid fa-triangle-exclamation"></i> SIN UBICACIÓN</div>`
+              }
+              <div style="display:flex;align-items:center;gap:5px;">
+                <span style="background:${vence ? '#fef2f2' : '#f1f5f9'};color:${vence ? '#dc2626' : '#64748b'};border-radius:5px;padding:3px 7px;font-weight:700;font-size:.68rem;white-space:nowrap;">
+                  <i class="fa-solid fa-calendar-days" style="font-size:.58rem;"></i> ${venceTxt}
+                </span>
+                ${tienesFotos ? `
+                <button onclick="MWMS.viewProductoDetail(${it.producto_id},'MWMS.renderPKConsolidado(MWMS._itemsPlanilla[MWMS._idxActual],\\'${planillaNumero}\\')')"
+                  style="background:#e0f2fe;border:1px solid #bae6fd;color:#0284c7;border-radius:5px;padding:3px 7px;font-size:.65rem;font-weight:700;cursor:pointer;">
+                  <i class="fa-solid fa-camera"></i> ${numFotos}
+                </button>` : ''}
+              </div>
+            </div>
+            <div style="font-weight:800;color:#1e293b;font-size:.9rem;line-height:1.2;">${this.esc(it.producto_nombre)}</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.66rem;color:#64748b;margin-top:3px;">
               <span style="font-family:monospace;font-weight:700;">${it.producto_codigo}</span>
               ${it.lote ? `<span>· Lote <b>${it.lote}</b></span>` : ''}
-              <span style="background:${vence ? '#fef2f2' : '#f1f5f9'};color:${vence ? '#dc2626' : '#64748b'};border-radius:4px;padding:1px 6px;font-weight:700;white-space:nowrap;">
-                <i class="fa-solid fa-calendar-days" style="font-size:.6rem;"></i> ${venceTxt}
+              <span style="margin-left:auto;font-weight:700;color:#0F4C81;white-space:nowrap;">
+                Pedido: ${it.cantidad_total}${usaCajas ? ` cj (${it.cantidad_total * factor} und${factor > 1 ? `, UxC ${factor}` : ''})` : ' und'}
               </span>
-            </div>
-            <!-- Pedido total -->
-            <div style="display:flex;align-items:center;gap:8px;background:#eff6ff;border-radius:8px;padding:8px 12px;">
-              <div style="flex:1;text-align:center;">
-                <div style="font-size:.5rem;font-weight:700;color:#64748b;text-transform:uppercase;">${usaCajas ? 'Pedido (cajas)' : 'Pedido (und)'}</div>
-                <div style="font-size:2rem;font-weight:900;color:#0F4C81;line-height:1;">${it.cantidad_total}</div>
-                ${usaCajas ? `<div style="font-size:.55rem;color:#64748b;">${it.cantidad_total} × ${factor} = ${it.cantidad_total * factor} und</div>` : ''}
-              </div>
-              ${usaCajas ? `
-              <div style="flex:0 0 auto;background:#fff;border-radius:6px;padding:6px 12px;border:1px solid #bfdbfe;text-align:center;">
-                <div style="font-size:.5rem;font-weight:700;color:#64748b;">UxC</div>
-                <div style="font-size:1rem;font-weight:900;color:#1e293b;">${factor}</div>
-              </div>` : ''}
             </div>
           </div>
 
           <!-- ── Scan ubicación (opcional, no bloquea) ── -->
           ${it.ubicacion_codigo ? `
-          <div id="pk-scan-bar" style="display:flex;align-items:center;gap:8px;background:#fff8e1;border:1px solid #f59e0b;border-radius:10px;padding:8px 12px;margin-bottom:10px;">
-            <i id="pk-loc-icon" class="fa-solid fa-location-crosshairs" style="color:#d97706;font-size:1rem;flex-shrink:0;"></i>
+          <div id="pk-scan-bar" style="display:flex;align-items:center;gap:8px;background:#fff8e1;border:1px solid #f59e0b;border-radius:9px;padding:6px 10px;margin-bottom:8px;">
+            <i id="pk-loc-icon" class="fa-solid fa-location-crosshairs" style="color:#d97706;font-size:.9rem;flex-shrink:0;"></i>
             <input type="text" id="m-pk-scan" placeholder="Escanee ubicación para confirmar (opcional)"
-              style="flex:1;border:none;background:transparent;font-size:.78rem;font-weight:700;color:#374151;outline:none;min-width:0;"
+              style="flex:1;border:none;background:transparent;font-size:.75rem;font-weight:700;color:#374151;outline:none;min-width:0;"
               onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(v)MWMS._pkValidarLoc(v);}">
             <button onclick="(()=>{const v=document.getElementById('m-pk-scan')?.value?.trim();if(v)MWMS._pkValidarLoc(v);})()"
-              style="background:#d97706;color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:.72rem;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+              style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:.7rem;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0;">
               <i class="fa-solid fa-check"></i>
             </button>
           </div>` : ''}
 
           <!-- ── Formulario cantidades: SIEMPRE VISIBLE ── -->
-          <div style="background:#f0fdf4;border:2px solid #10b981;padding:14px;border-radius:12px;margin-bottom:10px;">
-            <div style="font-size:.7rem;font-weight:800;color:#059669;text-align:center;margin-bottom:12px;text-transform:uppercase;letter-spacing:.3px;">
+          <div style="background:#f0fdf4;border:2px solid #10b981;padding:10px;border-radius:11px;margin-bottom:8px;">
+            <div style="font-size:.66rem;font-weight:800;color:#059669;text-align:center;margin-bottom:8px;text-transform:uppercase;letter-spacing:.3px;">
               <i class="fa-solid fa-boxes-stacked"></i> CANTIDAD A SEPARAR
             </div>
-            <div style="display:grid;grid-template-columns:${usaCajas ? '1fr 1fr' : '1fr'};gap:10px;margin-bottom:10px;">
+            <div style="display:grid;grid-template-columns:${usaCajas ? '1fr 1fr' : '1fr'};gap:8px;margin-bottom:8px;">
               <div>
-                <label style="font-size:.68rem;font-weight:700;color:#1e293b;display:block;margin-bottom:4px;">
+                <label style="font-size:.64rem;font-weight:700;color:#1e293b;display:block;margin-bottom:3px;">
                   <i class="fa-solid fa-box-archive" style="color:#0F4C81;"></i>
                   ${usaCajas ? 'Cajas' : 'Cantidad (und)'}
                 </label>
                 <input type="number" id="pk-inline-cajas" value="${sugCajas}" min="0" inputmode="numeric"
-                  style="width:100%;border:2px solid #0F4C81;border-radius:8px;padding:10px 6px;font-size:2rem;font-weight:900;text-align:center;box-sizing:border-box;"
+                  style="width:100%;border:2px solid #0F4C81;border-radius:8px;padding:8px 6px;font-size:1.7rem;font-weight:900;text-align:center;box-sizing:border-box;"
                   oninput="MWMS._updPKInlineTotal(${factor},${usaCajas})">
               </div>
               ${usaCajas ? `
               <div>
-                <label style="font-size:.68rem;font-weight:700;color:#d97706;display:block;margin-bottom:4px;">
+                <label style="font-size:.64rem;font-weight:700;color:#d97706;display:block;margin-bottom:3px;">
                   <i class="fa-solid fa-layer-group" style="color:#d97706;"></i> Saldos (sueltos)
                 </label>
                 <input type="number" id="pk-inline-saldos" value="0" min="0" inputmode="numeric"
-                  style="width:100%;border:2px solid #d97706;border-radius:8px;padding:10px 6px;font-size:2rem;font-weight:900;text-align:center;box-sizing:border-box;"
+                  style="width:100%;border:2px solid #d97706;border-radius:8px;padding:8px 6px;font-size:1.7rem;font-weight:900;text-align:center;box-sizing:border-box;"
                   oninput="MWMS._updPKInlineTotal(${factor},${usaCajas})">
               </div>` : ''}
             </div>
             <!-- Total UND/TOTAL -->
-            <div style="background:#dcfce7;border-radius:8px;padding:8px;text-align:center;margin-bottom:12px;">
-              <div style="font-size:.58rem;font-weight:700;color:#166534;text-transform:uppercase;">UND / TOTAL A SEPARAR</div>
-              <div id="pk-inline-total" style="font-size:2.2rem;font-weight:900;color:#15803d;line-height:1.1;">—</div>
-              <div id="pk-inline-und" style="font-size:.6rem;color:#166534;margin-top:2px;"></div>
+            <div style="background:#dcfce7;border-radius:8px;padding:6px;text-align:center;margin-bottom:8px;">
+              <div style="font-size:.56rem;font-weight:700;color:#166534;text-transform:uppercase;">UND / TOTAL A SEPARAR</div>
+              <div id="pk-inline-total" style="font-size:1.7rem;font-weight:900;color:#15803d;line-height:1.1;">—</div>
+              <div id="pk-inline-und" style="font-size:.58rem;color:#166534;margin-top:2px;"></div>
             </div>
-            <button onclick="MWMS._confirmarPKInline('${planillaNumero}',${factor},${it.cantidad_total},${usaCajas})"
-              style="width:100%;background:#059669;color:#fff;border:none;border-radius:10px;height:54px;font-size:1.05rem;font-weight:900;cursor:pointer;letter-spacing:.3px;">
-              <i class="fa-solid fa-check-double"></i> CONFIRMAR SEPARACIÓN
-            </button>
+            <!-- Agotado + Confirmar, lado a lado -->
+            <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:8px;">
+              <button onclick="MWMS._pkMarcarAgotado('${planillaNumero}','${it.ids}')"
+                style="background:#450a0a;color:#fca5a5;border:1px solid #991b1b;border-radius:9px;height:46px;font-size:.68rem;font-weight:800;cursor:pointer;letter-spacing:.2px;">
+                <i class="fa-solid fa-circle-xmark"></i><br>AGOTADO
+              </button>
+              <button onclick="MWMS._confirmarPKInline('${planillaNumero}',${factor},${it.cantidad_total},${usaCajas})"
+                style="background:#059669;color:#fff;border:none;border-radius:9px;height:46px;font-size:.85rem;font-weight:900;cursor:pointer;letter-spacing:.2px;">
+                <i class="fa-solid fa-check-double"></i> CONFIRMAR
+              </button>
+            </div>
           </div>
 
           <!-- ── RUTA FEFO DINÁMICA ── -->
@@ -5606,10 +5612,6 @@ const MWMS = {
                      <i class="fa-solid fa-triangle-exclamation"></i> Stock en ubicación: <b>${dispAsig}</b> und — insuficiente para <b>${necesario}</b> und
                    </div>` : '';
               return `${alertaStock}
-              <button onclick="MWMS._pkVerAlternativas(${it.producto_id},'${it.lote||''}',${it.ubicacion_id||'null'})"
-                style="width:100%;background:#1e3a5f;color:#93c5fd;border:2px solid #3b82f6;border-radius:10px;height:46px;font-size:.85rem;font-weight:800;cursor:pointer;letter-spacing:.3px;margin-bottom:6px;">
-                <i class="fa-solid fa-magnifying-glass-location"></i> VER OTRA UBICACIÓN
-              </button>
               <div id="pk-alternativas" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px;margin-bottom:6px;"></div>`;
             }
 
@@ -5669,37 +5671,14 @@ const MWMS = {
               ${fifoCards}
               ${pendienteTxt}
             </div>
-            <button onclick="MWMS._pkVerAlternativas(${it.producto_id},'${it.lote||''}',${it.ubicacion_id||'null'})"
-              style="width:100%;background:#1e3a5f;color:#93c5fd;border:1px solid #3b82f6;border-radius:10px;height:38px;font-size:.75rem;font-weight:700;cursor:pointer;letter-spacing:.3px;margin-bottom:6px;">
-              <i class="fa-solid fa-magnifying-glass-location"></i> BUSCAR OTRA UBICACIÓN MANUALMENTE
-            </button>
             <div id="pk-alternativas" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px;margin-bottom:6px;"></div>`;
           })()}
 
-          <!-- ── MARCAR AGOTADO: siempre visible ── -->
-          <button onclick="MWMS._pkMarcarAgotado('${planillaNumero}','${it.ids}')"
-            style="width:100%;background:#450a0a;color:#fca5a5;border:2px solid #991b1b;border-radius:10px;height:46px;font-size:.85rem;font-weight:800;cursor:pointer;letter-spacing:.3px;margin-bottom:6px;">
-            <i class="fa-solid fa-circle-xmark"></i> SIN STOCK FÍSICO — MARCAR AGOTADO
-          </button>
-
-          <!-- ── REEMPLAZAR PRODUCTO (solo admin) ── -->
-          ${['Admin','Supervisor','SuperAdmin'].includes(_mUser?.rol) ? `
-          <button onclick="MWMS._pkReemplazarProducto('${planillaNumero}','${it.ids}')"
-            style="width:100%;background:#78350f;color:#fde68a;border:1px solid #d97706;border-radius:10px;height:40px;font-size:.78rem;font-weight:800;cursor:pointer;letter-spacing:.3px;margin-bottom:10px;">
-            <i class="fa-solid fa-arrow-right-arrow-left"></i> REEMPLAZAR PRODUCTO (admin)
-          </button>` : '<div style="margin-bottom:10px;"></div>'}
-
-          <!-- ── Navegación ── -->
-          <div style="display:grid;grid-template-columns:${nextIdx !== -1 ? '1fr 1fr' : '1fr'};gap:8px;">
-            <button class="m-btn secondary" onclick="MWMS.viewPlanilla('${planillaNumero}')" style="font-size:.75rem;">
-              <i class="fa-solid fa-list-ul"></i> Lista
-            </button>
-            ${nextIdx !== -1 ? `
-            <button onclick="MWMS.initPKConsolidado(${nextIdx},'${planillaNumero}')"
-              style="background:#0F4C81;color:#fff;border:none;border-radius:8px;padding:10px;font-size:.75rem;font-weight:700;cursor:pointer;">
-              <i class="fa-solid fa-forward-step"></i> Siguiente
-            </button>` : ''}
-          </div>
+          ${nextIdx !== -1 ? `
+          <button onclick="MWMS.initPKConsolidado(${nextIdx},'${planillaNumero}')"
+            style="width:100%;background:transparent;color:#64748b;border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:.72rem;font-weight:700;cursor:pointer;margin-top:2px;">
+            <i class="fa-solid fa-forward-step"></i> Saltar a siguiente pendiente
+          </button>` : ''}
         </div>`;
 
       // Inicializar total
