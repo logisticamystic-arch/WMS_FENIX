@@ -761,6 +761,33 @@ class InventarioV2Controller extends BaseController
                 ->orderBy('sesion_lineas.hora_conteo')
                 ->get();
 
+            // ── Exportar el conteo (ajustado o no) a Excel ─────────────────
+            if (($params['export'] ?? '') === 'excel') {
+                $headers = [
+                    'Ronda', 'Fecha/Hora', 'Auxiliar', 'Código', 'Producto', 'Ubicación',
+                    'Lote', 'F.Vencimiento', 'Días Vida Útil',
+                    'Cajas', 'Saldos', 'Cant. Contada', 'Cant. Sistema', 'Diferencia', 'Ajustado',
+                ];
+                $rows = $lineas->map(fn($l) => [
+                    $l->ronda,
+                    $l->hora_conteo,
+                    $l->auxiliar,
+                    $l->codigo,
+                    $l->producto,
+                    $l->ubicacion,
+                    $l->lote ?? '—',
+                    $l->fecha_vencimiento ?? '—',
+                    $l->dias_vida_util ?? '—',
+                    $l->cantidad_cajas ?? '—',
+                    $l->saldos ?? '—',
+                    $l->cantidad_contada,
+                    $l->cantidad_sistema,
+                    $l->diferencia,
+                    $l->ajustado ? 'Sí' : 'No',
+                ])->toArray();
+                return $this->exportCsv($res, $headers, $rows, 'conteo_ciclico_sesion' . $sesion->id . '_' . date('Y-m-d'));
+            }
+
             // ── Matriz de diferencias (agrupada por producto + ubicación) ──
             $matrizDiff = SesionLinea::where('sesion_lineas.sesion_id', $sesion->id)
                 ->where('sesion_lineas.estado', SesionLinea::ESTADO_ACTIVO)
