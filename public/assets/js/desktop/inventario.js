@@ -1856,11 +1856,12 @@ WMS_MODULES.inventario = {
       // Limpiar formulario para permitir entrada rápida continua
       document.getElementById('m-conteo-p-ac').value = '';
       document.getElementById('m-conteo-prod-id').value = '';
+      document.getElementById('m-conteo-prod-upc').value = '1';
       document.getElementById('m-conteo-u-ac').value = '';
       document.getElementById('m-conteo-lote').value = '';
       document.getElementById('m-conteo-venc').value = '';
-      document.getElementById('m-conteo-cant').value = '';
       document.getElementById('m-conteo-prod-info').classList.add('hidden');
+      this._conteoRenderCantidadInputs(1);
       document.getElementById('m-conteo-p-ac').focus();
       
       // Refrescar dashboard de fondo
