@@ -2288,13 +2288,17 @@ class InventarioV2Controller extends BaseController
         if (!$sesion) return $this->notFound($res, 'Sesión no encontrada');
 
         try {
+            $asignacionId = $req->getQueryParams()['asignacion_id'] ?? null;
+
             $lineas = SesionLinea::where('sesion_lineas.sesion_id', $sesion->id)
                 ->where('sesion_lineas.auxiliar_id', $user->id)
                 ->where('sesion_lineas.estado', SesionLinea::ESTADO_ACTIVO)
+                ->when($asignacionId, fn($q) => $q->where('sesion_lineas.asignacion_id', (int)$asignacionId))
                 ->join('productos',   'sesion_lineas.producto_id',  '=', 'productos.id')
                 ->join('ubicaciones', 'sesion_lineas.ubicacion_id', '=', 'ubicaciones.id')
                 ->select(
                     'sesion_lineas.id',
+                    'sesion_lineas.asignacion_id',
                     'sesion_lineas.ronda',
                     'sesion_lineas.cantidad_contada as cantidad',
                     'sesion_lineas.lote',
