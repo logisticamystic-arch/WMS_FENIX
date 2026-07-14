@@ -1831,6 +1831,8 @@ WMS_MODULES.inventario = {
     const lote   = document.getElementById('m-conteo-lote')?.value.trim();
     const venc   = document.getElementById('m-conteo-venc')?.value;
     const cant   = document.getElementById('m-conteo-cant')?.value;
+    const cajas  = document.getElementById('m-conteo-cajas')?.value;
+    const saldos = document.getElementById('m-conteo-saldos')?.value;
     const ronda  = document.getElementById('m-conteo-ronda')?.value;
 
     if (!prodId || !uCod || cant === '') {
@@ -1848,6 +1850,8 @@ WMS_MODULES.inventario = {
         lote: lote || null,
         fecha_vencimiento: venc || null,
         cantidad: cant,
+        cantidad_cajas: cajas !== undefined && cajas !== '' ? cajas : null,
+        saldos: saldos !== undefined && saldos !== '' ? saldos : null,
         ronda: ronda
       });
       
@@ -1881,6 +1885,7 @@ WMS_MODULES.inventario = {
     }
     const l = this._dashV2.matriz_conteo.find(x => parseInt(x.id) === parseInt(lineaId));
     if (!l) return WMS.toast('error', 'No se encontró la línea en el dashboard actual');
+    const upc = Math.max(1, parseInt(l.unidades_caja) || 1);
     WMS.showModal('Corrección Administrativa de Conteo', `
       <div class="row">
         <div class="col-md-6">
@@ -1898,10 +1903,7 @@ WMS_MODULES.inventario = {
       </div>
       <div class="row">
         <div class="col-md-6">
-          <div class="form-group">
-            <label class="form-label">Cantidad Contada <span class="required">*</span></label>
-            <input id="edit-qty" type="number" class="form-control" value="${l ? l.cantidad_contada : ''}" min="0" step="0.01">
-          </div>
+          <div class="form-group" id="edit-cantidad-wrap"></div>
         </div>
         <div class="col-md-6">
           <div class="form-group">
@@ -1910,6 +1912,7 @@ WMS_MODULES.inventario = {
           </div>
         </div>
       </div>
+      <div id="edit-preview" style="display:none;font-size:.78rem;color:#475569;margin:-6px 0 14px;"></div>
       <div class="form-group">
         <label class="form-label">Motivo de la corrección <span class="required">*</span></label>
         <input id="edit-motivo" class="form-control" placeholder="Ej: Error de digitación, reconteo físico...">
@@ -1918,6 +1921,64 @@ WMS_MODULES.inventario = {
        <button class="btn btn-primary" onclick="WMS_MODULES.inventario._saveEditLinea(${lineaId})">
          <i class="fa-solid fa-save"></i> Guardar Cambios
        </button>`, 'md', 'generic-modal-2');
+
+    this._editRenderCantidadInputs(upc, l ? l.cantidad_contada : 0, l);
+  },
+
+  /** Reemplaza el bloque de cantidad de la edición de línea según UPC (mismo criterio que Corrección Manual/Conteo Manual) */
+  _editRenderCantidadInputs(upc, cantidadActual, l) {
+    const wrap = document.getElementById('edit-cantidad-wrap');
+    if (!wrap) return;
+    if (upc > 1) {
+      // Usa el desglose realmente capturado si existe; solo recalcula (floor/resto)
+      // para líneas antiguas que no tienen cantidad_cajas/saldos guardados.
+      const tieneDesglose = l && (l.cantidad_cajas !== null && l.cantidad_cajas !== undefined);
+      const cajasIni  = tieneDesglose ? l.cantidad_cajas : Math.floor((cantidadActual || 0) / upc);
+      const saldosIni = tieneDesglose ? (l.saldos ?? 0)   : (cantidadActual || 0) - (cajasIni * upc);
+      wrap.innerHTML = `
+        <input type="hidden" id="edit-prod-upc" value="${upc}">
+        <label class="form-label">Cantidad Contada <span class="required">*</span></label>
+        <div style="display:flex;gap:8px;">
+          <div style="flex:1;">
+            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">Cajas</label>
+            <input id="edit-cajas" type="number" class="form-control" min="0" step="1" value="${cajasIni}"
+              oninput="WMS_MODULES.inventario._editCalcPreview()" placeholder="0">
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">Saldos</label>
+            <input id="edit-saldos" type="number" class="form-control" min="0" step="1" value="${saldosIni}"
+              oninput="WMS_MODULES.inventario._editCalcPreview()" placeholder="0">
+          </div>
+        </div>
+        <input type="hidden" id="edit-qty" value="${cantidadActual || 0}">`;
+    } else {
+      wrap.innerHTML = `
+        <input type="hidden" id="edit-prod-upc" value="${upc}">
+        <label class="form-label">Cantidad Contada <span class="required">*</span></label>
+        <input id="edit-qty" type="number" class="form-control" min="0" step="0.01" value="${cantidadActual || 0}"
+          oninput="WMS_MODULES.inventario._editCalcPreview()">
+        <input type="hidden" id="edit-cajas" value="0">
+        <input type="hidden" id="edit-saldos" value="0">`;
+    }
+    this._editCalcPreview();
+  },
+
+  _editCalcPreview() {
+    const upc = Math.max(1, parseInt(document.getElementById('edit-prod-upc')?.value || '1') || 1);
+    const preview = document.getElementById('edit-preview');
+    if (!preview) return;
+    if (upc > 1) {
+      const cajas  = parseFloat(document.getElementById('edit-cajas')?.value  || '0') || 0;
+      const saldos = parseFloat(document.getElementById('edit-saldos')?.value || '0') || 0;
+      const total  = cajas * upc + saldos;
+      const qtyEl  = document.getElementById('edit-qty');
+      if (qtyEl) qtyEl.value = total;
+      preview.style.display = 'block';
+      preview.innerHTML = `<b>UND/TOTAL:</b> ${cajas} cajas × ${upc} u/caja + ${saldos} saldos = `
+        + `<b style="color:#1e40af;font-size:1.05em;">${total.toFixed(2)}</b>`;
+    } else {
+      preview.style.display = 'none';
+    }
   },
 
   async _saveEditLinea(lineaId) {
@@ -1926,17 +1987,21 @@ WMS_MODULES.inventario = {
     const ubic = document.getElementById('edit-ubic')?.value.trim();
     const fvenc = document.getElementById('edit-f-venc')?.value;
     const motivo = document.getElementById('edit-motivo')?.value.trim();
-    
+    const cajas = document.getElementById('edit-cajas')?.value;
+    const saldos = document.getElementById('edit-saldos')?.value;
+
     if (qty === '' || qty < 0) return WMS.toast('warning', 'Ingrese una cantidad válida');
     if (!motivo) return WMS.toast('warning', 'Ingrese el motivo de la corrección');
 
     try {
-      await API.put(`/v2/inventario/lineas/${lineaId}`, { 
-        cantidad_contada: parseFloat(qty), 
+      await API.put(`/v2/inventario/lineas/${lineaId}`, {
+        cantidad_contada: parseFloat(qty),
+        cantidad_cajas: cajas !== undefined && cajas !== '' ? cajas : null,
+        saldos: saldos !== undefined && saldos !== '' ? saldos : null,
         nuevo_producto_codigo: prod,
         nueva_ubicacion_codigo: ubic,
         fecha_vencimiento: fvenc,
-        motivo 
+        motivo
       });
       WMS.toast('success', 'Línea actualizada correctamente');
       WMS.closeModal('generic-modal-2');

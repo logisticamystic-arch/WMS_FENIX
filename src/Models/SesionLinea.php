@@ -25,7 +25,7 @@ class SesionLinea extends BaseModel
     protected $fillable = [
         'sesion_id', 'asignacion_id', 'auxiliar_id', 'ronda',
         'producto_id', 'ubicacion_id', 'lote', 'fecha_vencimiento',
-        'cantidad_contada', 'cantidad_sistema', 'diferencia',
+        'cantidad_contada', 'cantidad_cajas', 'saldos', 'cantidad_sistema', 'diferencia',
         'hora_conteo',
         'cantidad_original', 'editado_por', 'editado_at', 'motivo_edicion',
         'estado', 'eliminado_por', 'eliminado_at', 'ajustado',
@@ -34,6 +34,8 @@ class SesionLinea extends BaseModel
     protected $casts = [
         'ronda'              => 'integer',
         'cantidad_contada'   => 'integer',
+        'cantidad_cajas'     => 'integer',
+        'saldos'             => 'float',
         'cantidad_sistema'   => 'integer',
         'diferencia'         => 'integer',
         'cantidad_original'  => 'integer',

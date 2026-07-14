@@ -737,6 +737,8 @@ class InventarioV2Controller extends BaseController
                     'sesion_lineas.ronda',
                     'sesion_lineas.hora_conteo',
                     'sesion_lineas.cantidad_contada',
+                    'sesion_lineas.cantidad_cajas',
+                    'sesion_lineas.saldos',
                     'sesion_lineas.cantidad_sistema',
                     'sesion_lineas.diferencia',
                     'sesion_lineas.fecha_vencimiento',
@@ -746,6 +748,7 @@ class InventarioV2Controller extends BaseController
                     'productos.id as producto_id',
                     'productos.nombre as producto',
                     'productos.codigo_interno as codigo',
+                    'productos.unidades_caja',
                     'ubicaciones.id as ubicacion_id',
                     'ubicaciones.codigo as ubicacion',
                     'personal.nombre as auxiliar',
@@ -992,6 +995,19 @@ class InventarioV2Controller extends BaseController
 
         $nueva = (float)$data['cantidad_contada'];
         if ($nueva < 0) return $this->error($res, 'La cantidad no puede ser negativa');
+
+        // Desglose Cajas/Saldos (solo presentación): se persiste tal cual lo capturó
+        // el supervisor, para no recalcular una combinación distinta al reabrir la línea.
+        if (array_key_exists('cantidad_cajas', $data)) {
+            $auditDataOld['cantidad_cajas'] = $linea->cantidad_cajas;
+            $linea->cantidad_cajas = $data['cantidad_cajas'] !== null ? (int)$data['cantidad_cajas'] : null;
+            $auditDataNew['cantidad_cajas'] = $linea->cantidad_cajas;
+        }
+        if (array_key_exists('saldos', $data)) {
+            $auditDataOld['saldos'] = $linea->saldos;
+            $linea->saldos = $data['saldos'] !== null ? (float)$data['saldos'] : null;
+            $auditDataNew['saldos'] = $linea->saldos;
+        }
 
         $linea->cantidad_original = $linea->cantidad_original ?? $linea->cantidad_contada;
         $linea->cantidad_contada  = $nueva;
@@ -2248,6 +2264,11 @@ class InventarioV2Controller extends BaseController
                 ->sum('cantidad');
 
             $cantidadContada = (float)$data['cantidad'];
+            // Desglose Cajas/Saldos (solo presentación — cantidad_contada sigue siendo la verdad).
+            // Se persiste para poder reabrir la línea mostrando exactamente lo que se capturó,
+            // en vez de recalcular una combinación distinta (floor/resto) a partir del total.
+            $cantidadCajas = isset($data['cantidad_cajas']) ? (int)$data['cantidad_cajas'] : null;
+            $saldos        = isset($data['saldos']) ? (float)$data['saldos'] : null;
 
             // Crear o actualizar la línea — auxiliar_id en criterio de búsqueda
             // para que cada auxiliar tenga su propia línea por producto+ubicación+ronda.
@@ -2264,6 +2285,8 @@ class InventarioV2Controller extends BaseController
                 [
                     'asignacion_id'     => $asignacionId,
                     'cantidad_contada'  => $cantidadContada,
+                    'cantidad_cajas'    => $cantidadCajas,
+                    'saldos'            => $saldos,
                     'cantidad_sistema'  => $stockSnapshot,
                     'diferencia'        => $cantidadContada - $stockSnapshot,
                     'fecha_vencimiento' => $fv,
