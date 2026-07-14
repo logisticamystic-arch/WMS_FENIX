@@ -4336,10 +4336,8 @@ const MWMS = {
     const cont = document.getElementById('iv-ref-lines-here');
     if (!cont) return;
     try {
-      const r = await mApi('GET', `/v2/inventario/sesiones/${this._op.id}/mis-lineas`);
-      const all   = r.data || [];
-      // Filtrar por asignacion_id si el servidor lo retorna, si no, mostrar todas
-      const lines = all.filter(l => !asigId || !l.asignacion_id || l.asignacion_id == asigId);
+      const r = await mApi('GET', `/v2/inventario/sesiones/${this._op.id}/mis-lineas`, asigId ? `asignacion_id=${asigId}` : '');
+      const lines = r.data || [];
       if (!lines.length) { cont.innerHTML = ''; return; }
       cont.innerHTML = `
         <div style="font-size:.7rem;font-weight:700;color:#4f46e5;margin-bottom:6px;letter-spacing:.5px;">
