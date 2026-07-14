@@ -37,7 +37,7 @@ class DespachoController extends BaseController
             ->where('sucursal_id', $sucursalId)
             ->whereBetween('fecha_movimiento', [$ini, $fin])
             ->when($params['estado'] ?? null, fn($q, $e) => $q->where('estado', $e))
-            ->with(['ordenes:id,despacho_id,numero_orden,estado_certificacion'])
+            ->with(['ordenes:id,numero_orden,estado_certificacion'])
             ->orderBy('fecha_movimiento', 'desc')
             ->get();
 

@@ -338,31 +338,134 @@ WMS_MODULES.reportes = {
   },
 
   // ── KARDEX ────────────────────────────────────────────────────────────────
+  // ── KARDEX (búsqueda dinámica por producto + rango de fechas) ──────────────
   async show_kardex() {
-    const p = this._getParams('k');
-    WMS.setToolbar(this.exportBtn('/reportes/kardex', 'Exportar Kardex CSV'));
-    WMS.spinner();
+    WMS.setToolbar('');
+    const hoy = new Date().toISOString().substring(0,10);
+    const hace30 = new Date(Date.now() - 30*86400000).toISOString().substring(0,10);
+    const prodId = this._kProdId || '';
+    const prodNom = this._kProdNombre || '';
+    const desde = this._kDesde || hace30;
+    const hasta = this._kHasta || hoy;
+
+    WMS.setContent(`
+      <div class="filter-bar" style="flex-wrap:wrap;gap:8px;align-items:flex-end;">
+        <div class="form-group" style="margin:0;min-width:220px;">
+          <label class="form-label" style="font-size:.7rem;">Producto <span class="required">*</span></label>
+          <input type="text" id="k-prod-ac" class="form-control" placeholder="Escriba EAN, código o nombre..." autocomplete="off" value="${WMS.esc(prodNom)}">
+          <input type="hidden" id="k-prod-id" value="${prodId}">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-size:.7rem;">Desde</label>
+          <input type="date" id="k-desde" class="form-control form-control-sm" value="${desde}" style="width:150px">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-size:.7rem;">Hasta</label>
+          <input type="date" id="k-hasta" class="form-control form-control-sm" value="${hasta}" style="width:150px">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.reportes._kBuscar()"><i class="fa-solid fa-search"></i> Buscar</button>
+        <button class="btn btn-success btn-sm" id="k-btn-export" onclick="WMS_MODULES.reportes._kExportar()" ${prodId?'':'disabled'}><i class="fa-solid fa-file-excel"></i> Exportar Excel</button>
+      </div>
+
+      <div class="pro-kpi-grid mb-4" id="k-kpis" style="display:none;margin-top:14px;">
+        <div class="pro-kpi-card accent-blue"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-arrow-down"></i></div></div><div class="pro-kpi-value" id="k-kpi-entradas">0</div><div class="pro-kpi-label">Entradas</div></div>
+        <div class="pro-kpi-card accent-amber"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-arrow-up"></i></div></div><div class="pro-kpi-value" id="k-kpi-salidas">0</div><div class="pro-kpi-label">Salidas</div></div>
+        <div class="pro-kpi-card accent-green"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-scale-balanced"></i></div></div><div class="pro-kpi-value" id="k-kpi-saldo">0</div><div class="pro-kpi-label">Saldo Final</div></div>
+      </div>
+
+      <div class="card mt-16">
+        <div class="card-header"><span class="card-title" id="k-count"><i class="fa-solid fa-file-invoice"></i> Movimientos de Kardex</span></div>
+        <div class="table-container" id="k-table-wrap">
+          <div class="m-empty" style="padding:40px;"><i class="fa-solid fa-magnifying-glass"></i><p>Busque un producto para ver su Kardex</p></div>
+        </div>
+      </div>`);
+
+    setTimeout(() => {
+      const inp = document.getElementById('k-prod-ac');
+      if (inp) {
+        WMS.initProductAutocomplete(inp, (p) => {
+          document.getElementById('k-prod-id').value = p.id;
+          this._kProdId = p.id;
+          this._kProdNombre = p.descripcion || p.nombre;
+          const btn = document.getElementById('k-btn-export');
+          if (btn) btn.disabled = false;
+          this._kBuscar();
+        });
+      }
+    }, 150);
+
+    if (prodId) this._kBuscar();
+  },
+
+  async _kBuscar() {
+    const prodId = document.getElementById('k-prod-id')?.value;
+    const desde  = document.getElementById('k-desde')?.value;
+    const hasta  = document.getElementById('k-hasta')?.value;
+    this._kDesde = desde; this._kHasta = hasta;
+    const wrap = document.getElementById('k-table-wrap');
+    if (!prodId) { WMS.toast('warning', 'Seleccione un producto para consultar su Kardex'); return; }
+    if (wrap) wrap.innerHTML = '<div class="spinner sm" style="margin:24px auto;display:block;"></div>';
     try {
-      const qs   = `limit=300&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&ubicacion_codigo=${encodeURIComponent(p.ubicCodigo)}`;
-      const r    = await API.get('/reportes/kardex', qs);
-      const items = r.data || r || [];
-      WMS.setContent(`
-        ${this._filtroBarra({id:'k', desde:p.desde, hasta:p.hasta, referencia:p.ref, ubicacion:p.ubicCodigo, onFiltrar:'WMS_MODULES.reportes.show_kardex()'})}
-        <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-file-invoice"></i> Movimientos de Kardex (${items.length})</span></div>
-        <div class="table-container"><table class="erp-table" id="k-table">
-          <thead><tr><th>Fecha</th><th>Producto</th><th>Código</th><th>Tipo</th><th>Referencia</th><th>Cantidad</th><th>Ubicación</th></tr></thead>
-          <tbody>${items.map(k => `<tr>
-            <td>${WMS.formatDateTime(k.created_at)}</td>
-            <td>${WMS.esc(k.producto?.nombre||k.producto_nombre||'-')}</td>
-            <td><code>${WMS.esc(k.producto?.codigo_interno||k.codigo_interno||'-')}</code></td>
-            <td><span class="badge ${k.tipo==='Entrada'?'badge-success':'badge-danger'}">${k.tipo}</span></td>
-            <td>${WMS.esc(k.referencia||'-')}</td>
-            <td>${k.cantidad}</td>
-            <td>${WMS.esc(k.ubicacion?.codigo||k.ubicacion_codigo||'-')}</td>
-          </tr>`).join('')||'<tr><td colspan="7" class="table-empty">Sin movimientos</td></tr>'}
-          </tbody></table></div></div>`);
-      this.initUbicacionAutocomplete('k-ubic-input','k-ubic-id','k-ubic-codigo');
-    } catch(e) { WMS.setContent('<div class="m-empty">Error cargando Kardex</div>'); }
+      const qs = `producto_id=${prodId}&fecha_inicio=${desde}&fecha_fin=${hasta}`;
+      const r  = await API.get('/v2/inventario/kardex', qs);
+      const d  = r.data || {};
+      const movs = d.movimientos || [];
+
+      const kpis = document.getElementById('k-kpis');
+      if (kpis) kpis.style.display = 'grid';
+      document.getElementById('k-kpi-entradas').textContent = WMS.formatNum(d.total_entradas || 0);
+      document.getElementById('k-kpi-salidas').textContent  = WMS.formatNum(d.total_salidas || 0);
+      document.getElementById('k-kpi-saldo').textContent    = WMS.formatNum(d.saldo_final || 0);
+
+      const countEl = document.getElementById('k-count');
+      if (countEl) countEl.innerHTML = `<i class="fa-solid fa-file-invoice"></i> Movimientos de Kardex (${movs.length})`;
+
+      const tipoBadge = t => {
+        const m = { Entrada:'badge-success', AjustePositivo:'badge-success', Devolucion:'badge-success', Reabastecimiento:'badge-success',
+                    Salida:'badge-danger', AjusteNegativo:'badge-danger', Picking:'badge-danger', Traslado:'badge-info' };
+        return `<span class="badge ${m[t]||'badge-secondary'}">${WMS.esc(t)}</span>`;
+      };
+
+      if (wrap) wrap.innerHTML = `
+        <table class="erp-table" id="k-table">
+          <thead><tr>
+            <th>Fecha</th><th>Hora</th><th>Tipo</th><th>Sucursal Pedido</th>
+            <th class="text-center">Entradas</th><th class="text-center">Salidas</th>
+            <th class="text-center">Cajas</th><th class="text-center">Saldos</th><th class="text-center">UND/TOTAL</th>
+            <th class="text-center">Saldo Acum.</th>
+            <th>Lote / Venc.</th><th>Origen</th><th>Destino</th><th>Usuario</th><th>Observaciones</th>
+          </tr></thead>
+          <tbody>${movs.map(m => `<tr>
+            <td>${WMS.formatDate(m.fecha)}</td>
+            <td><small>${(m.hora||'').substring(0,5)}</small></td>
+            <td>${tipoBadge(m.tipo)}</td>
+            <td>${WMS.esc(m.sucursal_pedido || '—')}</td>
+            <td class="text-center" style="color:#10b981;font-weight:700">${m.entradas ? WMS.formatNum(m.entradas) : '—'}</td>
+            <td class="text-center" style="color:#ef4444;font-weight:700">${m.salidas ? WMS.formatNum(m.salidas) : '—'}</td>
+            <td class="text-center">${m.cantidad_cajas ?? '—'}</td>
+            <td class="text-center">${m.saldos ?? '—'}</td>
+            <td class="text-center"><b>${WMS.formatNum(m.cantidad)}</b></td>
+            <td class="text-center" style="font-weight:700">${WMS.formatNum(m.saldo)}</td>
+            <td><small>${WMS.esc(m.lote||'-')}${m.fecha_vencimiento?' · '+WMS.formatDate(m.fecha_vencimiento):''}</small></td>
+            <td><small>${WMS.esc(m.ubicacion_origen||'-')}</small></td>
+            <td><small>${WMS.esc(m.ubicacion_destino||'-')}</small></td>
+            <td><small>${WMS.esc(m.usuario||'-')}</small></td>
+            <td><small>${WMS.esc(m.observaciones||'')}</small></td>
+          </tr>`).join('') || '<tr><td colspan="15" class="table-empty">Sin movimientos en el rango seleccionado</td></tr>'}
+          </tbody></table>`;
+    } catch(e) {
+      if (wrap) wrap.innerHTML = '<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando Kardex</p></div>';
+    }
+  },
+
+  _kExportar() {
+    const prodId = document.getElementById('k-prod-id')?.value;
+    if (!prodId) return WMS.toast('warning', 'Seleccione un producto primero');
+    const desde = document.getElementById('k-desde')?.value;
+    const hasta = document.getElementById('k-hasta')?.value;
+    const token = localStorage.getItem('wms_token') || '';
+    const url = `${API_BASE}/v2/inventario/kardex?export=excel&producto_id=${prodId}&fecha_inicio=${desde}&fecha_fin=${hasta}&token=${encodeURIComponent(token)}`;
+    window.open(url, '_blank');
   },
 
   // ── RECEPCIONES ───────────────────────────────────────────────────────────

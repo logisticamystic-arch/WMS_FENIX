@@ -40,6 +40,7 @@ WMS_MODULES.inicio = {
 
     WMS.spinner();
     let stats = {}, trend = [], d = {}, availability = {}, occupancy = {};
+    let errorCarga = null;
     try {
       const r = await API.get('/dashboard/summary');
       d = r.data || r;
@@ -47,7 +48,10 @@ WMS_MODULES.inicio = {
       trend    = d.trend    || [];
       availability = d.availability || d.inv_state || {};
       occupancy    = d.occupancy    || {};
-    } catch(e) { console.warn('dashboard/summary', e.message); }
+    } catch(e) {
+      console.warn('dashboard/summary', e.message);
+      errorCarga = e.message || 'No se pudo cargar la información del dashboard';
+    }
 
     /* Extraer valores con fallbacks */
     const productos   = stats.productos   || stats.total_productos  || 0;

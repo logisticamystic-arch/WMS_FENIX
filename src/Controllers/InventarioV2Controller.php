@@ -1915,14 +1915,26 @@ class InventarioV2Controller extends BaseController
             }
 
             [$ini, $fin] = $this->getDateRange($params);
+            $sucursalId  = $this->getEffectiveSucursalId($user, $req);
 
             $movimientos = MovimientoInventario::where('movimiento_inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                ->where('movimiento_inventarios.sucursal_id', $user->sucursal_id)
+                ->where('movimiento_inventarios.sucursal_id', $sucursalId)
                 ->where('movimiento_inventarios.producto_id', $params['producto_id'])
                 ->join('productos', 'movimiento_inventarios.producto_id', '=', 'productos.id')
                 ->leftJoin('personal', 'movimiento_inventarios.auxiliar_id', '=', 'personal.id')
                 ->leftJoin('ubicaciones as uo', 'movimiento_inventarios.ubicacion_origen_id', '=', 'uo.id')
                 ->leftJoin('ubicaciones as ud', 'movimiento_inventarios.ubicacion_destino_id', '=', 'ud.id')
+                // Salida por pedido (Picking): resuelve la sucursal de entrega del pedido por
+                // aproximación producto + fecha de movimiento (mismo criterio ya usado por
+                // TrazabilidadController para este tipo de movimiento, que no queda enlazado
+                // por referencia_tipo/referencia_id como despachos/devoluciones/recepciones).
+                ->leftJoin('picking_detalles as pd_kx', function ($j) {
+                    $j->on('pd_kx.producto_id', '=', 'movimiento_inventarios.producto_id');
+                })
+                ->leftJoin('orden_pickings as op_kx', function ($j) {
+                    $j->on('op_kx.id', '=', 'pd_kx.orden_picking_id')
+                      ->whereColumn('op_kx.fecha_movimiento', 'movimiento_inventarios.fecha_movimiento');
+                })
                 ->whereBetween('movimiento_inventarios.fecha_movimiento', [
                     substr($ini, 0, 10), substr($fin, 0, 10)
                 ])
@@ -1942,6 +1954,8 @@ class InventarioV2Controller extends BaseController
                         ELSE 0
                     END as salidas"),
                     'movimiento_inventarios.cantidad',
+                    'movimiento_inventarios.cantidad_cajas',
+                    'movimiento_inventarios.saldos',
                     'movimiento_inventarios.lote',
                     'movimiento_inventarios.fecha_vencimiento',
                     'uo.codigo as ubicacion_origen',
@@ -1950,6 +1964,15 @@ class InventarioV2Controller extends BaseController
                     'movimiento_inventarios.referencia_tipo',
                     'movimiento_inventarios.referencia_id',
                     'movimiento_inventarios.observaciones',
+                    Capsule::raw("MAX(CASE WHEN movimiento_inventarios.tipo_movimiento = 'Picking' THEN op_kx.sucursal_entrega ELSE NULL END) as sucursal_pedido")
+                )
+                ->groupBy(
+                    'movimiento_inventarios.id', 'movimiento_inventarios.fecha_movimiento', 'movimiento_inventarios.hora_inicio',
+                    'productos.nombre', 'productos.codigo_interno', 'movimiento_inventarios.tipo_movimiento',
+                    'movimiento_inventarios.cantidad', 'movimiento_inventarios.cantidad_cajas', 'movimiento_inventarios.saldos',
+                    'movimiento_inventarios.lote', 'movimiento_inventarios.fecha_vencimiento',
+                    'uo.codigo', 'ud.codigo', 'personal.nombre',
+                    'movimiento_inventarios.referencia_tipo', 'movimiento_inventarios.referencia_id', 'movimiento_inventarios.observaciones'
                 )
                 ->orderBy('movimiento_inventarios.fecha_movimiento')
                 ->orderBy('movimiento_inventarios.hora_inicio')
@@ -1981,10 +2004,12 @@ class InventarioV2Controller extends BaseController
             $saldoFinal    = $movimientos->last()?->saldo ?? 0;
 
             if (($params['export'] ?? '') === 'excel') {
-                $headers = ['Fecha', 'Hora', 'Tipo', 'Entradas', 'Salidas', 'Saldo', 'Lote', 'F.Vencimiento', 'Origen', 'Destino', 'Usuario', 'Observaciones'];
+                $headers = ['Fecha', 'Hora', 'Tipo', 'Sucursal Pedido', 'Entradas', 'Salidas', 'Cajas', 'Saldos', 'UND/TOTAL', 'Saldo Acumulado', 'Lote', 'F.Vencimiento', 'Origen', 'Destino', 'Usuario', 'Observaciones'];
                 $rows = $movimientos->map(fn($m) => [
-                    $m->fecha, $m->hora, $m->tipo,
-                    $m->entradas ?: '', $m->salidas ?: '', $m->saldo,
+                    $m->fecha, $m->hora, $m->tipo, $m->sucursal_pedido ?? '—',
+                    $m->entradas ?: '', $m->salidas ?: '',
+                    $m->cantidad_cajas ?? '—', $m->saldos ?? '—', $m->cantidad,
+                    $m->saldo,
                     $m->lote ?? '—', $m->fecha_vencimiento ?? '—',
                     $m->ubicacion_origen ?? '—', $m->ubicacion_destino ?? '—',
                     $m->usuario ?? '—', $m->observaciones ?? '',

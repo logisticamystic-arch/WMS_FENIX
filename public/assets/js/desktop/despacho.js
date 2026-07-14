@@ -1454,10 +1454,94 @@ WMS_MODULES.despacho = {
 
   // ── PLANILLA DE CARGUE ────────────────────────────────────────
   async show_cargue() {
-    WMS.setToolbar(`<button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.nuevoPlanillaCargue()"><i class="fa-solid fa-plus"></i> Nuevo Cargue</button>`);
+    WMS.setToolbar(`
+      <button class="btn btn-success btn-sm" onclick="WMS_MODULES.despacho.exportCargueExcel()"><i class="fa-solid fa-file-excel"></i> Exportar Excel</button>
+      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.nuevoPlanillaCargue()"><i class="fa-solid fa-plus"></i> Nuevo Cargue</button>`);
     WMS.spinner();
+
+    // Sucursales para el filtro dinámico (solo tiene efecto real para SuperAdmin — el backend
+    // fuerza la sucursal propia para los demás roles, ver DespachoController::listar()).
+    let sucursalOpts = '<option value="">Mi sucursal</option>';
     try {
-      const r = await API.get('/despachos', 'limit=100');
+      const rs = await API.get('/param/sucursales');
+      const sucursales = rs.data || rs || [];
+      sucursalOpts += sucursales.map(s => `<option value="${s.id}">${WMS.esc(s.nombre)}</option>`).join('');
+    } catch(e) { /* sin permiso o sin sucursales adicionales */ }
+
+    const hoy = new Date().toISOString().substring(0, 10);
+    this._cargueFiltros = { desde: hoy, hasta: hoy, sucursal_id: '', estado: '' };
+
+    WMS.setContent(`
+      <div class="filter-bar" style="flex-wrap:wrap;gap:8px;align-items:flex-end;">
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-size:.7rem;">Desde</label>
+          <input type="date" id="cargue-f-desde" class="form-control form-control-sm" value="${hoy}" style="width:150px">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-size:.7rem;">Hasta</label>
+          <input type="date" id="cargue-f-hasta" class="form-control form-control-sm" value="${hoy}" style="width:150px">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-size:.7rem;">Sucursal</label>
+          <select id="cargue-f-sucursal" class="form-control form-control-sm" style="width:170px">${sucursalOpts}</select>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-size:.7rem;">Estado</label>
+          <select id="cargue-f-estado" class="form-control form-control-sm" style="width:150px">
+            <option value="">Todos</option>
+            <option value="Preparando">Preparando</option>
+            <option value="Certificado">Certificado</option>
+            <option value="Despachado">Despachado</option>
+            <option value="Entregado">Entregado</option>
+            <option value="Cancelado">Cancelado</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho._aplicarFiltrosCargue()"><i class="fa-solid fa-filter"></i> Filtrar</button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="WMS_MODULES.despacho._hoyFiltrosCargue()"><i class="fa-solid fa-calendar-day"></i> Hoy</button>
+        <div class="search-bar" style="flex:1;min-width:200px;"><i class="fa-solid fa-search"></i>
+          <input placeholder="Buscar placa, conductor, ruta..." oninput="WMS_MODULES.despacho.filterTable(this.value,'cargue-table')">
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title" id="cargue-count"><i class="fa-solid fa-truck-loading"></i> Planillas de Cargue</span></div>
+        <div class="table-container" id="cargue-table-wrap"><div class="spinner sm" style="margin:20px auto;display:block;"></div></div>
+      </div>`);
+
+    this._loadCargueTabla();
+  },
+
+  _hoyFiltrosCargue() {
+    const hoy = new Date().toISOString().substring(0, 10);
+    document.getElementById('cargue-f-desde').value = hoy;
+    document.getElementById('cargue-f-hasta').value = hoy;
+    this._aplicarFiltrosCargue();
+  },
+
+  _aplicarFiltrosCargue() {
+    this._cargueFiltros = {
+      desde: document.getElementById('cargue-f-desde')?.value || '',
+      hasta: document.getElementById('cargue-f-hasta')?.value || '',
+      sucursal_id: document.getElementById('cargue-f-sucursal')?.value || '',
+      estado: document.getElementById('cargue-f-estado')?.value || '',
+    };
+    this._loadCargueTabla();
+  },
+
+  _cargueQueryString() {
+    const f = this._cargueFiltros || {};
+    const p = new URLSearchParams();
+    if (f.desde) p.append('fecha_inicio', f.desde);
+    if (f.hasta) p.append('fecha_fin', f.hasta);
+    if (f.sucursal_id) p.append('sucursal_id', f.sucursal_id);
+    if (f.estado) p.append('estado', f.estado);
+    return p.toString();
+  },
+
+  async _loadCargueTabla() {
+    const wrap = document.getElementById('cargue-table-wrap');
+    if (wrap) wrap.innerHTML = '<div class="spinner sm" style="margin:20px auto;display:block;"></div>';
+    try {
+      const r = await API.get('/despachos', this._cargueQueryString());
       const items = r.data || r || [];
       const stChip = s => {
         const m = {
@@ -1469,23 +1553,23 @@ WMS_MODULES.despacho = {
         };
         return `<span class="status-chip ${m[s]||'status-creada'}">${WMS.esc(s)}</span>`;
       };
-      WMS.setContent(`
-        <div class="filter-bar">
-          <div class="search-bar"><i class="fa-solid fa-search"></i>
-            <input placeholder="Buscar placa, conductor, ruta..." oninput="WMS_MODULES.despacho.filterTable(this.value,'cargue-table')">
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-header"><span class="card-title"><i class="fa-solid fa-truck-loading"></i> Planillas de Cargue (${items.length})</span></div>
-          <div class="table-container">
+      const certChip = d => {
+        const r = d.estado_certificacion_resumen || 'Sin pedidos';
+        const cls = r === 'Certificado' ? 'status-completada' : (r === 'Sin pedidos' ? 'status-creada' : 'status-en-proceso');
+        return `<span class="status-chip ${cls}">${WMS.esc(r)}</span>`;
+      };
+      const countEl = document.getElementById('cargue-count');
+      if (countEl) countEl.innerHTML = `<i class="fa-solid fa-truck-loading"></i> Planillas de Cargue (${items.length})`;
+      if (wrap) wrap.innerHTML = `
             <table class="erp-table" id="cargue-table">
-              <thead><tr><th>N° Despacho</th><th>Placa</th><th>Conductor</th><th>Ruta</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr></thead>
+              <thead><tr><th>N° Despacho</th><th>Placa</th><th>Conductor</th><th>Ruta</th><th>Estado</th><th>Certificación</th><th>Fecha</th><th>Acciones</th></tr></thead>
               <tbody>${items.map(d => `<tr>
                 <td><span class="badge badge-info">${WMS.esc(d.numero_despacho||('#'+d.id))}</span></td>
                 <td><strong>${WMS.esc(d.placa||'-')}</strong></td>
                 <td>${WMS.esc(d.conductor||'-')}</td>
                 <td>${WMS.esc(d.ruta||'-')}</td>
                 <td>${stChip(d.estado||'Preparando')}</td>
+                <td>${certChip(d)}</td>
                 <td>${WMS.formatDate(d.fecha_movimiento)||'-'}</td>
                 <td><div class="actions">
                   <button class="btn btn-sm btn-secondary" title="Ver detalle" onclick="WMS_MODULES.despacho.verCargue(${d.id})"><i class="fa-solid fa-eye"></i></button>
@@ -1493,12 +1577,18 @@ WMS_MODULES.despacho = {
                   ${d.estado === 'Preparando' || d.estado === 'Certificado' ? `<button class="btn btn-sm btn-success" title="Despachar" onclick="WMS_MODULES.despacho.despacharCargue(${d.id})"><i class="fa-solid fa-truck"></i> Despachar</button>` : ''}
                   ${d.estado === 'Despachado' ? `<button class="btn btn-sm btn-warning" title="Liquidar - marcar como Entregado" onclick="WMS_MODULES.despacho.liquidarCargue(${d.id})"><i class="fa-solid fa-clipboard-check"></i> Liquidar</button>` : ''}
                 </div></td>
-              </tr>`).join('') || '<tr><td colspan="7" class="table-empty">Sin planillas de cargue</td></tr>'}
+              </tr>`).join('') || '<tr><td colspan="8" class="table-empty">Sin planillas de cargue en el rango/filtro seleccionado</td></tr>'}
               </tbody>
-            </table>
-          </div>
-        </div>`);
-    } catch(e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
+            </table>`;
+    } catch(e) {
+      if (wrap) wrap.innerHTML = '<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>';
+    }
+  },
+
+  exportCargueExcel() {
+    const token = localStorage.getItem('wms_token') || '';
+    const qs = this._cargueQueryString();
+    window.open(`${API_BASE}/despachos?export=excel${qs ? '&' + qs : ''}&token=${encodeURIComponent(token)}`, '_blank');
   },
 
   async nuevoPlanillaCargue() {
