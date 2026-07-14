@@ -3369,9 +3369,15 @@ const MWMS = {
     this._td={o:loc, i:item, d:null};
     const upc = Math.max(1, parseInt(item.unidades_caja || 1));
     this._tUpc = upc;
-    const maxCajas  = parseInt(item.cantidad_cajas || 0);
-    const maxSaldos = parseFloat(item.saldos || 0);
-    const maxTotal  = parseFloat(item.cantidad || 0);
+    // Disponible real = cantidad física menos lo ya reservado (picking/despacho en curso).
+    // No usar item.cantidad_cajas/item.saldos directo: son el desglose del total físico,
+    // no del neto disponible, y podrían sobrestimar lo que realmente se puede trasladar.
+    const reservada = parseFloat(item.cantidad_reservada || 0);
+    const dispNeto  = Math.max(0, Math.round((parseFloat(item.cantidad || 0) - reservada) * 1000) / 1000);
+    this._td.dispNeto = dispNeto;
+    const maxCajas  = upc > 1 ? Math.floor(dispNeto / upc) : 0;
+    const maxSaldos = upc > 1 ? Math.round((dispNeto - maxCajas * upc) * 1000) / 1000 : dispNeto;
+    const maxTotal  = dispNeto;
     const dispTxt = upc > 1
       ? `${maxCajas} caj × ${upc} + ${maxSaldos} sueltos = <b>${maxTotal} UND/T</b>`
       : `<b>${maxTotal} UND/T disponibles</b>`;
@@ -3471,7 +3477,7 @@ const MWMS = {
     const cajas   = parseFloat(document.getElementById('m-t-cajas')?.value  || 0) || 0;
     const saldos  = parseFloat(document.getElementById('m-t-saldos')?.value || 0) || 0;
     const total   = upc > 1 ? cajas * upc + saldos : saldos;
-    const maxTotal = parseFloat(this._td?.i?.cantidad || 0);
+    const maxTotal = parseFloat(this._td?.dispNeto ?? this._td?.i?.cantidad ?? 0);
     const el = document.getElementById('m-t-total-preview');
     if (!el) return;
     if (total <= 0) {
@@ -3499,7 +3505,7 @@ const MWMS = {
 
     if (q <= 0) return this.toast("Ingrese la cantidad a trasladar", "warning");
 
-    const maxTotal = parseFloat(this._td?.i?.cantidad || 0);
+    const maxTotal = parseFloat(this._td?.dispNeto ?? this._td?.i?.cantidad ?? 0);
     if (q > maxTotal) return this.toast(`Máximo disponible: ${maxTotal} UND/T`, "error");
 
     const dest = this._td.d;
