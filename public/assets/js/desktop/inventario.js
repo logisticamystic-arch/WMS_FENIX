@@ -1088,6 +1088,10 @@ WMS_MODULES.inventario = {
                 </div>
              </div>
              <div class="inv2-btn-group">
+                ${sesion.tipo === 'Ciclico' && !['Ajustado', 'Cerrado'].includes(sesion.estado) ? `
+                <button class="btn btn-warning btn-sm" onclick="WMS_MODULES.inventario._ciclicoRefs(${id})">
+                  <i class="fa-solid fa-tags"></i> REFERENCIAS
+                </button>` : ''}
                 <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._showConteoManualModal(${id})">
                   <i class="fa-solid fa-plus-circle"></i> NUEVO CONTEO
                 </button>
