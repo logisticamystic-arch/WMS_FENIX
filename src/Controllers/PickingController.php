@@ -2215,6 +2215,10 @@ class PickingController extends BaseController
         $sucursalId = $user->sucursal_id;
         $factor     = max(1, (int)(Capsule::table('productos')->where('id', $linea->producto_id)->value('unidades_caja') ?? 1));
 
+        if ($nuevaCantidad < (float)$linea->cantidad_pickeada) {
+            return ['error' => "No se puede reducir a {$nuevaCantidad}: ya hay {$linea->cantidad_pickeada} separadas físicamente. Ajuste primero lo separado o elimine la línea."];
+        }
+
         $viejaQty     = (float)$linea->cantidad_solicitada;
         $diffCajas    = $nuevaCantidad - $viejaQty;
         $diffUnidades = round($diffCajas * $factor, 3);
