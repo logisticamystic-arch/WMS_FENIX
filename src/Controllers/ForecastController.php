@@ -24,6 +24,30 @@ use Illuminate\Database\Capsule\Manager as Capsule;
  */
 class ForecastController extends BaseController
 {
+    /**
+     * Stock disponible PARA VENTA (descuenta producto/lotes bloqueados por calidad
+     * o vencimiento) — el forecast no debe proyectar sobre stock que no puede despacharse.
+     */
+    private function _stockDisponibleVenta(int $empresaId, int $sucursalId, int $productoId): float
+    {
+        $bloqueado = Capsule::table('productos')
+            ->where('id', $productoId)->where('bloqueado', true)->exists();
+        if ($bloqueado) return 0.0;
+
+        $lotesBloqueados = Capsule::table('bloqueo_lotes')
+            ->where('empresa_id', $empresaId)
+            ->where('producto_id', $productoId)
+            ->pluck('lote')->toArray();
+
+        return (float) Capsule::table('inventarios')
+            ->where('empresa_id',  $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->where('producto_id', $productoId)
+            ->where('estado', 'Disponible')
+            ->when(!empty($lotesBloqueados), fn($q) => $q->whereNotIn('lote', $lotesBloqueados))
+            ->sum('cantidad');
+    }
+
     // ── GET /api/forecast ─────────────────────────────────────────────────────
     // Dashboard: predicciones vigentes de forecast_demanda
     // (mv_rotacion_productos no existe en esta BD)
@@ -187,13 +211,10 @@ class ForecastController extends BaseController
             ->where('vigente', true)
             ->first();
 
-        // Stock actual
-        $stockActual = Capsule::table('inventarios')
-            ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
-            ->where('sucursal_id', $user->sucursal_id)
-            ->where('producto_id', $a['producto_id'])
-            ->where('estado', 'Disponible')
-            ->sum('cantidad');
+        // Stock actual (disponible para venta — descuenta bloqueos de calidad/vencimiento)
+        $stockActual = $this->_stockDisponibleVenta(
+            $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, (int)$a['producto_id']
+        );
 
         return $this->ok($res, [
             'producto'      => $producto,
@@ -233,13 +254,10 @@ class ForecastController extends BaseController
                 ->where('es_vigente',    true)
                 ->update(['es_vigente' => false]);
 
-            // Calcular alerta de quiebre
-            $stockActual = Capsule::table('inventarios')
-                ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
-                ->where('sucursal_id', $user->sucursal_id)
-                ->where('producto_id', (int)$item['producto_id'])
-                ->where('estado', 'Disponible')
-                ->sum('cantidad');
+            // Calcular alerta de quiebre (stock disponible para venta, sin bloqueados)
+            $stockActual = $this->_stockDisponibleVenta(
+                $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, (int)$item['producto_id']
+            );
 
             $demandaDia    = (float)$item['demanda_pred'] / 30;
             $diasCobertura = $demandaDia > 0 ? round($stockActual / $demandaDia) : null;
@@ -350,13 +368,10 @@ class ForecastController extends BaseController
                 ->where('es_vigente',     true)
                 ->update(['es_vigente' => false]);
 
-            // Stock actual
-            $stock = Capsule::table('inventarios')
-                ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
-                ->where('sucursal_id', $user->sucursal_id)
-                ->where('producto_id', $productoId)
-                ->where('estado', 'Disponible')
-                ->sum('cantidad');
+            // Stock actual (disponible para venta — descuenta bloqueos de calidad/vencimiento)
+            $stock = $this->_stockDisponibleVenta(
+                $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, (int)$productoId
+            );
 
             $demandaDia   = $pred / 30;
             $diasCob      = $demandaDia > 0 ? round($stock / $demandaDia) : null;

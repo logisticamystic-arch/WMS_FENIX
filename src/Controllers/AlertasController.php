@@ -67,6 +67,21 @@ class AlertasController extends BaseController
 
         $eId = $this->getEffectiveEmpresaId($user, $r);
         $sId = $this->getEffectiveSucursalId($user, $r);
+        $creadas = $this->generarParaSucursal($eId, $sId);
+
+        $this->audit($user, 'alertas', 'generar', 'alertas_stock', null,
+            null, ['generadas' => $creadas], "Escaneo de alertas: {$creadas} alertas activas");
+
+        return $this->ok($res, ['alertas_procesadas' => $creadas], 'Alertas actualizadas');
+    }
+
+    /**
+     * Lógica de escaneo reutilizable: la usa tanto el endpoint HTTP (generar())
+     * como el runner de línea de comandos (scripts/generar_alertas.php) programado
+     * en el Task Scheduler — así ambos caminos quedan siempre sincronizados.
+     */
+    public function generarParaSucursal(int $eId, int $sId): int
+    {
         $hoy = date('Y-m-d');
         $en30 = date('Y-m-d', strtotime('+30 days'));
 
@@ -118,7 +133,7 @@ class AlertasController extends BaseController
             ->where('nr.empresa_id', $eId)
             ->where('nr.sucursal_id', $sId)
             ->where('nr.activo', true)
-            ->select('nr.producto_id', 'nr.stock_minimo', Capsule::raw('COALESCE(inv.total,0) as stock_actual'))
+            ->select('nr.producto_id', 'nr.stock_minimo', 'nr.stock_maximo', Capsule::raw('COALESCE(inv.total,0) as stock_actual'))
             ->get();
 
         foreach ($niveles as $n) {
@@ -128,13 +143,13 @@ class AlertasController extends BaseController
             } elseif ($n->stock_actual < $n->stock_minimo) {
                 $this->upsertAlerta($eId, $sId, $n->producto_id, 'BajoMinimo', $n->stock_actual, $n->stock_minimo);
                 $creadas++;
+            } elseif (!empty($n->stock_maximo) && $n->stock_actual > $n->stock_maximo) {
+                $this->upsertAlerta($eId, $sId, $n->producto_id, 'SobreMaximo', $n->stock_actual, $n->stock_maximo);
+                $creadas++;
             }
         }
 
-        $this->audit($user, 'alertas', 'generar', 'alertas_stock', null,
-            null, ['generadas' => $creadas], "Escaneo de alertas: {$creadas} alertas activas");
-
-        return $this->ok($res, ['alertas_procesadas' => $creadas], 'Alertas actualizadas');
+        return $creadas;
     }
 
     // ── POST /api/alertas/{id}/resolver ──────────────────────────────────────

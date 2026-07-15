@@ -233,11 +233,13 @@ class ConsultaRapidaController extends BaseController
         return $this->ok($response, [
             'producto'  => $producto->toArray(),
             'inventario' => [
-                'total_disponible' => $totalDisponible,
-                'total_reservado'  => $totalReservado,
-                'total_cuarentena' => $totalCuarentena,
-                'por_lote'         => $porLote,
-                'por_ubicacion'    => $porUbicacion,
+                'total_disponible'       => $totalDisponible,
+                'total_disponible_venta' => $totalDisponibleVenta,
+                'total_bloqueado'        => $producto->bloqueado ? $totalDisponible : $cantidadBloqueada,
+                'total_reservado'        => $totalReservado,
+                'total_cuarentena'       => $totalCuarentena,
+                'por_lote'               => $porLote,
+                'por_ubicacion'          => $porUbicacion,
             ],
             'kpis' => [
                 'promedio_por_pedido'   => (float) ($kpiPicking['promedio_por_linea'] ?? 0),
