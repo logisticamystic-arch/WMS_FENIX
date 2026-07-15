@@ -509,17 +509,98 @@ class DevolucionController extends BaseController
             return $this->error($response, 'La devolución no está en estado PendienteAprobacion', 409);
         }
 
-        $dev->estado        = Devolucion::ESTADO_RECHAZADA;
-        // Reuse aprobado_por/aprobado_at to record who acted — estado=Rechazada disambiguates
-        $dev->aprobado_por  = $user->id;
-        $dev->aprobado_at   = date('Y-m-d H:i:s');
-        $dev->observaciones = $data['motivo_rechazo'] ?? null;
-        $dev->save();
+        DB::transaction(function () use ($dev, $user, $data) {
+            $this->reponerStockDevolucion($dev, $user, 'Rechazo de devolución');
+
+            $dev->estado        = Devolucion::ESTADO_RECHAZADA;
+            // Reuse aprobado_por/aprobado_at to record who acted — estado=Rechazada disambiguates
+            $dev->aprobado_por  = $user->id;
+            $dev->aprobado_at   = date('Y-m-d H:i:s');
+            $dev->observaciones = $data['motivo_rechazo'] ?? null;
+            $dev->save();
+        });
 
         $this->audit($user, 'devoluciones', 'rechazar', 'devoluciones', $dev->id,
             ['estado' => Devolucion::ESTADO_PENDIENTE], ['estado' => Devolucion::ESTADO_RECHAZADA]);
 
         return $this->ok($response, null, 'Devolución rechazada');
+    }
+
+    /**
+     * Revierte el descuento de inventario que store() aplicó al crear la devolución
+     * (solo aplica a tipos distintos de 'cliente', que desde la corrección de auditoría
+     * ya no descuentan nada al crear). Se apoya en los MovimientoInventario tipo 'Salida'
+     * ya registrados para esta devolución, para reponer exactamente lo que se descontó
+     * — misma ubicación, mismo lote — con su propio registro de auditoría inverso.
+     */
+    private function reponerStockDevolucion(Devolucion $dev, $user, string $motivo): void
+    {
+        $salidas = DB::table('movimiento_inventarios')
+            ->where('referencia_tipo', 'devolucion')
+            ->where('referencia_id', $dev->id)
+            ->where('tipo_movimiento', 'Salida')
+            ->get();
+
+        foreach ($salidas as $mov) {
+            if (!$mov->ubicacion_origen_id) continue;
+
+            $inv = DB::table('inventarios')
+                ->where('empresa_id', $dev->empresa_id)
+                ->where('sucursal_id', $dev->sucursal_id)
+                ->where('producto_id', $mov->producto_id)
+                ->where('ubicacion_id', $mov->ubicacion_origen_id)
+                ->where('estado', 'Disponible')
+                ->when($mov->lote, fn($q) => $q->where('lote', $mov->lote))
+                ->when(!$mov->lote, fn($q) => $q->whereNull('lote'))
+                ->lockForUpdate()->first();
+
+            $prod     = DB::table('productos')->where('id', $mov->producto_id)->select('unidades_caja')->first();
+            $cajasUnd = max(1, (int)(($prod->unidades_caja ?? 1) ?: 1));
+
+            if ($inv) {
+                $nuevaCant = (float)$inv->cantidad + (float)$mov->cantidad;
+                DB::table('inventarios')->where('id', $inv->id)->update([
+                    'cantidad'       => $nuevaCant,
+                    'cantidad_cajas' => (int)floor($nuevaCant / $cajasUnd),
+                    'saldos'         => fmod($nuevaCant, $cajasUnd),
+                    'updated_at'     => date('Y-m-d H:i:s'),
+                ]);
+            } else {
+                DB::table('inventarios')->insert([
+                    'empresa_id'      => $dev->empresa_id,
+                    'sucursal_id'     => $dev->sucursal_id,
+                    'producto_id'     => $mov->producto_id,
+                    'ubicacion_id'    => $mov->ubicacion_origen_id,
+                    'lote'            => $mov->lote,
+                    'fecha_vencimiento' => $mov->fecha_vencimiento,
+                    'estado'          => 'Disponible',
+                    'cantidad'        => $mov->cantidad,
+                    'cantidad_cajas'  => (int)floor((float)$mov->cantidad / $cajasUnd),
+                    'saldos'          => fmod((float)$mov->cantidad, $cajasUnd),
+                    'cantidad_reservada' => 0,
+                    'created_at'      => date('Y-m-d H:i:s'),
+                    'updated_at'      => date('Y-m-d H:i:s'),
+                ]);
+            }
+
+            DB::table('movimiento_inventarios')->insert([
+                'empresa_id'          => $dev->empresa_id,
+                'sucursal_id'         => $dev->sucursal_id,
+                'producto_id'         => $mov->producto_id,
+                'tipo_movimiento'     => 'AjustePositivo',
+                'cantidad'            => $mov->cantidad,
+                'lote'                => $mov->lote,
+                'fecha_vencimiento'   => $mov->fecha_vencimiento,
+                'referencia_tipo'     => 'devolucion',
+                'referencia_id'       => $dev->id,
+                'auxiliar_id'         => $user->id,
+                'fecha_movimiento'    => date('Y-m-d'),
+                'hora_inicio'         => date('H:i:s'),
+                'observaciones'       => "{$motivo} {$dev->numero_devolucion} — reversión de stock descontado",
+                'ubicacion_destino_id'=> $mov->ubicacion_origen_id,
+                'created_at'          => date('Y-m-d H:i:s'),
+            ]);
+        }
     }
 
     // ── POST /api/devoluciones/{id}/anular ────────────────────────────────────
@@ -543,8 +624,11 @@ class DevolucionController extends BaseController
         }
 
         $estadoAnterior = $dev->estado;
-        $dev->estado = Devolucion::ESTADO_ANULADA;
-        $dev->save();
+        DB::transaction(function () use ($dev, $user) {
+            $this->reponerStockDevolucion($dev, $user, 'Anulación de devolución');
+            $dev->estado = Devolucion::ESTADO_ANULADA;
+            $dev->save();
+        });
 
         $this->audit($user, 'devoluciones', 'anular', 'devoluciones', $dev->id,
             ['estado' => $estadoAnterior], ['estado' => Devolucion::ESTADO_ANULADA]);
