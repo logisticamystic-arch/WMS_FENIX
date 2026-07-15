@@ -1177,6 +1177,9 @@ class RecepcionController extends BaseController
                 // ── PALLET AUTO-DISPONIBLE ───────────────────────────────────
                 $ubicacionInventario = $linea->ubicacion_destino_id ?: ($patio->id ?? null);
                 if ($ubicacionInventario) {
+                    // fecha_vencimiento entra en la clave (sin numero_pallet aquí, a
+                    // diferencia de las otras dos rutas de recepción) — es el diferenciador
+                    // real entre partidas del mismo lote/producto/ubicación.
                     $_invKeyConfirm = [
                         'empresa_id'   => $recepcion->empresa_id,
                         'sucursal_id'  => $recepcion->sucursal_id,
@@ -1185,6 +1188,9 @@ class RecepcionController extends BaseController
                         'lote'         => $linea->lote,
                         'estado'       => 'Disponible',
                     ];
+                    if ($linea->fecha_vencimiento) {
+                        $_invKeyConfirm['fecha_vencimiento'] = $linea->fecha_vencimiento;
+                    }
                     $inv = \App\Models\Inventario::where($_invKeyConfirm)->lockForUpdate()->first();
                     if (!$inv) {
                         $inv = new \App\Models\Inventario($_invKeyConfirm);

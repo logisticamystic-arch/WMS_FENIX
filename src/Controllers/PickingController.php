@@ -2196,6 +2196,105 @@ class PickingController extends BaseController
         $nl->save();
     }
 
+    /**
+     * Ajusta la reserva de inventario de una línea YA asignada (estado EnProceso,
+     * con ubicacion_id/lote propios) o parcialmente Faltante, cuando se edita su
+     * cantidad_solicitada. Si la línea nunca llegó a reservar nada (Faltante sin
+     * ubicacion_id), no toca inventario — solo cambia lo que se necesita.
+     *
+     * Debe invocarse DENTRO de una transacción ya abierta por el caller.
+     *
+     * @return array|null ['conflict'=>true, 'ubicacion'=>, 'stock_disponible'=>, 'requerido'=>]
+     *                     si no hay stock suficiente para cubrir el incremento (no se
+     *                     aplica nada en ese caso); null si se ajustó correctamente.
+     */
+    private function _ajustarReservaEdicionLinea(
+        PickingDetalle $linea, float $nuevaCantidad, $user, Request $r, string $motivo = ''
+    ): ?array {
+        $empresaId  = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $user->sucursal_id;
+        $factor     = max(1, (int)(Capsule::table('productos')->where('id', $linea->producto_id)->value('unidades_caja') ?? 1));
+
+        $viejaQty     = (float)$linea->cantidad_solicitada;
+        $diffCajas    = $nuevaCantidad - $viejaQty;
+        $diffUnidades = round($diffCajas * $factor, 3);
+
+        if ($diffUnidades < 0 && $linea->ubicacion_id) {
+            $this->_releaseReserva($empresaId, $sucursalId, $linea->producto_id, $linea->ubicacion_id, $linea->lote, abs($diffUnidades));
+            MovimientoInventario::create([
+                'empresa_id' => $empresaId, 'sucursal_id' => $sucursalId,
+                'producto_id' => $linea->producto_id, 'ubicacion_id' => $linea->ubicacion_id,
+                'cantidad' => abs($diffUnidades), 'tipo_movimiento' => MovimientoInventario::TIPO_CORRECCION,
+                'referencia_id' => $linea->id, 'referencia_tipo' => 'picking_detalle',
+                'usuario_id' => $user->id,
+                'observaciones' => $motivo ?: 'Edición de cantidad — liberación de reserva',
+                'fecha_movimiento' => date('Y-m-d'), 'hora_inicio' => date('H:i:s'),
+            ]);
+        } elseif ($diffUnidades > 0 && $linea->ubicacion_id) {
+            $inv = Inventario::where('empresa_id',  $empresaId)
+                ->where('sucursal_id', $sucursalId)
+                ->where('producto_id', $linea->producto_id)
+                ->where('ubicacion_id', $linea->ubicacion_id)
+                ->where('estado', 'Disponible')
+                ->when($linea->lote, fn($q) => $q->where('lote', $linea->lote))
+                ->lockForUpdate()
+                ->first();
+
+            $stockDisp = $inv ? max(0, (float)$inv->cantidad - (float)($inv->cantidad_reservada ?? 0)) : 0;
+
+            if ($stockDisp < $diffUnidades) {
+                return ['conflict' => true, 'ubicacion' => $linea->ubicacion_id, 'stock_disponible' => $stockDisp, 'requerido' => $diffUnidades];
+            }
+
+            $inv->cantidad_reservada = (float)($inv->cantidad_reservada ?? 0) + $diffUnidades;
+            $inv->save();
+
+            MovimientoInventario::create([
+                'empresa_id' => $empresaId, 'sucursal_id' => $sucursalId,
+                'producto_id' => $linea->producto_id, 'ubicacion_id' => $linea->ubicacion_id,
+                'cantidad' => $diffUnidades, 'tipo_movimiento' => MovimientoInventario::TIPO_CORRECCION,
+                'referencia_id' => $linea->id, 'referencia_tipo' => 'picking_detalle',
+                'usuario_id' => $user->id,
+                'observaciones' => $motivo ?: 'Edición de cantidad — refuerzo de reserva',
+                'fecha_movimiento' => date('Y-m-d'), 'hora_inicio' => date('H:i:s'),
+            ]);
+        }
+        // Si $linea->ubicacion_id es null (completamente Faltante, nunca se reservó
+        // nada), no hay inventario que tocar — solo cambia cuánto falta.
+
+        if ($linea->estado === 'Faltante') {
+            // Reservado real en este momento (0 si nunca se asignó ubicación) —
+            // se consulta en vez de asumir, para no arrastrar errores de cálculo.
+            $reservadoActual = $linea->ubicacion_id
+                ? (float) (Inventario::where('empresa_id', $empresaId)
+                    ->where('sucursal_id', $sucursalId)
+                    ->where('producto_id', $linea->producto_id)
+                    ->where('ubicacion_id', $linea->ubicacion_id)
+                    ->when($linea->lote, fn($q) => $q->where('lote', $linea->lote))
+                    ->value('cantidad_reservada') ?? 0)
+                : 0.0;
+
+            $faltanteUnidades = max(0, ($nuevaCantidad * $factor) - $reservadoActual);
+
+            Capsule::table('picking_faltantes')
+                ->where('orden_picking_id', $linea->orden_picking_id)
+                ->where('producto_id', $linea->producto_id)
+                ->orderByDesc('id')
+                ->limit(1)
+                ->update([
+                    'cantidad_solicitada' => $nuevaCantidad,
+                    'cantidad_faltante'   => (int) ceil($faltanteUnidades / $factor),
+                    'updated_at'          => now(),
+                ]);
+        }
+
+        $linea->cantidad_solicitada = $nuevaCantidad;
+        $linea->cantidad_pickeada   = min((float)$linea->cantidad_pickeada, $nuevaCantidad);
+        $linea->save();
+
+        return null;
+    }
+
     // ── GET /api/picking/dashboard ────────────────────────────────────────────
     public function dashboard(Request $r, Response $res): Response
     {
@@ -3193,12 +3292,41 @@ class PickingController extends BaseController
         $cantidad = (float)($body['cantidad_solicitada'] ?? 0);
         if ($cantidad < 1) return $this->error($res, 'La cantidad debe ser mayor a 0');
 
-        $linea->cantidad_solicitada = $cantidad;
-        if (isset($body['costo_unitario']) && $body['costo_unitario'] !== '') {
-            $linea->costo_unitario = (float)$body['costo_unitario'];
-        }
-        $linea->save();
+        $costoUnitario = isset($body['costo_unitario']) && $body['costo_unitario'] !== ''
+            ? (float)$body['costo_unitario'] : null;
 
+        $result = null;
+        try {
+            Capsule::transaction(function () use ($linea, $cantidad, $costoUnitario, $user, $r, &$result) {
+                if ($linea->estado === 'Pendiente') {
+                    // Sin ubicación/reserva asignada todavía — solo actualiza la solicitud.
+                    $linea->cantidad_solicitada = $cantidad;
+                    $linea->save();
+                } else {
+                    // EnProceso (reserva completa) o Faltante (reserva parcial o nula):
+                    // ajusta la reserva de inventario según la diferencia antes de guardar.
+                    $result = $this->_ajustarReservaEdicionLinea($linea, $cantidad, $user, $r, 'Edición manual de cantidad (escritorio)');
+                }
+
+                if ($costoUnitario !== null) {
+                    $linea->costo_unitario = $costoUnitario;
+                    $linea->save();
+                }
+            });
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error al actualizar la línea: ' . $e->getMessage());
+        }
+
+        if (!empty($result['conflict'])) {
+            return $this->json($res, [
+                'error'            => true,
+                'message'          => "Stock insuficiente en ubicación {$result['ubicacion']}: disponible {$result['stock_disponible']}, requerido {$result['requerido']}",
+                'stock_disponible' => $result['stock_disponible'],
+                'ubicacion_id'     => $result['ubicacion'],
+            ], 409);
+        }
+
+        $linea->refresh();
         return $this->ok($res, ['linea' => $linea->toArray()], 'Cantidad actualizada');
     }
 
@@ -7110,76 +7238,16 @@ class PickingController extends BaseController
             return $this->error($res, "No se puede editar una línea de una orden ya {$ordenDetalle->estado_despacho}");
         }
 
-        $viejaQty = (float)$detalle->cantidad_solicitada;
-        $result   = null;
+        $result = null;
 
         try {
-            Capsule::transaction(function () use (
-                $detalle, $nuevaCant, $viejaQty, $motivo, $user, $empresaId, $sucursalId, &$result
-            ) {
+            Capsule::transaction(function () use ($detalle, $nuevaCant, $motivo, $user, $r, &$result) {
                 if ($detalle->estado === 'Pendiente') {
                     // Sin ubicación/reserva asignada todavía — solo actualiza la solicitud.
                     $detalle->cantidad_solicitada = $nuevaCant;
                     $detalle->save();
-
                 } elseif ($detalle->estado === 'EnProceso') {
-                    // Ya tiene ubicación/lote asignados por FEFO y stock RESERVADO
-                    // (cantidad_reservada), sin descontar físicamente todavía. La
-                    // cantidad_solicitada se captura en "cajas" cuando el producto
-                    // tiene empaque (unidades_caja > 1); la reserva en Inventario
-                    // siempre está en unidades — hay que convertir para ambos lados.
-                    $factor        = max(1, (int)(Capsule::table('productos')->where('id', $detalle->producto_id)->value('unidades_caja') ?? 1));
-                    $diffCajas     = $nuevaCant - $viejaQty;
-                    $diffUnidades  = round($diffCajas * $factor, 3);
-
-                    if ($diffUnidades < 0) {
-                        $this->_releaseReserva($empresaId, $sucursalId, $detalle->producto_id, $detalle->ubicacion_id, $detalle->lote, abs($diffUnidades));
-
-                        MovimientoInventario::create([
-                            'empresa_id' => $empresaId, 'sucursal_id' => $sucursalId,
-                            'producto_id' => $detalle->producto_id, 'ubicacion_id' => $detalle->ubicacion_id,
-                            'cantidad' => abs($diffUnidades), 'tipo_movimiento' => MovimientoInventario::TIPO_CORRECCION,
-                            'referencia_id' => $detalle->id, 'referencia_tipo' => 'picking_detalle',
-                            'usuario_id' => $user->id,
-                            'observaciones' => $motivo ?: 'Edición de cantidad — liberación de reserva',
-                            'fecha_movimiento' => date('Y-m-d'), 'hora_inicio' => date('H:i:s'),
-                        ]);
-
-                    } elseif ($diffUnidades > 0) {
-                        $inv = Inventario::where('empresa_id',  $empresaId)
-                            ->where('sucursal_id', $sucursalId)
-                            ->where('producto_id', $detalle->producto_id)
-                            ->where('ubicacion_id', $detalle->ubicacion_id)
-                            ->where('estado', 'Disponible')
-                            ->when($detalle->lote, fn($q) => $q->where('lote', $detalle->lote))
-                            ->lockForUpdate()
-                            ->first();
-
-                        $stockDisp = $inv ? max(0, (float)$inv->cantidad - (float)($inv->cantidad_reservada ?? 0)) : 0;
-
-                        if ($stockDisp < $diffUnidades) {
-                            // No reasigna ruta automáticamente: requiere decisión manual (ver otra ubicación).
-                            $result = ['conflict' => true, 'ubicacion' => $detalle->ubicacion_id, 'stock_disponible' => $stockDisp, 'requerido' => $diffUnidades];
-                            return;
-                        }
-
-                        $inv->cantidad_reservada = (float)($inv->cantidad_reservada ?? 0) + $diffUnidades;
-                        $inv->save();
-
-                        MovimientoInventario::create([
-                            'empresa_id' => $empresaId, 'sucursal_id' => $sucursalId,
-                            'producto_id' => $detalle->producto_id, 'ubicacion_id' => $detalle->ubicacion_id,
-                            'cantidad' => $diffUnidades, 'tipo_movimiento' => MovimientoInventario::TIPO_CORRECCION,
-                            'referencia_id' => $detalle->id, 'referencia_tipo' => 'picking_detalle',
-                            'usuario_id' => $user->id,
-                            'observaciones' => $motivo ?: 'Edición de cantidad — refuerzo de reserva',
-                            'fecha_movimiento' => date('Y-m-d'), 'hora_inicio' => date('H:i:s'),
-                        ]);
-                    }
-
-                    $detalle->cantidad_solicitada = $nuevaCant;
-                    $detalle->cantidad_pickeada   = min((float)$detalle->cantidad_pickeada, $nuevaCant);
-                    $detalle->save();
+                    $result = $this->_ajustarReservaEdicionLinea($detalle, $nuevaCant, $user, $r, $motivo);
                 }
             });
         } catch (\Exception $e) {

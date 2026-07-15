@@ -1702,6 +1702,14 @@ class InventarioV2Controller extends BaseController
                 if (!empty($data['lote'])) {
                     $invQuery->where('lote', $data['lote']);
                 }
+                // fecha_vencimiento acota a la partida exacta cuando se conoce — es el
+                // diferenciador real entre partidas (no el lote, que puede repetirse o
+                // faltar). Sin esto, una corrección sin ubicación/lote podía tomar
+                // arbitrariamente la primera fila del producto y sobrescribir la fecha
+                // de vencimiento de un lote distinto al que se pretendía corregir.
+                if ($fv) {
+                    $invQuery->where('fecha_vencimiento', $fv);
+                }
 
                 $inv = $invQuery->first();
                 $cantidadSistema = $inv ? $inv->cantidad : 0;

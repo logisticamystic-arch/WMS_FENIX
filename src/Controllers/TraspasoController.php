@@ -95,6 +95,9 @@ class TraspasoController extends BaseController
 
         try {
             $result = DB::connection()->transaction(function () use ($data, $empresaId, $sucursalId, $cantidad, $user) {
+                // fecha_vencimiento acota a la partida exacta cuando el cliente la envía
+                // (buscarStock() ya la devuelve por fila) — es el diferenciador real entre
+                // partidas, no el lote, que puede repetirse entre vencimientos distintos.
                 $inv = Inventario::where('empresa_id', $empresaId)
                     ->where('sucursal_id', $sucursalId)
                     ->where('producto_id', $data['producto_id'])
@@ -102,6 +105,7 @@ class TraspasoController extends BaseController
                     ->where('estado', 'Disponible')
                     ->when(!empty($data['lote']), fn($q) => $q->where('lote', $data['lote']))
                     ->when(empty($data['lote']), fn($q) => $q->whereNull('lote'))
+                    ->when(!empty($data['fecha_vencimiento']), fn($q) => $q->where('fecha_vencimiento', $data['fecha_vencimiento']))
                     ->lockForUpdate()
                     ->first();
 

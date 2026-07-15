@@ -274,12 +274,18 @@ class AjusteUbicacionController extends BaseController
                     }
 
                     if ($esAgregar) {
-                        // ── AGREGAR: buscar fila existente con mismo producto+lote y SUMAR ──
+                        // ── AGREGAR: buscar fila existente con mismo producto+lote+fecha_vencimiento y SUMAR ──
+                        // fecha_vencimiento entra en la clave: es el diferenciador real entre
+                        // partidas, no el lote. Sin esto, dos partidas del mismo lote con
+                        // vencimiento distinto se fusionaban y la fecha nueva nunca se
+                        // aplicaba a la fila viva (solo quedaba en el registro de auditoría).
                         $inv = Inventario::where('empresa_id', $empresaId)
                             ->where('sucursal_id', $sucursalId)
                             ->where('producto_id', $det->producto_id)
                             ->where('ubicacion_id', $ubicacionId)
                             ->where('lote', $det->lote)
+                            ->when($det->fecha_vencimiento, fn($q) => $q->where('fecha_vencimiento', $det->fecha_vencimiento))
+                            ->when(!$det->fecha_vencimiento, fn($q) => $q->whereNull('fecha_vencimiento'))
                             ->lockForUpdate()
                             ->first();
 
@@ -289,6 +295,9 @@ class AjusteUbicacionController extends BaseController
                             $inv->cantidad      += (float)$det->cantidad;
                             $inv->cantidad_cajas = (int)floor($inv->cantidad / $upc);
                             $inv->saldos         = fmod($inv->cantidad, (float)$upc);
+                            if ($det->fecha_vencimiento) {
+                                $inv->fecha_vencimiento = $det->fecha_vencimiento;
+                            }
                             $inv->save();
 
                             AjusteInventario::create([
