@@ -166,7 +166,8 @@ class InventoryGuard
         float $cantidad,
         int   $ubicacionOrigenId,
         ?string $lote = null,
-        ?int $numeroPallet = null
+        ?int $numeroPallet = null,
+        ?string $fechaVencimiento = null
     ): array {
         if ($cantidad <= 0) {
             return $this->deny('R02', 'La cantidad a trasladar debe ser mayor a cero.', compact('productoId', 'cantidad'));
@@ -179,7 +180,13 @@ class InventoryGuard
                 WHERE empresa_id = ? AND sucursal_id = ? AND producto_id = ?
                   AND ubicacion_id = ? AND estado IN ('Disponible','En Patio')";
 
-        if ($lote !== null) {
+        // fecha_vencimiento es el diferenciador real entre partidas — cuando se conoce,
+        // acota la suma a esa partida exacta en vez de agregar todas las del lote/ubicación
+        // (que pueden mezclar vencimientos distintos, sobreestimando lo realmente trasladable).
+        if ($fechaVencimiento !== null) {
+            $sql    .= " AND fecha_vencimiento = ?";
+            $params[] = $fechaVencimiento;
+        } elseif ($lote !== null) {
             $sql    .= " AND lote = ?";
             $params[] = $lote;
         }

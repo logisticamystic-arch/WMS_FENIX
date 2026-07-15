@@ -219,19 +219,22 @@ class InventarioController extends BaseController
         $loteGuard = trim((string)($data['lote'] ?? '')) ?: null;
         $guard = new InventoryGuard($empresaId, $sucursalId, $user->id);
         $numeroPalletGuard = !empty($data['numero_pallet']) ? (int)$data['numero_pallet'] : null;
+        // fecha_vencimiento se resuelve antes del guard: es el criterio primario para
+        // acotar la suma de stock a la partida exacta (ver InventoryGuard::canTransfer).
+        $fvencParsed = $this->estandarizarFecha($data['fecha_vencimiento'] ?? null);
         $check = $guard->canTransfer(
             $data['producto_id'],
             $cantidad,
             $data['ubicacion_origen_id'],
             $loteGuard,
-            $numeroPalletGuard
+            $numeroPalletGuard,
+            $fvencParsed
         );
         if (!$check['ok']) {
             return $this->error($res, $check['message'], 422);
         }
 
         // Validación R09: Fecha de vencimiento obligatoria
-        $fvencParsed = $this->estandarizarFecha($data['fecha_vencimiento'] ?? null);
         $checkDate = $guard->checkExpirationMandatory($data['producto_id'], $fvencParsed);
         if (!$checkDate['ok']) {
             return $this->error($res, $checkDate['message'], 422);
@@ -249,6 +252,9 @@ class InventarioController extends BaseController
                 }
 
                 // Verificar stock origen. Permitir inventario en patio o disponible para ubicar.
+                // fecha_vencimiento acota a la partida exacta cuando se conoce (mismo criterio
+                // ya aplicado en el guard de arriba) — evita descontar de una partida con
+                // vencimiento distinto a la que el usuario efectivamente seleccionó.
                 $origenQuery = Inventario::where('empresa_id',    $empresaId)
                     ->where('sucursal_id',   $sucursalId)
                     ->where('producto_id',   $data['producto_id'])
@@ -258,6 +264,7 @@ class InventarioController extends BaseController
                     ->when($lote === null, fn($q) => $q->where(function ($sub) {
                         $sub->whereNull('lote')->orWhere('lote', 'N/A');
                     }))
+                    ->when($fvenc, fn($q) => $q->where('fecha_vencimiento', $fvenc))
                     ->when(!empty($data['numero_pallet']), fn($q) => $q->where('numero_pallet', $data['numero_pallet']))
                     ->when(empty($data['numero_pallet']), fn($q) => $q->whereNull('numero_pallet'));
 
@@ -293,7 +300,11 @@ class InventarioController extends BaseController
                     $origen->save();
                 }
 
-                // Acumular en destino
+                // Acumular en destino — fecha_vencimiento entra en la clave de búsqueda:
+                // es el diferenciador real entre partidas (no el lote, que puede repetirse
+                // o ser 'N/A' entre partidas con vencimiento distinto). Sin esto, dos
+                // traslados del mismo producto/ubicación con vencimientos diferentes
+                // se fusionaban en una sola fila y la fecha más antigua se perdía.
                 if ($lote !== null) {
                     $destino = Inventario::firstOrCreate(
                         [
@@ -304,13 +315,13 @@ class InventarioController extends BaseController
                             'lote'         => $lote,
                             'estado'       => 'Disponible',
                             'numero_pallet' => $data['numero_pallet'] ?? null,
+                            'fecha_vencimiento' => $fvenc,
                         ],
                         [
                             'cantidad'           => 0,
                             'cantidad_reservada' => 0,
                             'cantidad_cajas'     => 0,
                             'saldos'             => 0,
-                            'fecha_vencimiento'  => $fvenc,
                         ]
                     );
                 } else {
@@ -321,6 +332,8 @@ class InventarioController extends BaseController
                         ->where(function ($sub) {
                             $sub->whereNull('lote')->orWhere('lote', 'N/A');
                         })
+                        ->when($fvenc, fn($q) => $q->where('fecha_vencimiento', $fvenc))
+                        ->when(!$fvenc, fn($q) => $q->whereNull('fecha_vencimiento'))
                         ->where('estado', 'Disponible')
                         ->lockForUpdate()
                         ->first();
@@ -346,9 +359,6 @@ class InventarioController extends BaseController
                 }
 
                 $destino->cantidad += $cantidad;
-                if ($fvenc) {
-                    $destino->fecha_vencimiento = $fvenc;
-                }
                 // Recalcular cajas/saldos destino
                 $productoDestino = \App\Models\Producto::select('unidades_caja')->find($data['producto_id']);
                 $upcDestino = max(1, (int)(($productoDestino->unidades_caja ?? null) ?: 1));
@@ -404,17 +414,22 @@ class InventarioController extends BaseController
 
         try {
             Capsule::transaction(function () use ($data, $user, $req) {
+                $fvencParsed = $this->estandarizarFecha($data['fecha_vencimiento'] ?? null);
+
+                // fecha_vencimiento entra en la clave de búsqueda cuando se conoce: es el
+                // diferenciador real entre partidas, no el lote (que puede repetirse o ser
+                // null/'N/A' entre partidas con vencimiento distinto). Sin esto, un ajuste
+                // podía localizar y sobrescribir la cantidad de la partida equivocada.
                 $inv = Inventario::where('empresa_id',   $this->getEffectiveEmpresaId($user, $req))
                     ->where('sucursal_id',  $user->sucursal_id)
                     ->where('producto_id',  $data['producto_id'])
                     ->where('ubicacion_id', $data['ubicacion_id'])
                     ->where('estado', 'Disponible')
                     ->when($data['lote'] ?? null, fn($q) => $q->where('lote', $data['lote']))
+                    ->when($fvencParsed, fn($q) => $q->where('fecha_vencimiento', $fvencParsed))
                     ->lockForUpdate()
                     ->first();
 
-                $fvencParsed = $this->estandarizarFecha($data['fecha_vencimiento'] ?? null);
-                
                 // Validación R09 para ajustes positivos o creación
                 if ($data['cantidad_nueva'] > 0) {
                     $guard = new InventoryGuard($this->getEffectiveEmpresaId($user, $req), $user->sucursal_id, $user->id);
