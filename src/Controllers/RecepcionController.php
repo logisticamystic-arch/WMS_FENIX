@@ -505,7 +505,9 @@ class RecepcionController extends BaseController
             ]);
 
             // 2. Afectar Tabla de Inventarios (Disponible en Patio)
-            $inv = \App\Models\Inventario::firstOrNew([
+            // lockForUpdate: evita "lost update" si dos capturas concurrentes (dos móviles,
+            // o esta misma ruta llamada dos veces) suman cantidad sobre la misma fila a la vez.
+            $_invKeyPatio = [
                 'empresa_id'   => $this->getEffectiveEmpresaId($user, $request),
                 'sucursal_id'  => $user->sucursal_id,
                 'producto_id'  => $producto->id,
@@ -513,7 +515,11 @@ class RecepcionController extends BaseController
                 'lote'         => $data['lote'] ?? 'N/A',
                 'estado'       => 'Disponible',
                 'numero_pallet' => $detalle->numero_pallet,
-            ]);
+            ];
+            $inv = \App\Models\Inventario::where($_invKeyPatio)->lockForUpdate()->first();
+            if (!$inv) {
+                $inv = new \App\Models\Inventario($_invKeyPatio);
+            }
             $inv->cantidad           = ($inv->cantidad ?? 0) + $cantidad;
             $inv->cantidad_reservada = $inv->cantidad_reservada ?? 0;
             $inv->fecha_vencimiento  = $detalle->fecha_vencimiento ?? $inv->fecha_vencimiento;
@@ -823,7 +829,7 @@ class RecepcionController extends BaseController
                 'lote'                 => $data['lote'] ?? 'N/A',
             ]);
 
-            $inv = \App\Models\Inventario::firstOrNew([
+            $_invKeySinOdc = [
                 'empresa_id'    => $this->getEffectiveEmpresaId($user, $request),
                 'sucursal_id'   => $user->sucursal_id,
                 'producto_id'   => $producto->id,
@@ -831,7 +837,11 @@ class RecepcionController extends BaseController
                 'lote'          => $data['lote'] ?? 'N/A',
                 'estado'        => 'Disponible',
                 'numero_pallet' => $detalle->numero_pallet,
-            ]);
+            ];
+            $inv = \App\Models\Inventario::where($_invKeySinOdc)->lockForUpdate()->first();
+            if (!$inv) {
+                $inv = new \App\Models\Inventario($_invKeySinOdc);
+            }
             $inv->cantidad           = ($inv->cantidad ?? 0) + $cantidad;
             $inv->cantidad_reservada = $inv->cantidad_reservada ?? 0;
             $inv->fecha_vencimiento  = $detalle->fecha_vencimiento ?? $inv->fecha_vencimiento;
@@ -1167,14 +1177,18 @@ class RecepcionController extends BaseController
                 // ── PALLET AUTO-DISPONIBLE ───────────────────────────────────
                 $ubicacionInventario = $linea->ubicacion_destino_id ?: ($patio->id ?? null);
                 if ($ubicacionInventario) {
-                    $inv = \App\Models\Inventario::firstOrNew([
+                    $_invKeyConfirm = [
                         'empresa_id'   => $recepcion->empresa_id,
                         'sucursal_id'  => $recepcion->sucursal_id,
                         'producto_id'  => $linea->producto_id,
                         'ubicacion_id' => $ubicacionInventario,
                         'lote'         => $linea->lote,
                         'estado'       => 'Disponible',
-                    ]);
+                    ];
+                    $inv = \App\Models\Inventario::where($_invKeyConfirm)->lockForUpdate()->first();
+                    if (!$inv) {
+                        $inv = new \App\Models\Inventario($_invKeyConfirm);
+                    }
                     $inv->cantidad           = ($inv->cantidad ?? 0) + $linea->cantidad_recibida;
                     $inv->cantidad_reservada = $inv->cantidad_reservada ?? 0;
                     $inv->fecha_vencimiento  = $linea->fecha_vencimiento ?? $inv->fecha_vencimiento;
