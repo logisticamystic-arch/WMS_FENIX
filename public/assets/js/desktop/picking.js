@@ -1138,10 +1138,13 @@ WMS_MODULES.picking = {
               style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:3px;padding:3px 8px;cursor:pointer;color:#166534;font-size:.7rem;margin-right:3px;">
               <i class="fa-solid fa-check"></i>
             </button>
-            <button title="Eliminar línea" onclick="WMS_MODULES.picking._eliminarLineaInline(${id},${d.id},'${planKey}')"
-              style="background:#fee2e2;border:1px solid #fecaca;border-radius:3px;padding:3px 8px;cursor:pointer;color:#991b1b;font-size:.7rem;">
-              <i class="fa-solid fa-trash-can"></i>
-            </button>` : '<span style="color:#94a3b8;font-size:.7rem;">—</span>'}
+            ${puedeEliminar
+              ? `<button title="Eliminar línea" onclick="WMS_MODULES.picking._eliminarLineaInline(${id},${d.id},'${planKey}')"
+                   style="background:#fee2e2;border:1px solid #fecaca;border-radius:3px;padding:3px 8px;cursor:pointer;color:#991b1b;font-size:.7rem;">
+                   <i class="fa-solid fa-trash-can"></i>
+                 </button>`
+              : `<span title="Ya tiene unidades separadas, no se puede eliminar" style="color:#94a3b8;font-size:.7rem;"><i class="fa-solid fa-lock"></i></span>`
+            }` : '<span style="color:#94a3b8;font-size:.7rem;">—</span>'}
         </td>
       </tr>`;
     }).join('') || `<tr><td colspan="7" style="text-align:center;padding:12px;color:#94a3b8;font-size:.78rem;">Sin líneas</td></tr>`;
