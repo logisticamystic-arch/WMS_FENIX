@@ -2089,56 +2089,7 @@ class PickingController extends BaseController
                 ]);
 
                 if (in_array($orden->estado, ['Asignado', 'EnProceso'])) {
-                    $upcAgg = max(1, (int)($prod->unidades_caja ?? 1));
-                    $cantidadUnidades = $cantidad * $upcAgg;
-
-                    $stockDisponible = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
-                        ->where('sucursal_id', $user->sucursal_id)
-                        ->where('producto_id', $prod->id)
-                        ->where('estado', 'Disponible')
-                        ->whereRaw('(cantidad - cantidad_reservada) > 0')
-                        ->lockForUpdate()
-                        ->orderByRaw('fecha_vencimiento IS NULL ASC')
-                        ->orderBy('fecha_vencimiento', 'ASC')
-                        ->get();
-
-                    $restante = $cantidadUnidades;
-                    foreach ($stockDisponible as $inv) {
-                        if ($restante <= 0) break;
-                        $disp = max(0, $inv->cantidad - $inv->cantidad_reservada);
-                        if ($disp <= 0) continue;
-
-                        $aReservar = min($disp, $restante);
-                        $inv->cantidad_reservada += $aReservar;
-                        $inv->save();
-                        $restante -= $aReservar;
-
-                        if (!$nl->ubicacion_id) {
-                            $nl->ubicacion_id = $inv->ubicacion_id;
-                            $nl->lote = $inv->lote;
-                            $nl->fecha_vencimiento = $inv->fecha_vencimiento;
-                        }
-                    }
-
-                    if ($restante > 0) {
-                        $now = now();
-                        Capsule::table('picking_faltantes')->insert([
-                            'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
-                            'sucursal_id'         => $user->sucursal_id,
-                            'orden_picking_id'    => $orden->id,
-                            'producto_id'         => $nl->producto_id,
-                            'planilla_lote'       => $orden->planilla_lote ?? $orden->planilla_numero,
-                            'cantidad_solicitada' => $cantidad,
-                            'cantidad_faltante'   => (int)ceil($restante / $upcAgg),
-                            'causa'               => 'Stock insuficiente al agregar línea',
-                            'created_at'          => $now,
-                            'updated_at'          => $now,
-                        ]);
-                        $nl->estado = 'Faltante';
-                    } else {
-                        $nl->estado = 'EnProceso';
-                    }
-                    $nl->save();
+                    $this->_reservarStockLineaNueva($nl, $prod, $cantidad, $orden, $user, $r);
                 }
 
                 if (!in_array($orden->estado, ['EnProceso', 'Asignado'])) {
@@ -2155,6 +2106,94 @@ class PickingController extends BaseController
         } catch (\Exception $e) {
             return $this->error($res, 'Error al agregar línea: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Reserva stock disponible (FEFO, excluyendo productos/lotes bloqueados por
+     * calidad — mismo criterio que _generarRutaFEFO) para una línea de picking
+     * recién creada sobre una orden que ya está en curso. Asigna ubicacion_id/
+     * lote/fecha_vencimiento de la primera reserva encontrada, y si el stock no
+     * alcanza registra picking_faltantes con el remanente. Debe invocarse DENTRO
+     * de una transacción ya abierta por el caller.
+     *
+     * $cantidadCajas está en la misma unidad que PickingDetalle.cantidad_solicitada
+     * (cajas cuando el producto tiene empaque, unidades si unidades_caja=1).
+     *
+     * $loteForzado: si el caller ya especificó manualmente un lote (ej. formulario
+     * de agregar referencia a planilla), se restringe la reserva a ese lote en vez
+     * de recorrer FEFO por fecha de vencimiento.
+     */
+    private function _reservarStockLineaNueva(
+        PickingDetalle $nl, Producto $prod, float $cantidadCajas, OrdenPicking $orden, $user, Request $r,
+        ?string $loteForzado = null
+    ): void {
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $upc = max(1, (int)($prod->unidades_caja ?? 1));
+        $restante = $cantidadCajas * $upc;
+
+        $prodBloqueado = (bool) \App\Models\Producto::withoutGlobalScopes()
+            ->where('id', $prod->id)->where('empresa_id', $empresaId)
+            ->where('bloqueado', true)->exists();
+
+        $loteForzadoBloqueado = $loteForzado && \App\Models\BloqueoLote::where('empresa_id', $empresaId)
+            ->where('producto_id', $prod->id)->where('lote', $loteForzado)->exists();
+
+        if (!$prodBloqueado && !$loteForzadoBloqueado) {
+            $lotesBloqueados = \App\Models\BloqueoLote::where('empresa_id', $empresaId)
+                ->where('producto_id', $prod->id)
+                ->pluck('lote')->toArray();
+
+            $stockDisponible = Inventario::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->where('producto_id', $prod->id)
+                ->where('estado', 'Disponible')
+                ->whereRaw('(cantidad - cantidad_reservada) > 0')
+                ->when($loteForzado, fn($q) => $q->where('lote', $loteForzado))
+                ->when(!$loteForzado && !empty($lotesBloqueados), fn($q) => $q->whereNotIn('lote', $lotesBloqueados))
+                ->lockForUpdate()
+                ->orderByRaw('CASE WHEN fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
+                ->orderBy('fecha_vencimiento', 'ASC')
+                ->get();
+
+            foreach ($stockDisponible as $inv) {
+                if ($restante <= 0) break;
+                $disp = max(0, $inv->cantidad - $inv->cantidad_reservada);
+                if ($disp <= 0) continue;
+
+                $aReservar = min($disp, $restante);
+                $inv->cantidad_reservada += $aReservar;
+                $inv->save();
+                $restante -= $aReservar;
+
+                if (!$nl->ubicacion_id) {
+                    $nl->ubicacion_id = $inv->ubicacion_id;
+                    $nl->lote = $inv->lote;
+                    $nl->fecha_vencimiento = $inv->fecha_vencimiento;
+                }
+            }
+        }
+
+        if ($restante > 0) {
+            $now = now();
+            Capsule::table('picking_faltantes')->insert([
+                'empresa_id'          => $empresaId,
+                'sucursal_id'         => $user->sucursal_id,
+                'orden_picking_id'    => $orden->id,
+                'producto_id'         => $nl->producto_id,
+                'planilla_lote'       => $orden->planilla_lote ?? $orden->planilla_numero,
+                'cantidad_solicitada' => $cantidadCajas,
+                'cantidad_faltante'   => (int)ceil($restante / $upc),
+                'causa'               => $prodBloqueado
+                    ? 'Producto bloqueado por calidad'
+                    : ($loteForzadoBloqueado ? 'Lote bloqueado por calidad' : 'Stock insuficiente al agregar línea'),
+                'created_at'          => $now,
+                'updated_at'          => $now,
+            ]);
+            $nl->estado = 'Faltante';
+        } else {
+            $nl->estado = 'EnProceso';
+        }
+        $nl->save();
     }
 
     // ── GET /api/picking/dashboard ────────────────────────────────────────────
@@ -3194,21 +3233,38 @@ class PickingController extends BaseController
             return $this->error($res, 'No se puede eliminar una línea con cantidades ya pickeadas');
         }
 
-        // Liberar reserva de inventario antes de eliminar
-        if ($linea->producto_id && $linea->cantidad_solicitada > 0 && in_array($linea->estado, ['Pendiente', 'EnProceso'])) {
-            $upcDel = max(1, (int)(Capsule::table('productos')->where('id', $linea->producto_id)->value('unidades_caja') ?? 1));
-            $this->_releaseReserva(
-                $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id,
-                $linea->producto_id, $linea->ubicacion_id, $linea->lote,
-                (float)$linea->cantidad_solicitada * $upcDel
-            );
+        try {
+            $ordenEliminada = Capsule::transaction(function () use ($linea, $orden, $ordenId, $user, $r) {
+                // Liberar reserva de inventario antes de eliminar
+                if ($linea->producto_id && $linea->cantidad_solicitada > 0 && in_array($linea->estado, ['Pendiente', 'EnProceso'])) {
+                    $upcDel = max(1, (int)(Capsule::table('productos')->where('id', $linea->producto_id)->value('unidades_caja') ?? 1));
+                    $this->_releaseReserva(
+                        $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id,
+                        $linea->producto_id, $linea->ubicacion_id, $linea->lote,
+                        (float)$linea->cantidad_solicitada * $upcDel
+                    );
+                }
+
+                // Desvincular (no borrar) cualquier packing_item que pudiera referenciar esta
+                // línea — no hay FK en el esquema, así que sin esto quedarían huérfanos
+                // apuntando a un picking_detalle_id que ya no existe.
+                Capsule::table('packing_items')->where('picking_detalle_id', $linea->id)
+                    ->update(['picking_detalle_id' => null]);
+
+                $linea->delete();
+
+                $restantes = PickingDetalle::where('orden_picking_id', $ordenId)->count();
+                if ($restantes === 0) {
+                    $orden->delete();
+                    return true;
+                }
+                return false;
+            });
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error al eliminar línea: ' . $e->getMessage());
         }
 
-        $linea->delete();
-
-        $restantes = PickingDetalle::where('orden_picking_id', $ordenId)->count();
-        if ($restantes === 0) {
-            $orden->delete();
+        if ($ordenEliminada) {
             return $this->ok($res, ['orden_eliminada' => true], 'Línea eliminada. La planilla quedó vacía y fue eliminada.');
         }
 
@@ -6207,34 +6263,61 @@ class PickingController extends BaseController
             ->first();
 
         if (!$orden) return $this->error($res, 'Planilla no encontrada o ya completada', 404);
+        if (!empty($orden->estado_despacho)) {
+            return $this->error($res, "No se pueden agregar líneas a una orden ya {$orden->estado_despacho}");
+        }
 
         $producto = \App\Models\Producto::find($productoId);
         if (!$producto) return $this->error($res, 'Producto no encontrado', 404);
 
         $ambienteCodigo = $this->_clasificarAmbiente($producto);
 
-        $detalle = new PickingDetalle([
-            'orden_picking_id'     => $orden->id,
-            'producto_id'          => $productoId,
-            'cantidad_solicitada'  => $cantCajas,      // unidad de pedido = cajas
-            'cantidad_pickeada'    => 0,
-            'cantidad_certificada' => 0,
-            'estado'               => 'Pendiente',
-            'auxiliar_id'          => $orden->auxiliar_id ?? $user->id,
-            'lote'                 => $lote ?: null,
-            'fecha_vencimiento'    => $fechaVenc ?: null,
-            'ambiente'             => $ambienteCodigo,
-        ]);
-        $detalle->save();
+        try {
+            $detalle = Capsule::transaction(function () use (
+                $orden, $productoId, $cantCajas, $lote, $fechaVenc, $ambienteCodigo, $producto, $user, $req
+            ) {
+                $nl = new PickingDetalle([
+                    'orden_picking_id'     => $orden->id,
+                    'producto_id'          => $productoId,
+                    'cantidad_solicitada'  => $cantCajas,      // unidad de pedido = cajas
+                    'cantidad_pickeada'    => 0,
+                    'cantidad_certificada' => 0,
+                    'estado'               => 'Pendiente',
+                    'auxiliar_id'          => $orden->auxiliar_id ?? $user->id,
+                    'lote'                 => $lote ?: null,
+                    'fecha_vencimiento'    => $fechaVenc ?: null,
+                    'ambiente'             => $ambienteCodigo,
+                ]);
+                $nl->save();
+
+                if ($orden->estado === 'EnProceso') {
+                    $this->_reservarStockLineaNueva($nl, $producto, (float)$cantCajas, $orden, $user, $req, $lote ?: null);
+                }
+
+                return $nl;
+            });
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error al agregar referencia: ' . $e->getMessage());
+        }
 
         $this->audit($user, 'picking', 'agregar_linea', 'picking_detalles', $detalle->id, null, [
             'planilla'    => $numero,
             'producto_id' => $productoId,
             'cajas'       => $cantCajas,
             'saldos'      => $saldos,
+            'ubicacion_id'=> $detalle->ubicacion_id,
+            'estado'      => $detalle->estado,
         ]);
 
-        return $this->ok($res, ['detalle_id' => $detalle->id], 'Producto agregado a la planilla');
+        $mensaje = $detalle->estado === 'Faltante'
+            ? 'Producto agregado a la planilla, pero sin stock suficiente — quedó registrado como faltante.'
+            : 'Producto agregado a la planilla' . ($detalle->ubicacion_id ? ' y reservado en ubicación.' : '.');
+
+        return $this->ok($res, [
+            'detalle_id'   => $detalle->id,
+            'estado'       => $detalle->estado,
+            'ubicacion_id' => $detalle->ubicacion_id,
+        ], $mensaje);
     }
 
     // ── POST /api/picking/planilla/{numero}/reemplazar-linea ──────────────────

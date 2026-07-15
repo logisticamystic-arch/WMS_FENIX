@@ -112,9 +112,18 @@ class InventoryGuard
         $fefoWarning = $this->checkFefoCompliance($rows, $lote);
 
         // R10/R11 — Expiry check (after stock validation)
-        if (!empty($rows) && $lote !== null && $this->usuarioId !== null) {
+        // La fecha de vencimiento (no el lote) es el criterio real: se resuelve la más
+        // próxima entre las filas candidatas (consistente con el consumo FEFO), para que
+        // el chequeo se dispare también cuando no hay lote (caso frecuente, 'N/A'/null).
+        $fechaVencCandidata = null;
+        foreach ($rows as $row) {
+            if (!empty($row->fecha_vencimiento) && ($fechaVencCandidata === null || $row->fecha_vencimiento < $fechaVencCandidata)) {
+                $fechaVencCandidata = $row->fecha_vencimiento;
+            }
+        }
+        if (!empty($rows) && ($lote !== null || $fechaVencCandidata !== null) && $this->usuarioId !== null) {
             $guard  = new ExpiryGuard($this->empresaId, $this->sucursalId);
-            $result = $guard->check($productoId, $lote, $this->usuarioId);
+            $result = $guard->check($productoId, $lote, $this->usuarioId, $fechaVencCandidata);
 
             if ($result->status === ExpiryResult::BLOCKED) {
                 return $this->deny('R10', $result->message, [

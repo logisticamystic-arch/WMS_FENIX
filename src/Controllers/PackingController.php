@@ -257,9 +257,13 @@ class PackingController extends BaseController
         );
 
         // R10/R11 — Expiry check before adding item to packing
-        if ($lote !== null) {
+        // Se pasa $fechaVenc (ya resuelta arriba desde el detalle de picking real) como
+        // criterio primario — es la fecha exacta de la partida que se está empacando,
+        // más confiable que localizar por lote cuando el mismo lote puede repetirse
+        // entre partidas con fecha de vencimiento distinta.
+        if ($lote !== null || $fechaVenc !== null) {
             $expiryGuard = new ExpiryGuard($this->getEffectiveEmpresaId($user, $r), $user->sucursal_id);
-            $expiryResult = $expiryGuard->check((int)$productoId, $lote, $user->id);
+            $expiryResult = $expiryGuard->check((int)$productoId, $lote, $user->id, $fechaVenc);
 
             if ($expiryResult->status === ExpiryResult::BLOCKED) {
                 return $this->error($res, $expiryResult->message, 422);

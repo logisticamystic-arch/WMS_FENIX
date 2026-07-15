@@ -21,27 +21,45 @@ class ExpiryGuard
     ) {}
 
     /**
-     * Check expiry status for a specific product+lote at time of picking/packing.
-     * If lote is null or no fecha_vencimiento exists in inventory, returns OK.
+     * Check expiry status for a specific product at time of picking/packing.
+     *
+     * $fechaVencimiento (cuando se conoce, p.ej. ya resuelta por quien llama desde el
+     * detalle de picking/packing) es el criterio PRIMARIO de búsqueda — "lote" ya no es
+     * un diferenciador confiable porque puede repetirse (o ser 'N/A') entre partidas con
+     * fechas de vencimiento distintas. $lote se conserva solo como filtro adicional
+     * opcional y como fallback para llamadores que aún no resuelven la fecha exacta.
      */
-    public function check(int $productoId, ?string $lote, int $solicitadoPor): ExpiryResult
+    public function check(int $productoId, ?string $lote, int $solicitadoPor, ?string $fechaVencimiento = null): ExpiryResult
     {
-        if ($lote === null) {
+        if ($lote === null && $fechaVencimiento === null) {
             return new ExpiryResult(ExpiryResult::OK);
         }
 
-        $inv = Capsule::table('inventarios')
-            ->where('empresa_id',  $this->empresaId)
-            ->where('sucursal_id', $this->sucursalId)
-            ->where('producto_id', $productoId)
-            ->where('lote',        $lote)
-            ->whereNotNull('fecha_vencimiento')
-            ->orderBy('fecha_vencimiento', 'asc')
-            ->first();
+        if ($fechaVencimiento !== null) {
+            $inv = Capsule::table('inventarios')
+                ->where('empresa_id',  $this->empresaId)
+                ->where('sucursal_id', $this->sucursalId)
+                ->where('producto_id', $productoId)
+                ->where('fecha_vencimiento', $fechaVencimiento)
+                ->first();
+        } else {
+            $inv = Capsule::table('inventarios')
+                ->where('empresa_id',  $this->empresaId)
+                ->where('sucursal_id', $this->sucursalId)
+                ->where('producto_id', $productoId)
+                ->where('lote',        $lote)
+                ->whereNotNull('fecha_vencimiento')
+                ->orderBy('fecha_vencimiento', 'asc')
+                ->first();
+        }
 
         if (!$inv || !$inv->fecha_vencimiento) {
             return new ExpiryResult(ExpiryResult::OK);
         }
+
+        // A partir de aquí, la fecha real encontrada es la que gobierna el chequeo —
+        // independientemente de si se llegó por $fechaVencimiento o por $lote.
+        $fechaVencimiento = $inv->fecha_vencimiento;
 
         $today         = strtotime(date('Y-m-d'));
         $fechaVencTs   = strtotime($inv->fecha_vencimiento);
@@ -50,10 +68,10 @@ class ExpiryGuard
                          ?? "Producto #{$productoId}";
 
         if ($diasRestantes <= 0) {
-            $this->_quarantineLote($productoId, $lote);
+            $this->_quarantinePorFecha($productoId, $fechaVencimiento);
             return new ExpiryResult(
                 ExpiryResult::BLOCKED,
-                message: "El producto {$nombre} (Lote {$lote}) está vencido ({$inv->fecha_vencimiento}). No puede ser despachado.",
+                message: "El producto {$nombre} (vence {$inv->fecha_vencimiento}) está vencido. No puede ser despachado.",
                 productName: $nombre,
                 lote: $lote,
                 diasRestantes: $diasRestantes
@@ -61,12 +79,19 @@ class ExpiryGuard
         }
 
         if ($diasRestantes <= 5) {
+            // aprobaciones_vencimiento indexa por 'lote' (columna NOT NULL en el esquema
+            // actual, sin fecha_vencimiento) — se conserva ese criterio aquí como excepción
+            // acotada; migrar esta tabla a fecha_vencimiento queda fuera del alcance de esta
+            // corrección. Si no hay lote (caso ya frecuente), se usa 'N/A' como placeholder,
+            // igual convención que ya usa el resto del proyecto (RecepcionController, etc.)
+            $loteAprobacion = $lote ?? 'N/A';
+
             // Check for existing valid approval today
             $existing = Capsule::table('aprobaciones_vencimiento')
                 ->where('empresa_id',  $this->empresaId)
                 ->where('sucursal_id', $this->sucursalId)
                 ->where('producto_id', $productoId)
-                ->where('lote',        $lote)
+                ->where('lote',        $loteAprobacion)
                 ->where('estado',      'aprobada')
                 ->where('valid_until', date('Y-m-d'))
                 ->first();
@@ -80,7 +105,7 @@ class ExpiryGuard
                 ->where('empresa_id',  $this->empresaId)
                 ->where('sucursal_id', $this->sucursalId)
                 ->where('producto_id', $productoId)
-                ->where('lote',        $lote)
+                ->where('lote',        $loteAprobacion)
                 ->where('estado',      'pendiente')
                 ->orderBy('created_at', 'desc')
                 ->first();
@@ -100,7 +125,7 @@ class ExpiryGuard
                 'empresa_id'    => $this->empresaId,
                 'sucursal_id'   => $this->sucursalId,
                 'producto_id'   => $productoId,
-                'lote'          => $lote,
+                'lote'          => $loteAprobacion,
                 'dias_restantes'=> $diasRestantes,
                 'solicitado_por'=> $solicitadoPor,
                 'estado'        => 'pendiente',
@@ -139,13 +164,18 @@ class ExpiryGuard
             ]);
     }
 
-    private function _quarantineLote(int $productoId, string $lote): void
+    /**
+     * Pone en cuarentena TODAS las filas de inventario con esa fecha_vencimiento exacta
+     * (independientemente del lote) — fecha_vencimiento es el diferenciador real de una
+     * partida vencida, no el lote, que puede repetirse (o ser 'N/A') entre partidas.
+     */
+    private function _quarantinePorFecha(int $productoId, string $fechaVencimiento): void
     {
         Capsule::table('inventarios')
             ->where('empresa_id',  $this->empresaId)
             ->where('sucursal_id', $this->sucursalId)
             ->where('producto_id', $productoId)
-            ->where('lote',        $lote)
+            ->where('fecha_vencimiento', $fechaVencimiento)
             ->where('estado', '!=', 'Cuarentena')
             ->update([
                 'estado'     => 'Cuarentena',
