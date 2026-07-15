@@ -1198,10 +1198,11 @@ class InventarioV2Controller extends BaseController
         // ── Detectar referencias no contadas (análisis ML de ausencia física) ──
         $noContadas = $this->detectarReferenciasNoContadas($sesion, $rondaFinal);
 
-        // ── Detectar asignaciones "por Referencia" confirmadas sin existencia física:
-        //    el auxiliar finalizó (con 0 líneas o líneas en 0) sin encontrar la referencia
-        //    en ninguna ubicación visitada → se fuerza a 0 en TODAS las ubicaciones donde
-        //    el sistema todavía muestra stock de esa referencia (no solo la visitada). ──
+        // ── Reconciliar asignaciones "por Referencia": el auxiliar pudo confirmar
+        //    la referencia en una ubicación distinta a la que el sistema tenía
+        //    registrada (o no encontrarla en ninguna) → se fuerza a 0 en TODAS las
+        //    demás ubicaciones donde el sistema aún muestra stock de esa referencia,
+        //    para no dejar el stock original duplicado junto al recién confirmado. ──
         $sinExistencia = $this->detectarReferenciasSinExistencia($sesion, $rondaFinal, $noContadas);
 
         try {
@@ -1500,11 +1501,13 @@ class InventarioV2Controller extends BaseController
 
     /**
      * Para asignaciones de tipo "Referencia" (verificar una referencia puntual,
-     * sin importar ubicación): si el total contado por esa asignación es 0
-     * (ya sea porque no se registró ninguna línea, o porque las líneas registradas
-     * están en 0), se asume confirmado que la referencia no tiene existencia física
-     * y se fuerza a 0 el stock del producto en TODAS las ubicaciones donde el sistema
-     * todavía lo muestra — no solo en la ubicación puntual que el auxiliar haya visitado.
+     * sin importar ubicación): el auxiliar puede confirmar la referencia en una
+     * ubicación distinta a la que el sistema tiene registrada (o en ninguna, si
+     * ya no existe físicamente). En ambos casos hay que reconciliar TODAS las
+     * demás ubicaciones donde el sistema todavía muestra stock de ese producto
+     * y que NO fueron confirmadas en esta asignación — se ponen en 0, porque de
+     * lo contrario el stock quedaría duplicado (el original, nunca tocado, más
+     * el recién confirmado en la nueva ubicación).
      *
      * @param array $yaCubiertas Líneas virtuales ya generadas por detectarReferenciasNoContadas(),
      *                           para no duplicar el ajuste sobre la misma producto+ubicación+lote.
@@ -1528,13 +1531,9 @@ class InventarioV2Controller extends BaseController
 
         $sinExistencia = [];
         foreach ($asignacionesReferencia as $asig) {
-            $totalContado = (float) SesionLinea::where('sesion_id', $sesion->id)
-                ->where('asignacion_id', $asig->id)
-                ->where('estado', SesionLinea::ESTADO_ACTIVO)
-                ->sum('cantidad_contada');
-
-            if ($totalContado > 0) continue; // sí hay existencia confirmada, no forzar nada
-
+            // Ubicaciones que sí quedaron confirmadas (contadas) en esta asignación —
+            // se excluyen de la reconciliación aunque la cantidad contada sea 0, porque
+            // "0 en una ubicación visitada" también es información confirmada, no ausencia.
             $ubicIdsCubiertas = SesionLinea::where('sesion_id', $sesion->id)
                 ->where('asignacion_id', $asig->id)
                 ->where('estado', SesionLinea::ESTADO_ACTIVO)
