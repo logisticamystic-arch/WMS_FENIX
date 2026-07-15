@@ -359,111 +359,11 @@ class DevolucionController extends BaseController
         }
     }
 
-    /**
-     * POST /api/devoluciones/desde-recepcion
-     * Crear devolución desde líneas de recepción con estado defectuoso
-     */
-    public function desdeRecepcion(Request $request, Response $response): Response
-    {
-        $user = $request->getAttribute('user');
-        [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $request);
-        $data = $request->getParsedBody();
-
-        $recepcion_detalle_ids = $data['recepcion_detalle_ids'] ?? [];
-        if (empty($recepcion_detalle_ids)) {
-            return $this->json($response, ['error' => true, 'message' => 'Selecciona líneas para devolver'], 400);
-        }
-
-        \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
-        try {
-            // empresa_id join ensures cross-tenant isolation
-            $detalles_grupo = \Illuminate\Database\Capsule\Manager::table('recepcion_detalles')
-                ->join('recepciones', 'recepciones.id', '=', 'recepcion_detalles.recepcion_id')
-                ->where('recepciones.empresa_id', $empresaId)
-                ->where('recepciones.sucursal_id', $sucursalId)
-                ->whereIn('recepcion_detalles.id', $recepcion_detalle_ids)
-                ->select('recepcion_detalles.*')
-                ->get();
-
-            $recepcion_id = null;
-            $proveedor = null;
-
-            foreach ($detalles_grupo as $det) {
-                if (!$recepcion_id) $recepcion_id = $det->recepcion_id;
-                // Obtener proveedor desde cita si es necesario
-            }
-
-            $devolucion = new Devolucion();
-            $devolucion->empresa_id = $empresaId;
-            $devolucion->sucursal_id = $sucursalId;
-            $devolucion->recepcion_id = $recepcion_id;
-            $devolucion->numero_devolucion = 'DEV-RCP-' . time();
-            $devolucion->tipo = 'DevolucionRecepcion';
-            $devolucion->estado = 'PendienteAutorizacion';
-            $devolucion->motivo_general = $data['razon'] ?? 'Novelty en recepción';
-            $devolucion->auxiliar_id = $user->id;
-            $devolucion->fecha_movimiento = date('Y-m-d');
-            $devolucion->save();
-
-            foreach ($detalles_grupo as $det) {
-                $detalle = new DevolucionDetalle();
-                $detalle->devolucion_id = $devolucion->id;
-                $detalle->recepcion_detalle_id = $det->id;
-                $detalle->producto_id = $det->producto_id;
-                $detalle->cantidad = $det->cantidad;
-                $detalle->motivo = $data['motivo'] ?? $det->estado;
-                $detalle->destino = $data['destino'] ?? 'RetornoProveedor';
-                $detalle->save();
-
-                // Marcar línea como en devolución
-                \Illuminate\Database\Capsule\Manager::table('recepcion_detalles')
-                    ->where('id', $det->id)
-                    ->update(['estado' => 'EnDevolucion']);
-            }
-
-            \Illuminate\Database\Capsule\Manager::connection()->commit();
-            return $this->json($response, ['error' => false, 'message' => 'Devolución creada', 'data' => $devolucion], 201);
-
-        } catch (\Exception $e) {
-            \Illuminate\Database\Capsule\Manager::connection()->rollBack();
-            return $this->json($response, ['error' => true, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * POST /api/devoluciones/{id}/autorizar
-     * Autorizar una devolución pendiente
-     */
-    public function autorizar(Request $request, Response $response, array $args): Response
-    {
-        $user = $request->getAttribute('user');
-        $empresaId = $this->getEffectiveEmpresaId($user, $request);
-        $sucursalId = $this->getEffectiveSucursalId($user, $request);
-        $id = (int)($args['id'] ?? 0);
-
-        // Verificar permisos (solo Jefe o Admin)
-        if (!in_array($user->rol, ['Admin', 'Jefe', 'Supervisor'])) {
-            return $this->json($response, ['error' => true, 'message' => 'Permiso denegado'], 403);
-        }
-
-        try {
-            $devolucion = Devolucion::where('empresa_id', $empresaId)
-                ->where('sucursal_id', $sucursalId)
-                ->find($id);
-            if (!$devolucion) {
-                return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
-            }
-
-            $devolucion->estado = 'Autorizada';
-            $devolucion->autorizado_por = $user->id;
-            $devolucion->fecha_autorizacion = date('Y-m-d H:i:s');
-            $devolucion->save();
-
-            return $this->json($response, ['error' => false, 'message' => 'Devolución autorizada']);
-        } catch (\Exception $e) {
-            return $this->json($response, ['error' => true, 'message' => $e->getMessage()], 500);
-        }
-    }
+    // NOTA: desdeRecepcion() y autorizar() fueron eliminados — auditoría confirmó que
+    // implementaban una máquina de estados paralela ('PendienteAutorizacion'/'Autorizada')
+    // incompatible con la real (ESTADO_PENDIENTE/APROBADA/PROCESADA/RECHAZADA/ANULADA) y que
+    // ningún frontend los invocaba. Riesgo: dejar un registro en un estado que el resto del
+    // controlador (aprobar/rechazar/procesar/anular) no reconoce.
 
     // ── POST /api/devoluciones/{id}/aprobar ───────────────────────────────────
     public function aprobar(Request $request, Response $response, array $args): Response
@@ -824,52 +724,9 @@ class DevolucionController extends BaseController
         });
     }
 
-    /**
-     * POST /api/devoluciones/{id}/completar
-     * Marcar devolución como completada
-     */
-    public function completar(Request $request, Response $response, array $args): Response
-    {
-        $user = $request->getAttribute('user');
-        $empresaId = $this->getEffectiveEmpresaId($user, $request);
-        $sucursalId = $this->getEffectiveSucursalId($user, $request);
-        $id = (int)($args['id'] ?? 0);
-        $data = $request->getParsedBody();
-
-        try {
-            $devolucion = Devolucion::where('empresa_id', $empresaId)
-                ->where('sucursal_id', $sucursalId)
-                ->with('detalles')
-                ->find($id);
-            
-            if (!$devolucion) {
-                return $this->json($response, ['error' => true, 'message' => 'No encontrada'], 404);
-            }
-
-            \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
-
-            $devolucion->estado = 'Completada';
-            $devolucion->fecha_devolucion = date('Y-m-d');
-            $devolucion->observaciones = $data['observaciones'] ?? null;
-            $devolucion->save();
-
-            // Actualizar líneas de recepción asociadas
-            foreach ($devolucion->detalles as $detalle) {
-                if ($detalle->recepcion_detalle_id) {
-                    \Illuminate\Database\Capsule\Manager::table('recepcion_detalles')
-                        ->where('id', $detalle->recepcion_detalle_id)
-                        ->update(['estado' => 'Devuelto']);
-                }
-            }
-
-            \Illuminate\Database\Capsule\Manager::connection()->commit();
-            return $this->json($response, ['error' => false, 'message' => 'Devolución completada']);
-
-        } catch (\Exception $e) {
-            \Illuminate\Database\Capsule\Manager::connection()->rollBack();
-            return $this->json($response, ['error' => true, 'message' => $e->getMessage()], 500);
-        }
-    }
+    // NOTA: completar() fue eliminado por la misma razón — usaba estado='Completada' (ajeno
+    // al enum real de Devolucion) sin validar el estado previo ni ejecutar la lógica de
+    // destinos/inventario de procesar(). Ningún frontend lo invocaba.
 
     /**
      * GET /api/devoluciones/resumen/proveedor/{proveedor_id}

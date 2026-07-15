@@ -5,7 +5,6 @@ namespace App\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Despacho;
-use App\Models\CertificacionDespacho;
 use App\Models\Inventario;
 use App\Models\MovimientoInventario;
 use App\Models\OrdenPicking;
@@ -123,82 +122,10 @@ class DespachoController extends BaseController
         }
     }
 
-    // ── POST /api/despachos/{id}/certificar ───────────────────────────────────
-    // Registra cada producto certificado y descuenta inventario.
-    public function certify(Request $r, Response $res, array $a): Response
-    {
-        $user     = $r->getAttribute('user');
-        $data     = $r->getParsedBody() ?? [];
-        $empresaId = $this->getEffectiveEmpresaId($user, $r);
-        $sucursalId = $this->getEffectiveSucursalId($user, $r);
-        $despacho = Despacho::where('empresa_id', $empresaId)
-            ->where('sucursal_id', $sucursalId)
-            ->find($a['id']);
-
-        if (!$despacho) return $this->notFound($res);
-        if ($despacho->estado === 'Despachado') {
-            return $this->error($res, 'El despacho ya fue cerrado');
-        }
-
-        $required = ['producto_id', 'cantidad_certificada', 'escaneado_por'];
-        foreach ($required as $f) {
-            if (empty($data[$f])) return $this->error($res, "Campo requerido: {$f}");
-        }
-
-        try {
-            Capsule::transaction(function () use ($despacho, $data, $user, $empresaId, $sucursalId) {
-                $cert = CertificacionDespacho::create([
-                    'despacho_id'         => $despacho->id,
-                    'producto_id'         => $data['producto_id'],
-                    'lote'                => $data['lote'] ?? null,
-                    'cantidad_certificada'=> (float)$data['cantidad_certificada'],
-                    'escaneado_por'       => $data['escaneado_por'],
-                ]);
-
-                // Descontar stock del inventario físico
-                $inv = \App\Models\Inventario::where('empresa_id', $empresaId)
-                    ->where('sucursal_id', $sucursalId)
-                    ->where('producto_id', $data['producto_id'])
-                    ->where('ubicacion_id', $data['ubicacion_id'] ?? null)
-                    ->lockForUpdate()
-                    ->first();
-                if ($inv) {
-                    $inv->cantidad = max(0, ($inv->cantidad ?? 0) - (float)$data['cantidad_certificada']);
-                    $inv->save();
-                }
-
-                // Registrar salida en movimiento_inventarios
-                MovimientoInventario::create([
-                    'empresa_id'           => $empresaId,
-                    'sucursal_id'          => $sucursalId,
-                    'producto_id'          => $data['producto_id'],
-                    'tipo_movimiento'      => 'Salida',
-                    'cantidad'             => (float)$data['cantidad_certificada'],
-                    'ubicacion_origen_id'  => $data['ubicacion_id'] ?? null,
-                    'ubicacion_destino_id' => null,
-                    'lote'                 => $data['lote'] ?? null,
-                    'auxiliar_id'          => $user->id,
-                    'referencia_tipo'      => 'despachos',
-                    'referencia_id'        => $despacho->id,
-                    'observaciones'        => "Despacho {$despacho->numero_despacho}",
-                    'fecha_movimiento'     => date('Y-m-d'),
-                    'hora_fin'             => date('H:i:s'),
-                ]);
-
-                if ($despacho->estado === 'Preparando') {
-                    $despacho->estado = 'Certificado';
-                    $despacho->save();
-                }
-            });
-
-            $this->audit($user, 'despacho', 'certificar_item', 'despachos', $despacho->id,
-                null, $data, "Producto {$data['producto_id']} certificado en {$despacho->numero_despacho}");
-
-            return $this->ok($res, null, 'Producto certificado');
-        } catch (\Exception $e) {
-            return $this->error($res, $e->getMessage());
-        }
-    }
+    // NOTA: certify() (POST /despachos/{id}/certificar) fue eliminado — auditoría confirmó
+    // que ningún frontend (desktop ni móvil) lo invocaba; la certificación real de despacho
+    // pasa por Picking/Packing. Mantenerlo vivo era un riesgo de doble descuento de inventario
+    // si algo llegaba a invocarlo de forma independiente.
 
     // ── POST /api/despachos/{id}/cerrar ───────────────────────────────────────
     public function close(Request $r, Response $res, array $a): Response
@@ -243,13 +170,74 @@ class DespachoController extends BaseController
             ->where('sucursal_id', $sucursalId)
             ->find($a['id']);
         if (!$despacho) return $this->notFound($res);
-        if ($despacho->estado === 'Despachado') {
-            return $this->error($res, 'No se puede eliminar un despacho ya despachado');
+        if (in_array($despacho->estado, ['Despachado', 'Entregado'], true)) {
+            return $this->error($res, 'No se puede eliminar un despacho ya despachado o entregado');
         }
 
         $snapshot = $despacho->toArray();
-        $despacho->certificaciones()->delete();
-        $despacho->delete();
+
+        try {
+            Capsule::transaction(function () use ($despacho, $user, $empresaId, $sucursalId) {
+                // Si el despacho llegó a 'Certificado', certify() ya descontó inventario real.
+                // Revertirlo antes de borrar — apoyándose en los MovimientoInventario 'Salida'
+                // ya registrados para este despacho, igual que se hace para Devolución.
+                $salidas = Capsule::table('movimiento_inventarios')
+                    ->where('referencia_tipo', 'despachos')
+                    ->where('referencia_id', $despacho->id)
+                    ->where('tipo_movimiento', 'Salida')
+                    ->get();
+
+                foreach ($salidas as $mov) {
+                    if (!$mov->ubicacion_origen_id) continue;
+
+                    $inv = \App\Models\Inventario::where('empresa_id', $empresaId)
+                        ->where('sucursal_id', $sucursalId)
+                        ->where('producto_id', $mov->producto_id)
+                        ->where('ubicacion_id', $mov->ubicacion_origen_id)
+                        ->where('estado', 'Disponible')
+                        ->when($mov->lote, fn($q) => $q->where('lote', $mov->lote))
+                        ->when(!$mov->lote, fn($q) => $q->whereNull('lote'))
+                        ->lockForUpdate()->first();
+
+                    if ($inv) {
+                        $inv->cantidad = (float)$inv->cantidad + (float)$mov->cantidad;
+                        $inv->save();
+                    } else {
+                        \App\Models\Inventario::create([
+                            'empresa_id'   => $empresaId,
+                            'sucursal_id'  => $sucursalId,
+                            'producto_id'  => $mov->producto_id,
+                            'ubicacion_id' => $mov->ubicacion_origen_id,
+                            'lote'         => $mov->lote,
+                            'estado'       => 'Disponible',
+                            'cantidad'     => $mov->cantidad,
+                            'cantidad_reservada' => 0,
+                        ]);
+                    }
+
+                    MovimientoInventario::create([
+                        'empresa_id'           => $empresaId,
+                        'sucursal_id'          => $sucursalId,
+                        'producto_id'          => $mov->producto_id,
+                        'tipo_movimiento'      => 'AjustePositivo',
+                        'cantidad'             => $mov->cantidad,
+                        'lote'                 => $mov->lote,
+                        'ubicacion_destino_id' => $mov->ubicacion_origen_id,
+                        'auxiliar_id'          => $user->id,
+                        'referencia_tipo'      => 'despachos',
+                        'referencia_id'        => $despacho->id,
+                        'observaciones'        => "Eliminación de despacho {$despacho->numero_despacho} — reversión de stock certificado",
+                        'fecha_movimiento'     => date('Y-m-d'),
+                        'hora_inicio'          => date('H:i:s'),
+                    ]);
+                }
+
+                $despacho->certificaciones()->delete();
+                $despacho->delete();
+            });
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error al eliminar despacho: ' . $e->getMessage());
+        }
 
         $this->audit($user, 'despacho', 'eliminar', 'despachos', $a['id'],
             $snapshot, null, "Despacho {$snapshot['numero_despacho']} eliminado por Admin");
