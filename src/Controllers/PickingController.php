@@ -3487,11 +3487,16 @@ class PickingController extends BaseController
             Capsule::transaction(function () use ($tarea, $user, $r) {
                 // Move stock from source to destination
                 if ($tarea->ubicacion_origen_id && $tarea->ubicacion_destino_id && $tarea->producto_id) {
+                    // FEFO: toma la partida que vence antes (no una fila arbitraria), y
+                    // luego preserva su lote/fecha_vencimiento al mover el stock al destino
+                    // — fecha_vencimiento es el diferenciador real entre partidas, no el lote.
                     $origen = Inventario::where('empresa_id',  $this->getEffectiveEmpresaId($user, $r))
                         ->where('sucursal_id',  $user->sucursal_id)
                         ->where('producto_id',  $tarea->producto_id)
                         ->where('ubicacion_id', $tarea->ubicacion_origen_id)
                         ->where('estado', 'Disponible')
+                        ->orderByRaw('CASE WHEN fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
+                        ->orderBy('fecha_vencimiento', 'ASC')
                         ->lockForUpdate()
                         ->first();
 
@@ -3500,18 +3505,29 @@ class PickingController extends BaseController
                     }
 
                     if ($origen->cantidad >= $tarea->cantidad) {
+                        $loteOrigen  = $origen->lote;
+                        $fvencOrigen = $origen->fecha_vencimiento;
+
                         $origen->cantidad -= $tarea->cantidad;
                         if ((float)$origen->cantidad <= 0) $origen->delete();
                         else $origen->save();
 
-                        $destino = Inventario::firstOrNew([
+                        $destinoKey = [
                             'empresa_id'   => $this->getEffectiveEmpresaId($user, $r),
                             'sucursal_id'  => $user->sucursal_id,
                             'producto_id'  => $tarea->producto_id,
                             'ubicacion_id' => $tarea->ubicacion_destino_id,
                             'estado'       => 'Disponible',
-                        ]);
+                            'lote'         => $loteOrigen,
+                        ];
+                        if ($fvencOrigen) {
+                            $destinoKey['fecha_vencimiento'] = $fvencOrigen;
+                        }
+                        $destino = Inventario::firstOrNew($destinoKey);
                         $destino->cantidad = ($destino->cantidad ?? 0) + $tarea->cantidad;
+                        if (!$destino->fecha_vencimiento && $fvencOrigen) {
+                            $destino->fecha_vencimiento = $fvencOrigen;
+                        }
                         $destino->save();
 
                         MovimientoInventario::create([
