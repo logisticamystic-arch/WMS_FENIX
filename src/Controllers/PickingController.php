@@ -3321,6 +3321,9 @@ class PickingController extends BaseController
             return $this->error($res, 'Error al actualizar la línea: ' . $e->getMessage());
         }
 
+        if (!empty($result['error'])) {
+            return $this->error($res, $result['error']);
+        }
         if (!empty($result['conflict'])) {
             return $this->json($res, [
                 'error'            => true,
@@ -7249,7 +7252,7 @@ class PickingController extends BaseController
             return $this->error($res, "No se puede editar una línea en estado '{$detalle->estado}'");
         }
 
-        if (!in_array($detalle->estado, ['Pendiente', 'EnProceso'], true)) {
+        if (!in_array($detalle->estado, ['Pendiente', 'EnProceso', 'Faltante'], true)) {
             return $this->error($res, "Edición no soportada para líneas en estado '{$detalle->estado}'. Elimine la línea y agregue una nueva.");
         }
 
@@ -7266,7 +7269,8 @@ class PickingController extends BaseController
                     // Sin ubicación/reserva asignada todavía — solo actualiza la solicitud.
                     $detalle->cantidad_solicitada = $nuevaCant;
                     $detalle->save();
-                } elseif ($detalle->estado === 'EnProceso') {
+                } else {
+                    // EnProceso (reserva completa) o Faltante (reserva parcial o nula)
                     $result = $this->_ajustarReservaEdicionLinea($detalle, $nuevaCant, $user, $r, $motivo);
                 }
             });
