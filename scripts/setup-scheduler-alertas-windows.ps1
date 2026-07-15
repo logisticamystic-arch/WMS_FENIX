@@ -55,5 +55,5 @@ Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger `
     -Settings $Settings -Principal $Principal `
     -Description "Escanea inventario y genera alertas de vencimiento, bajo minimo y sobre maximo cada 6 horas."
 
-Write-Host "Tarea '$TaskName' registrada — se ejecutara cada 6 horas."
+Write-Host "Tarea '$TaskName' registrada - se ejecutara cada 6 horas."
 Write-Host "Log: $LogPath"
