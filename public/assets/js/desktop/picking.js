@@ -1098,7 +1098,8 @@ WMS_MODULES.picking = {
       const csol  = parseFloat(d.cantidad_solicitada) || 0;   // cajas
       const cpick = parseFloat(d.cantidad_pickeada)   || 0;   // cajas
       const cpend = Math.max(0, csol - cpick);                // cajas pendientes
-      const isPend = d.estado === 'Pendiente';
+      const isPend = ['Pendiente', 'EnProceso', 'Faltante'].includes(d.estado);
+      const puedeEliminar = (parseFloat(d.cantidad_pickeada) || 0) === 0;
       const bStyle = d.estado === 'Completado' ? 'background:#dcfce7;color:#166534;'
                    : d.estado === 'Faltante'   ? 'background:#fee2e2;color:#991b1b;'
                    :                             'background:#fef9c3;color:#854d0e;';
