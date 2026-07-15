@@ -1286,6 +1286,7 @@ WMS_MODULES.inventario = {
                 <th>LOTE / VENC.</th>
                 <th class="text-center">DIAS V.U.</th>
                 <th class="text-center">CAJAS</th>
+                <th class="text-center">U/E</th>
                 <th class="text-center">SALDOS</th>
                 <th class="text-center">UND/TOTAL</th>
                 <th class="text-center">SISTEMA</th>
@@ -1316,6 +1317,7 @@ WMS_MODULES.inventario = {
                     <td><small>${WMS.esc(l.lote)}<br>${WMS.formatDate(l.fecha_vencimiento)}</small></td>
                     <td class="text-center"><b style="color:${color_vu}">${l.dias_vida_util}d</b></td>
                     <td class="text-center">${l.cantidad_cajas ?? '—'}</td>
+                    <td class="text-center" style="color:#64748b">${l.unidades_caja ?? '—'}</td>
                     <td class="text-center">${l.saldos ?? '—'}</td>
                     <td class="text-center"><b style="font-size:1.1rem;color:#1d4ed8" title="UND/TOTAL">${parseFloat(l.cantidad_contada)}</b></td>
                     <td class="text-center" style="color:#64748b">${parseFloat(l.cantidad_sistema)}</td>

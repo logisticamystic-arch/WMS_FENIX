@@ -221,84 +221,92 @@ class DevolucionController extends BaseController
                 ]);
             }
 
-            // Descontar inventario por cada ítem devuelto
-            // Busca primero en Patio; si el ítem trae ubicacion_origen_id la usa directamente.
-            foreach ($detalles as $d) {
-                $productoId   = (int)$d['producto_id'];
-                $cantidad     = (float)($d['cantidad'] ?? 0);
-                if ($cantidad <= 0) continue;
+            // Descontar inventario por cada ítem devuelto — SOLO para devoluciones que
+            // salen de la bodega (a proveedor, o reingreso desde una recepción/pallet ya
+            // registrado). Una devolución tipo 'cliente' es mercancía que ENTRA a la bodega
+            // (Cliente → WMS): no existe ninguna fila de "stock a descontar" que represente
+            // físicamente lo devuelto, así que descontar aquí solo generaba un faltante
+            // fantasma en una ubicación sin relación con el ítem. El ingreso real de esa
+            // mercancía ocurre al aprobar/procesar con destino=restock (ver procesar()).
+            if ($data['tipo'] !== 'cliente') {
+                // Busca primero en Patio; si el ítem trae ubicacion_origen_id la usa directamente.
+                foreach ($detalles as $d) {
+                    $productoId   = (int)$d['producto_id'];
+                    $cantidad     = (float)($d['cantidad'] ?? 0);
+                    if ($cantidad <= 0) continue;
 
-                $lote         = $d['lote'] ?? null;
-                $ubicOrigenId = !empty($d['ubicacion_origen_id']) ? (int)$d['ubicacion_origen_id'] : null;
+                    $lote         = $d['lote'] ?? null;
+                    $ubicOrigenId = !empty($d['ubicacion_origen_id']) ? (int)$d['ubicacion_origen_id'] : null;
 
-                // Buscar fila de inventario a descontar
-                if ($ubicOrigenId) {
-                    $invRow = DB::table('inventarios')
-                        ->where('empresa_id',  $empresaId)
-                        ->where('sucursal_id', $sucursalId)
-                        ->where('producto_id', $productoId)
-                        ->where('ubicacion_id', $ubicOrigenId)
-                        ->where('estado', 'Disponible')
-                        ->where('cantidad', '>', 0)
-                        ->lockForUpdate()->first();
-                } else {
-                    // 1) Buscar en Patio
-                    $invRow = DB::table('inventarios as i')
-                        ->join('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
-                        ->where('i.empresa_id',  $empresaId)
-                        ->where('i.sucursal_id', $sucursalId)
-                        ->where('i.producto_id', $productoId)
-                        ->where('i.estado', 'Disponible')
-                        ->where('i.cantidad', '>', 0)
-                        ->where('u.tipo_ubicacion', 'Patio')
-                        ->select('i.*')
-                        ->lockForUpdate()->first();
-
-                    // 2) Fallback: cualquier ubicación disponible
-                    if (!$invRow) {
+                    // Buscar fila de inventario a descontar
+                    if ($ubicOrigenId) {
                         $invRow = DB::table('inventarios')
                             ->where('empresa_id',  $empresaId)
                             ->where('sucursal_id', $sucursalId)
                             ->where('producto_id', $productoId)
+                            ->where('ubicacion_id', $ubicOrigenId)
                             ->where('estado', 'Disponible')
                             ->where('cantidad', '>', 0)
                             ->lockForUpdate()->first();
+                    } else {
+                        // 1) Buscar en Patio
+                        $invRow = DB::table('inventarios as i')
+                            ->join('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
+                            ->where('i.empresa_id',  $empresaId)
+                            ->where('i.sucursal_id', $sucursalId)
+                            ->where('i.producto_id', $productoId)
+                            ->where('i.estado', 'Disponible')
+                            ->where('i.cantidad', '>', 0)
+                            ->where('u.tipo_ubicacion', 'Patio')
+                            ->select('i.*')
+                            ->lockForUpdate()->first();
+
+                        // 2) Fallback: cualquier ubicación disponible
+                        if (!$invRow) {
+                            $invRow = DB::table('inventarios')
+                                ->where('empresa_id',  $empresaId)
+                                ->where('sucursal_id', $sucursalId)
+                                ->where('producto_id', $productoId)
+                                ->where('estado', 'Disponible')
+                                ->where('cantidad', '>', 0)
+                                ->lockForUpdate()->first();
+                        }
                     }
+
+                    if (!$invRow) continue; // sin inventario registrado — no bloquear la devolución
+
+                    // Calcular cajas/saldos
+                    $prod     = DB::table('productos')->where('id', $productoId)->select('unidades_caja')->first();
+                    $cajasUnd = max(1, (int)(($prod->unidades_caja ?? 1) ?: 1));
+                    $nuevaCant = max(0, $invRow->cantidad - $cantidad);
+                    $cantCajas = (int)floor($nuevaCant / $cajasUnd);
+                    $saldos    = fmod($nuevaCant, $cajasUnd);
+
+                    DB::table('inventarios')->where('id', $invRow->id)->update([
+                        'cantidad'      => $nuevaCant,
+                        'cantidad_cajas'=> $cantCajas,
+                        'saldos'        => $saldos,
+                        'updated_at'    => date('Y-m-d H:i:s'),
+                    ]);
+
+                    DB::table('movimiento_inventarios')->insert([
+                        'empresa_id'         => $empresaId,
+                        'sucursal_id'        => $sucursalId,
+                        'producto_id'        => $productoId,
+                        'tipo_movimiento'    => 'Salida',
+                        'cantidad'           => $cantidad,
+                        'lote'               => $lote,
+                        'fecha_vencimiento'  => $d['fecha_vencimiento'] ?? null,
+                        'referencia_tipo'    => 'devolucion',
+                        'referencia_id'      => $dev->id,
+                        'auxiliar_id'        => $user->id,
+                        'fecha_movimiento'   => date('Y-m-d'),
+                        'hora_inicio'        => date('H:i:s'),
+                        'observaciones'      => "Salida devolución {$numero}",
+                        'ubicacion_origen_id'=> $invRow->ubicacion_id,
+                        'created_at'         => date('Y-m-d H:i:s'),
+                    ]);
                 }
-
-                if (!$invRow) continue; // sin inventario registrado — no bloquear la devolución
-
-                // Calcular cajas/saldos
-                $prod     = DB::table('productos')->where('id', $productoId)->select('unidades_caja')->first();
-                $cajasUnd = max(1, (int)(($prod->unidades_caja ?? 1) ?: 1));
-                $nuevaCant = max(0, $invRow->cantidad - $cantidad);
-                $cantCajas = (int)floor($nuevaCant / $cajasUnd);
-                $saldos    = fmod($nuevaCant, $cajasUnd);
-
-                DB::table('inventarios')->where('id', $invRow->id)->update([
-                    'cantidad'      => $nuevaCant,
-                    'cantidad_cajas'=> $cantCajas,
-                    'saldos'        => $saldos,
-                    'updated_at'    => date('Y-m-d H:i:s'),
-                ]);
-
-                DB::table('movimiento_inventarios')->insert([
-                    'empresa_id'         => $empresaId,
-                    'sucursal_id'        => $sucursalId,
-                    'producto_id'        => $productoId,
-                    'tipo_movimiento'    => 'Salida',
-                    'cantidad'           => $cantidad,
-                    'lote'               => $lote,
-                    'fecha_vencimiento'  => $d['fecha_vencimiento'] ?? null,
-                    'referencia_tipo'    => 'devolucion',
-                    'referencia_id'      => $dev->id,
-                    'auxiliar_id'        => $user->id,
-                    'fecha_movimiento'   => date('Y-m-d'),
-                    'hora_inicio'        => date('H:i:s'),
-                    'observaciones'      => "Salida devolución {$numero}",
-                    'ubicacion_origen_id'=> $invRow->ubicacion_id,
-                    'created_at'         => date('Y-m-d H:i:s'),
-                ]);
             }
 
             return [$dev->id, $numero];

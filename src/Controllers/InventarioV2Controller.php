@@ -766,7 +766,7 @@ class InventarioV2Controller extends BaseController
                 $headers = [
                     'Ronda', 'Fecha/Hora', 'Auxiliar', 'Código', 'Producto', 'Ubicación',
                     'Lote', 'F.Vencimiento', 'Días V.U.',
-                    'Cajas', 'Saldos', 'UND/TOTAL', 'Sistema', 'Diferencia', 'Ajustado',
+                    'Cajas', 'U/E', 'Saldos', 'UND/TOTAL', 'Sistema', 'Diferencia', 'Ajustado',
                 ];
                 $rows = $lineas->map(fn($l) => [
                     $l->ronda,
@@ -779,6 +779,7 @@ class InventarioV2Controller extends BaseController
                     $l->fecha_vencimiento ?? '—',
                     $l->dias_vida_util ?? '—',
                     $l->cantidad_cajas ?? '—',
+                    $l->unidades_caja,
                     $l->saldos ?? '—',
                     $l->cantidad_contada,
                     $l->cantidad_sistema,

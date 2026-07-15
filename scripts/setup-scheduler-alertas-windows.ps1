@@ -35,10 +35,11 @@ $Action = New-ScheduledTaskAction `
     -Argument $ScriptPath `
     -WorkingDirectory "C:\xampp\htdocs\WMS_FENIX"
 
-# Disparador: cada 6 horas, empezando a medianoche
+# Disparador: cada 6 horas, empezando a medianoche (duracion acotada a 10 anios,
+# el maximo representable en el XML del Task Scheduler)
 $Trigger = New-ScheduledTaskTrigger -Once -At "00:00" `
     -RepetitionInterval (New-TimeSpan -Hours 6) `
-    -RepetitionDuration ([TimeSpan]::MaxValue)
+    -RepetitionDuration (New-TimeSpan -Days 3650)
 
 $Settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 30) `
