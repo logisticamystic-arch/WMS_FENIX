@@ -107,10 +107,31 @@ class TraspasoController extends BaseController
 
                 if (!$inv) throw new \Exception('No se encontró inventario disponible');
 
+                // Bloqueo de producto/lote: un producto retirado por calidad o un lote
+                // específico bloqueado no debe poder trasladarse — mismo criterio que
+                // ya aplica el flujo de picking (asignarMultiple/_generarRutaFEFO).
+                $productoBloqueado = \App\Models\Producto::withoutGlobalScopes()
+                    ->where('id', $data['producto_id'])->where('bloqueado', true)->exists();
+                if ($productoBloqueado) {
+                    throw new \Exception('El producto está bloqueado y no puede trasladarse');
+                }
+                if ($inv->lote) {
+                    $loteBloqueado = \App\Models\BloqueoLote::where('empresa_id', $empresaId)
+                        ->where('producto_id', $data['producto_id'])
+                        ->where('lote', $inv->lote)->exists();
+                    if ($loteBloqueado) {
+                        throw new \Exception("El lote {$inv->lote} está bloqueado y no puede trasladarse");
+                    }
+                }
+
                 $disponible = $inv->cantidad - $inv->cantidad_reservada;
                 if ($cantidad > $disponible) {
                     throw new \Exception("Cantidad excede el disponible ({$disponible})");
                 }
+
+                // La fecha de vencimiento real es la del inventario ya localizado, no la que
+                // envía el cliente — evita desincronizar la auditoría del lote realmente movido.
+                $fechaVencReal = $inv->fecha_vencimiento;
 
                 $inv->cantidad -= $cantidad;
                 if ((float)$inv->cantidad <= 0 && (float)($inv->cantidad_reservada ?? 0) <= 0) {
@@ -127,7 +148,7 @@ class TraspasoController extends BaseController
                     'tipo_movimiento'    => 'Salida',
                     'cantidad'           => $cantidad,
                     'lote'               => $data['lote'] ?? null,
-                    'fecha_vencimiento'  => $data['fecha_vencimiento'] ?? null,
+                    'fecha_vencimiento'  => $fechaVencReal,
                     'auxiliar_id'        => $user->id,
                     'fecha_movimiento'   => now(),
                     'hora_inicio'        => date('H:i:s'),
@@ -146,7 +167,7 @@ class TraspasoController extends BaseController
                     'producto_id'      => $data['producto_id'],
                     'ubicacion_id'     => $data['ubicacion_id'],
                     'lote'             => $data['lote'] ?? null,
-                    'fecha_vencimiento'=> $data['fecha_vencimiento'] ?? null,
+                    'fecha_vencimiento'=> $fechaVencReal,
                     'cantidad'         => $cantidad,
                     'cliente_id'       => $data['cliente_id'] ?? null,
                     'cliente_nombre'   => $data['cliente_nombre'] ?? null,

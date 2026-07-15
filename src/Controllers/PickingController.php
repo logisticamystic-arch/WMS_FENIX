@@ -629,10 +629,20 @@ class PickingController extends BaseController
 
         Capsule::transaction(function () use ($orden, $user, &$alertas, $now,
                                               $soloAlmacenamiento, $productoIds, $r) {
+            // Excluir productos bloqueados y lotes bloqueados — mismo criterio que
+            // asignarMultiple(), replicado aquí para que un lote retirado por calidad
+            // o vencimiento no pueda ser ruteado/despachado por esta vía.
+            $prodsBloqueados = \App\Models\Producto::withoutGlobalScopes()
+                ->where('empresa_id', $orden->empresa_id)
+                ->where('bloqueado', true)->pluck('id')->toArray();
+            $lotesBloqueados = \App\Models\BloqueoLote::where('empresa_id', $orden->empresa_id)
+                ->get(['producto_id', 'lote']);
+
             // Leer y bloquear inventario DENTRO de la transacción
             $todosLosStock = Inventario::where('empresa_id', $orden->empresa_id)
                 ->where('sucursal_id', $user->sucursal_id)
                 ->whereIn('producto_id', $productoIds)
+                ->whereNotIn('producto_id', $prodsBloqueados)
                 ->where('estado', 'Disponible')
                 ->where('cantidad', '>', 0)
                 ->with('ubicacion:id,tipo_ubicacion,codigo,zona')
@@ -643,7 +653,13 @@ class PickingController extends BaseController
                 ->orderByRaw('CASE WHEN fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
                 ->orderBy('fecha_vencimiento', 'ASC')
                 ->lockForUpdate()
-                ->get();
+                ->get()
+                ->filter(function ($inv) use ($lotesBloqueados) {
+                    foreach ($lotesBloqueados as $bl) {
+                        if ($inv->producto_id == $bl->producto_id && $inv->lote === $bl->lote) return false;
+                    }
+                    return true;
+                })->values();
 
             // Indexar por producto_id para acceso O(1) en el foreach
             $stockPorProducto = $todosLosStock->groupBy('producto_id');

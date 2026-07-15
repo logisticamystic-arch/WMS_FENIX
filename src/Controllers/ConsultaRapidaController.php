@@ -52,7 +52,7 @@ class ConsultaRapidaController extends BaseController
             ->where('empresa_id', $empresaId)
             ->first(['id', 'codigo_interno', 'nombre', 'unidad_medida',
                      'controla_lote', 'controla_vencimiento', 'stock_minimo', 'descripcion',
-                     'factor_udm', 'unidad_contenido']);
+                     'factor_udm', 'unidad_contenido', 'bloqueado']);
 
         if (!$producto) {
             return $this->error($response, 'Producto no encontrado', 404);
@@ -66,6 +66,21 @@ class ConsultaRapidaController extends BaseController
             ->where('producto_id', $productoId)
             ->where('estado', 'Disponible')
             ->sum('cantidad');
+
+        // ── Disponible PARA VENTA: distinto de disponible físico — descuenta
+        //    producto/lotes bloqueados por calidad o vencimiento (BloqueoController). ──
+        $lotesBloqueadosCR = \App\Models\BloqueoLote::where('empresa_id', $empresaId)
+            ->where('producto_id', $productoId)
+            ->pluck('lote')->toArray();
+        $cantidadBloqueada = !empty($lotesBloqueadosCR)
+            ? (int) Inventario::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
+                ->where('producto_id', $productoId)
+                ->where('estado', 'Disponible')
+                ->whereIn('lote', $lotesBloqueadosCR)
+                ->sum('cantidad')
+            : 0;
+        $totalDisponibleVenta = $producto->bloqueado ? 0 : max(0, $totalDisponible - $cantidadBloqueada);
 
         $totalReservado   = (int) Inventario::where('empresa_id', $empresaId)
             ->where('sucursal_id', $sucursalId)

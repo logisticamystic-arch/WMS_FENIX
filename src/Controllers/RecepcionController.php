@@ -1296,6 +1296,26 @@ class RecepcionController extends BaseController
                     $invDisp->cantidad_cajas = (int)floor((float)$invDisp->cantidad / $_aprobUpc);
                     $invDisp->saldos         = fmod((float)$invDisp->cantidad, (float)$_aprobUpc);
                     $invDisp->save();
+
+                    // Trazabilidad: transición En Patio -> Disponible es un movimiento real de
+                    // inventario; debe quedar documentada en el kardex igual que el resto del flujo.
+                    \App\Models\MovimientoInventario::create([
+                        'empresa_id'           => $recepcion->empresa_id,
+                        'sucursal_id'          => $recepcion->sucursal_id,
+                        'producto_id'          => $detalle->producto_id,
+                        'tipo_movimiento'      => 'Traslado',
+                        'cantidad'             => $cantAprobada,
+                        'lote'                 => $detalle->lote,
+                        'fecha_vencimiento'    => $detalle->fecha_vencimiento,
+                        'ubicacion_origen_id'  => $ubicacionInventario,
+                        'ubicacion_destino_id' => $ubicacionInventario,
+                        'auxiliar_id'          => $user->id,
+                        'referencia_tipo'      => 'recepciones',
+                        'referencia_id'        => $recepcion->id,
+                        'observaciones'        => "Aprobación de pallet: En Patio → Disponible — Recepción {$recepcion->numero_recepcion}",
+                        'fecha_movimiento'     => date('Y-m-d'),
+                        'hora_inicio'          => date('H:i:s'),
+                    ]);
                 } else {
                     $_aprobUpc2   = max(1, (int)($detalle->cajas_por_unidad ?? 1));
                     $_aprobCajas2 = (int)floor((float)$detalle->cantidad_recibida / $_aprobUpc2);
@@ -1401,6 +1421,24 @@ class RecepcionController extends BaseController
                         $inv->saldos         = fmod((float)$inv->cantidad, (float)$_actDetUpc);
                         $inv->save();
                     }
+
+                    // Trazabilidad: la corrección de cantidad sobre un pallet ya aprobado
+                    // mueve stock real; debe quedar en el kardex igual que cualquier otro ajuste.
+                    \App\Models\MovimientoInventario::create([
+                        'empresa_id'       => $recepcion->empresa_id,
+                        'sucursal_id'      => $recepcion->sucursal_id,
+                        'producto_id'      => $det->producto_id,
+                        'tipo_movimiento'  => $diff >= 0 ? 'AjustePositivo' : 'AjusteNegativo',
+                        'cantidad'         => abs($diff),
+                        'lote'             => $det->lote,
+                        'ubicacion_destino_id' => $ubicId,
+                        'auxiliar_id'      => $user->id,
+                        'referencia_tipo'  => 'recepciones',
+                        'referencia_id'    => $recepcion->id,
+                        'observaciones'    => "Corrección administrativa de cantidad — Recepción {$recepcion->numero_recepcion}",
+                        'fecha_movimiento' => date('Y-m-d'),
+                        'hora_inicio'      => date('H:i:s'),
+                    ]);
                 }
             }
 
