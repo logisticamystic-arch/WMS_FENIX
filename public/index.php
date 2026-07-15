@@ -608,6 +608,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
 
     // Módulo: Reabastecimiento automático
     $group->post('/reabastecimiento/auto', [\App\Controllers\ReplenishmentController::class, 'runAutoReplenishment']);
+    $group->get('/reabastecimiento/tareas', [\App\Controllers\ReplenishmentController::class, 'listarTareas']);
 
     $group->group('/picking', function($group) {
         // Operaciones base

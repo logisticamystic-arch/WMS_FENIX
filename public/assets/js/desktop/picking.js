@@ -536,16 +536,22 @@ WMS_MODULES.picking = {
     try {
       const r = await API.get('/picking/' + ordenId);
       const o = r.data || r;
-      const editable = o.estado === 'Pendiente';
+      // Pendiente: Supervisor o Admin pueden editar/eliminar líneas.
+      // EnProceso (ya asignada): solo Admin — coincide con el backend (requireAdmin).
+      const rol = WMS.user?.rol || '';
+      const editable = o.estado === 'Pendiente'
+        ? (rol === 'Admin' || rol === 'Supervisor')
+        : (o.estado === 'EnProceso' && rol === 'Admin');
       const lineas = (o.detalles || []).map(d => {
-        const lineaPend = d.estado === 'Pendiente';
+        const lineaEditable = ['Pendiente', 'EnProceso', 'Faltante'].includes(d.estado);
+        const puedeEliminar  = (parseFloat(d.cantidad_pickeada) || 0) === 0;
         return `<tr>
           <td style="padding:5px 10px;font-size:.78rem;">
             ${WMS.esc(d.producto?.nombre||d.producto?.codigo_interno||'—')}
             ${d.numero_pedido_ref ? `<div style="font-size:.68rem;color:#64748b;">Ref: ${WMS.esc(d.numero_pedido_ref)}</div>` : ''}
           </td>
           <td style="padding:5px 10px;font-size:.78rem;text-align:center;">
-            ${editable && lineaPend
+            ${editable && lineaEditable
               ? `<input type="number" min="0.001" step="0.001" id="qty-${parseInt(d.id)||0}" value="${parseFloat(d.cantidad_solicitada)||0}"
                    style="width:70px;text-align:center;border:1px solid #cbd5e1;border-radius:3px;padding:2px 4px;font-size:.78rem;"
                    onkeydown="if(event.key==='Enter')WMS_MODULES.picking._guardarCantidadLinea(${parseInt(o.id)||0},${parseInt(d.id)||0})">`
@@ -557,15 +563,18 @@ WMS_MODULES.picking = {
           <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.auxiliar?.nombre||'—')}</td>
           <td style="padding:5px 10px;font-size:.78rem;">${WMS.esc(d.estado||'')}</td>
           ${editable ? `<td style="padding:5px 10px;text-align:center;white-space:nowrap;">
-            ${lineaPend
+            ${lineaEditable
               ? `<button title="Guardar" onclick="WMS_MODULES.picking._guardarCantidadLinea(${parseInt(o.id)||0},${parseInt(d.id)||0})"
                    style="background:#dcfce7;border:none;border-radius:3px;padding:3px 7px;cursor:pointer;color:#166534;font-size:.72rem;margin-right:2px;">
                    <i class="fa-solid fa-check"></i>
                  </button>
-                 <button title="Eliminar línea" onclick="WMS_MODULES.picking._eliminarLinea(${parseInt(o.id)||0},${parseInt(d.id)||0})"
-                   style="background:#fee2e2;border:none;border-radius:3px;padding:3px 7px;cursor:pointer;color:#991b1b;font-size:.72rem;">
-                   <i class="fa-solid fa-trash-can"></i>
-                 </button>`
+                 ${puedeEliminar
+                   ? `<button title="Eliminar línea" onclick="WMS_MODULES.picking._eliminarLinea(${parseInt(o.id)||0},${parseInt(d.id)||0})"
+                        style="background:#fee2e2;border:none;border-radius:3px;padding:3px 7px;cursor:pointer;color:#991b1b;font-size:.72rem;">
+                        <i class="fa-solid fa-trash-can"></i>
+                      </button>`
+                   : `<span title="Ya tiene unidades separadas, no se puede eliminar" style="font-size:.68rem;color:#94a3b8;"><i class="fa-solid fa-lock"></i></span>`
+                 }`
               : `<span style="font-size:.68rem;color:#94a3b8;">—</span>`
             }
           </td>` : ''}
@@ -1074,7 +1083,11 @@ WMS_MODULES.picking = {
 
   _renderEditorInline(o, planKey, cont) {
     const id = o.id;
-    const esEditable = o.estado === 'Pendiente';
+    // Pendiente: Supervisor o Admin. EnProceso (ya asignada): solo Admin — igual que el backend.
+    const rolIed = WMS.user?.rol || '';
+    const esEditable = o.estado === 'Pendiente'
+      ? (rolIed === 'Admin' || rolIed === 'Supervisor')
+      : (o.estado === 'EnProceso' && rolIed === 'Admin');
     const lineas = o.detalles || o.lineas || [];
 
     // cantidad_solicitada = CAJAS; cantidad_pickeada = CAJAS
