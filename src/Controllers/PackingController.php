@@ -948,7 +948,6 @@ class PackingController extends BaseController
             $totalCajas  += $subtotalCj;
             $ambientesHtml .= "
             <div class='ambiente-block'>
-              <div class='ambiente-header'>{$ambNombre} &mdash; {$subtotalCj} cj / {$subtotalUnd} und</div>
               <table style='table-layout:fixed;width:100%;'>
                 <colgroup>
                   <col style='width:12%;'>
@@ -958,13 +957,16 @@ class PackingController extends BaseController
                   <col style='width:9%;'>
                   <col style='width:16%;'>
                 </colgroup>
-                <thead><tr>
-                  <th>C&oacute;digo</th><th>Producto</th>
-                  <th style='text-align:right'>Cajas</th>
-                  <th style='text-align:right'>Saldo</th>
-                  <th style='text-align:right'>Und.</th>
-                  <th style='text-align:center'>F. Venc.</th>
-                </tr></thead>
+                <thead>
+                  <tr class='ambiente-header-row'><th colspan='6'>{$ambNombre} &mdash; {$subtotalCj} cj / {$subtotalUnd} und</th></tr>
+                  <tr>
+                    <th>C&oacute;digo</th><th>Producto</th>
+                    <th style='text-align:right'>Cajas</th>
+                    <th style='text-align:right'>Saldo</th>
+                    <th style='text-align:right'>Und.</th>
+                    <th style='text-align:center'>F. Venc.</th>
+                  </tr>
+                </thead>
                 <tbody>{$rowsHtml}</tbody>
               </table>
             </div>";
@@ -1034,13 +1036,15 @@ class PackingController extends BaseController
   .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:8px;margin-bottom:10px}
   .header-left p{margin:0;font-size:9.5px;color:#555}
   .header-right{text-align:right;font-size:10px;color:#333}
-  .info-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:3px 16px;margin-bottom:10px;background:#f8fafc;padding:8px 12px;border-radius:4px;border:1px solid #e2e8f0}
-  .info-grid .lbl{font-weight:700;font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:.3px}
-  .info-grid .val{font-size:10.5px;color:#1e293b;border-bottom:1px solid #cbd5e1;padding-bottom:2px;margin-bottom:4px}
+  .info-grid{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 20px;margin-bottom:10px;background:#f8fafc;padding:6px 12px;border-radius:4px;border:1px solid #e2e8f0;page-break-after:avoid}
+  .info-grid .campo{white-space:nowrap;font-size:10.5px;color:#1e293b}
+  .info-grid .lbl{font-weight:700;font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:.3px;margin-right:4px}
   .ambientes-grid{display:grid;grid-template-columns:1fr;gap:10px}
-  .ambiente-block{border:1px solid #cbd5e1;border-radius:4px;overflow:hidden;page-break-inside:avoid}
-  .ambiente-header{background:#000;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.2px}
+  .ambiente-block{border:1px solid #cbd5e1;border-radius:4px;overflow:hidden}
+  .ambiente-header-row th{background:#000;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.2px;text-align:left;border:none}
   table{width:100%;border-collapse:collapse}
+  thead{display:table-header-group}
+  tr{page-break-inside:avoid}
   th,td{border:1px solid #e2e8f0;padding:4px 6px;font-size:9.5px;text-align:left;vertical-align:middle}
   th{background:#f1f5f9;font-weight:700;color:#334155;white-space:nowrap}
   tr:nth-child(even) td{background:#f8fafc}
@@ -1071,14 +1075,11 @@ class PackingController extends BaseController
   </div>
 </div>
 <div class='info-grid'>
-  <div class='lbl'>Cliente / Sucursal:</div><div class='val'>{$clienteNom}</div>
-  <div class='lbl'>Tipo empaque:</div><div class='val'>{$tipoEmp}</div>
-  <div class='lbl'>Planilla:</div><div class='val'>{$planillaStr}</div>
-  <div class='lbl'>N&ordm; Pedidos:</div><div class='val'>{$pedidosStr}</div>
-  <div class='lbl'>Certificador:</div><div class='val'>{$certNombre}</div>
-  <div class='lbl'>Total canastas:</div><div class='val'>{$numCanastas}</div>
-  <div class='lbl'>Total cajas:</div><div class='val'>{$totalCajas}</div>
-  <div class='lbl'>Total unidades:</div><div class='val'>{$totalUnd}</div>
+  <span class='campo'><span class='lbl'>Cliente / Sucursal:</span>{$clienteNom}</span>
+  <span class='campo'><span class='lbl'>Tipo empaque:</span>{$tipoEmp}</span>
+  <span class='campo'><span class='lbl'>Planilla:</span>{$planillaStr}</span>
+  <span class='campo'><span class='lbl'>N&ordm; Pedidos:</span>{$pedidosStr}</span>
+  <span class='campo'><span class='lbl'>Certificador:</span>{$certNombre}</span>
 </div>
 <div class='ambientes-grid'>{$ambientesHtml}</div>
 {$agotadosHtml}
