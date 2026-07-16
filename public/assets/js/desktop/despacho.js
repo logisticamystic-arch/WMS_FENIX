@@ -535,7 +535,8 @@ WMS_MODULES.despacho = {
     if (!confirm(`¿Recertificar "${sucursal}"?\n\nLa sesión de packing ya estaba finalizada. Se marcarán las órdenes como Certificadas.`)) return;
     try {
       const r = await API.post(`/packing/sesion/${sesionId}/recertificar`);
-      WMS.toast('success', r.message || 'Recertificación completada');
+      const huboOmitidas = (r.data?.ordenes_omitidas || []).length > 0;
+      WMS.toast(huboOmitidas ? 'warning' : 'success', r.message || 'Recertificación completada');
       this.show_certificacion();
     } catch(e) { WMS.toast('error', e.message || 'Error al recertificar'); }
   },

@@ -520,9 +520,41 @@ class PackingController extends BaseController
                 "No hay órdenes pendientes de certificar para \"{$sesion->sucursal_entrega}\"");
         }
 
-        return Capsule::transaction(function() use ($sesion, $ordenes, $user, $res) {
+        // ── Validar empaque real ANTES de certificar ──────────────────────────
+        // recertificar() existe para recuperar órdenes que SÍ se empacaron pero
+        // cuya certificación falló por un error técnico — no para certificar
+        // órdenes nuevas que llegaron a "Completada" después de que esta sesión
+        // cerró y nunca pasaron por empaque. Sin esta validación, cualquier
+        // orden pendiente de la misma sucursal_entrega quedaba certificada "en
+        // el papel" sin un solo registro en packing_items (causa confirmada de
+        // remisiones con pedidos completos faltantes).
+        $sinEmpacar = [];
+        $ordenesValidas = $ordenes->filter(function ($o) use (&$sinEmpacar) {
+            $detalles = Capsule::table('picking_detalles')->where('orden_picking_id', $o->id)->get();
+            $detalleIds = $detalles->pluck('id');
+            $totalPickeado = (float) $detalles->sum('cantidad_pickeada');
+            $totalEmpacado = $detalleIds->isNotEmpty()
+                ? (float) Capsule::table('packing_items')->whereIn('picking_detalle_id', $detalleIds)->sum('cantidad')
+                : 0.0;
+            $completa = round($totalPickeado - $totalEmpacado, 3) <= 0.001;
+            if (!$completa) {
+                $sinEmpacar[] = [
+                    'orden_id' => $o->id, 'numero_orden' => $o->numero_orden,
+                    'numero_factura' => $o->numero_factura,
+                    'pickeado' => $totalPickeado, 'empacado' => $totalEmpacado,
+                ];
+            }
+            return $completa;
+        })->values();
+
+        if ($ordenesValidas->isEmpty()) {
+            return $this->error($res, "Ninguna de las órdenes pendientes de \"{$sesion->sucursal_entrega}\" tiene su empaque completo en packing_items — no se certificó nada. Revise: " .
+                collect($sinEmpacar)->pluck('numero_factura')->filter()->implode(', '), 422);
+        }
+
+        return Capsule::transaction(function() use ($sesion, $ordenesValidas, $sinEmpacar, $user, $res) {
             $now = date('Y-m-d H:i:s');
-            foreach ($ordenes as $o) {
+            foreach ($ordenesValidas as $o) {
                 $o->estado_certificacion = 'Certificada';
                 $o->fecha_certificacion  = $now;
                 $o->certificador_id      = $user->id;
@@ -540,10 +572,18 @@ class PackingController extends BaseController
                     ]);
             }
             $this->audit($user, 'packing', 'recertificar', 'packing_sesiones', $sesion->id,
-                null, ['ordenes' => $ordenes->pluck('id')],
+                null, ['ordenes' => $ordenesValidas->pluck('id'), 'omitidas_sin_empacar' => $sinEmpacar],
                 "Recertificación manual para {$sesion->sucursal_entrega}");
-            return $this->ok($res, ['ordenes_certificadas' => $ordenes->count()],
-                "{$ordenes->count()} orden(es) de \"{$sesion->sucursal_entrega}\" certificadas correctamente");
+
+            $msg = "{$ordenesValidas->count()} orden(es) de \"{$sesion->sucursal_entrega}\" certificadas correctamente";
+            if (!empty($sinEmpacar)) {
+                $msg .= ". ATENCIÓN: se omitieron " . count($sinEmpacar) . " orden(es) sin empaque completo — pedido(s) "
+                     . collect($sinEmpacar)->pluck('numero_factura')->filter()->implode(', ') . ". Revíselas manualmente.";
+            }
+            return $this->ok($res, [
+                'ordenes_certificadas' => $ordenesValidas->count(),
+                'ordenes_omitidas'     => $sinEmpacar,
+            ], $msg);
         });
     }
 
