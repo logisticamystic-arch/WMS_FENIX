@@ -980,13 +980,15 @@ class PickingController extends BaseController
         }
 
         $now = date('Y-m-d H:i:s');
+        $hoy = date('Y-m-d');
         $resultados = [
-            'procesados'     => 0,
-            'sin_stock'      => 0,
-            'reservados'     => 0,
-            'eliminados'     => 0,
-            'errores'        => [],
-            'detalle'        => [],
+            'procesados'              => 0,
+            'sin_stock'               => 0,
+            'reservados'              => 0,
+            'eliminados'              => 0,
+            'omitidos_ya_certificados'=> 0,
+            'errores'                 => [],
+            'detalle'                 => [],
         ];
 
         $empresaId  = $this->getEffectiveEmpresaId($user, $r);
@@ -1019,12 +1021,35 @@ class PickingController extends BaseController
 
         foreach ($faltantes as $falt) {
             try {
-                Capsule::transaction(function () use ($falt, $user, $now, &$resultados, $r) {
+                Capsule::transaction(function () use ($falt, $user, $now, $hoy, &$resultados, $r) {
                     // Obtener producto y convertir cajas → unidades para comparar inventario
                     $producto = \App\Models\Producto::find($falt->producto_id);
                     $nombreProducto = $producto->nombre ?? $producto->descripcion ?? "ID:{$falt->producto_id}";
                     $upc = max(1, (int)($producto->unidades_caja ?? 1));
                     $cantidadNecesaria = (float)$falt->cantidad_faltante * $upc; // UNIDADES
+
+                    // ── 0. No tocar órdenes ya certificadas en un día distinto a hoy ──
+                    // El backorder puede legítimamente alcanzar pedidos de picking nocturno
+                    // de ayer (ver ventana de 3 días arriba), pero si la orden YA fue
+                    // certificada (despachada) en una fecha anterior, no debe reabrirse ni
+                    // descertificarse en silencio — eso obligaba a re-certificar pedidos que
+                    // ya estaban cerrados. Se deja el faltante intacto para manejo manual.
+                    $ordenPrevia = OrdenPicking::find($falt->orden_picking_id);
+                    if ($ordenPrevia
+                        && $ordenPrevia->estado_certificacion === 'Certificada'
+                        && $ordenPrevia->fecha_certificacion
+                        && substr($ordenPrevia->fecha_certificacion, 0, 10) !== $hoy
+                    ) {
+                        $resultados['omitidos_ya_certificados']++;
+                        $resultados['detalle'][] = [
+                            'faltante_id' => $falt->id,
+                            'producto'    => $nombreProducto,
+                            'orden_id'    => $ordenPrevia->id,
+                            'estado'      => 'omitido_ya_certificado',
+                            'motivo'      => "La orden #{$ordenPrevia->id} ya fue certificada el " . substr($ordenPrevia->fecha_certificacion, 0, 10) . " — no se reabre automáticamente.",
+                        ];
+                        return;
+                    }
 
                     // ── 1. Verificar stock actual disponible (con lock pesimista) ──
                     $stockDisponible = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
@@ -1137,6 +1162,9 @@ class PickingController extends BaseController
         $msg = "{$resultados['procesados']} faltante(s) procesados";
         if ($resultados['sin_stock'] > 0) $msg .= ", {$resultados['sin_stock']} sin stock";
         if ($resultados['reservados'] > 0) $msg .= ", {$resultados['reservados']} unidades reservadas";
+        if ($resultados['omitidos_ya_certificados'] > 0) {
+            $msg .= ", {$resultados['omitidos_ya_certificados']} omitido(s) por pertenecer a pedidos ya certificados en otra fecha (requieren revisión manual)";
+        }
 
         return $this->ok($res, $resultados, $msg);
     }
