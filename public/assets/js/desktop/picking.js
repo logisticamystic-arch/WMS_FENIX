@@ -3309,6 +3309,11 @@ WMS_MODULES.picking = {
                     const upc  = r.unidades_caja || 1;
                     const cfUnd = cf * upc; // cajas → unidades para comparar con stock_actual (und)
                     const ok   = sa >= cfUnd;
+                    // cf viene en cajas y puede ser fraccionario (déficit menor a una caja
+                    // completa) — se descompone en cajas enteras + sueltos en vez de mostrar
+                    // un número de cajas confuso como "0.25 cj".
+                    const cfCajas = upc > 1 ? Math.floor(cf) : cf;
+                    const cfSaldo = upc > 1 ? Math.round((cf - cfCajas) * upc * 1000) / 1000 : 0;
                     return `<tr data-falt-id="${r.id}" data-has-stock="${ok?1:0}" style="${ok?'background:#f0fdf4;':''}">
                     <td style="text-align:center;" onclick="event.stopPropagation()">
                       <input type="checkbox" class="falt-sel" value="${r.producto_id}" onchange="WMS_MODULES.picking._onFaltCheck()"
@@ -3322,7 +3327,7 @@ WMS_MODULES.picking = {
                       <div style="font-size:10px;color:#64748b;">${WMS.esc(r.producto_codigo||'')}</div>
                     </td>
                     <td style="text-align:center;">
-                      <span class="badge badge-danger">${WMS.formatNum(cf)} cj</span>
+                      <span class="badge badge-danger">${upc > 1 && cfCajas <= 0 ? `${WMS.formatNum(cfSaldo)} suelt.` : `${WMS.formatNum(cfCajas)} cj${cfSaldo > 0 ? ' + ' + WMS.formatNum(cfSaldo) + ' suelt.' : ''}`}</span>
                       ${upc > 1 ? `<div style="font-size:10px;color:#64748b;">${WMS.formatNum(cfUnd)} und</div>` : ''}
                     </td>
                     <td style="text-align:center;">
