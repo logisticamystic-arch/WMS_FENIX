@@ -2258,7 +2258,7 @@ class PickingController extends BaseController
                 'producto_id' => $linea->producto_id, 'ubicacion_id' => $linea->ubicacion_id,
                 'cantidad' => abs($diffUnidades), 'tipo_movimiento' => MovimientoInventario::TIPO_CORRECCION,
                 'referencia_id' => $linea->id, 'referencia_tipo' => 'picking_detalle',
-                'usuario_id' => $user->id,
+                'auxiliar_id' => $user->id,
                 'observaciones' => $motivo ?: 'Edición de cantidad — liberación de reserva',
                 'fecha_movimiento' => date('Y-m-d'), 'hora_inicio' => date('H:i:s'),
             ]);
@@ -2286,7 +2286,7 @@ class PickingController extends BaseController
                 'producto_id' => $linea->producto_id, 'ubicacion_id' => $linea->ubicacion_id,
                 'cantidad' => $diffUnidades, 'tipo_movimiento' => MovimientoInventario::TIPO_CORRECCION,
                 'referencia_id' => $linea->id, 'referencia_tipo' => 'picking_detalle',
-                'usuario_id' => $user->id,
+                'auxiliar_id' => $user->id,
                 'observaciones' => $motivo ?: 'Edición de cantidad — refuerzo de reserva',
                 'fecha_movimiento' => date('Y-m-d'), 'hora_inicio' => date('H:i:s'),
             ]);
