@@ -1469,8 +1469,25 @@ const MWMS = {
   loading(s){ let l=document.getElementById('m-loading'); if(s&&!l)document.body.insertAdjacentHTML('beforeend','<div id="m-loading" style="position:fixed;inset:0;background:rgba(255,255,255,.7);z-index:90000;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#0F4C81;"><i class="fa-solid fa-spinner fa-spin"></i></div>'); else if(!s&&l)l.remove(); },
   toast(m,t='info'){ const c=document.getElementById('m-toast'), e=document.createElement('div'); e.className='m-toast-item '+t; e.innerHTML=m; c.appendChild(e); setTimeout(()=>{e.style.opacity='0';setTimeout(()=>e.remove(),500);},3000); },
   esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); },
-  formatDate(d){ if(!d)return'-'; const date=new Date(d); if(isNaN(date.getTime()))return d; const day=String(date.getDate()).padStart(2,'0'); const month=String(date.getMonth()+1).padStart(2,'0'); return `${day}/${month}/${date.getFullYear()}`; },
-  formatDateShort(d){ if(!d)return'N/A'; const date=new Date(d); if(isNaN(date.getTime()))return d; const day=String(date.getDate()).padStart(2,'0'); const month=String(date.getMonth()+1).padStart(2,'0'); const year=date.getFullYear(); return `${day}/${month}/${year}`; },
+  formatDate(d){
+    if(!d)return'-';
+    const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const date = m ? new Date(+m[1], +m[2]-1, +m[3]) : new Date(d);
+    if(isNaN(date.getTime()))return d;
+    const day=String(date.getDate()).padStart(2,'0'); const month=String(date.getMonth()+1).padStart(2,'0');
+    return `${day}/${month}/${date.getFullYear()}`;
+  },
+  formatDateShort(d){
+    if(!d)return'N/A';
+    // Si viene como "YYYY-MM-DD..." se arma en hora LOCAL para no perder un día
+    // (new Date("YYYY-MM-DD") se interpreta como medianoche UTC, que en Bogotá
+    // cae en el día anterior, ej. fechas de vencimiento mostradas un día antes).
+    const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const date = m ? new Date(+m[1], +m[2]-1, +m[3]) : new Date(d);
+    if(isNaN(date.getTime()))return d;
+    const day=String(date.getDate()).padStart(2,'0'); const month=String(date.getMonth()+1).padStart(2,'0'); const year=date.getFullYear();
+    return `${day}/${month}/${year}`;
+  },
   getDaysToExpiry(fechaVenc){ if(!fechaVenc)return null; const hoy=new Date(); hoy.setHours(0,0,0,0); const fv=new Date(fechaVenc); fv.setHours(0,0,0,0); const diff=fv-hoy; const dias=Math.ceil(diff/(1000*60*60*24)); return dias; },
 
   async viewUbicar() {

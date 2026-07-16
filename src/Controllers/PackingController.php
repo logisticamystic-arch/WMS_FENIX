@@ -42,36 +42,18 @@ class PackingController extends BaseController
             return $this->error($res, 'Ya existe una sesión en proceso para esta sucursal. ID: ' . $existing->id, 409);
         }
 
-        // Guard 2: sesión completada con órdenes sin certificar → recertificar automáticamente
-        $sesionCompletada = PackingSesion::where('empresa_id', $empresaId)
-            ->where('sucursal_id', $sucursalId)
-            ->where('sucursal_entrega', $sucursal)
-            ->where('estado', 'Completada')
-            ->orderByDesc('id')
-            ->first();
-        $ordenesPendientes = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
-            ->where('sucursal_id', $sucursalId)
-            ->where('sucursal_entrega', $sucursal)
-            ->where('estado', 'Completada')
-            ->where('estado_certificacion', 'Pendiente')
-            ->get();
-        if ($sesionCompletada && $ordenesPendientes->isNotEmpty()) {
-            // Hay una sesión terminada pero la cert no se ejecutó — la completamos ahora
-            Capsule::transaction(function() use ($ordenesPendientes, $user, $sesionCompletada) {
-                foreach ($ordenesPendientes as $o) {
-                    $o->estado_certificacion = 'Certificada';
-                    $o->fecha_certificacion  = date('Y-m-d H:i:s');
-                    $o->certificador_id      = $user->id;
-                    $o->save();
-                }
-                $this->audit($user, 'packing', 'recertificar_auto', 'packing_sesiones', $sesionCompletada->id,
-                    null, ['ordenes' => $ordenesPendientes->pluck('id')],
-                    "Re-certificación automática al intentar crear sesión duplicada para {$sesionCompletada->sucursal_entrega}");
-            });
-            return $this->error($res,
-                "La sesión de packing para \"{$sucursal}\" ya estaba terminada. Se certificaron " . $ordenesPendientes->count() . " orden(es) automáticamente. Recarga para ver el estado actualizado.",
-                409);
-        }
+        // NOTA (corrección de auditoría, commit 3e18bb6 lo introdujo el 2026-07-13):
+        // Existía aquí un "Guard 2" que, al detectar CUALQUIER PackingSesion histórica
+        // en estado 'Completada' para esta $sucursal_entrega (que es solo el nombre del
+        // cliente/destino y se repite en cada ciclo de picking, no un id de lote), asumía
+        // que las órdenes 'Pendiente' de certificar ACTUALES pertenecían a esa sesión vieja
+        // y las certificaba automáticamente sin pasar por empaque real — y de paso
+        // bloqueaba con un error 409 el intento de abrir la nueva sesión legítima.
+        // En la práctica, cualquier destino certificado alguna vez disparaba esto en TODOS
+        // los ciclos futuros. Se elimina: si hay órdenes nuevas pendientes de certificar,
+        // el flujo normal de abajo simplemente abre una sesión de packing nueva para ellas.
+        // La recuperación de certificaciones realmente huérfanas de una sesión específica
+        // sigue disponible como acción manual explícita vía recertificar().
 
         // Guard 3: todas las órdenes ya certificadas — no hay nada que empacar
         $hayOrdenesCertificadas = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
@@ -539,11 +521,23 @@ class PackingController extends BaseController
         }
 
         return Capsule::transaction(function() use ($sesion, $ordenes, $user, $res) {
+            $now = date('Y-m-d H:i:s');
             foreach ($ordenes as $o) {
                 $o->estado_certificacion = 'Certificada';
-                $o->fecha_certificacion  = date('Y-m-d H:i:s');
+                $o->fecha_certificacion  = $now;
                 $o->certificador_id      = $user->id;
                 $o->save();
+
+                // Mantener picking_detalles consistente con la cabecera — mismo criterio
+                // que ya usa autoPack() — para que reportes/remisiones que lean
+                // cantidad_certificada directamente no queden en 0 tras esta recuperación manual.
+                Capsule::table('picking_detalles')
+                    ->where('orden_picking_id', $o->id)
+                    ->update([
+                        'cantidad_certificada' => Capsule::raw('cantidad_pickeada'),
+                        'estado_certificacion' => 'Certificada',
+                        'updated_at'           => $now,
+                    ]);
             }
             $this->audit($user, 'packing', 'recertificar', 'packing_sesiones', $sesion->id,
                 null, ['ordenes' => $ordenes->pluck('id')],
