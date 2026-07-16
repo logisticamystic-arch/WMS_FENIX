@@ -4265,7 +4265,7 @@ WMS_MODULES.inventario = {
           <button class="btn btn-danger" onclick="WMS_MODULES.inventario._ajusteUbiRechazar(${id})">
             <i class="fa-solid fa-xmark"></i> Rechazar
           </button>
-          <button class="btn btn-success" onclick="WMS_MODULES.inventario._ajusteUbiAprobar(${id},'${ajuste.tipo||'AjusteCompleto'}')" style="background:${esAgregar ? '#059669' : '#0F4C81'};">
+          <button class="btn btn-success" onclick="WMS_MODULES.inventario._ajusteUbiAprobar(${id},'${ajuste.tipo||'AjusteCompleto'}',this)" style="background:${esAgregar ? '#059669' : '#0F4C81'};">
             <i class="fa-solid fa-check"></i> ${btnAprobarLabel}
           </button>
         </div>
@@ -4283,20 +4283,9 @@ WMS_MODULES.inventario = {
     if (totalEl) totalEl.textContent = WMS.formatNum(cajas * upc + saldos);
   },
 
-  async _ajusteUbiAprobar(id, tipo = 'AjusteCompleto') {
-    const esAgregar = tipo === 'AgregarInventario';
-    const ok = await Swal.fire({
-      title: esAgregar ? 'Aprobar y Agregar Stock' : 'Aprobar Ajuste de Ubicación',
-      html: esAgregar
-        ? 'Las referencias indicadas se <b>SUMARÁN</b> al inventario existente y quedarán registradas en el Kardex.'
-        : 'El inventario actual de la ubicación será <b>REEMPLAZADO</b> por el conteo del auxiliar. Esta acción <b>no se puede deshacer</b>.',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: esAgregar ? 'Sí, agregar' : 'Sí, aprobar',
-      cancelButtonText: 'Cancelar',
-      confirmButtonColor: esAgregar ? '#059669' : '#0F4C81',
-    });
-    if (!ok.isConfirmed) return;
+  async _ajusteUbiAprobar(id, tipo = 'AjusteCompleto', btnEl = null) {
+    if (btnEl?.disabled) return; // evita doble envío por doble clic accidental
+    if (btnEl) { btnEl.disabled = true; btnEl.dataset.origHtml = btnEl.innerHTML; btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Procesando...'; }
 
     // Recolectar detalles editados del modal
     const detalles = [];
@@ -4316,12 +4305,17 @@ WMS_MODULES.inventario = {
 
     try {
       const r = await API.post(`/inventario/ajuste-ubicacion/${id}/aprobar`, { detalles });
-      if (r.error) { await Swal.fire('Error al aprobar', r.message, 'error'); return; }
+      if (r.error) {
+        await Swal.fire('Error al aprobar', r.message, 'error');
+        return;
+      }
       WMS.toast('success', r.message || 'Aprobado correctamente');
       document.getElementById('ajubi-modal').style.display = 'none';
       this.show_ajuste_ubicacion();
     } catch(e) {
       await Swal.fire('Error al aprobar', e.message || 'Error desconocido', 'error');
+    } finally {
+      if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = btnEl.dataset.origHtml; }
     }
   },
 
