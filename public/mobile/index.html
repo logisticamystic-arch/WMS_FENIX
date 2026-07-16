@@ -5606,6 +5606,8 @@ const MWMS = {
               <div id="pk-inline-total" style="font-size:1.7rem;font-weight:900;color:#15803d;line-height:1.1;">—</div>
               <div id="pk-inline-und" style="font-size:.58rem;color:#166534;margin-top:2px;"></div>
             </div>
+            <!-- Aviso dinámico de faltante (cajas/saldos), solo si la cantidad digitada es menor a lo pedido -->
+            <div id="pk-inline-faltante" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:6px 10px;text-align:center;margin-bottom:8px;font-size:.72rem;font-weight:700;color:#b91c1c;"></div>
             <!-- Agotado + Confirmar, lado a lado -->
             <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:8px;">
               <button onclick="MWMS._pkMarcarAgotado('${planillaNumero}','${it.ids}')"
@@ -5743,6 +5745,25 @@ const MWMS = {
       if (elU) elU.textContent = usaCajas
         ? `${c} cj × ${factor}${s > 0 ? ' + ' + s + ' sueltos' : ''} = ${tot} und`
         : 'unidades';
+
+      // ── Aviso dinámico de faltante: si lo digitado es menor a lo pedido,
+      // descompone el déficit en cajas + saldos (no en cajas fraccionadas) ──
+      const pedidoUnd = (it.cantidad_total || 0) * factor;
+      const faltanteEl = document.getElementById('pk-inline-faltante');
+      if (faltanteEl) {
+        const deficit = Math.round((pedidoUnd - tot) * 1000) / 1000;
+        if (!isNaN(tot) && deficit > 0.001) {
+          const deficitCajas = usaCajas ? Math.floor(deficit / factor) : 0;
+          const deficitSaldo = usaCajas ? Math.round((deficit - deficitCajas * factor) * 1000) / 1000 : deficit;
+          const partes = [];
+          if (deficitCajas > 0) partes.push(`${deficitCajas} caja${deficitCajas === 1 ? '' : 's'}`);
+          if (deficitSaldo > 0) partes.push(`${deficitSaldo} suelto${deficitSaldo === 1 ? '' : 's'}`);
+          faltanteEl.textContent = `⚠ Faltarían ${partes.join(' + ')} por separar (${deficit} und) — quedará marcado como faltante`;
+          faltanteEl.style.display = 'block';
+        } else {
+          faltanteEl.style.display = 'none';
+        }
+      }
     };
 
     // ─── Confirmar separación ─────────────────────────────────────────────────
