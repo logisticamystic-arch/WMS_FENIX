@@ -286,6 +286,7 @@ WMS_MODULES.despacho = {
                   <td>
                     <strong style="font-size:13px;">${WMS.esc(s.sucursal_entrega)}</strong>
                     <div style="font-size:10px;color:#6b7280;margin-top:1px;">${s.total_empacado || 0} uds empacadas</div>
+                    ${s.planillas && s.planillas.length > 1 ? `<div style="font-size:10px;color:#b45309;margin-top:2px;"><i class="fa-solid fa-triangle-exclamation"></i> ${s.planillas.length} planillas mezcladas: ${s.planillas.map(p => WMS.esc(p)).join(' · ')}</div>` : ''}
                   </td>
                   <td class="text-center">
                     <span style="background:#dcfce7;color:#15803d;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">
@@ -296,9 +297,13 @@ WMS_MODULES.despacho = {
                   <td class="text-center" style="font-size:12px;color:#6b7280;">${fechaStr}</td>
                   <td>
                     <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                      ${s.planillas && s.planillas.length > 1 ? s.planillas.map(p => `
+                      <button class="btn btn-sm btn-success" onclick="WMS_MODULES.despacho.imprimirRemision(${s.id},'${WMS.esc(p)}')" title="Imprimir remisión de ${WMS.esc(p)}">
+                        <i class="fa-solid fa-print"></i> ${WMS.esc(p)}
+                      </button>`).join('') : `
                       <button class="btn btn-sm btn-success" onclick="WMS_MODULES.despacho.imprimirRemision(${s.id})" title="Imprimir remisión">
                         <i class="fa-solid fa-print"></i> Remisión
-                      </button>
+                      </button>`}
                       <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.despacho.imprimirTodosStickers(${s.id})" title="Stickers">
                         <i class="fa-solid fa-tags"></i>
                       </button>
@@ -451,8 +456,9 @@ WMS_MODULES.despacho = {
     return win;
   },
 
-  async imprimirRemision(sesionId) {
-    this._openPrint(`${API_BASE}/packing/sesion/${sesionId}/remision`, 'Remisión');
+  async imprimirRemision(sesionId, planilla = null) {
+    const qs = planilla ? `?planilla=${encodeURIComponent(planilla)}` : '';
+    this._openPrint(`${API_BASE}/packing/sesion/${sesionId}/remision${qs}`, 'Remisión');
   },
 
   async imprimirRemisionDirecta(sucursal) {

@@ -155,7 +155,8 @@ class PackingController extends BaseController
         })->toArray();
 
         $pickeados = $this->_getProductosPickados(
-            $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, $sesion->sucursal_entrega
+            $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, $sesion->sucursal_entrega,
+            date('Y-m-d', strtotime($sesion->created_at))
         );
         $empacados = $this->_getProductosEmpacados($sesion->id);
 
@@ -221,7 +222,8 @@ class PackingController extends BaseController
         if ($cantidad <= 0) return $this->error($res, 'La cantidad debe ser mayor a 0');
 
         $pickeados = $this->_getProductosPickados(
-            $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, $sesion->sucursal_entrega
+            $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, $sesion->sucursal_entrega,
+            date('Y-m-d', strtotime($sesion->created_at))
         );
         if (!isset($pickeados[$productoId])) {
             return $this->error($res, 'El producto no pertenece a los pedidos de esta sucursal', 422);
@@ -354,7 +356,10 @@ class PackingController extends BaseController
 
         return Capsule::transaction(function () use ($sesion, $user, $res, $empresaId, $sucursalId) {
             // Step 1: Validar primero — si hay pendientes, no tocar nada (evita borrar unidad abierta vacía en falso)
-            $pickeados = $this->_getProductosPickados($empresaId, $sucursalId, $sesion->sucursal_entrega);
+            $pickeados = $this->_getProductosPickados(
+                $empresaId, $sucursalId, $sesion->sucursal_entrega,
+                date('Y-m-d', strtotime($sesion->created_at))
+            );
             $empacados = $this->_getProductosEmpacados($sesion->id);
             $totalPend = 0.0;
             foreach ($pickeados as $pid => $pick) {
@@ -619,16 +624,22 @@ class PackingController extends BaseController
         $sucursal = $q['sucursal'] ?? null;
         $sesionId = $q['sesion_id'] ?? null;
 
-        // Subquery simplificado: solo pu→pi (sin bajar hasta orden_pickings)
-        // usa idx_pu_sesion e idx_pk_item_unidad para lookups rápidos
+        $strAggPlanillas = $this->isPg()
+            ? "STRING_AGG(DISTINCT op_ref.planilla_numero, ', ')"
+            : "GROUP_CONCAT(DISTINCT op_ref.planilla_numero)";
+
+        // Subquery: pu→pi (+ orden_pickings solo para listar planillas distintas por sesión,
+        // necesario para detectar/reimprimir sesiones con varias planillas mezcladas)
         $counts = Capsule::table('packing_unidades as pu')
             ->leftJoin('packing_items as pi', 'pi.unidad_id', '=', 'pu.id')
             ->leftJoin('picking_detalles as pd_ref', 'pd_ref.id', '=', 'pi.picking_detalle_id')
+            ->leftJoin('orden_pickings as op_ref', 'op_ref.id', '=', 'pd_ref.orden_picking_id')
             ->select(
                 'pu.sesion_id',
                 Capsule::raw('COUNT(DISTINCT pu.id) as num_unidades'),
                 Capsule::raw('COALESCE(SUM(pi.cantidad), 0) as total_empacado'),
-                Capsule::raw('COUNT(DISTINCT pd_ref.producto_id) as total_refs')
+                Capsule::raw('COUNT(DISTINCT pd_ref.producto_id) as total_refs'),
+                Capsule::raw("$strAggPlanillas as planillas")
             )
             ->groupBy('pu.sesion_id');
 
@@ -641,6 +652,7 @@ class PackingController extends BaseController
                 Capsule::raw('COALESCE(cnt.num_unidades, 0) as num_unidades'),
                 Capsule::raw('COALESCE(cnt.total_empacado, 0) as total_empacado'),
                 Capsule::raw('COALESCE(cnt.total_refs, 0) as total_refs'),
+                Capsule::raw('cnt.planillas as planillas_str'),
                 // fecha_movimiento del pedido asociado (para mostrar la fecha del pedido, no de la sesión)
                 Capsule::raw("(SELECT MIN(op_m.fecha_movimiento)
                     FROM packing_unidades pu_m
@@ -688,6 +700,11 @@ class PackingController extends BaseController
         });
 
         $rows = $builder->get();
+        $rows = $rows->map(function ($row) {
+            $row->planillas = array_values(array_filter(array_map('trim', explode(',', $row->planillas_str ?? ''))));
+            unset($row->planillas_str);
+            return $row;
+        });
         return $this->ok($res, $rows);
     }
 
@@ -800,6 +817,11 @@ class PackingController extends BaseController
             ->find((int)$a['id']);
         if (!$sesion) return $this->notFound($res);
 
+        // Filtro opcional ?planilla=... — permite reimprimir la remisión de una sola
+        // planilla cuando la sesión quedó con varias mezcladas (p.ej. sesiones que
+        // absorbieron pedidos de días distintos antes del fix de _getProductosPickados).
+        $planillaFiltro = trim($r->getQueryParams()['planilla'] ?? '');
+
         $empresa = Capsule::table('empresas')->find($empresaId);
         $cert    = Capsule::table('personal')->find($sesion->certificador_id);
 
@@ -809,27 +831,6 @@ class PackingController extends BaseController
             ->get();
 
         $unidadIds = $unidades->pluck('id')->toArray();
-        $itemsRaw  = empty($unidadIds) ? collect() : Capsule::table('packing_items as pi')
-            ->join('productos as p', 'p.id', '=', 'pi.producto_id')
-            ->leftJoin('ambientes as a', 'a.id', '=', 'p.ambiente_id')
-            ->leftJoin('picking_detalles as pd', 'pd.id', '=', 'pi.picking_detalle_id')
-            ->whereIn('pi.unidad_id', $unidadIds)
-            ->select([
-                Capsule::raw("COALESCE(a.descripcion, 'Sin ambiente') as ambiente_nombre"),
-                Capsule::raw("COALESCE(a.color, '#1e3a5f') as ambiente_color"),
-                'pi.producto_id',
-                'p.nombre as nombre',
-                'p.codigo_interno as codigo',
-                'p.unidades_caja',
-                Capsule::raw('SUM(pi.cantidad) as cantidad'),
-                Capsule::raw('SUM(COALESCE(pi.cantidad_cajas, 0)) as cantidad_cajas'),
-                Capsule::raw('SUM(COALESCE(pi.saldo, 0)) as saldo'),
-                Capsule::raw("MAX(COALESCE(pi.fecha_vencimiento, pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = pi.producto_id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
-            ])
-            ->groupBy('a.descripcion', 'a.color', 'pi.producto_id', 'p.nombre', 'p.codigo_interno', 'p.unidades_caja')
-            ->orderByRaw("COALESCE(a.descripcion, 'Sin ambiente'), p.nombre")
-            ->get()
-            ->groupBy('ambiente_nombre');
 
         // Fecha de la sesión (creación) — ancla de fallback
         $sesionFecha = date('Y-m-d', strtotime($sesion->created_at));
@@ -859,7 +860,37 @@ class PackingController extends BaseController
                 ->get(['id', 'numero_orden', 'numero_factura', 'planilla_numero', 'fecha_movimiento']);
         }
 
+        if ($planillaFiltro !== '') {
+            $ordenesObj = $ordenesObj->filter(fn($o) => trim($o->planilla_numero ?? '') === $planillaFiltro)->values();
+            if ($ordenesObj->isEmpty()) {
+                return $this->error($res, "No hay pedidos de \"{$planillaFiltro}\" en esta sesión");
+            }
+        }
+
         $ordenIds    = $ordenesObj->pluck('id')->toArray();
+
+        $itemsRaw  = empty($unidadIds) ? collect() : Capsule::table('packing_items as pi')
+            ->join('productos as p', 'p.id', '=', 'pi.producto_id')
+            ->leftJoin('ambientes as a', 'a.id', '=', 'p.ambiente_id')
+            ->leftJoin('picking_detalles as pd', 'pd.id', '=', 'pi.picking_detalle_id')
+            ->whereIn('pi.unidad_id', $unidadIds)
+            ->when($planillaFiltro !== '', fn($q) => $q->whereIn('pd.orden_picking_id', $ordenIds))
+            ->select([
+                Capsule::raw("COALESCE(a.descripcion, 'Sin ambiente') as ambiente_nombre"),
+                Capsule::raw("COALESCE(a.color, '#1e3a5f') as ambiente_color"),
+                'pi.producto_id',
+                'p.nombre as nombre',
+                'p.codigo_interno as codigo',
+                'p.unidades_caja',
+                Capsule::raw('SUM(pi.cantidad) as cantidad'),
+                Capsule::raw('SUM(COALESCE(pi.cantidad_cajas, 0)) as cantidad_cajas'),
+                Capsule::raw('SUM(COALESCE(pi.saldo, 0)) as saldo'),
+                Capsule::raw("MAX(COALESCE(pi.fecha_vencimiento, pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = pi.producto_id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
+            ])
+            ->groupBy('a.descripcion', 'a.color', 'pi.producto_id', 'p.nombre', 'p.codigo_interno', 'p.unidades_caja')
+            ->orderByRaw("COALESCE(a.descripcion, 'Sin ambiente'), p.nombre")
+            ->get()
+            ->groupBy('ambiente_nombre');
 
         // Obtener planillas únicas reales asociadas
         $planillas   = $ordenesObj->pluck('planilla_numero')->map(fn($v) => trim($v ?? ''))->filter()->unique()->toArray();
@@ -1702,6 +1733,12 @@ class PackingController extends BaseController
 
     private function _getProductosPickados(int $empresaId, int $sucursalId, string $sucursalEntrega, ?string $fecha = null): array
     {
+        // $fecha ancla los "pendientes por empacar" al día de la sesión que los consulta.
+        // Sin este filtro, una sesión de packing que quedó abierta ("EnProceso") varios días
+        // absorbía silenciosamente pedidos nuevos del mismo cliente que llegaban después
+        // (distinta planilla/fecha), mezclándolos en la misma remisión. Ver getSesion(),
+        // agregarItem() y finalizarSesion(), que pasan la fecha de creación de su $sesion;
+        // autoPack() pasa la fecha del día en que se ejecuta.
         $hoy = $fecha ?? date('Y-m-d');
         return Capsule::table('picking_detalles as pd')
             ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
@@ -1715,6 +1752,7 @@ class PackingController extends BaseController
             ->where('op.sucursal_entrega', $sucursalEntrega)
             ->where('op.estado', 'Completada')
             ->where('op.estado_certificacion', 'Pendiente')
+            ->whereDate('op.fecha_movimiento', $hoy)
             ->select([
                 'pd.producto_id',
                 'p.nombre as producto_nombre',
