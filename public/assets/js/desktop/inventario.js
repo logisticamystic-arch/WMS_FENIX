@@ -3763,13 +3763,19 @@ WMS_MODULES.inventario = {
                 <label class="form-label">Cantidad <span class="required">*</span></label>
                 <input id="aj-cantidad" type="number" class="form-control" min="0.01" step="0.01" placeholder="0">
               </div>
-              <!-- Ubicación -->
-              <div class="form-group">
+              <!-- Ubicación: para Entrada, búsqueda dinámica sobre TODAS las ubicaciones
+                   activas (puede no tener stock previo de esta referencia); para Salida,
+                   solo se puede elegir entre las ubicaciones que YA tienen stock del
+                   producto — de ahí es de donde físicamente se va a sacar. -->
+              <div class="form-group" style="position:relative;">
                 <label class="form-label">Ubicación <span class="required">*</span></label>
-                <select id="aj-ubicacion" class="form-control">
+                <input id="aj-ubicacion-input" class="form-control" placeholder="Escriba el código de la ubicación..." autocomplete="off">
+                <input type="hidden" id="aj-ubicacion-id">
+                <input type="hidden" id="aj-ubicacion-codigo">
+                <select id="aj-ubicacion-salida" class="form-control" style="display:none;">
                   <option value="">— Seleccione un producto primero —</option>
                 </select>
-                <small id="aj-ubicacion-info" style="color:#64748b;font-size:.75rem;display:none;">Solo ubicaciones con stock de este producto</small>
+                <small id="aj-ubicacion-hint" style="color:#64748b;font-size:.75rem;display:block;margin-top:4px;"></small>
               </div>
               <!-- Lote -->
               <div class="form-group">
@@ -3811,6 +3817,14 @@ WMS_MODULES.inventario = {
     this._ajProd  = null;
     this._ajStock = [];
 
+    // Ubicación (Entrada): búsqueda dinámica sobre TODAS las ubicaciones activas de la
+    // sucursal (no solo las que ya tienen stock del producto). Reutiliza el helper de
+    // reportes.js; se fuerza su carga porque este módulo puede no haberse cargado aún
+    // (los scripts de cada módulo se cargan de forma perezosa al navegar a esa sección).
+    WMS.loadScript('assets/js/desktop/reportes.js', () => {
+      WMS_MODULES.reportes.initUbicacionAutocomplete('aj-ubicacion-input', 'aj-ubicacion-id', 'aj-ubicacion-codigo');
+    });
+
     // Autocomplete producto
     WMS.initProductAutocomplete(document.getElementById('aj-prod-ac'), async p => {
       document.getElementById('aj-prod-id').value = p.id;
@@ -3820,10 +3834,9 @@ WMS_MODULES.inventario = {
       this._ajStock = [];
       this._ajRenderCantidadInputs(upc);
 
-      const selUbi  = document.getElementById('aj-ubicacion');
-      const infoUbi = document.getElementById('aj-ubicacion-info');
-      const prev    = document.getElementById('aj-stock-preview');
-      if (selUbi) selUbi.innerHTML = '<option value="">Cargando ubicaciones...</option>';
+      const selSalida = document.getElementById('aj-ubicacion-salida');
+      const prev      = document.getElementById('aj-stock-preview');
+      if (selSalida) selSalida.innerHTML = '<option value="">Cargando ubicaciones...</option>';
       if (prev)  { prev.style.display = 'block'; prev.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cargando stock...'; }
       try {
         const rs    = await API.get('/inventario/stock', `producto_id=${p.id}&limit=50`);
@@ -3836,20 +3849,19 @@ WMS_MODULES.inventario = {
             ? top3.map(s => `<span style="margin-right:8px;"><i class="fa-solid fa-box"></i> <strong>${WMS.formatNum(s.cantidad)}</strong> en ${WMS.esc(s.ubicacion_codigo || '-')}${s.lote ? ' · Lote ' + WMS.esc(s.lote) : ''}</span>`).join('')
             : '<span style="color:#94a3b8;">Sin stock registrado en sistema</span>';
         }
-        // Selector: solo ubicaciones con stock de este producto
-        if (selUbi) {
+        // Selector de Salida: solo ubicaciones con stock real de este producto —
+        // de ahí es de donde el sistema puede físicamente descontar.
+        if (selSalida) {
           if (stock.length) {
-            selUbi.innerHTML = '<option value="">Seleccione ubicación...</option>' +
+            selSalida.innerHTML = '<option value="">Seleccione ubicación...</option>' +
               stock.map(s => `<option value="${s.ubicacion_id}" data-fv="${WMS.esc(s.fecha_vencimiento||'')}" data-lote="${WMS.esc(s.lote||'')}">${WMS.esc(s.ubicacion_codigo||('Ubic.'+s.ubicacion_id))} — ${WMS.formatNum(s.cantidad)} und${s.lote?' · Lote '+WMS.esc(s.lote):''}</option>`).join('');
-            if (infoUbi) infoUbi.style.display = 'block';
           } else {
-            selUbi.innerHTML = '<option value="">Sin stock en ninguna ubicación</option>';
-            if (infoUbi) infoUbi.style.display = 'none';
+            selSalida.innerHTML = '<option value="">Sin stock en ninguna ubicación</option>';
           }
         }
       } catch(e) {
         if (prev) prev.innerHTML = '<span style="color:#94a3b8;">No se pudo cargar el stock</span>';
-        if (selUbi) selUbi.innerHTML = '<option value="">Error cargando ubicaciones</option>';
+        if (selSalida) selSalida.innerHTML = '<option value="">Error cargando ubicaciones</option>';
       }
       this._ajTipoChanged();
     });
@@ -3890,16 +3902,33 @@ WMS_MODULES.inventario = {
   },
 
   _ajTipoChanged() {
-    const tipo = document.getElementById('aj-tipo')?.value;
-    const wrap = document.getElementById('aj-fv-wrap');
-    const fv   = document.getElementById('aj-fv');
-    if (!wrap) return;
-    if (tipo === 'Entrada') {
-      wrap.style.display = '';
-      if (fv) fv.setAttribute('required', 'required');
+    const tipo      = document.getElementById('aj-tipo')?.value;
+    const wrap      = document.getElementById('aj-fv-wrap');
+    const fv        = document.getElementById('aj-fv');
+    const ubiInput  = document.getElementById('aj-ubicacion-input');
+    const ubiSelect = document.getElementById('aj-ubicacion-salida');
+    const hint      = document.getElementById('aj-ubicacion-hint');
+    if (wrap) {
+      if (tipo === 'Entrada') {
+        wrap.style.display = '';
+        if (fv) fv.setAttribute('required', 'required');
+      } else {
+        wrap.style.display = 'none';
+        if (fv) { fv.removeAttribute('required'); fv.value = ''; }
+      }
+    }
+    // Entrada: cualquier ubicación activa (búsqueda dinámica) — puede no tener stock aún.
+    // Salida: solo se puede elegir entre las ubicaciones que ya tienen stock del producto.
+    if (tipo === 'Salida') {
+      if (ubiInput)  ubiInput.style.display  = 'none';
+      if (ubiSelect) ubiSelect.style.display = '';
+      if (hint) hint.textContent = 'Solo se muestran ubicaciones con stock disponible de este producto.';
     } else {
-      wrap.style.display = 'none';
-      if (fv) { fv.removeAttribute('required'); fv.value = ''; }
+      if (ubiInput)  ubiInput.style.display  = '';
+      if (ubiSelect) ubiSelect.style.display = 'none';
+      if (hint) hint.textContent = tipo === 'Entrada'
+        ? 'Escriba cualquier ubicación activa — puede no tener stock previo de esta referencia.'
+        : '';
     }
   },
 
@@ -3973,9 +4002,16 @@ WMS_MODULES.inventario = {
     if (!cantidad || cantidad <= 0) { WMS.toast('warning', 'Ingrese una cantidad válida (mayor a 0)'); return; }
     if (!motivo)                { WMS.toast('warning', 'Ingrese el motivo del ajuste'); return; }
 
-    const ubicacionId = parseInt(document.getElementById('aj-ubicacion')?.value || 0) || null;
-    if (tipo === 'Salida' && !ubicacionId) {
-      WMS.toast('warning', 'Seleccione la ubicación de la cual desea hacer la salida'); return;
+    // Entrada: ubicación de búsqueda libre (cualquier ubicación activa).
+    // Salida: ubicación tomada del selector restringido a stock existente.
+    let ubicacionId = null;
+    if (tipo === 'Salida') {
+      const selUbi = document.getElementById('aj-ubicacion-salida');
+      ubicacionId = parseInt(selUbi?.value || 0) || null;
+      if (!ubicacionId) { WMS.toast('warning', 'Seleccione la ubicación de la cual desea hacer la salida'); return; }
+    } else {
+      ubicacionId = parseInt(document.getElementById('aj-ubicacion-id')?.value || 0) || null;
+      if (!ubicacionId) { WMS.toast('warning', 'Seleccione la ubicación donde va a registrar la entrada'); return; }
     }
 
     let fvFinal = null;
@@ -3983,7 +4019,7 @@ WMS_MODULES.inventario = {
       fvFinal = document.getElementById('aj-fv')?.value || null;
       if (!fvFinal) { WMS.toast('warning', 'Ingrese la fecha de vencimiento (obligatoria para Entrada)'); return; }
     } else if (tipo === 'Salida') {
-      const selUbi = document.getElementById('aj-ubicacion');
+      const selUbi = document.getElementById('aj-ubicacion-salida');
       if (selUbi && selUbi.selectedIndex > 0)
         fvFinal = selUbi.options[selUbi.selectedIndex].getAttribute('data-fv') || null;
     }
@@ -4003,17 +4039,17 @@ WMS_MODULES.inventario = {
       if (r.error) { WMS.toast('error', r.message); return; }
       WMS.toast('success', `Corrección aplicada correctamente`);
       // Limpiar form
-      ['aj-prod-ac','aj-lote','aj-motivo'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+      ['aj-prod-ac','aj-lote','aj-motivo','aj-ubicacion-input','aj-ubicacion-id','aj-ubicacion-codigo'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
       ['aj-prod-id','aj-cantidad','aj-prod-upc'].forEach(id => { const el = document.getElementById(id); if(el) el.value = id==='aj-prod-upc'?'1':''; });
       ['aj-cajas','aj-saldos'].forEach(id => { const el = document.getElementById(id); if(el) el.value='0'; });
       const prev = document.getElementById('aj-stock-preview');
       if (prev) prev.style.display = 'none';
       const prew = document.getElementById('aj-preview');
       if (prew) prew.style.display = 'none';
-      const selUbiR = document.getElementById('aj-ubicacion');
+      const selUbiR = document.getElementById('aj-ubicacion-salida');
       if (selUbiR) selUbiR.innerHTML = '<option value="">— Seleccione un producto primero —</option>';
-      const infoUbiR = document.getElementById('aj-ubicacion-info');
-      if (infoUbiR) infoUbiR.style.display = 'none';
+      const hintR = document.getElementById('aj-ubicacion-hint');
+      if (hintR) hintR.textContent = '';
       const fvWrapR = document.getElementById('aj-fv-wrap');
       if (fvWrapR) fvWrapR.style.display = 'none';
       this._ajProd  = null;
