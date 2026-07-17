@@ -1744,26 +1744,44 @@ class InventarioV2Controller extends BaseController
                     throw new \RuntimeException('No se encontró ubicación. Seleccione una ubicación en el formulario.');
                 }
 
+                // Resolver upc del producto para persistir cajas/saldos consistentemente
+                // (antes se descartaban los valores enviados por el formulario y la fila
+                // quedaba con cantidad_cajas/saldos desincronizados de 'cantidad').
+                $productoCorr = \App\Models\Producto::select('unidades_caja')->find($data['producto_id']);
+                $upcCorr = max(1, (int)(($productoCorr->unidades_caja ?? null) ?: 1));
+                if (isset($data['cantidad_cajas']) || isset($data['saldos'])) {
+                    $cantCajasCorr = (int)($data['cantidad_cajas'] ?? (int)floor($cantidadNueva / $upcCorr));
+                    $saldosCorr    = round((float)($data['saldos'] ?? fmod($cantidadNueva, (float)$upcCorr)), 2);
+                } else {
+                    $cantCajasCorr = (int)floor($cantidadNueva / $upcCorr);
+                    $saldosCorr    = round(fmod($cantidadNueva, (float)$upcCorr), 2);
+                }
+
                 // Actualizar inventario
                 if ($inv) {
                     if ($cantidadNueva <= 0) {
                         $inv->delete();
                     } else {
-                        $inv->cantidad      = $cantidadNueva;
-                        $inv->ubicacion_id  = $ubicacionId;
+                        $inv->cantidad       = $cantidadNueva;
+                        $inv->cantidad_cajas = $cantCajasCorr;
+                        $inv->saldos         = $saldosCorr;
+                        $inv->ubicacion_id   = $ubicacionId;
                         if ($fv) $inv->fecha_vencimiento = $fv;
                         $inv->save();
                     }
                 } elseif ($cantidadNueva > 0) {
                     Inventario::create([
-                        'empresa_id'        => $this->getEffectiveEmpresaId($user, $req),
-                        'sucursal_id'       => $user->sucursal_id,
-                        'producto_id'       => $data['producto_id'],
-                        'ubicacion_id'      => $ubicacionId,
-                        'lote'              => $data['lote'] ?? null,
-                        'fecha_vencimiento' => $fv,
-                        'cantidad'          => $cantidadNueva,
-                        'estado'            => 'Disponible',
+                        'empresa_id'         => $this->getEffectiveEmpresaId($user, $req),
+                        'sucursal_id'        => $user->sucursal_id,
+                        'producto_id'        => $data['producto_id'],
+                        'ubicacion_id'       => $ubicacionId,
+                        'lote'               => $data['lote'] ?? null,
+                        'fecha_vencimiento'  => $fv,
+                        'cantidad'           => $cantidadNueva,
+                        'cantidad_cajas'     => $cantCajasCorr,
+                        'saldos'             => $saldosCorr,
+                        'cantidad_reservada' => 0,
+                        'estado'             => 'Disponible',
                     ]);
                 }
 
