@@ -3189,7 +3189,7 @@ WMS_MODULES.picking = {
   },
 
   // ── FALTANTES ─────────────────────────────────────────────────────────────
-  _faltFilters: { ini: '', fin: '', planilla: '', producto: '', sucursal_entrega: '', showAll: false },
+  _faltFilters: { ini: '', fin: '', planilla: '', producto: '', sucursal_entrega: '', showAll: false, vista: 'detalle' },
 
   async show_faltantes(filters = null) {
     if (filters) Object.assign(this._faltFilters, filters);
@@ -3224,6 +3224,33 @@ WMS_MODULES.picking = {
         const upc = r.unidades_caja || 1;
         return (r.stock_actual||0) >= (r.cantidad_faltante||0) * upc;
       }).length;
+
+      // Consolidado: agrupa el detalle ya filtrado por producto, sumando el faltante
+      // (en cajas, puede quedar fraccionario) y contando planillas/pedidos afectados.
+      const consolidado = (() => {
+        const map = new Map();
+        falt.forEach(r => {
+          const key = r.producto_id;
+          if (!map.has(key)) {
+            map.set(key, {
+              producto_id: r.producto_id,
+              producto_nombre: r.producto_nombre,
+              producto_codigo: r.producto_codigo,
+              unidades_caja: r.unidades_caja || 1,
+              cantidad_faltante: 0,
+              stock_actual: r.stock_actual || 0,
+              planillas: new Set(),
+              sucursales: new Set(),
+            });
+          }
+          const g = map.get(key);
+          g.cantidad_faltante += (r.cantidad_faltante || 0);
+          g.stock_actual = Math.max(g.stock_actual, r.stock_actual || 0);
+          if (r.numero_planilla) g.planillas.add(r.numero_planilla);
+          if (r.sucursal_entrega) g.sucursales.add(r.sucursal_entrega);
+        });
+        return Array.from(map.values()).sort((a,b) => b.cantidad_faltante - a.cantidad_faltante);
+      })();
 
       WMS.setContent(`
         <div style="display:flex;flex-direction:column;gap:16px;">
@@ -3280,18 +3307,64 @@ WMS_MODULES.picking = {
               <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
                 <span class="card-title"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Faltantes de Stock
                   <span style="font-size:11px;color:#64748b;font-weight:400;margin-left:6px;">
-                    ${falt.length} de ${total}
+                    ${f.vista === 'consolidado' ? `${consolidado.length} producto(s)` : `${falt.length} de ${total}`}
                   </span>
                 </span>
                 <div style="display:flex;gap:6px;align-items:center;">
-                  ${conStock > 0 ? `<button class="btn btn-xs btn-success" onclick="WMS_MODULES.picking._selFaltConStock()" title="Seleccionar solo los que tienen stock">
+                  <div class="btn-group" style="display:flex;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;">
+                    <button class="btn btn-xs ${f.vista !== 'consolidado' ? 'btn-primary' : 'btn-secondary'}" style="border-radius:0;" onclick="WMS_MODULES.picking._toggleFaltVista('detalle')">
+                      <i class="fa-solid fa-list"></i> Detalle
+                    </button>
+                    <button class="btn btn-xs ${f.vista === 'consolidado' ? 'btn-primary' : 'btn-secondary'}" style="border-radius:0;" onclick="WMS_MODULES.picking._toggleFaltVista('consolidado')">
+                      <i class="fa-solid fa-layer-group"></i> Consolidado
+                    </button>
+                  </div>
+                  ${f.vista !== 'consolidado' && conStock > 0 ? `<button class="btn btn-xs btn-success" onclick="WMS_MODULES.picking._selFaltConStock()" title="Seleccionar solo los que tienen stock">
                     <i class="fa-solid fa-check-double"></i> Sel. con stock (${conStock})
                   </button>` : ''}
-                  ${!f.showAll && total > 50 ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:true})"><i class="fa-solid fa-list"></i> Todos (${total})</button>` : ''}
-                  ${f.showAll ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:false})"><i class="fa-solid fa-compress"></i> Mostrar 50</button>` : ''}
+                  ${f.vista !== 'consolidado' && !f.showAll && total > 50 ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:true})"><i class="fa-solid fa-list"></i> Todos (${total})</button>` : ''}
+                  ${f.vista !== 'consolidado' && f.showAll ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:false})"><i class="fa-solid fa-compress"></i> Mostrar 50</button>` : ''}
                 </div>
               </div>
               <div class="table-container">
+                ${f.vista === 'consolidado' ? `
+                <table class="erp-table">
+                  <thead><tr>
+                    <th>Producto</th>
+                    <th style="text-align:center;">Faltante Total</th>
+                    <th style="text-align:center;">Stock Disponible (cj/und)</th>
+                    <th style="text-align:center;">Planillas Afectadas</th>
+                    <th>Sucursales Destino</th>
+                  </tr></thead>
+                  <tbody>${consolidado.map(g => {
+                    const sa = g.stock_actual;
+                    const upc = g.unidades_caja || 1;
+                    const cf = g.cantidad_faltante;
+                    const cfUnd = cf * upc;
+                    const cfCajas = upc > 1 ? Math.floor(cf) : cf;
+                    const cfSaldo = upc > 1 ? Math.round((cf - cfCajas) * upc * 1000) / 1000 : 0;
+                    return `<tr>
+                    <td>
+                      <div style="font-weight:700;font-size:12px;">${WMS.esc(g.producto_nombre||'-')}</div>
+                      <div style="font-size:10px;color:#64748b;">${WMS.esc(g.producto_codigo||'')}</div>
+                    </td>
+                    <td style="text-align:center;">
+                      <span class="badge badge-danger">${upc > 1 && cfCajas <= 0 ? `${WMS.formatNum(cfSaldo)} suelt.` : `${WMS.formatNum(cfCajas)} cj${cfSaldo > 0 ? ' + ' + WMS.formatNum(cfSaldo) + ' suelt.' : ''}`}</span>
+                      ${upc > 1 ? `<div style="font-size:10px;color:#64748b;">${WMS.formatNum(cfUnd)} und</div>` : ''}
+                    </td>
+                    <td style="text-align:center;">
+                      ${sa >= cfUnd
+                        ? `<span class="badge badge-success" title="Stock disponible para backorder"><i class="fa-solid fa-check" style="margin-right:3px;"></i>${(sa/upc).toFixed(2)} cj</span>
+                           <div style="font-size:10px;color:#059669;">${WMS.formatNum(sa)} und</div>`
+                        : `<span class="badge badge-danger" style="opacity:.7;">${(sa/upc).toFixed(2)} cj</span>
+                           <div style="font-size:10px;color:#94a3b8;">${WMS.formatNum(sa)} und</div>`}
+                    </td>
+                    <td style="text-align:center;">${g.planillas.size}</td>
+                    <td style="font-size:11px;">${Array.from(g.sucursales).map(s => WMS.esc(s)).join(', ') || '-'}</td>
+                  </tr>`;}).join('') || '<tr><td colspan="5" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
+                  </tbody>
+                </table>
+                ` : `
                 <table class="erp-table">
                   <thead><tr>
                     <th style="width:32px;text-align:center;">
@@ -3342,6 +3415,7 @@ WMS_MODULES.picking = {
                   </tr>`;}).join('') || '<tr><td colspan="9" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
                   </tbody>
                 </table>
+                `}
               </div>
             </div>
 
@@ -3369,6 +3443,13 @@ WMS_MODULES.picking = {
         await this._loadSucursales();
       }
     } catch(e) { if (e.isSessionExpired) return; console.error(e); WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando faltantes</p></div>'); }
+  },
+
+  _toggleFaltVista(v) {
+    // El consolidado suma por producto sobre el detalle ya cargado; si venía
+    // limitado a 50 filas los totales quedarían incompletos, así que se fuerza
+    // a traer todo el período filtrado antes de agrupar.
+    this.show_faltantes({ vista: v, showAll: v === 'consolidado' ? true : this._faltFilters.showAll });
   },
 
   _toggleAllFalt(checked) {
@@ -3421,7 +3502,7 @@ WMS_MODULES.picking = {
   },
 
   _clearFaltFilters() {
-    this._faltFilters = { ini: '', fin: '', planilla: '', producto: '', sucursal_entrega: '', showAll: false };
+    this._faltFilters = { ini: '', fin: '', planilla: '', producto: '', sucursal_entrega: '', showAll: false, vista: 'detalle' };
     this.show_faltantes();
   },
 
