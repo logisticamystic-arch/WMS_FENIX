@@ -869,28 +869,56 @@ class PackingController extends BaseController
 
         $ordenIds    = $ordenesObj->pluck('id')->toArray();
 
-        $itemsRaw  = empty($unidadIds) ? collect() : Capsule::table('packing_items as pi')
-            ->join('productos as p', 'p.id', '=', 'pi.producto_id')
-            ->leftJoin('ambientes as a', 'a.id', '=', 'p.ambiente_id')
-            ->leftJoin('picking_detalles as pd', 'pd.id', '=', 'pi.picking_detalle_id')
-            ->whereIn('pi.unidad_id', $unidadIds)
-            ->when($planillaFiltro !== '', fn($q) => $q->whereIn('pd.orden_picking_id', $ordenIds))
-            ->select([
-                Capsule::raw("COALESCE(a.descripcion, 'Sin ambiente') as ambiente_nombre"),
-                Capsule::raw("COALESCE(a.color, '#1e3a5f') as ambiente_color"),
-                'pi.producto_id',
-                'p.nombre as nombre',
-                'p.codigo_interno as codigo',
-                'p.unidades_caja',
-                Capsule::raw('SUM(pi.cantidad) as cantidad'),
-                Capsule::raw('SUM(COALESCE(pi.cantidad_cajas, 0)) as cantidad_cajas'),
-                Capsule::raw('SUM(COALESCE(pi.saldo, 0)) as saldo'),
-                Capsule::raw("MAX(COALESCE(pi.fecha_vencimiento, pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = pi.producto_id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
-            ])
-            ->groupBy('a.descripcion', 'a.color', 'pi.producto_id', 'p.nombre', 'p.codigo_interno', 'p.unidades_caja')
-            ->orderByRaw("COALESCE(a.descripcion, 'Sin ambiente'), p.nombre")
-            ->get()
-            ->groupBy('ambiente_nombre');
+        if ($planillaFiltro !== '') {
+            // Un packing_item agrega la cantidad de TODAS las órdenes pendientes del cliente
+            // para un mismo producto y le asigna un único picking_detalle_id "representativo"
+            // (FEFO) — no conserva de qué pedido viene cada unidad cuando el producto se repide
+            // entre pedidos de distinta planilla. Para filtrar por planilla, picking_detalles
+            // SÍ tiene el desglose exacto por orden (mismo formato fraccionario que packing_items;
+            // ver certRemisionDirecta), así que se reconstruyen los ítems desde ahí en vez de
+            // arrastrar el picking_detalle_id representativo de packing_items.
+            $itemsRaw = Capsule::table('picking_detalles as pd')
+                ->join('productos as p', 'p.id', '=', 'pd.producto_id')
+                ->leftJoin('ambientes as a', 'a.id', '=', 'p.ambiente_id')
+                ->whereIn('pd.orden_picking_id', $ordenIds)
+                ->where('pd.cantidad_pickeada', '>', 0)
+                ->select([
+                    Capsule::raw("COALESCE(a.descripcion, 'Sin ambiente') as ambiente_nombre"),
+                    Capsule::raw("COALESCE(a.color, '#1e3a5f') as ambiente_color"),
+                    'p.id as producto_id',
+                    'p.nombre as nombre',
+                    'p.codigo_interno as codigo',
+                    'p.unidades_caja',
+                    Capsule::raw('SUM(pd.cantidad_pickeada) as cantidad'),
+                    Capsule::raw("MAX(COALESCE(pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = p.id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
+                ])
+                ->groupBy('a.descripcion', 'a.color', 'p.id', 'p.nombre', 'p.codigo_interno', 'p.unidades_caja')
+                ->orderByRaw("COALESCE(a.descripcion, 'Sin ambiente'), p.nombre")
+                ->get()
+                ->groupBy('ambiente_nombre');
+        } else {
+            $itemsRaw = empty($unidadIds) ? collect() : Capsule::table('packing_items as pi')
+                ->join('productos as p', 'p.id', '=', 'pi.producto_id')
+                ->leftJoin('ambientes as a', 'a.id', '=', 'p.ambiente_id')
+                ->leftJoin('picking_detalles as pd', 'pd.id', '=', 'pi.picking_detalle_id')
+                ->whereIn('pi.unidad_id', $unidadIds)
+                ->select([
+                    Capsule::raw("COALESCE(a.descripcion, 'Sin ambiente') as ambiente_nombre"),
+                    Capsule::raw("COALESCE(a.color, '#1e3a5f') as ambiente_color"),
+                    'pi.producto_id',
+                    'p.nombre as nombre',
+                    'p.codigo_interno as codigo',
+                    'p.unidades_caja',
+                    Capsule::raw('SUM(pi.cantidad) as cantidad'),
+                    Capsule::raw('SUM(COALESCE(pi.cantidad_cajas, 0)) as cantidad_cajas'),
+                    Capsule::raw('SUM(COALESCE(pi.saldo, 0)) as saldo'),
+                    Capsule::raw("MAX(COALESCE(pi.fecha_vencimiento, pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = pi.producto_id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
+                ])
+                ->groupBy('a.descripcion', 'a.color', 'pi.producto_id', 'p.nombre', 'p.codigo_interno', 'p.unidades_caja')
+                ->orderByRaw("COALESCE(a.descripcion, 'Sin ambiente'), p.nombre")
+                ->get()
+                ->groupBy('ambiente_nombre');
+        }
 
         // Obtener planillas únicas reales asociadas
         $planillas   = $ordenesObj->pluck('planilla_numero')->map(fn($v) => trim($v ?? ''))->filter()->unique()->toArray();
