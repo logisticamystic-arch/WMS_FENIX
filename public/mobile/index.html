@@ -5396,22 +5396,27 @@ const MWMS = {
     try {
       const r = await mApi('POST', `/picking/planilla/${numero}/completar`);
       if (r.data?.parcial) {
-        await Swal.fire({
+        // Auto-close: el auxiliar ve la info y continúa sin esperar click
+        Swal.fire({
           title: 'Tu ambiente está listo ✓',
           html: `Tus referencias están separadas.<br><b>La planilla permanece abierta</b> hasta que los otros ambientes terminen.`,
           icon: 'info',
           confirmButtonText: 'Entendido',
           confirmButtonColor: '#0F4C81',
+          timer: 2500,
+          timerProgressBar: true,
         });
         this.viewPlanilla(numero, true);
       } else {
-        await Swal.fire({
+        // Auto-close: elimina espera innecesaria + delay artificial removido
+        Swal.fire({
           title: '¡Picking cerrado!',
           html: `La planilla <b>${numero}</b> fue cerrada.<br><span style="color:#0F4C81;font-weight:700;">Pasa al módulo de <i class="fa-solid fa-clipboard-check"></i> Certificar.</span>`,
           icon: 'success',
           confirmButtonText: 'Entendido',
+          timer: 2000,
+          timerProgressBar: true,
         });
-        await new Promise(r => setTimeout(r, 500));
         this.viewPicking();
       }
     } catch(e) {
@@ -5855,7 +5860,12 @@ const MWMS = {
       const factorConf     = parseInt(it.unidades_caja) || 1;
       const solicitadoUnd  = (it.cantidad_total || 0) * factorConf;
       const venceConfTxt   = it.fecha_vencimiento ? this.formatDateShort(it.fecha_vencimiento) : 'Sin fecha de vencimiento';
-      await Swal.fire({
+
+      // Pre-cargar la siguiente tarea MIENTRAS se muestra la confirmación (en paralelo)
+      const nextDataPromise = mApi('GET', `/picking/planilla/${planillaNumero}`);
+
+      // Auto-close 2.5s: el auxiliar ve la info de validación sin bloquear el flujo
+      Swal.fire({
         title: '<i class="fa-solid fa-circle-check" style="color:#059669;"></i> Separación Confirmada',
         html: `
           <div style="text-align:left;font-size:.85rem;">
@@ -5885,10 +5895,12 @@ const MWMS = {
         confirmButtonText: '<i class="fa-solid fa-check"></i> Confirmado, continuar',
         confirmButtonColor: '#059669',
         width: '340px',
+        timer: 2500,
+        timerProgressBar: true,
       });
 
-      // Pasar a la siguiente tarea automáticamente
-      const r = await mApi('GET', `/picking/planilla/${planillaNumero}`);
+      // Los datos ya se cargaron en paralelo mientras el Swal estaba visible
+      const r = await nextDataPromise;
       this._itemsPlanilla = r.data || [];
       const nextIdx = this._itemsPlanilla.findIndex(x => x.cantidad_pick < x.cantidad_total);
 
@@ -8304,14 +8316,14 @@ const MWMS = {
                   </button>
                 </div>`);
           }
-          // Temporizador de seguridad: si tarda > 5s, mostrar botón de cierre
+          // Temporizador de seguridad: si tarda > 3s, mostrar botón de cierre
           clearTimeout(this._loadTm);
           this._loadTm = setTimeout(() => {
               const btn = document.getElementById('m-loading-close');
               if (btn) btn.style.display = 'block';
-          }, 5000);
-          // Si tarda > 30s, cerrar solo
-          setTimeout(() => { if (document.getElementById('m-loading')) this.loading(false); }, 30000);
+          }, 3000);
+          // Si tarda > 15s, cerrar solo
+          setTimeout(() => { if (document.getElementById('m-loading')) this.loading(false); }, 15000);
       } else {
           if(l) l.remove();
           clearTimeout(this._loadTm);

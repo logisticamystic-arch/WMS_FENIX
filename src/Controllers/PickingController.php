@@ -5440,16 +5440,20 @@ class PickingController extends BaseController
             ->select(
                 'op.id',
                 'op.sucursal_entrega',
+                'op.planilla_numero',
+                'op.numero_orden',
+                'op.numero_factura',
                 'op.fecha_movimiento',
                 'op.fecha_certificacion',
                 Capsule::raw("$strAgg as certificador_nombre")
             )
-            ->groupBy('op.id', 'op.sucursal_entrega', 'op.fecha_movimiento', 'op.fecha_certificacion')
+            ->groupBy('op.id', 'op.sucursal_entrega', 'op.planilla_numero', 'op.numero_orden',
+                'op.numero_factura', 'op.fecha_movimiento', 'op.fecha_certificacion')
             ->get();
 
         if ($ordenes->isEmpty()) return $this->ok($res, []);
 
-        // Step 2: conteos de detalles + ambientes por sucursal
+        // Step 2: conteos de detalles + ambientes por orden (se agregan por grupo en Step 3)
         $ids  = $ordenes->pluck('id');
         $strAggAmb = $this->isPg()
             ? "STRING_AGG(DISTINCT COALESCE(a.descripcion, 'Sin ambiente'), ', ')"
@@ -5460,39 +5464,66 @@ class PickingController extends BaseController
             ->leftJoin('ambientes as a', 'a.id', '=', 'p.ambiente_id')
             ->whereIn('pd.orden_picking_id', $ids)
             ->select(
-                'op.sucursal_entrega',
+                'op.id as orden_id',
                 Capsule::raw('COUNT(DISTINCT pd.producto_id) as total_refs'),
                 Capsule::raw('COALESCE(SUM(pd.cantidad_pickeada), 0) as total_unidades'),
                 Capsule::raw("$strAggAmb as ambientes")
             )
-            ->groupBy('op.sucursal_entrega')
-            ->get()->keyBy('sucursal_entrega');
+            ->groupBy('op.id')
+            ->get()->keyBy('orden_id');
 
-        // Step 3: merge por sucursal
+        // Step 3: merge por (sucursal + planilla) — antes se agrupaba solo por sucursal,
+        // así que dos planillas certificadas el mismo día para el mismo cliente quedaban
+        // mezcladas en una sola fila, y al imprimir la remisión salían juntas sin que el
+        // usuario lo pidiera. Cada (sucursal, planilla) es ahora su propia fila, con sus
+        // propios orden_ids para poder imprimir por separado o seleccionar cuáles combinar.
         $result = [];
         foreach ($ordenes as $o) {
-            $suc = $o->sucursal_entrega;
-            if (!isset($result[$suc])) {
-                $result[$suc] = [
-                    'sucursal_entrega'    => $suc,
+            $planillaLabel = trim($o->planilla_numero ?? '') ?: 'Sin planilla';
+            $key = $o->sucursal_entrega . '||' . $planillaLabel;
+            $agg = $aggs[$o->id] ?? null;
+
+            if (!isset($result[$key])) {
+                $result[$key] = [
+                    'sucursal_entrega'    => $o->sucursal_entrega,
+                    'planilla_numero'     => $planillaLabel,
+                    'orden_ids'           => [],
+                    'pedidos_numeros'     => [],
                     'total_pedidos'       => 0,
-                    'total_lineas'        => $aggs[$suc]->total_refs     ?? 0,
-                    'total_unidades'      => $aggs[$suc]->total_unidades ?? 0,
-                    'ambientes'           => $aggs[$suc]->ambientes      ?? '',
+                    'total_lineas'        => 0,
+                    'total_unidades'      => 0,
+                    'ambientes_set'       => [],
                     'fecha_movimiento'    => $o->fecha_movimiento,
                     'fecha_certificacion' => $o->fecha_certificacion,
                     'certificadores'      => $o->certificador_nombre,
                 ];
             }
-            $result[$suc]['total_pedidos']++;
-            // Fecha del pedido: la más antigua del grupo (fecha en que fue montado)
-            if ($o->fecha_movimiento < $result[$suc]['fecha_movimiento']) {
-                $result[$suc]['fecha_movimiento'] = $o->fecha_movimiento;
+            $result[$key]['orden_ids'][]       = $o->id;
+            $result[$key]['pedidos_numeros'][] = trim($o->numero_factura ?: $o->numero_orden ?: '');
+            $result[$key]['total_pedidos']++;
+            $result[$key]['total_lineas']      += (int)($agg->total_refs ?? 0);
+            $result[$key]['total_unidades']    += (float)($agg->total_unidades ?? 0);
+            if (!empty($agg->ambientes)) {
+                foreach (explode(', ', $agg->ambientes) as $amb) {
+                    $result[$key]['ambientes_set'][$amb] = true;
+                }
             }
-            if ($o->fecha_certificacion > $result[$suc]['fecha_certificacion']) {
-                $result[$suc]['fecha_certificacion'] = $o->fecha_certificacion;
+            // Fecha del pedido: la más antigua del grupo (fecha en que fue montado)
+            if ($o->fecha_movimiento < $result[$key]['fecha_movimiento']) {
+                $result[$key]['fecha_movimiento'] = $o->fecha_movimiento;
+            }
+            if ($o->fecha_certificacion > $result[$key]['fecha_certificacion']) {
+                $result[$key]['fecha_certificacion'] = $o->fecha_certificacion;
             }
         }
+
+        foreach ($result as &$row) {
+            $row['ambientes']        = implode(', ', array_keys($row['ambientes_set']));
+            $row['pedidos_numeros']  = array_values(array_filter($row['pedidos_numeros']));
+            unset($row['ambientes_set']);
+        }
+        unset($row);
+
         uasort($result, fn($a, $b) => strcmp($b['fecha_certificacion'] ?? '', $a['fecha_certificacion'] ?? ''));
 
         return $this->ok($res, array_values($result));
@@ -5507,8 +5538,17 @@ class PickingController extends BaseController
         $sucursalId = $this->getEffectiveSucursalId($user, $r);
         $qp         = $r->getQueryParams();
 
-        $sucursales = array_values(array_filter(array_map('trim', (array)($qp['sucursales'] ?? []))));
-        if (empty($sucursales)) return $this->error($res, 'Se requiere al menos una sucursal');
+        $sucursales  = array_values(array_filter(array_map('trim', (array)($qp['sucursales'] ?? []))));
+        // orden_ids: selección explícita y exacta de pedidos (nuevo). Tiene prioridad
+        // sobre 'sucursales', que agrupaba TODO lo certificado de un cliente en el día
+        // sin distinguir planilla — si un cliente tenía 2 planillas certificadas el
+        // mismo día, ambas se mezclaban en una sola remisión. Con orden_ids el usuario
+        // elige dinámicamente, desde el listado de certificación, exactamente qué
+        // pedidos/planillas deben salir juntos.
+        $ordenIdsSel = array_values(array_filter(array_map('intval', (array)($qp['orden_ids'] ?? []))));
+        if (empty($sucursales) && empty($ordenIdsSel)) {
+            return $this->error($res, 'Se requiere al menos una sucursal o una selección de pedidos (orden_ids)');
+        }
 
         $empresa   = Capsule::table('empresas')->find($empresaId);
         $empNombre = $empresa->nombre ?? 'WMS Fénix';
@@ -5588,15 +5628,33 @@ class PickingController extends BaseController
 
         $fechaFiltro = $qp['fecha'] ?? date('Y-m-d');
 
-        foreach ($sucursales as $suc) {
-            $ordenes = OrdenPicking::where('empresa_id', $empresaId)
+        if (!empty($ordenIdsSel)) {
+            // Modo exacto: solo los pedidos que el usuario seleccionó, agrupados por
+            // sucursal para conservar la misma estructura de páginas por cliente.
+            $todasOrdenes = OrdenPicking::where('empresa_id', $empresaId)
                 ->where('sucursal_id', $sucursalId)
-                ->where('sucursal_entrega', $suc)
+                ->whereIn('id', $ordenIdsSel)
                 ->where('estado_certificacion', 'Certificada')
-                // Retiro directo (cliente ya lo recogió) — no se mezcla con la remisión.
                 ->where('despachado_directo', false)
-                ->whereDate('fecha_movimiento', $fechaFiltro)
                 ->get();
+            $gruposPorSucursal = $todasOrdenes->groupBy('sucursal_entrega');
+        } else {
+            // Modo legacy: todo lo certificado del cliente en la fecha indicada.
+            $gruposPorSucursal = collect();
+            foreach ($sucursales as $suc) {
+                $ordenesSuc = OrdenPicking::where('empresa_id', $empresaId)
+                    ->where('sucursal_id', $sucursalId)
+                    ->where('sucursal_entrega', $suc)
+                    ->where('estado_certificacion', 'Certificada')
+                    // Retiro directo (cliente ya lo recogió) — no se mezcla con la remisión.
+                    ->where('despachado_directo', false)
+                    ->whereDate('fecha_movimiento', $fechaFiltro)
+                    ->get();
+                if ($ordenesSuc->isNotEmpty()) $gruposPorSucursal->put($suc, $ordenesSuc);
+            }
+        }
+
+        foreach ($gruposPorSucursal as $suc => $ordenes) {
             if ($ordenes->isEmpty()) continue;
 
             $ordenIds = $ordenes->pluck('id')->toArray();

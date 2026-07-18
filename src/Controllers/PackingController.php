@@ -1780,6 +1780,8 @@ class PackingController extends BaseController
             ->where('op.sucursal_entrega', $sucursalEntrega)
             ->where('op.estado', 'Completada')
             ->where('op.estado_certificacion', 'Pendiente')
+            // Retiro directo (cliente ya lo recogió en bodega) — no entra a packing/remisión.
+            ->where('op.despachado_directo', false)
             ->whereDate('op.fecha_movimiento', $hoy)
             ->select([
                 'pd.producto_id',
@@ -1833,6 +1835,8 @@ class PackingController extends BaseController
             ->where('op.sucursal_entrega', $sucursalEntrega)
             ->where('op.estado', 'Completada')
             ->where('op.estado_certificacion', 'Pendiente')
+            // Retiro directo (cliente ya lo recogió en bodega) — no entra a packing/remisión.
+            ->where('op.despachado_directo', false)
             ->where('pd.producto_id', $productoId)
             ->orderByRaw('CASE WHEN COALESCE(pd.fecha_vencimiento, i.fecha_vencimiento) IS NULL THEN 1 ELSE 0 END')
             ->orderByRaw('COALESCE(pd.fecha_vencimiento, i.fecha_vencimiento) ASC')

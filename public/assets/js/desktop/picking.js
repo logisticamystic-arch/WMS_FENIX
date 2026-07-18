@@ -849,6 +849,8 @@ WMS_MODULES.picking = {
       </tr>`;
     }).join('') || '<tr><td colspan="5" class="table-empty">Sin líneas</td></tr>';
 
+    const despachadoDirecto = !!p.despachado_directo;
+
     WMS.showRightPanel('Detalle Picking — ' + (p.planilla_numero || ('#' + id)), `
       <div class="form-grid form-grid-2" style="margin-bottom:14px;">
         <div><label class="form-label">Planilla</label><p><span class="badge badge-info">${WMS.esc(p.planilla_numero||'N/A')}</span></p></div>
@@ -857,6 +859,18 @@ WMS_MODULES.picking = {
         <div><label class="form-label">Estado</label><p><span class="badge badge-info">${WMS.esc(p.estado||'')}</span></p></div>
         <div><label class="form-label">Auxiliar</label><p>${WMS.esc(p.auxiliar||p.usuario||'-')}</p></div>
         ${p.sucursal_entrega ? `<div><label class="form-label">Sucursal Entrega</label><p>${WMS.esc(p.sucursal_entrega)}</p></div>` : ''}
+      </div>
+      ${despachadoDirecto ? `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;margin-bottom:12px;">
+        <span class="badge" style="background:#dc2626;color:#fff;font-weight:700;"><i class="fa-solid fa-hand"></i> RETIRO DIRECTO — NO INCLUIR EN REMISIÓN</span>
+        <div style="font-size:11px;color:#991b1b;margin-top:4px;">El cliente ya recogió este pedido directamente en bodega. Se excluye automáticamente de la certificación/remisión.</div>
+      </div>` : ''}
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Observaciones</label>
+        <textarea id="pk-det-obs" class="form-control" rows="2"
+          placeholder="Notas visibles en picking, certificación y despacho...">${WMS.esc(p.observaciones||'')}</textarea>
+        <button class="btn btn-sm btn-secondary" style="margin-top:6px;" onclick="WMS_MODULES.picking._guardarObservaciones(${id})">
+          <i class="fa-solid fa-save"></i> Guardar observaciones
+        </button>
       </div>
       ${esEditable ? `<div style="background:#fffbeb;border:1px solid #fbbf24;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:#92400e;">
         <i class="fa-solid fa-circle-info"></i> Usa los botones por línea para separar cantidades o marcar agotados.
@@ -877,7 +891,38 @@ WMS_MODULES.picking = {
        ${puedeReabrir ? `<button class="btn btn-warning" onclick="WMS_MODULES.picking._reabrirOrden(${id})"><i class="fa-solid fa-rotate-left"></i> Reabrir</button>` : ''}
        ${esEditable ? `<button class="btn btn-danger" onclick="WMS_MODULES.picking._anularPedido(${id})"><i class="fa-solid fa-trash"></i> Anular</button>` : ''}
        ${esEditable ? `<button class="btn btn-info" onclick="WMS_MODULES.picking._dlgAgregarRef(${id})"><i class="fa-solid fa-plus"></i> Agregar Ref.</button>` : ''}
-       ${esEditable ? `<button class="btn btn-success" onclick="WMS_MODULES.picking.completarPicking(${id})"><i class="fa-solid fa-check-double"></i> Cerrar Picking</button>` : ''}`);
+       ${esEditable ? `<button class="btn btn-success" onclick="WMS_MODULES.picking.completarPicking(${id})"><i class="fa-solid fa-check-double"></i> Cerrar Picking</button>` : ''}
+       ${esCompletada ? (despachadoDirecto
+          ? `<button class="btn btn-sm" style="background:#fff;border:1px solid #dc2626;color:#dc2626;" onclick="WMS_MODULES.picking._toggleDespachadoDirecto(${id}, false)"><i class="fa-solid fa-rotate-left"></i> Desmarcar retiro directo</button>`
+          : `<button class="btn" style="background:#dc2626;color:#fff;" onclick="WMS_MODULES.picking._toggleDespachadoDirecto(${id}, true)"><i class="fa-solid fa-hand"></i> Despachado (retiro directo)</button>`
+       ) : ''}`);
+  },
+
+  async _guardarObservaciones(id) {
+    const texto = document.getElementById('pk-det-obs')?.value.trim() || '';
+    try {
+      await API.put('/picking/' + id, { observaciones: texto });
+      WMS.toast('success', 'Observaciones guardadas');
+      if (this._detallePicking) this._detallePicking.observaciones = texto;
+    } catch(e) { WMS.toast('error', e.message || 'Error al guardar observaciones'); }
+  },
+
+  // "Despachado" (retiro directo): el cliente recogió el pedido directamente en
+  // bodega, fuera del flujo normal de cargue/despacho. Se marca con etiqueta roja
+  // y el backend lo excluye automáticamente de certificación/remisión para que no
+  // se mezcle con las planillas que sí hay que imprimir.
+  async _toggleDespachadoDirecto(id, marcar) {
+    const msg = marcar
+      ? '¿Marcar este pedido como retirado directamente por el cliente? Se excluirá de la certificación/remisión y no se imprimirá con la planilla.'
+      : '¿Desmarcar el retiro directo? El pedido volverá a incluirse en la certificación/remisión normal.';
+    if (!confirm(msg)) return;
+    try {
+      const r = await API.post('/picking/' + id + '/despachado-directo', { marcar });
+      WMS.toast('success', r.message || 'Actualizado');
+      const updated = await API.get('/picking/' + id);
+      this._detallePicking = updated.data || updated;
+      this._renderDetallePicking(id, this._detallePicking);
+    } catch(e) { WMS.toast('error', e.message || 'Error al actualizar'); }
   },
 
   async _dlgConfirmarLinea(lineaId, nombre, cantSol, upc) {
@@ -1716,6 +1761,12 @@ WMS_MODULES.picking = {
             </table>
           </div>
 
+          <div class="form-group" style="margin-bottom:20px;">
+            <label class="form-label">Observaciones <span style="color:#94a3b8;font-weight:400;">(opcional)</span></label>
+            <textarea id="pm-observaciones" class="form-control" rows="2"
+              placeholder="Notas visibles durante todo el proceso: picking, certificación y despacho..."></textarea>
+          </div>
+
           <div style="display:flex;justify-content:flex-end;gap:10px;">
             <button class="btn btn-ghost" onclick="WMS_MODULES.picking.show_pedidos()">
               <i class="fa-solid fa-arrow-left"></i> Cancelar
@@ -1965,6 +2016,7 @@ WMS_MODULES.picking = {
     const numero   = document.getElementById('pm-numero')?.value.trim();
     const cliente  = document.getElementById('pm-cliente')?.value.trim();
     const ruta     = document.getElementById('pm-ruta')?.value.trim();
+    const observaciones = document.getElementById('pm-observaciones')?.value.trim();
 
     if (!cliente) {
       WMS.toast('warning', 'El campo Cliente / Sucursal es obligatorio');
@@ -1994,6 +2046,7 @@ WMS_MODULES.picking = {
         sucursal_entrega : cliente,
         ruta             : ruta || null,
         fecha_requerida  : new Date().toISOString().split('T')[0],
+        observaciones    : observaciones || null,
         detalles,
       });
       WMS.toast('success', 'Pedido creado correctamente');

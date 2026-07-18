@@ -319,15 +319,21 @@ WMS_MODULES.despacho = {
               }).join('')}
               ${certSinSesion.map(s => {
                 const fechaStr = (s.fecha_movimiento || '').slice(0,10) || '—';
+                const ordenIdsAttr = WMS.esc(JSON.stringify(s.orden_ids || []));
+                const sinPlanilla = !s.planilla_numero || s.planilla_numero === 'Sin planilla';
                 return `<tr>
                   <td style="text-align:center;">
-                    <input type="checkbox" class="cert-remision-check-directa" data-sucursal="${WMS.esc(s.sucursal_entrega)}">
+                    <input type="checkbox" class="cert-remision-check-directa" data-sucursal="${WMS.esc(s.sucursal_entrega)}" data-orden-ids="${ordenIdsAttr}">
                   </td>
                   <td>
                     <strong style="font-size:13px;">${WMS.esc(s.sucursal_entrega || 'Sin Sucursal')}</strong>
+                    ${sinPlanilla
+                      ? `<span style="display:inline-block;margin-left:5px;background:#f1f5f9;color:#64748b;border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;">Sin planilla</span>`
+                      : `<span style="display:inline-block;margin-left:5px;background:#1e3a8a;color:#fff;border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;font-weight:700;">${WMS.esc(s.planilla_numero)}</span>`}
                     ${s.total_pedidos > 1 ? `<span style="display:inline-block;margin-left:5px;background:#fef9c3;color:#854d0e;border:1px solid #fde047;border-radius:10px;font-size:10px;font-weight:700;padding:1px 7px;">Re-cert.</span>` : ''}
                     <div style="font-size:10px;color:#6b7280;margin-top:1px;">
                       ${(s.ambientes || '').split(',').map(a => a.trim()).filter(Boolean).join(' · ') || 'Sin ambiente'}
+                      ${s.pedidos_numeros?.length ? ` · Pedidos: ${s.pedidos_numeros.map(n=>WMS.esc(n)).join(', ')}` : ''}
                     </div>
                   </td>
                   <td class="text-center">
@@ -339,7 +345,7 @@ WMS_MODULES.despacho = {
                   <td class="text-center" style="font-size:12px;color:#6b7280;">${fechaStr}</td>
                   <td>
                     <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                      <button class="btn btn-sm btn-success" onclick="WMS_MODULES.despacho.imprimirRemisionDirecta('${WMS.esc(s.sucursal_entrega)}')" title="Imprimir remisión">
+                      <button class="btn btn-sm btn-success" onclick='WMS_MODULES.despacho.imprimirRemisionPorOrdenes(${ordenIdsAttr}, ${s.total_pedidos} > 1 ? "${s.total_pedidos} pedidos" : "1 pedido")' title="Imprimir remisión de esta planilla">
                         <i class="fa-solid fa-print"></i> Remisión
                       </button>
                       ${esAdmin ? `<button class="btn btn-sm btn-warning" onclick="WMS_MODULES.despacho.adminEditCert('${WMS.esc(s.sucursal_entrega)}')" title="Editar certificación">
@@ -466,18 +472,42 @@ WMS_MODULES.despacho = {
     this._openPrint(`${API_BASE}/picking/certificacion/remision/${encodeURIComponent(sucursal)}?fecha=${fecha}`, 'Remisión');
   },
 
+  // Imprime la remisión de exactamente los pedidos indicados (por id) — usado por
+  // el botón "Remisión" de cada fila (una planilla) y por la selección múltiple.
+  // Reemplaza el filtrado implícito por sucursal+fecha, que mezclaba todas las
+  // planillas certificadas de un cliente en el mismo día.
+  async imprimirRemisionPorOrdenes(ordenIds, label = '') {
+    if (!ordenIds || !ordenIds.length) {
+      WMS.toast('warning', 'No hay pedidos para imprimir en esta selección');
+      return;
+    }
+    const params = new URLSearchParams();
+    ordenIds.forEach(id => params.append('orden_ids[]', id));
+    WMS.toast('info', `Generando remisión (${label || ordenIds.length + ' pedido(s)'})...`);
+    this._openPrint(`${API_BASE}/picking/certificacion/remision-multiple?${params}`, 'Remisión');
+  },
+
   async imprimirRemisionesDirectasSeleccionadas() {
     const checks = document.querySelectorAll('.cert-remision-check-directa:checked');
     if (!checks.length) {
-      WMS.toast('warning', 'Selecciona al menos un pedido móvil para imprimir');
+      WMS.toast('warning', 'Selecciona al menos una planilla para imprimir');
       return;
     }
-    const fecha = this._certFechaInicio || new Date().toISOString().slice(0, 10);
-    const params = new URLSearchParams({ fecha });
-    checks.forEach(cb => params.append('sucursales[]', cb.dataset.sucursal));
+    // Combina EXACTAMENTE los pedidos de las filas marcadas — el usuario elige
+    // dinámicamente qué planillas salen juntas en la remisión, en vez de que el
+    // sistema las agrupe automáticamente por sucursal+fecha (lo que las mezclaba
+    // sin que se pidiera).
+    let ordenIds = [];
+    checks.forEach(cb => {
+      try { ordenIds = ordenIds.concat(JSON.parse(cb.dataset.ordenIds || '[]')); } catch(_) {}
+    });
+    if (!ordenIds.length) {
+      WMS.toast('warning', 'La selección no tiene pedidos asociados');
+      return;
+    }
     const n = checks.length;
-    WMS.toast('info', `Generando remisión consolidada + ${n} individual(es)...`);
-    this._openPrint(`${API_BASE}/picking/certificacion/remision-multiple?${params}`, `Remisiones Múltiples (${n})`);
+    WMS.toast('info', `Generando remisión consolidada de ${n} planilla(s) seleccionada(s)...`);
+    this.imprimirRemisionPorOrdenes(ordenIds, `${n} planilla(s)`);
   },
 
   async imprimirRemisionesSeleccionadas() {
