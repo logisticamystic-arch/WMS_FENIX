@@ -5687,7 +5687,10 @@ class PickingController extends BaseController
                 'certNombre' => $certNombre,
                 'fechaMov'   => $ordenes->min('fecha_movimiento'),
                 'planilla'   => $ordenes->pluck('planilla_numero')->filter()->unique()->implode(', '),
-                'pedidos'    => $ordenes->pluck('numero_orden')->filter()->unique()->implode(', '),
+                // numero_factura es el N° de pedido real del cliente; numero_orden puede ser
+                // solo la etiqueta interna de planilla ("Planilla 200") — mostrar eso aquí
+                // duplicaba el campo "Planilla" y dejaba de mostrarse el pedido real.
+                'pedidos'    => $ordenes->map(fn($o) => trim($o->numero_factura ?: $o->numero_orden ?: ''))->filter()->unique()->implode(', '),
             ];
         }
 
@@ -5701,9 +5704,9 @@ class PickingController extends BaseController
         .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:8px;margin-bottom:10px}
         .header-left p{margin:0;font-size:9.5px;color:#555}
         .header-right{text-align:right;font-size:10px;color:#333}
-        .info-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:3px 16px;margin-bottom:10px;background:#f8fafc;padding:8px 12px;border-radius:4px;border:1px solid #e2e8f0}
-        .info-grid .lbl{font-weight:700;font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:.3px}
-        .info-grid .val{font-size:10.5px;color:#1e293b;border-bottom:1px solid #cbd5e1;padding-bottom:2px;margin-bottom:4px}
+        .info-grid{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 20px;margin-bottom:10px;background:#f8fafc;padding:6px 12px;border-radius:4px;border:1px solid #e2e8f0;page-break-after:avoid}
+        .info-grid .campo{white-space:nowrap;font-size:10.5px;color:#1e293b}
+        .info-grid .lbl{font-weight:700;font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:.3px;margin-right:4px}
         .ambientes-grid{display:grid;grid-template-columns:1fr;gap:10px}
         .ambiente-block{border:1px solid #cbd5e1;border-radius:4px;overflow:hidden;page-break-inside:avoid}
         .ambiente-header{background:#000;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.2px}
@@ -5767,11 +5770,11 @@ class PickingController extends BaseController
             . "  <div class='header-right'><strong>Planilla: {$todasPlanillas}</strong><br>Fecha: {$fechaHoy}</div>"
             . "</div>"
             . "<div class='info-grid'>"
-            . "  <div class='lbl'>Planilla(s):</div><div class='val' style='font-weight:700'>{$todasPlanillas}</div>"
-            . "  <div class='lbl'>Total cajas:</div><div class='val'>{$cr['cj']}</div>"
-            . "  <div class='lbl'>Total unidades:</div><div class='val'>{$cr['und']}</div>"
-            . "  <div class='lbl'>N&ordm; Clientes:</div><div class='val'>{$nSucs}</div>"
-            . "  <div class='lbl'>Fecha:</div><div class='val'>{$fechaHoy}</div>"
+            . "  <span class='campo'><span class='lbl'>Planilla(s):</span>{$todasPlanillas}</span>"
+            . "  <span class='campo'><span class='lbl'>Total cajas:</span>{$cr['cj']}</span>"
+            . "  <span class='campo'><span class='lbl'>Total unidades:</span>{$cr['und']}</span>"
+            . "  <span class='campo'><span class='lbl'>N&ordm; Clientes:</span>{$nSucs}</span>"
+            . "  <span class='campo'><span class='lbl'>Fecha:</span>{$fechaHoy}</span>"
             . "</div>"
             . $clientesTable
             . "<div class='ambientes-grid'>{$cr['html']}</div>"
@@ -5793,12 +5796,12 @@ class PickingController extends BaseController
                 . "  <div class='header-right'><strong>{$sucEsc}</strong><br>Fecha pedido: {$fechaStr}</div>"
                 . "</div>"
                 . "<div class='info-grid'>"
-                . "  <div class='lbl'>Planilla:</div><div class='val' style='font-weight:700;font-size:11px;'>{$page['planilla']}</div>"
-                . "  <div class='lbl'>Cliente / Sucursal:</div><div class='val'>{$sucEsc}</div>"
-                . "  <div class='lbl'>Pedido(s):</div><div class='val'>{$page['pedidos']}</div>"
-                . "  <div class='lbl'>Certificador:</div><div class='val'>{$page['certNombre']}</div>"
-                . "  <div class='lbl'>Fecha pedido:</div><div class='val'>{$fechaStr}</div>"
-                . "  <div class='lbl'>Total unidades:</div><div class='val'>{$pr['und']}</div>"
+                . "  <span class='campo'><span class='lbl'>Planilla:</span>{$page['planilla']}</span>"
+                . "  <span class='campo'><span class='lbl'>Cliente / Sucursal:</span>{$sucEsc}</span>"
+                . "  <span class='campo'><span class='lbl'>Pedido(s):</span>{$page['pedidos']}</span>"
+                . "  <span class='campo'><span class='lbl'>Certificador:</span>{$page['certNombre']}</span>"
+                . "  <span class='campo'><span class='lbl'>Fecha pedido:</span>{$fechaStr}</span>"
+                . "  <span class='campo'><span class='lbl'>Total unidades:</span>{$pr['und']}</span>"
                 . "</div>"
                 . "<div class='ambientes-grid'>{$pr['html']}</div>"
                 . $novedadesHtml
@@ -5854,7 +5857,10 @@ class PickingController extends BaseController
 
         $ordenIds   = $ordenes->pluck('id')->toArray();
         $planillaStr = $ordenes->pluck('planilla_numero')->filter()->unique()->implode(', ');
-        $numOrdenes  = $ordenes->pluck('numero_orden')->filter()->unique()->implode(', ');
+        // numero_factura es el N° de pedido real del cliente; numero_orden puede ser solo
+        // la etiqueta interna de planilla — mostrar eso aquí duplicaba "Planilla" y dejaba
+        // de mostrarse el pedido real en el encabezado.
+        $numOrdenes  = $ordenes->map(fn($o) => trim($o->numero_factura ?: $o->numero_orden ?: ''))->filter()->unique()->implode(', ');
         $certNombre = '';
         if ($ordenes->first()->certificador_id) {
             $cert = Capsule::table('personal')->find($ordenes->first()->certificador_id);
@@ -5975,9 +5981,9 @@ class PickingController extends BaseController
   .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:8px;margin-bottom:10px}
   .header-left p{margin:0;font-size:9.5px;color:#555}
   .header-right{text-align:right;font-size:10px;color:#333}
-  .info-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:3px 16px;margin-bottom:10px;background:#f8fafc;padding:8px 12px;border-radius:4px;border:1px solid #e2e8f0}
-  .info-grid .lbl{font-weight:700;font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:.3px}
-  .info-grid .val{font-size:10.5px;color:#1e293b;border-bottom:1px solid #cbd5e1;padding-bottom:2px;margin-bottom:4px}
+  .info-grid{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 20px;margin-bottom:10px;background:#f8fafc;padding:6px 12px;border-radius:4px;border:1px solid #e2e8f0;page-break-after:avoid}
+  .info-grid .campo{white-space:nowrap;font-size:10.5px;color:#1e293b}
+  .info-grid .lbl{font-weight:700;font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:.3px;margin-right:4px}
   .ambientes-grid{display:grid;grid-template-columns:1fr;gap:10px}
   .ambiente-block{border:1px solid #cbd5e1;border-radius:4px;overflow:hidden;page-break-inside:avoid}
   .ambiente-header{background:#000;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.2px}
@@ -6009,12 +6015,12 @@ class PickingController extends BaseController
   </div>
 </div>
 <div class='info-grid'>
-  <div class='lbl'>Planilla:</div><div class='val' style='font-weight:700;font-size:11px;'>{$planillaStr}</div>
-  <div class='lbl'>Cliente / Sucursal:</div><div class='val'>" . htmlspecialchars($sucursal) . "</div>
-  <div class='lbl'>Pedido(s):</div><div class='val'>{$numOrdenes}</div>
-  <div class='lbl'>Certificador:</div><div class='val'>{$certNombre}</div>
-  <div class='lbl'>Fecha pedido:</div><div class='val'>{$fechaStr}</div>
-  <div class='lbl'>Total unidades:</div><div class='val'>{$totalUnd}</div>
+  <span class='campo'><span class='lbl'>Planilla:</span>{$planillaStr}</span>
+  <span class='campo'><span class='lbl'>Cliente / Sucursal:</span>" . htmlspecialchars($sucursal) . "</span>
+  <span class='campo'><span class='lbl'>Pedido(s):</span>{$numOrdenes}</span>
+  <span class='campo'><span class='lbl'>Certificador:</span>{$certNombre}</span>
+  <span class='campo'><span class='lbl'>Fecha pedido:</span>{$fechaStr}</span>
+  <span class='campo'><span class='lbl'>Total unidades:</span>{$totalUnd}</span>
 </div>
 <div class='ambientes-grid'>{$ambientesHtml}</div>
 {$novedadesHtml}
