@@ -19,6 +19,11 @@ class OrdenPicking extends BaseModel
         'sucursal_entrega', 'ruta', 'orden_logico',
         'estado_certificacion', 'fecha_certificacion', 'certificador_id', 'archivo_id',
         'estado_despacho', 'despacho_id', 'cliente_id',
+        'observaciones',
+        // despachado_directo: cliente retiró el pedido directamente en bodega — NO
+        // confundir con estado_despacho='Despachado' (asignado a ruta de reparto,
+        // ver DespachoController.php:300). Se excluye de la remisión agrupada.
+        'despachado_directo', 'despachado_directo_at', 'despachado_directo_por',
     ];
 
     protected $casts = [

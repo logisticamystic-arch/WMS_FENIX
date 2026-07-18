@@ -794,7 +794,6 @@
       "public_assets_js_desktop_despacho_buildclosedlist",
       "public_assets_js_desktop_despacho_certeditoninput",
       "public_assets_js_desktop_despacho_certfiltrarglobal",
-      "public_assets_js_desktop_despacho_confirmaragregarpedidos",
       "public_assets_js_desktop_despacho_confirmarentransito",
       "public_assets_js_desktop_despacho_copiarkey",
       "public_assets_js_desktop_despacho_crearapikey",
@@ -806,12 +805,15 @@
       "public_assets_js_desktop_despacho_gestionarapikeys",
       "public_assets_js_desktop_despacho_guiatms",
       "public_assets_js_desktop_despacho_importarplanillas",
+      "public_assets_js_desktop_despacho_imprimirremision",
+      "public_assets_js_desktop_despacho_imprimirremisiondirecta",
+      "public_assets_js_desktop_despacho_imprimirremisionesdirectasseleccionadas",
       "public_assets_js_desktop_despacho_imprimirremisionesseleccionadas",
       "public_assets_js_desktop_despacho_load",
       "public_assets_js_desktop_despacho_marcarentransito",
       "public_assets_js_desktop_despacho_nuevoplanillacargue",
+      "public_assets_js_desktop_despacho_openprint",
       "public_assets_js_desktop_despacho_pkfiltrar",
-      "public_assets_js_desktop_despacho_quitarpedidocargue",
       "public_assets_js_desktop_despacho_rendercertinterface",
       "public_assets_js_desktop_despacho_renderpackingsearchresults",
       "public_assets_js_desktop_despacho_revocarkey",
@@ -823,7 +825,6 @@
       "public_assets_js_desktop_despacho_sublabel",
       "public_assets_js_desktop_despacho_submitcrearkey",
       "public_assets_js_desktop_despacho_toggleclosedunititems",
-      "public_assets_js_desktop_despacho_vercargue",
       "public_assets_js_desktop_despacho_verplanilla"
     ],
     "14": [
@@ -2533,10 +2534,9 @@
       "public_assets_js_cachehelpers_moduleautorefresh"
     ],
     "138": [
-      "public_assets_js_desktop_despacho_imprimirremision",
-      "public_assets_js_desktop_despacho_imprimirremisiondirecta",
-      "public_assets_js_desktop_despacho_imprimirremisionesdirectasseleccionadas",
-      "public_assets_js_desktop_despacho_openprint"
+      "public_assets_js_desktop_despacho_confirmaragregarpedidos",
+      "public_assets_js_desktop_despacho_quitarpedidocargue",
+      "public_assets_js_desktop_despacho_vercargue"
     ],
     "139": [
       "public_assets_js_desktop_inventario_cisearchubic",
@@ -3034,7 +3034,7 @@
     "10": 0.08748615725359911,
     "11": 0.05365853658536585,
     "12": 0.1024390243902439,
-    "13": 0.06342780026990553,
+    "13": 0.06282051282051282,
     "14": 0.06025641025641026,
     "15": 0.06794871794871794,
     "16": 0.08232118758434548,
@@ -3159,7 +3159,7 @@
     "135": 0.6666666666666666,
     "136": 0.6666666666666666,
     "137": 0.6666666666666666,
-    "138": 0.5,
+    "138": 0.6666666666666666,
     "139": 0.6666666666666666,
     "140": 0.6666666666666666,
     "141": 0.6666666666666666,
@@ -3368,14 +3368,14 @@
   "surprises": [
     {
       "source": "MysticFoods Logo",
-      "target": "WMS Fénix Product",
+      "target": "WMS F\u00e9nix Product",
       "source_files": [
         "logo.jpg",
         "docs/propuesta_comercial.html"
       ],
       "confidence": "AMBIGUOUS",
       "relation": "conceptually_related_to",
-      "why": "ambiguous connection - not explicitly stated in source; crosses file types (doc ↔ image); connects across different repos/directories"
+      "why": "ambiguous connection - not explicitly stated in source; crosses file types (doc \u2194 image); connects across different repos/directories"
     },
     {
       "source": "Expiry Control (ExpiryGuard) Design Doc",
@@ -3386,10 +3386,10 @@
       ],
       "confidence": "EXTRACTED",
       "relation": "references",
-      "why": "crosses file types (code ↔ doc); connects across different repos/directories; peripheral node `Expiry Control (ExpiryGuard) Design Doc` unexpectedly reaches hub `ExpiryGuard`"
+      "why": "crosses file types (code \u2194 doc); connects across different repos/directories; peripheral node `Expiry Control (ExpiryGuard) Design Doc` unexpectedly reaches hub `ExpiryGuard`"
     },
     {
-      "source": "WMS Fénix Architecture Design Doc",
+      "source": "WMS F\u00e9nix Architecture Design Doc",
       "target": "InventoryTransaction",
       "source_files": [
         "docs/superpowers/specs/2026-05-02-wms-fenix-arquitectura-design.md",
@@ -3397,7 +3397,7 @@
       ],
       "confidence": "EXTRACTED",
       "relation": "references",
-      "why": "crosses file types (doc ↔ code); connects across different repos/directories; peripheral node `WMS Fénix Architecture Design Doc` unexpectedly reaches hub `InventoryTransaction`"
+      "why": "crosses file types (doc \u2194 code); connects across different repos/directories; peripheral node `WMS F\u00e9nix Architecture Design Doc` unexpectedly reaches hub `InventoryTransaction`"
     },
     {
       "source": "ajustes module",
@@ -3408,7 +3408,7 @@
       ],
       "confidence": "EXTRACTED",
       "relation": "references",
-      "why": "crosses file types (code ↔ doc); connects across different repos/directories; peripheral node `ajustes module` unexpectedly reaches hub `InventoryTransaction`"
+      "why": "crosses file types (code \u2194 doc); connects across different repos/directories; peripheral node `ajustes module` unexpectedly reaches hub `InventoryTransaction`"
     },
     {
       "source": "conteos module",
@@ -3419,44 +3419,11 @@
       ],
       "confidence": "EXTRACTED",
       "relation": "references",
-      "why": "crosses file types (code ↔ doc); connects across different repos/directories; peripheral node `conteos module` unexpectedly reaches hub `InventoryTransaction`"
+      "why": "crosses file types (code \u2194 doc); connects across different repos/directories; peripheral node `conteos module` unexpectedly reaches hub `InventoryTransaction`"
     }
   ],
-  "questions": [
-    {
-      "type": "ambiguous_edge",
-      "question": "What is the exact relationship between `WMS Fénix Product` and `MysticFoods Logo`?",
-      "why": "Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low."
-    },
-    {
-      "type": "ambiguous_edge",
-      "question": "What is the exact relationship between `Devoluciones Implementation Plan` and `WMS.loadBadge()`?",
-      "why": "Edge tagged AMBIGUOUS (relation: references) - confidence is low."
-    },
-    {
-      "type": "ambiguous_edge",
-      "question": "What is the exact relationship between `Devoluciones Implementation Plan` and `MWMS confirmar-linea handler`?",
-      "why": "Edge tagged AMBIGUOUS (relation: references) - confidence is low."
-    },
-    {
-      "type": "ambiguous_edge",
-      "question": "What is the exact relationship between `manifest.json (PWA manifest)` and `Warehouse/truck app icon (192x192)`?",
-      "why": "Edge tagged AMBIGUOUS (relation: references) - confidence is low."
-    },
-    {
-      "type": "ambiguous_edge",
-      "question": "What is the exact relationship between `manifest.json (PWA manifest)` and `Warehouse/truck app icon (512x512)`?",
-      "why": "Edge tagged AMBIGUOUS (relation: references) - confidence is low."
-    },
-    {
-      "type": "ambiguous_edge",
-      "question": "What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?",
-      "why": "Edge tagged AMBIGUOUS (relation: references) - confidence is low."
-    },
-    {
-      "type": "bridge_node",
-      "question": "Why does `wmsLog()` connect `App Routes & Design Docs` to `Cross-Dock Operations`?",
-      "why": "High betweenness centrality (0.017) - this node is a cross-community bridge."
-    }
-  ]
+  "tokens": {
+    "input": 658200,
+    "output": 163353
+  }
 }

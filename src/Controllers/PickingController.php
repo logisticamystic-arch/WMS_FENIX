@@ -1276,6 +1276,7 @@ class PickingController extends BaseController
                     'fecha_movimiento'=> date('Y-m-d'),
                     'hora_inicio'     => date('H:i:s'),
                     'fecha_requerida' => date('Y-m-d'),
+                    'observaciones'   => !empty($data['observaciones']) ? trim($data['observaciones']) : null,
                 ]);
 
                 foreach ($data['detalles'] as $det) {
@@ -2656,6 +2657,7 @@ class PickingController extends BaseController
             'cantidad'         => ['unid pedido', 'unid_pedido', 'cantidad', 'cant', 'qty', 'unidades pedido', 'unidades'],
             'unid_pedido_empaque' => ['unid pedido empaque', 'unid_pedido_empaque', 'cajas pedidas', 'cajas pedido', 'unidades empaque'],
             'unid_pedido_total'   => ['unid pedido total', 'unid_pedido_total', 'unid total pedidas', 'total unidades pedidas'],
+            'observaciones'       => ['observaciones', 'observacion', 'notas', 'comentarios'],
         ];
 
         $colMap = [];
@@ -2959,6 +2961,11 @@ class PickingController extends BaseController
                             'hora_inicio'       => date('H:i:s'),
                             'prioridad'         => 5,
                             'auxiliar_id'       => null,
+                            // El CSV rara vez trae observaciones (es fila-por-línea, no por
+                            // pedido) — se toma de la primera línea del grupo si viene; el
+                            // caso normal es capturarla/editarla después de cargado (endpoint
+                            // PUT /picking/{id}/observaciones).
+                            'observaciones'     => trim($lineasNuevas[0]['fila']['observaciones'] ?? '') ?: null,
                         ]);
 
                         $lineasCreadas = 0;
