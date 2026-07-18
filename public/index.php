@@ -680,6 +680,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->post('/{id}/completar', [\App\Controllers\PickingController::class, 'completar']);
         $group->post('/{id}/reabrir',   [\App\Controllers\PickingController::class, 'reabrir']);
         $group->post('/{id}/marcar-faltante', [\App\Controllers\PickingController::class, 'marcarFaltante']);
+        $group->post('/{id}/despachado-directo', [\App\Controllers\PickingController::class, 'marcarDespachadoDirecto']);
         $group->post('/{id}/lineas', [\App\Controllers\PickingController::class, 'agregarLinea']);
 
         // Certificación por Sucursal

@@ -2090,6 +2090,42 @@ class PickingController extends BaseController
         return $this->ok($res, $orden, 'Orden actualizada');
     }
 
+    // ── POST /api/picking/{id}/despachado-directo ──────────────────────────────
+    // Marca (o desmarca) un pedido que el cliente retiró directamente en bodega.
+    // NO es lo mismo que estado_despacho='Despachado' (asignado a ruta de reparto,
+    // ver DespachoController.php:300) — este es un retiro directo fuera del flujo
+    // normal de cargue. Los pedidos marcados se excluyen de certCertificadas(),
+    // certRemisionDirecta() y certRemisionMultiple() para que no se mezclen con
+    // la remisión de la planilla.
+    public function marcarDespachadoDirecto(Request $r, Response $res, array $a): Response
+    {
+        $user  = $r->getAttribute('user');
+        $data  = $r->getParsedBody() ?? [];
+        $marcar = !array_key_exists('marcar', $data) || (bool)$data['marcar'];
+
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+            ->where('sucursal_id', $user->sucursal_id)
+            ->find($a['id']);
+        if (!$orden) return $this->notFound($res);
+
+        $snapshot = $orden->toArray();
+
+        $orden->despachado_directo     = $marcar;
+        $orden->despachado_directo_at  = $marcar ? date('Y-m-d H:i:s') : null;
+        $orden->despachado_directo_por = $marcar ? $user->id : null;
+        $orden->save();
+
+        $this->audit($user, 'picking', $marcar ? 'marcar_despachado_directo' : 'desmarcar_despachado_directo',
+            'orden_pickings', $orden->id, $snapshot, $orden->toArray(),
+            $marcar
+                ? "Pedido {$orden->numero_orden} marcado como retirado directamente — excluido de remisión"
+                : "Pedido {$orden->numero_orden} desmarcado — vuelve a incluirse en remisión");
+
+        return $this->ok($res, $orden, $marcar
+            ? 'Pedido marcado como retiro directo. No se incluirá en la remisión.'
+            : 'Pedido desmarcado, vuelve a incluirse en la remisión.');
+    }
+
     // ── POST /api/picking/{id}/lineas ─────────────────────────────────────────
     public function agregarLinea(Request $r, Response $res, array $a): Response
     {
@@ -5396,6 +5432,9 @@ class PickingController extends BaseController
             ->where('op.sucursal_id', $sucursalId)
             ->where('op.estado', 'Completada')
             ->where('op.estado_certificacion', 'Certificada')
+            // Pedidos con retiro directo (cliente ya lo recogió en bodega) se excluyen
+            // de la certificación/remisión para que no se mezclen con la planilla.
+            ->where('op.despachado_directo', false)
             ->when($fechaInicio, fn($q) => $q->where('op.fecha_movimiento', '>=', $fechaInicio))
             ->when($fechaFin, fn($q) => $q->where('op.fecha_movimiento', '<=', $fechaFin))
             ->select(
@@ -5554,6 +5593,8 @@ class PickingController extends BaseController
                 ->where('sucursal_id', $sucursalId)
                 ->where('sucursal_entrega', $suc)
                 ->where('estado_certificacion', 'Certificada')
+                // Retiro directo (cliente ya lo recogió) — no se mezcla con la remisión.
+                ->where('despachado_directo', false)
                 ->whereDate('fecha_movimiento', $fechaFiltro)
                 ->get();
             if ($ordenes->isEmpty()) continue;
@@ -5746,6 +5787,8 @@ class PickingController extends BaseController
             ->where('sucursal_id', $sucursalId)
             ->where('sucursal_entrega', $sucursal)
             ->where('estado_certificacion', 'Certificada')
+            // Retiro directo (cliente ya lo recogió) — no se mezcla con la remisión.
+            ->where('despachado_directo', false)
             ->whereDate('fecha_movimiento', $fechaDirect)
             ->get();
 
