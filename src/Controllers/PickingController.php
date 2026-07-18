@@ -1541,6 +1541,11 @@ class PickingController extends BaseController
                         'producto_id'          => $linea->producto_id,
                         'tipo_movimiento'      => 'Picking',
                         'cantidad'             => $descuento,
+                        // Desglose UND/TOTAL → cajas+saldos, igual que en entradas/ajustes —
+                        // antes quedaba en 0/0 para picking y el Kardex mostraba "Cajas"/
+                        // "Saldos" vacíos solo en estas filas.
+                        'cantidad_cajas'       => (int)floor($descuento / $upc),
+                        'saldos'               => round(fmod($descuento, $upc), 2),
                         'ubicacion_origen_id'  => $inv->ubicacion_id,
                         'ubicacion_destino_id' => $inv->ubicacion_id,
                         'lote'                 => $inv->lote,
@@ -4060,6 +4065,10 @@ class PickingController extends BaseController
                             if ($inv->cantidad <= 0) {
                                 $inv->delete();
                             } else {
+                                // Recalcular desglose UND/TOTAL → cajas+saldos tras el
+                                // descuento (antes quedaba desactualizado en la fila).
+                                $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $upcConf);
+                                $inv->saldos         = round(fmod((float)$inv->cantidad, $upcConf), 2);
                                 $inv->save();
                             }
 
@@ -4072,6 +4081,9 @@ class PickingController extends BaseController
                                 'producto_id'         => $det->producto_id,
                                 'tipo_movimiento'     => 'Picking',
                                 'cantidad'            => $descuento,
+                                // Desglose UND/TOTAL → cajas+saldos para el Kardex (antes 0/0).
+                                'cantidad_cajas'      => (int)floor($descuento / $upcConf),
+                                'saldos'              => round(fmod($descuento, $upcConf), 2),
                                 'ubicacion_origen_id' => $inv->ubicacion_id,
                                 'lote'                => $inv->lote,
                                 'fecha_vencimiento'   => $inv->fecha_vencimiento,
