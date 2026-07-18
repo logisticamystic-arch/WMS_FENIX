@@ -203,6 +203,10 @@ class InventarioController extends BaseController
         if ($deny = $this->requireSelectedTenantForSuperAdmin($user, $req, $res, true)) {
             return $deny;
         }
+        // Mover inventario entre ubicaciones tiene el mismo impacto que un ajuste manual
+        // (ajuste()/crearConteo() ya exigen supervisor) — sin este control, cualquier
+        // usuario autenticado podía trasladar stock entre ubicaciones sin autorización.
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
         [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $req);
         $data = $req->getParsedBody() ?? [];
@@ -496,7 +500,7 @@ class InventarioController extends BaseController
 
                 $tipo = $diferencia >= 0 ? 'AjustePositivo' : 'AjusteNegativo';
                 // FIX: usar getEffectiveEmpresaId y sucursal_id directamente (evitar $empresaId/$sucursalId indefinidos en closure)
-                MovimientoInventario::create([
+                $mov = MovimientoInventario::create([
                     'empresa_id'           => $this->getEffectiveEmpresaId($user, $req),
                     'sucursal_id'          => $user->sucursal_id,
                     'producto_id'          => $data['producto_id'],
@@ -513,6 +517,32 @@ class InventarioController extends BaseController
                     'observaciones'        => $data['motivo'],
                     'fecha_movimiento'     => date('Y-m-d'),
                     'hora_inicio'          => date('H:i:s'),
+                ]);
+
+                // Registro inmutable en ajustes_inventario — antes este endpoint solo
+                // escribía en MovimientoInventario, dejando la trazabilidad de auditoría
+                // de este flujo distinta a la de AjusteUbicacionController/InventarioV2Controller
+                // (que sí usan este modelo). Unifica ambos flujos en la misma fuente de verdad.
+                \App\Models\AjusteInventario::create([
+                    'empresa_id'        => $this->getEffectiveEmpresaId($user, $req),
+                    'sucursal_id'       => $user->sucursal_id,
+                    'origen'            => \App\Models\AjusteInventario::ORIGEN_MANUAL,
+                    'movimiento_id'     => $mov->id,
+                    'producto_id'       => $data['producto_id'],
+                    'ubicacion_id'      => $data['ubicacion_id'],
+                    'lote'              => $data['lote'] ?? null,
+                    'fecha_vencimiento' => $fvencParsed,
+                    'cantidad_fisica'   => $cantidadNueva,
+                    'cantidad_sistema'  => $cantidadAnterior,
+                    'diferencia'        => $diferencia,
+                    'tipo_ajuste'       => $diferencia >= 0
+                        ? \App\Models\AjusteInventario::TIPO_ENTRADA
+                        : \App\Models\AjusteInventario::TIPO_SALIDA,
+                    'motivo'            => $data['motivo'],
+                    'auxiliar_id'       => null,
+                    'ajustado_por'      => $user->id,
+                    'fecha'             => date('Y-m-d'),
+                    'hora'              => date('H:i:s'),
                 ]);
             });
 

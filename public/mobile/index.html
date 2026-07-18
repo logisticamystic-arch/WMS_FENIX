@@ -5838,8 +5838,46 @@ const MWMS = {
         saldos_tomados:  saldosTomados !== null ? saldosTomados : undefined,
         planilla_numero: planillaNumero
       });
-      this.toast("Confirmado " + qtyActual + " und", "success");
-      
+
+      // Mensaje de confirmación por línea: garantiza que el auxiliar verifique lo
+      // separado (sucursal, solicitado vs. separado por cajas/saldos/total y
+      // vencimiento) antes de continuar a la siguiente referencia.
+      const factorConf  = parseInt(it.unidades_caja) || 1;
+      const cajasConf    = cajasTomadas   !== null ? cajasTomadas   : (factorConf > 1 ? Math.floor(qtyActual / factorConf) : 0);
+      const saldosConf   = saldosTomados  !== null ? saldosTomados  : (factorConf > 1 ? Math.round((qtyActual - cajasConf * factorConf) * 1000) / 1000 : qtyActual);
+      const venceConfTxt = it.fecha_vencimiento ? this.formatDateShort(it.fecha_vencimiento) : 'Sin fecha de vencimiento';
+      await Swal.fire({
+        title: '<i class="fa-solid fa-circle-check" style="color:#059669;"></i> Separación Confirmada',
+        html: `
+          <div style="text-align:left;font-size:.85rem;">
+            <div style="background:#0f172a;padding:10px;border-radius:8px;margin-bottom:10px;color:#fff;">
+              <div style="font-size:.6rem;opacity:.7;font-weight:700;text-transform:uppercase;">Sucursal / Entrega</div>
+              <div style="font-size:.9rem;font-weight:800;">${this.esc(it.sucursal_entrega || 'Sin sucursal')}</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+              <div style="background:#f1f5f9;padding:8px;border-radius:8px;text-align:center;">
+                <div style="font-size:.58rem;font-weight:700;color:#64748b;">SOLICITADO</div>
+                <div style="font-size:1.15rem;font-weight:900;color:#0F4C81;">${it.cantidad_total}</div>
+              </div>
+              <div style="background:#dcfce7;padding:8px;border-radius:8px;text-align:center;">
+                <div style="font-size:.58rem;font-weight:700;color:#166534;">SEPARADO</div>
+                <div style="font-size:1.15rem;font-weight:900;color:#15803d;">${qtyActual}</div>
+              </div>
+            </div>
+            ${factorConf > 1 ? `
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:8px;border-radius:8px;margin-bottom:10px;text-align:center;font-size:.8rem;">
+              <b>${cajasConf}</b> cajas × ${factorConf} + <b>${saldosConf}</b> sueltos = <b>${qtyActual}</b> und/total
+            </div>` : ''}
+            <div style="background:#fef2f2;border:1px solid #fca5a5;padding:8px 10px;border-radius:8px;display:flex;align-items:center;gap:8px;">
+              <i class="fa-solid fa-calendar-days" style="color:#dc2626;"></i>
+              <span style="font-size:.8rem;font-weight:700;color:#991b1b;">Vence: ${venceConfTxt}</span>
+            </div>
+          </div>`,
+        confirmButtonText: '<i class="fa-solid fa-check"></i> Confirmado, continuar',
+        confirmButtonColor: '#059669',
+        width: '340px',
+      });
+
       // Pasar a la siguiente tarea automáticamente
       const r = await mApi('GET', `/picking/planilla/${planillaNumero}`);
       this._itemsPlanilla = r.data || [];

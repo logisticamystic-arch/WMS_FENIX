@@ -80,6 +80,12 @@ class TraspasoController extends BaseController
     public function create(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
+        // Un traspaso es una salida DEFINITIVA de stock (a cliente, donación, destrucción,
+        // consumo interno o devolución a proveedor — ver Traspaso::MOTIVOS), el mismo
+        // impacto que un ajuste manual. Sin este control, cualquier usuario autenticado
+        // podía descontar/eliminar inventario real sin autorización de supervisor.
+        if ($deny = $this->requireSupervisor($user, $response)) return $deny;
+
         $data = $request->getParsedBody();
 
         $required = ['producto_id', 'ubicacion_id', 'cantidad', 'motivo'];
