@@ -5604,6 +5604,44 @@ class PickingController extends BaseController
         };
 
         // ── Closure: query de ítems por lista de orden IDs ───────────────────
+        // ── Closure: agotados (faltantes de picking) por lista de orden IDs,
+        // mostrando a qué pedido pertenece cada uno — antes esta remisión no tenía
+        // ninguna sección de agotados en absoluto.
+        $buildAgotados = function ($ordenIds) {
+            $rows = Capsule::table('picking_faltantes as pf')
+                ->join('productos as p', 'p.id', '=', 'pf.producto_id')
+                ->leftJoin('orden_pickings as op', 'op.id', '=', 'pf.orden_picking_id')
+                ->whereIn('pf.orden_picking_id', $ordenIds)
+                ->select([
+                    'p.codigo_interno as codigo',
+                    'p.nombre',
+                    Capsule::raw('SUM(pf.cantidad_faltante) as faltante'),
+                    Capsule::raw("COALESCE(NULLIF(op.numero_factura, ''), op.numero_orden, '—') as pedido"),
+                    Capsule::raw("STRING_AGG(DISTINCT COALESCE(pf.causa, 'Sin stock'), ', ') as causa"),
+                ])
+                ->groupBy('p.codigo_interno', 'p.nombre', 'op.numero_factura', 'op.numero_orden')
+                ->orderBy('p.nombre')
+                ->get();
+
+            if ($rows->isEmpty()) return '';
+
+            $filas = '';
+            foreach ($rows as $r) {
+                $filas .= "<tr>"
+                    . "<td style='white-space:nowrap'>{$r->codigo}</td>"
+                    . "<td>{$r->nombre}</td>"
+                    . "<td style='white-space:nowrap;font-weight:700'>{$r->pedido}</td>"
+                    . "<td style='text-align:right'>{$r->faltante}</td>"
+                    . "<td>{$r->causa}</td>"
+                    . "</tr>";
+            }
+            return "<div class='agotados-section'><div class='agotados-header'>PRODUCTOS AGOTADOS / FALTANTES</div>"
+                . "<table style='table-layout:fixed;width:100%;'><colgroup>"
+                . "<col style='width:12%;'><col style='width:36%;'><col style='width:18%;'><col style='width:12%;'><col style='width:22%;'></colgroup>"
+                . "<thead><tr><th>C&oacute;digo</th><th>Producto</th><th>Pedido</th><th style='text-align:right;'>Faltante</th><th>Causa</th></tr></thead>"
+                . "<tbody>{$filas}</tbody></table></div>";
+        };
+
         $queryItems = function ($ordenIds) {
             return Capsule::table('picking_detalles as pd')
                 ->join('productos as p', 'p.id', '=', 'pd.producto_id')
@@ -5691,6 +5729,7 @@ class PickingController extends BaseController
                 // solo la etiqueta interna de planilla ("Planilla 200") — mostrar eso aquí
                 // duplicaba el campo "Planilla" y dejaba de mostrarse el pedido real.
                 'pedidos'    => $ordenes->map(fn($o) => trim($o->numero_factura ?: $o->numero_orden ?: ''))->filter()->unique()->implode(', '),
+                'agotadosHtml' => $buildAgotados($ordenIds),
             ];
         }
 
@@ -5718,6 +5757,8 @@ class PickingController extends BaseController
         .novedades-section{margin-top:12px;border:2px solid #1e3a5f;border-radius:4px;overflow:hidden;page-break-inside:avoid}
         .novedades-header{background:#1e3a5f;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.3px}
         .novedades-section td{height:22px}
+        .agotados-section{margin-top:10px;border:2px solid #b91c1c;border-radius:4px;overflow:hidden;page-break-inside:avoid}
+        .agotados-header{background:#b91c1c;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.3px}
         .firmas{display:grid;grid-template-columns:1fr 1fr 1fr;gap:40px;margin-top:30px;page-break-inside:avoid}
         .firma-line{border-top:2px solid #1e3a5f;padding-top:5px;text-align:center;font-size:10px;color:#334155}
         .no-print{padding:8px 0;margin-bottom:10px}
@@ -5804,6 +5845,7 @@ class PickingController extends BaseController
                 . "  <span class='campo'><span class='lbl'>Total unidades:</span>{$pr['und']}</span>"
                 . "</div>"
                 . "<div class='ambientes-grid'>{$pr['html']}</div>"
+                . ($page['agotadosHtml'] ?? '')
                 . $novedadesHtml
                 . "<div class='totales'>TOTAL: {$pr['cj']} cj &mdash; {$pr['und']} und certificadas</div>"
                 . "<div class='firmas'>"
@@ -5813,14 +5855,23 @@ class PickingController extends BaseController
                 . "</div></div>";
         }
 
+        // La página consolidada resume/repite lo mismo que la única página individual
+        // cuando solo hay un grupo (una planilla o un cliente) seleccionado — mostrarla
+        // igual producía el efecto de "la remisión sale doble". Solo tiene sentido
+        // cuando se combinan 2+ grupos distintos.
+        $incluirConsolidado = $nSucs > 1;
+        $subtitulo = $incluirConsolidado
+            ? "{$nSucs} pedido(s): consolidado + remisi&#243;n individual por pedido"
+            : "1 pedido/planilla seleccionado";
+
         $html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'>"
             . "<title>Remisi&#243;n M&#250;ltiple &mdash; {$nSucs} pedidos</title>"
             . "<style>{$css}</style></head><body>"
             . "<div class='no-print'>"
             . "  <button onclick='window.print()'>&#128424; Imprimir / Guardar PDF</button>"
-            . "  <small style='color:#666'>{$nSucs} pedido(s): consolidado + remisi&#243;n individual por pedido</small>"
+            . "  <small style='color:#666'>{$subtitulo}</small>"
             . "</div>"
-            . $consolidadoPage
+            . ($incluirConsolidado ? $consolidadoPage : '')
             . $individualPages
             . "</body></html>";
 

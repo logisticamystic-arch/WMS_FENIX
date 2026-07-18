@@ -513,9 +513,14 @@ WMS_MODULES.despacho = {
   },
 
   async imprimirRemisionesDirectasSeleccionadas() {
-    const checks = document.querySelectorAll('.cert-remision-check-directa:checked');
+    // Solo cuentan los checkboxes de filas VISIBLES: si el usuario filtró por
+    // sucursal/búsqueda y había marcado filas de otra sucursal antes de cambiar el
+    // filtro, esas quedan ocultas pero seguían "checked" en el DOM — se ignoran
+    // para que la remisión combine solo lo que se ve y se seleccionó a propósito.
+    const checks = Array.from(document.querySelectorAll('.cert-remision-check-directa:checked'))
+      .filter(cb => cb.closest('tr')?.style.display !== 'none');
     if (!checks.length) {
-      WMS.toast('warning', 'Selecciona al menos una planilla para imprimir');
+      WMS.toast('warning', 'Selecciona al menos una planilla visible para imprimir');
       return;
     }
     // Combina EXACTAMENTE los pedidos de las filas marcadas — el usuario elige
