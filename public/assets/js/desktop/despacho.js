@@ -138,16 +138,31 @@ WMS_MODULES.despacho = {
       const esAdmin = ['Admin','SuperAdmin'].includes(WMS.user?.rol);
       const totalCert = completadasOk.length + certSinSesion.length;
 
+      // Sucursales distintas visibles con los filtros de fecha actuales — permite
+      // aislar de inmediato "las planillas/pedidos de ESTE cliente en esta fecha"
+      // en vez de buscar por texto libre entre todos los clientes mezclados.
+      const sucursalesDisponibles = [...new Set([
+        ...sinSesion.map(p => p.sucursal_entrega),
+        ...completadasOk.map(s => s.sucursal_entrega),
+        ...certSinSesion.map(c => c.sucursal_entrega),
+      ].filter(Boolean))].sort((a,b) => a.localeCompare(b));
+
       WMS.setContent(`
-        <!-- ── Buscador global dinámico ── -->
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-          <div style="flex:1;position:relative;">
+        <!-- ── Buscador global dinámico + selector de sucursal ── -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:220px;position:relative;">
             <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:13px;"></i>
             <input id="cert-search" type="text" placeholder="Buscar cliente, sucursal o producto..."
               style="width:100%;padding:8px 12px 8px 34px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;outline:none;transition:border .15s;"
               oninput="WMS_MODULES.despacho._certFiltrarGlobal(this.value)"
               onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e5e7eb'">
           </div>
+          <select id="cert-sucursal-select"
+            style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;min-width:220px;background:#fff;"
+            onchange="WMS_MODULES.despacho._certFiltrarPorSucursal(this.value)">
+            <option value="">— Todas las sucursales (${sucursalesDisponibles.length}) —</option>
+            ${sucursalesDisponibles.map(s => `<option value="${WMS.esc(s)}">${WMS.esc(s)}</option>`).join('')}
+          </select>
           <span id="cert-search-count" style="font-size:12px;color:#6b7280;white-space:nowrap;"></span>
         </div>
 
@@ -417,6 +432,16 @@ WMS_MODULES.despacho = {
         </div>` : ''}
       `);
     } catch(e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
+  },
+
+  // Selector estructurado de sucursal — reutiliza el filtro de texto (la sucursal
+  // completa siempre es un match preciso, ninguna fila de otra sucursal la contiene)
+  // pero se presenta como un <select> en vez de texto libre, y sincroniza el buscador
+  // para que ambos filtros queden consistentes.
+  _certFiltrarPorSucursal(sucursal) {
+    const search = document.getElementById('cert-search');
+    if (search) search.value = sucursal || '';
+    this._certFiltrarGlobal(sucursal || '');
   },
 
   _certFiltrarGlobal(q) {
