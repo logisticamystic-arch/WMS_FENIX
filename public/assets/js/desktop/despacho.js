@@ -282,8 +282,8 @@ WMS_MODULES.despacho = {
             <table class="erp-table cert-searchable" id="cert-table-done">
               <thead><tr>
                 <th style="width:36px;text-align:center;">
-                  <input type="checkbox" id="cert-sel-all" title="Seleccionar todas"
-                    onchange="document.querySelectorAll('.cert-remision-check,.cert-remision-check-directa').forEach(cb=>cb.checked=this.checked)">
+                  <input type="checkbox" id="cert-sel-all" title="Seleccionar todas (solo filas visibles)"
+                    onchange="document.querySelectorAll('.cert-remision-check,.cert-remision-check-directa').forEach(cb=>{ if(cb.closest('tr')?.style.display!=='none') cb.checked=this.checked; })">
                 </th>
                 <th>Cliente / Sucursal</th>
                 <th class="text-center">Tipo</th>
