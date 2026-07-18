@@ -5443,12 +5443,13 @@ class PickingController extends BaseController
                 'op.planilla_numero',
                 'op.numero_orden',
                 'op.numero_factura',
+                'op.observaciones',
                 'op.fecha_movimiento',
                 'op.fecha_certificacion',
                 Capsule::raw("$strAgg as certificador_nombre")
             )
             ->groupBy('op.id', 'op.sucursal_entrega', 'op.planilla_numero', 'op.numero_orden',
-                'op.numero_factura', 'op.fecha_movimiento', 'op.fecha_certificacion')
+                'op.numero_factura', 'op.observaciones', 'op.fecha_movimiento', 'op.fecha_certificacion')
             ->get();
 
         if ($ordenes->isEmpty()) return $this->ok($res, []);
@@ -5489,6 +5490,7 @@ class PickingController extends BaseController
                     'planilla_numero'     => $planillaLabel,
                     'orden_ids'           => [],
                     'pedidos_numeros'     => [],
+                    'observaciones_set'   => [],
                     'total_pedidos'       => 0,
                     'total_lineas'        => 0,
                     'total_unidades'      => 0,
@@ -5500,6 +5502,9 @@ class PickingController extends BaseController
             }
             $result[$key]['orden_ids'][]       = $o->id;
             $result[$key]['pedidos_numeros'][] = trim($o->numero_factura ?: $o->numero_orden ?: '');
+            if (!empty(trim($o->observaciones ?? ''))) {
+                $result[$key]['observaciones_set'][trim($o->observaciones)] = true;
+            }
             $result[$key]['total_pedidos']++;
             $result[$key]['total_lineas']      += (int)($agg->total_refs ?? 0);
             $result[$key]['total_unidades']    += (float)($agg->total_unidades ?? 0);
@@ -5520,13 +5525,48 @@ class PickingController extends BaseController
         foreach ($result as &$row) {
             $row['ambientes']        = implode(', ', array_keys($row['ambientes_set']));
             $row['pedidos_numeros']  = array_values(array_filter($row['pedidos_numeros']));
-            unset($row['ambientes_set']);
+            $row['observaciones']    = implode(' | ', array_keys($row['observaciones_set']));
+            unset($row['ambientes_set'], $row['observaciones_set']);
         }
         unset($row);
 
         uasort($result, fn($a, $b) => strcmp($b['fecha_certificacion'] ?? '', $a['fecha_certificacion'] ?? ''));
 
         return $this->ok($res, array_values($result));
+    }
+
+    // ── GET /api/picking/certificacion/despachados-directo ───────────────────
+    // Pedidos marcados como retiro directo (ver marcarDespachadoDirecto) — excluidos
+    // de certCertificadas()/remisión, pero deben seguir siendo visibles en el módulo
+    // de despachos para que quede constancia de por qué no se imprimieron.
+    public function certDespachadosDirecto(Request $r, Response $res): Response
+    {
+        $user       = $r->getAttribute('user');
+        $empresaId  = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
+        $qp         = $r->getQueryParams();
+
+        $ordenes = OrdenPicking::leftJoin('personal as marc', 'marc.id', '=', 'orden_pickings.despachado_directo_por')
+            ->where('orden_pickings.empresa_id', $empresaId)
+            ->where('orden_pickings.sucursal_id', $sucursalId)
+            ->where('orden_pickings.despachado_directo', true)
+            ->when($qp['fecha_inicio'] ?? null, fn($q, $v) => $q->where('orden_pickings.fecha_movimiento', '>=', $v))
+            ->when($qp['fecha_fin'] ?? null, fn($q, $v) => $q->where('orden_pickings.fecha_movimiento', '<=', $v))
+            ->select(
+                'orden_pickings.id',
+                'orden_pickings.sucursal_entrega',
+                'orden_pickings.planilla_numero',
+                'orden_pickings.numero_orden',
+                'orden_pickings.numero_factura',
+                'orden_pickings.observaciones',
+                'orden_pickings.fecha_movimiento',
+                'orden_pickings.despachado_directo_at',
+                Capsule::raw('marc.nombre as marcado_por')
+            )
+            ->orderBy('orden_pickings.despachado_directo_at', 'desc')
+            ->get();
+
+        return $this->ok($res, $ordenes);
     }
 
     // ── GET /api/picking/certificacion/remision-multiple ─────────────────────
