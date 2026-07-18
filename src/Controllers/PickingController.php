@@ -1392,6 +1392,16 @@ class PickingController extends BaseController
 
         if (!$linea) return $this->notFound($res, 'Línea no encontrada');
 
+        // R07 — idempotencia: sin este guard, un doble clic/reintento de red/replay sobre
+        // una línea que YA fue confirmada volvía a descontar inventario físico real una
+        // segunda vez (el fallback FEFO multi-ubicación de abajo ni siquiera fallaría por
+        // "stock insuficiente" en muchos casos, ocultando el doble descuento).
+        if (!in_array($linea->estado, ['Pendiente', 'EnProceso'], true)) {
+            return $this->error($res,
+                "Esta línea ya fue confirmada (estado actual: {$linea->estado}). Recargue el picking antes de continuar.",
+                409);
+        }
+
         $cantidadTomada = (float)($data['cantidad_tomada'] ?? 0);
         if ($cantidadTomada <= 0) return $this->error($res, 'Cantidad inválida');
 
@@ -3950,6 +3960,17 @@ class PickingController extends BaseController
 
         if ($detalles->isEmpty()) {
             return $this->error($res, 'Líneas no encontradas.', 404);
+        }
+
+        // R07 — idempotencia: mismo guard que confirmLine(). Sin esto, un doble
+        // tap/reintento de red sobre "Confirmar" en el picking consolidado móvil
+        // volvía a descontar inventario físico real una segunda vez sobre líneas
+        // ya confirmadas.
+        $yaConfirmadas = $detalles->filter(fn($d) => !in_array($d->estado, ['Pendiente', 'EnProceso'], true));
+        if ($yaConfirmadas->isNotEmpty()) {
+            return $this->error($res,
+                'Una o más líneas ya fueron confirmadas (estado: ' . $yaConfirmadas->pluck('estado')->unique()->implode(', ') . '). Recargue el picking antes de continuar.',
+                409);
         }
 
         // El frontend envía cantidad_tomada en CAJAS (c + s/upc).

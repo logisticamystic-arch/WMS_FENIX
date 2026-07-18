@@ -1691,6 +1691,14 @@ class InventarioV2Controller extends BaseController
                       ? Carbon::parse($data['fecha_vencimiento'])->format('Y-m-d')
                       : null;
 
+                // Sin este chequeo, una corrección de tipo Entrada podía registrar como
+                // "Disponible" stock cuya fecha_vencimiento ya pasó — este endpoint no
+                // tenía ninguna validación de vencimiento (a diferencia de picking/packing/
+                // recepción, que sí bloquean vencido vía ExpiryGuard/InventoryGuard R09-R10).
+                if ($data['tipo_ajuste'] === 'Entrada' && $fv && strtotime($fv) < strtotime(date('Y-m-d'))) {
+                    throw new \RuntimeException("La fecha de vencimiento ({$fv}) ya pasó. No se puede registrar como stock disponible.");
+                }
+
                 // Buscar registro de inventario existente
                 $invQuery = Inventario::where('empresa_id',  $this->getEffectiveEmpresaId($user, $req))
                     ->where('sucursal_id',  $user->sucursal_id)

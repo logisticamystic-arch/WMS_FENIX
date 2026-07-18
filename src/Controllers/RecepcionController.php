@@ -507,13 +507,15 @@ class RecepcionController extends BaseController
             // 2. Afectar Tabla de Inventarios (Disponible en Patio)
             // lockForUpdate: evita "lost update" si dos capturas concurrentes (dos móviles,
             // o esta misma ruta llamada dos veces) suman cantidad sobre la misma fila a la vez.
+            // Mercancía con novedad (estado_mercancia != BuenEstado) va a Cuarentena en vez de
+            // Disponible — antes entraba como stock normal, disponible para picking sin control.
             $_invKeyPatio = [
                 'empresa_id'   => $this->getEffectiveEmpresaId($user, $request),
                 'sucursal_id'  => $user->sucursal_id,
                 'producto_id'  => $producto->id,
                 'ubicacion_id' => $ubicacionDestinoId,
                 'lote'         => $data['lote'] ?? 'N/A',
-                'estado'       => 'Disponible',
+                'estado'       => ($detalle->estado_mercancia === 'BuenEstado' || empty($detalle->estado_mercancia)) ? 'Disponible' : 'Cuarentena',
                 'numero_pallet' => $detalle->numero_pallet,
             ];
             $inv = \App\Models\Inventario::where($_invKeyPatio)->lockForUpdate()->first();
@@ -829,13 +831,16 @@ class RecepcionController extends BaseController
                 'lote'                 => $data['lote'] ?? 'N/A',
             ]);
 
+            // Mercancía con novedad (estado_mercancia != BuenEstado) va a Cuarentena en vez
+            // de Disponible — antes entraba como stock normal, disponible para picking sin
+            // ningún control de calidad.
             $_invKeySinOdc = [
                 'empresa_id'    => $this->getEffectiveEmpresaId($user, $request),
                 'sucursal_id'   => $user->sucursal_id,
                 'producto_id'   => $producto->id,
                 'ubicacion_id'  => $ubicacionDestinoId,
                 'lote'          => $data['lote'] ?? 'N/A',
-                'estado'        => 'Disponible',
+                'estado'        => ($detalle->estado_mercancia === 'BuenEstado' || empty($detalle->estado_mercancia)) ? 'Disponible' : 'Cuarentena',
                 'numero_pallet' => $detalle->numero_pallet,
             ];
             $inv = \App\Models\Inventario::where($_invKeySinOdc)->lockForUpdate()->first();
@@ -1180,13 +1185,16 @@ class RecepcionController extends BaseController
                     // fecha_vencimiento entra en la clave (sin numero_pallet aquí, a
                     // diferencia de las otras dos rutas de recepción) — es el diferenciador
                     // real entre partidas del mismo lote/producto/ubicación.
+                    // Mercancía con novedad (estado_mercancia != BuenEstado) va a Cuarentena
+                    // en vez de Disponible — antes entraba como stock normal disponible para
+                    // picking sin ningún control de calidad.
                     $_invKeyConfirm = [
                         'empresa_id'   => $recepcion->empresa_id,
                         'sucursal_id'  => $recepcion->sucursal_id,
                         'producto_id'  => $linea->producto_id,
                         'ubicacion_id' => $ubicacionInventario,
                         'lote'         => $linea->lote,
-                        'estado'       => 'Disponible',
+                        'estado'       => ($linea->estado_mercancia === 'BuenEstado' || empty($linea->estado_mercancia)) ? 'Disponible' : 'Cuarentena',
                     ];
                     if ($linea->fecha_vencimiento) {
                         $_invKeyConfirm['fecha_vencimiento'] = $linea->fecha_vencimiento;
@@ -1274,6 +1282,11 @@ class RecepcionController extends BaseController
                 $origenCondition['fecha_vencimiento'] = $detalle->fecha_vencimiento;
             }
 
+            // Mercancía con novedad (estado_mercancia != BuenEstado) se aprueba a Cuarentena
+            // en vez de Disponible — antes, incluso en este checkpoint de supervisor, el
+            // pallet pasaba a stock normal sin importar la novedad registrada.
+            $_estadoDestinoAprob = ($detalle->estado_mercancia === 'BuenEstado' || empty($detalle->estado_mercancia)) ? 'Disponible' : 'Cuarentena';
+
             if ($ubicacionInventario) {
                 $invPatio = Inventario::where($origenCondition)->first();
 
@@ -1292,7 +1305,7 @@ class RecepcionController extends BaseController
                         'producto_id'  => $detalle->producto_id,
                         'ubicacion_id' => $ubicacionInventario,
                         'lote'         => $detalle->lote,
-                        'estado'       => 'Disponible',
+                        'estado'       => $_estadoDestinoAprob,
                     ]);
                     $invDisp->cantidad           = ($invDisp->cantidad ?? 0) + $cantAprobada;
                     $invDisp->cantidad_reservada = $invDisp->cantidad_reservada ?? 0;
@@ -1318,7 +1331,7 @@ class RecepcionController extends BaseController
                         'auxiliar_id'          => $user->id,
                         'referencia_tipo'      => 'recepciones',
                         'referencia_id'        => $recepcion->id,
-                        'observaciones'        => "Aprobación de pallet: En Patio → Disponible — Recepción {$recepcion->numero_recepcion}",
+                        'observaciones'        => "Aprobación de pallet: En Patio → {$_estadoDestinoAprob} — Recepción {$recepcion->numero_recepcion}",
                         'fecha_movimiento'     => date('Y-m-d'),
                         'hora_inicio'          => date('H:i:s'),
                     ]);
@@ -1333,7 +1346,7 @@ class RecepcionController extends BaseController
                             'producto_id'  => $detalle->producto_id,
                             'ubicacion_id' => $ubicacionInventario,
                             'lote'         => $detalle->lote,
-                            'estado'       => 'Disponible',
+                            'estado'       => $_estadoDestinoAprob,
                         ],
                         [
                             'cantidad'           => $detalle->cantidad_recibida,

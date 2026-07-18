@@ -565,6 +565,18 @@ class DevolucionController extends BaseController
             if (!in_array($destino, $destinosValidos, true)) {
                 return $this->error($response, 'Todos los ítems deben tener destino asignado (restock, descarte o proveedor)', 422);
             }
+            // DevolucionController no tenía ninguna validación de vencimiento — un producto
+            // ya vencido podía reingresar a stock "Disponible" (aunque fuera a PATIO-DEV)
+            // sin ningún control, a diferencia de picking/packing/recepción que sí bloquean
+            // vencido. Restock de un ítem ya vencido se rechaza; debe ir a descarte o proveedor.
+            if ($destino === DevolucionDetalle::DESTINO_RESTOCK
+                && $det->fecha_vencimiento
+                && strtotime($det->fecha_vencimiento) < strtotime(date('Y-m-d'))
+            ) {
+                return $this->error($response,
+                    "El ítem \"{$det->producto_id}\" (lote {$det->lote}, vence {$det->fecha_vencimiento}) ya está vencido. No se puede reingresar a stock — seleccione descarte o devolución a proveedor.",
+                    422);
+            }
         }
 
         return \Illuminate\Database\Capsule\Manager::transaction(function () use (

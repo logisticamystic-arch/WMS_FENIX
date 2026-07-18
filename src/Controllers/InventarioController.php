@@ -441,6 +441,17 @@ class InventarioController extends BaseController
                     if (!$checkDate['ok']) {
                         throw new \Exception($checkDate['message']);
                     }
+
+                    // R09 solo valida que la fecha venga informada — no si ya está vencida.
+                    // ExpiryGuard::check() no sirve aquí tal cual: busca una fila de
+                    // inventarios YA EXISTENTE con esa fecha exacta, y en una entrada nueva
+                    // (partida que aún no existe) nunca la encontraría — pasaría en falso.
+                    // Se valida la fecha directamente: sin esto, un ajuste manual podía
+                    // registrar como "Disponible" stock ya vencido, saltándose el control
+                    // R10 que sí aplica en picking/packing/recepción.
+                    if ($fvencParsed && strtotime($fvencParsed) < strtotime(date('Y-m-d'))) {
+                        throw new \Exception("La fecha de vencimiento ({$fvencParsed}) ya pasó. No se puede registrar como stock disponible.");
+                    }
                 }
 
                 $cantidadAnterior = $inv ? $inv->cantidad : 0;
