@@ -686,6 +686,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         // Certificación por Sucursal
         $group->get('/certificacion/pendientes',             [\App\Controllers\PickingController::class, 'certPendientes']);
         $group->get('/certificacion/certificadas',           [\App\Controllers\PickingController::class, 'certCertificadas']);
+        $group->get('/certificacion/despachados-directo',    [\App\Controllers\PickingController::class, 'certDespachadosDirecto']);
         $group->get('/certificacion/detalle/{sucursal}',        [\App\Controllers\PickingController::class, 'certDetalle']);
         $group->get('/certificacion/admin-detalle/{sucursal}',  [\App\Controllers\PickingController::class, 'certAdminDetalle']);
         $group->put('/certificacion/admin-lote/{sucursal}',     [\App\Controllers\PickingController::class, 'certAdminLote']);
