@@ -13,6 +13,8 @@ WMS_MODULES.inteligencia = {
   _sub: 'vencimientos',
   _data: [],        // Caché local para filtrado rápido
   _riskFilter: null, // Filtro activo (critico, alto, medio, bajo o null)
+  _diasVenc: 30,     // Ventana de días para "próximos a vencer" — antes cargaba 365 días
+                      // (casi todo el catálogo) en cada apertura del módulo.
 
   load(sub) {
     this._sub = sub || 'vencimientos';
@@ -50,7 +52,8 @@ WMS_MODULES.inteligencia = {
   // ══════════════════════════════════════════════════════════════════
   // 1. PREDICCIONES DE VENCIMIENTO
   // ══════════════════════════════════════════════════════════════════
-  async renderVencimientos() {
+  async renderVencimientos(dias = null) {
+    if (dias) this._diasVenc = dias;
     WMS.setToolbar(`
       <button class="pro-btn-refresh" onclick="WMS_MODULES.inteligencia.renderVencimientos()">
         <span class="spin"><i class="fa-solid fa-rotate-right"></i></span> Actualizar
@@ -58,11 +61,19 @@ WMS_MODULES.inteligencia = {
       <button class="btn btn-sm btn-primary ms-2" onclick="WMS_MODULES.inteligencia.scanVencimientos()">
         <i class="fa-solid fa-brain"></i> Ejecutar ML
       </button>
+      <span style="display:flex;align-items:center;gap:6px;margin-left:10px;">
+        <span style="font-size:.75rem;color:#64748b;font-weight:600;">Ventana:</span>
+        ${[15, 30, 60, 90, 365].map(d => `
+          <button class="btn btn-sm ${d === this._diasVenc ? 'btn-primary' : 'btn-outline-secondary'}"
+            style="font-size:.72rem;padding:3px 9px;"
+            onclick="WMS_MODULES.inteligencia.renderVencimientos(${d})">${d}d</button>
+        `).join('')}
+      </span>
     `);
     WMS.spinner();
 
     try {
-      const r = await API.get('/inteligencia/vencimientos');
+      const r = await API.get('/inteligencia/vencimientos', `dias=${this._diasVenc}`);
       const raw = r.predictions || (r.data ? (r.data.predictions || r.data) : []);
       this._data = Array.isArray(raw) ? raw : [];
     } catch (e) {
@@ -71,7 +82,7 @@ WMS_MODULES.inteligencia = {
     }
 
     if (!this._data.length) {
-      WMS.setContent(`<div class="m-empty"><i class="fa-solid fa-check-circle" style="color:#22c55e"></i><p>Sin predicciones de riesgo activas. Ejecuta el ML para calcular.</p></div>`);
+      WMS.setContent(`<div class="m-empty"><i class="fa-solid fa-check-circle" style="color:#22c55e"></i><p>Sin predicciones de riesgo en los próximos ${this._diasVenc} días. Amplía la ventana o ejecuta el ML para recalcular.</p></div>`);
       return;
     }
 

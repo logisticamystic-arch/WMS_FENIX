@@ -36,9 +36,14 @@ class AnomalyController extends BaseController
     {
         $user   = $req->getAttribute('user');
         $params = $req->getQueryParams();
-        $dias   = min(365, max(1, (int)($params['dias'] ?? 365)));
+        // Default 30 días (no 365): antes cargaba y corría el predictor ML sobre
+        // prácticamente todo el catálogo con vencimiento en el próximo año en cada
+        // apertura del módulo — lento y sin priorizar lo realmente urgente. El
+        // usuario puede ampliar la ventana explícitamente (?dias=90, ?dias=365).
+        $dias   = min(365, max(1, (int)($params['dias'] ?? 30)));
 
-        // Cargar inventarios con fecha de vencimiento próxima
+        // Cargar inventarios con fecha de vencimiento próxima — orden ASC: lo más
+        // próximo a vencer primero, tanto para la respuesta como para el predictor.
         $inventarios = Capsule::table('inventarios as i')
             ->join('productos as p', 'p.id', '=', 'i.producto_id')
             ->where('i.empresa_id',  $this->getEffectiveEmpresaId($user, $req))
@@ -53,13 +58,15 @@ class AnomalyController extends BaseController
                 Capsule::raw('MIN(i.id) as inv_id'),
             ])
             ->groupBy('i.producto_id', 'p.nombre', 'p.codigo_interno', 'i.lote', 'i.fecha_vencimiento')
+            ->orderBy('i.fecha_vencimiento', 'asc')
             ->get();
 
         if ($inventarios->isEmpty()) {
             return $this->ok($res, [
                 'predictions' => [],
                 'resumen' => ['riesgo_alto' => 0, 'mensaje' => 'No hay stock con vencimiento próximo.'],
-                'total_productos' => 0
+                'total_productos' => 0,
+                'dias_ventana' => $dias,
             ]);
         }
 
@@ -116,6 +123,7 @@ class AnomalyController extends BaseController
             );
         }
 
+        $result['dias_ventana'] = $dias;
         return $this->ok($res, $result);
     }
 

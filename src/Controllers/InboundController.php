@@ -386,19 +386,22 @@ class InboundController extends BaseController
                 ]);
 
                 foreach ($detallesRec as $dr) {
-                    // Mover stock de "En Patio" a "Disponible"
+                    // Mover stock de "En Patio" a "Disponible" — o a "Cuarentena" si la
+                    // línea quedó con novedad (estado_mercancia != BuenEstado). Antes este
+                    // checkpoint de aprobación de ODC ignoraba la novedad por completo.
                     // Usamos Query Builder para ser explicitos con los estados
+                    $estadoDestinoOdc = ($dr->estado_mercancia === 'BuenEstado' || empty($dr->estado_mercancia)) ? 'Disponible' : 'Cuarentena';
                     $affected = Capsule::table('inventarios')
                         ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $req))
                         ->where('sucursal_id', $user->sucursal_id)
                         ->where('producto_id', $dr->producto_id)
                         ->where('ubicacion_id', $dr->ubicacion_destino_id)
-                        ->when($dr->lote, 
-                            fn($q) => $q->where('lote', $dr->lote), 
+                        ->when($dr->lote,
+                            fn($q) => $q->where('lote', $dr->lote),
                             fn($q) => $q->whereNull('lote')
                         )
                         ->where('estado',      'En Patio')
-                        ->update(['estado' => 'Disponible']);
+                        ->update(['estado' => $estadoDestinoOdc]);
 
                     wmsLog('DEBUG', "Stock actualizado para pallet {$dr->id}", [
                         'lote' => $dr->lote,
@@ -439,16 +442,28 @@ class InboundController extends BaseController
                 $recepcionIds = Recepcion::where('odc_id', $odc->id)->pluck('id');
                 RecepcionDetalle::whereIn('recepcion_id', $recepcionIds)->update(['aprobado_admin' => 1]);
 
-                $prodIds = OrdenCompraDetalle::where('orden_compra_id', $odc->id)->pluck('producto_id');
-                $affected = Capsule::table('inventarios')
-                    ->where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                    ->where('sucursal_id', $user->sucursal_id)
-                    ->whereIn('producto_id', $prodIds)
-                    ->where('estado', 'En Patio')
-                    ->update(['estado' => 'Disponible']);
+                // Mover cada pallet a "Disponible" o "Cuarentena" según su propia novedad
+                // (estado_mercancia) — antes esto era un UPDATE masivo por producto que
+                // ignoraba por completo si algún pallet había quedado con novedad.
+                $detallesRecTodo = RecepcionDetalle::whereIn('recepcion_id', $recepcionIds)->get();
+                $affectedTotal = 0;
+                foreach ($detallesRecTodo as $dr) {
+                    $estadoDestinoOdc = ($dr->estado_mercancia === 'BuenEstado' || empty($dr->estado_mercancia)) ? 'Disponible' : 'Cuarentena';
+                    $affectedTotal += Capsule::table('inventarios')
+                        ->where('empresa_id',  $this->getEffectiveEmpresaId($user, $req))
+                        ->where('sucursal_id', $user->sucursal_id)
+                        ->where('producto_id', $dr->producto_id)
+                        ->where('ubicacion_id', $dr->ubicacion_destino_id)
+                        ->when($dr->lote,
+                            fn($q) => $q->where('lote', $dr->lote),
+                            fn($q) => $q->whereNull('lote')
+                        )
+                        ->where('estado', 'En Patio')
+                        ->update(['estado' => $estadoDestinoOdc]);
+                }
 
                 wmsLog('DEBUG', "Stock total actualizado para ODC {$odc->id}", [
-                    'affected_rows' => $affected
+                    'affected_rows' => $affectedTotal
                 ]);
 
                 $odc->update(['estado' => 'Cerrada']);
