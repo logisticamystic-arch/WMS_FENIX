@@ -1950,6 +1950,25 @@ class InventarioV2Controller extends BaseController
 
             [$ini, $fin] = $this->getDateRange($params);
             $sucursalId  = $this->getEffectiveSucursalId($user, $req);
+            $empresaId   = $this->getEffectiveEmpresaId($user, $req);
+
+            // ── Saldo de apertura: suma de TODOS los movimientos anteriores al rango
+            // filtrado, con la misma clasificación entrada/salida usada más abajo. Sin
+            // esto, "saldo" arrancaba en 0 al inicio de cada ventana — correcto solo si
+            // se consultaba desde el primer movimiento histórico del producto; con
+            // cualquier filtro de fecha (el caso normal, p.ej. "últimos 30 días") el
+            // saldo mostrado quedaba subestimado frente al stock real.
+            $signoAperturaCase = "CASE
+                WHEN tipo_movimiento IN ('Entrada','AjustePositivo','Devolucion','Reabastecimiento') THEN cantidad
+                WHEN tipo_movimiento IN ('Salida','AjusteNegativo','Picking') THEN -cantidad
+                ELSE 0
+            END";
+            $saldoApertura = (float) (MovimientoInventario::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
+                ->where('producto_id', $params['producto_id'])
+                ->where('fecha_movimiento', '<', substr($ini, 0, 10))
+                ->selectRaw("COALESCE(SUM({$signoAperturaCase}), 0) as saldo")
+                ->value('saldo') ?? 0);
 
             $movimientos = MovimientoInventario::where('movimiento_inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $req))
                 ->where('movimiento_inventarios.sucursal_id', $sucursalId)
@@ -2013,13 +2032,15 @@ class InventarioV2Controller extends BaseController
                 ->orderBy('movimiento_inventarios.id')
                 ->get();
 
-            // Calcular saldo acumulado (Kardex running balance)
-            $saldo = 0;
+            // Calcular saldo acumulado (Kardex running balance), arrancando del saldo
+            // de apertura calculado arriba en vez de 0.
+            $saldo = $saldoApertura;
             $movimientos = $movimientos->map(function ($m) use (&$saldo) {
                 $esSuma = in_array($m->tipo, ['Entrada', 'AjustePositivo', 'Devolucion', 'Reabastecimiento']);
                 $esResta = in_array($m->tipo, ['Salida', 'AjusteNegativo', 'Picking']);
                 $esTraslado = $m->tipo === 'Traslado';
 
+                $m->saldo_anterior = $saldo;
                 if ($esSuma) {
                     $saldo += $m->cantidad;
                 } elseif ($esResta) {
@@ -2038,12 +2059,12 @@ class InventarioV2Controller extends BaseController
             $saldoFinal    = $movimientos->last()?->saldo ?? 0;
 
             if (($params['export'] ?? '') === 'excel') {
-                $headers = ['Fecha', 'Hora', 'Tipo', 'Sucursal Pedido', 'Entradas', 'Salidas', 'Cajas', 'Saldos', 'UND/TOTAL', 'Saldo Acumulado', 'Lote', 'F.Vencimiento', 'Origen', 'Destino', 'Usuario', 'Observaciones'];
+                $headers = ['Fecha', 'Hora', 'Tipo', 'Sucursal Pedido', 'Entradas', 'Salidas', 'Cajas', 'Saldos', 'UND/TOTAL', 'Saldo Anterior', 'Saldo Acumulado', 'Lote', 'F.Vencimiento', 'Origen', 'Destino', 'Usuario', 'Observaciones'];
                 $rows = $movimientos->map(fn($m) => [
                     $m->fecha, $m->hora, $m->tipo, $m->sucursal_pedido ?? '—',
                     $m->entradas ?: '', $m->salidas ?: '',
                     $m->cantidad_cajas ?? '—', $m->saldos ?? '—', $m->cantidad,
-                    $m->saldo,
+                    $m->saldo_anterior, $m->saldo,
                     $m->lote ?? '—', $m->fecha_vencimiento ?? '—',
                     $m->ubicacion_origen ?? '—', $m->ubicacion_destino ?? '—',
                     $m->usuario ?? '—', $m->observaciones ?? '',
@@ -2052,6 +2073,7 @@ class InventarioV2Controller extends BaseController
             }
 
             return $this->ok($res, [
+                'saldo_apertura' => (float)$saldoApertura,
                 'movimientos'    => $movimientos,
                 'total_entradas' => (int)$totalEntradas,
                 'total_salidas'  => (int)$totalSalidas,

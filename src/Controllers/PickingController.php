@@ -3935,6 +3935,8 @@ class PickingController extends BaseController
         $body           = $r->getParsedBody() ?? [];
         $idsRaw         = $body['ids']            ?? null;
         $cantidadTomada = (float)($body['cantidad_tomada'] ?? -1);
+        $cajasTomadas   = isset($body['cajas_tomadas'])  ? (float)$body['cajas_tomadas']  : null;
+        $saldosTomados  = isset($body['saldos_tomados']) ? (float)$body['saldos_tomados'] : null;
 
         if (!$idsRaw) {
             return $this->error($res, 'ids requerido.', 400);
@@ -3973,11 +3975,21 @@ class PickingController extends BaseController
                 409);
         }
 
-        // El frontend envía cantidad_tomada en CAJAS (c + s/upc).
-        // Aquí convertimos a UNIDADES para que coincida con el inventario (que está en unidades).
         // Todos los detalles de un confirmarConsolidado son del mismo producto → mismo upc.
-        $upcGlobal          = max(1, (int)($detalles->first()?->producto?->unidades_caja ?? 1));
-        $cantidadTomadaUnd  = $cantidadTomada * $upcGlobal; // CAJAS → UNIDADES
+        $upcGlobal = max(1, (int)($detalles->first()?->producto?->unidades_caja ?? 1));
+
+        // BUG CORREGIDO: este bloque asumía que 'cantidad_tomada' siempre llegaba en CAJAS
+        // y lo multiplicaba por upc. Pero el modal de escritorio (picking.js:_dlgConfirmarLinea,
+        // etiquetado explícitamente "unidades") y el modal móvil con edición de cantidad
+        // (confirmarPKActual, que ya envía el total en unidades reales: cajas×upc+saldos)
+        // envían el valor YA en UNIDADES REALES — la multiplicación duplicaba el descuento
+        // por un factor upc para cualquier producto con más de 1 unidad por caja.
+        // Ahora: si vienen cajas_tomadas/saldos_tomados explícitos, son la fuente de verdad
+        // (siempre inequívocos); si no, 'cantidad_tomada' se trata directamente como
+        // unidades reales — nunca se reinterpreta como cajas.
+        $cantidadTomadaUnd = ($cajasTomadas !== null || $saldosTomados !== null)
+            ? (($cajasTomadas ?? 0) * $upcGlobal + ($saldosTomados ?? 0))
+            : $cantidadTomada;
 
         // Distribuir UNIDADES entre las sub-líneas (splits) en orden FIFO
         $restante    = $cantidadTomadaUnd;

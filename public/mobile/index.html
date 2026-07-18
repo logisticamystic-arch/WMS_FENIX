@@ -5828,24 +5828,33 @@ const MWMS = {
 
   async confirmarPKActual(planillaNumero, qtyTomada = null, cajasTomadas = null, saldosTomados = null) {
     const it = this._itemsPlanilla[this._idxActual];
-    const qtyActual = qtyTomada !== null ? qtyTomada : it.cantidad_total;
+    // it.cantidad_total viene en CAJAS (ver renderPKConsolidado: sugCajas = it.cantidad_total).
+    // Cuando se acepta todo sin pasar por el modal (qtyTomada === null), hay que enviar
+    // cajas_tomadas explícito — antes se mandaba it.cantidad_total como "cantidad_tomada"
+    // (que el backend YA NO reinterpreta como cajas), lo que subdescontaba inventario en
+    // productos con más de 1 unidad por caja.
+    const factorConfActual = parseInt(it.unidades_caja) || 1;
+    const cajasActual  = cajasTomadas  !== null ? cajasTomadas  : it.cantidad_total;
+    const saldosActual = saldosTomados !== null ? saldosTomados : 0;
+    const qtyActual = qtyTomada !== null ? qtyTomada : (cajasActual * factorConfActual + saldosActual);
     this.loading(true);
     try {
       await mApi('POST', '/picking/confirmar-consolidado', {
         ids: it.ids,
         cantidad_tomada: qtyActual,
-        cajas_tomadas:   cajasTomadas !== null ? cajasTomadas : undefined,
-        saldos_tomados:  saldosTomados !== null ? saldosTomados : undefined,
+        cajas_tomadas:   cajasActual,
+        saldos_tomados:  saldosActual,
         planilla_numero: planillaNumero
       });
 
       // Mensaje de confirmación por línea: garantiza que el auxiliar verifique lo
       // separado (sucursal, solicitado vs. separado por cajas/saldos/total y
-      // vencimiento) antes de continuar a la siguiente referencia.
-      const factorConf  = parseInt(it.unidades_caja) || 1;
-      const cajasConf    = cajasTomadas   !== null ? cajasTomadas   : (factorConf > 1 ? Math.floor(qtyActual / factorConf) : 0);
-      const saldosConf   = saldosTomados  !== null ? saldosTomados  : (factorConf > 1 ? Math.round((qtyActual - cajasConf * factorConf) * 1000) / 1000 : qtyActual);
-      const venceConfTxt = it.fecha_vencimiento ? this.formatDateShort(it.fecha_vencimiento) : 'Sin fecha de vencimiento';
+      // vencimiento) antes de continuar a la siguiente referencia. Solicitado y
+      // separado se muestran ambos en UND/TOTAL (no cajas) para que la comparación
+      // sea justa — it.cantidad_total viene en cajas, se convierte aquí.
+      const factorConf     = parseInt(it.unidades_caja) || 1;
+      const solicitadoUnd  = (it.cantidad_total || 0) * factorConf;
+      const venceConfTxt   = it.fecha_vencimiento ? this.formatDateShort(it.fecha_vencimiento) : 'Sin fecha de vencimiento';
       await Swal.fire({
         title: '<i class="fa-solid fa-circle-check" style="color:#059669;"></i> Separación Confirmada',
         html: `
@@ -5856,17 +5865,17 @@ const MWMS = {
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
               <div style="background:#f1f5f9;padding:8px;border-radius:8px;text-align:center;">
-                <div style="font-size:.58rem;font-weight:700;color:#64748b;">SOLICITADO</div>
-                <div style="font-size:1.15rem;font-weight:900;color:#0F4C81;">${it.cantidad_total}</div>
+                <div style="font-size:.58rem;font-weight:700;color:#64748b;">SOLICITADO (UND/TOTAL)</div>
+                <div style="font-size:1.15rem;font-weight:900;color:#0F4C81;">${solicitadoUnd}</div>
               </div>
               <div style="background:#dcfce7;padding:8px;border-radius:8px;text-align:center;">
-                <div style="font-size:.58rem;font-weight:700;color:#166534;">SEPARADO</div>
+                <div style="font-size:.58rem;font-weight:700;color:#166534;">SEPARADO (UND/TOTAL)</div>
                 <div style="font-size:1.15rem;font-weight:900;color:#15803d;">${qtyActual}</div>
               </div>
             </div>
             ${factorConf > 1 ? `
             <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:8px;border-radius:8px;margin-bottom:10px;text-align:center;font-size:.8rem;">
-              <b>${cajasConf}</b> cajas × ${factorConf} + <b>${saldosConf}</b> sueltos = <b>${qtyActual}</b> und/total
+              <b>${cajasActual}</b> cajas × ${factorConf} + <b>${saldosActual}</b> sueltos = <b>${qtyActual}</b> und/total
             </div>` : ''}
             <div style="background:#fef2f2;border:1px solid #fca5a5;padding:8px 10px;border-radius:8px;display:flex;align-items:center;gap:8px;">
               <i class="fa-solid fa-calendar-days" style="color:#dc2626;"></i>

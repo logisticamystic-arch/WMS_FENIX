@@ -325,6 +325,15 @@ class FefoEngine
     {
         $fechaCorte = date('Y-m-d', strtotime("-{$diasSinMovimiento} days"));
 
+        // Última fecha de movimiento real por producto (sin acotar a la ventana) —
+        // necesaria para mostrar "días estancado" y "último movimiento" reales en vez
+        // de solo el parámetro de filtro (antes el reporte no calculaba esto en absoluto).
+        $ultimoMovPorProducto = Capsule::table('movimiento_inventarios')
+            ->where('empresa_id', $this->empresaId)
+            ->where('sucursal_id', $this->sucursalId)
+            ->selectRaw('producto_id, MAX(fecha_movimiento) as ultimo_movimiento')
+            ->groupBy('producto_id');
+
         // Productos con stock pero sin movimiento reciente
         $sinMovimiento = Capsule::table('inventarios as i')
             ->join('productos as p', 'p.id', '=', 'i.producto_id')
@@ -333,6 +342,7 @@ class FefoEngine
                      ->on('m.empresa_id',  '=', 'i.empresa_id')
                      ->where('m.fecha_movimiento', '>=', $fechaCorte);
             })
+            ->leftJoinSub($ultimoMovPorProducto, 'um', 'um.producto_id', '=', 'i.producto_id')
             ->where('i.empresa_id',  $this->empresaId)
             ->where('i.sucursal_id', $this->sucursalId)
             ->where('i.cantidad', '>', 0)
@@ -343,13 +353,20 @@ class FefoEngine
                 'p.codigo_interno as referencia',
                 Capsule::raw('SUM(i.cantidad) as stock_total'),
                 Capsule::raw('MIN(i.fecha_vencimiento) as proximo_vencimiento'),
+                Capsule::raw('MAX(um.ultimo_movimiento) as ultimo_movimiento'),
             ])
             ->groupBy('i.producto_id', 'p.nombre', 'p.codigo_interno')
             ->orderByRaw($this->isPg()
                 ? 'MIN(i.fecha_vencimiento) ASC NULLS LAST'
                 : 'MIN(i.fecha_vencimiento) IS NULL, MIN(i.fecha_vencimiento) ASC')
             ->limit(100)
-            ->get();
+            ->get()
+            ->map(function ($row) {
+                $row->dias_sin_movimiento = $row->ultimo_movimiento
+                    ? (int) floor((strtotime(date('Y-m-d')) - strtotime($row->ultimo_movimiento)) / 86400)
+                    : null; // null = nunca ha tenido un movimiento registrado
+                return $row;
+            });
 
         return [
             'dias_sin_movimiento' => $diasSinMovimiento,

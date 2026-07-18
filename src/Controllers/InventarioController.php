@@ -566,6 +566,26 @@ class InventarioController extends BaseController
         }
     }
 
+    // Signo de cada tipo_movimiento sobre la cantidad FÍSICA en inventario (no la
+    // reserva). 'Traslado' es 0: reubica dentro de la misma sucursal, no cambia el
+    // total en existencia del producto. 'CorreccionAdmin' es 0: en este sistema solo
+    // se genera al ajustar cantidad_reservada de una línea de picking (ver
+    // PickingController::_ajustarReservaEdicionLinea), nunca cantidad física.
+    // 'Reabastecimiento' es 0: es un traslado interno (granel → picking).
+    // Tipos no listados aquí (nuevos, aún no clasificados) cuentan como 0 — más
+    // seguro que asumir un signo incorrecto y descuadrar el saldo silenciosamente.
+    private const KARDEX_SIGNOS = [
+        'Entrada'          => 1,
+        'InvInicial'       => 1,
+        'AjustePositivo'   => 1,
+        'Devolucion'       => 1,
+        'Picking'          => -1,
+        'AjusteNegativo'   => -1,
+        'Traslado'         => 0,
+        'CorreccionAdmin'  => 0,
+        'Reabastecimiento' => 0,
+    ];
+
     // ── GET /api/inventario/kardex ────────────────────────────────────────────
     public function getKardex(Request $req, Response $res): Response
     {
@@ -573,9 +593,11 @@ class InventarioController extends BaseController
             $user   = $req->getAttribute('user');
             $params = $req->getQueryParams();
             [$ini, $fin] = $this->getDateRange($params);
+            $empresaId  = $this->getEffectiveEmpresaId($user, $req);
+            $sucursalId = $user->sucursal_id;
 
-            $q = MovimientoInventario::where('movimiento_inventarios.empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                ->where('movimiento_inventarios.sucursal_id', $user->sucursal_id)
+            $q = MovimientoInventario::where('movimiento_inventarios.empresa_id', $empresaId)
+                ->where('movimiento_inventarios.sucursal_id', $sucursalId)
                 ->join('productos', 'movimiento_inventarios.producto_id', '=', 'productos.id')
                 ->leftJoin('personal', 'movimiento_inventarios.auxiliar_id', '=', 'personal.id')
                 ->leftJoin('ubicaciones as uo', 'movimiento_inventarios.ubicacion_origen_id', '=', 'uo.id')
@@ -621,13 +643,58 @@ class InventarioController extends BaseController
                 $q->where('movimiento_inventarios.tipo_movimiento', $params['tipo']);
             }
 
-            $movimientos = $q->orderBy('movimiento_inventarios.fecha_movimiento', 'desc')
-                             ->orderBy('movimiento_inventarios.hora_inicio', 'desc')
+            // Orden ASCENDENTE: el saldo se acumula cronológicamente (saldo_anterior ±
+            // movimiento = saldo_después). Se revierte al final para mostrar lo más
+            // reciente primero, que es como se venía presentando.
+            $movimientos = $q->orderBy('movimiento_inventarios.fecha_movimiento', 'asc')
+                             ->orderBy('movimiento_inventarios.hora_inicio', 'asc')
+                             ->orderBy('movimiento_inventarios.id', 'asc')
                              ->limit($params['limit'] ?? 500) // Añadido limit
                              ->get();
 
+            // ── Saldo de apertura por producto: suma de TODOS los movimientos previos
+            // al rango del reporte (mismo signo que la acumulación de abajo). Sin esto,
+            // "saldo después" solo reflejaría el neto dentro de la ventana filtrada, no
+            // el stock real — el requisito mínimo de un kardex auditable.
+            $productoIds = $movimientos->pluck('producto_id')->unique()->values();
+            $saldosApertura = [];
+            if ($productoIds->isNotEmpty()) {
+                $caseParts = [];
+                $caseBindings = [];
+                foreach (self::KARDEX_SIGNOS as $tipo => $signo) {
+                    $caseParts[]    = "WHEN ? THEN {$signo}";
+                    $caseBindings[] = $tipo;
+                }
+                $signoCase = 'CASE tipo_movimiento ' . implode(' ', $caseParts) . ' ELSE 0 END';
+
+                $saldosApertura = MovimientoInventario::where('empresa_id', $empresaId)
+                    ->where('sucursal_id', $sucursalId)
+                    ->whereIn('producto_id', $productoIds)
+                    ->where('fecha_movimiento', '<', substr($ini, 0, 10))
+                    ->selectRaw("producto_id, SUM(cantidad * ({$signoCase})) as saldo", $caseBindings)
+                    ->groupBy('producto_id')
+                    ->pluck('saldo', 'producto_id');
+            }
+
+            // ── Acumulación cronológica por producto ──────────────────────────────
+            $saldoCorriente = [];
+            foreach ($movimientos as $m) {
+                $pid = $m->producto_id;
+                if (!isset($saldoCorriente[$pid])) {
+                    $saldoCorriente[$pid] = round((float)($saldosApertura[$pid] ?? 0), 3);
+                }
+                $signo = self::KARDEX_SIGNOS[$m->tipo_movimiento] ?? 0;
+                $m->saldo_anterior = $saldoCorriente[$pid];
+                $saldoCorriente[$pid] = round($saldoCorriente[$pid] + $signo * (float)$m->cantidad, 3);
+                $m->saldo_despues = $saldoCorriente[$pid];
+            }
+
+            // Mostrar lo más reciente primero (comportamiento previo del reporte),
+            // ya con saldo_anterior/saldo_despues calculados en orden cronológico.
+            $movimientos = $movimientos->reverse()->values();
+
             if (($params['export'] ?? '') === 'excel') {
-                $headers = ['Fecha', 'Hora', 'Producto', 'Código', 'Tipo', 'Cantidad',
+                $headers = ['Fecha', 'Hora', 'Producto', 'Código', 'Tipo', 'Cantidad', 'Saldo Anterior', 'Saldo Después',
                             'Lote', 'F.Vencimiento', 'Origen', 'Destino', 'Usuario', 'Ref.Tipo', 'Obs.'];
                 $rows = $movimientos->map(fn($m) => [
                     $m->fecha_movimiento,
@@ -636,6 +703,8 @@ class InventarioController extends BaseController
                     $m->codigo,
                     $m->tipo_movimiento,
                     $m->cantidad,
+                    $m->saldo_anterior,
+                    $m->saldo_despues,
                     $m->lote ?? '—',
                     $m->fecha_vencimiento ?? '—',
                     $m->ubicacion_origen  ?? '—',

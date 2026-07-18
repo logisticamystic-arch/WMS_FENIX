@@ -432,7 +432,7 @@ WMS_MODULES.reportes = {
             <th>Fecha</th><th>Hora</th><th>Tipo</th><th>Sucursal Pedido</th>
             <th class="text-center">Entradas</th><th class="text-center">Salidas</th>
             <th class="text-center">Cajas</th><th class="text-center">Saldos</th><th class="text-center">UND/TOTAL</th>
-            <th class="text-center">Saldo Acum.</th>
+            <th class="text-center">Saldo Ant.</th><th class="text-center">Saldo Acum.</th>
             <th>Lote / Venc.</th><th>Origen</th><th>Destino</th><th>Usuario</th><th>Observaciones</th>
           </tr></thead>
           <tbody>${movs.map(m => `<tr>
@@ -445,13 +445,14 @@ WMS_MODULES.reportes = {
             <td class="text-center">${m.cantidad_cajas ?? '—'}</td>
             <td class="text-center">${m.saldos ?? '—'}</td>
             <td class="text-center"><b>${WMS.formatNum(m.cantidad)}</b></td>
+            <td class="text-center" style="color:#64748b">${WMS.formatNum(m.saldo_anterior ?? 0)}</td>
             <td class="text-center" style="font-weight:700">${WMS.formatNum(m.saldo)}</td>
             <td><small>${WMS.esc(m.lote||'-')}${m.fecha_vencimiento?' · '+WMS.formatDate(m.fecha_vencimiento):''}</small></td>
             <td><small>${WMS.esc(m.ubicacion_origen||'-')}</small></td>
             <td><small>${WMS.esc(m.ubicacion_destino||'-')}</small></td>
             <td><small>${WMS.esc(m.usuario||'-')}</small></td>
             <td><small>${WMS.esc(m.observaciones||'')}</small></td>
-          </tr>`).join('') || '<tr><td colspan="15" class="table-empty">Sin movimientos en el rango seleccionado</td></tr>'}
+          </tr>`).join('') || '<tr><td colspan="16" class="table-empty">Sin movimientos en el rango seleccionado</td></tr>'}
           </tbody></table>`;
     } catch(e) {
       if (wrap) wrap.innerHTML = '<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando Kardex</p></div>';

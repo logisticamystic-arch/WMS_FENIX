@@ -567,8 +567,10 @@ WMS_MODULES.inteligencia = {
       ]);
       const resA = ra.data || ra;
       const resR = rr.data || rr;
-      alertas   = resA.alertas   || (Array.isArray(resA) ? resA : []);
-      rotacion  = resR.productos || (Array.isArray(resR) ? resR : []);
+      alertas   = resA.alertas         || (Array.isArray(resA) ? resA : []);
+      // Bug corregido: el backend (FefoEngine::getRotationReport) devuelve la clave
+      // "productos_lentos", no "productos" — antes esta tabla quedaba vacía siempre.
+      rotacion  = resR.productos_lentos || (Array.isArray(resR) ? resR : []);
     } catch(e) {
       WMS.setContent(`<div class="m-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>${e.message}</p></div>`);
       return;
@@ -606,9 +608,9 @@ WMS_MODULES.inteligencia = {
         </td>
         <td class="text-end fw-bold">${p.stock_actual ?? '—'}</td>
         <td class="text-end">
-          <span class="badge badge-warning" style="font-size:.85rem;">${p.dias_sin_movimiento ?? '—'} días</span>
+          <span class="badge badge-warning" style="font-size:.85rem;">${p.dias_sin_movimiento != null ? p.dias_sin_movimiento + ' días' : 'Sin registro'}</span>
         </td>
-        <td style="font-size:.75rem;color:#64748b;">${WMS.esc(p.ultimo_movimiento || 'Sin registro')}</td>
+        <td style="font-size:.75rem;color:#64748b;">${p.ultimo_movimiento ? WMS.formatDate(p.ultimo_movimiento) : 'Nunca'}</td>
         <td><i class="fa-solid fa-location-dot me-1 text-muted"></i> ${WMS.esc(p.ubicacion || '—')}</td>
       </tr>
     `).join('');
