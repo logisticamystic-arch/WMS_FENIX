@@ -107,16 +107,18 @@ WMS_MODULES.despacho = {
       const paramsSes = '?' + qSes.toString();
 
       const fechaVista = this._certFechaInicio || new Date().toISOString().slice(0,10);
-      const [rPend, rSes, rCert, rVista] = await Promise.all([
+      const [rPend, rSes, rCert, rVista, rDespDirecto] = await Promise.all([
         API.get('/picking/certificacion/pendientes' + params),
         API.get('/packing/sesiones' + paramsSes),
         API.get('/picking/certificacion/certificadas' + params),
         API.get('/picking/certificacion/vista-hoy?fecha=' + fechaVista),
+        API.get('/picking/certificacion/despachados-directo' + params),
       ]);
       const pendientes  = rPend.data  || [];
       const todasSes    = rSes.data   || [];
       const certDirect  = rCert.data  || [];
       const vistaHoy    = rVista.data || [];
+      const despachadosDirecto = rDespDirecto.data || [];
       const activas     = todasSes.filter(s => s.estado === 'EnProceso');
       const completadas = todasSes.filter(s => s.estado === 'Completada');
 
