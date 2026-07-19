@@ -3717,7 +3717,16 @@ class PickingController extends BaseController
             )->count();
         }
 
-        return $this->ok($res, $planillas);
+        // Remover de la vista del operario si ya completó su parte
+        $planillasActivas = [];
+        foreach ($planillas as $p) {
+            if ($esAuxiliar && $p->total_lineas > 0 && $p->lineas_completadas >= $p->total_lineas) {
+                continue;
+            }
+            $planillasActivas[] = $p;
+        }
+
+        return $this->ok($res, array_values($planillasActivas));
     }
 
     public function planillaDetalles(Request $r, Response $res, array $a): Response
@@ -4904,8 +4913,18 @@ class PickingController extends BaseController
             ->leftJoin('personal as per', 'per.id', '=', 'op.auxiliar_id')
             ->where('op.empresa_id', $empresaId)
             ->where('op.sucursal_id', $sucursalId)
-            ->where('op.estado', 'Completada')
-            ->where('op.estado_certificacion', 'Pendiente')
+            ->whereIn('op.estado', ['Completada', 'EnProceso'])
+            ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial'])
+            ->whereExists(function($query) {
+                $query->select(Capsule::raw(1))
+                      ->from('picking_detalles as pd2')
+                      ->join('productos as p2', 'p2.id', '=', 'pd2.producto_id')
+                      ->whereColumn('pd2.orden_picking_id', 'op.id')
+                      ->groupByRaw('COALESCE(p2.ambiente_id, 0)')
+                      ->havingRaw("SUM(CASE WHEN pd2.estado IN ('Pendiente', 'EnProceso') THEN 1 ELSE 0 END) = 0")
+                      ->havingRaw("SUM(CASE WHEN COALESCE(pd2.cantidad_certificada, 0) < pd2.cantidad_pickeada THEN 1 ELSE 0 END) > 0")
+                      ->havingRaw("COUNT(pd2.id) > 0");
+            })
             ->when($fechaInicio, fn($q) => $q->where('op.fecha_movimiento', '>=', $fechaInicio))
             ->when($fechaFin, fn($q) => $q->where('op.fecha_movimiento', '<=', $fechaFin))
             ->select(
@@ -4930,8 +4949,8 @@ class PickingController extends BaseController
                 ->join('picking_detalles as pd', 'pd.orden_picking_id', '=', 'op.id')
                 ->where('op.empresa_id', $empresaId)
                 ->where('op.sucursal_id', $sucursalId)
-                ->where('op.estado', 'Completada')
-                ->where('op.estado_certificacion', 'Pendiente')
+                ->whereIn('op.estado', ['Completada', 'EnProceso'])
+                ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial'])
                 // El re-pick (updated_at de la línea) debe caer dentro del rango buscado
                 ->where('pd.updated_at', '>=', $fechaInicio . ' 00:00:00')
                 ->where('pd.updated_at', '<=', $fechaFin   . ' 23:59:59')
@@ -4979,6 +4998,15 @@ class PickingController extends BaseController
                   ->where('amb.empresa_id', $empresaId);
             })
             ->whereIn('pd.orden_picking_id', $ids)
+            ->whereExists(function($q) {
+                 $q->select(Capsule::raw(1))
+                   ->from('picking_detalles as pd3')
+                   ->join('productos as p3', 'p3.id', '=', 'pd3.producto_id')
+                   ->whereColumn('pd3.orden_picking_id', 'pd.orden_picking_id')
+                   ->whereRaw('COALESCE(p3.ambiente_id, 0) = COALESCE(p.ambiente_id, 0)')
+                   ->groupByRaw('COALESCE(p3.ambiente_id, 0)')
+                   ->havingRaw("SUM(CASE WHEN pd3.estado IN ('Pendiente', 'EnProceso') THEN 1 ELSE 0 END) = 0");
+            })
             ->select(
                 'op.sucursal_entrega',
                 Capsule::raw('COUNT(pd.id) as total_lineas_cert'),
@@ -5105,8 +5133,17 @@ class PickingController extends BaseController
             ->where('op.empresa_id', $empresaId)
             ->where('op.sucursal_id', $sucursalId)
             ->where('op.sucursal_entrega', $sucursal)
-            ->where('op.estado', 'Completada')
-            ->where('op.estado_certificacion', 'Pendiente')
+            ->whereIn('op.estado', ['Completada', 'EnProceso'])
+            ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial'])
+            ->whereExists(function($q) {
+                $q->select(Capsule::raw(1))
+                  ->from('picking_detalles as pd3')
+                  ->join('productos as p3', 'p3.id', '=', 'pd3.producto_id')
+                  ->whereColumn('pd3.orden_picking_id', 'pd.orden_picking_id')
+                  ->whereRaw('COALESCE(p3.ambiente_id, 0) = COALESCE(p.ambiente_id, 0)')
+                  ->groupByRaw('COALESCE(p3.ambiente_id, 0)')
+                  ->havingRaw("SUM(CASE WHEN pd3.estado IN ('Pendiente', 'EnProceso') THEN 1 ELSE 0 END) = 0");
+            })
             ->select(
                 'pd.id',
                 'pd.producto_id',
@@ -5265,36 +5302,49 @@ class PickingController extends BaseController
         $ordenes = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('sucursal_entrega', $sucursal)
-            ->where('estado', 'Completada')
-            ->where('estado_certificacion', 'Pendiente')
+            ->whereIn('estado', ['Completada', 'EnProceso'])
+            ->whereIn('estado_certificacion', ['Pendiente', 'Parcial'])
             ->get();
 
         if ($ordenes->isEmpty()) return $this->error($res, 'No hay órdenes pendientes para finalizar');
 
-        // Solo finalizar órdenes donde TODAS las líneas con picking tengan cantidad_certificada >= cantidad_pickeada
         $todosIds = $ordenes->pluck('id');
-        $certificadasCompletas = Capsule::table('picking_detalles')
-            ->whereIn('orden_picking_id', $todosIds)
-            ->where('cantidad_pickeada', '>', 0)
-            ->groupBy('orden_picking_id')
-            ->havingRaw('SUM(CASE WHEN COALESCE(cantidad_certificada, 0) >= cantidad_pickeada THEN 1 ELSE 0 END) = COUNT(*)')
-            ->pluck('orden_picking_id');
 
-        $ordenes = $ordenes->filter(fn($o) => $certificadasCompletas->contains($o->id))->values();
-        if ($ordenes->isEmpty()) return $this->error($res, 'Aún hay ambientes con líneas sin certificar');
+        // Validar que TODO lo que esté LISTO (ambiente completo) esté CERTIFICADO
+        $listasSinCertificar = Capsule::table('picking_detalles as pd')
+            ->join('productos as p', 'p.id', '=', 'pd.producto_id')
+            ->whereIn('pd.orden_picking_id', $todosIds)
+            ->where('pd.cantidad_pickeada', '>', 0)
+            ->whereRaw('COALESCE(pd.cantidad_certificada, 0) < pd.cantidad_pickeada')
+            ->whereExists(function($q) {
+                $q->select(Capsule::raw(1))
+                  ->from('picking_detalles as pd2')
+                  ->join('productos as p2', 'p2.id', '=', 'pd2.producto_id')
+                  ->whereColumn('pd2.orden_picking_id', 'pd.orden_picking_id')
+                  ->whereRaw('COALESCE(p2.ambiente_id, 0) = COALESCE(p.ambiente_id, 0)')
+                  ->groupBy('pd2.orden_picking_id', Capsule::raw('COALESCE(p2.ambiente_id, 0)'))
+                  ->havingRaw("SUM(CASE WHEN pd2.estado IN ('Pendiente', 'EnProceso') THEN 1 ELSE 0 END) = 0");
+            })
+            ->count();
+
+        if ($listasSinCertificar > 0) {
+            return $this->error($res, 'Aún hay referencias listas sin certificar en los ambientes completados');
+        }
 
         Capsule::transaction(function() use ($ordenes, $user) {
             $ids = $ordenes->pluck('id');
             $now = date('Y-m-d H:i:s');
 
-            // Bulk update — 1 query en lugar de N saves
-            Capsule::table('orden_pickings')
-                ->whereIn('id', $ids)
-                ->update([
-                    'estado_certificacion' => 'Certificada',
-                    'fecha_certificacion'  => $now,
-                    'certificador_id'      => $user->id,
-                ]);
+            foreach ($ordenes as $o) {
+                $nuevoEstado = ($o->estado === 'Completada') ? 'Certificada' : 'Parcial';
+                Capsule::table('orden_pickings')
+                    ->where('id', $o->id)
+                    ->update([
+                        'estado_certificacion' => $nuevoEstado,
+                        'fecha_certificacion'  => $now,
+                        'certificador_id'      => $user->id,
+                    ]);
+            }
 
             // Cargar todos los detalles de golpe — evita N+1 lazy loads
             $detalles  = Capsule::table('picking_detalles')->whereIn('orden_picking_id', $ids)->get();
