@@ -5864,8 +5864,9 @@ const MWMS = {
       // Pre-cargar la siguiente tarea MIENTRAS se muestra la confirmación (en paralelo)
       const nextDataPromise = mApi('GET', `/picking/planilla/${planillaNumero}`);
 
-      // Auto-close 2.5s: el auxiliar ve la info de validación sin bloquear el flujo
-      Swal.fire({
+      // El auxiliar DEBE verificar la info y dar click para continuar.
+      // Mientras tanto, la siguiente tarea se pre-carga en paralelo (nextDataPromise).
+      await Swal.fire({
         title: '<i class="fa-solid fa-circle-check" style="color:#059669;"></i> Separación Confirmada',
         html: `
           <div style="text-align:left;font-size:.85rem;">
@@ -5892,11 +5893,9 @@ const MWMS = {
               <span style="font-size:.8rem;font-weight:700;color:#991b1b;">Vence: ${venceConfTxt}</span>
             </div>
           </div>`,
-        confirmButtonText: '<i class="fa-solid fa-check"></i> Confirmado, continuar',
+        confirmButtonText: '<i class="fa-solid fa-check"></i> Aceptar y continuar',
         confirmButtonColor: '#059669',
         width: '340px',
-        timer: 2500,
-        timerProgressBar: true,
       });
 
       // Los datos ya se cargaron en paralelo mientras el Swal estaba visible

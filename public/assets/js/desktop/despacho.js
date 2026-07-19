@@ -352,6 +352,7 @@ WMS_MODULES.despacho = {
                       ${(s.ambientes || '').split(',').map(a => a.trim()).filter(Boolean).join(' · ') || 'Sin ambiente'}
                       ${s.pedidos_numeros?.length ? ` · Pedidos: ${s.pedidos_numeros.map(n=>WMS.esc(n)).join(', ')}` : ''}
                     </div>
+                    ${s.observaciones ? `<div style="font-size:10px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:2px 6px;margin-top:3px;"><i class="fa-solid fa-note-sticky"></i> ${WMS.esc(s.observaciones)}</div>` : ''}
                   </td>
                   <td class="text-center">
                     <span style="background:#e0e7ff;color:#4338ca;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">
