@@ -7494,7 +7494,16 @@ const MWMS = {
     document.getElementById('m-content').innerHTML = `
       <div class="op-view" style="padding-bottom:80px;">
 
-        <div style="background:#0f172a;color:#fff;margin:-10px -10px 14px;padding:12px 14px;">
+        <!-- Breadcrumb de navegación -->
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:8px 12px;background:#f1f5f9;border-radius:8px;flex-wrap:wrap;">
+          <button onclick="MWMS.viewCert()" style="background:none;border:none;color:#0F4C81;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;display:flex;align-items:center;gap:4px;">
+            <i class="fa-solid fa-house" style="font-size:.6rem;"></i> Inicio
+          </button>
+          <i class="fa-solid fa-chevron-right" style="font-size:.45rem;color:#94a3b8;"></i>
+          <span style="font-size:.72rem;font-weight:800;color:#1e293b;">${this.esc(sucursal)}</span>
+        </div>
+
+        <div style="background:#0f172a;color:#fff;margin:0 0 14px;border-radius:10px;padding:12px 14px;">
           <div style="font-size:.46rem;font-weight:700;opacity:.5;text-transform:uppercase;letter-spacing:.5px;">SUCURSAL</div>
           <div style="font-size:.95rem;font-weight:900;margin-bottom:8px;">${this.esc(sucursal)}</div>
           <div style="background:rgba(255,255,255,.18);border-radius:20px;height:6px;margin-bottom:5px;">
@@ -7597,6 +7606,22 @@ const MWMS = {
     document.getElementById('m-title').textContent = ambiente;
     document.getElementById('m-content').innerHTML = `
       <div class="op-view" style="padding-bottom:76px;">
+
+        <!-- Breadcrumb de navegación -->
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:8px 12px;background:#f1f5f9;border-radius:8px;flex-wrap:wrap;">
+          <button onclick="MWMS.viewCert()" style="background:none;border:none;color:#0F4C81;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;display:flex;align-items:center;gap:4px;">
+            <i class="fa-solid fa-house" style="font-size:.6rem;"></i> Inicio
+          </button>
+          <i class="fa-solid fa-chevron-right" style="font-size:.45rem;color:#94a3b8;"></i>
+          <button onclick="MWMS._certRenderAmbientes()" style="background:none;border:none;color:#0F4C81;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;">
+            ${this.esc(sucursal)}
+          </button>
+          <i class="fa-solid fa-chevron-right" style="font-size:.45rem;color:#94a3b8;"></i>
+          <span style="font-size:.72rem;font-weight:800;color:#1e293b;display:flex;align-items:center;gap:4px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:${ambColor};flex-shrink:0;"></span>
+            ${this.esc(ambiente)}
+          </span>
+        </div>
 
         <!-- Encabezado ambiente -->
         <div style="background:#1e3a5f;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:10px;">
@@ -7841,6 +7866,22 @@ const MWMS = {
     document.getElementById('m-title').textContent = `Packing · ${ambiente}`;
     document.getElementById('m-content').innerHTML = `
       <div class="op-view" style="padding-bottom:116px;">
+
+        <!-- Breadcrumb de navegación -->
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:8px 12px;background:#f1f5f9;border-radius:8px;flex-wrap:wrap;">
+          <button onclick="MWMS.viewCert()" style="background:none;border:none;color:#0F4C81;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;display:flex;align-items:center;gap:4px;">
+            <i class="fa-solid fa-house" style="font-size:.6rem;"></i> Inicio
+          </button>
+          <i class="fa-solid fa-chevron-right" style="font-size:.45rem;color:#94a3b8;"></i>
+          <button onclick="MWMS._certRefreshAndRenderAmbientes()" style="background:none;border:none;color:#0F4C81;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;">
+            ${this.esc(sucursal)}
+          </button>
+          <i class="fa-solid fa-chevron-right" style="font-size:.45rem;color:#94a3b8;"></i>
+          <span style="font-size:.72rem;font-weight:800;color:#1e293b;display:flex;align-items:center;gap:4px;">
+            <i class="fa-solid fa-boxes-packing" style="font-size:.6rem;color:#d97706;"></i>
+            ${this.esc(ambiente)}
+          </span>
+        </div>
 
         <div style="background:#1e3a5f;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:12px;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
