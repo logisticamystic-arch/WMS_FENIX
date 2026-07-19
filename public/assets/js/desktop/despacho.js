@@ -1534,7 +1534,7 @@ WMS_MODULES.despacho = {
     
     WMS.setContent(`<div id="cargue-content-wrap"></div>`);
     this._renderPedidosPendientes();
-  }
+  },
 
   async _renderPedidosPendientes() {
     document.getElementById('tab-cargue-pedidos').className = 'btn btn-primary btn-sm';
@@ -1600,7 +1600,7 @@ WMS_MODULES.despacho = {
       WMS.toast('error', 'Error cargando pedidos pendientes');
       WMS.closeSpinner();
     }
-  }
+  },
 
   _filtrarPedidosCargue() {
     const pedidos = this._pedidosCarguePendientes || [];
@@ -1620,17 +1620,17 @@ WMS_MODULES.despacho = {
       if (fHasta && p.fecha_movimiento > fHasta) continue;
       if (fPlan && !(p.planilla_numero||'').toLowerCase().includes(fPlan)) continue;
       if (fTexto) {
-        const textStr = \`\${p.numero_orden||''} \${p.numero_factura||''} \${p.cliente||''} \${p.sucursal_entrega||''}\`.toLowerCase();
+        const textStr = `${p.numero_orden||''} ${p.numero_factura||''} ${p.cliente||''} ${p.sucursal_entrega||''}`.toLowerCase();
         if (!textStr.includes(fTexto)) continue;
       }
       
-      html += \`<tr>
-        <td><input type="checkbox" class="cp-chk" value="\${p.id}"></td>
-        <td><span class="badge badge-info">\${WMS.esc(p.planilla_numero||'-')}</span></td>
-        <td><strong>\${WMS.esc(p.numero_orden || p.numero_factura || ('#'+p.id))}</strong></td>
-        <td>\${WMS.esc(p.cliente || p.sucursal_entrega || '-')}</td>
-        <td>\${WMS.formatDate(p.fecha_movimiento)}</td>
-      </tr>\`;
+      html += `<tr>
+        <td><input type="checkbox" class="cp-chk" value="${p.id}"></td>
+        <td><span class="badge badge-info">${WMS.esc(p.planilla_numero||'-')}</span></td>
+        <td><strong>${WMS.esc(p.numero_orden || p.numero_factura || ('#'+p.id))}</strong></td>
+        <td>${WMS.esc(p.cliente || p.sucursal_entrega || '-')}</td>
+        <td>${WMS.formatDate(p.fecha_movimiento)}</td>
+      </tr>`;
       count++;
     }
     
@@ -1638,7 +1638,7 @@ WMS_MODULES.despacho = {
     tbody.innerHTML = html;
     const cEl = document.getElementById('cp-counter');
     if(cEl) cEl.innerText = count;
-  }
+  },
 
   async _renderPlanillasCreadas() {
     document.getElementById('tab-cargue-pedidos').className = 'btn btn-outline-primary btn-sm';
@@ -1648,7 +1648,7 @@ WMS_MODULES.despacho = {
     try {
       const rs = await API.get('/param/sucursales');
       const sucursales = rs.data || rs || [];
-      sucursalOpts += sucursales.map(s => \`<option value="\${s.id}">\${WMS.esc(s.nombre)}</option>\`).join('');
+      sucursalOpts += sucursales.map(s => `<option value="${s.id}">${WMS.esc(s.nombre)}</option>`).join('');
     } catch(e) {}
 
     const hoy = new Date().toISOString().substring(0, 10);
@@ -1657,19 +1657,19 @@ WMS_MODULES.despacho = {
     const wrap = document.getElementById('cargue-content-wrap');
     if(!wrap) return;
 
-    wrap.innerHTML = \`
+    wrap.innerHTML = `
       <div class="filter-bar" style="flex-wrap:wrap;gap:8px;align-items:flex-end;">
         <div class="form-group" style="margin:0;">
           <label class="form-label" style="font-size:.7rem;">Desde</label>
-          <input type="date" id="cargue-f-desde" class="form-control form-control-sm" value="\${hoy}" style="width:150px">
+          <input type="date" id="cargue-f-desde" class="form-control form-control-sm" value="${hoy}" style="width:150px">
         </div>
         <div class="form-group" style="margin:0;">
           <label class="form-label" style="font-size:.7rem;">Hasta</label>
-          <input type="date" id="cargue-f-hasta" class="form-control form-control-sm" value="\${hoy}" style="width:150px">
+          <input type="date" id="cargue-f-hasta" class="form-control form-control-sm" value="${hoy}" style="width:150px">
         </div>
         <div class="form-group" style="margin:0;">
           <label class="form-label" style="font-size:.7rem;">Sucursal</label>
-          <select id="cargue-f-sucursal" class="form-control form-control-sm" style="width:170px">\${sucursalOpts}</select>
+          <select id="cargue-f-sucursal" class="form-control form-control-sm" style="width:170px">${sucursalOpts}</select>
         </div>
         <div class="form-group" style="margin:0;">
           <label class="form-label" style="font-size:.7rem;">Estado</label>
@@ -1692,7 +1692,7 @@ WMS_MODULES.despacho = {
       <div class="card">
         <div class="card-header"><span class="card-title" id="cargue-count"><i class="fa-solid fa-truck-loading"></i> Planillas de Cargue</span></div>
         <div class="table-container" id="cargue-table-wrap"><div class="spinner sm" style="margin:20px auto;display:block;"></div></div>
-      </div>\`;
+      </div>`;
 
     this._loadCargueTabla();
   },
@@ -1811,22 +1811,22 @@ WMS_MODULES.despacho = {
     try {
       const rr = await API.get('/param/rutas');
       const rutas = rr.data || rr || [];
-      rutasOpts += rutas.map(rt => \`<option value="\${rt.id}">\${WMS.esc(rt.nombre)}</option>\`).join('');
+      rutasOpts += rutas.map(rt => `<option value="${rt.id}">${WMS.esc(rt.nombre)}</option>`).join('');
     } catch(e) { }
 
-    WMS.showRightPanel(\`Nueva Planilla (\${ids.length} pedidos)\`, \`
+    WMS.showRightPanel(`Nueva Planilla (${ids.length} pedidos)`, `
       <div class="form-grid form-grid-2">
         <div class="form-group"><label class="form-label">Placa del Vehículo <span class="required">*</span></label><input id="car-placa" class="form-control" placeholder="ABC-123"></div>
         <div class="form-group"><label class="form-label">Conductor <span class="required">*</span></label><input id="car-conductor" class="form-control" placeholder="Nombre del conductor"></div>
         <div class="form-group" style="grid-column:1/-1;">
           <label class="form-label">Ruta <span class="required">*</span></label>
-          <select id="car-ruta-id" class="form-control">\${rutasOpts}</select>
+          <select id="car-ruta-id" class="form-control">${rutasOpts}</select>
         </div>
         <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Observaciones</label><textarea id="car-obs" class="form-control" rows="2" placeholder="Notas adicionales"></textarea></div>
-      </div>\`,
-      \`<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cancelar</button>
-       <button class="btn btn-primary" onclick="WMS_MODULES.despacho.saveCargueMasivo()"><i class="fa-solid fa-save"></i> Crear Cargue y Asociar</button>\`);
-  }
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cancelar</button>
+       <button class="btn btn-primary" onclick="WMS_MODULES.despacho.saveCargueMasivo()"><i class="fa-solid fa-save"></i> Crear Cargue y Asociar</button>`);
+  },
 
   async saveCargueMasivo() {
     const placa     = document.getElementById('car-placa')?.value.trim();
@@ -1848,11 +1848,11 @@ WMS_MODULES.despacho = {
       const despachoId = r.data.id;
       
       if (ordenIds.length > 0) {
-        const r2 = await API.post(\`/despachos/\${despachoId}/pedidos\`, { orden_ids: ordenIds });
+        const r2 = await API.post(`/despachos/${despachoId}/pedidos`, { orden_ids: ordenIds });
         if (r2.error) {
            WMS.toast('error', 'Cargue creado pero hubo un error asociando pedidos: ' + r2.message);
         } else {
-           WMS.toast('success', \`Planilla creada y \${ordenIds.length} pedidos asociados\`);
+           WMS.toast('success', `Planilla creada y ${ordenIds.length} pedidos asociados`);
         }
       } else {
         WMS.toast('success', 'Planilla de cargue creada');
@@ -1864,7 +1864,7 @@ WMS_MODULES.despacho = {
       WMS.toast('error', 'Error guardando'); 
       WMS.closeSpinner();
     }
-  }
+  },
 
   async saveCargue() {
     const placa     = document.getElementById('car-placa')?.value.trim();
