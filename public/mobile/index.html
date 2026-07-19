@@ -5852,6 +5852,11 @@ const MWMS = {
         planilla_numero: planillaNumero
       });
 
+      // ── Quitar spinner ANTES de mostrar el Swal ──────────────────────────
+      // El overlay (z-index:90000) tapaba el Swal (z-index:~1060) impidiendo
+      // que el usuario pudiera dar click en "Aceptar".
+      this.loading(false);
+
       // Mensaje de confirmación por línea: garantiza que el auxiliar verifique lo
       // separado (sucursal, solicitado vs. separado por cajas/saldos/total y
       // vencimiento) antes de continuar a la siguiente referencia. Solicitado y
@@ -5897,6 +5902,9 @@ const MWMS = {
         confirmButtonColor: '#059669',
         width: '340px',
       });
+
+      // Mostrar spinner breve mientras transiciona al siguiente item
+      this.loading(true);
 
       // Los datos ya se cargaron en paralelo mientras el Swal estaba visible
       const r = await nextDataPromise;
