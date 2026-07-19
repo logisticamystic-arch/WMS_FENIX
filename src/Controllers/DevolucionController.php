@@ -15,18 +15,6 @@ use Illuminate\Database\Capsule\Manager as DB;
 class DevolucionController extends BaseController
 {
     /**
-     * GET /api/devoluciones/dashboard
-     */
-    public function getDashboard(Request $request, Response $response): Response
-    {
-        return $this->ok($response, [
-            'total_devoluciones' => 0,
-            'pendientes' => 0,
-            'procesadas' => 0
-        ]);
-    }
-
-    /**
      * GET /api/devoluciones
      */
     public function index(Request $request, Response $response): Response
