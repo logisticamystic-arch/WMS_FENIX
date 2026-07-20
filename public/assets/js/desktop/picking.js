@@ -116,6 +116,7 @@ WMS_MODULES.picking = {
           total_unidades: 0,
           auxiliares: new Set(),
           clientes: new Set(),
+          observaciones: new Set(),
           prioridad: 0,
           productos: {},
           primer_pick_ts: null,
@@ -125,6 +126,7 @@ WMS_MODULES.picking = {
       }
       grupos[key].ordenes.push(p);
       if (p.cliente) grupos[key].clientes.add(p.cliente);
+      if (p.observaciones && p.observaciones.trim()) grupos[key].observaciones.add(p.observaciones.trim());
       const detalles = p.detalles || [];
       grupos[key].total_lineas += detalles.length || parseInt(p.total_lineas || p.lineas || 0);
       let pendThisOrder = 0;
