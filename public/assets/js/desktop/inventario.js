@@ -708,16 +708,15 @@ WMS_MODULES.inventario = {
               <span style="font-size:.8rem;color:#64748b">${u.dias_sin_mov === 'N/A' ? 'N/A' : u.dias_sin_mov + 'd sin mov.'}</span>
             </td>
           </tr>
-          <tr class="pivot-detail-row" id="${detId}" style="display:none;">
+          <tr class="pivot-detail-row" id="${detId}" style="display:none;" data-ubi-id="${u.id}" data-loaded="0">
             <td colspan="5" style="padding:8px 32px 16px 64px;">
-              <div style="font-size:.75rem;color:#64748b;padding:10px 0;">
-                <i class="fa-solid fa-circle-info"></i>
-                Para ver el desglose por producto/lote de esta ubicación, use la vista de Stock General con filtro de ubicación.
-                <br><strong>Total UND/TOTAL: ${WMS.formatNum(u.und_total||0)}</strong> &nbsp;|&nbsp;
+              <div style="font-size:.75rem;color:#64748b;padding:6px 0 10px;">
+                <strong>Total UND/TOTAL: ${WMS.formatNum(u.und_total||0)}</strong> &nbsp;|&nbsp;
                 Cajas: ${WMS.formatNum(u.total_cajas||0)} &nbsp;|&nbsp;
                 Sueltos: ${WMS.formatNum(u.total_sueltos||0)} &nbsp;|&nbsp;
                 Capacidad máx.: ${u.capacidad_maxima || 'N/D'}
               </div>
+              <div id="ubi-detalle-${detId}"></div>
             </td>
           </tr>`;
         }).join('');
@@ -752,6 +751,10 @@ WMS_MODULES.inventario = {
         if (detail.style.display === 'none') {
           detail.style.display = 'table-row';
           btn.innerHTML = '<i class="fa-solid fa-chevron-up"></i>';
+          if (detail.dataset.loaded !== '1') {
+            detail.dataset.loaded = '1';
+            WMS_MODULES.inventario._cargarDesgloseUbicacion(detail.dataset.ubiId, 'ubi-detalle-' + id);
+          }
         } else {
           detail.style.display = 'none';
           btn.innerHTML = '<i class="fa-solid fa-chevron-down"></i>';
