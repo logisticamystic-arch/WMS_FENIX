@@ -2509,14 +2509,14 @@ class PickingController extends BaseController
                 Capsule::raw('SUM(d.cantidad_pickeada) as unidades'),
                 Capsule::raw(
                     $this->isPg()
-                    ? "ROUND((SELECT SUM(GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(NULLIF(op.hora_fin, '00:00:00')::time, CURRENT_TIME) - op.hora_inicio::time)))) / 60 
+                    ? "ROUND((SELECT GREATEST(0, EXTRACT(EPOCH FROM (MAX(COALESCE(NULLIF(op.hora_fin, '00:00:00')::time, CURRENT_TIME)) - MIN(op.hora_inicio::time)))) / 60 
                         FROM orden_pickings op 
                         WHERE op.id IN (SELECT d2.orden_picking_id FROM picking_detalles d2 WHERE d2.auxiliar_id = aux.id) 
                         AND op.empresa_id = {$empresaId}
                         AND op.created_at BETWEEN '{$ini}' AND '{$fin}'
                         AND op.hora_inicio IS NOT NULL
                         AND op.hora_inicio != '00:00:00'), 1) as avg_minutos"
-                    : "ROUND((SELECT SUM(GREATEST(0, TIME_TO_SEC(TIMEDIFF(COALESCE(NULLIF(op.hora_fin, '00:00:00'), CURRENT_TIME()), op.hora_inicio)))) / 60 
+                    : "ROUND((SELECT GREATEST(0, TIME_TO_SEC(TIMEDIFF(MAX(COALESCE(NULLIF(op.hora_fin, '00:00:00'), CURRENT_TIME())), MIN(op.hora_inicio)))) / 60 
                         FROM orden_pickings op 
                         WHERE op.id IN (SELECT d2.orden_picking_id FROM picking_detalles d2 WHERE d2.auxiliar_id = aux.id) 
                         AND op.empresa_id = {$empresaId}
