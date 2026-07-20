@@ -291,7 +291,10 @@ WMS_MODULES.picking = {
         </div>
       </td>
       <td style="white-space:nowrap;font-size:12px;font-weight:600;color:#1d4ed8;">${g.ordenes?.[0]?.fecha_requerida ? WMS.formatDate(g.ordenes[0].fecha_requerida) : '—'}</td>
-      <td style="font-size:11px;font-weight:600;">${WMS.esc([...g.clientes].join(', ') || '-')}</td>
+      <td style="font-size:11px;font-weight:600;">
+        ${WMS.esc([...g.clientes].join(', ') || '-')}
+        ${g.observaciones.size ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc([...g.observaciones].join(' | '))}"></i>` : ''}
+      </td>
       <td><span style="font-size:11px;font-weight:600;color:#64748b;">${WMS.esc(g.ruta)}</span></td>
       <td class="text-center"><b>${g.total_lineas - g.lineas_pendientes}</b> / ${g.total_lineas}</td>
       <td>
@@ -883,7 +886,9 @@ WMS_MODULES.picking = {
         <div><label class="form-label">Ruta</label><p>${WMS.esc(p.ruta||'-')}</p></div>
         <div><label class="form-label">Estado</label><p><span class="badge badge-info">${WMS.esc(p.estado||'')}</span></p></div>
         <div><label class="form-label">Auxiliar</label><p>${WMS.esc(p.auxiliar||p.usuario||'-')}</p></div>
-        ${p.sucursal_entrega ? `<div><label class="form-label">Sucursal Entrega</label><p>${WMS.esc(p.sucursal_entrega)}</p></div>` : ''}
+        ${p.sucursal_entrega ? `<div><label class="form-label">Sucursal Entrega</label><p>${WMS.esc(p.sucursal_entrega)}
+          ${p.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc(p.observaciones)}"></i>` : ''}
+        </p></div>` : ''}
       </div>
       ${despachadoDirecto ? `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;margin-bottom:12px;">
         <span class="badge" style="background:#dc2626;color:#fff;font-weight:700;"><i class="fa-solid fa-hand"></i> RETIRO DIRECTO — NO INCLUIR EN REMISIÓN</span>

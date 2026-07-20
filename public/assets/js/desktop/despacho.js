@@ -220,6 +220,7 @@ WMS_MODULES.despacho = {
               <tbody>${sinSesion.map(s => `<tr>
                 <td>
                   <strong style="font-size:13px;">${WMS.esc(s.sucursal_entrega || 'Sin Cliente')}</strong>
+                  ${s.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc(s.observaciones)}"></i>` : ''}
                   ${s.planilla_numero ? `<br><span style="display:inline-block;background:#1e3a8a;color:#fff;border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;font-weight:700;margin-top:2px;">${WMS.esc(s.planilla_numero)}</span>` : ''}
                   ${s.planillas && s.planillas.length ? `<br><span style="font-size:10px;color:#64748b;">${s.planillas.map(p => WMS.esc(p)).join(' · ')}</span>` : ''}
                 </td>
@@ -302,6 +303,7 @@ WMS_MODULES.despacho = {
                   </td>
                   <td>
                     <strong style="font-size:13px;">${WMS.esc(s.sucursal_entrega)}</strong>
+                    ${s.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc(s.observaciones)}"></i>` : ''}
                     <div style="font-size:10px;color:#6b7280;margin-top:1px;">${s.total_empacado || 0} uds empacadas</div>
                     ${s.planillas && s.planillas.length > 1 ? `<div style="font-size:10px;color:#b45309;margin-top:2px;"><i class="fa-solid fa-triangle-exclamation"></i> ${s.planillas.length} planillas mezcladas: ${s.planillas.map(p => WMS.esc(p)).join(' · ')}</div>` : ''}
                   </td>
@@ -344,6 +346,7 @@ WMS_MODULES.despacho = {
                   </td>
                   <td>
                     <strong style="font-size:13px;">${WMS.esc(s.sucursal_entrega || 'Sin Sucursal')}</strong>
+                    ${s.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc(s.observaciones)}"></i>` : ''}
                     ${sinPlanilla
                       ? `<span style="display:inline-block;margin-left:5px;background:#f1f5f9;color:#64748b;border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;">Sin planilla</span>`
                       : `<span style="display:inline-block;margin-left:5px;background:#1e3a8a;color:#fff;border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;font-weight:700;">${WMS.esc(s.planilla_numero)}</span>`}
@@ -352,7 +355,7 @@ WMS_MODULES.despacho = {
                       ${(s.ambientes || '').split(',').map(a => a.trim()).filter(Boolean).join(' · ') || 'Sin ambiente'}
                       ${s.pedidos_numeros?.length ? ` · Pedidos: ${s.pedidos_numeros.map(n=>WMS.esc(n)).join(', ')}` : ''}
                     </div>
-                    ${s.observaciones ? `<div style="font-size:10px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:2px 6px;margin-top:3px;"><i class="fa-solid fa-note-sticky"></i> ${WMS.esc(s.observaciones)}</div>` : ''}
+                    ${s.observaciones ? `<div style="font-size:10px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:2px 6px;margin-top:3px;">${WMS.esc(s.observaciones)}</div>` : ''}
                   </td>
                   <td class="text-center">
                     <span style="background:#e0e7ff;color:#4338ca;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">
@@ -402,6 +405,7 @@ WMS_MODULES.despacho = {
               <tbody>${despachadosDirecto.map(d => `<tr>
                 <td>
                   <strong style="font-size:13px;">${WMS.esc(d.sucursal_entrega || '-')}</strong>
+                  ${d.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc(d.observaciones)}"></i>` : ''}
                   ${d.planilla_numero ? `<br><span style="background:#1e3a8a;color:#fff;border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;">${WMS.esc(d.planilla_numero)}</span>` : ''}
                 </td>
                 <td style="font-size:12px;">${WMS.esc(d.numero_factura || d.numero_orden || '-')}</td>
