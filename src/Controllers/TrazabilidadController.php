@@ -102,6 +102,7 @@ class TrazabilidadController extends BaseController
         $params      = $r->getQueryParams();
         $fIni        = $params['f_ini'] ?? date('Y-m-d', strtotime('-90 days'));
         $fFin        = $params['f_fin'] ?? date('Y-m-d');
+        $productoId  = !empty($params['producto_id']) ? (int)$params['producto_id'] : null;
 
         $ubicacion = Capsule::table('ubicaciones')
             ->where('empresa_id', $empresaId)
@@ -121,6 +122,7 @@ class TrazabilidadController extends BaseController
                 $q->where('mi.ubicacion_origen_id', $ubicacionId)
                   ->orWhere('mi.ubicacion_destino_id', $ubicacionId);
             })
+            ->when($productoId, fn($q) => $q->where('mi.producto_id', $productoId))
             ->whereBetween('mi.fecha_movimiento', [$fIni, $fFin])
             ->select(
                 'mi.id', 'mi.tipo_movimiento', 'mi.cantidad', 'mi.cantidad_cajas',
@@ -146,6 +148,7 @@ class TrazabilidadController extends BaseController
             ->where('i.sucursal_id', $sucursalId)
             ->where('i.ubicacion_id', $ubicacionId)
             ->where('i.cantidad', '>', 0)
+            ->when($productoId, fn($q) => $q->where('i.producto_id', $productoId))
             ->select(
                 'pr.codigo_interno', 'pr.nombre as producto_nombre', 'pr.unidades_caja',
                 'i.lote', 'i.fecha_vencimiento', 'i.cantidad', 'i.cantidad_reservada',
