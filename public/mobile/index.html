@@ -6718,8 +6718,13 @@ const MWMS = {
                 <div style="font-size:.65rem;color:#64748b;margin-top:2px;">
                   ${p.total_pedidos} pedido(s) · ${p.total_lineas} línea(s)
                 </div>
+                ${p.observaciones ? `
+                <div style="margin-top:6px;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);border-radius:6px;padding:4px 8px;display:flex;align-items:flex-start;gap:5px;">
+                  <i class="fa-solid fa-note-sticky" style="color:#b45309;font-size:.65rem;margin-top:1px;"></i>
+                  <span style="color:#92400e;font-size:.62rem;font-weight:700;line-height:1.25;">${this.esc(p.observaciones)}</span>
+                </div>` : ''}
               </div>
-              <span style="background:#dbeafe;color:#1d4ed8;border-radius:6px;padding:3px 8px;font-size:.65rem;font-weight:800;">
+              <span style="background:#dbeafe;color:#1d4ed8;border-radius:6px;padding:3px 8px;font-size:.65rem;font-weight:800;align-self:flex-start;">
                 INICIAR
               </span>
             </div>
@@ -7417,6 +7422,11 @@ const MWMS = {
                   <div style="font-size:.95rem;font-weight:900;color:#1e293b;">${s.total_unidades ? parseFloat(s.total_unidades).toFixed(0) : '—'}</div>
                 </div>
               </div>
+              ${s.observaciones ? `
+              <div style="margin-top:8px;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);border-radius:6px;padding:5px 10px;display:flex;align-items:flex-start;gap:6px;">
+                <i class="fa-solid fa-note-sticky" style="color:#b45309;font-size:.7rem;margin-top:1px;"></i>
+                <span style="color:#92400e;font-size:.68rem;font-weight:700;line-height:1.3;">${this.esc(s.observaciones)}</span>
+              </div>` : ''}
               <!-- Ambientes paramétricos -->
               <div style="margin-top:10px;">
                 <div style="font-size:.48rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">AMBIENTES PENDIENTES (Toque para iniciar)</div>
