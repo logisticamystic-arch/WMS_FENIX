@@ -3804,7 +3804,7 @@ WMS_MODULES.picking = {
     const top3 = r.length > 2 ? r[2] : null;
     
     const formatMetric = (item) => {
-        if (metric === 'avg_minutos') return `${item.avg_minutos || 0} min/pd`;
+        if (metric === 'avg_minutos') return `${item.avg_minutos || 0} min`;
         if (metric === 'pedidos') return `${WMS.formatNum(item.pedidos || 0)} pds`;
         if (metric === 'lineas') return `${WMS.formatNum(item.lineas || 0)} lín`;
         return `${WMS.formatNum(item.unidades || 0)} unds`;
@@ -4111,7 +4111,7 @@ WMS_MODULES.picking = {
                 <option value="unidades" ${this._currentRankingMetric==='unidades'||!this._currentRankingMetric?'selected':''}>UNIDADES</option>
                 <option value="pedidos" ${this._currentRankingMetric==='pedidos'?'selected':''}>PEDIDOS</option>
                 <option value="lineas" ${this._currentRankingMetric==='lineas'?'selected':''}>LÍNEAS</option>
-                <option value="avg_minutos" ${this._currentRankingMetric==='avg_minutos'?'selected':''}>TIEMPO PROMEDIO</option>
+                <option value="avg_minutos" ${this._currentRankingMetric==='avg_minutos'?'selected':''}>TIEMPO TOTAL</option>
             </select>
         </div>
       </div>

@@ -2509,18 +2509,22 @@ class PickingController extends BaseController
                 Capsule::raw('SUM(d.cantidad_pickeada) as unidades'),
                 Capsule::raw(
                     $this->isPg()
-                    ? "ROUND(AVG(CASE WHEN o.hora_fin IS NOT NULL AND o.hora_inicio IS NOT NULL
-                        AND o.hora_inicio != '00:00:00'
-                        AND o.hora_fin    != '00:00:00'
-                        AND o.hora_fin     > o.hora_inicio
-                        THEN EXTRACT(EPOCH FROM (o.hora_fin::time - o.hora_inicio::time)) / 60
-                        ELSE NULL END), 1) as avg_minutos"
-                    : "ROUND(AVG(CASE WHEN o.hora_fin IS NOT NULL AND o.hora_inicio IS NOT NULL
-                        AND o.hora_inicio != '00:00:00'
-                        AND o.hora_fin    != '00:00:00'
-                        AND o.hora_fin     > o.hora_inicio
-                        THEN TIME_TO_SEC(TIMEDIFF(o.hora_fin, o.hora_inicio)) / 60
-                        ELSE NULL END), 1) as avg_minutos"
+                    ? "ROUND((SELECT SUM(EXTRACT(EPOCH FROM (op.hora_fin::time - op.hora_inicio::time)) / 60) 
+                        FROM orden_pickings op 
+                        WHERE op.id IN (SELECT d2.orden_picking_id FROM picking_detalles d2 WHERE d2.auxiliar_id = aux.id) 
+                        AND op.empresa_id = {$empresaId}
+                        AND op.created_at BETWEEN '{$ini}' AND '{$fin}'
+                        AND op.hora_fin IS NOT NULL AND op.hora_inicio IS NOT NULL
+                        AND op.hora_inicio != '00:00:00' AND op.hora_fin != '00:00:00'
+                        AND op.hora_fin > op.hora_inicio), 1) as avg_minutos"
+                    : "ROUND((SELECT SUM(TIME_TO_SEC(TIMEDIFF(op.hora_fin, op.hora_inicio)) / 60) 
+                        FROM orden_pickings op 
+                        WHERE op.id IN (SELECT d2.orden_picking_id FROM picking_detalles d2 WHERE d2.auxiliar_id = aux.id) 
+                        AND op.empresa_id = {$empresaId}
+                        AND op.created_at BETWEEN '{$ini}' AND '{$fin}'
+                        AND op.hora_fin IS NOT NULL AND op.hora_inicio IS NOT NULL
+                        AND op.hora_inicio != '00:00:00' AND op.hora_fin != '00:00:00'
+                        AND op.hora_fin > op.hora_inicio), 1) as avg_minutos"
                 )
             )
             ->groupBy('aux.id', 'aux.nombre')
