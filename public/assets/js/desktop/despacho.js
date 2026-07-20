@@ -1620,7 +1620,7 @@ WMS_MODULES.despacho = {
       if (fHasta && p.fecha_movimiento > fHasta) continue;
       if (fPlan && !(p.planilla_numero||'').toLowerCase().includes(fPlan)) continue;
       if (fTexto) {
-        const textStr = `${p.numero_orden||''} ${p.numero_factura||''} ${p.cliente||''} ${p.sucursal_entrega||''}`.toLowerCase();
+        const textStr = ( (p.numero_orden||'') + ' ' + (p.numero_factura||'') + ' ' + (p.cliente||'') + ' ' + (p.sucursal_entrega||'') ).toLowerCase();
         if (!textStr.includes(fTexto)) continue;
       }
       
