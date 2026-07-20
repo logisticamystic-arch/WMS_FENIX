@@ -3779,6 +3779,109 @@ WMS_MODULES.picking = {
   _pickDonutChart: null,
   _timerInterval: null,
 
+  _currentRankingMetric: 'unidades',
+  _currentRankingData: [],
+  
+  _renderPodiumHtml(rankingArray) {
+    if (!rankingArray || !rankingArray.length) return '<div class="table-empty">No hay datos</div>';
+    
+    // Create a copy to sort safely
+    const r = [...rankingArray];
+    const metric = this._currentRankingMetric || 'unidades';
+    
+    r.sort((a, b) => {
+        if (metric === 'avg_minutos') {
+            const aVal = parseFloat(a.avg_minutos) || 999999;
+            const bVal = parseFloat(b.avg_minutos) || 999999;
+            return aVal - bVal; // fastest first
+        } else {
+            return (b[metric] || 0) - (a[metric] || 0); // highest first
+        }
+    });
+    
+    const top1 = r[0];
+    const top2 = r.length > 1 ? r[1] : null;
+    const top3 = r.length > 2 ? r[2] : null;
+    
+    const formatMetric = (item) => {
+        if (metric === 'avg_minutos') return `${item.avg_minutos || 0} min/pd`;
+        if (metric === 'pedidos') return `${WMS.formatNum(item.pedidos || 0)} pds`;
+        if (metric === 'lineas') return `${WMS.formatNum(item.lineas || 0)} lín`;
+        return `${WMS.formatNum(item.unidades || 0)} unds`;
+    };
+    
+    return `<div style="display:flex; justify-content:center; align-items:flex-end; gap:10px; margin:20px 0; padding-bottom:10px; border-bottom:1px solid #f1f5f9;">
+      <!-- Puesto 2 -->
+      ${top2 ? `<div style="display:flex; flex-direction:column; align-items:center; width:120px;">
+        <div style="font-size:10px; font-weight:700; color:#64748b; margin-bottom:5px; text-align:center;">${WMS.esc(top2.nombre)}</div>
+        <div style="font-size:11px; color:#10b981; font-weight:bold; margin-bottom:5px;">${formatMetric(top2)}</div>
+        <div style="width:100%; background:linear-gradient(180deg, #94a3b8, #cbd5e1); height:70px; border-radius:8px 8px 0 0; display:flex; justify-content:center; align-items:flex-start; padding-top:10px; color:#fff; font-size:24px; font-weight:900; text-shadow:0 2px 4px rgba(0,0,0,0.2); box-shadow:0 -4px 10px rgba(0,0,0,0.1);">2</div>
+      </div>` : '<div style="width:120px;"></div>'}
+      
+      <!-- Puesto 1 -->
+      ${top1 ? `<div style="display:flex; flex-direction:column; align-items:center; width:130px; z-index:2;">
+        <div style="position:relative; top:5px;"><i class="fa-solid fa-crown" style="color:#f59e0b; font-size:24px; filter:drop-shadow(0 2px 2px rgba(245,158,11,0.4));"></i></div>
+        <div style="font-size:11px; font-weight:900; color:#1e293b; margin-top:10px; margin-bottom:5px; text-align:center;">${WMS.esc(top1.nombre)}</div>
+        <div style="font-size:12px; color:#10b981; font-weight:bold; margin-bottom:5px;">${formatMetric(top1)}</div>
+        <div style="width:100%; background:linear-gradient(180deg, #fbbf24, #f59e0b); height:100px; border-radius:8px 8px 0 0; display:flex; justify-content:center; align-items:flex-start; padding-top:10px; color:#fff; font-size:32px; font-weight:900; text-shadow:0 2px 4px rgba(0,0,0,0.2); box-shadow:0 -4px 15px rgba(245,158,11,0.3);">1</div>
+      </div>` : ''}
+      
+      <!-- Puesto 3 -->
+      ${top3 ? `<div style="display:flex; flex-direction:column; align-items:center; width:120px;">
+        <div style="font-size:10px; font-weight:700; color:#64748b; margin-bottom:5px; text-align:center;">${WMS.esc(top3.nombre)}</div>
+        <div style="font-size:11px; color:#10b981; font-weight:bold; margin-bottom:5px;">${formatMetric(top3)}</div>
+        <div style="width:100%; background:linear-gradient(180deg, #d97706, #b45309); height:50px; border-radius:8px 8px 0 0; display:flex; justify-content:center; align-items:flex-start; padding-top:10px; color:#fff; font-size:20px; font-weight:900; text-shadow:0 2px 4px rgba(0,0,0,0.2); box-shadow:0 -4px 10px rgba(0,0,0,0.1);">3</div>
+      </div>` : '<div style="width:120px;"></div>'}
+    </div>`;
+  },
+  
+  _renderRankingTbody(rankingArray) {
+    if (!rankingArray || !rankingArray.length) return '<tr><td colspan="6" class="table-empty">No hay actividad registrada</td></tr>';
+    
+    const r = [...rankingArray];
+    const metric = this._currentRankingMetric || 'unidades';
+    
+    r.sort((a, b) => {
+        if (metric === 'avg_minutos') {
+            const aVal = parseFloat(a.avg_minutos) || 999999;
+            const bVal = parseFloat(b.avg_minutos) || 999999;
+            return aVal - bVal; 
+        } else {
+            return (b[metric] || 0) - (a[metric] || 0); 
+        }
+    });
+
+    const maxVal = r.length ? (metric === 'avg_minutos' ? Math.max(...r.map(x=>parseFloat(x.avg_minutos)||0)) : r[0][metric]) : 1;
+    
+    return r.map((a,i) => {
+        const val = metric === 'avg_minutos' ? (parseFloat(a.avg_minutos)||0) : a[metric];
+        let pct = maxVal > 0 ? Math.round((val / maxVal) * 100) : 0;
+        
+        return `<tr>
+          <td class="text-center"><span style="font-weight:900; color:#94a3b8">${i+1}</span></td>
+          <td><b>${WMS.esc(a.nombre)}</b></td>
+          <td class="text-center"><b>${a.pedidos}</b></td>
+          <td class="text-center"><b>${a.lineas}</b></td>
+          <td class="text-center"><span class="badge badge-info">${WMS.formatNum(a.unidades)}</span></td>
+          <td>
+            <div style="background:#f1f5f9; height:6px; border-radius:99px; overflow:hidden;">
+              <div style="width:${pct}%; background:linear-gradient(to right, ${metric==='avg_minutos'?'#ef4444, #f59e0b':'#3b82f6, #10b981'}); height:100%;"></div>
+            </div>
+          </td>
+        </tr>`;
+    }).join('');
+  },
+  
+  _setRankingMetric(metric) {
+    this._currentRankingMetric = metric;
+    const pCont = document.getElementById('podium-container');
+    const tCont = document.getElementById('ranking-tbody');
+    if (pCont && tCont && this._currentRankingData) {
+      pCont.innerHTML = this._renderPodiumHtml(this._currentRankingData);
+      tCont.innerHTML = this._renderRankingTbody(this._currentRankingData);
+    }
+  },
+
   async show_dashboard(silent = false) {
     WMS.currentSubModule = 'dashboard';
     const isStandalone = document.body.classList.contains('standalone-mode');
@@ -3831,7 +3934,10 @@ WMS_MODULES.picking = {
 
       // Build filter option lists from full dataset
       const sucursales = [...new Set(all.map(o => o.sucursal_entrega).filter(Boolean))].sort();
-      const auxiliares = [...new Set(all.map(o => o.auxiliar?.nombre || o.usuario).filter(Boolean))].sort();
+      
+      const auxSet = new Set();
+      grupos.forEach(g => g.auxiliares.forEach(a => auxSet.add(a)));
+      const auxiliares = [...auxSet].sort();
       const planillas  = [...new Set(all.map(o => o.planilla_numero || o.planilla_lote).filter(Boolean))].sort();
 
       // Client-side filter grupos
@@ -3852,6 +3958,8 @@ WMS_MODULES.picking = {
       const stCount = { Pendiente: d.pendientes||0, EnProceso: d.en_proceso||0, Completado: d.completadas||0 };
 
       const tableRows = gruposVis.map(g => this._renderPlanillaRow(g, { isDashboard: true })).join('');
+
+      this._currentRankingData = d.ranking_auxiliares || [];
 
       WMS.setContent(`
 <div class="pro-dashboard">
@@ -3955,60 +4063,26 @@ WMS_MODULES.picking = {
     <div class="card">
       <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
         <span class="card-title"><i class="fa-solid fa-ranking-star" style="color:#f59e0b;"></i> Ranking de Productividad Auxiliar</span>
-        <span style="font-size:11px; color:#94a3b8; font-weight:600;">UNIDADES · LÍNEAS · PEDIDOS</span>
+        <div style="display:flex; gap:10px; font-size:11px; color:#94a3b8; font-weight:600; align-items:center;">
+            <span>ORDENAR POR:</span>
+            <select class="form-control form-control-sm" style="width:120px; padding:2px 8px; height:26px; font-size:11px;" onchange="WMS_MODULES.picking._setRankingMetric(this.value)">
+                <option value="unidades" ${this._currentRankingMetric==='unidades'||!this._currentRankingMetric?'selected':''}>UNIDADES</option>
+                <option value="pedidos" ${this._currentRankingMetric==='pedidos'?'selected':''}>PEDIDOS</option>
+                <option value="lineas" ${this._currentRankingMetric==='lineas'?'selected':''}>LÍNEAS</option>
+                <option value="avg_minutos" ${this._currentRankingMetric==='avg_minutos'?'selected':''}>TIEMPO PROMEDIO</option>
+            </select>
+        </div>
       </div>
       
       <!-- Visual Podium -->
-      ${(d.ranking_auxiliares||[]).length >= 1 ? (() => {
-        const r = d.ranking_auxiliares;
-        const top1 = r[0];
-        const top2 = r.length > 1 ? r[1] : null;
-        const top3 = r.length > 2 ? r[2] : null;
-        
-        return `<div style="display:flex; justify-content:center; align-items:flex-end; gap:10px; margin:20px 0; padding-bottom:10px; border-bottom:1px solid #f1f5f9;">
-          <!-- Puesto 2 -->
-          ${top2 ? `<div style="display:flex; flex-direction:column; align-items:center; width:120px;">
-            <div style="font-size:10px; font-weight:700; color:#64748b; margin-bottom:5px; text-align:center;">${WMS.esc(top2.nombre)}</div>
-            <div style="font-size:11px; color:#10b981; font-weight:bold; margin-bottom:5px;">${WMS.formatNum(top2.unidades)} unds</div>
-            <div style="width:100%; background:linear-gradient(180deg, #94a3b8, #cbd5e1); height:70px; border-radius:8px 8px 0 0; display:flex; justify-content:center; align-items:flex-start; padding-top:10px; color:#fff; font-size:24px; font-weight:900; text-shadow:0 2px 4px rgba(0,0,0,0.2); box-shadow:0 -4px 10px rgba(0,0,0,0.1);">2</div>
-          </div>` : '<div style="width:120px;"></div>'}
-          
-          <!-- Puesto 1 -->
-          ${top1 ? `<div style="display:flex; flex-direction:column; align-items:center; width:130px; z-index:2;">
-            <div style="position:relative; top:5px;"><i class="fa-solid fa-crown" style="color:#f59e0b; font-size:24px; filter:drop-shadow(0 2px 2px rgba(245,158,11,0.4));"></i></div>
-            <div style="font-size:11px; font-weight:900; color:#1e293b; margin-top:10px; margin-bottom:5px; text-align:center;">${WMS.esc(top1.nombre)}</div>
-            <div style="font-size:12px; color:#10b981; font-weight:bold; margin-bottom:5px;">${WMS.formatNum(top1.unidades)} unds</div>
-            <div style="width:100%; background:linear-gradient(180deg, #fbbf24, #f59e0b); height:100px; border-radius:8px 8px 0 0; display:flex; justify-content:center; align-items:flex-start; padding-top:10px; color:#fff; font-size:32px; font-weight:900; text-shadow:0 2px 4px rgba(0,0,0,0.2); box-shadow:0 -4px 15px rgba(245,158,11,0.3);">1</div>
-          </div>` : ''}
-          
-          <!-- Puesto 3 -->
-          ${top3 ? `<div style="display:flex; flex-direction:column; align-items:center; width:120px;">
-            <div style="font-size:10px; font-weight:700; color:#64748b; margin-bottom:5px; text-align:center;">${WMS.esc(top3.nombre)}</div>
-            <div style="font-size:11px; color:#10b981; font-weight:bold; margin-bottom:5px;">${WMS.formatNum(top3.unidades)} unds</div>
-            <div style="width:100%; background:linear-gradient(180deg, #d97706, #b45309); height:50px; border-radius:8px 8px 0 0; display:flex; justify-content:center; align-items:flex-start; padding-top:10px; color:#fff; font-size:20px; font-weight:900; text-shadow:0 2px 4px rgba(0,0,0,0.2); box-shadow:0 -4px 10px rgba(0,0,0,0.1);">3</div>
-          </div>` : '<div style="width:120px;"></div>'}
-        </div>`;
-      })() : ''}
+      <div id="podium-container">
+        ${this._renderPodiumHtml(this._currentRankingData)}
+      </div>
 
       <div class="table-container" style="max-height:300px;">
         <table class="erp-table">
           <thead><tr><th>#</th><th>Auxiliar</th><th class="text-center">Pedidos</th><th class="text-center">Líneas</th><th class="text-center">Unid. Pick</th><th style="width:100px;">Desempeño</th></tr></thead>
-          <tbody>${(d.ranking_auxiliares||[]).length ? d.ranking_auxiliares.map((a,i) => {
-            const maxL = d.ranking_auxiliares[0].lineas || 1;
-            const pct = Math.round((a.lineas / maxL) * 100);
-            return `<tr>
-              <td class="text-center"><span style="font-weight:900; color:#94a3b8">${i+1}</span></td>
-              <td><b>${WMS.esc(a.nombre)}</b></td>
-              <td class="text-center"><b>${a.pedidos}</b></td>
-              <td class="text-center"><b>${a.lineas}</b></td>
-              <td class="text-center"><span class="badge badge-info">${WMS.formatNum(a.unidades)}</span></td>
-              <td>
-                <div style="background:#f1f5f9; height:6px; border-radius:99px; overflow:hidden;">
-                  <div style="width:${pct}%; background:linear-gradient(to right, #3b82f6, #10b981); height:100%;"></div>
-                </div>
-              </td>
-            </tr>`;
-          }).join('') : '<tr><td colspan="6" class="table-empty">No hay actividad registrada</td></tr>'}</tbody>
+          <tbody id="ranking-tbody">${this._renderRankingTbody(this._currentRankingData)}</tbody>
         </table>
       </div>
     </div>

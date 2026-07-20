@@ -2424,9 +2424,9 @@ class PickingController extends BaseController
         $ordenesActivasIds = (clone $baseQ)->whereIn('estado', ['Pendiente', 'EnProceso'])->pluck('id');
         $stats['total_lineas_activas']    = PickingDetalle::whereIn('orden_picking_id', $ordenesActivasIds)->count();
         $stats['lineas_pendientes']       = PickingDetalle::whereIn('orden_picking_id', $ordenesActivasIds)
-                                                ->whereIn('estado', ['Pendiente', 'Creado'])->count();
+                                                ->whereIn('estado', ['Pendiente', 'Creado', 'Asignado', 'EnProceso'])->count();
         $stats['unidades_pendientes']     = (int) PickingDetalle::whereIn('orden_picking_id', $ordenesActivasIds)
-                                                ->whereIn('estado', ['Pendiente', 'Creado'])
+                                                ->whereIn('estado', ['Pendiente', 'Creado', 'Asignado', 'EnProceso'])
                                                 ->sum('cantidad_solicitada');
 
         // Planillas activas en vivo (agrupadas por planilla_numero)
