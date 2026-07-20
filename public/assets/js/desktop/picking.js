@@ -3813,6 +3813,12 @@ WMS_MODULES.picking = {
             }
             return `${Math.round(m)} min`;
         }
+        if (metric === 'promedio_linea') {
+            const m = parseFloat(item.avg_minutos) || 0;
+            const l = parseInt(item.lineas) || 0;
+            const avg = l > 0 ? (m / l) : 0;
+            return `${avg.toFixed(2)} min/l`;
+        }
         if (metric === 'pedidos') return `${WMS.formatNum(item.pedidos || 0)} pds`;
         if (metric === 'lineas') return `${WMS.formatNum(item.lineas || 0)} lín`;
         return `${WMS.formatNum(item.unidades || 0)} unds`;
@@ -3854,15 +3860,26 @@ WMS_MODULES.picking = {
             const aVal = parseFloat(a.avg_minutos) || 999999;
             const bVal = parseFloat(b.avg_minutos) || 999999;
             return aVal - bVal; 
+        } else if (metric === 'promedio_linea') {
+            const aVal = (parseInt(a.lineas) > 0) ? (parseFloat(a.avg_minutos) / parseInt(a.lineas)) : 999999;
+            const bVal = (parseInt(b.lineas) > 0) ? (parseFloat(b.avg_minutos) / parseInt(b.lineas)) : 999999;
+            return aVal - bVal; // fastest first
         } else {
             return (b[metric] || 0) - (a[metric] || 0); 
         }
     });
 
-    const maxVal = r.length ? (metric === 'avg_minutos' ? Math.max(...r.map(x=>parseFloat(x.avg_minutos)||0)) : r[0][metric]) : 1;
+    const maxVal = r.length ? (
+        metric === 'avg_minutos' ? Math.max(...r.map(x=>parseFloat(x.avg_minutos)||0)) : 
+        (metric === 'promedio_linea' ? Math.max(...r.map(x=> (parseInt(x.lineas) > 0 ? parseFloat(x.avg_minutos)/parseInt(x.lineas) : 0))) : r[0][metric])
+    ) : 1;
     
     return r.map((a,i) => {
-        const val = metric === 'avg_minutos' ? (parseFloat(a.avg_minutos)||0) : a[metric];
+        let val = 0;
+        if (metric === 'avg_minutos') val = parseFloat(a.avg_minutos) || 0;
+        else if (metric === 'promedio_linea') val = (parseInt(a.lineas) > 0) ? (parseFloat(a.avg_minutos) / parseInt(a.lineas)) : 0;
+        else val = a[metric] || 0;
+        
         let pct = maxVal > 0 ? Math.round((val / maxVal) * 100) : 0;
         
         return `<tr>
@@ -4150,6 +4167,7 @@ WMS_MODULES.picking = {
                 <option value="pedidos" ${this._currentRankingMetric==='pedidos'?'selected':''}>PEDIDOS</option>
                 <option value="lineas" ${this._currentRankingMetric==='lineas'?'selected':''}>LÍNEAS</option>
                 <option value="avg_minutos" ${this._currentRankingMetric==='avg_minutos'?'selected':''}>TIEMPO TOTAL</option>
+                <option value="promedio_linea" ${this._currentRankingMetric==='promedio_linea'?'selected':''}>PROMEDIO X LÍNEA</option>
             </select>
         </div>
       </div>
