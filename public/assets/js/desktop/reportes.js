@@ -129,12 +129,25 @@ WMS_MODULES.reportes = {
   },
 
   _getParams(id) {
+    const hoy    = new Date().toISOString().substring(0,10);
+    const hace30 = new Date(Date.now() - 30*86400000).toISOString().substring(0,10);
     return {
-      desde:     document.getElementById(`${id}-desde`)?.value     || '',
-      hasta:     document.getElementById(`${id}-hasta`)?.value     || '',
+      desde:     document.getElementById(`${id}-desde`)?.value     || hace30,
+      hasta:     document.getElementById(`${id}-hasta`)?.value     || hoy,
       ref:       document.getElementById(`${id}-ref`)?.value.trim() || '',
       ubicCodigo: document.getElementById(`${id}-ubic-codigo`)?.value || document.getElementById(`${id}-ubic-input`)?.value || '',
     };
+  },
+
+  // ── Gate "no cargar hasta filtrar": los reportes no consultan el backend
+  // hasta que el usuario presiona Filtrar/Buscar la primera vez. ────────────
+  _buscadoMap: {},
+  _buscar(id, fnName) {
+    this._buscadoMap[id] = true;
+    this[fnName]();
+  },
+  _estadoInicialReporte(msg) {
+    return `<div class="m-empty" style="padding:40px;"><i class="fa-solid fa-filter"></i><p>${msg || 'Aplique los filtros deseados y presione "Filtrar" para consultar el reporte'}</p></div>`;
   },
 
   // ── DASHBOARD GERENCIAL ───────────────────────────────────────────────────
@@ -475,6 +488,18 @@ WMS_MODULES.reportes = {
     const odc = document.getElementById('rec-odc')?.value.trim() || '';
     const prov = document.getElementById('rec-prov')?.value.trim() || '';
 
+    if (!this._buscadoMap.rec) {
+      WMS.setToolbar('');
+      WMS.setContent(`
+        ${this._filtroBarra({id:'rec', desde:p.desde, hasta:p.hasta, referencia:p.ref, ubicacion:p.ubicCodigo,
+          extra:`<input type="text" class="form-control" id="rec-odc" placeholder="N° ODC" style="max-width:120px;" value="${WMS.esc(odc)}">
+                 <input type="text" class="form-control" id="rec-prov" placeholder="Proveedor" style="max-width:140px;" value="${WMS.esc(prov)}">`,
+          onFiltrar:"WMS_MODULES.reportes._buscar('rec','show_recepciones')"})}
+        ${this._estadoInicialReporte()}`);
+      this.initUbicacionAutocomplete('rec-ubic-input','rec-ubic-id','rec-ubic-codigo');
+      return;
+    }
+
     WMS.setToolbar(`<button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.exportarRecepciones()"><i class="fa-solid fa-file-csv"></i> Exportar CSV</button>`);
     WMS.spinner();
     try {
@@ -515,6 +540,15 @@ WMS_MODULES.reportes = {
   // ── DESPACHOS ─────────────────────────────────────────────────────────────
   async show_despachos() {
     const p = this._getParams('des');
+
+    if (!this._buscadoMap.des) {
+      WMS.setToolbar('');
+      WMS.setContent(`
+        ${this._filtroBarra({id:'des', desde:p.desde, hasta:p.hasta, referencia:p.ref, ubicacion:'', onFiltrar:"WMS_MODULES.reportes._buscar('des','show_despachos')"})}
+        ${this._estadoInicialReporte()}`);
+      return;
+    }
+
     WMS.setToolbar(`<button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.exportarDespachos()"><i class="fa-solid fa-file-csv"></i> Exportar CSV</button>`);
     WMS.spinner();
     try {
@@ -550,6 +584,19 @@ WMS_MODULES.reportes = {
     const p     = this._getParams('pick');
     const plan  = document.getElementById('pick-planilla')?.value.trim() || '';
     const ruta  = document.getElementById('pick-ruta')?.value.trim() || '';
+
+    if (!this._buscadoMap.pick) {
+      WMS.setToolbar('');
+      WMS.setContent(`
+        ${this._filtroBarra({id:'pick', desde:p.desde, hasta:p.hasta, referencia:p.ref, ubicacion:p.ubicCodigo,
+          extra:`<input type="text" class="form-control" id="pick-planilla" placeholder="Planilla" style="max-width:110px;" value="${WMS.esc(plan)}">
+                 <input type="text" class="form-control" id="pick-ruta" placeholder="Ruta" style="max-width:110px;" value="${WMS.esc(ruta)}">`,
+          onFiltrar:"WMS_MODULES.reportes._buscar('pick','show_picking')"})}
+        ${this._estadoInicialReporte()}`);
+      this.initUbicacionAutocomplete('pick-ubic-input','pick-ubic-id','pick-ubic-codigo');
+      return;
+    }
+
     WMS.setToolbar(`<button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.exportarPicking()"><i class="fa-solid fa-file-csv"></i> Exportar CSV</button>`);
     WMS.spinner();
     try {
@@ -591,6 +638,15 @@ WMS_MODULES.reportes = {
   // ── DEVOLUCIONES ──────────────────────────────────────────────────────────
   async show_devoluciones() {
     const p = this._getParams('dev');
+
+    if (!this._buscadoMap.dev) {
+      WMS.setToolbar('');
+      WMS.setContent(`
+        ${this._filtroBarra({id:'dev', desde:p.desde, hasta:p.hasta, referencia:p.ref, ubicacion:'', onFiltrar:"WMS_MODULES.reportes._buscar('dev','show_devoluciones')"})}
+        ${this._estadoInicialReporte()}`);
+      return;
+    }
+
     WMS.setToolbar(`<button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.exportarDevoluciones()"><i class="fa-solid fa-file-csv"></i> Exportar CSV</button>`);
     WMS.spinner();
     try {
@@ -636,6 +692,20 @@ WMS_MODULES.reportes = {
   async show_proveedores() {
     const p    = this._getParams('prov');
     const nombre = document.getElementById('prov-nombre')?.value.trim() || '';
+
+    if (!this._buscadoMap.prov) {
+      WMS.setToolbar('');
+      WMS.setContent(`
+        <div class="filter-bar" style="flex-wrap:wrap;gap:8px;">
+          <input type="date" class="form-control" id="prov-desde" style="max-width:148px;" value="${p.desde}">
+          <input type="date" class="form-control" id="prov-hasta" style="max-width:148px;" value="${p.hasta}">
+          <input type="text"  class="form-control" id="prov-nombre" placeholder="Nombre proveedor" style="max-width:200px;" value="${WMS.esc(nombre)}">
+          <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.reportes._buscar('prov','show_proveedores')"><i class="fa-solid fa-search"></i> Filtrar</button>
+        </div>
+        ${this._estadoInicialReporte()}`);
+      return;
+    }
+
     WMS.setToolbar(`<button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.exportarProveedores()"><i class="fa-solid fa-file-csv"></i> Exportar CSV</button>`);
     WMS.spinner();
     try {
@@ -696,6 +766,15 @@ WMS_MODULES.reportes = {
   // ── AUDIT LOG ─────────────────────────────────────────────────────────────
   async show_audit() {
     const p = this._getParams('aud');
+
+    if (!this._buscadoMap.aud) {
+      WMS.setToolbar('');
+      WMS.setContent(`
+        ${this._filtroBarra({id:'aud', desde:p.desde, hasta:p.hasta, referencia:'', ubicacion:'', onFiltrar:"WMS_MODULES.reportes._buscar('aud','show_audit')"})}
+        ${this._estadoInicialReporte()}`);
+      return;
+    }
+
     WMS.setToolbar(`<button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.exportarAudit()"><i class="fa-solid fa-file-csv"></i> Exportar CSV</button>`);
     WMS.spinner();
     try {
@@ -729,6 +808,17 @@ WMS_MODULES.reportes = {
   async show_odc() {
     const p   = this._getParams('odc');
     const num = document.getElementById('odc-num')?.value.trim() || '';
+
+    if (!this._buscadoMap.odc) {
+      WMS.setToolbar('');
+      WMS.setContent(`
+        ${this._filtroBarra({id:'odc', desde:p.desde, hasta:p.hasta, referencia:p.ref, ubicacion:'',
+          extra:`<input type="text" class="form-control" id="odc-num" placeholder="N° ODC" style="max-width:120px;" value="${WMS.esc(num)}">`,
+          onFiltrar:"WMS_MODULES.reportes._buscar('odc','show_odc')"})}
+        ${this._estadoInicialReporte()}`);
+      return;
+    }
+
     WMS.setToolbar(`
       <button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.exportarODC('pallet')"><i class="fa-solid fa-file-csv"></i> Detalle por Pallet</button>
       <button class="btn btn-info btn-sm"    onclick="WMS_MODULES.reportes.exportarODC('resumen')"><i class="fa-solid fa-file-csv"></i> Resumen ODC</button>
@@ -769,6 +859,25 @@ WMS_MODULES.reportes = {
   async show_agotados() {
     const p    = this._getParams('agot');
     const tipo = document.getElementById('agot-tipo')?.value || 'todos';
+
+    if (!this._buscadoMap.agot) {
+      WMS.setToolbar('');
+      const tipoOptsInicial = `
+        <option value="todos"        ${tipo==='todos'  ?'selected':''}>Todos</option>
+        <option value="agotado_total"   ${tipo==='agotado_total'  ?'selected':''}>Solo Agotado Total</option>
+        <option value="agotado_parcial" ${tipo==='agotado_parcial'?'selected':''}>Solo Agotado Parcial</option>`;
+      WMS.setContent(`
+        <div class="filter-bar" style="flex-wrap:wrap;gap:8px;">
+          <input type="date" class="form-control" id="agot-desde" style="max-width:148px;" value="${p.desde}">
+          <input type="date" class="form-control" id="agot-hasta" style="max-width:148px;" value="${p.hasta}">
+          <input type="text"  class="form-control" id="agot-ref" placeholder="Referencia / EAN" style="max-width:160px;" value="${WMS.esc(p.ref)}">
+          <select class="form-control" id="agot-tipo" style="max-width:160px;">${tipoOptsInicial}</select>
+          <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.reportes._buscar('agot','show_agotados')"><i class="fa-solid fa-search"></i> Filtrar</button>
+        </div>
+        ${this._estadoInicialReporte()}`);
+      return;
+    }
+
     WMS.setToolbar(`<button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.exportarAgotados()"><i class="fa-solid fa-file-csv"></i> Exportar CSV</button>`);
     WMS.spinner();
     try {

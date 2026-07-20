@@ -826,6 +826,117 @@ WMS_MODULES.inventario = {
     }
   },
 
+  // Desglose real por producto/lote al expandir una ubicación (bajo demanda, sin dump previo)
+  async _cargarDesgloseUbicacion(ubicacionId, targetId) {
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    target.innerHTML = '<div class="spinner sm" style="margin:10px auto;display:block;"></div>';
+    try {
+      const r = await API.get('/inventario/stock', `ubicacion_id=${ubicacionId}&limit=500`);
+      const items = r.data || r || [];
+      if (!items.length) {
+        target.innerHTML = '<div class="muted" style="padding:8px 0;font-size:.78rem;">Sin referencias con stock en esta ubicación</div>';
+        return;
+      }
+      target.innerHTML = `
+        <table class="erp-table" style="font-size:.78rem;background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
+          <thead><tr style="background:#f0f4ff">
+            <th>Referencia</th><th>Lote</th>
+            <th style="text-align:center">Cajas</th><th style="text-align:center">Sueltos</th><th style="text-align:center">UND/TOTAL</th>
+            <th>F.Vencimiento</th><th>Estado</th><th style="width:100px"></th>
+          </tr></thead>
+          <tbody>
+            ${items.map(i => `
+              <tr>
+                <td><b>${WMS.esc(i.codigo_interno || i.ean || '—')}</b><div style="font-size:10px;color:#64748b">${WMS.esc(i.descripcion || i.producto_nombre || '')}</div></td>
+                <td class="muted">${WMS.esc(i.lote || '—')}</td>
+                <td style="text-align:center;color:#0070f2">${i.cantidad_cajas ?? '—'}</td>
+                <td style="text-align:center;color:#6d28d9">${i.saldos ?? '—'}</td>
+                <td style="text-align:center;font-weight:700">${WMS.formatNum(i.cantidad)}</td>
+                <td class="muted">${i.fecha_vencimiento ? WMS.formatDate(i.fecha_vencimiento) : 'N/A'}</td>
+                <td><span class="pro-badge ${i.estado==='Disponible'?'ok':'warn'}">${WMS.esc(i.estado || '—')}</span></td>
+                <td>
+                  <button class="btn btn-xs btn-outline-secondary" style="font-size:10px;padding:3px 8px;"
+                    onclick="WMS_MODULES.inventario._verHistorialUbiProducto(${ubicacionId}, ${i.producto_id}, '${WMS.esc((i.descripcion||i.producto_nombre||'').replace(/'/g,"\\'"))}')">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Historial
+                  </button>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    } catch(e) {
+      target.innerHTML = '<div class="muted" style="padding:8px 0;font-size:.78rem;color:#ef4444;">Error cargando desglose</div>';
+      console.error(e);
+    }
+  },
+
+  // Historial de ingresos/salidas de una referencia puntual en una ubicación puntual (fecha + usuario)
+  async _verHistorialUbiProducto(ubicacionId, productoId, nombreProducto) {
+    const hoy = new Date().toISOString().substring(0,10);
+    const hace90 = new Date(Date.now() - 90*86400000).toISOString().substring(0,10);
+    WMS.showModal(`Historial: ${nombreProducto}`, `
+      <div class="filter-bar" style="gap:8px;margin-bottom:12px;">
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-size:.7rem;">Desde</label>
+          <input type="date" id="uhp-desde" class="form-control form-control-sm" value="${hace90}" style="width:150px">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-size:.7rem;">Hasta</label>
+          <input type="date" id="uhp-hasta" class="form-control form-control-sm" value="${hoy}" style="width:150px">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._buscarHistorialUbiProducto(${ubicacionId},${productoId})"><i class="fa-solid fa-search"></i> Filtrar</button>
+        <button class="btn btn-success btn-sm" onclick="WMS_MODULES.inventario._exportarHistorialUbiProducto(${ubicacionId},${productoId})"><i class="fa-solid fa-file-excel"></i> Exportar</button>
+      </div>
+      <div id="uhp-result"><div class="spinner sm" style="margin:16px auto;display:block;"></div></div>
+    `);
+    this._buscarHistorialUbiProducto(ubicacionId, productoId);
+  },
+
+  async _buscarHistorialUbiProducto(ubicacionId, productoId) {
+    const wrap = document.getElementById('uhp-result');
+    const desde = document.getElementById('uhp-desde')?.value || '';
+    const hasta = document.getElementById('uhp-hasta')?.value || '';
+    if (wrap) wrap.innerHTML = '<div class="spinner sm" style="margin:16px auto;display:block;"></div>';
+    try {
+      const r = await API.get(`/trazabilidad/ubicacion/${ubicacionId}`, `producto_id=${productoId}&f_ini=${desde}&f_fin=${hasta}`);
+      const d = r.data || {};
+      const movs = d.movimientos || [];
+      const tipoBadge = t => {
+        const m = { Entrada:'badge-success', AjustePositivo:'badge-success', Devolucion:'badge-success', Reabastecimiento:'badge-success',
+                    Salida:'badge-danger', AjusteNegativo:'badge-danger', Picking:'badge-danger', Traslado:'badge-info' };
+        return `<span class="badge ${m[t]||'badge-secondary'}">${WMS.esc(t)}</span>`;
+      };
+      if (!wrap) return;
+      wrap.innerHTML = `
+        <table class="erp-table" style="font-size:.78rem;">
+          <thead><tr><th>Fecha</th><th>Tipo</th><th style="text-align:center">Cajas</th><th style="text-align:center">UND/TOTAL</th><th>Lote</th><th>Origen</th><th>Destino</th><th>Usuario</th></tr></thead>
+          <tbody>${movs.length ? movs.map(m => `
+            <tr>
+              <td>${WMS.formatDate(m.fecha_movimiento)}</td>
+              <td>${tipoBadge(m.tipo_movimiento)}</td>
+              <td style="text-align:center">${m.cantidad_cajas ?? '—'}</td>
+              <td style="text-align:center;font-weight:700">${WMS.formatNum(m.cantidad)}</td>
+              <td class="muted">${WMS.esc(m.lote || '—')}</td>
+              <td class="muted">${WMS.esc(m.ubicacion_origen || '—')}</td>
+              <td class="muted">${WMS.esc(m.ubicacion_destino || '—')}</td>
+              <td><small>${WMS.esc(m.responsable || '—')}</small></td>
+            </tr>`).join('') : '<tr><td colspan="8" class="muted" style="text-align:center;padding:16px">Sin movimientos en el rango seleccionado</td></tr>'}
+          </tbody>
+        </table>`;
+    } catch(e) {
+      if (wrap) wrap.innerHTML = '<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando historial</p></div>';
+    }
+  },
+
+  _exportarHistorialUbiProducto(ubicacionId, productoId) {
+    const desde = document.getElementById('uhp-desde')?.value || '';
+    const hasta = document.getElementById('uhp-hasta')?.value || '';
+    const token = localStorage.getItem('wms_token') || '';
+    WMS.toast('info', 'Generando reporte...');
+    const url = `${API_BASE}/trazabilidad/ubicacion/${ubicacionId}?producto_id=${productoId}&f_ini=${desde}&f_fin=${hasta}&export=excel&token=${encodeURIComponent(token)}`;
+    window.open(url, '_blank');
+  },
+
   // ── VENCIMIENTOS V2 ──────────────────────────────────────────────────────
   async show_vencimientos() {
     WMS.setToolbar(`
