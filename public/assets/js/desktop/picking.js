@@ -3804,7 +3804,15 @@ WMS_MODULES.picking = {
     const top3 = r.length > 2 ? r[2] : null;
     
     const formatMetric = (item) => {
-        if (metric === 'avg_minutos') return `${item.avg_minutos || 0} min`;
+        if (metric === 'avg_minutos') {
+            const m = parseFloat(item.avg_minutos) || 0;
+            if (m >= 60) {
+                const hrs = Math.floor(m / 60);
+                const mins = Math.round(m % 60);
+                return `${hrs}h ${mins}m`;
+            }
+            return `${Math.round(m)} min`;
+        }
         if (metric === 'pedidos') return `${WMS.formatNum(item.pedidos || 0)} pds`;
         if (metric === 'lineas') return `${WMS.formatNum(item.lineas || 0)} lín`;
         return `${WMS.formatNum(item.unidades || 0)} unds`;
@@ -3872,13 +3880,43 @@ WMS_MODULES.picking = {
     }).join('');
   },
   
+  _renderMatrixHtml(rankingArray) {
+    if (!rankingArray || !rankingArray.length) return '';
+    
+    // Calculate average minutes per line and sort fastest first (lowest avgPerLine)
+    const r = [...rankingArray].map(a => {
+        const totalMin = parseFloat(a.avg_minutos) || 0;
+        const lineas = parseInt(a.lineas) || 0;
+        const avgPerLine = lineas > 0 ? (totalMin / lineas) : 0;
+        return { ...a, avgPerLine };
+    }).filter(a => a.lineas > 0).sort((a, b) => a.avgPerLine - b.avgPerLine).slice(0, 5); // top 5
+    
+    if (r.length === 0) return '';
+    
+    return `<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px; height:100%; min-width:200px;">
+      <div style="font-size:11px; font-weight:700; color:#475569; margin-bottom:8px; text-align:center;"><i class="fa-solid fa-stopwatch" style="color:#10b981;"></i> Promedio por Línea</div>
+      <table style="width:100%; font-size:11px; border-collapse:collapse;">
+        <tbody>
+          ${r.map((a, i) => `
+            <tr style="border-bottom:1px solid #e2e8f0;">
+              <td style="padding:4px 0; color:#64748b; font-weight:600;">${i+1}. ${WMS.esc(a.nombre.split(' ')[0])}</td>
+              <td style="padding:4px 0; text-align:right; font-weight:700; color:${a.avgPerLine < 2 ? '#10b981' : (a.avgPerLine < 4 ? '#f59e0b' : '#ef4444')}">${a.avgPerLine.toFixed(1)} min/lín</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  },
+  
   _setRankingMetric(metric) {
     this._currentRankingMetric = metric;
     const pCont = document.getElementById('podium-container');
     const tCont = document.getElementById('ranking-tbody');
+    const mCont = document.getElementById('matrix-container');
     if (pCont && tCont && this._currentRankingData) {
       pCont.innerHTML = this._renderPodiumHtml(this._currentRankingData);
       tCont.innerHTML = this._renderRankingTbody(this._currentRankingData);
+      if (mCont) mCont.innerHTML = this._renderMatrixHtml(this._currentRankingData);
     }
   },
 
@@ -4116,9 +4154,14 @@ WMS_MODULES.picking = {
         </div>
       </div>
       
-      <!-- Visual Podium -->
-      <div id="podium-container">
-        ${this._renderPodiumHtml(this._currentRankingData)}
+      <!-- Visual Podium y Matrix -->
+      <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:center; justify-content:center; padding: 0 10px;">
+        <div id="podium-container" style="flex:1; min-width:350px;">
+          ${this._renderPodiumHtml(this._currentRankingData)}
+        </div>
+        <div id="matrix-container" style="width:250px;">
+          ${this._renderMatrixHtml(this._currentRankingData)}
+        </div>
       </div>
 
       <div class="table-container" style="max-height:300px;">

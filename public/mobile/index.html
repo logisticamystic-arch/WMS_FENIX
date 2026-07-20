@@ -5286,6 +5286,11 @@ const MWMS = {
               <span style="color:#bfdbfe;font-size:.75rem;font-weight:700;">ENTREGA: </span>
               <span style="color:#fff;font-size:.78rem;font-weight:800;">${this.esc(sucursalEntrega)}</span>
             </div>` : ''}
+            ${plan?.observaciones ? `
+            <div style="margin-top:6px;background:rgba(251,191,36,.2);border:1px solid rgba(251,191,36,.4);border-radius:6px;padding:5px 10px;display:flex;align-items:center;gap:6px;">
+              <i class="fa-solid fa-note-sticky" style="color:#fbbf24;font-size:.75rem;"></i>
+              <span style="color:#fef3c7;font-size:.72rem;font-weight:700;">${this.esc(plan.observaciones)}</span>
+            </div>` : ''}
           </div>
 
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:6px;flex-wrap:wrap;">
