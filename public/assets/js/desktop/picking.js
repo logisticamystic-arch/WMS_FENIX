@@ -132,8 +132,11 @@ WMS_MODULES.picking = {
         pr.cantidad_pendiente += (parseFloat(d.cantidad_solicitada || 0) - parseFloat(d.cantidad_pickeada || 0));
         pr.clientes.add(p.cliente || '-');
         pr.pedidosSet.add(p.id);
-        // Solo mostrar auxiliar en el detalle si la línea ya fue completada
-        if (d.estado === 'Completado' && d.auxiliar?.nombre) pr.auxiliares.add(d.auxiliar.nombre);
+        // Recopilar auxiliares asignados a nivel de detalle sin importar si está completado o no
+        if (d.auxiliar?.nombre) {
+            pr.auxiliares.add(d.auxiliar.nombre);
+            grupos[key].auxiliares.add(d.auxiliar.nombre);
+        }
         
         // Registrar estado en el grupo para calcular progreso global
         grupos[key].estados.add(d.estado);
@@ -3842,10 +3845,10 @@ WMS_MODULES.picking = {
       );
 
       // KPIs
-      const totalL  = all.reduce((a,p) => a + parseInt(p.total_lineas||0), 0);
-      const pendL   = all.reduce((a,p) => a + parseInt(p.lineas_pendientes||0), 0);
-      const okL     = totalL - pendL;
-      const pctG    = totalL > 0 ? Math.round((okL / totalL) * 100) : 100;
+      const totalL  = parseInt(d.total_lineas_activas || 0);
+      const pendL   = parseInt(d.lineas_pendientes || 0);
+      const okL     = Math.max(0, totalL - pendL);
+      const pctG    = totalL > 0 ? Math.round((okL / totalL) * 100) : 0;
       const stCount = { Pendiente: d.pendientes||0, EnProceso: d.en_proceso||0, Completado: d.completadas||0 };
 
       const tableRows = gruposVis.map(g => this._renderPlanillaRow(g, { isDashboard: true })).join('');
@@ -3954,6 +3957,39 @@ WMS_MODULES.picking = {
         <span class="card-title"><i class="fa-solid fa-ranking-star" style="color:#f59e0b;"></i> Ranking de Productividad Auxiliar</span>
         <span style="font-size:11px; color:#94a3b8; font-weight:600;">UNIDADES · LÍNEAS · PEDIDOS</span>
       </div>
+      
+      <!-- Visual Podium -->
+      ${(d.ranking_auxiliares||[]).length >= 1 ? (() => {
+        const r = d.ranking_auxiliares;
+        const top1 = r[0];
+        const top2 = r.length > 1 ? r[1] : null;
+        const top3 = r.length > 2 ? r[2] : null;
+        
+        return `<div style="display:flex; justify-content:center; align-items:flex-end; gap:10px; margin:20px 0; padding-bottom:10px; border-bottom:1px solid #f1f5f9;">
+          <!-- Puesto 2 -->
+          ${top2 ? `<div style="display:flex; flex-direction:column; align-items:center; width:120px;">
+            <div style="font-size:10px; font-weight:700; color:#64748b; margin-bottom:5px; text-align:center;">${WMS.esc(top2.nombre)}</div>
+            <div style="font-size:11px; color:#10b981; font-weight:bold; margin-bottom:5px;">${WMS.formatNum(top2.unidades)} unds</div>
+            <div style="width:100%; background:linear-gradient(180deg, #94a3b8, #cbd5e1); height:70px; border-radius:8px 8px 0 0; display:flex; justify-content:center; align-items:flex-start; padding-top:10px; color:#fff; font-size:24px; font-weight:900; text-shadow:0 2px 4px rgba(0,0,0,0.2); box-shadow:0 -4px 10px rgba(0,0,0,0.1);">2</div>
+          </div>` : '<div style="width:120px;"></div>'}
+          
+          <!-- Puesto 1 -->
+          ${top1 ? `<div style="display:flex; flex-direction:column; align-items:center; width:130px; z-index:2;">
+            <div style="position:relative; top:5px;"><i class="fa-solid fa-crown" style="color:#f59e0b; font-size:24px; filter:drop-shadow(0 2px 2px rgba(245,158,11,0.4));"></i></div>
+            <div style="font-size:11px; font-weight:900; color:#1e293b; margin-top:10px; margin-bottom:5px; text-align:center;">${WMS.esc(top1.nombre)}</div>
+            <div style="font-size:12px; color:#10b981; font-weight:bold; margin-bottom:5px;">${WMS.formatNum(top1.unidades)} unds</div>
+            <div style="width:100%; background:linear-gradient(180deg, #fbbf24, #f59e0b); height:100px; border-radius:8px 8px 0 0; display:flex; justify-content:center; align-items:flex-start; padding-top:10px; color:#fff; font-size:32px; font-weight:900; text-shadow:0 2px 4px rgba(0,0,0,0.2); box-shadow:0 -4px 15px rgba(245,158,11,0.3);">1</div>
+          </div>` : ''}
+          
+          <!-- Puesto 3 -->
+          ${top3 ? `<div style="display:flex; flex-direction:column; align-items:center; width:120px;">
+            <div style="font-size:10px; font-weight:700; color:#64748b; margin-bottom:5px; text-align:center;">${WMS.esc(top3.nombre)}</div>
+            <div style="font-size:11px; color:#10b981; font-weight:bold; margin-bottom:5px;">${WMS.formatNum(top3.unidades)} unds</div>
+            <div style="width:100%; background:linear-gradient(180deg, #d97706, #b45309); height:50px; border-radius:8px 8px 0 0; display:flex; justify-content:center; align-items:flex-start; padding-top:10px; color:#fff; font-size:20px; font-weight:900; text-shadow:0 2px 4px rgba(0,0,0,0.2); box-shadow:0 -4px 10px rgba(0,0,0,0.1);">3</div>
+          </div>` : '<div style="width:120px;"></div>'}
+        </div>`;
+      })() : ''}
+
       <div class="table-container" style="max-height:300px;">
         <table class="erp-table">
           <thead><tr><th>#</th><th>Auxiliar</th><th class="text-center">Pedidos</th><th class="text-center">Líneas</th><th class="text-center">Unid. Pick</th><th style="width:100px;">Desempeño</th></tr></thead>

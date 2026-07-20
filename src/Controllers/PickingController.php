@@ -3676,11 +3676,19 @@ class PickingController extends BaseController
             });
         }
 
+        // Observaciones es por PEDIDO, no por planilla — una planilla puede agrupar
+        // varios pedidos con observaciones distintas, así que se agregan (distintas,
+        // no vacías) para que el auxiliar las vea sin tener que abrir cada pedido.
+        $obsAgg = $this->isPg()
+            ? "STRING_AGG(DISTINCT NULLIF(TRIM(observaciones), ''), ' | ')"
+            : "GROUP_CONCAT(DISTINCT NULLIF(TRIM(observaciones), ''))";
+
         $planillas = $query
             ->selectRaw('COALESCE(planilla_numero, numero_orden) as planilla_numero')
             ->selectRaw('MAX(area_comercial) as ruta')
             ->selectRaw('MAX(hora_inicio) as hora_inicio')
             ->selectRaw('MAX(sucursal_entrega) as sucursal_entrega')
+            ->selectRaw("$obsAgg as observaciones")
             ->groupByRaw('COALESCE(planilla_numero, numero_orden)')
             ->orderByRaw('COALESCE(planilla_numero, numero_orden) DESC')
             ->get();

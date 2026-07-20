@@ -485,6 +485,15 @@ WMS_MODULES.despacho = {
     this._certFiltrarGlobal(sucursal || '');
   },
 
+  async _desmarcarDespachadoDirecto(ordenId) {
+    if (!confirm('¿Desmarcar el retiro directo? El pedido volverá a incluirse en la certificación/remisión normal.')) return;
+    try {
+      const r = await API.post('/picking/' + ordenId + '/despachado-directo', { marcar: false });
+      WMS.toast('success', r.message || 'Pedido desmarcado');
+      this.show_certificacion();
+    } catch(e) { WMS.toast('error', e.message || 'Error al desmarcar'); }
+  },
+
   _certFiltrarGlobal(q) {
     const f = (q || '').toLowerCase().trim();
     let visible = 0, total = 0;
