@@ -1,0 +1,22 @@
+{
+  "name": "WMS Fénix Móvil",
+  "short_name": "FénixWMS",
+  "description": "Picking, certificación y despacho móvil — WMS Fénix",
+  "start_url": "/WMS_FENIX/public/mobile/index.html",
+  "scope": "/WMS_FENIX/public/",
+  "display": "standalone",
+  "background_color": "#0F4C81",
+  "theme_color": "#0F4C81",
+  "icons": [
+    {
+      "src": "../assets/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "../assets/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

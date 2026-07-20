@@ -261,21 +261,18 @@ async function mApi(method, path, data=null, _retries=0) {
   
   try {
     const res = await fetch(url, cfg);
-    if (res.status === 401 && !path.includes('/auth/login')) { 
-      MWMS.logout(); 
-      throw new Error('Sesión expirada'); 
+    if (res.status === 401 && !path.includes('/auth/login')) {
+      MWMS.logout();
+      throw new Error('Sesión expirada');
     }
     const json = await res.json();
-    
-    // Si obtuvo respuesta exitosa, vaciar offline queue si existe
-    if (json.data || json.success) {
-      if (_offlineQueue.queue.length > 0) {
-        console.log('✓ Conexión restaurada, procesando ' + _offlineQueue.queue.length + ' operaciones en cola');
-      }
-      _offlineQueue.queue = [];
-      _offlineQueue.save();
+
+    // Conexión confirmada: si hay operaciones pendientes en cola, reintentarlas
+    // en segundo plano (uno por uno, sin descartar las que aún no se han reenviado).
+    if ((json.data || json.success) && _offlineQueue.queue.length > 0) {
+      setTimeout(() => MWMS._processOfflineQueue(), 0);
     }
-    
+
     if (json.error) {
       const err = new Error(json.message || 'Error desconocido');
       err.isValidationError = true;
@@ -338,21 +335,35 @@ const MWMS = {
   },
   
   async _processOfflineQueue() {
+    if (this._processingQueue) return; // evita reentradas concurrentes (p.ej. disparadas desde mApi)
     if (_offlineQueue.queue.length === 0) return;
-    this.toast(`Procesando ${_offlineQueue.queue.length} operación(es)...`);
+    this._processingQueue = true;
+    const total = _offlineQueue.queue.length;
+    this.toast(`Procesando ${total} operación(es)...`);
     let success = 0, failed = 0;
-    for (let i = _offlineQueue.queue.length - 1; i >= 0; i--) {
+    // FIFO estricto: siempre se toma el primer elemento restante y solo se
+    // retira ese, para no perder ni reordenar las operaciones aún pendientes.
+    while (_offlineQueue.queue.length > 0) {
+      const op = _offlineQueue.queue[0];
       try {
-        const op = _offlineQueue.queue[i];
         await mApi(op.method, op.path, op.data);
-        _offlineQueue.remove(i);
+        _offlineQueue.remove(0);
         success++;
       } catch(e) {
-        failed++;
-        console.error('Fallo al procesar cola:', e.message);
+        if (e.isValidationError) {
+          // Error permanente (no de conectividad): reintentar nunca tendría éxito
+          console.error('Operación en cola descartada por error de validación:', e.message);
+          _offlineQueue.remove(0);
+          failed++;
+          continue;
+        }
+        // Error de red/transitorio: detener aquí para preservar el orden y no perder las siguientes
+        failed = _offlineQueue.queue.length;
+        break;
       }
     }
-    this.toast(`✓ ${success} enviadas, ${failed} pendientes`, success > 0 ? 'success' : 'error');
+    this._processingQueue = false;
+    this.toast(`✓ ${success} enviadas${failed ? ', ' + failed + ' pendientes' : ''}`, success > 0 ? 'success' : 'error');
   },
   showLogin() { document.getElementById('login-screen').style.display='flex'; document.getElementById('main-screen').style.display='none'; this._pin=''; this.updPin(); this.loadLoginEmpresas(); },
   showApp() {
