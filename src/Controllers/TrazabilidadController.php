@@ -67,6 +67,23 @@ class TrazabilidadController extends BaseController
             ->orderBy('u.codigo')
             ->get();
 
+        if (($params['export'] ?? '') === 'excel') {
+            $upc = max(1, (int)$producto->unidades_caja);
+            $headers = ['Fecha', 'Tipo Movimiento', 'Cajas', 'Saldos', 'UND/TOTAL', 'Lote', 'F.Vencimiento', 'Ubic. Origen', 'Ubic. Destino', 'Responsable', 'Documento', 'Observaciones'];
+            $rows = $movimientos->map(function ($m) use ($upc) {
+                $cajas  = $m->cantidad_cajas ?? intdiv((int)$m->cantidad, $upc);
+                $saldos = (int)$m->cantidad - ($cajas * $upc);
+                $doc = $m->documento ? ($m->documento['tipo'] . ' ' . ($m->documento['numero'] ?? '')) : '—';
+                return [
+                    $m->fecha_movimiento, $m->tipo_movimiento, $cajas, $saldos, $m->cantidad,
+                    $m->lote ?? '—', $m->fecha_vencimiento ?? '—',
+                    $m->ubicacion_origen ?? '—', $m->ubicacion_destino ?? '—',
+                    $m->responsable ?? '—', trim($doc), $m->observaciones ?? '',
+                ];
+            })->toArray();
+            return $this->exportCsv($res, $headers, $rows, 'trazabilidad_' . $producto->codigo_interno . '_' . date('Y-m-d'));
+        }
+
         return $this->ok($res, [
             'producto'     => $producto,
             'movimientos'  => $movimientos,
@@ -136,6 +153,23 @@ class TrazabilidadController extends BaseController
             )
             ->orderBy('pr.nombre')
             ->get();
+
+        if (($params['export'] ?? '') === 'excel') {
+            $headers = ['Fecha', 'Producto', 'Código', 'Tipo Movimiento', 'Cajas', 'Saldos', 'UND/TOTAL', 'Lote', 'F.Vencimiento', 'Ubic. Origen', 'Ubic. Destino', 'Responsable'];
+            $rows = $movimientos->map(function ($m) {
+                $upc    = max(1, (int)$m->unidades_caja);
+                $cajas  = $m->cantidad_cajas ?? intdiv((int)$m->cantidad, $upc);
+                $saldos = (int)$m->cantidad - ($cajas * $upc);
+                return [
+                    $m->fecha_movimiento, $m->producto_nombre ?? '—', $m->producto_codigo ?? '—',
+                    $m->tipo_movimiento, $cajas, $saldos, $m->cantidad,
+                    $m->lote ?? '—', $m->fecha_vencimiento ?? '—',
+                    $m->ubicacion_origen ?? '—', $m->ubicacion_destino ?? '—',
+                    $m->responsable ?? '—',
+                ];
+            })->toArray();
+            return $this->exportCsv($res, $headers, $rows, 'trazabilidad_' . $ubicacion->codigo . '_' . date('Y-m-d'));
+        }
 
         return $this->ok($res, [
             'ubicacion'         => $ubicacion,
