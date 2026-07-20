@@ -1365,33 +1365,20 @@ function _renderSvcMes(data) {
   _svcChartMes = window._svcMesChart;
 }
 
-// Datos mock para cuando el backend aún no responde
-function _svcMockData(){
-  const today=new Date();
-  const dias=[];
-  for(let i=6;i>=0;i--){const d=new Date(today);d.setDate(d.getDate()-i);dias.push({fecha:d.toISOString().slice(0,10),solicitado:80+Math.floor(Math.random()*40),separado:0,pct:0});}
-  dias.forEach(d=>{d.separado=Math.round(d.solicitado*(0.7+Math.random()*0.25));d.pct=Math.round(d.separado/d.solicitado*100);});
-  const meses=[];
-  for(let i=2;i>=0;i--){const d=new Date(today.getFullYear(),today.getMonth()-i,1);const mes=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;const sol=400+Math.floor(Math.random()*200);const sep=Math.round(sol*(0.78+Math.random()*0.18));meses.push({mes,solicitado:sol,separado:sep,pct:Math.round(sep/sol*100)});}
-  return{
-    general:{solicitado:500,separado:420,pct:84},
-    por_sucursal:[
-      {sucursal:'Laureles',solicitado:100,separado:90,pct:90},
-      {sucursal:'Envigado',solicitado:90,separado:63,pct:70},
-      {sucursal:'Bello',solicitado:80,separado:74,pct:93},
-      {sucursal:'Itagüí',solicitado:70,separado:55,pct:79},
-      {sucursal:'Sabaneta',solicitado:60,separado:50,pct:83},
-    ],
-    por_dia:dias,
-    por_referencia:[
-      {nombre:'Aceite Oliva 500ml',solicitado:50,separado:30,pct:60},
-      {nombre:'Leche Entera 1L',solicitado:40,separado:26,pct:65},
-      {nombre:'Arroz Diana 5kg',solicitado:35,separado:24,pct:69},
-      {nombre:'Atún Van Camps',solicitado:30,separado:21,pct:70},
-      {nombre:'Sal Refisal 1kg',solicitado:25,separado:18,pct:72},
-    ],
-    por_mes:meses,
-  };
+// Estado vacío honesto para cuando el backend no responde — NUNCA simular cifras de negocio
+function _svcRenderSinDatos(){
+  const elPct=document.getElementById('svc-pct-general');
+  if(elPct){elPct.textContent='—%';elPct.style.color='';}
+  const elDetail=document.getElementById('svc-pct-detail');
+  if(elDetail) elDetail.textContent='Sin datos disponibles — reintentando…';
+  setText('svc-total-sol','--');
+  setText('svc-total-sep','--');
+  setText('tbadge-servicio','—%');
+  const elRefsComp=document.getElementById('svc-refs-completas');
+  if(elRefsComp){elRefsComp.textContent='--';elRefsComp.style.color='';}
+  setText('svc-refs-total','--');
+  const elPctRef=document.getElementById('svc-pct-ref');
+  if(elPctRef){elPctRef.textContent='—%';elPctRef.style.color='';}
 }
 
 async function loadServicio(){
@@ -1399,7 +1386,9 @@ async function loadServicio(){
   try{
     d=await api('/tv/nivel-servicio'+getFechaParam());
   }catch(e){
-    d=_svcMockData();
+    console.warn('Nivel de servicio: backend no disponible, se mantiene el estado vacío (sin datos simulados).', e);
+    _svcRenderSinDatos();
+    return;
   }
   // Totales generales
   const g=d.general||{};

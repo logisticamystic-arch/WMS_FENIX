@@ -28,15 +28,225 @@ WMS_MODULES.inventario = {
 
   // ── STOCK GENERAL ─────────────────────────────────────────────
   _invStockChart: null,
-  async show_stock() {
-    WMS.setToolbar(`
-      <button class="btn btn-success btn-sm" onclick="WMS_MODULES.inventario.exportarStock()">
-        <i class="fa-solid fa-file-excel"></i> Exportar
-      </button>
-      <button class="pro-btn-refresh" style="margin-left:8px" onclick="WMS_MODULES.inventario.show_stock()">
-        <span class="spin"><i class="fa-solid fa-rotate-right"></i></span> Actualizar
-      </button>`);
-    WMS.spinner();
+  _invMovChart: null,
+  _stockTab: 'referencia',
+
+  show_stock() {
+    WMS.setToolbar('');
+    const tab = this._stockTab || 'referencia';
+    const tabBtn = (id, label, icon) => {
+      const active = tab === id;
+      return `<button class="stk-tab-btn" data-tab="${id}" onclick="WMS_MODULES.inventario._stockSetTab('${id}')"
+        style="padding:10px 22px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:3px solid ${active ? '#1d4ed8' : 'transparent'};color:${active ? '#1d4ed8' : '#64748b'};transition:all .2s;">
+        <i class="fa-solid ${icon}"></i> ${label}
+      </button>`;
+    };
+    WMS.setContent(`
+      <div style="display:flex;border-bottom:1px solid #e2e8f0;margin-bottom:16px;">
+        ${tabBtn('referencia', 'Por Referencia', 'fa-barcode')}
+        ${tabBtn('general', 'Resumen General', 'fa-table-list')}
+      </div>
+      <div id="stock-tab-body"></div>
+    `);
+    if (tab === 'referencia') this._renderStockPorReferencia();
+    else this._renderStockGeneralTab();
+  },
+
+  _stockSetTab(tab) {
+    this._stockTab = tab;
+    this.show_stock();
+  },
+
+  // ── Tab "Por Referencia": filtro dinámico + KPIs + gráfico entradas/salidas + ubicaciones ──
+  _renderStockPorReferencia() {
+    const body = document.getElementById('stock-tab-body');
+    const hoy   = new Date().toISOString().substring(0,10);
+    const hace30 = new Date(Date.now() - 30*86400000).toISOString().substring(0,10);
+    const prodId  = this._srProdId || '';
+    const prodNom = this._srProdNombre || '';
+    const desde = this._srDesde || hace30;
+    const hasta = this._srHasta || hoy;
+
+    body.innerHTML = `
+      <div class="filter-bar" style="flex-wrap:wrap;gap:8px;align-items:flex-end;">
+        <div class="form-group" style="margin:0;min-width:260px;">
+          <label class="form-label" style="font-size:.7rem;">Referencia <span class="required">*</span></label>
+          <input type="text" id="sr-prod-ac" class="form-control" placeholder="Escriba EAN, código o nombre..." autocomplete="off" value="${WMS.esc(prodNom)}">
+          <input type="hidden" id="sr-prod-id" value="${prodId}">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-size:.7rem;">Desde</label>
+          <input type="date" id="sr-desde" class="form-control form-control-sm" value="${desde}" style="width:150px">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label" style="font-size:.7rem;">Hasta</label>
+          <input type="date" id="sr-hasta" class="form-control form-control-sm" value="${hasta}" style="width:150px">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._srBuscar()"><i class="fa-solid fa-search"></i> Buscar</button>
+        <button class="btn btn-success btn-sm" id="sr-btn-export" onclick="WMS_MODULES.inventario._srExportar()" ${prodId?'':'disabled'}><i class="fa-solid fa-file-excel"></i> Exportar Excel</button>
+      </div>
+      <div id="sr-result" style="margin-top:16px;">
+        <div class="m-empty" style="padding:40px;"><i class="fa-solid fa-magnifying-glass"></i><p>Busque una referencia para ver sus movimientos, ubicaciones con stock y tendencia de entradas/salidas</p></div>
+      </div>
+    `;
+
+    setTimeout(() => {
+      const inp = document.getElementById('sr-prod-ac');
+      if (inp) {
+        WMS.initProductAutocomplete(inp, (p) => {
+          document.getElementById('sr-prod-id').value = p.id;
+          this._srProdId = p.id;
+          this._srProdNombre = p.descripcion || p.nombre;
+          const btn = document.getElementById('sr-btn-export');
+          if (btn) btn.disabled = false;
+          this._srBuscar();
+        });
+      }
+    }, 150);
+
+    if (prodId) this._srBuscar();
+  },
+
+  async _srBuscar() {
+    const prodId = document.getElementById('sr-prod-id')?.value;
+    const desde  = document.getElementById('sr-desde')?.value;
+    const hasta  = document.getElementById('sr-hasta')?.value;
+    this._srDesde = desde; this._srHasta = hasta;
+    const wrap = document.getElementById('sr-result');
+    if (!prodId) { WMS.toast('warning', 'Seleccione una referencia para consultar'); return; }
+    wrap.innerHTML = '<div class="spinner sm" style="margin:24px auto;display:block;"></div>';
+    try {
+      const [rKardex, rStock] = await Promise.all([
+        API.get('/v2/inventario/kardex', `producto_id=${prodId}&fecha_inicio=${desde}&fecha_fin=${hasta}`),
+        API.get('/inventario/stock', `producto_id=${prodId}&limit=1000`),
+      ]);
+      const kx = rKardex.data || {};
+      const movs = kx.movimientos || [];
+      const stockItems = rStock.data || rStock || [];
+
+      const totalEntradas = movs.reduce((s,m) => s + (+m.entradas || 0), 0);
+      const totalSalidas   = movs.reduce((s,m) => s + (+m.salidas || 0), 0);
+      const stockActual    = stockItems.reduce((s,i) => s + (+i.cantidad || 0), 0);
+      const numUbicaciones = new Set(stockItems.map(i => i.ubicacion_codigo || i.ubicacion).filter(Boolean)).size;
+      const conVencer      = stockItems.filter(i => {
+        if (!i.fecha_vencimiento) return false;
+        const dias = Math.round((new Date(i.fecha_vencimiento) - Date.now()) / 86400000);
+        return dias !== null && dias < 30;
+      }).length;
+
+      wrap.innerHTML = `
+        <div class="pro-kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;">
+          <div class="pro-kpi-card accent-green"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-arrow-down"></i></div></div><div class="pro-kpi-value">${WMS.formatNum(totalEntradas)}</div><div class="pro-kpi-label">Entradas (período)</div></div>
+          <div class="pro-kpi-card accent-red"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-arrow-up"></i></div></div><div class="pro-kpi-value">${WMS.formatNum(totalSalidas)}</div><div class="pro-kpi-label">Salidas (período)</div></div>
+          <div class="pro-kpi-card accent-blue"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-cubes"></i></div></div><div class="pro-kpi-value">${WMS.formatNum(stockActual)}</div><div class="pro-kpi-label">Stock actual (und)</div></div>
+          <div class="pro-kpi-card accent-teal"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-location-dot"></i></div></div><div class="pro-kpi-value">${numUbicaciones}</div><div class="pro-kpi-label">Ubicaciones con stock</div></div>
+          <div class="pro-kpi-card ${conVencer>0?'accent-amber':'accent-green'}"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></div></div><div class="pro-kpi-value">${conVencer}</div><div class="pro-kpi-label">Lotes próx. a vencer (&lt;30d)</div></div>
+        </div>
+        <div class="pro-chart-card" style="margin-bottom:20px;">
+          <div class="pro-chart-title">
+            <span><i class="fa-solid fa-chart-bar" style="color:#0070f2;margin-right:8px"></i>Movimientos: Entradas vs Salidas por día</span>
+          </div>
+          <div class="pro-chart-container" style="height:260px">
+            <canvas id="sr-mov-chart"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title"><i class="fa-solid fa-warehouse" style="margin-right:6px;color:#0070f2"></i>Ubicaciones con Stock</span></div>
+          <div class="table-container">
+            <table class="erp-table">
+              <thead><tr><th>Ubicación</th><th>Lote</th><th style="text-align:center">Cajas</th><th style="text-align:center">Sueltos</th><th style="text-align:center">UND/TOTAL</th><th>F.Vencimiento</th><th>Estado</th></tr></thead>
+              <tbody>${stockItems.length ? stockItems.map(i => `
+                <tr>
+                  <td><span class="pro-badge info">${WMS.esc(i.ubicacion_codigo || i.ubicacion || '—')}</span></td>
+                  <td class="muted">${WMS.esc(i.lote || '—')}</td>
+                  <td style="text-align:center;color:#0070f2">${i.cantidad_cajas ?? '—'}</td>
+                  <td style="text-align:center;color:#6d28d9">${i.saldos ?? '—'}</td>
+                  <td style="text-align:center;font-weight:700">${WMS.formatNum(i.cantidad)}</td>
+                  <td class="muted">${i.fecha_vencimiento ? WMS.formatDate(i.fecha_vencimiento) : 'N/A'}</td>
+                  <td><span class="pro-badge ${i.estado==='Disponible'?'ok':'warn'}">${WMS.esc(i.estado || '—')}</span></td>
+                </tr>`).join('') : '<tr><td colspan="7" class="muted" style="text-align:center;padding:20px">Sin stock en ninguna ubicación</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      this._renderMovBarChart(movs);
+    } catch(e) {
+      wrap.innerHTML = '<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando datos de la referencia</p></div>';
+      console.error(e);
+    }
+  },
+
+  _renderMovBarChart(movs) {
+    const ctx = document.getElementById('sr-mov-chart');
+    if (!ctx) return;
+    if (this._invMovChart) { try{this._invMovChart.destroy();}catch(_){} }
+
+    const porDia = {};
+    movs.forEach(m => {
+      const f = m.fecha;
+      if (!porDia[f]) porDia[f] = { entradas:0, salidas:0 };
+      porDia[f].entradas += (+m.entradas || 0);
+      porDia[f].salidas  += (+m.salidas || 0);
+    });
+    const fechas = Object.keys(porDia).sort();
+
+    if (!fechas.length) {
+      ctx.parentElement.innerHTML = '<div class="m-empty" style="padding:20px"><p>Sin movimientos en el rango seleccionado</p></div>';
+      return;
+    }
+
+    this._invMovChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: fechas.map(f => WMS.formatDate(f)),
+        datasets: [
+          { label:'Entradas', data: fechas.map(f=>porDia[f].entradas), backgroundColor:'#22c55e', borderRadius:4 },
+          { label:'Salidas',  data: fechas.map(f=>porDia[f].salidas),  backgroundColor:'#ef4444', borderRadius:4 },
+        ]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{position:'top'}, tooltip:{
+          backgroundColor:'#1a2340', titleColor:'#fff', bodyColor:'rgba(255,255,255,.8)', padding:10, cornerRadius:8
+        }},
+        scales:{
+          x:{ grid:{display:false}, ticks:{font:{size:10},color:'#6b7a99'} },
+          y:{ beginAtZero:true, grid:{color:'#f0f2f8'}, ticks:{font:{size:10},color:'#6b7a99'} }
+        }
+      }
+    });
+  },
+
+  _srExportar() {
+    const prodId = document.getElementById('sr-prod-id')?.value;
+    if (!prodId) { WMS.toast('warning', 'Seleccione una referencia'); return; }
+    const desde = document.getElementById('sr-desde')?.value || '';
+    const hasta = document.getElementById('sr-hasta')?.value || '';
+    const token = localStorage.getItem('wms_token') || '';
+    WMS.toast('info', 'Generando reporte...');
+    const url = `${API_BASE}/v2/inventario/kardex?producto_id=${prodId}&fecha_inicio=${desde}&fecha_fin=${hasta}&export=excel&token=${encodeURIComponent(token)}`;
+    window.open(url, '_blank');
+  },
+
+  // ── Tab "Resumen General": vista consolidada de todo el stock (bajo demanda) ──
+  async _renderStockGeneralTab() {
+    const body = document.getElementById('stock-tab-body');
+    body.innerHTML = `
+      <div class="filter-bar" style="gap:8px;">
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._cargarStockGeneral()"><i class="fa-solid fa-play"></i> Cargar Resumen General</button>
+        <button class="btn btn-success btn-sm" onclick="WMS_MODULES.inventario.exportarStock()"><i class="fa-solid fa-file-excel"></i> Exportar</button>
+      </div>
+      <div id="stock-general-body" style="margin-top:16px;">
+        <div class="m-empty" style="padding:40px;"><i class="fa-solid fa-table-list"></i><p>Presione "Cargar Resumen General" para ver el consolidado de todas las referencias (puede tardar unos segundos por el volumen de datos)</p></div>
+      </div>
+    `;
+  },
+
+  async _cargarStockGeneral() {
+    const body = document.getElementById('stock-general-body');
+    body.innerHTML = '<div class="spinner sm" style="margin:24px auto;display:block;"></div>';
     try {
       const r = await API.get('/inventario/stock', 'limit=5000');
       const items = r.data || r || [];
@@ -94,7 +304,7 @@ WMS_MODULES.inventario = {
           : '<i class="fa-solid fa-chevron-down" style="color:#0070f2"></i>';
       };
 
-      WMS.setContent(`
+      body.innerHTML = `
 <div class="pro-dashboard">
 
   <!-- KPIs -->
@@ -294,7 +504,7 @@ WMS_MODULES.inventario = {
     </div>
   </div>
 
-</div>`);
+</div>`;
 
       /* Donut chart */
       this._renderStockDonut(totalRefs-bajoStock-sinStock, bajoStock, sinStock);
@@ -302,7 +512,7 @@ WMS_MODULES.inventario = {
       this._renderTop10(consolidado);
 
     } catch(e) {
-      WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>');
+      body.innerHTML = '<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>';
       console.error(e);
     }
   },

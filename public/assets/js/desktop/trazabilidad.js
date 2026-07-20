@@ -373,6 +373,7 @@ WMS_MODULES['trazabilidad'] = (function () {
             <div style="margin-left:auto;display:flex;gap:8px;">
               <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES['trazabilidad'].load()"><i class="fa-solid fa-arrow-left"></i> Volver</button>
               <button class="btn btn-sm btn-primary" onclick="WMS_MODULES['trazabilidad']._buscarProducto()"><i class="fa-solid fa-rotate"></i> Actualizar</button>
+              <button class="btn btn-sm btn-success" onclick="WMS_MODULES['trazabilidad']._exportarProducto()"><i class="fa-solid fa-file-excel"></i> Exportar Excel</button>
             </div>
           </div>
         </div>
@@ -424,6 +425,7 @@ WMS_MODULES['trazabilidad'] = (function () {
             <div style="margin-left:auto;display:flex;gap:8px;">
               <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES['trazabilidad'].load()"><i class="fa-solid fa-arrow-left"></i> Volver</button>
               <button class="btn btn-sm btn-primary" onclick="WMS_MODULES['trazabilidad']._buscarUbicacion()"><i class="fa-solid fa-rotate"></i> Actualizar</button>
+              <button class="btn btn-sm btn-success" onclick="WMS_MODULES['trazabilidad']._exportarUbicacion()"><i class="fa-solid fa-file-excel"></i> Exportar Excel</button>
             </div>
           </div>
         </div>
