@@ -245,17 +245,17 @@ class TrazabilidadController extends BaseController
                 ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
                 ->where('op.empresa_id', $empresaId)
                 ->where('pd.producto_id', $productoId)
-                ->whereBetween('op.fecha', [$fIni, $fFin])
+                ->whereBetween('op.fecha_movimiento', [$fIni, $fFin])
                 ->select(
                     'op.numero_orden', 'op.numero_factura', 'op.cliente',
-                    'op.sucursal_entrega', 'op.planilla_numero', 'op.fecha',
+                    'op.sucursal_entrega', 'op.planilla_numero', 'op.fecha_movimiento',
                     'pd.cantidad_pickeada', 'pd.estado as linea_estado'
                 )
-                ->orderBy('op.fecha', 'desc')
+                ->orderBy('op.fecha_movimiento', 'desc')
                 ->limit(100)
                 ->get();
             foreach ($rows as $row) {
-                $pickingMap[$row->fecha][] = $row;
+                $pickingMap[$row->fecha_movimiento][] = $row;
             }
         }
 
