@@ -2623,6 +2623,15 @@
     // ── Bootstrap app ─────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', () => WMS.init());
 
+    // ── PWA: registrar Service Worker para operación sin internet ──────────
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(reg => console.log('[SW] Registrado:', reg.scope))
+          .catch(err => console.warn('[SW] Error al registrar:', err));
+      });
+    }
+
   </script>
 </body>
 </html>
