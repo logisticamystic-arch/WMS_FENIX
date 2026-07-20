@@ -315,6 +315,28 @@ WMS_MODULES['trazabilidad'] = (function () {
       } catch (e) { WMS.toast('error', e.message || 'Error cargando trazabilidad'); this.load(); }
     },
 
+    _exportarProducto() {
+      if (!_state.productoId) { WMS.toast('warning', 'Selecciona un producto del listado'); return; }
+      const fIni   = document.getElementById('trz-f-ini')?.value || '';
+      const fFin   = document.getElementById('trz-f-fin')?.value || '';
+      const lote   = document.getElementById('trz-lote')?.value  || '';
+      const token  = localStorage.getItem('wms_token') || '';
+      const params = new URLSearchParams({ f_ini: fIni, f_fin: fFin, export: 'excel', token });
+      if (lote) params.set('lote', lote);
+      WMS.toast('info', 'Generando reporte...');
+      window.open(`${API_BASE}/trazabilidad/producto/${_state.productoId}?${params.toString()}`, '_blank');
+    },
+
+    _exportarUbicacion() {
+      if (!_state.ubicacionId) { WMS.toast('warning', 'Selecciona una ubicación del listado'); return; }
+      const fIni   = document.getElementById('trz-ub-f-ini')?.value || document.getElementById('trz-f-ini')?.value || '';
+      const fFin   = document.getElementById('trz-ub-f-fin')?.value || document.getElementById('trz-f-fin')?.value || '';
+      const token  = localStorage.getItem('wms_token') || '';
+      const params = new URLSearchParams({ f_ini: fIni, f_fin: fFin, export: 'excel', token });
+      WMS.toast('info', 'Generando reporte...');
+      window.open(`${API_BASE}/trazabilidad/ubicacion/${_state.ubicacionId}?${params.toString()}`, '_blank');
+    },
+
     _renderProducto(data) {
       const p   = data.producto    || {};
       const mov = data.movimientos || [];
