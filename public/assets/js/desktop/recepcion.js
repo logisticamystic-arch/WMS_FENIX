@@ -2014,6 +2014,34 @@ WMS_MODULES.recepcion = {
     }
   },
 
+  // El backend bloquea el ingreso de un lote que venza antes que el mejor lote ya
+  // en bodega. Solo un Admin (rol validado también en servidor) puede autorizarlo
+  // desde escritorio; para cualquier otro rol se informa el bloqueo sin opción de continuar.
+  async _resolverAutorizacionVencimiento(payload, rBloqueo, endpoint) {
+    const esAdmin = (WMS.user?.rol === 'Admin' || WMS.user?.rol === 'SuperAdmin');
+    const detalle = `<p style="font-size:12px;color:#64748b;text-align:left;margin-top:8px;">
+        Fecha del lote a recibir: <b>${WMS.esc(rBloqueo.fecha_nueva||'-')}</b><br>
+        Mejor vencimiento ya en bodega: <b>${WMS.esc(rBloqueo.fecha_existente_bodega||'-')}</b>
+      </p>`;
+    if (!esAdmin) {
+      await Swal.fire({
+        icon: 'error', title: 'Autorización de Administrador requerida',
+        html: `<p style="font-size:13px;text-align:left;">${WMS.esc(rBloqueo.message || '')}</p>${detalle}`,
+        confirmButtonText: 'Entendido',
+      });
+      return null;
+    }
+    const { isConfirmed } = await Swal.fire({
+      icon: 'warning', title: '¿Autorizar ingreso con vencimiento inferior?',
+      html: `<p style="font-size:13px;text-align:left;">${WMS.esc(rBloqueo.message || '')}</p>${detalle}`,
+      showCancelButton: true,
+      confirmButtonText: 'Sí, autorizar ingreso', cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc2626',
+    });
+    if (!isConfirmed) return null;
+    return API.post(endpoint, { ...payload, autorizar_vencimiento_inferior: true });
+  },
+
   async _enviarCapturaSinODC() {
     const btn = event.currentTarget;
     const prodId    = document.getElementById('sodc-prod-id')?.value;
@@ -2053,7 +2081,17 @@ WMS_MODULES.recepcion = {
       if (factorUdm > 0 && cantUe > 0) {
         payload.cantidad_ue = cantUe;
       }
-      const r = await API.post('/recepciones/sin-odc', payload);
+      let r;
+      try {
+        r = await API.post('/recepciones/sin-odc', payload);
+      } catch (e) {
+        if (e.data?.requiere_autorizacion_admin) {
+          r = await this._resolverAutorizacionVencimiento(payload, { message: e.message, ...e.data }, '/recepciones/sin-odc');
+          if (!r) { btn.disabled = false; btn.innerHTML = original; return; }
+        } else {
+          throw e;
+        }
+      }
       if (r.error) throw new Error(r.message);
 
       // Guardar id de recepción; si es la primera línea, actualizar toolbar para mostrar botón Cerrar

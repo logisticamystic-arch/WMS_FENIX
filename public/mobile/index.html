@@ -914,7 +914,25 @@ const MWMS = {
       this.toast('Captura registrada ✓', 'success');
       this._renderRecSinOdc();
     } catch (e) {
-      this.toast(e.message, 'error');
+      // Vencimiento inferior al ya existente en bodega: en móvil NUNCA se autoriza
+      // aquí — solo un Admin desde el sistema de escritorio puede continuar.
+      if (e.data?.requiere_autorizacion_admin) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Autorización de Administrador requerida',
+          html: `<p style="font-size:.85rem;text-align:left;">${this.esc(e.message || '')}</p>
+                 <p style="font-size:.78rem;color:#64748b;text-align:left;margin-top:8px;">
+                   Fecha del lote a recibir: <b>${this.esc(e.data.fecha_nueva||'-')}</b><br>
+                   Mejor vencimiento ya en bodega: <b>${this.esc(e.data.fecha_existente_bodega||'-')}</b>
+                 </p>
+                 <p style="font-size:.78rem;color:#92400e;text-align:left;margin-top:8px;">
+                   Solicite a un Administrador que autorice este ingreso desde el sistema de escritorio.
+                 </p>`,
+          confirmButtonText: 'Entendido',
+        });
+      } else {
+        this.toast(e.message, 'error');
+      }
     } finally {
       this.loading(false);
     }
@@ -5832,8 +5850,8 @@ const MWMS = {
             </div>
             ${haySiguiente ? `
             <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px;text-align:center;font-size:.78rem;color:#166534;margin-bottom:8px;">
-              <i class="fa-solid fa-route"></i> Hay <b>${siguienteLoc.disponible} und</b> del restante en la ubicación
-              <b style="font-family:monospace;">${this.esc(siguienteLoc.ubicacion_codigo)}</b> — puedes separar allí lo que falta en vez de dejarlo como faltante.
+              <i class="fa-solid fa-route"></i> La ubicación <b style="font-family:monospace;">${this.esc(siguienteLoc.ubicacion_codigo)}</b> tiene
+              <b>${siguienteLoc.disponible} und</b> disponibles ${siguienteLoc.disponible >= restanteUnd ? '— cubre todo el restante' : `(cubre parte de las ${restanteUnd} und que faltan)`}.
             </div>` : ''}
             <div style="background:${dentroTol ? '#fef3c7' : '#fef2f2'};border-radius:8px;padding:8px;text-align:center;font-size:.8rem;">
               Diferencia de <b>${(maxCajas - c).toFixed(0)} cajas</b> quedará como <b>FALTANTE</b> si no se completa en otra ubicación.
@@ -5849,9 +5867,14 @@ const MWMS = {
           denyButtonColor: '#059669',
         });
         if (ok.isDenied && haySiguiente) {
-          // Primero confirma lo ya separado en la ubicación actual (si hay algo > 0),
-          // luego reasigna la línea a la siguiente ubicación FEFO para el restante.
-          if (c > 0) await this.confirmarPKActual(planilla, totalEnviar, c, s);
+          // NO se confirma nada todavía (confirmar-consolidado cierra la línea como
+          // Completado/Faltante de forma definitiva y no admite "parcial, continúa
+          // en otra ubicación"). Se reasigna la línea a la siguiente ubicación FEFO
+          // para que el auxiliar siga separando ahí; las cajas que ya tiene en mano
+          // de la ubicación actual las debe sumar al confirmar el total final.
+          if (c > 0) {
+            this.toast(`Recuerda sumar las ${c} cajas que ya tienes en mano al confirmar en la nueva ubicación`, 'info');
+          }
           this._pkUsarFifoLoc(siguienteIdx, planilla);
           return;
         }

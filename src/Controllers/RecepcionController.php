@@ -708,6 +708,65 @@ class RecepcionController extends BaseController
     }
 
     /**
+     * Bloquea el ingreso de un lote cuya fecha de vencimiento sea inferior (venza
+     * antes) a la del lote más próximo a vencer que YA está en bodega para esa
+     * referencia — evita romper FEFO metiendo stock "peor" detrás de uno mejor sin
+     * que nadie se dé cuenta. Solo un Admin puede autorizar el ingreso igualmente
+     * (rol validado en servidor, no solo el flag enviado por el cliente).
+     *
+     * @return array|null null si puede continuar; array con 'error','message',
+     *                     'requiere_autorizacion_admin' y '_status' si debe bloquear.
+     */
+    private function validarVencimientoVsBodega($user, Request $request, int $productoId, ?string $fechaVencNueva, array $data): ?array
+    {
+        if (!$fechaVencNueva) return null; // sin fecha, la obligatoriedad ya se valida aparte
+
+        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $user->sucursal_id;
+
+        $mejorVencBodega = Capsule::table('inventarios')
+            ->where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->where('producto_id', $productoId)
+            ->where('cantidad', '>', 0)
+            ->whereNotNull('fecha_vencimiento')
+            ->max('fecha_vencimiento');
+
+        if (!$mejorVencBodega || $fechaVencNueva >= $mejorVencBodega) {
+            return null; // sin stock previo, o el lote nuevo vence igual o después → OK
+        }
+
+        $autorizado = !empty($data['autorizar_vencimiento_inferior']);
+        if ($autorizado) {
+            if (!$this->isAdmin($user)) {
+                return [
+                    'error' => true, '_status' => 403,
+                    'message' => 'Solo un Administrador puede autorizar el ingreso de un lote con vencimiento inferior al ya existente en bodega.',
+                    'data' => ['requiere_autorizacion_admin' => true],
+                ];
+            }
+            $this->audit($user, 'Recepciones', 'AutorizarVencimientoInferior', 'recepcion_detalles', null, null,
+                ['producto_id' => $productoId, 'fecha_nueva' => $fechaVencNueva, 'fecha_existente_bodega' => $mejorVencBodega],
+                "Admin autorizó ingreso de lote con vencimiento {$fechaVencNueva}, inferior al mejor vencimiento ya en bodega ({$mejorVencBodega}).");
+            return null; // autorizado por Admin, continuar
+        }
+
+        // Nota: los campos extra van anidados en 'data' porque el cliente desktop
+        // (apiCall en index.html) solo preserva json.data del error HTTP no-2xx;
+        // cualquier campo a nivel raíz distinto de message/error se pierde.
+        return [
+            'error' => true, '_status' => 422,
+            'message' => "El lote a recibir vence el {$fechaVencNueva}, antes que el lote más próximo a vencer que ya hay en bodega ({$mejorVencBodega}). "
+                . 'Debe ser autorizado por un Administrador desde el sistema de escritorio para continuar.',
+            'data' => [
+                'requiere_autorizacion_admin' => true,
+                'fecha_existente_bodega'      => $mejorVencBodega,
+                'fecha_nueva'                 => $fechaVencNueva,
+            ],
+        ];
+    }
+
+    /**
      * POST /api/recepciones/sin-odc
      * Captura operativa SIN Orden de Compra (modo ciego).
      * Misma lógica que detallesOperativa() pero sin requerir ni validar ODC.
@@ -747,6 +806,15 @@ class RecepcionController extends BaseController
         $checkDate = $guard->checkExpirationMandatory($producto->id, $fechaVenc);
         if (!$checkDate['ok']) {
             return $this->json($response, ['error' => true, 'message' => $checkDate['message']], 422);
+        }
+
+        // No permitir ingresar un lote que venza antes que el mejor lote ya en bodega,
+        // salvo autorización explícita de un Admin (validado por rol en servidor).
+        $venceError = $this->validarVencimientoVsBodega($user, $request, $producto->id, $fechaVenc, $data);
+        if ($venceError) {
+            $status = $venceError['_status'];
+            unset($venceError['_status']);
+            return $this->json($response, $venceError, $status);
         }
 
         // Buscar o crear Recepción sin ODC del día en Borrador para este auxiliar
@@ -920,6 +988,15 @@ class RecepcionController extends BaseController
         $nuevaCantidad = (float)($body['cantidad_recibida'] ?? $body['cantidad'] ?? 0);
         if ($nuevaCantidad <= 0) {
             return $this->json($res, ['error'=>true,'message'=>'La cantidad debe ser mayor a cero'], 400);
+        }
+
+        if (array_key_exists('fecha_vencimiento', $body) && !empty($body['fecha_vencimiento'])) {
+            $venceError = $this->validarVencimientoVsBodega($user, $r, $detalle->producto_id, $this->estandarizarFecha($body['fecha_vencimiento']), $body);
+            if ($venceError) {
+                $status = $venceError['_status'];
+                unset($venceError['_status']);
+                return $this->json($res, $venceError, $status);
+            }
         }
 
         $upc         = max(1, (int)($detalle->cajas_por_unidad ?? 1));
