@@ -882,7 +882,11 @@ class PickingController extends BaseController
                 Capsule::raw('MIN(f.created_at) as created_at'),
                 Capsule::raw('SUM(f.cantidad_solicitada) as cantidad_solicitada'),
                 Capsule::raw('SUM(f.cantidad_faltante) as cantidad_faltante'),
-                Capsule::raw('SUM(f.cantidad_solicitada) - SUM(f.cantidad_faltante) as stock_disponible'),
+                // Lo que sí se logró separar de esta referencia (solicitado - faltante),
+                // NO confundir con stock_actual (subquery abajo, es el inventario libre real).
+                Capsule::raw('SUM(f.cantidad_solicitada) - SUM(f.cantidad_faltante) as cantidad_separada'),
+                Capsule::raw('SUM(f.cantidad_solicitada) * COALESCE(p.unidades_caja, 1) as cantidad_solicitada_und'),
+                Capsule::raw('(SUM(f.cantidad_solicitada) - SUM(f.cantidad_faltante)) * COALESCE(p.unidades_caja, 1) as cantidad_separada_und'),
                 Capsule::raw('SUM(f.cantidad_faltante) * COALESCE(p.unidades_caja, 1) as cantidad_faltante_und'),
                 Capsule::raw("STRING_AGG(DISTINCT f.planilla_lote::text, ', ' ORDER BY f.planilla_lote::text) as numero_planilla"),
                 $stockSubquery
@@ -901,7 +905,8 @@ class PickingController extends BaseController
 
         if (($params['export'] ?? '') === 'excel') {
             $headers = ['Fecha', 'Planillas', 'Sucursal Destino', 'Código', 'Producto',
-                        'Solicitado', 'Stock al Registrar', 'Faltante', 'Faltante Und', 'Stock Actual'];
+                        'Solicitado (cj)', 'Solicitado (UND)', 'Separado (cj)', 'Separado (UND)',
+                        'Faltante (cj)', 'Faltante (UND)', 'Stock Actual (UND)'];
             $data = $rows->map(fn($row) => [
                 substr($row->created_at ?? '', 0, 10),
                 $row->numero_planilla      ?? '—',
@@ -909,7 +914,9 @@ class PickingController extends BaseController
                 $row->producto_codigo      ?? '—',
                 $row->producto_nombre      ?? '—',
                 $row->cantidad_solicitada,
-                $row->stock_disponible,
+                $row->cantidad_solicitada_und,
+                $row->cantidad_separada,
+                $row->cantidad_separada_und,
                 $row->cantidad_faltante,
                 $row->cantidad_faltante_und,
                 $row->stock_actual ?? 0,

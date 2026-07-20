@@ -5806,6 +5806,15 @@ const MWMS = {
         const pctPickeado = maxCajas > 0 ? (c / maxCajas * 100) : 100;
         const minReq      = 100 - tolerancia;
         const dentroTol   = pctPickeado >= minReq;
+
+        // Si hay otra ubicación FEFO (distinta a la actual) con stock disponible
+        // para el restante, se ofrece saltar allá en vez de dejarlo como faltante.
+        const split = it.fifo_split || [];
+        const restanteUnd = (maxCajas - c) * factor;
+        const siguienteIdx = split.findIndex(loc => !loc.es_asignada && (loc.disponible || 0) > 0);
+        const haySiguiente = siguienteIdx !== -1;
+        const siguienteLoc = haySiguiente ? split[siguienteIdx] : null;
+
         const ok = await Swal.fire({
           title: dentroTol ? 'Cajas incompletas' : '⚠ Bajo del mínimo permitido',
           html: `<div style="text-align:left;font-size:.88rem;">
@@ -5821,16 +5830,31 @@ const MWMS = {
                 <div style="font-size:.6rem;color:#64748b;">Mín: ${minReq.toFixed(0)}%</div>
               </div>
             </div>
+            ${haySiguiente ? `
+            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px;text-align:center;font-size:.78rem;color:#166534;margin-bottom:8px;">
+              <i class="fa-solid fa-route"></i> Hay <b>${siguienteLoc.disponible} und</b> del restante en la ubicación
+              <b style="font-family:monospace;">${this.esc(siguienteLoc.ubicacion_codigo)}</b> — puedes separar allí lo que falta en vez de dejarlo como faltante.
+            </div>` : ''}
             <div style="background:${dentroTol ? '#fef3c7' : '#fef2f2'};border-radius:8px;padding:8px;text-align:center;font-size:.8rem;">
-              Diferencia de <b>${(maxCajas - c).toFixed(0)} cajas</b> quedará como <b>FALTANTE</b>.
+              Diferencia de <b>${(maxCajas - c).toFixed(0)} cajas</b> quedará como <b>FALTANTE</b> si no se completa en otra ubicación.
             </div>
           </div>`,
           icon: dentroTol ? 'warning' : 'error',
           showCancelButton: true,
+          showDenyButton: haySiguiente,
           confirmButtonText: dentroTol ? 'Confirmar faltante' : 'Confirmar de todas formas',
+          denyButtonText: '<i class="fa-solid fa-route"></i> Ir a siguiente ubicación',
           cancelButtonText: 'Corregir',
           confirmButtonColor: dentroTol ? '#d97706' : '#dc2626',
+          denyButtonColor: '#059669',
         });
+        if (ok.isDenied && haySiguiente) {
+          // Primero confirma lo ya separado en la ubicación actual (si hay algo > 0),
+          // luego reasigna la línea a la siguiente ubicación FEFO para el restante.
+          if (c > 0) await this.confirmarPKActual(planilla, totalEnviar, c, s);
+          this._pkUsarFifoLoc(siguienteIdx, planilla);
+          return;
+        }
         if (!ok.isConfirmed) return;
       } else if (c > maxCajas) {
         const ok = await Swal.fire({

@@ -80,6 +80,26 @@ WMS_MODULES.picking = {
     return partes.length ? partes.join(' + ') : '0';
   },
 
+  /**
+   * Formatea un valor que YA viene en CAJAS (convención real de picking_detalles.
+   * cantidad_solicitada/cantidad_pickeada y picking_faltantes.cantidad_solicitada/
+   * cantidad_faltante — confirmado contra datos reales, NO dividir de nuevo por upc)
+   * mostrando "X cj + Y suelt." y el total en UND/TOTAL debajo.
+   */
+  _fmtCajasDesglose(valorCajas, unidades_caja, esBadge = false) {
+    const upc = Math.max(1, parseInt(unidades_caja) || 1);
+    const v   = Math.max(0, parseFloat(valorCajas) || 0);
+    const und = v * upc;
+    if (upc <= 1) return `<strong>${WMS.formatNum(v)}</strong>`;
+    const cajas = Math.floor(v);
+    const saldo = Math.round((v - cajas) * upc * 1000) / 1000;
+    const txt = cajas <= 0 && saldo > 0
+      ? `${WMS.formatNum(saldo)} suelt.`
+      : `${WMS.formatNum(cajas)} cj${saldo > 0 ? ' + ' + WMS.formatNum(saldo) + ' suelt.' : ''}`;
+    const linea1 = esBadge ? `<span class="badge badge-danger">${txt}</span>` : `<strong>${txt}</strong>`;
+    return `${linea1}<div style="font-size:10px;color:#64748b;">${WMS.formatNum(und)} und</div>`;
+  },
+
   /** Agrupa array de órdenes por planilla_numero / planilla_lote */
   _agruparPorPlanilla(items) {
     const grupos = {};
@@ -248,9 +268,9 @@ WMS_MODULES.picking = {
       return `
       <tr style="border-bottom:1px solid #e2e8f0;">
         <td style="padding:5px 8px;"><b style="color:#1e293b">${WMS.esc(pr.nombre)}</b></td>
-        <td style="padding:5px 8px;text-align:center;font-weight:600;">${this._fmtCantidad(pr.cantidad_total, pr.unidades_caja)}</td>
-        <td style="padding:5px 8px;text-align:center;">${this._fmtCantidad(Math.max(0, (parseFloat(pr.cantidad_total)||0) - (parseFloat(pr.cantidad_pendiente)||0)), pr.unidades_caja)}</td>
-        <td style="padding:5px 8px;text-align:center;color:#dc3545;font-weight:600;">${WMS.formatNum(pr.cantidad_pendiente)}</td>
+        <td style="padding:5px 8px;text-align:center;font-weight:600;">${this._fmtCajasDesglose(pr.cantidad_total, pr.unidades_caja)}</td>
+        <td style="padding:5px 8px;text-align:center;">${this._fmtCajasDesglose(Math.max(0, (parseFloat(pr.cantidad_total)||0) - (parseFloat(pr.cantidad_pendiente)||0)), pr.unidades_caja)}</td>
+        <td style="padding:5px 8px;text-align:center;color:#dc3545;font-weight:600;">${pr.cantidad_pendiente > 0 ? this._fmtCajasDesglose(pr.cantidad_pendiente, pr.unidades_caja) : '<span style="color:#94a3b8;">0</span>'}</td>
         <td style="padding:5px 8px;text-align:center;font-size:11px;">${WMS.esc([...pr.auxiliares].join(', ') || '-')}</td>
         <td style="padding:5px 8px;text-align:center;font-size:11px;color:#2563eb;font-weight:700;">${pr.hora_fin || '-'}</td>
         <td style="padding:5px 8px;text-align:center;font-size:11px;color:#64748b;font-family:monospace;">${pr.hora_fin ? (durLine.str || '00:00:00') : '-'}</td>
@@ -348,9 +368,9 @@ WMS_MODULES.picking = {
             <thead style="background:#f1f5f9;color:#64748b;font-weight:700;text-transform:uppercase;font-size:10px;">
               <tr>
                 <th style="padding:6px 8px;">Producto</th>
-                <th style="padding:6px 8px;text-align:center;">UND/TOTAL</th>
-                <th style="padding:6px 8px;text-align:center;">Separación</th>
-                <th style="padding:6px 8px;text-align:center;color:#dc3545;">Pend.</th>
+                <th style="padding:6px 8px;text-align:center;" title="Cantidad total solicitada en cajas y su equivalente UND/TOTAL">Total Solicitado</th>
+                <th style="padding:6px 8px;text-align:center;" title="Cantidad efectivamente separada">Separado</th>
+                <th style="padding:6px 8px;text-align:center;color:#dc3545;" title="Restante por separar (por agotado o pendiente de picking)">Total Faltante</th>
                 <th style="padding:6px 8px;text-align:center;">Auxiliar</th>
                 <th style="padding:6px 8px;text-align:center;color:#2563eb;">Hr. Separado</th>
                 <th style="padding:6px 8px;text-align:center;">Duración</th>
@@ -846,7 +866,7 @@ WMS_MODULES.picking = {
           ${acciones}
         </td>
         <td style="text-align:center;">${WMS.formatNum(cantSol)}</td>
-        <td style="text-align:center;">${self._fmtCantidad(cantSol, upc)}</td>
+        <td style="text-align:center;">${self._fmtCajasDesglose(cantSol, upc)}</td>
         <td style="text-align:center;font-weight:700;color:${cantPick>0?'#059669':'#94a3b8'}">${WMS.formatNum(cantPick)}</td>
         <td><span class="badge ${badgeCls}">${lEst||'Pendiente'}</span></td>
       </tr>`;
@@ -3293,6 +3313,8 @@ WMS_MODULES.picking = {
               producto_nombre: r.producto_nombre,
               producto_codigo: r.producto_codigo,
               unidades_caja: r.unidades_caja || 1,
+              cantidad_solicitada: 0,
+              cantidad_separada: 0,
               cantidad_faltante: 0,
               stock_actual: r.stock_actual || 0,
               planillas: new Set(),
@@ -3300,6 +3322,8 @@ WMS_MODULES.picking = {
             });
           }
           const g = map.get(key);
+          g.cantidad_solicitada += (r.cantidad_solicitada || 0);
+          g.cantidad_separada += (r.cantidad_separada || 0);
           g.cantidad_faltante += (r.cantidad_faltante || 0);
           g.stock_actual = Math.max(g.stock_actual, r.stock_actual || 0);
           if (r.numero_planilla) g.planillas.add(r.numero_planilla);
@@ -3387,6 +3411,8 @@ WMS_MODULES.picking = {
                 <table class="erp-table">
                   <thead><tr>
                     <th>Producto</th>
+                    <th style="text-align:center;">Solicitado</th>
+                    <th style="text-align:center;">Separado</th>
                     <th style="text-align:center;">Faltante Total</th>
                     <th style="text-align:center;">Stock Disponible (cj/und)</th>
                     <th style="text-align:center;">Planillas Afectadas</th>
@@ -3397,17 +3423,14 @@ WMS_MODULES.picking = {
                     const upc = g.unidades_caja || 1;
                     const cf = g.cantidad_faltante;
                     const cfUnd = cf * upc;
-                    const cfCajas = upc > 1 ? Math.floor(cf) : cf;
-                    const cfSaldo = upc > 1 ? Math.round((cf - cfCajas) * upc * 1000) / 1000 : 0;
                     return `<tr>
                     <td>
                       <div style="font-weight:700;font-size:12px;">${WMS.esc(g.producto_nombre||'-')}</div>
                       <div style="font-size:10px;color:#64748b;">${WMS.esc(g.producto_codigo||'')}</div>
                     </td>
-                    <td style="text-align:center;">
-                      <span class="badge badge-danger">${upc > 1 && cfCajas <= 0 ? `${WMS.formatNum(cfSaldo)} suelt.` : `${WMS.formatNum(cfCajas)} cj${cfSaldo > 0 ? ' + ' + WMS.formatNum(cfSaldo) + ' suelt.' : ''}`}</span>
-                      ${upc > 1 ? `<div style="font-size:10px;color:#64748b;">${WMS.formatNum(cfUnd)} und</div>` : ''}
-                    </td>
+                    <td style="text-align:center;">${this._fmtCajasDesglose(g.cantidad_solicitada, upc)}</td>
+                    <td style="text-align:center;color:#059669;">${this._fmtCajasDesglose(g.cantidad_separada, upc)}</td>
+                    <td style="text-align:center;">${this._fmtCajasDesglose(cf, upc, true)}</td>
                     <td style="text-align:center;">
                       ${sa >= cfUnd
                         ? `<span class="badge badge-success" title="Stock disponible para backorder"><i class="fa-solid fa-check" style="margin-right:3px;"></i>${(sa/upc).toFixed(2)} cj</span>
@@ -3417,7 +3440,7 @@ WMS_MODULES.picking = {
                     </td>
                     <td style="text-align:center;">${g.planillas.size}</td>
                     <td style="font-size:11px;">${Array.from(g.sucursales).map(s => WMS.esc(s)).join(', ') || '-'}</td>
-                  </tr>`;}).join('') || '<tr><td colspan="5" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
+                  </tr>`;}).join('') || '<tr><td colspan="7" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
                   </tbody>
                 </table>
                 ` : `
@@ -3428,7 +3451,10 @@ WMS_MODULES.picking = {
                              style="accent-color:#0070f2;width:14px;height:14px;">
                     </th>
                     <th>Fecha</th><th>Planilla</th><th>Auxiliar</th>
-                    <th>Producto</th><th style="text-align:center;">Faltante</th>
+                    <th>Producto</th>
+                    <th style="text-align:center;">Solicitado</th>
+                    <th style="text-align:center;">Separado</th>
+                    <th style="text-align:center;">Faltante</th>
                     <th style="text-align:center;">Stock Disponible (cj/und)</th>
                     <th>Sucursal Destino</th><th>Cliente</th>
                   </tr></thead>
@@ -3438,11 +3464,6 @@ WMS_MODULES.picking = {
                     const upc  = r.unidades_caja || 1;
                     const cfUnd = cf * upc; // cajas → unidades para comparar con stock_actual (und)
                     const ok   = sa >= cfUnd;
-                    // cf viene en cajas y puede ser fraccionario (déficit menor a una caja
-                    // completa) — se descompone en cajas enteras + sueltos en vez de mostrar
-                    // un número de cajas confuso como "0.25 cj".
-                    const cfCajas = upc > 1 ? Math.floor(cf) : cf;
-                    const cfSaldo = upc > 1 ? Math.round((cf - cfCajas) * upc * 1000) / 1000 : 0;
                     return `<tr data-falt-id="${r.id}" data-has-stock="${ok?1:0}" style="${ok?'background:#f0fdf4;':''}">
                     <td style="text-align:center;" onclick="event.stopPropagation()">
                       <input type="checkbox" class="falt-sel" value="${r.producto_id}" onchange="WMS_MODULES.picking._onFaltCheck()"
@@ -3455,10 +3476,9 @@ WMS_MODULES.picking = {
                       <div style="font-weight:700;font-size:12px;">${WMS.esc(r.producto_nombre||'-')}</div>
                       <div style="font-size:10px;color:#64748b;">${WMS.esc(r.producto_codigo||'')}</div>
                     </td>
-                    <td style="text-align:center;">
-                      <span class="badge badge-danger">${upc > 1 && cfCajas <= 0 ? `${WMS.formatNum(cfSaldo)} suelt.` : `${WMS.formatNum(cfCajas)} cj${cfSaldo > 0 ? ' + ' + WMS.formatNum(cfSaldo) + ' suelt.' : ''}`}</span>
-                      ${upc > 1 ? `<div style="font-size:10px;color:#64748b;">${WMS.formatNum(cfUnd)} und</div>` : ''}
-                    </td>
+                    <td style="text-align:center;">${this._fmtCajasDesglose(r.cantidad_solicitada, upc)}</td>
+                    <td style="text-align:center;color:#059669;">${this._fmtCajasDesglose(r.cantidad_separada, upc)}</td>
+                    <td style="text-align:center;">${this._fmtCajasDesglose(cf, upc, true)}</td>
                     <td style="text-align:center;">
                       ${ok
                         ? `<span class="badge badge-success" title="Stock disponible para backorder"><i class="fa-solid fa-check" style="margin-right:3px;"></i>${(sa/upc).toFixed(2)} cj</span>
@@ -3468,7 +3488,7 @@ WMS_MODULES.picking = {
                     </td>
                     <td style="font-size:11px;">${WMS.esc(r.sucursal_entrega||'-')}</td>
                     <td style="font-size:11px;">${WMS.esc(r.cliente||'-')}</td>
-                  </tr>`;}).join('') || '<tr><td colspan="9" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
+                  </tr>`;}).join('') || '<tr><td colspan="11" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
                   </tbody>
                 </table>
                 `}
