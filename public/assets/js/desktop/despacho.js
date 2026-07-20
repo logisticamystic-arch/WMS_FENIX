@@ -1578,65 +1578,67 @@ WMS_MODULES.despacho = {
     document.getElementById('tab-cargue-pedidos').className = 'btn btn-primary btn-sm';
     document.getElementById('tab-cargue-planillas').className = 'btn btn-outline-primary btn-sm';
     
-    WMS.spinner();
+    // Show spinner INSIDE the wrap instead of using WMS.spinner() which destroys the wrap
+    const wrap = document.getElementById('cargue-content-wrap') || document.getElementById('main-content');
+    if (wrap) wrap.innerHTML = '<div class="m-empty" style="padding:60px;"><div class="spinner spinner-lg" style="margin:0 auto;"></div></div>';
+    
     try {
       const r = await API.get('/picking', 'estado_certificacion=Certificada&sin_despacho=1&limit=500&incluir_finalizados=1');
       this._pedidosCarguePendientes = r.data || r || [];
       
-      const wrap = document.getElementById('cargue-content-wrap');
-      if(!wrap) return;
+      const target = document.getElementById('cargue-content-wrap') || document.getElementById('main-content');
+      if(!target) return;
       
-      wrap.innerHTML = `
-        <div class="filter-bar" style="flex-wrap:wrap;gap:12px;background:#f8fafc;padding:12px;border-radius:6px;margin-bottom:12px;border:1px solid #e2e8f0;">
-          <div style="flex:1;min-width:150px;">
-            <label style="font-size:0.75rem;font-weight:600;color:#64748b;margin-bottom:4px;display:block;">Fecha Desde</label>
-            <input type="date" id="cp-f-desde" class="form-control form-control-sm" onchange="WMS_MODULES.despacho._filtrarPedidosCargue()">
-          </div>
-          <div style="flex:1;min-width:150px;">
-            <label style="font-size:0.75rem;font-weight:600;color:#64748b;margin-bottom:4px;display:block;">Fecha Hasta</label>
-            <input type="date" id="cp-f-hasta" class="form-control form-control-sm" onchange="WMS_MODULES.despacho._filtrarPedidosCargue()">
-          </div>
-          <div style="flex:2;min-width:200px;">
-            <label style="font-size:0.75rem;font-weight:600;color:#64748b;margin-bottom:4px;display:block;">Buscador (Pedido, Cliente o Sucursal)</label>
-            <div class="search-bar" style="margin:0;"><i class="fa-solid fa-search"></i>
-              <input type="text" id="cp-f-texto" placeholder="Escriba para filtrar en tiempo real..." oninput="WMS_MODULES.despacho._filtrarPedidosCargue()">
-            </div>
-          </div>
-          <div style="flex:1;min-width:150px;">
-            <label style="font-size:0.75rem;font-weight:600;color:#64748b;margin-bottom:4px;display:block;">Planilla Picking</label>
-            <input type="text" id="cp-f-planilla" class="form-control form-control-sm" placeholder="# Planilla" oninput="WMS_MODULES.despacho._filtrarPedidosCargue()">
-          </div>
-        </div>
-        
-        <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-weight:bold;color:#334155;"><i class="fa-solid fa-cubes"></i> <span id="cp-counter">0</span> pedidos listos</span>
-          <button class="btn btn-success" onclick="WMS_MODULES.despacho.nuevoPlanillaCargueMasivo()"><i class="fa-solid fa-truck"></i> Crear Planilla con Seleccionados</button>
-        </div>
-        
-        <div class="card">
-          <div class="table-container">
-            <table class="erp-table">
-              <thead>
-                <tr>
-                  <th><input type="checkbox" id="cp-chk-all" onchange="document.querySelectorAll('.cp-chk').forEach(c => { if(c.offsetParent !== null) c.checked=this.checked })"></th>
-                  <th>Planilla Picking</th>
-                  <th>Pedido / Factura</th>
-                  <th>Cliente / Sucursal</th>
-                  <th>Fecha</th>
-                </tr>
-              </thead>
-              <tbody id="cp-tbody">
-              </tbody>
-            </table>
-          </div>
-        </div>
-      `;
+      target.innerHTML = '\n' +
+        '<div class="filter-bar" style="flex-wrap:wrap;gap:12px;background:#f8fafc;padding:12px;border-radius:6px;margin-bottom:12px;border:1px solid #e2e8f0;">\n' +
+        '  <div style="flex:1;min-width:150px;">\n' +
+        '    <label style="font-size:0.75rem;font-weight:600;color:#64748b;margin-bottom:4px;display:block;">Fecha Desde</label>\n' +
+        '    <input type="date" id="cp-f-desde" class="form-control form-control-sm" onchange="WMS_MODULES.despacho._filtrarPedidosCargue()">\n' +
+        '  </div>\n' +
+        '  <div style="flex:1;min-width:150px;">\n' +
+        '    <label style="font-size:0.75rem;font-weight:600;color:#64748b;margin-bottom:4px;display:block;">Fecha Hasta</label>\n' +
+        '    <input type="date" id="cp-f-hasta" class="form-control form-control-sm" onchange="WMS_MODULES.despacho._filtrarPedidosCargue()">\n' +
+        '  </div>\n' +
+        '  <div style="flex:2;min-width:200px;">\n' +
+        '    <label style="font-size:0.75rem;font-weight:600;color:#64748b;margin-bottom:4px;display:block;">Buscador (Pedido, Cliente o Sucursal)</label>\n' +
+        '    <div class="search-bar" style="margin:0;"><i class="fa-solid fa-search"></i>\n' +
+        '      <input type="text" id="cp-f-texto" placeholder="Escriba para filtrar en tiempo real..." oninput="WMS_MODULES.despacho._filtrarPedidosCargue()">\n' +
+        '    </div>\n' +
+        '  </div>\n' +
+        '  <div style="flex:1;min-width:150px;">\n' +
+        '    <label style="font-size:0.75rem;font-weight:600;color:#64748b;margin-bottom:4px;display:block;">Planilla Picking</label>\n' +
+        '    <input type="text" id="cp-f-planilla" class="form-control form-control-sm" placeholder="# Planilla" oninput="WMS_MODULES.despacho._filtrarPedidosCargue()">\n' +
+        '  </div>\n' +
+        '</div>\n' +
+        '\n' +
+        '<div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">\n' +
+        '  <span style="font-weight:bold;color:#334155;"><i class="fa-solid fa-cubes"></i> <span id="cp-counter">0</span> pedidos listos</span>\n' +
+        '  <button class="btn btn-success" onclick="WMS_MODULES.despacho.nuevoPlanillaCargueMasivo()"><i class="fa-solid fa-truck"></i> Crear Planilla con Seleccionados</button>\n' +
+        '</div>\n' +
+        '\n' +
+        '<div class="card">\n' +
+        '  <div class="table-container">\n' +
+        '    <table class="erp-table">\n' +
+        '      <thead>\n' +
+        '        <tr>\n' +
+        '          <th><input type="checkbox" id="cp-chk-all" onchange="document.querySelectorAll(\'.cp-chk\').forEach(c => { if(c.offsetParent !== null) c.checked=this.checked })"></th>\n' +
+        '          <th>Planilla Picking</th>\n' +
+        '          <th>Pedido / Factura</th>\n' +
+        '          <th>Cliente / Sucursal</th>\n' +
+        '          <th>Fecha</th>\n' +
+        '        </tr>\n' +
+        '      </thead>\n' +
+        '      <tbody id="cp-tbody">\n' +
+        '      </tbody>\n' +
+        '    </table>\n' +
+        '  </div>\n' +
+        '</div>';
       
       this._filtrarPedidosCargue();
-      WMS.closeSpinner();
     } catch(e) {
+      const errTarget = document.getElementById('cargue-content-wrap') || document.getElementById('main-content');
+      if (errTarget) errTarget.innerHTML = '<div class="m-empty" style="padding:40px;text-align:center;color:#ef4444;"><i class="fa-solid fa-exclamation-triangle"></i> Error cargando pedidos pendientes</div>';
       WMS.toast('error', 'Error cargando pedidos pendientes');
-      WMS.closeSpinner();
     }
   },
 
@@ -1881,7 +1883,7 @@ WMS_MODULES.despacho = {
         ruta_id: rutaId ? parseInt(rutaId) : null,
         observaciones: document.getElementById('car-obs')?.value.trim() || null,
       });
-      if (r.error) { WMS.toast('error', r.message); WMS.closeSpinner(); return; }
+      if (r.error) { WMS.toast('error', r.message); return; }
       
       const despachoId = r.data.id;
       
@@ -1896,11 +1898,11 @@ WMS_MODULES.despacho = {
         WMS.toast('success', 'Planilla de cargue creada');
       }
       WMS.closeRightPanel(); 
-      WMS.closeSpinner();
+
       this.show_cargue(); 
     } catch(e) { 
       WMS.toast('error', 'Error guardando'); 
-      WMS.closeSpinner();
+
     }
   },
 
