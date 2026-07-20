@@ -3940,22 +3940,64 @@ WMS_MODULES.picking = {
       const auxiliares = [...auxSet].sort();
       const planillas  = [...new Set(all.map(o => o.planilla_numero || o.planilla_lote).filter(Boolean))].sort();
 
-      // Client-side filter grupos
-      let gruposVis = grupos;
-      if (suc_fil)  gruposVis = gruposVis.filter(g => g.ordenes.some(o => (o.sucursal_entrega||'') === suc_fil));
-      if (aux_fil)  gruposVis = gruposVis.filter(g => [...g.auxiliares].some(a => a === aux_fil));
-      if (plan_fil) gruposVis = gruposVis.filter(g => g.planilla === plan_fil);
-      if (ref_fil)  gruposVis = gruposVis.filter(g =>
-        g.planilla.toLowerCase().includes(ref_fil) ||
-        g.ordenes.some(o => (o.numero_orden||'').toLowerCase().includes(ref_fil) || (o.numero_pedido||'').toLowerCase().includes(ref_fil) || (o.ruta||'').toLowerCase().includes(ref_fil))
-      );
+      // Aplicar filtros al array de órdenes y detalles (Deep filter)
+      let filteredAll = all;
+      if (suc_fil) {
+          filteredAll = filteredAll.filter(o => (o.sucursal_entrega||'') === suc_fil);
+      }
+      if (plan_fil) {
+          filteredAll = filteredAll.filter(o => (o.planilla_numero || o.planilla_lote) === plan_fil);
+      }
+      if (ref_fil) {
+          filteredAll = filteredAll.filter(o => 
+              (o.planilla_numero||'').toLowerCase().includes(ref_fil) ||
+              (o.numero_orden||'').toLowerCase().includes(ref_fil) || 
+              (o.numero_pedido||'').toLowerCase().includes(ref_fil) || 
+              (o.ruta||'').toLowerCase().includes(ref_fil)
+          );
+      }
+      
+      if (aux_fil) {
+          filteredAll = filteredAll.map(o => {
+              const oAux = o.auxiliar?.nombre || o.usuario;
+              const matchDetails = o.detalles?.filter(dt => dt.auxiliar?.nombre === aux_fil) || [];
+              
+              if (matchDetails.length > 0) {
+                  // Si tiene detalles explícitos para este auxiliar, mostrar SOLO esas líneas.
+                  return { ...o, detalles: matchDetails };
+              } else if (oAux === aux_fil) {
+                  // Si toda la orden es de este auxiliar pero las líneas no tienen un auxiliar específico
+                  return o;
+              }
+              return null;
+          }).filter(Boolean);
+      }
+      
+      const gruposVis = this._agruparPorPlanilla(filteredAll);
 
       // KPIs
-      const totalL  = parseInt(d.total_lineas_activas || 0);
-      const pendL   = parseInt(d.lineas_pendientes || 0);
-      const okL     = Math.max(0, totalL - pendL);
-      const pctG    = totalL > 0 ? Math.round((okL / totalL) * 100) : 0;
-      const stCount = { Pendiente: d.pendientes||0, EnProceso: d.en_proceso||0, Completado: d.completadas||0 };
+      let totalL = 0, pendL = 0, okL = 0, pctG = 0;
+      let stCount = { Pendiente: 0, EnProceso: 0, Completado: 0 };
+      
+      if (aux_fil || suc_fil || plan_fil || ref_fil) {
+          // Si hay filtros, calcular KPIs basados en las planillas filtradas
+          gruposVis.forEach(g => {
+              totalL += g.total_lineas;
+              pendL += g.lineas_pendientes;
+              if (g.estado === 'Pendiente' || g.estado === 'Asignado') stCount.Pendiente++;
+              else if (g.estado === 'EnProceso') stCount.EnProceso++;
+              else if (g.estado === 'Completado') stCount.Completado++;
+          });
+          okL = Math.max(0, totalL - pendL);
+          pctG = totalL > 0 ? Math.round((okL / totalL) * 100) : 0;
+      } else {
+          // Sin filtros, usar métricas globales reales del backend
+          totalL  = parseInt(d.total_lineas_activas || 0);
+          pendL   = parseInt(d.lineas_pendientes || 0);
+          okL     = Math.max(0, totalL - pendL);
+          pctG    = totalL > 0 ? Math.round((okL / totalL) * 100) : 0;
+          stCount = { Pendiente: d.pendientes||0, EnProceso: d.en_proceso||0, Completado: d.completadas||0 };
+      }
 
       const tableRows = gruposVis.map(g => this._renderPlanillaRow(g, { isDashboard: true })).join('');
 

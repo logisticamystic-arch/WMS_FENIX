@@ -27,9 +27,14 @@ $q = \App\Models\OrdenPicking::query();
 $q->whereBetween('orden_pickings.created_at', [$today . ' 00:00:00', $today . ' 23:59:59']);
 $ordenes = $q->with(['auxiliar:id,nombre', 'detalles.producto:id,empresa_id,nombre,codigo_interno,unidades_caja,ambiente_id', 'detalles.auxiliar:id,nombre'])
     ->withCount(['detalles as total_count'])
-    ->limit(1)
+    ->limit(10)
     ->get();
 
-$json = json_encode($ordenes->toArray(), JSON_PRETTY_PRINT);
-file_put_contents(__DIR__ . '/diag_out.json', $json);
-echo "JSON guardado en diag_out.json\n";
+echo "Ordenes: " . count($ordenes) . "\n";
+if (count($ordenes) > 0) {
+    echo "First order details count: " . count($ordenes[0]->detalles) . "\n";
+    if (count($ordenes[0]->detalles) > 0) {
+        echo "First detail auxiliar_id: " . $ordenes[0]->detalles[0]->auxiliar_id . "\n";
+        echo "First detail auxiliar array: " . json_encode($ordenes[0]->detalles[0]->auxiliar) . "\n";
+    }
+}
