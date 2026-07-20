@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>WMS Fénix · Móvil</title>
   <meta name="theme-color" content="#0F4C81">
+  <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="../assets/css/mobile.css">
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -9282,6 +9283,15 @@ document.addEventListener('DOMContentLoaded',()=>{
     });
   }
 });
+
+// ── PWA: registrar Service Worker para operación sin internet ────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('../sw.js', { scope: '/WMS_FENIX/public/' })
+      .then(reg => console.log('[SW] Registrado (móvil):', reg.scope))
+      .catch(err => console.warn('[SW] Error al registrar:', err));
+  });
+}
 </script>
 
 <!-- Expiry waiting modal -->
