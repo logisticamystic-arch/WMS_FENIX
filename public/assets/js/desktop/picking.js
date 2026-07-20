@@ -3319,6 +3319,7 @@ WMS_MODULES.picking = {
               stock_actual: r.stock_actual || 0,
               planillas: new Set(),
               sucursales: new Set(),
+              motivos: new Set(),
             });
           }
           const g = map.get(key);
@@ -3328,6 +3329,7 @@ WMS_MODULES.picking = {
           g.stock_actual = Math.max(g.stock_actual, r.stock_actual || 0);
           if (r.numero_planilla) g.planillas.add(r.numero_planilla);
           if (r.sucursal_entrega) g.sucursales.add(r.sucursal_entrega);
+          if (r.causal_nombre) g.motivos.add(r.causal_nombre);
         });
         return Array.from(map.values()).sort((a,b) => b.cantidad_faltante - a.cantidad_faltante);
       })();
@@ -3415,6 +3417,7 @@ WMS_MODULES.picking = {
                     <th style="text-align:center;">Separado</th>
                     <th style="text-align:center;">Faltante Total</th>
                     <th style="text-align:center;">Stock Disponible (cj/und)</th>
+                    <th>Motivo</th>
                     <th style="text-align:center;">Planillas Afectadas</th>
                     <th>Sucursales Destino</th>
                   </tr></thead>
@@ -3438,9 +3441,10 @@ WMS_MODULES.picking = {
                         : `<span class="badge badge-danger" style="opacity:.7;">${(sa/upc).toFixed(2)} cj</span>
                            <div style="font-size:10px;color:#94a3b8;">${WMS.formatNum(sa)} und</div>`}
                     </td>
+                    <td style="font-size:11px;">${Array.from(g.motivos).map(m => `<span class="pro-badge info" style="margin:1px;">${WMS.esc(m)}</span>`).join('') || '<span class="muted">Sin causal</span>'}</td>
                     <td style="text-align:center;">${g.planillas.size}</td>
                     <td style="font-size:11px;">${Array.from(g.sucursales).map(s => WMS.esc(s)).join(', ') || '-'}</td>
-                  </tr>`;}).join('') || '<tr><td colspan="7" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
+                  </tr>`;}).join('') || '<tr><td colspan="8" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
                   </tbody>
                 </table>
                 ` : `
@@ -3456,6 +3460,7 @@ WMS_MODULES.picking = {
                     <th style="text-align:center;">Separado</th>
                     <th style="text-align:center;">Faltante</th>
                     <th style="text-align:center;">Stock Disponible (cj/und)</th>
+                    <th>Motivo</th>
                     <th>Sucursal Destino</th><th>Cliente</th>
                   </tr></thead>
                   <tbody>${falt.map(r => {
@@ -3486,9 +3491,13 @@ WMS_MODULES.picking = {
                         : `<span class="badge badge-danger" style="opacity:.7;" title="Stock insuficiente">${(sa/upc).toFixed(2)} cj</span>
                            <div style="font-size:10px;color:#94a3b8;">${WMS.formatNum(sa)} und</div>`}
                     </td>
+                    <td style="font-size:11px;">
+                      ${r.causal_nombre ? `<span class="pro-badge info">${WMS.esc(r.causal_nombre)}</span><br>` : ''}
+                      <span style="color:#64748b;">${WMS.esc(r.causa || 'Sin causal')}</span>
+                    </td>
                     <td style="font-size:11px;">${WMS.esc(r.sucursal_entrega||'-')}</td>
                     <td style="font-size:11px;">${WMS.esc(r.cliente||'-')}</td>
-                  </tr>`;}).join('') || '<tr><td colspan="11" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
+                  </tr>`;}).join('') || '<tr><td colspan="12" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin faltantes en el período</td></tr>'}
                   </tbody>
                 </table>
                 `}

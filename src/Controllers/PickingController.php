@@ -851,6 +851,7 @@ class PickingController extends BaseController
         $query = Capsule::table('picking_faltantes as f')
             ->join('productos as p',         'f.producto_id',       '=', 'p.id')
             ->leftJoin('orden_pickings as o', 'f.orden_picking_id',  '=', 'o.id')
+            ->leftJoin('causales_novedad as cn', 'cn.id',            '=', 'f.causal_id')
             ->where('f.empresa_id',  $empresaId)
             ->where('f.sucursal_id', $sucursalIdFiltro)
             ->whereBetween('f.created_at', [$fechaInicio . ' 00:00:00', $fechaFin . ' 23:59:59'])
@@ -889,6 +890,8 @@ class PickingController extends BaseController
                 Capsule::raw('(SUM(f.cantidad_solicitada) - SUM(f.cantidad_faltante)) * COALESCE(p.unidades_caja, 1) as cantidad_separada_und'),
                 Capsule::raw('SUM(f.cantidad_faltante) * COALESCE(p.unidades_caja, 1) as cantidad_faltante_und'),
                 Capsule::raw("STRING_AGG(DISTINCT f.planilla_lote::text, ', ' ORDER BY f.planilla_lote::text) as numero_planilla"),
+                Capsule::raw("STRING_AGG(DISTINCT cn.nombre, ', ') as causal_nombre"),
+                Capsule::raw("STRING_AGG(DISTINCT f.causa, ' | ') as causa"),
                 $stockSubquery
             )
             ->orderBy(Capsule::raw('MIN(f.created_at)'), 'desc');
@@ -906,7 +909,7 @@ class PickingController extends BaseController
         if (($params['export'] ?? '') === 'excel') {
             $headers = ['Fecha', 'Planillas', 'Sucursal Destino', 'Código', 'Producto',
                         'Solicitado (cj)', 'Solicitado (UND)', 'Separado (cj)', 'Separado (UND)',
-                        'Faltante (cj)', 'Faltante (UND)', 'Stock Actual (UND)'];
+                        'Faltante (cj)', 'Faltante (UND)', 'Stock Actual (UND)', 'Causal', 'Observación'];
             $data = $rows->map(fn($row) => [
                 substr($row->created_at ?? '', 0, 10),
                 $row->numero_planilla      ?? '—',
@@ -920,6 +923,8 @@ class PickingController extends BaseController
                 $row->cantidad_faltante,
                 $row->cantidad_faltante_und,
                 $row->stock_actual ?? 0,
+                $row->causal_nombre ?? '—',
+                $row->causa ?? '—',
             ])->toArray();
             return $this->exportCsv($res, $headers, $data, 'faltantes_picking_' . date('Y-m-d'));
         }
@@ -5720,6 +5725,7 @@ class PickingController extends BaseController
             $rows = Capsule::table('picking_faltantes as pf')
                 ->join('productos as p', 'p.id', '=', 'pf.producto_id')
                 ->leftJoin('orden_pickings as op', 'op.id', '=', 'pf.orden_picking_id')
+                ->leftJoin('causales_novedad as cn', 'cn.id', '=', 'pf.causal_id')
                 ->whereIn('pf.orden_picking_id', $ordenIds)
                 ->select([
                     'p.codigo_interno as codigo',
@@ -5727,6 +5733,7 @@ class PickingController extends BaseController
                     Capsule::raw('SUM(pf.cantidad_faltante) as faltante'),
                     Capsule::raw("COALESCE(NULLIF(op.numero_factura, ''), op.numero_orden, '—') as pedido"),
                     Capsule::raw("STRING_AGG(DISTINCT COALESCE(pf.causa, 'Sin stock'), ', ') as causa"),
+                    Capsule::raw("STRING_AGG(DISTINCT cn.nombre, ', ') as causal_nombre"),
                 ])
                 ->groupBy('p.codigo_interno', 'p.nombre', 'op.numero_factura', 'op.numero_orden')
                 ->orderBy('p.nombre')
@@ -5736,18 +5743,21 @@ class PickingController extends BaseController
 
             $filas = '';
             foreach ($rows as $r) {
+                $motivo = $r->causal_nombre
+                    ? "<b>{$r->causal_nombre}</b>" . ($r->causa ? " — {$r->causa}" : '')
+                    : ($r->causa ?: 'Sin causa registrada');
                 $filas .= "<tr>"
                     . "<td style='white-space:nowrap'>{$r->codigo}</td>"
                     . "<td>{$r->nombre}</td>"
                     . "<td style='white-space:nowrap;font-weight:700'>{$r->pedido}</td>"
                     . "<td style='text-align:right'>{$r->faltante}</td>"
-                    . "<td>{$r->causa}</td>"
+                    . "<td>{$motivo}</td>"
                     . "</tr>";
             }
             return "<div class='agotados-section'><div class='agotados-header'>PRODUCTOS AGOTADOS / FALTANTES</div>"
                 . "<table style='table-layout:fixed;width:100%;'><colgroup>"
                 . "<col style='width:12%;'><col style='width:36%;'><col style='width:18%;'><col style='width:12%;'><col style='width:22%;'></colgroup>"
-                . "<thead><tr><th>C&oacute;digo</th><th>Producto</th><th>Pedido</th><th style='text-align:right;'>Faltante</th><th>Causa</th></tr></thead>"
+                . "<thead><tr><th>C&oacute;digo</th><th>Producto</th><th>Pedido</th><th style='text-align:right;'>Faltante</th><th>Motivo</th></tr></thead>"
                 . "<tbody>{$filas}</tbody></table></div>";
         };
 
