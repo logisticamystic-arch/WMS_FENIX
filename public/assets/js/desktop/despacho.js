@@ -381,6 +381,44 @@ WMS_MODULES.despacho = {
           </div>
         </div>` : ''}
 
+        ${despachadosDirecto.length ? `
+        <div class="card" style="margin-bottom:14px;border-left:4px solid #dc2626;">
+          <div class="card-header" style="background:#fef2f2;padding:10px 14px;">
+            <span class="card-title" style="color:#991b1b;font-size:13px;">
+              <i class="fa-solid fa-hand"></i>&nbsp; Retiro Directo — No incluidos en remisión
+            </span>
+            <span style="background:#fee2e2;color:#991b1b;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px;">${despachadosDirecto.length}</span>
+          </div>
+          <div class="table-container">
+            <table class="erp-table cert-searchable">
+              <thead><tr>
+                <th>Cliente / Planilla</th>
+                <th>Pedido</th>
+                <th>Observaciones</th>
+                <th class="text-center">Fecha</th>
+                <th class="text-center">Marcado por</th>
+                <th style="width:80px;"></th>
+              </tr></thead>
+              <tbody>${despachadosDirecto.map(d => `<tr>
+                <td>
+                  <strong style="font-size:13px;">${WMS.esc(d.sucursal_entrega || '-')}</strong>
+                  ${d.planilla_numero ? `<br><span style="background:#1e3a8a;color:#fff;border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;">${WMS.esc(d.planilla_numero)}</span>` : ''}
+                </td>
+                <td style="font-size:12px;">${WMS.esc(d.numero_factura || d.numero_orden || '-')}</td>
+                <td style="font-size:11px;color:#92400e;">${WMS.esc(d.observaciones || '—')}</td>
+                <td class="text-center" style="font-size:11px;color:#6b7280;">${(d.despachado_directo_at||'').slice(0,16).replace('T',' ') || '-'}</td>
+                <td class="text-center" style="font-size:11px;color:#6b7280;">${WMS.esc(d.marcado_por || '-')}</td>
+                <td class="text-center">
+                  <button class="btn btn-sm btn-outline-secondary" title="Desmarcar (incluir de nuevo en remisión)"
+                    onclick="WMS_MODULES.despacho._desmarcarDespachadoDirecto(${d.id})">
+                    <i class="fa-solid fa-rotate-left"></i>
+                  </button>
+                </td>
+              </tr>`).join('')}</tbody>
+            </table>
+          </div>
+        </div>` : ''}
+
         ${vistaHoy.length ? `
         <div class="card" style="margin-bottom:14px;border-left:4px solid #6366f1;">
           <div class="card-header" style="background:#f5f3ff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
