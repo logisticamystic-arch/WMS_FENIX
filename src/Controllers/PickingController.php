@@ -6749,43 +6749,70 @@ class PickingController extends BaseController
 
     // ── POST /api/picking/planilla/{numero}/liberar-linea ───────────────────
     public function liberarLineaSeparada(Request $req, Response $res, $args) {
-        $user = $this->requireAuth($req);
+        $user = $req->getAttribute('user');
         $empresaId = $this->getEffectiveEmpresaId($user, $req);
         $numero = trim($args['numero'] ?? '');
         $body = $req->getParsedBody() ?? [];
         $productoId = $body['producto_id'] ?? null;
 
-        if (!$numero || !$productoId) return $this->bad($res, "Faltan datos requeridos.");
+        if (!$numero || !$productoId) return $this->error($res, "Faltan datos requeridos.", 400);
 
-        return $this->transaction(function() use ($req, $res, $numero, $productoId, $empresaId, $user) {
-            $ordenes = \Illuminate\Database\Capsule\Manager::table('orden_pickings')
-                ->where('planilla_numero', $numero)
-                ->where('empresa_id', $empresaId)
-                ->pluck('id')->all();
+        $ordenes = \Illuminate\Database\Capsule\Manager::table('orden_pickings')
+            ->where('planilla_numero', $numero)
+            ->where('empresa_id', $empresaId)
+            ->pluck('id')->all();
 
-            if (empty($ordenes)) return $this->bad($res, "Planilla no encontrada.");
+        if (empty($ordenes)) return $this->error($res, "Planilla no encontrada.", 404);
 
-            $lineas = PickingDetalle::whereIn('orden_picking_id', $ordenes)
-                ->where('producto_id', $productoId)
-                ->whereIn('estado', ['Completado', 'Faltante'])
-                ->get();
+        $lineas = PickingDetalle::whereIn('orden_picking_id', $ordenes)
+            ->where('producto_id', $productoId)
+            ->whereIn('estado', ['Completado', 'Faltante'])
+            ->get();
 
-            if ($lineas->isEmpty()) {
-                return $this->bad($res, "No se encontraron líneas de este producto en estado Completado o Faltante.");
-            }
+        if ($lineas->isEmpty()) {
+            return $this->error($res, "No se encontraron líneas de este producto en estado Completado o Faltante.", 404);
+        }
 
-            $cantidadDevuelta = 0;
-            $lineasAfectadas = 0;
+        $cantidadDevuelta = 0;
+        $lineasAfectadas = 0;
+
+        try {
+            \Illuminate\Database\Capsule\Manager::transaction(function() use ($numero, $productoId, $empresaId, $user, $lineas, &$cantidadDevuelta, &$lineasAfectadas) {
 
             foreach ($lineas as $l) {
                 $cantidadPickeada = (float)$l->cantidad_pickeada;
                 if ($cantidadPickeada > 0) {
                     $cantidadDevuelta += $cantidadPickeada;
                     
+                    $ubicacionId = $l->ubicacion_id;
+                    if (!$ubicacionId) {
+                        $existingInv = Inventario::where('empresa_id', $empresaId)
+                            ->where('sucursal_id', $user->sucursal_id)
+                            ->where('producto_id', $l->producto_id)
+                            ->whereNotNull('ubicacion_id')
+                            ->orderBy('cantidad', 'desc')
+                            ->first();
+                        
+                        if ($existingInv) {
+                            $ubicacionId = $existingInv->ubicacion_id;
+                        } else {
+                            $anyUbicacion = \Illuminate\Database\Capsule\Manager::table('ubicaciones')
+                                ->where('empresa_id', $empresaId)
+                                ->where('sucursal_id', $user->sucursal_id)
+                                ->where('estado', 'Activa')
+                                ->first();
+                            $ubicacionId = $anyUbicacion ? $anyUbicacion->id : null;
+                        }
+                    }
+
+                    if (!$ubicacionId) {
+                        throw new \Exception("No se encontró una ubicación en la sucursal para devolver el producto.");
+                    }
+
                     $inv = Inventario::where('empresa_id', $empresaId)
                         ->where('sucursal_id', $user->sucursal_id)
                         ->where('producto_id', $l->producto_id)
-                        ->where('ubicacion_id', $l->ubicacion_id)
+                        ->where('ubicacion_id', $ubicacionId)
                         ->where('lote', $l->lote)
                         ->first();
 
@@ -6794,7 +6821,7 @@ class PickingController extends BaseController
                             'empresa_id' => $empresaId,
                             'sucursal_id' => $user->sucursal_id,
                             'producto_id' => $l->producto_id,
-                            'ubicacion_id' => $l->ubicacion_id,
+                            'ubicacion_id' => $ubicacionId,
                             'lote' => $l->lote,
                             'fecha_vencimiento' => $l->fecha_vencimiento,
                             'estado' => 'Disponible',
@@ -6818,8 +6845,8 @@ class PickingController extends BaseController
                         'cantidad'             => $cantidadPickeada,
                         'cantidad_cajas'       => (int)floor($cantidadPickeada / $upcProd),
                         'saldos'               => round(fmod($cantidadPickeada, $upcProd), 2),
-                        'ubicacion_origen_id'  => $l->ubicacion_id,
-                        'ubicacion_destino_id' => $l->ubicacion_id,
+                        'ubicacion_origen_id'  => $ubicacionId,
+                        'ubicacion_destino_id' => $ubicacionId,
                         'lote'                 => $l->lote,
                         'fecha_vencimiento'    => $l->fecha_vencimiento,
                         'usuario_id'           => $user->id,
@@ -6849,11 +6876,15 @@ class PickingController extends BaseController
                 'planilla' => $numero, 'producto_id' => $productoId, 'lineas' => $lineasAfectadas, 'cantidad' => $cantidadDevuelta
             ], "Línea de producto {$productoId} reversada en la planilla {$numero}");
 
-            return $this->ok($res, [
-                'lineas' => $lineasAfectadas,
-                'cantidad_reversada' => $cantidadDevuelta
-            ], "Línea liberada correctamente. Puede ser separada nuevamente.");
         });
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error interno al reversar línea: ' . $e->getMessage(), 500);
+        }
+
+        return $this->ok($res, [
+            'lineas' => $lineasAfectadas,
+            'cantidad_reversada' => $cantidadDevuelta
+        ], "Línea liberada correctamente. Puede ser separada nuevamente.");
     }
 
     // ── POST /api/picking/planilla/{numero}/agregar-linea ─────────────────────

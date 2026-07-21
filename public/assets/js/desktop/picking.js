@@ -1393,6 +1393,31 @@ WMS_MODULES.picking = {
       }
     }
   },
+  liberarLinea(planilla, productoId) {
+    Swal.fire({
+      title: '¿Liberar esta línea?',
+      text: "Se regresará el inventario separado a su ubicación original y el estado pasará a Asignado. ¿Continuar?",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, liberar',
+      cancelButtonText: 'Cancelar'
+    }).then(async (res) => {
+      if (res.isConfirmed) {
+        WMS.spinner();
+        try {
+          const r = await API.post('/picking/planilla/' + planilla + '/liberar-linea', { producto_id: productoId });
+          if (r.error) {
+            WMS.toast('error', r.message);
+          } else {
+            WMS.toast('success', r.message);
+            this.show_pedidos(true);
+          }
+        } catch (e) {
+          WMS.toast('error', e.message || 'Error al liberar la línea');
+        }
+      }
+    });
+  },
 
   async _reabrirPlanilla(ordenIds) {
     if (!Array.isArray(ordenIds) || !ordenIds.length) return;
