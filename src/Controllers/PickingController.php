@@ -6841,7 +6841,7 @@ class PickingController extends BaseController
                         'empresa_id'           => $empresaId,
                         'sucursal_id'          => $user->sucursal_id,
                         'producto_id'          => $l->producto_id,
-                        'tipo_movimiento'      => 'Reverso Picking',
+                        'tipo_movimiento'      => 'CorreccionAdmin',
                         'cantidad'             => $cantidadPickeada,
                         'cantidad_cajas'       => (int)floor($cantidadPickeada / $upcProd),
                         'saldos'               => round(fmod($cantidadPickeada, $upcProd), 2),
@@ -6849,14 +6849,17 @@ class PickingController extends BaseController
                         'ubicacion_destino_id' => $ubicacionId,
                         'lote'                 => $l->lote,
                         'fecha_vencimiento'    => $l->fecha_vencimiento,
-                        'usuario_id'           => $user->id,
-                        'referencia'           => 'Reverso línea planilla ' . $numero,
+                        'auxiliar_id'          => $user->id,
+                        'referencia_tipo'      => 'PlanillaPicking',
+                        'referencia_id'        => 0, // Using 0 because $numero is string
+                        'observaciones'        => 'Reverso línea planilla ' . $numero,
+                        'fecha_movimiento'     => date('Y-m-d'),
+                        'hora_inicio'          => date('H:i:s'),
                     ]);
                 }
 
-                $l->estado = 'Asignado'; 
+                $l->estado = 'EnProceso'; 
                 $l->cantidad_pickeada = 0;
-                $l->hora_fin = null;
                 $l->updated_at = date('Y-m-d H:i:s');
                 $l->save();
                 $lineasAfectadas++;
