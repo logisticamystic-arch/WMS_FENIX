@@ -1476,6 +1476,7 @@ class PackingController extends BaseController
             ->where('empresa_id', $empresaId)
             ->where('sucursal_id', $user->sucursal_id)
             ->where('sucursal_entrega', $sesion->sucursal_entrega)
+            ->where('fecha_movimiento', date('Y-m-d', strtotime($sesion->created_at)))
             ->where('estado_certificacion', 'Certificada')
             ->pluck('id')
             ->toArray();
@@ -1513,6 +1514,17 @@ class PackingController extends BaseController
         $certNombre = $cert ? trim($cert->nombre) : '—';
         $tipoLabel  = strtoupper($sesion->tipo_empaque ?? 'CANASTA');
         $fecha      = date('d/m/Y H:i', strtotime($sesion->created_at));
+
+        $pedidosTxt = Capsule::table('orden_pickings')
+            ->where('empresa_id', $empresaId)
+            ->where('sucursal_entrega', $sesion->sucursal_entrega)
+            ->where('fecha_movimiento', date('Y-m-d', strtotime($sesion->created_at)))
+            ->where('estado_certificacion', 'Certificada')
+            ->pluck('numero_factura')
+            ->filter()
+            ->unique()
+            ->implode(', ');
+        if (empty($pedidosTxt)) $pedidosTxt = '—';
 
         $logoFilePh = dirname(__DIR__, 2) . '/logo.jpg';
         $logoHtmlPh = file_exists($logoFilePh)
@@ -1600,6 +1612,7 @@ class PackingController extends BaseController
   <b>Cliente:</b><span>{$sesion->sucursal_entrega}</span>
   <b>Certificador:</b><span>{$certNombre}</span>
   <b>Total uds:</b><span>{$unidad->total_unidades}</span>
+  <b>Pedidos:</b><span>{$pedidosTxt}</span>
 </div>
 <table>
   <thead><tr>

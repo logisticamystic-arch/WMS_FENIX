@@ -6392,7 +6392,9 @@ class PickingController extends BaseController
         $ordenes = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->where('sucursal_entrega', $sucursal)
+            ->where('fecha_movimiento', date('Y-m-d'))
             ->where('estado_certificacion', 'Certificada')
+            ->whereNull('estado_despacho')
             ->get();
 
         if ($ordenes->isEmpty()) return $this->error($res, 'No se encontraron órdenes certificadas para esta sucursal');
@@ -6434,7 +6436,8 @@ class PickingController extends BaseController
             $text .= "Fecha: " . date('Y-m-d H:i') . "\n";
             $text .= "-----------------------------\n";
             foreach($ordenes as $o) {
-                $text .= "Orden: {$o->numero_orden} - {$o->cliente}\n";
+                $pedText = $o->numero_factura ? " (Ped: {$o->numero_factura})" : "";
+                $text .= "Planilla: {$o->planilla_numero}{$pedText}\n";
             }
             $text .= "-----------------------------\n";
             $text .= "Total Pedidos: " . $ordenes->count() . "\n";
