@@ -5174,6 +5174,7 @@ const MWMS = {
                     <div style="margin-top:4px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:3px 8px;display:inline-flex;align-items:center;gap:4px;max-width:100%;">
                       <i class="fa-solid fa-location-dot" style="color:#3b82f6;font-size:.65rem;flex-shrink:0;"></i>
                       <span style="font-size:.7rem;font-weight:800;color:#1d4ed8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.sucursal_entrega}</span>
+                      ${p.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;font-size:.65rem;flex-shrink:0;" title="${this.esc(p.observaciones)}"></i>` : ''}
                     </div>` : ''}
                   </div>
                   <div style="text-align:right;flex-shrink:0;">
