@@ -137,6 +137,7 @@ WMS_MODULES.picking = {
         
         if (!grupos[key].productos[prodId]) {
           grupos[key].productos[prodId] = {
+            id: prodId,
             nombre: prodName,
             cantidad_total: 0,
             cantidad_pendiente: 0,
@@ -277,6 +278,9 @@ WMS_MODULES.picking = {
         <td style="padding:5px 8px;text-align:center;font-size:11px;color:#2563eb;font-weight:700;">${pr.hora_fin || '-'}</td>
         <td style="padding:5px 8px;text-align:center;font-size:11px;color:#64748b;font-family:monospace;">${pr.hora_fin ? (durLine.str || '00:00:00') : '-'}</td>
         <td style="padding:5px 8px;text-align:center;">${stChip(estadoFinal)}</td>
+        <td style="padding:5px 8px;text-align:center;">
+          ${(estadoFinal === 'Cumplida' || estadoFinal === 'Parcial') ? `<button class="btn btn-sm" style="background:#fff3cd; color:#856404; border:1px solid #ffeeba; padding:2px 6px; font-size:10px; cursor:pointer;" onclick="WMS_MODULES.picking.liberarLinea('${g.planilla}', ${pr.id})" title="Liberar/Reversar Línea"><i class="fa-solid fa-rotate-left"></i></button>` : ''}
+        </td>
       </tr>`;
     }).join('');
 
@@ -380,6 +384,7 @@ WMS_MODULES.picking = {
                 <th style="padding:6px 8px;text-align:center;color:#2563eb;">Hr. Separado</th>
                 <th style="padding:6px 8px;text-align:center;">Duración</th>
                 <th style="padding:6px 8px;text-align:center;">Estado</th>
+                <th style="padding:6px 8px;text-align:center;"><i class="fa-solid fa-gear"></i></th>
               </tr>
             </thead>
             <tbody>${prodRows}</tbody>

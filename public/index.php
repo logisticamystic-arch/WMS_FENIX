@@ -632,6 +632,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->post('/planilla/{numero}/iniciar', [\App\Controllers\PickingController::class, 'iniciarPlanilla']);
         $group->post('/planilla/{numero}/completar', [\App\Controllers\PickingController::class, 'completarPlanilla']);
         $group->post('/planilla/{numero}/liberar-vacias', [\App\Controllers\PickingController::class, 'liberarLineasVacias']);
+        $group->post('/planilla/{numero}/liberar-linea', [\App\Controllers\PickingController::class, 'liberarLineaSeparada']);
         $group->post('/planilla/{numero}/agregar-linea', [\App\Controllers\PickingController::class, 'agregarLineaPlanilla']);
         $group->post('/planilla/{numero}/reemplazar-linea', [\App\Controllers\PickingController::class, 'reemplazarLineaPlanilla']);
         $group->get('/parametros', [\App\Controllers\PickingController::class, 'getParametrosPicking']);

@@ -6774,7 +6774,10 @@ const MWMS = {
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div>
                 <div style="font-size:.52rem;font-weight:700;color:#64748b;text-transform:uppercase;">ENTREGA</div>
-                <div style="font-weight:900;font-size:.95rem;color:#0F4C81;">${this.esc(p.sucursal_entrega)}</div>
+                <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                  <div style="font-weight:900;font-size:.95rem;color:#0F4C81;">${this.esc(p.sucursal_entrega)}</div>
+                  ${p.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#b45309;font-size:.75rem;" title="${this.esc(p.observaciones)}"></i>` : ''}
+                </div>
                 <div style="font-size:.65rem;color:#64748b;margin-top:2px;">
                   ${p.total_pedidos} pedido(s) · ${p.total_lineas} línea(s)
                 </div>

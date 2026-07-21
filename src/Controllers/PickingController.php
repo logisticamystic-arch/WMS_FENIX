@@ -6747,6 +6747,115 @@ class PickingController extends BaseController
         });
     }
 
+    // ── POST /api/picking/planilla/{numero}/liberar-linea ───────────────────
+    public function liberarLineaSeparada(Request $req, Response $res, $args) {
+        $user = $this->requireAuth($req);
+        $empresaId = $this->getEffectiveEmpresaId($user, $req);
+        $numero = trim($args['numero'] ?? '');
+        $body = $req->getParsedBody() ?? [];
+        $productoId = $body['producto_id'] ?? null;
+
+        if (!$numero || !$productoId) return $this->bad($res, "Faltan datos requeridos.");
+
+        return $this->transaction(function() use ($req, $res, $numero, $productoId, $empresaId, $user) {
+            $ordenes = \Illuminate\Database\Capsule\Manager::table('orden_pickings')
+                ->where('planilla_numero', $numero)
+                ->where('empresa_id', $empresaId)
+                ->pluck('id')->all();
+
+            if (empty($ordenes)) return $this->bad($res, "Planilla no encontrada.");
+
+            $lineas = PickingDetalle::whereIn('orden_picking_id', $ordenes)
+                ->where('producto_id', $productoId)
+                ->whereIn('estado', ['Completado', 'Faltante'])
+                ->get();
+
+            if ($lineas->isEmpty()) {
+                return $this->bad($res, "No se encontraron líneas de este producto en estado Completado o Faltante.");
+            }
+
+            $cantidadDevuelta = 0;
+            $lineasAfectadas = 0;
+
+            foreach ($lineas as $l) {
+                $cantidadPickeada = (float)$l->cantidad_pickeada;
+                if ($cantidadPickeada > 0) {
+                    $cantidadDevuelta += $cantidadPickeada;
+                    
+                    $inv = Inventario::where('empresa_id', $empresaId)
+                        ->where('sucursal_id', $user->sucursal_id)
+                        ->where('producto_id', $l->producto_id)
+                        ->where('ubicacion_id', $l->ubicacion_id)
+                        ->where('lote', $l->lote)
+                        ->first();
+
+                    if (!$inv) {
+                        $inv = new Inventario([
+                            'empresa_id' => $empresaId,
+                            'sucursal_id' => $user->sucursal_id,
+                            'producto_id' => $l->producto_id,
+                            'ubicacion_id' => $l->ubicacion_id,
+                            'lote' => $l->lote,
+                            'fecha_vencimiento' => $l->fecha_vencimiento,
+                            'estado' => 'Disponible',
+                            'cantidad' => 0,
+                            'cantidad_reservada' => 0
+                        ]);
+                    }
+                    
+                    $inv->cantidad += $cantidadPickeada;
+                    $inv->cantidad_reservada += $cantidadPickeada;
+                    $upcProd = \App\Models\Producto::where('id', $l->producto_id)->value('unidades_caja') ?: 1;
+                    $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $upcProd);
+                    $inv->saldos = round(fmod((float)$inv->cantidad, $upcProd), 2);
+                    $inv->save();
+
+                    \App\Models\MovimientoInventario::create([
+                        'empresa_id'           => $empresaId,
+                        'sucursal_id'          => $user->sucursal_id,
+                        'producto_id'          => $l->producto_id,
+                        'tipo_movimiento'      => 'Reverso Picking',
+                        'cantidad'             => $cantidadPickeada,
+                        'cantidad_cajas'       => (int)floor($cantidadPickeada / $upcProd),
+                        'saldos'               => round(fmod($cantidadPickeada, $upcProd), 2),
+                        'ubicacion_origen_id'  => $l->ubicacion_id,
+                        'ubicacion_destino_id' => $l->ubicacion_id,
+                        'lote'                 => $l->lote,
+                        'fecha_vencimiento'    => $l->fecha_vencimiento,
+                        'usuario_id'           => $user->id,
+                        'referencia'           => 'Reverso línea planilla ' . $numero,
+                    ]);
+                }
+
+                $l->estado = 'Asignado'; 
+                $l->cantidad_pickeada = 0;
+                $l->hora_fin = null;
+                $l->updated_at = date('Y-m-d H:i:s');
+                $l->save();
+                $lineasAfectadas++;
+            }
+
+            $ordenesAfectadasIds = $lineas->pluck('orden_picking_id')->unique()->all();
+            \Illuminate\Database\Capsule\Manager::table('orden_pickings')
+                ->whereIn('id', $ordenesAfectadasIds)
+                ->where('estado', 'Completada')
+                ->update([
+                    'estado' => 'EnProceso',
+                    'hora_fin' => null,
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+
+            $this->audit($user, 'picking', 'liberar_linea', 'picking_detalles', null, null, [
+                'planilla' => $numero, 'producto_id' => $productoId, 'lineas' => $lineasAfectadas, 'cantidad' => $cantidadDevuelta
+            ], "Línea de producto {$productoId} reversada en la planilla {$numero}");
+
+            return $this->ok($res, [
+                'lineas' => $lineasAfectadas,
+                'cantidad_reversada' => $cantidadDevuelta
+            ], "Línea liberada correctamente. Puede ser separada nuevamente.");
+        });
+    }
+
     // ── POST /api/picking/planilla/{numero}/agregar-linea ─────────────────────
     public function agregarLineaPlanilla(Request $req, Response $res, array $a): Response
     {
