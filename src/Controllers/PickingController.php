@@ -1040,13 +1040,30 @@ class PickingController extends BaseController
                     $upc = max(1, (int)($producto->unidades_caja ?? 1));
                     $cantidadNecesaria = (float)$falt->cantidad_faltante * $upc; // UNIDADES
 
-                    // ── 0. No tocar órdenes ya certificadas en un día distinto a hoy ──
-                    // El backorder puede legítimamente alcanzar pedidos de picking nocturno
-                    // de ayer (ver ventana de 3 días arriba), pero si la orden YA fue
-                    // certificada (despachada) en una fecha anterior, no debe reabrirse ni
-                    // descertificarse en silencio — eso obligaba a re-certificar pedidos que
-                    // ya estaban cerrados. Se deja el faltante intacto para manejo manual.
+                    // ── 0. No tocar órdenes ya certificadas en un día distinto a hoy, o
+                    // que YA fueron despachadas/entregadas (estado_despacho) sin importar
+                    // la fecha de certificación ──
+                    // BUG CORREGIDO: esta guarda solo miraba "certificada en un día
+                    // distinto a hoy", pero una orden certificada Y despachada/entregada
+                    // EL MISMO DÍA (p.ej. limpieza de un lote de pedidos atrasados) pasaba
+                    // este chequeo sin problema y quedaba reabierta si aún existía un
+                    // registro viejo en picking_faltantes para ese producto — esto reactivó
+                    // planillas ya "Entregado" (ej. Planillas 111-169 Industriales, 171
+                    // Visitación) y las volvía a mostrar como pendientes en Despacho.
+                    // Ahora: si estado_despacho ya tiene cualquier valor (Despachado o
+                    // Entregado), NUNCA se reabre — sin importar cuándo se certificó.
                     $ordenPrevia = OrdenPicking::find($falt->orden_picking_id);
+                    if ($ordenPrevia && !empty($ordenPrevia->estado_despacho)) {
+                        $resultados['omitidos_ya_certificados']++;
+                        $resultados['detalle'][] = [
+                            'faltante_id' => $falt->id,
+                            'producto'    => $nombreProducto,
+                            'orden_id'    => $ordenPrevia->id,
+                            'estado'      => 'omitido_ya_despachado',
+                            'motivo'      => "La orden #{$ordenPrevia->id} ya fue {$ordenPrevia->estado_despacho} — no se reabre automáticamente. Gestione el faltante manualmente si aplica.",
+                        ];
+                        return;
+                    }
                     if ($ordenPrevia
                         && $ordenPrevia->estado_certificacion === 'Certificada'
                         && $ordenPrevia->fecha_certificacion
@@ -1094,6 +1111,7 @@ class PickingController extends BaseController
                     $ubicacionAsignada = null;
                     $loteAsignado = null;
                     $fechaVencAsignada = null;
+                    $reservasHechas = []; // [[ubicacion_id, lote, cantidad], ...] para poder revertir con precisión
 
                     foreach ($stockDisponible as $inv) {
                         if ($restante <= 0) break;
@@ -1104,6 +1122,7 @@ class PickingController extends BaseController
                         $inv->cantidad_reservada += $aReservar;
                         $inv->save();
                         $restante -= $aReservar;
+                        $reservasHechas[] = [$inv->ubicacion_id, $inv->lote, $aReservar];
 
                         // Tomar la primera ubicación FEFO
                         if (!$ubicacionAsignada) {
@@ -1123,6 +1142,28 @@ class PickingController extends BaseController
                         ->where('producto_id', $falt->producto_id)
                         ->where('estado', 'Faltante')
                         ->first();
+
+                    // Segunda barrera de seguridad (además del guard del paso 0): si la
+                    // orden ya quedó despachada/entregada, no reactivar nada — liberar la
+                    // reserva hecha en el paso 2 (si no, quedaría stock reservado huérfano
+                    // sin ninguna línea de picking que lo vaya a consumir) y abortar.
+                    if ($orden && !empty($orden->estado_despacho)) {
+                        foreach ($reservasHechas as [$ubiRes, $loteRes, $cantRes]) {
+                            $this->_releaseReserva(
+                                $this->getEffectiveEmpresaId($user, $r), $user->sucursal_id,
+                                $falt->producto_id, $ubiRes, $loteRes, $cantRes
+                            );
+                        }
+                        $resultados['omitidos_ya_certificados']++;
+                        $resultados['detalle'][] = [
+                            'faltante_id' => $falt->id,
+                            'producto'    => $nombreProducto,
+                            'orden_id'    => $orden->id,
+                            'estado'      => 'omitido_ya_despachado',
+                            'motivo'      => "La orden #{$orden->id} ya fue {$orden->estado_despacho} — no se reabre automáticamente.",
+                        ];
+                        return;
+                    }
 
                     if ($lineaFaltante && $orden) {
                         $lineaFaltante->estado            = 'EnProceso';
@@ -3680,7 +3721,10 @@ class PickingController extends BaseController
         // COALESCE ensures orders without planilla_numero get their own entry using numero_orden
         $query = OrdenPicking::where('empresa_id', $empresaId)
             ->where('sucursal_id', $user->sucursal_id)
-            ->whereIn('estado', ['Pendiente', 'EnProceso']);
+            ->whereIn('estado', ['Pendiente', 'EnProceso'])
+            // Defensa adicional: una orden ya despachada/entregada no debe reaparecer
+            // como tarea activa de picking (ver bug de reactivación en procesarBackorder).
+            ->whereNull('estado_despacho');
 
         // Auxiliares solo ven sus planillas; supervisores/admins ven todas
         if ($esAuxiliar) {
@@ -4937,6 +4981,10 @@ class PickingController extends BaseController
             ->where('op.sucursal_id', $sucursalId)
             ->whereIn('op.estado', ['Completada', 'EnProceso'])
             ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial'])
+            // Defensa adicional: una orden ya despachada/entregada NUNCA debe volver a
+            // aparecer como pendiente de certificar, sin importar cómo haya quedado su
+            // estado/estado_certificacion (ver bug de reactivación en procesarBackorder).
+            ->whereNull('op.estado_despacho')
             ->whereExists(function($query) {
                 $query->select(Capsule::raw(1))
                       ->from('picking_detalles as pd2')
@@ -4974,6 +5022,7 @@ class PickingController extends BaseController
                 ->where('op.sucursal_id', $sucursalId)
                 ->whereIn('op.estado', ['Completada', 'EnProceso'])
                 ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial'])
+                ->whereNull('op.estado_despacho')
                 // El re-pick (updated_at de la línea) debe caer dentro del rango buscado
                 ->where('pd.updated_at', '>=', $fechaInicio . ' 00:00:00')
                 ->where('pd.updated_at', '<=', $fechaFin   . ' 23:59:59')
@@ -5509,6 +5558,9 @@ class PickingController extends BaseController
             // Pedidos con retiro directo (cliente ya lo recogió en bodega) se excluyen
             // de la certificación/remisión para que no se mezclen con la planilla.
             ->where('op.despachado_directo', false)
+            // Una orden que ya fue despachada/entregada (flujo TMS) no debe volver a
+            // aparecer aquí para re-imprimir/agrupar en una nueva remisión.
+            ->whereNull('op.estado_despacho')
             ->when($fechaInicio, fn($q) => $q->where('op.fecha_movimiento', '>=', $fechaInicio))
             ->when($fechaFin, fn($q) => $q->where('op.fecha_movimiento', '<=', $fechaFin))
             ->select(
