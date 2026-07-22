@@ -1170,10 +1170,9 @@ class PickingController extends BaseController
                         $lineaFaltante->ubicacion_id      = $ubicacionAsignada;
                         $lineaFaltante->lote              = $loteAsignado;
                         $lineaFaltante->fecha_vencimiento = $fechaVencAsignada;
-                        // Sincronizar con la asignación actual de la orden.
-                        // assignLines() excluye líneas 'Faltante' de su update, dejando
-                        // auxiliar_id obsoleto que causaría que aparezca para el auxiliar equivocado.
-                        $lineaFaltante->auxiliar_id       = $orden->auxiliar_id;
+                        // Se mantiene el auxiliar original que estaba asignado a la línea
+                        // según requerimiento, para que vuelva a aparecer a dicho auxiliar.
+                        // $lineaFaltante->auxiliar_id = $orden->auxiliar_id;
                         $lineaFaltante->save();
 
                         if (in_array($orden->estado, ['Faltante', 'Completada'])) {
