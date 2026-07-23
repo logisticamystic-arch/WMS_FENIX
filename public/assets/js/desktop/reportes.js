@@ -129,8 +129,8 @@ WMS_MODULES.reportes = {
   },
 
   _getParams(id) {
-    const hoy    = new Date().toISOString().substring(0,10);
-    const hace30 = new Date(Date.now() - 30*86400000).toISOString().substring(0,10);
+    const hoy    = WMS.getToday();
+    const hace30 = WMS.getPastDate(30);
     return {
       desde:     document.getElementById(`${id}-desde`)?.value     || hace30,
       hasta:     document.getElementById(`${id}-hasta`)?.value     || hoy,
@@ -354,8 +354,8 @@ WMS_MODULES.reportes = {
   // ── KARDEX (búsqueda dinámica por producto + rango de fechas) ──────────────
   async show_kardex() {
     WMS.setToolbar('');
-    const hoy = new Date().toISOString().substring(0,10);
-    const hace30 = new Date(Date.now() - 30*86400000).toISOString().substring(0,10);
+    const hoy = WMS.getToday();
+    const hace30 = WMS.getPastDate(30);
     const prodId = this._kProdId || '';
     const prodNom = this._kProdNombre || '';
     const desde = this._kDesde || hace30;
@@ -964,7 +964,7 @@ WMS_MODULES.reportes = {
 
   // ── PLAN DE CONTINGENCIA ──────────────────────────────────────────────────
   async show_contingencia() {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = WMS.getToday();
     WMS.setToolbar(`
       <button class="btn btn-warning btn-sm" onclick="WMS_MODULES.reportes.abrirSeparacion()"><i class="fa-solid fa-print"></i> Imprimir Separación</button>
       <button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.abrirCertificacion()"><i class="fa-solid fa-print"></i> Imprimir Certificación</button>
@@ -1029,22 +1029,22 @@ WMS_MODULES.reportes = {
   },
 
   abrirSeparacion() {
-    const fecha = document.getElementById('cont-fecha')?.value || new Date().toISOString().slice(0,10);
+    const fecha = document.getElementById('cont-fecha')?.value || WMS.getToday();
     this._abrirReporteHtml(`${API_BASE}/reportes/contingencia/separacion?formato=html&fecha=${fecha}`, 'Separacion_' + fecha);
   },
 
   abrirCertificacion() {
-    const fecha = document.getElementById('cont-fecha')?.value || new Date().toISOString().slice(0,10);
+    const fecha = document.getElementById('cont-fecha')?.value || WMS.getToday();
     this._abrirReporteHtml(`${API_BASE}/reportes/contingencia/certificacion?formato=html&fecha=${fecha}`, 'Certificacion_' + fecha);
   },
 
   exportarSeparacionCSV() {
-    const fecha = document.getElementById('cont-fecha')?.value || new Date().toISOString().slice(0,10);
+    const fecha = document.getElementById('cont-fecha')?.value || WMS.getToday();
     this.exportar(`/reportes/contingencia/separacion?formato=csv&fecha=${fecha}`);
   },
 
   exportarCertCSV() {
-    const fecha = document.getElementById('cont-fecha')?.value || new Date().toISOString().slice(0,10);
+    const fecha = document.getElementById('cont-fecha')?.value || WMS.getToday();
     this.exportar(`/reportes/contingencia/certificacion?formato=csv&fecha=${fecha}`);
   },
 

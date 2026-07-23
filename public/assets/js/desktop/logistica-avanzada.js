@@ -56,8 +56,8 @@ WMS_MODULES.logistica = {
 
   /* Genera bloque de filtros de fecha */
   _dateFilters(id, onRefresh) {
-    const today = new Date().toISOString().split('T')[0];
-    const d7    = new Date(Date.now() - 7*86400000).toISOString().split('T')[0];
+    const today = WMS.getToday();
+    const d7    = WMS.getPastDate(7);
     return `<div class="d-flex gap-2 align-items-center flex-wrap mb-3">
       <label class="text-muted small mb-0">Desde</label>
       <input type="date" id="${id}_ini" class="form-control form-control-sm" style="width:145px" value="${d7}">

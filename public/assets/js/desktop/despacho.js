@@ -106,7 +106,7 @@ WMS_MODULES.despacho = {
       if (this._certFechaFin)    qSes.append('fm_hasta', this._certFechaFin);
       const paramsSes = '?' + qSes.toString();
 
-      const fechaVista = this._certFechaInicio || new Date().toISOString().slice(0,10);
+      const fechaVista = this._certFechaInicio || WMS.getToday();
       const [rPend, rSes, rCert, rVista, rDespDirecto] = await Promise.all([
         API.get('/picking/certificacion/pendientes' + params),
         API.get('/packing/sesiones' + paramsSes),
@@ -547,7 +547,7 @@ WMS_MODULES.despacho = {
   },
 
   async imprimirRemisionDirecta(sucursal) {
-    const fecha = this._certFechaInicio || new Date().toISOString().slice(0, 10);
+    const fecha = this._certFechaInicio || WMS.getToday();
     this._openPrint(`${API_BASE}/picking/certificacion/remision/${encodeURIComponent(sucursal)}?fecha=${fecha}`, 'Remisión');
   },
 
@@ -1704,7 +1704,7 @@ WMS_MODULES.despacho = {
       sucursalOpts += sucursales.map(s => `<option value="${s.id}">${WMS.esc(s.nombre)}</option>`).join('');
     } catch(e) {}
 
-    const hoy = new Date().toISOString().substring(0, 10);
+    const hoy = WMS.getToday();
     this._cargueFiltros = { desde: hoy, hasta: hoy, sucursal_id: '', estado: '' };
 
     const wrap = document.getElementById('cargue-content-wrap');
@@ -1751,7 +1751,7 @@ WMS_MODULES.despacho = {
   },
 
   _hoyFiltrosCargue() {
-    const hoy = new Date().toISOString().substring(0, 10);
+    const hoy = WMS.getToday();
     document.getElementById('cargue-f-desde').value = hoy;
     document.getElementById('cargue-f-hasta').value = hoy;
     this._aplicarFiltrosCargue();

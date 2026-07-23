@@ -1007,8 +1007,8 @@ WMS_MODULES.almacenamiento = {
 
   // ── INFORME TRASLADOS ─────────────────────────────────────────
   async show_informe() {
-    const hoy  = new Date().toISOString().substring(0, 10);
-    const hace = new Date(Date.now() - 30 * 86400000).toISOString().substring(0, 10);
+    const hoy  = WMS.getToday();
+    const hace = WMS.getPastDate(30);
     WMS.setToolbar(`<button class="btn btn-success btn-sm" onclick="WMS_MODULES.almacenamiento.exportarInforme()"><i class="fa-solid fa-file-excel"></i> Exportar</button>`);
     WMS.spinner();
     try {

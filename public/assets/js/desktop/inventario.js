@@ -60,8 +60,8 @@ WMS_MODULES.inventario = {
   // ── Tab "Por Referencia": filtro dinámico + KPIs + gráfico entradas/salidas + ubicaciones ──
   _renderStockPorReferencia() {
     const body = document.getElementById('stock-tab-body');
-    const hoy   = new Date().toISOString().substring(0,10);
-    const hace30 = new Date(Date.now() - 30*86400000).toISOString().substring(0,10);
+    const hoy   = WMS.getToday();
+    const hace30 = WMS.getPastDate(30);
     const prodId  = this._srProdId || '';
     const prodNom = this._srProdNombre || '';
     const desde = this._srDesde || hace30;
@@ -872,8 +872,8 @@ WMS_MODULES.inventario = {
 
   // Historial de ingresos/salidas de una referencia puntual en una ubicación puntual (fecha + usuario)
   async _verHistorialUbiProducto(ubicacionId, productoId, nombreProducto) {
-    const hoy = new Date().toISOString().substring(0,10);
-    const hace90 = new Date(Date.now() - 90*86400000).toISOString().substring(0,10);
+    const hoy = WMS.getToday();
+    const hace90 = WMS.getPastDate(90);
     WMS.showModal(`Historial: ${nombreProducto}`, `
       <div class="filter-bar" style="gap:8px;margin-bottom:12px;">
         <div class="form-group" style="margin:0;">
@@ -2861,8 +2861,8 @@ WMS_MODULES.inventario = {
     let qParts = [];
     if (sesionId) qParts.push(`sesion_id=${sesionId}`);
     const d30ago = new Date(); d30ago.setDate(d30ago.getDate()-30);
-    const desdeVal = desde || d30ago.toISOString().slice(0,10);
-    const hastaVal = hasta || new Date().toISOString().slice(0,10);
+    const desdeVal = desde || WMS.getPastDate(30);
+    const hastaVal = hasta || WMS.getToday();
     if (!sesionId) {
       qParts.push(`desde=${desdeVal}`);
       qParts.push(`hasta=${hastaVal}`);
@@ -4280,7 +4280,7 @@ WMS_MODULES.inventario = {
     const el = document.getElementById('aj-hoy-content');
     if (!el) return;
     try {
-      const hoy = new Date().toISOString().substring(0, 10);
+      const hoy = WMS.getToday();
       const ra  = await API.get('/v2/inventario/ajustes', `desde=${hoy}&hasta=${hoy}&origen=CorreccionAdmin`);
       const ays = ra.data || ra || [];
       if (!ays.length) {

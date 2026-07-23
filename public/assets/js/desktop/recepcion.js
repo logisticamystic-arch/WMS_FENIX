@@ -2456,7 +2456,7 @@ WMS_MODULES.recepcion = {
       </div>`);
     WMS.spinner();
     try {
-      const hoy = new Date().toISOString().split('T')[0];
+      const hoy = WMS.getToday();
       const r = await API.get('/citas');
       window._allYmsCitas = (Array.isArray(r.data) ? r.data : (Array.isArray(r) ? r : []))
         .map(c => ({ ...c, fecha: (c.fecha || '').substring(0, 10) }));
@@ -2566,7 +2566,7 @@ WMS_MODULES.recepcion = {
   _renderCalendario7x5(citas) {
     const firstDay = new Date(window._ymsYear, window._ymsMonth, 1).getDay(); // 0=Sun, 1=Mon...
     const daysInMonth = new Date(window._ymsYear, window._ymsMonth + 1, 0).getDate();
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = WMS.getToday();
 
     // Ajustamos para que empiece en lunes (1)
     let startOffset = firstDay === 0 ? 6 : firstDay - 1;
@@ -2669,7 +2669,7 @@ WMS_MODULES.recepcion = {
           </div>
           <div class="form-group">
             <label class="form-label">Fecha *</label>
-            <input id="cy-fecha" type="date" class="form-control" value="${new Date().toISOString().split('T')[0]}">
+            <input id="cy-fecha" type="date" class="form-control" value="${WMS.getToday()}">
           </div>
           <div class="form-group">
             <label class="form-label">Hora y Franja Disponible *</label>

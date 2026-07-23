@@ -775,7 +775,7 @@ WMS_MODULES.inteligencia = {
     `).join('');
 
     // Cálculos KPI
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = WMS.getToday();
     const bloqueosHoy = data.filter(g => g.created_at?.startsWith(hoy)).length;
     const criticos = data.filter(g => ['ajuste','despacho'].includes(g.operacion)).length;
     const usuariosDistintos = new Set(data.map(g => g.usuario_id)).size;

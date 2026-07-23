@@ -60,7 +60,7 @@ WMS_MODULES.devoluciones = {
     const hoy   = new Date();
     const desde = new Date(hoy.getFullYear(), hoy.getMonth() - 5, 1)
                     .toISOString().substring(0, 10);
-    const hasta = hoy.toISOString().substring(0, 10);
+    const hasta = WMS.getToday();
 
     /* Skeleton mientras carga */
     WMS.setContent(`

@@ -407,7 +407,7 @@ WMS_MODULES.picking = {
   },
 
   _todayStr() {
-    return new Date().toISOString().split('T')[0];
+    return WMS.getToday();
   },
 
   async _cargarPedidos() {
@@ -2105,7 +2105,7 @@ WMS_MODULES.picking = {
         cliente,
         sucursal_entrega : cliente,
         ruta             : ruta || null,
-        fecha_requerida  : new Date().toISOString().split('T')[0],
+        fecha_requerida  : WMS.getToday(),
         observaciones    : observaciones || null,
         detalles,
       });
@@ -3244,7 +3244,7 @@ WMS_MODULES.picking = {
     const faltantes = data.faltantes_detectados || 0;
     let detallesHtml = '';
     try {
-      const hoy = new Date().toISOString().slice(0,10);
+      const hoy = WMS.getToday();
       const r = await API.get('/picking/novedades-stock', `fecha_inicio=${hoy}&fecha_fin=${hoy}&limit=50`);
       const rows = (r.data?.rows || r.rows || []);
       if (rows.length > 0) {
@@ -3693,7 +3693,7 @@ WMS_MODULES.picking = {
   async show_agotados(filters = null) {
     if (filters) Object.assign(this._agotFilters, filters);
     const f = this._agotFilters;
-    if (!f.ini) f.ini = new Date(Date.now() - 30*24*3600*1000).toISOString().slice(0,10);
+    if (!f.ini) f.ini = WMS.getPastDate(30);
     if (!f.fin) f.fin = WMS.getToday();
 
     WMS.setToolbar(`
@@ -3827,7 +3827,7 @@ WMS_MODULES.picking = {
 
   _exportAgotados() {
     const f   = this._agotFilters;
-    const ini = f.ini || new Date(Date.now()-30*24*3600*1000).toISOString().slice(0,10);
+    const ini = f.ini || WMS.getPastDate(30);
     const fin = f.fin || WMS.getToday();
     const token = localStorage.getItem('wms_token') || '';
     const base  = window.API_BASE || '/WMS_FENIX/public/api';
@@ -4645,7 +4645,7 @@ WMS_MODULES.picking = {
         <i class="fa-solid fa-file-csv"></i> Exportar CSV
       </button>`);
     const today = WMS.getToday();
-    const hace30 = new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
+    const hace30 = WMS.getPastDate(30);
     this._reservasFiltros = { fecha_desde: hace30, fecha_hasta: today, sucursal_id: '' };
     await this._cargarReservas();
   },
@@ -4990,7 +4990,7 @@ WMS_MODULES.picking = {
             </div>
             <div class="form-group" style="margin:0;">
               <label class="form-label">Hasta <span style="color:#dc2626;">*</span></label>
-              <input type="date" id="rep-hasta" class="form-control" value="${new Date().toISOString().split('T')[0]}">
+              <input type="date" id="rep-hasta" class="form-control" value="${WMS.getToday()}">
             </div>
             <div class="form-group" style="margin:0;min-width:160px;">
               <label class="form-label">Ruta</label>
@@ -5188,7 +5188,7 @@ WMS_MODULES.picking = {
       ws['!cols'] = headers.map(() => ({ wch: 18 }));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Picking');
-      const hoy = new Date().toISOString().split('T')[0];
+      const hoy = WMS.getToday();
       XLSX.writeFile(wb, `Picking_Reporte_${hoy}.xlsx`);
     } catch(e) {
       WMS.toast('error', 'Error generando Excel: ' + WMS.esc(e.message));
@@ -5211,7 +5211,7 @@ WMS_MODULES.picking = {
         <i class="fa-solid fa-sync"></i> Actualizar
       </button>`);
     const today = WMS.getToday();
-    const hace7 = new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0];
+    const hace7 = WMS.getPastDate(7);
     this._consultaFiltros = { q: '', fecha_desde: hace7, fecha_hasta: today, estado: '' };
     this._consultaPage = 1;
     WMS.setContent(`
@@ -5281,7 +5281,7 @@ WMS_MODULES.picking = {
 
   _limpiarConsulta() {
     const today = WMS.getToday();
-    const hace7 = new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0];
+    const hace7 = WMS.getPastDate(7);
     const q = document.getElementById('cq-q'); if (q) q.value = '';
     const d = document.getElementById('cq-desde'); if (d) d.value = hace7;
     const h = document.getElementById('cq-hasta'); if (h) h.value = today;
@@ -5460,7 +5460,7 @@ WMS_MODULES.picking = {
         <i class="fa-solid fa-sync"></i> Actualizar
       </button>`);
     const today = WMS.getToday();
-    const hace30 = new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
+    const hace30 = WMS.getPastDate(30);
     WMS.setContent(`
       <div class="px-20 py-16">
         <div class="card shadow-soft" style="margin-bottom:14px;">
