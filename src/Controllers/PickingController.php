@@ -2030,11 +2030,13 @@ class PickingController extends BaseController
                                 ->lockForUpdate()->orderByDesc('cantidad')->first();
                         }
 
+                        $ubicacionAcreditada = null;
                         if ($invReal) {
                             $invReal->cantidad      += $cantRev;
                             $invReal->cantidad_cajas = (int)floor((float)$invReal->cantidad / $upcRev);
                             $invReal->saldos         = round(fmod((float)$invReal->cantidad, $upcRev), 2);
                             $invReal->save();
+                            $ubicacionAcreditada = $invReal->ubicacion_id;
                         } elseif ($linea->ubicacion_id) {
                             Inventario::create([
                                 'empresa_id'         => $empresaId,
@@ -2049,6 +2051,31 @@ class PickingController extends BaseController
                                 'cantidad_reservada' => 0,
                                 'estado'             => 'Disponible',
                                 'numero_pallet'      => null,
+                            ]);
+                            $ubicacionAcreditada = $linea->ubicacion_id;
+                        }
+
+                        // Kardex de la reversión: sin este registro el stock físico sube pero
+                        // el kardex nunca refleja el reingreso, rompiendo SUM(kardex)==existencias.
+                        // Mismo patrón que DespachoController::eliminar().
+                        if ($ubicacionAcreditada) {
+                            MovimientoInventario::create([
+                                'empresa_id'           => $empresaId,
+                                'sucursal_id'          => $sucursalId,
+                                'producto_id'          => $linea->producto_id,
+                                'tipo_movimiento'      => 'AjustePositivo',
+                                'cantidad'             => $cantRev,
+                                'cantidad_cajas'       => (int)floor($cantRev / $upcRev),
+                                'saldos'               => round(fmod($cantRev, $upcRev), 2),
+                                'lote'                 => $linea->lote,
+                                'fecha_vencimiento'    => $linea->fecha_vencimiento ?? null,
+                                'ubicacion_destino_id' => $ubicacionAcreditada,
+                                'auxiliar_id'          => $user->id,
+                                'referencia_tipo'      => 'orden_pickings',
+                                'referencia_id'        => $orden->id,
+                                'observaciones'        => "Anulación de orden {$orden->numero_orden} — reversión de picking ya separado",
+                                'fecha_movimiento'     => date('Y-m-d'),
+                                'hora_inicio'          => date('H:i:s'),
                             ]);
                         }
                     }
