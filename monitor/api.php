@@ -44,6 +44,21 @@ try {
     exit;
 }
 
+// ── Autenticación: este endpoint estaba completamente abierto (sin token, sin
+// JWT), exponiendo nombres/roles de empleados activos y el contenido crudo de
+// logs/app.log a cualquiera que alcanzara la URL. Requiere MONITOR_TOKEN
+// definido en .env; se envía como ?token=... o header X-Monitor-Token.
+$monitorToken = getenv('MONITOR_TOKEN') ?: ($_ENV['MONITOR_TOKEN'] ?? null);
+$givenToken   = $_GET['token'] ?? ($_SERVER['HTTP_X_MONITOR_TOKEN'] ?? '');
+if (!$monitorToken || !is_string($givenToken) || !hash_equals($monitorToken, $givenToken)) {
+    http_response_code(401);
+    echo json_encode([
+        'error'   => true,
+        'message' => 'No autorizado. Configure MONITOR_TOKEN en .env y envíelo como ?token=... o header X-Monitor-Token.',
+    ]);
+    exit;
+}
+
 use Illuminate\Database\Capsule\Manager as Capsule;
 
 // Directorio de reportes
