@@ -5106,11 +5106,17 @@ class PickingController extends BaseController
                     'planillas'         => [],
                     'ordenes_ids'       => [],
                     'pedidos_list'      => [],
+                    'pedidos_detalles'  => [],
                 ];
             }
             $result[$suc]['total_pedidos']++;
-            if (!empty($o->numero_orden)) {
-                $result[$suc]['pedidos_list'][] = $o->numero_orden;
+            $numPedidoReal = !empty($o->numero_pedido) ? $o->numero_pedido : (!empty($o->numero_factura) ? $o->numero_factura : $o->numero_orden);
+            if (!empty($numPedidoReal)) {
+                $result[$suc]['pedidos_list'][] = $numPedidoReal;
+                $result[$suc]['pedidos_detalles'][] = [
+                    'pedido'        => $numPedidoReal,
+                    'observaciones' => $o->observaciones ?? '',
+                ];
             }
             if (!empty($o->numero_factura)) {
                 $result[$suc]['planillas'][] = $o->numero_factura;
@@ -5145,6 +5151,15 @@ class PickingController extends BaseController
         foreach ($result as &$entry) {
             $entry['planillas']    = array_values(array_unique($entry['planillas']));
             $entry['pedidos_list'] = array_values(array_unique($entry['pedidos_list']));
+            
+            // Deduplica pedidos_detalles por campo pedido
+            $seenP = [];
+            $entry['pedidos_detalles'] = array_values(array_filter($entry['pedidos_detalles'], function($pd) use (&$seenP) {
+                if (in_array($pd['pedido'], $seenP)) return false;
+                $seenP[] = $pd['pedido'];
+                return true;
+            }));
+
             $vrs = [];
             if (!empty($entry['planilla_numero']) && isset($vrsMap[$entry['planilla_numero']])) {
                 $vrs = array_merge($vrs, $vrsMap[$entry['planilla_numero']]);
@@ -5159,6 +5174,40 @@ class PickingController extends BaseController
         unset($entry);
 
         return $this->ok($res, array_values($result));
+    }
+
+    // ── POST /api/picking/ordenes/observaciones ───────────────────────────────
+    public function guardarObservacionOrden(Request $r, Response $res): Response
+    {
+        $user      = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $body      = $r->getParsedBody() ?? [];
+
+        $pedido        = trim($body['pedido_numero'] ?? '');
+        $observaciones = trim($body['observaciones'] ?? '');
+
+        if ($pedido === '') {
+            return $this->error($res, 'El número de pedido es obligatorio', 400);
+        }
+
+        $affected = Capsule::table('orden_pickings')
+            ->where('empresa_id', $empresaId)
+            ->where(function($q) use ($pedido) {
+                $q->where('numero_pedido', $pedido)
+                  ->orWhere('numero_factura', $pedido)
+                  ->orWhere('numero_orden', $pedido);
+            })
+            ->update([
+                'observaciones' => $observaciones !== '' ? $observaciones : null,
+                'updated_at'    => date('Y-m-d H:i:s'),
+            ]);
+
+        $this->audit($user, 'picking', 'editar_observaciones', 'orden_pickings', 0, null, [
+            'pedido'        => $pedido,
+            'observaciones' => $observaciones,
+        ]);
+
+        return $this->ok($res, ['pedido' => $pedido, 'observaciones' => $observaciones, 'affected' => $affected], 'Observación actualizada correctamente');
     }
 
     // ── POST /api/picking/planillas/vr ─────────────────────────────────────────

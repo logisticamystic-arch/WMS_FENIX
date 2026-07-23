@@ -640,8 +640,8 @@ class PackingController extends BaseController
             ? "STRING_AGG(DISTINCT op_ref.planilla_numero, ', ')"
             : "GROUP_CONCAT(DISTINCT op_ref.planilla_numero)";
         $strAggPedidos = $this->isPg()
-            ? "STRING_AGG(DISTINCT op_ref.numero_orden, ', ')"
-            : "GROUP_CONCAT(DISTINCT op_ref.numero_orden)";
+            ? "STRING_AGG(DISTINCT COALESCE(NULLIF(op_ref.numero_pedido, ''), NULLIF(op_ref.numero_factura, ''), op_ref.numero_orden), ', ')"
+            : "GROUP_CONCAT(DISTINCT COALESCE(NULLIF(op_ref.numero_pedido, ''), NULLIF(op_ref.numero_factura, ''), op_ref.numero_orden))";
 
         // Subquery: pu→pi (+ orden_pickings solo para listar planillas distintas por sesión,
         // necesario para detectar/reimprimir sesiones con varias planillas mezcladas)
@@ -713,22 +713,32 @@ class PackingController extends BaseController
                 ->join('picking_detalles as pd2', 'pd2.id', '=', 'pi2.picking_detalle_id')
                 ->join('orden_pickings as op2', 'op2.id', '=', 'pd2.orden_picking_id')
                 ->whereColumn('pu2.sesion_id', 'ps.id')
-                ->where('op2.numero_orden', 'like', "%{$pedido}%");
+                ->where(function($q) use ($pedido) {
+                    $q->where('op2.numero_pedido', 'like', "%{$pedido}%")
+                      ->orWhere('op2.numero_factura', 'like', "%{$pedido}%")
+                      ->orWhere('op2.numero_orden', 'like', "%{$pedido}%");
+                });
         });
 
         $rows = $builder->get();
 
         $allPlanillas = [];
+        $allPedidos   = [];
         foreach ($rows as $row) {
             $rowPlanillas = array_values(array_filter(array_map('trim', explode(',', $row->planillas_str ?? ''))));
-            foreach ($rowPlanillas as $p) $allPlanillas[] = $p;
+            $rowPedidos   = array_values(array_filter(array_map('trim', explode(',', $row->pedidos_str ?? ''))));
+            foreach ($rowPlanillas as $p)  $allPlanillas[] = $p;
+            foreach ($rowPedidos as $pd)   $allPedidos[]   = $pd;
         }
         $allPlanillas = array_values(array_unique(array_filter($allPlanillas)));
+        $allPedidos   = array_values(array_unique(array_filter($allPedidos)));
+
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
 
         $vrsMap = [];
         if (!empty($allPlanillas)) {
             $vrsRows = Capsule::table('planilla_vrs')
-                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                ->where('empresa_id', $empresaId)
                 ->whereIn('planilla_numero', $allPlanillas)
                 ->select(['id', 'planilla_numero', 'vr'])
                 ->get();
@@ -740,10 +750,36 @@ class PackingController extends BaseController
             }
         }
 
-        $rows = $rows->map(function ($row) use ($vrsMap) {
+        $obsMap = [];
+        if (!empty($allPedidos)) {
+            $obsRows = Capsule::table('orden_pickings')
+                ->where('empresa_id', $empresaId)
+                ->where(function($q) use ($allPedidos) {
+                    $q->whereIn('numero_pedido', $allPedidos)
+                      ->orWhereIn('numero_factura', $allPedidos)
+                      ->orWhereIn('numero_orden', $allPedidos);
+                })
+                ->whereNotNull('observaciones')
+                ->where('observaciones', '!=', '')
+                ->select(['numero_pedido', 'numero_factura', 'numero_orden', 'observaciones'])
+                ->get();
+            foreach ($obsRows as $oRow) {
+                $k = !empty($oRow->numero_pedido) ? $oRow->numero_pedido : (!empty($oRow->numero_factura) ? $oRow->numero_factura : $oRow->numero_orden);
+                $obsMap[$k] = $oRow->observaciones;
+            }
+        }
+
+        $rows = $rows->map(function ($row) use ($vrsMap, $obsMap) {
             $row->planillas    = array_values(array_filter(array_map('trim', explode(',', $row->planillas_str ?? ''))));
             $row->pedidos_list = array_values(array_filter(array_map('trim', explode(',', $row->pedidos_str ?? ''))));
             unset($row->planillas_str, $row->pedidos_str);
+
+            $row->pedidos_detalles = array_map(function($p) use ($obsMap) {
+                return [
+                    'pedido'        => $p,
+                    'observaciones' => $obsMap[$p] ?? ''
+                ];
+            }, $row->pedidos_list);
 
             $vrs = [];
             foreach ($row->planillas as $p) {
@@ -898,7 +934,7 @@ class PackingController extends BaseController
             $ordenesObj = OrdenPicking::where('empresa_id', $empresaId)
                 ->where('sucursal_id', $user->sucursal_id)
                 ->whereIn('id', $sesionOrdenIds)
-                ->get(['id', 'numero_orden', 'numero_factura', 'planilla_numero', 'fecha_movimiento']);
+                ->get(['id', 'numero_orden', 'numero_factura', 'numero_pedido', 'planilla_numero', 'fecha_movimiento']);
         } else {
             // Fallback: órdenes certificadas del cliente en la fecha de creación de la sesión
             $ordenesObj = OrdenPicking::where('empresa_id', $empresaId)
@@ -906,7 +942,7 @@ class PackingController extends BaseController
                 ->where('sucursal_entrega', $sesion->sucursal_entrega)
                 ->where('estado_certificacion', 'Certificada')
                 ->whereDate('fecha_movimiento', $sesionFecha)
-                ->get(['id', 'numero_orden', 'numero_factura', 'planilla_numero', 'fecha_movimiento']);
+                ->get(['id', 'numero_orden', 'numero_factura', 'numero_pedido', 'planilla_numero', 'fecha_movimiento']);
         }
 
         if ($planillaFiltro !== '') {
@@ -919,13 +955,6 @@ class PackingController extends BaseController
         $ordenIds    = $ordenesObj->pluck('id')->toArray();
 
         if ($planillaFiltro !== '') {
-            // Un packing_item agrega la cantidad de TODAS las órdenes pendientes del cliente
-            // para un mismo producto y le asigna un único picking_detalle_id "representativo"
-            // (FEFO) — no conserva de qué pedido viene cada unidad cuando el producto se repide
-            // entre pedidos de distinta planilla. Para filtrar por planilla, picking_detalles
-            // SÍ tiene el desglose exacto por orden (mismo formato fraccionario que packing_items;
-            // ver certRemisionDirecta), así que se reconstruyen los ítems desde ahí en vez de
-            // arrastrar el picking_detalle_id representativo de packing_items.
             $itemsRaw = Capsule::table('picking_detalles as pd')
                 ->join('productos as p', 'p.id', '=', 'pd.producto_id')
                 ->leftJoin('ambientes as a', 'a.id', '=', 'p.ambiente_id')
@@ -1850,8 +1879,7 @@ class PackingController extends BaseController
         // (distinta planilla/fecha), mezclándolos en la misma remisión. Ver getSesion(),
         // agregarItem() y finalizarSesion(), que pasan la fecha de creación de su $sesion;
         // autoPack() pasa la fecha del día en que se ejecuta.
-        $hoy = $fecha ?? date('Y-m-d');
-        return Capsule::table('picking_detalles as pd')
+        $query = Capsule::table('picking_detalles as pd')
             ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
             ->join('productos as p', 'p.id', '=', 'pd.producto_id')
             ->leftJoin('ambientes as amb', function ($join) use ($empresaId) {
@@ -1874,9 +1902,13 @@ class PackingController extends BaseController
                   ->havingRaw("SUM(CASE WHEN pd2.estado IN ('Pendiente', 'EnProceso') THEN 1 ELSE 0 END) = 0");
             })
             // Retiro directo (cliente ya lo recogió en bodega) — no entra a packing/remisión.
-            ->where('op.despachado_directo', false)
-            ->whereDate('op.fecha_movimiento', $hoy)
-            ->select([
+            ->where('op.despachado_directo', false);
+
+        if ($fecha !== null && $fecha !== 'all') {
+            $query->whereDate('op.fecha_movimiento', $fecha);
+        }
+
+        return $query->select([
                 'pd.producto_id',
                 'p.nombre as producto_nombre',
                 'p.codigo_interno as codigo',

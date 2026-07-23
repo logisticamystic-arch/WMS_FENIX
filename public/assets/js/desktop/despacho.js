@@ -239,11 +239,26 @@ WMS_MODULES.despacho = {
                 </td>
                 <td class="text-center">
                   <strong style="font-size:13px;">${s.total_pedidos || '—'}</strong>
-                  ${s.pedidos_list && s.pedidos_list.length ? `
-                    <div style="margin-top:2px;max-width:200px;margin-left:auto;margin-right:auto;" title="${WMS.esc(s.pedidos_list.join(', '))}">
-                      ${s.pedidos_list.map(p => `<span style="display:inline-block;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:3px;padding:0 4px;margin:1px;font-family:monospace;font-size:9px;">${WMS.esc(p)}</span>`).join('')}
+                  ${s.pedidos_detalles && s.pedidos_detalles.length ? `
+                    <div style="margin-top:2px;max-width:220px;margin-left:auto;margin-right:auto;display:flex;gap:3px;flex-wrap:wrap;justify-content:center;">
+                      ${s.pedidos_detalles.map(pd => `
+                        <span style="display:inline-flex;align-items:center;gap:3px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:10px;" title="${pd.observaciones ? WMS.esc(pd.observaciones) : 'Sin observaciones — Haz clic en 📝 para editar'}">
+                          ${WMS.esc(pd.pedido)}
+                          ${pd.observaciones ? `<i class="fa-solid fa-comment-dots" style="color:#6366f1;font-size:9px;" title="${WMS.esc(pd.observaciones)}"></i>` : ''}
+                          <i class="fa-solid fa-pen" style="font-size:8px;color:#9ca3af;cursor:pointer;" onclick="WMS_MODULES.despacho.promptEditarObservacion('${WMS.esc(pd.pedido)}','${WMS.esc(pd.observaciones || '')}')" title="Editar observación del pedido"></i>
+                        </span>
+                      `).join('')}
                     </div>
-                  ` : ''}
+                  ` : (s.pedidos_list && s.pedidos_list.length ? `
+                    <div style="margin-top:2px;max-width:220px;margin-left:auto;margin-right:auto;display:flex;gap:3px;flex-wrap:wrap;justify-content:center;">
+                      ${s.pedidos_list.map(p => `
+                        <span style="display:inline-flex;align-items:center;gap:3px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:10px;">
+                          ${WMS.esc(p)}
+                          <i class="fa-solid fa-pen" style="font-size:8px;color:#9ca3af;cursor:pointer;" onclick="WMS_MODULES.despacho.promptEditarObservacion('${WMS.esc(p)}','')" title="Editar observación del pedido"></i>
+                        </span>
+                      `).join('')}
+                    </div>
+                  ` : '')}
                 </td>
                 <td class="text-center"><strong>${s.total_lineas_cert || s.total_lineas || '—'}</strong></td>
                 <td>
@@ -322,11 +337,28 @@ WMS_MODULES.despacho = {
                     ${s.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc(s.observaciones)}"></i>` : ''}
                     <div style="font-size:10px;color:#6b7280;margin-top:1px;">${s.total_empacado || 0} uds empacadas</div>
                     ${s.planillas && s.planillas.length > 1 ? `<div style="font-size:10px;color:#b45309;margin-top:2px;"><i class="fa-solid fa-triangle-exclamation"></i> ${s.planillas.length} planillas mezcladas: ${s.planillas.map(p => WMS.esc(p)).join(' · ')}</div>` : ''}
-                    ${s.pedidos_list && s.pedidos_list.length ? `
-                      <div style="margin-top:3px;font-size:10px;color:#4b5563;">
-                        <strong>Pedidos:</strong> ${s.pedidos_list.map(p => `<span style="display:inline-block;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:3px;padding:0 4px;margin:1px;font-family:monospace;font-size:9px;">${WMS.esc(p)}</span>`).join('')}
+                    ${s.pedidos_detalles && s.pedidos_detalles.length ? `
+                      <div style="margin-top:4px;font-size:10px;color:#4b5563;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                        <strong>Pedidos:</strong>
+                        ${s.pedidos_detalles.map(pd => `
+                          <span style="display:inline-flex;align-items:center;gap:3px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:10px;" title="${pd.observaciones ? WMS.esc(pd.observaciones) : 'Sin observaciones — Haz clic en 📝 para editar'}">
+                            ${WMS.esc(pd.pedido)}
+                            ${pd.observaciones ? `<i class="fa-solid fa-comment-dots" style="color:#6366f1;font-size:9px;" title="${WMS.esc(pd.observaciones)}"></i>` : ''}
+                            <i class="fa-solid fa-pen" style="font-size:8px;color:#9ca3af;cursor:pointer;" onclick="WMS_MODULES.despacho.promptEditarObservacion('${WMS.esc(pd.pedido)}','${WMS.esc(pd.observaciones || '')}')" title="Editar observación"></i>
+                          </span>
+                        `).join('')}
                       </div>
-                    ` : ''}
+                    ` : (s.pedidos_list && s.pedidos_list.length ? `
+                      <div style="margin-top:4px;font-size:10px;color:#4b5563;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                        <strong>Pedidos:</strong>
+                        ${s.pedidos_list.map(p => `
+                          <span style="display:inline-flex;align-items:center;gap:3px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:10px;">
+                            ${WMS.esc(p)}
+                            <i class="fa-solid fa-pen" style="font-size:8px;color:#9ca3af;cursor:pointer;" onclick="WMS_MODULES.despacho.promptEditarObservacion('${WMS.esc(p)}','')" title="Editar observación"></i>
+                          </span>
+                        `).join('')}
+                      </div>
+                    ` : '')}
                     <div style="margin-top:4px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
                       ${s.vrs && s.vrs.length ? s.vrs.map(v => `
                         <span style="background:#0284c7;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
@@ -544,6 +576,26 @@ WMS_MODULES.despacho = {
     });
     const count = document.getElementById('cert-search-count');
     if (count) count.textContent = f ? `${visible} de ${total} resultado(s)` : '';
+  },
+
+  async promptEditarObservacion(pedidoNumero, actualObs) {
+    if (!pedidoNumero) return;
+    const obs = prompt(`Editar Observación para el Pedido "${pedidoNumero}":`, actualObs || '');
+    if (obs === null) return;
+
+    WMS.spinner();
+    try {
+      const res = await API.post('/picking/ordenes/observaciones', {
+        pedido_numero: pedidoNumero,
+        observaciones: obs.trim(),
+      });
+      WMS.toast('success', res.message || 'Observación actualizada');
+      this.show_certificacion(true);
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error al guardar observación');
+    } finally {
+      WMS.spinner(false);
+    }
   },
 
   async promptAgregarVR(planillaNumero) {
