@@ -1058,6 +1058,25 @@
       _devolucionPendingCount: 0,
       _confirmCallback: null,
 
+      // ── Obtener fecha actual (con salto a mañana después de 7PM) ──
+      getToday() {
+        const d = new Date();
+        if (d.getHours() >= 19) {
+          d.setDate(d.getDate() + 1);
+        }
+        return d.toISOString().substring(0, 10);
+      },
+
+      // ── Obtener fecha anterior/futura relativa a "hoy" (considerando 7PM) ──
+      getPastDate(days) {
+        const d = new Date();
+        if (d.getHours() >= 19) {
+          d.setDate(d.getDate() + 1);
+        }
+        d.setDate(d.getDate() - days);
+        return d.toISOString().substring(0, 10);
+      },
+
       // ── Inicialización ────────────────────────────────────
       init() {
         this.updateConnectionInfo();

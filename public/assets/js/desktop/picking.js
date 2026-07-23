@@ -11,10 +11,10 @@
    - Ranking de auxiliares con tiempos por línea
    ============================================================ */
 WMS_MODULES.picking = {
-  getToday() { return new Date().toISOString().split('T')[0]; },
+  // getToday centralizado en WMS
 
   load(sub) {
-    if (!WMS.getToday) WMS.getToday = () => this.getToday();
+    // Ya no se asigna localmente WMS.getToday
     WMS.setBreadcrumb('picking', this.subLabel(sub));
     WMS.renderSidebar('picking');
     const s = sub || 'pedidos';
@@ -4644,7 +4644,7 @@ WMS_MODULES.picking = {
       <button class="btn btn-sm" style="background:#16a34a;color:#fff;border:none;" onclick="WMS_MODULES.picking._exportarReservasCSV()">
         <i class="fa-solid fa-file-csv"></i> Exportar CSV
       </button>`);
-    const today = this.getToday();
+    const today = WMS.getToday();
     const hace30 = new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
     this._reservasFiltros = { fecha_desde: hace30, fecha_hasta: today, sucursal_id: '' };
     await this._cargarReservas();
@@ -4703,7 +4703,7 @@ WMS_MODULES.picking = {
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'Reservas_Picking_' + this.getToday() + '.csv';
+    a.href = url; a.download = 'Reservas_Picking_' + WMS.getToday() + '.csv';
     document.body.appendChild(a); a.click();
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
     WMS.toast('success', 'CSV generado correctamente');
@@ -5210,7 +5210,7 @@ WMS_MODULES.picking = {
       <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._cargarConsulta(1)">
         <i class="fa-solid fa-sync"></i> Actualizar
       </button>`);
-    const today = this.getToday();
+    const today = WMS.getToday();
     const hace7 = new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0];
     this._consultaFiltros = { q: '', fecha_desde: hace7, fecha_hasta: today, estado: '' };
     this._consultaPage = 1;
@@ -5280,7 +5280,7 @@ WMS_MODULES.picking = {
   },
 
   _limpiarConsulta() {
-    const today = this.getToday();
+    const today = WMS.getToday();
     const hace7 = new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0];
     const q = document.getElementById('cq-q'); if (q) q.value = '';
     const d = document.getElementById('cq-desde'); if (d) d.value = hace7;
@@ -5459,7 +5459,7 @@ WMS_MODULES.picking = {
       <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._cargarNovedades(1)">
         <i class="fa-solid fa-sync"></i> Actualizar
       </button>`);
-    const today = this.getToday();
+    const today = WMS.getToday();
     const hace30 = new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
     WMS.setContent(`
       <div class="px-20 py-16">
