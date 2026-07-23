@@ -77,9 +77,10 @@ WMS_MODULES.rotacion = {
     try { await API.post('/rotacion/abc-xyz/ejecutar'); WMS.toast('ABC-XYZ ejecutado correctamente','success'); this.renderAbcXyz(); }
     catch(e) { WMS.toast('Error: '+e.message,'danger'); }
   },
-  async exportAbcXyz() {
-    try { const r = await API.get('/rotacion/export'); const d = r.data||r; if(d.csv) { const b=new Blob([d.csv],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='abc_xyz_export.csv'; a.click(); } }
-    catch(e) { WMS.toast('Error exportando: '+e.message,'danger'); }
+  exportAbcXyz() {
+    const token = localStorage.getItem('wms_token') || '';
+    const baseUrl = typeof API_BASE !== 'undefined' ? API_BASE : '/api';
+    window.open(`${baseUrl}/rotacion/export?token=${encodeURIComponent(token)}`, '_blank');
   },
   _filterSeg(seg) { WMS.toast(`Filtro: segmento ${seg}`,'info'); },
 

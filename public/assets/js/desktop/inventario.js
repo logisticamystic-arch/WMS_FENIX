@@ -3684,7 +3684,9 @@ WMS_MODULES.inventario = {
   },
 
   async descargarPlantilla() {
-    window.open('/WMS_FENIX/public/api/param/import-export/template/saldo_inicial', '_blank');
+    const token = encodeURIComponent(localStorage.getItem('wms_token') || '');
+    const baseUrl = typeof API_BASE !== 'undefined' ? API_BASE : '/api';
+    window.open(`${baseUrl}/param/import-export/template/saldo_inicial?token=${token}`, '_blank');
   },
   async importarSaldos() { this.show_cargue(); },
   async uploadSaldos()   { this.show_cargue(); },

@@ -1348,7 +1348,7 @@ WMS_MODULES.maestro = {
   exportarExcel() {
     const baseUrl = (typeof API_BASE !== 'undefined' ? API_BASE : '/api');
     const url = baseUrl + '/param/import-export/export/productos?token=' + encodeURIComponent(localStorage.getItem('wms_token'));
-    window.location.href = url;
+    window.open(url, '_blank');
   },
 
 

@@ -96,7 +96,7 @@ WMS_MODULES.logistica = {
       <button class="btn btn-sm btn-primary ms-2" onclick="WMS_MODULES.logistica.crearCrossDock()">
         <i class="fa-solid fa-plus"></i> Nueva Orden CD
       </button>
-      <button class="btn btn-sm btn-outline-secondary ms-2" onclick="window.open(API.base+'/crossdock/export/csv','_blank')">
+      <button class="btn btn-sm btn-outline-secondary ms-2" onclick="window.open((typeof API_BASE!=='undefined'?API_BASE:'/api')+'/crossdock/export?token='+encodeURIComponent(localStorage.getItem('wms_token')||''),'_blank')">
         <i class="fa-solid fa-file-csv"></i> Exportar
       </button>
     `);
@@ -234,7 +234,7 @@ WMS_MODULES.logistica = {
       <button class="btn btn-sm btn-primary ms-2" onclick="WMS_MODULES.logistica.crearCitaYard()">
         <i class="fa-solid fa-plus"></i> Nueva Cita
       </button>
-      <button class="btn btn-sm btn-outline-secondary ms-2" onclick="window.open(API.base+'/yard/export/csv','_blank')">
+      <button class="btn btn-sm btn-outline-secondary ms-2" onclick="window.open((typeof API_BASE!=='undefined'?API_BASE:'/api')+'/yard/export?token='+encodeURIComponent(localStorage.getItem('wms_token')||''),'_blank')">
         <i class="fa-solid fa-file-csv"></i> Exportar
       </button>
     `);
@@ -444,7 +444,7 @@ WMS_MODULES.logistica = {
       <button class="btn btn-sm btn-primary ms-2" onclick="WMS_MODULES.logistica.autoGenerarWave()">
         <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Generar Waves
       </button>
-      <button class="btn btn-sm btn-outline-secondary ms-2" onclick="window.open(API.base+'/wave/export/csv','_blank')">
+      <button class="btn btn-sm btn-outline-secondary ms-2" onclick="window.open((typeof API_BASE!=='undefined'?API_BASE:'/api')+'/waves/export?token='+encodeURIComponent(localStorage.getItem('wms_token')||''),'_blank')">
         <i class="fa-solid fa-file-csv"></i> Exportar
       </button>
     `);
