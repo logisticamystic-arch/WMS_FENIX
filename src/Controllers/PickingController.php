@@ -5105,22 +5105,116 @@ class PickingController extends BaseController
                     'auxiliares'        => $o->auxiliar_nombre,
                     'planillas'         => [],
                     'ordenes_ids'       => [],
+                    'pedidos_list'      => [],
                 ];
             }
             $result[$suc]['total_pedidos']++;
+            if (!empty($o->numero_orden)) {
+                $result[$suc]['pedidos_list'][] = $o->numero_orden;
+            }
             if (!empty($o->numero_factura)) {
                 $result[$suc]['planillas'][] = $o->numero_factura;
             }
             $result[$suc]['ordenes_ids'][] = $o->id;
         }
 
-        // Deduplica planillas por sucursal
+        // Cargar VRs para todas las planillas
+        $allPlanillas = [];
+        foreach ($result as $entry) {
+            if (!empty($entry['planilla_numero'])) $allPlanillas[] = $entry['planilla_numero'];
+            foreach ($entry['planillas'] as $p) $allPlanillas[] = $p;
+        }
+        $allPlanillas = array_values(array_unique(array_filter($allPlanillas)));
+
+        $vrsMap = [];
+        if (!empty($allPlanillas)) {
+            $vrsRows = Capsule::table('planilla_vrs')
+                ->where('empresa_id', $empresaId)
+                ->whereIn('planilla_numero', $allPlanillas)
+                ->select(['id', 'planilla_numero', 'vr'])
+                ->get();
+            foreach ($vrsRows as $vrRow) {
+                $vrsMap[$vrRow->planilla_numero][] = [
+                    'id' => $vrRow->id,
+                    'vr' => $vrRow->vr,
+                ];
+            }
+        }
+
+        // Deduplica y asigna VRs / pedidos por sucursal
         foreach ($result as &$entry) {
-            $entry['planillas'] = array_values(array_unique($entry['planillas']));
+            $entry['planillas']    = array_values(array_unique($entry['planillas']));
+            $entry['pedidos_list'] = array_values(array_unique($entry['pedidos_list']));
+            $vrs = [];
+            if (!empty($entry['planilla_numero']) && isset($vrsMap[$entry['planilla_numero']])) {
+                $vrs = array_merge($vrs, $vrsMap[$entry['planilla_numero']]);
+            }
+            foreach ($entry['planillas'] as $p) {
+                if (isset($vrsMap[$p])) {
+                    $vrs = array_merge($vrs, $vrsMap[$p]);
+                }
+            }
+            $entry['vrs'] = collect($vrs)->unique('id')->values()->all();
         }
         unset($entry);
 
         return $this->ok($res, array_values($result));
+    }
+
+    // ── POST /api/picking/planillas/vr ─────────────────────────────────────────
+    public function agregarVrPlanilla(Request $r, Response $res): Response
+    {
+        $user      = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $body      = $r->getParsedBody() ?? [];
+
+        $planillaNumero = trim($body['planilla_numero'] ?? '');
+        $vr             = trim($body['vr'] ?? '');
+
+        if ($planillaNumero === '' || $vr === '') {
+            return $this->error($res, 'El número de planilla y el VR son obligatorios', 400);
+        }
+
+        $id = Capsule::table('planilla_vrs')->insertGetId([
+            'empresa_id'      => $empresaId,
+            'planilla_numero' => $planillaNumero,
+            'vr'              => $vr,
+            'created_at'      => date('Y-m-d H:i:s'),
+            'updated_at'      => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->audit($user, 'picking', 'agregar_vr', 'planilla_vrs', $id, null, [
+            'planilla_numero' => $planillaNumero,
+            'vr'              => $vr,
+        ]);
+
+        return $this->ok($res, ['id' => $id, 'planilla_numero' => $planillaNumero, 'vr' => $vr], 'VR agregado correctamente');
+    }
+
+    // ── DELETE /api/picking/planillas/vr/{id} ──────────────────────────────────
+    public function eliminarVrPlanilla(Request $r, Response $res, array $a): Response
+    {
+        $user      = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $vrId      = (int)($a['id'] ?? 0);
+
+        $vrRec = Capsule::table('planilla_vrs')
+            ->where('empresa_id', $empresaId)
+            ->where('id', $vrId)
+            ->first();
+
+        if (!$vrRec) {
+            return $this->notFound($res, 'El VR no existe');
+        }
+
+        Capsule::table('planilla_vrs')->where('id', $vrId)->delete();
+
+        $this->audit($user, 'picking', 'eliminar_vr', 'planilla_vrs', $vrId, [
+            'planilla_numero' => $vrRec->planilla_numero,
+            'vr'              => $vrRec->vr,
+        ], null);
+
+        return $this->ok($res, null, 'VR eliminado correctamente');
     }
 
     public function resetearCertificacion(Request $r, Response $res, array $a): Response

@@ -639,6 +639,9 @@ class PackingController extends BaseController
         $strAggPlanillas = $this->isPg()
             ? "STRING_AGG(DISTINCT op_ref.planilla_numero, ', ')"
             : "GROUP_CONCAT(DISTINCT op_ref.planilla_numero)";
+        $strAggPedidos = $this->isPg()
+            ? "STRING_AGG(DISTINCT op_ref.numero_orden, ', ')"
+            : "GROUP_CONCAT(DISTINCT op_ref.numero_orden)";
 
         // Subquery: pu→pi (+ orden_pickings solo para listar planillas distintas por sesión,
         // necesario para detectar/reimprimir sesiones con varias planillas mezcladas)
@@ -651,7 +654,8 @@ class PackingController extends BaseController
                 Capsule::raw('COUNT(DISTINCT pu.id) as num_unidades'),
                 Capsule::raw('COALESCE(SUM(pi.cantidad), 0) as total_empacado'),
                 Capsule::raw('COUNT(DISTINCT pd_ref.producto_id) as total_refs'),
-                Capsule::raw("$strAggPlanillas as planillas")
+                Capsule::raw("$strAggPlanillas as planillas"),
+                Capsule::raw("$strAggPedidos as pedidos")
             )
             ->groupBy('pu.sesion_id');
 
@@ -665,6 +669,7 @@ class PackingController extends BaseController
                 Capsule::raw('COALESCE(cnt.total_empacado, 0) as total_empacado'),
                 Capsule::raw('COALESCE(cnt.total_refs, 0) as total_refs'),
                 Capsule::raw('cnt.planillas as planillas_str'),
+                Capsule::raw('cnt.pedidos as pedidos_str'),
                 // fecha_movimiento del pedido asociado (para mostrar la fecha del pedido, no de la sesión)
                 Capsule::raw("(SELECT MIN(op_m.fecha_movimiento)
                     FROM packing_unidades pu_m
@@ -712,9 +717,41 @@ class PackingController extends BaseController
         });
 
         $rows = $builder->get();
-        $rows = $rows->map(function ($row) {
-            $row->planillas = array_values(array_filter(array_map('trim', explode(',', $row->planillas_str ?? ''))));
-            unset($row->planillas_str);
+
+        $allPlanillas = [];
+        foreach ($rows as $row) {
+            $rowPlanillas = array_values(array_filter(array_map('trim', explode(',', $row->planillas_str ?? ''))));
+            foreach ($rowPlanillas as $p) $allPlanillas[] = $p;
+        }
+        $allPlanillas = array_values(array_unique(array_filter($allPlanillas)));
+
+        $vrsMap = [];
+        if (!empty($allPlanillas)) {
+            $vrsRows = Capsule::table('planilla_vrs')
+                ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                ->whereIn('planilla_numero', $allPlanillas)
+                ->select(['id', 'planilla_numero', 'vr'])
+                ->get();
+            foreach ($vrsRows as $vrRow) {
+                $vrsMap[$vrRow->planilla_numero][] = [
+                    'id' => $vrRow->id,
+                    'vr' => $vrRow->vr,
+                ];
+            }
+        }
+
+        $rows = $rows->map(function ($row) use ($vrsMap) {
+            $row->planillas    = array_values(array_filter(array_map('trim', explode(',', $row->planillas_str ?? ''))));
+            $row->pedidos_list = array_values(array_filter(array_map('trim', explode(',', $row->pedidos_str ?? ''))));
+            unset($row->planillas_str, $row->pedidos_str);
+
+            $vrs = [];
+            foreach ($row->planillas as $p) {
+                if (isset($vrsMap[$p])) {
+                    $vrs = array_merge($vrs, $vrsMap[$p]);
+                }
+            }
+            $row->vrs = collect($vrs)->unique('id')->values()->all();
             return $row;
         });
         return $this->ok($res, $rows);

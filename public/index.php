@@ -699,6 +699,10 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->get('/certificacion/remision/{sucursal}',   [\App\Controllers\PickingController::class, 'certRemisionDirecta']);
         $group->get('/certificacion/vista-hoy',             [\App\Controllers\PickingController::class, 'certVistaHoy']);
 
+        // VRs de Planilla
+        $group->post('/planillas/vr',                        [\App\Controllers\PickingController::class, 'agregarVrPlanilla']);
+        $group->delete('/planillas/vr/{id}',                 [\App\Controllers\PickingController::class, 'eliminarVrPlanilla']);
+
         // Certificaciones (admin)
         $group->put('/{id}/certificaciones/{det_id}', [\App\Controllers\PickingController::class, 'editarCertificacion']);
         $group->post('/{id}/recalcular-remision', [\App\Controllers\PickingController::class, 'recalcularRemision']);

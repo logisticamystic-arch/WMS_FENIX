@@ -214,22 +214,37 @@ WMS_MODULES.despacho = {
                 <th>Cliente / Planilla</th>
                 <th class="text-center">Ambientes</th>
                 <th class="text-center">Pedidos</th>
-                <th class="text-center">Líneas Cert.</th>
-                <th style="width:220px;">Acciones</th>
-              </tr></thead>
-              <tbody>${sinSesion.map(s => `<tr>
+                <th class="text-center">Líneas              <tbody>${sinSesion.map(s => `<tr>
                 <td>
                   <strong style="font-size:13px;">${WMS.esc(s.sucursal_entrega || 'Sin Cliente')}</strong>
                   ${s.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc(s.observaciones)}"></i>` : ''}
                   ${s.planilla_numero ? `<br><span style="display:inline-block;background:#1e3a8a;color:#fff;border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;font-weight:700;margin-top:2px;">${WMS.esc(s.planilla_numero)}</span>` : ''}
                   ${s.planillas && s.planillas.length ? `<br><span style="font-size:10px;color:#64748b;">${s.planillas.map(p => WMS.esc(p)).join(' · ')}</span>` : ''}
+                  <div style="margin-top:4px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                    ${s.vrs && s.vrs.length ? s.vrs.map(v => `
+                      <span style="background:#0284c7;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+                        VR: ${WMS.esc(v.vr)}
+                        <i class="fa-solid fa-xmark" style="cursor:pointer;opacity:0.8;" onclick="WMS_MODULES.despacho.eliminarVR(${v.id})" title="Eliminar VR"></i>
+                      </span>
+                    `).join('') : ''}
+                    <button class="btn btn-xs btn-outline-primary" style="font-size:9px;padding:0 5px;border-radius:3px;" onclick="WMS_MODULES.despacho.promptAgregarVR('${WMS.esc(s.planilla_numero || (s.planillas && s.planillas[0]) || '')}')" title="Agregar VR a la planilla">
+                      <i class="fa-solid fa-plus"></i> VR
+                    </button>
+                  </div>
                 </td>
                 <td class="text-center">
                   ${(s.ambientes || 'Desconocido').split(',').map(a =>
                     `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:4px;padding:1px 7px;font-size:10px;margin:1px;">${a.trim()}</span>`
                   ).join('')}
                 </td>
-                <td class="text-center"><strong>${s.total_pedidos || '—'}</strong></td>
+                <td class="text-center">
+                  <strong style="font-size:13px;">${s.total_pedidos || '—'}</strong>
+                  ${s.pedidos_list && s.pedidos_list.length ? `
+                    <div style="margin-top:2px;max-width:200px;margin-left:auto;margin-right:auto;" title="${WMS.esc(s.pedidos_list.join(', '))}">
+                      ${s.pedidos_list.map(p => `<span style="display:inline-block;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:3px;padding:0 4px;margin:1px;font-family:monospace;font-size:9px;">${WMS.esc(p)}</span>`).join('')}
+                    </div>
+                  ` : ''}
+                </td>
                 <td class="text-center"><strong>${s.total_lineas_cert || s.total_lineas || '—'}</strong></td>
                 <td>
                   <button class="btn btn-sm btn-info" onclick="WMS_MODULES.despacho.verDetallesPendientes('${WMS.esc(s.sucursal_entrega)}')" style="margin-right:4px;">
@@ -297,6 +312,7 @@ WMS_MODULES.despacho = {
               <tbody>
               ${completadasOk.map(s => {
                 const fechaStr = (s.fecha_movimiento_pedido || certDirectMap[s.sucursal_entrega]?.fecha_movimiento || s.created_at || '').slice(0,10) || '—';
+                const targetPlanilla = (s.planillas && s.planillas[0]) || s.planilla_numero || '';
                 return `<tr>
                   <td style="text-align:center;">
                     <input type="checkbox" class="cert-remision-check" data-sesion-id="${s.id}">
@@ -306,6 +322,24 @@ WMS_MODULES.despacho = {
                     ${s.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc(s.observaciones)}"></i>` : ''}
                     <div style="font-size:10px;color:#6b7280;margin-top:1px;">${s.total_empacado || 0} uds empacadas</div>
                     ${s.planillas && s.planillas.length > 1 ? `<div style="font-size:10px;color:#b45309;margin-top:2px;"><i class="fa-solid fa-triangle-exclamation"></i> ${s.planillas.length} planillas mezcladas: ${s.planillas.map(p => WMS.esc(p)).join(' · ')}</div>` : ''}
+                    ${s.pedidos_list && s.pedidos_list.length ? `
+                      <div style="margin-top:3px;font-size:10px;color:#4b5563;">
+                        <strong>Pedidos:</strong> ${s.pedidos_list.map(p => `<span style="display:inline-block;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:3px;padding:0 4px;margin:1px;font-family:monospace;font-size:9px;">${WMS.esc(p)}</span>`).join('')}
+                      </div>
+                    ` : ''}
+                    <div style="margin-top:4px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                      ${s.vrs && s.vrs.length ? s.vrs.map(v => `
+                        <span style="background:#0284c7;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+                          VR: ${WMS.esc(v.vr)}
+                          <i class="fa-solid fa-xmark" style="cursor:pointer;opacity:0.8;" onclick="WMS_MODULES.despacho.eliminarVR(${v.id})" title="Eliminar VR"></i>
+                        </span>
+                      `).join('') : ''}
+                      ${targetPlanilla ? `
+                        <button class="btn btn-xs btn-outline-primary" style="font-size:9px;padding:0 5px;border-radius:3px;" onclick="WMS_MODULES.despacho.promptAgregarVR('${WMS.esc(targetPlanilla)}')" title="Agregar VR">
+                          <i class="fa-solid fa-plus"></i> VR
+                        </button>
+                      ` : ''}
+                    </div>
                   </td>
                   <td class="text-center">
                     <span style="background:#dcfce7;color:#15803d;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">
@@ -512,7 +546,43 @@ WMS_MODULES.despacho = {
     if (count) count.textContent = f ? `${visible} de ${total} resultado(s)` : '';
   },
 
-  filterTable(q, _tableId) { this._certFiltrarGlobal(q); },
+  async promptAgregarVR(planillaNumero) {
+    if (!planillaNumero) {
+      WMS.toast('warning', 'No hay número de planilla válido para asociar el VR');
+      return;
+    }
+    const vr = prompt(`Agregar VR\n\nIngrese el número / código de VR para la planilla "${planillaNumero}":`);
+    if (!vr || !vr.trim()) return;
+
+    WMS.spinner();
+    try {
+      const res = await API.post('/picking/planillas/vr', {
+        planilla_numero: planillaNumero.trim(),
+        vr: vr.trim(),
+      });
+      WMS.toast('success', res.message || 'VR agregado exitosamente');
+      this.show_certificacion(true);
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error al agregar VR');
+    } finally {
+      WMS.spinner(false);
+    }
+  },
+
+  async eliminarVR(id) {
+    WMS.confirm('Eliminar VR', '¿Está seguro de eliminar este registro de VR?', async () => {
+      WMS.spinner();
+      try {
+        const res = await API.delete(`/picking/planillas/vr/${id}`);
+        WMS.toast('success', res.message || 'VR eliminado');
+        this.show_certificacion(true);
+      } catch (e) {
+        WMS.toast('error', e.message || 'Error al eliminar VR');
+      } finally {
+        WMS.spinner(false);
+      }
+    });
+  },
 
   _openPrint(url, titulo, autoPrint = false) {
     const token = localStorage.getItem('wms_token') || localStorage.getItem('token') || '';
