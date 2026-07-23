@@ -516,8 +516,8 @@ class PackingController extends BaseController
         $ordenes = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
             ->where('sucursal_id', $sucId)
             ->where('sucursal_entrega', $sesion->sucursal_entrega)
-            ->where('estado', 'Completada')
-            ->where('estado_certificacion', 'Pendiente')
+            ->whereIn('estado', ['Completada', 'EnProceso'])
+            ->whereIn('estado_certificacion', ['Pendiente', 'Parcial'])
             ->get();
 
         if ($ordenes->isEmpty()) {
@@ -560,16 +560,28 @@ class PackingController extends BaseController
         return Capsule::transaction(function() use ($sesion, $ordenesValidas, $sinEmpacar, $user, $res) {
             $now = date('Y-m-d H:i:s');
             foreach ($ordenesValidas as $o) {
-                $o->estado_certificacion = 'Certificada';
-                $o->fecha_certificacion  = $now;
+                // Verificar si todos los detalles de la orden ya no tienen faltantes por certificar
+                $faltantesCert = Capsule::table('picking_detalles')
+                    ->where('orden_picking_id', $o->id)
+                    ->where('cantidad_pickeada', '>', 0)
+                    ->whereRaw('COALESCE(cantidad_certificada, 0) < cantidad_pickeada')
+                    ->count();
+
+                $nuevoEstado = ($faltantesCert == 0 && $o->estado === 'Completada') ? 'Certificada' : 'Parcial';
+
+                $o->estado_certificacion = $nuevoEstado;
+                if ($nuevoEstado === 'Certificada') {
+                    $o->fecha_certificacion = $now;
+                }
                 $o->certificador_id      = $user->id;
                 $o->save();
 
-                // Mantener picking_detalles consistente con la cabecera — mismo criterio
-                // que ya usa autoPack() — para que reportes/remisiones que lean
-                // cantidad_certificada directamente no queden en 0 tras esta recuperación manual.
+                // Mantener picking_detalles consistente con la cabecera
                 Capsule::table('picking_detalles')
                     ->where('orden_picking_id', $o->id)
+                    // Solo actualizamos aquellos detalles que efectivamente fueron empacados (según validación anterior,
+                    // toda la cantidad_pickeada fue empacada para esta orden, así que podemos actualizar todos los pickeados).
+                    ->where('cantidad_pickeada', '>', 0)
                     ->update([
                         'cantidad_certificada' => Capsule::raw('cantidad_pickeada'),
                         'estado_certificacion' => 'Certificada',
@@ -1732,38 +1744,59 @@ class PackingController extends BaseController
             $sesion->estado = 'Completada';
             $sesion->save();
 
-            // Actualizar órdenes a Certificada
+            // Actualizar órdenes (puede ser Parcial o Certificada total)
             $ordenesAll = OrdenPicking::where('empresa_id', $empresaId)
                 ->where('sucursal_id', $user->sucursal_id)
                 ->where('sucursal_entrega', $sucursal)
-                ->where('estado', 'Completada')
-                ->whereIn('estado_certificacion', ['Pendiente', 'EnProceso'])
+                ->whereIn('estado', ['Completada', 'EnProceso'])
+                ->whereIn('estado_certificacion', ['Pendiente', 'Parcial'])
                 ->get();
 
-            // Solo auto-certificar órdenes cuyas líneas estén todas en estado terminal
-            // (Completada/Faltante/Agotado). Líneas en Pendiente/EnProceso indican
-            // ambientes que aún no terminaron el picking → no se deben marcar como Certificadas.
-            $ordenesCompletas = Capsule::table('picking_detalles')
-                ->whereIn('orden_picking_id', $ordenesAll->pluck('id'))
-                ->groupBy('orden_picking_id')
-                ->havingRaw("SUM(CASE WHEN estado NOT IN ('Completada','Completado','Faltante','Agotado','Certificada','Certificado') THEN 1 ELSE 0 END) = 0")
-                ->pluck('orden_picking_id');
+            if ($ordenesAll->isNotEmpty()) {
+                // Solo auto-certificar detalles de ambientes cuyas líneas estén todas en estado terminal
+                $detallesParaCertificar = Capsule::table('picking_detalles as pd')
+                    ->join('productos as p', 'p.id', '=', 'pd.producto_id')
+                    ->whereIn('pd.orden_picking_id', $ordenesAll->pluck('id'))
+                    ->whereExists(function($q) {
+                        $q->select(Capsule::raw(1))
+                          ->from('picking_detalles as pd2')
+                          ->join('productos as p2', 'p2.id', '=', 'pd2.producto_id')
+                          ->whereColumn('pd2.orden_picking_id', 'pd.orden_picking_id')
+                          ->whereRaw('COALESCE(p2.ambiente_id, 0) = COALESCE(p.ambiente_id, 0)')
+                          ->groupBy('pd2.orden_picking_id', Capsule::raw('COALESCE(p2.ambiente_id, 0)'))
+                          ->havingRaw("SUM(CASE WHEN pd2.estado IN ('Pendiente', 'EnProceso') THEN 1 ELSE 0 END) = 0");
+                    })
+                    ->pluck('pd.id');
 
-            $ordenes = $ordenesAll->filter(fn($o) => $ordenesCompletas->contains($o->id));
+                if ($detallesParaCertificar->isNotEmpty()) {
+                    Capsule::table('picking_detalles')
+                        ->whereIn('id', $detallesParaCertificar)
+                        ->update([
+                            'cantidad_certificada' => Capsule::raw('cantidad_pickeada'),
+                            'estado_certificacion' => 'Certificada',
+                            'updated_at'           => date('Y-m-d H:i:s'),
+                        ]);
+                }
 
-            foreach ($ordenes as $o) {
-                $o->estado_certificacion = 'Certificada';
-                $o->fecha_certificacion  = date('Y-m-d H:i:s');
-                $o->certificador_id      = $user->id;
-                $o->save();
+                $now = date('Y-m-d H:i:s');
+                foreach ($ordenesAll as $o) {
+                    // Si aún quedan ítems con cantidad pickeada mayor a la certificada, es Parcial.
+                    // Adicionalmente, si la orden aún está EnProceso, la certificación no puede ser total.
+                    $faltantesCert = Capsule::table('picking_detalles')
+                        ->where('orden_picking_id', $o->id)
+                        ->where('cantidad_pickeada', '>', 0)
+                        ->whereRaw('COALESCE(cantidad_certificada, 0) < cantidad_pickeada')
+                        ->count();
 
-                Capsule::table('picking_detalles')
-                    ->where('orden_picking_id', $o->id)
-                    ->update([
-                        'cantidad_certificada' => Capsule::raw('cantidad_pickeada'),
-                        'estado_certificacion' => 'Certificada',
-                        'updated_at'           => date('Y-m-d H:i:s'),
-                    ]);
+                    $nuevoEstado = ($faltantesCert == 0 && $o->estado === 'Completada') ? 'Certificada' : 'Parcial';
+                    
+                    $o->estado_certificacion = $nuevoEstado;
+                    if ($nuevoEstado === 'Certificada') {
+                        $o->fecha_certificacion = $now;
+                    }
+                    $o->certificador_id = $user->id;
+                    $o->save();
+                }
             }
 
             $this->audit($user, 'packing', 'autopack', 'packing_sesiones', $sesion->id, null, ['sucursal' => $sucursal]);
@@ -1791,8 +1824,18 @@ class PackingController extends BaseController
             ->where('op.empresa_id', $empresaId)
             ->where('op.sucursal_id', $sucursalId)
             ->where('op.sucursal_entrega', $sucursalEntrega)
-            ->where('op.estado', 'Completada')
-            ->where('op.estado_certificacion', 'Pendiente')
+            ->whereIn('op.estado', ['Completada', 'EnProceso'])
+            ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial'])
+            ->whereExists(function($q) {
+                // Solo traer productos de ambientes cuyo picking ya finalizó (ningún ítem Pendiente/EnProceso)
+                $q->select(Capsule::raw(1))
+                  ->from('picking_detalles as pd2')
+                  ->join('productos as p2', 'p2.id', '=', 'pd2.producto_id')
+                  ->whereColumn('pd2.orden_picking_id', 'pd.orden_picking_id')
+                  ->whereRaw('COALESCE(p2.ambiente_id, 0) = COALESCE(p.ambiente_id, 0)')
+                  ->groupBy('pd2.orden_picking_id', Capsule::raw('COALESCE(p2.ambiente_id, 0)'))
+                  ->havingRaw("SUM(CASE WHEN pd2.estado IN ('Pendiente', 'EnProceso') THEN 1 ELSE 0 END) = 0");
+            })
             // Retiro directo (cliente ya lo recogió en bodega) — no entra a packing/remisión.
             ->where('op.despachado_directo', false)
             ->whereDate('op.fecha_movimiento', $hoy)
