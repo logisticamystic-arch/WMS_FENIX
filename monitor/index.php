@@ -1395,7 +1395,14 @@
     <!-- SCRIPTS -->
     <script>
         // Configuración Global de la Aplicación
-        const API_URL = 'api.php';
+        // Auditoría 2026-07-22: api.php ahora exige MONITOR_TOKEN (definido en .env).
+        // Se pide una vez y se guarda en localStorage de este navegador.
+        let MONITOR_TOKEN = localStorage.getItem('monitor_token') || '';
+        if (!MONITOR_TOKEN) {
+            MONITOR_TOKEN = prompt('Token de acceso al monitor (MONITOR_TOKEN en .env):') || '';
+            if (MONITOR_TOKEN) localStorage.setItem('monitor_token', MONITOR_TOKEN);
+        }
+        const API_URL = 'api.php?token=' + encodeURIComponent(MONITOR_TOKEN) + '&';
         let currentTabId = 'tab-dashboard';
         let refreshTimer = null;
         let countdownTimer = null;
@@ -1414,7 +1421,7 @@
         window.addEventListener('load', () => {
             refreshData();
             
-            fetch(`${API_URL}?action=system_stats`)
+            fetch(`${API_URL}action=system_stats`)
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
@@ -1483,9 +1490,9 @@
             const statusBadge = document.getElementById('connection-status');
             
             Promise.all([
-                fetch(`${API_URL}?action=metrics`).then(r => r.json()),
-                fetch(`${API_URL}?action=active_users`).then(r => r.json()),
-                fetch(`${API_URL}?action=slow_requests_detail`).then(r => r.json())
+                fetch(`${API_URL}action=metrics`).then(r => r.json()),
+                fetch(`${API_URL}action=active_users`).then(r => r.json()),
+                fetch(`${API_URL}action=slow_requests_detail`).then(r => r.json())
             ])
             .then(([metricsData, usersData, slowReqsData]) => {
                 statusBadge.className = 'status-badge';
@@ -1736,7 +1743,7 @@
 
         // Cargar estadísticas de Base de Datos
         function loadDbStats() {
-            fetch(`${API_URL}?action=db_stats`)
+            fetch(`${API_URL}action=db_stats`)
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
@@ -1776,7 +1783,7 @@
         // Cargar Logs del Sistema
         function loadLogs() {
             const count = document.getElementById('log-lines-count').value;
-            fetch(`${API_URL}?action=logs&lines=${count}`)
+            fetch(`${API_URL}action=logs&lines=${count}`)
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
@@ -1834,7 +1841,7 @@
         function confirmClearMetrics() {
             if (confirm('¿Está seguro de que desea eliminar todo el historial de métricas de rendimiento?\nEsta acción no se puede deshacer.')) {
                 if (confirm('Por favor confirme una segunda vez para proceder con la purga de base de datos.')) {
-                    fetch(`${API_URL}?action=clear_metrics&confirm=true`, {
+                    fetch(`${API_URL}action=clear_metrics&confirm=true`, {
                         method: 'POST'
                     })
                     .then(r => r.json())
@@ -1863,7 +1870,7 @@
                 container.innerHTML = '<div class="loader-container"><div class="spinner"></div></div>';
             }
             
-            fetch(`${API_URL}?action=reports_list`)
+            fetch(`${API_URL}action=reports_list`)
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
@@ -1913,7 +1920,7 @@
             const mainPanel = document.getElementById('report-main-panel');
             mainPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div></div>';
             
-            fetch(`${API_URL}?action=get_report&filename=${filename}`)
+            fetch(`${API_URL}action=get_report&filename=${filename}`)
                 .then(r => r.json())
                 .then(report => {
                     // Generar HTML del informe detallado
@@ -2079,7 +2086,7 @@
             btn.disabled = true;
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generando...';
             
-            fetch(`${API_URL}?action=generate_report`)
+            fetch(`${API_URL}action=generate_report`)
                 .then(r => r.json())
                 .then(data => {
                     btn.disabled = false;
