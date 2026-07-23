@@ -6672,7 +6672,10 @@ const MWMS = {
     if (!pkRes.isConfirmed) return;
     const nQty = pkRes.value;
     if (nQty < maxCant) {
-      const ok = await Swal.fire({ title:'Cantidad Menor', text:'Se generará una NOVEDAD. ¿Continuar?', icon:'warning', showCancelButton:true, confirmButtonText:'Sí', cancelButtonText:'No' });
+      const ok = await Swal.fire({ title:'Cantidad Menor', text:`Separando ${nQty} de ${maxCant} solicitados. Se generará una NOVEDAD por la diferencia (${(maxCant - nQty).toFixed(2)} und). ¿Continuar?`, icon:'warning', showCancelButton:true, confirmButtonText:'Sí, confirmar', cancelButtonText:'Corregir' });
+      if (!ok.isConfirmed) return;
+    } else if (nQty > maxCant) {
+      const ok = await Swal.fire({ title:'Cantidad Mayor a lo Solicitado', text:`Separando ${nQty} und (pedido: ${maxCant} und). El excedente (${(nQty - maxCant).toFixed(2)} und) quedará registrado en la línea. ¿Confirmar excedente?`, icon:'info', showCancelButton:true, confirmButtonText:'Sí, confirmar', cancelButtonText:'Corregir' });
       if (!ok.isConfirmed) return;
     }
 
