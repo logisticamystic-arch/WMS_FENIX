@@ -34,11 +34,18 @@ class OutboundController extends BaseController
      */
     public function addCertificacionLinea(Request $request, Response $response, array $args): Response
     {
+        $user   = $request->getAttribute('user');
         $certId = $args['id'];
-        $data = $request->getParsedBody();
+        $data   = $request->getParsedBody();
+
+        // Validar tenant ANTES de insertar: sin este filtro, cualquier usuario autenticado
+        // de cualquier empresa podía adivinar un certificacion_id ajeno e insertarle líneas.
+        $cert = Certificacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->find($certId);
+        if (!$cert) return $this->error($response, 'Certificación no encontrada', 404);
 
         CertificacionDetalle::create([
-            'certificacion_id' => $certId,
+            'certificacion_id' => $cert->id,
             'producto_id'      => $data['producto_id'],
             'cliente_id'       => $data['cliente_id'] ?? null,
             'cantidad_esperada'=> $data['cantidad_esperada'],
@@ -53,8 +60,12 @@ class OutboundController extends BaseController
      */
     public function endCertificacion(Request $request, Response $response, array $args): Response
     {
+        $user   = $request->getAttribute('user');
         $certId = $args['id'];
-        $cert   = Certificacion::find($certId);
+        // Filtrado por empresa_id: sin esto, cualquier usuario autenticado podía cerrar/leer
+        // la certificación de otra empresa con solo adivinar el id (fuga cross-tenant).
+        $cert = Certificacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->find($certId);
         if (!$cert) return $this->error($response, 'Certificación no encontrada', 404);
 
         $cert->fecha_fin = date('Y-m-d H:i:s');

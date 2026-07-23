@@ -2062,7 +2062,7 @@ class InventarioController extends BaseController
         $q = Capsule::table('cargue_inicial_lineas as c')
             ->join('productos as p', 'p.id', '=', 'c.producto_id')
             ->leftJoin('ubicaciones as u', 'u.id', '=', 'c.ubicacion_id')
-            ->leftJoin('users as usr', 'usr.id', '=', 'c.creado_por')
+            ->leftJoin('personal as usr', 'usr.id', '=', 'c.creado_por')
             ->where('c.empresa_id', $empId)
             ->where('c.sucursal_id', $sucId)
             ->where('c.estado', $estado)
