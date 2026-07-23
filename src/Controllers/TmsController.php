@@ -235,8 +235,21 @@ class TmsController extends BaseController
 
     // ── API Key management ────────────────────────────────────────────────────
 
+    // Gestión de API keys: solo un usuario JWT con rol Admin/SuperAdmin puede
+    // crear/listar/revocar — antes cualquier JWT de empleado activo, o el simple
+    // poseedor de una API key filtrada, podía administrar las keys de la empresa.
+    private function _requireAdminForKeys(Request $request, Response $response): ?Response
+    {
+        $user = $request->getAttribute('user');
+        if ($request->getAttribute('auth_type') !== 'jwt' || !$this->isAdmin($user)) {
+            return $this->forbidden($response, 'Se requiere sesión JWT con rol Admin o SuperAdmin para gestionar API keys.');
+        }
+        return null;
+    }
+
     public function listKeys(Request $request, Response $response): Response
     {
+        if ($deny = $this->_requireAdminForKeys($request, $response)) return $deny;
         $empresaId = $request->getAttribute('empresa_id');
 
         $keys = DB::table('api_keys')
@@ -252,6 +265,7 @@ class TmsController extends BaseController
 
     public function createKey(Request $request, Response $response): Response
     {
+        if ($deny = $this->_requireAdminForKeys($request, $response)) return $deny;
         $empresaId = $request->getAttribute('empresa_id');
         $body      = (array)($request->getParsedBody() ?? []);
 
@@ -284,6 +298,7 @@ class TmsController extends BaseController
 
     public function revokeKey(Request $request, Response $response, array $args): Response
     {
+        if ($deny = $this->_requireAdminForKeys($request, $response)) return $deny;
         $empresaId = $request->getAttribute('empresa_id');
         $id        = (int)($args['id'] ?? 0);
 
