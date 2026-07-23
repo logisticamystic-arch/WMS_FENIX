@@ -4221,16 +4221,27 @@ class PickingController extends BaseController
                     }
 
                     // ── Fase 4: Actualizar detalle ──────────────────────────────────────────
-                    // cantidad_pickeada: se almacena en CAJAS (misma unidad que cantidad_solicitada)
-                    $pickeadaCajas = $upcConf > 0 ? ($realmenteDescontado / $upcConf) : $realmenteDescontado;
-                    $det->cantidad_pickeada = $pickeadaCajas;
+                    // cantidad_pickeada: SIEMPRE en UND/TOTAL (unidades reales), igual que
+                    // confirmLine(). Antes se guardaba en cajas fraccionarias (realmenteDescontado
+                    // / upc), que es la convención que usa cantidad_solicitada en este flujo —
+                    // pero certRemisionMultiple() y el reporte de Faltantes suman
+                    // SUM(cantidad_pickeada) de TODAS las líneas de un producto sin distinguir
+                    // por qué endpoint se confirmaron, asumiendo unidades. Guardar aquí en cajas
+                    // hacía que la certificación/remisión interpretara 0.875 "cajas" como 0.875
+                    // unidades — la separación editada en el móvil (ej. 3500 und) desaparecía
+                    // casi por completo en la certificación. Ver auditoría WMS Fénix 2026-07-22.
+                    $det->cantidad_pickeada = $realmenteDescontado;
                     $det->estado = ($realmenteDescontado >= (float)$det->cantidad_solicitada * $upcConf)
                         ? 'Completado' : 'Faltante';
                     $det->save();
 
-                    // Registrar faltante por bajo picking (en CAJAS, igual que cantidad_solicitada)
+                    // Registrar faltante por bajo picking. picking_faltantes.cantidad_solicitada/
+                    // cantidad_faltante se mantienen en CAJAS en toda la tabla (convención de este
+                    // flujo) — por eso aquí sí convertimos realmenteDescontado (unidades) de vuelta
+                    // a cajas-equivalente, solo para este cálculo de faltante.
                     if ($det->estado === 'Faltante') {
-                        $faltanteCant = max(0, (float)$det->cantidad_solicitada - $pickeadaCajas);
+                        $pickeadaCajasEquiv = $upcConf > 0 ? ($realmenteDescontado / $upcConf) : $realmenteDescontado;
+                        $faltanteCant = max(0, (float)$det->cantidad_solicitada - $pickeadaCajasEquiv);
                         if ($faltanteCant > 0) {
                             $ord = OrdenPicking::find($det->orden_picking_id);
                             Capsule::table('picking_faltantes')->insert([
@@ -5865,20 +5876,32 @@ class PickingController extends BaseController
             ? "<img src='data:image/jpeg;base64," . base64_encode(file_get_contents($logoFile)) . "' style='height:52px;object-fit:contain;display:block;margin-bottom:4px;' alt='Logo'>"
             : "<strong style='font-size:16px;color:#1e3a5f;'>{$empNombre}</strong>";
 
-        // ── Closure: convierte cantidad_pickeada (formato fraccionario de cajas) a cajas/saldo/und ──
+        // ── Closure: convierte cantidad_pickeada (SIEMPRE en UND/TOTAL — unidades reales,
+        // ver confirmLine()/confirmarConsolidado()) a cajas + saldo para mostrar en la
+        // remisión. cantidad_pickeada es la fuente de verdad de lo REALMENTE separado —
+        // si se certificó explícitamente (cantidad_certificada) esa cantidad ya quedó
+        // igualada a cantidad_pickeada en autoPack()/certConfirmar(), así que leer
+        // cantidad_pickeada aquí certifica exactamente lo que el operario separó, no lo
+        // solicitado. Antes esta función asumía "cantidad_pickeada en cajas
+        // fraccionarias", que era la convención opuesta a la de confirmLine() — cualquier
+        // línea confirmada por escaneo individual salía con cantidades absurdas en la
+        // remisión. Fórmula dinámica pedida: 3500 und (upc 4000) → 0 cajas + 3500 saldo;
+        // 4800 und (upc 4000) → 1 caja + 800 saldo; separación exacta → cajas = las
+        // solicitadas, saldo = 0.
         $calcItem = function ($it) {
             $upc     = max(1, (int)($it->unidades_caja ?? 1));
-            $cantRaw = (float)$it->cantidad;
+            $cantRaw = (float)$it->cantidad; // unidades reales (UND/TOTAL)
             if ($upc > 1) {
-                $cajas = (int)floor($cantRaw);
-                $saldo = round(($cantRaw - floor($cantRaw)) * $upc, 3);
-                $und   = round($cajas * $upc + $saldo, 3);
+                $cajas = (int)floor($cantRaw / $upc);
+                $saldo = round($cantRaw - ($cajas * $upc), 3);
+                $und   = round($cantRaw, 3);
             } else {
-                $cajas = $cantRaw; $saldo = 0; $und = $cantRaw;
+                $cajas = (int)round($cantRaw); $saldo = 0; $und = $cantRaw;
             }
-            $fv = $it->fecha_vencimiento ? date('d/m/Y', strtotime($it->fecha_vencimiento)) : '&mdash;';
-            $fc = $it->fecha_vencimiento ? '#b91c1c' : '#94a3b8';
-            return compact('cajas', 'saldo', 'und', 'fv', 'fc');
+            $fv   = $it->fecha_vencimiento ? date('d/m/Y', strtotime($it->fecha_vencimiento)) : '&mdash;';
+            $fc   = $it->fecha_vencimiento ? '#b91c1c' : '#94a3b8';
+            $lote = $it->lote ?? '&mdash;';
+            return compact('cajas', 'saldo', 'und', 'fv', 'fc', 'lote');
         };
 
         // ── Closure: genera HTML de bloques de ambiente ──────────────────────
@@ -5887,13 +5910,14 @@ class PickingController extends BaseController
             foreach ($grouped as $ambNombre => $ambItems) {
                 $subUnd = 0; $subCj = 0; $rows = '';
                 foreach ($ambItems as $it) {
-                    ['cajas' => $cajas, 'saldo' => $saldo, 'und' => $und, 'fv' => $fv, 'fc' => $fc] = $calcItem($it);
+                    ['cajas' => $cajas, 'saldo' => $saldo, 'und' => $und, 'fv' => $fv, 'fc' => $fc, 'lote' => $lote] = $calcItem($it);
                     $subUnd += $und; $subCj += $cajas;
                     $rows .= "<tr>"
                         . "<td style='white-space:nowrap'>{$it->codigo}</td><td>{$it->nombre}</td>"
+                        . "<td style='white-space:nowrap'>" . htmlspecialchars($lote) . "</td>"
                         . "<td style='text-align:right;font-weight:700'>{$cajas}</td>"
                         . "<td style='text-align:right;color:#1e3a5f'>{$saldo}</td>"
-                        . "<td style='text-align:right'>{$und}</td>"
+                        . "<td style='text-align:right;font-weight:700'>{$und}</td>"
                         . "<td style='text-align:center;color:{$fc}'>{$fv}</td></tr>";
                 }
                 $totalUnd += $subUnd; $totalCj += $subCj;
@@ -5901,11 +5925,11 @@ class PickingController extends BaseController
                 $html .= "<div class='ambiente-block'>"
                     . "<div class='ambiente-header'>{$ambEsc} &mdash; {$subCj} cj / {$subUnd} und</div>"
                     . "<table style='table-layout:fixed;width:100%;'><colgroup>"
-                    . "<col style='width:12%;'><col style='width:45%;'><col style='width:9%;'><col style='width:9%;'><col style='width:9%;'><col style='width:16%;'>"
+                    . "<col style='width:10%;'><col style='width:33%;'><col style='width:12%;'><col style='width:8%;'><col style='width:8%;'><col style='width:12%;'><col style='width:17%;'>"
                     . "</colgroup><thead><tr>"
-                    . "<th>C&oacute;digo</th><th>Producto</th>"
+                    . "<th>C&oacute;digo</th><th>Producto</th><th>Lote</th>"
                     . "<th style='text-align:right'>Cajas</th><th style='text-align:right'>Saldo</th>"
-                    . "<th style='text-align:right'>Und.</th><th style='text-align:center'>F. Venc.</th>"
+                    . "<th style='text-align:right'>Und/Total</th><th style='text-align:center'>F. Venc.</th>"
                     . "</tr></thead><tbody>{$rows}</tbody></table></div>";
             }
             return ['html' => $html, 'und' => $totalUnd, 'cj' => $totalCj];
@@ -5915,6 +5939,10 @@ class PickingController extends BaseController
         // ── Closure: agotados (faltantes de picking) por lista de orden IDs,
         // mostrando a qué pedido pertenece cada uno — antes esta remisión no tenía
         // ninguna sección de agotados en absoluto.
+        // picking_faltantes.cantidad_solicitada/cantidad_faltante se registran en CAJAS
+        // (convención de este flujo — ver confirmarConsolidado()/agregarLineaPlanilla()).
+        // El requisito es mostrar todo en UND/TOTAL, así que se convierte aquí mismo con
+        // p.unidades_caja, sin tocar el almacenamiento de picking_faltantes.
         $buildAgotados = function ($ordenIds) {
             $rows = Capsule::table('picking_faltantes as pf')
                 ->join('productos as p', 'p.id', '=', 'pf.producto_id')
@@ -5924,12 +5952,15 @@ class PickingController extends BaseController
                 ->select([
                     'p.codigo_interno as codigo',
                     'p.nombre',
-                    Capsule::raw('SUM(pf.cantidad_faltante) as faltante'),
+                    Capsule::raw('COALESCE(p.unidades_caja, 1) as upc'),
+                    Capsule::raw('SUM(pf.cantidad_solicitada) as solicitada_cj'),
+                    Capsule::raw('SUM(pf.cantidad_faltante) as faltante_cj'),
                     Capsule::raw("COALESCE(NULLIF(op.numero_factura, ''), op.numero_orden, '—') as pedido"),
                     Capsule::raw("STRING_AGG(DISTINCT COALESCE(pf.causa, 'Sin stock'), ', ') as causa"),
                     Capsule::raw("STRING_AGG(DISTINCT cn.nombre, ', ') as causal_nombre"),
+                    Capsule::raw("STRING_AGG(DISTINCT NULLIF(cn.area_responsable, ''), ', ') as responsable"),
                 ])
-                ->groupBy('p.codigo_interno', 'p.nombre', 'op.numero_factura', 'op.numero_orden')
+                ->groupBy('p.codigo_interno', 'p.nombre', 'p.unidades_caja', 'op.numero_factura', 'op.numero_orden')
                 ->orderBy('p.nombre')
                 ->get();
 
@@ -5937,21 +5968,29 @@ class PickingController extends BaseController
 
             $filas = '';
             foreach ($rows as $r) {
+                $upc          = max(1, (int)$r->upc);
+                $solicitadaUnd = round((float)$r->solicitada_cj * $upc, 2);
+                $pendienteUnd  = round((float)$r->faltante_cj * $upc, 2);
                 $motivo = $r->causal_nombre
                     ? "<b>{$r->causal_nombre}</b>" . ($r->causa ? " — {$r->causa}" : '')
                     : ($r->causa ?: 'Sin causa registrada');
+                $responsable = $r->responsable ?: '&mdash;';
                 $filas .= "<tr>"
                     . "<td style='white-space:nowrap'>{$r->codigo}</td>"
                     . "<td>{$r->nombre}</td>"
                     . "<td style='white-space:nowrap;font-weight:700'>{$r->pedido}</td>"
-                    . "<td style='text-align:right'>{$r->faltante}</td>"
+                    . "<td style='text-align:right'>{$solicitadaUnd}</td>"
+                    . "<td style='text-align:right;color:#b91c1c;font-weight:700'>{$pendienteUnd}</td>"
                     . "<td>{$motivo}</td>"
+                    . "<td>" . htmlspecialchars($responsable) . "</td>"
                     . "</tr>";
             }
             return "<div class='agotados-section'><div class='agotados-header'>PRODUCTOS AGOTADOS / FALTANTES</div>"
                 . "<table style='table-layout:fixed;width:100%;'><colgroup>"
-                . "<col style='width:12%;'><col style='width:36%;'><col style='width:18%;'><col style='width:12%;'><col style='width:22%;'></colgroup>"
-                . "<thead><tr><th>C&oacute;digo</th><th>Producto</th><th>Pedido</th><th style='text-align:right;'>Faltante</th><th>Motivo</th></tr></thead>"
+                . "<col style='width:10%;'><col style='width:26%;'><col style='width:11%;'><col style='width:11%;'><col style='width:11%;'><col style='width:19%;'><col style='width:12%;'></colgroup>"
+                . "<thead><tr><th>C&oacute;digo</th><th>Producto</th><th>Pedido</th>"
+                . "<th style='text-align:right;'>Und Solicitadas</th><th style='text-align:right;'>Und Pendiente</th>"
+                . "<th>Causa</th><th>Responsable</th></tr></thead>"
                 . "<tbody>{$filas}</tbody></table></div>";
         };
 
@@ -5967,6 +6006,11 @@ class PickingController extends BaseController
                     'p.id as producto_id', 'p.codigo_interno as codigo', 'p.nombre', 'p.unidades_caja',
                     Capsule::raw('SUM(pd.cantidad_pickeada) as cantidad'),
                     Capsule::raw("MAX(COALESCE(pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = p.id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
+                    // MAX(lote) es una aproximación: si el mismo producto tiene líneas de
+                    // varios lotes distintos dentro del mismo pedido, la remisión solo puede
+                    // mostrar uno por fila consolidada — se prioriza mostrar *alguno* sobre
+                    // dejarlo vacío, ya que el desglose fino por lote no es su propósito aquí.
+                    Capsule::raw('MAX(pd.lote) as lote'),
                 ])
                 ->groupBy('a.descripcion', 'a.color', 'p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja')
                 ->orderByRaw("COALESCE(a.descripcion, 'Sin ambiente'), p.nombre")
