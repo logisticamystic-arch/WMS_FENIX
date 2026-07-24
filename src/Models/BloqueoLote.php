@@ -12,6 +12,11 @@ class BloqueoLote extends BaseModel
 
     protected $fillable = [
         'empresa_id', 'producto_id', 'lote', 'motivo', 'bloqueado_por',
+        'activo', 'desbloqueado_por', 'desbloqueado_at', 'motivo_desbloqueo',
+    ];
+
+    protected $casts = [
+        'activo' => 'boolean',
     ];
 
     public function producto()

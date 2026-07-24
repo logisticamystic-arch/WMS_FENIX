@@ -566,25 +566,11 @@ class InventarioController extends BaseController
         }
     }
 
-    // Signo de cada tipo_movimiento sobre la cantidad FÍSICA en inventario (no la
-    // reserva). 'Traslado' es 0: reubica dentro de la misma sucursal, no cambia el
-    // total en existencia del producto. 'CorreccionAdmin' es 0: en este sistema solo
-    // se genera al ajustar cantidad_reservada de una línea de picking (ver
-    // PickingController::_ajustarReservaEdicionLinea), nunca cantidad física.
-    // 'Reabastecimiento' es 0: es un traslado interno (granel → picking).
-    // Tipos no listados aquí (nuevos, aún no clasificados) cuentan como 0 — más
-    // seguro que asumir un signo incorrecto y descuadrar el saldo silenciosamente.
-    private const KARDEX_SIGNOS = [
-        'Entrada'          => 1,
-        'InvInicial'       => 1,
-        'AjustePositivo'   => 1,
-        'Devolucion'       => 1,
-        'Picking'          => -1,
-        'AjusteNegativo'   => -1,
-        'Traslado'         => 0,
-        'CorreccionAdmin'  => 0,
-        'Reabastecimiento' => 0,
-    ];
+    // Fuente única de verdad movida a InventoryGuard::KARDEX_SIGNOS (reutilizada
+    // también por assertLedgerMatchesStock() para la invariante Regla de Oro #3)
+    // — se referencia aquí para que el reporte de Kardex y la validación de
+    // integridad nunca queden desincronizados sobre el signo de un tipo_movimiento.
+    private const KARDEX_SIGNOS = InventoryGuard::KARDEX_SIGNOS;
 
     // ── GET /api/inventario/kardex ────────────────────────────────────────────
     public function getKardex(Request $req, Response $res): Response

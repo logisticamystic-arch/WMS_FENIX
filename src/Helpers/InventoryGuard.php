@@ -424,6 +424,87 @@ class InventoryGuard
         return ['ok' => true];
     }
 
+    // ── Regla de oro #3: SUM(kardex) == existencias ──────────────────────────
+
+    /**
+     * Signo de cada tipo_movimiento sobre la cantidad FÍSICA en inventario (no la
+     * reserva). Fuente única de verdad — antes vivía duplicada como private const
+     * en InventarioController::KARDEX_SIGNOS (ahora la referencia desde aquí).
+     * 'Traslado' es 0: reubica dentro de la misma sucursal, no cambia el total en
+     * existencia del producto. 'CorreccionAdmin' es 0: en este sistema solo se
+     * genera al ajustar cantidad_reservada de una línea de picking (ver
+     * PickingController::_ajustarReservaEdicionLinea), nunca cantidad física.
+     * Tipos no listados aquí (nuevos, aún no clasificados) cuentan como 0 — más
+     * seguro que asumir un signo incorrecto y descuadrar el saldo silenciosamente.
+     */
+    public const KARDEX_SIGNOS = [
+        'Entrada'          => 1,
+        'InvInicial'       => 1,
+        'AjustePositivo'   => 1,
+        'Devolucion'       => 1,
+        'Picking'          => -1,
+        'AjusteNegativo'   => -1,
+        'Traslado'         => 0,
+        'CorreccionAdmin'  => 0,
+        'Reabastecimiento' => 0,
+    ];
+
+    /**
+     * Valida que SUM(movimiento_inventarios.cantidad * signo) == SUM(inventarios.cantidad)
+     * para un producto, a nivel de toda la sucursal (no por ubicación — Traslado/
+     * CorreccionAdmin ya están mapeados a signo 0 precisamente para que mover stock
+     * entre ubicaciones no dispare un falso positivo aquí).
+     *
+     * MODO 'alerta' (default): registra la violación en error_log pero NO lanza
+     * excepción — no bloquea la transacción que lo invoque. Se recomienda correr
+     * así un tiempo y revisar los logs antes de pasar a MODO 'bloqueante', porque
+     * un tipo_movimiento nuevo sin clasificar en KARDEX_SIGNOS, o un flujo aún no
+     * auditado, podría generar falsos positivos que tumbarían operaciones reales
+     * de bodega si esto lanzara excepción por defecto.
+     *
+     * MODO 'bloqueante': lanza \RuntimeException si la diferencia supera la
+     * tolerancia — diseñado para usarse dentro de un Capsule::transaction() y
+     * forzar el ROLLBACK exigido por la Regla de Oro #3.
+     */
+    public function assertLedgerMatchesStock(int $productoId, float $tolerancia = 0.5, string $modo = 'alerta'): array
+    {
+        $caseParts = [];
+        $bindings  = [];
+        foreach (self::KARDEX_SIGNOS as $tipo => $signo) {
+            $caseParts[] = 'WHEN ? THEN ' . $signo;
+            $bindings[]  = $tipo;
+        }
+        $signoCase = 'CASE tipo_movimiento ' . implode(' ', $caseParts) . ' ELSE 0 END';
+
+        $kardexTotal = (float) (Capsule::table('movimiento_inventarios')
+            ->where('empresa_id', $this->empresaId)
+            ->where('sucursal_id', $this->sucursalId)
+            ->where('producto_id', $productoId)
+            ->selectRaw("COALESCE(SUM(cantidad * ({$signoCase})), 0) as total", $bindings)
+            ->value('total') ?? 0);
+
+        $stockTotal = (float) (Capsule::table('inventarios')
+            ->where('empresa_id', $this->empresaId)
+            ->where('sucursal_id', $this->sucursalId)
+            ->where('producto_id', $productoId)
+            ->sum('cantidad') ?? 0);
+
+        $diferencia = round($stockTotal - $kardexTotal, 2);
+        $ok = abs($diferencia) <= $tolerancia;
+
+        if (!$ok) {
+            $mensaje = "Invariante kardex!=stock: producto_id={$productoId} empresa={$this->empresaId} "
+                . "sucursal={$this->sucursalId} — inventario={$stockTotal}, kardex={$kardexTotal}, "
+                . "diferencia={$diferencia}.";
+            error_log('[INVENTORY-INVARIANT] ' . $mensaje);
+            if ($modo === 'bloqueante') {
+                throw new \RuntimeException($mensaje);
+            }
+        }
+
+        return ['ok' => $ok, 'stock' => $stockTotal, 'kardex' => $kardexTotal, 'diferencia' => $diferencia];
+    }
+
     // ── Setter de tolerancia ──────────────────────────────────────────────────
 
     public function setToleranciaRecepcion(float $pct): self

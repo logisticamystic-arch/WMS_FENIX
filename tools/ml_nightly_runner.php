@@ -47,7 +47,7 @@ try {
         ->join('sucursales as s', 's.empresa_id', '=', 'e.id')
         ->where('e.activo', 1)
         ->where('s.activo', 1)
-        ->select('e.id as empresa_id', 'e.nombre as empresa_nombre', 's.id as sucursal_id', 's.nombre as sucursal_nombre');
+        ->select('e.id as empresa_id', 'e.razon_social as empresa_nombre', 's.id as sucursal_id', 's.nombre as sucursal_nombre');
 
     if (isset($opts['empresa'])) {
         $query->where('e.id', (int)$opts['empresa']);
@@ -100,43 +100,90 @@ function detectPython(): string
 }
 
 // ── Función auxiliar: ejecutar script Python ──────────────────────────────────
-function runPython(string $script, string $jsonPayload, callable $log): ?array
+// Blindada (auditoría 2026-07-22): la versión anterior solo ponía un timeout en
+// el STREAM de salida (stream_set_timeout), lo cual no mata el proceso si se
+// cuelga — proc_close() se quedaba esperando indefinidamente, bloqueando el
+// procesamiento secuencial de TODAS las empresas restantes esa noche. Ahora se
+// vigila un deadline de pared real con proc_get_status()/stream_select(), se
+// mata el proceso con proc_terminate() si se excede, y se reintenta una vez.
+function runPython(string $script, string $jsonPayload, callable $log, int $timeoutSec = 60, int $intentos = 2): ?array
 {
-    $python  = detectPython();
-    $null    = PHP_OS_FAMILY === 'Windows' ? '2>NUL' : '2>/dev/null';
-    $tmpFile = tempnam(sys_get_temp_dir(), 'wms_ml_') . '.json';
-    file_put_contents($tmpFile, $jsonPayload);
+    for ($intento = 1; $intento <= $intentos; $intento++) {
+        $python  = detectPython();
+        $null    = PHP_OS_FAMILY === 'Windows' ? '2>NUL' : '2>/dev/null';
+        $tmpFile = tempnam(sys_get_temp_dir(), 'wms_ml_') . '.json';
+        file_put_contents($tmpFile, $jsonPayload);
 
-    $cmd    = "{$python} -X utf8 " . escapeshellarg($script) . " < " . escapeshellarg($tmpFile) . " {$null}";
-    $output = null;
-    $pipes  = [];
-    $proc   = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $cmd   = "{$python} -X utf8 " . escapeshellarg($script) . " < " . escapeshellarg($tmpFile) . " {$null}";
+        $pipes = [];
+        $proc  = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
 
-    if (!is_resource($proc)) {
+        if (!is_resource($proc)) {
+            @unlink($tmpFile);
+            $log('ERROR', "No se pudo iniciar Python para: " . basename($script) . " (intento {$intento}/{$intentos})");
+            continue;
+        }
+
+        stream_set_blocking($pipes[1], false);
+        stream_set_blocking($pipes[2], false);
+
+        $output   = '';
+        $stderr   = '';
+        $deadline = time() + $timeoutSec;
+        $colgado  = false;
+
+        while (true) {
+            $status = proc_get_status($proc);
+            if (!$status['running']) break;
+            if (time() >= $deadline) { $colgado = true; break; }
+
+            $read = [$pipes[1], $pipes[2]];
+            $write = $except = [];
+            @stream_select($read, $write, $except, 1);
+
+            $chunk = stream_get_contents($pipes[1]);
+            if ($chunk !== false) $output .= $chunk;
+            $chunkErr = stream_get_contents($pipes[2]);
+            if ($chunkErr !== false) $stderr .= $chunkErr;
+        }
+
+        // Drenar lo que quede en el buffer antes de cerrar los pipes.
+        $output .= (string)stream_get_contents($pipes[1]);
+        $stderr .= (string)stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        if ($colgado) {
+            proc_terminate($proc, 9);
+            usleep(200000); // dar chance a que el SO libere el proceso antes de proc_close
+            @proc_close($proc);
+            @unlink($tmpFile);
+            $log('ERROR', "TIMEOUT ({$timeoutSec}s) — proceso Python terminado a la fuerza: "
+                . basename($script) . " (intento {$intento}/{$intentos})");
+            continue;
+        }
+
+        $exitCode = proc_close($proc);
         @unlink($tmpFile);
-        $log('ERROR', "No se pudo iniciar Python para: " . basename($script));
-        return null;
+
+        if ($exitCode !== 0 || !$output) {
+            $log('WARN', "Sin salida (exit={$exitCode}) de: " . basename($script)
+                . " (intento {$intento}/{$intentos})" . ($stderr ? ' — stderr: ' . substr($stderr, 0, 300) : ''));
+            continue;
+        }
+
+        $result = json_decode($output, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $log('ERROR', "JSON inválido de: " . basename($script) . " (intento {$intento}/{$intentos}) — "
+                . substr($output, 0, 200));
+            continue;
+        }
+
+        return $result;
     }
 
-    stream_set_timeout($pipes[1], 60); // máximo 60 segundos
-    $output = stream_get_contents($pipes[1]);
-    fclose($pipes[1]);
-    fclose($pipes[2]);
-    $exitCode = proc_close($proc);
-    @unlink($tmpFile);
-
-    if ($exitCode !== 0 || !$output) {
-        $log('WARN', "Sin salida (exit={$exitCode}) de: " . basename($script));
-        return null;
-    }
-
-    $result = json_decode($output, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        $log('ERROR', "JSON inválido de: " . basename($script) . " — " . substr($output, 0, 200));
-        return null;
-    }
-
-    return $result;
+    $log('ERROR', "FALLO DEFINITIVO tras {$intentos} intento(s): " . basename($script));
+    return null;
 }
 
 // ── Procesamiento por empresa/sucursal ────────────────────────────────────────
@@ -258,6 +305,15 @@ foreach ($targets as $target) {
             } else {
                 $logLine('WARN', "{$label} Predictor sin resultados.");
                 $errores++;
+                // Alerta externa: antes un fallo aquí solo quedaba en logs/ml_nightly.log,
+                // que nadie revisa a diario — nadie se enteraba de un job de las 2am roto.
+                NotificationService::toSupervisors($eId, $sId, [
+                    'tipo'    => NotificationService::TIPO_ALERTA,
+                    'titulo'  => 'Falló el predictor de vencimientos (job nocturno)',
+                    'mensaje' => "El motor ML de predicción de vencimientos no devolvió resultados para "
+                        . "'{$target->sucursal_nombre}' esta madrugada. Revisar logs/ml_nightly.log.",
+                    'modulo'  => 'inteligencia',
+                ]);
             }
         }
     } catch (\Exception $e) {
@@ -342,6 +398,14 @@ foreach ($targets as $target) {
             $logLine('INFO', "{$label} [DRY-RUN] Se habría ejecutado detector de anomalías.");
         } else {
             $logLine('WARN', "{$label} Detector sin resultados.");
+            $errores++;
+            NotificationService::toSupervisors($eId, $sId, [
+                'tipo'    => NotificationService::TIPO_ALERTA,
+                'titulo'  => 'Falló el detector de anomalías (job nocturno)',
+                'mensaje' => "El motor ML de detección de anomalías no devolvió resultados para "
+                    . "'{$target->sucursal_nombre}' esta madrugada. Revisar logs/ml_nightly.log.",
+                'modulo'  => 'inteligencia',
+            ]);
         }
     } catch (\Exception $e) {
         $logLine('ERROR', "{$label} Detector falló: " . $e->getMessage());

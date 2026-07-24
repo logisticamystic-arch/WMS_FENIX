@@ -980,6 +980,11 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/sistema/opcache-reset', [\App\Controllers\SystemController::class, 'opcacheReset']);
     $group->post('/sistema/limpiar-logs',  [\App\Controllers\SystemController::class, 'limpiarLogs']);
 
+    // ── Reinicio de datos por secciones (solo Admin/SuperAdmin) ──────────────
+    $group->get('/admin/reset/secciones', [\App\Controllers\DataResetController::class, 'secciones']);
+    $group->post('/admin/reset/preview',  [\App\Controllers\DataResetController::class, 'preview']);
+    $group->post('/admin/reset/execute',  [\App\Controllers\DataResetController::class, 'execute']);
+
     $group->get('/param/empresas', [\App\Controllers\ParametrosController::class, 'getEmpresas']);
     $group->post('/param/empresas', [\App\Controllers\ParametrosController::class, 'createEmpresa']);
     $group->put('/param/empresas/{id}', [\App\Controllers\ParametrosController::class, 'editEmpresa']);

@@ -52,6 +52,7 @@ WMS_MODULES.maestro = {
     const isAdmin = (user.rol || user.role || '') === 'Admin';
     if (isAdmin) {
       cards.push({ id: 'sistema', icon: 'fa-stethoscope', title: 'Diagnóstico del Sistema', desc: 'Validación de controladores, rutas, integridad de archivos y estado del servidor.', _admin: true });
+      cards.push({ id: 'reinicio-datos', icon: 'fa-triangle-exclamation', title: 'Reinicio de Datos', desc: 'Borra por secciones (maestros, inventario, picking, etc.) para dejar el sistema limpio. Acción irreversible.', _admin: true });
     }
 
     WMS.setContent(`
@@ -101,7 +102,8 @@ WMS_MODULES.maestro = {
       clientes: 'Clientes', ambientes: 'Ambientes', ubicaciones: 'Ubicaciones',
       proveedores: 'Proveedores', 'causales-novedad': 'Causales de Novedad', rutas: 'Rutas', permisos: 'Seguridad',
       impresoras: 'Impresoras IP',
-      sistema: 'Diagnóstico del Sistema'
+      sistema: 'Diagnóstico del Sistema',
+      'reinicio-datos': 'Reinicio de Datos'
     };
     return m[s] || s || 'Panel';
   },
@@ -2977,6 +2979,151 @@ WMS_MODULES.maestro = {
         else { WMS.toast('success','Cliente eliminado'); this.show_clientes(); }
       } catch(e) { WMS.toast('error','Error eliminando cliente'); }
     });
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // REINICIO DE DATOS — Solo Admin. Borrado irreversible por secciones.
+  // ══════════════════════════════════════════════════════════════════════════
+  async show_reinicio_datos() {
+    WMS.setBreadcrumb('maestro', 'reinicio-datos');
+    WMS.setToolbar('');
+    this._reinicioSel = new Set();
+    this._reinicioPreview = null;
+    WMS.spinner();
+    try {
+      const r = await API.get('/admin/reset/secciones');
+      if (r.error) { WMS.toast('error', r.message); return; }
+      this._reinicioSecciones = r.data || [];
+      this._renderReinicioDatos();
+    } catch(e) { WMS.toast('error', 'Error cargando secciones'); }
+  },
+
+  _renderReinicioDatos() {
+    const secciones = this._reinicioSecciones || [];
+    WMS.setContent(`
+      <div style="padding:24px;max-width:900px;margin:0 auto;">
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
+          <div style="display:flex;gap:12px;align-items:flex-start;">
+            <i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;font-size:1.3rem;margin-top:2px;"></i>
+            <div>
+              <div style="font-weight:800;color:#991b1b;margin-bottom:4px;">Acción irreversible</div>
+              <div style="font-size:.85rem;color:#7f1d1d;">Esto borra permanentemente los datos de las secciones que selecciones — no hay "deshacer". Úsalo solo para limpiar datos de prueba antes de salir a producción, o para reiniciar el sistema por completo.</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+          ${secciones.map(s => `
+            <label style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1px solid ${s.peligroso ? '#fecaca' : '#e2e8f0'};border-radius:8px;background:${s.peligroso ? '#fff7f7' : '#fff'};cursor:pointer;">
+              <input type="checkbox" class="reinicio-sel" value="${s.key}" style="margin-top:3px;width:16px;height:16px;flex:none;" onchange="WMS_MODULES.maestro._toggleReinicioSel(this)">
+              <div style="flex:1;">
+                <div style="font-weight:700;color:${s.peligroso ? '#991b1b' : '#1e293b'};font-size:.92rem;">
+                  ${s.peligroso ? '<i class="fa-solid fa-skull-crossbones" style="margin-right:6px;"></i>' : ''}${WMS.esc(s.label)}
+                </div>
+                <div style="font-size:.75rem;color:#64748b;margin-top:2px;">${s.tablas.length} tabla(s) · <b>${WMS.formatNum(s.total)}</b> fila(s) actualmente</div>
+              </div>
+            </label>
+          `).join('')}
+        </div>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button class="btn btn-secondary" onclick="WMS_MODULES.maestro.show_reinicio_datos()"><i class="fa-solid fa-rotate"></i> Actualizar conteos</button>
+          <button class="btn btn-danger" id="btn-reinicio-preview" disabled onclick="WMS_MODULES.maestro._previewReinicio()">
+            <i class="fa-solid fa-eye"></i> Vista previa
+          </button>
+        </div>
+
+        <div id="reinicio-preview-box" style="margin-top:20px;"></div>
+      </div>
+    `);
+  },
+
+  _toggleReinicioSel(cb) {
+    if (cb.checked) this._reinicioSel.add(cb.value); else this._reinicioSel.delete(cb.value);
+    const btn = document.getElementById('btn-reinicio-preview');
+    if (btn) btn.disabled = this._reinicioSel.size === 0;
+    const box = document.getElementById('reinicio-preview-box');
+    if (box) box.innerHTML = '';
+    this._reinicioPreview = null;
+  },
+
+  async _previewReinicio() {
+    const secciones = Array.from(this._reinicioSel || []);
+    if (!secciones.length) return;
+    const box = document.getElementById('reinicio-preview-box');
+    box.innerHTML = '<div class="m-empty"><i class="fa-solid fa-spinner fa-spin"></i> Calculando...</div>';
+    try {
+      const r = await API.post('/admin/reset/preview', { secciones });
+      if (r.error) { WMS.toast('error', r.message); box.innerHTML = ''; return; }
+      const d = r.data;
+      const autoInc = d.detalle.filter(x => x.auto_incluida);
+      box.innerHTML = `
+        <div style="border:1px solid #fecaca;border-radius:8px;padding:16px 20px;background:#fff7f7;">
+          <div style="font-weight:800;color:#991b1b;margin-bottom:10px;">
+            <i class="fa-solid fa-list-check"></i> Se borrarán ${d.orden_borrado.length} tabla(s) — ${WMS.formatNum(d.total_filas)} fila(s) en total
+          </div>
+          ${autoInc.length ? `
+            <div style="font-size:.8rem;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 12px;margin-bottom:12px;">
+              <i class="fa-solid fa-circle-info"></i> Estas ${autoInc.length} tabla(s) se incluyen automáticamente porque dependen de las que seleccionaste (si no, la base de datos rechazaría el borrado por sus llaves foráneas):
+              <div style="margin-top:6px;">${autoInc.map(x => `<span class="pro-badge warning" style="margin:2px;display:inline-block;">${WMS.esc(x.tabla)} (${WMS.formatNum(x.filas)})</span>`).join('')}</div>
+            </div>` : ''}
+          <div class="table-container" style="max-height:260px;overflow-y:auto;">
+            <table class="erp-table"><thead><tr><th>Orden</th><th>Tabla</th><th style="text-align:right;">Filas</th><th></th></tr></thead>
+            <tbody>${d.detalle.map((x,i) => `<tr><td>${i+1}</td><td><code>${WMS.esc(x.tabla)}</code></td><td style="text-align:right;">${WMS.formatNum(x.filas)}</td><td>${x.auto_incluida ? '<span class="badge badge-warning" style="font-size:10px;">auto</span>' : ''}</td></tr>`).join('')}</tbody>
+            </table>
+          </div>
+          <button class="btn btn-danger" style="margin-top:16px;width:100%;" onclick="WMS_MODULES.maestro._confirmarReinicio()">
+            <i class="fa-solid fa-trash-can"></i> Continuar — pedir confirmación final
+          </button>
+        </div>`;
+      this._reinicioPreview = d;
+    } catch(e) { box.innerHTML = ''; WMS.toast('error', 'Error calculando la vista previa'); }
+  },
+
+  async _confirmarReinicio() {
+    const d = this._reinicioPreview;
+    if (!d) return;
+    const result = await Swal.fire({
+      title: 'Confirmación final requerida',
+      icon: 'warning',
+      html: `
+        <div style="text-align:left;font-size:.85rem;">
+          <p>Vas a borrar <b>${WMS.formatNum(d.total_filas)}</b> fila(s) en <b>${d.orden_borrado.length}</b> tabla(s). Esta acción NO se puede deshacer.</p>
+          <label style="font-weight:700;font-size:.8rem;display:block;margin-top:12px;">Escribe la razón social exacta de tu empresa</label>
+          <input id="swal-razon-social" class="swal2-input" style="margin:6px 0;" autocomplete="off">
+          <label style="font-weight:700;font-size:.8rem;display:block;margin-top:8px;">Tu PIN</label>
+          <input id="swal-pin" type="password" class="swal2-input" style="margin:6px 0;" autocomplete="off">
+        </div>`,
+      showCancelButton: true,
+      confirmButtonText: 'Borrar definitivamente',
+      confirmButtonColor: '#dc2626',
+      cancelButtonText: 'Cancelar',
+      preConfirm: () => {
+        const razon = document.getElementById('swal-razon-social').value.trim();
+        const pin = document.getElementById('swal-pin').value.trim();
+        if (!razon || !pin) { Swal.showValidationMessage('Completa ambos campos'); return false; }
+        return { razon, pin };
+      }
+    });
+    if (!result.isConfirmed || !result.value) return;
+
+    WMS.spinner();
+    try {
+      const r = await API.post('/admin/reset/execute', {
+        secciones: Array.from(this._reinicioSel || []),
+        razon_social: result.value.razon,
+        pin: result.value.pin,
+      });
+      if (r.error) { WMS.toast('error', r.message); this._renderReinicioDatos(); return; }
+      await Swal.fire({
+        icon: 'success', title: 'Reinicio completado',
+        text: `${WMS.formatNum(r.data.total)} fila(s) eliminada(s) en ${Object.keys(r.data.borradas).length} tabla(s).`,
+      });
+      this.show_reinicio_datos();
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error ejecutando el reinicio');
+      this._renderReinicioDatos();
+    }
   },
 
   // ══════════════════════════════════════════════════════════════════════════

@@ -1668,6 +1668,13 @@ class PickingController extends BaseController
                 null, ['cantidad_tomada' => $cantidadTomada],
                 "Línea picking confirmada para {$orden->numero_orden}");
 
+            // Regla de Oro #3 (modo alerta, no bloquea): registra en logs si el kardex
+            // del producto se descuadra tras esta confirmación. Ver InventoryGuard::
+            // assertLedgerMatchesStock() — se corre después del commit, nunca revierte
+            // esta operación ya confirmada.
+            (new InventoryGuard($this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, $user->id))
+                ->assertLedgerMatchesStock($linea->producto_id);
+
             return $this->ok($res, $linea, 'Línea confirmada');
         } catch (\Exception $e) {
             return $this->error($res, $e->getMessage());
@@ -4303,6 +4310,11 @@ class PickingController extends BaseController
             $this->audit($user, 'picking', 'confirmar_consolidado', 'picking_detalles', null,
                 null, ['ids' => implode(',', $ids), 'cantidad_tomada' => $cantidadTomada],
                 'Picking consolidado confirmado — ' . count($detalles) . ' líneas');
+
+            // Regla de Oro #3 (modo alerta, no bloquea) — mismo motivo que en confirmLine().
+            // Todos los $detalles comparten producto_id (ver comentario más arriba).
+            (new InventoryGuard($this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, $user->id))
+                ->assertLedgerMatchesStock($detalles->first()->producto_id);
 
             return $this->ok($res, ['confirmados' => count($detalles)], 'Picking confirmado');
 

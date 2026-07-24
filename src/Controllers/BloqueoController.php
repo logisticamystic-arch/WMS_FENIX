@@ -22,6 +22,7 @@ class BloqueoController extends BaseController
             ->get();
 
         $lotesBloqueados = BloqueoLote::where('empresa_id', $empresaId)
+            ->where('activo', true)
             ->with('producto:id,codigo_interno,nombre')
             ->orderBy('created_at', 'desc')
             ->get();
@@ -47,6 +48,10 @@ class BloqueoController extends BaseController
         $p->bloqueo_motivo = $data['motivo'] ?? 'Bloqueado por calidad';
         $p->save();
 
+        $this->audit($user, 'bloqueo', 'bloquear_producto', 'productos', $p->id,
+            null, ['bloqueado' => true, 'motivo' => $p->bloqueo_motivo],
+            "Producto {$p->codigo_interno} bloqueado: {$p->bloqueo_motivo}");
+
         return $this->ok($response, $p, 'Producto bloqueado');
     }
 
@@ -60,9 +65,14 @@ class BloqueoController extends BaseController
             ->find($args['id']);
         if (!$p) return $this->error($response, 'Producto no encontrado', 404);
 
+        $motivoPrevio = $p->bloqueo_motivo;
         $p->bloqueado      = false;
         $p->bloqueo_motivo = null;
         $p->save();
+
+        $this->audit($user, 'bloqueo', 'desbloquear_producto', 'productos', $p->id,
+            ['bloqueado' => true, 'motivo' => $motivoPrevio], ['bloqueado' => false],
+            "Producto {$p->codigo_interno} desbloqueado (motivo previo: {$motivoPrevio})");
 
         return $this->ok($response, $p, 'Producto desbloqueado');
     }
@@ -79,9 +89,12 @@ class BloqueoController extends BaseController
 
         $empresaId = $this->getEffectiveEmpresaId($user, $request);
 
+        // Filtra por activo=true: con soft-delete, un lote ya desbloqueado antes
+        // debe poder volver a bloquearse (la fila inactiva no cuenta como duplicado).
         $exists = BloqueoLote::where('empresa_id', $empresaId)
             ->where('producto_id', $data['producto_id'])
             ->where('lote', $data['lote'])
+            ->where('activo', true)
             ->first();
 
         if ($exists) return $this->error($response, 'Este lote ya está bloqueado');
@@ -92,7 +105,11 @@ class BloqueoController extends BaseController
             'lote'         => $data['lote'],
             'motivo'       => $data['motivo'] ?? 'Bloqueado por calidad',
             'bloqueado_por' => $user->id,
+            'activo'       => true,
         ]);
+
+        $this->audit($user, 'bloqueo', 'bloquear_lote', 'bloqueo_lotes', $bl->id,
+            null, $bl->toArray(), "Lote {$bl->lote} del producto {$bl->producto_id} bloqueado: {$bl->motivo}");
 
         return $this->created($response, $bl, 'Lote bloqueado');
     }
@@ -102,11 +119,24 @@ class BloqueoController extends BaseController
         $user = $request->getAttribute('user');
         if (!$this->isAdmin($user)) return $this->error($response, 'Solo administradores', 403);
 
+        $data = $request->getParsedBody() ?? [];
         $bl = BloqueoLote::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('activo', true)
             ->find($args['id']);
         if (!$bl) return $this->error($response, 'Bloqueo no encontrado', 404);
 
-        $bl->delete();
+        // Soft-delete: antes se borraba físicamente y no quedaba rastro de que el
+        // bloqueo existió — crítico ante un recall o auditoría regulatoria de calidad.
+        $bl->activo            = false;
+        $bl->desbloqueado_por  = $user->id;
+        $bl->desbloqueado_at   = date('Y-m-d H:i:s');
+        $bl->motivo_desbloqueo = $data['motivo'] ?? null;
+        $bl->save();
+
+        $this->audit($user, 'bloqueo', 'desbloquear_lote', 'bloqueo_lotes', $bl->id,
+            ['activo' => true], ['activo' => false, 'motivo_desbloqueo' => $bl->motivo_desbloqueo],
+            "Lote {$bl->lote} del producto {$bl->producto_id} desbloqueado");
+
         return $this->ok($response, null, 'Lote desbloqueado');
     }
 
@@ -122,6 +152,7 @@ class BloqueoController extends BaseController
             ->pluck('id');
 
         $lotesBloqueados = BloqueoLote::where('empresa_id', $empresaId)
+            ->where('activo', true)
             ->get(['producto_id', 'lote']);
 
         $query = Inventario::with(['producto:id,codigo_interno,nombre,bloqueado,bloqueo_motivo', 'ubicacion:id,codigo,zona'])
