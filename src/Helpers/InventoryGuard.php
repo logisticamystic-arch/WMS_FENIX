@@ -49,6 +49,43 @@ class InventoryGuard
      * Valida que se pueda ejecutar un picking para el producto/lote/ubicación.
      * Usa lock FOR UPDATE para prevenir race conditions entre workers concurrentes.
      */
+    /**
+     * Valida si un producto o lote específico está bloqueado por calidad/mantenimiento.
+     */
+    public function checkBloqueo(int $productoId, ?string $lote = null): array
+    {
+        // 1. Validar si el producto está bloqueado
+        $prod = Capsule::table('productos')->where('id', $productoId)->first(['bloqueado', 'bloqueo_motivo', 'codigo_interno']);
+        if ($prod && $prod->bloqueado) {
+            $motivo = $prod->bloqueo_motivo ?: 'Bloqueado por calidad';
+            return $this->deny('R_BLOQUEO', "El producto [{$prod->codigo_interno}] está bloqueado: {$motivo}.", [
+                'producto_id' => $productoId,
+                'motivo'      => $motivo,
+            ]);
+        }
+
+        // 2. Validar si el lote está bloqueado
+        if ($lote !== null && trim($lote) !== '' && trim($lote) !== 'N/A') {
+            $bloqLote = Capsule::table('bloqueo_lotes')
+                ->where('empresa_id', $this->empresaId)
+                ->where('producto_id', $productoId)
+                ->where('lote', trim($lote))
+                ->where('activo', true)
+                ->first(['motivo']);
+
+            if ($bloqLote) {
+                $motivo = $bloqLote->motivo ?: 'Bloqueado por calidad';
+                return $this->deny('R_BLOQUEO', "El lote '{$lote}' está bloqueado: {$motivo}.", [
+                    'producto_id' => $productoId,
+                    'lote'        => $lote,
+                    'motivo'      => $motivo,
+                ]);
+            }
+        }
+
+        return ['ok' => true];
+    }
+
     public function canPick(
         int    $productoId,
         float  $cantidad,
@@ -56,6 +93,11 @@ class InventoryGuard
         ?int   $ubicacionId = null,
         ?int   $numeroPallet = null
     ): array {
+        $bloqueoCheck = $this->checkBloqueo($productoId, $lote);
+        if (!$bloqueoCheck['ok']) {
+            return $bloqueoCheck;
+        }
+
         if ($cantidad <= 0) {
             return $this->deny('R01', 'La cantidad a picar debe ser mayor a cero.', compact('productoId', 'cantidad'));
         }
@@ -169,6 +211,11 @@ class InventoryGuard
         ?int $numeroPallet = null,
         ?string $fechaVencimiento = null
     ): array {
+        $bloqueoCheck = $this->checkBloqueo($productoId, $lote);
+        if (!$bloqueoCheck['ok']) {
+            return $bloqueoCheck;
+        }
+
         if ($cantidad <= 0) {
             return $this->deny('R02', 'La cantidad a trasladar debe ser mayor a cero.', compact('productoId', 'cantidad'));
         }

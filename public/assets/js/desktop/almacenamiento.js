@@ -488,8 +488,8 @@ WMS_MODULES.almacenamiento = {
           <div class="table-container">
             <table class="erp-table" id="tr-stock-table">
               <thead><tr><th>Producto</th><th>Ubicación</th><th>Cantidad</th><th>Lote</th><th>Vencimiento</th></tr></thead>
-              <tbody>${items.slice(0, 50).map(s => `<tr>
-                <td>${WMS.esc(s.descripcion || s.producto || '-')}</td>
+              <tbody>${items.slice(0, 50).map(s => `<tr style="cursor:pointer;" title="Haga clic para seleccionar este producto y ubicación" onclick="WMS_MODULES.almacenamiento.seleccionarStockTraslado(${s.producto_id || 0}, ${s.ubicacion_id || 0}, '${WMS.esc(s.descripcion || s.producto || '').replace(/'/g, "\\'")}', '${WMS.esc(s.lote || '')}', '${s.fecha_vencimiento || ''}')">
+                <td><i class="fa-solid fa-hand-pointer text-muted" style="font-size:10px;margin-right:4px;"></i> ${WMS.esc(s.descripcion || s.producto || '-')}</td>
                 <td><span class="badge badge-info">${WMS.esc(s.ubicacion || s.ubicacion_codigo || '-')}</span></td>
                 <td class="text-center fw-600">${WMS.formatNum(s.cantidad || 0)}</td>
                 <td>${WMS.esc(s.lote || '-')}</td>
@@ -512,6 +512,29 @@ WMS_MODULES.almacenamiento = {
         WMS_MODULES.almacenamiento.cargarLotesOrigen();
       });
     } catch (e) { WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>'); }
+  },
+
+  seleccionarStockTraslado(prodId, ubiId, prodNombre, lote, fv) {
+    if (!prodId || !ubiId) return;
+    const ac = document.getElementById('tr-prod-ac');
+    const idEl = document.getElementById('tr-prod-id');
+    const origEl = document.getElementById('tr-origen');
+    if (ac) ac.value = prodNombre;
+    if (idEl) idEl.value = prodId;
+    if (origEl) origEl.value = ubiId;
+
+    this.cargarLotesOrigen().then(() => {
+      if (lote) {
+        const loteEl = document.getElementById('tr-lote');
+        if (loteEl) loteEl.value = lote;
+      }
+      if (fv) {
+        const fvEl = document.getElementById('tr-fv');
+        if (fvEl) fvEl.value = fv;
+      }
+    });
+
+    WMS.toast('info', 'Origen y producto cargados en el formulario');
   },
 
   /** Reemplaza el bloque de inputs de cantidad según UPC del producto */
@@ -1093,12 +1116,23 @@ WMS_MODULES.almacenamiento = {
   async show_traspaso() {
     WMS.setBreadcrumb('almacenamiento', 'Traspaso a Cliente');
     let motivos = [];
-    try { const r = await API.get('/traspasos/motivos'); motivos = r.data || []; } catch(e) { motivos = ['Traspaso a cliente','Muestra comercial','Otro']; }
+    let clientes = [];
+    try {
+      const [mr, cr] = await Promise.all([
+        API.get('/traspasos/motivos').catch(() => ({ data: [] })),
+        API.get('/param/clientes').catch(() => ({ data: [] }))
+      ]);
+      motivos  = mr.data || [];
+      clientes = cr.data || cr || [];
+    } catch(e) {
+      motivos  = ['Traspaso a cliente','Muestra comercial','Otro'];
+      clientes = [];
+    }
 
     WMS.setContent(`
       <div class="card animate-fade-in">
         <div class="card-header">
-          <h5 class="card-title"><i class="fa-solid fa-arrow-right-from-bracket" style="color:#ef4444;"></i> Traspaso de Inventario</h5>
+          <h5 class="card-title"><i class="fa-solid fa-arrow-right-from-bracket" style="color:#ef4444;"></i> Traspaso de Inventario a Cliente</h5>
         </div>
         <div class="card-body" style="display:flex;flex-direction:column;gap:16px;">
 
@@ -1122,11 +1156,12 @@ WMS_MODULES.almacenamiento = {
                 <input id="trp-d-cant" type="number" class="form-control" min="0.01" step="0.01"></div>
               <div class="form-group" style="margin:0;"><label class="form-label">Motivo *</label>
                 <select id="trp-d-motivo" class="form-control">${motivos.map(m => `<option value="${WMS.esc(m)}">${WMS.esc(m)}</option>`).join('')}</select></div>
-              <div class="form-group" style="margin:0;"><label class="form-label">Cliente</label>
-                <input id="trp-d-cliente-buscar" class="form-control" placeholder="Buscar cliente..."
-                       oninput="clearTimeout(WMS_MODULES.almacenamiento._trpCliTimer);WMS_MODULES.almacenamiento._trpCliTimer=setTimeout(()=>WMS_MODULES.almacenamiento._trpDBuscarCliente(),400)">
-                <div id="trp-d-cliente-res" style="max-height:120px;overflow-y:auto;position:relative;z-index:10;"></div>
-                <input type="hidden" id="trp-d-cliente-id"><input type="hidden" id="trp-d-cliente-nom">
+              <div class="form-group" style="margin:0;"><label class="form-label">Cliente *</label>
+                <select id="trp-d-cliente-id" class="form-control" onchange="const opt=this.options[this.selectedIndex]; document.getElementById('trp-d-cliente-nom').value = opt ? opt.text : '';">
+                  <option value="">-- Seleccionar Cliente --</option>
+                  ${clientes.map(c => `<option value="${c.id}">${WMS.esc(c.razon_social || c.nombre || '')} (${WMS.esc(c.nit || c.documento || 'NIT')})</option>`).join('')}
+                </select>
+                <input type="hidden" id="trp-d-cliente-nom">
               </div>
               <div class="form-group" style="margin:0;"><label class="form-label">Observaciones</label>
                 <textarea id="trp-d-obs" class="form-control" rows="2"></textarea></div>

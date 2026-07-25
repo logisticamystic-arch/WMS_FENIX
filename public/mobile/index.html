@@ -8985,8 +8985,17 @@ const MWMS = {
     this._trpUbicOrigen = null;
     this._trpStock = [];
 
-    try { const r = await mApi('GET', '/traspasos/motivos'); this._trpMotivos = r.data || []; }
-    catch(e) { this._trpMotivos = ['Traspaso a cliente','Muestra comercial','Otro']; }
+    try {
+      const [mr, cr] = await Promise.all([
+        mApi('GET', '/traspasos/motivos').catch(() => ({ data: [] })),
+        mApi('GET', '/param/clientes').catch(() => ({ data: [] }))
+      ]);
+      this._trpMotivos = mr.data || [];
+      this._trpClientes = cr.data || cr || [];
+    } catch(e) {
+      this._trpMotivos = ['Traspaso a cliente','Muestra comercial','Otro'];
+      this._trpClientes = [];
+    }
 
     document.getElementById('m-content').innerHTML = `
       <div style="min-height:100vh;background:#f8fafc;padding-bottom:24px;">
@@ -9074,16 +9083,11 @@ const MWMS = {
             </div>
 
             <div>
-              <label style="font-size:.75rem;font-weight:700;color:#374151;display:block;margin-bottom:6px;">Cliente</label>
-              <div style="position:relative;">
-                <i class="fa-solid fa-user" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.8rem;"></i>
-                <input id="trp-cliente-buscar"
-                       style="width:100%;box-sizing:border-box;padding:10px 12px 10px 30px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;"
-                       placeholder="Buscar cliente por nombre..."
-                       oninput="clearTimeout(MWMS._trpCliTimer);MWMS._trpCliTimer=setTimeout(()=>MWMS._trpBuscarCliente(),350)">
-              </div>
-              <div id="trp-cliente-res" style="max-height:130px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;margin-top:4px;display:none;"></div>
-              <input type="hidden" id="trp-cliente-id">
+              <label style="font-size:.75rem;font-weight:700;color:#374151;display:block;margin-bottom:6px;">Cliente *</label>
+              <select id="trp-cliente-id" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff;" onchange="const opt=this.options[this.selectedIndex]; document.getElementById('trp-cliente-nom').value = opt ? opt.text : '';">
+                <option value="">-- Seleccionar Cliente --</option>
+                ${(this._trpClientes || []).map(c => `<option value="${c.id}">${this.esc(c.razon_social || c.nombre || '')}</option>`).join('')}
+              </select>
               <input type="hidden" id="trp-cliente-nom">
             </div>
 
