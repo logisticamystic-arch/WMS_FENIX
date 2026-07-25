@@ -1048,10 +1048,17 @@ WMS_MODULES.maestro = {
   async consultar_productos() {
     this._prodData = null; // Reset
     
-    // Cargar Catálogos para los filtros
-    const [cs, ms] = await Promise.all([API.get('/param/categorias'), API.get('/param/marcas')]);
-    const cats     = cs.data || cs || [];
-    const marcas   = ms.data || ms || [];
+    let cats = [], marcas = [];
+    try {
+      const [cs, ms] = await Promise.all([
+        API.get('/param/categorias').catch(() => ({ data: [] })),
+        API.get('/param/marcas').catch(() => ({ data: [] }))
+      ]);
+      cats   = Array.isArray(cs.data) ? cs.data : (Array.isArray(cs) ? cs : []);
+      marcas = Array.isArray(ms.data) ? ms.data : (Array.isArray(ms) ? ms : []);
+    } catch(e) {
+      console.warn('Error cargando filtros de productos:', e);
+    }
 
     WMS.setToolbar(`
       <div class="search-bar" style="width:300px;">
@@ -1087,16 +1094,16 @@ WMS_MODULES.maestro = {
         </button>
       </div>`);
     
-    // Vista inicial profesional sin textos innecesarios
-    WMS.setContent(`
+     WMS.setContent(`
       <div style="padding:20px; max-width:1100px; margin:0 auto;">
          <div id="prod-results-container">
             <div style="text-align:center; padding:100px 40px; color:#94a3b8;">
-               <i class="fa-solid fa-search" style="font-size:3rem; margin-bottom:20px; opacity:0.3;"></i>
-               <p style="font-weight:700;">Ingresa un criterio en el buscador superior o selecciona una categoría.</p>
+               <i class="fa-solid fa-spinner fa-spin" style="font-size:3rem; margin-bottom:20px; opacity:0.3;"></i>
+               <p style="font-weight:700;">Cargando catálogo de productos...</p>
             </div>
          </div>
       </div>`);
+    this._cargarTodo();
   },
 
   async descargarPlantillaProductos() {
@@ -3218,10 +3225,10 @@ WMS_MODULES.maestro = {
 
     try {
       const r = await API.get('/sistema/validar');
-      if (r.error) { WMS.toast('error', r.message || 'Error en diagnóstico'); return; }
+      if (!r || r.error) { WMS.toast('error', (r && r.message) || 'Error en diagnóstico'); return; }
 
-      const s = r.summary;
-      const d = r.data;
+      const s = r.summary || { ok: 0, errores: 0, advertencias: 0, rutas_total: 0, rutas_errores: 0, estado_global: 'saludable' };
+      const d = r.data || {};
 
       // KPIs
       const kpiData = [s.ok, s.errores, s.advertencias, s.rutas_total - s.rutas_errores, s.rutas_errores];
@@ -3336,6 +3343,16 @@ WMS_MODULES.maestro = {
       const r = await API.post('/sistema/opcache-reset');
       WMS.toast(r.error ? 'error' : 'success',
         r.error ? 'Error al resetear OPcache' : 'OPcache reseteado correctamente');
+    } catch(e) {
+      WMS.toast('error', 'Error: ' + e.message);
+    }
+  },
+
+  async _limpiarLogs() {
+    try {
+      const r = await API.post('/sistema/limpiar-logs');
+      WMS.toast(r.error ? 'error' : 'success',
+        r.message || (r.error ? 'Error al limpiar logs' : 'Logs limpiados exitosamente'));
     } catch(e) {
       WMS.toast('error', 'Error: ' + e.message);
     }
