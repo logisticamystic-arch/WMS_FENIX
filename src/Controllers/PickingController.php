@@ -6708,6 +6708,45 @@ class PickingController extends BaseController
         }
     }
 
+    private function _getOrdenesPorPlanillaONumero(int $empresaId, ?int $sucursalId, string $numero)
+    {
+        $numeroClean = trim($numero);
+        $candidates  = [$numeroClean];
+
+        if (str_starts_with($numeroClean, 'DOC-')) {
+            $rawId = ltrim(substr($numeroClean, 4), '0');
+            if ($rawId !== '' && is_numeric($rawId)) {
+                $candidates[] = $rawId;
+                $candidates[] = (int)$rawId;
+            }
+        } elseif (is_numeric($numeroClean)) {
+            $candidates[] = (int)$numeroClean;
+            $candidates[] = 'DOC-' . str_pad($numeroClean, 5, '0', STR_PAD_LEFT);
+        }
+
+        $intCandidates = array_values(array_filter($candidates, fn($v) => is_int($v)));
+        $strCandidates = array_values(array_filter($candidates, fn($v) => is_string($v) && $v !== ''));
+
+        $query = OrdenPicking::where('empresa_id', $empresaId)
+            ->whereNotIn('estado', ['Anulado']);
+
+        if ($sucursalId !== null) {
+            $query->where('sucursal_id', $sucursalId);
+        }
+
+        return $query->where(function ($q) use ($strCandidates, $intCandidates) {
+            if (!empty($strCandidates)) {
+                $q->whereIn('planilla_numero', $strCandidates)
+                  ->orWhereIn('numero_orden', $strCandidates)
+                  ->orWhereIn('numero_pedido', $strCandidates)
+                  ->orWhereIn('numero_factura', $strCandidates);
+            }
+            if (!empty($intCandidates)) {
+                $q->orWhereIn('id', $intCandidates);
+            }
+        })->get();
+    }
+
     // ── POST /api/picking/planilla/{numero}/completar ─────────────────────────
     public function completarPlanilla(Request $r, Response $res, array $a): Response
     {
@@ -6716,14 +6755,10 @@ class PickingController extends BaseController
         $empresaId = $this->getEffectiveEmpresaId($user, $r);
 
         // Fetch open orders AND already-Completada orders that may have orphaned open lines
-        $ordenes = OrdenPicking::where('empresa_id', $empresaId)
-            ->where('sucursal_id', $user->sucursal_id)
-            ->where(fn($q) => $q->where('planilla_numero', $numero)->orWhere('numero_orden', $numero))
-            ->whereNotIn('estado', ['Anulado'])
-            ->get();
+        $ordenes = $this->_getOrdenesPorPlanillaONumero($empresaId, $user->sucursal_id, $numero);
 
         if ($ordenes->isEmpty()) {
-            return $this->ok($res, [], "Planilla {$numero} no encontrada o anulada");
+            return $this->error($res, "Planilla o pedido {$numero} no encontrado o anulado", 404);
         }
 
         $ordenIds = $ordenes->pluck('id');
@@ -6903,11 +6938,7 @@ class PickingController extends BaseController
         $numero    = $a['numero'];
         $empresaId = $this->getEffectiveEmpresaId($user, $r);
 
-        $ordenes = OrdenPicking::where('empresa_id', $empresaId)
-            ->where('sucursal_id', $user->sucursal_id)
-            ->where(fn($q) => $q->where('planilla_numero', $numero)->orWhere('numero_orden', $numero))
-            ->whereNotIn('estado', ['Anulado'])
-            ->get();
+        $ordenes = $this->_getOrdenesPorPlanillaONumero($empresaId, $user->sucursal_id, $numero);
 
         if ($ordenes->isEmpty()) {
             return $this->error($res, "Planilla {$numero} no encontrada", 404);
@@ -7037,14 +7068,12 @@ class PickingController extends BaseController
 
         if (!$numero || !$productoId) return $this->error($res, "Faltan datos requeridos.", 400);
 
-        $ordenes = \Illuminate\Database\Capsule\Manager::table('orden_pickings')
-            ->where('planilla_numero', $numero)
-            ->where('empresa_id', $empresaId)
-            ->pluck('id')->all();
+        $ordenes = $this->_getOrdenesPorPlanillaONumero($empresaId, null, $numero);
 
-        if (empty($ordenes)) return $this->error($res, "Planilla no encontrada.", 404);
+        if ($ordenes->isEmpty()) return $this->error($res, "Planilla no encontrada.", 404);
+        $ordenesIds = $ordenes->pluck('id')->all();
 
-        $lineas = PickingDetalle::whereIn('orden_picking_id', $ordenes)
+        $lineas = PickingDetalle::whereIn('orden_picking_id', $ordenesIds)
             ->where('producto_id', $productoId)
             ->whereIn('estado', ['Completado', 'Faltante'])
             ->get();
