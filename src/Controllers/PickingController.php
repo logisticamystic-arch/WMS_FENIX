@@ -5260,6 +5260,138 @@ class PickingController extends BaseController
         return $this->ok($res, ['pedido' => $pedido, 'observaciones' => $observaciones, 'affected' => $affected], 'Observación actualizada correctamente');
     }
 
+    // ── POST /api/picking/ordenes/editar-sucursal ────────────────────────────
+    public function editarSucursalOrden(Request $r, Response $res): Response
+    {
+        $user      = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $body      = $r->getParsedBody() ?? [];
+
+        $target   = trim($body['orden_id'] ?? $body['planilla_numero'] ?? $body['numero_orden'] ?? '');
+        $sucursal = trim($body['sucursal'] ?? $body['sucursal_entrega'] ?? '');
+
+        if ($target === '' || $sucursal === '') {
+            return $this->error($res, 'El número de orden/planilla y la nueva sucursal son obligatorios', 400);
+        }
+
+        $affected = Capsule::table('orden_pickings')
+            ->where('empresa_id', $empresaId)
+            ->where(function($q) use ($target) {
+                $q->where('id', is_numeric($target) ? (int)$target : 0)
+                  ->orWhere('numero_orden', $target)
+                  ->orWhere('planilla_numero', $target)
+                  ->orWhere('numero_pedido', $target);
+            })
+            ->update([
+                'sucursal_entrega' => $sucursal,
+                'cliente'          => $sucursal,
+                'updated_at'       => date('Y-m-d H:i:s'),
+            ]);
+
+        $this->audit($user, 'picking', 'editar_sucursal', 'orden_pickings', 0, null, [
+            'target'   => $target,
+            'sucursal' => $sucursal,
+        ]);
+
+        return $this->ok($res, ['target' => $target, 'sucursal' => $sucursal, 'affected' => $affected], 'Sucursal actualizada correctamente');
+    }
+
+    // ── POST /api/picking/detalles/editar-cantidad ──────────────────────────
+    public function editarCantidadDetalle(Request $r, Response $res): Response
+    {
+        $user      = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $body      = $r->getParsedBody() ?? [];
+
+        $detalleId = (int)($body['detalle_id'] ?? 0);
+        $cantSolic = isset($body['cantidad_solicitada']) ? (float)$body['cantidad_solicitada'] : null;
+        $cantPick  = isset($body['cantidad_pickeada']) ? (float)$body['cantidad_pickeada'] : null;
+
+        if ($detalleId <= 0) {
+            return $this->error($res, 'El ID de detalle es obligatorio', 400);
+        }
+
+        $updates = ['updated_at' => date('Y-m-d H:i:s')];
+        if ($cantSolic !== null && $cantSolic >= 0) {
+            $updates['cantidad_solicitada'] = $cantSolic;
+        }
+        if ($cantPick !== null && $cantPick >= 0) {
+            $updates['cantidad_pickeada'] = $cantPick;
+        }
+
+        $affected = Capsule::table('picking_detalles')
+            ->where('id', $detalleId)
+            ->update($updates);
+
+        $this->audit($user, 'picking', 'editar_cantidad', 'picking_detalles', $detalleId, null, $updates);
+
+        return $this->ok($res, ['detalle_id' => $detalleId, 'updates' => $updates], 'Cantidad actualizada correctamente');
+    }
+
+    // ── POST /api/picking/ordenes/editar-completo ─────────────────────────────
+    public function editarPedidoCompleto(Request $r, Response $res): Response
+    {
+        $user      = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $body      = $r->getParsedBody() ?? [];
+
+        $target        = trim($body['target'] ?? $body['orden_id'] ?? $body['planilla_numero'] ?? '');
+        $sucursal      = isset($body['sucursal']) ? trim($body['sucursal']) : null;
+        $observaciones = isset($body['observaciones']) ? trim($body['observaciones']) : null;
+        $detalles      = (array)($body['detalles'] ?? []);
+
+        if ($target === '') {
+            return $this->error($res, 'El identificador de orden o planilla es obligatorio', 400);
+        }
+
+        Capsule::transaction(function() use ($empresaId, $target, $sucursal, $observaciones, $detalles) {
+            $updateOrder = ['updated_at' => date('Y-m-d H:i:s')];
+            if ($sucursal !== null && $sucursal !== '') {
+                $updateOrder['sucursal_entrega'] = $sucursal;
+                $updateOrder['cliente']          = $sucursal;
+            }
+            if ($observaciones !== null) {
+                $updateOrder['observaciones'] = $observaciones !== '' ? $observaciones : null;
+            }
+
+            if (count($updateOrder) > 1) {
+                Capsule::table('orden_pickings')
+                    ->where('empresa_id', $empresaId)
+                    ->where(function($q) use ($target) {
+                        $q->where('id', is_numeric($target) ? (int)$target : 0)
+                          ->orWhere('numero_orden', $target)
+                          ->orWhere('planilla_numero', $target)
+                          ->orWhere('numero_pedido', $target);
+                    })
+                    ->update($updateOrder);
+            }
+
+            foreach ($detalles as $det) {
+                $detId = (int)($det['id'] ?? 0);
+                if ($detId <= 0) continue;
+                $updDet = ['updated_at' => date('Y-m-d H:i:s')];
+                if (isset($det['cantidad_solicitada']) && (float)$det['cantidad_solicitada'] >= 0) {
+                    $updDet['cantidad_solicitada'] = (float)$det['cantidad_solicitada'];
+                }
+                if (isset($det['cantidad_pickeada']) && (float)$det['cantidad_pickeada'] >= 0) {
+                    $updDet['cantidad_pickeada'] = (float)$det['cantidad_pickeada'];
+                }
+                if (count($updDet) > 1) {
+                    Capsule::table('picking_detalles')->where('id', $detId)->update($updDet);
+                }
+            }
+        });
+
+        $this->audit($user, 'picking', 'editar_pedido_completo', 'orden_pickings', 0, null, [
+            'target'        => $target,
+            'sucursal'      => $sucursal,
+            'observaciones' => $observaciones,
+            'detalles'      => count($detalles)
+        ]);
+
+        return $this->ok($res, null, 'Pedido y cantidades actualizados correctamente');
+    }
+
     // ── POST /api/picking/planillas/vr ─────────────────────────────────────────
     public function agregarVrPlanilla(Request $r, Response $res): Response
     {

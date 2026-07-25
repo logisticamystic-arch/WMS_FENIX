@@ -5170,17 +5170,31 @@ const MWMS = {
                   <div style="flex:1;min-width:0;">
                     <div style="font-size:.52rem;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Planilla</div>
                     <div style="font-size:1.5rem;font-weight:900;color:#1e293b;line-height:1;">${p.planilla_numero}</div>
-                    ${p.sucursal_entrega ? `
                     <div style="margin-top:4px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:3px 8px;display:inline-flex;align-items:center;gap:4px;max-width:100%;">
                       <i class="fa-solid fa-location-dot" style="color:#3b82f6;font-size:.65rem;flex-shrink:0;"></i>
                       <span style="font-size:.7rem;font-weight:800;color:#1d4ed8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.sucursal_entrega}</span>
-                      ${p.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;font-size:.65rem;flex-shrink:0;" title="${this.esc(p.observaciones)}"></i>` : ''}
-                    </div>` : ''}
+                      <i class="fa-solid fa-pen-to-square" style="color:#0284c7;font-size:.7rem;cursor:pointer;flex-shrink:0;" title="Editar sucursal" onclick="event.stopPropagation(); MWMS.promptEditarSucursalMobile('${p.planilla_numero}', '${this.esc(p.sucursal_entrega)}')"></i>
+                    </div>
                   </div>
                   <div style="text-align:right;flex-shrink:0;">
                     <div style="font-size:.52rem;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Ruta</div>
                     <div style="font-size:.82rem;font-weight:800;color:#0F4C81;">${p.ruta || '—'}</div>
                     <div style="margin-top:6px;">${estadoBadge}</div>
+                  </div>
+                </div>
+
+                <!-- Encabezado Observaciones Prominente con Boton Unico "Editar Pedido" -->
+                <div style="margin-bottom:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;" onclick="event.stopPropagation();">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                    <span style="font-size:.65rem;font-weight:800;color:#92400e;text-transform:uppercase;">
+                      <i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-right:4px;"></i> Observaciones Pedido:
+                    </span>
+                    <button type="button" style="background:#0F4C81;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;font-weight:700;" title="Editar pedido completo" onclick="event.stopPropagation(); MWMS.abrirModalEditarPedidoMobile('${p.planilla_numero}', '${this.esc(p.sucursal_entrega || '')}', '${this.esc(p.observaciones || '')}')">
+                      <i class="fa-solid fa-pen-to-square"></i> <span style="font-size:.7rem;">Editar Pedido</span>
+                    </button>
+                  </div>
+                  <div style="font-size:.78rem;color:#78350f;font-weight:600;word-break:break-word;line-height:1.3;">
+                    ${p.observaciones ? this.esc(p.observaciones) : '<span style="color:#b45309;font-style:italic;font-weight:400;font-size:.72rem;">Sin observaciones registradas</span>'}
                   </div>
                 </div>
 
@@ -5218,6 +5232,157 @@ const MWMS = {
           </div>
         </div>`;
     } catch(e) { this.toast(e.message, "error"); }
+  },
+
+  async promptEditarObservacionMobile(numero, obsActual) {
+    if (!numero) return;
+    const { value: nObs, isConfirmed } = await Swal.fire({
+      title: 'Editar Observación',
+      html: `
+        <div style="font-size:.8rem;color:#64748b;margin-bottom:8px;text-align:left;">
+          Pedido / Planilla: <b>${this.esc(numero)}</b>
+        </div>
+        <textarea id="swal-obs-input" class="swal2-textarea" style="margin:0;width:100%;box-sizing:border-box;font-size:.85rem;" rows="3" placeholder="Ingrese las observaciones del pedido...">${this.esc(obsActual || '')}</textarea>`,
+      showCancelButton: true,
+      confirmButtonText: 'Guardar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0F4C81',
+      preConfirm: () => {
+        return document.getElementById('swal-obs-input').value.trim();
+      }
+    });
+
+    if (!isConfirmed) return;
+
+    try {
+      const r = await mApi('POST', '/picking/ordenes/observaciones', {
+        pedido_numero: numero,
+        observaciones: nObs
+      });
+      this.toast('Observación actualizada correctamente', 'success');
+      this.viewPicking();
+    } catch(e) {
+      this.toast(e.message || 'Error de conexión', 'error');
+    }
+  },
+
+  async abrirModalEditarPedidoMobile(numero, sucursalActual, obsActuales) {
+    if (!numero) return;
+
+    let lineas = [];
+    try {
+      const rp = await mApi('GET', '/picking/mis-planillas');
+      const plan = (rp.data || []).find(p => p.planilla_numero === numero);
+      if (plan && plan.detalles) {
+        lineas = plan.detalles.map(d => ({
+          id: d.id,
+          producto_nombre: d.producto?.nombre || d.descripcion || ('Producto #' + (d.producto_id || d.id)),
+          cantidad_solicitada: parseFloat(d.cantidad_solicitada || 0),
+          cantidad_pickeada: parseFloat(d.cantidad_pickeada || 0)
+        }));
+      }
+    } catch(e) {}
+
+    const { value: formValues, isConfirmed } = await Swal.fire({
+      title: `<i class="fa-solid fa-pen-to-square" style="color:#0F4C81;"></i> Editar Pedido #${this.esc(numero)}`,
+      html: `
+        <div style="text-align:left;font-size:12px;display:flex;flex-direction:column;gap:10px;">
+          <div>
+            <label style="font-weight:700;color:#334155;display:block;margin-bottom:3px;">
+              <i class="fa-solid fa-store" style="color:#0284c7;"></i> Sucursal / Cliente:
+            </label>
+            <input id="swal-m-sucursal" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;font-size:.85rem;padding:8px;" value="${this.esc(sucursalActual || '')}" placeholder="Nombre de la sucursal...">
+          </div>
+
+          <div>
+            <label style="font-weight:700;color:#334155;display:block;margin-bottom:3px;">
+              <i class="fa-solid fa-note-sticky" style="color:#f59e0b;"></i> Observaciones Encabezado:
+            </label>
+            <textarea id="swal-m-obs" class="swal2-textarea" style="margin:0;width:100%;box-sizing:border-box;font-size:.8rem;padding:8px;" rows="3" placeholder="Observaciones principales...">${this.esc(obsActuales || '')}</textarea>
+          </div>
+
+          ${lineas.length ? `
+          <div>
+            <label style="font-weight:700;color:#334155;display:block;margin-bottom:3px;">
+              <i class="fa-solid fa-boxes-stacked" style="color:#10b981;"></i> Cantidades de Productos:
+            </label>
+            <div style="max-height:140px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:6px;padding:4px;background:#f8fafc;">
+              ${lineas.map(d => `
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px 6px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:3px;">
+                  <div style="flex:1;min-width:0;font-size:10px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.esc(d.producto_nombre)}</div>
+                  <input type="number" min="0" step="0.01" data-m-det-id="${d.id}" class="swal-m-cant-item" style="width:65px;padding:3px;text-align:center;font-weight:700;font-size:11px;border:1px solid #94a3b8;border-radius:4px;" value="${d.cantidad_solicitada}">
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          ` : ''}
+        </div>`,
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-check"></i> Guardar Cambios',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0F4C81',
+      preConfirm: () => {
+        const suc = document.getElementById('swal-m-sucursal')?.value.trim();
+        const obs = document.getElementById('swal-m-obs')?.value.trim();
+        const inputs = Array.from(document.querySelectorAll('.swal-m-cant-item'));
+        const detalles = inputs.map(inp => ({
+          id: parseInt(inp.dataset.mDetId),
+          cantidad_solicitada: parseFloat(inp.value) || 0
+        }));
+        return { sucursal: suc, observaciones: obs, detalles: detalles };
+      }
+    });
+
+    if (!isConfirmed || !formValues) return;
+
+    this.loading(true);
+    try {
+      await mApi('POST', '/picking/ordenes/editar-completo', {
+        target: numero,
+        sucursal: formValues.sucursal,
+        observaciones: formValues.observaciones,
+        detalles: formValues.detalles
+      });
+      this.toast('Pedido actualizado correctamente', 'success');
+      this.viewPicking();
+    } catch(e) {
+      this.toast(e.message || 'Error al guardar cambios', 'error');
+    }
+    this.loading(false);
+  },
+
+  async promptEditarSucursalMobile(numero, sucursalActual) {
+    if (!numero) return;
+    const { value: nSuc, isConfirmed } = await Swal.fire({
+      title: 'Editar Sucursal / Cliente',
+      html: `
+        <div style="font-size:.8rem;color:#64748b;margin-bottom:8px;text-align:left;">
+          Pedido / Planilla: <b>${this.esc(numero)}</b>
+        </div>
+        <input id="swal-suc-input" class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;font-size:.9rem;" value="${this.esc(sucursalActual || '')}" placeholder="Nombre de la sucursal o cliente...">`,
+      showCancelButton: true,
+      confirmButtonText: 'Guardar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0F4C81',
+      preConfirm: () => {
+        const val = document.getElementById('swal-suc-input').value.trim();
+        if (!val) { Swal.showValidationMessage('Ingrese un nombre de sucursal válido'); return false; }
+        return val;
+      }
+    });
+
+    if (!isConfirmed) return;
+
+    try {
+      const r = await mApi('POST', '/picking/ordenes/editar-sucursal', {
+        target: numero,
+        sucursal: nSuc
+      });
+      this.toast('Sucursal actualizada correctamente', 'success');
+      this.viewPicking();
+    } catch(e) {
+      this.toast(e.message || 'Error de conexión', 'error');
+    }
   },
 
   async viewPlanilla(numero, verFaltantes = false) {

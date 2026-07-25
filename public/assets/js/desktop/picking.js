@@ -296,7 +296,7 @@ WMS_MODULES.picking = {
       </td>
       <td style="white-space:nowrap;font-size:12px;font-weight:600;color:#1d4ed8;">${g.ordenes?.[0]?.fecha_requerida ? WMS.formatDate(g.ordenes[0].fecha_requerida) : '—'}</td>
       <td style="font-size:11px;font-weight:600;">
-        ${WMS.esc([...g.clientes].join(', ') || '-')}
+        <span>${WMS.esc([...g.clientes].join(', ') || '-')}</span>
         ${g.observaciones.size ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc([...g.observaciones].join(' | '))}"></i>` : ''}
       </td>
       <td><span style="font-size:11px;font-weight:600;color:#64748b;">${WMS.esc(g.ruta)}</span></td>
@@ -315,6 +315,9 @@ WMS_MODULES.picking = {
       <td>
         ${!isDash ? `
           <div class="actions" style="gap:4px;flex-wrap:wrap;">
+            <button class="btn btn-sm btn-outline-primary" style="font-weight:700;" onclick="WMS_MODULES.picking.abrirModalEditarPedido('${WMS.esc(g.planilla)}')" title="Editar sucursal, observaciones y cantidades">
+              <i class="fa-solid fa-pen-to-square"></i> Editar Pedido
+            </button>
             ${g.estado === 'EnProceso' ? `<button class="btn btn-sm btn-success" onclick="WMS_MODULES.picking._cerrarPlanilla('${WMS.esc(g.planilla)}')"><i class="fa-solid fa-check-double"></i> Cerrar</button>` : ''}
             ${g.estado === 'Completado' ? `<button class="btn btn-sm btn-warning" onclick="WMS_MODULES.picking._reabrirPlanilla(${ordenIdsJson})"><i class="fa-solid fa-rotate-left"></i> Reabrir</button>` : ''}
           </div>
@@ -332,7 +335,21 @@ WMS_MODULES.picking = {
             const asignados = g.ordenes.filter(o => o.auxiliar?.nombre).length;
             const sinAsig   = g.ordenes.length - asignados;
             return `
-          <div style="background:#eff6ff;border-bottom:1px solid #bfdbfe;padding:8px 12px;">
+          <div style="background:#eff6ff;border-bottom:1px solid #bfdbfe;padding:10px 14px;">
+            <!-- BANNER DE OBSERVACIONES PROMINENTE EN TODO EL ENCABEZADO CON BOTON UNICO DE EDICION -->
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <div>
+                <strong style="color:#92400e;font-size:11px;text-transform:uppercase;display:block;margin-bottom:2px;">
+                  <i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-right:4px;"></i> Observaciones del Encabezado Principal:
+                </strong>
+                <span style="color:#78350f;font-size:12px;font-weight:700;">
+                  ${g.observaciones.size ? WMS.esc([...g.observaciones].join(' | ')) : '<em style="color:#b45309;font-weight:400;">Sin observaciones registradas</em>'}
+                </span>
+              </div>
+              <button class="btn btn-xs btn-primary" style="white-space:nowrap;font-size:10.5px;font-weight:700;padding:5px 10px;" onclick="WMS_MODULES.picking.abrirModalEditarPedido('${WMS.esc(g.planilla)}')">
+                <i class="fa-solid fa-pen-to-square"></i> Editar Pedido
+              </button>
+            </div>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
               <span style="font-size:10px;font-weight:700;color:#1e40af;text-transform:uppercase;">Pedidos de la planilla:</span>
               ${sinAsig > 0 ? `<span style="background:#fef3c7;color:#92400e;border-radius:3px;padding:1px 7px;font-size:10px;font-weight:700;"><i class="fa-solid fa-triangle-exclamation"></i> ${sinAsig} sin asignar</span>` : ''}
@@ -406,8 +423,101 @@ WMS_MODULES.picking = {
     await this._cargarPedidos();
   },
 
-  _todayStr() {
-    return WMS.getToday();
+  async abrirModalEditarPedido(planillaKey) {
+    if (!planillaKey) return;
+    const g = (this._gruposCache && this._gruposCache[planillaKey]) || (this._agruparPorPlanilla(this._pedidosCache || [])[planillaKey]);
+    const sucursalActual = g ? [...(g.clientes || [])].join(', ') : '';
+    const obsActuales   = g ? [...(g.observaciones || [])].join(' | ') : '';
+
+    let lineasDetalles = [];
+    if (g && g.ordenes) {
+      g.ordenes.forEach(o => {
+        (o.detalles || []).forEach(d => {
+          lineasDetalles.push({
+            id: d.id,
+            producto_nombre: d.producto?.nombre || d.descripcion || ('Producto #' + (d.producto_id || d.id)),
+            cantidad_solicitada: parseFloat(d.cantidad_solicitada || 0),
+            cantidad_pickeada: parseFloat(d.cantidad_pickeada || 0)
+          });
+        });
+      });
+    }
+
+    const { value: formValues, isConfirmed } = await Swal.fire({
+      title: `<i class="fa-solid fa-pen-to-square" style="color:#0F4C81;"></i> Editar Pedido #${WMS.esc(planillaKey)}`,
+      width: '560px',
+      html: `
+        <div style="text-align:left;font-size:13px;display:flex;flex-direction:column;gap:12px;">
+          <!-- Campo 1: Nombre de Sucursal / Cliente -->
+          <div>
+            <label style="font-weight:700;color:#334155;display:block;margin-bottom:4px;">
+              <i class="fa-solid fa-store" style="color:#0284c7;"></i> Nombre de Sucursal / Cliente:
+            </label>
+            <input id="swal-edit-sucursal" class="form-control" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-weight:600;" value="${WMS.esc(sucursalActual)}">
+          </div>
+
+          <!-- Campo 2: Observaciones (Muestra en todo el Encabezado) -->
+          <div>
+            <label style="font-weight:700;color:#334155;display:block;margin-bottom:4px;">
+              <i class="fa-solid fa-note-sticky" style="color:#f59e0b;"></i> Observaciones (Encabezado Principal):
+            </label>
+            <textarea id="swal-edit-obs" class="form-control" rows="3" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" placeholder="Escriba las observaciones del encabezado...">${WMS.esc(obsActuales)}</textarea>
+          </div>
+
+          <!-- Campo 3: Editar Cantidades de Productos -->
+          <div>
+            <label style="font-weight:700;color:#334155;display:block;margin-bottom:4px;">
+              <i class="fa-solid fa-boxes-stacked" style="color:#10b981;"></i> Cantidades de Productos:
+            </label>
+            <div style="max-height:180px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:6px;padding:6px;background:#f8fafc;">
+              ${lineasDetalles.length ? lineasDetalles.map(d => `
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:4px;">
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:700;font-size:11px;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${WMS.esc(d.producto_nombre)}</div>
+                    <div style="font-size:10px;color:#64748b;">Separado: <b>${d.cantidad_pickeada}</b></div>
+                  </div>
+                  <div style="width:110px;text-align:right;">
+                    <label style="font-size:9px;color:#64748b;display:block;">Cant. Solicitada</label>
+                    <input type="number" min="0" step="0.01" data-det-id="${d.id}" class="swal-edit-cant-item form-control" style="width:85px;padding:3px 6px;text-align:center;font-weight:700;font-size:12px;" value="${d.cantidad_solicitada}">
+                  </div>
+                </div>
+              `).join('') : '<div style="font-size:11px;color:#94a3b8;text-align:center;padding:10px;">Sin líneas detalladas para modificar</div>'}
+            </div>
+          </div>
+        </div>`,
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-check"></i> Guardar Cambios',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0F4C81',
+      preConfirm: () => {
+        const suc = document.getElementById('swal-edit-sucursal')?.value.trim();
+        const obs = document.getElementById('swal-edit-obs')?.value.trim();
+        const inputs = Array.from(document.querySelectorAll('.swal-edit-cant-item'));
+        const detalles = inputs.map(inp => ({
+          id: parseInt(inp.dataset.detId),
+          cantidad_solicitada: parseFloat(inp.value) || 0
+        }));
+        return { sucursal: suc, observaciones: obs, detalles: detalles };
+      }
+    });
+
+    if (!isConfirmed || !formValues) return;
+
+    WMS.spinner();
+    try {
+      const res = await API.post('/picking/ordenes/editar-completo', {
+        target: planillaKey,
+        sucursal: formValues.sucursal,
+        observaciones: formValues.observaciones,
+        detalles: formValues.detalles
+      });
+      WMS.toast('success', res.message || 'Pedido actualizado correctamente');
+      this.show_pedidos(true);
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error al guardar cambios');
+    } finally {
+      WMS.spinner(false);
+    }
   },
 
   async _cargarPedidos() {

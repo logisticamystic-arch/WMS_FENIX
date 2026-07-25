@@ -689,31 +689,33 @@ WMS_MODULES.despacho = {
   },
 
   async imprimirRemisionesDirectasSeleccionadas() {
-    // Solo cuentan los checkboxes de filas VISIBLES: si el usuario filtró por
-    // sucursal/búsqueda y había marcado filas de otra sucursal antes de cambiar el
-    // filtro, esas quedan ocultas pero seguían "checked" en el DOM — se ignoran
-    // para que la remisión combine solo lo que se ve y se seleccionó a propósito.
-    const checks = Array.from(document.querySelectorAll('.cert-remision-check-directa:checked'))
+    const checksDirectas = Array.from(document.querySelectorAll('.cert-remision-check-directa:checked'))
       .filter(cb => cb.closest('tr')?.style.display !== 'none');
-    if (!checks.length) {
-      WMS.toast('warning', 'Selecciona al menos una planilla visible para imprimir');
+    const checksSesion = Array.from(document.querySelectorAll('.cert-remision-check:checked'))
+      .filter(cb => cb.closest('tr')?.style.display !== 'none');
+
+    if (!checksDirectas.length && !checksSesion.length) {
+      WMS.toast('warning', 'Seleccione al menos una planilla visible para imprimir');
       return;
     }
-    // Combina EXACTAMENTE los pedidos de las filas marcadas — el usuario elige
-    // dinámicamente qué planillas salen juntas en la remisión, en vez de que el
-    // sistema las agrupe automáticamente por sucursal+fecha (lo que las mezclaba
-    // sin que se pidiera).
+
     let ordenIds = [];
-    checks.forEach(cb => {
+    checksDirectas.forEach(cb => {
       try { ordenIds = ordenIds.concat(JSON.parse(cb.dataset.ordenIds || '[]')); } catch(_) {}
     });
-    if (!ordenIds.length) {
-      WMS.toast('warning', 'La selección no tiene pedidos asociados');
-      return;
+
+    if (checksSesion.length) {
+      const sesionIds = checksSesion.map(cb => cb.dataset.sesionId).filter(Boolean);
+      for (const sId of sesionIds) {
+        this.imprimirRemision(sId);
+      }
     }
-    const n = checks.length;
-    WMS.toast('info', `Generando remisión consolidada de ${n} planilla(s) seleccionada(s)...`);
-    this.imprimirRemisionPorOrdenes(ordenIds, `${n} planilla(s)`);
+
+    if (ordenIds.length) {
+      const n = checksDirectas.length;
+      WMS.toast('info', `Generando remisión consolidada de ${n} planilla(s) seleccionada(s)...`);
+      this.imprimirRemisionPorOrdenes(ordenIds, `${n} planilla(s)`);
+    }
   },
 
   async imprimirRemisionesSeleccionadas() {
