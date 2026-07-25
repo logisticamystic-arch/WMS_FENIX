@@ -5230,10 +5230,9 @@ class PickingController extends BaseController
     public function guardarObservacionOrden(Request $r, Response $res): Response
     {
         $user      = $r->getAttribute('user');
-        $empresaId = $this->getEffectiveEmpresaId($user, $r);
         $body      = $r->getParsedBody() ?? [];
 
-        $pedido        = trim($body['pedido_numero'] ?? '');
+        $pedido        = trim($body['pedido_numero'] ?? $body['pedido'] ?? $body['planilla_numero'] ?? '');
         $observaciones = trim($body['observaciones'] ?? '');
 
         if ($pedido === '') {
@@ -5241,11 +5240,12 @@ class PickingController extends BaseController
         }
 
         $affected = Capsule::table('orden_pickings')
-            ->where('empresa_id', $empresaId)
             ->where(function($q) use ($pedido) {
                 $q->where('numero_pedido', $pedido)
                   ->orWhere('numero_factura', $pedido)
-                  ->orWhere('numero_orden', $pedido);
+                  ->orWhere('numero_orden', $pedido)
+                  ->orWhere('planilla_numero', $pedido)
+                  ->orWhere('id', is_numeric($pedido) ? (int)$pedido : 0);
             })
             ->update([
                 'observaciones' => $observaciones !== '' ? $observaciones : null,
@@ -5260,74 +5260,6 @@ class PickingController extends BaseController
         return $this->ok($res, ['pedido' => $pedido, 'observaciones' => $observaciones, 'affected' => $affected], 'Observación actualizada correctamente');
     }
 
-    // ── POST /api/picking/ordenes/editar-sucursal ────────────────────────────
-    public function editarSucursalOrden(Request $r, Response $res): Response
-    {
-        $user      = $r->getAttribute('user');
-        $empresaId = $this->getEffectiveEmpresaId($user, $r);
-        $body      = $r->getParsedBody() ?? [];
-
-        $target   = trim($body['orden_id'] ?? $body['planilla_numero'] ?? $body['numero_orden'] ?? '');
-        $sucursal = trim($body['sucursal'] ?? $body['sucursal_entrega'] ?? '');
-
-        if ($target === '' || $sucursal === '') {
-            return $this->error($res, 'El número de orden/planilla y la nueva sucursal son obligatorios', 400);
-        }
-
-        $affected = Capsule::table('orden_pickings')
-            ->where('empresa_id', $empresaId)
-            ->where(function($q) use ($target) {
-                $q->where('id', is_numeric($target) ? (int)$target : 0)
-                  ->orWhere('numero_orden', $target)
-                  ->orWhere('planilla_numero', $target)
-                  ->orWhere('numero_pedido', $target);
-            })
-            ->update([
-                'sucursal_entrega' => $sucursal,
-                'cliente'          => $sucursal,
-                'updated_at'       => date('Y-m-d H:i:s'),
-            ]);
-
-        $this->audit($user, 'picking', 'editar_sucursal', 'orden_pickings', 0, null, [
-            'target'   => $target,
-            'sucursal' => $sucursal,
-        ]);
-
-        return $this->ok($res, ['target' => $target, 'sucursal' => $sucursal, 'affected' => $affected], 'Sucursal actualizada correctamente');
-    }
-
-    // ── POST /api/picking/detalles/editar-cantidad ──────────────────────────
-    public function editarCantidadDetalle(Request $r, Response $res): Response
-    {
-        $user      = $r->getAttribute('user');
-        $empresaId = $this->getEffectiveEmpresaId($user, $r);
-        $body      = $r->getParsedBody() ?? [];
-
-        $detalleId = (int)($body['detalle_id'] ?? 0);
-        $cantSolic = isset($body['cantidad_solicitada']) ? (float)$body['cantidad_solicitada'] : null;
-        $cantPick  = isset($body['cantidad_pickeada']) ? (float)$body['cantidad_pickeada'] : null;
-
-        if ($detalleId <= 0) {
-            return $this->error($res, 'El ID de detalle es obligatorio', 400);
-        }
-
-        $updates = ['updated_at' => date('Y-m-d H:i:s')];
-        if ($cantSolic !== null && $cantSolic >= 0) {
-            $updates['cantidad_solicitada'] = $cantSolic;
-        }
-        if ($cantPick !== null && $cantPick >= 0) {
-            $updates['cantidad_pickeada'] = $cantPick;
-        }
-
-        $affected = Capsule::table('picking_detalles')
-            ->where('id', $detalleId)
-            ->update($updates);
-
-        $this->audit($user, 'picking', 'editar_cantidad', 'picking_detalles', $detalleId, null, $updates);
-
-        return $this->ok($res, ['detalle_id' => $detalleId, 'updates' => $updates], 'Cantidad actualizada correctamente');
-    }
-
     // ── POST /api/picking/ordenes/editar-completo ─────────────────────────────
     public function editarPedidoCompleto(Request $r, Response $res): Response
     {
@@ -5339,12 +5271,13 @@ class PickingController extends BaseController
         $sucursal      = isset($body['sucursal']) ? trim($body['sucursal']) : null;
         $observaciones = isset($body['observaciones']) ? trim($body['observaciones']) : null;
         $detalles      = (array)($body['detalles'] ?? []);
+        $nuevasLineas   = (array)($body['nuevas_lineas'] ?? []);
 
         if ($target === '') {
             return $this->error($res, 'El identificador de orden o planilla es obligatorio', 400);
         }
 
-        Capsule::transaction(function() use ($empresaId, $target, $sucursal, $observaciones, $detalles) {
+        Capsule::transaction(function() use ($empresaId, $target, $sucursal, $observaciones, $detalles, $nuevasLineas) {
             $updateOrder = ['updated_at' => date('Y-m-d H:i:s')];
             if ($sucursal !== null && $sucursal !== '') {
                 $updateOrder['sucursal_entrega'] = $sucursal;
@@ -5354,21 +5287,24 @@ class PickingController extends BaseController
                 $updateOrder['observaciones'] = $observaciones !== '' ? $observaciones : null;
             }
 
-            if (count($updateOrder) > 1) {
-                Capsule::table('orden_pickings')
-                    ->where('empresa_id', $empresaId)
-                    ->where(function($q) use ($target) {
-                        $q->where('id', is_numeric($target) ? (int)$target : 0)
-                          ->orWhere('numero_orden', $target)
-                          ->orWhere('planilla_numero', $target)
-                          ->orWhere('numero_pedido', $target);
-                    })
-                    ->update($updateOrder);
-            }
+            Capsule::table('orden_pickings')
+                ->where(function($q) use ($target) {
+                    $q->where('id', is_numeric($target) ? (int)$target : 0)
+                      ->orWhere('numero_orden', $target)
+                      ->orWhere('planilla_numero', $target)
+                      ->orWhere('numero_pedido', $target)
+                      ->orWhere('numero_factura', $target);
+                })
+                ->update($updateOrder);
 
+            // Procesar líneas existentes
             foreach ($detalles as $det) {
                 $detId = (int)($det['id'] ?? 0);
                 if ($detId <= 0) continue;
+                if (!empty($det['eliminar'])) {
+                    Capsule::table('picking_detalles')->where('id', $detId)->delete();
+                    continue;
+                }
                 $updDet = ['updated_at' => date('Y-m-d H:i:s')];
                 if (isset($det['cantidad_solicitada']) && (float)$det['cantidad_solicitada'] >= 0) {
                     $updDet['cantidad_solicitada'] = (float)$det['cantidad_solicitada'];
@@ -5380,16 +5316,50 @@ class PickingController extends BaseController
                     Capsule::table('picking_detalles')->where('id', $detId)->update($updDet);
                 }
             }
+
+            // Procesar nuevas líneas a agregar
+            if (!empty($nuevasLineas)) {
+                $orden = OrdenPicking::where('empresa_id', $empresaId)
+                    ->where(function($q) use ($target) {
+                        $q->where('id', is_numeric($target) ? (int)$target : 0)
+                          ->orWhere('numero_orden', $target)
+                          ->orWhere('planilla_numero', $target)
+                          ->orWhere('numero_pedido', $target);
+                    })
+                    ->first();
+
+                if ($orden) {
+                    foreach ($nuevasLineas as $nl) {
+                        $prodId = (int)($nl['producto_id'] ?? 0);
+                        $cant   = (float)($nl['cantidad_solicitada'] ?? 0);
+                        if ($prodId <= 0 || $cant <= 0) continue;
+                        $prod = Producto::where('empresa_id', $empresaId)->find($prodId);
+                        if (!$prod) continue;
+
+                        PickingDetalle::create([
+                            'orden_picking_id'    => $orden->id,
+                            'producto_id'         => $prod->id,
+                            'cantidad_solicitada' => $cant,
+                            'cantidad_pickeada'   => 0,
+                            'devolucion_qty'      => 0,
+                            'estado'              => 'Pendiente',
+                            'ambiente'            => $this->_clasificarAmbiente($prod),
+                            'costo_unitario'      => $prod->costo_unitario ?? $prod->precio_compra ?? 0,
+                        ]);
+                    }
+                }
+            }
         });
 
         $this->audit($user, 'picking', 'editar_pedido_completo', 'orden_pickings', 0, null, [
             'target'        => $target,
             'sucursal'      => $sucursal,
             'observaciones' => $observaciones,
-            'detalles'      => count($detalles)
+            'detalles'      => count($detalles),
+            'nuevas'        => count($nuevasLineas)
         ]);
 
-        return $this->ok($res, null, 'Pedido y cantidades actualizados correctamente');
+        return $this->ok($res, null, 'Pedido, sucursal, observaciones y referencias actualizados correctamente');
     }
 
     // ── POST /api/picking/planillas/vr ─────────────────────────────────────────

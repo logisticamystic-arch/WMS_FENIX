@@ -425,6 +425,14 @@ WMS_MODULES.picking = {
 
   async abrirModalEditarPedido(planillaKey) {
     if (!planillaKey) return;
+    WMS.spinner(true);
+    let clientes = [];
+    try {
+      const cr = await API.get('/param/clientes');
+      clientes = cr.data || cr || [];
+    } catch(e) { clientes = []; }
+    WMS.spinner(false);
+
     const g = (this._gruposCache && this._gruposCache[planillaKey]) || (this._agruparPorPlanilla(this._pedidosCache || [])[planillaKey]);
     const sucursalActual = g ? [...(g.clientes || [])].join(', ') : '';
     const obsActuales   = g ? [...(g.observaciones || [])].join(' | ') : '';
@@ -435,7 +443,9 @@ WMS_MODULES.picking = {
         (o.detalles || []).forEach(d => {
           lineasDetalles.push({
             id: d.id,
+            producto_id: d.producto_id || d.id,
             producto_nombre: d.producto?.nombre || d.descripcion || ('Producto #' + (d.producto_id || d.id)),
+            codigo: d.producto?.codigo_barras || d.producto?.codigo_interno || '',
             cantidad_solicitada: parseFloat(d.cantidad_solicitada || 0),
             cantidad_pickeada: parseFloat(d.cantidad_pickeada || 0)
           });
@@ -443,45 +453,103 @@ WMS_MODULES.picking = {
       });
     }
 
+    window._tempNuevasLineas = [];
+
     const { value: formValues, isConfirmed } = await Swal.fire({
       title: `<i class="fa-solid fa-pen-to-square" style="color:#0F4C81;"></i> Editar Pedido #${WMS.esc(planillaKey)}`,
-      width: '560px',
+      width: '640px',
       html: `
-        <div style="text-align:left;font-size:13px;display:flex;flex-direction:column;gap:12px;">
-          <!-- Campo 1: Nombre de Sucursal / Cliente -->
+        <div style="text-align:left;font-size:12px;display:flex;flex-direction:column;gap:12px;">
+          
+          <!-- Selector de Cliente / Sucursal -->
           <div>
             <label style="font-weight:700;color:#334155;display:block;margin-bottom:4px;">
-              <i class="fa-solid fa-store" style="color:#0284c7;"></i> Nombre de Sucursal / Cliente:
+              <i class="fa-solid fa-store" style="color:#0284c7;"></i> Seleccionar Cliente / Sucursal:
             </label>
-            <input id="swal-edit-sucursal" class="form-control" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-weight:600;" value="${WMS.esc(sucursalActual)}">
+            <select id="swal-edit-suc-sel" class="form-control" style="width:100%;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-weight:600;margin-bottom:4px;"
+                    onchange="const val = this.value; if(val !== '__custom__') document.getElementById('swal-edit-sucursal').value = val;">
+              <option value="">-- Seleccionar de la lista de Clientes --</option>
+              ${clientes.map(c => {
+                const name = WMS.esc(c.razon_social || c.nombre || '');
+                const sel = (name.toLowerCase() === sucursalActual.toLowerCase()) ? 'selected' : '';
+                return `<option value="${name}" ${sel}>${name} (${WMS.esc(c.nit || c.documento || 'NIT')})</option>`;
+              }).join('')}
+              <option value="__custom__">-- Ingresar nombre personalizado --</option>
+            </select>
+            <input id="swal-edit-sucursal" class="form-control" placeholder="Nombre de la sucursal..." style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-weight:600;" value="${WMS.esc(sucursalActual)}">
           </div>
 
-          <!-- Campo 2: Observaciones (Muestra en todo el Encabezado) -->
+          <!-- Observaciones (Encabezado Principal) -->
           <div>
             <label style="font-weight:700;color:#334155;display:block;margin-bottom:4px;">
               <i class="fa-solid fa-note-sticky" style="color:#f59e0b;"></i> Observaciones (Encabezado Principal):
             </label>
-            <textarea id="swal-edit-obs" class="form-control" rows="3" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" placeholder="Escriba las observaciones del encabezado...">${WMS.esc(obsActuales)}</textarea>
+            <textarea id="swal-edit-obs" class="form-control" rows="2" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;" placeholder="Observaciones principales...">${WMS.esc(obsActuales)}</textarea>
           </div>
 
-          <!-- Campo 3: Editar Cantidades de Productos -->
+          <!-- Referencias Existentes y Cantidades -->
           <div>
             <label style="font-weight:700;color:#334155;display:block;margin-bottom:4px;">
-              <i class="fa-solid fa-boxes-stacked" style="color:#10b981;"></i> Cantidades de Productos:
+              <i class="fa-solid fa-boxes-stacked" style="color:#10b981;"></i> Referencias y Cantidades del Pedido:
             </label>
-            <div style="max-height:180px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:6px;padding:6px;background:#f8fafc;">
+            <div id="swal-edit-lineas-wrap" style="max-height:160px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:6px;padding:6px;background:#f8fafc;">
               ${lineasDetalles.length ? lineasDetalles.map(d => `
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:4px;">
+                <div class="swal-item-row" data-det-id="${d.id}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:4px;">
                   <div style="flex:1;min-width:0;">
-                    <div style="font-weight:700;font-size:11px;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${WMS.esc(d.producto_nombre)}</div>
-                    <div style="font-size:10px;color:#64748b;">Separado: <b>${d.cantidad_pickeada}</b></div>
+                    <div style="font-weight:700;font-size:11px;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${d.codigo ? '['+WMS.esc(d.codigo)+'] ' : ''}${WMS.esc(d.producto_nombre)}</div>
+                    <div style="font-size:9.5px;color:#64748b;">Separado: <b>${d.cantidad_pickeada}</b> und</div>
                   </div>
-                  <div style="width:110px;text-align:right;">
-                    <label style="font-size:9px;color:#64748b;display:block;">Cant. Solicitada</label>
-                    <input type="number" min="0" step="0.01" data-det-id="${d.id}" class="swal-edit-cant-item form-control" style="width:85px;padding:3px 6px;text-align:center;font-weight:700;font-size:12px;" value="${d.cantidad_solicitada}">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div>
+                      <label style="font-size:8.5px;color:#64748b;display:block;margin:0;text-align:center;">Solicitado</label>
+                      <input type="number" min="0" step="0.01" data-det-id="${d.id}" class="swal-edit-cant-item form-control" style="width:75px;padding:2px 5px;text-align:center;font-weight:700;font-size:11px;" value="${d.cantidad_solicitada}">
+                    </div>
+                    <button type="button" class="btn btn-xs btn-outline-danger" style="padding:2px 6px;margin-top:10px;" title="Eliminar referencia" onclick="this.closest('.swal-item-row').classList.add('deleted'); this.closest('.swal-item-row').style.opacity='0.3'; this.closest('.swal-item-row').setAttribute('data-deleted','1');">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
                   </div>
                 </div>
-              `).join('') : '<div style="font-size:11px;color:#94a3b8;text-align:center;padding:10px;">Sin líneas detalladas para modificar</div>'}
+              `).join('') : '<div style="font-size:11px;color:#94a3b8;text-align:center;padding:8px;">Sin referencias en la orden</div>'}
+            </div>
+          </div>
+
+          <!-- Agregar Nueva Referencia -->
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px;">
+            <div style="font-weight:700;font-size:11px;color:#1d4ed8;margin-bottom:6px;text-transform:uppercase;">
+              <i class="fa-solid fa-plus-circle"></i> Agregar Nueva Referencia al Pedido
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <div style="flex:1;position:relative;">
+                <input id="swal-add-prod-buscar" class="form-control" style="font-size:11px;padding:5px 8px;" placeholder="Buscar producto por código o nombre..."
+                       oninput="clearTimeout(window._swTimer); window._swTimer=setTimeout(async()=>{
+                         const q=this.value.trim(); const resDiv=document.getElementById('swal-add-prod-res');
+                         if(!q || q.length<2){ resDiv.style.display='none'; return; }
+                         try {
+                           const r = await API.get('/param/productos/buscar?q=' + encodeURIComponent(q) + '&limit=6');
+                           const items = r.data || r || [];
+                           if(!items.length) { resDiv.innerHTML='<div style=padding:6px;font-size:10px;color:#94a3b8;>Sin resultados</div>'; resDiv.style.display='block'; return; }
+                           resDiv.innerHTML = items.map(p => \`<div style='padding:5px 8px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:11px;' onclick='document.getElementById(\\"swal-add-prod-id\\").value=\"\${p.id}\";document.getElementById(\\"swal-add-prod-buscar\\").value=\"\${WMS.esc(p.nombre||'')} ([\${WMS.esc(p.codigo_interno||'')}]\";document.getElementById(\\"swal-add-prod-res\\").style.display=\"none\";'>\${WMS.esc(p.codigo_interno||'')} — \${WMS.esc(p.nombre||'')}</div>\`).join('');
+                           resDiv.style.display='block';
+                         } catch(e){}
+                       }, 350)">
+                <div id="swal-add-prod-res" style="display:none;position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #cbd5e1;border-radius:4px;max-height:130px;overflow-y:auto;z-index:9999;box-shadow:0 4px 6px rgba(0,0,0,.1);"></div>
+                <input type="hidden" id="swal-add-prod-id">
+              </div>
+              <input id="swal-add-prod-cant" type="number" min="1" step="1" placeholder="Cant" style="width:65px;padding:5px 6px;text-align:center;font-size:11px;font-weight:700;border:1px solid #cbd5e1;border-radius:4px;" value="1">
+              <button type="button" class="btn btn-xs btn-success" style="font-weight:700;white-space:nowrap;padding:5px 10px;" onclick="
+                const pId = document.getElementById('swal-add-prod-id').value;
+                const pNom = document.getElementById('swal-add-prod-buscar').value;
+                const cVal = parseFloat(document.getElementById('swal-add-prod-cant').value) || 0;
+                if(!pId || cVal<=0) { WMS.toast('warning', 'Seleccione un producto y cantidad válida'); return; }
+                window._tempNuevasLineas.push({ producto_id: parseInt(pId), cantidad_solicitada: cVal });
+                const wrap = document.getElementById('swal-edit-lineas-wrap');
+                wrap.innerHTML += \`<div style='display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;margin-bottom:4px;'>
+                  <div style='font-weight:700;font-size:11px;color:#166534;'>\${WMS.esc(pNom)} <span style='font-size:9px;background:#dcfce7;padding:1px 5px;border-radius:3px;'>NUEVO</span></div>
+                  <div style='font-weight:800;font-size:11px;color:#15803d;'>\${cVal} und</div>
+                </div>\`;
+                document.getElementById('swal-add-prod-id').value=''; document.getElementById('swal-add-prod-buscar').value=''; document.getElementById('swal-add-prod-cant').value='1';
+                WMS.toast('info', 'Referencia agregada a la lista');
+              ">+ Agregar</button>
             </div>
           </div>
         </div>`,
@@ -492,12 +560,23 @@ WMS_MODULES.picking = {
       preConfirm: () => {
         const suc = document.getElementById('swal-edit-sucursal')?.value.trim();
         const obs = document.getElementById('swal-edit-obs')?.value.trim();
-        const inputs = Array.from(document.querySelectorAll('.swal-edit-cant-item'));
-        const detalles = inputs.map(inp => ({
-          id: parseInt(inp.dataset.detId),
-          cantidad_solicitada: parseFloat(inp.value) || 0
-        }));
-        return { sucursal: suc, observaciones: obs, detalles: detalles };
+        const rows = Array.from(document.querySelectorAll('.swal-item-row'));
+        const detalles = rows.map(r => {
+          const id = parseInt(r.dataset.detId);
+          const input = r.querySelector('.swal-edit-cant-item');
+          const isDeleted = r.getAttribute('data-deleted') === '1';
+          return {
+            id: id,
+            cantidad_solicitada: parseFloat(input?.value || 0),
+            eliminar: isDeleted
+          };
+        });
+        return {
+          sucursal: suc,
+          observaciones: obs,
+          detalles: detalles,
+          nuevas_lineas: window._tempNuevasLineas || []
+        };
       }
     });
 
@@ -509,7 +588,8 @@ WMS_MODULES.picking = {
         target: planillaKey,
         sucursal: formValues.sucursal,
         observaciones: formValues.observaciones,
-        detalles: formValues.detalles
+        detalles: formValues.detalles,
+        nuevas_lineas: formValues.nuevas_lineas
       });
       WMS.toast('success', res.message || 'Pedido actualizado correctamente');
       this.show_pedidos(true);
