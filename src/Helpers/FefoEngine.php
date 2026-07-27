@@ -124,20 +124,19 @@ class FefoEngine
             ]);
 
         if ($controlaVencimiento) {
-            // FEFO estricto + Ruta física por ubicación:
-            // 1° Menor fecha_vencimiento primero (FEFO). NULLs al final.
-            // 2° Pasillo ASC (numérico natural)
-            // 3° Módulo ASC (numérico natural)
-            // 4° Nivel ASC (numérico natural)
-            // 5° Posición ASC (numérico natural)
-            // 6° Código de ubicación ASC
+            // Ruta física por ubicación primero (Pasillo -> Módulo -> Nivel -> Posición) + FEFO:
+            // 1° Pasillo ASC (Consume todo Pasillo 01 antes de pasar al Pasillo 02)
+            // 2° Módulo ASC (Consume todo Módulo 01 antes de pasar al Módulo 02)
+            // 3° Nivel ASC (Nivel 01, 02, 03...)
+            // 4° Posición ASC
+            // 5° Fecha Vencimiento ASC (FEFO desempate)
             $query
-                ->orderByRaw('CASE WHEN i.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
-                ->orderBy('i.fecha_vencimiento', 'asc')
                 ->orderByRaw('COALESCE(LENGTH(u.pasillo), 0) ASC, u.pasillo ASC')
                 ->orderByRaw('COALESCE(LENGTH(u.modulo), 0) ASC, u.modulo ASC')
                 ->orderByRaw('COALESCE(LENGTH(u.nivel), 0) ASC, u.nivel ASC')
                 ->orderByRaw('COALESCE(LENGTH(u.posicion), 0) ASC, u.posicion ASC')
+                ->orderByRaw('CASE WHEN i.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
+                ->orderBy('i.fecha_vencimiento', 'asc')
                 ->orderBy('u.codigo', 'asc')
                 ->orderBy('i.created_at', 'asc');
         } else {
