@@ -703,30 +703,87 @@ WMS_MODULES.despacho = {
     checksDirectas.forEach(cb => {
       try { ordenIds = ordenIds.concat(JSON.parse(cb.dataset.ordenIds || '[]')); } catch(_) {}
     });
+    const sesionIds = checksSesion.map(cb => cb.dataset.sesionId).filter(Boolean);
 
-    // Disparar varios window.open() seguidos en el mismo tick hace que el bloqueador
-    // de popups del navegador descarte todos menos el primero — por eso el
-    // "Imprimir Consolidado" fallaba con 2+ planillas de sesión seleccionadas.
-    // Se secuencia igual que imprimirRemisionesSeleccionadas(), esperando a que
-    // cada ventana termine (o falle) antes de abrir la siguiente.
-    if (checksSesion.length) {
-      const sesionIds = checksSesion.map(cb => cb.dataset.sesionId).filter(Boolean);
-      for (let i = 0; i < sesionIds.length; i++) {
-        WMS.toast('info', `Imprimiendo ${i + 1} de ${sesionIds.length}...`);
-        await this._imprimirSesionSecuencial(sesionIds[i], i + 1, sesionIds.length);
-      }
+    // Antes esto abría una ventana por remisión de sesión (una por una, con
+    // toast de progreso) y otra aparte para el consolidado por órdenes — varias
+    // pestañas y varios clics de "Imprimir". Ahora se funden todos los documentos
+    // en UNA sola pestaña con salto de página entre cada uno, para imprimir todo
+    // con un solo clic.
+    const urls = sesionIds.map(id => `${API_BASE}/packing/sesion/${id}/remision`);
+    if (ordenIds.length) {
+      const params = new URLSearchParams();
+      ordenIds.forEach(id => params.append('orden_ids[]', id));
+      urls.push(`${API_BASE}/picking/certificacion/remision-multiple?${params}`);
     }
 
-    if (ordenIds.length) {
-      const n = checksDirectas.length;
-      WMS.toast('info', `Generando remisión consolidada de ${n} planilla(s) seleccionada(s)...`);
-      this.imprimirRemisionPorOrdenes(ordenIds, `${n} planilla(s)`);
+    WMS.toast('info', `Generando remisión consolidada (${urls.length} documento(s))...`);
+    await this._imprimirConsolidadoUnaPestana(urls);
+  },
+
+  // Fusiona varias remisiones (cada una un documento HTML independiente del
+  // backend) en una sola pestaña, con salto de página entre cada una, y un
+  // único botón/atajo de impresión para todas.
+  async _imprimirConsolidadoUnaPestana(urls) {
+    if (!urls.length) { WMS.toast('warning', 'Nada para imprimir'); return; }
+    const token = localStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+    const win = window.open('', '_blank');
+    if (!win) { WMS.toast('warning', 'Permite ventanas emergentes para imprimir'); return; }
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Remisiones Consolidadas</title></head>
+      <body style="font-family:sans-serif;padding:20px;color:#555;"><p>&#9203; Cargando ${urls.length} documento(s)...</p></body></html>`);
+    win.document.close();
+
+    try {
+      const htmls = await Promise.all(urls.map(url =>
+        fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
+          .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+          .catch(() => null)
+      ));
+
+      const parser = new DOMParser();
+      const styles = new Set();
+      const bodies = [];
+      htmls.forEach((html, i) => {
+        if (!html) { bodies.push(`<div style="padding:20px;color:#dc2626;">No se pudo cargar el documento ${i + 1}.</div>`); return; }
+        const doc = parser.parseFromString(html, 'text/html');
+        doc.querySelectorAll('style').forEach(s => styles.add(s.innerHTML));
+        doc.querySelectorAll('.no-print').forEach(el => el.remove());
+        doc.querySelectorAll('script').forEach(el => el.remove());
+        bodies.push(doc.body ? doc.body.innerHTML : html);
+      });
+
+      const combined = bodies.map((b, i) =>
+        `<div style="${i < bodies.length - 1 ? 'page-break-after:always;break-after:page;' : ''}">${b}</div>`
+      ).join('');
+
+      if (win.closed) return;
+      win.document.open();
+      win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Remisiones Consolidadas (${bodies.length})</title>
+        <style>${Array.from(styles).join('\n')}</style></head>
+        <body>
+          <div class="no-print" style="margin-bottom:15px;text-align:right;">
+            <button onclick="window.print()" style="padding:8px 18px;background:#0F4C81;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px;">
+              🖨️ Imprimir todas (${bodies.length})
+            </button>
+          </div>
+          ${combined}
+        </body></html>`);
+      win.document.close();
+      setTimeout(() => { if (!win.closed) win.print(); }, 700);
+    } catch (e) {
+      if (!win.closed) {
+        win.document.open();
+        win.document.write(`<h3 style="color:#dc2626;font-family:sans-serif;">Error al cargar las remisiones</h3><p style="font-family:sans-serif;">${e.message}</p>`);
+        win.document.close();
+      }
+      WMS.toast('error', 'Error: ' + e.message);
     }
   },
 
   // Imprime una sesión de packing en una ventana propia, esperando a que cargue
   // (o falle) antes de resolver — permite encadenar varias impresiones sin que
-  // el navegador bloquee los popups subsiguientes.
+  // el navegador bloquee los popups subsiguientes. Usado por
+  // imprimirRemisionesSeleccionadas() (el botón "print selected" no-consolidado).
   _imprimirSesionSecuencial(sesionId, index, total) {
     const token = localStorage.getItem('wms_token') || localStorage.getItem('token') || '';
     return new Promise(resolve => {

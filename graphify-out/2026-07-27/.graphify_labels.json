@@ -313,5 +313,9 @@
   "311": "OutboundController",
   "312": "PermisoPersonalController",
   "313": "_actualizarPreviewSinODC",
-  "314": "BaseController.php"
+  "314": "BaseController.php",
+  "315": "InvGeneralDiferencia",
+  "316": "InvGeneralEvento",
+  "317": "Zona",
+  "318": ".now"
 }

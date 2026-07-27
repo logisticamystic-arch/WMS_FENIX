@@ -317,5 +317,12 @@
   "315": "InvGeneralDiferencia",
   "316": "InvGeneralEvento",
   "317": "Zona",
-  "318": ".now"
+  "318": ".now",
+  "319": "_cargarStockGeneral",
+  "320": "verEventoTomaFisica",
+  "321": "_editarLinea",
+  "322": "GET /aprobaciones/vencimiento/pendientes",
+  "323": "POST /devoluciones/{id}/aprobar",
+  "324": "Warehouse/truck app icon (192x192)",
+  "325": "Warehouse/truck app icon (512x512)"
 }
