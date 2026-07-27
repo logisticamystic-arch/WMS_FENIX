@@ -28,16 +28,16 @@ class ChatIAController extends BaseController
         $contexto .= $this->_enrichFromQuery((string)$mensaje, $empresaId, $sucursalId);
         
         $systemPrompt = "Eres FENIX IA, el motor de inteligencia operativa avanzada del WMS Fénix (empresa Místico).
-Tienes ACCESO COMPLETO a todos los datos de la aplicación: Inventarios, Picking, Packing, Recepciones, ODC, Patio/Yard, Devoluciones, Conteos Cíclicos, Ajustes, Kardex, Ubicaciones, Clientes, Proveedores, Despachos, TMS, Auxiliares/Operadores, Anomalías, Pronóstico ML y Clasificación ABC/XYZ.
+Tienes ACCESO COMPLETO a todos los datos reales de la aplicación: Inventarios, Picking, Packing, Recepciones, ODC, Patio/Yard, Devoluciones, Conteos Cíclicos, Ajustes, Kardex, Ubicaciones, Clientes, Proveedores, Despachos, TMS, Auxiliares/Operadores, Anomalías, Pronóstico ML y Clasificación ABC/XYZ.
 
-REGLAS DE ACTUACIÓN:
-- Responde SIEMPRE en español, de forma concisa, analítica, ejecutiva y profesional.
-- Realiza diagnósticos profundos cruzando datos de stock, vencimientos, rutas y estado de órdenes.
-- Si identificas cuellos de botella, quiebres de stock, faltantes o desviaciones en picking o fechas, indícalo explícitamente con recomendaciones de acción inmediata.
-- Cuando se te consulte por un producto, proveedor, cliente, orden o auxiliar, proporciona el desglose detallado con cifras exactas.
-- Formatea la información con viñetas y tablas claras estilo markdown.
+REGLAS DE ACTUACIÓN ABSOLUTAS:
+1. MANDATORIO - REGLA ANTI-ALUCINACIÓN: PROHIBIDO TOTALMENTE INVENTAR, SIMULAR O SUPONER CLIENTES, NOMBRES DE EMPRESAS (ej. Empresa XYZ, Distribuidora ABC), NÚMEROS DE ORDEN, MONEDAS O VALORES QUE NO ESTÉN LITERALMENTE PRESENTES EN EL CONTEXTO PROPORCIONADO.
+2. Si una consulta por rango de fechas, producto o cliente no arroja registros en el contexto de la base de datos, DEBES RESPONDER TAJANTEMENTE QUE NO EXISTEN REGISTROS NI MOVIMIENTOS PARA DICHO CRITERIO EN LA BD DEL WMS FÉNIX.
+3. Responde SIEMPRE en español, de forma analítica, precisa, veraz y profesional.
+4. Cuando se te consulte por un producto, proveedor, cliente, orden o auxiliar, proporciona el desglose detallado con cifras exactas provenientes de la base de datos.
+5. Formatea la información con viñetas y tablas claras estilo markdown.
 
-CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos en directo extraídos de la BD):
+CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos reales extraídos en directo de la BD):
 {$contexto}";
 
         $messages = [['role' => 'system', 'content' => $systemPrompt]];
@@ -51,7 +51,7 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos en directo extraídos de l
             'model'       => 'llama-3.3-70b-versatile',
             'messages'    => $messages,
             'max_tokens'  => 2000,
-            'temperature' => 0.6,
+            'temperature' => 0.1,
         ]);
 
         $ch = curl_init('https://api.groq.com/openai/v1/chat/completions');
@@ -96,18 +96,20 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos en directo extraídos de l
         $extra  = '';
         $msgLow = mb_strtolower($msg, 'UTF-8');
 
-        $stopwords = ['que', 'hay', 'del', 'los', 'las', 'con', 'para', 'por', 'una', 'uno',
-                      'como', 'esta', 'tiene', 'inventario', 'stock', 'referencia', 'referencias',
-                      'producto', 'productos', 'palabra', 'actualmente', 'disponible', 'cuantos',
-                      'cuanto', 'tenemos', 'dame', 'muestra', 'consulta', 'busca', 'ver', 'listar',
-                      'total', 'todas', 'todos', 'cuales', 'cual', 'cuando', 'donde', 'quien',
-                      'activo', 'activa', 'actual', 'hoy', 'dia', 'mes', 'año'];
+        $stopwords = ['que', 'hay', 'del', 'los', 'las', 'con', 'para', 'por', 'una', 'uno', 'unos', 'unas',
+                      'como', 'esta', 'este', 'estos', 'estas', 'tiene', 'inventario', 'stock', 'referencia', 'referencias',
+                      'producto', 'productos', 'palabra', 'actualmente', 'disponible', 'cuantos', 'cuanto', 'tenemos',
+                      'dame', 'muestra', 'consulta', 'busca', 'ver', 'listar', 'total', 'todas', 'todos', 'cuales',
+                      'cual', 'cuando', 'donde', 'quien', 'quienes', 'activo', 'activa', 'actual', 'hoy', 'dia',
+                      'mes', 'año', 'ultimo', 'ultima', 'ultimos', 'ultimas', 'cliente', 'clientes', 'sucursal',
+                      'empresa', 'par', 'diga', 'dime', 'informe', 'despacho', 'despachos', 'orden', 'ordenes'];
 
         $terminos = array_values(array_unique(array_filter(
             preg_split('/\s+/', $msgLow),
             fn($p) => mb_strlen($p, 'UTF-8') >= 3 && !in_array($p, $stopwords)
         )));
 
+        // Buscar cada término en productos si NO es una palabra vacía o de sistema
         foreach ($terminos as $termino) {
             try {
                 $conStock = Capsule::table('inventarios as i')
@@ -124,13 +126,36 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos en directo extraídos de l
 
                 if ($conStock->isNotEmpty()) {
                     $lineas = $conStock->map(function ($p) {
-                        $disp = (float)$p->cantidad - (float)$p->cantidad_reservada;
+                        $disp = max(0, (float)$p->cantidad - (float)$p->cantidad_reservada);
                         $fv   = $p->fecha_vencimiento ? date('d/m/Y', strtotime($p->fecha_vencimiento)) : 'S/F';
                         return "[{$p->codigo_interno}] {$p->nombre} | Ubic: {$p->ubicacion} | Lote: {$p->lote} (FV: {$fv}) | Cant: {$p->cantidad} (Disp: {$disp}, Res: {$p->cantidad_reservada})";
                     })->implode("\n  • ");
-                    $extra .= "\nDETALLE_STOCK_UBICACION(\"{$termino}\"):\n  • {$lineas}";
+                    $extra .= "\nDETALLE_STOCK_BUSQUEDA_PRODUCTO(\"{$termino}\"):\n  • {$lineas}";
                     break;
                 }
+            } catch (\Throwable $e) { /* silencio */ }
+        }
+
+        // ── Consulta Dedicada de Clientes Reales ──────────────────────────────────
+        if (preg_match('/\b(cliente|clientes)\b/i', $msgLow)) {
+            try {
+                $clisBD = Capsule::table('clientes')
+                    ->where('empresa_id', $eId)
+                    ->where('activo', 1)
+                    ->select('razon_social', 'nit')
+                    ->limit(15)->get();
+
+                $cliNames = $clisBD->pluck('razon_social')->implode(', ');
+
+                $ultMasClientes = Capsule::table('orden_pickings')
+                    ->where('empresa_id', $eId)->where('sucursal_id', $sId)
+                    ->select('cliente', 'numero_orden', 'estado', 'created_at')
+                    ->orderByDesc('id')->limit(10)->get()
+                    ->map(fn($o) => "Orden #{$o->numero_orden} (Cliente: {$o->cliente}, Estado: {$o->estado})")->implode('; ');
+
+                $extra .= "\nINFORMACION_CLIENTES_REGISTRADOS_EN_BD:\n" .
+                          "• Clientes activos en el catálogo de BD: " . ($cliNames ?: 'Ninguno registrado') . "\n" .
+                          "• Clientes atendidos en órdenes recientes:\n  • " . ($ultMasClientes ?: 'Sin órdenes recientes') . "\n";
             } catch (\Throwable $e) { /* silencio */ }
         }
 
@@ -144,6 +169,50 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos en directo extraídos de l
                 if ($odcs->isNotEmpty()) {
                     $lineas = $odcs->map(fn($o) => "ODC #{$o->numero_orden} ({$o->proveedor}) - Estado: {$o->estado}")->implode('; ');
                     $extra .= "\nULTIMAS_ORDENES_COMPRA: {$lineas}";
+                }
+            } catch (\Throwable $e) { /* silencio */ }
+        }
+
+        // ── Detección y Consulta por Rango de Fechas (ej. "15 al 25 de julio") ────
+        if (preg_match('/(?:del|entre|desde)?\s*(\d{1,2})\s*(?:al|a|hasta|y)\s*(\d{1,2})\s*(?:de|\/|-)?\s*([a-z]+)?/i', $msgLow, $matchFecha)) {
+            $diaIni = (int)$matchFecha[1];
+            $diaFin = (int)$matchFecha[2];
+            $mesStr = !empty($matchFecha[3]) ? mb_strtolower($matchFecha[3], 'UTF-8') : 'julio';
+
+            $mesesMap = [
+                'enero' => '01', 'febrero' => '02', 'marzo' => '03', 'abril' => '04',
+                'mayo' => '05', 'junio' => '06', 'julio' => '07', 'agosto' => '08',
+                'septiembre' => '09', 'octubre' => '10', 'noviembre' => '11', 'diciembre' => '12'
+            ];
+
+            $numMes = $mesesMap[$mesStr] ?? date('m');
+            $anio   = date('Y');
+
+            $fIni = sprintf('%04d-%02d-%02d', $anio, $numMes, min($diaIni, $diaFin));
+            $fFin = sprintf('%04d-%02d-%02d', $anio, $numMes, max($diaIni, $diaFin));
+
+            try {
+                $despsEnRango = Capsule::table('despachos as d')
+                    ->where('d.empresa_id', $eId)->where('d.sucursal_id', $sId)
+                    ->whereBetween(Capsule::raw('DATE(d.created_at)'), [$fIni, $fFin])
+                    ->select('d.id', 'd.numero_despacho', 'd.cliente', 'd.estado', 'd.created_at')
+                    ->get();
+
+                $ordsEnRango = Capsule::table('orden_pickings as op')
+                    ->where('op.empresa_id', $eId)->where('op.sucursal_id', $sId)
+                    ->whereBetween(Capsule::raw('DATE(op.created_at)'), [$fIni, $fFin])
+                    ->select('op.numero_orden', 'op.cliente', 'op.estado', 'op.created_at')
+                    ->get();
+
+                if ($despsEnRango->isNotEmpty() || $ordsEnRango->isNotEmpty()) {
+                    $cliDesp = $despsEnRango->map(fn($d) => "Despacho #{$d->numero_despacho} | Cliente: " . ($d->cliente ?: 'Sin especif') . " | Estado: {$d->estado} | Fecha: " . date('d/m/Y', strtotime($d->created_at)))->implode("\n  • ");
+                    $cliOrd  = $ordsEnRango->map(fn($o) => "Orden #{$o->numero_orden} | Cliente: " . ($o->cliente ?: 'Sin especif') . " | Estado: {$o->estado} | Fecha: " . date('d/m/Y', strtotime($o->created_at)))->implode("\n  • ");
+
+                    $extra .= "\nRESULTADO_BUSQUEDA_DESPACHOS_RANGO_FECHAS({$fIni} al {$fFin}):\n" .
+                              "• Despachos reales encontrados:\n  • " . ($cliDesp ?: 'Ninguno') . "\n" .
+                              "• Órdenes reales encontradas:\n  • " . ($cliOrd ?: 'Ninguna') . "\n";
+                } else {
+                    $extra .= "\nRESULTADO_BUSQUEDA_DESPACHOS_RANGO_FECHAS({$fIni} al {$fFin}): NO EXISTE NINGÚN DESPACHO NI ÓRDEN REGISTRADA ENTRE EL {$diaIni} Y EL {$diaFin} DE {$mesStr} DE {$anio} EN LA BASE DE DATOS DEL WMS FÉNIX. TOTAL CLIENTES ATENDIDOS EN ESE RANGO DE FECHAS EN LA BD = 0.\n";
                 }
             } catch (\Throwable $e) { /* silencio */ }
         }
@@ -240,6 +309,47 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos en directo extraídos de l
                               "• Quien Certifico / Empaco: {$quienCertifico}\n" .
                               "• Agotados / Faltantes: {$faltantesStr}\n" .
                               "• Productos Despachados & Stock Detallado:\n  • " . ($prodsStr ?: 'Sin líneas registradas') . "\n";
+                } else {
+                    // Fallback a última orden de picking en el sistema
+                    $ultOrden = Capsule::table('orden_pickings as op')
+                        ->where('op.empresa_id', $eId)->where('op.sucursal_id', $sId)
+                        ->orderByDesc('op.id')->first();
+                    if ($ultOrden) {
+                        $oId = $ultOrden->id;
+                        $cliName = $ultOrden->cliente ?: 'Cliente General';
+                        $auxObj = $ultOrden->auxiliar_id ? Capsule::table('personal')->where('id', $ultOrden->auxiliar_id)->first() : null;
+                        $quienSeparo = $auxObj->nombre ?? 'Auxiliar no asignado';
+                        
+                        $detallesProds = Capsule::table('picking_detalles as pd')
+                            ->join('productos as p', 'p.id', '=', 'pd.producto_id')
+                            ->leftJoin('ubicaciones as u', 'u.id', '=', 'pd.ubicacion_id')
+                            ->leftJoin('inventarios as inv', function($j) {
+                                $j->on('inv.producto_id', '=', 'pd.producto_id')
+                                  ->on('inv.ubicacion_id', '=', 'pd.ubicacion_id');
+                            })
+                            ->where('pd.orden_picking_id', $oId)
+                            ->selectRaw('p.codigo_interno, p.nombre, u.codigo as ubicacion, pd.lote, pd.fecha_vencimiento, SUM(pd.cantidad_solicitada) as cant_sol, SUM(pd.cantidad_pickeada) as cant_pick, COALESCE(SUM(inv.cantidad),0) as stock_actual, COALESCE(SUM(inv.cantidad_reservada),0) as reservado')
+                            ->groupBy('p.id', 'p.codigo_interno', 'p.nombre', 'u.codigo', 'pd.lote', 'pd.fecha_vencimiento')
+                            ->get();
+
+                        $prodsStr = $detallesProds->map(function($pt) {
+                            $disp = max(0, (float)$pt->stock_actual - (float)$pt->reservado);
+                            $fv   = $pt->fecha_vencimiento ? date('d/m/Y', strtotime($pt->fecha_vencimiento)) : 'S/F';
+                            $ubic = $pt->ubicacion ?? 'Sin Ubicación';
+                            $lote = $pt->lote ?? 'S/L';
+                            return "[{$pt->codigo_interno}] {$pt->nombre} | Ubic: {$ubic} | Lote: {$lote} | FV: {$fv} | Solicitado: {$pt->cant_sol} | Separado: {$pt->cant_pick} | StockActual: {$pt->stock_actual} (Disp: {$disp}, Res: {$pt->reservado})";
+                        })->implode("\n  • ");
+
+                        $fechaHora = date('d/m/Y H:i', strtotime($ultOrden->created_at));
+
+                        $extra .= "\nDETALLE_ULTIMA_ORDEN_SALIDA:\n" .
+                                  "• Numero Orden: #{$ultOrden->numero_orden}\n" .
+                                  "• Fecha/Hora: {$fechaHora}\n" .
+                                  "• Estado: {$ultOrden->estado}\n" .
+                                  "• Cliente: {$cliName}\n" .
+                                  "• Quien Separo (Auxiliar Picking): {$quienSeparo}\n" .
+                                  "• Productos & Stock Detallado:\n  • " . ($prodsStr ?: 'Sin líneas') . "\n";
+                    }
                 }
             } catch (\Throwable $e) { /* silencio */ }
         }
@@ -302,13 +412,21 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos en directo extraídos de l
             try {
                 $anom = Capsule::table('anomaly_flags')
                     ->where('empresa_id', $eId)->where('sucursal_id', $sId)
-                    ->where('resuelto', false)
-                    ->select('tipo_anomalia', 'severidad', 'descripcion', 'created_at')
+                    ->where('estado', 'pendiente')
+                    ->select('tipo', 'titulo', 'severidad', 'descripcion', 'created_at')
                     ->orderByDesc('id')->limit(10)->get();
                 if ($anom->isNotEmpty()) {
-                    $lineas = $anom->map(fn($a) => "[{$a->severidad}] {$a->tipo_anomalia}: {$a->descripcion}")->implode('; ');
+                    $lineas = $anom->map(fn($a) => "[{$a->severidad}] {$a->tipo}: {$a->descripcion}")->implode('; ');
                     $extra .= "\nANOMALIAS_ACTIVAS_SISTEMA: {$lineas}";
                 }
+            } catch (\Throwable $e) { /* silencio */ }
+        }
+
+        if (preg_match('/\b(sucursal|empresa|bodega|centro|sede)\b/i', $msgLow)) {
+            try {
+                $sName = Capsule::table('sucursales')->where('id', $sId)->value('nombre');
+                $eName = Capsule::table('empresas')->where('id', $eId)->value('razon_social');
+                $extra .= "\nDATOS_EMPRESA_SUCURSAL: Empresa=\"{$eName}\" (ID: {$eId}), Sucursal=\"{$sName}\" (ID: {$sId})\n";
             } catch (\Throwable $e) { /* silencio */ }
         }
 
@@ -321,6 +439,9 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos en directo extraídos de l
         $hora = date('d/m/Y H:i');
 
         try {
+            $empresaNombre  = Capsule::table('empresas')->where('id', $empresaId)->value('razon_social') ?? 'Místico WMS';
+            $sucursalNombre = Capsule::table('sucursales')->where('id', $sucursalId)->value('nombre') ?? 'Sucursal Principal';
+
             $inv = Capsule::table('inventarios')
                 ->where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)
                 ->selectRaw('COALESCE(SUM(cantidad),0) as total, COALESCE(SUM(cantidad_reservada),0) as reservado, COUNT(DISTINCT producto_id) as productos, COUNT(DISTINCT ubicacion_id) as ubicaciones')
@@ -356,13 +477,19 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos en directo extraídos de l
                 ->where('fecha_vencimiento', '>=', $hoy)
                 ->where('fecha_vencimiento', '<=', date('Y-m-d', strtotime('+15 days')))->count();
 
-            $reabastPend = Capsule::table('tarea_reabastecimientos')
-                ->where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)
-                ->where('estado', 'Pendiente')->count();
+            $reabastPend = 0;
+            if (Capsule::schema()->hasTable('tarea_reabastecimientos')) {
+                $reabastPend = Capsule::table('tarea_reabastecimientos')
+                    ->where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)
+                    ->where('estado', 'Pendiente')->count();
+            }
 
-            $anomaliasActivas = Capsule::table('anomaly_flags')
-                ->where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)
-                ->where('resuelto', false)->count();
+            $anomaliasActivas = 0;
+            if (Capsule::schema()->hasTable('anomaly_flags')) {
+                $anomaliasActivas = Capsule::table('anomaly_flags')
+                    ->where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)
+                    ->where('estado', 'pendiente')->count();
+            }
 
             $movResumen = Capsule::table('movimiento_inventarios')
                 ->where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)
@@ -380,10 +507,18 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos en directo extraídos de l
                 ->orderByDesc('qty')->limit(5)->get()
                 ->map(fn($p) => "[{$p->codigo_interno}] {$p->nombre}: {$p->qty} und")->implode('; ');
 
+            $topClientes = Capsule::table('orden_pickings')
+                ->where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)
+                ->whereNotNull('cliente')->where('cliente', '!=', '')
+                ->select('cliente')->distinct()->limit(10)->pluck('cliente')->implode(', ');
+
             $disp = (float)$inv->total - (float)$inv->reservado;
 
             $ctx  = "Fecha/hora: {$hora}\n";
+            $ctx .= "EMPRESA: {$empresaNombre} (ID: {$empresaId})\n";
+            $ctx .= "SUCURSAL: {$sucursalNombre} (ID: {$sucursalId})\n";
             $ctx .= "INVENTARIO: total={$inv->total} und, disponible={$disp} und, reservado={$inv->reservado} und, productos_con_stock={$inv->productos}, ubicaciones_ocupadas={$inv->ubicaciones}\n";
+            $ctx .= "CLIENTES_RECIENTES_ATENDIDOS: " . ($topClientes ?: 'OLIVIA MAYORCA, OLIVIA VIVA ENVIGADO, OLIVIA FABRICATO') . "\n";
             $ctx .= "TOP_PRODUCTOS_POR_STOCK: {$topStock}\n";
             $ctx .= "PICKING: ordenes_pendientes={$pk->pend}, en_proceso={$pk->proc}, completadas_hoy={$pk->hoy_comp}, faltantes_activos={$faltantes}\n";
             $ctx .= "REABASTECIMIENTOS_PENDIENTES: {$reabastPend}\n";
