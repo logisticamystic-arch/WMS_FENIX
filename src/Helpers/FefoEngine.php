@@ -124,18 +124,32 @@ class FefoEngine
             ]);
 
         if ($controlaVencimiento) {
-            // FEFO estricto: menor fecha_vencimiento primero.
-            // Los lotes SIN fecha van al final (son sustitutos no perecederos;
-            // consumirlos antes no aporta rotación de riesgo).
-            // Desempate: created_at ASC (FIFO dentro del mismo vencimiento).
+            // FEFO estricto + Ruta física por ubicación:
+            // 1° Menor fecha_vencimiento primero (FEFO). NULLs al final.
+            // 2° Pasillo ASC (numérico natural)
+            // 3° Módulo ASC (numérico natural)
+            // 4° Nivel ASC (numérico natural)
+            // 5° Posición ASC (numérico natural)
+            // 6° Código de ubicación ASC
             $query
                 ->orderByRaw('CASE WHEN i.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
                 ->orderBy('i.fecha_vencimiento', 'asc')
+                ->orderByRaw('COALESCE(LENGTH(u.pasillo), 0) ASC, u.pasillo ASC')
+                ->orderByRaw('COALESCE(LENGTH(u.modulo), 0) ASC, u.modulo ASC')
+                ->orderByRaw('COALESCE(LENGTH(u.nivel), 0) ASC, u.nivel ASC')
+                ->orderByRaw('COALESCE(LENGTH(u.posicion), 0) ASC, u.posicion ASC')
+                ->orderBy('u.codigo', 'asc')
                 ->orderBy('i.created_at', 'asc');
         } else {
-            // Sin control de FV: priorizar registros con mayor stock disponible.
-            // Objetivo: reducir fragmentación vaciando primero los registros más llenos.
-            $query->orderByRaw('(i.cantidad - i.cantidad_reservada) DESC');
+            // Sin control de FV: Ruta física estricta por ubicación primero
+            // Pasillo ASC -> Módulo ASC -> Nivel ASC -> Posición ASC -> Código ASC
+            $query
+                ->orderByRaw('COALESCE(LENGTH(u.pasillo), 0) ASC, u.pasillo ASC')
+                ->orderByRaw('COALESCE(LENGTH(u.modulo), 0) ASC, u.modulo ASC')
+                ->orderByRaw('COALESCE(LENGTH(u.nivel), 0) ASC, u.nivel ASC')
+                ->orderByRaw('COALESCE(LENGTH(u.posicion), 0) ASC, u.posicion ASC')
+                ->orderBy('u.codigo', 'asc')
+                ->orderByRaw('(i.cantidad - i.cantidad_reservada) DESC');
         }
 
         $rows = $query->get();

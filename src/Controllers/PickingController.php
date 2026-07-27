@@ -1888,16 +1888,22 @@ class PickingController extends BaseController
         // Siguiente línea no confirmada — FEFO primero, luego ruta óptima de bodega:
         // 1° fecha_vencimiento ASC → vencimiento más próximo primero (FEFO)
         // 2° pasillo ASC           → recorre pasillos en orden físico
-        // 3° posicion ASC          → dentro del pasillo, columna de izquierda a derecha
-        // 4° nivel ASC             → de nivel 1 al 7/8
-        // 5° codigo ASC            → fallback por código completo
+        // 3° modulo ASC            → dentro del pasillo, módulo de menor a mayor
+        // 4° nivel ASC             → dentro del módulo, nivel 1, 2, 3...
+        // 5° posicion ASC          → posición dentro del nivel
+        // 6° codigo ASC            → fallback por código completo
         $lineaQuery = PickingDetalle::where('picking_detalles.orden_picking_id', $orden->id)
             ->whereIn('picking_detalles.estado', ['Pendiente', 'EnProceso'])
             ->join('ubicaciones', 'picking_detalles.ubicacion_id', '=', 'ubicaciones.id')
             ->select('picking_detalles.*')
             ->with(['producto', 'ubicacion'])
-            ->orderByRaw('picking_detalles.fecha_vencimiento ASC NULLS LAST')
-            ->orderByRaw('ubicaciones.pasillo ASC NULLS LAST, ubicaciones.posicion ASC NULLS LAST, ubicaciones.nivel ASC NULLS LAST, ubicaciones.codigo ASC NULLS LAST');
+            ->orderByRaw('CASE WHEN picking_detalles.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
+            ->orderBy('picking_detalles.fecha_vencimiento', 'ASC')
+            ->orderByRaw('COALESCE(LENGTH(ubicaciones.pasillo), 0) ASC, ubicaciones.pasillo ASC')
+            ->orderByRaw('COALESCE(LENGTH(ubicaciones.modulo), 0) ASC, ubicaciones.modulo ASC')
+            ->orderByRaw('COALESCE(LENGTH(ubicaciones.nivel), 0) ASC, ubicaciones.nivel ASC')
+            ->orderByRaw('COALESCE(LENGTH(ubicaciones.posicion), 0) ASC, ubicaciones.posicion ASC')
+            ->orderBy('ubicaciones.codigo', 'ASC');
         
         // Si el usuario no es admin/supervisor, forzar su propio auxiliar_id
         if ($user->rol === 'Auxiliar') {
@@ -3896,9 +3902,13 @@ class PickingController extends BaseController
                 // pasillos/módulos. El FEFO se conserva como desempate dentro del mismo
                 // tramo de ruta, y se resuelve por ubicación específica en el split de
                 // stock alternativo más abajo (fifo_split) cuando falta stock en el sitio asignado.
-                ->orderByRaw('MAX(picking_detalles.ambiente) ASC NULLS LAST')
-                ->orderByRaw('ubicaciones.pasillo ASC NULLS LAST, ubicaciones.modulo ASC NULLS LAST, ubicaciones.nivel ASC NULLS LAST, ubicaciones.posicion ASC NULLS LAST, ubicaciones.codigo ASC NULLS LAST')
-                ->orderByRaw('picking_detalles.fecha_vencimiento ASC NULLS LAST')
+                ->orderByRaw('CASE WHEN picking_detalles.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
+                ->orderBy('picking_detalles.fecha_vencimiento', 'ASC')
+                ->orderByRaw('COALESCE(LENGTH(ubicaciones.pasillo), 0) ASC, ubicaciones.pasillo ASC')
+                ->orderByRaw('COALESCE(LENGTH(ubicaciones.modulo), 0) ASC, ubicaciones.modulo ASC')
+                ->orderByRaw('COALESCE(LENGTH(ubicaciones.nivel), 0) ASC, ubicaciones.nivel ASC')
+                ->orderByRaw('COALESCE(LENGTH(ubicaciones.posicion), 0) ASC, ubicaciones.posicion ASC')
+                ->orderBy('ubicaciones.codigo', 'ASC')
                 ->orderBy('productos.codigo_interno', 'asc')
                 ->get();
 
@@ -3971,12 +3981,18 @@ class PickingController extends BaseController
                         'inventarios.*',
                         'ui.codigo as ubic_codigo',
                         'ui.pasillo as ubic_pasillo',
+                        'ui.modulo as ubic_modulo',
                         'ui.posicion as ubic_posicion',
                         'ui.nivel as ubic_nivel',
                         'ui.zona as ubic_zona'
                     )
-                    ->orderByRaw('inventarios.fecha_vencimiento ASC NULLS LAST')
-                    ->orderByRaw('ui.pasillo ASC NULLS LAST, ui.posicion ASC NULLS LAST, ui.nivel ASC NULLS LAST, ui.codigo ASC NULLS LAST')
+                    ->orderByRaw('CASE WHEN inventarios.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
+                    ->orderBy('inventarios.fecha_vencimiento', 'ASC')
+                    ->orderByRaw('COALESCE(LENGTH(ui.pasillo), 0) ASC, ui.pasillo ASC')
+                    ->orderByRaw('COALESCE(LENGTH(ui.modulo), 0) ASC, ui.modulo ASC')
+                    ->orderByRaw('COALESCE(LENGTH(ui.nivel), 0) ASC, ui.nivel ASC')
+                    ->orderByRaw('COALESCE(LENGTH(ui.posicion), 0) ASC, ui.posicion ASC')
+                    ->orderBy('ui.codigo', 'ASC')
                     ->get()
                     ->groupBy('producto_id');
 
