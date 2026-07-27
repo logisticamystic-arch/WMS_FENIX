@@ -148,16 +148,98 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos en directo extraídos de l
             } catch (\Throwable $e) { /* silencio */ }
         }
 
-        if (preg_match('/\b(cliente|clientes|despacho|despachos|tms|ruta|planilla)\b/i', $msgLow)) {
+        if (preg_match('/\b(cliente|clientes|despacho|despachos|tms|ruta|planilla|ultimo|separo|certifico|agotado)\b/i', $msgLow)) {
             try {
-                $desp = Capsule::table('despachos as d')
-                    ->leftJoin('clientes as c', 'c.id', '=', 'd.cliente_id')
+                // Obtener el último despacho detallado
+                $ultDespacho = Capsule::table('despachos as d')
                     ->where('d.empresa_id', $eId)->where('d.sucursal_id', $sId)
-                    ->select('d.numero_despacho', 'c.nombre as cliente', 'd.estado', 'd.created_at')
-                    ->orderByDesc('d.id')->limit(10)->get();
-                if ($desp->isNotEmpty()) {
-                    $lineas = $desp->map(fn($d) => "Despacho #{$d->numero_despacho} ({$d->cliente}) - Estado: {$d->estado}")->implode('; ');
-                    $extra .= "\nULTIMOS_DESPACHOS: {$lineas}";
+                    ->orderByDesc('d.id')->first();
+
+                if ($ultDespacho) {
+                    $dId = $ultDespacho->id;
+
+                    // Clientes vinculados
+                    $clientesStr = $ultDespacho->cliente ?? '';
+                    if (!$clientesStr) {
+                        $cliList = Capsule::table('despacho_ordenes as do')
+                            ->join('orden_pickings as op', 'op.id', '=', 'do.orden_picking_id')
+                            ->where('do.despacho_id', $dId)
+                            ->pluck('op.cliente')->unique()->filter()->implode(', ');
+                        $clientesStr = $cliList ?: 'No especificado';
+                    }
+
+                    // Quién separó (Auxiliar de picking)
+                    $quienSeparo = Capsule::table('despacho_ordenes as do')
+                        ->join('orden_pickings as op', 'op.id', '=', 'do.orden_picking_id')
+                        ->leftJoin('personal as p', 'p.id', '=', 'op.auxiliar_id')
+                        ->where('do.despacho_id', $dId)
+                        ->pluck('p.nombre')->unique()->filter()->implode(', ');
+                    if (!$quienSeparo && $ultDespacho->auxiliar_id) {
+                        $auxObj = Capsule::table('personal')->where('id', $ultDespacho->auxiliar_id)->first();
+                        $quienSeparo = $auxObj->nombre ?? 'N/A';
+                    }
+                    if (!$quienSeparo) $quienSeparo = 'No registrado';
+
+                    // Quién certificó / empacó
+                    $quienCertifico = Capsule::table('packing_sesiones as ps')
+                        ->leftJoin('personal as p', 'p.id', '=', 'ps.usuario_id')
+                        ->join('despacho_ordenes as do', 'do.orden_picking_id', '=', 'ps.orden_picking_id')
+                        ->where('do.despacho_id', $dId)
+                        ->pluck('p.nombre')->unique()->filter()->implode(', ');
+                    if (!$quienCertifico) {
+                        $certObj = Capsule::table('certificaciones_despacho as cd')
+                            ->leftJoin('personal as p', 'p.id', '=', 'cd.usuario_id')
+                            ->where('cd.despacho_id', $dId)->first();
+                        $quienCertifico = $certObj->nombre ?? 'No registrado';
+                    }
+
+                    // Detalle de productos despachados con ubicación, lote, vencimiento, cantidad solicitada y pickeada
+                    $detallesProds = Capsule::table('despacho_ordenes as do')
+                        ->join('picking_detalles as pd', 'pd.orden_picking_id', '=', 'do.orden_picking_id')
+                        ->join('productos as p', 'p.id', '=', 'pd.producto_id')
+                        ->leftJoin('ubicaciones as u', 'u.id', '=', 'pd.ubicacion_id')
+                        ->leftJoin('inventarios as inv', function($j) {
+                            $j->on('inv.producto_id', '=', 'pd.producto_id')
+                              ->on('inv.ubicacion_id', '=', 'pd.ubicacion_id');
+                        })
+                        ->where('do.despacho_id', $dId)
+                        ->selectRaw('p.codigo_interno, p.nombre, u.codigo as ubicacion, pd.lote, pd.fecha_vencimiento, SUM(pd.cantidad_solicitada) as cant_sol, SUM(pd.cantidad_pickeada) as cant_pick, COALESCE(SUM(inv.cantidad),0) as stock_actual, COALESCE(SUM(inv.cantidad_reservada),0) as reservado')
+                        ->groupBy('p.id', 'p.codigo_interno', 'p.nombre', 'u.codigo', 'pd.lote', 'pd.fecha_vencimiento')
+                        ->get();
+
+                    $prodsStr = $detallesProds->map(function($pt) {
+                        $disp = max(0, (float)$pt->stock_actual - (float)$pt->reservado);
+                        $fv   = $pt->fecha_vencimiento ? date('d/m/Y', strtotime($pt->fecha_vencimiento)) : 'S/F';
+                        $ubic = $pt->ubicacion ?? 'Sin Ubicación';
+                        $lote = $pt->lote ?? 'S/L';
+                        return "[{$pt->codigo_interno}] {$pt->nombre} | Ubic: {$ubic} | Lote: {$lote} | FV: {$fv} | Solicitado: {$pt->cant_sol} | Separado: {$pt->cant_pick} | StockActual: {$pt->stock_actual} (Disp: {$disp}, Res: {$pt->reservado})";
+                    })->implode("\n  • ");
+
+                    // Agotados / Faltantes vinculados
+                    $faltantesDesp = Capsule::table('picking_faltantes as pf')
+                        ->join('productos as p', 'p.id', '=', 'pf.producto_id')
+                        ->join('despacho_ordenes as do', 'do.orden_picking_id', '=', 'pf.orden_picking_id')
+                        ->where('do.despacho_id', $dId)
+                        ->select('p.codigo_interno', 'p.nombre', 'pf.cantidad_faltante')
+                        ->get();
+
+                    $faltantesStr = $faltantesDesp->isNotEmpty()
+                        ? $faltantesDesp->map(fn($f) => "[{$f->codigo_interno}] {$f->nombre}: {$f->cantidad_faltante} und")->implode('; ')
+                        : 'Sin faltantes / agotados registrados';
+
+                    $fechaHoraDesp = date('d/m/Y H:i', strtotime($ultDespacho->created_at));
+
+                    $extra .= "\nDETALLE_ULTIMO_DESPACHO_COMPLETO:\n" .
+                              "• Numero Despacho: #{$ultDespacho->numero_despacho}\n" .
+                              "• Fecha/Hora: {$fechaHoraDesp}\n" .
+                              "• Estado: {$ultDespacho->estado}\n" .
+                              "• Cliente: {$clientesStr}\n" .
+                              "• Ruta / Destino: " . ($ultDespacho->ruta ?? 'Sin Ruta') . "\n" .
+                              "• Transporte / Placa / Conductor: " . ($ultDespacho->placa ?? 'N/A') . " / " . ($ultDespacho->conductor ?? 'N/A') . "\n" .
+                              "• Quien Separo (Auxiliar Picking): {$quienSeparo}\n" .
+                              "• Quien Certifico / Empaco: {$quienCertifico}\n" .
+                              "• Agotados / Faltantes: {$faltantesStr}\n" .
+                              "• Productos Despachados & Stock Detallado:\n  • " . ($prodsStr ?: 'Sin líneas registradas') . "\n";
                 }
             } catch (\Throwable $e) { /* silencio */ }
         }
