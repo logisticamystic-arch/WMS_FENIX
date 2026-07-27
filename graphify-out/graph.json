@@ -108,7 +108,7 @@
       "label": "._buildContexto()",
       "file_type": "code",
       "source_file": "src/Controllers/ChatIAController.php",
-      "source_location": "L318",
+      "source_location": "L436",
       "_origin": "ast",
       "id": "src_controllers_chatiacontroller_chatiacontroller_buildcontexto",
       "community": 116,
@@ -29530,7 +29530,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "src/Controllers/ChatIAController.php",
-      "source_location": "L318",
+      "source_location": "L436",
       "weight": 1.0,
       "_origin": "ast",
       "source": "src_controllers_chatiacontroller_chatiacontroller",
@@ -91834,5 +91834,5 @@
       "source_file": "public/mobile/index.html"
     }
   ],
-  "built_at_commit": "60e2d7740d6e8b4d2c7943bdcd366c68c1dbb315"
+  "built_at_commit": "eb2159704a1889f56f645c75e3d8671de5cb524a"
 }
