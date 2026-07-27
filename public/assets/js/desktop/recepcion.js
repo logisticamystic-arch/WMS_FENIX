@@ -1481,6 +1481,10 @@ WMS_MODULES.recepcion = {
   // RECEPCIÓN SIN ODC
   // ══════════════════════════════════════════════════════════════════════
   async show_sin_odc(silent = false) {
+    if (!this._sinOdcFiltros) {
+      const hoy = new Date().toISOString().slice(0, 10);
+      this._sinOdcFiltros = { desde: hoy, hasta: hoy };
+    }
     WMS.setToolbar(`
       <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.recepcion.abrirConsolaSinODC()">
         <i class="fa-solid fa-plus"></i> Nueva Captura Sin ODC
@@ -1490,7 +1494,8 @@ WMS_MODULES.recepcion = {
       </button>`);
     if (!silent) WMS.spinner();
     try {
-      const r = await API.get('/recepciones', 'odc_id=null&limit=100');
+      const { desde, hasta } = this._sinOdcFiltros;
+      const r = await API.get('/recepciones', `odc_id=null&limit=100&fecha_desde=${desde}&fecha_hasta=${hasta}`);
       const items = (r.data || r || []).filter(rc => !rc.odc_id);
       WMS.setContent(`
         <div class="px-20 py-16">
@@ -1500,6 +1505,18 @@ WMS_MODULES.recepcion = {
                 <i class="fa-solid fa-box-open"></i> Recepciones sin Orden de Compra
               </span>
               <span class="text-xs text-muted">${items.length} registro(s)</span>
+            </div>
+            <div class="d-flex gap-8 align-center flex-wrap" style="padding:10px 16px;border-bottom:1px solid #e2e8f0;">
+              <label class="text-xs fw-700 text-muted">Desde</label>
+              <input type="date" id="sinodc-f-desde" class="form-control form-control-sm" style="width:150px;" value="${desde}">
+              <label class="text-xs fw-700 text-muted">Hasta</label>
+              <input type="date" id="sinodc-f-hasta" class="form-control form-control-sm" style="width:150px;" value="${hasta}">
+              <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.recepcion._aplicarFiltroSinODC()">
+                <i class="fa-solid fa-filter"></i> Consultar
+              </button>
+              <button class="btn btn-secondary-soft btn-sm" onclick="WMS_MODULES.recepcion._hoyFiltroSinODC()">
+                <i class="fa-solid fa-calendar-day"></i> Hoy
+              </button>
             </div>
             <div class="table-container">
               <table class="erp-table">
@@ -1548,6 +1565,20 @@ WMS_MODULES.recepcion = {
           </div>
         </div>`);
     } catch (e) { WMS.toast('error', 'Error cargando recepciones'); }
+  },
+
+  _aplicarFiltroSinODC() {
+    const desde = document.getElementById('sinodc-f-desde')?.value;
+    const hasta = document.getElementById('sinodc-f-hasta')?.value;
+    if (!desde || !hasta) return WMS.toast('error', 'Selecciona ambas fechas');
+    this._sinOdcFiltros = { desde, hasta };
+    this.show_sin_odc();
+  },
+
+  _hoyFiltroSinODC() {
+    const hoy = new Date().toISOString().slice(0, 10);
+    this._sinOdcFiltros = { desde: hoy, hasta: hoy };
+    this.show_sin_odc();
   },
 
   // _sinOdcProds: caché de productos cargados para el autocompletado

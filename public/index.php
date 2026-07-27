@@ -558,6 +558,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/inv-general/asignaciones', [\App\Controllers\InventarioController::class, 'crearAsignacion']);
     $group->post('/inv-general/conteo', [\App\Controllers\InventarioController::class, 'registrarConteo']);
     $group->get('/inv-general/eventos/{id}/acta', [\App\Controllers\InventarioController::class, 'getActaHtml']);
+    $group->post('/inv-general/eventos/{id}/cerrar', [\App\Controllers\InventarioController::class, 'cerrarEvento']);
 
     // ════════════════════════════════════════════════════════════════════════
     // MÓDULO INVENTARIOS V2 — Cíclico / General / Ajustes / Kardex / Vencimientos

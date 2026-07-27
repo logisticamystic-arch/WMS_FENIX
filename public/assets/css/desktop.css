@@ -3328,6 +3328,10 @@ canvas {
   font-size: .83rem;
   transition: background 0.2s;
 }
+/* Encabezados de grupo (ej. pallet-group-header) llevan fondo oscuro inline;
+   .erp-table td fuerza color:#334155 en TODAS las celdas, incluida esa fila,
+   por lo que el texto quedaba casi invisible sobre el fondo navy. */
+.erp-table tr.pallet-group-header td { color: #fff; }
 .erp-table tbody tr:last-child td { border-bottom: none; }
 .erp-table tbody tr:hover { background: #f8fafc; }
 .erp-table tbody tr.main-row:hover,

@@ -1710,6 +1710,156 @@ class InventarioController extends BaseController
     }
 
     /**
+     * POST /api/inv-general/eventos/{id}/cerrar
+     *
+     * Cierra el evento de Toma Física: el sistema solo debe reflejar lo que
+     * fue contado físicamente. Referencias/ubicaciones que el sistema tenía
+     * registradas pero que nadie contó durante el evento se reportan (quedan
+     * en inv_general_diferencias con cantidad_final_aprobada=0) y se retiran
+     * del inventario. El alcance ("lo que se está contando") son las
+     * ubicaciones que efectivamente tuvieron al menos un conteo registrado
+     * en este evento — no todo el almacén, para no arrasar zonas que nunca
+     * se tocaron en una toma parcial.
+     */
+    public function cerrarEvento(Request $r, Response $res, array $args): Response
+    {
+        $user = $r->getAttribute('user');
+        if ($user->rol !== 'Admin' && $user->rol !== 'Supervisor') {
+            return $this->error($res, 'Acceso denegado', 403);
+        }
+
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $evento = InvGeneralEvento::where('empresa_id', $empresaId)
+            ->where('id', $args['id'])
+            ->first();
+
+        if (!$evento) return $this->notFound($res);
+        if ($evento->estado === 'Cerrado') {
+            return $this->error($res, 'Este evento ya fue cerrado.');
+        }
+
+        $ubicacionesContadas = InvGeneralConteo::where('evento_id', $evento->id)
+            ->distinct()->pluck('ubicacion_id');
+
+        if ($ubicacionesContadas->isEmpty()) {
+            return $this->error($res, 'No se ha registrado ningún conteo físico para este evento. No se puede cerrar.');
+        }
+
+        $sucursalId = $user->sucursal_id;
+        $noContados = [];
+
+        try {
+            Capsule::transaction(function () use ($evento, $empresaId, $sucursalId, $user, $ubicacionesContadas, &$noContados) {
+
+                // 1. Diferencias que quedaron "RequiereRecorteo" sin resolución manual:
+                //    se finalizan con el último ciclo contado (no hay flujo de aprobación
+                //    manual implementado todavía para discrepancias contadas).
+                $pendientes = InvGeneralDiferencia::where('evento_id', $evento->id)
+                    ->where('estado', 'RequiereRecorteo')
+                    ->get();
+                foreach ($pendientes as $dif) {
+                    $dif->cantidad_final_aprobada = $dif->conteo_3 ?? $dif->conteo_2 ?? $dif->conteo_1 ?? 0;
+                    $dif->estado = 'Aprobada';
+                    $dif->resuelto_por = $user->id;
+                    $dif->save();
+                }
+
+                // 2. Inventario del sistema en las ubicaciones contadas que NO tiene
+                //    ningún registro de conteo (ni siquiera con diferencia) — nadie lo
+                //    contó físicamente.
+                $inventarios = Inventario::where('empresa_id', $empresaId)
+                    ->where('sucursal_id', $sucursalId)
+                    ->whereIn('ubicacion_id', $ubicacionesContadas)
+                    ->where('estado', 'Disponible')
+                    ->get();
+
+                foreach ($inventarios as $inv) {
+                    $dif = InvGeneralDiferencia::where('evento_id', $evento->id)
+                        ->where('ubicacion_id', $inv->ubicacion_id)
+                        ->where('producto_id', $inv->producto_id)
+                        ->where('lote', $inv->lote)
+                        ->first();
+
+                    if (!$dif) {
+                        $dif = new InvGeneralDiferencia();
+                        $dif->evento_id = $evento->id;
+                        $dif->ubicacion_id = $inv->ubicacion_id;
+                        $dif->producto_id = $inv->producto_id;
+                        $dif->lote = $inv->lote;
+                        $dif->vencimiento_esperado = $inv->fecha_vencimiento;
+                        $dif->cantidad_sistema = $inv->cantidad;
+                        $dif->cantidad_final_aprobada = 0;
+                        $dif->estado = 'Aprobada';
+                        $dif->resuelto_por = $user->id;
+                        $dif->save();
+
+                        $noContados[] = [
+                            'ubicacion_id'     => $inv->ubicacion_id,
+                            'producto_id'      => $inv->producto_id,
+                            'lote'             => $inv->lote,
+                            'cantidad_sistema' => (float)$inv->cantidad,
+                        ];
+                    }
+
+                    // Ajustar el inventario real al valor físico final aprobado
+                    // (0 en lo no contado = se retira del sistema).
+                    $finalQty  = (float)$dif->cantidad_final_aprobada;
+                    $deltaQty  = $finalQty - (float)$inv->cantidad;
+
+                    if (abs($deltaQty) > 0.0001) {
+                        $prod = Producto::find($inv->producto_id);
+                        $upc  = (float)(($prod->unidades_caja ?? null) ?: 1);
+
+                        MovimientoInventario::create([
+                            'empresa_id'           => $empresaId,
+                            'sucursal_id'          => $sucursalId,
+                            'producto_id'          => $inv->producto_id,
+                            'tipo_movimiento'      => $deltaQty > 0 ? 'AjustePositivo' : 'AjusteNegativo',
+                            'cantidad'             => abs($deltaQty),
+                            'cantidad_cajas'       => (int)floor(abs($deltaQty) / $upc),
+                            'saldos'               => round(fmod(abs($deltaQty), $upc), 2),
+                            'lote'                 => $inv->lote,
+                            'fecha_vencimiento'    => $inv->fecha_vencimiento,
+                            'ubicacion_destino_id' => $inv->ubicacion_id,
+                            'auxiliar_id'          => $user->id,
+                            'referencia_tipo'      => 'inv_general_eventos',
+                            'referencia_id'        => $evento->id,
+                            'observaciones'        => "Ajuste por cierre de Inventario General #{$evento->id} ({$evento->nombre})",
+                            'fecha_movimiento'     => date('Y-m-d'),
+                            'hora_inicio'          => date('H:i:s'),
+                        ]);
+
+                        if ($finalQty <= 0) {
+                            $inv->delete();
+                        } else {
+                            $inv->cantidad       = $finalQty;
+                            $inv->cantidad_cajas = (int)floor($finalQty / $upc);
+                            $inv->saldos         = round(fmod($finalQty, $upc), 2);
+                            $inv->save();
+                        }
+                    }
+                }
+
+                $evento->estado = 'Cerrado';
+                $evento->save();
+            });
+
+            $msg = count($noContados) > 0
+                ? count($noContados) . ' referencia(s) sin conteo físico fueron reportadas y retiradas del sistema.'
+                : 'El inventario contado coincide con el sistema — sin retiros.';
+
+            return $this->ok($res, [
+                'evento_id'           => $evento->id,
+                'no_contados'         => count($noContados),
+                'detalle_no_contados' => $noContados,
+            ], "Evento cerrado. {$msg}");
+
+        } catch (\Throwable $e) {
+            return $this->error($res, 'Error al cerrar el evento: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * GET /api/inventario/mapa-detallado
      * Retorna datos enriquecidos por ubicación para el Mapa 2D formato Tabla
      */

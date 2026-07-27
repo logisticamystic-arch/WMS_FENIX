@@ -68,6 +68,16 @@ class RecepcionController extends BaseController
                 $query->where('odc_id', $params['odc_id'])->with('detalles.producto');
             }
         }
+        // Rango de fechas (sin ODC usa esto por defecto para acotar al día actual;
+        // el resto de pantallas lo pasan opcionalmente para ampliar la consulta).
+        $fechaDesde = $params['fecha_desde'] ?? $params['desde'] ?? null;
+        $fechaHasta = $params['fecha_hasta'] ?? $params['hasta'] ?? null;
+        if ($fechaDesde) {
+            $query->whereDate('fecha_movimiento', '>=', $fechaDesde);
+        }
+        if ($fechaHasta) {
+            $query->whereDate('fecha_movimiento', '<=', $fechaHasta);
+        }
 
         $items = $query->get()->map(function($r) {
             // Extraer proveedor de cita o de observaciones (para manual)
