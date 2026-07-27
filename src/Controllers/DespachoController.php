@@ -32,10 +32,15 @@ class DespachoController extends BaseController
         $empresaId  = $this->getEffectiveEmpresaId($user, $r);
         $sucursalId = $this->getEffectiveSucursalId($user, $r);
 
+        $estadoParam = $params['estado'] ?? null;
+
         $despachos = Despacho::where('empresa_id', $empresaId)
             ->where('sucursal_id', $sucursalId)
             ->whereBetween('fecha_movimiento', [$ini, $fin])
-            ->when($params['estado'] ?? null, fn($q, $e) => $q->where('estado', $e))
+            // 'activas' es el filtro por defecto de la UI: oculta despachos ya
+            // cerrados (Entregado/Cancelado) del listado operativo del día.
+            ->when($estadoParam === 'activas', fn($q) => $q->whereNotIn('estado', ['Entregado', 'Cancelado']))
+            ->when($estadoParam && $estadoParam !== 'activas', fn($q) => $q->where('estado', $estadoParam))
             ->with(['ordenes:id,numero_orden,estado_certificacion'])
             ->orderBy('fecha_movimiento', 'desc')
             ->get();

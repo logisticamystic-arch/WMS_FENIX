@@ -75,7 +75,7 @@ WMS_MODULES.despacho = {
         <i class="fa-solid fa-rotate"></i> Actualizar
       </button>
       <button class="btn btn-outline-success btn-sm" onclick="WMS_MODULES.despacho.imprimirRemisionesDirectasSeleccionadas()">
-        <i class="fa-solid fa-mobile-screen"></i> Imprimir móvil sel.
+        <i class="fa-solid fa-mobile-screen"></i> Imprimir Consolidado
       </button>
       <span style="display:flex;align-items:center;gap:6px;margin-left:8px;">
         <i class="fa-solid fa-calendar-days" style="color:#6b7280;font-size:12px;"></i>
@@ -704,10 +704,16 @@ WMS_MODULES.despacho = {
       try { ordenIds = ordenIds.concat(JSON.parse(cb.dataset.ordenIds || '[]')); } catch(_) {}
     });
 
+    // Disparar varios window.open() seguidos en el mismo tick hace que el bloqueador
+    // de popups del navegador descarte todos menos el primero — por eso el
+    // "Imprimir Consolidado" fallaba con 2+ planillas de sesión seleccionadas.
+    // Se secuencia igual que imprimirRemisionesSeleccionadas(), esperando a que
+    // cada ventana termine (o falle) antes de abrir la siguiente.
     if (checksSesion.length) {
       const sesionIds = checksSesion.map(cb => cb.dataset.sesionId).filter(Boolean);
-      for (const sId of sesionIds) {
-        this.imprimirRemision(sId);
+      for (let i = 0; i < sesionIds.length; i++) {
+        WMS.toast('info', `Imprimiendo ${i + 1} de ${sesionIds.length}...`);
+        await this._imprimirSesionSecuencial(sesionIds[i], i + 1, sesionIds.length);
       }
     }
 
@@ -718,6 +724,37 @@ WMS_MODULES.despacho = {
     }
   },
 
+  // Imprime una sesión de packing en una ventana propia, esperando a que cargue
+  // (o falle) antes de resolver — permite encadenar varias impresiones sin que
+  // el navegador bloquee los popups subsiguientes.
+  _imprimirSesionSecuencial(sesionId, index, total) {
+    const token = localStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+    return new Promise(resolve => {
+      const url = `${API_BASE}/packing/sesion/${sesionId}/remision`;
+      const win = window.open('', '_blank');
+      if (!win) { WMS.toast('warning', 'Permite ventanas emergentes para imprimir'); resolve(); return; }
+      win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Remisión ${index}/${total}</title></head>
+        <body style="font-family:sans-serif;padding:20px;color:#555;"><p>&#9203; Cargando remisión ${index} de ${total}...</p></body></html>`);
+      win.document.close();
+      let settled = false;
+      const done = () => { if (!settled) { settled = true; setTimeout(resolve, 300); } };
+      fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+        .then(html => {
+          if (win.closed) { done(); return; }
+          win.document.open(); win.document.write(html); win.document.close();
+          setTimeout(() => {
+            if (!win.closed) {
+              win.addEventListener('afterprint', done, { once: true });
+              setTimeout(done, 8000);
+              win.print();
+            } else { done(); }
+          }, 700);
+        })
+        .catch(() => done());
+    });
+  },
+
   async imprimirRemisionesSeleccionadas() {
     const checkboxes = document.querySelectorAll('.cert-remision-check:checked');
     if (!checkboxes.length) {
@@ -725,34 +762,10 @@ WMS_MODULES.despacho = {
       return;
     }
     const ids = Array.from(checkboxes).map(cb => cb.dataset.sesionId);
-    const token = localStorage.getItem('wms_token') || localStorage.getItem('token') || '';
 
     for (let i = 0; i < ids.length; i++) {
       WMS.toast('info', `Imprimiendo ${i + 1} de ${ids.length}...`);
-      await new Promise(resolve => {
-        const url = `${API_BASE}/packing/sesion/${ids[i]}/remision`;
-        const win = window.open('', '_blank');
-        if (!win) { WMS.toast('warning', 'Permite ventanas emergentes para imprimir'); resolve(); return; }
-        win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Remisión ${i + 1}/${ids.length}</title></head>
-          <body style="font-family:sans-serif;padding:20px;color:#555;"><p>&#9203; Cargando remisión ${i + 1} de ${ids.length}...</p></body></html>`);
-        win.document.close();
-        let settled = false;
-        const done = () => { if (!settled) { settled = true; setTimeout(resolve, 300); } };
-        fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
-          .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-          .then(html => {
-            if (win.closed) { done(); return; }
-            win.document.open(); win.document.write(html); win.document.close();
-            setTimeout(() => {
-              if (!win.closed) {
-                win.addEventListener('afterprint', done, { once: true });
-                setTimeout(done, 8000);
-                win.print();
-              } else { done(); }
-            }, 700);
-          })
-          .catch(() => done());
-      });
+      await this._imprimirSesionSecuencial(ids[i], i + 1, ids.length);
     }
     WMS.toast('success', `${ids.length} remisión(es) enviada(s) a imprimir`);
   },
@@ -1829,7 +1842,7 @@ WMS_MODULES.despacho = {
     } catch(e) {}
 
     const hoy = WMS.getToday();
-    this._cargueFiltros = { desde: hoy, hasta: hoy, sucursal_id: '', estado: '' };
+    this._cargueFiltros = { desde: hoy, hasta: hoy, sucursal_id: '', estado: 'activas' };
 
     const wrap = document.getElementById('cargue-content-wrap');
     if(!wrap) return;
@@ -1851,6 +1864,7 @@ WMS_MODULES.despacho = {
         <div class="form-group" style="margin:0;">
           <label class="form-label" style="font-size:.7rem;">Estado</label>
           <select id="cargue-f-estado" class="form-control form-control-sm" style="width:150px">
+            <option value="activas" selected>Activas (no entregadas)</option>
             <option value="">Todos</option>
             <option value="Preparando">Preparando</option>
             <option value="Certificado">Certificado</option>
