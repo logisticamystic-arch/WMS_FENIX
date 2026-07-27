@@ -18,26 +18,26 @@ class ChatIAController extends BaseController
         $modulo     = $body['modulo'] ?? 'general';
 
         if (!$mensaje) return $this->error($res, 'Mensaje vacío', 400);
+        if (empty(trim((string)$mensaje))) return $this->error($res, 'Mensaje vacío', 400);
 
         $apiKey = $_ENV['GROQ_API_KEY'] ?? getenv('GROQ_API_KEY') ?? '';
         if (!$apiKey) return $this->error($res,
             'FENIX IA no está configurada. Agrega GROQ_API_KEY al archivo .env', 503);
 
         $contexto = $this->_buildContexto($empresaId, $sucursalId, $modulo);
-        $contexto .= $this->_enrichFromQuery($mensaje, $empresaId, $sucursalId);
+        $contexto .= $this->_enrichFromQuery((string)$mensaje, $empresaId, $sucursalId);
+        
+        $systemPrompt = "Eres FENIX IA, el motor de inteligencia operativa avanzada del WMS Fénix (empresa Místico).
+Tienes ACCESO COMPLETO a todos los datos de la aplicación: Inventarios, Picking, Packing, Recepciones, ODC, Patio/Yard, Devoluciones, Conteos Cíclicos, Ajustes, Kardex, Ubicaciones, Clientes, Proveedores, Despachos, TMS, Auxiliares/Operadores, Anomalías, Pronóstico ML y Clasificación ABC/XYZ.
 
-        $systemPrompt = "Eres FENIX IA, el asistente operativo inteligente del sistema WMS Fénix de gestión logística de almacenes de la empresa Místico.
-Tu misión es ayudar al equipo de logística con consultas sobre inventarios, picking, despachos, devoluciones, trazabilidad y toda la operación del almacén.
+REGLAS DE ACTUACIÓN:
+- Responde SIEMPRE en español, de forma concisa, analítica, ejecutiva y profesional.
+- Realiza diagnósticos profundos cruzando datos de stock, vencimientos, rutas y estado de órdenes.
+- Si identificas cuellos de botella, quiebres de stock, faltantes o desviaciones en picking o fechas, indícalo explícitamente con recomendaciones de acción inmediata.
+- Cuando se te consulte por un producto, proveedor, cliente, orden o auxiliar, proporciona el desglose detallado con cifras exactas.
+- Formatea la información con viñetas y tablas claras estilo markdown.
 
-REGLAS:
-- Responde SIEMPRE en español, de forma concisa y profesional
-- Cuando des cifras, explica su significado operativo
-- Si detectas anomalías en los datos del contexto, menciónalo proactivamente
-- Puedes hacer análisis, sugerencias de mejora y recomendaciones operativas
-- Módulos del sistema: Picking, Despacho, Recepción, Inventario, Devoluciones, Trazabilidad, Almacenamiento, Reportes
-- Si el usuario saluda o hace preguntas generales, responde amigablemente y ofrece ayuda operativa
-
-CONTEXTO OPERATIVO EN TIEMPO REAL (datos de la BD del WMS al momento de esta consulta):
+CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos en directo extraídos de la BD):
 {$contexto}";
 
         $messages = [['role' => 'system', 'content' => $systemPrompt]];
@@ -45,13 +45,13 @@ CONTEXTO OPERATIVO EN TIEMPO REAL (datos de la BD del WMS al momento de esta con
             if (empty($msg['role']) || empty($msg['content'])) continue;
             $messages[] = ['role' => $msg['role'], 'content' => (string)$msg['content']];
         }
-        $messages[] = ['role' => 'user', 'content' => $mensaje];
+        $messages[] = ['role' => 'user', 'content' => (string)$mensaje];
 
         $payload = json_encode([
             'model'       => 'llama-3.3-70b-versatile',
             'messages'    => $messages,
-            'max_tokens'  => 1500,
-            'temperature' => 0.7,
+            'max_tokens'  => 2000,
+            'temperature' => 0.6,
         ]);
 
         $ch = curl_init('https://api.groq.com/openai/v1/chat/completions');
@@ -90,7 +90,7 @@ CONTEXTO OPERATIVO EN TIEMPO REAL (datos de la BD del WMS al momento de esta con
         ]);
     }
 
-    // ── Enriquecimiento dinámico según la consulta del usuario ────────────────
+    // ── Enriquecimiento dinámico profundo según la consulta del usuario ─────────
     private function _enrichFromQuery(string $msg, int $eId, int $sId): string
     {
         $extra  = '';
@@ -103,53 +103,81 @@ CONTEXTO OPERATIVO EN TIEMPO REAL (datos de la BD del WMS al momento de esta con
                       'total', 'todas', 'todos', 'cuales', 'cual', 'cuando', 'donde', 'quien',
                       'activo', 'activa', 'actual', 'hoy', 'dia', 'mes', 'año'];
 
-        // Extraer todos los términos candidatos ≥3 chars no stopword
         $terminos = array_values(array_unique(array_filter(
             preg_split('/\s+/', $msgLow),
             fn($p) => mb_strlen($p, 'UTF-8') >= 3 && !in_array($p, $stopwords)
         )));
 
-        // Buscar cada término en productos con ILIKE (nativo PostgreSQL, sin extensiones)
         foreach ($terminos as $termino) {
             try {
-                // Buscar con stock
                 $conStock = Capsule::table('inventarios as i')
                     ->join('productos as p', 'p.id', '=', 'i.producto_id')
+                    ->leftJoin('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
                     ->where('i.empresa_id', $eId)->where('i.sucursal_id', $sId)
                     ->where('i.cantidad', '>', 0)
                     ->where(fn($q) => $q->whereRaw('p.nombre ILIKE ?', ["%{$termino}%"])
-                                       ->orWhereRaw('p.codigo_interno ILIKE ?', ["%{$termino}%"]))
-                    ->selectRaw('p.codigo_interno, p.nombre, p.unidades_caja, SUM(i.cantidad) as total, SUM(i.cantidad_reservada) as reservado')
-                    ->groupBy('p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja')
-                    ->orderByDesc('total')->limit(15)->get();
+                                       ->orWhereRaw('p.codigo_interno ILIKE ?', ["%{$termino}%"])
+                                       ->orWhereRaw('u.codigo ILIKE ?', ["%{$termino}%"])
+                                       ->orWhereRaw('i.lote ILIKE ?', ["%{$termino}%"]))
+                    ->selectRaw('p.codigo_interno, p.nombre, p.unidades_caja, u.codigo as ubicacion, i.lote, i.fecha_vencimiento, i.cantidad, i.cantidad_reservada')
+                    ->orderByDesc('i.cantidad')->limit(15)->get();
 
                 if ($conStock->isNotEmpty()) {
                     $lineas = $conStock->map(function ($p) {
-                        $disp  = (float)$p->total - (float)$p->reservado;
-                        $upc   = max(1, (int)($p->unidades_caja ?? 1));
-                        $cajas = $upc > 1 ? ' (' . round($p->total / $upc, 1) . ' cj)' : '';
-                        return "[{$p->codigo_interno}] {$p->nombre}: {$p->total} und{$cajas} — disponible={$disp} und, reservado={$p->reservado} und";
-                    })->implode('; ');
-                    $extra .= "\nSTOCK_BUSQUEDA(\"{$termino}\"): {$lineas}";
-                    break;
-                }
-
-                // Sin stock pero el producto existe
-                $sinStock = Capsule::table('productos as p')
-                    ->where(fn($q) => $q->whereRaw('p.nombre ILIKE ?', ["%{$termino}%"])
-                                       ->orWhereRaw('p.codigo_interno ILIKE ?', ["%{$termino}%"]))
-                    ->select('p.codigo_interno', 'p.nombre')->limit(5)->get();
-
-                if ($sinStock->isNotEmpty()) {
-                    $lineas = $sinStock->map(fn($p) => "[{$p->codigo_interno}] {$p->nombre}: sin stock disponible")->implode('; ');
-                    $extra .= "\nSTOCK_BUSQUEDA(\"{$termino}\"): {$lineas}";
+                        $disp = (float)$p->cantidad - (float)$p->cantidad_reservada;
+                        $fv   = $p->fecha_vencimiento ? date('d/m/Y', strtotime($p->fecha_vencimiento)) : 'S/F';
+                        return "[{$p->codigo_interno}] {$p->nombre} | Ubic: {$p->ubicacion} | Lote: {$p->lote} (FV: {$fv}) | Cant: {$p->cantidad} (Disp: {$disp}, Res: {$p->cantidad_reservada})";
+                    })->implode("\n  • ");
+                    $extra .= "\nDETALLE_STOCK_UBICACION(\"{$termino}\"):\n  • {$lineas}";
                     break;
                 }
             } catch (\Throwable $e) { /* silencio */ }
         }
 
-        // Faltantes detallados
-        if (preg_match('/\bfaltante/i', $msg)) {
+        if (preg_match('/\b(proveedor|proveedores|odc|compra|recepcion|muelle|patio|cita)\b/i', $msgLow)) {
+            try {
+                $odcs = Capsule::table('ordenes_compra as odc')
+                    ->leftJoin('proveedores as prv', 'prv.id', '=', 'odc.proveedor_id')
+                    ->where('odc.empresa_id', $eId)
+                    ->select('odc.numero_orden', 'prv.nombre as proveedor', 'odc.estado', 'odc.created_at')
+                    ->orderByDesc('odc.id')->limit(10)->get();
+                if ($odcs->isNotEmpty()) {
+                    $lineas = $odcs->map(fn($o) => "ODC #{$o->numero_orden} ({$o->proveedor}) - Estado: {$o->estado}")->implode('; ');
+                    $extra .= "\nULTIMAS_ORDENES_COMPRA: {$lineas}";
+                }
+            } catch (\Throwable $e) { /* silencio */ }
+        }
+
+        if (preg_match('/\b(cliente|clientes|despacho|despachos|tms|ruta|planilla)\b/i', $msgLow)) {
+            try {
+                $desp = Capsule::table('despachos as d')
+                    ->leftJoin('clientes as c', 'c.id', '=', 'd.cliente_id')
+                    ->where('d.empresa_id', $eId)->where('d.sucursal_id', $sId)
+                    ->select('d.numero_despacho', 'c.nombre as cliente', 'd.estado', 'd.created_at')
+                    ->orderByDesc('d.id')->limit(10)->get();
+                if ($desp->isNotEmpty()) {
+                    $lineas = $desp->map(fn($d) => "Despacho #{$d->numero_despacho} ({$d->cliente}) - Estado: {$d->estado}")->implode('; ');
+                    $extra .= "\nULTIMOS_DESPACHOS: {$lineas}";
+                }
+            } catch (\Throwable $e) { /* silencio */ }
+        }
+
+        if (preg_match('/\b(auxiliar|auxiliares|operador|operadores|rendimiento|eficiencia|picking|personal)\b/i', $msgLow)) {
+            try {
+                $auxs = Capsule::table('orden_pickings as op')
+                    ->join('personal as p', 'p.id', '=', 'op.auxiliar_id')
+                    ->where('op.empresa_id', $eId)->where('op.sucursal_id', $sId)
+                    ->selectRaw('p.nombre, COUNT(*) as total_ordenes, COUNT(CASE WHEN op.estado=\'Completada\' THEN 1 END) as completadas')
+                    ->groupBy('p.id', 'p.nombre')
+                    ->orderByDesc('total_ordenes')->limit(10)->get();
+                if ($auxs->isNotEmpty()) {
+                    $lineas = $auxs->map(fn($a) => "{$a->nombre}: {$a->completadas}/{$a->total_ordenes} órdenes completadas")->implode('; ');
+                    $extra .= "\nDESEMPEÑO_AUXILIARES_PICKING: {$lineas}";
+                }
+            } catch (\Throwable $e) { /* silencio */ }
+        }
+
+        if (preg_match('/\bfaltante/i', $msgLow)) {
             try {
                 $falt = Capsule::table('picking_faltantes as pf')
                     ->join('productos as p', 'p.id', '=', 'pf.producto_id')
@@ -161,50 +189,43 @@ CONTEXTO OPERATIVO EN TIEMPO REAL (datos de la BD del WMS al momento de esta con
                         "[{$f->codigo_interno}] {$f->nombre}: {$f->cantidad_faltante} und desde " . date('d/m/Y', strtotime($f->created_at))
                     )->implode('; ');
                     $extra .= "\nLISTA_FALTANTES_DETALLE: {$lineas}";
-                } else {
-                    $extra .= "\nLISTA_FALTANTES_DETALLE: sin faltantes activos";
                 }
             } catch (\Throwable $e) { /* silencio */ }
         }
 
-        // Vencimientos detallados
-        if (preg_match('/\b(venc|caduci|expir)/i', $msg)) {
+        if (preg_match('/\b(venc|caduci|expir|cuarentena)\b/i', $msgLow)) {
             try {
                 $hoy  = date('Y-m-d');
                 $venc = Capsule::table('inventarios as i')
                     ->join('productos as p', 'p.id', '=', 'i.producto_id')
+                    ->leftJoin('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
                     ->where('i.empresa_id', $eId)->where('i.sucursal_id', $sId)
                     ->where('i.cantidad', '>', 0)->whereNotNull('i.fecha_vencimiento')
                     ->where('i.fecha_vencimiento', '<=', date('Y-m-d', strtotime('+30 days')))
-                    ->selectRaw('p.codigo_interno, p.nombre, SUM(i.cantidad) as qty, MIN(i.fecha_vencimiento) as fv')
-                    ->groupBy('p.id', 'p.codigo_interno', 'p.nombre')
+                    ->selectRaw('p.codigo_interno, p.nombre, u.codigo as ubic, i.lote, SUM(i.cantidad) as qty, MIN(i.fecha_vencimiento) as fv')
+                    ->groupBy('p.id', 'p.codigo_interno', 'p.nombre', 'u.codigo', 'i.lote')
                     ->orderBy('fv')->limit(20)->get();
                 if ($venc->isNotEmpty()) {
                     $lineas = $venc->map(function ($v) use ($hoy) {
                         $dias = (int)((strtotime($v->fv) - strtotime($hoy)) / 86400);
                         $tag  = $dias < 0 ? 'VENCIDO hace ' . abs($dias) . ' días' : "vence en {$dias} días";
-                        return "[{$v->codigo_interno}] {$v->nombre}: {$v->qty} und — {$tag} (fecha: " . date('d/m/Y', strtotime($v->fv)) . ')';
-                    })->implode('; ');
-                    $extra .= "\nDETALLE_VENCIMIENTOS_30DIAS: {$lineas}";
-                } else {
-                    $extra .= "\nDETALLE_VENCIMIENTOS_30DIAS: ninguno en los próximos 30 días";
+                        return "[{$v->codigo_interno}] {$v->nombre} | Lote: {$v->lote} (Ubic: {$v->ubic}) | {$v->qty} und — {$tag}";
+                    })->implode("\n  • ");
+                    $extra .= "\nDETALLE_VENCIMIENTOS_ALERTA:\n  • {$lineas}";
                 }
             } catch (\Throwable $e) { /* silencio */ }
         }
 
-        // Planilla específica
-        if (preg_match('/planilla\s+([A-Z0-9\-]+)/i', $msg, $m)) {
+        if (preg_match('/\b(anomalia|anomalias|alerta|alertas|desvio|ml)\b/i', $msgLow)) {
             try {
-                $plan = Capsule::table('orden_pickings as op')
-                    ->join('picking_detalles as pd', 'pd.orden_picking_id', '=', 'op.id')
-                    ->join('productos as p', 'p.id', '=', 'pd.producto_id')
-                    ->where('op.empresa_id', $eId)->where('op.sucursal_id', $sId)
-                    ->where('op.planilla_numero', $m[1])
-                    ->select('op.estado', 'p.nombre', 'pd.cantidad_solicitada', 'pd.estado as det_estado')
-                    ->limit(20)->get();
-                if ($plan->isNotEmpty()) {
-                    $lineas = $plan->map(fn($d) => "{$d->nombre}: {$d->cantidad_solicitada} cj ({$d->det_estado})")->implode('; ');
-                    $extra .= "\nDETALLE_PLANILLA({$m[1]}): estado={$plan->first()->estado}, items: {$lineas}";
+                $anom = Capsule::table('anomaly_flags')
+                    ->where('empresa_id', $eId)->where('sucursal_id', $sId)
+                    ->where('resuelto', false)
+                    ->select('tipo_anomalia', 'severidad', 'descripcion', 'created_at')
+                    ->orderByDesc('id')->limit(10)->get();
+                if ($anom->isNotEmpty()) {
+                    $lineas = $anom->map(fn($a) => "[{$a->severidad}] {$a->tipo_anomalia}: {$a->descripcion}")->implode('; ');
+                    $extra .= "\nANOMALIAS_ACTIVAS_SISTEMA: {$lineas}";
                 }
             } catch (\Throwable $e) { /* silencio */ }
         }
@@ -212,7 +233,6 @@ CONTEXTO OPERATIVO EN TIEMPO REAL (datos de la BD del WMS al momento de esta con
         return $extra;
     }
 
-    // ── Contexto operativo en tiempo real ─────────────────────────────────────
     private function _buildContexto(int $empresaId, int $sucursalId, string $modulo): string
     {
         $hoy  = date('Y-m-d');
@@ -254,6 +274,14 @@ CONTEXTO OPERATIVO EN TIEMPO REAL (datos de la BD del WMS al momento de esta con
                 ->where('fecha_vencimiento', '>=', $hoy)
                 ->where('fecha_vencimiento', '<=', date('Y-m-d', strtotime('+15 days')))->count();
 
+            $reabastPend = Capsule::table('tarea_reabastecimientos')
+                ->where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)
+                ->where('estado', 'Pendiente')->count();
+
+            $anomaliasActivas = Capsule::table('anomaly_flags')
+                ->where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)
+                ->where('resuelto', false)->count();
+
             $movResumen = Capsule::table('movimiento_inventarios')
                 ->where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)
                 ->where('fecha_movimiento', $hoy)
@@ -276,6 +304,8 @@ CONTEXTO OPERATIVO EN TIEMPO REAL (datos de la BD del WMS al momento de esta con
             $ctx .= "INVENTARIO: total={$inv->total} und, disponible={$disp} und, reservado={$inv->reservado} und, productos_con_stock={$inv->productos}, ubicaciones_ocupadas={$inv->ubicaciones}\n";
             $ctx .= "TOP_PRODUCTOS_POR_STOCK: {$topStock}\n";
             $ctx .= "PICKING: ordenes_pendientes={$pk->pend}, en_proceso={$pk->proc}, completadas_hoy={$pk->hoy_comp}, faltantes_activos={$faltantes}\n";
+            $ctx .= "REABASTECIMIENTOS_PENDIENTES: {$reabastPend}\n";
+            $ctx .= "ANOMALIAS_SIN_RESOLVER: {$anomaliasActivas}\n";
             $ctx .= "MOVIMIENTOS_HOY: total={$movHoy}" . ($movResumen ? ", detalle={$movResumen}" : '') . "\n";
             $ctx .= "DEVOLUCIONES_PENDIENTES: {$devPend}\n";
             $ctx .= "VENCIMIENTOS: lotes_vencidos_con_stock={$vencidos}, lotes_vencen_proximos_15dias={$vencen15}\n";
