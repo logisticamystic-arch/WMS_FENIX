@@ -141,19 +141,22 @@ class FefoEngine
         $rows = $query->get();
 
         $lotes        = [];
-        $pendiente    = $cantidadRequerida;
+        $pendiente    = round($cantidadRequerida, 4);
         $advertencias = [];
 
         foreach ($rows as $row) {
-            if ($pendiente <= 0) break;
+            if ($pendiente <= 0.0001) break;
 
             // Integridad: disponible viene calculado en la query (cantidad - cantidad_reservada).
             // El cast a float garantiza aritmética consistente con $pendiente.
-            $disponible = (float)$row->disponible;
+            $disponible = round((float)$row->disponible, 4);
 
             // Nunca asignar más de lo que hay en este registro (protección doble).
-            $aTomar = min($disponible, $pendiente);
-            $pendiente -= $aTomar;
+            $aTomar = round(min($disponible, $pendiente), 4);
+            $pendiente = round($pendiente - $aTomar, 4);
+            if ($pendiente <= 0.0001) {
+                $pendiente = 0.0;
+            }
 
             // Advertencia de vencimiento próximo (solo para productos con control de FV)
             if ($controlaVencimiento && $row->fecha_vencimiento) {
@@ -185,7 +188,7 @@ class FefoEngine
         }
 
         // Log de stock insuficiente para trazabilidad operativa
-        if ($pendiente > 0) {
+        if ($pendiente > 0.0001) {
             error_log("[FefoEngine] Stock insuficiente"
                 . " | producto={$productoId}"
                 . " requerido={$cantidadRequerida} faltante=" . round($pendiente, 4)
@@ -193,7 +196,7 @@ class FefoEngine
         }
 
         return [
-            'ok'           => $pendiente <= 0,
+            'ok'           => $pendiente <= 0.0001,
             'lotes'        => $lotes,
             'faltante'     => round($pendiente, 4),
             'advertencias' => $advertencias,

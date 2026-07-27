@@ -124,12 +124,14 @@ class InventoryGuard
 
         $rows = Capsule::connection()->select($sql, $params);
 
-        $stockDisponible = array_sum(array_map(
-            fn($r) => max(0, $r->cantidad - $r->cantidad_reservada),
+        $stockDisponible = round(array_sum(array_map(
+            fn($r) => max(0, (float)$r->cantidad - (float)$r->cantidad_reservada),
             $rows
-        ));
+        )), 4);
 
-        if ($stockDisponible <= 0) {
+        $cantidad = round($cantidad, 4);
+
+        if ($stockDisponible <= 0.0001) {
             return $this->deny('R01', "Sin stock disponible para el producto #{$productoId}.", [
                 'producto_id'      => $productoId,
                 'stock_disponible' => 0,
@@ -138,7 +140,7 @@ class InventoryGuard
             ]);
         }
 
-        if ($cantidad > $stockDisponible) {
+        if (round($cantidad - $stockDisponible, 4) > 0.0001) {
             return $this->deny('R01', sprintf(
                 'No hay suficiente stock. Pedido: %.2f — Disponible: %.2f.',
                 $cantidad, $stockDisponible
@@ -244,10 +246,11 @@ class InventoryGuard
         }
 
         $row  = Capsule::connection()->selectOne($sql, $params);
-        $disp = (float)($row->disponible ?? 0);
+        $disp = round((float)($row->disponible ?? 0), 4);
+        $cantidad = round($cantidad, 4);
 
-        // Tolerancia de 0.01 para evitar falsos negativos por redondeo de punto flotante
-        if ($cantidad > $disp + 0.01) {
+        // Tolerancia de 0.0001 para evitar falsos negativos por redondeo de punto flotante
+        if ($cantidad > $disp + 0.0001) {
             return $this->deny('R02', sprintf(
                 'Traslado excede stock en ubicación origen. Pedido: %.2f — Disponible: %.2f.',
                 $cantidad, $disp
@@ -278,7 +281,7 @@ class InventoryGuard
             return ['ok' => true]; // ajustes positivos siempre permitidos
         }
 
-        $cantidadAbsoluta = abs($cantidad);
+        $cantidadAbsoluta = round(abs($cantidad), 4);
 
         $params = [$this->empresaId, $this->sucursalId, $productoId];
         $sql = "SELECT COALESCE(SUM(cantidad), 0) as total
@@ -289,9 +292,9 @@ class InventoryGuard
         if ($lote        !== null) { $sql .= " AND lote = ?";         $params[] = $lote; }
 
         $row   = Capsule::connection()->selectOne($sql, $params);
-        $total = (float)($row->total ?? 0);
+        $total = round((float)($row->total ?? 0), 4);
 
-        if ($cantidadAbsoluta > $total) {
+        if ($cantidadAbsoluta > $total + 0.0001) {
             return $this->deny('R03', sprintf(
                 'Ajuste negativo dejaría inventario en %.2f. Stock actual: %.2f.',
                 $total - $cantidadAbsoluta, $total
@@ -320,12 +323,13 @@ class InventoryGuard
             return ['ok' => true]; // sin ODC vinculada, no se puede validar
         }
 
-        $yaProcesado = (float)($det->cantidad_recibida ?? 0);
-        $ordenado    = (float)($det->cantidad_solicitada ?? 0);
-        $maximo      = $ordenado * (1 + $this->toleranciaRecepcion / 100);
-        $totalSiAcepta = $yaProcesado + $cantidadRecibida;
+        $yaProcesado = round((float)($det->cantidad_recibida ?? 0), 4);
+        $ordenado    = round((float)($det->cantidad_solicitada ?? 0), 4);
+        $cantidadRecibida = round($cantidadRecibida, 4);
+        $maximo      = round($ordenado * (1 + $this->toleranciaRecepcion / 100), 4);
+        $totalSiAcepta = round($yaProcesado + $cantidadRecibida, 4);
 
-        if ($totalSiAcepta > $maximo) {
+        if ($totalSiAcepta > $maximo + 0.0001) {
             return $this->deny('R05', sprintf(
                 'Recepción excede la ODC + tolerancia (%.0f%%). Ordenado: %.2f — Ya recibido: %.2f — Intentando recibir: %.2f — Máx permitido: %.2f.',
                 $this->toleranciaRecepcion, $ordenado, $yaProcesado, $cantidadRecibida, $maximo
@@ -359,9 +363,10 @@ class InventoryGuard
             [$this->empresaId, $this->sucursalId, $productoId]
         );
 
-        $totalDespacchable = (float)($row->total ?? 0);
+        $totalDespacchable = round((float)($row->total ?? 0), 4);
+        $cantidad = round($cantidad, 4);
 
-        if ($cantidad > $totalDespacchable) {
+        if ($cantidad > $totalDespacchable + 0.0001) {
             return $this->deny('R04', sprintf(
                 'Despacho excede el inventario. Pedido: %.2f — Total inventariable: %.2f.',
                 $cantidad, $totalDespacchable
