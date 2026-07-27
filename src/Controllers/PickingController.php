@@ -2134,7 +2134,18 @@ class PickingController extends BaseController
                     Capsule::table('packing_sesiones')->whereIn('id', $sesionesPend)->delete();
                 }
 
-                // 5. Hard-delete detalles y orden (siempre, sin importar el estado)
+                // 5. Desvincular tareas de reabastecimiento generadas a partir de esta
+                //    orden. tarea_reabastecimientos.orden_picking_id tiene FK RESTRICT
+                //    hacia orden_pickings (migración 119) — si quedan tareas apuntando
+                //    a esta orden, $orden->delete() más abajo revienta con un error de
+                //    integridad referencial ("no se puede eliminar el pedido"). La
+                //    columna ya es nullable desde la migración 111 precisamente para
+                //    poder desligarlas sin perder el historial de reabastecimiento.
+                Capsule::table('tarea_reabastecimientos')
+                    ->where('orden_picking_id', $orden->id)
+                    ->update(['orden_picking_id' => null]);
+
+                // 6. Hard-delete detalles y orden (siempre, sin importar el estado)
                 Capsule::table('picking_detalles')
                     ->where('orden_picking_id', $orden->id)
                     ->delete();

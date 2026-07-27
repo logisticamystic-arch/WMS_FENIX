@@ -423,6 +423,45 @@ WMS_MODULES.picking = {
     await this._cargarPedidos();
   },
 
+  // Autocomplete del buscador de producto en "Editar Pedido". Antes se construía
+  // como un onclick inline con comillas anidadas escapadas a mano: cualquier
+  // comilla doble literal resultante cerraba el atributo oninput="..." de golpe
+  // y el resto del handler se derramaba como texto en la página. Usar
+  // addEventListener evita por completo el problema de anidar comillas/backticks
+  // dentro de un atributo HTML.
+  _swalBuscarProductoEdit(el) {
+    clearTimeout(window._swTimer);
+    window._swTimer = setTimeout(async () => {
+      const q = el.value.trim();
+      const resDiv = document.getElementById('swal-add-prod-res');
+      if (!resDiv) return;
+      if (!q || q.length < 2) { resDiv.style.display = 'none'; return; }
+      try {
+        const r = await API.get('/param/productos/buscar?q=' + encodeURIComponent(q) + '&limit=6');
+        const items = r.data || r || [];
+        if (!items.length) {
+          resDiv.innerHTML = '<div style="padding:6px;font-size:10px;color:#94a3b8;">Sin resultados</div>';
+          resDiv.style.display = 'block';
+          return;
+        }
+        resDiv.innerHTML = items.map((p, i) => `
+          <div class="swal-add-prod-opt" data-idx="${i}" style="padding:5px 8px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:11px;">
+            ${WMS.esc(p.codigo_interno || '')} — ${WMS.esc(p.nombre || '')}
+          </div>`).join('');
+        window._swalProdOptsEdit = items;
+        resDiv.querySelectorAll('.swal-add-prod-opt').forEach(div => {
+          div.addEventListener('click', () => {
+            const p = window._swalProdOptsEdit[parseInt(div.dataset.idx, 10)];
+            document.getElementById('swal-add-prod-id').value = p.id;
+            document.getElementById('swal-add-prod-buscar').value = `${p.nombre || ''} [${p.codigo_interno || ''}]`;
+            resDiv.style.display = 'none';
+          });
+        });
+        resDiv.style.display = 'block';
+      } catch (e) { /* búsqueda fallida silenciosa, igual que antes */ }
+    }, 350);
+  },
+
   async abrirModalEditarPedido(planillaKey) {
     if (!planillaKey) return;
     WMS.spinner(true);
@@ -521,17 +560,7 @@ WMS_MODULES.picking = {
             <div style="display:flex;gap:6px;align-items:center;">
               <div style="flex:1;position:relative;">
                 <input id="swal-add-prod-buscar" class="form-control" style="font-size:11px;padding:5px 8px;" placeholder="Buscar producto por código o nombre..."
-                       oninput="clearTimeout(window._swTimer); window._swTimer=setTimeout(async()=>{
-                         const q=this.value.trim(); const resDiv=document.getElementById('swal-add-prod-res');
-                         if(!q || q.length<2){ resDiv.style.display='none'; return; }
-                         try {
-                           const r = await API.get('/param/productos/buscar?q=' + encodeURIComponent(q) + '&limit=6');
-                           const items = r.data || r || [];
-                           if(!items.length) { resDiv.innerHTML='<div style=padding:6px;font-size:10px;color:#94a3b8;>Sin resultados</div>'; resDiv.style.display='block'; return; }
-                           resDiv.innerHTML = items.map(p => \`<div style='padding:5px 8px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:11px;' onclick='document.getElementById(\\"swal-add-prod-id\\").value=\"\${p.id}\";document.getElementById(\\"swal-add-prod-buscar\\").value=\"\${WMS.esc(p.nombre||'')} ([\${WMS.esc(p.codigo_interno||'')}]\";document.getElementById(\\"swal-add-prod-res\\").style.display=\"none\";'>\${WMS.esc(p.codigo_interno||'')} — \${WMS.esc(p.nombre||'')}</div>\`).join('');
-                           resDiv.style.display='block';
-                         } catch(e){}
-                       }, 350)">
+                       oninput="WMS_MODULES.picking._swalBuscarProductoEdit(this)">
                 <div id="swal-add-prod-res" style="display:none;position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #cbd5e1;border-radius:4px;max-height:130px;overflow-y:auto;z-index:9999;box-shadow:0 4px 6px rgba(0,0,0,.1);"></div>
                 <input type="hidden" id="swal-add-prod-id">
               </div>

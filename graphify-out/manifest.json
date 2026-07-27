@@ -710,8 +710,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/recepcion.js": {
-    "mtime": 1784767113.7408721,
-    "ast_hash": "74758b0327599458e1820519c80df0e3",
+    "mtime": 1785155882.5750725,
+    "ast_hash": "fcc754d83a50cfbb0bb51afc87f41cea",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/reportes.js": {
@@ -735,8 +735,8 @@
     "semantic_hash": ""
   },
   "public/index.php": {
-    "mtime": 1784941589.872919,
-    "ast_hash": "6c05d4c4d2eadbeb1f0ce7e9cffb1045",
+    "mtime": 1785155451.482787,
+    "ast_hash": "77bcc88da21689d038ef734d89047368",
     "semantic_hash": ""
   },
   "public/manifest.json": {
@@ -920,8 +920,8 @@
     "semantic_hash": "9b532f71b8b4b102cd8ecea000623634"
   },
   "src/Controllers/InventarioController.php": {
-    "mtime": 1784899266.7196765,
-    "ast_hash": "8e7562db0ab4f09d57dc2636032116fe",
+    "mtime": 1785155623.7471588,
+    "ast_hash": "9ed448c9163faa320eeb9390c36bd818",
     "semantic_hash": ""
   },
   "src/Controllers/InventarioV2Controller.php": {
@@ -975,8 +975,8 @@
     "semantic_hash": "a526a63d521fc75e43f1f5a54d5b1d13"
   },
   "src/Controllers/RecepcionController.php": {
-    "mtime": 1784586724.6924574,
-    "ast_hash": "62de881f5a7873a5b8168507d635ceea",
+    "mtime": 1785155724.4344935,
+    "ast_hash": "a1770ff17694990bedf7e896800b87b5",
     "semantic_hash": ""
   },
   "src/Controllers/ReplenishmentController.php": {
