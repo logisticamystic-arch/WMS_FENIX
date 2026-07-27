@@ -875,6 +875,21 @@ button { cursor: pointer; font-family: var(--font); }
   z-index: 1;
 }
 .data-table thead th.sortable { cursor: pointer; user-select: none; }
+
+/* Contenedor con encabezado fijo para tablas largas (ej. módulo Agotados).
+   .table-container por sí solo no acota altura (overflow-x únicamente), así
+   que sticky en el thead no tenía ningún ancestro con scroll real del cual
+   colgarse. */
+.table-container-scroll {
+  max-height: 65vh;
+  overflow-y: auto;
+}
+.table-container-scroll .erp-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+}
 .data-table thead th.sortable:hover { background: var(--primary-light); color: var(--primary); }
 .data-table tbody tr {
   border-bottom: 1px solid var(--border);

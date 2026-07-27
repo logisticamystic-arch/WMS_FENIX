@@ -5800,14 +5800,29 @@ class PickingController extends BaseController
                   ->whereColumn('pf.orden_picking_id', 'pd.orden_picking_id')
                   ->whereColumn('pf.producto_id', 'pd.producto_id');
             })
-            ->select('pd.orden_picking_id', 'pd.producto_id', 'pd.cantidad_solicitada')
+            ->select('pd.orden_picking_id', 'pd.producto_id', 'pd.cantidad_solicitada', 'pd.cantidad_pickeada')
             ->get();
 
         if ($faltantesPend->isNotEmpty()) {
             $ordenMapCert = $ordenes->keyBy('id');
             $nowCert      = date('Y-m-d H:i:s');
+            // cantidad_pickeada en picking_detalles ya viene siempre en UND/TOTAL
+            // (unidades reales) desde la auditoría 2026-07-22, mientras que
+            // cantidad_solicitada/cantidad_faltante en picking_faltantes se manejan
+            // en CAJAS (misma convención que usa confirmarConsolidado() más arriba).
+            // Antes esto insertaba cantidad_faltante = cantidad_solicitada completa,
+            // como si nada se hubiera separado — sobre-reportando el faltante real
+            // de toda orden que caía en este safety-net de certFinalizar.
+            $productoIdsCert = $faltantesPend->pluck('producto_id')->unique()->values();
+            $upcMapCert = \App\Models\Producto::whereIn('id', $productoIdsCert)->pluck('unidades_caja', 'id');
+
             foreach ($faltantesPend as $fd) {
-                $ord = $ordenMapCert[$fd->orden_picking_id] ?? null;
+                $ord   = $ordenMapCert[$fd->orden_picking_id] ?? null;
+                $upcFd = (float)($upcMapCert[$fd->producto_id] ?? 1) ?: 1;
+                $pickeadaCajasEquivFd = $upcFd > 0 ? ((float)$fd->cantidad_pickeada / $upcFd) : (float)$fd->cantidad_pickeada;
+                $faltanteCantFd = max(0, (float)$fd->cantidad_solicitada - $pickeadaCajasEquivFd);
+                if ($faltanteCantFd <= 0) continue;
+
                 Capsule::table('picking_faltantes')->insert([
                     'empresa_id'          => $empresaIdCert,
                     'sucursal_id'         => $user->sucursal_id,
@@ -5815,7 +5830,7 @@ class PickingController extends BaseController
                     'producto_id'         => $fd->producto_id,
                     'planilla_lote'       => $ord ? ($ord->planilla_lote ?? $ord->planilla_numero ?? null) : null,
                     'cantidad_solicitada' => $fd->cantidad_solicitada,
-                    'cantidad_faltante'   => $fd->cantidad_solicitada,
+                    'cantidad_faltante'   => $faltanteCantFd,
                     'causa'               => 'Faltante certificado — sucursal: ' . $sucursal,
                     'created_at'          => $nowCert,
                     'updated_at'          => $nowCert,

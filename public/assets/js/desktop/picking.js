@@ -3664,7 +3664,7 @@ WMS_MODULES.picking = {
                   ${f.vista !== 'consolidado' && f.showAll ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:false})"><i class="fa-solid fa-compress"></i> Mostrar 50</button>` : ''}
                 </div>
               </div>
-              <div class="table-container">
+              <div class="table-container table-container-scroll">
                 ${f.vista === 'consolidado' ? `
                 <table class="erp-table">
                   <thead><tr>
