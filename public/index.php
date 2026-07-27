@@ -554,6 +554,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // Ruta directa para /api/inventario/traslado
     $group->post('/inventario/traslado', [\App\Controllers\InventarioController::class, 'traslado']);
     $group->get('/inv-general/eventos',           [\App\Controllers\InventarioController::class, 'getEventos']);
+    $group->get('/inv-general/eventos/{id}',      [\App\Controllers\InventarioController::class, 'verEventoGeneral']);
+    $group->get('/inv-general/eventos/{id}/diferencias', [\App\Controllers\InventarioController::class, 'getDiferenciasEvento']);
     $group->post('/inv-general/eventos',          [\App\Controllers\InventarioController::class, 'crearEvento']);
     $group->post('/inv-general/asignaciones', [\App\Controllers\InventarioController::class, 'crearAsignacion']);
     $group->post('/inv-general/conteo', [\App\Controllers\InventarioController::class, 'registrarConteo']);

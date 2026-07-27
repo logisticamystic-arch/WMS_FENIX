@@ -10,6 +10,7 @@ WMS_MODULES.inventario = {
     const fn = {
       sesiones: this.show_sesiones,
       ciclico: this.show_ciclico, general: this.show_general, cargue: this.show_cargue,
+      'toma-fisica': this.show_tomaFisica,
       dashboard: this.show_dashboard, ajuste: this.show_ajuste, 'ajuste-ubicacion': this.show_ajuste_ubicacion,
       stock: this.show_stock, 'stock-ubi': this.show_stock_ubi, vencimientos: this.show_vencimientos,
     };
@@ -20,6 +21,7 @@ WMS_MODULES.inventario = {
     const m = {
       sesiones: 'Gestión de Conteos',
       ciclico:'Admin Conteos', general:'Inventario General', cargue:'Cargue Inicial',
+      'toma-fisica':'Toma Física General',
       dashboard:'Dashboard Inventario', ajuste:'Ajuste Manual', stock:'Stock General',
       'stock-ubi':'Stock por Ubicación', vencimientos:'Vencimientos',
     };
@@ -2958,6 +2960,252 @@ WMS_MODULES.inventario = {
       if (r.error) WMS.toast('error', r.message);
       else { WMS.toast('success', 'Conteo cerrado'); WMS.closeModal('generic-modal'); this.show_ciclico(); }
     } catch(e) { WMS.toast('error', 'Error'); }
+  },
+
+  // ── TOMA FÍSICA GENERAL (InvGeneralEvento/Asignacion/Conteo/Diferencia) ────────
+  async show_tomaFisica() {
+    WMS.setToolbar(`
+      <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._nuevoEventoTomaFisica()">
+        <i class="fa-solid fa-plus"></i> Nuevo Evento
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.inventario.show_tomaFisica()">
+        <i class="fa-solid fa-sync"></i> Actualizar
+      </button>`);
+    WMS.spinner();
+    try {
+      const r = await API.get('/inv-general/eventos');
+      const eventos = r.data || r || [];
+      const estadoColor = e => ({ Abierto: '#1e40af', Validando: '#92400e', Cerrado: '#166534', Anulado: '#991b1b' }[e] || '#334155');
+      const estadoBg    = e => ({ Abierto: '#dbeafe', Validando: '#fef9c3', Cerrado: '#dcfce7', Anulado: '#fee2e2' }[e] || '#f1f5f9');
+      WMS.setContent(`
+        <div class="px-20 py-16">
+          <div class="card shadow-soft">
+            <div class="card-header d-flex justify-between align-center">
+              <span class="card-title fw-900 color-primary">
+                <i class="fa-solid fa-clipboard-check"></i> Toma Física General
+              </span>
+              <span class="text-xs text-muted">${eventos.length} evento(s)</span>
+            </div>
+            <div class="table-container">
+              <table class="erp-table">
+                <thead><tr>
+                  <th>Evento</th><th>Tipo</th><th>Fecha Programada</th><th>Estado</th><th>Acciones</th>
+                </tr></thead>
+                <tbody>${eventos.map(e => `
+                  <tr>
+                    <td class="fw-800">${WMS.esc(e.nombre)}</td>
+                    <td>${WMS.esc(e.tipo)}</td>
+                    <td>${WMS.formatDate(e.fecha_programada)}</td>
+                    <td><span style="background:${estadoBg(e.estado)};color:${estadoColor(e.estado)};padding:2px 10px;border-radius:99px;font-size:.72rem;font-weight:700;">${WMS.esc(e.estado)}</span></td>
+                    <td style="white-space:nowrap;">
+                      <button class="btn btn-xs btn-primary-soft" onclick="WMS_MODULES.inventario.verEventoTomaFisica(${e.id})">
+                        <i class="fa-solid fa-eye"></i> Detalle
+                      </button>
+                    </td>
+                  </tr>`).join('') || '<tr><td colspan="5" class="table-empty">Sin eventos de toma física registrados</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>`);
+    } catch (e) { WMS.toast('error', 'Error cargando eventos'); }
+  },
+
+  _nuevoEventoTomaFisica() {
+    const hoy = (typeof WMS.getToday === 'function') ? WMS.getToday() : new Date().toISOString().slice(0, 10);
+    WMS.showModal('Nuevo Evento — Toma Física General', `
+      <div class="form-grid form-grid-2">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Nombre <span class="required">*</span></label>
+          <input id="tf-nombre" class="form-control" placeholder="Ej: Toma física Bodega Principal Julio 2026">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipo</label>
+          <select id="tf-tipo" class="form-control">
+            <option value="Comparacion">Comparación (contra sistema)</option>
+            <option value="CargueInicial">Cargue Inicial</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha Programada <span class="required">*</span></label>
+          <input id="tf-fecha" type="date" class="form-control" value="${hoy}">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Notas</label>
+          <textarea id="tf-notas" class="form-control" rows="2"></textarea>
+        </div>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+       <button class="btn btn-primary" onclick="WMS_MODULES.inventario._guardarEventoTomaFisica()">
+         <i class="fa-solid fa-save"></i> Crear Evento
+       </button>`, 'sm');
+  },
+
+  async _guardarEventoTomaFisica() {
+    const nombre = document.getElementById('tf-nombre')?.value.trim();
+    const tipo = document.getElementById('tf-tipo')?.value;
+    const fecha_programada = document.getElementById('tf-fecha')?.value;
+    const notas = document.getElementById('tf-notas')?.value.trim();
+    if (!nombre || !fecha_programada) return WMS.toast('warning', 'Nombre y fecha son obligatorios');
+    try {
+      const r = await API.post('/inv-general/eventos', { nombre, tipo, fecha_programada, notas });
+      if (r.error) return WMS.toast('error', r.message || 'Error creando evento');
+      WMS.toast('success', 'Evento creado');
+      WMS.closeModal('generic-modal');
+      this.show_tomaFisica();
+    } catch (e) { WMS.toast('error', 'Error creando evento'); }
+  },
+
+  async verEventoTomaFisica(id) {
+    WMS.spinner();
+    try {
+      const [rEv, rDif] = await Promise.all([
+        API.get('/inv-general/eventos/' + id),
+        API.get('/inv-general/eventos/' + id + '/diferencias'),
+      ]);
+      const ev = rEv.data || rEv;
+      const diferencias = rDif.data || rDif || [];
+
+      WMS.setToolbar(`
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.inventario.show_tomaFisica()">
+          <i class="fa-solid fa-arrow-left"></i> Volver
+        </button>
+        <button class="btn btn-outline-primary btn-sm" onclick="window.open(API_BASE + '/inv-general/eventos/${id}/acta', '_blank')">
+          <i class="fa-solid fa-print"></i> Ver Acta
+        </button>
+        ${ev.estado === 'Abierto' ? `
+        <button class="btn btn-success btn-sm" onclick="WMS_MODULES.inventario._asignarAuxiliarTomaFisica(${id})">
+          <i class="fa-solid fa-user-plus"></i> Asignar Auxiliar
+        </button>
+        <button class="btn btn-danger btn-sm" onclick="WMS_MODULES.inventario._cerrarEventoTomaFisica(${id})">
+          <i class="fa-solid fa-lock"></i> Cerrar Evento
+        </button>` : ''}`);
+
+      const estadoDif = d => ({
+        Pendiente: ['#92400e', '#fef9c3'], RequiereRecorteo: ['#991b1b', '#fee2e2'],
+        Aprobada: ['#166534', '#dcfce7'], Descartada: ['#475569', '#f1f5f9'],
+      }[d] || ['#334155', '#f1f5f9']);
+
+      WMS.setContent(`
+        <div class="px-20 py-16" style="display:flex;flex-direction:column;gap:16px;">
+          <div class="card shadow-soft">
+            <div class="card-header">
+              <span class="card-title fw-900 color-primary"><i class="fa-solid fa-clipboard-check"></i> ${WMS.esc(ev.nombre)}</span>
+            </div>
+            <div style="padding:14px 16px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+              <div><div class="text-xs text-muted">Estado</div><div class="fw-800">${WMS.esc(ev.estado)}</div></div>
+              <div><div class="text-xs text-muted">Fecha Programada</div><div class="fw-800">${WMS.formatDate(ev.fecha_programada)}</div></div>
+              <div><div class="text-xs text-muted">Ubicaciones Contadas</div><div class="fw-800">${ev.ubicaciones_contadas}</div></div>
+              <div><div class="text-xs text-muted">Diferencias / Pendientes</div><div class="fw-800">${ev.total_diferencias} / ${ev.diferencias_pendientes}</div></div>
+            </div>
+          </div>
+
+          <div class="card shadow-soft">
+            <div class="card-header"><span class="card-title"><i class="fa-solid fa-users"></i> Auxiliares Asignados</span></div>
+            <div class="table-container">
+              <table class="erp-table">
+                <thead><tr><th>Auxiliar</th><th>Tipo Rango</th><th>Valor</th><th>Estado</th></tr></thead>
+                <tbody>${(ev.asignaciones || []).map(a => `
+                  <tr>
+                    <td>${WMS.esc(a.personal?.nombre || ('#' + a.personal_id))}</td>
+                    <td>${WMS.esc(a.rango_tipo)}</td>
+                    <td>${WMS.esc(a.rango_valor || '-')}</td>
+                    <td>${WMS.esc(a.estado)}</td>
+                  </tr>`).join('') || '<tr><td colspan="4" class="table-empty">Sin auxiliares asignados</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card shadow-soft">
+            <div class="card-header"><span class="card-title"><i class="fa-solid fa-scale-balanced"></i> Mesa de Diferencias</span></div>
+            <div class="table-container">
+              <table class="erp-table">
+                <thead><tr><th>Ubicación</th><th>Producto</th><th>Lote</th><th style="text-align:center;">Sistema</th><th style="text-align:center;">Contado</th><th>Estado</th></tr></thead>
+                <tbody>${diferencias.map(d => {
+                  const [c, bg] = estadoDif(d.estado);
+                  const contado = d.cantidad_final_aprobada ?? (d.conteo_1 ?? d.conteo_2 ?? d.conteo_3 ?? '-');
+                  return `<tr>
+                    <td>${WMS.esc(d.ubicacion?.codigo || ('#' + d.ubicacion_id))}</td>
+                    <td>${WMS.esc(d.producto?.nombre || ('#' + d.producto_id))}</td>
+                    <td>${WMS.esc(d.lote || '-')}</td>
+                    <td style="text-align:center;">${WMS.formatNum(d.cantidad_sistema)}</td>
+                    <td style="text-align:center;">${contado}</td>
+                    <td><span style="background:${bg};color:${c};padding:2px 10px;border-radius:99px;font-size:.72rem;font-weight:700;">${WMS.esc(d.estado)}</span></td>
+                  </tr>`;
+                }).join('') || '<tr><td colspan="6" class="table-empty">Aún no hay conteos registrados para este evento</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>`);
+    } catch (e) { WMS.toast('error', 'Error cargando el evento'); }
+  },
+
+  async _asignarAuxiliarTomaFisica(eventoId) {
+    try {
+      const r = await API.get('/param/personal', 'limit=200');
+      const auxiliares = r.data || r || [];
+      WMS.showModal('Asignar Auxiliar', `
+        <div class="form-grid form-grid-2">
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Auxiliar <span class="required">*</span></label>
+            <select id="tf-asig-personal" class="form-control">
+              <option value="">Seleccionar...</option>
+              ${auxiliares.map(a => `<option value="${a.id}">${WMS.esc(a.nombre)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tipo de Rango</label>
+            <select id="tf-asig-tipo" class="form-control">
+              <option value="Libre">Libre</option>
+              <option value="Todo">Todo el almacén</option>
+              <option value="Pasillo">Por Pasillo</option>
+              <option value="Ubicacion">Por Ubicación</option>
+              <option value="Categoria">Por Categoría</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Valor del Rango</label>
+            <input id="tf-asig-valor" class="form-control" placeholder="Ej: Pasillo B">
+          </div>
+        </div>`,
+        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+         <button class="btn btn-primary" onclick="WMS_MODULES.inventario._guardarAsignacionTomaFisica(${eventoId})">
+           <i class="fa-solid fa-save"></i> Asignar
+         </button>`, 'sm');
+    } catch (e) { WMS.toast('error', 'Error cargando auxiliares'); }
+  },
+
+  async _guardarAsignacionTomaFisica(eventoId) {
+    const personal_id = document.getElementById('tf-asig-personal')?.value;
+    if (!personal_id) return WMS.toast('warning', 'Seleccione un auxiliar');
+    const rango_tipo = document.getElementById('tf-asig-tipo')?.value;
+    const rango_valor = document.getElementById('tf-asig-valor')?.value.trim();
+    try {
+      const r = await API.post('/inv-general/asignaciones', {
+        evento_id: eventoId, personal_id: parseInt(personal_id, 10), rango_tipo, rango_valor,
+      });
+      if (r.error) return WMS.toast('error', r.message || 'Error asignando auxiliar');
+      WMS.toast('success', 'Auxiliar asignado y notificado');
+      WMS.closeModal('generic-modal');
+      this.verEventoTomaFisica(eventoId);
+    } catch (e) { WMS.toast('error', 'Error asignando auxiliar'); }
+  },
+
+  _cerrarEventoTomaFisica(eventoId) {
+    WMS.confirm(
+      'Cerrar Evento de Toma Física',
+      'Esto finalizará el conteo: toda referencia del sistema en las ubicaciones contadas que NO fue contada físicamente quedará reportada y se retirará del inventario. Esta acción no se puede deshacer. ¿Continuar?',
+      async () => {
+        try {
+          const r = await API.post(`/inv-general/eventos/${eventoId}/cerrar`, {});
+          if (r.error) return WMS.toast('error', r.message || 'Error cerrando el evento');
+          WMS.toast('success', r.message || 'Evento cerrado');
+          this.verEventoTomaFisica(eventoId);
+        } catch (e) { WMS.toast('error', 'Error cerrando el evento'); }
+      }
+    );
   },
 
   // ── INVENTARIO GENERAL V2 (Reemplazado por Gestión Unificada) ──────────────────

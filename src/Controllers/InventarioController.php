@@ -1383,6 +1383,51 @@ class InventarioController extends BaseController
     }
 
     /**
+     * GET /api/inv-general/eventos/{id}
+     * Detalle de un evento: asignaciones (con auxiliar) + contadores de avance.
+     */
+    public function verEventoGeneral(Request $r, Response $res, array $args): Response
+    {
+        $user = $r->getAttribute('user');
+        $evento = InvGeneralEvento::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+            ->where('sucursal_id', $user->sucursal_id)
+            ->with(['asignaciones.personal'])
+            ->find($args['id']);
+
+        if (!$evento) return $this->notFound($res);
+
+        $evento->total_conteos = InvGeneralConteo::where('evento_id', $evento->id)->count();
+        $evento->ubicaciones_contadas = InvGeneralConteo::where('evento_id', $evento->id)
+            ->distinct()->count('ubicacion_id');
+        $evento->total_diferencias = InvGeneralDiferencia::where('evento_id', $evento->id)->count();
+        $evento->diferencias_pendientes = InvGeneralDiferencia::where('evento_id', $evento->id)
+            ->where('estado', 'RequiereRecorteo')->count();
+
+        return $this->ok($res, $evento);
+    }
+
+    /**
+     * GET /api/inv-general/eventos/{id}/diferencias
+     */
+    public function getDiferenciasEvento(Request $r, Response $res, array $args): Response
+    {
+        $user = $r->getAttribute('user');
+        $evento = InvGeneralEvento::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+            ->where('sucursal_id', $user->sucursal_id)
+            ->find($args['id']);
+
+        if (!$evento) return $this->notFound($res);
+
+        $diferencias = InvGeneralDiferencia::with(['producto', 'ubicacion'])
+            ->where('evento_id', $evento->id)
+            ->orderBy('estado')
+            ->orderBy('id', 'desc')
+            ->get();
+
+        return $this->ok($res, $diferencias);
+    }
+
+    /**
      * POST /api/inv-general/eventos
      */
     public function crearEvento(Request $r, Response $res): Response
