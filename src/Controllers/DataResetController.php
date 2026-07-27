@@ -37,6 +37,22 @@ class DataResetController extends BaseController
     private const TABLAS_PROTEGIDAS = ['empresas', 'migrations', '_migrations'];
 
     private const SECCIONES = [
+        'reset_operativo_total' => [
+            'label'  => 'REINICIO OPERATIVO TOTAL (Vacía Picking, Packing, Recepciones, ODC, Inventario, Kardex, Conteos, Devoluciones, Alertas y Logs — Mantiene intactos Productos, Ubicaciones, Clientes, Proveedores, Usuarios)',
+            'tablas' => [
+                'inventarios', 'movimiento_inventarios', 'inventory_guard_log',
+                'recepcion_detalles', 'recepciones', 'orden_compra_detalles', 'ordenes_compra', 'citas', 'odc_auxiliares', 'odc_personal', 'cargue_inicial_lineas',
+                'orden_pickings', 'picking_detalles', 'picking_faltantes', 'novedades_picking', 'picking_asignaciones_log', 'picking_consolidados', 'picking_cert_ambiente', 'picking_productos_pendientes', 'picking_novedades_stock', 'tarea_reabastecimientos',
+                'packing_sesiones', 'packing_unidades', 'packing_items', 'certificaciones', 'certificacion_detalles', 'certificacion_despachos', 'despachos', 'despacho_ordenes',
+                'wave_picking', 'wave_planillas', 'planillas_picking', 'planilla_vrs', 'archivos_planilla', 'cert_planillas', 'cert_planilla_det', 'lineas_planilla',
+                'devolucion_detalles', 'devoluciones', 'traspasos',
+                'conteo_detalles', 'conteo_personal', 'conteo_inventarios', 'sesion_lineas', 'sesion_asignaciones', 'sesiones_inventario', 'ajustes_inventario', 'ajuste_ubicacion_detalles', 'ajuste_ubicacion', 'inv_general_diferencias', 'inv_general_conteos', 'inv_general_asignaciones', 'inv_general_eventos', 'nota_ajuste_detalles', 'notas_ajuste',
+                'bloqueo_lotes', 'aprobaciones_vencimiento',
+                'alertas_stock', 'anomaly_flags', 'expiry_predictions', 'notificaciones', 'forecast_demanda', 'ventas_agregadas_ml', 'ubicaciones_optimas', 'clasificaciones_abc_xyz',
+                'cross_dock_ordenes', 'cross_dock_detalles', 'yard_appointments', 'tms_webhooks',
+                'miscelaneos', 'miscelaneo_fotos', 'audit_logs', 'performance_metrics'
+            ],
+        ],
         'maestros' => [
             'label'  => 'Maestros (productos, clientes, proveedores)',
             'tablas' => ['producto_eans', 'producto_fotos', 'productos', 'clientes', 'proveedores',
@@ -107,6 +123,20 @@ class DataResetController extends BaseController
             'peligroso'  => true,
         ],
     ];
+
+    // Helper de escape de identificadores para compatibilidad MySQL / PgSQL
+    private function quoteIdent(string $ident): string
+    {
+        try {
+            $driver = Capsule::connection()->getDriverName();
+        } catch (\Throwable $e) {
+            $driver = $_ENV['DB_DRIVER'] ?? 'mysql';
+        }
+        if ($driver === 'mysql') {
+            return "`" . str_replace("`", "``", $ident) . "`";
+        }
+        return "\"" . str_replace("\"", "\"\"", $ident) . "\"";
+    }
 
     // ── GET /api/admin/reset/secciones ────────────────────────────────────────
     public function secciones(Request $request, Response $response): Response
@@ -204,12 +234,28 @@ class DataResetController extends BaseController
         $borradas = [];
         try {
             Capsule::transaction(function () use ($tablasOrdenadas, $empresaId, &$borradas) {
+                // Desactivar temporalmente restricciones de FK en MySQL/PgSQL
+                $driver = Capsule::connection()->getDriverName();
+                if ($driver === 'mysql') {
+                    Capsule::statement('SET FOREIGN_KEY_CHECKS=0');
+                } elseif ($driver === 'pgsql') {
+                    Capsule::statement('SET CONSTRAINTS ALL DEFERRED');
+                }
+
                 foreach ($tablasOrdenadas as $t) {
                     $n = $this->borrarTablaTenant($t, $empresaId);
                     $borradas[$t] = $n;
                 }
+
+                if ($driver === 'mysql') {
+                    Capsule::statement('SET FOREIGN_KEY_CHECKS=1');
+                }
             });
         } catch (\Throwable $e) {
+            $driver = Capsule::connection()->getDriverName();
+            if ($driver === 'mysql') {
+                try { Capsule::statement('SET FOREIGN_KEY_CHECKS=1'); } catch (\Throwable $ex) {}
+            }
             $this->audit($user, 'sistema', 'reset_datos_error', 'empresas', $empresaId,
                 null, ['error' => $e->getMessage()], 'Reinicio de datos falló y se revirtió: ' . $e->getMessage());
             return $this->error($response, 'Error durante el borrado — se revirtió todo (nada quedó a medias): ' . $e->getMessage(), 500);
@@ -258,12 +304,18 @@ class DataResetController extends BaseController
             }
         }
 
-        // Bloquear que 'configuracion' se cuele por cierre automático sin que
-        // el admin la haya marcado explícitamente — es la sección peligrosa.
+        // Bloquear que 'configuracion' o 'maestros' se cuelen por cierre automático sin que
+        // el admin la haya marcado explícitamente — preservación de tablas maestras.
         $seccionConfig = self::SECCIONES['configuracion']['tablas'];
         $configSeleccionada = in_array('configuracion', $seccionesSel, true);
         if (!$configSeleccionada) {
             foreach ($seccionConfig as $t) unset($cierre[$t]);
+        }
+
+        $seccionMaestros = self::SECCIONES['maestros']['tablas'];
+        $maestrosSeleccionados = in_array('maestros', $seccionesSel, true);
+        if (!$maestrosSeleccionados) {
+            foreach ($seccionMaestros as $t) unset($cierre[$t]);
         }
 
         $tablas = array_keys($cierre);
@@ -357,9 +409,7 @@ class DataResetController extends BaseController
     /**
      * Devuelve ['where' => 'sql...', 'bindings' => [...]] que acota `tabla` al
      * tenant, resolviendo recursivamente vía FK si la tabla no tiene empresa_id
-     * propio. Nunca devuelve null con esta base de datos (todas las tablas de
-     * negocio cuelgan, directa o indirectamente, de una tabla con empresa_id) —
-     * si algún día eso cambiara, se lanza excepción en vez de borrar sin acotar.
+     * propio.
      */
     private function resolverScope(string $tabla, int $empresaId, array $grafo, array $visitando = []): array
     {
@@ -382,9 +432,11 @@ class DataResetController extends BaseController
             } catch (\Throwable $e) {
                 continue; // intentar con otra FK de la misma tabla
             }
-            $sub = "SELECT id FROM \"{$padre}\" WHERE {$padreScope['where']}";
+            $padreQ = $this->quoteIdent($padre);
+            $colQ   = $this->quoteIdent($col);
+            $sub    = "SELECT id FROM {$padreQ} WHERE {$padreScope['where']}";
             return $this->scopeCache[$cacheKey] = [
-                'where'    => "\"{$col}\" IN ({$sub})",
+                'where'    => "{$colQ} IN ({$sub})",
                 'bindings' => $padreScope['bindings'],
             ];
         }
@@ -395,9 +447,10 @@ class DataResetController extends BaseController
     private function contarFilasTenant(string $tabla, int $empresaId): int
     {
         try {
-            $grafo = $this->cargarGrafoFk();
-            $scope = $this->resolverScope($tabla, $empresaId, $grafo);
-            $sql = "SELECT COUNT(*) as n FROM \"{$tabla}\" WHERE {$scope['where']}";
+            $grafo  = $this->cargarGrafoFk();
+            $scope  = $this->resolverScope($tabla, $empresaId, $grafo);
+            $tablaQ = $this->quoteIdent($tabla);
+            $sql    = "SELECT COUNT(*) as n FROM {$tablaQ} WHERE {$scope['where']}";
             return (int) (Capsule::select($sql, $scope['bindings'])[0]->n ?? 0);
         } catch (\Throwable $e) {
             return 0;
@@ -409,9 +462,10 @@ class DataResetController extends BaseController
         if (in_array($tabla, self::TABLAS_PROTEGIDAS, true)) {
             throw new \RuntimeException("Intento de borrar tabla protegida '{$tabla}' bloqueado.");
         }
-        $grafo = $this->cargarGrafoFk();
-        $scope = $this->resolverScope($tabla, $empresaId, $grafo);
-        $sql = "DELETE FROM \"{$tabla}\" WHERE {$scope['where']}";
+        $grafo  = $this->cargarGrafoFk();
+        $scope  = $this->resolverScope($tabla, $empresaId, $grafo);
+        $tablaQ = $this->quoteIdent($tabla);
+        $sql    = "DELETE FROM {$tablaQ} WHERE {$scope['where']}";
         return Capsule::delete($sql, $scope['bindings']);
     }
 }
