@@ -1809,14 +1809,19 @@ class InventarioController extends BaseController
                     $dif->save();
                 }
 
-                // 2. Inventario del sistema en las ubicaciones contadas que NO tiene
-                //    ningún registro de conteo (ni siquiera con diferencia) — nadie lo
-                //    contó físicamente.
-                $inventarios = Inventario::where('empresa_id', $empresaId)
+                // 2. Inventario del sistema que NO tiene ningún registro de conteo 
+                //    (ni siquiera con diferencia) — nadie lo contó físicamente.
+                $inventariosQuery = Inventario::where('empresa_id', $empresaId)
                     ->where('sucursal_id', $sucursalId)
-                    ->whereIn('ubicacion_id', $ubicacionesContadas)
-                    ->where('estado', 'Disponible')
-                    ->get();
+                    ->where('estado', 'Disponible');
+
+                // Si es Cargue Inicial o Total, el alcance es TODO el almacén.
+                // Si es parcial, solo barremos las ubicaciones que efectivamente se tocaron.
+                if ($evento->tipo !== 'Cargue Inicial' && $evento->tipo !== 'Total') {
+                    $inventariosQuery->whereIn('ubicacion_id', $ubicacionesContadas);
+                }
+
+                $inventarios = $inventariosQuery->get();
 
                 foreach ($inventarios as $inv) {
                     $dif = InvGeneralDiferencia::where('evento_id', $evento->id)
