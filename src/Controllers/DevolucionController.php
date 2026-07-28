@@ -1002,6 +1002,8 @@ class DevolucionController extends BaseController
         $odc_id          = $rawBody['odc_id']          ?? null;
         $motivo_general  = $rawBody['motivo_general']  ?? 'Novedad en recepción';
         $detallesRaw     = $rawBody['detalles']        ?? '[]';
+        $causalId        = !empty($rawBody['causal_devolucion_id']) ? (int)$rawBody['causal_devolucion_id'] : null;
+        $responsable     = $rawBody['responsable_devolucion'] ?? null;
 
         // detalles puede venir como JSON string
         if (is_string($detallesRaw)) {
@@ -1043,6 +1045,8 @@ class DevolucionController extends BaseController
             $devolucion->tipo            = 'AProveedorAveria';
             $devolucion->estado          = 'Procesada';
             $devolucion->motivo_general  = $motivo_general;
+            $devolucion->causal_devolucion_id = $causalId;
+            $devolucion->responsable_devolucion = $responsable;
             $devolucion->auxiliar_id     = $user->id;
             $devolucion->fecha_movimiento= date('Y-m-d');
             $devolucion->hora_inicio     = date('H:i:s');

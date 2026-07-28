@@ -1917,6 +1917,18 @@ const MWMS = {
             ${lineasHtml || '<div style="text-align:center;padding:20px;color:#94a3b8;">Esta ODC no tiene líneas cargadas</div>'}
 
             <div style="margin-top:16px;">
+              <label style="font-size:.72rem;font-weight:700;color:#475569;display:block;margin-bottom:6px;">CAUSAL DE DEVOLUCIÓN *</label>
+              <select id="dev-causal" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:.8rem;">
+                <option value="">Seleccione causal...</option>
+                ${this._dvCausales.map(c => `<option value="${c.id}">${this.esc(c.causal)}</option>`).join('')}
+              </select>
+            </div>
+            <div style="margin-top:12px;">
+              <label style="font-size:.72rem;font-weight:700;color:#475569;display:block;margin-bottom:6px;">RESPONSABLE (Opcional)</label>
+              <input type="text" id="dev-responsable" placeholder="Responsable de la devolución..."
+                style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:.8rem;">
+            </div>
+            <div style="margin-top:12px;">
               <label style="font-size:.72rem;font-weight:700;color:#475569;display:block;margin-bottom:6px;">MOTIVO GENERAL</label>
               <textarea id="dev-motivo-general" rows="2" placeholder="Describa el motivo general de la devolución..."
                 style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:.8rem;resize:none;"></textarea>
@@ -1981,6 +1993,12 @@ const MWMS = {
       formData.append('proveedor', odc.proveedor?.razon_social || '');
       formData.append('motivo_general', motivoGeneral);
       formData.append('detalles', JSON.stringify(detalles));
+
+      const causalId = document.getElementById('dev-causal')?.value;
+      if (causalId) formData.append('causal_devolucion_id', causalId);
+      
+      const responsable = document.getElementById('dev-responsable')?.value?.trim();
+      if (responsable) formData.append('responsable_devolucion', responsable);
 
       const fotosInput = document.getElementById('dev-fotos-input');
       if (fotosInput?.files?.length) {
@@ -2073,6 +2091,17 @@ const MWMS = {
         <div id="dv-m-items" style="margin-bottom:12px;"></div>
 
         <!-- Motivo + submit -->
+        <div style="margin-bottom:10px;">
+          <div class="m-label">Causal de Devolución *</div>
+          <select id="dv-m-causal-id" class="m-input-full">
+            <option value="">Seleccione causal...</option>
+            ${this._dvCausales.map(c => `<option value="${c.id}">${this.esc(c.causal)}</option>`).join('')}
+          </select>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div class="m-label">Responsable (Opcional)</div>
+          <input type="text" id="dv-m-responsable-id" class="m-input-full" placeholder="Responsable de la devolución...">
+        </div>
         <div style="margin-bottom:10px;">
           <div class="m-label">Motivo general *</div>
           <textarea id="dv-m-motivo" class="m-input-full" rows="2" placeholder="Razón de la devolución..." style="resize:none;"></textarea>
@@ -2226,11 +2255,19 @@ const MWMS = {
     if (btn) btn.disabled = true;
     this.loading(true);
     try {
-      const r = await mApi('POST', '/devoluciones', {
+      const payload = {
         tipo:           'cliente',
         motivo_general: motivo,
         detalles:       this._devItems,
-      });
+      };
+      
+      const causalId = document.getElementById('dv-m-causal-id')?.value;
+      if (causalId) payload.causal_devolucion_id = causalId;
+      
+      const responsable = document.getElementById('dv-m-responsable-id')?.value?.trim();
+      if (responsable) payload.responsable_devolucion = responsable;
+
+      const r = await mApi('POST', '/devoluciones', payload);
       this.toast('Devolución ' + r.data.numero + ' registrada', 'success');
       this._devItems  = [];
       this._devQrProd = null;
