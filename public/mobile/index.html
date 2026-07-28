@@ -6060,6 +6060,7 @@ const MWMS = {
       if (totalUnd <= 0) { this.toast('Ingrese una cantidad mayor a 0', 'error'); return; }
 
       const totalEnviar = usaCajas ? parseFloat((c + (s / factor)).toFixed(4)) : c;
+      let novedadId = null;
 
       if (c < maxCajas) {
         const tolerancia  = this._toleranciaBajoPicking ?? 0;
@@ -6074,6 +6075,12 @@ const MWMS = {
         const siguienteIdx = split.findIndex(loc => !loc.es_asignada && (loc.disponible || 0) > 0);
         const haySiguiente = siguienteIdx !== -1;
         const siguienteLoc = haySiguiente ? split[siguienteIdx] : null;
+
+        const causalesOpts = this._causalesNovedad.map(n => `<option value="${n.id}">${this.esc(n.nombre)}</option>`).join('');
+        const selectNovedadHtml = `<select id="swal-pk-novedad-id" class="swal2-select" style="display:flex;width:100%;max-width:100%;font-size:0.9rem;margin-top:15px;">
+          <option value="">Causal de Novedad *</option>
+          ${causalesOpts}
+        </select>`;
 
         const ok = await Swal.fire({
           title: dentroTol ? 'Cajas incompletas' : '⚠ Bajo del mínimo permitido',
@@ -6098,6 +6105,7 @@ const MWMS = {
             <div style="background:${dentroTol ? '#fef3c7' : '#fef2f2'};border-radius:8px;padding:8px;text-align:center;font-size:.8rem;">
               Diferencia de <b>${(maxCajas - c).toFixed(0)} cajas</b> quedará como <b>FALTANTE</b> si no se completa en otra ubicación.
             </div>
+            ${selectNovedadHtml}
           </div>`,
           icon: dentroTol ? 'warning' : 'error',
           showCancelButton: true,
@@ -6107,6 +6115,14 @@ const MWMS = {
           cancelButtonText: 'Corregir',
           confirmButtonColor: dentroTol ? '#d97706' : '#dc2626',
           denyButtonColor: '#059669',
+          preConfirm: () => {
+            const novEl = document.getElementById('swal-pk-novedad-id');
+            if (novEl && !novEl.value) {
+              Swal.showValidationMessage('Selecciona una causal de novedad');
+              return false;
+            }
+            return novEl ? novEl.value : null;
+          }
         });
         if (ok.isDenied && haySiguiente) {
           // NO se confirma nada todavía (confirmar-consolidado cierra la línea como
@@ -6121,23 +6137,39 @@ const MWMS = {
           return;
         }
         if (!ok.isConfirmed) return;
+        novedadId = ok.value;
       } else if (c > maxCajas) {
+        const causalesOpts = this._causalesNovedad.map(n => `<option value="${n.id}">${this.esc(n.nombre)}</option>`).join('');
+        const selectNovedadHtml = `<select id="swal-pk-novedad-id" class="swal2-select" style="display:flex;width:100%;max-width:100%;font-size:0.9rem;margin-top:15px;">
+          <option value="">Causal de Novedad *</option>
+          ${causalesOpts}
+        </select>`;
+        
         const ok = await Swal.fire({
           title: 'Cajas adicionales',
-          text: `Separando ${c} cajas (pedido: ${maxCajas})${s > 0 ? ' + ' + s + ' sueltos' : ''}. ¿Confirmar excedente?`,
+          html: `<div style="font-size:0.9rem;">Separando ${c} cajas (pedido: ${maxCajas})${s > 0 ? ' + ' + s + ' sueltos' : ''}. ¿Confirmar excedente?</div>${selectNovedadHtml}`,
           icon: 'info', showCancelButton: true,
           confirmButtonText: 'Sí, confirmar', cancelButtonText: 'Corregir',
           confirmButtonColor: '#0F4C81',
+          preConfirm: () => {
+            const novEl = document.getElementById('swal-pk-novedad-id');
+            if (!novEl.value) {
+              Swal.showValidationMessage('Selecciona una causal de novedad');
+              return false;
+            }
+            return novEl.value;
+          }
         });
         if (!ok.isConfirmed) return;
+        novedadId = ok.value;
       }
-      this.confirmarPKActual(planilla, totalEnviar, c, s);
+      this.confirmarPKActual(planilla, totalEnviar, c, s, novedadId);
     };
 
     renderAll();
   },
 
-  async confirmarPKActual(planillaNumero, qtyTomada = null, cajasTomadas = null, saldosTomados = null) {
+  async confirmarPKActual(planillaNumero, qtyTomada = null, cajasTomadas = null, saldosTomados = null, novedadId = null) {
     const it = this._itemsPlanilla[this._idxActual];
     // it.cantidad_total viene en CAJAS (ver renderPKConsolidado: sugCajas = it.cantidad_total).
     // Cuando se acepta todo sin pasar por el modal (qtyTomada === null), hay que enviar
@@ -6155,7 +6187,8 @@ const MWMS = {
         cantidad_tomada: qtyActual,
         cajas_tomadas:   cajasActual,
         saldos_tomados:  saldosActual,
-        planilla_numero: planillaNumero
+        planilla_numero: planillaNumero,
+        novedad_id: novedadId
       });
 
       // ── Quitar spinner ANTES de mostrar el Swal ──────────────────────────
@@ -8441,6 +8474,21 @@ const MWMS = {
       },
     });
     if (!isConfirmed) return;
+    
+    if (value < pick) {
+      const diff = pick - value;
+      const ok2 = await Swal.fire({
+        title: 'Cantidad Inferior',
+        text: `La cantidad a certificar (${value}) es menor a la separada (${pick}). Se devolverán ${diff} unidades automáticamente al inventario original. ¿Confirmar devolución?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, confirmar devolución',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#d97706',
+      });
+      if (!ok2.isConfirmed) return;
+    }
+
     this.loading(true);
     try {
       await mApi('POST', '/picking/certificacion/confirmar', {

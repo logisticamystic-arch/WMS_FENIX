@@ -4120,6 +4120,13 @@ class PickingController extends BaseController
         $cantidadTomada = (float)($body['cantidad_tomada'] ?? -1);
         $cajasTomadas   = isset($body['cajas_tomadas'])  ? (float)$body['cajas_tomadas']  : null;
         $saldosTomados  = isset($body['saldos_tomados']) ? (float)$body['saldos_tomados'] : null;
+        $novedadId      = $body['novedad_id'] ?? null;
+        $novedadNombre  = '';
+
+        if ($novedadId) {
+            $novedadObj = Capsule::table('causales_novedad')->find($novedadId);
+            if ($novedadObj) $novedadNombre = $novedadObj->nombre;
+        }
 
         if (!$idsRaw) {
             return $this->error($res, 'ids requerido.', 400);
@@ -4177,10 +4184,18 @@ class PickingController extends BaseController
         // Distribuir UNIDADES entre las sub-líneas (splits) en orden FIFO
         $restante    = $cantidadTomadaUnd;
         $asignaciones = [];
-        foreach ($detalles as $det) {
+        $lastDetIndex = count($detalles) - 1;
+        
+        foreach ($detalles as $idx => $det) {
             $upc          = max(1, (int)($det->producto->unidades_caja ?? 1));
             $necesitaUnd  = (float)$det->cantidad_solicitada * $upc; // solicitada en CAJAS → UNIDADES
             $tomar        = min($restante, $necesitaUnd);             // UNIDADES vs UNIDADES ✓
+            
+            // Si es el último elemento y sobra cantidad (pickeó exceso), se le asigna todo
+            if ($idx === $lastDetIndex && $restante > $necesitaUnd) {
+                $tomar = $restante;
+            }
+            
             $asignaciones[$det->id] = ['tomar' => $tomar, 'upc' => $upc];
             $restante = max(0, $restante - $tomar);
         }
@@ -4294,6 +4309,9 @@ class PickingController extends BaseController
                     $det->cantidad_pickeada = $realmenteDescontado;
                     $det->estado = ($realmenteDescontado >= (float)$det->cantidad_solicitada * $upcConf)
                         ? 'Completado' : 'Faltante';
+                    if ($novedadNombre) {
+                        $det->novedad = trim(($det->novedad ?? '') . ' | ' . $novedadNombre, ' |');
+                    }
                     $det->save();
 
                     // Registrar faltante por bajo picking. picking_faltantes.cantidad_solicitada/
@@ -5672,7 +5690,7 @@ class PickingController extends BaseController
             
         if ($detalles->isEmpty()) return $this->error($res, 'No se encontraron líneas pendientes para certificar');
 
-        Capsule::transaction(function() use ($detalles, $cantidad) {
+        Capsule::transaction(function() use ($detalles, $cantidad, $user, $empresaId, $sucursalId) {
             $restante = $cantidad;
             foreach ($detalles as $d) {
                 $capacidad = (float)$d->cantidad_pickeada;
@@ -5680,6 +5698,48 @@ class PickingController extends BaseController
                 $d->cantidad_certificada = $tomar;
                 $d->estado_certificacion = ($tomar >= $capacidad) ? 'Certificado' : 'Diferencia';
                 $d->save();
+                
+                $diferencia = $capacidad - $tomar;
+                if ($diferencia > 0.001 && $d->ubicacion_id) {
+                    // Devolver al inventario
+                    $inv = \App\Models\Inventario::where('empresa_id', $empresaId)
+                        ->where('sucursal_id', $sucursalId)
+                        ->where('producto_id', $d->producto_id)
+                        ->where('ubicacion_id', $d->ubicacion_id)
+                        ->where(function($q) use ($d) {
+                            if ($d->lote) $q->where('lote', $d->lote);
+                            else $q->whereNull('lote');
+                        })
+                        ->where(function($q) use ($d) {
+                            if ($d->fecha_vencimiento) $q->where('fecha_vencimiento', $d->fecha_vencimiento);
+                            else $q->whereNull('fecha_vencimiento');
+                        })
+                        ->first();
+                        
+                    if ($inv) {
+                        $inv->cantidad += $diferencia;
+                        $inv->save();
+                    } else {
+                        $inv = \App\Models\Inventario::create([
+                            'empresa_id' => $empresaId,
+                            'sucursal_id' => $sucursalId,
+                            'producto_id' => $d->producto_id,
+                            'ubicacion_id' => $d->ubicacion_id,
+                            'lote' => $d->lote,
+                            'fecha_vencimiento' => $d->fecha_vencimiento,
+                            'cantidad' => $diferencia,
+                            'estado' => 'Disponible',
+                            'creado_por' => $user->id
+                        ]);
+                    }
+                    
+                    if (method_exists($this, 'audit')) {
+                        $this->audit($user, 'picking', 'devolucion_certificacion', 'inventarios', $inv->id,
+                            ['pick' => $capacidad], ['cert' => $tomar, 'devuelta' => $diferencia],
+                            "Devolución por certificación inferior: Prod {$d->producto_id} a Ubic {$d->ubicacion_id}");
+                    }
+                }
+                
                 $restante -= $tomar;
             }
         });
@@ -6059,16 +6119,11 @@ class PickingController extends BaseController
             ? "<img src='data:image/jpeg;base64," . base64_encode(file_get_contents($logoFile)) . "' style='height:52px;object-fit:contain;display:block;margin-bottom:4px;' alt='Logo'>"
             : "<strong style='font-size:16px;color:#1e3a5f;'>{$empNombre}</strong>";
 
-        // ── Closure: convierte cantidad_pickeada (SIEMPRE en UND/TOTAL — unidades reales,
+        // ── Closure: convierte cantidad_certificada (SIEMPRE en UND/TOTAL — unidades reales,
         // ver confirmLine()/confirmarConsolidado()) a cajas + saldo para mostrar en la
-        // remisión. cantidad_pickeada es la fuente de verdad de lo REALMENTE separado —
-        // si se certificó explícitamente (cantidad_certificada) esa cantidad ya quedó
-        // igualada a cantidad_pickeada en autoPack()/certConfirmar(), así que leer
-        // cantidad_pickeada aquí certifica exactamente lo que el operario separó, no lo
-        // solicitado. Antes esta función asumía "cantidad_pickeada en cajas
-        // fraccionarias", que era la convención opuesta a la de confirmLine() — cualquier
-        // línea confirmada por escaneo individual salía con cantidades absurdas en la
-        // remisión. Fórmula dinámica pedida: 3500 und (upc 4000) → 0 cajas + 3500 saldo;
+        // remisión. cantidad_certificada es la fuente de verdad de lo REALMENTE despachado —
+        // si se certificó menos, esa es la cantidad final del documento.
+        // Fórmula dinámica pedida: 3500 und (upc 4000) → 0 cajas + 3500 saldo;
         // 4800 und (upc 4000) → 1 caja + 800 saldo; separación exacta → cajas = las
         // solicitadas, saldo = 0.
         $calcItem = function ($it) {
@@ -6182,12 +6237,12 @@ class PickingController extends BaseController
                 ->join('productos as p', 'p.id', '=', 'pd.producto_id')
                 ->leftJoin('ambientes as a', 'a.id', '=', 'p.ambiente_id')
                 ->whereIn('pd.orden_picking_id', $ordenIds)
-                ->where('pd.cantidad_pickeada', '>', 0)
+                ->where('pd.cantidad_certificada', '>', 0)
                 ->select([
                     Capsule::raw("COALESCE(a.descripcion, 'Sin ambiente') as ambiente_nombre"),
                     Capsule::raw("COALESCE(a.color, '#1e3a5f') as ambiente_color"),
                     'p.id as producto_id', 'p.codigo_interno as codigo', 'p.nombre', 'p.unidades_caja',
-                    Capsule::raw('SUM(pd.cantidad_pickeada) as cantidad'),
+                    Capsule::raw('SUM(pd.cantidad_certificada) as cantidad'),
                     Capsule::raw("MAX(COALESCE(pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = p.id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
                     // MAX(lote) es una aproximación: si el mismo producto tiene líneas de
                     // varios lotes distintos dentro del mismo pedido, la remisión solo puede
@@ -6466,7 +6521,7 @@ class PickingController extends BaseController
             ->join('productos as p', 'p.id', '=', 'pd.producto_id')
             ->leftJoin('ambientes as a', 'a.id', '=', 'p.ambiente_id')
             ->whereIn('pd.orden_picking_id', $ordenIds)
-            ->where('pd.cantidad_pickeada', '>', 0)
+            ->where('pd.cantidad_certificada', '>', 0)
             ->select([
                 Capsule::raw("COALESCE(a.descripcion, 'Sin ambiente') as ambiente_nombre"),
                 Capsule::raw("COALESCE(a.color, '#1e3a5f') as ambiente_color"),
@@ -6474,7 +6529,7 @@ class PickingController extends BaseController
                 'p.codigo_interno as codigo',
                 'p.nombre',
                 'p.unidades_caja',
-                Capsule::raw('SUM(pd.cantidad_pickeada) as cantidad'),
+                Capsule::raw('SUM(pd.cantidad_certificada) as cantidad'),
                 Capsule::raw("MAX(COALESCE(pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = p.id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
             ])
             ->groupBy('a.descripcion', 'a.color', 'p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja')
