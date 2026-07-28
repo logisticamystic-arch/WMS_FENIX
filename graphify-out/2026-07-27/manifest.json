@@ -860,8 +860,8 @@
     "semantic_hash": "8f25194930d94a92c4500d8d2b50499e"
   },
   "src/Controllers/ChatIAController.php": {
-    "mtime": 1785191796.5456977,
-    "ast_hash": "1920d84c8ccd82190b797a4a8030ed91",
+    "mtime": 1785192766.6938431,
+    "ast_hash": "95c0f826e9b36ef4f1adc0c68f018031",
     "semantic_hash": ""
   },
   "src/Controllers/CitaController.php": {
