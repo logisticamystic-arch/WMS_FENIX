@@ -920,8 +920,8 @@
     "semantic_hash": "9b532f71b8b4b102cd8ecea000623634"
   },
   "src/Controllers/InventarioController.php": {
-    "mtime": 1785158981.880648,
-    "ast_hash": "8628797306161f6f48f7476e91ab0993",
+    "mtime": 1785201959.9760742,
+    "ast_hash": "c2385d5f4b4b646a07c71d4c4fc7c47c",
     "semantic_hash": ""
   },
   "src/Controllers/InventarioV2Controller.php": {
