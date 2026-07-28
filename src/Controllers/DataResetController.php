@@ -38,7 +38,7 @@ class DataResetController extends BaseController
 
     private const SECCIONES = [
         'reset_operativo_total' => [
-            'label'  => 'REINICIO OPERATIVO TOTAL (Vacía Picking, Packing, Recepciones, ODC, Inventario, Kardex, Conteos, Devoluciones, Alertas y Logs — Mantiene intactos Productos, Ubicaciones, Clientes, Proveedores, Usuarios)',
+            'label'  => 'REINICIO OPERATIVO TOTAL (Vacía absolutamente toda la operación del WMS: Recepción, Picking, Packing, Inventario, Devoluciones, Alertas y Logs — Mantiene intactos Maestros y Configuración)',
             'tablas' => [
                 'inventarios', 'movimiento_inventarios', 'inventory_guard_log',
                 'recepcion_detalles', 'recepciones', 'orden_compra_detalles', 'ordenes_compra', 'citas', 'odc_auxiliares', 'odc_personal', 'cargue_inicial_lineas',
@@ -54,62 +54,84 @@ class DataResetController extends BaseController
             ],
         ],
         'maestros' => [
-            'label'  => 'Maestros (productos, clientes, proveedores)',
+            'label'  => 'Maestros (Productos, Clientes, Proveedores, Marcas, Categorías)',
             'tablas' => ['producto_eans', 'producto_fotos', 'productos', 'clientes', 'proveedores',
                          'marcas', 'categoria_productos', 'causales_devolucion', 'causales_novedad',
                          'niveles_reposicion'],
         ],
         'inventario_kardex' => [
-            'label'  => 'Inventario y Kardex',
+            'label'  => 'Inventario y Kardex (Saldos y Movimientos)',
             'tablas' => ['inventarios', 'movimiento_inventarios', 'inventory_guard_log'],
         ],
         'recepcion' => [
-            'label'  => 'Recepción y Órdenes de Compra',
-            'tablas' => ['recepcion_detalles', 'recepciones', 'orden_compra_detalles', 'ordenes_compra',
-                         'citas', 'odc_auxiliares', 'odc_personal', 'cargue_inicial_lineas'],
+            'label'  => 'Módulo de Recepción y Citas',
+            'tablas' => ['recepcion_detalles', 'recepciones', 'citas', 'cargue_inicial_lineas'],
         ],
-        'picking_despacho' => [
-            'label'  => 'Picking, Packing y Despacho',
+        'odc' => [
+            'label'  => 'Módulo de Órdenes de Compra (ODC)',
+            'tablas' => ['orden_compra_detalles', 'ordenes_compra', 'odc_auxiliares', 'odc_personal'],
+        ],
+        'picking' => [
+            'label'  => 'Módulo de Picking (Separación, Faltantes, Novedades)',
             'tablas' => ['orden_pickings', 'picking_detalles', 'picking_faltantes', 'novedades_picking',
                          'picking_asignaciones_log', 'picking_consolidados', 'picking_cert_ambiente',
-                         'picking_productos_pendientes', 'picking_novedades_stock', 'tarea_reabastecimientos',
-                         'packing_sesiones', 'packing_unidades', 'packing_items', 'certificaciones',
-                         'certificacion_detalles', 'certificacion_despachos', 'despachos', 'despacho_ordenes',
-                         'wave_picking', 'wave_planillas', 'planillas_picking', 'planilla_vrs',
+                         'picking_productos_pendientes', 'picking_novedades_stock', 'tarea_reabastecimientos'],
+        ],
+        'packing' => [
+            'label'  => 'Módulo de Packing (Auditoría y Empaque)',
+            'tablas' => ['packing_sesiones', 'packing_unidades', 'packing_items'],
+        ],
+        'certificacion' => [
+            'label'  => 'Módulo de Certificación de Pedidos',
+            'tablas' => ['certificaciones', 'certificacion_detalles', 'certificacion_despachos'],
+        ],
+        'despacho' => [
+            'label'  => 'Módulo de Despachos',
+            'tablas' => ['despachos', 'despacho_ordenes'],
+        ],
+        'wave_planillas' => [
+            'label'  => 'Módulo de Wave Picking y Planillas de Ruta',
+            'tablas' => ['wave_picking', 'wave_planillas', 'planillas_picking', 'planilla_vrs',
                          'archivos_planilla', 'cert_planillas', 'cert_planilla_det', 'lineas_planilla'],
         ],
-        'devoluciones_traspasos' => [
-            'label'  => 'Devoluciones y Traspasos',
-            'tablas' => ['devolucion_detalles', 'devoluciones', 'traspasos'],
+        'devoluciones' => [
+            'label'  => 'Módulo de Devoluciones',
+            'tablas' => ['devolucion_detalles', 'devoluciones'],
         ],
-        'conteos_ajustes' => [
-            'label'  => 'Conteos y Ajustes de Inventario',
-            'tablas' => ['conteo_detalles', 'conteo_personal', 'conteo_inventarios', 'sesion_lineas',
-                         'sesion_asignaciones', 'sesiones_inventario', 'ajustes_inventario',
-                         'ajuste_ubicacion_detalles', 'ajuste_ubicacion', 'inv_general_diferencias',
-                         'inv_general_conteos', 'inv_general_asignaciones', 'inv_general_eventos',
-                         'nota_ajuste_detalles', 'notas_ajuste'],
+        'traspasos' => [
+            'label'  => 'Módulo de Traspasos',
+            'tablas' => ['traspasos'],
+        ],
+        'conteos' => [
+            'label'  => 'Módulo de Conteos Físicos de Inventario',
+            'tablas' => ['conteo_detalles', 'conteo_personal', 'conteo_inventarios', 'inv_general_diferencias',
+                         'inv_general_conteos', 'inv_general_asignaciones', 'inv_general_eventos'],
+        ],
+        'ajustes' => [
+            'label'  => 'Módulo de Ajustes de Inventario y Ubicación',
+            'tablas' => ['sesion_lineas', 'sesion_asignaciones', 'sesiones_inventario', 'ajustes_inventario',
+                         'ajuste_ubicacion_detalles', 'ajuste_ubicacion', 'nota_ajuste_detalles', 'notas_ajuste'],
         ],
         'bloqueos_aprobaciones' => [
-            'label'  => 'Bloqueos y Aprobaciones de Vencimiento',
+            'label'  => 'Módulo de Bloqueos (Lotes) y Aprobaciones',
             'tablas' => ['bloqueo_lotes', 'aprobaciones_vencimiento'],
         ],
         'alertas_ml' => [
-            'label'  => 'Alertas, Notificaciones y ML',
+            'label'  => 'Alertas, Notificaciones e Inteligencia Artificial (ML)',
             'tablas' => ['alertas_stock', 'anomaly_flags', 'expiry_predictions', 'notificaciones',
                          'forecast_demanda', 'ventas_agregadas_ml', 'ubicaciones_optimas',
                          'clasificaciones_abc_xyz'],
         ],
         'crossdock_yard_tms' => [
-            'label'  => 'CrossDock, Patio (Yard) y TMS',
+            'label'  => 'Módulos CrossDock, Patio (Yard) y TMS',
             'tablas' => ['cross_dock_ordenes', 'cross_dock_detalles', 'yard_appointments', 'tms_webhooks'],
         ],
         'miscelaneos' => [
-            'label'  => 'Misceláneos',
+            'label'  => 'Módulo Misceláneos',
             'tablas' => ['miscelaneos', 'miscelaneo_fotos'],
         ],
         'auditoria_rendimiento' => [
-            'label'  => 'Auditoría y Métricas de Rendimiento',
+            'label'  => 'Módulos de Auditoría y Métricas de Rendimiento',
             'tablas' => ['audit_logs', 'performance_metrics'],
         ],
         // Peligrosa a propósito: puede dejar sin acceso si se borra 'personal'
