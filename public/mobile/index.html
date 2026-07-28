@@ -317,6 +317,7 @@ const MWMS = {
     _devItems: [],
     _devQrProd: null,
     _causalesNovedad: [],
+    _dvCausales: [],
 
   init() {
     // Listeners para cambios de conexión
@@ -332,6 +333,15 @@ const MWMS = {
       this._causalesNovedad = r.data || r || [];
     } catch(e) {
       this._causalesNovedad = [];
+    }
+  },
+
+  async _dvLoadCausales() {
+    try {
+      const r = await mApi('GET', '/devoluciones/causales');
+      this._dvCausales = r.data || r || [];
+    } catch(e) {
+      this._dvCausales = [];
     }
   },
   
@@ -370,7 +380,7 @@ const MWMS = {
   showApp() {
     document.getElementById('login-screen').style.display='none'; document.getElementById('main-screen').style.display='flex';
     document.getElementById('m-subtitle').textContent = _mUser.rol + ' · ' + (_mUser.empresa_nombre || 'Global') + ' / ' + (_mUser.sucursal_nombre || 'Todas');
-    this.showHome(); this.startNotif(); this._loadCausalesNovedad();
+    this.showHome(); this.startNotif(); this._loadCausalesNovedad(); this._dvLoadCausales();
   },
   updPin() { for(let i=0;i<4;i++){ const d=document.getElementById('mpd'+i); d.style.background=i<this._pin.length?'#0F4C81':'#fff'; d.style.borderColor=i<this._pin.length?'#0F4C81':'#cbd5e1';} },
   pinPress(v) { if(v==='del') this._pin=this._pin.slice(0,-1); else if(this._pin.length<4) this._pin+=v; this.updPin(); if(this._pin.length===4) setTimeout(()=>this.doLogin(),200); },
