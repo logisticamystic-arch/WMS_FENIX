@@ -1170,9 +1170,25 @@ class PickingController extends BaseController
                         $lineaFaltante->ubicacion_id      = $ubicacionAsignada;
                         $lineaFaltante->lote              = $loteAsignado;
                         $lineaFaltante->fecha_vencimiento = $fechaVencAsignada;
-                        // Se mantiene el auxiliar original que estaba asignado a la línea
-                        // según requerimiento, para que vuelva a aparecer a dicho auxiliar.
-                        // $lineaFaltante->auxiliar_id = $orden->auxiliar_id;
+                        
+                        $auxiliarIdNotif = $lineaFaltante->auxiliar_id ?: $orden->auxiliar_id;
+                        if ($auxiliarIdNotif) {
+                            $lineaFaltante->auxiliar_id = $auxiliarIdNotif;
+                            Capsule::table('notificaciones')->insert([
+                                'empresa_id'      => $this->getEffectiveEmpresaId($user, $r),
+                                'sucursal_id'     => $user->sucursal_id,
+                                'personal_id'     => $auxiliarIdNotif,
+                                'emisor_id'       => $user->id,
+                                'titulo'          => 'Backorder Activado',
+                                'mensaje'         => "Se ha liberado stock para {$nombreProducto}. Tarea pendiente reactivada (Planilla " . ($orden->planilla_numero ?: $orden->id) . ").",
+                                'tipo'            => 'info',
+                                'modulo'          => 'picking',
+                                'referencia_tipo' => 'OrdenPicking',
+                                'referencia_id'   => $orden->id,
+                                'created_at'      => $now
+                            ]);
+                        }
+                        
                         $lineaFaltante->save();
 
                         if (in_array($orden->estado, ['Faltante', 'Completada'])) {
