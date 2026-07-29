@@ -710,8 +710,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/recepcion.js": {
-    "mtime": 1785155882.5750725,
-    "ast_hash": "fcc754d83a50cfbb0bb51afc87f41cea",
+    "mtime": 1785358160.5397544,
+    "ast_hash": "2b2f67b1de73ada088abbf8c59184f43",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/reportes.js": {
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785357447.6218967,
-    "ast_hash": "23f8feee744c0ffc47f9ccbfcb1773b3",
+    "mtime": 1785358551.7334442,
+    "ast_hash": "d32f87f12359e66d2c58fa372e728650",
     "semantic_hash": ""
   },
   "public/pitch.html": {
@@ -1682,6 +1682,21 @@
   "src/Models/RecepcionCalidad.php": {
     "mtime": 1785357084.948572,
     "ast_hash": "03f379a97e692f53cc3a3be90c1e9a07",
+    "semantic_hash": ""
+  },
+  "public/uploads/firmas/firma_trp_6a6a6cc12d354.png": {
+    "mtime": 1785359553.1778781,
+    "ast_hash": "c55f0471526305951c7d1462077a4b74",
+    "semantic_hash": ""
+  },
+  "public/uploads/firmas/firma_trp_6a6a7131cfbc7.png": {
+    "mtime": 1785360689.8399086,
+    "ast_hash": "1655a1db2d11cba39dc8b0f089e3c9fb",
+    "semantic_hash": ""
+  },
+  "public/uploads/firmas/firma_trp_6a6a7150c9251.png": {
+    "mtime": 1785360720.811249,
+    "ast_hash": "1655a1db2d11cba39dc8b0f089e3c9fb",
     "semantic_hash": ""
   }
 }
