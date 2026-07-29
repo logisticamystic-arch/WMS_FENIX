@@ -31,6 +31,12 @@ class RecepcionDetalle extends BaseModel
         return $this->belongsTo(Producto::class);
     }
 
+    public function calidad()
+    {
+        return $this->hasOne(RecepcionDetalleCalidad::class, 'recepcion_detalle_id');
+    }
+
+    // Eventos del modelo para trazabilidad
     public function ubicacionDestino()
     {
         return $this->belongsTo(Ubicacion::class, 'ubicacion_destino_id');

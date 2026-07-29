@@ -193,7 +193,7 @@ class TraspasoController extends BaseController
                         'lote'               => $det['lote'] ?? null,
                         'fecha_vencimiento'  => $fechaVencReal,
                         'auxiliar_id'        => $user->id,
-                        'fecha_movimiento'   => now(),
+                        'fecha_movimiento'   => date('Y-m-d H:i:s'),
                         'hora_inicio'        => date('H:i:s'),
                         'observaciones'      => 'Traspaso Doc: ' . $numero . ' - ' . ($data['cliente_nombre'] ?? ''),
                     ]);

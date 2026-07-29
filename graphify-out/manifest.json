@@ -1688,5 +1688,15 @@
     "mtime": 1785359553.1778781,
     "ast_hash": "c55f0471526305951c7d1462077a4b74",
     "semantic_hash": ""
+  },
+  "public/uploads/firmas/firma_trp_6a6a7131cfbc7.png": {
+    "mtime": 1785360689.8399086,
+    "ast_hash": "1655a1db2d11cba39dc8b0f089e3c9fb",
+    "semantic_hash": ""
+  },
+  "public/uploads/firmas/firma_trp_6a6a7150c9251.png": {
+    "mtime": 1785360720.811249,
+    "ast_hash": "1655a1db2d11cba39dc8b0f089e3c9fb",
+    "semantic_hash": ""
   }
 }

@@ -890,6 +890,20 @@ class RecepcionController extends BaseController
         $detalle->aprobado_admin     = 1;
         $detalle->save();
 
+        // ── Guardar Auditoría de Calidad por Producto ──
+        if (isset($data['calidad']) && is_array($data['calidad'])) {
+            $calData = $data['calidad'];
+            $cal = new \App\Models\RecepcionDetalleCalidad();
+            $cal->recepcion_detalle_id = $detalle->id;
+            $cal->olor         = $calData['olor'] ?? null;
+            $cal->color        = $calData['color'] ?? null;
+            $cal->textura      = $calData['textura'] ?? null;
+            $cal->temperatura  = $calData['temperatura'] ?? null;
+            $cal->empaque      = $calData['empaque'] ?? null;
+            $cal->rotulado     = $calData['rotulado'] ?? null;
+            $cal->save();
+        }
+
         // Inventario en tiempo real
         try {
             \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
