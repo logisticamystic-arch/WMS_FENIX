@@ -53,7 +53,7 @@ class TraspasoController extends BaseController
                 $w->where('productos.nombre', 'ilike', "%{$q}%")
                   ->orWhere('productos.codigo_interno', 'ilike', "%{$q}%");
             })
-            ->with(['producto:id,codigo_interno,nombre,bloqueado', 'ubicacion:id,codigo,zona'])
+            ->with(['producto:id,codigo_interno,nombre,bloqueado,unidades_caja,factor_udm', 'ubicacion:id,codigo,zona'])
             ->orderBy('productos.nombre')
             ->orderByRaw('inventarios.fecha_vencimiento ASC NULLS LAST')
             ->limit(50)
@@ -65,6 +65,8 @@ class TraspasoController extends BaseController
                     'codigo_interno'    => $inv->producto->codigo_interno ?? '',
                     'nombre'            => $inv->producto->nombre ?? '',
                     'bloqueado'         => $inv->producto->bloqueado ?? false,
+                    'unidades_caja'     => (float)($inv->producto->unidades_caja ?? 1),
+                    'factor_udm'        => (float)($inv->producto->factor_udm ?? 0),
                     'ubicacion_id'      => $inv->ubicacion_id,
                     'ubicacion_codigo'  => $inv->ubicacion->codigo ?? '',
                     'ubicacion_zona'    => $inv->ubicacion->zona ?? '',

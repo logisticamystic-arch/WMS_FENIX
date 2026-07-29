@@ -2420,16 +2420,11 @@ public function getControlPanelData(Request $request, Response $response): Respo
         
         $calidad->factura = $data['factura'] ?? $calidad->factura;
         $calidad->trans_placa = $data['trans_placa'] ?? $calidad->trans_placa;
-        $calidad->prod_olor = $data['prod_olor'] ?? $calidad->prod_olor;
-        $calidad->prod_color = $data['prod_color'] ?? $calidad->prod_color;
-        $calidad->prod_textura = $data['prod_textura'] ?? $calidad->prod_textura;
-        $calidad->prod_temperatura = $data['prod_temperatura'] ?? $calidad->prod_temperatura;
-        $calidad->prod_empaque = $data['prod_empaque'] ?? $calidad->prod_empaque;
-        $calidad->prod_rotulado = $data['prod_rotulado'] ?? $calidad->prod_rotulado;
         $calidad->trans_temperatura = $data['trans_temperatura'] ?? $calidad->trans_temperatura;
         $calidad->trans_limpieza = $data['trans_limpieza'] ?? $calidad->trans_limpieza;
         $calidad->trans_concepto_sanitario = $data['trans_concepto_sanitario'] ?? $calidad->trans_concepto_sanitario;
         $calidad->trans_carnet_manipulacion = $data['trans_carnet_manipulacion'] ?? $calidad->trans_carnet_manipulacion;
+        $calidad->firma_responsable = $data['firma_responsable'] ?? $calidad->firma_responsable;
         
         if ($fotoPath) {
             $calidad->foto_evidencia = $fotoPath;
