@@ -37,15 +37,26 @@
   },
   "nodes": [
     {
+      "label": "120_create_traspaso_documentos_tables.php",
+      "file_type": "code",
+      "source_file": "database/migrations/120_create_traspaso_documentos_tables.php",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "database_migrations_120_create_traspaso_documentos_tables",
+      "community": 316,
+      "community_name": "120_create_traspaso_documentos_tables.php",
+      "norm_label": "120_create_traspaso_documentos_tables.php"
+    },
+    {
       "label": "DevolucionController.php",
       "file_type": "code",
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller",
       "community": 153,
       "community_name": "Backup Logging",
-      "norm_label": "devolucioncontroller.php"
+      "norm_label": "devolucioncontroller.php",
+      "id": "src_controllers_devolucioncontroller"
     },
     {
       "label": "DevolucionController",
@@ -53,10 +64,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L15",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": "devolucioncontroller"
+      "norm_label": "devolucioncontroller",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller"
     },
     {
       "label": "BaseController",
@@ -64,10 +75,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "basecontroller",
       "community": 75,
       "community_name": "PermisoPersonalController",
-      "norm_label": "basecontroller"
+      "norm_label": "basecontroller",
+      "id": "basecontroller"
     },
     {
       "label": ".index()",
@@ -75,10 +86,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L20",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_index",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".index()"
+      "norm_label": ".index()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_index"
     },
     {
       "label": ".ver()",
@@ -86,10 +97,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L75",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_ver",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".ver()"
+      "norm_label": ".ver()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_ver"
     },
     {
       "label": ".eliminar()",
@@ -97,10 +108,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L99",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_eliminar",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".eliminar()"
+      "norm_label": ".eliminar()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_eliminar"
     },
     {
       "label": ".store()",
@@ -108,10 +119,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L128",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_store",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".store()"
+      "norm_label": ".store()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_store"
     },
     {
       "label": ".getByOdc()",
@@ -119,10 +130,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L343",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_getbyodc",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".getbyodc()"
+      "norm_label": ".getbyodc()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_getbyodc"
     },
     {
       "label": ".aprobar()",
@@ -130,10 +141,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L369",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_aprobar",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".aprobar()"
+      "norm_label": ".aprobar()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_aprobar"
     },
     {
       "label": ".rechazar()",
@@ -141,10 +152,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L396",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_rechazar",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".rechazar()"
+      "norm_label": ".rechazar()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_rechazar"
     },
     {
       "label": ".reponerStockDevolucion()",
@@ -152,10 +163,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L436",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_reponerstockdevolucion",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".reponerstockdevolucion()"
+      "norm_label": ".reponerstockdevolucion()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_reponerstockdevolucion"
     },
     {
       "label": "Devolucion",
@@ -163,10 +174,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "devolucion",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": "devolucion"
+      "norm_label": "devolucion",
+      "id": "devolucion"
     },
     {
       "label": ".anular()",
@@ -174,10 +185,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L507",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_anular",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".anular()"
+      "norm_label": ".anular()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_anular"
     },
     {
       "label": ".procesar()",
@@ -185,10 +196,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L540",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_procesar",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".procesar()"
+      "norm_label": ".procesar()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_procesar"
     },
     {
       "label": ".resumenProveedor()",
@@ -196,10 +207,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L747",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_resumenproveedor",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".resumenproveedor()"
+      "norm_label": ".resumenproveedor()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_resumenproveedor"
     },
     {
       "label": ".getCausales()",
@@ -207,10 +218,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L788",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_getcausales",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".getcausales()"
+      "norm_label": ".getcausales()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_getcausales"
     },
     {
       "label": ".createCausal()",
@@ -218,10 +229,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L808",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_createcausal",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".createcausal()"
+      "norm_label": ".createcausal()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_createcausal"
     },
     {
       "label": ".updateCausal()",
@@ -229,10 +240,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L839",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_updatecausal",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".updatecausal()"
+      "norm_label": ".updatecausal()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_updatecausal"
     },
     {
       "label": ".getDashboard()",
@@ -240,10 +251,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L873",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_getdashboard",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".getdashboard()"
+      "norm_label": ".getdashboard()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_getdashboard"
     },
     {
       "label": ".desdeOdcMovil()",
@@ -251,10 +262,10 @@
       "source_file": "src/Controllers/DevolucionController.php",
       "source_location": "L991",
       "_origin": "ast",
-      "id": "src_controllers_devolucioncontroller_devolucioncontroller_desdeodcmovil",
       "community": 28,
       "community_name": "Returns Model & Controller",
-      "norm_label": ".desdeodcmovil()"
+      "norm_label": ".desdeodcmovil()",
+      "id": "src_controllers_devolucioncontroller_devolucioncontroller_desdeodcmovil"
     },
     {
       "label": "App\\Models\\Devolucion",
@@ -262,10 +273,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "app_models_devolucion",
       "community": 153,
       "community_name": "Backup Logging",
-      "norm_label": "app\\models\\devolucion"
+      "norm_label": "app\\models\\devolucion",
+      "id": "app_models_devolucion"
     },
     {
       "label": "Psr\\Http\\Message\\ServerRequestInterface",
@@ -273,10 +284,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "psr_http_message_serverrequestinterface",
       "community": 3,
       "community_name": "Parameters & Approvals",
-      "norm_label": "psr\\http\\message\\serverrequestinterface"
+      "norm_label": "psr\\http\\message\\serverrequestinterface",
+      "id": "psr_http_message_serverrequestinterface"
     },
     {
       "label": "Psr\\Http\\Message\\ResponseInterface",
@@ -284,10 +295,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "psr_http_message_responseinterface",
       "community": 310,
       "community_name": "SystemController",
-      "norm_label": "psr\\http\\message\\responseinterface"
+      "norm_label": "psr\\http\\message\\responseinterface",
+      "id": "psr_http_message_responseinterface"
     },
     {
       "label": "PickingController.php",
@@ -29241,9 +29252,20 @@
       "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller",
-      "target": "app_models_devolucion",
-      "confidence_score": 1.0
+      "target": "app_models_devolucion"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/DevolucionController.php",
+      "source_location": "L15",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_devolucioncontroller",
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller"
     },
     {
       "relation": "imports",
@@ -29253,9 +29275,9 @@
       "source_location": "L9",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller",
-      "target": "src_models_causaldevolucion",
-      "confidence_score": 1.0
+      "target": "src_models_causaldevolucion"
     },
     {
       "relation": "imports",
@@ -29265,9 +29287,9 @@
       "source_location": "L8",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller",
-      "target": "src_models_devoluciondetalle",
-      "confidence_score": 1.0
+      "target": "src_models_devoluciondetalle"
     },
     {
       "relation": "imports",
@@ -29277,20 +29299,9 @@
       "source_location": "L11",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller",
-      "target": "src_models_movimientoinventario",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DevolucionController.php",
-      "source_location": "L15",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_controllers_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "confidence_score": 1.0
+      "target": "src_models_movimientoinventario"
     },
     {
       "relation": "imports",
@@ -29300,9 +29311,9 @@
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller",
-      "target": "src_models_ubicacion",
-      "confidence_score": 1.0
+      "target": "src_models_ubicacion"
     },
     {
       "relation": "inherits",
@@ -29311,9 +29322,9 @@
       "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "basecontroller",
-      "confidence_score": 1.0
+      "target": "basecontroller"
     },
     {
       "relation": "method",
@@ -29322,9 +29333,9 @@
       "source_location": "L507",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_anular",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_anular"
     },
     {
       "relation": "method",
@@ -29333,9 +29344,9 @@
       "source_location": "L369",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_aprobar",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_aprobar"
     },
     {
       "relation": "method",
@@ -29344,9 +29355,9 @@
       "source_location": "L808",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_createcausal",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_createcausal"
     },
     {
       "relation": "method",
@@ -29355,9 +29366,9 @@
       "source_location": "L991",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_desdeodcmovil",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_desdeodcmovil"
     },
     {
       "relation": "method",
@@ -29366,9 +29377,9 @@
       "source_location": "L99",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_eliminar",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_eliminar"
     },
     {
       "relation": "method",
@@ -29377,9 +29388,9 @@
       "source_location": "L343",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_getbyodc",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_getbyodc"
     },
     {
       "relation": "method",
@@ -29388,9 +29399,9 @@
       "source_location": "L788",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_getcausales",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_getcausales"
     },
     {
       "relation": "method",
@@ -29399,9 +29410,9 @@
       "source_location": "L873",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_getdashboard",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_getdashboard"
     },
     {
       "relation": "method",
@@ -29410,9 +29421,9 @@
       "source_location": "L20",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_index",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_index"
     },
     {
       "relation": "method",
@@ -29421,9 +29432,9 @@
       "source_location": "L540",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_procesar",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_procesar"
     },
     {
       "relation": "method",
@@ -29432,9 +29443,9 @@
       "source_location": "L396",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_rechazar",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_rechazar"
     },
     {
       "relation": "method",
@@ -29443,9 +29454,9 @@
       "source_location": "L436",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_reponerstockdevolucion",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_reponerstockdevolucion"
     },
     {
       "relation": "method",
@@ -29454,9 +29465,9 @@
       "source_location": "L747",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_resumenproveedor",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_resumenproveedor"
     },
     {
       "relation": "method",
@@ -29465,9 +29476,9 @@
       "source_location": "L128",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_store",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_store"
     },
     {
       "relation": "method",
@@ -29476,9 +29487,9 @@
       "source_location": "L839",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_updatecausal",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_updatecausal"
     },
     {
       "relation": "method",
@@ -29487,9 +29498,9 @@
       "source_location": "L75",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_ver",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_ver"
     },
     {
       "relation": "inherits",
@@ -29565,9 +29576,9 @@
       "source_location": "L28",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_index",
-      "target": "devolucion",
-      "confidence_score": 1.0
+      "target": "devolucion"
     },
     {
       "relation": "references",
@@ -29577,9 +29588,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_index",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -29589,9 +29600,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_index",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -29601,9 +29612,9 @@
       "source_location": "L82",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_ver",
-      "target": "devolucion",
-      "confidence_score": 1.0
+      "target": "devolucion"
     },
     {
       "relation": "references",
@@ -29613,9 +29624,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_ver",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -29625,9 +29636,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_ver",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -29637,9 +29648,9 @@
       "source_location": "L109",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_eliminar",
-      "target": "devolucion",
-      "confidence_score": 1.0
+      "target": "devolucion"
     },
     {
       "relation": "references",
@@ -29649,9 +29660,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_eliminar",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -29661,9 +29672,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_eliminar",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references_constant",
@@ -29685,9 +29696,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_store",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -29697,9 +29708,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_store",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -29709,9 +29720,9 @@
       "source_location": "L350",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_getbyodc",
-      "target": "devolucion",
-      "confidence_score": 1.0
+      "target": "devolucion"
     },
     {
       "relation": "references",
@@ -29721,9 +29732,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_getbyodc",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -29733,9 +29744,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_getbyodc",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references_constant",
@@ -29757,9 +29768,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_aprobar",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -29769,9 +29780,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_aprobar",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references_constant",
@@ -29793,9 +29804,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_rechazar",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -29805,9 +29816,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_rechazar",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -29817,9 +29828,9 @@
       "source_location": "L413",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_rechazar",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_reponerstockdevolucion",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_reponerstockdevolucion"
     },
     {
       "relation": "calls",
@@ -29829,9 +29840,9 @@
       "source_location": "L528",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_anular",
-      "target": "src_controllers_devolucioncontroller_devolucioncontroller_reponerstockdevolucion",
-      "confidence_score": 1.0
+      "target": "src_controllers_devolucioncontroller_devolucioncontroller_reponerstockdevolucion"
     },
     {
       "relation": "references",
@@ -29841,9 +29852,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_reponerstockdevolucion",
-      "target": "app_models_devolucion",
-      "confidence_score": 1.0
+      "target": "app_models_devolucion"
     },
     {
       "relation": "references_constant",
@@ -29865,9 +29876,9 @@
       "source_location": "L1036",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_desdeodcmovil",
-      "target": "devolucion",
-      "confidence_score": 1.0
+      "target": "devolucion"
     },
     {
       "relation": "references_constant",
@@ -29889,9 +29900,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_anular",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -29901,9 +29912,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_anular",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -29913,9 +29924,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_procesar",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -29925,9 +29936,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_procesar",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -29937,9 +29948,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_resumenproveedor",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -29949,9 +29960,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_resumenproveedor",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -29961,9 +29972,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_getcausales",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -29973,9 +29984,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_getcausales",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -29985,9 +29996,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_createcausal",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -29997,9 +30008,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_createcausal",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -30009,9 +30020,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_updatecausal",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -30021,9 +30032,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_updatecausal",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -30033,9 +30044,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_getdashboard",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -30045,9 +30056,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_getdashboard",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -30057,9 +30068,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_desdeodcmovil",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -30069,9 +30080,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_devolucioncontroller_devolucioncontroller_desdeodcmovil",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -91100,5 +91111,5 @@
       "source_file": "docs/superpowers/specs/2026-05-30-packing-certificacion-design.md"
     }
   ],
-  "built_at_commit": "74919e92e839afb89d2b17376749c35308ea8db1"
+  "built_at_commit": "03d808862585d3fb0bb0d509646b2c61f9f5fa48"
 }

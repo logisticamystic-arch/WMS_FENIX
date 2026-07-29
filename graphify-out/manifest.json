@@ -655,8 +655,8 @@
     "semantic_hash": "55a981fc94e0e5956e0c0af77d105af7"
   },
   "public/assets/js/desktop/almacenamiento.js": {
-    "mtime": 1784940578.5367074,
-    "ast_hash": "a164ab3a431a99f256dff9a1dfa8a98c",
+    "mtime": 1785284991.8649027,
+    "ast_hash": "5fdc5d62e252788d1c4b0a442195f93d",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/chat-ia.js": {
@@ -925,9 +925,9 @@
     "semantic_hash": ""
   },
   "src/Controllers/InventarioV2Controller.php": {
-    "mtime": 1784336277.5091295,
-    "ast_hash": "647bd2b4d116b9737acc4b5a61d5b87c",
-    "semantic_hash": "647bd2b4d116b9737acc4b5a61d5b87c"
+    "mtime": 1785285116.0669746,
+    "ast_hash": "75f4aba98375dafe5df8818ee18b4da3",
+    "semantic_hash": ""
   },
   "src/Controllers/MiscelaneoController.php": {
     "mtime": 1783015548.5897887,
@@ -1010,9 +1010,9 @@
     "semantic_hash": ""
   },
   "src/Controllers/TraspasoController.php": {
-    "mtime": 1784333831.0313203,
-    "ast_hash": "7b23c8130a5bfa34f9a4a7320f21872c",
-    "semantic_hash": "7b23c8130a5bfa34f9a4a7320f21872c"
+    "mtime": 1785284784.2481582,
+    "ast_hash": "95605194cb6bf06489e35e52ccef64c3",
+    "semantic_hash": ""
   },
   "src/Controllers/TrazabilidadController.php": {
     "mtime": 1784570926.8980718,
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785276680.4723296,
-    "ast_hash": "1dc10f2564eba8772e6e3cf2775edf8b",
+    "mtime": 1785284896.7778618,
+    "ast_hash": "86b15f0d68d8423d072bb5881095d5eb",
     "semantic_hash": ""
   },
   "public/pitch.html": {
@@ -1655,13 +1655,23 @@
     "semantic_hash": ""
   },
   "src/Controllers/DataResetController.php": {
-    "mtime": 1785200984.918717,
-    "ast_hash": "f31d05bedee79636620604902f04042a",
+    "mtime": 1785285028.246161,
+    "ast_hash": "bd07e07c790dff95fdbc33edc915b915",
     "semantic_hash": ""
   },
   "database/migrations/120_create_traspaso_documentos_tables.php": {
     "mtime": 1785284497.916728,
     "ast_hash": "653041cfbd08444fe1e907109c399741",
+    "semantic_hash": ""
+  },
+  "src/Models/TraspasoDocumento.php": {
+    "mtime": 1785284729.9740784,
+    "ast_hash": "2055b698852ce1fc26bf5c014cb46f2f",
+    "semantic_hash": ""
+  },
+  "src/Models/TraspasoDocumentoDetalle.php": {
+    "mtime": 1785284738.0338953,
+    "ast_hash": "491e9966bdfaf5cc95da7bddfaba0e81",
     "semantic_hash": ""
   }
 }
