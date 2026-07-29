@@ -735,8 +735,8 @@
     "semantic_hash": ""
   },
   "public/index.php": {
-    "mtime": 1785158996.7933693,
-    "ast_hash": "83bd185cd9e1b2275ba147833138a1ab",
+    "mtime": 1785357392.7950864,
+    "ast_hash": "34310326d81e225a1f4bc0b7ff9c0ec0",
     "semantic_hash": ""
   },
   "public/manifest.json": {
@@ -975,8 +975,8 @@
     "semantic_hash": "a526a63d521fc75e43f1f5a54d5b1d13"
   },
   "src/Controllers/RecepcionController.php": {
-    "mtime": 1785155724.4344935,
-    "ast_hash": "a1770ff17694990bedf7e896800b87b5",
+    "mtime": 1785357230.266674,
+    "ast_hash": "c8ea3d6e11e10391b7d2c9faa652535b",
     "semantic_hash": ""
   },
   "src/Controllers/ReplenishmentController.php": {
@@ -1385,9 +1385,9 @@
     "semantic_hash": "2b04511a6d898056706c5dfcbbe35075"
   },
   "src/Models/Recepcion.php": {
-    "mtime": 1782321829.811562,
-    "ast_hash": "af9a2a157ede5e1ed8ec24866773e81a",
-    "semantic_hash": "af9a2a157ede5e1ed8ec24866773e81a"
+    "mtime": 1785357188.394241,
+    "ast_hash": "566aa549a7d97e5dc275c8691ad24ff4",
+    "semantic_hash": ""
   },
   "src/Models/RecepcionDetalle.php": {
     "mtime": 1780188524.0,
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785284896.7778618,
-    "ast_hash": "86b15f0d68d8423d072bb5881095d5eb",
+    "mtime": 1785357447.6218967,
+    "ast_hash": "23f8feee744c0ffc47f9ccbfcb1773b3",
     "semantic_hash": ""
   },
   "public/pitch.html": {
@@ -1672,6 +1672,16 @@
   "src/Models/TraspasoDocumentoDetalle.php": {
     "mtime": 1785284738.0338953,
     "ast_hash": "491e9966bdfaf5cc95da7bddfaba0e81",
+    "semantic_hash": ""
+  },
+  "database/migrations/121_create_recepcion_calidad_table.php": {
+    "mtime": 1785357077.219265,
+    "ast_hash": "f61870fe520603b752c3f615f8407dd9",
+    "semantic_hash": ""
+  },
+  "src/Models/RecepcionCalidad.php": {
+    "mtime": 1785357084.948572,
+    "ast_hash": "03f379a97e692f53cc3a3be90c1e9a07",
     "semantic_hash": ""
   }
 }

@@ -543,7 +543,10 @@ const MWMS = {
   _calidadData: null,
   
   async _abrirCalidadSinOdc() {
-      if (!this._sinOdc.recepcionId) return;
+      if (!this._sinOdc.recepcionId) {
+          this.toast('Debe guardar al menos una captura para iniciar la recepción antes de llenar el reporte.', 'warning');
+          return;
+      }
       this.loading(true);
       try {
           const r = await mApi('GET', '/recepciones/' + this._sinOdc.recepcionId + '/calidad');
@@ -812,10 +815,9 @@ const MWMS = {
         </button>
 
         <!-- Botón Formulario de Calidad -->
-        ${s.recepcionId ? `
         <button class="m-btn primary full" onclick="MWMS._abrirCalidadSinOdc()" style="font-size:.9rem;padding:12px;font-weight:700;margin-top:6px;background:#0d9488;border-color:#0f766e;">
           <i class="fa-solid fa-clipboard-check"></i> REPORTE DE CALIDAD
-        </button>` : ''}
+        </button>
 
         <!-- Botón cerrar recepción (solo Admin/Supervisor) -->
         ${s.recepcionId && ['Admin','Supervisor','SuperAdmin'].includes(_mUser?.rol) ? `
