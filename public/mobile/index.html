@@ -9313,6 +9313,10 @@ const MWMS = {
   _trpSearchTimer: null,
   _trpStock: [],
   _trpMotivos: [],
+  _trpItems: [],
+  _trpCanvas: null,
+  _trpCtx: null,
+  _trpDrawing: false,
 
   async viewTraspaso() {
     document.getElementById('m-title').textContent = 'Traspaso';
@@ -9320,6 +9324,7 @@ const MWMS = {
     this._trpSelected = null;
     this._trpUbicOrigen = null;
     this._trpStock = [];
+    this._trpItems = [];
 
     try {
       const [mr, cr] = await Promise.all([
@@ -9335,144 +9340,164 @@ const MWMS = {
 
     document.getElementById('m-content').innerHTML = `
       <div style="min-height:100vh;background:#f8fafc;padding-bottom:24px;">
-
-        <!-- Header -->
         <div style="background:linear-gradient(135deg,#ef4444,#dc2626);padding:16px;color:#fff;margin-bottom:16px;">
           <div style="display:flex;align-items:center;gap:10px;">
             <div style="background:rgba(255,255,255,.2);border-radius:10px;padding:8px;">
-              <i class="fa-solid fa-arrow-right-from-bracket" style="font-size:1.2rem;"></i>
+              <i class="fa-solid fa-file-signature" style="font-size:1.2rem;"></i>
             </div>
             <div>
-              <div style="font-weight:700;font-size:1rem;">Traspaso de Inventario</div>
-              <div style="font-size:.75rem;opacity:.85;">Escanea ubicación → selecciona referencia → cliente</div>
+              <div style="font-weight:700;font-size:1rem;">Documento de Traspaso</div>
+              <div style="font-size:.75rem;opacity:.85;">Salida múltiple con firma de cliente</div>
             </div>
           </div>
         </div>
 
-        <!-- PASO 1: Escanear ubicación -->
-        <div style="margin:0 12px 12px;background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
-          <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;background:#fafafa;display:flex;align-items:center;gap:8px;">
-            <span style="background:#ef4444;color:#fff;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:900;">1</span>
-            <span style="font-size:.75rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">
-              <i class="fa-solid fa-barcode" style="color:#ef4444;"></i> Escanear ubicación de origen
-            </span>
+        <div style="margin:0 12px 12px;background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:14px 16px;">
+          <h4 style="margin:0 0 10px;font-size:.85rem;color:#1e293b;">1. Encabezado del Documento</h4>
+          <div style="margin-bottom:10px;">
+            <label class="m-label">Cliente *</label>
+            <select id="trp-cliente-id" class="m-input-full" onchange="const opt=this.options[this.selectedIndex]; document.getElementById('trp-cliente-nom').value = opt ? opt.text : '';">
+              <option value="">-- Seleccionar Cliente --</option>
+              ${(this._trpClientes || []).map(c => `<option value="${c.id}">${this.esc(c.razon_social || c.nombre || '')}</option>`).join('')}
+            </select>
+            <input type="hidden" id="trp-cliente-nom">
           </div>
-          <div style="padding:14px 16px;">
+          <div style="margin-bottom:10px;">
+            <label class="m-label">Quien recibe *</label>
+            <input type="text" id="trp-quien-recibe" class="m-input-full" placeholder="Nombre completo">
+          </div>
+          <div style="margin-bottom:10px;">
+            <label class="m-label">Motivo *</label>
+            <select id="trp-motivo" class="m-input-full">
+              ${(this._trpMotivos || ['Traspaso a cliente','Muestra comercial','Otro']).map(m => `<option value="${this.esc(m)}">${this.esc(m)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div style="margin:0 12px 12px;background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:14px 16px;">
+          <h4 style="margin:0 0 10px;font-size:.85rem;color:#1e293b;">2. Agregar Productos</h4>
+          
+          <div id="trp-scan-area">
             <div style="position:relative;margin-bottom:10px;">
               <i class="fa-solid fa-location-dot" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#ef4444;font-size:.9rem;"></i>
-              <input type="text" id="trp-ubi-input"
-                     style="width:100%;box-sizing:border-box;padding:11px 12px 11px 36px;border:2px solid #fca5a5;border-radius:8px;font-size:.9rem;font-weight:700;background:#fff5f5;"
-                     placeholder="Código de ubicación..."
-                     autocomplete="off">
+              <input type="text" id="trp-ubi-input" class="m-input-full" style="padding-left:36px;border-color:#fca5a5;background:#fff5f5;font-weight:bold;" placeholder="Código de ubicación..." autocomplete="off">
             </div>
-            <button onclick="MWMS._trpBuscarUbicacion()"
-                    style="width:100%;padding:10px;background:#ef4444;color:#fff;border:none;border-radius:8px;font-size:.85rem;font-weight:700;cursor:pointer;">
-              <i class="fa-solid fa-magnifying-glass"></i> Ver stock en ubicación
+            <button onclick="MWMS._trpBuscarUbicacion()" class="m-btn primary" style="width:100%;margin-bottom:10px;">
+              <i class="fa-solid fa-search"></i> Ver stock en ubicación
             </button>
-            <div id="trp-ubi-res" style="margin-top:4px;"></div>
+            <div id="trp-ubi-res"></div>
+          </div>
+
+          <div id="trp-refs-list" style="margin-top:10px;"></div>
+
+          <div id="trp-item-form" style="display:none;margin-top:10px;padding:10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;">
+            <div id="trp-sel-info" style="margin-bottom:10px;"></div>
+            <div style="margin-bottom:10px;">
+              <label class="m-label">Cantidad a extraer *</label>
+              <input id="trp-cant" type="number" min="0.01" step="0.01" class="m-input-full" style="font-weight:bold;font-size:1.1rem;">
+            </div>
+            <div style="display:flex;gap:10px;">
+              <button onclick="MWMS._trpCancelarItem()" class="m-btn secondary" style="flex:1;">Cancelar</button>
+              <button onclick="MWMS._trpAgregarItem()" class="m-btn primary" style="flex:1;"><i class="fa-solid fa-plus"></i> Agregar</button>
+            </div>
           </div>
         </div>
 
-        <!-- PASO 2: Lista de referencias en la ubicación -->
-        <div id="trp-card-refs" style="display:none;margin:0 12px 12px;background:#fff;border-radius:12px;border:2px solid #ef4444;overflow:hidden;">
-          <div style="padding:10px 16px;border-bottom:1px solid #fee2e2;background:#fff5f5;display:flex;justify-content:space-between;align-items:center;">
-            <div style="display:flex;align-items:center;gap:8px;">
-              <span style="background:#ef4444;color:#fff;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:900;">2</span>
-              <span id="trp-ubi-label" style="font-size:.75rem;font-weight:700;color:#dc2626;text-transform:uppercase;"></span>
-            </div>
-            <button onclick="MWMS._trpLimpiar()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:.75rem;">
-              <i class="fa-solid fa-rotate-left"></i> Cambiar
-            </button>
+        <div style="margin:0 12px 12px;background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:14px 16px;">
+          <h4 style="margin:0 0 10px;font-size:.85rem;color:#1e293b;">3. Productos Agregados</h4>
+          <div id="trp-items-agregados" style="min-height:40px;margin-bottom:10px;">
+            <div style="color:#94a3b8;text-align:center;font-size:.85rem;padding:10px;">No hay productos agregados</div>
           </div>
-          <div id="trp-refs-list" style="max-height:280px;overflow-y:auto;padding:8px 12px;"></div>
-        </div>
-
-        <!-- Referencia seleccionada -->
-        <div id="trp-seleccion" style="display:none;margin:0 12px 12px;background:#fff;border-radius:12px;border:1px solid #dcfce7;overflow:hidden;">
-          <div style="padding:10px 14px;background:#f0fdf4;border-bottom:1px solid #dcfce7;display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:.7rem;font-weight:700;color:#15803d;text-transform:uppercase;"><i class="fa-solid fa-circle-check"></i> Referencia seleccionada</span>
-            <button onclick="MWMS._trpVolverRefs()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:.75rem;">
-              <i class="fa-solid fa-rotate-left"></i> Cambiar
-            </button>
-          </div>
-          <div id="trp-sel-info" style="padding:12px 14px;font-size:.82rem;"></div>
-        </div>
-
-        <!-- PASO 3: Cantidad + Cliente -->
-        <div id="trp-form-card" style="display:none;margin:0 12px 12px;background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
-          <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;background:#fafafa;display:flex;align-items:center;gap:8px;">
-            <span style="background:#ef4444;color:#fff;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:900;">3</span>
-            <span style="font-size:.75rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">
-              <i class="fa-solid fa-clipboard-list" style="color:#ef4444;"></i> Cantidad y destinatario
-            </span>
-          </div>
-          <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
-
-            <div>
-              <label style="font-size:.75rem;font-weight:700;color:#374151;display:block;margin-bottom:6px;">
-                Cantidad * <span id="trp-upc-hint" style="font-weight:400;color:#6b7280;font-size:.72rem;"></span>
-              </label>
-              <input id="trp-cant" type="number" min="0.01" step="0.01"
-                     style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-size:1.1rem;font-weight:700;"
-                     placeholder="0" oninput="MWMS._trpUpdCantPreview()">
-              <div id="trp-cant-preview" style="font-size:.72rem;color:#6b7280;margin-top:4px;"></div>
-            </div>
-
-            <div>
-              <label style="font-size:.75rem;font-weight:700;color:#374151;display:block;margin-bottom:6px;">Cliente *</label>
-              <select id="trp-cliente-id" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff;" onchange="const opt=this.options[this.selectedIndex]; document.getElementById('trp-cliente-nom').value = opt ? opt.text : '';">
-                <option value="">-- Seleccionar Cliente --</option>
-                ${(this._trpClientes || []).map(c => `<option value="${c.id}">${this.esc(c.razon_social || c.nombre || '')}</option>`).join('')}
-              </select>
-              <input type="hidden" id="trp-cliente-nom">
-            </div>
-
-            <div>
-              <label style="font-size:.75rem;font-weight:700;color:#374151;display:block;margin-bottom:6px;">Motivo</label>
-              <select id="trp-motivo" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;background:#fff;">
-                ${(this._trpMotivos || ['Traspaso a cliente','Muestra comercial','Otro']).map(m => `<option value="${this.esc(m)}">${this.esc(m)}</option>`).join('')}
-              </select>
-            </div>
-
+          <div style="margin-bottom:10px;">
+            <label class="m-label">Observaciones</label>
+            <textarea id="trp-obs" class="m-input-full" rows="2" style="resize:none;"></textarea>
           </div>
         </div>
 
-        <!-- Botón confirmar -->
-        <div id="trp-btn-wrap" style="display:none;padding:0 12px;">
-          <button onclick="MWMS._trpConfirmar()"
-                  style="width:100%;padding:15px;background:#ef4444;color:#fff;border:none;border-radius:12px;font-size:.95rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
-            <i class="fa-solid fa-check-circle"></i> Confirmar Traspaso
+        <div style="margin:0 12px 12px;background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:14px 16px;">
+          <h4 style="margin:0 0 10px;font-size:.85rem;color:#1e293b;">4. Firma de Conformidad</h4>
+          <div style="border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;background:#fafafa;">
+            <canvas id="trp-firma-canvas" width="400" height="150" style="width:100%;display:block;touch-action:none;"></canvas>
+          </div>
+          <button onclick="MWMS._trpLimpiarFirma()" class="m-btn secondary" style="width:100%;margin-top:8px;padding:6px;"><i class="fa-solid fa-eraser"></i> Limpiar Firma</button>
+        </div>
+
+        <div style="padding:0 12px;">
+          <button id="trp-btn-submit" onclick="MWMS._trpConfirmarDoc()" class="m-btn primary" style="width:100%;padding:15px;font-size:1rem;">
+            <i class="fa-solid fa-check-double"></i> Generar Documento Traspaso
           </button>
         </div>
-
       </div>`;
 
     const inp = document.getElementById('trp-ubi-input');
     if (inp) { inp.focus(); inp.onkeydown = e => { if (e.key === 'Enter') MWMS._trpBuscarUbicacion(); }; }
+    
+    // Init Canvas
+    setTimeout(() => {
+      this._trpInitCanvas();
+    }, 100);
   },
 
-  _trpUbicOrigen: null,
-  _trpSelected: null,
-  _trpStock: [],
+  _trpInitCanvas() {
+    this._trpCanvas = document.getElementById('trp-firma-canvas');
+    if (!this._trpCanvas) return;
+    this._trpCtx = this._trpCanvas.getContext('2d');
+    this._trpCtx.strokeStyle = '#000000';
+    this._trpCtx.lineWidth = 2;
+    this._trpCtx.lineCap = 'round';
+    
+    const rect = this._trpCanvas.getBoundingClientRect();
+    this._trpCanvas.width = rect.width || 400;
+    this._trpCanvas.height = 150;
 
-  _trpLimpiar() {
-    this._trpSelected = null;
-    this._trpUbicOrigen = null;
-    this._trpStock = [];
-    const inp = document.getElementById('trp-ubi-input');
-    if (inp) { inp.value = ''; inp.focus(); }
-    ['trp-ubi-res','trp-refs-list'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
-    ['trp-card-refs','trp-seleccion','trp-form-card','trp-btn-wrap'].forEach(id => {
-      const el = document.getElementById(id); if (el) el.style.display = 'none';
-    });
+    const startPos = (e) => {
+      e.preventDefault();
+      this._trpDrawing = true;
+      this._trpDraw(e);
+    };
+    const endPos = (e) => {
+      e.preventDefault();
+      this._trpDrawing = false;
+      this._trpCtx.beginPath();
+    };
+    const getPos = (e) => {
+      const r = this._trpCanvas.getBoundingClientRect();
+      const x = (e.clientX || e.touches?.[0]?.clientX || 0) - r.left;
+      const y = (e.clientY || e.touches?.[0]?.clientY || 0) - r.top;
+      return {x,y};
+    };
+    
+    this._trpDraw = (e) => {
+      if (!this._trpDrawing) return;
+      e.preventDefault();
+      const {x, y} = getPos(e);
+      this._trpCtx.lineTo(x, y);
+      this._trpCtx.stroke();
+      this._trpCtx.beginPath();
+      this._trpCtx.moveTo(x, y);
+    };
+
+    this._trpCanvas.addEventListener('mousedown', startPos);
+    this._trpCanvas.addEventListener('mouseup', endPos);
+    this._trpCanvas.addEventListener('mousemove', this._trpDraw);
+    this._trpCanvas.addEventListener('touchstart', startPos, {passive:false});
+    this._trpCanvas.addEventListener('touchend', endPos, {passive:false});
+    this._trpCanvas.addEventListener('touchmove', this._trpDraw, {passive:false});
+  },
+  
+  _trpLimpiarFirma() {
+    if (this._trpCanvas && this._trpCtx) {
+      this._trpCtx.clearRect(0, 0, this._trpCanvas.width, this._trpCanvas.height);
+      this._trpCtx.beginPath();
+    }
   },
 
-  _trpVolverRefs() {
-    this._trpSelected = null;
-    document.getElementById('trp-seleccion').style.display = 'none';
-    document.getElementById('trp-form-card').style.display = 'none';
-    document.getElementById('trp-btn-wrap').style.display = 'none';
-    document.getElementById('trp-card-refs').style.display = 'block';
+  _trpIsFirmaEmpty() {
+    if (!this._trpCanvas) return true;
+    const blank = document.createElement('canvas');
+    blank.width = this._trpCanvas.width;
+    blank.height = this._trpCanvas.height;
+    return this._trpCanvas.toDataURL() === blank.toDataURL();
   },
 
   async _trpBuscarUbicacion() {
@@ -9482,20 +9507,17 @@ const MWMS = {
     try {
       const rl = await mApi('GET', '/param/ubicaciones?codigo=' + encodeURIComponent(q));
       const locs = Array.isArray(rl.data) ? rl.data : [];
-      if (!locs.length) { this.toast('Ubicación no encontrada: ' + q, 'error'); return; }
-      // Si hay más de una coincidencia, mostrar lista rápida
+      if (!locs.length) { this.toast('Ubicación no encontrada', 'error'); return; }
       if (locs.length > 1) {
         this._trpUbiCandidatos = locs;
         document.getElementById('trp-ubi-res').innerHTML = locs.slice(0,5).map((l, i) => `
-          <div onclick="MWMS._trpCargarStockUbic(MWMS._trpUbiCandidatos[${i}])"
-               style="padding:8px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:.82rem;font-weight:700;color:#dc2626;">
-            <i class="fa-solid fa-location-dot"></i> ${this.esc(l.codigo)}
-            <span style="color:#64748b;font-weight:400;"> — ${this.esc(l.descripcion||l.zona||'')}</span>
+          <div onclick="MWMS._trpCargarStockUbic(MWMS._trpUbiCandidatos[${i}])" style="padding:10px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px;cursor:pointer;background:#fff;">
+            <b>${this.esc(l.codigo)}</b> - ${this.esc(l.zona||'')}
           </div>`).join('');
         return;
       }
       await this._trpCargarStockUbic(locs[0]);
-    } catch(e) { this.toast(e.message || 'Error buscando ubicación', 'error'); }
+    } catch(e) { this.toast(e.message || 'Error', 'error'); }
     finally { this.loading(false); }
   },
 
@@ -9505,158 +9527,128 @@ const MWMS = {
       document.getElementById('trp-ubi-res').innerHTML = '';
       const rs = await mApi('GET', '/inventario/stock?ubicacion_id=' + loc.id + '&estado=Disponible');
       const stock = (rs.data || []).filter(x => parseFloat(x.cantidad) > 0 && parseFloat(x.cantidad - (x.cantidad_reservada||0)) > 0);
-      if (!stock.length) {
-        this.toast('Sin stock disponible en ' + loc.codigo, 'warning');
-        return;
-      }
-      this._trpUbicOrigen = loc;
-      // Mapear al formato esperado por _trpSeleccionar
+      if (!stock.length) { this.toast('Sin stock en ' + loc.codigo, 'warning'); return; }
+      
       this._trpStock = stock.map(s => ({
-        inventario_id:    s.id,
-        producto_id:      s.producto_id,
-        nombre:           s.producto_nombre || s.nombre || '',
-        codigo_interno:   s.codigo_interno  || '',
-        ubicacion_id:     loc.id,
+        producto_id: s.producto_id,
+        nombre: s.producto_nombre || s.nombre || '',
+        ubicacion_id: loc.id,
         ubicacion_codigo: loc.codigo,
-        ubicacion_zona:   loc.zona || '',
-        lote:             s.lote,
-        fecha_vencimiento:s.fecha_vencimiento,
-        cantidad_disponible: parseFloat(s.cantidad) - parseFloat(s.cantidad_reservada||0),
-        unidades_caja:    s.unidades_caja || 1,
-        bloqueado:        s.bloqueado || false,
+        lote: s.lote,
+        fecha_vencimiento: s.fecha_vencimiento,
+        disp: parseFloat(s.cantidad) - parseFloat(s.cantidad_reservada||0)
       }));
-      // Mostrar paso 2
-      const label = document.getElementById('trp-ubi-label');
-      if (label) label.innerHTML = `<i class="fa-solid fa-location-dot"></i> ${this.esc(loc.codigo)} — selecciona referencia`;
-      const list = document.getElementById('trp-refs-list');
-      list.innerHTML = this._trpStock.map((s, idx) => {
-        const fv = s.fecha_vencimiento
-          ? `<span style="background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:1px 6px;color:#dc2626;font-size:.68rem;font-weight:700;">Vence: ${this.formatDateShort(s.fecha_vencimiento)}</span>`
-          : '';
-        return `
-          <div onclick="MWMS._trpSeleccionar(${idx})"
-               style="display:flex;justify-content:space-between;align-items:center;padding:11px 10px;
-                      margin-bottom:6px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;">
-            <div style="flex:1;min-width:0;">
-              <div style="font-weight:700;font-size:.83rem;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                ${this.esc(s.nombre)}
-              </div>
-              <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">
-                <span style="font-size:.68rem;color:#64748b;">Lote: ${this.esc(s.lote||'S/L')}</span>
-                ${fv}
-              </div>
-            </div>
-            <div style="text-align:right;flex-shrink:0;margin-left:10px;">
-              <div style="font-weight:900;color:#10b981;font-size:1rem;">${s.cantidad_disponible}</div>
-              <div style="font-size:.65rem;color:#94a3b8;">und</div>
-            </div>
-          </div>`;
-      }).join('');
-      document.getElementById('trp-card-refs').style.display = 'block';
-    } catch(e) { this.toast(e.message || 'Error cargando stock', 'error'); }
-    finally { this.loading(false); }
-  },
-
-  _trpUpdCantPreview() {
-    const p = this._trpSelected;
-    if (!p) return;
-    const upc = Math.max(1, parseInt(p.unidades_caja || 1));
-    const cant = parseFloat(document.getElementById('trp-cant')?.value || 0) || 0;
-    const el = document.getElementById('trp-cant-preview');
-    if (el) el.textContent = upc > 1 ? `= ${cant * upc} unidades totales` : '';
-  },
-
-  _trpCliTimer: null,
-  async _trpBuscarCliente() {
-    const q = document.getElementById('trp-cliente-buscar')?.value.trim();
-    const div = document.getElementById('trp-cliente-res');
-    if (!div) return;
-    if (!q || q.length < 2) { div.style.display = 'none'; div.innerHTML = ''; return; }
-    try {
-      const r = await mApi('GET', '/param/clientes?q=' + encodeURIComponent(q));
-      const cls = r.data || r || [];
-      if (!cls.length) { div.style.display = 'none'; return; }
-      div.style.display = 'block';
-      div.innerHTML = cls.slice(0, 8).map(c => `
-        <div style="padding:9px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:.82rem;"
-             onclick="MWMS._trpSelCliente(${c.id},'${this.esc(c.razon_social||c.nombre||'')}')">
-          <i class="fa-solid fa-user" style="color:#94a3b8;font-size:.75rem;"></i> ${this.esc(c.razon_social||c.nombre||'')}
+      
+      document.getElementById('trp-refs-list').innerHTML = this._trpStock.map((s, i) => `
+        <div onclick="MWMS._trpSeleccionar(${i})" style="padding:10px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;margin-bottom:8px;cursor:pointer;">
+          <div style="font-weight:700;font-size:.85rem;">${this.esc(s.nombre)}</div>
+          <div style="font-size:.7rem;color:#64748b;margin-top:4px;">
+            Lote: ${this.esc(s.lote||'S/L')} | Vence: ${s.fecha_vencimiento ? this.formatDateShort(s.fecha_vencimiento) : 'N/A'} | Disp: <b>${s.disp}</b>
+          </div>
         </div>`).join('');
-    } catch(e) { div.style.display = 'none'; }
-  },
-
-  _trpSelCliente(id, nombre) {
-    document.getElementById('trp-cliente-id').value = id;
-    document.getElementById('trp-cliente-nom').value = nombre;
-    document.getElementById('trp-cliente-buscar').value = nombre;
-    const div = document.getElementById('trp-cliente-res');
-    if (div) { div.innerHTML = ''; div.style.display = 'none'; }
+    } catch(e) { this.toast('Error cargando stock', 'error'); }
+    finally { this.loading(false); }
   },
 
   _trpSeleccionar(idx) {
-    const s = this._trpStock?.[idx];
+    const s = this._trpStock[idx];
     if (!s) return;
     this._trpSelected = s;
-    const upc = Math.max(1, parseInt(s.unidades_caja || 1));
-    document.getElementById('trp-card-refs').style.display = 'none';
-    const fv = s.fecha_vencimiento
-      ? `<span style="background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:1px 6px;color:#dc2626;font-size:.7rem;font-weight:700;">Vence: ${this.formatDateShort(s.fecha_vencimiento)}</span>`
-      : '';
+    document.getElementById('trp-refs-list').style.display = 'none';
+    document.getElementById('trp-scan-area').style.display = 'none';
+    
     document.getElementById('trp-sel-info').innerHTML = `
-      <div style="font-weight:700;font-size:.86rem;margin-bottom:6px;">${this.esc(s.nombre)}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:4px;">
-        <span style="background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:2px 8px;color:#dc2626;font-size:.75rem;font-weight:700;">
-          <i class="fa-solid fa-location-dot"></i> ${this.esc(s.ubicacion_codigo)}
-        </span>
-        <span style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:2px 8px;color:#475569;font-size:.72rem;">
-          Lote: ${this.esc(s.lote||'Sin lote')}
-        </span>
-        ${fv}
-        <span style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:2px 8px;color:#15803d;font-size:.72rem;font-weight:700;">
-          Disp: ${s.cantidad_disponible} und
-        </span>
-      </div>`;
-    document.getElementById('trp-seleccion').style.display = 'block';
-    document.getElementById('trp-form-card').style.display = 'block';
-    document.getElementById('trp-btn-wrap').style.display = 'block';
-    const hint = document.getElementById('trp-upc-hint');
-    if (hint) hint.textContent = upc > 1 ? ` (${upc} und/caja)` : '';
-    const cantEl = document.getElementById('trp-cant');
-    if (cantEl) { cantEl.value = ''; cantEl.max = s.cantidad_disponible; cantEl.focus(); }
-    document.getElementById('trp-cant-preview').textContent = '';
+      <b>${this.esc(s.nombre)}</b><br>
+      <span style="font-size:.8rem;color:#64748b;">De: ${this.esc(s.ubicacion_codigo)} | Lote: ${this.esc(s.lote||'S/L')} | Disp: ${s.disp}</span>
+    `;
+    const cant = document.getElementById('trp-cant');
+    cant.value = ''; cant.max = s.disp;
+    document.getElementById('trp-item-form').style.display = 'block';
   },
 
-  async _trpConfirmar() {
-    if (!this._trpSelected) { this.toast('Seleccione un producto', 'warning'); return; }
-    const cant = parseFloat(document.getElementById('trp-cant')?.value) || 0;
-    if (cant <= 0) { this.toast('Ingrese una cantidad válida', 'warning'); return; }
-    if (cant > this._trpSelected.cantidad_disponible) { this.toast('Cantidad excede el disponible', 'error'); return; }
-    const motivo = document.getElementById('trp-motivo')?.value;
-    if (!motivo) { this.toast('Seleccione un motivo', 'warning'); return; }
+  _trpCancelarItem() {
+    this._trpSelected = null;
+    document.getElementById('trp-item-form').style.display = 'none';
+    document.getElementById('trp-refs-list').style.display = 'block';
+    document.getElementById('trp-scan-area').style.display = 'block';
+  },
 
-    if (!confirm(`¿Confirmar traspaso de ${cant} unidades de ${this._trpSelected.nombre}?`)) return;
+  _trpAgregarItem() {
+    if (!this._trpSelected) return;
+    const cant = parseFloat(document.getElementById('trp-cant').value) || 0;
+    if (cant <= 0 || cant > this._trpSelected.disp) {
+      this.toast('Cantidad inválida o superior a disponible', 'error');
+      return;
+    }
+    
+    this._trpItems.push({
+      ...this._trpSelected,
+      cantidad: cant
+    });
+    
+    this._trpRenderItems();
+    this._trpCancelarItem();
+    document.getElementById('trp-ubi-input').value = '';
+    document.getElementById('trp-refs-list').innerHTML = '';
+  },
 
+  _trpRenderItems() {
+    const el = document.getElementById('trp-items-agregados');
+    if (!this._trpItems.length) {
+      el.innerHTML = `<div style="color:#94a3b8;text-align:center;font-size:.85rem;padding:10px;">No hay productos agregados</div>`;
+      return;
+    }
+    
+    el.innerHTML = this._trpItems.map((it, i) => `
+      <div style="padding:10px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+        <div style="flex:1;">
+          <div style="font-weight:700;font-size:.85rem;">${this.esc(it.nombre)}</div>
+          <div style="font-size:.7rem;color:#64748b;">${this.esc(it.ubicacion_codigo)} | ${it.cantidad} und</div>
+        </div>
+        <button onclick="MWMS._trpItems.splice(${i},1); MWMS._trpRenderItems()" style="background:none;border:none;color:#ef4444;padding:5px;">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>`).join('');
+  },
+
+  async _trpConfirmarDoc() {
+    if (!this._trpItems.length) { this.toast('Agrega al menos un producto', 'warning'); return; }
+    
+    const cliente_id = document.getElementById('trp-cliente-id')?.value;
+    const quien_recibe = document.getElementById('trp-quien-recibe')?.value.trim();
+    if (!quien_recibe) { this.toast('El campo Quien recibe es obligatorio', 'warning'); return; }
+    if (this._trpIsFirmaEmpty()) { this.toast('Falta la firma del destinatario', 'warning'); return; }
+
+    const payload = {
+      cliente_id: cliente_id || null,
+      cliente_nombre: document.getElementById('trp-cliente-nom')?.value || null,
+      quien_recibe: quien_recibe,
+      motivo: document.getElementById('trp-motivo')?.value,
+      observaciones: document.getElementById('trp-obs')?.value.trim() || null,
+      firma_base64: this._trpCanvas.toDataURL('image/png'),
+      detalles: this._trpItems.map(i => ({
+        producto_id: i.producto_id,
+        ubicacion_id: i.ubicacion_id,
+        lote: i.lote,
+        fecha_vencimiento: i.fecha_vencimiento,
+        cantidad: i.cantidad
+      }))
+    };
+
+    const btn = document.getElementById('trp-btn-submit');
+    btn.disabled = true;
     this.loading(true);
+    
     try {
-      const r = await mApi('POST', '/traspasos', {
-        producto_id:      this._trpSelected.producto_id,
-        ubicacion_id:     this._trpSelected.ubicacion_id,
-        lote:             this._trpSelected.lote || null,
-        fecha_vencimiento: this._trpSelected.fecha_vencimiento || null,
-        cantidad:         cant,
-        cliente_id:       document.getElementById('trp-cliente-id')?.value || null,
-        cliente_nombre:   document.getElementById('trp-cliente-nom')?.value || null,
-        motivo:           motivo,
-        observaciones:    document.getElementById('trp-obs')?.value.trim() || null,
-      });
-      if (r.error) this.toast(r.message, 'error');
-      else {
-        this.toast(r.message || 'Traspaso realizado', 'success');
-        this._trpSelected = null;
-        this.viewTraspaso();
-      }
-    } catch(e) { this.toast('Error al realizar traspaso', 'error'); }
-    finally { this.loading(false); }
+      const r = await mApi('POST', '/traspasos', payload);
+      this.toast(r.message || 'Documento generado', 'success');
+      this.viewTraspaso();
+    } catch(e) {
+      this.toast(e.message || 'Error guardando traspaso', 'error');
+      btn.disabled = false;
+    } finally {
+      this.loading(false);
+    }
   },
 };
 

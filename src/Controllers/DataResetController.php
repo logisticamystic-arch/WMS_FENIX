@@ -45,7 +45,7 @@ class DataResetController extends BaseController
                 'orden_pickings', 'picking_detalles', 'picking_faltantes', 'novedades_picking', 'picking_asignaciones_log', 'picking_consolidados', 'picking_cert_ambiente', 'picking_productos_pendientes', 'picking_novedades_stock', 'tarea_reabastecimientos',
                 'packing_sesiones', 'packing_unidades', 'packing_items', 'certificaciones', 'certificacion_detalles', 'certificacion_despachos', 'despachos', 'despacho_ordenes',
                 'wave_picking', 'wave_planillas', 'planillas_picking', 'planilla_vrs', 'archivos_planilla', 'cert_planillas', 'cert_planilla_det', 'lineas_planilla',
-                'devolucion_detalles', 'devoluciones', 'traspasos',
+                'devolucion_detalles', 'devoluciones', 'traspasos', 'traspaso_documento_detalles', 'traspaso_documentos',
                 'conteo_detalles', 'conteo_personal', 'conteo_inventarios', 'sesion_lineas', 'sesion_asignaciones', 'sesiones_inventario', 'ajustes_inventario', 'ajuste_ubicacion_detalles', 'ajuste_ubicacion', 'inv_general_diferencias', 'inv_general_conteos', 'inv_general_asignaciones', 'inv_general_eventos', 'nota_ajuste_detalles', 'notas_ajuste',
                 'bloqueo_lotes', 'aprobaciones_vencimiento',
                 'alertas_stock', 'anomaly_flags', 'expiry_predictions', 'notificaciones', 'forecast_demanda', 'ventas_agregadas_ml', 'ubicaciones_optimas', 'clasificaciones_abc_xyz',
@@ -100,7 +100,7 @@ class DataResetController extends BaseController
         ],
         'traspasos' => [
             'label'  => 'Módulo de Traspasos',
-            'tablas' => ['traspasos'],
+            'tablas' => ['traspasos', 'traspaso_documento_detalles', 'traspaso_documentos'],
         ],
         'conteos' => [
             'label'  => 'Módulo de Conteos Físicos de Inventario',

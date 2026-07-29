@@ -15,7 +15,7 @@ class TraspasoController extends BaseController
     {
         $user   = $request->getAttribute('user');
         $params = $request->getQueryParams();
-        $query  = Traspaso::with(['producto', 'ubicacion', 'auxiliar'])
+        $query  = \App\Models\TraspasoDocumento::with(['detalles.producto', 'detalles.ubicacion', 'auxiliar'])
             ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $this->getEffectiveSucursalId($user, $request));
 
@@ -80,115 +80,138 @@ class TraspasoController extends BaseController
     public function create(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        // Un traspaso es una salida DEFINITIVA de stock (a cliente, donación, destrucción,
-        // consumo interno o devolución a proveedor — ver Traspaso::MOTIVOS), el mismo
-        // impacto que un ajuste manual. Sin este control, cualquier usuario autenticado
-        // podía descontar/eliminar inventario real sin autorización de supervisor.
         if ($deny = $this->requireSupervisor($user, $response)) return $deny;
 
         $data = $request->getParsedBody();
 
-        $required = ['producto_id', 'ubicacion_id', 'cantidad', 'motivo'];
+        $required = ['motivo', 'quien_recibe', 'detalles'];
         foreach ($required as $f) {
             if (empty($data[$f])) return $this->error($response, "El campo {$f} es obligatorio");
         }
 
+        $detalles = is_string($data['detalles']) ? json_decode($data['detalles'], true) : $data['detalles'];
+        if (empty($detalles) || !is_array($detalles)) {
+            return $this->error($response, 'Debe incluir al menos un producto');
+        }
+
         $empresaId  = $this->getEffectiveEmpresaId($user, $request);
         $sucursalId = $this->getEffectiveSucursalId($user, $request);
-        $cantidad   = (float)$data['cantidad'];
 
-        if ($cantidad <= 0) return $this->error($response, 'La cantidad debe ser mayor a 0');
-
-        try {
-            $result = DB::connection()->transaction(function () use ($data, $empresaId, $sucursalId, $cantidad, $user) {
-                // fecha_vencimiento acota a la partida exacta cuando el cliente la envía
-                // (buscarStock() ya la devuelve por fila) — es el diferenciador real entre
-                // partidas, no el lote, que puede repetirse entre vencimientos distintos.
-                $inv = Inventario::where('empresa_id', $empresaId)
-                    ->where('sucursal_id', $sucursalId)
-                    ->where('producto_id', $data['producto_id'])
-                    ->where('ubicacion_id', $data['ubicacion_id'])
-                    ->where('estado', 'Disponible')
-                    ->when(!empty($data['lote']), fn($q) => $q->where('lote', $data['lote']))
-                    ->when(empty($data['lote']), fn($q) => $q->whereNull('lote'))
-                    ->when(!empty($data['fecha_vencimiento']), fn($q) => $q->where('fecha_vencimiento', $data['fecha_vencimiento']))
-                    ->lockForUpdate()
-                    ->first();
-
-                if (!$inv) throw new \Exception('No se encontró inventario disponible');
-
-                // Bloqueo de producto/lote: un producto retirado por calidad o un lote
-                // específico bloqueado no debe poder trasladarse — mismo criterio que
-                // ya aplica el flujo de picking (asignarMultiple/_generarRutaFEFO).
-                $productoBloqueado = \App\Models\Producto::withoutGlobalScopes()
-                    ->where('id', $data['producto_id'])->where('bloqueado', true)->exists();
-                if ($productoBloqueado) {
-                    throw new \Exception('El producto está bloqueado y no puede trasladarse');
-                }
-                if ($inv->lote) {
-                    $loteBloqueado = \App\Models\BloqueoLote::where('empresa_id', $empresaId)
-                        ->where('producto_id', $data['producto_id'])
-                        ->where('lote', $inv->lote)->exists();
-                    if ($loteBloqueado) {
-                        throw new \Exception("El lote {$inv->lote} está bloqueado y no puede trasladarse");
+        $firmaPath = null;
+        if (!empty($data['firma_base64'])) {
+            $base64Data = $data['firma_base64'];
+            if (preg_match('/^data:image\/(\w+);base64,/', $base64Data, $type)) {
+                $base64Data = substr($base64Data, strpos($base64Data, ',') + 1);
+                $type = strtolower($type[1]);
+                if (in_array($type, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+                    $decodedData = base64_decode($base64Data);
+                    if ($decodedData !== false) {
+                        $uploadDir = __DIR__ . '/../../public/uploads/firmas/';
+                        if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+                        $fileName = uniqid('firma_trp_') . '.' . $type;
+                        file_put_contents($uploadDir . $fileName, $decodedData);
+                        $firmaPath = 'uploads/firmas/' . $fileName;
                     }
                 }
+            }
+        }
 
-                $disponible = $inv->cantidad - $inv->cantidad_reservada;
-                if ($cantidad > $disponible) {
-                    throw new \Exception("Cantidad excede el disponible ({$disponible})");
-                }
-
-                // La fecha de vencimiento real es la del inventario ya localizado, no la que
-                // envía el cliente — evita desincronizar la auditoría del lote realmente movido.
-                $fechaVencReal = $inv->fecha_vencimiento;
-
-                $inv->cantidad -= $cantidad;
-                if ((float)$inv->cantidad <= 0 && (float)($inv->cantidad_reservada ?? 0) <= 0) {
-                    $inv->delete();
-                } else {
-                    $inv->save();
-                }
-
-                MovimientoInventario::create([
-                    'empresa_id'         => $empresaId,
-                    'sucursal_id'        => $sucursalId,
-                    'producto_id'        => $data['producto_id'],
-                    'ubicacion_origen_id'=> $data['ubicacion_id'],
-                    'tipo_movimiento'    => 'Salida',
-                    'cantidad'           => $cantidad,
-                    'lote'               => $data['lote'] ?? null,
-                    'fecha_vencimiento'  => $fechaVencReal,
-                    'auxiliar_id'        => $user->id,
-                    'fecha_movimiento'   => now(),
-                    'hora_inicio'        => date('H:i:s'),
-                    'observaciones'      => 'Traspaso: ' . ($data['motivo'] ?? '') . ' - ' . ($data['cliente_nombre'] ?? ''),
-                ]);
-
-                $lastId = Traspaso::where('empresa_id', $empresaId)
+        try {
+            $result = DB::connection()->transaction(function () use ($data, $detalles, $empresaId, $sucursalId, $user, $firmaPath) {
+                $lastId = \App\Models\TraspasoDocumento::where('empresa_id', $empresaId)
                     ->where('sucursal_id', $sucursalId)
                     ->max('id');
-                $numero = 'TRP-' . str_pad(($lastId ?? 0) + 1, 6, '0', STR_PAD_LEFT);
+                $numero = 'TRPD-' . str_pad(($lastId ?? 0) + 1, 6, '0', STR_PAD_LEFT);
 
-                return Traspaso::create([
+                $doc = \App\Models\TraspasoDocumento::create([
                     'empresa_id'       => $empresaId,
                     'sucursal_id'      => $sucursalId,
-                    'numero_traspaso'  => $numero,
-                    'producto_id'      => $data['producto_id'],
-                    'ubicacion_id'     => $data['ubicacion_id'],
-                    'lote'             => $data['lote'] ?? null,
-                    'fecha_vencimiento'=> $fechaVencReal,
-                    'cantidad'         => $cantidad,
+                    'numero_documento' => $numero,
+                    'fecha_movimiento' => date('Y-m-d'),
                     'cliente_id'       => $data['cliente_id'] ?? null,
                     'cliente_nombre'   => $data['cliente_nombre'] ?? null,
+                    'quien_recibe'     => $data['quien_recibe'] ?? null,
+                    'firma_path'       => $firmaPath,
                     'motivo'           => $data['motivo'],
                     'observaciones'    => $data['observaciones'] ?? null,
                     'auxiliar_id'      => $user->id,
                     'estado'           => 'Completado',
                 ]);
+
+                foreach ($detalles as $det) {
+                    $cantidad = (float)$det['cantidad'];
+                    if ($cantidad <= 0) continue;
+
+                    $inv = Inventario::where('empresa_id', $empresaId)
+                        ->where('sucursal_id', $sucursalId)
+                        ->where('producto_id', $det['producto_id'])
+                        ->where('ubicacion_id', $det['ubicacion_id'])
+                        ->where('estado', 'Disponible')
+                        ->when(!empty($det['lote']), fn($q) => $q->where('lote', $det['lote']))
+                        ->when(empty($det['lote']), fn($q) => $q->whereNull('lote'))
+                        ->when(!empty($det['fecha_vencimiento']), fn($q) => $q->where('fecha_vencimiento', $det['fecha_vencimiento']))
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (!$inv) throw new \Exception('No se encontró inventario disponible para el producto ' . $det['producto_id']);
+
+                    $productoBloqueado = \App\Models\Producto::withoutGlobalScopes()
+                        ->where('id', $det['producto_id'])->where('bloqueado', true)->exists();
+                    if ($productoBloqueado) {
+                        throw new \Exception('El producto ' . $det['producto_id'] . ' está bloqueado y no puede trasladarse');
+                    }
+                    if ($inv->lote) {
+                        $loteBloqueado = \App\Models\BloqueoLote::where('empresa_id', $empresaId)
+                            ->where('producto_id', $det['producto_id'])
+                            ->where('lote', $inv->lote)->exists();
+                        if ($loteBloqueado) {
+                            throw new \Exception("El lote {$inv->lote} está bloqueado y no puede trasladarse");
+                        }
+                    }
+
+                    $disponible = $inv->cantidad - $inv->cantidad_reservada;
+                    if ($cantidad > $disponible) {
+                        throw new \Exception("Cantidad excede el disponible ({$disponible}) para el producto " . $det['producto_id']);
+                    }
+
+                    $fechaVencReal = $inv->fecha_vencimiento;
+
+                    $inv->cantidad -= $cantidad;
+                    if ((float)$inv->cantidad <= 0 && (float)($inv->cantidad_reservada ?? 0) <= 0) {
+                        $inv->delete();
+                    } else {
+                        $inv->save();
+                    }
+
+                    MovimientoInventario::create([
+                        'empresa_id'         => $empresaId,
+                        'sucursal_id'        => $sucursalId,
+                        'producto_id'        => $det['producto_id'],
+                        'ubicacion_origen_id'=> $det['ubicacion_id'],
+                        'tipo_movimiento'    => 'Salida',
+                        'cantidad'           => $cantidad,
+                        'lote'               => $det['lote'] ?? null,
+                        'fecha_vencimiento'  => $fechaVencReal,
+                        'auxiliar_id'        => $user->id,
+                        'fecha_movimiento'   => now(),
+                        'hora_inicio'        => date('H:i:s'),
+                        'observaciones'      => 'Traspaso Doc: ' . $numero . ' - ' . ($data['cliente_nombre'] ?? ''),
+                    ]);
+
+                    \App\Models\TraspasoDocumentoDetalle::create([
+                        'traspaso_documento_id' => $doc->id,
+                        'producto_id'      => $det['producto_id'],
+                        'ubicacion_id'     => $det['ubicacion_id'],
+                        'lote'             => $det['lote'] ?? null,
+                        'fecha_vencimiento'=> $fechaVencReal,
+                        'cantidad'         => $cantidad,
+                    ]);
+                }
+
+                return $doc;
             });
 
-            return $this->created($response, $result, 'Traspaso realizado. Inventario actualizado.');
+            return $this->created($response, $result, 'Documento de traspaso creado. Inventario actualizado.');
         } catch (\Exception $e) {
             return $this->error($response, $e->getMessage());
         }

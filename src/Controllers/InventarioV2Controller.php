@@ -1441,10 +1441,6 @@ class InventarioV2Controller extends BaseController
     private function detectarReferenciasNoContadas(SesionInventario $sesion, int $rondaFinal): array
     {
         // Las ubicaciones se obtienen de las LÍNEAS CONTADAS, no de las asignaciones.
-        // sesion_asignaciones define al auxiliar y el tipo de instrucción (pasillo/módulo/libre),
-        // pero NO tiene ubicacion_id directamente. La ubicación aparece en cada línea registrada.
-        // Lógica: si un auxiliar contó algo en una ubicación, recorrió esa ubicación.
-        // Por lo tanto, si hay stock en esa ubicación que NO fue contado → ausencia física.
         $ubicacionIds = SesionLinea::where('sesion_id', $sesion->id)
             ->where('ronda', $rondaFinal)
             ->where('estado', SesionLinea::ESTADO_ACTIVO)
@@ -1453,17 +1449,22 @@ class InventarioV2Controller extends BaseController
             ->values()
             ->toArray();
 
-        if (empty($ubicacionIds)) return [];
+        // Para Ciclico, si no se contaron ubicaciones, no hay nada que deducir.
+        if (empty($ubicacionIds) && $sesion->tipo === 'Ciclico') return [];
 
         // ── Una sola query SQL con NOT EXISTS (usa índices, sin carga en PHP) ──
-        // Trae todas las referencias en inventarios para las ubicaciones asignadas
-        // que NO tienen una línea de conteo en la ronda final de esta sesión.
-        $enSistema = Capsule::table('inventarios')
+        $queryEnSistema = Capsule::table('inventarios')
             ->where('inventarios.empresa_id',  $sesion->empresa_id)
             ->where('inventarios.sucursal_id',  $sesion->sucursal_id)
-            ->whereIn('inventarios.ubicacion_id', $ubicacionIds)
-            ->where('inventarios.cantidad', '>', 0)
-            ->whereNotExists(function ($sub) use ($sesion, $rondaFinal) {
+            ->where('inventarios.cantidad', '>', 0);
+            
+        // Si es Cíclico, solo eliminamos lo que no se contó en las ubicaciones VISITADAS.
+        // Si es General o CargueInicial, eliminamos TODO el inventario de la sucursal que no se haya contado (incluyendo ubicaciones no visitadas).
+        if ($sesion->tipo === 'Ciclico') {
+            $queryEnSistema->whereIn('inventarios.ubicacion_id', $ubicacionIds);
+        }
+
+        $enSistema = $queryEnSistema->whereNotExists(function ($sub) use ($sesion, $rondaFinal) {
                 // La referencia NO fue contada si no hay línea activa en la ronda final
                 $sub->select(Capsule::raw(1))
                     ->from('sesion_lineas')

@@ -1,16 +1,16 @@
 # Graph Report - WMS_FENIX  (2026-07-28)
 
 ## Corpus Check
-- 317 files · ~813,964 words
+- 318 files · ~814,025 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2629 nodes · 5371 edges · 324 communities (240 shown, 84 thin omitted)
+- 2630 nodes · 5371 edges · 325 communities (241 shown, 84 thin omitted)
 - Extraction: 92% EXTRACTED · 8% INFERRED · 0% AMBIGUOUS · INFERRED: 444 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `74919e92`
+- Built from commit: `03d80886`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -237,7 +237,7 @@
 - **TV Dashboard Refresh Cycle** — public_tv_picking_refresh, public_tv_picking_loadpicking, public_tv_picking_renderkpis, public_tv_picking_renderplanillastable, public_tv_picking_rendercharts, public_tv_picking_renderalertas [EXTRACTED 0.85]
 - **Packing Session Data Model** — concept_packing_sesiones, concept_packing_unidades, concept_packing_items, concept_picking_detalles [EXTRACTED 0.85]
 
-## Communities (324 total, 84 thin omitted)
+## Communities (325 total, 84 thin omitted)
 
 ### Community 0 - "Picking Order Management"
 Cohesion: 0.04
@@ -682,11 +682,11 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `Core Models & Tenant Scope` to `Returns & FEFO Alerts`, `Órdenes de Compra Manual`, `Packing & Expiry Control`, `Product Blocking & Quick Search`, `Receiving Controller`, `Auth & Seeding`, `Base Model & Certification`, `Backup Logging`, `Tenant Context & Middleware`, `Core Controllers Overview`, `Location Adjustment Controller`, `Assignment Session Management`, `Inventory V2 Session Controller`, `Miscellaneous Items Controller`, `ImportExportController`, `Replenishment & Notifications`, `OutboundController`, `Outbound Certification Model`, `Appointment Controller`, `Printer Management Controller`, `Inventory Count Model`, `TV Dashboard Service Level`, `Transfer Controller`, `Ubicacion`, `Aprobación de Vencimientos`, `Chat IA Controller`?**
-  _High betweenness centrality (0.023) - this node is a cross-community bridge._
+  _High betweenness centrality (0.026) - this node is a cross-community bridge._
+- **Why does `Recepcion` connect `Inventory Count Model` to `Receiving Controller`, `Core Models & Tenant Scope`, `Cross-Dock Operations`, `Tenant Context & Middleware`?**
+  _High betweenness centrality (0.010) - this node is a cross-community bridge._
 - **Why does `Inventario` connect `Inventory V2 Session Controller` to `Cross-Dock Operations`, `Location Adjustment Controller`, `Ubicacion`, `Core Models & Tenant Scope`, `Product Blocking & Quick Search`, `Printer Management Controller`, `Chat IA Controller`, `ImportExportController`, `Inventory Count Model`, `Tenant Context & Middleware`?**
-  _High betweenness centrality (0.008) - this node is a cross-community bridge._
-- **Why does `SesionLinea` connect `Returns & FEFO Alerts` to `Ubicacion`, `Core Models & Tenant Scope`, `Product Blocking & Quick Search`, `Printer Management Controller`, `ImportExportController`?**
-  _High betweenness centrality (0.008) - this node is a cross-community bridge._
+  _High betweenness centrality (0.009) - this node is a cross-community bridge._
 - **Are the 177 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
   _`date` has 177 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `name`, `description`, `type` to the rest of the system?**

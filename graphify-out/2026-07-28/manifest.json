@@ -895,9 +895,9 @@
     "semantic_hash": ""
   },
   "src/Controllers/DevolucionController.php": {
-    "mtime": 1784522483.0629404,
-    "ast_hash": "6b5248fafbb109b91b2abef2feffd55b",
-    "semantic_hash": "6b5248fafbb109b91b2abef2feffd55b"
+    "mtime": 1785276695.3473203,
+    "ast_hash": "4a7038b6bd044ca8e4203ceba7e10060",
+    "semantic_hash": ""
   },
   "src/Controllers/ForecastController.php": {
     "mtime": 1784123324.711389,
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785276580.5891078,
-    "ast_hash": "2ed45bb09641b59cb595199226d2814c",
+    "mtime": 1785276680.4723296,
+    "ast_hash": "1dc10f2564eba8772e6e3cf2775edf8b",
     "semantic_hash": ""
   },
   "public/pitch.html": {

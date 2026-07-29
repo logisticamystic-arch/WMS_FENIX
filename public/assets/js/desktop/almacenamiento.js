@@ -1112,9 +1112,14 @@ WMS_MODULES.almacenamiento = {
 
   _trpTimer: null,
   _trpResults: [],
+  _trpDItems: [],
+  _trpDCanvas: null,
+  _trpDCtx: null,
+  _trpDDrawing: false,
 
   async show_traspaso() {
     WMS.setBreadcrumb('almacenamiento', 'Traspaso a Cliente');
+    this._trpDItems = [];
     let motivos = [];
     let clientes = [];
     try {
@@ -1132,54 +1137,156 @@ WMS_MODULES.almacenamiento = {
     WMS.setContent(`
       <div class="card animate-fade-in">
         <div class="card-header">
-          <h5 class="card-title"><i class="fa-solid fa-arrow-right-from-bracket" style="color:#ef4444;"></i> Traspaso de Inventario a Cliente</h5>
+          <h5 class="card-title"><i class="fa-solid fa-file-signature" style="color:#ef4444;"></i> Documento de Traspaso</h5>
         </div>
         <div class="card-body" style="display:flex;flex-direction:column;gap:16px;">
 
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:10px;">
-              <i class="fa-solid fa-search" style="color:#0F4C81;"></i> Buscar Producto en Inventario
-            </div>
-            <input id="trp-d-buscar" class="form-control" placeholder="Código o nombre del producto..."
-                   oninput="clearTimeout(WMS_MODULES.almacenamiento._trpTimer);WMS_MODULES.almacenamiento._trpTimer=setTimeout(()=>WMS_MODULES.almacenamiento._trpDBuscar(),400)"
-                   style="max-width:500px;">
-            <div id="trp-d-resultados" style="max-height:250px;overflow-y:auto;margin-top:8px;"></div>
-          </div>
-
-          <div id="trp-d-seleccion" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:14px;">
-            <div id="trp-d-sel-info" style="font-size:.85rem;"></div>
-          </div>
-
-          <div id="trp-d-form" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:600px;">
-              <div class="form-group" style="margin:0;"><label class="form-label">Cantidad *</label>
-                <input id="trp-d-cant" type="number" class="form-control" min="0.01" step="0.01"></div>
-              <div class="form-group" style="margin:0;"><label class="form-label">Motivo *</label>
-                <select id="trp-d-motivo" class="form-control">${motivos.map(m => `<option value="${WMS.esc(m)}">${WMS.esc(m)}</option>`).join('')}</select></div>
-              <div class="form-group" style="margin:0;"><label class="form-label">Cliente *</label>
+          <!-- Encabezado -->
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+            <h6 style="margin:0 0 12px;color:#1e293b;font-weight:700;"><i class="fa-solid fa-1"></i> Encabezado</h6>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(250px, 1fr));gap:14px;">
+              <div>
+                <label class="form-label">Cliente *</label>
                 <select id="trp-d-cliente-id" class="form-control" onchange="const opt=this.options[this.selectedIndex]; document.getElementById('trp-d-cliente-nom').value = opt ? opt.text : '';">
                   <option value="">-- Seleccionar Cliente --</option>
                   ${clientes.map(c => `<option value="${c.id}">${WMS.esc(c.razon_social || c.nombre || '')} (${WMS.esc(c.nit || c.documento || 'NIT')})</option>`).join('')}
                 </select>
                 <input type="hidden" id="trp-d-cliente-nom">
               </div>
-              <div class="form-group" style="margin:0;"><label class="form-label">Observaciones</label>
-                <textarea id="trp-d-obs" class="form-control" rows="2"></textarea></div>
+              <div>
+                <label class="form-label">Quien recibe *</label>
+                <input type="text" id="trp-d-quien-recibe" class="form-control" placeholder="Nombre completo">
+              </div>
+              <div>
+                <label class="form-label">Motivo *</label>
+                <select id="trp-d-motivo" class="form-control">${motivos.map(m => `<option value="${WMS.esc(m)}">${WMS.esc(m)}</option>`).join('')}</select>
+              </div>
             </div>
-            <button class="btn btn-danger" style="margin-top:14px;" onclick="WMS_MODULES.almacenamiento._trpDConfirmar()">
-              <i class="fa-solid fa-check"></i> Confirmar Traspaso
+          </div>
+
+          <!-- Productos -->
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+            <h6 style="margin:0 0 12px;color:#1e293b;font-weight:700;"><i class="fa-solid fa-2"></i> Agregar Productos</h6>
+            
+            <div style="display:flex;gap:10px;margin-bottom:10px;">
+              <input id="trp-d-buscar" class="form-control" placeholder="Buscar por código, nombre o ubicación..."
+                     oninput="clearTimeout(WMS_MODULES.almacenamiento._trpTimer);WMS_MODULES.almacenamiento._trpTimer=setTimeout(()=>WMS_MODULES.almacenamiento._trpDBuscar(),400)"
+                     style="flex:1;">
+            </div>
+            <div id="trp-d-resultados" style="max-height:200px;overflow-y:auto;margin-bottom:10px;"></div>
+
+            <div id="trp-d-seleccion" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:10px;">
+              <div id="trp-d-sel-info" style="font-size:.85rem;margin-bottom:8px;"></div>
+              <div style="display:flex;gap:10px;align-items:center;">
+                <label style="margin:0;font-weight:700;">Cantidad *</label>
+                <input id="trp-d-cant" type="number" class="form-control" min="0.01" step="0.01" style="width:120px;">
+                <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.almacenamiento._trpDCancelarItem()">Cancelar</button>
+                <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.almacenamiento._trpDAgregarItem()"><i class="fa-solid fa-plus"></i> Agregar</button>
+              </div>
+            </div>
+
+            <h6 style="font-size:.85rem;color:#64748b;margin-bottom:6px;">Items Agregados:</h6>
+            <div id="trp-d-items-agregados" style="min-height:50px;border:1px dashed #cbd5e1;border-radius:6px;padding:10px;">
+              <div style="text-align:center;color:#94a3b8;font-size:.85rem;">No hay productos agregados</div>
+            </div>
+          </div>
+
+          <!-- Firma y Cierre -->
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+            <h6 style="margin:0 0 12px;color:#1e293b;font-weight:700;"><i class="fa-solid fa-3"></i> Confirmación y Firma</h6>
+            
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+              <div>
+                <label class="form-label">Observaciones</label>
+                <textarea id="trp-d-obs" class="form-control" rows="4" style="resize:none;"></textarea>
+              </div>
+              <div>
+                <label class="form-label">Firma de Conformidad *</label>
+                <div style="border:1px solid #cbd5e1;border-radius:8px;background:#fff;overflow:hidden;margin-bottom:8px;">
+                  <canvas id="trp-d-firma-canvas" width="400" height="120" style="width:100%;display:block;cursor:crosshair;"></canvas>
+                </div>
+                <button class="btn btn-light btn-sm" style="width:100%;border:1px solid #e2e8f0;" onclick="WMS_MODULES.almacenamiento._trpDLimpiarFirma()">
+                  <i class="fa-solid fa-eraser"></i> Limpiar Firma
+                </button>
+              </div>
+            </div>
+
+            <button id="trp-d-btn-submit" class="btn btn-danger" style="width:100%;margin-top:16px;padding:12px;font-size:1.05rem;" onclick="WMS_MODULES.almacenamiento._trpDConfirmarDoc()">
+              <i class="fa-solid fa-check-double"></i> Generar Documento de Traspaso
             </button>
           </div>
 
-          <div style="margin-top:10px;"><h6 style="font-size:.85rem;color:#64748b;">Últimos traspasos</h6>
+          <div style="margin-top:20px;"><h6 style="font-size:.9rem;color:#64748b;font-weight:700;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">Últimos Documentos Generados</h6>
             <div id="trp-d-historial"></div>
           </div>
         </div>
       </div>`);
     this._trpDCargarHistorial();
+    
+    setTimeout(() => {
+      this._trpDInitCanvas();
+    }, 100);
   },
 
-  _trpCliTimer: null,
+  _trpDInitCanvas() {
+    this._trpDCanvas = document.getElementById('trp-d-firma-canvas');
+    if (!this._trpDCanvas) return;
+    this._trpDCtx = this._trpDCanvas.getContext('2d');
+    this._trpDCtx.strokeStyle = '#000000';
+    this._trpDCtx.lineWidth = 2;
+    this._trpDCtx.lineCap = 'round';
+    
+    const rect = this._trpDCanvas.getBoundingClientRect();
+    this._trpDCanvas.width = rect.width || 400;
+    this._trpDCanvas.height = 120;
+
+    const startPos = (e) => {
+      e.preventDefault();
+      this._trpDDrawing = true;
+      this._trpDDraw(e);
+    };
+    const endPos = (e) => {
+      e.preventDefault();
+      this._trpDDrawing = false;
+      this._trpDCtx.beginPath();
+    };
+    const getPos = (e) => {
+      const r = this._trpDCanvas.getBoundingClientRect();
+      const x = (e.clientX || (e.touches ? e.touches[0].clientX : 0)) - r.left;
+      const y = (e.clientY || (e.touches ? e.touches[0].clientY : 0)) - r.top;
+      return {x,y};
+    };
+    
+    this._trpDDraw = (e) => {
+      if (!this._trpDDrawing) return;
+      e.preventDefault();
+      const {x, y} = getPos(e);
+      this._trpDCtx.lineTo(x, y);
+      this._trpDCtx.stroke();
+      this._trpDCtx.beginPath();
+      this._trpDCtx.moveTo(x, y);
+    };
+
+    this._trpDCanvas.addEventListener('mousedown', startPos);
+    this._trpDCanvas.addEventListener('mouseup', endPos);
+    this._trpDCanvas.addEventListener('mousemove', this._trpDDraw);
+    this._trpDCanvas.addEventListener('mouseleave', endPos);
+  },
+
+  _trpDLimpiarFirma() {
+    if (this._trpDCanvas && this._trpDCtx) {
+      this._trpDCtx.clearRect(0, 0, this._trpDCanvas.width, this._trpDCanvas.height);
+      this._trpDCtx.beginPath();
+    }
+  },
+
+  _trpDIsFirmaEmpty() {
+    if (!this._trpDCanvas) return true;
+    const blank = document.createElement('canvas');
+    blank.width = this._trpDCanvas.width;
+    blank.height = this._trpDCanvas.height;
+    return this._trpDCanvas.toDataURL() === blank.toDataURL();
+  },
 
   async _trpDBuscar() {
     const q = document.getElementById('trp-d-buscar')?.value.trim();
@@ -1208,87 +1315,136 @@ WMS_MODULES.almacenamiento = {
     if (!s) return;
     this._trpDSelected = s;
     document.getElementById('trp-d-resultados').innerHTML = '';
-    document.getElementById('trp-d-buscar').value = s.nombre;
+    document.getElementById('trp-d-buscar').value = '';
     const sel = document.getElementById('trp-d-seleccion');
     sel.style.display = 'block';
     sel.querySelector('#trp-d-sel-info').innerHTML = `
       <div style="font-weight:700;color:#1d4ed8;">${WMS.esc(s.nombre)} — ${WMS.esc(s.codigo_interno)}</div>
       <div style="font-size:.82rem;color:#475569;margin-top:4px;">
-        Ubicación: <strong>${WMS.esc(s.ubicacion_codigo)}</strong> (${WMS.esc(s.ubicacion_zona)}) |
+        Ubicación: <strong>${WMS.esc(s.ubicacion_codigo)}</strong> |
         Lote: <strong>${WMS.esc(s.lote||'Sin lote')}</strong> |
         Disponible: <strong style="color:#059669;">${s.cantidad_disponible}</strong>
       </div>`;
-    document.getElementById('trp-d-form').style.display = 'block';
-    document.getElementById('trp-d-cant').value = '';
-    document.getElementById('trp-d-cant').max = s.cantidad_disponible;
+    const cantEl = document.getElementById('trp-d-cant');
+    cantEl.value = '';
+    cantEl.max = s.cantidad_disponible;
+    cantEl.focus();
   },
 
-  async _trpDBuscarCliente() {
-    const q = document.getElementById('trp-d-cliente-buscar')?.value.trim();
-    const div = document.getElementById('trp-d-cliente-res');
-    if (!q || q.length < 2) { div.innerHTML = ''; return; }
-    try {
-      const r = await API.get('/param/clientes', 'q=' + encodeURIComponent(q));
-      const cls = r.data || r || [];
-      div.innerHTML = cls.slice(0, 8).map(c => `
-        <div style="padding:6px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:.82rem;background:#fff;"
-             onclick="WMS_MODULES.almacenamiento._trpDSelCliente(${c.id},'${WMS.esc(c.razon_social||c.nombre||'')}')">
-          ${WMS.esc(c.razon_social||c.nombre||'')}
-        </div>`).join('');
-    } catch(e) { div.innerHTML = ''; }
+  _trpDCancelarItem() {
+    this._trpDSelected = null;
+    document.getElementById('trp-d-seleccion').style.display = 'none';
   },
 
-  _trpDSelCliente(id, nombre) {
-    document.getElementById('trp-d-cliente-id').value = id;
-    document.getElementById('trp-d-cliente-nom').value = nombre;
-    document.getElementById('trp-d-cliente-buscar').value = nombre;
-    document.getElementById('trp-d-cliente-res').innerHTML = '';
+  _trpDAgregarItem() {
+    if (!this._trpDSelected) return;
+    const cant = parseFloat(document.getElementById('trp-d-cant').value) || 0;
+    if (cant <= 0 || cant > this._trpDSelected.cantidad_disponible) {
+      WMS.toast('error', 'Cantidad inválida o excede el disponible');
+      return;
+    }
+    this._trpDItems.push({
+      ...this._trpDSelected,
+      cantidad: cant
+    });
+    this._trpDRenderItems();
+    this._trpDCancelarItem();
   },
 
-  async _trpDConfirmar() {
-    if (!this._trpDSelected) { WMS.toast('warning', 'Seleccione un producto'); return; }
-    const cant = parseFloat(document.getElementById('trp-d-cant')?.value) || 0;
-    if (cant <= 0) { WMS.toast('warning', 'Ingrese cantidad'); return; }
-    if (cant > this._trpDSelected.cantidad_disponible) { WMS.toast('error', 'Excede disponible'); return; }
+  _trpDRenderItems() {
+    const el = document.getElementById('trp-d-items-agregados');
+    if (!this._trpDItems.length) {
+      el.innerHTML = `<div style="text-align:center;color:#94a3b8;font-size:.85rem;padding:10px;">No hay productos agregados</div>`;
+      return;
+    }
+    el.innerHTML = `
+      <table class="table table-sm" style="font-size:.85rem;margin:0;">
+        <thead style="background:#f1f5f9;">
+          <tr><th>Producto</th><th>Ubicación</th><th>Lote</th><th style="text-align:right;">Cant.</th><th style="width:40px;"></th></tr>
+        </thead>
+        <tbody>
+          ${this._trpDItems.map((it, i) => `
+            <tr>
+              <td><strong>${WMS.esc(it.nombre)}</strong><br><span style="color:#64748b;font-size:.75rem;">${WMS.esc(it.codigo_interno)}</span></td>
+              <td>${WMS.esc(it.ubicacion_codigo)}</td>
+              <td>${WMS.esc(it.lote||'S/L')}</td>
+              <td style="text-align:right;font-weight:700;">${it.cantidad}</td>
+              <td style="text-align:center;">
+                <button class="btn btn-sm" style="color:#ef4444;padding:2px 6px;" onclick="WMS_MODULES.almacenamiento._trpDItems.splice(${i},1);WMS_MODULES.almacenamiento._trpDRenderItems()">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+  },
 
-    WMS.confirm('Confirmar Traspaso', `¿Traspasar <strong>${cant}</strong> unidades de <strong>${WMS.esc(this._trpDSelected.nombre)}</strong>?`, async () => {
+  async _trpDConfirmarDoc() {
+    if (!this._trpDItems.length) { WMS.toast('warning', 'Agrega al menos un producto'); return; }
+    
+    const cliente_id = document.getElementById('trp-d-cliente-id')?.value;
+    const quien_recibe = document.getElementById('trp-d-quien-recibe')?.value.trim();
+    if (!quien_recibe) { WMS.toast('warning', 'El campo Quien recibe es obligatorio'); return; }
+    if (this._trpDIsFirmaEmpty()) { WMS.toast('warning', 'Falta la firma del destinatario'); return; }
+
+    const payload = {
+      cliente_id: cliente_id || null,
+      cliente_nombre: document.getElementById('trp-d-cliente-nom')?.value || null,
+      quien_recibe: quien_recibe,
+      motivo: document.getElementById('trp-d-motivo')?.value,
+      observaciones: document.getElementById('trp-d-obs')?.value.trim() || null,
+      firma_base64: this._trpDCanvas.toDataURL('image/png'),
+      detalles: this._trpDItems.map(i => ({
+        producto_id: i.producto_id,
+        ubicacion_id: i.ubicacion_id,
+        lote: i.lote,
+        fecha_vencimiento: i.fecha_vencimiento,
+        cantidad: i.cantidad
+      }))
+    };
+
+    WMS.confirm('Generar Documento', `¿Generar documento con <strong>${this._trpDItems.length}</strong> items?`, async () => {
+      const btn = document.getElementById('trp-d-btn-submit');
+      btn.disabled = true;
       WMS.spinner();
       try {
-        const r = await API.post('/traspasos', {
-          producto_id:      this._trpDSelected.producto_id,
-          ubicacion_id:     this._trpDSelected.ubicacion_id,
-          lote:             this._trpDSelected.lote || null,
-          fecha_vencimiento: this._trpDSelected.fecha_vencimiento || null,
-          cantidad:         cant,
-          cliente_id:       document.getElementById('trp-d-cliente-id')?.value || null,
-          cliente_nombre:   document.getElementById('trp-d-cliente-nom')?.value || null,
-          motivo:           document.getElementById('trp-d-motivo')?.value,
-          observaciones:    document.getElementById('trp-d-obs')?.value.trim() || null,
-        });
-        if (r.error) WMS.toast('error', r.message);
-        else { WMS.toast('success', r.message || 'Traspaso realizado'); this.show_traspaso(); }
-      } catch(e) { WMS.toast('error', 'Error al realizar traspaso'); }
+        const r = await API.post('/traspasos', payload);
+        if (r.error) {
+          WMS.toast('error', r.message);
+          btn.disabled = false;
+        } else {
+          WMS.toast('success', r.message || 'Documento generado exitosamente');
+          this.show_traspaso();
+        }
+      } catch(e) { 
+        WMS.toast('error', 'Error guardando traspaso'); 
+        btn.disabled = false;
+      }
     });
   },
 
   async _trpDCargarHistorial() {
     try {
       const r = await API.get('/traspasos');
-      const items = (r.data || []).slice(0, 20);
+      const items = (r.data || []).slice(0, 10);
       const div = document.getElementById('trp-d-historial');
       if (!div) return;
-      div.innerHTML = items.length ? `<table class="table" style="font-size:.8rem;">
-        <thead><tr><th>N°</th><th>Producto</th><th>Ubicación</th><th>Lote</th><th>Cant.</th><th>Cliente</th><th>Motivo</th><th>Fecha</th></tr></thead>
-        <tbody>${items.map(t => `<tr>
-          <td style="font-weight:700;">${WMS.esc(t.numero_traspaso||'')}</td>
-          <td>${WMS.esc(t.producto?.nombre||'')}</td>
-          <td>${WMS.esc(t.ubicacion?.codigo||'')}</td>
-          <td>${WMS.esc(t.lote||'S/L')}</td>
-          <td style="text-align:right;font-weight:600;">${t.cantidad}</td>
-          <td>${WMS.esc(t.cliente_nombre||'-')}</td>
-          <td>${WMS.esc(t.motivo||'')}</td>
-          <td style="color:#64748b;">${t.created_at ? new Date(t.created_at).toLocaleDateString('es-CO') : ''}</td>
-        </tr>`).join('')}</tbody></table>` : '<div style="text-align:center;color:#94a3b8;padding:20px;">Sin traspasos registrados</div>';
+      div.innerHTML = items.length ? `<table class="table" style="font-size:.82rem;">
+        <thead style="background:#f8fafc;">
+          <tr><th>N° Doc</th><th>Cliente</th><th>Motivo</th><th>Recibió</th><th>Items</th><th>Fecha</th></tr>
+        </thead>
+        <tbody>${items.map(t => {
+          const c = (t.detalles || []).length;
+          return `<tr>
+            <td style="font-weight:700;color:#0F4C81;">${WMS.esc(t.numero_documento||'')}</td>
+            <td>${WMS.esc(t.cliente_nombre||'-')}</td>
+            <td>${WMS.esc(t.motivo||'')}</td>
+            <td>${WMS.esc(t.quien_recibe||'')}</td>
+            <td style="font-weight:600;">${c} refs</td>
+            <td style="color:#64748b;">${t.created_at ? new Date(t.created_at).toLocaleDateString('es-CO') : ''}</td>
+          </tr>`;
+        }).join('')}</tbody></table>` : '<div style="text-align:center;color:#94a3b8;padding:20px;background:#f8fafc;border-radius:8px;">Sin documentos registrados</div>';
     } catch(e) {}
   },
 

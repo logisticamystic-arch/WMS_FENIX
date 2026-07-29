@@ -1658,5 +1658,10 @@
     "mtime": 1785200984.918717,
     "ast_hash": "f31d05bedee79636620604902f04042a",
     "semantic_hash": ""
+  },
+  "database/migrations/120_create_traspaso_documentos_tables.php": {
+    "mtime": 1785284497.916728,
+    "ast_hash": "653041cfbd08444fe1e907109c399741",
+    "semantic_hash": ""
   }
 }
