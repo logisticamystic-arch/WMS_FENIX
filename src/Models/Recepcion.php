@@ -57,6 +57,12 @@ class Recepcion extends BaseModel
         return $this->hasMany(RecepcionDetalle::class);
     }
 
+    public function calidad()
+    {
+        return $this->hasOne(RecepcionCalidad::class);
+    }
+
+    // Eventos del modelo para trazabilidad
     public function devoluciones()
     {
         return $this->hasMany(Devolucion::class);

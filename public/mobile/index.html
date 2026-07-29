@@ -538,6 +538,147 @@ const MWMS = {
         this.loading(false);
     }
   },
+
+  // ── MÓDULO CALIDAD (RECEPCIÓN SIN ODC) ──────────────────────────────
+  _calidadData: null,
+  
+  async _abrirCalidadSinOdc() {
+      if (!this._sinOdc.recepcionId) return;
+      this.loading(true);
+      try {
+          const r = await mApi('GET', '/recepciones/' + this._sinOdc.recepcionId + '/calidad');
+          this._calidadData = r.data || {};
+      } catch(e) {
+          this._calidadData = {};
+      }
+      this.loading(false);
+      
+      document.getElementById('m-title').textContent = 'Reporte Calidad';
+      this._renderCalidadSinOdc();
+  },
+
+  _renderCalidadSinOdc() {
+      const d = this._calidadData || {};
+      
+      const renderToggle = (id, label, val) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2e8f0;">
+          <div style="font-size:.85rem;color:#334155;font-weight:600;">${this.esc(label)}</div>
+          <div style="display:flex;gap:4px;">
+            <button id="btn_${id}_C" onclick="MWMS._setCalToggle('${id}','C')" class="m-btn ${val==='C'?'success':'secondary'} sm" style="min-width:45px;">C</button>
+            <button id="btn_${id}_NC" onclick="MWMS._setCalToggle('${id}','NC')" class="m-btn ${val==='NC'?'danger':'secondary'} sm" style="min-width:45px;">NC</button>
+            <input type="hidden" id="cal_${id}" value="${val||''}">
+          </div>
+        </div>`;
+
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view" style="padding-bottom:40px;">
+          
+          <div style="background:#e0f2fe;color:#0369a1;padding:12px;border-radius:8px;font-size:.75rem;margin-bottom:12px;">
+            <i class="fa-solid fa-circle-info"></i> <b>Guía Temperaturas:</b><br>
+            Refrigerado: 0ºC a 4ºC<br>
+            Congelación: -15ºC a -25ºC<br>
+            <i>(C: Cumple | NC: No Cumple)</i>
+          </div>
+
+          <div class="op-card">
+            <div class="m-label">Datos Generales</div>
+            <div style="margin-bottom:8px;">
+                <label style="font-size:.75rem;color:#64748b;">Número de Factura</label>
+                <input type="text" id="cal_factura" class="m-input-full" value="${this.esc(d.factura||'')}">
+            </div>
+            <div>
+                <label style="font-size:.75rem;color:#64748b;">Placa Vehículo</label>
+                <input type="text" id="cal_trans_placa" class="m-input-full" value="${this.esc(d.trans_placa||'')}">
+            </div>
+          </div>
+
+          <div class="op-card">
+            <div class="m-label" style="color:#0f766e;"><i class="fa-solid fa-box"></i> Evaluación Producto</div>
+            ${renderToggle('prod_olor', 'Olor', d.prod_olor)}
+            ${renderToggle('prod_color', 'Color', d.prod_color)}
+            ${renderToggle('prod_textura', 'Textura', d.prod_textura)}
+            ${renderToggle('prod_temperatura', 'Temperatura', d.prod_temperatura)}
+            ${renderToggle('prod_empaque', 'Empaque', d.prod_empaque)}
+            ${renderToggle('prod_rotulado', 'Rotulado', d.prod_rotulado)}
+          </div>
+
+          <div class="op-card">
+            <div class="m-label" style="color:#b45309;"><i class="fa-solid fa-truck"></i> Evaluación Transporte</div>
+            ${renderToggle('trans_temperatura', 'Temperatura Transp.', d.trans_temperatura)}
+            ${renderToggle('trans_limpieza', 'Limpieza', d.trans_limpieza)}
+            ${renderToggle('trans_concepto_sanitario', 'Concepto Sanitario', d.trans_concepto_sanitario)}
+            ${renderToggle('trans_carnet_manipulacion', 'Carnet Manipulación', d.trans_carnet_manipulacion)}
+          </div>
+
+          <div class="op-card">
+            <div class="m-label"><i class="fa-solid fa-camera"></i> Evidencia Fotográfica</div>
+            ${d.foto_evidencia ? `<div style="margin-bottom:8px;"><img src="/WMS_FENIX/public/${d.foto_evidencia}" style="max-width:100%;border-radius:6px;max-height:150px;object-fit:cover;"></div>` : ''}
+            <input type="file" id="cal_foto" accept="image/*" capture="environment" class="m-input-full" style="padding:10px 4px;">
+          </div>
+
+          <div style="display:flex;gap:10px;margin-top:15px;">
+            <button class="m-btn secondary full" onclick="MWMS.viewRecSinOdc()" style="flex:1;">Volver</button>
+            <button class="m-btn primary full" onclick="MWMS._saveCalidadSinOdc()" style="flex:2;background:#0d9488;border-color:#0f766e;"><i class="fa-solid fa-save"></i> Guardar Calidad</button>
+          </div>
+        </div>`;
+  },
+
+  _setCalToggle(id, val) {
+      document.getElementById('cal_'+id).value = val;
+      const btnC = document.getElementById('btn_'+id+'_C');
+      const btnNC = document.getElementById('btn_'+id+'_NC');
+      if(val === 'C') {
+          btnC.className = 'm-btn success sm';
+          btnNC.className = 'm-btn secondary sm';
+      } else {
+          btnC.className = 'm-btn secondary sm';
+          btnNC.className = 'm-btn danger sm';
+      }
+  },
+
+  async _saveCalidadSinOdc() {
+      const recId = this._sinOdc.recepcionId;
+      if (!recId) return;
+
+      const fd = new FormData();
+      fd.append('factura', document.getElementById('cal_factura').value.trim());
+      fd.append('trans_placa', document.getElementById('cal_trans_placa').value.trim());
+      
+      const toggles = ['prod_olor','prod_color','prod_textura','prod_temperatura','prod_empaque','prod_rotulado',
+                       'trans_temperatura','trans_limpieza','trans_concepto_sanitario','trans_carnet_manipulacion'];
+      toggles.forEach(t => {
+          const v = document.getElementById('cal_'+t).value;
+          if (v) fd.append(t, v);
+      });
+
+      const fileInput = document.getElementById('cal_foto');
+      if (fileInput.files.length > 0) {
+          fd.append('foto_evidencia', fileInput.files[0]);
+      }
+
+      this.loading(true);
+      try {
+          const url = M_API + '/recepciones/' + recId + '/calidad';
+          const headers = {};
+          if (_mToken) headers['Authorization'] = 'Bearer ' + _mToken;
+          
+          const res = await fetch(url, {
+              method: 'POST',
+              headers: headers,
+              body: fd
+          });
+          const json = await res.json();
+          if (json.error) throw new Error(json.message);
+          
+          this.toast('Reporte de calidad guardado', 'success');
+          this.viewRecSinOdc(); // volver a la recepción
+      } catch(e) {
+          this.toast(e.message || 'Error guardando', 'error');
+      } finally {
+          this.loading(false);
+      }
+  },
+
   // ── RECEPCIÓN SIN ODC ──────────────────────────────────────────────────
   viewRecSinOdc() {
     document.getElementById('m-title').textContent = 'Rec. Sin ODC';
@@ -669,6 +810,12 @@ const MWMS = {
         <button class="m-btn success full" onclick="MWMS._guardarSinOdc()" style="font-size:1rem;padding:14px;font-weight:800;margin-top:6px;">
           <i class="fa-solid fa-check"></i> GUARDAR CAPTURA
         </button>
+
+        <!-- Botón Formulario de Calidad -->
+        ${s.recepcionId ? `
+        <button class="m-btn primary full" onclick="MWMS._abrirCalidadSinOdc()" style="font-size:.9rem;padding:12px;font-weight:700;margin-top:6px;background:#0d9488;border-color:#0f766e;">
+          <i class="fa-solid fa-clipboard-check"></i> REPORTE DE CALIDAD
+        </button>` : ''}
 
         <!-- Botón cerrar recepción (solo Admin/Supervisor) -->
         ${s.recepcionId && ['Admin','Supervisor','SuperAdmin'].includes(_mUser?.rol) ? `

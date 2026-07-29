@@ -2369,5 +2369,78 @@ public function getControlPanelData(Request $request, Response $response): Respo
 
         return $this->ok($response, null, 'Línea de ODC eliminada.');
     }
+    // ── MÓDULO DE CALIDAD (RECEPCIÓN SIN ODC) ────────────────────────────────
+
+    public function guardarCalidad(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        $recepcionId = $args['id'];
+
+        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('sucursal_id', $user->sucursal_id)
+            ->find($recepcionId);
+
+        if (!$recepcion) {
+            return $this->error($response, 'Recepción no encontrada.', 404);
+        }
+
+        $data = $request->getParsedBody() ?? [];
+        $files = $request->getUploadedFiles();
+        
+        $fotoPath = null;
+        if (isset($files['foto_evidencia']) && $files['foto_evidencia']->getError() === UPLOAD_ERR_OK) {
+            $file = $files['foto_evidencia'];
+            $ext = pathinfo($file->getClientFilename(), PATHINFO_EXTENSION);
+            if (empty($ext)) $ext = 'jpg';
+            $filename = sprintf('calidad_%s_%s.%s', $recepcionId, time(), $ext);
+            $dir = __DIR__ . '/../../../public/uploads/calidad';
+            if (!is_dir($dir)) {
+                mkdir($dir, 0777, true);
+            }
+            $file->moveTo($dir . '/' . $filename);
+            $fotoPath = 'uploads/calidad/' . $filename;
+        }
+
+        // Crear o actualizar
+        $calidad = \App\Models\RecepcionCalidad::firstOrNew(['recepcion_id' => $recepcionId]);
+        
+        $calidad->factura = $data['factura'] ?? $calidad->factura;
+        $calidad->trans_placa = $data['trans_placa'] ?? $calidad->trans_placa;
+        $calidad->prod_olor = $data['prod_olor'] ?? $calidad->prod_olor;
+        $calidad->prod_color = $data['prod_color'] ?? $calidad->prod_color;
+        $calidad->prod_textura = $data['prod_textura'] ?? $calidad->prod_textura;
+        $calidad->prod_temperatura = $data['prod_temperatura'] ?? $calidad->prod_temperatura;
+        $calidad->prod_empaque = $data['prod_empaque'] ?? $calidad->prod_empaque;
+        $calidad->prod_rotulado = $data['prod_rotulado'] ?? $calidad->prod_rotulado;
+        $calidad->trans_temperatura = $data['trans_temperatura'] ?? $calidad->trans_temperatura;
+        $calidad->trans_limpieza = $data['trans_limpieza'] ?? $calidad->trans_limpieza;
+        $calidad->trans_concepto_sanitario = $data['trans_concepto_sanitario'] ?? $calidad->trans_concepto_sanitario;
+        $calidad->trans_carnet_manipulacion = $data['trans_carnet_manipulacion'] ?? $calidad->trans_carnet_manipulacion;
+        
+        if ($fotoPath) {
+            $calidad->foto_evidencia = $fotoPath;
+        }
+
+        $calidad->save();
+
+        return $this->ok($response, $calidad, 'Formulario de calidad guardado correctamente.');
+    }
+
+    public function obtenerCalidad(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        $recepcionId = $args['id'];
+
+        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->where('sucursal_id', $user->sucursal_id)
+            ->with('calidad')
+            ->find($recepcionId);
+
+        if (!$recepcion) {
+            return $this->error($response, 'Recepción no encontrada.', 404);
+        }
+
+        return $this->ok($response, $recepcion->calidad);
+    }
 
 }
