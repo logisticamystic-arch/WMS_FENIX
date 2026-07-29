@@ -975,8 +975,8 @@
     "semantic_hash": "a526a63d521fc75e43f1f5a54d5b1d13"
   },
   "src/Controllers/RecepcionController.php": {
-    "mtime": 1785361752.9375134,
-    "ast_hash": "fa6298965685561985a764b34eede040",
+    "mtime": 1785363369.679799,
+    "ast_hash": "8b418a9a822a1de57fde50a53420b3ed",
     "semantic_hash": ""
   },
   "src/Controllers/ReplenishmentController.php": {
@@ -1010,8 +1010,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/TraspasoController.php": {
-    "mtime": 1785361489.5832207,
-    "ast_hash": "c04f1aa1b30a2dbecd39ed89891b2e79",
+    "mtime": 1785363898.2639508,
+    "ast_hash": "eb07ebc7221d03ba46a19bc38ecd08c0",
     "semantic_hash": ""
   },
   "src/Controllers/TrazabilidadController.php": {

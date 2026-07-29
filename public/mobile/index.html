@@ -596,13 +596,25 @@ const MWMS = {
           </div>
 
           <div class="op-card">
-            <div class="m-label" style="color:#0f766e;"><i class="fa-solid fa-box"></i> Evaluación Producto</div>
-            ${renderToggle('prod_olor', 'Olor', d.prod_olor)}
-            ${renderToggle('prod_color', 'Color', d.prod_color)}
-            ${renderToggle('prod_textura', 'Textura', d.prod_textura)}
-            ${renderToggle('prod_temperatura', 'Temperatura', d.prod_temperatura)}
-            ${renderToggle('prod_empaque', 'Empaque', d.prod_empaque)}
-            ${renderToggle('prod_rotulado', 'Rotulado', d.prod_rotulado)}
+            <div class="m-label" style="color:#b45309;"><i class="fa-solid fa-truck"></i> Evaluación Transporte</div>
+            ${renderToggle('trans_temperatura', 'Temperatura Transp.', d.trans_temperatura)}
+            ${renderToggle('trans_limpieza', 'Limpieza', d.trans_limpieza)}
+            ${renderToggle('trans_concepto_sanitario', 'Concepto Sanitario', d.trans_concepto_sanitario)}
+            ${renderToggle('trans_carnet_manipulacion', 'Carnet Manipulación', d.trans_carnet_manipulacion)}
+          </div>
+
+          <div class="op-card">
+            <div class="m-label"><i class="fa-solid fa-camera"></i> Evidencia Fotográfica</div>
+            ${d.foto_evidencia ? `<div style="margin-bottom:8px;"><img src="/WMS_FENIX/public/${d.foto_evidencia}" style="max-width:100%;border-radius:6px;max-height:150px;object-fit:cover;"></div>` : ''}
+            <input type="file" id="cal_foto" accept="image/*" capture="environment" class="m-input-full" style="padding:10px 4px;">
+          </div>
+          
+          <div class="op-card">
+            <div class="m-label"><i class="fa-solid fa-signature"></i> Firma del Responsable</div>
+            <div style="border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;background:#fafafa;">
+              <canvas id="cal-firma-canvas" width="400" height="150" style="width:100%;display:block;touch-action:none;"></canvas>
+            </div>
+            <button onclick="MWMS._calLimpiarFirma()" class="m-btn secondary" style="width:100%;margin-top:8px;padding:6px;"><i class="fa-solid fa-eraser"></i> Limpiar Firma</button>
           </div>
 
           <div class="op-card">
@@ -644,15 +656,18 @@ const MWMS = {
       if (!recId) return;
 
       const fd = new FormData();
-      fd.append('factura', document.getElementById('cal_factura').value.trim());
-      fd.append('trans_placa', document.getElementById('cal_trans_placa').value.trim());
+      fd.append('factura', document.getElementById('cal_factura')?.value.trim() || '');
+      fd.append('trans_placa', document.getElementById('cal_trans_placa')?.value.trim() || '');
       
-      const toggles = ['prod_olor','prod_color','prod_textura','prod_temperatura','prod_empaque','prod_rotulado',
-                       'trans_temperatura','trans_limpieza','trans_concepto_sanitario','trans_carnet_manipulacion'];
-      toggles.forEach(t => {
-          const v = document.getElementById('cal_'+t).value;
-          if (v) fd.append(t, v);
+      const toggles = ['trans_temperatura','trans_limpieza','trans_concepto_sanitario','trans_carnet_manipulacion'];
+      toggles.forEach(id => {
+          const v = document.getElementById('cal_'+id)?.value;
+          if (v) fd.append(id, v);
       });
+
+      if (!this._calIsFirmaEmpty()) {
+          fd.append('firma_responsable', this._calCanvas.toDataURL('image/png'));
+      }
 
       const fileInput = document.getElementById('cal_foto');
       if (fileInput.files.length > 0) {
@@ -702,6 +717,12 @@ const MWMS = {
     const s = this._sinOdc;
     document.getElementById('m-content').innerHTML = `
       <div class="op-view">
+
+        <!-- Proveedor -->
+        <div class="op-card" style="margin-bottom:10px;">
+          <div class="m-label">Proveedor / Origen <span style="color:#ef4444">*</span></div>
+          <input type="text" id="rs-proveedor" class="m-input-full" placeholder="Nombre del proveedor o origen">
+        </div>
 
         <!-- QR Scanner -->
         <div class="op-card" style="background:#f0fdf4;border:1px solid #a7f3d0;padding:14px;border-radius:10px;margin-bottom:10px;">
@@ -768,14 +789,14 @@ const MWMS = {
 
         <!-- Lote -->
         <div class="op-card">
-          <div class="m-label">Lote (Opcional)</div>
+          <div class="m-label" id="rs-lote-label">Lote ${s.prodSel?.controla_lote ? '<span style="color:#ef4444">*</span>' : '(Opcional)'}</div>
           <input type="text" id="rs-lote" class="m-input-full" placeholder="N/A"
             value="${this.esc(s.fechaAutoLote || '')}">
         </div>
 
         <!-- Fecha Vencimiento -->
         <div class="op-card">
-          <div class="m-label">Fecha de Vencimiento</div>
+          <div class="m-label" id="rs-fv-label">Fecha de Vencimiento ${s.prodSel?.controla_vencimiento ? '<span style="color:#ef4444">*</span>' : ''}</div>
           <input type="date" id="rs-fecha-venc" class="m-input-full" value="${s.fechaAuto || ''}">
           ${s.fechaAutoRaw ? `<div style="font-size:.68rem;color:#059669;margin-top:3px;"><i class="fa-solid fa-calendar-check"></i> Fecha del QR: <b>${this.esc(s.fechaAutoRaw)}</b></div>` : ''}
         </div>
@@ -810,8 +831,8 @@ const MWMS = {
         </div>
 
         <!-- Botón guardar -->
-        <button class="m-btn success full" onclick="MWMS._guardarSinOdc()" style="font-size:1rem;padding:14px;font-weight:800;margin-top:6px;">
-          <i class="fa-solid fa-check"></i> GUARDAR CAPTURA
+        <button class="m-btn success full" onclick="MWMS._iniciarGuardarSinOdc()" style="font-size:1rem;padding:14px;font-weight:800;margin-top:6px;">
+          <i class="fa-solid fa-check"></i> EVALUAR Y GUARDAR CAPTURA
         </button>
 
         <!-- Botón Formulario de Calidad -->
@@ -1015,6 +1036,75 @@ const MWMS = {
     }, 'Buscar Producto', 'prod');
   },
 
+  async _iniciarGuardarSinOdc() {
+    const s         = this._sinOdc;
+    const prodId    = document.getElementById('rs-prod-id')?.value;
+    const cantInput = parseFloat(document.getElementById('rs-cant')?.value    || '0');
+    const saldos    = parseFloat(document.getElementById('rs-saldos')?.value  || '0') || 0;
+    const upc       = parseInt(document.getElementById('rs-upc')?.value       || '1') || 1;
+    const factorUdm = parseFloat(document.getElementById('rs-factor-udm')?.value || '0') || 0;
+    const cantUe    = parseFloat(document.getElementById('rs-cant-ue')?.value || '0') || 0;
+    const lote      = document.getElementById('rs-lote')?.value || '';
+    const fv        = document.getElementById('rs-fecha-venc')?.value || '';
+    const prov      = document.getElementById('rs-proveedor')?.value?.trim() || '';
+
+    if (!prov) return this.toast('Ingrese el nombre del proveedor o origen', 'error');
+    if (!prodId) return this.toast('Seleccione un producto', 'error');
+    
+    if (s.prodSel?.controla_lote && !lote) return this.toast('El lote es obligatorio para este producto', 'error');
+    if (s.prodSel?.controla_vencimiento && !fv) return this.toast('La fecha de vencimiento es obligatoria para este producto', 'error');
+
+    const hayUe = factorUdm > 0 && cantUe > 0;
+    if (!hayUe && cantInput <= 0 && saldos <= 0) return this.toast('Cantidad debe ser mayor a cero', 'error');
+    if (hayUe  && cantUe   <= 0) return this.toast('Ingrese la cantidad en U/E', 'error');
+
+    // Abre el modal de calidad del producto
+    const renderT = (id, label) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2e8f0;">
+          <div style="font-size:.85rem;color:#334155;font-weight:600;">${this.esc(label)}</div>
+          <div style="display:flex;gap:4px;">
+            <button id="pbtn_${id}_C" onclick="MWMS._setPcalToggle('${id}','C')" class="m-btn secondary sm" style="min-width:45px;">C</button>
+            <button id="pbtn_${id}_NC" onclick="MWMS._setPcalToggle('${id}','NC')" class="m-btn secondary sm" style="min-width:45px;">NC</button>
+            <input type="hidden" id="pcal_${id}" value="">
+          </div>
+        </div>`;
+
+    const html = `
+      <div style="text-align:left;">
+        <h3 style="margin-top:0;font-size:1.1rem;color:#0f766e;"><i class="fa-solid fa-box"></i> Calidad del Producto</h3>
+        <p style="font-size:.8rem;color:#64748b;margin-bottom:12px;">Por favor, evalúe las condiciones del producto <b>${this.esc(s.prodSel.nombre)}</b> antes de agregarlo al pallet.</p>
+        
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:0 12px;margin-bottom:16px;">
+            ${renderT('olor', 'Olor')}
+            ${renderT('color', 'Color')}
+            ${renderT('textura', 'Textura')}
+            ${renderT('temperatura', 'Temperatura')}
+            ${renderT('empaque', 'Empaque')}
+            ${renderT('rotulado', 'Rotulado')}
+        </div>
+        
+        <div style="display:flex;gap:10px;">
+          <button class="m-btn secondary" style="flex:1;" onclick="MWMS.closeModal()">Cancelar</button>
+          <button class="m-btn success" style="flex:1;" onclick="MWMS._guardarSinOdc()"><i class="fa-solid fa-check"></i> Confirmar</button>
+        </div>
+      </div>
+    `;
+    this.showModal(html);
+  },
+
+  _setPcalToggle(id, val) {
+      document.getElementById('pcal_'+id).value = val;
+      const btnC = document.getElementById('pbtn_'+id+'_C');
+      const btnNC = document.getElementById('pbtn_'+id+'_NC');
+      if(val === 'C') {
+          btnC.className = 'm-btn success sm';
+          btnNC.className = 'm-btn secondary sm';
+      } else {
+          btnC.className = 'm-btn secondary sm';
+          btnNC.className = 'm-btn danger sm';
+      }
+  },
+
   async _guardarSinOdc() {
     const s         = this._sinOdc;
     const prodId    = document.getElementById('rs-prod-id')?.value;
@@ -1027,10 +1117,23 @@ const MWMS = {
     const fv        = document.getElementById('rs-fecha-venc')?.value || '';
     const estado    = document.getElementById('rs-estado')?.value || 'BuenEstado';
     const palletNum = parseInt(document.getElementById('rs-pallet-num')?.value) || null;
-
-    if (!prodId) return this.toast('Seleccione un producto', 'error');
-
-    const hayUe = factorUdm > 0 && cantUe > 0;
+    const prov      = document.getElementById('rs-proveedor')?.value?.trim() || '';
+    
+    // Capturar variables de calidad
+    const calidad = {
+        olor: document.getElementById('pcal_olor')?.value || null,
+        color: document.getElementById('pcal_color')?.value || null,
+        textura: document.getElementById('pcal_textura')?.value || null,
+        temperatura: document.getElementById('pcal_temperatura')?.value || null,
+        empaque: document.getElementById('pcal_empaque')?.value || null,
+        rotulado: document.getElementById('pcal_rotulado')?.value || null,
+    };
+    
+    if (Object.values(calidad).some(v => v === null || v === '')) {
+        return this.toast('Por favor, evalúe todas las condiciones del producto (C o NC)', 'warning');
+    }
+    
+        const hayUe = factorUdm > 0 && cantUe > 0;
     const cantCajas = hayUe ? Math.ceil(cantUe / factorUdm) : cantInput;
     if (!hayUe && cantInput <= 0 && saldos <= 0) return this.toast('Cantidad debe ser mayor a cero', 'error');
     if (hayUe  && cantUe   <= 0) return this.toast('Ingrese la cantidad en U/E', 'error');
@@ -1049,6 +1152,8 @@ const MWMS = {
         fecha_vencimiento:fv   || undefined,
         estado_mercancia: estado,
         numero_pallet:    palletNum || undefined,
+        proveedor:        prov,
+        calidad:          calidad
       };
       if (hayUe) payload.cantidad_ue = cantUe;
       const r = await mApi('POST', '/recepciones/sin-odc', payload);
@@ -1070,8 +1175,16 @@ const MWMS = {
       // Reset para siguiente captura (mantener producto y pallet)
       s.fechaAuto    = '';
       s.fechaAutoRaw = '';
+      this.closeModal();
       this.toast('Captura registrada ✓', 'success');
       this._renderRecSinOdc();
+      
+      // Restaurar el proveedor seleccionado
+      setTimeout(() => {
+          if (document.getElementById('rs-proveedor')) {
+              document.getElementById('rs-proveedor').value = prov;
+          }
+      }, 50);
     } catch (e) {
       // Vencimiento inferior al ya existente en bodega: en móvil NUNCA se autoriza
       // aquí — solo un Admin desde el sistema de escritorio puede continuar.
@@ -9528,11 +9641,11 @@ const MWMS = {
           
           <div id="trp-scan-area">
             <div style="position:relative;margin-bottom:10px;">
-              <i class="fa-solid fa-location-dot" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#ef4444;font-size:.9rem;"></i>
-              <input type="text" id="trp-ubi-input" class="m-input-full" style="padding-left:36px;border-color:#fca5a5;background:#fff5f5;font-weight:bold;" placeholder="Código de ubicación..." autocomplete="off">
+              <i class="fa-solid fa-box-open" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#3b82f6;font-size:.9rem;"></i>
+              <input type="text" id="trp-prod-input" class="m-input-full" style="padding-left:36px;border-color:#bfdbfe;background:#eff6ff;font-weight:bold;" placeholder="Buscar producto por nombre o código..." autocomplete="off">
             </div>
-            <button onclick="MWMS._trpBuscarUbicacion()" class="m-btn primary" style="width:100%;margin-bottom:10px;">
-              <i class="fa-solid fa-search"></i> Ver stock en ubicación
+            <button onclick="MWMS._trpBuscarProducto()" class="m-btn primary" style="width:100%;margin-bottom:10px;">
+              <i class="fa-solid fa-search"></i> Buscar stock de producto
             </button>
             <div id="trp-ubi-res"></div>
           </div>
@@ -9541,10 +9654,21 @@ const MWMS = {
 
           <div id="trp-item-form" style="display:none;margin-top:10px;padding:10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;">
             <div id="trp-sel-info" style="margin-bottom:10px;"></div>
-            <div style="margin-bottom:10px;">
-              <label class="m-label">Cantidad a extraer *</label>
-              <input id="trp-cant" type="number" min="0.01" step="0.01" class="m-input-full" style="font-weight:bold;font-size:1.1rem;">
+            
+            <div style="display:flex;gap:10px;margin-bottom:10px;">
+              <div style="flex:1;">
+                <label class="m-label" id="trp-cajas-lbl">Cajas *</label>
+                <input id="trp-cajas" type="number" min="0" step="1" value="0" class="m-input-full" style="font-weight:bold;font-size:1.1rem;text-align:center;" oninput="MWMS._trpCalcularTotal()">
+              </div>
+              <div style="flex:1;">
+                <label class="m-label">Sueltos</label>
+                <input id="trp-saldos" type="number" min="0" step="1" value="0" class="m-input-full" style="font-weight:bold;font-size:1.1rem;text-align:center;" oninput="MWMS._trpCalcularTotal()">
+              </div>
             </div>
+            <div style="background:#eff6ff;color:#1e40af;padding:8px;border-radius:6px;text-align:center;font-weight:700;margin-bottom:10px;font-size:.9rem;">
+              Total a extraer: <span id="trp-total-und">0</span> und
+            </div>
+            
             <div style="display:flex;gap:10px;">
               <button onclick="MWMS._trpCancelarItem()" class="m-btn secondary" style="flex:1;">Cancelar</button>
               <button onclick="MWMS._trpAgregarItem()" class="m-btn primary" style="flex:1;"><i class="fa-solid fa-plus"></i> Agregar</button>
@@ -9578,8 +9702,8 @@ const MWMS = {
         </div>
       </div>`;
 
-    const inp = document.getElementById('trp-ubi-input');
-    if (inp) { inp.focus(); inp.onkeydown = e => { if (e.key === 'Enter') MWMS._trpBuscarUbicacion(); }; }
+    const inp = document.getElementById('trp-prod-input');
+    if (inp) { inp.focus(); inp.onkeydown = e => { if (e.key === 'Enter') MWMS._trpBuscarProducto(); }; }
     
     // Init Canvas
     setTimeout(() => {
@@ -9649,53 +9773,26 @@ const MWMS = {
     return this._trpCanvas.toDataURL() === blank.toDataURL();
   },
 
-  async _trpBuscarUbicacion() {
-    const q = document.getElementById('trp-ubi-input')?.value.trim();
-    if (!q) { this.toast('Ingresa el código de ubicación', 'warning'); return; }
-    this.loading(true);
-    try {
-      const rl = await mApi('GET', '/param/ubicaciones?codigo=' + encodeURIComponent(q));
-      const locs = Array.isArray(rl.data) ? rl.data : [];
-      if (!locs.length) { this.toast('Ubicación no encontrada', 'error'); return; }
-      if (locs.length > 1) {
-        this._trpUbiCandidatos = locs;
-        document.getElementById('trp-ubi-res').innerHTML = locs.slice(0,5).map((l, i) => `
-          <div onclick="MWMS._trpCargarStockUbic(MWMS._trpUbiCandidatos[${i}])" style="padding:10px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px;cursor:pointer;background:#fff;">
-            <b>${this.esc(l.codigo)}</b> - ${this.esc(l.zona||'')}
-          </div>`).join('');
-        return;
-      }
-      await this._trpCargarStockUbic(locs[0]);
-    } catch(e) { this.toast(e.message || 'Error', 'error'); }
-    finally { this.loading(false); }
-  },
-
-  async _trpCargarStockUbic(loc) {
+  async _trpBuscarProducto() {
+    const q = document.getElementById('trp-prod-input')?.value.trim();
+    if (!q || q.length < 2) { this.toast('Ingresa al menos 2 caracteres del producto', 'warning'); return; }
     this.loading(true);
     try {
       document.getElementById('trp-ubi-res').innerHTML = '';
-      const rs = await mApi('GET', '/inventario/stock?ubicacion_id=' + loc.id + '&estado=Disponible');
-      const stock = (rs.data || []).filter(x => parseFloat(x.cantidad) > 0 && parseFloat(x.cantidad - (x.cantidad_reservada||0)) > 0);
-      if (!stock.length) { this.toast('Sin stock en ' + loc.codigo, 'warning'); return; }
+      const rs = await mApi('GET', '/traspasos/buscar-stock?q=' + encodeURIComponent(q));
+      const stock = rs.data || [];
+      if (!stock.length) { this.toast('Sin stock para este producto', 'warning'); return; }
       
-      this._trpStock = stock.map(s => ({
-        producto_id: s.producto_id,
-        nombre: s.producto_nombre || s.nombre || '',
-        ubicacion_id: loc.id,
-        ubicacion_codigo: loc.codigo,
-        lote: s.lote,
-        fecha_vencimiento: s.fecha_vencimiento,
-        disp: parseFloat(s.cantidad) - parseFloat(s.cantidad_reservada||0)
-      }));
+      this._trpStock = stock;
       
       document.getElementById('trp-refs-list').innerHTML = this._trpStock.map((s, i) => `
         <div onclick="MWMS._trpSeleccionar(${i})" style="padding:10px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;margin-bottom:8px;cursor:pointer;">
           <div style="font-weight:700;font-size:.85rem;">${this.esc(s.nombre)}</div>
           <div style="font-size:.7rem;color:#64748b;margin-top:4px;">
-            Lote: ${this.esc(s.lote||'S/L')} | Vence: ${s.fecha_vencimiento ? this.formatDateShort(s.fecha_vencimiento) : 'N/A'} | Disp: <b>${s.disp}</b>
+            Ubic: <b>${this.esc(s.ubicacion_codigo)}</b> | Lote: ${this.esc(s.lote||'S/L')} | Vence: ${s.fecha_vencimiento ? this.formatDateShort(s.fecha_vencimiento) : 'N/A'} | Disp: <b>${s.cantidad_disponible}</b>
           </div>
         </div>`).join('');
-    } catch(e) { this.toast('Error cargando stock', 'error'); }
+    } catch(e) { this.toast('Error buscando stock: ' + e.message, 'error'); }
     finally { this.loading(false); }
   },
 
@@ -9708,11 +9805,26 @@ const MWMS = {
     
     document.getElementById('trp-sel-info').innerHTML = `
       <b>${this.esc(s.nombre)}</b><br>
-      <span style="font-size:.8rem;color:#64748b;">De: ${this.esc(s.ubicacion_codigo)} | Lote: ${this.esc(s.lote||'S/L')} | Disp: ${s.disp}</span>
+      <span style="font-size:.8rem;color:#64748b;">De: ${this.esc(s.ubicacion_codigo)} | Lote: ${this.esc(s.lote||'S/L')} | Disp: ${s.cantidad_disponible} und</span>
     `;
-    const cant = document.getElementById('trp-cant');
-    cant.value = ''; cant.max = s.disp;
+    
+    const uxc = parseFloat(s.factor_udm || 0) > 0 ? parseFloat(s.factor_udm) : parseFloat(s.unidades_caja || 1);
+    document.getElementById('trp-cajas-lbl').innerText = `Cajas (UxC: ${uxc})`;
+    
+    document.getElementById('trp-cajas').value = 0;
+    document.getElementById('trp-saldos').value = 0;
+    document.getElementById('trp-total-und').innerText = '0';
+    
     document.getElementById('trp-item-form').style.display = 'block';
+  },
+
+  _trpCalcularTotal() {
+      if (!this._trpSelected) return;
+      const c = parseFloat(document.getElementById('trp-cajas').value) || 0;
+      const s = parseFloat(document.getElementById('trp-saldos').value) || 0;
+      const uxc = parseFloat(this._trpSelected.factor_udm || 0) > 0 ? parseFloat(this._trpSelected.factor_udm) : parseFloat(this._trpSelected.unidades_caja || 1);
+      const total = (c * uxc) + s;
+      document.getElementById('trp-total-und').innerText = parseFloat(total.toFixed(3));
   },
 
   _trpCancelarItem() {
@@ -9724,20 +9836,26 @@ const MWMS = {
 
   _trpAgregarItem() {
     if (!this._trpSelected) return;
-    const cant = parseFloat(document.getElementById('trp-cant').value) || 0;
-    if (cant <= 0 || cant > this._trpSelected.disp) {
-      this.toast('Cantidad inválida o superior a disponible', 'error');
+    const c = parseFloat(document.getElementById('trp-cajas').value) || 0;
+    const s = parseFloat(document.getElementById('trp-saldos').value) || 0;
+    const uxc = parseFloat(this._trpSelected.factor_udm || 0) > 0 ? parseFloat(this._trpSelected.factor_udm) : parseFloat(this._trpSelected.unidades_caja || 1);
+    const cant = (c * uxc) + s;
+    
+    if (cant <= 0 || cant > this._trpSelected.cantidad_disponible) {
+      this.toast('Cantidad total inválida o superior a disponible', 'error');
       return;
     }
     
     this._trpItems.push({
       ...this._trpSelected,
-      cantidad: cant
+      cantidad: cant,
+      cajas_ingresadas: c,
+      saldos_ingresados: s
     });
     
     this._trpRenderItems();
     this._trpCancelarItem();
-    document.getElementById('trp-ubi-input').value = '';
+    document.getElementById('trp-prod-input').value = '';
     document.getElementById('trp-refs-list').innerHTML = '';
   },
 

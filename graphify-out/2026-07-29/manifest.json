@@ -975,8 +975,8 @@
     "semantic_hash": "a526a63d521fc75e43f1f5a54d5b1d13"
   },
   "src/Controllers/RecepcionController.php": {
-    "mtime": 1785357230.266674,
-    "ast_hash": "c8ea3d6e11e10391b7d2c9faa652535b",
+    "mtime": 1785361752.9375134,
+    "ast_hash": "fa6298965685561985a764b34eede040",
     "semantic_hash": ""
   },
   "src/Controllers/ReplenishmentController.php": {
@@ -1010,8 +1010,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/TraspasoController.php": {
-    "mtime": 1785284784.2481582,
-    "ast_hash": "95605194cb6bf06489e35e52ccef64c3",
+    "mtime": 1785361489.5832207,
+    "ast_hash": "c04f1aa1b30a2dbecd39ed89891b2e79",
     "semantic_hash": ""
   },
   "src/Controllers/TrazabilidadController.php": {
@@ -1390,9 +1390,9 @@
     "semantic_hash": ""
   },
   "src/Models/RecepcionDetalle.php": {
-    "mtime": 1780188524.0,
-    "ast_hash": "ccdab47724fe40aabbff37eabcb9c32d",
-    "semantic_hash": "ccdab47724fe40aabbff37eabcb9c32d"
+    "mtime": 1785361273.7542253,
+    "ast_hash": "e907dfb5bc65c879cf9dfdcb2859c10a",
+    "semantic_hash": ""
   },
   "src/Models/RolPermiso.php": {
     "mtime": 1780188524.0,
@@ -1697,6 +1697,16 @@
   "public/uploads/firmas/firma_trp_6a6a7150c9251.png": {
     "mtime": 1785360720.811249,
     "ast_hash": "1655a1db2d11cba39dc8b0f089e3c9fb",
+    "semantic_hash": ""
+  },
+  "database/migrations/122_ajustes_calidad_recepcion.php": {
+    "mtime": 1785361255.5229533,
+    "ast_hash": "9e9b1a17b31460175c6af55aba81bded",
+    "semantic_hash": ""
+  },
+  "src/Models/RecepcionDetalleCalidad.php": {
+    "mtime": 1785361263.535328,
+    "ast_hash": "cc7b02a79da56d14ca42d7174a506b62",
     "semantic_hash": ""
   }
 }
