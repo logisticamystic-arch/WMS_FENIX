@@ -2340,9 +2340,14 @@ WMS_MODULES.recepcion = {
   async _verDetalleSinODC(recepcionId) {
     WMS.spinner();
     try {
-      const r = await API.get('/recepciones/' + recepcionId);
+      const [r, calReq] = await Promise.all([
+          API.get('/recepciones/' + recepcionId),
+          API.get('/recepciones/' + recepcionId + '/calidad').catch(()=>({data:null}))
+      ]);
       const rec = r.data || r;
       const detalles = rec.detalles || [];
+      const calidad = calReq.data || null;
+
       WMS.setContent(`
         <div class="px-20 py-16">
           <div class="card shadow-soft">
@@ -2354,41 +2359,94 @@ WMS_MODULES.recepcion = {
                 <i class="fa-solid fa-${rec.estado === 'Cerrada' ? 'lock' : 'edit'}"></i> ${rec.estado === 'Cerrada' ? 'Confirmada' : 'En Proceso (Borrador)'}
               </span>
             </div>
-            <div style="padding:12px 20px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#64748b;">
-              Auxiliar: <strong>${WMS.esc(rec.auxiliar?.nombre || '-')}</strong> &nbsp;·&nbsp;
-              Fecha: <strong>${WMS.formatDate(rec.fecha_movimiento)}</strong> &nbsp;·&nbsp;
-              ${detalles.length} línea${detalles.length !== 1 ? 's' : ''}
+            
+            <div class="erp-tabs" style="border-bottom:1px solid #e2e8f0;display:flex;">
+                <button class="erp-tab active" onclick="WMS_MODULES.recepcion._switchTabSinOdc(this, 'sodc-detalles')"><i class="fa-solid fa-list"></i> Detalles</button>
+                <button class="erp-tab" onclick="WMS_MODULES.recepcion._switchTabSinOdc(this, 'sodc-calidad')"><i class="fa-solid fa-clipboard-check"></i> Auditoría Calidad</button>
             </div>
-            <div class="table-container">
-              <table class="erp-table">
-                <thead><tr>
-                  <th>Producto</th><th>Cantidad</th><th>Cajas</th><th>Lote</th><th>F. Vencimiento</th><th>Estado</th><th>Acciones</th>
-                </tr></thead>
-                <tbody>
-                  ${detalles.length === 0
-                    ? '<tr><td colspan="7" class="table-empty">Sin líneas registradas</td></tr>'
-                    : detalles.map(l => `<tr>
-                        <td class="fw-600">${WMS.esc(l.producto?.nombre || '-')}</td>
-                        <td class="text-center fw-800" style="color:#059669;">${WMS.formatNum(l.cantidad_recibida)}</td>
-                        <td class="text-center">${l.cantidad_cajas || '-'}</td>
-                        <td>${WMS.esc(l.lote || 'N/A')}</td>
-                        <td>${l.fecha_vencimiento ? WMS.formatDate(l.fecha_vencimiento) : '-'}</td>
-                        <td><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#166534;">${WMS.esc(l.estado_mercancia || 'BuenEstado')}</span></td>
-                        <td style="white-space:nowrap;">
-                          ${rec.estado === 'Borrador' ? `
-                          <button onclick="WMS_MODULES.recepcion._editarDetalleSinODC('${recepcionId}',${l.id},'${WMS.esc(l.producto?.nombre||'-').replace(/'/g,"\\'")}',${l.cantidad_recibida},${l.cajas_por_unidad||1},'ver')"
-                            style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;margin-right:3px;" title="Editar">
-                            <i class="fa-solid fa-pencil"></i>
-                          </button>
-                          <button onclick="WMS_MODULES.recepcion._eliminarDetalleSinODC('${recepcionId}',${l.id},'ver')"
-                            style="background:#fef2f2;color:#dc2626;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;" title="Eliminar">
-                            <i class="fa-solid fa-trash"></i>
-                          </button>` : `<span style="font-size:11px;color:#94a3b8;">Sin acciones</span>`}
-                        </td>
-                      </tr>`).join('')}
-                </tbody>
-              </table>
+
+            <div id="sodc-detalles" class="sodc-tab-content">
+                <div style="padding:12px 20px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#64748b;">
+                Auxiliar: <strong>${WMS.esc(rec.auxiliar?.nombre || '-')}</strong> &nbsp;·&nbsp;
+                Fecha: <strong>${WMS.formatDate(rec.fecha_movimiento)}</strong> &nbsp;·&nbsp;
+                ${detalles.length} línea${detalles.length !== 1 ? 's' : ''}
+                </div>
+                <div class="table-container">
+                <table class="erp-table">
+                    <thead><tr>
+                    <th>Producto</th><th>Cantidad</th><th>Cajas</th><th>Lote</th><th>F. Vencimiento</th><th>Estado</th><th>Acciones</th>
+                    </tr></thead>
+                    <tbody>
+                    ${detalles.length === 0
+                        ? '<tr><td colspan="7" class="table-empty">Sin líneas registradas</td></tr>'
+                        : detalles.map(l => `<tr>
+                            <td class="fw-600">${WMS.esc(l.producto?.nombre || '-')}</td>
+                            <td class="text-center fw-800" style="color:#059669;">${WMS.formatNum(l.cantidad_recibida)}</td>
+                            <td class="text-center">${l.cantidad_cajas || '-'}</td>
+                            <td>${WMS.esc(l.lote || 'N/A')}</td>
+                            <td>${l.fecha_vencimiento ? WMS.formatDate(l.fecha_vencimiento) : '-'}</td>
+                            <td><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#166534;">${WMS.esc(l.estado_mercancia || 'BuenEstado')}</span></td>
+                            <td style="white-space:nowrap;">
+                            ${rec.estado === 'Borrador' ? `
+                            <button onclick="WMS_MODULES.recepcion._editarDetalleSinODC('${recepcionId}',${l.id},'${WMS.esc(l.producto?.nombre||'-').replace(/'/g,"\\'")}',${l.cantidad_recibida},${l.cajas_por_unidad||1},'ver')"
+                                style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;margin-right:3px;" title="Editar">
+                                <i class="fa-solid fa-pencil"></i>
+                            </button>
+                            <button onclick="WMS_MODULES.recepcion._eliminarDetalleSinODC('${recepcionId}',${l.id},'ver')"
+                                style="background:#fef2f2;color:#dc2626;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;" title="Eliminar">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>` : `<span style="font-size:11px;color:#94a3b8;">Sin acciones</span>`}
+                            </td>
+                        </tr>`).join('')}
+                    </tbody>
+                </table>
+                </div>
             </div>
+
+            <div id="sodc-calidad" class="sodc-tab-content" style="display:none;padding:20px;">
+                ${calidad ? `
+                    <div style="display:flex;gap:20px;flex-wrap:wrap;">
+                        <div style="flex:1;min-width:300px;">
+                            <h5 style="margin:0 0 10px;color:#0f766e;"><i class="fa-solid fa-box"></i> Evaluación del Producto</h5>
+                            <table class="erp-table">
+                                <tbody>
+                                    <tr><td class="fw-600">Olor</td><td>${calidad.prod_olor === 'C' ? '<span class="badge bg-success-soft color-success">Cumple</span>' : '<span class="badge bg-danger-soft color-danger">No Cumple</span>'}</td></tr>
+                                    <tr><td class="fw-600">Color</td><td>${calidad.prod_color === 'C' ? '<span class="badge bg-success-soft color-success">Cumple</span>' : '<span class="badge bg-danger-soft color-danger">No Cumple</span>'}</td></tr>
+                                    <tr><td class="fw-600">Textura</td><td>${calidad.prod_textura === 'C' ? '<span class="badge bg-success-soft color-success">Cumple</span>' : '<span class="badge bg-danger-soft color-danger">No Cumple</span>'}</td></tr>
+                                    <tr><td class="fw-600">Temperatura</td><td>${calidad.prod_temperatura === 'C' ? '<span class="badge bg-success-soft color-success">Cumple</span>' : '<span class="badge bg-danger-soft color-danger">No Cumple</span>'}</td></tr>
+                                    <tr><td class="fw-600">Empaque</td><td>${calidad.prod_empaque === 'C' ? '<span class="badge bg-success-soft color-success">Cumple</span>' : '<span class="badge bg-danger-soft color-danger">No Cumple</span>'}</td></tr>
+                                    <tr><td class="fw-600">Rotulado</td><td>${calidad.prod_rotulado === 'C' ? '<span class="badge bg-success-soft color-success">Cumple</span>' : '<span class="badge bg-danger-soft color-danger">No Cumple</span>'}</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="flex:1;min-width:300px;">
+                            <h5 style="margin:0 0 10px;color:#b45309;"><i class="fa-solid fa-truck"></i> Evaluación del Transporte</h5>
+                            <table class="erp-table">
+                                <tbody>
+                                    <tr><td class="fw-600">Placa Vehículo</td><td><strong>${WMS.esc(calidad.trans_placa || 'N/A')}</strong></td></tr>
+                                    <tr><td class="fw-600">N° Factura</td><td><strong>${WMS.esc(calidad.factura || 'N/A')}</strong></td></tr>
+                                    <tr><td class="fw-600">Temperatura</td><td>${calidad.trans_temperatura === 'C' ? '<span class="badge bg-success-soft color-success">Cumple</span>' : '<span class="badge bg-danger-soft color-danger">No Cumple</span>'}</td></tr>
+                                    <tr><td class="fw-600">Limpieza</td><td>${calidad.trans_limpieza === 'C' ? '<span class="badge bg-success-soft color-success">Cumple</span>' : '<span class="badge bg-danger-soft color-danger">No Cumple</span>'}</td></tr>
+                                    <tr><td class="fw-600">Concepto Sanitario</td><td>${calidad.trans_concepto_sanitario === 'C' ? '<span class="badge bg-success-soft color-success">Cumple</span>' : '<span class="badge bg-danger-soft color-danger">No Cumple</span>'}</td></tr>
+                                    <tr><td class="fw-600">Carnet Manipulación</td><td>${calidad.trans_carnet_manipulacion === 'C' ? '<span class="badge bg-success-soft color-success">Cumple</span>' : '<span class="badge bg-danger-soft color-danger">No Cumple</span>'}</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    ${calidad.foto_evidencia ? `
+                        <div style="margin-top:20px;padding-top:20px;border-top:1px dashed #cbd5e1;">
+                            <h5 style="margin:0 0 10px;"><i class="fa-solid fa-camera"></i> Evidencia Fotográfica</h5>
+                            <img src="${API_BASE.replace('/api', '')}/${calidad.foto_evidencia}" style="max-width:400px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,.1);cursor:pointer;" onclick="window.open(this.src,'_blank')">
+                        </div>
+                    ` : `<div style="margin-top:20px;color:#94a3b8;"><i class="fa-solid fa-image"></i> Sin evidencia fotográfica adjunta</div>`}
+                ` : `
+                    <div style="text-align:center;padding:40px;color:#94a3b8;">
+                        <i class="fa-solid fa-clipboard-list" style="font-size:3rem;margin-bottom:10px;color:#cbd5e1;"></i>
+                        <p style="margin:0;">No se ha registrado un reporte de auditoría de calidad para esta recepción.</p>
+                    </div>
+                `}
+            </div>
+
           </div>
         </div>`);
       WMS.setToolbar(`
@@ -2398,6 +2456,14 @@ WMS_MODULES.recepcion = {
     } catch (e) {
       WMS.toast('error', 'Error cargando detalle: ' + (e.message || ''));
     }
+  },
+
+  _switchTabSinOdc(btn, tabId) {
+      document.querySelectorAll('.sodc-tab-content').forEach(el => el.style.display = 'none');
+      document.getElementById(tabId).style.display = 'block';
+      const btns = btn.parentElement.querySelectorAll('.erp-tab');
+      btns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
   },
 
   async _editarDetalleSinODC(recepcionId, detalleId, prodName, currentQty, upc, returnMode='captura') {
