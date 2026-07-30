@@ -9770,12 +9770,6 @@ const MWMS = {
     return this._trpCanvas.toDataURL() === blank.toDataURL();
   },
 
-  _trpSearchTimer: null,
-  _trpSelectedProd: null,
-  _trpSelectedLoc: null,
-  _trpUbicaciones: [],
-  _trpProdsBuscados: [],
-
   _trpOnInputProducto(val) {
     clearTimeout(this._trpSearchTimer);
     if (!val || val.trim().length < 2) {
@@ -9837,6 +9831,7 @@ const MWMS = {
     const p = this._trpProdsBuscados?.[idx];
     if (!p) return;
     this._trpSelectedProd = p;
+    this._trpSelectedLocIdx = null;
     this.loading(true);
     try {
       const rs = await mApi('GET', '/traspasos/buscar-stock?producto_id=' + p.id);
@@ -9852,10 +9847,9 @@ const MWMS = {
   _trpCambiarProducto() {
     this._trpSelectedProd = null;
     this._trpUbicaciones = [];
-    this._trpSelectedLoc = null;
+    this._trpSelectedLocIdx = null;
     document.getElementById('trp-scan-area').style.display = 'block';
     document.getElementById('trp-refs-list').innerHTML = '';
-    document.getElementById('trp-item-form').style.display = 'none';
     const inp = document.getElementById('trp-prod-input');
     if (inp) { inp.value = ''; inp.focus(); }
   },
@@ -9870,24 +9864,25 @@ const MWMS = {
     if (!refList) return;
 
     let html = `
-      <div style="background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;padding:14px;border-radius:12px;margin-bottom:14px;box-shadow:0 4px 12px rgba(15,23,42,.25);">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+      <div style="background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;padding:12px 14px;border-radius:12px;margin-bottom:14px;box-shadow:0 4px 12px rgba(15,23,42,.25);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
           <div>
             <span style="background:#38bdf8;color:#0f172a;font-size:.65rem;font-weight:900;padding:2px 7px;border-radius:4px;text-transform:uppercase;letter-spacing:.5px;">Referencia Seleccionada</span>
-            <div style="font-weight:800;font-size:1rem;margin-top:4px;">${this.esc(p.nombre)}</div>
-            <div style="font-size:.78rem;opacity:.85;margin-top:2px;">
-              Cód: <b>${this.esc(p.codigo_interno||'S/C')}</b> | Factor UxC: <b>${p.factor_udm || p.unidades_caja || 1}</b> unds/caja
+            <div style="font-weight:800;font-size:.95rem;margin-top:2px;">${this.esc(p.nombre)}</div>
+            <div style="font-size:.73rem;opacity:.85;">
+              Cód: <b>${this.esc(p.codigo_interno||'S/C')}</b> | Factor: <b>${p.factor_udm || p.unidades_caja || 1}</b> unds/caja
             </div>
           </div>
-          <button onclick="MWMS._trpCambiarProducto()" style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:.75rem;cursor:pointer;font-weight:700;white-space:nowrap;">
-            <i class="fa-solid fa-rotate-left"></i> Cambiar
+          <button onclick="MWMS._trpCambiarProducto()" style="background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:.75rem;cursor:pointer;font-weight:800;white-space:nowrap;box-shadow:0 2px 6px rgba(59,130,246,.4);">
+            <i class="fa-solid fa-plus-circle"></i> Buscar otra referencia
           </button>
         </div>
       </div>
 
       <div style="margin-bottom:10px;">
-        <div style="font-weight:800;font-size:.85rem;color:#1e293b;margin-bottom:8px;">
-          <i class="fa-solid fa-map-location-dot" style="color:#0284c7;"></i> Ubicaciones con Stock Disponible (Orden FIFO)
+        <div style="font-weight:800;font-size:.85rem;color:#1e293b;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+          <span><i class="fa-solid fa-map-location-dot" style="color:#0284c7;"></i> Ubicaciones donde hay Stock (Orden FIFO)</span>
+          <span style="font-size:.7rem;color:#64748b;font-weight:600;">${ubiList.length} ubi</span>
         </div>
     `;
 
@@ -9902,149 +9897,124 @@ const MWMS = {
 
     ubiList.forEach((s, i) => {
       // Calcular inventario ya retenido en el documento para esta ubicación específica
-      const yaAgregado = this._trpItems.filter(item => item.ubicacion_id === s.ubicacion_id && item.lote === s.lote).reduce((sum, item) => sum + item.cantidad, 0);
+      const itemsDeEstaUbic = this._trpItems.filter(item => item.ubicacion_id === s.ubicacion_id && item.lote === s.lote);
+      const yaAgregado = itemsDeEstaUbic.reduce((sum, item) => sum + item.cantidad, 0);
       const dispReal = Math.max(0, s.cantidad_disponible - yaAgregado);
       const uxc = parseFloat(s.factor_udm || 0) > 0 ? parseFloat(s.factor_udm) : parseFloat(s.unidades_caja || 1);
       const cajasDisp = uxc > 1 ? Math.floor(dispReal / uxc) : dispReal;
       const saldosDisp = uxc > 1 ? (dispReal % uxc) : 0;
+      const esEditando = (this._trpSelectedLocIdx === i);
 
-      if (i === 0) {
-        // Tarjeta #1 FIFO Prioritario
-        html += `
-          <div style="padding:14px;border:2px solid #10b981;border-radius:12px;background:#f0fdf4;margin-bottom:12px;box-shadow:0 3px 10px rgba(16,185,129,.15);position:relative;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-              <span style="background:#10b981;color:#fff;font-size:.68rem;font-weight:900;padding:3px 10px;border-radius:20px;letter-spacing:.3px;">
-                ⭐ #1 UBICACIÓN FIFO OBLIGATORIA
-              </span>
-              <span style="font-size:.7rem;color:#047857;font-weight:700;">Vence Primero</span>
+      const esFifo = (i === 0);
+
+      html += `
+        <div style="padding:12px;border:${esFifo ? '2px solid #10b981' : '1px solid #cbd5e1'};border-radius:12px;background:${esFifo ? '#f0fdf4' : '#fff'};margin-bottom:12px;box-shadow:${esFifo ? '0 3px 10px rgba(16,185,129,.12)' : '0 2px 4px rgba(0,0,0,.03)'};">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="background:${esFifo ? '#10b981' : '#f1f5f9'};color:${esFifo ? '#fff' : '#475569'};font-size:.68rem;font-weight:900;padding:3px 9px;border-radius:20px;">
+              ${esFifo ? '⭐ #1 UBICACIÓN FIFO OBLIGATORIA' : `#${i+1} FIFO Secundario`}
+            </span>
+            <span style="font-size:.7rem;color:${esFifo ? '#047857' : '#64748b'};font-weight:700;">
+              ${esFifo ? 'Vence Primero' : ''}
+            </span>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;">
+            <div>
+              <div style="font-size:.72rem;color:${esFifo ? '#047857' : '#64748b'};">Ubicación:</div>
+              <div style="font-size:1.15rem;font-weight:900;color:${esFifo ? '#065f46' : '#1e293b'};">${this.esc(s.ubicacion_codigo)} <small style="font-size:.75rem;font-weight:600;">(${this.esc(s.ubicacion_zona||'N/A')})</small></div>
             </div>
-            
-            <div style="display:flex;justify-content:space-between;align-items:flex-end;">
-              <div>
-                <div style="font-size:.75rem;color:#047857;font-weight:600;">Ubicación:</div>
-                <div style="font-size:1.2rem;font-weight:900;color:#065f46;">${this.esc(s.ubicacion_codigo)} <span style="font-size:.75rem;font-weight:600;color:#047857;">(${this.esc(s.ubicacion_zona||'Zona N/A')})</span></div>
+            <div style="text-align:right;">
+              <div style="font-size:.72rem;color:${esFifo ? '#047857' : '#64748b'};">Disponible:</div>
+              <div style="font-size:1rem;font-weight:900;color:${esFifo ? '#065f46' : '#0f172a'};">${dispReal} <span style="font-size:.75rem;">und</span></div>
+              ${uxc > 1 ? `<div style="font-size:.65rem;color:${esFifo ? '#047857' : '#64748b'};">(${cajasDisp} Cajas + ${saldosDisp} sueltos)</div>` : ''}
+            </div>
+          </div>
+
+          <div style="margin-top:6px;padding-top:6px;border-top:1px dashed ${esFifo ? '#a7f3d0' : '#e2e8f0'};display:flex;justify-content:space-between;font-size:.73rem;color:${esFifo ? '#047857' : '#64748b'};">
+            <span>📦 Lote: <b>${this.esc(s.lote||'S/L')}</b></span>
+            <span>📅 Venc: <b>${s.fecha_vencimiento ? this.formatDateShort(s.fecha_vencimiento) : 'N/A'}</b></span>
+          </div>
+
+          ${yaAgregado > 0 ? `
+            <div style="margin-top:6px;background:#e0f2fe;color:#0369a1;padding:4px 8px;border-radius:6px;font-size:.72rem;font-weight:700;display:flex;justify-content:space-between;align-items:center;">
+              <span><i class="fa-solid fa-check"></i> Ya agregado al documento:</span>
+              <b>${yaAgregado} und</b>
+            </div>
+          ` : ''}
+
+          <!-- Formulario de Extracción Inline -->
+          ${esEditando ? `
+            <div style="margin-top:10px;padding:10px;background:#fff;border:1px solid #93c5fd;border-radius:8px;box-shadow:inset 0 1px 3px rgba(0,0,0,.05);">
+              <div style="font-weight:700;font-size:.78rem;color:#1e40af;margin-bottom:6px;">
+                <i class="fa-solid fa-cart-plus"></i> Extracción de ${this.esc(s.ubicacion_codigo)}:
               </div>
-              <div style="text-align:right;">
-                <div style="font-size:.72rem;color:#047857;">Disponible:</div>
-                <div style="font-size:1.05rem;font-weight:900;color:#065f46;">${dispReal} <span style="font-size:.75rem;">und</span></div>
-                ${uxc > 1 ? `<div style="font-size:.68rem;color:#047857;">(${cajasDisp} Cajas + ${saldosDisp} sueltos)</div>` : ''}
+              <div style="display:flex;gap:8px;margin-bottom:8px;">
+                <div style="flex:1;">
+                  <label class="m-label" style="font-size:.7rem;">Cajas (UxC: ${uxc}) *</label>
+                  <input id="trp-inline-cajas" type="number" min="0" step="1" value="0" class="m-input-full" style="font-weight:bold;font-size:1.05rem;text-align:center;padding:6px;" oninput="MWMS._trpCalcularInlineTotal(${uxc})">
+                </div>
+                <div style="flex:1;">
+                  <label class="m-label" style="font-size:.7rem;">Sueltos</label>
+                  <input id="trp-inline-saldos" type="number" min="0" step="1" value="0" class="m-input-full" style="font-weight:bold;font-size:1.05rem;text-align:center;padding:6px;" oninput="MWMS._trpCalcularInlineTotal(${uxc})">
+                </div>
+              </div>
+              <div style="background:#eff6ff;color:#1e40af;padding:6px;border-radius:6px;text-align:center;font-weight:800;font-size:.82rem;margin-bottom:8px;">
+                Total a agregar: <span id="trp-inline-total-und">0</span> und
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button onclick="MWMS._trpCerrarInlineExtraccion()" class="m-btn secondary sm" style="flex:1;padding:6px;">Cancelar</button>
+                <button onclick="MWMS._trpConfirmarInlineExtraccion(${i})" class="m-btn primary sm" style="flex:1;padding:6px;font-weight:800;background:#0284c7;border-color:#0369a1;">
+                  <i class="fa-solid fa-plus"></i> Agregar al Traspaso
+                </button>
               </div>
             </div>
-
-            <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #a7f3d0;display:flex;justify-content:space-between;font-size:.75rem;color:#047857;">
-              <span>📦 Lote: <b>${this.esc(s.lote||'S/L')}</b></span>
-              <span>📅 Venc: <b>${s.fecha_vencimiento ? this.formatDateShort(s.fecha_vencimiento) : 'N/A'}</b></span>
-            </div>
-
+          ` : `
             ${dispReal > 0 ? `
-              <button onclick="MWMS._trpAbrirModalExtraccion(${i})" class="m-btn success" style="width:100%;margin-top:10px;padding:10px;font-weight:800;font-size:.85rem;box-shadow:0 2px 6px rgba(16,185,129,.3);">
-                <i class="fa-solid fa-plus-circle"></i> Extraer de esta Ubicación (FIFO)
+              <button onclick="MWMS._trpAbrirInlineExtraccion(${i})" class="m-btn ${esFifo ? 'success' : 'secondary'} sm" style="width:100%;margin-top:8px;padding:8px;font-weight:800;font-size:.78rem;">
+                <i class="fa-solid fa-plus-circle"></i> Extraer de esta Ubicación ${esFifo ? '(FIFO)' : ''}
               </button>
             ` : `
-              <div style="margin-top:8px;background:#e2e8f0;color:#64748b;padding:6px;border-radius:6px;text-align:center;font-size:.75rem;font-weight:700;">
-                ✓ Stock disponible de esta ubicación ya fue extraído al documento
-              </div>
+              <div style="margin-top:6px;background:#f1f5f9;color:#94a3b8;padding:4px;border-radius:4px;text-align:center;font-size:.7rem;">Stock totalmente agregado</div>
             `}
-          </div>
-          ${ubiList.length > 1 ? `<div style="font-weight:700;font-size:.78rem;color:#64748b;margin:12px 0 6px;"><i class="fa-solid fa-layer-group"></i> Otras ubicaciones secundarias:</div>` : ''}
-        `;
-      } else {
-        // Tarjetas FIFO Secundarias
-        html += `
-          <div style="padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;margin-bottom:8px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-              <div>
-                <span style="background:#f1f5f9;color:#475569;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:4px;">#${i+1} FIFO Secundario</span>
-                <b style="font-size:1rem;color:#1e293b;margin-left:6px;">${this.esc(s.ubicacion_codigo)}</b>
-              </div>
-              <div style="font-size:.85rem;font-weight:800;color:#0f172a;">${dispReal} und</div>
-            </div>
-
-            <div style="font-size:.72rem;color:#64748b;display:flex;justify-content:space-between;margin-bottom:6px;">
-              <span>Lote: <b>${this.esc(s.lote||'S/L')}</b></span>
-              <span>Vence: <b>${s.fecha_vencimiento ? this.formatDateShort(s.fecha_vencimiento) : 'N/A'}</b></span>
-            </div>
-
-            ${dispReal > 0 ? `
-              <button onclick="MWMS._trpAbrirModalExtraccion(${i})" class="m-btn secondary sm" style="width:100%;padding:6px;font-weight:700;font-size:.75rem;">
-                <i class="fa-solid fa-plus"></i> Extraer de ${this.esc(s.ubicacion_codigo)}
-              </button>
-            ` : `
-              <div style="background:#f1f5f9;color:#94a3b8;padding:4px;border-radius:4px;text-align:center;font-size:.7rem;">Stock ya agregado</div>
-            `}
-          </div>
-        `;
-      }
+          `}
+        </div>
+      `;
     });
 
     html += `</div>`;
     refList.innerHTML = html;
   },
 
-  _trpAbrirModalExtraccion(idx) {
+  _trpAbrirInlineExtraccion(idx) {
+    this._trpSelectedLocIdx = idx;
+    this._trpRenderPanelProducto();
+  },
+
+  _trpCerrarInlineExtraccion() {
+    this._trpSelectedLocIdx = null;
+    this._trpRenderPanelProducto();
+  },
+
+  _trpCalcularInlineTotal(uxc) {
+    const c = parseFloat(document.getElementById('trp-inline-cajas')?.value) || 0;
+    const s = parseFloat(document.getElementById('trp-inline-saldos')?.value) || 0;
+    const total = (c * uxc) + s;
+    const el = document.getElementById('trp-inline-total-und');
+    if (el) el.innerText = parseFloat(total.toFixed(3));
+  },
+
+  _trpConfirmarInlineExtraccion(idx) {
     const s = this._trpUbicaciones[idx];
     if (!s) return;
-    this._trpSelectedLoc = s;
 
-    const yaAgregado = this._trpItems.filter(item => item.ubicacion_id === s.ubicacion_id && item.lote === s.lote).reduce((sum, item) => sum + item.cantidad, 0);
-    const dispReal = Math.max(0, s.cantidad_disponible - yaAgregado);
-
-    const uxc = parseFloat(s.factor_udm || 0) > 0 ? parseFloat(s.factor_udm) : parseFloat(s.unidades_caja || 1);
-    
-    document.getElementById('trp-cajas-lbl').innerText = `Cajas (UxC: ${uxc})`;
-    document.getElementById('trp-cajas').value = 0;
-    document.getElementById('trp-saldos').value = 0;
-    document.getElementById('trp-total-und').innerText = '0';
-
-    const esFifo = (idx === 0);
-    document.getElementById('trp-sel-info').innerHTML = `
-      <div style="background:${esFifo ? '#f0fdf4' : '#fffbe6'};border:1px solid ${esFifo ? '#a7f3d0' : '#fde68a'};padding:10px;border-radius:8px;margin-bottom:8px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div style="color:${esFifo ? '#047857' : '#b45309'};font-weight:800;font-size:.85rem;">
-            <i class="fa-solid ${esFifo ? 'fa-star' : 'fa-triangle-exclamation'}" style="color:${esFifo ? '#10b981' : '#d97706'};"></i> ${this.esc(s.nombre)}
-          </div>
-          <span style="background:${esFifo ? '#10b981' : '#d97706'};color:#fff;font-size:.65rem;font-weight:800;padding:2px 6px;border-radius:4px;">
-            ${esFifo ? 'FIFO PRIORITARIO' : 'SECUNDARIA'}
-          </span>
-        </div>
-        <div style="font-size:.78rem;color:${esFifo ? '#065f46' : '#92400e'};margin-top:4px;line-height:1.4;">
-          Ubicación: <b style="font-size:.95rem;">${this.esc(s.ubicacion_codigo)}</b> (${this.esc(s.ubicacion_zona||'N/A')})<br>
-          Lote: <b>${this.esc(s.lote||'S/L')}</b> | Vence: <b>${s.fecha_vencimiento ? this.formatDateShort(s.fecha_vencimiento) : 'N/A'}</b><br>
-          Disponible en esta Ubicación: <b style="font-size:.9rem;color:#0f172a;">${dispReal} und</b>
-          ${!esFifo ? `<br><small style="color:#b45309;">⚠ Recuerde que la ubicación recomendada por FIFO era: <b>${this.esc(this._trpUbicaciones[0]?.ubicacion_codigo||'')}</b></small>` : ''}
-        </div>
-      </div>
-    `;
-
-    document.getElementById('trp-item-form').style.display = 'block';
-    document.getElementById('trp-item-form').scrollIntoView({ behavior: 'smooth' });
-  },
-
-  _trpCalcularTotal() {
-    if (!this._trpSelectedLoc) return;
-    const c = parseFloat(document.getElementById('trp-cajas').value) || 0;
-    const s = parseFloat(document.getElementById('trp-saldos').value) || 0;
-    const uxc = parseFloat(this._trpSelectedLoc.factor_udm || 0) > 0 ? parseFloat(this._trpSelectedLoc.factor_udm) : parseFloat(this._trpSelectedLoc.unidades_caja || 1);
-    const total = (c * uxc) + s;
-    document.getElementById('trp-total-und').innerText = parseFloat(total.toFixed(3));
-  },
-
-  _trpCancelarItem() {
-    this._trpSelectedLoc = null;
-    document.getElementById('trp-item-form').style.display = 'none';
-  },
-
-  _trpAgregarItem() {
-    if (!this._trpSelectedLoc) return;
-    const s = this._trpSelectedLoc;
-    const c = parseFloat(document.getElementById('trp-cajas').value) || 0;
-    const sal = parseFloat(document.getElementById('trp-saldos').value) || 0;
+    const c = parseFloat(document.getElementById('trp-inline-cajas')?.value) || 0;
+    const sal = parseFloat(document.getElementById('trp-inline-saldos')?.value) || 0;
     const uxc = parseFloat(s.factor_udm || 0) > 0 ? parseFloat(s.factor_udm) : parseFloat(s.unidades_caja || 1);
     const cant = (c * uxc) + sal;
 
     const yaAgregado = this._trpItems.filter(item => item.ubicacion_id === s.ubicacion_id && item.lote === s.lote).reduce((sum, item) => sum + item.cantidad, 0);
     const dispReal = Math.max(0, s.cantidad_disponible - yaAgregado);
-    
+
     if (cant <= 0) {
       this.toast('Ingrese una cantidad válida mayor a 0', 'error');
       return;
@@ -10053,7 +10023,7 @@ const MWMS = {
       this.toast(`La cantidad ingresada (${cant} und) supera lo disponible en ${s.ubicacion_codigo} (${dispReal} und)`, 'error');
       return;
     }
-    
+
     this._trpItems.push({
       producto_id: s.producto_id,
       nombre: s.nombre,
@@ -10067,53 +10037,11 @@ const MWMS = {
       saldos: sal,
       uxc: uxc
     });
-    
-    this.toast(`Agregado: ${cant} unds de ${s.ubicacion_codigo} ✓`, 'success');
+
+    this.toast(`✔ Agregado: ${cant} unds de ${s.ubicacion_codigo}`, 'success');
+    this._trpSelectedLocIdx = null;
     this._trpRenderItems();
-    this._trpCancelarItem();
-    // Volver a renderizar panel de ubicaciones para actualizar disponibilidad disponible real
     this._trpRenderPanelProducto();
-  },
-
-  _trpCalcularTotal() {
-      if (!this._trpSelected) return;
-      const c = parseFloat(document.getElementById('trp-cajas').value) || 0;
-      const s = parseFloat(document.getElementById('trp-saldos').value) || 0;
-      const uxc = parseFloat(this._trpSelected.factor_udm || 0) > 0 ? parseFloat(this._trpSelected.factor_udm) : parseFloat(this._trpSelected.unidades_caja || 1);
-      const total = (c * uxc) + s;
-      document.getElementById('trp-total-und').innerText = parseFloat(total.toFixed(3));
-  },
-
-  _trpCancelarItem() {
-    this._trpSelected = null;
-    document.getElementById('trp-item-form').style.display = 'none';
-    document.getElementById('trp-refs-list').style.display = 'block';
-    document.getElementById('trp-scan-area').style.display = 'block';
-  },
-
-  _trpAgregarItem() {
-    if (!this._trpSelected) return;
-    const c = parseFloat(document.getElementById('trp-cajas').value) || 0;
-    const s = parseFloat(document.getElementById('trp-saldos').value) || 0;
-    const uxc = parseFloat(this._trpSelected.factor_udm || 0) > 0 ? parseFloat(this._trpSelected.factor_udm) : parseFloat(this._trpSelected.unidades_caja || 1);
-    const cant = (c * uxc) + s;
-    
-    if (cant <= 0 || cant > this._trpSelected.cantidad_disponible) {
-      this.toast('Cantidad total inválida o superior a disponible', 'error');
-      return;
-    }
-    
-    this._trpItems.push({
-      ...this._trpSelected,
-      cantidad: cant,
-      cajas_ingresadas: c,
-      saldos_ingresados: s
-    });
-    
-    this._trpRenderItems();
-    this._trpCancelarItem();
-    document.getElementById('trp-prod-input').value = '';
-    document.getElementById('trp-refs-list').innerHTML = '';
   },
 
   _trpRenderItems() {
