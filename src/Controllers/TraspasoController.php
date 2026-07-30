@@ -42,6 +42,7 @@ class TraspasoController extends BaseController
         $empresaId  = $this->getEffectiveEmpresaId($user, $request);
         $sucursalId = $this->getEffectiveSucursalId($user, $request);
 
+        $qLower = strtolower($q);
         $stock = Inventario::select('inventarios.*')
             ->join('productos', 'productos.id', '=', 'inventarios.producto_id')
             ->join('ubicaciones', 'ubicaciones.id', '=', 'inventarios.ubicacion_id')
@@ -49,13 +50,13 @@ class TraspasoController extends BaseController
             ->where('inventarios.sucursal_id', $sucursalId)
             ->where('inventarios.estado', 'Disponible')
             ->whereRaw('(inventarios.cantidad - inventarios.cantidad_reservada) > 0')
-            ->where(function ($w) use ($q) {
-                $w->where('productos.nombre', 'ilike', "%{$q}%")
-                  ->orWhere('productos.codigo_interno', 'ilike', "%{$q}%");
+            ->where(function ($w) use ($qLower) {
+                $w->whereRaw('LOWER(productos.nombre) LIKE ?', ["%{$qLower}%"])
+                  ->orWhereRaw('LOWER(productos.codigo_interno) LIKE ?', ["%{$qLower}%"]);
             })
             ->with(['producto:id,codigo_interno,nombre,bloqueado,unidades_caja,factor_udm', 'ubicacion:id,codigo,zona'])
-            ->orderBy('productos.nombre')
-            ->orderByRaw('inventarios.fecha_vencimiento ASC NULLS LAST')
+            ->orderBy('productos.nombre', 'asc')
+            ->orderByRaw('CASE WHEN inventarios.fecha_vencimiento IS NULL THEN 1 ELSE 0 END, inventarios.fecha_vencimiento ASC, inventarios.id ASC')
             ->limit(50)
             ->get()
             ->map(function ($inv) {
