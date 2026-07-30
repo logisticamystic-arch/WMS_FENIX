@@ -35,17 +35,55 @@ class TraspasoController extends BaseController
     {
         $user   = $request->getAttribute('user');
         $params = $request->getQueryParams();
-        $q      = $params['q'] ?? '';
-
-        if (strlen($q) < 2) return $this->ok($response, []);
+        $q      = trim($params['q'] ?? '');
+        $prodId = $params['producto_id'] ?? null;
 
         $empresaId  = $this->getEffectiveEmpresaId($user, $request);
         $sucursalId = $this->getEffectiveSucursalId($user, $request);
 
+        // Caso 1: Obtener ubicaciones en orden FIFO para un producto específico
+        if ($prodId) {
+            $stock = Inventario::select('inventarios.*')
+                ->join('ubicaciones', 'ubicaciones.id', '=', 'inventarios.ubicacion_id')
+                ->where('inventarios.empresa_id', $empresaId)
+                ->where('inventarios.sucursal_id', $sucursalId)
+                ->where('inventarios.producto_id', $prodId)
+                ->where('inventarios.estado', 'Disponible')
+                ->whereRaw('(inventarios.cantidad - inventarios.cantidad_reservada) > 0')
+                ->with(['producto:id,codigo_interno,nombre,bloqueado,unidades_caja,factor_udm', 'ubicacion:id,codigo,zona'])
+                ->orderByRaw('CASE WHEN inventarios.fecha_vencimiento IS NULL THEN 1 ELSE 0 END, inventarios.fecha_vencimiento ASC, inventarios.id ASC')
+                ->get()
+                ->map(function ($inv) {
+                    return [
+                        'inventario_id'     => $inv->id,
+                        'producto_id'       => $inv->producto_id,
+                        'codigo_interno'    => $inv->producto->codigo_interno ?? '',
+                        'nombre'            => $inv->producto->nombre ?? '',
+                        'bloqueado'         => $inv->producto->bloqueado ?? false,
+                        'unidades_caja'     => (float)($inv->producto->unidades_caja ?? 1),
+                        'factor_udm'        => (float)($inv->producto->factor_udm ?? 0),
+                        'ubicacion_id'      => $inv->ubicacion_id,
+                        'ubicacion_codigo'  => $inv->ubicacion->codigo ?? '',
+                        'ubicacion_zona'    => $inv->ubicacion->zona ?? '',
+                        'lote'              => $inv->lote,
+                        'fecha_vencimiento' => $inv->fecha_vencimiento,
+                        'cantidad_disponible' => (float)($inv->cantidad - $inv->cantidad_reservada),
+                    ];
+                });
+
+            return $this->ok($response, $stock);
+        }
+
+        // Caso 2: Buscar referencias de productos que tengan stock disponible
+        if (strlen($q) < 2) return $this->ok($response, []);
+
         $qLower = strtolower($q);
-        $stock = Inventario::select('inventarios.*')
+        
+        // Obtener productos con existencias
+        $productos = Inventario::select('productos.id', 'productos.codigo_interno', 'productos.nombre', 'productos.unidades_caja', 'productos.factor_udm')
+            ->selectRaw('SUM(inventarios.cantidad - inventarios.cantidad_reservada) as total_disponible')
+            ->selectRaw('COUNT(DISTINCT inventarios.ubicacion_id) as ubicaciones_count')
             ->join('productos', 'productos.id', '=', 'inventarios.producto_id')
-            ->join('ubicaciones', 'ubicaciones.id', '=', 'inventarios.ubicacion_id')
             ->where('inventarios.empresa_id', $empresaId)
             ->where('inventarios.sucursal_id', $sucursalId)
             ->where('inventarios.estado', 'Disponible')
@@ -54,30 +92,24 @@ class TraspasoController extends BaseController
                 $w->whereRaw('LOWER(productos.nombre) LIKE ?', ["%{$qLower}%"])
                   ->orWhereRaw('LOWER(productos.codigo_interno) LIKE ?', ["%{$qLower}%"]);
             })
-            ->with(['producto:id,codigo_interno,nombre,bloqueado,unidades_caja,factor_udm', 'ubicacion:id,codigo,zona'])
+            ->groupBy('productos.id', 'productos.codigo_interno', 'productos.nombre', 'productos.unidades_caja', 'productos.factor_udm')
             ->orderBy('productos.nombre', 'asc')
-            ->orderByRaw('CASE WHEN inventarios.fecha_vencimiento IS NULL THEN 1 ELSE 0 END, inventarios.fecha_vencimiento ASC, inventarios.id ASC')
-            ->limit(50)
+            ->limit(30)
             ->get()
-            ->map(function ($inv) {
+            ->map(function ($p) {
                 return [
-                    'inventario_id'     => $inv->id,
-                    'producto_id'       => $inv->producto_id,
-                    'codigo_interno'    => $inv->producto->codigo_interno ?? '',
-                    'nombre'            => $inv->producto->nombre ?? '',
-                    'bloqueado'         => $inv->producto->bloqueado ?? false,
-                    'unidades_caja'     => (float)($inv->producto->unidades_caja ?? 1),
-                    'factor_udm'        => (float)($inv->producto->factor_udm ?? 0),
-                    'ubicacion_id'      => $inv->ubicacion_id,
-                    'ubicacion_codigo'  => $inv->ubicacion->codigo ?? '',
-                    'ubicacion_zona'    => $inv->ubicacion->zona ?? '',
-                    'lote'              => $inv->lote,
-                    'fecha_vencimiento' => $inv->fecha_vencimiento,
-                    'cantidad_disponible' => $inv->cantidad - $inv->cantidad_reservada,
+                    'id'               => $p->id,
+                    'producto_id'      => $p->id,
+                    'codigo_interno'   => $p->codigo_interno,
+                    'nombre'           => $p->nombre,
+                    'unidades_caja'    => (float)($p->unidades_caja ?? 1),
+                    'factor_udm'       => (float)($p->factor_udm ?? 0),
+                    'total_disponible' => (float)$p->total_disponible,
+                    'ubicaciones_count'=> (int)$p->ubicaciones_count,
                 ];
             });
 
-        return $this->ok($response, $stock);
+        return $this->ok($response, $productos);
     }
 
     public function create(Request $request, Response $response): Response
