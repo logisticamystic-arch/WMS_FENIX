@@ -11,6 +11,37 @@ class Producto extends BaseModel
 
     protected $table = 'productos';
 
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::saving(function ($producto) {
+            $isSeco = false;
+
+            if ($producto->ambiente_id) {
+                if ($producto->relationLoaded('ambiente') && $producto->ambiente) {
+                    $codigo = $producto->ambiente->codigo;
+                } else {
+                    $codigo = Ambiente::where('id', $producto->ambiente_id)->value('codigo');
+                }
+                if ($codigo && strtoupper(trim($codigo)) === 'SECO') {
+                    $isSeco = true;
+                }
+            }
+
+            if (!$isSeco && !empty($producto->temperatura_almacen)) {
+                if (strtoupper(trim($producto->temperatura_almacen)) === 'SECO') {
+                    $isSeco = true;
+                }
+            }
+
+            if ($isSeco) {
+                $producto->controla_lote = false;
+                $producto->controla_vencimiento = false;
+            }
+        });
+    }
+
     protected $fillable = [
         'empresa_id', 'marca_id', 'categoria_id', 'ambiente_id', 'codigo_interno', 'nombre', 'descripcion',
         'imagen_url', 'unidad_medida', 'peso_unitario', 'volumen_unitario',
