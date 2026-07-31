@@ -955,24 +955,13 @@ WMS_MODULES.maestro = {
 
   // ── PRODUCTOS ────────────────────────────────────────────────
   onAmbienteChange() {
-    const sel = document.getElementById('f-pamb');
-    if (!sel) return;
-    const text = sel.options[sel.selectedIndex]?.text || '';
-    const isSeco = text.toUpperCase().includes('SECO');
-
     const mlot = document.getElementById('f-pmlot');
     const cvenc = document.getElementById('f-pcvenc');
     const msg = document.getElementById('seco-restriction-msg');
 
-    if (isSeco) {
-      if (mlot) { mlot.checked = false; mlot.disabled = true; }
-      if (cvenc) { cvenc.checked = false; cvenc.disabled = true; }
-      if (msg) msg.style.display = 'block';
-    } else {
-      if (mlot) mlot.disabled = false;
-      if (cvenc) cvenc.disabled = false;
-      if (msg) msg.style.display = 'none';
-    }
+    if (mlot) mlot.disabled = false;
+    if (cvenc) cvenc.disabled = false;
+    if (msg) msg.style.display = 'none';
   },
 
   async show_productos() {
@@ -1537,8 +1526,8 @@ WMS_MODULES.maestro = {
       unidades_caja:       parseInt(document.getElementById('f-puxc')?.value || 1),
       factor_udm:          parseVal(document.getElementById('f-pfudm')?.value) || null,
       unidad_contenido:    document.getElementById('f-pucont')?.value || null,
-      maneja_lotes:        isSeco ? 0 : (document.getElementById('f-pmlot')?.checked ? 1 : 0),
-      controla_vencimiento: isSeco ? 0 : (document.getElementById('f-pcvenc')?.checked ? 1 : 0)
+      maneja_lotes:        document.getElementById('f-pmlot')?.checked ? 1 : 0,
+      controla_vencimiento: document.getElementById('f-pcvenc')?.checked ? 1 : 0
     };
     if (!data.nombre || !data.codigo_interno) { WMS.toast('warning', 'EAN/Código y Nombre son obligatorios'); return; }
     try {

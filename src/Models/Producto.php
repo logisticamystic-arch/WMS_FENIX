@@ -14,32 +14,6 @@ class Producto extends BaseModel
     protected static function boot()
     {
         parent::boot();
-
-        static::saving(function ($producto) {
-            $isSeco = false;
-
-            if ($producto->ambiente_id) {
-                if ($producto->relationLoaded('ambiente') && $producto->ambiente) {
-                    $codigo = $producto->ambiente->codigo;
-                } else {
-                    $codigo = Ambiente::where('id', $producto->ambiente_id)->value('codigo');
-                }
-                if ($codigo && strtoupper(trim($codigo)) === 'SECO') {
-                    $isSeco = true;
-                }
-            }
-
-            if (!$isSeco && !empty($producto->temperatura_almacen)) {
-                if (strtoupper(trim($producto->temperatura_almacen)) === 'SECO') {
-                    $isSeco = true;
-                }
-            }
-
-            if ($isSeco) {
-                $producto->controla_lote = false;
-                $producto->controla_vencimiento = false;
-            }
-        });
     }
 
     protected $fillable = [
