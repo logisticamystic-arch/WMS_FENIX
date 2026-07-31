@@ -262,6 +262,9 @@ WMS_MODULES.despacho = {
                 </td>
                 <td class="text-center"><strong>${s.total_lineas_cert || s.total_lineas || '—'}</strong></td>
                 <td>
+                  <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.despacho.iniciarCertificacionVisual('${WMS.esc(s.sucursal_entrega)}')" style="margin-right:4px;">
+                    <i class="fa-solid fa-check-double"></i> Certificar
+                  </button>
                   <button class="btn btn-sm btn-info" onclick="WMS_MODULES.despacho.verDetallesPendientes('${WMS.esc(s.sucursal_entrega)}')" style="margin-right:4px;">
                     <i class="fa-solid fa-list"></i> Ver
                   </button>
@@ -1028,6 +1031,23 @@ WMS_MODULES.despacho = {
     finally { WMS.spinner(false); }
   },
 
+  async iniciarCertificacionVisual(sucursal) {
+    WMS.spinner();
+    try {
+      const r = await API.get('/picking/certificacion/detalle/' + encodeURIComponent(sucursal));
+      const lineas = r.data || [];
+      if (!lineas.length) {
+        WMS.toast('warning', 'No hay líneas pendientes de certificar para esta sucursal');
+        return;
+      }
+      this._renderCertInterface(sucursal, lineas);
+    } catch(e) {
+      WMS.toast('error', 'Error al obtener detalles para certificación: ' + e.message);
+    } finally {
+      WMS.spinner(false);
+    }
+  },
+
   async iniciarCertificacion(sucursal) {
     WMS.spinner();
     try {
@@ -1124,47 +1144,54 @@ WMS_MODULES.despacho = {
 
   _renderCertInterface(sucursal, lineas) {
     const totalLines = lineas.length;
-    const certLines  = lineas.filter(l => l.cantidad_certificada > 0).length;
+    const certLines  = lineas.filter(l => (l.cantidad_certificada || 0) > 0).length;
     const progress   = totalLines > 0 ? Math.round((certLines / totalLines) * 100) : 0;
 
     const ambients = [...new Set(lineas.map(l => l.ambiente_nombre || 'Sin ambiente'))];
     const ambientProgress = ambients.map(a => {
        const lins = lineas.filter(l => (l.ambiente_nombre || 'Sin ambiente') === a);
        const t = lins.length;
-       const c = lins.filter(l => l.cantidad_certificada > 0).length;
+       const c = lins.filter(l => (l.cantidad_certificada || 0) > 0).length;
        return { name: a, total: t, cert: c };
     });
 
     WMS.setContent(`
       <div class="cert-workflow-container">
-        <div class="cert-header">
-          <div class="cert-header-left">
+        <div class="cert-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+          <div class="cert-header-left" style="display:flex;align-items:center;gap:12px;">
             <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.despacho.show_certificacion()">
               <i class="fa-solid fa-arrow-left"></i> Volver
             </button>
-            <h2 class="cert-title">Certificando: <strong>${WMS.esc(sucursal)}</strong></h2>
+            <h2 class="cert-title" style="margin:0;font-size:1.2rem;color:#1e293b;">Certificando: <strong style="color:#0f4c81;">${WMS.esc(sucursal)}</strong></h2>
           </div>
-          <div class="cert-progress-box">
-             <div class="cert-progress-info">
-               <span>Progreso: <strong>${certLines} / ${totalLines}</strong> líneas</span>
-               <span>${progress}%</span>
+          <div style="display:flex;align-items:center;gap:10px;">
+             <button class="btn btn-sm btn-success" onclick="WMS_MODULES.despacho.certificarTodoVisual('${WMS.esc(sucursal)}')">
+               <i class="fa-solid fa-check-double"></i> Certificar Todo (Auto-completar Cajas y Saldos)
+             </button>
+             <div class="cert-progress-box" style="min-width:180px;">
+               <div class="cert-progress-info" style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;margin-bottom:3px;">
+                 <span>Progreso: <strong>${certLines} / ${totalLines}</strong> líneas</span>
+                 <span>${progress}%</span>
+               </div>
+               <div class="pro-progress-bar-bg" style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;">
+                 <div class="pro-progress-bar-fill ${progress>=100?'green':''}" style="width:${progress}%;height:100%;background:${progress>=100?'#16a34a':'#0f4c81'};"></div>
+               </div>
              </div>
-             <div class="pro-progress-bar-bg"><div class="pro-progress-bar-fill ${progress>=100?'green':''}" style="width:${progress}%"></div></div>
           </div>
         </div>
 
-        <div class="cert-body">
-          <div class="cert-scanner-box">
-            <div class="scanner-input-wrap">
-              <i class="fa-solid fa-barcode"></i>
-              <input type="text" id="cert-scanner" placeholder="Escanee producto o ingrese código..." 
+        <div class="cert-body" style="padding:15px;">
+          <div class="cert-scanner-box" style="background:#fff;padding:12px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:12px;">
+            <div class="scanner-input-wrap" style="display:flex;gap:10px;align-items:center;">
+              <i class="fa-solid fa-barcode" style="font-size:1.3rem;color:#0f4c81;"></i>
+              <input type="text" id="cert-scanner" class="form-control" style="font-size:1rem;" placeholder="Escanee producto o ingrese código..." 
                      onkeyup="if(event.key==='Enter') WMS_MODULES.despacho.procesarEscaneo('${WMS.esc(sucursal)}')">
               <button class="btn btn-primary" onclick="WMS_MODULES.despacho.procesarEscaneo('${WMS.esc(sucursal)}')">Validar</button>
             </div>
-            <p class="text-muted text-sm" style="margin-top:8px;"><i class="fa-solid fa-keyboard"></i> También puede seleccionar un producto de la lista para certificarlo manualmente.</p>
+            <p class="text-muted text-sm" style="margin:6px 0 0 0;font-size:11px;"><i class="fa-solid fa-keyboard"></i> Ingrese cajas y saldos sueltos directamente en la tabla para validar cada línea.</p>
           </div>
 
-          <div style="margin-top:15px; margin-bottom:10px; display:flex; gap:10px; flex-wrap:wrap;">
+          <div style="margin-bottom:10px; display:flex; gap:8px; flex-wrap:wrap;">
             <button class="btn btn-sm btn-primary cert-amb-tab" id="cert-tab-all" onclick="WMS_MODULES.despacho.filterCertAmbiente('')">
               <i class="fa-solid fa-layer-group"></i> Todos (${certLines}/${totalLines})
             </button>
@@ -1175,45 +1202,78 @@ WMS_MODULES.despacho = {
             `).join('')}
           </div>
 
-          <div class="card" style="margin-top:20px;">
+          <div class="card">
             <div class="table-container" style="max-height:calc(100vh - 350px); overflow-y:auto;">
               <table class="erp-table" id="table-cert-lines">
                 <thead>
                   <tr>
-                    <th>Producto</th>
-                    <th class="text-center">Ambiente</th>
-                    <th class="text-center">EAN/Código</th>
+                    <th>Referencia / Producto</th>
+                    <th class="text-center">Lote / F. Vencimiento</th>
                     <th class="text-center">Pickeado</th>
-                    <th class="text-center">Certificado</th>
+                    <th class="text-center" style="width:100px;">Cajas Cert.</th>
+                    <th class="text-center" style="width:100px;">Saldos Cert.</th>
+                    <th class="text-center">Total Cert.</th>
                     <th class="text-center">Diferencia</th>
                     <th class="text-center">Estado</th>
-                    <th class="text-center">Acción</th>
+                    <th class="text-center" style="width:120px;">Acción</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${lineas.map(l => {
-                    const diff = l.cantidad_pickeada - l.cantidad_certificada;
-                    const st = l.cantidad_certificada === 0 ? 'pendiente' : (diff === 0 ? 'ok' : 'error');
+                    const upc = Math.max(1, parseInt(l.unidades_caja || 1));
+                    const pick = parseFloat(l.cantidad_pickeada || 0);
+                    const cert = parseFloat(l.cantidad_certificada || 0);
+
+                    const pickCajas  = upc > 1 ? Math.floor(pick / upc) : Math.round(pick);
+                    const pickSaldos = upc > 1 ? Math.round((pick - (pickCajas * upc)) * 1000) / 1000 : 0;
+
+                    const certCajas  = cert > 0 ? (upc > 1 ? Math.floor(cert / upc) : Math.round(cert)) : pickCajas;
+                    const certSaldos = cert > 0 ? (upc > 1 ? Math.round((cert - (certCajas * upc)) * 1000) / 1000 : 0) : pickSaldos;
+
+                    const totCert = (certCajas * upc) + certSaldos;
+                    const diff    = pick - totCert;
+                    const st      = cert === 0 ? 'pendiente' : (Math.abs(diff) < 0.001 ? 'ok' : 'error');
+
                     return `
-                    <tr id="cert-row-${l.producto_id}" class="cert-row-${st}" data-ean="${WMS.esc(l.ean)}" data-codigo="${WMS.esc(l.codigo)}" data-ambiente="${WMS.esc(l.ambiente_nombre || 'Sin ambiente')}">
+                    <tr id="cert-row-${l.producto_id}" class="cert-row-${st}" 
+                        data-pid="${l.producto_id}" data-upc="${upc}" data-pick="${pick}"
+                        data-ean="${WMS.esc(l.ean)}" data-codigo="${WMS.esc(l.codigo)}" data-ambiente="${WMS.esc(l.ambiente_nombre || 'Sin ambiente')}">
                       <td>
                         <div class="fw-700">${WMS.esc(l.nombre)}</div>
-                      </td>
-                      <td class="text-center"><span class="badge" style="background-color:${l.ambiente_color||'#64748b'};color:#fff;">${WMS.esc(l.ambiente_nombre || 'Sin ambiente')}</span></td>
-                      <td class="text-center"><code style="font-size:11px;">${WMS.esc(l.ean)}</code></td>
-                      <td class="text-center fw-700" style="font-size:1.1rem;">${WMS.formatNum(l.cantidad_pickeada)}</td>
-                      <td class="text-center fw-700" style="font-size:1.1rem; color:var(--primary);">${WMS.formatNum(l.cantidad_certificada)}</td>
-                      <td class="text-center">
-                         ${l.cantidad_certificada > 0 ? (diff === 0 ? '<span class="status-badge success"><i class="fa-solid fa-check"></i></span>' : `<span class="badge badge-danger">${diff > 0 ? '-' : '+'}${WMS.formatNum(Math.abs(diff))}</span>`) : '—'}
+                        <div style="font-size:11px;color:#64748b;">Código: <code>${WMS.esc(l.codigo)}</code> | EAN: <code>${WMS.esc(l.ean || '—')}</code></div>
                       </td>
                       <td class="text-center">
+                        <div><span class="badge" style="background:#475569;color:#fff;font-size:11px;">Lote: ${WMS.esc(l.lote || 'N/A')}</span></div>
+                        <div style="font-size:11px;color:${l.fecha_vencimiento ? '#b91c1c' : '#64748b'};font-weight:600;margin-top:2px;">
+                          ${l.fecha_vencimiento ? WMS.formatDate(l.fecha_vencimiento) : 's/v'}
+                        </div>
+                      </td>
+                      <td class="text-center">
+                        <div class="fw-700" style="font-size:1.05rem;color:#0f4c81;">${WMS.formatNum(pick)} und</div>
+                        <div style="font-size:11px;color:#475569;">${pickCajas} cj + ${pickSaldos} sald (${upc} U/E)</div>
+                      </td>
+                      <td class="text-center">
+                        <input type="number" step="1" min="0" id="cert-cj-${l.producto_id}" class="form-control form-control-sm text-center fw-700"
+                               value="${certCajas}" oninput="WMS_MODULES.despacho.recalcCertRow(${l.producto_id}, ${upc}, ${pick})">
+                      </td>
+                      <td class="text-center">
+                        <input type="number" step="0.001" min="0" id="cert-sd-${l.producto_id}" class="form-control form-control-sm text-center fw-700"
+                               value="${certSaldos}" oninput="WMS_MODULES.despacho.recalcCertRow(${l.producto_id}, ${upc}, ${pick})">
+                      </td>
+                      <td class="text-center fw-700" id="cert-tot-${l.producto_id}" style="font-size:1.05rem;color:#15803d;">
+                        ${WMS.formatNum(totCert)} und
+                      </td>
+                      <td class="text-center" id="cert-diff-${l.producto_id}">
+                         ${cert > 0 ? (Math.abs(diff) < 0.001 ? '<span class="status-badge success"><i class="fa-solid fa-check"></i> 0</span>' : `<span class="badge badge-danger">${diff > 0 ? '-' : '+'}${WMS.formatNum(Math.abs(diff))} und</span>`) : '—'}
+                      </td>
+                      <td class="text-center" id="cert-st-${l.producto_id}">
                          <span class="pro-badge ${st === 'ok' ? 'ok' : st === 'error' ? 'warn' : 'info'}">
                            ${st === 'ok' ? 'Correcto' : st === 'error' ? 'Diferencia' : 'Pendiente'}
                          </span>
                       </td>
                       <td class="text-center">
-                        <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.despacho.manualCert('${WMS.esc(sucursal)}', ${l.producto_id}, '${WMS.esc(l.nombre)}', ${l.cantidad_pickeada}, ${l.cantidad_certificada})">
-                          <i class="fa-solid fa-edit"></i>
+                        <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.despacho.confirmarLineaCertDesdeFila('${WMS.esc(sucursal)}', ${l.producto_id}, ${upc}, ${pick})">
+                          <i class="fa-solid fa-check"></i> Certificar
                         </button>
                       </td>
                     </tr>`;
@@ -1224,11 +1284,11 @@ WMS_MODULES.despacho = {
           </div>
         </div>
 
-        <div class="cert-footer">
+        <div class="cert-footer" style="display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:#f8fafc;border-top:1px solid #e2e8f0;">
           <div class="cert-footer-left">
-            <span class="text-muted">Sucursal: ${WMS.esc(sucursal)}</span>
+            <span class="text-muted" style="font-size:12px;">Sucursal: <strong>${WMS.esc(sucursal)}</strong></span>
           </div>
-          <div class="cert-footer-actions">
+          <div class="cert-footer-actions" style="display:flex;gap:10px;">
             <button class="btn btn-danger btn-sm" onclick="WMS_MODULES.despacho.show_certificacion()">Cancelar Proceso</button>
             <button class="btn btn-success" onclick="WMS_MODULES.despacho.finalizarCertificacion('${WMS.esc(sucursal)}')" ${progress < 100 ? 'disabled title="Certifique todas las líneas antes de finalizar"' : ''}>
               <i class="fa-solid fa-check-double"></i> Finalizar y Generar PDF
@@ -1240,6 +1300,57 @@ WMS_MODULES.despacho = {
     
     // Auto-focus scanner
     setTimeout(() => document.getElementById('cert-scanner')?.focus(), 200);
+  },
+
+  recalcCertRow(pid, upc, pick) {
+    const cj = parseFloat(document.getElementById(`cert-cj-${pid}`)?.value || 0);
+    const sd = parseFloat(document.getElementById(`cert-sd-${pid}`)?.value || 0);
+    const totCert = (cj * upc) + sd;
+    const diff = pick - totCert;
+
+    const elTot = document.getElementById(`cert-tot-${pid}`);
+    if (elTot) elTot.textContent = WMS.formatNum(totCert) + ' und';
+
+    const elDiff = document.getElementById(`cert-diff-${pid}`);
+    if (elDiff) {
+      if (Math.abs(diff) < 0.001) {
+        elDiff.innerHTML = '<span class="status-badge success"><i class="fa-solid fa-check"></i> 0</span>';
+      } else {
+        const sign = diff > 0 ? '-' : '+';
+        elDiff.innerHTML = `<span class="badge badge-danger">${sign}${WMS.formatNum(Math.abs(diff))} und</span>`;
+      }
+    }
+
+    const elSt = document.getElementById(`cert-st-${pid}`);
+    if (elSt) {
+      const st = Math.abs(diff) < 0.001 ? 'ok' : 'warn';
+      elSt.innerHTML = `<span class="pro-badge ${st}">${st === 'ok' ? 'Correcto' : 'Diferencia'}</span>`;
+    }
+  },
+
+  certificarTodoVisual(sucursal) {
+    document.querySelectorAll('#table-cert-lines tbody tr').forEach(tr => {
+      const pid = tr.dataset.pid;
+      const upc = parseFloat(tr.dataset.upc || 1);
+      const pick = parseFloat(tr.dataset.pick || 0);
+      const pickCajas  = upc > 1 ? Math.floor(pick / upc) : Math.round(pick);
+      const pickSaldos = upc > 1 ? Math.round((pick - (pickCajas * upc)) * 1000) / 1000 : 0;
+      
+      const elCj = document.getElementById(`cert-cj-${pid}`);
+      const elSd = document.getElementById(`cert-sd-${pid}`);
+      if (elCj) elCj.value = pickCajas;
+      if (elSd) elSd.value = pickSaldos;
+      this.recalcCertRow(pid, upc, pick);
+    });
+    WMS.toast('success', 'Todas las líneas cargadas con cajas y saldos completados.');
+  },
+
+  async confirmarLineaCertDesdeFila(sucursal, pid, upc, pick) {
+    const cj = parseFloat(document.getElementById(`cert-cj-${pid}`)?.value || 0);
+    const sd = parseFloat(document.getElementById(`cert-sd-${pid}`)?.value || 0);
+    const cantidadCertificada = (cj * upc) + sd;
+    
+    await this.confirmarLineaCert(sucursal, pid, cantidadCertificada);
   },
 
   filterCertAmbiente(amb) {
@@ -1268,15 +1379,12 @@ WMS_MODULES.despacho = {
     });
 
     if (match) {
-        const pid = match.id.replace('cert-row-', '');
-        // For simplicity, we ask for quantity even on scan if it's not a single unit scan flow
-        // Or we can just cert the whole picked qty
-        const nombre = match.querySelector('div.fw-700').textContent;
-        const pick   = parseFloat(match.cells[2].textContent);
-        const cert   = parseFloat(match.cells[3].textContent);
+        const pid  = match.dataset.pid;
+        const upc  = parseFloat(match.dataset.upc || 1);
+        const pick = parseFloat(match.dataset.pick || 0);
         
         input.value = '';
-        this.manualCert(sucursal, pid, nombre, pick, cert);
+        await this.confirmarLineaCertDesdeFila(sucursal, pid, upc, pick);
     } else {
         WMS.toast('error', 'Producto no encontrado en este despacho');
         input.select();

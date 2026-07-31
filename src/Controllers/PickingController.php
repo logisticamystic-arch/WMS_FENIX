@@ -4367,6 +4367,13 @@ class PickingController extends BaseController
                     if ($det->estado === 'Faltante') {
                         $pickeadaCajasEquiv = $upcConf > 0 ? ($realmenteDescontado / $upcConf) : $realmenteDescontado;
                         $faltanteCant = max(0, (float)$det->cantidad_solicitada - $pickeadaCajasEquiv);
+                        
+                        // Eliminar registro previo de faltante si existía para mantener sincronía atómica
+                        Capsule::table('picking_faltantes')
+                            ->where('orden_picking_id', $det->orden_picking_id)
+                            ->where('producto_id', $det->producto_id)
+                            ->delete();
+
                         if ($faltanteCant > 0) {
                             $ord = OrdenPicking::find($det->orden_picking_id);
                             Capsule::table('picking_faltantes')->insert([
@@ -5607,9 +5614,13 @@ class PickingController extends BaseController
                 'pd.producto_id',
                 'pd.cantidad_pickeada',
                 'pd.cantidad_certificada',
+                'pd.lote',
+                'pd.fecha_vencimiento',
                 'p.nombre',
                 'p.codigo_interno as codigo',
                 'p.ambiente_id',
+                Capsule::raw("COALESCE(p.unidades_caja, 1) as unidades_caja"),
+                Capsule::raw("(SELECT codigo_ean FROM producto_eans pe WHERE pe.producto_id = p.id LIMIT 1) as ean"),
                 Capsule::raw("COALESCE(amb.descripcion, 'Sin ambiente') as ambiente_nombre"),
                 Capsule::raw("COALESCE(amb.codigo, 'otros') as ambiente_codigo"),
                 Capsule::raw("COALESCE(amb.color, '#64748b') as ambiente_color")
@@ -5626,6 +5637,10 @@ class PickingController extends BaseController
                     'producto_id'          => $pid,
                     'nombre'               => $d->nombre,
                     'codigo'               => $d->codigo,
+                    'ean'                  => $d->ean ?: $d->codigo,
+                    'unidades_caja'        => max(1, (int)$d->unidades_caja),
+                    'lote'                 => $d->lote ?: 'N/A',
+                    'fecha_vencimiento'    => $d->fecha_vencimiento ?: null,
                     'ambiente_id'          => $d->ambiente_id,
                     'ambiente_nombre'      => $d->ambiente_nombre,
                     'ambiente_codigo'      => $d->ambiente_codigo,
@@ -5638,6 +5653,12 @@ class PickingController extends BaseController
             $consolidado[$pid]['cantidad_pickeada']    += (float)$d->cantidad_pickeada;
             $consolidado[$pid]['cantidad_certificada'] += (float)$d->cantidad_certificada;
             $consolidado[$pid]['detalles_ids'][]       = $d->id;
+            if ($d->lote && $consolidado[$pid]['lote'] === 'N/A') {
+                $consolidado[$pid]['lote'] = $d->lote;
+            }
+            if ($d->fecha_vencimiento && !$consolidado[$pid]['fecha_vencimiento']) {
+                $consolidado[$pid]['fecha_vencimiento'] = $d->fecha_vencimiento;
+            }
         }
 
         return $this->ok($res, array_values($consolidado));
@@ -5746,44 +5767,92 @@ class PickingController extends BaseController
                 $d->save();
                 
                 $diferencia = $capacidad - $tomar;
-                if ($diferencia > 0.001 && $d->ubicacion_id) {
-                    // Devolver al inventario
-                    $inv = \App\Models\Inventario::where('empresa_id', $empresaId)
-                        ->where('sucursal_id', $sucursalId)
-                        ->where('producto_id', $d->producto_id)
-                        ->where('ubicacion_id', $d->ubicacion_id)
-                        ->where(function($q) use ($d) {
-                            if ($d->lote) $q->where('lote', $d->lote);
-                            else $q->whereNull('lote');
-                        })
-                        ->where(function($q) use ($d) {
-                            if ($d->fecha_vencimiento) $q->where('fecha_vencimiento', $d->fecha_vencimiento);
-                            else $q->whereNull('fecha_vencimiento');
-                        })
-                        ->first();
-                        
-                    if ($inv) {
-                        $inv->cantidad += $diferencia;
-                        $inv->save();
-                    } else {
-                        $inv = \App\Models\Inventario::create([
-                            'empresa_id' => $empresaId,
-                            'sucursal_id' => $sucursalId,
-                            'producto_id' => $d->producto_id,
-                            'ubicacion_id' => $d->ubicacion_id,
-                            'lote' => $d->lote,
-                            'fecha_vencimiento' => $d->fecha_vencimiento,
-                            'cantidad' => $diferencia,
-                            'estado' => 'Disponible',
-                            'creado_por' => $user->id
+                if ($diferencia > 0.001) {
+                    $targetUbicId = $d->ubicacion_id;
+                    if (!$targetUbicId) {
+                        $mov = \App\Models\MovimientoInventario::where('referencia_tipo', 'orden_picking')
+                            ->where('referencia_id', $d->orden_picking_id)
+                            ->where('producto_id', $d->producto_id)
+                            ->orderBy('id', 'desc')
+                            ->first();
+                        $targetUbicId = $mov->ubicacion_origen_id ?? $mov->ubicacion_destino_id ?? null;
+                    }
+
+                    if ($targetUbicId) {
+                        // Devolver al inventario en la ubicación exacta de origen
+                        $invQuery = \App\Models\Inventario::where('empresa_id', $empresaId)
+                            ->where('sucursal_id', $sucursalId)
+                            ->where('producto_id', $d->producto_id)
+                            ->where('ubicacion_id', $targetUbicId);
+
+                        if (!empty($d->lote)) {
+                            $invQuery->where('lote', $d->lote);
+                        }
+                        if (!empty($d->fecha_vencimiento)) {
+                            $invQuery->where('fecha_vencimiento', $d->fecha_vencimiento);
+                        }
+
+                        $inv = $invQuery->first();
+
+                        if ($inv) {
+                            $inv->cantidad += $diferencia;
+                            $inv->save();
+                        } else {
+                            $inv = \App\Models\Inventario::create([
+                                'empresa_id'        => $empresaId,
+                                'sucursal_id'       => $sucursalId,
+                                'producto_id'       => $d->producto_id,
+                                'ubicacion_id'      => $targetUbicId,
+                                'lote'              => $d->lote ?: 'N/A',
+                                'fecha_vencimiento' => $d->fecha_vencimiento,
+                                'cantidad'          => $diferencia,
+                                'estado'            => 'Disponible',
+                                'creado_por'        => $user->id
+                            ]);
+                        }
+
+                        // Registrar Kardex
+                        \App\Models\MovimientoInventario::create([
+                            'empresa_id'           => $empresaId,
+                            'sucursal_id'          => $sucursalId,
+                            'producto_id'          => $d->producto_id,
+                            'ubicacion_destino_id' => $targetUbicId,
+                            'tipo_movimiento'      => \App\Models\MovimientoInventario::TIPO_AJUSTE_POSITIVO,
+                            'cantidad'             => $diferencia,
+                            'lote'                 => $d->lote,
+                            'fecha_vencimiento'    => $d->fecha_vencimiento,
+                            'referencia_tipo'      => 'certificacion_devolucion',
+                            'referencia_id'        => $d->id,
+                            'auxiliar_id'          => $user->id,
+                            'observaciones'        => "Devolución a ubicación por diferencia en certificación — Orden #{$d->orden_picking_id}",
+                            'fecha_movimiento'     => date('Y-m-d'),
+                            'hora_inicio'          => date('H:i:s'),
                         ]);
                     }
-                    
-                    if (method_exists($this, 'audit')) {
-                        $this->audit($user, 'picking', 'devolucion_certificacion', 'inventarios', $inv->id,
-                            ['pick' => $capacidad], ['cert' => $tomar, 'devuelta' => $diferencia],
-                            "Devolución por certificación inferior: Prod {$d->producto_id} a Ubic {$d->ubicacion_id}");
-                    }
+
+                    // Registrar en picking_faltantes para sección de AGOTADOS de la Remisión
+                    $ord  = OrdenPicking::find($d->orden_picking_id);
+                    $prod = \App\Models\Producto::find($d->producto_id);
+                    $upc  = max(1, (int)($prod->unidades_caja ?? 1));
+                    $diffCajas = $diferencia / $upc;
+
+                    Capsule::table('picking_faltantes')
+                        ->where('orden_picking_id', $d->orden_picking_id)
+                        ->where('producto_id', $d->producto_id)
+                        ->delete();
+
+                    Capsule::table('picking_faltantes')->insert([
+                        'empresa_id'          => $empresaId,
+                        'sucursal_id'         => $sucursalId,
+                        'orden_picking_id'    => $d->orden_picking_id,
+                        'producto_id'         => $d->producto_id,
+                        'planilla_lote'       => $ord->planilla_lote ?? $ord->planilla_numero,
+                        'cantidad_solicitada' => $d->cantidad_solicitada,
+                        'cantidad_faltante'   => $diffCajas,
+                        'causa'               => 'Diferencia en certificación — mercancía devuelta a bodega',
+                        'created_at'          => date('Y-m-d H:i:s'),
+                        'updated_at'          => date('Y-m-d H:i:s'),
+                    ]);
                 }
                 
                 $restante -= $tomar;
