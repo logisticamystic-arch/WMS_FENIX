@@ -2331,13 +2331,25 @@ class InventarioController extends BaseController
                 }
             } else {
                 // Flujo normal: UPSERT en inventarios
-                $inv = Inventario::where('empresa_id',  $empId)
+                $invQuery = Inventario::where('empresa_id',  $empId)
                     ->where('sucursal_id',  $sucId)
                     ->where('producto_id',  $linea->producto_id)
                     ->where('ubicacion_id', $linea->ubicacion_id)
-                    ->where('estado',       'Disponible')
-                    ->when($linea->lote, fn($q) => $q->where('lote', $linea->lote))
-                    ->first();
+                    ->where('estado',       'Disponible');
+
+                if (!empty($linea->lote)) {
+                    $invQuery->where('lote', $linea->lote);
+                } else {
+                    $invQuery->where(fn($q) => $q->whereNull('lote')->orWhere('lote', 'N/A')->orWhere('lote', ''));
+                }
+
+                if (!empty($linea->fecha_vencimiento)) {
+                    $invQuery->where('fecha_vencimiento', $linea->fecha_vencimiento);
+                } else {
+                    $invQuery->whereNull('fecha_vencimiento');
+                }
+
+                $inv = $invQuery->first();
 
                 if ($inv) {
                     $inv->cantidad = $undTotal; $inv->cantidad_cajas = $cantCajas;

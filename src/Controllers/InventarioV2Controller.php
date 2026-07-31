@@ -2670,29 +2670,60 @@ class InventarioV2Controller extends BaseController
             $cantidadCajas = isset($data['cantidad_cajas']) ? (int)$data['cantidad_cajas'] : null;
             $saldos        = isset($data['saldos']) ? (float)$data['saldos'] : null;
 
-            // Crear o actualizar la línea — auxiliar_id en criterio de búsqueda
-            // para que cada auxiliar tenga su propia línea por producto+ubicación+ronda.
-            $linea = SesionLinea::updateOrCreate(
-                [
-                    'sesion_id'    => $sesion->id,
-                    'auxiliar_id'  => $user->id,
-                    'producto_id'  => $prod->id,
-                    'ubicacion_id' => $ubic->id,
-                    'ronda'        => $ronda,
-                    'lote'         => $lote,
-                    'estado'       => SesionLinea::ESTADO_ACTIVO,
-                ],
-                [
+            // Buscar si ya existe una línea activa para esta sesión, auxiliar, producto, ubicación, ronda, lote y fecha de vencimiento.
+            $queryLinea = SesionLinea::where('sesion_id', $sesion->id)
+                ->where('auxiliar_id', $user->id)
+                ->where('producto_id', $prod->id)
+                ->where('ubicacion_id', $ubic->id)
+                ->where('ronda', $ronda)
+                ->where('estado', SesionLinea::ESTADO_ACTIVO);
+
+            if (!empty($lote)) {
+                $queryLinea->where('lote', $lote);
+            } else {
+                $queryLinea->where(fn($q) => $q->whereNull('lote')->orWhere('lote', 'N/A')->orWhere('lote', ''));
+            }
+
+            if (!empty($fv)) {
+                $queryLinea->where('fecha_vencimiento', $fv);
+            } else {
+                $queryLinea->whereNull('fecha_vencimiento');
+            }
+
+            $linea = $queryLinea->first();
+
+            if ($linea) {
+                // Si la línea ya existe para la misma ubicación, referencia, lote y FV, ACUMULAMOS la cantidad contada.
+                $nuevaCantidadContada = (float)$linea->cantidad_contada + $cantidadContada;
+                $nuevaCantidadCajas   = ($linea->cantidad_cajas !== null && $cantidadCajas !== null) ? ($linea->cantidad_cajas + $cantidadCajas) : ($cantidadCajas ?? $linea->cantidad_cajas);
+                $nuevosSaldos        = ($linea->saldos !== null && $saldos !== null) ? ($linea->saldos + $saldos) : ($saldos ?? $linea->saldos);
+
+                $linea->asignacion_id    = $asignacionId ?: $linea->asignacion_id;
+                $linea->cantidad_contada = $nuevaCantidadContada;
+                $linea->cantidad_cajas   = $nuevaCantidadCajas;
+                $linea->saldos           = $nuevosSaldos;
+                $linea->diferencia       = $nuevaCantidadContada - $linea->cantidad_sistema;
+                $linea->hora_conteo      = date('Y-m-d H:i:s');
+                $linea->save();
+            } else {
+                $linea = SesionLinea::create([
+                    'sesion_id'         => $sesion->id,
+                    'auxiliar_id'       => $user->id,
+                    'producto_id'       => $prod->id,
+                    'ubicacion_id'      => $ubic->id,
+                    'ronda'             => $ronda,
+                    'lote'              => $lote,
+                    'fecha_vencimiento' => $fv,
+                    'estado'            => SesionLinea::ESTADO_ACTIVO,
                     'asignacion_id'     => $asignacionId,
                     'cantidad_contada'  => $cantidadContada,
                     'cantidad_cajas'    => $cantidadCajas,
                     'saldos'            => $saldos,
                     'cantidad_sistema'  => $stockSnapshot,
                     'diferencia'        => $cantidadContada - $stockSnapshot,
-                    'fecha_vencimiento' => $fv,
                     'hora_conteo'       => date('Y-m-d H:i:s'),
-                ]
-            );
+                ]);
+            }
 
             return $this->ok($res, $linea->fresh(['producto', 'ubicacion']), 'Conteo manual registrado.');
         } catch (\Throwable $e) {
