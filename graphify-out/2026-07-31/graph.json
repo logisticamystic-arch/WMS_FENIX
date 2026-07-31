@@ -1514,7 +1514,7 @@
       "label": "_deleteIcgFile()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/inventario.js",
-      "source_location": "L5707",
+      "source_location": "L5709",
       "_origin": "ast",
       "id": "public_assets_js_desktop_inventario_deleteicgfile",
       "community": 39,
@@ -1525,7 +1525,7 @@
       "label": "_filterIcgAmb()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/inventario.js",
-      "source_location": "L5716",
+      "source_location": "L5718",
       "_origin": "ast",
       "id": "public_assets_js_desktop_inventario_filtericgamb",
       "community": 11,
@@ -1536,7 +1536,7 @@
       "label": "_filterIcgSearch()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/inventario.js",
-      "source_location": "L5735",
+      "source_location": "L5737",
       "_origin": "ast",
       "id": "public_assets_js_desktop_inventario_filtericgsearch",
       "community": 11,
@@ -1547,7 +1547,7 @@
       "label": "_toggleModeIcgKpi()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/inventario.js",
-      "source_location": "L5748",
+      "source_location": "L5750",
       "_origin": "ast",
       "id": "public_assets_js_desktop_inventario_togglemodeicgkpi",
       "community": 11,
@@ -1560,10 +1560,10 @@
       "source_file": "public/index.php",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "public_index",
       "community": 17,
       "community_name": "App Routes & Design Docs",
-      "norm_label": "index.php"
+      "norm_label": "index.php",
+      "id": "public_index"
     },
     {
       "label": "wmsLog()",
@@ -1571,10 +1571,10 @@
       "source_file": "public/index.php",
       "source_location": "L46",
       "_origin": "ast",
-      "id": "public_index_wmslog",
       "community": 17,
       "community_name": "App Routes & Design Docs",
-      "norm_label": "wmslog()"
+      "norm_label": "wmslog()",
+      "id": "public_index_wmslog"
     },
     {
       "label": "InventarioV2Controller.php",
@@ -1582,10 +1582,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": "inventariov2controller.php"
+      "norm_label": "inventariov2controller.php",
+      "id": "src_controllers_inventariov2controller"
     },
     {
       "label": "InventarioV2Controller",
@@ -1593,10 +1593,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L38",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": "inventariov2controller"
+      "norm_label": "inventariov2controller",
+      "id": "src_controllers_inventariov2controller_inventariov2controller"
     },
     {
       "label": "BaseController",
@@ -1604,10 +1604,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "basecontroller",
       "community": 90,
       "community_name": "Notification Service",
-      "norm_label": "basecontroller"
+      "norm_label": "basecontroller",
+      "id": "basecontroller"
     },
     {
       "label": "._findSesion()",
@@ -1615,10 +1615,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L48",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": "._findsesion()"
+      "norm_label": "._findsesion()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "label": "SesionInventario",
@@ -1626,10 +1626,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "sesioninventario",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": "sesioninventario"
+      "norm_label": "sesioninventario",
+      "id": "sesioninventario"
     },
     {
       "label": ".getSesiones()",
@@ -1637,10 +1637,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L65",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_getsesiones",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".getsesiones()"
+      "norm_label": ".getsesiones()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_getsesiones"
     },
     {
       "label": ".crearSesion()",
@@ -1648,10 +1648,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L102",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_crearsesion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".crearsesion()"
+      "norm_label": ".crearsesion()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_crearsesion"
     },
     {
       "label": ".iniciarSesion()",
@@ -1659,10 +1659,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L158",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_iniciarsesion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".iniciarsesion()"
+      "norm_label": ".iniciarsesion()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_iniciarsesion"
     },
     {
       "label": ".getSesion()",
@@ -1670,10 +1670,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L213",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_getsesion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".getsesion()"
+      "norm_label": ".getsesion()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_getsesion"
     },
     {
       "label": ".eliminarSesion()",
@@ -1681,10 +1681,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L241",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_eliminarsesion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".eliminarsesion()"
+      "norm_label": ".eliminarsesion()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_eliminarsesion"
     },
     {
       "label": ".cerrarSesion()",
@@ -1692,10 +1692,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L285",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_cerrarsesion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".cerrarsesion()"
+      "norm_label": ".cerrarsesion()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_cerrarsesion"
     },
     {
       "label": ".bloquearUbicacionesDeInstruccion()",
@@ -1703,10 +1703,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L320",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_bloquearubicacionesdeinstruccion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".bloquearubicacionesdeinstruccion()"
+      "norm_label": ".bloquearubicacionesdeinstruccion()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_bloquearubicacionesdeinstruccion"
     },
     {
       "label": "SesionAsignacion",
@@ -1714,10 +1714,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "sesionasignacion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": "sesionasignacion"
+      "norm_label": "sesionasignacion",
+      "id": "sesionasignacion"
     },
     {
       "label": ".crearNotificacionAuxiliar()",
@@ -1725,10 +1725,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L345",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_crearnotificacionauxiliar",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".crearnotificacionauxiliar()"
+      "norm_label": ".crearnotificacionauxiliar()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_crearnotificacionauxiliar"
     },
     {
       "label": ".liberarUbicacionesDeSesion()",
@@ -1736,10 +1736,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L376",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_liberarubicacionesdesesion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".liberarubicacionesdesesion()"
+      "norm_label": ".liberarubicacionesdesesion()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_liberarubicacionesdesesion"
     },
     {
       "label": ".crearAsignacion()",
@@ -1747,10 +1747,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L413",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_crearasignacion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".crearasignacion()"
+      "norm_label": ".crearasignacion()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_crearasignacion"
     },
     {
       "label": ".eliminarAsignacion()",
@@ -1758,10 +1758,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L475",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_eliminarasignacion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".eliminarasignacion()"
+      "norm_label": ".eliminarasignacion()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_eliminarasignacion"
     },
     {
       "label": ".getMisAsignaciones()",
@@ -1769,10 +1769,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L509",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_getmisasignaciones",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".getmisasignaciones()"
+      "norm_label": ".getmisasignaciones()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_getmisasignaciones"
     },
     {
       "label": ".iniciarConteo()",
@@ -1780,10 +1780,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L547",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_iniciarconteo",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".iniciarconteo()"
+      "norm_label": ".iniciarconteo()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_iniciarconteo"
     },
     {
       "label": ".registrarLinea()",
@@ -1791,10 +1791,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L571",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_registrarlinea",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".registrarlinea()"
+      "norm_label": ".registrarlinea()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_registrarlinea"
     },
     {
       "label": ".finalizarAsignacion()",
@@ -1802,10 +1802,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L647",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_finalizarasignacion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".finalizarasignacion()"
+      "norm_label": ".finalizarasignacion()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_finalizarasignacion"
     },
     {
       "label": ".verificarCompletitudSesion()",
@@ -1813,10 +1813,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L689",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_verificarcompletitudsesion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".verificarcompletitudsesion()"
+      "norm_label": ".verificarcompletitudsesion()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_verificarcompletitudsesion"
     },
     {
       "label": ".getDashboard()",
@@ -1824,10 +1824,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L714",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_getdashboard",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".getdashboard()"
+      "norm_label": ".getdashboard()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_getdashboard"
     },
     {
       "label": ".editarLinea()",
@@ -1835,10 +1835,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L1243",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_editarlinea",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".editarlinea()"
+      "norm_label": ".editarlinea()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_editarlinea"
     },
     {
       "label": ".eliminarLinea()",
@@ -1846,10 +1846,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L1343",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_eliminarlinea",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".eliminarlinea()"
+      "norm_label": ".eliminarlinea()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_eliminarlinea"
     },
     {
       "label": ".ajustarLinea()",
@@ -1857,10 +1857,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L1378",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_ajustarlinea",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".ajustarlinea()"
+      "norm_label": ".ajustarlinea()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_ajustarlinea"
     },
     {
       "label": ".ajustarTodo()",
@@ -1868,10 +1868,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L1430",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_ajustartodo",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".ajustartodo()"
+      "norm_label": ".ajustartodo()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_ajustartodo"
     },
     {
       "label": ".ejecutarAjuste()",
@@ -1879,10 +1879,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L1593",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_ejecutarajuste",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".ejecutarajuste()"
+      "norm_label": ".ejecutarajuste()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_ejecutarajuste"
     },
     {
       "label": "SesionLinea",
@@ -1890,10 +1890,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "sesionlinea",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": "sesionlinea"
+      "norm_label": "sesionlinea",
+      "id": "sesionlinea"
     },
     {
       "label": "AjusteInventario",
@@ -1901,10 +1901,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "ajusteinventario",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": "ajusteinventario"
+      "norm_label": "ajusteinventario",
+      "id": "ajusteinventario"
     },
     {
       "label": ".detectarReferenciasNoContadas()",
@@ -1912,10 +1912,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L1724",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciasnocontadas",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".detectarreferenciasnocontadas()"
+      "norm_label": ".detectarreferenciasnocontadas()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciasnocontadas"
     },
     {
       "label": ".detectarReferenciasSinExistencia()",
@@ -1923,10 +1923,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L1801",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciassinexistencia",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".detectarreferenciassinexistencia()"
+      "norm_label": ".detectarreferenciassinexistencia()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciassinexistencia"
     },
     {
       "label": ".mlAnalisis()",
@@ -1934,10 +1934,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L1872",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_mlanalisis",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".mlanalisis()"
+      "norm_label": ".mlanalisis()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_mlanalisis"
     },
     {
       "label": ".correccionManual()",
@@ -1945,10 +1945,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L1944",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_correccionmanual",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".correccionmanual()"
+      "norm_label": ".correccionmanual()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_correccionmanual"
     },
     {
       "label": ".getAjustes()",
@@ -1956,10 +1956,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L2145",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_getajustes",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".getajustes()"
+      "norm_label": ".getajustes()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_getajustes"
     },
     {
       "label": ".getKardexCompleto()",
@@ -1967,10 +1967,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L2225",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_getkardexcompleto",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".getkardexcompleto()"
+      "norm_label": ".getkardexcompleto()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_getkardexcompleto"
     },
     {
       "label": ".getVencimientos()",
@@ -1978,10 +1978,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L2381",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_getvencimientos",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".getvencimientos()"
+      "norm_label": ".getvencimientos()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_getvencimientos"
     },
     {
       "label": ".getReporteConteo()",
@@ -1989,10 +1989,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L2495",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_getreporteconteo",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".getreporteconteo()"
+      "norm_label": ".getreporteconteo()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_getreporteconteo"
     },
     {
       "label": ".addManualLinea()",
@@ -2000,10 +2000,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L2605",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_addmanuallinea",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".addmanuallinea()"
+      "norm_label": ".addmanuallinea()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_addmanuallinea"
     },
     {
       "label": ".getMisLineas()",
@@ -2011,10 +2011,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L2699",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_getmislineas",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".getmislineas()"
+      "norm_label": ".getmislineas()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_getmislineas"
     },
     {
       "label": ".getUltimasFechasVencimiento()",
@@ -2022,10 +2022,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L2742",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_getultimasfechasvencimiento",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".getultimasfechasvencimiento()"
+      "norm_label": ".getultimasfechasvencimiento()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_getultimasfechasvencimiento"
     },
     {
       "label": ".getProductoUbicaciones()",
@@ -2033,10 +2033,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L2800",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_getproductoubicaciones",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".getproductoubicaciones()"
+      "norm_label": ".getproductoubicaciones()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_getproductoubicaciones"
     },
     {
       "label": ".uploadIcgFile()",
@@ -2044,10 +2044,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L2839",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_uploadicgfile",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".uploadicgfile()"
+      "norm_label": ".uploadicgfile()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_uploadicgfile"
     },
     {
       "label": ".deleteIcgFile()",
@@ -2055,10 +2055,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L2960",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_deleteicgfile",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".deleteicgfile()"
+      "norm_label": ".deleteicgfile()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_deleteicgfile"
     },
     {
       "label": ".crearSegundosConteosBatch()",
@@ -2066,10 +2066,10 @@
       "source_file": "src/Controllers/InventarioV2Controller.php",
       "source_location": "L2981",
       "_origin": "ast",
-      "id": "src_controllers_inventariov2controller_inventariov2controller_crearsegundosconteosbatch",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": ".crearsegundosconteosbatch()"
+      "norm_label": ".crearsegundosconteosbatch()",
+      "id": "src_controllers_inventariov2controller_inventariov2controller_crearsegundosconteosbatch"
     },
     {
       "label": "App\\Models\\SesionInventario",
@@ -2077,10 +2077,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "app_models_sesioninventario",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": "app\\models\\sesioninventario"
+      "norm_label": "app\\models\\sesioninventario",
+      "id": "app_models_sesioninventario"
     },
     {
       "label": "App\\Models\\SesionAsignacion",
@@ -2088,10 +2088,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "app_models_sesionasignacion",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": "app\\models\\sesionasignacion"
+      "norm_label": "app\\models\\sesionasignacion",
+      "id": "app_models_sesionasignacion"
     },
     {
       "label": "App\\Models\\SesionLinea",
@@ -2099,10 +2099,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "app_models_sesionlinea",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": "app\\models\\sesionlinea"
+      "norm_label": "app\\models\\sesionlinea",
+      "id": "app_models_sesionlinea"
     },
     {
       "label": "App\\Models\\AjusteInventario",
@@ -2110,10 +2110,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "app_models_ajusteinventario",
       "community": 82,
       "community_name": "Printer Management Controller",
-      "norm_label": "app\\models\\ajusteinventario"
+      "norm_label": "app\\models\\ajusteinventario",
+      "id": "app_models_ajusteinventario"
     },
     {
       "label": "Psr\\Http\\Message\\ServerRequestInterface",
@@ -2121,10 +2121,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "psr_http_message_serverrequestinterface",
       "community": 3,
       "community_name": "Parameters & Approvals",
-      "norm_label": "psr\\http\\message\\serverrequestinterface"
+      "norm_label": "psr\\http\\message\\serverrequestinterface",
+      "id": "psr_http_message_serverrequestinterface"
     },
     {
       "label": "Psr\\Http\\Message\\ResponseInterface",
@@ -2132,10 +2132,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "psr_http_message_responseinterface",
       "community": 310,
       "community_name": "SystemController",
-      "norm_label": "psr\\http\\message\\responseinterface"
+      "norm_label": "psr\\http\\message\\responseinterface",
+      "id": "psr_http_message_responseinterface"
     },
     {
       "label": "test_icg_upload.php",
@@ -30524,7 +30524,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/inventario.js",
-      "source_location": "L5707",
+      "source_location": "L5709",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_inventario",
@@ -30722,7 +30722,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/inventario.js",
-      "source_location": "L5716",
+      "source_location": "L5718",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_inventario",
@@ -30733,7 +30733,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/inventario.js",
-      "source_location": "L5735",
+      "source_location": "L5737",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_inventario",
@@ -31404,7 +31404,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/inventario.js",
-      "source_location": "L5748",
+      "source_location": "L5750",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_inventario",
@@ -31730,7 +31730,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/inventario.js",
-      "source_location": "L5712",
+      "source_location": "L5714",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_inventario_deleteicgfile",
@@ -31850,7 +31850,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/inventario.js",
-      "source_location": "L5700",
+      "source_location": "L5702",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_inventario_uploadicgfile",
@@ -32438,9 +32438,9 @@
       "source_location": "L46",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "public_index",
-      "target": "public_index_wmslog",
-      "confidence_score": 1.0
+      "target": "public_index_wmslog"
     },
     {
       "relation": "conceptually_related_to",
@@ -32460,9 +32460,9 @@
       "source_location": "L11",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller",
-      "target": "app_models_ajusteinventario",
-      "confidence_score": 1.0
+      "target": "app_models_ajusteinventario"
     },
     {
       "relation": "imports",
@@ -32472,9 +32472,9 @@
       "source_location": "L9",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller",
-      "target": "app_models_sesionasignacion",
-      "confidence_score": 1.0
+      "target": "app_models_sesionasignacion"
     },
     {
       "relation": "imports",
@@ -32484,9 +32484,9 @@
       "source_location": "L8",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller",
-      "target": "app_models_sesioninventario",
-      "confidence_score": 1.0
+      "target": "app_models_sesioninventario"
     },
     {
       "relation": "imports",
@@ -32496,45 +32496,9 @@
       "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller",
-      "target": "app_models_sesionlinea",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/InventarioV2Controller.php",
-      "source_location": "L13",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_controllers_inventariov2controller",
-      "target": "src_models_movimientoinventario",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/InventarioV2Controller.php",
-      "source_location": "L17",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_controllers_inventariov2controller",
-      "target": "src_models_notificacion",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/InventarioV2Controller.php",
-      "source_location": "L16",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_controllers_inventariov2controller",
-      "target": "src_models_personal",
-      "confidence_score": 1.0
+      "target": "app_models_sesionlinea"
     },
     {
       "relation": "imports",
@@ -32544,9 +32508,56 @@
       "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller",
-      "target": "producto",
-      "confidence_score": 1.0
+      "target": "producto"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/InventarioV2Controller.php",
+      "source_location": "L38",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_inventariov2controller",
+      "target": "src_controllers_inventariov2controller_inventariov2controller"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/InventarioV2Controller.php",
+      "source_location": "L13",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_inventariov2controller",
+      "target": "src_models_movimientoinventario"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/InventarioV2Controller.php",
+      "source_location": "L17",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_inventariov2controller",
+      "target": "src_models_notificacion"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/InventarioV2Controller.php",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_inventariov2controller",
+      "target": "src_models_personal"
     },
     {
       "relation": "imports",
@@ -32556,20 +32567,9 @@
       "source_location": "L18",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller",
-      "target": "src_models_sesionicglinea",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/InventarioV2Controller.php",
-      "source_location": "L38",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_controllers_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller",
-      "confidence_score": 1.0
+      "target": "src_models_sesionicglinea"
     },
     {
       "relation": "imports",
@@ -32579,9 +32579,9 @@
       "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller",
-      "target": "src_models_ubicacion",
-      "confidence_score": 1.0
+      "target": "src_models_ubicacion"
     },
     {
       "relation": "inherits",
@@ -32590,9 +32590,9 @@
       "source_location": "L38",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "basecontroller",
-      "confidence_score": 1.0
+      "target": "basecontroller"
     },
     {
       "relation": "method",
@@ -32601,9 +32601,9 @@
       "source_location": "L2605",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_addmanuallinea",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_addmanuallinea"
     },
     {
       "relation": "method",
@@ -32612,9 +32612,9 @@
       "source_location": "L1378",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_ajustarlinea",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_ajustarlinea"
     },
     {
       "relation": "method",
@@ -32623,9 +32623,9 @@
       "source_location": "L1430",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_ajustartodo",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_ajustartodo"
     },
     {
       "relation": "method",
@@ -32634,9 +32634,9 @@
       "source_location": "L320",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_bloquearubicacionesdeinstruccion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_bloquearubicacionesdeinstruccion"
     },
     {
       "relation": "method",
@@ -32645,9 +32645,9 @@
       "source_location": "L285",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_cerrarsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_cerrarsesion"
     },
     {
       "relation": "method",
@@ -32656,9 +32656,9 @@
       "source_location": "L1944",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_correccionmanual",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_correccionmanual"
     },
     {
       "relation": "method",
@@ -32667,9 +32667,9 @@
       "source_location": "L413",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_crearasignacion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_crearasignacion"
     },
     {
       "relation": "method",
@@ -32678,9 +32678,9 @@
       "source_location": "L345",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_crearnotificacionauxiliar",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_crearnotificacionauxiliar"
     },
     {
       "relation": "method",
@@ -32689,9 +32689,9 @@
       "source_location": "L2981",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_crearsegundosconteosbatch",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_crearsegundosconteosbatch"
     },
     {
       "relation": "method",
@@ -32700,9 +32700,9 @@
       "source_location": "L102",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_crearsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_crearsesion"
     },
     {
       "relation": "method",
@@ -32711,9 +32711,9 @@
       "source_location": "L2960",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_deleteicgfile",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_deleteicgfile"
     },
     {
       "relation": "method",
@@ -32722,9 +32722,9 @@
       "source_location": "L1724",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciasnocontadas",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciasnocontadas"
     },
     {
       "relation": "method",
@@ -32733,9 +32733,9 @@
       "source_location": "L1801",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciassinexistencia",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciassinexistencia"
     },
     {
       "relation": "method",
@@ -32744,9 +32744,9 @@
       "source_location": "L1243",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_editarlinea",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_editarlinea"
     },
     {
       "relation": "method",
@@ -32755,9 +32755,9 @@
       "source_location": "L1593",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_ejecutarajuste",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_ejecutarajuste"
     },
     {
       "relation": "method",
@@ -32766,9 +32766,9 @@
       "source_location": "L475",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_eliminarasignacion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_eliminarasignacion"
     },
     {
       "relation": "method",
@@ -32777,9 +32777,9 @@
       "source_location": "L1343",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_eliminarlinea",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_eliminarlinea"
     },
     {
       "relation": "method",
@@ -32788,9 +32788,9 @@
       "source_location": "L241",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_eliminarsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_eliminarsesion"
     },
     {
       "relation": "method",
@@ -32799,9 +32799,9 @@
       "source_location": "L647",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_finalizarasignacion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_finalizarasignacion"
     },
     {
       "relation": "method",
@@ -32810,9 +32810,9 @@
       "source_location": "L48",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "relation": "method",
@@ -32821,9 +32821,9 @@
       "source_location": "L2145",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_getajustes",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_getajustes"
     },
     {
       "relation": "method",
@@ -32832,9 +32832,9 @@
       "source_location": "L714",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_getdashboard",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_getdashboard"
     },
     {
       "relation": "method",
@@ -32843,9 +32843,9 @@
       "source_location": "L2225",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_getkardexcompleto",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_getkardexcompleto"
     },
     {
       "relation": "method",
@@ -32854,9 +32854,9 @@
       "source_location": "L509",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_getmisasignaciones",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_getmisasignaciones"
     },
     {
       "relation": "method",
@@ -32865,9 +32865,9 @@
       "source_location": "L2699",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_getmislineas",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_getmislineas"
     },
     {
       "relation": "method",
@@ -32876,9 +32876,9 @@
       "source_location": "L2800",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_getproductoubicaciones",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_getproductoubicaciones"
     },
     {
       "relation": "method",
@@ -32887,9 +32887,9 @@
       "source_location": "L2495",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_getreporteconteo",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_getreporteconteo"
     },
     {
       "relation": "method",
@@ -32898,9 +32898,9 @@
       "source_location": "L213",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_getsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_getsesion"
     },
     {
       "relation": "method",
@@ -32909,9 +32909,9 @@
       "source_location": "L65",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_getsesiones",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_getsesiones"
     },
     {
       "relation": "method",
@@ -32920,9 +32920,9 @@
       "source_location": "L2742",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_getultimasfechasvencimiento",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_getultimasfechasvencimiento"
     },
     {
       "relation": "method",
@@ -32931,9 +32931,9 @@
       "source_location": "L2381",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_getvencimientos",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_getvencimientos"
     },
     {
       "relation": "method",
@@ -32942,9 +32942,9 @@
       "source_location": "L547",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_iniciarconteo",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_iniciarconteo"
     },
     {
       "relation": "method",
@@ -32953,9 +32953,9 @@
       "source_location": "L158",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_iniciarsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_iniciarsesion"
     },
     {
       "relation": "method",
@@ -32964,9 +32964,9 @@
       "source_location": "L376",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_liberarubicacionesdesesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_liberarubicacionesdesesion"
     },
     {
       "relation": "method",
@@ -32975,9 +32975,9 @@
       "source_location": "L1872",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_mlanalisis",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_mlanalisis"
     },
     {
       "relation": "method",
@@ -32986,9 +32986,9 @@
       "source_location": "L571",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_registrarlinea",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_registrarlinea"
     },
     {
       "relation": "method",
@@ -32997,9 +32997,9 @@
       "source_location": "L2839",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_uploadicgfile",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_uploadicgfile"
     },
     {
       "relation": "method",
@@ -33008,9 +33008,9 @@
       "source_location": "L689",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_verificarcompletitudsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_verificarcompletitudsesion"
     },
     {
       "relation": "inherits",
@@ -33108,9 +33108,9 @@
       "source_location": "L2611",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_addmanuallinea",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "relation": "calls",
@@ -33120,9 +33120,9 @@
       "source_location": "L1383",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_ajustarlinea",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "relation": "calls",
@@ -33132,9 +33132,9 @@
       "source_location": "L1435",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_ajustartodo",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "relation": "calls",
@@ -33144,9 +33144,9 @@
       "source_location": "L291",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_cerrarsesion",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "relation": "calls",
@@ -33156,9 +33156,9 @@
       "source_location": "L418",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_crearasignacion",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "relation": "calls",
@@ -33168,9 +33168,9 @@
       "source_location": "L2986",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_crearsegundosconteosbatch",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "relation": "calls",
@@ -33180,9 +33180,9 @@
       "source_location": "L2965",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_deleteicgfile",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "relation": "references",
@@ -33192,9 +33192,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "target": "app_models_sesioninventario",
-      "confidence_score": 1.0
+      "target": "app_models_sesioninventario"
     },
     {
       "relation": "references",
@@ -33204,9 +33204,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -33216,9 +33216,9 @@
       "source_location": "L50",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "target": "sesioninventario",
-      "confidence_score": 1.0
+      "target": "sesioninventario"
     },
     {
       "relation": "calls",
@@ -33228,9 +33228,9 @@
       "source_location": "L720",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getdashboard",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "relation": "calls",
@@ -33240,9 +33240,9 @@
       "source_location": "L2702",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getmislineas",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "relation": "calls",
@@ -33252,9 +33252,9 @@
       "source_location": "L2501",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getreporteconteo",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "relation": "calls",
@@ -33264,9 +33264,9 @@
       "source_location": "L1876",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_mlanalisis",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "relation": "calls",
@@ -33276,9 +33276,9 @@
       "source_location": "L2844",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_uploadicgfile",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_findsesion"
     },
     {
       "relation": "references_constant",
@@ -33367,9 +33367,9 @@
       "source_location": "L217",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getsesion",
-      "target": "sesioninventario",
-      "confidence_score": 1.0
+      "target": "sesioninventario"
     },
     {
       "relation": "calls",
@@ -33379,9 +33379,9 @@
       "source_location": "L71",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getsesiones",
-      "target": "sesioninventario",
-      "confidence_score": 1.0
+      "target": "sesioninventario"
     },
     {
       "relation": "references_constant",
@@ -33414,9 +33414,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getsesiones",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -33426,9 +33426,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getsesiones",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -33438,9 +33438,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_crearsesion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -33450,9 +33450,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_crearsesion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -33462,9 +33462,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_iniciarsesion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -33474,9 +33474,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_iniciarsesion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references_constant",
@@ -33497,9 +33497,9 @@
       "source_location": "L194",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_iniciarsesion",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_bloquearubicacionesdeinstruccion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_bloquearubicacionesdeinstruccion"
     },
     {
       "relation": "calls",
@@ -33509,9 +33509,9 @@
       "source_location": "L199",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_iniciarsesion",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_crearnotificacionauxiliar",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_crearnotificacionauxiliar"
     },
     {
       "relation": "references",
@@ -33521,9 +33521,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getsesion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -33533,9 +33533,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getsesion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -33545,9 +33545,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_eliminarsesion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -33557,9 +33557,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_eliminarsesion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -33569,9 +33569,9 @@
       "source_location": "L264",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_eliminarsesion",
-      "target": "sesionasignacion",
-      "confidence_score": 1.0
+      "target": "sesionasignacion"
     },
     {
       "relation": "calls",
@@ -33581,9 +33581,9 @@
       "source_location": "L263",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_eliminarsesion",
-      "target": "sesionlinea",
-      "confidence_score": 1.0
+      "target": "sesionlinea"
     },
     {
       "relation": "references",
@@ -33593,9 +33593,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_cerrarsesion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -33605,9 +33605,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_cerrarsesion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -33617,9 +33617,9 @@
       "source_location": "L306",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_cerrarsesion",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_liberarubicacionesdesesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_liberarubicacionesdesesion"
     },
     {
       "relation": "references",
@@ -33629,9 +33629,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_bloquearubicacionesdeinstruccion",
-      "target": "app_models_sesionasignacion",
-      "confidence_score": 1.0
+      "target": "app_models_sesionasignacion"
     },
     {
       "relation": "references_constant",
@@ -33688,9 +33688,9 @@
       "source_location": "L482",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_eliminarasignacion",
-      "target": "sesionasignacion",
-      "confidence_score": 1.0
+      "target": "sesionasignacion"
     },
     {
       "relation": "references_constant",
@@ -33712,9 +33712,9 @@
       "source_location": "L1180",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getdashboard",
-      "target": "sesionasignacion",
-      "confidence_score": 1.0
+      "target": "sesionasignacion"
     },
     {
       "relation": "calls",
@@ -33724,9 +33724,9 @@
       "source_location": "L514",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getmisasignaciones",
-      "target": "sesionasignacion",
-      "confidence_score": 1.0
+      "target": "sesionasignacion"
     },
     {
       "relation": "references_constant",
@@ -33759,9 +33759,9 @@
       "source_location": "L574",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_registrarlinea",
-      "target": "sesionasignacion",
-      "confidence_score": 1.0
+      "target": "sesionasignacion"
     },
     {
       "relation": "calls",
@@ -33771,9 +33771,9 @@
       "source_location": "L459",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_crearasignacion",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_crearnotificacionauxiliar",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_crearnotificacionauxiliar"
     },
     {
       "relation": "references",
@@ -33783,9 +33783,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_crearnotificacionauxiliar",
-      "target": "app_models_sesionasignacion",
-      "confidence_score": 1.0
+      "target": "app_models_sesionasignacion"
     },
     {
       "relation": "references",
@@ -33795,9 +33795,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_crearnotificacionauxiliar",
-      "target": "app_models_sesioninventario",
-      "confidence_score": 1.0
+      "target": "app_models_sesioninventario"
     },
     {
       "relation": "calls",
@@ -33807,9 +33807,9 @@
       "source_location": "L3030",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_crearsegundosconteosbatch",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_crearnotificacionauxiliar",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_crearnotificacionauxiliar"
     },
     {
       "relation": "references",
@@ -33819,9 +33819,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_liberarubicacionesdesesion",
-      "target": "app_models_sesioninventario",
-      "confidence_score": 1.0
+      "target": "app_models_sesioninventario"
     },
     {
       "relation": "references",
@@ -33831,9 +33831,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_crearasignacion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -33843,9 +33843,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_crearasignacion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -33855,9 +33855,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_eliminarasignacion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -33867,9 +33867,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_eliminarasignacion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -33879,9 +33879,9 @@
       "source_location": "L490",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_eliminarasignacion",
-      "target": "sesionlinea",
-      "confidence_score": 1.0
+      "target": "sesionlinea"
     },
     {
       "relation": "references",
@@ -33891,9 +33891,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getmisasignaciones",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -33903,9 +33903,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getmisasignaciones",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -33915,9 +33915,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_iniciarconteo",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -33927,9 +33927,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_iniciarconteo",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -33939,9 +33939,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_registrarlinea",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -33951,9 +33951,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_registrarlinea",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references_constant",
@@ -33975,9 +33975,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_finalizarasignacion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -33987,9 +33987,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_finalizarasignacion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -33999,9 +33999,9 @@
       "source_location": "L660",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_finalizarasignacion",
-      "target": "sesionlinea",
-      "confidence_score": 1.0
+      "target": "sesionlinea"
     },
     {
       "relation": "calls",
@@ -34011,9 +34011,9 @@
       "source_location": "L678",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_finalizarasignacion",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_verificarcompletitudsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_verificarcompletitudsesion"
     },
     {
       "relation": "references",
@@ -34023,9 +34023,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_verificarcompletitudsesion",
-      "target": "app_models_sesioninventario",
-      "confidence_score": 1.0
+      "target": "app_models_sesioninventario"
     },
     {
       "relation": "references",
@@ -34035,9 +34035,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getdashboard",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34047,9 +34047,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getdashboard",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references_constant",
@@ -34071,9 +34071,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_editarlinea",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34083,9 +34083,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_editarlinea",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references_constant",
@@ -34107,9 +34107,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_eliminarlinea",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34119,9 +34119,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_eliminarlinea",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references_constant",
@@ -34154,9 +34154,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_ajustarlinea",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34166,9 +34166,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_ajustarlinea",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references_constant",
@@ -34190,9 +34190,9 @@
       "source_location": "L1402",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_ajustarlinea",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_ejecutarajuste",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_ejecutarajuste"
     },
     {
       "relation": "references_constant",
@@ -34213,9 +34213,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_ajustartodo",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34225,9 +34225,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_ajustartodo",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references_constant",
@@ -34249,9 +34249,9 @@
       "source_location": "L1483",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_ajustartodo",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciasnocontadas",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciasnocontadas"
     },
     {
       "relation": "calls",
@@ -34261,9 +34261,9 @@
       "source_location": "L1490",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_ajustartodo",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciassinexistencia",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciassinexistencia"
     },
     {
       "relation": "calls",
@@ -34273,9 +34273,9 @@
       "source_location": "L1500",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_ajustartodo",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_ejecutarajuste",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_ejecutarajuste"
     },
     {
       "relation": "references_constant",
@@ -34297,9 +34297,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_ejecutarajuste",
-      "target": "app_models_ajusteinventario",
-      "confidence_score": 1.0
+      "target": "app_models_ajusteinventario"
     },
     {
       "relation": "references",
@@ -34309,9 +34309,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_ejecutarajuste",
-      "target": "app_models_sesioninventario",
-      "confidence_score": 1.0
+      "target": "app_models_sesioninventario"
     },
     {
       "relation": "references",
@@ -34321,9 +34321,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_ejecutarajuste",
-      "target": "app_models_sesionlinea",
-      "confidence_score": 1.0
+      "target": "app_models_sesionlinea"
     },
     {
       "relation": "references_constant",
@@ -34405,9 +34405,9 @@
       "source_location": "L2152",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getajustes",
-      "target": "ajusteinventario",
-      "confidence_score": 1.0
+      "target": "ajusteinventario"
     },
     {
       "relation": "calls",
@@ -34417,9 +34417,9 @@
       "source_location": "L2537",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getreporteconteo",
-      "target": "ajusteinventario",
-      "confidence_score": 1.0
+      "target": "ajusteinventario"
     },
     {
       "relation": "references",
@@ -34429,9 +34429,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciasnocontadas",
-      "target": "app_models_sesioninventario",
-      "confidence_score": 1.0
+      "target": "app_models_sesioninventario"
     },
     {
       "relation": "calls",
@@ -34441,9 +34441,9 @@
       "source_location": "L1884",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_mlanalisis",
-      "target": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciasnocontadas",
-      "confidence_score": 1.0
+      "target": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciasnocontadas"
     },
     {
       "relation": "references",
@@ -34453,9 +34453,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_detectarreferenciassinexistencia",
-      "target": "app_models_sesioninventario",
-      "confidence_score": 1.0
+      "target": "app_models_sesioninventario"
     },
     {
       "relation": "references",
@@ -34465,9 +34465,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_mlanalisis",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34477,9 +34477,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_mlanalisis",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -34489,9 +34489,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_correccionmanual",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34501,9 +34501,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_correccionmanual",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -34513,9 +34513,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getajustes",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34525,9 +34525,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getajustes",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -34537,9 +34537,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getkardexcompleto",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34549,9 +34549,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getkardexcompleto",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -34561,9 +34561,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getvencimientos",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34573,9 +34573,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getvencimientos",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -34585,9 +34585,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getreporteconteo",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34597,9 +34597,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getreporteconteo",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -34609,9 +34609,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_addmanuallinea",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34621,9 +34621,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_addmanuallinea",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -34633,9 +34633,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getmislineas",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34645,9 +34645,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getmislineas",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -34657,9 +34657,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getultimasfechasvencimiento",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34669,9 +34669,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getultimasfechasvencimiento",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -34681,9 +34681,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getproductoubicaciones",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34693,9 +34693,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_getproductoubicaciones",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -34705,9 +34705,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_uploadicgfile",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34717,9 +34717,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_uploadicgfile",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -34729,9 +34729,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_deleteicgfile",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34741,9 +34741,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_deleteicgfile",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -34753,9 +34753,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_crearsegundosconteosbatch",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -34765,9 +34765,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_inventariov2controller_inventariov2controller_crearsegundosconteosbatch",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "imports",
@@ -92412,5 +92412,5 @@
       "source_file": "docs/superpowers/specs/2026-05-30-packing-certificacion-design.md"
     }
   ],
-  "built_at_commit": "85a9f7b93b579074c61673b6a495e0375a077fb5"
+  "built_at_commit": "48e5733de71968f7406475d6b01d35262416f138"
 }
