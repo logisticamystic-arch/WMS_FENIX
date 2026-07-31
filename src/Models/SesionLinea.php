@@ -48,6 +48,18 @@ class SesionLinea extends BaseModel
     const ESTADO_ACTIVO    = 'Activo';
     const ESTADO_ELIMINADO = 'Eliminado';
 
+    // ── Mutators ────────────────────────────────────────────────────────────
+
+    public function setFechaVencimientoAttribute($value)
+    {
+        $this->attributes['fecha_vencimiento'] = (!empty($value) && trim((string)$value) !== '') ? $value : null;
+    }
+
+    public function setLoteAttribute($value)
+    {
+        $this->attributes['lote'] = (!empty($value) && trim((string)$value) !== '') ? $value : null;
+    }
+
     // ── Relaciones ──────────────────────────────────────────────────────────
 
     public function sesion()

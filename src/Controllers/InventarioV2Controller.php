@@ -1298,10 +1298,18 @@ class InventarioV2Controller extends BaseController
             $linea->cantidad_sistema = $stockUbic;
         }
 
-        if (isset($data['fecha_vencimiento'])) {
+        if (array_key_exists('fecha_vencimiento', $data)) {
+            $fvVal = (!empty($data['fecha_vencimiento']) && trim((string)$data['fecha_vencimiento']) !== '') ? trim($data['fecha_vencimiento']) : null;
             $auditDataOld['fecha_vencimiento'] = $linea->fecha_vencimiento;
-            $linea->fecha_vencimiento = $data['fecha_vencimiento'];
-            $auditDataNew['fecha_vencimiento'] = $data['fecha_vencimiento'];
+            $linea->fecha_vencimiento = $fvVal;
+            $auditDataNew['fecha_vencimiento'] = $fvVal;
+        }
+
+        if (array_key_exists('lote', $data)) {
+            $loteVal = (!empty($data['lote']) && trim((string)$data['lote']) !== '') ? trim($data['lote']) : null;
+            $auditDataOld['lote'] = $linea->lote;
+            $linea->lote = $loteVal;
+            $auditDataNew['lote'] = $loteVal;
         }
 
         $nueva = (float)$data['cantidad_contada'];

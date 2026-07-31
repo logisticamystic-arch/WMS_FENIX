@@ -2395,7 +2395,7 @@ WMS_MODULES.inventario = {
         saldos: saldos !== undefined && saldos !== '' ? saldos : null,
         nuevo_producto_codigo: prod,
         nueva_ubicacion_codigo: ubic,
-        fecha_vencimiento: fvenc,
+        fecha_vencimiento: fvenc ? fvenc.trim() : null,
         motivo
       });
       WMS.toast('success', 'Línea actualizada correctamente');
