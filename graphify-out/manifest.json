@@ -700,8 +700,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/maestro.js": {
-    "mtime": 1785456156.3050148,
-    "ast_hash": "43d3d67e66e38a56fe36a20526d36a48",
+    "mtime": 1785510403.9935372,
+    "ast_hash": "b511bdb75ec1d9ff9bc183c3e9338e64",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/picking.js": {
@@ -1365,8 +1365,8 @@
     "semantic_hash": "4146a14c17c2122b1cbcb12a7ac16204"
   },
   "src/Models/Producto.php": {
-    "mtime": 1785455533.2757008,
-    "ast_hash": "6e2879924d921f077b08407385775a56",
+    "mtime": 1785510392.382573,
+    "ast_hash": "cce4b0e3fbc105b30597ee0827450b9e",
     "semantic_hash": ""
   },
   "src/Models/ProductoEan.php": {
