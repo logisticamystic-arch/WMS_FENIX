@@ -4633,9 +4633,11 @@ const MWMS = {
     const d    = this._op;
     const asig = (d.misAsigs || []).find(a => a.id == asigId) || {};
     const prod = asig.producto || {};
-    const fvObligatorio = d.fv_obligatorio !== false;
+    const reqVenc = !!(prod && (prod.controla_vencimiento || prod.control_vencimientos));
+    const fvObligatorio = reqVenc && (d.fv_obligatorio !== false);
 
     this._ivRefAsigId    = asigId;
+    this._ivRefProd      = prod;
     this._ivRefProdCodigo = prod.codigo_interno || '';
 
     const html = `
@@ -4672,7 +4674,7 @@ const MWMS = {
 
         <div id="iv-ref-fechas-panel"></div>
 
-        <div class="op-card" id="iv-ref-fv-card" style="${(prod && prod.controla_vencimiento === false) ? 'display:none;' : ''}">
+        <div class="op-card" id="iv-ref-fv-card" style="${!reqVenc ? 'display:none;' : ''}">
           <div class="m-label">Fecha Vencimiento ${fvObligatorio?'<span style="color:#dc2626;">*</span>':'<span style="font-size:.65rem;color:#94a3b8;">(opcional)</span>'}</div>
           <input type="date" id="iv-ref-fv" class="m-input-full" placeholder="O seleccione fecha arriba">
         </div>
@@ -4751,7 +4753,8 @@ const MWMS = {
     const cant   = parseFloat(document.getElementById('iv-ref-cant')?.value   || 0) || 0;
     const saldos = parseFloat(document.getElementById('iv-ref-saldos')?.value || 0) || 0;
     const upc    = Math.max(1, parseInt(document.getElementById('iv-ref-upc')?.value || 1));
-    const fvObligatorio = this._op.fv_obligatorio !== false;
+    const reqVenc = !!(this._ivRefProd && (this._ivRefProd.controla_vencimiento || this._ivRefProd.control_vencimientos));
+    const fvObligatorio = reqVenc && (this._op.fv_obligatorio !== false);
 
     const totalUnidades = upc > 1 ? (cant * upc + saldos) : cant;
 
@@ -4900,10 +4903,11 @@ const MWMS = {
   async _submitIvConteo(prod) {
     const loc              = this._curLoc;
     const esCargueInicial  = this._op.tipo === 'CargueInicial';
-    /* fv_obligatorio: CargueInicial siempre true, otros tipos según config de sesión */
-    const fvObligatorio    = esCargueInicial || (this._op.fv_obligatorio !== false);
-    /* Mostrar campo FV si: producto controla vencimiento, O sesión CargueInicial */
-    const mostrarFv        = prod.controla_vencimiento || esCargueInicial;
+    const reqVenc          = !!(prod && (prod.controla_vencimiento || prod.control_vencimientos));
+    /* fv_obligatorio: solo si el producto controla vencimiento y la sesión lo requiere */
+    const fvObligatorio    = reqVenc && (esCargueInicial || (this._op.fv_obligatorio !== false));
+    /* Mostrar campo FV únicamente si el producto controla vencimiento */
+    const mostrarFv        = reqVenc;
 
     /* En modo "no obligatorio" y con producto que controla FV → precargar fechas históricas */
     let ultimasFv = [];
@@ -5061,7 +5065,7 @@ const MWMS = {
           const prods = Array.isArray(r.data) ? r.data : [];
           if (!prods.length) { sug.style.display = 'none'; return; }
           list.innerHTML = prods.map(p => `
-            <div onclick="MWMS._selectIvProd(${JSON.stringify({id:p.id,nombre:p.nombre,codigo_interno:p.codigo_interno,codigo_ean:p.codigo_ean,unidades_caja:p.unidades_caja,unidad_contenido:p.unidad_contenido,factor_udm:p.factor_udm,controla_vencimiento:p.controla_vencimiento}).replace(/"/g,'&quot;')})"
+            <div onclick="MWMS._selectIvProd(${JSON.stringify({id:p.id,nombre:p.nombre,codigo_interno:p.codigo_interno,codigo_ean:p.codigo_ean,unidades_caja:p.unidades_caja,unidad_contenido:p.unidad_contenido,factor_udm:p.factor_udm,controla_lote:p.controla_lote,controla_vencimiento:p.controla_vencimiento,control_vencimientos:p.control_vencimientos}).replace(/"/g,'&quot;')})"
                  style="padding:10px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;">
               <div style="font-weight:700;color:#1e293b;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.esc(p.nombre)}</div>
               <div style="font-size:.65rem;color:#64748b;margin-top:2px;">
@@ -5118,7 +5122,7 @@ const MWMS = {
         } else if (prods.length > 1) {
           const list = document.getElementById('m-iv-suggestions-list');
           list.innerHTML = prods.map(p => `
-            <div onclick="MWMS._selectIvProd(${JSON.stringify({id:p.id,nombre:p.nombre,codigo_interno:p.codigo_interno,codigo_ean:p.codigo_ean,unidades_caja:p.unidades_caja,unidad_contenido:p.unidad_contenido,factor_udm:p.factor_udm,controla_vencimiento:p.controla_vencimiento}).replace(/"/g,'&quot;')})"
+            <div onclick="MWMS._selectIvProd(${JSON.stringify({id:p.id,nombre:p.nombre,codigo_interno:p.codigo_interno,codigo_ean:p.codigo_ean,unidades_caja:p.unidades_caja,unidad_contenido:p.unidad_contenido,factor_udm:p.factor_udm,controla_lote:p.controla_lote,controla_vencimiento:p.controla_vencimiento,control_vencimientos:p.control_vencimientos}).replace(/"/g,'&quot;')})"
                  style="padding:10px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;">
               <div style="font-weight:700;color:#1e293b;font-size:.82rem;">${this.esc(p.nombre)}</div>
               <div style="font-size:.65rem;color:#64748b;">Ref: ${this.esc(p.codigo_interno||'-')} ${p.codigo_ean?'· EAN: '+this.esc(p.codigo_ean):''}</div>
