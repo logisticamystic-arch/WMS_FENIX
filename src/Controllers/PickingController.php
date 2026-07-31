@@ -1910,9 +1910,10 @@ class PickingController extends BaseController
         // 6° codigo ASC            → fallback por código completo
         $lineaQuery = PickingDetalle::where('picking_detalles.orden_picking_id', $orden->id)
             ->whereIn('picking_detalles.estado', ['Pendiente', 'EnProceso'])
-            ->join('ubicaciones', 'picking_detalles.ubicacion_id', '=', 'ubicaciones.id')
+            ->leftJoin('ubicaciones', 'picking_detalles.ubicacion_id', '=', 'ubicaciones.id')
             ->select('picking_detalles.*')
             ->with(['producto', 'ubicacion'])
+            ->orderByRaw('CASE WHEN ubicaciones.id IS NULL THEN 1 ELSE 0 END ASC')
             ->orderByRaw('COALESCE(LENGTH(ubicaciones.pasillo), 0) ASC, ubicaciones.pasillo ASC')
             ->orderByRaw('COALESCE(LENGTH(ubicaciones.modulo), 0) ASC, ubicaciones.modulo ASC')
             ->orderByRaw('COALESCE(LENGTH(ubicaciones.nivel), 0) ASC, ubicaciones.nivel ASC')
@@ -3929,6 +3930,7 @@ class PickingController extends BaseController
                 // pasillos/módulos. El FEFO se conserva como desempate dentro del mismo
                 // tramo de ruta, y se resuelve por ubicación específica en el split de
                 // stock alternativo más abajo (fifo_split) cuando falta stock en el sitio asignado.
+                ->orderByRaw('CASE WHEN ubicaciones.id IS NULL THEN 1 ELSE 0 END ASC')
                 ->orderByRaw('COALESCE(LENGTH(ubicaciones.pasillo), 0) ASC, ubicaciones.pasillo ASC')
                 ->orderByRaw('COALESCE(LENGTH(ubicaciones.modulo), 0) ASC, ubicaciones.modulo ASC')
                 ->orderByRaw('COALESCE(LENGTH(ubicaciones.nivel), 0) ASC, ubicaciones.nivel ASC')
@@ -3986,6 +3988,23 @@ class PickingController extends BaseController
                 }
                 return $it;
             });
+
+            // ── Reordenar según RUTA FÍSICA BODEGA ──────────────────────────────
+            // 1. Ubicaciones válidas primero en orden numérico/alfanumérico natural (01-01-07 -> 02-02-01 -> 02-03-01 -> 02-06-01 -> 03-11-02).
+            // 2. Líneas sin ubicación (SIN UBIC.) al FINAL del recorrido.
+            // 3. Desempate por nombre de producto.
+            $detalles = $detalles->sort(function ($a, $b) {
+                $hasA = !empty($a->ubicacion_codigo);
+                $hasB = !empty($b->ubicacion_codigo);
+                if ($hasA !== $hasB) {
+                    return $hasA ? -1 : 1; // Ubicaciones válidas primero, SIN UBIC al final
+                }
+                if ($hasA && $hasB) {
+                    $cmp = strnatcasecmp($a->ubicacion_codigo, $b->ubicacion_codigo);
+                    if ($cmp !== 0) return $cmp;
+                }
+                return strnatcasecmp($a->producto_nombre ?? '', $b->producto_nombre ?? '');
+            })->values();
 
             // ── FIFO Split proactivo ──────────────────────────────────────────────
             // Para cada ítem: verificar si el stock físico en la ubicación asignada
