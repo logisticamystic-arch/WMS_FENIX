@@ -578,6 +578,10 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/v2/inventario/sesiones/{id}/dashboard',   [\App\Controllers\InventarioV2Controller::class, 'getDashboard']);
     $group->get('/v2/inventario/sesiones/{id}/reporte',     [\App\Controllers\InventarioV2Controller::class, 'getReporteConteo']);
 
+    // ── Ingesta ICG (Archivo Plano Teórico) ────────────────────────────────
+    $group->post('/v2/inventario/sesiones/{id}/icg-upload', [\App\Controllers\InventarioV2Controller::class, 'uploadIcgFile']);
+    $group->delete('/v2/inventario/sesiones/{id}/icg-delete', [\App\Controllers\InventarioV2Controller::class, 'deleteIcgFile']);
+
     // ── Ajustes desde el dashboard ─────────────────────────────────────────
     $group->post('/v2/inventario/sesiones/{id}/ajustar-linea', [\App\Controllers\InventarioV2Controller::class, 'ajustarLinea']);
     $group->post('/v2/inventario/sesiones/{id}/ajustar-todo',  [\App\Controllers\InventarioV2Controller::class, 'ajustarTodo']);

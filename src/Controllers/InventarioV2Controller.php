@@ -15,6 +15,7 @@ use App\Models\Producto;
 use App\Models\Ubicacion;
 use App\Models\Personal;
 use App\Models\Notificacion;
+use App\Models\SesionIcgLinea;
 use Carbon\Carbon;
 
 /**
@@ -920,6 +921,196 @@ class InventarioV2Controller extends BaseController
                 ];
             })->values();
 
+            // ── Analítica por Ambientes ─────────────────────────────────────
+            $ambientesData = Capsule::table('sesion_lineas as sl')
+                ->join('productos as p', 'sl.producto_id', '=', 'p.id')
+                ->leftJoin('ambientes as a', 'p.ambiente_id', '=', 'a.id')
+                ->where('sl.sesion_id', $sesion->id)
+                ->where('sl.estado', SesionLinea::ESTADO_ACTIVO)
+                ->when($rondaFiltro > 0, fn($q) => $q->where('sl.ronda', $rondaFiltro))
+                ->select(
+                    Capsule::raw("COALESCE(a.nombre, UPPER(p.temperatura_almacen), 'SECO') as ambiente"),
+                    Capsule::raw("COUNT(DISTINCT sl.producto_id) as total_referencias"),
+                    Capsule::raw("SUM(sl.cantidad_contada) as total_unidades"),
+                    Capsule::raw("COUNT(DISTINCT sl.ubicacion_id) as ubicaciones_contadas"),
+                    Capsule::raw("MIN(sl.fecha_vencimiento) as proximo_vencimiento"),
+                    Capsule::raw("AVG(CASE WHEN sl.fecha_vencimiento IS NOT NULL THEN (sl.fecha_vencimiento::date - CURRENT_DATE) END) as promedio_dias_vu")
+                )
+                ->groupBy('ambiente')
+                ->get();
+
+            // ── Analítica por Auxiliares ────────────────────────────────────
+            $auxiliaresData = Capsule::table('sesion_lineas as sl')
+                ->join('personal as pers', 'sl.auxiliar_id', '=', 'pers.id')
+                ->where('sl.sesion_id', $sesion->id)
+                ->where('sl.estado', SesionLinea::ESTADO_ACTIVO)
+                ->when($rondaFiltro > 0, fn($q) => $q->where('sl.ronda', $rondaFiltro))
+                ->select(
+                    'pers.id as auxiliar_id',
+                    'pers.nombre as auxiliar',
+                    Capsule::raw("COUNT(sl.id) as total_registros"),
+                    Capsule::raw("COUNT(DISTINCT sl.producto_id) as referencias_contadas"),
+                    Capsule::raw("SUM(sl.cantidad_contada) as total_unidades"),
+                    Capsule::raw("MAX(sl.hora_conteo) as ultima_actividad")
+                )
+                ->groupBy('pers.id', 'pers.nombre')
+                ->orderBy('total_unidades', 'desc')
+                ->get();
+
+            // ── Analítica & Comparativo ICG ─────────────────────────────────
+            $icgLineas = SesionIcgLinea::where('sesion_id', $sesion->id)
+                ->with(['producto.ambiente'])
+                ->get();
+
+            $icgAnalysis = [
+                'cargado'                       => false,
+                'total_referencias_icg'         => 0,
+                'total_unidades_icg'            => 0,
+                'referencias_contadas_icg'      => 0,
+                'exactitud_ira_icg'             => 100,
+                'referencias_sobrantes_icg'     => 0,
+                'referencias_faltantes_icg'     => 0,
+                'referencias_coincidentes_icg'  => 0,
+                'sobrantes_unidades_icg'        => 0,
+                'faltantes_unidades_icg'        => 0,
+                'pct_avance_icg'                => 0,
+                'avance_por_ambiente'           => [],
+                'lineas_icg_comparativo'        => [],
+                'discrepancias'                 => [
+                    'icg_no_contados' => [],
+                    'conteo_no_en_icg' => []
+                ]
+            ];
+
+            if ($icgLineas->count() > 0) {
+                $icgAnalysis['cargado'] = true;
+                $icgAnalysis['total_referencias_icg'] = $icgLineas->count();
+                $icgAnalysis['total_unidades_icg'] = (float)$icgLineas->sum('cantidad_icg');
+
+                // Mapear conteo WMS por producto_id o código
+                $conteoPorProd = $todasLasLineas->where('ronda', $rondaFiltro > 0 ? $rondaFiltro : 1)->groupBy('producto_id')->map(fn($g) => $g->sum('cantidad_contada'));
+                $conteoPorCod  = $todasLasLineas->where('ronda', $rondaFiltro > 0 ? $rondaFiltro : 1)->groupBy(fn($l) => strtoupper(trim($l->producto->codigo_interno ?? '')))->map(fn($g) => $g->sum('cantidad_contada'));
+
+                $icgMapByProd = $icgLineas->groupBy('producto_id')->map(fn($g) => $g->sum('cantidad_icg'));
+
+                $lineasComp = [];
+                $refContadasCount = 0;
+                $lineasConDif = 0;
+                $sobrantesUds = 0;
+                $faltantesUds = 0;
+                $sobrantesRef = 0;
+                $faltantesRef = 0;
+                $coincidentesRef = 0;
+
+                $icgCodigosSet = [];
+                $icgAmbientes = [];
+
+                foreach ($icgLineas as $icg) {
+                    $cod = strtoupper(trim($icg->codigo_referencia));
+                    $icgCodigosSet[$cod] = true;
+                    if ($icg->producto && $icg->producto->codigo_interno) {
+                        $icgCodigosSet[strtoupper(trim($icg->producto->codigo_interno))] = true;
+                    }
+
+                    $cantIcg  = (float)$icg->cantidad_icg;
+                    $cantWms  = $icg->producto_id ? ($conteoPorProd[$icg->producto_id] ?? 0) : ($conteoPorCod[$cod] ?? 0);
+                    $diff     = $cantWms - $cantIcg;
+
+                    $amb = $icg->producto ? ($icg->producto->ambiente->nombre ?? strtoupper($icg->producto->temperatura_almacen ?? 'SECO')) : 'SECO';
+                    if (!isset($icgAmbientes[$amb])) {
+                        $icgAmbientes[$amb] = ['tot_ref' => 0, 'cont_ref' => 0, 'tot_icg' => 0, 'tot_wms' => 0];
+                    }
+                    $icgAmbientes[$amb]['tot_ref']++;
+                    $icgAmbientes[$amb]['tot_icg'] += $cantIcg;
+                    $icgAmbientes[$amb]['tot_wms'] += $cantWms;
+
+                    if ($cantWms > 0) {
+                        $refContadasCount++;
+                        $icgAmbientes[$amb]['cont_ref']++;
+                    }
+
+                    $estadoStr = 'Coincidente';
+                    if ($cantWms > $cantIcg) {
+                        $estadoStr = 'Sobrante';
+                        $lineasConDif++;
+                        $sobrantesRef++;
+                        $sobrantesUds += ($cantWms - $cantIcg);
+                    } elseif ($cantWms < $cantIcg) {
+                        $estadoStr = 'Faltante';
+                        $lineasConDif++;
+                        $faltantesRef++;
+                        $faltantesUds += ($cantIcg - $cantWms);
+                    } else {
+                        $coincidentesRef++;
+                    }
+
+                    $lineasComp[] = [
+                        'producto_id'      => $icg->producto_id,
+                        'codigo'           => $icg->codigo_referencia,
+                        'producto'         => $icg->nombre_referencia,
+                        'unidades_caja'    => $icg->producto->unidades_caja ?? 1,
+                        'ambiente'         => $amb,
+                        'cantidad_icg'     => $cantIcg,
+                        'cantidad_contada' => $cantWms,
+                        'diferencia_icg'   => $diff,
+                        'estado'           => $estadoStr
+                    ];
+                }
+
+                // Avance por ambiente
+                $avanceAmbientes = [];
+                foreach ($icgAmbientes as $ambName => $ambStat) {
+                    $avanceAmbientes[] = [
+                        'ambiente'       => $ambName,
+                        'referencias'    => $ambStat['tot_ref'],
+                        'contadas'       => $ambStat['cont_ref'],
+                        'unidades_icg'   => $ambStat['tot_icg'],
+                        'unidades_wms'   => $ambStat['tot_wms'],
+                        'pct_avance'     => $ambStat['tot_ref'] > 0 ? round(($ambStat['cont_ref'] / $ambStat['tot_ref']) * 100, 1) : 0
+                    ];
+                }
+
+                // Discrepancia 1: En ICG no contados en WMS
+                $icgNoContados = array_filter($lineasComp, fn($item) => $item['cantidad_contada'] == 0);
+
+                // Discrepancia 2: Contados en WMS no en ICG
+                $wmsNoEnIcg = [];
+                foreach ($todasLasLineas->groupBy('producto_id') as $pId => $gLineas) {
+                    $pFirst = $gLineas->first();
+                    $pCod = strtoupper(trim($pFirst->producto->codigo_interno ?? ''));
+                    if (!isset($icgCodigosSet[$pCod])) {
+                        $ambW = $pFirst->producto ? ($pFirst->producto->ambiente->nombre ?? strtoupper($pFirst->producto->temperatura_almacen ?? 'SECO')) : 'SECO';
+                        $wmsNoEnIcg[] = [
+                            'producto_id'      => $pId,
+                            'codigo'           => $pFirst->producto->codigo_interno ?? '-',
+                            'producto'         => $pFirst->producto->nombre ?? '-',
+                            'unidades_caja'    => $pFirst->producto->unidades_caja ?? 1,
+                            'ambiente'         => $ambW,
+                            'cantidad_contada' => $gLineas->sum('cantidad_contada'),
+                            'auxiliares'       => $gLineas->pluck('auxiliar.nombre')->filter()->unique()->values()->all()
+                        ];
+                    }
+                }
+
+                $icgAnalysis['referencias_contadas_icg'] = $refContadasCount;
+                $icgAnalysis['referencias_sobrantes_icg'] = $sobrantesRef;
+                $icgAnalysis['referencias_faltantes_icg'] = $faltantesRef;
+                $icgAnalysis['referencias_coincidentes_icg'] = $coincidentesRef;
+                $icgAnalysis['sobrantes_unidades_icg'] = (float)$sobrantesUds;
+                $icgAnalysis['faltantes_unidades_icg'] = (float)$faltantesUds;
+                $icgAnalysis['exactitud_ira_icg'] = $icgLineas->count() > 0 ? round((100 - ($lineasConDif / $icgLineas->count() * 100)), 1) : 100;
+                $icgAnalysis['pct_avance_icg'] = $icgLineas->count() > 0 ? round(($refContadasCount / $icgLineas->count() * 100), 1) : 0;
+                $icgAnalysis['avance_por_ambiente'] = $avanceAmbientes;
+                $icgAnalysis['lineas_icg_comparativo'] = $lineasComp;
+                $icgAnalysis['discrepancias']['icg_no_contados'] = array_values($icgNoContados);
+                $icgAnalysis['discrepancias']['conteo_no_en_icg'] = array_values($wmsNoEnIcg);
+
+                // Enriquecer consolidado con columna ICG
+                foreach ($consolidado as &$item) {
+                    $item['cantidad_icg'] = (float)($icgMapByProd[$item['producto_id']] ?? 0);
+                }
+            }
+
             return $this->ok($res, [
                 'sesion'               => $sesion,
                 'ronda_filtro'         => $rondaFiltro,
@@ -941,6 +1132,9 @@ class InventarioV2Controller extends BaseController
                 'consistencia_rondas'  => $consistencia,
                 'necesita_tercer_conteo' => $necesitaTercerConteo,
                 'ubicaciones_en_cero'  => $ubicacionesEnCero,
+                'analisis_ambientes'   => $ambientesData,
+                'analisis_auxiliares'  => $auxiliaresData,
+                'analisis_icg'         => $icgAnalysis,
             ]);
         } catch (\Throwable $e) {
             error_log('Dashboard error: ' . $e->getMessage());
@@ -2543,6 +2737,149 @@ class InventarioV2Controller extends BaseController
             })->values()->sortBy('codigo')->values();
 
             return $this->ok($res, $ubicaciones);
+        } catch (\Throwable $e) {
+            return $this->error($res, $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * POST /api/v2/inventario/sesiones/{id}/icg-upload
+     * Carga un archivo plano (CSV/TXT/Excel) o JSON con el inventario teórico de ICG (Código, Cantidad).
+     * Reemplaza automáticamente la carga anterior de esa sesión en caliente.
+     */
+    public function uploadIcgFile(Request $req, Response $res, array $args): Response
+    {
+        try {
+            $user = $req->getAttribute('user');
+            $sesionId = (int)$args['id'];
+            $sesion = $this->_findSesion($sesionId, $user, $req);
+            if (!$sesion) return $this->notFound($res, 'Sesión de inventario no encontrada');
+
+            $parsedLines = [];
+            $body = $req->getParsedBody() ?? [];
+
+            if (!empty($body['lineas']) && is_array($body['lineas'])) {
+                $parsedLines = $body['lineas'];
+            } else {
+                $uploadedFiles = $req->getUploadedFiles();
+                $file = $uploadedFiles['file'] ?? $uploadedFiles['archivo'] ?? $uploadedFiles['icg_file'] ?? null;
+
+                if ($file && $file->getError() === UPLOAD_ERR_OK) {
+                    $tmpPath = $file->getFilePath();
+                    if (!$tmpPath) {
+                        $stream = $file->getStream();
+                        $tmpPath = $stream->getMetadata('uri');
+                    }
+                    $content = file_get_contents($tmpPath);
+                    $lines = preg_split('/\r\n|\r|\n/', $content);
+                    foreach ($lines as $idx => $lineStr) {
+                        $lineStr = trim($lineStr);
+                        if (empty($lineStr)) continue;
+
+                        $cols = preg_split('/[,;\t]/', $lineStr);
+                        if (count($cols) < 2) continue;
+
+                        $codigo = trim($cols[0], " \"'\r\n\t");
+                        $cantStr = trim($cols[1], " \"'\r\n\t");
+
+                        if ($idx === 0 && (stristr($codigo, 'codigo') || stristr($codigo, 'referencia') || stristr($codigo, 'sku'))) {
+                            continue;
+                        }
+
+                        if (!empty($codigo)) {
+                            $cant = (float)str_replace(',', '.', $cantStr);
+                            $parsedLines[] = [
+                                'codigo'   => $codigo,
+                                'cantidad' => $cant
+                            ];
+                        }
+                    }
+                }
+            }
+
+            if (empty($parsedLines)) {
+                return $this->badRequest($res, 'No se encontraron registros válidos en el archivo. Asegúrese de que tenga columnas: Código, Cantidad.');
+            }
+
+            // Opcion de Reemplazo en Caliente: Eliminar las líneas ICG anteriores de esta sesión
+            SesionIcgLinea::where('sesion_id', $sesion->id)->delete();
+
+            // Cargar catálogo de productos para asociar producto_id, UxC y ambiente
+            $empresaId = $this->getEffectiveEmpresaId($user, $req);
+            $productos = Producto::select('id', 'codigo_interno', 'nombre', 'unidades_caja', 'ambiente_id', 'temperatura_almacen')
+                ->where('empresa_id', $empresaId)
+                ->get();
+
+            $prodMap = [];
+            foreach ($productos as $p) {
+                $prodMap[strtoupper(trim($p->codigo_interno))] = $p;
+            }
+
+            $insertData = [];
+            $reconocidos = 0;
+            $noReconocidos = 0;
+
+            foreach ($parsedLines as $item) {
+                $cod = strtoupper(trim($item['codigo']));
+                $cant = (float)($item['cantidad'] ?? 0);
+                $p = $prodMap[$cod] ?? null;
+
+                if ($p) {
+                    $reconocidos++;
+                } else {
+                    $noReconocidos++;
+                }
+
+                $insertData[] = [
+                    'sesion_id'         => $sesion->id,
+                    'producto_id'       => $p ? $p->id : null,
+                    'codigo_referencia' => $item['codigo'],
+                    'nombre_referencia' => $p ? $p->nombre : ($item['nombre'] ?? $item['codigo']),
+                    'cantidad_icg'      => $cant,
+                    'empresa_id'        => $sesion->empresa_id,
+                    'sucursal_id'       => $sesion->sucursal_id,
+                    'created_at'        => date('Y-m-d H:i:s'),
+                    'updated_at'        => date('Y-m-d H:i:s'),
+                ];
+            }
+
+            foreach (array_chunk($insertData, 200) as $chunk) {
+                SesionIcgLinea::insert($chunk);
+            }
+
+            $this->audit($user, 'inventario_v2', 'cargar_icg', 'sesiones_inventario', $sesion->id, null, [
+                'total_cargado' => count($insertData),
+                'reconocidos'   => $reconocidos,
+                'no_reconocidos'=> $noReconocidos
+            ]);
+
+            return $this->ok($res, [
+                'mensaje'        => 'Archivo plano ICG procesado y cargado exitosamente',
+                'total_lineas'   => count($insertData),
+                'reconocidos'    => $reconocidos,
+                'no_reconocidos' => $noReconocidos
+            ]);
+        } catch (\Throwable $e) {
+            return $this->error($res, 'Error al procesar archivo ICG: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * DELETE /api/v2/inventario/sesiones/{id}/icg-delete
+     * Elimina el archivo plano ICG cargado previamente en la sesión.
+     */
+    public function deleteIcgFile(Request $req, Response $res, array $args): Response
+    {
+        try {
+            $user = $req->getAttribute('user');
+            $sesionId = (int)$args['id'];
+            $sesion = $this->_findSesion($sesionId, $user, $req);
+            if (!$sesion) return $this->notFound($res, 'Sesión de inventario no encontrada');
+
+            $count = SesionIcgLinea::where('sesion_id', $sesion->id)->delete();
+            $this->audit($user, 'inventario_v2', 'eliminar_icg', 'sesiones_inventario', $sesion->id, null, ['registros' => $count]);
+
+            return $this->ok($res, ['mensaje' => 'Datos de ICG eliminados de la sesión', 'eliminados' => $count]);
         } catch (\Throwable $e) {
             return $this->error($res, $e->getMessage(), 500);
         }
