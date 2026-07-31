@@ -320,10 +320,15 @@
   "318": ".__invoke",
   "319": "_cargarStockGeneral",
   "320": "verEventoTomaFisica",
+  "321": "CertificacionDespacho",
   "322": "GET /aprobaciones/vencimiento/pendientes",
   "323": "POST /devoluciones/{id}/aprobar",
   "324": "Warehouse/truck app icon (192x192)",
   "325": "Warehouse/truck app icon (512x512)",
   "326": "124_create_sesion_icg_lineas_table.php",
-  "329": "TraspasoDocumento"
+  "327": "TraspasoDocumentoDetalle",
+  "328": "InvGeneralEvento",
+  "329": "TraspasoDocumento",
+  "330": "Zona",
+  "331": "backup_db.php"
 }

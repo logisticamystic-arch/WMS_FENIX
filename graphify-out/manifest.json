@@ -690,8 +690,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/inventario.js": {
-    "mtime": 1785459926.7262018,
-    "ast_hash": "0625fdf979252f4b5c45fb1b453f14c1",
+    "mtime": 1785460934.192932,
+    "ast_hash": "a90d6bde3b541eeefb6704d748eca4cc",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/logistica-avanzada.js": {
@@ -735,8 +735,8 @@
     "semantic_hash": ""
   },
   "public/index.php": {
-    "mtime": 1785459296.9785585,
-    "ast_hash": "4c6679a48339c2efaef1c80a8734af7d",
+    "mtime": 1785460872.3433323,
+    "ast_hash": "18dc62b6f5f22d48e81d22909601c53e",
     "semantic_hash": ""
   },
   "public/manifest.json": {
@@ -925,8 +925,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/InventarioV2Controller.php": {
-    "mtime": 1785459876.970527,
-    "ast_hash": "6d9919aa5739188d6485e4f695f5f7d2",
+    "mtime": 1785460892.277964,
+    "ast_hash": "c531d15b66d9f10c97cd145316abd516",
     "semantic_hash": ""
   },
   "src/Controllers/MiscelaneoController.php": {
