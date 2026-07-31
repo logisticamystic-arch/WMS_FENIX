@@ -1618,12 +1618,20 @@ class InventarioV2Controller extends BaseController
     ): AjusteInventario {
 
         // ── 1. Obtener stock REAL y ACTUAL del sistema (puede diferir del snapshot) ──
-        $inv = Inventario::where('empresa_id',  $sesion->empresa_id)
+        $invQuery = Inventario::where('empresa_id',  $sesion->empresa_id)
             ->where('sucursal_id',  $sesion->sucursal_id)
             ->where('producto_id',  $linea->producto_id)
-            ->where('ubicacion_id', $linea->ubicacion_id)
-            ->when($linea->lote, fn($q) => $q->where('lote', $linea->lote))
-            ->first();
+            ->where('ubicacion_id', $linea->ubicacion_id);
+
+        if (!empty($linea->lote)) {
+            $invQuery->where('lote', $linea->lote);
+        }
+
+        if (!empty($linea->fecha_vencimiento)) {
+            $invQuery->where('fecha_vencimiento', $linea->fecha_vencimiento);
+        }
+
+        $inv = $invQuery->first();
 
         $cantidadSistemaActual = $inv ? (float)$inv->cantidad : 0.0;
 
