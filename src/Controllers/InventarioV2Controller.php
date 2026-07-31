@@ -1461,22 +1461,32 @@ class InventarioV2Controller extends BaseController
             }
         }
 
-        // Determinar ronda final a ajustar
-        $rondaFinal = $sesion->num_conteos; // La última ronda configurada
-        if ($sesion->tipo === 'General' && $sesion->num_conteos === 3) {
-            // Si hay tercer conteo, usar ronda 3 como definitiva
-            $tieneRonda3 = SesionLinea::where('sesion_id', $sesion->id)
-                ->where('ronda', 3)->where('estado', 'Activo')->exists();
-            if (!$tieneRonda3) {
-                $rondaFinal = 1; // Solo hay ronda 1 (num_conteos=3 pero solo para posibilidad)
-            }
-        }
-
-        $lineas = SesionLinea::where('sesion_id', $sesion->id)
-            ->where('ronda', $rondaFinal)
+        // Determinar las líneas definitivas a ajustar:
+        // Para cada (producto_id, ubicación_id, lote), tomar la línea activa del mayor número de ronda realizada.
+        $todasLineas = SesionLinea::where('sesion_id', $sesion->id)
             ->where('estado', SesionLinea::ESTADO_ACTIVO)
-            ->where('diferencia', '!=', 0)
+            ->orderBy('ronda', 'desc')
             ->get();
+
+        $lineasDefinitivas = $todasLineas->unique(function ($item) {
+            return $item->producto_id . '_' . $item->ubicacion_id . '_' . ($item->lote ?? 'N/A');
+        });
+
+        // Filtrar solo aquellas con diferencia real frente al stock del sistema al momento de ajustar
+        $lineas = $lineasDefinitivas->filter(function ($linea) use ($sesion) {
+            $stockActual = (float) Inventario::where('producto_id', $linea->producto_id)
+                ->where('ubicacion_id', $linea->ubicacion_id)
+                ->where('empresa_id', $sesion->empresa_id)
+                ->where('sucursal_id', $sesion->sucursal_id)
+                ->when($linea->lote, fn($q) => $q->where('lote', $linea->lote), fn($q) => $q->where(fn($sq) => $sq->whereNull('lote')->orWhere('lote', 'N/A')->orWhere('lote', '')))
+                ->sum('cantidad');
+            
+            $linea->cantidad_sistema = $stockActual;
+            $linea->diferencia       = (float)$linea->cantidad_contada - $stockActual;
+            return abs($linea->diferencia) > 0.0001;
+        })->values();
+
+        $rondaFinal = $lineasDefinitivas->max('ronda') ?: 1;
 
         if ($lineas->isEmpty()) {
             // Marcar como ajustado sin diferencias
