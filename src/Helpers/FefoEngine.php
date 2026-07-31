@@ -130,13 +130,15 @@ class FefoEngine
             // 3° Nivel ASC (Nivel 01, 02, 03...)
             // 4° Posición ASC
             // 5° Fecha Vencimiento ASC (FEFO desempate)
+            // FEFO Estricto: 1° Fecha Vencimiento (lo que vence primero sale primero)
+            // 2° Ruta física de desempate (Pasillo -> Módulo -> Nivel -> Posición)
             $query
+                ->orderByRaw('CASE WHEN i.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
+                ->orderBy('i.fecha_vencimiento', 'asc')
                 ->orderByRaw('COALESCE(LENGTH(u.pasillo), 0) ASC, u.pasillo ASC')
                 ->orderByRaw('COALESCE(LENGTH(u.modulo), 0) ASC, u.modulo ASC')
                 ->orderByRaw('COALESCE(LENGTH(u.nivel), 0) ASC, u.nivel ASC')
                 ->orderByRaw('COALESCE(LENGTH(u.posicion), 0) ASC, u.posicion ASC')
-                ->orderByRaw('CASE WHEN i.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
-                ->orderBy('i.fecha_vencimiento', 'asc')
                 ->orderBy('u.codigo', 'asc')
                 ->orderBy('i.created_at', 'asc');
         } else {

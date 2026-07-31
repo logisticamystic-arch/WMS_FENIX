@@ -3951,7 +3951,7 @@ class PickingController extends BaseController
                     ->where('estado', 'Disponible')
                     ->where('cantidad', '>', 0)
                     ->with('ubicacion:id,codigo')
-                    ->orderByRaw('fecha_vencimiento IS NULL ASC')
+                    ->orderByRaw('CASE WHEN fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
                     ->orderBy('fecha_vencimiento', 'ASC')
                     ->get()
                     ->groupBy('producto_id')
@@ -4032,12 +4032,12 @@ class PickingController extends BaseController
                         'ui.nivel as ubic_nivel',
                         'ui.zona as ubic_zona'
                     )
+                    ->orderByRaw('CASE WHEN inventarios.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
+                    ->orderBy('inventarios.fecha_vencimiento', 'ASC')
                     ->orderByRaw('COALESCE(LENGTH(ui.pasillo), 0) ASC, ui.pasillo ASC')
                     ->orderByRaw('COALESCE(LENGTH(ui.modulo), 0) ASC, ui.modulo ASC')
                     ->orderByRaw('COALESCE(LENGTH(ui.nivel), 0) ASC, ui.nivel ASC')
                     ->orderByRaw('COALESCE(LENGTH(ui.posicion), 0) ASC, ui.posicion ASC')
-                    ->orderByRaw('CASE WHEN inventarios.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
-                    ->orderBy('inventarios.fecha_vencimiento', 'ASC')
                     ->orderBy('ui.codigo', 'ASC')
                     ->get()
                     ->groupBy('producto_id');
