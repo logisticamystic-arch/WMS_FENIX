@@ -954,6 +954,27 @@ WMS_MODULES.maestro = {
   },
 
   // ── PRODUCTOS ────────────────────────────────────────────────
+  onAmbienteChange() {
+    const sel = document.getElementById('f-pamb');
+    if (!sel) return;
+    const text = sel.options[sel.selectedIndex]?.text || '';
+    const isSeco = text.toUpperCase().includes('SECO');
+
+    const mlot = document.getElementById('f-pmlot');
+    const cvenc = document.getElementById('f-pcvenc');
+    const msg = document.getElementById('seco-restriction-msg');
+
+    if (isSeco) {
+      if (mlot) { mlot.checked = false; mlot.disabled = true; }
+      if (cvenc) { cvenc.checked = false; cvenc.disabled = true; }
+      if (msg) msg.style.display = 'block';
+    } else {
+      if (mlot) mlot.disabled = false;
+      if (cvenc) cvenc.disabled = false;
+      if (msg) msg.style.display = 'none';
+    }
+  },
+
   async show_productos() {
     WMS.setToolbar(`
       <div class="actions" style="display:flex;gap:12px;align-items:center;">
@@ -990,7 +1011,7 @@ WMS_MODULES.maestro = {
                   ${marcas.map(m => `<option value="${m.id}">${WMS.esc(m.nombre)}</option>`).join('')}
                 </select></div>
               <div class="form-group"><label class="form-label">AMBIENTE <span class="required">*</span></label>
-                <select id="f-pamb" class="form-control"><option value="">-- Seleccionar --</option>
+                <select id="f-pamb" class="form-control" onchange="WMS_MODULES.maestro.onAmbienteChange()"><option value="">-- Seleccionar --</option>
                   ${ambientes.map(a => `<option value="${a.id}">${WMS.esc(a.codigo)}${a.descripcion ? ' - ' + WMS.esc(a.descripcion) : ''}</option>`).join('')}
                 </select></div>
 
@@ -1033,6 +1054,9 @@ WMS_MODULES.maestro = {
                   <label class="wms-switch sm"><input type="checkbox" id="f-pcvenc" checked><span class="slider"></span></label>
                 </div>
               </div>
+              <div id="seco-restriction-msg" style="grid-column:1/-1; display:none; padding:8px 12px; background:#fffbe8; border:1px solid #fde68a; border-radius:4px; color:#b45309; font-size:11px; font-weight:600;">
+                <i class="fa-solid fa-circle-info"></i> Los productos en ambiente <strong>SECO</strong> no manejan lotes ni fechas de vencimiento.
+              </div>
             </div>
           </div>
           <div class="card-footer" style="background:#f1f5f9; padding:20px; text-align:right;">
@@ -1048,14 +1072,16 @@ WMS_MODULES.maestro = {
   async consultar_productos() {
     this._prodData = null; // Reset
     
-    let cats = [], marcas = [];
+    let cats = [], marcas = [], ambientes = [];
     try {
-      const [cs, ms] = await Promise.all([
+      const [cs, ms, ambs] = await Promise.all([
         API.get('/param/categorias').catch(() => ({ data: [] })),
-        API.get('/param/marcas').catch(() => ({ data: [] }))
+        API.get('/param/marcas').catch(() => ({ data: [] })),
+        API.get('/param/ambientes').catch(() => ({ data: [] }))
       ]);
       cats   = Array.isArray(cs.data) ? cs.data : (Array.isArray(cs) ? cs : []);
       marcas = Array.isArray(ms.data) ? ms.data : (Array.isArray(ms) ? ms : []);
+      ambientes = Array.isArray(ambs.data) ? ambs.data : (Array.isArray(ambs) ? ambs : []);
     } catch(e) {
       console.warn('Error cargando filtros de productos:', e);
     }
@@ -1073,6 +1099,10 @@ WMS_MODULES.maestro = {
         <select id="filt-mar" class="form-control sm" style="width:140px; font-size:11px;" onchange="WMS_MODULES.maestro._timerBuscar()">
             <option value="">-- Marca --</option>
             ${marcas.map(m => `<option value="${m.id}">${WMS.esc(m.nombre)}</option>`).join('')}
+        </select>
+        <select id="filt-amb" class="form-control sm" style="width:140px; font-size:11px;" onchange="WMS_MODULES.maestro._timerBuscar()">
+            <option value="">-- Ambiente --</option>
+            ${ambientes.map(a => `<option value="${a.id}">${WMS.esc(a.codigo)}</option>`).join('')}
         </select>
       </div>
       <div class="actions" style="display:flex; gap:8px; align-items:center;">
@@ -1264,15 +1294,16 @@ WMS_MODULES.maestro = {
     const q = document.getElementById('search-prod')?.value.trim();
     const cat = document.getElementById('filt-cat')?.value;
     const mar = document.getElementById('filt-mar')?.value;
+    const amb = document.getElementById('filt-amb')?.value;
 
     const resCont = document.getElementById('prod-results-container');
     if (!resCont) return;
 
-    if (!force && !q && !cat && !mar) {
+    if (!force && !q && !cat && !mar && !amb) {
       resCont.innerHTML = `
         <div style="text-align:center; padding:100px 40px; color:#94a3b8;">
            <i class="fa-solid fa-search" style="font-size:3rem; margin-bottom:20px; opacity:0.3;"></i>
-           <p style="font-weight:700;">Ingresa un criterio en el buscador superior o selecciona una categoría.</p>
+           <p style="font-weight:700;">Ingresa un criterio en el buscador superior o selecciona un filtro.</p>
         </div>`;
       return;
     }
@@ -1282,6 +1313,7 @@ WMS_MODULES.maestro = {
       if (q) params.append('q', q);
       if (cat) params.append('categoria_id', cat);
       if (mar) params.append('marca_id', mar);
+      if (amb) params.append('ambiente_id', amb);
       params.append('limit', 50);
 
       const r = await API.get('/param/productos/buscar', params.toString());
@@ -1453,7 +1485,7 @@ WMS_MODULES.maestro = {
           </select>
         </div>
         <div class="form-group"><label class="form-label">AMBIENTE <span class="required">*</span></label>
-          <select id="f-pamb" class="form-control"><option value="">-- Seleccione --</option>
+          <select id="f-pamb" class="form-control" onchange="WMS_MODULES.maestro.onAmbienteChange()"><option value="">-- Seleccione --</option>
             ${ambientes.map(a => `<option value="${a.id}">${WMS.esc(a.codigo)}${a.descripcion ? ' - ' + WMS.esc(a.descripcion) : ''}</option>`).join('')}
           </select></div>
         <div class="form-group"><label class="form-label">UNIDAD DE MEDIDA</label>
@@ -1476,6 +1508,9 @@ WMS_MODULES.maestro = {
               <label class="wms-switch sm"><input type="checkbox" id="f-pcvenc" checked><span class="slider"></span></label>
            </div>
         </div>
+        <div id="seco-restriction-msg" style="grid-column:1/-1; display:none; padding:8px 12px; background:#fffbe8; border:1px solid #fde68a; border-radius:4px; color:#b45309; font-size:11px; font-weight:600;">
+          <i class="fa-solid fa-circle-info"></i> Los productos en ambiente <strong>SECO</strong> no manejan lotes ni fechas de vencimiento.
+        </div>
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveProducto(null)"><i class="fa-solid fa-save"></i> Guardar</button>`);
@@ -1483,6 +1518,10 @@ WMS_MODULES.maestro = {
 
   async saveProducto(id) {
     const parseVal = (str) => { if (!str) return 0; const v = parseFloat(str.replace(',', '.')); return isNaN(v) ? 0 : v; };
+    const ambSel = document.getElementById('f-pamb');
+    const ambText = ambSel ? ambSel.options[ambSel.selectedIndex]?.text || '' : '';
+    const isSeco = ambText.toUpperCase().includes('SECO');
+
     const data = {
       codigo_interno:      document.getElementById('f-pean')?.value.trim(),
       codigo_ean:          document.getElementById('f-pean')?.value.trim(),
@@ -1498,8 +1537,8 @@ WMS_MODULES.maestro = {
       unidades_caja:       parseInt(document.getElementById('f-puxc')?.value || 1),
       factor_udm:          parseVal(document.getElementById('f-pfudm')?.value) || null,
       unidad_contenido:    document.getElementById('f-pucont')?.value || null,
-      maneja_lotes:        document.getElementById('f-pmlot')?.checked ? 1 : 0,
-      controla_vencimiento: document.getElementById('f-pcvenc')?.checked ? 1 : 0
+      maneja_lotes:        isSeco ? 0 : (document.getElementById('f-pmlot')?.checked ? 1 : 0),
+      controla_vencimiento: isSeco ? 0 : (document.getElementById('f-pcvenc')?.checked ? 1 : 0)
     };
     if (!data.nombre || !data.codigo_interno) { WMS.toast('warning', 'EAN/Código y Nombre son obligatorios'); return; }
     try {
@@ -1534,7 +1573,7 @@ WMS_MODULES.maestro = {
               ${(await API.get('/param/marcas')).data?.map(m => `<option value="${m.id}" ${m.id == p.marca_id ? 'selected' : ''}>${WMS.esc(m.nombre)}</option>`).join('') || ''}
             </select></div>
           <div class="form-group"><label class="form-label">AMBIENTE <span class="required">*</span></label>
-            <select id="f-pamb" class="form-control"><option value="">-- Seleccione --</option>
+            <select id="f-pamb" class="form-control" onchange="WMS_MODULES.maestro.onAmbienteChange()"><option value="">-- Seleccione --</option>
               ${ambientes.map(a => `<option value="${a.id}" ${a.id == p.ambiente_id ? 'selected' : ''}>${WMS.esc(a.codigo)}${a.descripcion ? ' - ' + WMS.esc(a.descripcion) : ''}</option>`).join('')}
             </select></div>
           <div class="form-group"><label class="form-label">UNIDAD DE MEDIDA</label>
@@ -1570,9 +1609,13 @@ WMS_MODULES.maestro = {
                 <label class="wms-switch sm"><input type="checkbox" id="f-pcvenc" ${p.controla_vencimiento ? 'checked' : ''}><span class="slider"></span></label>
              </div>
           </div>
+          <div id="seco-restriction-msg" style="grid-column:1/-1; display:none; padding:8px 12px; background:#fffbe8; border:1px solid #fde68a; border-radius:4px; color:#b45309; font-size:11px; font-weight:600;">
+            <i class="fa-solid fa-circle-info"></i> Los productos en ambiente <strong>SECO</strong> no manejan lotes ni fechas de vencimiento.
+          </div>
         </div>`,
         `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
          <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveProducto(${id})"><i class="fa-solid fa-save"></i> Actualizar</button>`);
+      this.onAmbienteChange();
     } catch (ex) { WMS.toast('error', 'Error cargando producto: ' + ex.message); }
   },
 
