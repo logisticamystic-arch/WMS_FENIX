@@ -137,8 +137,10 @@
   "135": "Migration: Miscelaneos Tables",
   "136": "Migration: Bloqueo Productos",
   "137": "Cache Helpers & Auto Refresh",
+  "138": "BloqueoController",
   "139": "Ubicación Search Helpers",
   "140": "Stock Dashboard Charts",
+  "141": "TenantScoped.php",
   "142": "Recepción Sin ODC Preview",
   "143": ".__invoke",
   "144": "Citas Scheduling",
@@ -312,8 +314,10 @@
   "312": "Despacho",
   "313": ".__invoke",
   "314": "WMS Fénix phoenix logo",
+  "315": "ImportExportController",
   "316": "120_create_traspaso_documentos_tables.php",
   "317": "Traspaso",
+  "318": ".__invoke",
   "319": "_cargarStockGeneral",
   "320": "verEventoTomaFisica",
   "321": "_editarLinea",
@@ -321,7 +325,6 @@
   "323": "POST /devoluciones/{id}/aprobar",
   "324": "Warehouse/truck app icon (192x192)",
   "325": "Warehouse/truck app icon (512x512)",
-  "327": ".getEffectiveEmpresaId",
-  "329": "TraspasoDocumento",
-  "332": "InvGeneralAsignacion"
+  "326": "124_create_sesion_icg_lineas_table.php",
+  "329": "TraspasoDocumento"
 }

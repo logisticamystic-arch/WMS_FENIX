@@ -921,41 +921,106 @@ class InventarioV2Controller extends BaseController
                 ];
             })->values();
 
-            // ── Analítica por Ambientes ─────────────────────────────────────
-            $ambientesData = Capsule::table('sesion_lineas as sl')
+            // ── Analítica por Ambientes con Desglose de Referencias ────────
+            $ambientesRaw = Capsule::table('sesion_lineas as sl')
                 ->join('productos as p', 'sl.producto_id', '=', 'p.id')
                 ->leftJoin('ambientes as a', 'p.ambiente_id', '=', 'a.id')
                 ->where('sl.sesion_id', $sesion->id)
                 ->where('sl.estado', SesionLinea::ESTADO_ACTIVO)
                 ->when($rondaFiltro > 0, fn($q) => $q->where('sl.ronda', $rondaFiltro))
                 ->select(
-                    Capsule::raw("COALESCE(a.nombre, UPPER(p.temperatura_almacen), 'SECO') as ambiente"),
-                    Capsule::raw("COUNT(DISTINCT sl.producto_id) as total_referencias"),
-                    Capsule::raw("SUM(sl.cantidad_contada) as total_unidades"),
-                    Capsule::raw("COUNT(DISTINCT sl.ubicacion_id) as ubicaciones_contadas"),
-                    Capsule::raw("MIN(sl.fecha_vencimiento) as proximo_vencimiento"),
-                    Capsule::raw("AVG(CASE WHEN sl.fecha_vencimiento IS NOT NULL THEN (sl.fecha_vencimiento::date - CURRENT_DATE) END) as promedio_dias_vu")
+                    Capsule::raw("COALESCE(a.codigo, a.descripcion, UPPER(p.temperatura_almacen), 'SECO') as ambiente"),
+                    'p.id as producto_id',
+                    'p.codigo_interno as codigo',
+                    'p.nombre as producto',
+                    'p.unidades_caja',
+                    'sl.ubicacion_id',
+                    'sl.cantidad_contada',
+                    'sl.fecha_vencimiento',
+                    'sl.lote'
                 )
-                ->groupBy('ambiente')
                 ->get();
 
-            // ── Analítica por Auxiliares ────────────────────────────────────
-            $auxiliaresData = Capsule::table('sesion_lineas as sl')
+            $ambientesData = $ambientesRaw->groupBy('ambiente')->map(function ($group, $ambKey) {
+                $refGroup = $group->groupBy('producto_id');
+                $detallesRef = $refGroup->map(function ($gRef) {
+                    $first = $gRef->first();
+                    $fVenc = $gRef->pluck('fecha_vencimiento')->filter()->sort()->first();
+                    return [
+                        'producto_id'          => $first->producto_id,
+                        'codigo'               => $first->codigo,
+                        'producto'             => $first->producto,
+                        'unidades_caja'        => $first->unidades_caja ?? 1,
+                        'total_unidades'       => round((float)$gRef->sum('cantidad_contada'), 3),
+                        'ubicaciones_contadas' => $gRef->pluck('ubicacion_id')->unique()->count(),
+                        'lotes'                => $gRef->pluck('lote')->filter()->unique()->values()->all(),
+                        'proximo_vencimiento'  => $fVenc,
+                        'dias_v_u'             => $fVenc ? Carbon::now()->startOfDay()->diffInDays(Carbon::parse($fVenc), false) : null
+                    ];
+                })->sortByDesc('total_unidades')->values();
+
+                $allFVenc = $group->pluck('fecha_vencimiento')->filter()->sort()->first();
+                $diasVuAvg = $allFVenc ? Carbon::now()->startOfDay()->diffInDays(Carbon::parse($allFVenc), false) : null;
+
+                return [
+                    'ambiente'             => $ambKey,
+                    'total_referencias'    => $refGroup->count(),
+                    'total_unidades'       => round((float)$group->sum('cantidad_contada'), 3),
+                    'ubicaciones_contadas' => $group->pluck('ubicacion_id')->unique()->count(),
+                    'proximo_vencimiento'  => $allFVenc,
+                    'promedio_dias_vu'     => $diasVuAvg,
+                    'referencias'          => $detallesRef
+                ];
+            })->values();
+
+            // ── Analítica por Auxiliares con Desglose de Referencias ───────
+            $auxiliaresRaw = Capsule::table('sesion_lineas as sl')
                 ->join('personal as pers', 'sl.auxiliar_id', '=', 'pers.id')
+                ->join('productos as p', 'sl.producto_id', '=', 'p.id')
+                ->join('ubicaciones as u', 'sl.ubicacion_id', '=', 'u.id')
                 ->where('sl.sesion_id', $sesion->id)
                 ->where('sl.estado', SesionLinea::ESTADO_ACTIVO)
                 ->when($rondaFiltro > 0, fn($q) => $q->where('sl.ronda', $rondaFiltro))
                 ->select(
                     'pers.id as auxiliar_id',
                     'pers.nombre as auxiliar',
-                    Capsule::raw("COUNT(sl.id) as total_registros"),
-                    Capsule::raw("COUNT(DISTINCT sl.producto_id) as referencias_contadas"),
-                    Capsule::raw("SUM(sl.cantidad_contada) as total_unidades"),
-                    Capsule::raw("MAX(sl.hora_conteo) as ultima_actividad")
+                    'sl.id as linea_id',
+                    'p.id as producto_id',
+                    'p.codigo_interno as codigo',
+                    'p.nombre as producto',
+                    'u.codigo as ubicacion',
+                    'sl.cantidad_contada',
+                    'sl.hora_conteo'
                 )
-                ->groupBy('pers.id', 'pers.nombre')
-                ->orderBy('total_unidades', 'desc')
                 ->get();
+
+            $auxiliaresData = $auxiliaresRaw->groupBy('auxiliar_id')->map(function ($group) {
+                $first = $group->first();
+                $refGroup = $group->groupBy('producto_id');
+
+                $detallesRef = $refGroup->map(function ($gRef) {
+                    $rFirst = $gRef->first();
+                    return [
+                        'producto_id'      => $rFirst->producto_id,
+                        'codigo'           => $rFirst->codigo,
+                        'producto'         => $rFirst->producto,
+                        'total_registros'  => $gRef->count(),
+                        'total_unidades'   => round((float)$gRef->sum('cantidad_contada'), 3),
+                        'ubicaciones'      => $gRef->pluck('ubicacion')->unique()->values()->all(),
+                        'ultima_actividad' => $gRef->max('hora_conteo')
+                    ];
+                })->sortByDesc('total_unidades')->values();
+
+                return [
+                    'auxiliar_id'          => $first->auxiliar_id,
+                    'auxiliar'             => $first->auxiliar,
+                    'total_registros'      => $group->count(),
+                    'referencias_contadas' => $refGroup->count(),
+                    'total_unidades'       => round((float)$group->sum('cantidad_contada'), 3),
+                    'ultima_actividad'     => $group->max('hora_conteo'),
+                    'referencias'          => $detallesRef
+                ];
+            })->sortByDesc('total_unidades')->values();
 
             // ── Analítica & Comparativo ICG ─────────────────────────────────
             $icgLineas = SesionIcgLinea::where('sesion_id', $sesion->id)
@@ -1016,7 +1081,7 @@ class InventarioV2Controller extends BaseController
                     $cantWms  = $icg->producto_id ? ($conteoPorProd[$icg->producto_id] ?? 0) : ($conteoPorCod[$cod] ?? 0);
                     $diff     = $cantWms - $cantIcg;
 
-                    $amb = $icg->producto ? ($icg->producto->ambiente->nombre ?? strtoupper($icg->producto->temperatura_almacen ?? 'SECO')) : 'SECO';
+                    $amb = $icg->producto ? ($icg->producto->ambiente->codigo ?? $icg->producto->ambiente->descripcion ?? strtoupper($icg->producto->temperatura_almacen ?? 'SECO')) : 'SECO';
                     if (!isset($icgAmbientes[$amb])) {
                         $icgAmbientes[$amb] = ['tot_ref' => 0, 'cont_ref' => 0, 'tot_icg' => 0, 'tot_wms' => 0];
                     }
@@ -1079,7 +1144,7 @@ class InventarioV2Controller extends BaseController
                     $pFirst = $gLineas->first();
                     $pCod = strtoupper(trim($pFirst->producto->codigo_interno ?? ''));
                     if (!isset($icgCodigosSet[$pCod])) {
-                        $ambW = $pFirst->producto ? ($pFirst->producto->ambiente->nombre ?? strtoupper($pFirst->producto->temperatura_almacen ?? 'SECO')) : 'SECO';
+                        $ambW = $pFirst->producto ? ($pFirst->producto->ambiente->codigo ?? $pFirst->producto->ambiente->descripcion ?? strtoupper($pFirst->producto->temperatura_almacen ?? 'SECO')) : 'SECO';
                         $wmsNoEnIcg[] = [
                             'producto_id'      => $pId,
                             'codigo'           => $pFirst->producto->codigo_interno ?? '-',

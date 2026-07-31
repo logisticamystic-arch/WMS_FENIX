@@ -690,8 +690,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/inventario.js": {
-    "mtime": 1785159154.9192789,
-    "ast_hash": "7713ed86ac055ebdea5dbfd522ca6198",
+    "mtime": 1785457038.3694563,
+    "ast_hash": "8159d7a45013e3883dade6ed941cf2d8",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/logistica-avanzada.js": {
@@ -710,8 +710,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/recepcion.js": {
-    "mtime": 1785358160.5397544,
-    "ast_hash": "2b2f67b1de73ada088abbf8c59184f43",
+    "mtime": 1785457014.335752,
+    "ast_hash": "57d61f579860edebcd6ffde459ee061c",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/reportes.js": {
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785440265.7512605,
-    "ast_hash": "062d33c94487046277fcdbb27952c828",
+    "mtime": 1785457708.7498548,
+    "ast_hash": "270b2ad4e7a157d6a76c261e6178fed7",
     "semantic_hash": ""
   },
   "public/pitch.html": {
@@ -1717,6 +1717,11 @@
   "database/migrations/123_productos_seco_sin_lote_vencimiento.php": {
     "mtime": 1785455541.4545703,
     "ast_hash": "4a554718e53aedb29f339053e0f1e8d7",
+    "semantic_hash": ""
+  },
+  "brain/361a6913-de57-4736-89b7-d89234229562/scratch/verify_seco_prods.php": {
+    "mtime": 1785457325.3356807,
+    "ast_hash": "a7321801ea99f0771fbe8450a2e434ee",
     "semantic_hash": ""
   }
 }

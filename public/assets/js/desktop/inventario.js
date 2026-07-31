@@ -1512,6 +1512,12 @@ WMS_MODULES.inventario = {
                 <button class="inv2-tab" id="t2-general" onclick="WMS_MODULES.inventario._tab2('general')">
                   <i class="fa-solid fa-layer-group"></i> Resumen
                 </button>
+                <button class="inv2-tab" id="t2-icg" onclick="WMS_MODULES.inventario._tab2('icg')" style="background:${d.analisis_icg?.cargado?'#f0fdf4':'#fffbeb'};color:${d.analisis_icg?.cargado?'#15803d':'#d97706'};border:1px solid ${d.analisis_icg?.cargado?'#bbf7d0':'#fef3c7'}; font-weight:800;">
+                  <i class="fa-solid fa-file-invoice"></i> Control ICG ${d.analisis_icg?.cargado?'<span class="badge" style="background:#16a34a;color:#fff;font-size:9px;padding:1px 5px;margin-left:4px;">CARGADO</span>':''}
+                </button>
+                <button class="inv2-tab" id="t2-amb" onclick="WMS_MODULES.inventario._tab2('amb')">
+                  <i class="fa-solid fa-temperature-three-quarters"></i> Ambientes & Auxiliares
+                </button>
                 <button class="inv2-tab" id="t2-dif" onclick="WMS_MODULES.inventario._tab2('dif')">
                   <i class="fa-solid fa-not-equal"></i> Diferencias
                 </button>
@@ -1586,6 +1592,13 @@ WMS_MODULES.inventario = {
     const id = this._dashV2Id;
     const content = document.getElementById('inv2-content');
     if (!content || !d) return;
+
+    if (tab === 'icg') {
+      return this._renderTabIcg();
+    }
+    if (tab === 'amb') {
+      return this._renderTabAmbientes();
+    }
 
     if (tab === 'mat') {
       const lineas = d.matriz_conteo || [];
@@ -1688,6 +1701,7 @@ WMS_MODULES.inventario = {
                 <th class="text-center">R1</th>
                 <th class="text-center">R2</th>
                 <th class="text-center">R3</th>
+                <th class="text-center" style="background:#f0fdf4;color:#166534;">ICG</th>
                 <th class="text-center" style="background:#eff6ff">Sistema</th>
                 <th class="text-center" style="background:#fff7ed">Diferencia</th>
               </tr>
@@ -1709,6 +1723,7 @@ WMS_MODULES.inventario = {
                   <td class="text-center fw-700" style="font-size:.95rem">${m.ronda_1}</td>
                   <td class="text-center fw-700 ${!isCons&&m.ronda_2>0?'text-danger':''}" style="font-size:.95rem">${m.ronda_2||'-'}</td>
                   <td class="text-center fw-700" style="font-size:.95rem">${m.ronda_3||'-'}</td>
+                  <td class="text-center fw-700" style="background:#f0fdf4;color:#15803d;font-size:.9rem">${m.cantidad_icg !== undefined ? WMS.formatNum(m.cantidad_icg) : '—'}</td>
                   <td class="text-center fw-700" style="background:#f9fafb;font-size:.9rem">${m.sistema}</td>
                   <td class="text-center fw-800 ${m.diferencia!==0?'text-danger':'text-success'}" style="background:#fffaf5;font-size:.95rem">
                     ${m.diferencia>0?'+':''}${m.diferencia}
@@ -4987,4 +5002,583 @@ WMS_MODULES.inventario = {
     } catch(e) { await Swal.fire('Error', e.message || 'Error al rechazar', 'error'); }
   },
 
+  _renderTabIcg() {
+    const d = this._dashV2;
+    const id = this._dashV2Id;
+    const content = document.getElementById('inv2-content');
+    if (!content || !d) return;
+
+    const icg = d.analisis_icg || {};
+    const cargado = icg.cargado;
+    const ambientes = (icg.avance_por_ambiente || []).map(a => a.ambiente);
+
+    content.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <!-- Header / Banner Ingesta -->
+        <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div style="font-size:1.05rem;font-weight:900;color:#0f172a;display:flex;align-items:center;gap:8px;">
+              <i class="fa-solid fa-file-invoice" style="color:#0284c7;"></i> Control Comparativo ICG (Inventario Teórico)
+            </div>
+            <div style="font-size:.78rem;color:#64748b;margin-top:4px;">
+              ${cargado 
+                ? `<span style="color:#059669;font-weight:700;"><i class="fa-solid fa-circle-check"></i> Archivo ICG Cargado</span> · <b>${icg.total_referencias_icg}</b> referencias · <b>${WMS.formatNum(icg.total_unidades_icg)}</b> unidades teóricas`
+                : '<span style="color:#d97706;font-weight:700;"><i class="fa-solid fa-triangle-exclamation"></i> Sin archivo ICG subido</span> · Suba un archivo plano para comparar el conteo WMS contra ICG en caliente.'}
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;align-items:center;">
+            <input type="file" id="icg-file-input" accept=".csv,.txt,.xlsx,.xls" style="display:none;" onchange="WMS_MODULES.inventario._uploadIcgFile(${id}, this)">
+            <button class="btn btn-primary" onclick="document.getElementById('icg-file-input').click()">
+              <i class="fa-solid fa-cloud-arrow-up"></i> ${cargado ? 'Reemplazar Archivo ICG' : 'Subir Archivo Plano ICG'}
+            </button>
+            ${cargado ? `
+            <button class="btn btn-outline-danger" onclick="WMS_MODULES.inventario._deleteIcgFile(${id})">
+              <i class="fa-solid fa-trash"></i> Eliminar ICG
+            </button>` : ''}
+          </div>
+        </div>
+
+        ${!cargado ? `
+        <div style="text-align:center;padding:50px 20px;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:12px;color:#64748b;">
+          <i class="fa-solid fa-file-excel" style="font-size:3rem;color:#94a3b8;margin-bottom:12px;display:block;"></i>
+          <h4 style="font-size:1.1rem;font-weight:800;color:#1e293b;margin:0 0 6px;">Cargar Inventario Teórico desde Archivo Plano ICG</h4>
+          <p style="font-size:.82rem;max-width:550px;margin:0 auto 16px;">Suba un archivo plano CSV, TXT o Excel con dos columnas: <b>Código</b> (o SKU/Referencia) y <b>Cantidad</b>. El sistema resolverá automáticamente la descripción, empaque UxC y ambiente de cada referencia.</p>
+          <button class="btn btn-primary btn-lg" onclick="document.getElementById('icg-file-input').click()">
+            <i class="fa-solid fa-folder-open"></i> Seleccionar Archivo
+          </button>
+        </div>` : `
+
+        <!-- KPIs Tablero ICG -->
+        <div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:12px;">
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 14px;">
+            <div style="font-size:.68rem;font-weight:800;color:#166534;text-transform:uppercase;">Exactitud ICG (IRA)</div>
+            <div style="font-size:1.5rem;font-weight:900;color:${icg.exactitud_ira_icg>=98?'#15803d':'#dc2626'};margin-top:2px;">${icg.exactitud_ira_icg}%</div>
+            <div style="font-size:.65rem;color:#15803d;margin-top:2px;">${icg.referencias_coincidentes_icg} ref. exactas</div>
+          </div>
+          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;">
+            <div style="font-size:.68rem;font-weight:800;color:#991b1b;text-transform:uppercase;">Faltantes ICG</div>
+            <div style="font-size:1.5rem;font-weight:900;color:#dc2626;margin-top:2px;">-${WMS.formatNum(icg.faltantes_unidades_icg)} <span style="font-size:.8rem;font-weight:700;">uds</span></div>
+            <div style="font-size:.65rem;color:#991b1b;margin-top:2px;">${icg.referencias_faltantes_icg} referencias con faltante</div>
+          </div>
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;">
+            <div style="font-size:.68rem;font-weight:800;color:#1e40af;text-transform:uppercase;">Sobrantes ICG</div>
+            <div style="font-size:1.5rem;font-weight:900;color:#2563eb;margin-top:2px;">+${WMS.formatNum(icg.sobrantes_unidades_icg)} <span style="font-size:.8rem;font-weight:700;">uds</span></div>
+            <div style="font-size:.65rem;color:#1e40af;margin-top:2px;">${icg.referencias_sobrantes_icg} referencias con sobrante</div>
+          </div>
+          <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:12px 14px;">
+            <div style="font-size:.68rem;font-weight:800;color:#6b21a8;text-transform:uppercase;">Avance Cobertura ICG</div>
+            <div style="font-size:1.5rem;font-weight:900;color:#7e22ce;margin-top:2px;">${icg.pct_avance_icg}%</div>
+            <div style="font-size:.65rem;color:#6b21a8;margin-top:2px;">${icg.referencias_contadas_icg} de ${icg.total_referencias_icg} ref. contadas</div>
+          </div>
+          <div style="background:#fffbeb;border:1px solid #fef3c7;border-radius:10px;padding:12px 14px;">
+            <div style="font-size:.68rem;font-weight:800;color:#92400e;text-transform:uppercase;">Total ICG Teórico</div>
+            <div style="font-size:1.5rem;font-weight:900;color:#d97706;margin-top:2px;">${WMS.formatNum(icg.total_unidades_icg)} <span style="font-size:.8rem;font-weight:700;">uds</span></div>
+            <div style="font-size:.65rem;color:#92400e;margin-top:2px;">En ${icg.total_referencias_icg} referencias</div>
+          </div>
+        </div>
+
+        <!-- Avance por Ambientes -->
+        ${(icg.avance_por_ambiente || []).length > 0 ? `
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;">
+          <div style="font-size:.8rem;font-weight:800;color:#1e293b;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+            <i class="fa-solid fa-chart-simple" style="color:#2563eb;"></i> Avance de Cobertura ICG por Ambiente
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;">
+            ${(icg.avance_por_ambiente || []).map(a => `
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                  <span style="font-size:.78rem;font-weight:800;color:#0f172a;">${WMS.esc(a.ambiente)}</span>
+                  <span style="font-size:.75rem;font-weight:900;color:#2563eb;">${a.pct_avance}%</span>
+                </div>
+                <div style="width:100%;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-bottom:6px;">
+                  <div style="width:${a.pct_avance}%;height:100%;background:linear-gradient(90deg, #3b82f6, #1d4ed8);"></div>
+                </div>
+                <div style="font-size:.68rem;color:#64748b;display:flex;justify-content:space-between;">
+                  <span>Ref: <b>${a.contadas} / ${a.referencias}</b></span>
+                  <span>Uds WMS: <b>${WMS.formatNum(a.unidades_wms)}</b> / ICG: <b>${WMS.formatNum(a.unidades_icg)}</b></span>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>` : ''}
+
+        <!-- Filtro Dinámico por Ambiente & Búsqueda -->
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#f8fafc;padding:10px 14px;border-radius:8px;border:1px solid #e2e8f0;">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <small style="font-weight:800;color:#64748b;">AMBIENTE:</small>
+            <button class="btn btn-xs btn-primary icg-amb-btn" onclick="WMS_MODULES.inventario._filterIcgAmb('ALL', this)">TODOS</button>
+            ${ambientes.map(amb => `
+              <button class="btn btn-xs btn-outline-secondary icg-amb-btn" onclick="WMS_MODULES.inventario._filterIcgAmb('${WMS.esc(amb)}', this)">${WMS.esc(amb)}</button>`).join('')}
+          </div>
+          <div style="flex:1;max-width:320px;">
+            <input class="form-control form-control-sm" placeholder="Buscar por referencia o código..." oninput="WMS_MODULES.inventario._filterIcgSearch(this.value)">
+          </div>
+        </div>
+
+        <!-- Tabla Comparativa ICG vs WMS -->
+        <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.05);">
+          <div style="background:#1e293b;color:#fff;padding:10px 16px;font-size:.82rem;font-weight:800;display:flex;justify-content:space-between;align-items:center;">
+            <span><i class="fa-solid fa-code-compare"></i> Comparativo Detallado ICG vs Conteo WMS</span>
+            <span style="font-size:.72rem;color:#94a3b8;">${(icg.lineas_icg_comparativo||[]).length} referencias ICG</span>
+          </div>
+          <div style="max-height:420px;overflow-y:auto;">
+            <table class="erp-table" id="icg-comp-table">
+              <thead>
+                <tr style="background:#f1f5f9;position:sticky;top:0;z-index:10;">
+                  <th>CÓDIGO</th>
+                  <th>REFERENCIA / PRODUCTO</th>
+                  <th class="text-center">AMBIENTE</th>
+                  <th class="text-center">U/E</th>
+                  <th class="text-center" style="background:#fffbeb;color:#92400e;">STOCK ICG</th>
+                  <th class="text-center" style="background:#eff6ff;color:#1e40af;">CONTEO WMS</th>
+                  <th class="text-center">DIFERENCIA</th>
+                  <th class="text-center">ESTADO</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(icg.lineas_icg_comparativo || []).map(l => {
+                  const dif = l.diferencia_icg;
+                  const difColor = dif === 0 ? '#10b981' : (dif > 0 ? '#0284c7' : '#ef4444');
+                  const difTxt   = dif === 0 ? '0' : (dif > 0 ? '+' + WMS.formatNum(dif) : WMS.formatNum(dif));
+                  const stBadge  = l.estado === 'Coincidente' ? '<span class="badge badge-success">Coincidente</span>'
+                    : (l.estado === 'Sobrante' ? '<span class="badge badge-info">+ Sobrante WMS</span>'
+                    : '<span class="badge badge-danger">- Faltante WMS</span>');
+                  return `
+                    <tr class="icg-row" data-amb="${WMS.esc(l.ambiente)}" data-txt="${WMS.esc((l.codigo+' '+l.producto).toLowerCase())}">
+                      <td><b style="font-size:.8rem;color:#1e293b;">${WMS.esc(l.codigo)}</b></td>
+                      <td><div style="font-size:.8rem;font-weight:600;color:#1e293b;">${WMS.esc(l.producto)}</div></td>
+                      <td class="text-center"><span class="badge badge-secondary" style="font-size:.65rem;">${WMS.esc(l.ambiente)}</span></td>
+                      <td class="text-center" style="color:#64748b;">${l.unidades_caja || 1}</td>
+                      <td class="text-center fw-800" style="background:#fffbeb;color:#d97706;font-size:.9rem;">${WMS.formatNum(l.cantidad_icg)}</td>
+                      <td class="text-center fw-800" style="background:#eff6ff;color:#1d4ed8;font-size:.95rem;">${WMS.formatNum(l.cantidad_contada)}</td>
+                      <td class="text-center fw-900" style="font-size:1rem;color:${difColor};">${difTxt}</td>
+                      <td class="text-center">${stBadge}</td>
+                    </tr>`;
+                }).join('') || '<tr><td colspan="8" class="text-center" style="padding:20px;">Sin datos ICG</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Sección de Discrepancias / Cobertura -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          
+          <!-- Discrepancia 1: Referencias ICG NO contadas en WMS -->
+          <div style="border:1px solid #fecaca;border-radius:10px;overflow:hidden;background:#fff;">
+            <div style="background:#fef2f2;border-bottom:1px solid #fecaca;padding:10px 14px;font-size:.8rem;font-weight:800;color:#991b1b;display:flex;justify-content:space-between;align-items:center;">
+              <span><i class="fa-solid fa-eye-slash"></i> Referencias ICG NO Contadas en WMS</span>
+              <span class="badge badge-danger">${(icg.discrepancias?.icg_no_contados || []).length}</span>
+            </div>
+            <div style="max-height:260px;overflow-y:auto;padding:0;">
+              <table class="erp-table compact" style="margin:0;">
+                <thead><tr><th>CÓDIGO</th><th>PRODUCTO</th><th class="text-center">AMBIENTE</th><th class="text-center">STOCK ICG</th></tr></thead>
+                <tbody>
+                  ${(icg.discrepancias?.icg_no_contados || []).map(u => `
+                    <tr>
+                      <td><b>${WMS.esc(u.codigo)}</b></td>
+                      <td><small>${WMS.esc(u.producto)}</small></td>
+                      <td class="text-center"><span class="badge badge-secondary">${WMS.esc(u.ambiente)}</span></td>
+                      <td class="text-center fw-800" style="color:#dc2626;">${WMS.formatNum(u.cantidad_icg)}</td>
+                    </tr>`).join('') || '<tr><td colspan="4" class="text-center" style="padding:15px;color:#059669;font-size:.78rem;"><i class="fa-solid fa-circle-check"></i> Todas las referencias de ICG fueron contadas en WMS</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Discrepancia 2: Referencias WMS NO en archivo ICG -->
+          <div style="border:1px solid #fed7aa;border-radius:10px;overflow:hidden;background:#fff;">
+            <div style="background:#fff7ed;border-bottom:1px solid #fed7aa;padding:10px 14px;font-size:.8rem;font-weight:800;color:#9a3412;display:flex;justify-content:space-between;align-items:center;">
+              <span><i class="fa-solid fa-circle-question"></i> Referencias Contadas en WMS NO en Archivo ICG</span>
+              <span class="badge badge-warning">${(icg.discrepancias?.conteo_no_en_icg || []).length}</span>
+            </div>
+            <div style="max-height:260px;overflow-y:auto;padding:0;">
+              <table class="erp-table compact" style="margin:0;">
+                <thead><tr><th>CÓDIGO</th><th>PRODUCTO</th><th class="text-center">AMBIENTE</th><th class="text-center">CONTEO WMS</th></tr></thead>
+                <tbody>
+                  ${(icg.discrepancias?.conteo_no_en_icg || []).map(u => `
+                    <tr>
+                      <td><b>${WMS.esc(u.codigo)}</b></td>
+                      <td><small>${WMS.esc(u.producto)}</small></td>
+                      <td class="text-center"><span class="badge badge-secondary">${WMS.esc(u.ambiente)}</span></td>
+                      <td class="text-center fw-800" style="color:#d97706;">${WMS.formatNum(u.cantidad_contada)}</td>
+                    </tr>`).join('') || '<tr><td colspan="4" class="text-center" style="padding:15px;color:#059669;font-size:.78rem;"><i class="fa-solid fa-circle-check"></i> Todos los conteos WMS existen en el archivo ICG</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+        `}
+      </div>
+    `;
+  },
+
+  _renderTabAmbientes() {
+    const d = this._dashV2;
+    const content = document.getElementById('inv2-content');
+    if (!content || !d) return;
+
+    const ambData = d.analisis_ambientes || [];
+    const auxData = d.analisis_auxiliares || [];
+
+    content.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:22px;">
+
+        <!-- Sección 1: Conteos Totalizados por Ambiente (Interactivo) -->
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+            <div style="font-size:1.05rem;font-weight:900;color:#0f172a;display:flex;align-items:center;gap:8px;">
+              <i class="fa-solid fa-temperature-three-quarters" style="color:#2563eb;"></i> Ambientes de Almacenamiento
+            </div>
+            <span style="font-size:.78rem;color:#64748b;font-style:italic;">💡 Haga clic en cualquier tarjeta para ver las referencias contadas en ese ambiente.</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:14px;">
+            ${ambData.map(a => {
+              const ambName = (a.ambiente || 'SECO').toUpperCase();
+              const ambIcon = ambName.includes('REFRI') ? 'fa-snowflake' : (ambName.includes('CONGE') ? 'fa-icicles' : 'fa-sun');
+              const ambColor= ambName.includes('REFRI') ? '#0284c7' : (ambName.includes('CONGE') ? '#4f46e5' : '#d97706');
+              const diasVu = a.promedio_dias_vu !== null ? Math.round(parseFloat(a.promedio_dias_vu)) : null;
+              const safeAmb = WMS.esc(a.ambiente).replace(/'/g, "\\'");
+              return `
+                <div class="amb-card-btn" onclick="WMS_MODULES.inventario._toggleAmbienteDetail('${safeAmb}', this)"
+                     style="background:#fff;border:2px solid #e2e8f0;border-left:6px solid ${ambColor};border-radius:14px;padding:16px;box-shadow:0 3px 6px rgba(0,0,0,.04);cursor:pointer;transition:all .2s;"
+                     onmouseover="this.style.borderColor='${ambColor}';this.style.transform='translateY(-2px)'"
+                     onmouseout="this.style.borderColor='#e2e8f0';this.style.transform='none'">
+                  
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <span style="font-weight:900;font-size:1.05rem;color:#0f172a;display:flex;align-items:center;gap:8px;">
+                      <i class="fa-solid ${ambIcon}" style="color:${ambColor}"></i> ${WMS.esc(a.ambiente)}
+                    </span>
+                    <span class="badge" style="background:${ambColor}20;color:${ambColor};font-weight:800;font-size:.75rem;">${a.total_referencias} ref.</span>
+                  </div>
+                  
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;background:#f8fafc;padding:10px 12px;border-radius:10px;">
+                    <div>
+                      <div style="font-size:.65rem;color:#64748b;font-weight:800;text-transform:uppercase;">Total Unidades</div>
+                      <div style="font-size:1.35rem;font-weight:900;color:#1e293b;">${WMS.formatNum(a.total_unidades)}</div>
+                    </div>
+                    <div>
+                      <div style="font-size:.65rem;color:#64748b;font-weight:800;text-transform:uppercase;">Ubicaciones</div>
+                      <div style="font-size:1.35rem;font-weight:900;color:#1e293b;">${a.ubicaciones_contadas}</div>
+                    </div>
+                  </div>
+
+                  <div style="font-size:.73rem;color:#475569;display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
+                    <div>📅 <b>Próximo Vencimiento:</b> ${a.proximo_vencimiento ? WMS.formatDate(a.proximo_vencimiento) : 'N/A'}</div>
+                    <div>⏳ <b>Promedio Vida Útil:</b> ${diasVu !== null ? `<b style="color:${diasVu<30?'#dc2626':'#16a34a'}">${diasVu} días</b>` : 'N/A'}</div>
+                  </div>
+
+                  <button class="btn btn-xs btn-outline-primary" style="width:100%;font-weight:800;border-radius:8px;">
+                    <i class="fa-solid fa-list-check"></i> Ver ${a.total_referencias} Referencias <i class="fa-solid fa-chevron-down" style="margin-left:4px;"></i>
+                  </button>
+                </div>`;
+            }).join('') || '<div style="padding:20px;color:#64748b;">Sin conteos registrados por ambiente.</div>'}
+          </div>
+
+          <!-- Detalle Dinámico Desplegable del Ambiente Seleccionado -->
+          <div id="ambiente-detail-container" style="display:none;margin-top:16px;background:#fff;border:1px solid #cbd5e1;border-radius:14px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.06);"></div>
+        </div>
+
+        <!-- Sección 2: Ranking de Desempeño por Auxiliar (Interactivo) -->
+        <div style="border:1px solid #cbd5e1;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.04);">
+          <div style="background:#1e293b;color:#fff;padding:14px 20px;font-size:.9rem;font-weight:800;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <span><i class="fa-solid fa-user-check"></i> Desempeño y Referencias por Auxiliar</span>
+            <span style="font-size:.75rem;color:#94a3b8;">Haga clic en una fila para ver las referencias contadas por el auxiliar</span>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="erp-table" style="margin:0;">
+              <thead>
+                <tr style="background:#f1f5f9;">
+                  <th width="30"></th>
+                  <th>#</th>
+                  <th>AUXILIAR</th>
+                  <th class="text-center">REGISTROS / LÍNEAS</th>
+                  <th class="text-center">REFERENCIAS ÚNICAS</th>
+                  <th class="text-center" style="background:#eff6ff;color:#1e40af;">TOTAL UNIDADES CONTADAS</th>
+                  <th class="text-center">ÚLTIMA ACTIVIDAD</th>
+                  <th class="text-center">ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${auxData.map((ax, idx) => `
+                  <tr style="cursor:pointer;" onclick="WMS_MODULES.inventario._toggleAuxiliarDetail(${ax.auxiliar_id})"
+                      onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+                    <td class="text-center"><i class="fa-solid fa-chevron-right" id="aux-icon-${ax.auxiliar_id}" style="color:#64748b;transition:transform .2s;"></i></td>
+                    <td class="text-center"><b>${idx + 1}</b></td>
+                    <td><b style="font-size:.88rem;color:#0f172a;">${WMS.esc(ax.auxiliar)}</b></td>
+                    <td class="text-center"><span class="badge badge-light-blue">${ax.total_registros}</span></td>
+                    <td class="text-center"><span class="badge badge-secondary" style="font-weight:800;">${ax.referencias_contadas} ref.</span></td>
+                    <td class="text-center fw-900" style="background:#eff6ff;color:#1d4ed8;font-size:1.1rem;">${WMS.formatNum(ax.total_unidades)}</td>
+                    <td class="text-center" style="font-size:.75rem;color:#64748b;">${ax.ultima_actividad ? ax.ultima_actividad.substring(0,16).replace('T',' ') : '-'}</td>
+                    <td class="text-center">
+                      <button class="btn btn-xs btn-outline-primary" style="font-weight:800;font-size:.7rem;">
+                        <i class="fa-solid fa-eye"></i> Detalle
+                      </button>
+                    </td>
+                  </tr>
+
+                  <!-- Fila Desplegable con Referencias Contadas por el Auxiliar -->
+                  <tr id="aux-detail-row-${ax.auxiliar_id}" style="display:none;background:#f8fafc;">
+                    <td colspan="8" style="padding:16px 24px;">
+                      <div style="border:1px solid #cbd5e1;border-left:4px solid #3b82f6;border-radius:10px;background:#fff;padding:14px 16px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+                          <div style="font-size:.85rem;font-weight:800;color:#1e293b;">
+                            <i class="fa-solid fa-boxes-stacked" style="color:#2563eb;"></i> Referencias Contadas por <b>${WMS.esc(ax.auxiliar)}</b> (${ax.referencias_contadas} ítems)
+                          </div>
+                          <div style="max-width:280px;flex:1;">
+                            <input class="form-control form-control-sm" placeholder="Filtrar por código o nombre..."
+                                   oninput="WMS_MODULES.inventario._filterAuxDetailSearch(${ax.auxiliar_id}, this.value)">
+                          </div>
+                        </div>
+
+                        <div style="max-height:280px;overflow-y:auto;border-radius:6px;border:1px solid #e2e8f0;">
+                          <table class="erp-table compact" id="aux-ref-table-${ax.auxiliar_id}" style="margin:0;">
+                            <thead>
+                              <tr style="background:#f1f5f9;position:sticky;top:0;">
+                                <th>CÓDIGO</th>
+                                <th>PRODUCTO / REFERENCIA</th>
+                                <th class="text-center">LÍNEAS</th>
+                                <th class="text-center" style="background:#eff6ff;">UNIDADES CONTADAS</th>
+                                <th class="text-center">UBICACIONES VISITADAS</th>
+                                <th class="text-center">ÚLTIMO REGISTRO</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              ${(ax.referencias || []).map(r => `
+                                <tr class="aux-ref-item" data-txt="${WMS.esc((r.codigo+' '+r.producto).toLowerCase())}">
+                                  <td><b>${WMS.esc(r.codigo)}</b></td>
+                                  <td><div style="font-weight:600;font-size:.78rem;color:#1e293b;">${WMS.esc(r.producto)}</div></td>
+                                  <td class="text-center"><span class="badge badge-light-blue">${r.total_registros}</span></td>
+                                  <td class="text-center fw-800" style="background:#eff6ff;color:#1d4ed8;font-size:.9rem;">${WMS.formatNum(r.total_unidades)}</td>
+                                  <td class="text-center">${(r.ubicaciones||[]).map(u=>`<span class="badge badge-secondary" style="margin:1px;font-size:.65rem;">${WMS.esc(u)}</span>`).join('')}</td>
+                                  <td class="text-center" style="font-size:.72rem;color:#64748b;">${r.ultima_actividad ? r.ultima_actividad.substring(0,16).replace('T',' ') : '-'}</td>
+                                </tr>`).join('') || '<tr><td colspan="6" class="text-center" style="padding:12px;">Sin referencias asociadas</td></tr>'}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>`).join('') || '<tr><td colspan="8" class="text-center" style="padding:20px;">Sin actividad de auxiliares registrada.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    `;
+  },
+
+  _toggleAmbienteDetail(ambKey, cardEl) {
+    const d = this._dashV2;
+    if (!d) return;
+    const container = document.getElementById('ambiente-detail-container');
+    if (!container) return;
+
+    document.querySelectorAll('.amb-card-btn').forEach(c => c.style.borderWidth = '2px');
+    if (cardEl) cardEl.style.borderWidth = '3px';
+
+    const ambObj = (d.analisis_ambientes || []).find(a => String(a.ambiente).toUpperCase() === String(ambKey).toUpperCase());
+    if (!ambObj) return;
+
+    const refs = ambObj.referencias || [];
+
+    if (container.getAttribute('data-active-amb') === ambKey && container.style.display !== 'none') {
+      container.style.display = 'none';
+      container.removeAttribute('data-active-amb');
+      return;
+    }
+
+    container.setAttribute('data-active-amb', ambKey);
+    container.style.display = 'block';
+
+    const ambColor = ambKey.includes('REFRI') ? '#0284c7' : (ambKey.includes('CONGE') ? '#4f46e5' : '#d97706');
+
+    container.innerHTML = `
+      <div style="background:#1e293b;color:#fff;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:.9rem;font-weight:900;display:flex;align-items:center;gap:8px;">
+          <span style="background:${ambColor};width:10px;height:10px;border-radius:50%;display:inline-block;"></span>
+          Referencias Contadas en Ambiente <b>${WMS.esc(ambKey)}</b> (${refs.length} referencias)
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex:1;max-width:320px;">
+          <input class="form-control form-control-sm" placeholder="Buscar por código o nombre de producto..."
+                 oninput="WMS_MODULES.inventario._filterAmbDetailSearch(this.value)">
+          <button class="btn btn-xs btn-outline-light" onclick="document.getElementById('ambiente-detail-container').style.display='none'">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <div style="max-height:360px;overflow-y:auto;">
+        <table class="erp-table" id="amb-detail-table">
+          <thead>
+            <tr style="background:#f1f5f9;position:sticky;top:0;z-index:5;">
+              <th>CÓDIGO</th>
+              <th>PRODUCTO / REFERENCIA</th>
+              <th class="text-center">U/E</th>
+              <th class="text-center" style="background:#eff6ff;color:#1e40af;">UNIDADES CONTADAS</th>
+              <th class="text-center">UBICACIONES</th>
+              <th class="text-center">PRÓXIMO VENCIMIENTO</th>
+              <th class="text-center">DÍAS VIDA ÚTIL</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${refs.map(r => {
+              const color_vu = r.dias_v_u !== null ? (r.dias_v_u <= 15 ? '#ef4444' : r.dias_v_u <= 30 ? '#f59e0b' : '#10b981') : '#64748b';
+              return `
+                <tr class="amb-detail-row" data-txt="${WMS.esc((r.codigo+' '+r.producto).toLowerCase())}">
+                  <td><b style="font-size:.82rem;color:#0f172a;">${WMS.esc(r.codigo)}</b></td>
+                  <td><div style="font-weight:700;font-size:.8rem;color:#1e293b;">${WMS.esc(r.producto)}</div></td>
+                  <td class="text-center" style="color:#64748b;">${r.unidades_caja || 1}</td>
+                  <td class="text-center fw-900" style="background:#eff6ff;color:#1d4ed8;font-size:1rem;">${WMS.formatNum(r.total_unidades)}</td>
+                  <td class="text-center"><span class="badge badge-light-blue" style="font-weight:800;">${r.ubicaciones_contadas}</span></td>
+                  <td class="text-center" style="font-size:.78rem;">${r.proximo_vencimiento ? WMS.formatDate(r.proximo_vencimiento) : 'N/A'}</td>
+                  <td class="text-center"><b style="color:${color_vu}">${r.dias_v_u !== null ? r.dias_v_u + 'd' : 'N/A'}</b></td>
+                </tr>`;
+            }).join('') || '<tr><td colspan="7" class="text-center" style="padding:20px;">Sin referencias contadas en este ambiente</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  },
+
+  _filterAmbDetailSearch(q) {
+    const ql = (q || '').toLowerCase().trim();
+    const rows = document.querySelectorAll('#amb-detail-table tbody tr.amb-detail-row');
+    rows.forEach(r => {
+      const txt = r.getAttribute('data-txt') || '';
+      if (!ql || txt.includes(ql)) {
+        r.style.display = '';
+      } else {
+        r.style.display = 'none';
+      }
+    });
+  },
+
+  _toggleAuxiliarDetail(auxId) {
+    const row = document.getElementById('aux-detail-row-' + auxId);
+    const icon = document.getElementById('aux-icon-' + auxId);
+    if (!row) return;
+
+    if (row.style.display === 'none' || !row.style.display) {
+      row.style.display = 'table-row';
+      if (icon) icon.style.transform = 'rotate(90deg)';
+    } else {
+      row.style.display = 'none';
+      if (icon) icon.style.transform = 'rotate(0deg)';
+    }
+  },
+
+  _filterAuxDetailSearch(auxId, q) {
+    const ql = (q || '').toLowerCase().trim();
+    const rows = document.querySelectorAll(`#aux-ref-table-${auxId} tbody tr.aux-ref-item`);
+    rows.forEach(r => {
+      const txt = r.getAttribute('data-txt') || '';
+      if (!ql || txt.includes(ql)) {
+        r.style.display = '';
+      } else {
+        r.style.display = 'none';
+      }
+    });
+  },
+
+  async _uploadIcgFile(sesionId, input) {
+    if (!input.files || !input.files[0]) return;
+    const file = input.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    WMS.toast('info', 'Procesando y cargando archivo ICG...');
+    try {
+      const res = await fetch(`api/v2/inventario/sesiones/${sesionId}/icg-upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + (localStorage.getItem('token') || '')
+        },
+        body: formData
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) throw new Error(json.message || 'Error al subir archivo');
+
+      WMS.toast('success', `✓ Cargadas ${json.total_lineas || 0} referencias ICG (${json.reconocidos || 0} reconocidas en catálogo)`);
+      input.value = '';
+      this.verDashboardV2(sesionId);
+    } catch(e) {
+      WMS.toast('error', e.message);
+      input.value = '';
+    }
+  },
+
+  async _deleteIcgFile(sesionId) {
+    if (!confirm('¿Está seguro de eliminar los datos de ICG cargados para esta sesión?')) return;
+    try {
+      await API.delete(`/v2/inventario/sesiones/${sesionId}/icg-delete`);
+      WMS.toast('success', 'Datos ICG eliminados');
+      this.verDashboardV2(sesionId);
+    } catch(e) { WMS.toast('error', e.message); }
+  },
+
+  _filterIcgAmb(amb, btn) {
+    document.querySelectorAll('.icg-amb-btn').forEach(b => {
+      b.classList.remove('btn-primary');
+      b.classList.add('btn-outline-secondary');
+    });
+    btn.classList.remove('btn-outline-secondary');
+    btn.classList.add('btn-primary');
+
+    const rows = document.querySelectorAll('#icg-comp-table tbody tr.icg-row');
+    rows.forEach(r => {
+      const rAmb = r.getAttribute('data-amb') || '';
+      if (amb === 'ALL' || rAmb === amb) {
+        r.style.display = '';
+      } else {
+        r.style.display = 'none';
+      }
+    });
+  },
+
+  _filterIcgSearch(q) {
+    const ql = (q || '').toLowerCase().trim();
+    const rows = document.querySelectorAll('#icg-comp-table tbody tr.icg-row');
+    rows.forEach(r => {
+      const txt = r.getAttribute('data-txt') || '';
+      if (!ql || txt.includes(ql)) {
+        r.style.display = '';
+      } else {
+        r.style.display = 'none';
+      }
+    });
+  },
+
+  _toggleModeIcgKpi(isIcgMode) {
+    const d = this._dashV2;
+    if (!d) return;
+    const icg = d.analisis_icg;
+    const kpis = d.kpis;
+    if (!icg || !icg.cargado) return;
+
+    const iraEl   = document.querySelector('.inv2-kpi-row .inv2-kpi:nth-child(1) .inv2-kpi-v');
+    const falEl   = document.querySelector('.inv2-kpi-row .inv2-kpi:nth-child(2) .inv2-kpi-v');
+    const sobEl   = document.querySelector('.inv2-kpi-row .inv2-kpi:nth-child(3) .inv2-kpi-v');
+    const avEl    = document.querySelector('.inv2-kpi-row .inv2-kpi:nth-child(4) .inv2-kpi-v');
+    const avLbl   = document.querySelector('.inv2-kpi-row .inv2-kpi:nth-child(4) .inv2-kpi-lbl');
+
+    if (isIcgMode) {
+      if (iraEl) iraEl.textContent = icg.exactitud_ira_icg + '%';
+      if (falEl) falEl.textContent = Math.abs(icg.faltantes_unidades_icg);
+      if (sobEl) sobEl.textContent = icg.sobrantes_unidades_icg;
+      if (avEl)  avEl.textContent  = icg.pct_avance_icg + '%';
+      if (avLbl) avLbl.textContent = 'Avance ICG';
+    } else {
+      const iraWms = kpis.total_lineas > 0 ? (100 - (kpis.lineas_con_diferencia / kpis.total_lineas * 100)).toFixed(1) : 100;
+      if (iraEl) iraEl.textContent = iraWms + '%';
+      if (falEl) falEl.textContent = Math.abs(kpis.faltantes_unidades);
+      if (sobEl) sobEl.textContent = kpis.sobrantes_unidades;
+      if (avEl)  avEl.textContent  = kpis.pct_avance + '%';
+      if (avLbl) avLbl.textContent = 'Avance R' + (d.ronda_filtro || 1);
+    }
+  },
 }; // fin WMS_MODULES.inventario
