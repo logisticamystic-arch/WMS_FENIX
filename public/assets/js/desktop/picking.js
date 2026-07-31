@@ -2565,15 +2565,18 @@ WMS_MODULES.picking = {
     fd.append('file', file);
 
     try {
-      const r = await fetch('/WMS_FENIX/public/api/picking/importar', {
+      const token = localStorage.getItem('wms_token') || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+      const baseUrl = typeof API_BASE !== 'undefined' ? API_BASE : (API.BASE_URL || '/WMS_FENIX/public/api');
+      const r = await fetch(`${baseUrl}/picking/importar`, {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + localStorage.getItem('wms_token') },
+        headers: { Authorization: 'Bearer ' + token },
         body: fd
       });
-      if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + r.statusText);
-      const j = await r.json();
-      if (j.error) {
-        WMS.toast('error', j.message || 'Error en importación');
+
+      const j = await r.json().catch(() => ({}));
+
+      if (!r.ok || j.error) {
+        WMS.toast('error', j.message || `Error HTTP ${r.status}: ${r.statusText}`);
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-upload"></i> Importar Pedidos'; }
       } else {
         const data = j.data || {};

@@ -2800,27 +2800,37 @@ class PickingController extends BaseController
         $allLines = array_values(array_filter($allLines, fn($l) => trim($l) !== ''));
         if (count($allLines) < 2) return $this->error($res, 'El archivo no contiene datos');
 
-        $sep       = str_contains($allLines[0], ';') ? ';' : ',';
-        $rawHdr    = str_getcsv($allLines[0], $sep);
-        $headers   = array_map(fn($h) => strtolower(trim($h, " \t\r\n\xEF\xBB\xBF")), $rawHdr);
+        $firstLine = $allLines[0];
+        if (str_contains($firstLine, "\t")) {
+            $sep = "\t";
+        } elseif (str_contains($firstLine, ';')) {
+            $sep = ';';
+        } elseif (str_contains($firstLine, '|')) {
+            $sep = '|';
+        } else {
+            $sep = ',';
+        }
+
+        $rawHdr    = str_getcsv($firstLine, $sep);
+        $headers   = array_map(fn($h) => strtolower(trim($h, " \t\r\n\"'\xEF\xBB\xBF")), $rawHdr);
         $dataLines = array_slice($allLines, 1);
 
         $ALIASES = [
-            'numero_factura'   => ['num pedido', 'numero pedido', 'nro pedido', 'num factura', 'numero factura', 'nro factura', 'pedido', 'factura'],
-            'sucursal_entrega' => ['sucursal entrega', 'sucursal_entrega', 'sucursal', 'punto entrega', 'destino', 'cliente entrega'],
-            'ubicacion'        => ['ubicacion', 'ubicación', 'zona almacen', 'zona', 'ambiente archivo'],
-            'producto'         => ['referencia', 'ean', 'codigo barras', 'codigo_barras', 'codigo producto', 'cod producto'],
-            'descripcion'      => ['descripcion', 'descripcion producto', 'nombre producto', 'detalle'],
-            'cantidad'         => ['unid pedido', 'unid_pedido', 'cantidad', 'cant', 'qty', 'unidades pedido', 'unidades'],
-            'unid_pedido_empaque' => ['unid pedido empaque', 'unid_pedido_empaque', 'cajas pedidas', 'cajas pedido', 'unidades empaque'],
-            'unid_pedido_total'   => ['unid pedido total', 'unid_pedido_total', 'unid total pedidas', 'total unidades pedidas'],
-            'observaciones'       => ['observaciones', 'observacion', 'notas', 'comentarios'],
+            'numero_factura'   => ['num pedido', 'numero pedido', 'nro pedido', 'num factura', 'numero factura', 'nro factura', 'pedido', 'factura', 'doc', 'documento', 'orden', 'nro_pedido', 'num_pedido', 'nro_factura', 'num_factura'],
+            'sucursal_entrega' => ['sucursal entrega', 'sucursal_entrega', 'sucursal', 'punto entrega', 'destino', 'cliente entrega', 'cliente', 'razon social', 'nombre cliente', 'tercero', 'nom_cliente'],
+            'ubicacion'        => ['ubicacion', 'ubicación', 'zona almacen', 'zona', 'ambiente archivo', 'ambiente', 'bodega'],
+            'producto'         => ['referencia', 'ean', 'codigo barras', 'codigo_barras', 'codigo producto', 'cod producto', 'codigo', 'codigo_interno', 'cod_interno', 'item', 'sku', 'ref', 'cod_prod', 'cod_item'],
+            'descripcion'      => ['descripcion', 'descripcion producto', 'nombre producto', 'detalle', 'nombre', 'articulo', 'desc_producto', 'producto_nombre'],
+            'cantidad'         => ['unid pedido', 'unid_pedido', 'cantidad', 'cant', 'qty', 'unidades pedido', 'unidades', 'cant.', 'unid', 'cantidad_pedida', 'cant_pedida'],
+            'unid_pedido_empaque' => ['unid pedido empaque', 'unid_pedido_empaque', 'cajas pedidas', 'cajas pedido', 'unidades empaque', 'cajas', 'cant_cajas'],
+            'unid_pedido_total'   => ['unid pedido total', 'unid_pedido_total', 'unid total pedidas', 'total unidades pedidas', 'total'],
+            'observaciones'       => ['observaciones', 'observacion', 'notas', 'comentarios', 'obs'],
         ];
 
         $colMap = [];
         foreach ($ALIASES as $field => $aliases) {
             foreach ($headers as $idx => $h) {
-                $hl = strtolower(trim($h));
+                $hl = strtolower(trim($h, " \t\r\n\"'"));
                 foreach ($aliases as $alias) {
                     if ($hl === $alias || str_contains($hl, $alias)) {
                         $colMap[$field] = $idx;
@@ -2831,7 +2841,8 @@ class PickingController extends BaseController
         }
 
         if (!isset($colMap['producto']) || !isset($colMap['cantidad'])) {
-            return $this->error($res, 'No se pudieron detectar las columnas de Producto y Cantidad en el archivo. Verifique los encabezados.');
+            $hdrList = implode(', ', array_filter($headers));
+            return $this->error($res, "No se pudieron detectar las columnas obligatorias de Producto y Cantidad en el archivo (Encabezados detectados: [{$hdrList}]). Verifique que el archivo incluya las columnas 'Referencia' (o Código/SKU) y 'Cantidad' (o Unidades).");
         }
 
         // ── Pre-audit totals + collect facturas ──────────────────────────────
