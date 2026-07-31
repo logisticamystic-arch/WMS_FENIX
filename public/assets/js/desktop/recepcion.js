@@ -1228,12 +1228,12 @@ WMS_MODULES.recepcion = {
                         </div>
                     </div>
 
-                    <div class="form-group">
+                    <div class="form-group" id="op-lote-group">
                         <label class="form-label">Lote (Opcional)</label>
                         <input type="text" id="op-lote" class="form-control" placeholder="Lote del producto">
                     </div>
 
-                    <div class="form-group">
+                    <div class="form-group" id="op-fvenc-group">
                         <label class="form-label">Fecha de Vencimiento</label>
                         <input type="date" id="op-fecha-venc" class="form-control">
                     </div>
@@ -1383,6 +1383,23 @@ WMS_MODULES.recepcion = {
       if (saldosGrp) saldosGrp.style.display = upc > 1 ? 'block' : 'none';
 
       this._actualizarPreviewUnidades();
+
+      // Ajustar visibilidad de Lote y Vencimiento según configuración del producto
+      const d = (window._opOdcDetalles || []).find(x => String(x.producto_id) === String(sel.value));
+      const prod = d ? d.producto : null;
+      const reqLote = !!(prod && prod.controla_lote);
+      const reqVenc = !!(prod && prod.controla_vencimiento);
+
+      const opLoteGrp  = document.getElementById('op-lote-group');
+      const opLoteInp  = document.getElementById('op-lote');
+      const opFvencGrp = document.getElementById('op-fvenc-group');
+      const opFvencInp = document.getElementById('op-fecha-venc');
+
+      if (opLoteGrp)  opLoteGrp.style.display  = reqLote ? 'block' : 'none';
+      if (!reqLote && opLoteInp) opLoteInp.value = '';
+
+      if (opFvencGrp) opFvencGrp.style.display = reqVenc ? 'block' : 'none';
+      if (!reqVenc && opFvencInp) opFvencInp.value = '';
   },
 
   // ── Actualizar el preview de conversión cajas → unidades ─────────────────
@@ -1710,13 +1727,13 @@ WMS_MODULES.recepcion = {
             <input type="hidden" id="sodc-unidad-contenido" value="">
 
             <!-- Lote -->
-            <div class="form-group">
+            <div class="form-group" id="sodc-lote-group">
               <label class="form-label">Lote (Opcional)</label>
               <input type="text" id="sodc-lote" class="form-control" placeholder="Número de lote">
             </div>
 
             <!-- Fecha Vencimiento -->
-            <div class="form-group">
+            <div class="form-group" id="sodc-fvenc-group">
               <label class="form-label">Fecha de Vencimiento</label>
               <input type="date" id="sodc-fecha-venc" class="form-control">
               <div id="sodc-fecha-info" style="display:none;font-size:11px;color:#059669;margin-top:3px;"></div>
@@ -1855,7 +1872,8 @@ WMS_MODULES.recepcion = {
         loteInput.value = r.data.lote_raw;
       }
 
-      this._actualizarPreviewSinODC();
+      this._updateSinODCLoteVencVisibility(p);
+      this._actualizarPreviewUnidades();
       input.value = '';
       document.getElementById('sodc-cant')?.focus();
       WMS.toast('success', 'Producto identificado: ' + p.nombre);
@@ -2001,10 +2019,27 @@ WMS_MODULES.recepcion = {
       const udmInfo = factorUdm > 0 ? ` · U/E: ×${factorUdm} ${unidContenido}` : '';
       prodInfo.innerHTML = `<i class="fa-solid fa-check-circle" style="color:#059669;"></i> <b>${WMS.esc(p.nombre)}</b> · Cód: ${WMS.esc(p.codigo_interno || '-')} · UxC: ${p.unidades_caja || 1}${udmInfo}`;
     }
+    this._updateSinODCLoteVencVisibility(p);
     this._actualizarPreviewSinODC();
     // Si tiene U/E, enfocar ese campo primero
     const focusTarget = factorUdm > 0 ? 'sodc-cant-ue' : 'sodc-cant';
     document.getElementById(focusTarget)?.focus();
+  },
+
+  _updateSinODCLoteVencVisibility(p) {
+    const reqLote = !!(p && p.controla_lote);
+    const reqVenc = !!(p && p.controla_vencimiento);
+
+    const loteGroup  = document.getElementById('sodc-lote-group');
+    const loteInput  = document.getElementById('sodc-lote');
+    const fvencGroup = document.getElementById('sodc-fvenc-group');
+    const fvencInput = document.getElementById('sodc-fecha-venc');
+
+    if (loteGroup)  loteGroup.style.display  = reqLote ? 'block' : 'none';
+    if (!reqLote && loteInput) loteInput.value = '';
+
+    if (fvencGroup) fvencGroup.style.display = reqVenc ? 'block' : 'none';
+    if (!reqVenc && fvencInput) fvencInput.value = '';
   },
 
   _actualizarPreviewSinODC() {

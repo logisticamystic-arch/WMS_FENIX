@@ -2064,11 +2064,11 @@ WMS_MODULES.inventario = {
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-        <div class="form-group">
+        <div class="form-group" id="m-conteo-lote-group">
           <label class="form-label">Lote</label>
           <input type="text" id="m-conteo-lote" class="form-control" placeholder="Opcional">
         </div>
-        <div class="form-group">
+        <div class="form-group" id="m-conteo-venc-group">
           <label class="form-label">F. Vencimiento</label>
           <input type="date" id="m-conteo-venc" class="form-control">
         </div>
@@ -2116,6 +2116,20 @@ WMS_MODULES.inventario = {
                 document.getElementById('m-conteo-prod-info').classList.remove('hidden');
                 const upc = Math.max(1, parseInt(p.unidades_caja) || 1);
                 document.getElementById('m-conteo-prod-upc').value = upc;
+
+                const reqLote = !!(p && p.controla_lote);
+                const reqVenc = !!(p && (p.controla_vencimiento || p.control_vencimientos));
+                const mLoteGrp = document.getElementById('m-conteo-lote-group');
+                const mLoteInp = document.getElementById('m-conteo-lote');
+                const mVencGrp = document.getElementById('m-conteo-venc-group');
+                const mVencInp = document.getElementById('m-conteo-venc');
+
+                if (mLoteGrp) mLoteGrp.style.display = reqLote ? '' : 'none';
+                if (!reqLote && mLoteInp) mLoteInp.value = '';
+
+                if (mVencGrp) mVencGrp.style.display = reqVenc ? '' : 'none';
+                if (!reqVenc && mVencInp) mVencInp.value = '';
+
                 this._conteoRenderCantidadInputs(upc);
                 document.getElementById('m-conteo-u-ac').focus();
             });
@@ -3483,13 +3497,13 @@ WMS_MODULES.inventario = {
             </div>
 
             <!-- Lote -->
-            <div class="form-group" style="margin-bottom:10px;">
+            <div class="form-group" id="ci-lote-group" style="margin-bottom:10px;">
               <label class="form-label">Lote <span style="color:#9ca3af;font-size:.75rem;">(opcional)</span></label>
               <input id="ci-lote" class="form-control" placeholder="Número de lote...">
             </div>
 
-            <!-- Fecha vencimiento — SIEMPRE VISIBLE -->
-            <div class="form-group" style="margin-bottom:10px;">
+            <!-- Fecha vencimiento -->
+            <div class="form-group" id="ci-fvenc-group" style="margin-bottom:10px;">
               <label class="form-label" id="ci-fvenc-label">
                 <i class="fa-solid fa-calendar-days"></i> Fecha de Vencimiento
               </label>
@@ -3653,16 +3667,30 @@ WMS_MODULES.inventario = {
       info.innerHTML = `<b>${WMS.esc(p.nombre)}</b> · ${upc} u/caja · ${WMS.esc(p.unidad_medida||'UN')}` +
         (p.control_vencimientos ? ' · <span style="color:#dc2626;font-weight:700;">📅 Requiere fecha vencimiento</span>' : '');
     }
-    // Fecha vencimiento: siempre visible, resaltar si es requerida
+    // Visibilidad según configuración del producto
+    const reqLote = !!(p && p.controla_lote);
+    const reqVenc = !!(p && (p.controla_vencimiento || p.control_vencimientos));
+
+    const ciLoteGrp  = document.getElementById('ci-lote-group');
+    const ciLoteInp  = document.getElementById('ci-lote');
+    const ciFvencGrp = document.getElementById('ci-fvenc-group');
+    const ciFvencInp = document.getElementById('ci-fvenc');
+
+    if (ciLoteGrp)  ciLoteGrp.style.display  = reqLote ? '' : 'none';
+    if (!reqLote && ciLoteInp) ciLoteInp.value = '';
+
+    if (ciFvencGrp) ciFvencGrp.style.display = reqVenc ? '' : 'none';
+    if (!reqVenc && ciFvencInp) ciFvencInp.value = '';
+
     if (lbl) {
-      lbl.style.color = p.control_vencimientos ? '#dc2626' : '';
-      lbl.style.fontWeight = p.control_vencimientos ? '700' : '';
-      lbl.innerHTML = p.control_vencimientos
+      lbl.style.color = reqVenc ? '#dc2626' : '';
+      lbl.style.fontWeight = reqVenc ? '700' : '';
+      lbl.innerHTML = reqVenc
         ? '<i class="fa-solid fa-calendar-xmark"></i> Fecha de Vencimiento <span style="color:#dc2626;">*</span>'
         : '<i class="fa-solid fa-calendar-days"></i> Fecha de Vencimiento';
     }
-    if (hint) hint.style.display = p.control_vencimientos ? 'block' : 'none';
-    if (fv)   fv.style.borderColor = p.control_vencimientos ? '#dc2626' : '';
+    if (hint) hint.style.display = reqVenc ? 'block' : 'none';
+    if (fv)   fv.style.borderColor = reqVenc ? '#dc2626' : '';
     this._ciCalcPreview();
   },
 
@@ -4352,7 +4380,7 @@ WMS_MODULES.inventario = {
                 <small id="aj-ubicacion-hint" style="color:#64748b;font-size:.75rem;display:block;margin-top:4px;"></small>
               </div>
               <!-- Lote -->
-              <div class="form-group">
+              <div class="form-group" id="aj-lote-wrap">
                 <label class="form-label">Lote</label>
                 <input id="aj-lote" class="form-control" placeholder="Opcional...">
               </div>
@@ -4479,11 +4507,20 @@ WMS_MODULES.inventario = {
     const tipo      = document.getElementById('aj-tipo')?.value;
     const wrap      = document.getElementById('aj-fv-wrap');
     const fv        = document.getElementById('aj-fv');
+    const loteWrap  = document.getElementById('aj-lote-wrap');
+    const loteInp   = document.getElementById('aj-lote');
     const ubiInput  = document.getElementById('aj-ubicacion-input');
     const ubiSelect = document.getElementById('aj-ubicacion-salida');
     const hint      = document.getElementById('aj-ubicacion-hint');
+
+    const reqLote = !!(this._ajProd && this._ajProd.controla_lote);
+    const reqVenc = !!(this._ajProd && (this._ajProd.controla_vencimiento || this._ajProd.control_vencimientos));
+
+    if (loteWrap) loteWrap.style.display = reqLote ? '' : 'none';
+    if (!reqLote && loteInp) loteInp.value = '';
+
     if (wrap) {
-      if (tipo === 'Entrada') {
+      if (tipo === 'Entrada' && reqVenc) {
         wrap.style.display = '';
         if (fv) fv.setAttribute('required', 'required');
       } else {

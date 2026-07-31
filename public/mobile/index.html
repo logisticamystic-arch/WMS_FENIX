@@ -788,14 +788,14 @@ const MWMS = {
         </div>
 
         <!-- Lote -->
-        <div class="op-card">
+        <div class="op-card" id="rs-lote-card" style="${!s.prodSel?.controla_lote ? 'display:none;' : ''}">
           <div class="m-label" id="rs-lote-label">Lote ${s.prodSel?.controla_lote ? '<span style="color:#ef4444">*</span>' : '(Opcional)'}</div>
           <input type="text" id="rs-lote" class="m-input-full" placeholder="N/A"
             value="${this.esc(s.fechaAutoLote || '')}">
         </div>
 
         <!-- Fecha Vencimiento -->
-        <div class="op-card">
+        <div class="op-card" id="rs-fv-card" style="${!s.prodSel?.controla_vencimiento ? 'display:none;' : ''}">
           <div class="m-label" id="rs-fv-label">Fecha de Vencimiento ${s.prodSel?.controla_vencimiento ? '<span style="color:#ef4444">*</span>' : ''}</div>
           <input type="date" id="rs-fecha-venc" class="m-input-full" value="${s.fechaAuto || ''}">
           ${s.fechaAutoRaw ? `<div style="font-size:.68rem;color:#059669;margin-top:3px;"><i class="fa-solid fa-calendar-check"></i> Fecha del QR: <b>${this.esc(s.fechaAutoRaw)}</b></div>` : ''}
@@ -991,7 +991,7 @@ const MWMS = {
             ${prods.length} resultado${prods.length !== 1 ? 's' : ''} encontrado${prods.length !== 1 ? 's' : ''}
           </div>` +
           prods.map(p => `
-          <div onclick="MWMS._selProdSinOdc(${JSON.stringify({id:p.id,nombre:p.nombre,codigo_interno:p.codigo_interno,codigo_ean:p.codigo_ean,unidades_caja:p.unidades_caja,factor_udm:p.factor_udm,unidad_contenido:p.unidad_contenido,controla_vencimiento:p.controla_vencimiento}).replace(/"/g,'&quot;')})"
+          <div onclick="MWMS._selProdSinOdc(${JSON.stringify({id:p.id,nombre:p.nombre,codigo_interno:p.codigo_interno,codigo_ean:p.codigo_ean,unidades_caja:p.unidades_caja,factor_udm:p.factor_udm,unidad_contenido:p.unidad_contenido,controla_lote:p.controla_lote,controla_vencimiento:p.controla_vencimiento}).replace(/"/g,'&quot;')})"
                style="padding:10px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;active:background:#f0f9ff;">
             <div style="font-weight:700;color:#1e293b;font-size:.82rem;">${this.esc(p.nombre)}</div>
             <div style="font-size:.65rem;color:#64748b;margin-top:1px;">
@@ -1012,6 +1012,12 @@ const MWMS = {
     this._sinOdc.prodSel = p;
     this._sinOdc.fechaAuto = '';
     this._sinOdc.fechaAutoRaw = '';
+    const loteCard = document.getElementById('rs-lote-card');
+    const fvCard   = document.getElementById('rs-fv-card');
+    if (loteCard) loteCard.style.display = p.controla_lote ? 'block' : 'none';
+    if (fvCard)   fvCard.style.display   = p.controla_vencimiento ? 'block' : 'none';
+    if (!p.controla_lote) { const el = document.getElementById('rs-lote'); if (el) el.value = ''; }
+    if (!p.controla_vencimiento) { const el = document.getElementById('rs-fecha-venc'); if (el) el.value = ''; }
     const info = document.getElementById('rs-prod-info');
     if (info) { info.style.display = 'block'; info.innerHTML = `<i class="fa-solid fa-check-circle" style="color:#059669;"></i> ${this.esc(p.nombre)}`; }
     const el = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
@@ -1456,7 +1462,11 @@ const MWMS = {
     document.getElementById('m-cap-lote').value = "";
     document.getElementById('m-cap-fv').value = "";
     document.getElementById('m-cap-fv2').value = "";
-    document.getElementById('m-cap-fv-group').style.display = (p.controla_vencimiento ? 'block' : 'none');
+    const reqLote = !!(p && p.controla_lote);
+    const reqVenc = !!(p && p.controla_vencimiento);
+    const loteGrp = document.getElementById('m-cap-lote-group');
+    if (loteGrp) loteGrp.style.display = reqLote ? 'block' : 'none';
+    document.getElementById('m-cap-fv-group').style.display = reqVenc ? 'block' : 'none';
     /* Resetear estado de requerido y chips (el caller puede sobreescribir si es inventario) */
     const fvReqEl = document.getElementById('m-cap-fv-required');
     if (fvReqEl) fvReqEl.value = p.controla_vencimiento ? '1' : '0';
@@ -4119,20 +4129,32 @@ const MWMS = {
     const lbl  = document.getElementById('mci-fvenc-label');
     const hint = document.getElementById('mci-fvenc-hint');
     const fvi  = document.getElementById('mci-fvenc');
+    const fvCard = document.getElementById('mci-fvenc-card');
+    const loteCard = document.getElementById('mci-lote-card');
     if (inp) inp.value = p.nombre;
     if (dd)  dd.style.display='none';
     const upc = Math.max(1, parseInt(p.unidades_caja)||1);
+    
+    const reqLote = !!(p && p.controla_lote);
+    const reqVenc = !!(p && (p.controla_vencimiento || p.control_vencimientos));
+
+    if (loteCard) loteCard.style.display = reqLote ? 'block' : 'none';
+    if (!reqLote && document.getElementById('mci-lote')) document.getElementById('mci-lote').value = '';
+
+    if (fvCard) fvCard.style.display = reqVenc ? 'block' : 'none';
+    if (!reqVenc && fvi) fvi.value = '';
+
     if (info) {
       info.style.display = 'block';
-      info.innerHTML = `<b>${this.esc(p.nombre)}</b> · ${upc}u/caja${p.control_vencimientos ? ' · <span style="color:#dc2626;font-weight:700;">📅 Requiere vencimiento</span>' : ''}`;
+      info.innerHTML = `<b>${this.esc(p.nombre)}</b> · ${upc}u/caja${reqVenc ? ' · <span style="color:#dc2626;font-weight:700;">📅 Requiere vencimiento</span>' : ''}`;
     }
     if (lbl) {
-      lbl.innerHTML = p.control_vencimientos
+      lbl.innerHTML = reqVenc
         ? '<i class="fa-solid fa-calendar-xmark" style="color:#dc2626;"></i> Fecha de Vencimiento <span style="color:#dc2626;">*</span>'
         : '<i class="fa-solid fa-calendar-days"></i> Fecha de Vencimiento';
     }
-    if (hint) hint.style.display = p.control_vencimientos ? 'block' : 'none';
-    if (fvi)  fvi.style.borderColor = p.control_vencimientos ? '#dc2626' : '';
+    if (hint) hint.style.display = reqVenc ? 'block' : 'none';
+    if (fvi)  fvi.style.borderColor = reqVenc ? '#dc2626' : '';
     this._mciPreview();
   },
 
@@ -4650,7 +4672,7 @@ const MWMS = {
 
         <div id="iv-ref-fechas-panel"></div>
 
-        <div class="op-card">
+        <div class="op-card" id="iv-ref-fv-card" style="${(prod && prod.controla_vencimiento === false) ? 'display:none;' : ''}">
           <div class="m-label">Fecha Vencimiento ${fvObligatorio?'<span style="color:#dc2626;">*</span>':'<span style="font-size:.65rem;color:#94a3b8;">(opcional)</span>'}</div>
           <input type="date" id="iv-ref-fv" class="m-input-full" placeholder="O seleccione fecha arriba">
         </div>

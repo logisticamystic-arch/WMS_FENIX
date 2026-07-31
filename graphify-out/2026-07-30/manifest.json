@@ -1365,9 +1365,9 @@
     "semantic_hash": "4146a14c17c2122b1cbcb12a7ac16204"
   },
   "src/Models/Producto.php": {
-    "mtime": 1782430638.8950737,
-    "ast_hash": "f73347670de1e093d45407360e402849",
-    "semantic_hash": "f73347670de1e093d45407360e402849"
+    "mtime": 1785455533.2757008,
+    "ast_hash": "6e2879924d921f077b08407385775a56",
+    "semantic_hash": ""
   },
   "src/Models/ProductoEan.php": {
     "mtime": 1780188524.0,
@@ -1712,6 +1712,11 @@
   "public/uploads/firmas/firma_trp_6a6bac2d02c0c.png": {
     "mtime": 1785441324.9989133,
     "ast_hash": "80ee8b96baa8fbc96ca7365c80723d59",
+    "semantic_hash": ""
+  },
+  "database/migrations/123_productos_seco_sin_lote_vencimiento.php": {
+    "mtime": 1785455541.4545703,
+    "ast_hash": "4a554718e53aedb29f339053e0f1e8d7",
     "semantic_hash": ""
   }
 }
