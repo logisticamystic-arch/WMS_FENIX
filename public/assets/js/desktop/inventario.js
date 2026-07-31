@@ -1360,7 +1360,7 @@ WMS_MODULES.inventario = {
         </style>
 
         <div class="inv2-wrapper">
-          <!-- Nivel 1: KPIs -->
+          <!-- Nivel 1: KPIs Principales (Físico vs Sistema WMS) -->
           <div class="inv2-kpi-row">
             <div class="inv2-kpi">
               <div class="inv2-kpi-ic" style="background:${iraVal>=98?'#dcfce7':'#fee2e2'}">
@@ -1371,33 +1371,37 @@ WMS_MODULES.inventario = {
                 <div class="inv2-kpi-lbl">Exactitud (IRA)</div>
               </div>
             </div>
+
             <div class="inv2-kpi">
               <div class="inv2-kpi-ic" style="background:#fee2e2">
                 <i class="fa-solid fa-arrow-trend-down" style="color:#b91c1c"></i>
               </div>
               <div>
-                <div class="inv2-kpi-v" style="color:#b91c1c">${Math.abs(kpis.faltantes_unidades)}</div>
+                <div class="inv2-kpi-v" style="color:#b91c1c">${Math.abs(kpis.faltantes_unidades||0)}</div>
                 <div class="inv2-kpi-lbl">Faltantes (uds)</div>
               </div>
             </div>
+
             <div class="inv2-kpi">
               <div class="inv2-kpi-ic" style="background:#dcfce7">
                 <i class="fa-solid fa-arrow-trend-up" style="color:#15803d"></i>
               </div>
               <div>
-                <div class="inv2-kpi-v" style="color:#15803d">${kpis.sobrantes_unidades}</div>
+                <div class="inv2-kpi-v" style="color:#15803d">${kpis.sobrantes_unidades||0}</div>
                 <div class="inv2-kpi-lbl">Sobrantes (uds)</div>
               </div>
             </div>
+
             <div class="inv2-kpi">
               <div class="inv2-kpi-ic" style="background:#dbeafe">
                 <i class="fa-solid fa-chart-line" style="color:#1d4ed8"></i>
               </div>
               <div>
-                <div class="inv2-kpi-v" style="color:#1d4ed8">${kpis.pct_avance}%</div>
+                <div class="inv2-kpi-v" style="color:#1d4ed8">${kpis.pct_avance||0}%</div>
                 <div class="inv2-kpi-lbl">Avance R${ronda||1}</div>
               </div>
             </div>
+
             <div class="inv2-kpi" style="${(kpis.ubicaciones_vaciadas||0)>0?'background:#fef3c7;border-color:#fbbf24':''}">
               <div class="inv2-kpi-ic" style="background:${(kpis.ubicaciones_vaciadas||0)>0?'#fde68a':'#f1f5f9'}">
                 <i class="fa-solid fa-triangle-exclamation" style="color:${(kpis.ubicaciones_vaciadas||0)>0?'#d97706':'#94a3b8'}"></i>
@@ -5175,48 +5179,71 @@ WMS_MODULES.inventario = {
           </div>
         </div>
 
-        <!-- Sección de Discrepancias / Cobertura -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <!-- Sección de Discrepancias / Cobertura ICG vs Conteos WMS -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:10px;">
           
           <!-- Discrepancia 1: Referencias ICG NO contadas en WMS -->
-          <div style="border:1px solid #fecaca;border-radius:10px;overflow:hidden;background:#fff;">
-            <div style="background:#fef2f2;border-bottom:1px solid #fecaca;padding:10px 14px;font-size:.8rem;font-weight:800;color:#991b1b;display:flex;justify-content:space-between;align-items:center;">
-              <span><i class="fa-solid fa-eye-slash"></i> Referencias ICG NO Contadas en WMS</span>
-              <span class="badge badge-danger">${(icg.discrepancias?.icg_no_contados || []).length}</span>
+          <div style="border:2px solid #fecaca;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.04);">
+            <div style="background:#fef2f2;border-bottom:1px solid #fecaca;padding:12px 18px;font-size:.88rem;font-weight:900;color:#991b1b;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+              <span><i class="fa-solid fa-eye-slash" style="color:#dc2626;"></i> 1. Referencias en Archivo ICG NO Contadas en WMS</span>
+              <span class="badge badge-danger" style="font-weight:800;font-size:.78rem;">${(icg.discrepancias?.icg_no_contados || []).length} ref. pendientes</span>
             </div>
-            <div style="max-height:260px;overflow-y:auto;padding:0;">
+            <div style="padding:10px 14px;background:#fff5f5;border-bottom:1px solid #fee2e2;font-size:.75rem;color:#7f1d1d;display:flex;justify-content:space-between;align-items:center;">
+              <span>Estas referencias existen en el archivo plano de ICG pero <b>NO se han registrado conteos</b> en la bodega.</span>
+              <button class="btn btn-xs btn-outline-danger" onclick="WMS_MODULES.inventario._autoSelectIcgNoContados()" style="font-weight:800;font-size:.7rem;">
+                <i class="fa-solid fa-repeat"></i> Asignar R2
+              </button>
+            </div>
+            <div style="max-height:300px;overflow-y:auto;padding:0;">
               <table class="erp-table compact" style="margin:0;">
-                <thead><tr><th>CÓDIGO</th><th>PRODUCTO</th><th class="text-center">AMBIENTE</th><th class="text-center">STOCK ICG</th></tr></thead>
+                <thead>
+                  <tr style="background:#f1f5f9;position:sticky;top:0;">
+                    <th>CÓDIGO</th>
+                    <th>PRODUCTO / REFERENCIA</th>
+                    <th class="text-center">AMBIENTE</th>
+                    <th class="text-center" style="background:#fef2f2;color:#991b1b;">STOCK ICG TEÓRICO</th>
+                  </tr>
+                </thead>
                 <tbody>
                   ${(icg.discrepancias?.icg_no_contados || []).map(u => `
                     <tr>
-                      <td><b>${WMS.esc(u.codigo)}</b></td>
-                      <td><small>${WMS.esc(u.producto)}</small></td>
-                      <td class="text-center"><span class="badge badge-secondary">${WMS.esc(u.ambiente)}</span></td>
-                      <td class="text-center fw-800" style="color:#dc2626;">${WMS.formatNum(u.cantidad_icg)}</td>
-                    </tr>`).join('') || '<tr><td colspan="4" class="text-center" style="padding:15px;color:#059669;font-size:.78rem;"><i class="fa-solid fa-circle-check"></i> Todas las referencias de ICG fueron contadas en WMS</td></tr>'}
+                      <td><b style="font-size:.8rem;color:#0f172a;">${WMS.esc(u.codigo)}</b></td>
+                      <td><div style="font-weight:700;font-size:.78rem;color:#1e293b;">${WMS.esc(u.nombre_referencia || u.producto)}</div></td>
+                      <td class="text-center"><span class="badge badge-secondary" style="font-size:.65rem;">${WMS.esc(u.ambiente || 'SECO')}</span></td>
+                      <td class="text-center fw-900" style="background:#fef2f2;color:#dc2626;font-size:.95rem;">${WMS.formatNum(u.cantidad_icg)}</td>
+                    </tr>`).join('') || '<tr><td colspan="4" class="text-center" style="padding:20px;color:#059669;font-weight:700;"><i class="fa-solid fa-circle-check"></i> 🎉 Todas las referencias del archivo ICG fueron contadas.</td></tr>'}
                 </tbody>
               </table>
             </div>
           </div>
 
           <!-- Discrepancia 2: Referencias WMS NO en archivo ICG -->
-          <div style="border:1px solid #fed7aa;border-radius:10px;overflow:hidden;background:#fff;">
-            <div style="background:#fff7ed;border-bottom:1px solid #fed7aa;padding:10px 14px;font-size:.8rem;font-weight:800;color:#9a3412;display:flex;justify-content:space-between;align-items:center;">
-              <span><i class="fa-solid fa-circle-question"></i> Referencias Contadas en WMS NO en Archivo ICG</span>
-              <span class="badge badge-warning">${(icg.discrepancias?.conteo_no_en_icg || []).length}</span>
+          <div style="border:2px solid #fed7aa;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.04);">
+            <div style="background:#fff7ed;border-bottom:1px solid #fed7aa;padding:12px 18px;font-size:.88rem;font-weight:900;color:#9a3412;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+              <span><i class="fa-solid fa-triangle-exclamation" style="color:#d97706;"></i> 2. Conteos WMS NO Presentes en Archivo ICG</span>
+              <span class="badge badge-warning" style="font-weight:800;font-size:.78rem;">${(icg.discrepancias?.conteo_no_en_icg || []).length} ref. fuera de archivo</span>
             </div>
-            <div style="max-height:260px;overflow-y:auto;padding:0;">
+            <div style="padding:10px 14px;background:#fffbeb;border-bottom:1px solid #fef3c7;font-size:.75rem;color:#78350f;">
+              Estas referencias fueron contadas físicamente en la bodega pero <b>NO figuran en el archivo plano ICG</b> cargado.
+            </div>
+            <div style="max-height:300px;overflow-y:auto;padding:0;">
               <table class="erp-table compact" style="margin:0;">
-                <thead><tr><th>CÓDIGO</th><th>PRODUCTO</th><th class="text-center">AMBIENTE</th><th class="text-center">CONTEO WMS</th></tr></thead>
+                <thead>
+                  <tr style="background:#f1f5f9;position:sticky;top:0;">
+                    <th>CÓDIGO</th>
+                    <th>PRODUCTO / REFERENCIA</th>
+                    <th class="text-center">AMBIENTE</th>
+                    <th class="text-center" style="background:#fff7ed;color:#9a3412;">CONTEO FÍSICO WMS</th>
+                  </tr>
+                </thead>
                 <tbody>
                   ${(icg.discrepancias?.conteo_no_en_icg || []).map(u => `
                     <tr>
-                      <td><b>${WMS.esc(u.codigo)}</b></td>
-                      <td><small>${WMS.esc(u.producto)}</small></td>
-                      <td class="text-center"><span class="badge badge-secondary">${WMS.esc(u.ambiente)}</span></td>
-                      <td class="text-center fw-800" style="color:#d97706;">${WMS.formatNum(u.cantidad_contada)}</td>
-                    </tr>`).join('') || '<tr><td colspan="4" class="text-center" style="padding:15px;color:#059669;font-size:.78rem;"><i class="fa-solid fa-circle-check"></i> Todos los conteos WMS existen en el archivo ICG</td></tr>'}
+                      <td><b style="font-size:.8rem;color:#0f172a;">${WMS.esc(u.codigo)}</b></td>
+                      <td><div style="font-weight:700;font-size:.78rem;color:#1e293b;">${WMS.esc(u.producto)}</div></td>
+                      <td class="text-center"><span class="badge badge-secondary" style="font-size:.65rem;">${WMS.esc(u.ambiente || 'SECO')}</span></td>
+                      <td class="text-center fw-900" style="background:#fff7ed;color:#d97706;font-size:.95rem;">${WMS.formatNum(u.cantidad_contada)}</td>
+                    </tr>`).join('') || '<tr><td colspan="4" class="text-center" style="padding:20px;color:#059669;font-weight:700;"><i class="fa-solid fa-circle-check"></i> Todos los conteos WMS figuran en el archivo ICG.</td></tr>'}
                 </tbody>
               </table>
             </div>
@@ -5617,6 +5644,21 @@ WMS_MODULES.inventario = {
 
       </div>
     `;
+  },
+
+  _autoSelectIcgNoContados() {
+    this._tab2('segundos');
+    const d = this._dashV2;
+    const noContados = (d.analisis_icg?.discrepancias?.icg_no_contados || []).map(u => u.producto_id).filter(id => !!id);
+    setTimeout(() => {
+      document.querySelectorAll('#seg-ref-list-box .seg-ref-item').forEach(item => {
+        const chk = item.querySelector('.seg-ref-chk');
+        if (chk && noContados.includes(parseInt(chk.value))) {
+          chk.checked = true;
+        }
+      });
+      WMS.toast('info', 'Seleccionadas referencias ICG no contadas');
+    }, 150);
   },
 
   _autoSelectSegundosDiff() {
