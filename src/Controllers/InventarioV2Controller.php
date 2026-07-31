@@ -1176,6 +1176,29 @@ class InventarioV2Controller extends BaseController
                 }
             }
 
+            // ── Programación de Segundos Conteos (Ronda 2) ────────────────
+            $segundosConteosData = SesionAsignacion::where('sesion_id', $sesion->id)
+                ->where('ronda', 2)
+                ->with(['auxiliar:id,nombre', 'producto:id,codigo_interno,nombre'])
+                ->get()
+                ->map(function ($asig) use ($todasLasLineas) {
+                    $r1 = $todasLasLineas->where('producto_id', $asig->producto_id)->where('ronda', 1)->sum('cantidad_contada');
+                    $r2 = $todasLasLineas->where('producto_id', $asig->producto_id)->where('ronda', 2)->sum('cantidad_contada');
+                    return [
+                        'id'               => $asig->id,
+                        'auxiliar_id'      => $asig->auxiliar_id,
+                        'auxiliar'         => $asig->auxiliar->nombre ?? 'Sin Asignar',
+                        'producto_id'      => $asig->producto_id,
+                        'codigo'           => $asig->producto->codigo_interno ?? '-',
+                        'producto'         => $asig->producto->nombre ?? '-',
+                        'etiqueta'         => $asig->instruccion_libre ?: 'Segundo Conteo',
+                        'estado'           => $asig->estado,
+                        'r1'               => round((float)$r1, 3),
+                        'r2'               => round((float)$r2, 3),
+                        'created_at'       => $asig->created_at ? $asig->created_at->format('Y-m-d H:i') : null,
+                    ];
+                })->values();
+
             return $this->ok($res, [
                 'sesion'               => $sesion,
                 'ronda_filtro'         => $rondaFiltro,
@@ -1200,6 +1223,7 @@ class InventarioV2Controller extends BaseController
                 'analisis_ambientes'   => $ambientesData,
                 'analisis_auxiliares'  => $auxiliaresData,
                 'analisis_icg'         => $icgAnalysis,
+                'segundos_conteos'     => $segundosConteosData,
             ]);
         } catch (\Throwable $e) {
             error_log('Dashboard error: ' . $e->getMessage());
@@ -2948,5 +2972,73 @@ class InventarioV2Controller extends BaseController
         } catch (\Throwable $e) {
             return $this->error($res, $e->getMessage(), 500);
         }
+    }
+
+    /**
+     * POST /api/v2/inventario/sesiones/{id}/segundos-conteos
+     * Permite agregar referencias dinámicamente para Segundo Conteo (Ronda 2) y asignarlas a auxiliares.
+     */
+    public function crearSegundosConteosBatch(Request $req, Response $res, array $args): Response
+    {
+        $user = $req->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
+        $sesion = $this->_findSesion((int)$args['id'], $user, $req);
+        if (!$sesion) return $this->notFound($res, 'Sesión no encontrada');
+
+        $data = $req->getParsedBody() ?? [];
+        $auxiliarId  = (int)($data['auxiliar_id'] ?? 0);
+        $productoIds = $data['producto_ids'] ?? [];
+        $etiqueta    = trim($data['etiqueta'] ?? 'Segundo Conteo (Ronda 2)');
+
+        if (!$auxiliarId) {
+            return $this->error($res, 'Debe seleccionar un auxiliar para asignar el segundo conteo');
+        }
+        if (empty($productoIds) || !is_array($productoIds)) {
+            return $this->error($res, 'Debe seleccionar al menos una referencia para el segundo conteo');
+        }
+
+        // Elevar número de conteos de la sesión a mínimo 2 rondas
+        if ($sesion->num_conteos < 2) {
+            $sesion->num_conteos = 2;
+            $sesion->save();
+        }
+
+        $creados = 0;
+        foreach ($productoIds as $prodId) {
+            $prodId = (int)$prodId;
+            if (!$prodId) continue;
+
+            $exists = SesionAsignacion::where('sesion_id', $sesion->id)
+                ->where('auxiliar_id', $auxiliarId)
+                ->where('ronda', 2)
+                ->where('producto_id', $prodId)
+                ->exists();
+
+            if (!$exists) {
+                $asig = SesionAsignacion::create([
+                    'sesion_id'         => $sesion->id,
+                    'auxiliar_id'       => $auxiliarId,
+                    'ronda'             => 2,
+                    'tipo_instruccion'  => 'Referencia',
+                    'producto_id'       => $prodId,
+                    'instruccion_libre' => $etiqueta,
+                    'estado'            => SesionAsignacion::ESTADO_PENDIENTE,
+                ]);
+
+                if ($sesion->estado === SesionInventario::ESTADO_EN_CURSO) {
+                    $this->crearNotificacionAuxiliar($asig, $sesion);
+                    $asig->estado        = SesionAsignacion::ESTADO_NOTIFICADO;
+                    $asig->notificado_at = date('Y-m-d H:i:s');
+                    $asig->save();
+                }
+                $creados++;
+            }
+        }
+
+        return $this->ok($res, [
+            'creados' => $creados,
+            'sesion'  => $sesion->fresh()
+        ], "Se asignaron {$creados} referencia(s) a Segundo Conteo (R2)");
     }
 }

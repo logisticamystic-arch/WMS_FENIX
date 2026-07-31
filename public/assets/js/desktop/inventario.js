@@ -1524,6 +1524,9 @@ WMS_MODULES.inventario = {
                 <button class="inv2-tab" id="t2-ml" onclick="WMS_MODULES.inventario._tab2('ml')">
                   <i class="fa-solid fa-robot"></i> Análisis ML
                 </button>
+                <button class="inv2-tab" id="t2-segundos" onclick="WMS_MODULES.inventario._tab2('segundos')">
+                  <i class="fa-solid fa-repeat"></i> Segundos Conteos
+                </button>
                 <button class="inv2-tab" id="t2-asig" onclick="WMS_MODULES.inventario._tab2('asig')">
                   <i class="fa-solid fa-users"></i> Asig.
                 </button>
@@ -1598,6 +1601,9 @@ WMS_MODULES.inventario = {
     }
     if (tab === 'amb') {
       return this._renderTabAmbientes();
+    }
+    if (tab === 'segundos') {
+      return this._renderTabSegundosConteos();
     }
 
     if (tab === 'mat') {
@@ -1702,13 +1708,20 @@ WMS_MODULES.inventario = {
                 <th class="text-center">R2</th>
                 <th class="text-center">R3</th>
                 <th class="text-center" style="background:#f0fdf4;color:#166534;">ICG</th>
+                <th class="text-center" style="background:#fefce8;color:#854d0e;">DIF. ICG</th>
                 <th class="text-center" style="background:#eff6ff">Sistema</th>
-                <th class="text-center" style="background:#fff7ed">Diferencia</th>
+                <th class="text-center" style="background:#fff7ed">DIF. SISTEMA</th>
               </tr>
             </thead>
             <tbody>
               ${consolidated.map((m, idx) => {
                 const isCons = m.ronda_1 === m.ronda_2;
+                const conteoFisico = (m.ronda_3 > 0) ? m.ronda_3 : ((m.ronda_2 > 0) ? m.ronda_2 : (m.ronda_1 || 0));
+                const hasIcg = m.cantidad_icg !== undefined && m.cantidad_icg !== null;
+                const difIcg = hasIcg ? (conteoFisico - m.cantidad_icg) : null;
+                const difIcgTxt = hasIcg ? ((difIcg > 0 ? '+' : '') + WMS.formatNum(difIcg)) : '—';
+                const difIcgColor = (difIcg !== null && difIcg !== 0) ? 'text-danger' : (hasIcg ? 'text-success' : '');
+
                 return `
                 <tr style="background:${!isCons&&m.ronda_2>0?'#fff1f2':'#fff'}">
                   <td class="text-center">
@@ -1723,14 +1736,15 @@ WMS_MODULES.inventario = {
                   <td class="text-center fw-700" style="font-size:.95rem">${m.ronda_1}</td>
                   <td class="text-center fw-700 ${!isCons&&m.ronda_2>0?'text-danger':''}" style="font-size:.95rem">${m.ronda_2||'-'}</td>
                   <td class="text-center fw-700" style="font-size:.95rem">${m.ronda_3||'-'}</td>
-                  <td class="text-center fw-700" style="background:#f0fdf4;color:#15803d;font-size:.9rem">${m.cantidad_icg !== undefined ? WMS.formatNum(m.cantidad_icg) : '—'}</td>
+                  <td class="text-center fw-700" style="background:#f0fdf4;color:#15803d;font-size:.9rem">${hasIcg ? WMS.formatNum(m.cantidad_icg) : '—'}</td>
+                  <td class="text-center fw-800 ${difIcgColor}" style="background:#fefce8;font-size:.9rem">${difIcgTxt}</td>
                   <td class="text-center fw-700" style="background:#f9fafb;font-size:.9rem">${m.sistema}</td>
                   <td class="text-center fw-800 ${m.diferencia!==0?'text-danger':'text-success'}" style="background:#fffaf5;font-size:.95rem">
                     ${m.diferencia>0?'+':''}${m.diferencia}
                   </td>
                 </tr>
                 <tr hidden style="background:#f8fafc">
-                  <td colspan="8" style="padding:0">
+                  <td colspan="9" style="padding:0">
                     <div style="padding:12px 20px; border-left:4px solid #3b82f6">
                       <table style="width:100%;font-size:.75rem" class="detail-subtable">
                         <thead>
@@ -1755,7 +1769,7 @@ WMS_MODULES.inventario = {
                     </div>
                   </td>
                 </tr>`;
-              }).join('') || '<tr><td colspan="8" class="table-empty">Sin datos consolidados</td></tr>'}
+              }).join('') || '<tr><td colspan="9" class="table-empty">Sin datos consolidados</td></tr>'}
             </tbody>
           </table>
         </div>`;
@@ -5483,6 +5497,184 @@ WMS_MODULES.inventario = {
         r.style.display = 'none';
       }
     });
+  },
+
+  _renderTabSegundosConteos() {
+    const d = this._dashV2;
+    const content = document.getElementById('inv2-content');
+    if (!content || !d) return;
+
+    const listRef = d.matriz_consolidada || [];
+    const auxList = d.analisis_auxiliares || [];
+    const segList = d.segundos_conteos || [];
+
+    content.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:20px;">
+
+        <!-- Encabezado y Formulario de Programación de Segundo Conteo -->
+        <div style="background:#fff;border:1px solid #cbd5e1;border-left:5px solid #3b82f6;border-radius:14px;padding:20px;box-shadow:0 3px 6px rgba(0,0,0,.04);">
+          <div style="font-size:1.05rem;font-weight:900;color:#0f172a;margin-bottom:6px;display:flex;align-items:center;gap:8px;">
+            <i class="fa-solid fa-repeat" style="color:#2563eb;"></i> Programación de Segundos Conteos (Ronda 2)
+          </div>
+          <p style="font-size:.82rem;color:#475569;margin-bottom:16px;">
+            Seleccione las referencias que requieren un <b>Segundo Conteo (R2)</b> en todas las ubicaciones y asígnelas a un auxiliar como nueva tarea.
+          </p>
+
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;align-items:end;">
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <label style="font-size:.75rem;font-weight:800;color:#334155;margin:0;">1. Referencias a Re-contar (Ronda 2)</label>
+                <button class="btn btn-xs btn-outline-warning" onclick="WMS_MODULES.inventario._autoSelectSegundosDiff()" style="font-weight:800;font-size:.7rem;">
+                  <i class="fa-solid fa-bolt"></i> Seleccionar Dif. (R1 vs Sistema / ICG)
+                </button>
+              </div>
+              <div style="position:relative;">
+                <input class="form-control form-control-sm" id="seg-ref-search" placeholder="Buscar por código o nombre..."
+                       oninput="WMS_MODULES.inventario._filterSegRefList(this.value)" style="margin-bottom:6px;">
+                <div id="seg-ref-list-box" style="max-height:160px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:8px;padding:6px;background:#f8fafc;">
+                  ${listRef.map(r => {
+                    const difWms = r.diferencia !== 0;
+                    const difIcg = r.cantidad_icg !== undefined && r.cantidad_icg !== null && ((r.ronda_1||0) - r.cantidad_icg !== 0);
+                    const isDiff = difWms || difIcg;
+                    return `
+                      <label class="seg-ref-item" data-diff="${isDiff?'1':'0'}" data-txt="${WMS.esc((r.codigo+' '+r.producto).toLowerCase())}"
+                             style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-bottom:1px solid #e2e8f0;cursor:pointer;font-size:.78rem;margin:0;">
+                        <input type="checkbox" class="seg-ref-chk" value="${r.producto_id}">
+                        <span style="font-weight:700;">${r.codigo}</span> — ${WMS.esc(r.producto)}
+                        ${isDiff ? `<span class="badge badge-light-red" style="font-size:.65rem;margin-left:auto;">Diferencia</span>` : ''}
+                      </label>`;
+                  }).join('') || '<div style="font-size:.75rem;color:#64748b;padding:6px;">Sin referencias disponibles</div>'}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label style="font-size:.75rem;font-weight:800;color:#334155;margin-bottom:4px;">2. Auxiliar Asignado</label>
+              <select class="form-control form-control-sm" id="seg-aux-id" style="font-weight:700;">
+                <option value="">-- Seleccionar Auxiliar --</option>
+                ${auxList.map(a => `<option value="${a.auxiliar_id}">${WMS.esc(a.auxiliar)}</option>`).join('')}
+              </select>
+            </div>
+
+            <div>
+              <label style="font-size:.75rem;font-weight:800;color:#334155;margin-bottom:4px;">3. Acciones</label>
+              <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._asignarSegundosConteosBatch(${d.sesion.id})"
+                      style="width:100%;font-weight:900;">
+                <i class="fa-solid fa-plus-circle"></i> Asignar R2
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabla de Tareas de Segundo Conteo (Ronda 2) Programadas -->
+        <div style="border:1px solid #cbd5e1;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.04);">
+          <div style="background:#1e293b;color:#fff;padding:12px 18px;font-size:.88rem;font-weight:800;display:flex;justify-content:space-between;align-items:center;">
+            <span><i class="fa-solid fa-list"></i> Tareas de Segundo Conteo (Ronda 2) Registradas</span>
+            <span class="badge" style="background:#3b82f6;color:#fff;font-weight:800;">${segList.length} tareas</span>
+          </div>
+
+          <div style="overflow-x:auto;">
+            <table class="erp-table compact" style="margin:0;">
+              <thead>
+                <tr style="background:#f1f5f9;">
+                  <th>#</th>
+                  <th>CÓDIGO</th>
+                  <th>REFERENCIA / PRODUCTO</th>
+                  <th>AUXILIAR ASIGNADO</th>
+                  <th>ETIQUETA TAREA</th>
+                  <th class="text-center">CANT. R1</th>
+                  <th class="text-center" style="background:#eff6ff;color:#1e40af;">CANT. R2 (CONTEO)</th>
+                  <th class="text-center">ESTADO</th>
+                  <th class="text-center">ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${segList.map((s, idx) => `
+                  <tr>
+                    <td class="text-center"><b>${idx + 1}</b></td>
+                    <td><b>${WMS.esc(s.codigo)}</b></td>
+                    <td><div style="font-weight:700;font-size:.8rem;color:#0f172a;">${WMS.esc(s.producto)}</div></td>
+                    <td><span class="badge badge-light-blue" style="font-weight:700;">👤 ${WMS.esc(s.auxiliar)}</span></td>
+                    <td><span class="badge badge-secondary" style="font-weight:700;">🏷️ ${WMS.esc(s.etiqueta)}</span></td>
+                    <td class="text-center fw-700" style="font-size:.95rem;">${WMS.formatNum(s.r1)}</td>
+                    <td class="text-center fw-900" style="background:#eff6ff;color:#1d4ed8;font-size:1.05rem;">${s.r2 > 0 ? WMS.formatNum(s.r2) : '<span style="color:#94a3b8;font-weight:400;">Pendiente</span>'}</td>
+                    <td class="text-center">
+                      <span class="badge ${s.estado==='Finalizado'?'badge-success':(s.estado==='EnConteo'?'badge-warning':'badge-info')}">
+                        ${s.estado}
+                      </span>
+                    </td>
+                    <td class="text-center">
+                      <button class="btn btn-xs btn-outline-danger" title="Eliminar Asignación R2"
+                              onclick="WMS_MODULES.inventario._eliminarAsignacionR2(${s.id}, ${d.sesion.id})">
+                        <i class="fa-solid fa-trash"></i>
+                      </button>
+                    </td>
+                  </tr>`).join('') || '<tr><td colspan="9" class="text-center" style="padding:24px;color:#64748b;">No hay tareas de Segundo Conteo (R2) programadas todavía.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    `;
+  },
+
+  _autoSelectSegundosDiff() {
+    document.querySelectorAll('#seg-ref-list-box .seg-ref-item').forEach(item => {
+      const isDiff = item.getAttribute('data-diff') === '1';
+      const chk = item.querySelector('.seg-ref-chk');
+      if (chk) chk.checked = isDiff;
+    });
+    WMS.toast('info', 'Seleccionadas referencias con diferencias R1');
+  },
+
+  _filterSegRefList(q) {
+    const ql = (q || '').toLowerCase().trim();
+    document.querySelectorAll('#seg-ref-list-box .seg-ref-item').forEach(item => {
+      const txt = item.getAttribute('data-txt') || '';
+      if (!ql || txt.includes(ql)) {
+        item.style.display = 'flex';
+      } else {
+        item.style.display = 'none';
+      }
+    });
+  },
+
+  async _asignarSegundosConteosBatch(sesionId) {
+    const auxId = document.getElementById('seg-aux-id')?.value;
+    if (!auxId) return WMS.toast('error', 'Debe seleccionar un auxiliar');
+
+    const chks = document.querySelectorAll('.seg-ref-chk:checked');
+    const productoIds = Array.from(chks).map(c => parseInt(c.value)).filter(v => !!v);
+
+    if (productoIds.length === 0) {
+      return WMS.toast('error', 'Debe seleccionar al menos una referencia para el Segundo Conteo');
+    }
+
+    try {
+      const res = await API.post(`/v2/inventario/sesiones/${sesionId}/segundos-conteos`, {
+        auxiliar_id: parseInt(auxId),
+        producto_ids: productoIds,
+        etiqueta: 'Segundo Conteo (Ronda 2)'
+      });
+      if (res.error) throw new Error(res.message);
+      WMS.toast('success', res.message || 'Segundo Conteo asignado correctamente');
+      this.verDashboardV2(sesionId);
+    } catch(e) {
+      WMS.toast('error', 'Error al asignar: ' + e.message);
+    }
+  },
+
+  async _eliminarAsignacionR2(asigId, sesionId) {
+    if (!confirm('¿Desea cancelar esta tarea de Segundo Conteo (R2)?')) return;
+    try {
+      const res = await API.delete(`/v2/inventario/asignaciones/${asigId}`);
+      if (res.error) throw new Error(res.message);
+      WMS.toast('success', 'Tarea R2 eliminada');
+      this.verDashboardV2(sesionId);
+    } catch(e) {
+      WMS.toast('error', 'Error al eliminar: ' + e.message);
+    }
   },
 
   async _uploadIcgFile(sesionId, input) {

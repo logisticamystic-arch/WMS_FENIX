@@ -582,6 +582,9 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/v2/inventario/sesiones/{id}/icg-upload', [\App\Controllers\InventarioV2Controller::class, 'uploadIcgFile']);
     $group->delete('/v2/inventario/sesiones/{id}/icg-delete', [\App\Controllers\InventarioV2Controller::class, 'deleteIcgFile']);
 
+    // ── Programación de Segundos Conteos (Ronda 2) ─────────────────────────
+    $group->post('/v2/inventario/sesiones/{id}/segundos-conteos', [\App\Controllers\InventarioV2Controller::class, 'crearSegundosConteosBatch']);
+
     // ── Ajustes desde el dashboard ─────────────────────────────────────────
     $group->post('/v2/inventario/sesiones/{id}/ajustar-linea', [\App\Controllers\InventarioV2Controller::class, 'ajustarLinea']);
     $group->post('/v2/inventario/sesiones/{id}/ajustar-todo',  [\App\Controllers\InventarioV2Controller::class, 'ajustarTodo']);
