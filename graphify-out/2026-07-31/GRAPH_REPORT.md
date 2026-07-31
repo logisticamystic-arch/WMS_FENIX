@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-07-31)
 
 ## Corpus Check
-- 329 files · ~824,938 words
+- 329 files · ~825,035 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `e99137a2`
+- Built from commit: `467a2060`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -687,11 +687,11 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `Core Models & Tenant Scope` to `Returns & FEFO Alerts`, `Órdenes de Compra Manual`, `AlertasController`, `Packing & Expiry Control`, `TenantScoped.php`, `Product Blocking & Quick Search`, `Receiving Controller`, `PickingDetalle`, `Auth & Seeding`, `Tenant Context & Middleware`, `Core Controllers Overview`, `Location Adjustment Controller`, `Sucursal`, `Miscellaneous Items Controller`, `Anomaly Detection Controller`, `Replenishment & Notifications`, `ConteoDetalle`, `InvGeneralEvento`, `Appointment Controller`, `Inventory Count Model`, `Transfer Controller`, `Ubicacion`, `Aprobación de Vencimientos`, `NotificacionesController`?**
-  _High betweenness centrality (0.024) - this node is a cross-community bridge._
+  _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **Why does `TenantContext` connect `Despacho` to `TenantScoped.php`, `Base Controller Utilities`, `.__invoke`?**
   _High betweenness centrality (0.011) - this node is a cross-community bridge._
-- **Why does `analyze_product()` connect `Causal Reasons Controller` to `Cross-Dock Operations`?**
-  _High betweenness centrality (0.008) - this node is a cross-community bridge._
+- **Why does `FefoEngine` connect `FefoEngine` to `Assignment Session Management`?**
+  _High betweenness centrality (0.011) - this node is a cross-community bridge._
 - **Are the 158 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
   _`date` has 158 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `name`, `description`, `type` to the rest of the system?**

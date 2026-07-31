@@ -4658,14 +4658,22 @@ WMS_MODULES.inventario = {
       if (!ubicacionId) { WMS.toast('warning', 'Seleccione la ubicación donde va a registrar la entrada'); return; }
     }
 
+    const reqVenc = !!(this._ajProd && (this._ajProd.controla_vencimiento || this._ajProd.control_vencimientos));
+    const reqLote = !!(this._ajProd && this._ajProd.controla_lote);
+
     let fvFinal = null;
     if (tipo === 'Entrada') {
       fvFinal = document.getElementById('aj-fv')?.value || null;
-      if (!fvFinal) { WMS.toast('warning', 'Ingrese la fecha de vencimiento (obligatoria para Entrada)'); return; }
+      if (reqVenc && !fvFinal) { WMS.toast('warning', 'Ingrese la fecha de vencimiento (obligatoria para este producto)'); return; }
     } else if (tipo === 'Salida') {
       const selUbi = document.getElementById('aj-ubicacion-salida');
       if (selUbi && selUbi.selectedIndex > 0)
         fvFinal = selUbi.options[selUbi.selectedIndex].getAttribute('data-fv') || null;
+    }
+
+    const loteVal = document.getElementById('aj-lote')?.value?.trim() || null;
+    if (tipo === 'Entrada' && reqLote && !loteVal) {
+      WMS.toast('warning', 'Ingrese el lote (obligatorio para este producto)'); return;
     }
 
     try {

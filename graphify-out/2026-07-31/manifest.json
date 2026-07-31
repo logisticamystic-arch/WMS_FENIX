@@ -705,8 +705,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/picking.js": {
-    "mtime": 1785157689.8876665,
-    "ast_hash": "6ba704c8b5f0f87c7613a93be93a340e",
+    "mtime": 1785532239.510382,
+    "ast_hash": "b5578da6dd983cba15ecd015c6b3be46",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/recepcion.js": {
@@ -960,8 +960,8 @@
     "semantic_hash": "e5d5c725bce4a13b3afbb9666f3fe95a"
   },
   "src/Controllers/PickingController.php": {
-    "mtime": 1785256991.2841792,
-    "ast_hash": "b9cc2e58acd8cf0cf9267337c1b379b7",
+    "mtime": 1785532255.9225743,
+    "ast_hash": "882d69144b897fce899409d6d57d9e83",
     "semantic_hash": ""
   },
   "src/Controllers/PlanillaController.php": {
