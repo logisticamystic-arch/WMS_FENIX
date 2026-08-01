@@ -1644,7 +1644,7 @@ class PickingController extends BaseController
                 if ($primeraVencimiento !== null) {
                     $linea->fecha_vencimiento = $primeraVencimiento;
                 }
-                if ($primerLote !== null && !$linea->lote) {
+                if ($primerLote !== null && $primerLote !== '') {
                     $linea->lote = $primerLote;
                 }
 
@@ -5135,12 +5135,7 @@ class PickingController extends BaseController
             ->whereExists(function($query) {
                 $query->select(Capsule::raw(1))
                       ->from('picking_detalles as pd2')
-                      ->whereColumn('pd2.orden_picking_id', 'op.id')
-                      ->where(function($sq) {
-                          $sq->where('pd2.cantidad_pickeada', '>', 0)
-                             ->orWhereIn('pd2.estado', ['Completado', 'Faltante']);
-                      })
-                      ->whereRaw("COALESCE(pd2.cantidad_certificada, 0) < pd2.cantidad_pickeada");
+                      ->whereColumn('pd2.orden_picking_id', 'op.id');
             })
             ->when($fechaInicio, fn($q) => $q->where('op.fecha_movimiento', '>=', $fechaInicio))
             ->when($fechaFin, fn($q) => $q->where('op.fecha_movimiento', '<=', $fechaFin))
@@ -5643,8 +5638,29 @@ class PickingController extends BaseController
                 'pd.cantidad_pickeada',
                 'pd.cantidad_certificada',
                 'pd.estado_certificacion',
-                'pd.lote',
-                'pd.fecha_vencimiento',
+                Capsule::raw("COALESCE(
+                    NULLIF(NULLIF(pd.lote, ''), 'N/A'),
+                    (SELECT NULLIF(NULLIF(mi.lote, ''), 'N/A')
+                     FROM movimiento_inventarios mi
+                     WHERE mi.referencia_tipo = 'OrdenPicking'
+                       AND mi.referencia_id = pd.orden_picking_id
+                       AND mi.producto_id = pd.producto_id
+                       AND mi.tipo_movimiento = 'Picking'
+                       AND mi.lote IS NOT NULL AND mi.lote != '' AND mi.lote != 'N/A'
+                     ORDER BY mi.id DESC LIMIT 1),
+                    'N/A'
+                ) as lote"),
+                Capsule::raw("COALESCE(
+                    pd.fecha_vencimiento,
+                    (SELECT mi.fecha_vencimiento
+                     FROM movimiento_inventarios mi
+                     WHERE mi.referencia_tipo = 'OrdenPicking'
+                       AND mi.referencia_id = pd.orden_picking_id
+                       AND mi.producto_id = pd.producto_id
+                       AND mi.tipo_movimiento = 'Picking'
+                       AND mi.fecha_vencimiento IS NOT NULL
+                     ORDER BY mi.id DESC LIMIT 1)
+                ) as fecha_vencimiento"),
                 'p.nombre',
                 'p.codigo_interno as codigo',
                 'p.ambiente_id',
