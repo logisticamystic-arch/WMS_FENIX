@@ -827,8 +827,8 @@ class InventarioV2Controller extends BaseController
                         'cantidad_cajas'   => (int)$cajas,
                         'saldos'           => (float)$saldos,
                         'cantidad_contada' => $cantContada,
-                        'cantidad_sistema' => $stockActual,
-                        'diferencia'       => $diff,
+                        'cantidad_sistema' => $cantContada,
+                        'diferencia'       => 0,
                         'hora_conteo'      => date('Y-m-d H:i:s'),
                         'estado'           => SesionLinea::ESTADO_ACTIVO,
                         'ajustado'         => true,
@@ -1111,10 +1111,12 @@ class InventarioV2Controller extends BaseController
                 $r2 = $group->where('ronda', 2)->sum('cantidad_contada');
                 $r3 = $group->where('ronda', 3)->sum('cantidad_contada');
                 
-                $ultimoConteo = $group->sortByDesc('created_at')->first();
-                $conteoMax    = (float)$group->where('ronda', $group->max('ronda'))->sum('cantidad_contada');
-                $stockSistema = (float)($ultimoConteo->cantidad_sistema ?? 0);
-                $difSistema   = round($conteoMax - $stockSistema, 3);
+                $ultimoConteo   = $group->sortByDesc('created_at')->first();
+                $conteoMax      = (float)$group->where('ronda', $group->max('ronda'))->sum('cantidad_contada');
+                $todosAjustados = $group->every(fn($l) => !empty($l->ajustado));
+
+                $stockSistema = $todosAjustados ? $conteoMax : (float)($ultimoConteo->cantidad_sistema ?? 0);
+                $difSistema   = $todosAjustados ? 0.0 : round($conteoMax - (float)($ultimoConteo->cantidad_sistema ?? 0), 3);
 
                 return [
                     'producto_id'  => $first->producto_id,
@@ -1132,7 +1134,12 @@ class InventarioV2Controller extends BaseController
                     'detalles'     => $group->groupBy(function($gl) {
                         return $gl->ubicacion_id . '_' . ($gl->fecha_vencimiento ?? 'N/A');
                     })->map(function($subGroup) {
-                        $sFirst = $subGroup->first();
+                        $sFirst       = $subGroup->first();
+                        $subContado   = (float)$subGroup->where('ronda', $subGroup->max('ronda'))->sum('cantidad_contada');
+                        $subAjustados = $subGroup->every(fn($l) => !empty($l->ajustado));
+                        $subSistema   = $subAjustados ? $subContado : (float)($subGroup->first()->cantidad_sistema ?? 0);
+                        $subDif       = $subAjustados ? 0.0 : round($subContado - $subSistema, 3);
+
                         return [
                             'ubicacion'    => $sFirst->ubicacion->codigo,
                             'f_venc'       => $sFirst->fecha_vencimiento,
@@ -1140,6 +1147,8 @@ class InventarioV2Controller extends BaseController
                             'r1'           => (float)$subGroup->where('ronda', 1)->sum('cantidad_contada'),
                             'r2'           => (float)$subGroup->where('ronda', 2)->sum('cantidad_contada'),
                             'r3'           => (float)$subGroup->where('ronda', 3)->sum('cantidad_contada'),
+                            'sistema'      => $subSistema,
+                            'diferencia'   => $subDif,
                             'auxiliares'   => $subGroup->pluck('auxiliar.nombre')->unique()->values()->all(),
                             'ultimo_c'     => $subGroup->max('hora_conteo')
                         ];
