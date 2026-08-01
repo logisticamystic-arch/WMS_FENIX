@@ -1000,12 +1000,12 @@ class PackingController extends BaseController
 
         // Obtener planillas únicas reales asociadas
         $planillas   = $ordenesObj->pluck('planilla_numero')->map(fn($v) => trim($v ?? ''))->filter()->unique()->toArray();
-        $planillaStr = !empty($planillas) ? implode(', ', $planillas) : 'N/A';
+        $planillaStr = !empty($planillas) ? implode(', ', $planillas) : '-';
 
         // Obtener números de pedido del cliente (numero_factura = "Num Pedido" del cliente);
         // si una orden no tiene numero_factura (creada manualmente), se usa numero_orden como respaldo.
         $pedidos     = $ordenesObj->map(fn($o) => trim($o->numero_factura ?: $o->numero_orden ?: ''))->filter()->unique()->toArray();
-        $pedidosStr  = !empty($pedidos) ? implode(', ', $pedidos) : 'N/A';
+        $pedidosStr  = !empty($pedidos) ? implode(', ', $pedidos) : '-';
 
         // Agotados: productos que no pudieron pickearse por falta de inventario
         $agotados = empty($ordenIds) ? collect() : Capsule::table('picking_faltantes as pf')
@@ -1030,7 +1030,7 @@ class PackingController extends BaseController
             ->get();
 
         $empNombre  = $empresa->nombre ?? 'WMS Fénix';
-        $certNombre = $cert ? trim($cert->nombre) : 'N/A';
+        $certNombre = $cert ? trim($cert->nombre) : '-';
         $fecha      = date('d/m/Y H:i', strtotime($sesion->created_at));
         $tipoEmp    = strtoupper($sesion->tipo_empaque);
         $clienteNom = $sesion->sucursal_entrega;
@@ -1073,7 +1073,7 @@ class PackingController extends BaseController
                     $undTotal = $cantRaw;
                 }
 
-                $fv      = $it->fecha_vencimiento ? date('d/m/Y', strtotime($it->fecha_vencimiento)) : '—';
+                $fv      = $it->fecha_vencimiento ? date('d/m/Y', strtotime($it->fecha_vencimiento)) : '-';
                 $fvColor = $it->fecha_vencimiento ? '#b91c1c' : '#94a3b8';
                 $subtotalUnd += $undTotal;
                 $subtotalCj  += $cajas;
@@ -1119,8 +1119,8 @@ class PackingController extends BaseController
         if ($agotados->isNotEmpty()) {
             $rowsAgo = '';
             foreach ($agotados as $ag) {
-                $resp = htmlspecialchars($ag->responsable ?? 'Sin asignar', ENT_QUOTES);
-                $caus = htmlspecialchars($ag->causa ?? 'Sin stock', ENT_QUOTES);
+                $resp = htmlspecialchars(($ag->responsable && $ag->responsable !== 'Sin asignar' && $ag->responsable !== '—' && $ag->responsable !== '&mdash;') ? $ag->responsable : '-', ENT_QUOTES);
+                $caus = htmlspecialchars(($ag->causa && $ag->causa !== '—' && $ag->causa !== '&mdash;') ? $ag->causa : 'Sin stock', ENT_QUOTES);
 
                 $faltanteTxt = (float)$ag->faltante;
 

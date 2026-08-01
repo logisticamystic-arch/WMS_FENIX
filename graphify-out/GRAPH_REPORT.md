@@ -1,16 +1,16 @@
 # Graph Report - WMS_FENIX  (2026-08-01)
 
 ## Corpus Check
-- 329 files · ~827,852 words
+- 329 files · ~827,774 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2710 nodes · 5396 edges · 328 communities (248 shown, 80 thin omitted)
-- Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 361 edges (avg confidence: 0.8)
+- 2710 nodes · 5399 edges · 319 communities (247 shown, 72 thin omitted)
+- Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 364 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `51ae3e0f`
+- Built from commit: `bb803eec`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -147,11 +147,9 @@
 - AlertasController
 - FefoEngine
 - Stock Dashboard Charts
-- DataResetController
 - Recepción Sin ODC Preview
 - .__invoke
 - Citas Scheduling
-- NotificacionesController
 - ImportExportController
 - Log Rotation
 - Expiry Guard Approval
@@ -185,19 +183,12 @@
 - picking module
 - recepcion module
 - WMS Fénix Architecture Design Doc
-- BaseController
-- ForecastController
 - SystemController
-- AlertasController
-- Despacho
-- Impresora
 - WMS Fénix phoenix logo
 - ImportExportController
-- Traspaso
 - InvGeneralAsignacion
 - _cargarStockGeneral
 - verEventoTomaFisica
-- PermisoPersonalController
 - GET /aprobaciones/vencimiento/pendientes
 - POST /devoluciones/{id}/aprobar
 - Warehouse/truck app icon (192x192)
@@ -223,10 +214,10 @@
   docs/superpowers/specs/2026-05-30-expiry-control-design.md → src/Helpers/ExpiryGuard.php
 - `WMS Enterprise Management Pitch Page` --references--> `ROI Growth Trend bar/line chart (94.2% FY2023)`  [AMBIGUOUS]
   public/pitch.html → public/assets/pitch/roi_chart.png
-- `bootTenantScoped()` --calls--> `TenantContext`  [INFERRED]
-  src/Models/Concerns/TenantScoped.php → src/Helpers/TenantContext.php
 - `WMS Enterprise Management Pitch Page` --references--> `FENIX AI Assistant hologram illustration`  [EXTRACTED]
   public/pitch.html → public/assets/pitch/agente_fenix.png
+- `WMS Enterprise Management Pitch Page` --references--> `AI brain over conveyor belt (FEFO analytics) illustration`  [EXTRACTED]
+  public/pitch.html → public/assets/pitch/fefo_ai.png
 
 ## Import Cycles
 - None detected.
@@ -235,7 +226,7 @@
 - **TV Dashboard Refresh Cycle** — public_tv_picking_refresh, public_tv_picking_loadpicking, public_tv_picking_renderkpis, public_tv_picking_renderplanillastable, public_tv_picking_rendercharts, public_tv_picking_renderalertas [EXTRACTED 0.85]
 - **Packing Session Data Model** — concept_packing_sesiones, concept_packing_unidades, concept_packing_items, concept_picking_detalles [EXTRACTED 0.85]
 
-## Communities (328 total, 80 thin omitted)
+## Communities (319 total, 72 thin omitted)
 
 ### Community 0 - "Picking Order Management"
 Cohesion: 0.04
@@ -247,11 +238,15 @@ Nodes (3): PDO, DashboardTVController, wmsLog()
 
 ### Community 3 - "Parameters & Approvals"
 Cohesion: 0.05
-Nodes (3): Psr\Http\Message\ServerRequestInterface, ImportExportController, ParametrosController
+Nodes (4): Psr\Http\Message\ResponseInterface, DespachoController, ParametrosController, TraspasoController
 
 ### Community 4 - "Cross-Dock Operations"
-Cohesion: 0.19
-Nodes (3): date, bkpLog(), ReportesController
+Cohesion: 0.04
+Nodes (8): date, bkpLog(), AlertasController, CrossDockController, ForecastController, NotificacionesController, ReportesController, UbicacionesController
+
+### Community 5 - "Packing & Expiry Control"
+Cohesion: 0.09
+Nodes (6): App\Models\PackingUnidad, BaseController, PackingUnidad, ChatIAController, DataResetController, PackingController
 
 ### Community 6 - "Master Data Management"
 Cohesion: 0.05
@@ -271,7 +266,7 @@ Nodes (32): _abrirModalCausal(), agregarItem(), anular(), _aplicarDashboard(), _
 
 ### Community 10 - "Core Models & Tenant Scope"
 Cohesion: 0.08
-Nodes (8): DateTimeInterface, BaseModel, ConteoDetalle, InvGeneralAsignacion, InvGeneralConteo, InvGeneralDiferencia, InvGeneralEvento, ProductoFoto
+Nodes (5): ConteoDetalle, InvGeneralAsignacion, InvGeneralConteo, InvGeneralDiferencia, InvGeneralEvento
 
 ### Community 11 - "Inventory Adjustments UI"
 Cohesion: 0.04
@@ -322,8 +317,8 @@ Cohesion: 0.10
 Nodes (23): _abrirEditar(), _abrirEditorInline(), _asignarRutaInline(), _cajasYPicos(), _cargarPedidos(), _confirmarAgregarAuxiliar(), _confirmarCambiarAuxiliar(), _dlgAgotadoLinea() (+15 more)
 
 ### Community 26 - "System Monitoring API"
-Cohesion: 0.13
-Nodes (13): analyzeLogErrorsRecent(), checkAndTriggerAutoReport(), forceGenerateReport(), formatBytes(), generateReportInternal(), getActiveUsers(), getLatestReportFile(), getMetrics() (+5 more)
+Cohesion: 0.16
+Nodes (12): analyzeLogErrorsRecent(), checkAndTriggerAutoReport(), forceGenerateReport(), formatBytes(), generateReportInternal(), getActiveUsers(), getLatestReportFile(), getMetrics() (+4 more)
 
 ### Community 29 - "Quick Search UI"
 Cohesion: 0.22
@@ -346,8 +341,8 @@ Cohesion: 0.11
 Nodes (18): _anularPedido(), _cerrarPlanilla(), completarPicking(), _confirmarAgregarLinea(), confirmarAsignacionPlanilla(), _confirmarRuta(), deletePicking(), filterEstado() (+10 more)
 
 ### Community 36 - "Core Controllers Overview"
-Cohesion: 0.17
-Nodes (3): OutboundController, Certificacion, CertificacionDetalle
+Cohesion: 0.11
+Nodes (5): ImpresoraController, OutboundController, Certificacion, CertificacionDetalle, Impresora
 
 ### Community 37 - "Planilla Certification Controller"
 Cohesion: 0.15
@@ -359,15 +354,15 @@ Nodes (17): _asignarSegundosConteosBatch(), _deleteAsig(), _deleteIcgFile(), _ed
 
 ### Community 40 - "Location Adjustment Controller"
 Cohesion: 0.08
-Nodes (4): AjusteUbicacionController, AjusteInventario, AjusteUbicacion, AjusteUbicacionDetalle
+Nodes (4): AjusteUbicacionController, AjusteUbicacion, AjusteUbicacionDetalle, Inventario
 
 ### Community 41 - "ML Expiry Prediction"
 Cohesion: 0.67
 Nodes (3): _confirmarAgregarPedidos(), quitarPedidoCargue(), verCargue()
 
 ### Community 42 - "Assignment Session Management"
-Cohesion: 0.18
-Nodes (3): FefoEngine, detectPython(), runPython()
+Cohesion: 0.08
+Nodes (7): Expiry Control (ExpiryGuard) Design Doc, ExpiryGuard, ExpiryResult, FefoEngine, InventoryGuard, detectPython(), runPython()
 
 ### Community 43 - "PlanillaController"
 Cohesion: 0.29
@@ -510,8 +505,8 @@ Cohesion: 0.20
 Nodes (9): background_color, description, display, icons, name, scope, short_name, start_url (+1 more)
 
 ### Community 91 - "Inventory Count Model"
-Cohesion: 0.07
-Nodes (4): DashboardController, Despacho, OrdenPicking, Recepcion
+Cohesion: 0.10
+Nodes (3): DashboardController, OrdenPicking, Recepcion
 
 ### Community 92 - "Backend/Frontend Rewrite Plan"
 Cohesion: 0.38
@@ -531,7 +526,7 @@ Nodes (7): cancelarCita(), _changeYmsMonth(), _completarCitaOK(), _guardarCita()
 
 ### Community 97 - "Transfer Controller"
 Cohesion: 0.07
-Nodes (10): App\Models\PackingUnidad, Illuminate\Database\Eloquent\Model, CertificacionDespacho, PackingItem, PackingSesion, PackingUnidad, RecepcionCalidad, RecepcionDetalleCalidad (+2 more)
+Nodes (7): Illuminate\Database\Eloquent\Model, ConteoInventario, PackingUnidad, RecepcionCalidad, RecepcionDetalleCalidad, TraspasoDocumento, TraspasoDocumentoDetalle
 
 ### Community 99 - "Packing Sticker Printing"
 Cohesion: 0.36
@@ -558,12 +553,12 @@ Cohesion: 0.33
 Nodes (6): FENIX AI Assistant hologram illustration, AI brain over conveyor belt (FEFO analytics) illustration, ROI Growth Trend bar/line chart (94.2% FY2023), On-premise server rack with analytics overlays illustration, Smart warehouse hero illustration with AR dashboards, WMS Enterprise Management Pitch Page
 
 ### Community 105 - "Ubicacion"
-Cohesion: 0.06
-Nodes (5): PutawayController, Inventario, MovimientoInventario, ProductoEan, Ubicacion
+Cohesion: 0.08
+Nodes (6): App\Models\Devolucion, PutawayController, DevolucionDetalle, MovimientoInventario, ProductoEan, Ubicacion
 
 ### Community 107 - "TenantScoped.php"
-Cohesion: 0.14
-Nodes (3): TenantContext, JwtMiddleware, TenantMiddleware
+Cohesion: 0.13
+Nodes (6): Illuminate\Database\Eloquent\Builder, TenantContext, TenantMiddleware, bootTenantScoped(), scopeWithCurrentTenant(), withoutTenantScope()
 
 ### Community 109 - "Packing & Picking Tables"
 Cohesion: 0.40
@@ -589,10 +584,6 @@ Nodes (5): abrirConsolaRecepcion(), _abrirConsolaRecepcionRescate(), _cerrarRece
 Cohesion: 0.22
 Nodes (9): buscarProductos(), _cargarTodo(), consultar_productos(), load(), renderProductos(), show_landing(), subLabel(), _timerBuscar() (+1 more)
 
-### Community 120 - "NotificacionesController"
-Cohesion: 0.24
-Nodes (4): Illuminate\Database\Eloquent\Builder, bootTenantScoped(), scopeWithCurrentTenant(), withoutTenantScope()
-
 ### Community 123 - "Product Pitch Materials"
 Cohesion: 0.67
 Nodes (4): WMS Fénix Product, WMS Fénix Propuesta Comercial, Agente Fénix AI Assistant (concept), MysticFoods Logo
@@ -613,13 +604,13 @@ Nodes (4): deleteCategoria(), renderCategorias(), saveCategoria(), show_categori
 Cohesion: 0.50
 Nodes (4): deleteMarca(), renderMarcas(), saveMarca(), show_marcas()
 
-### Community 130 - "ConteoInventario"
-Cohesion: 0.09
-Nodes (3): App\Models\Devolucion, ConteoInventario, DevolucionDetalle
-
 ### Community 133 - "Base Service & Tenant Context"
 Cohesion: 0.29
 Nodes (7): agregarPedidosCargue(), despacharCargue(), _filtrarPedidosCargue(), liquidarCargue(), _renderPedidosPendientes(), saveCargueMasivo(), show_cargue()
+
+### Community 138 - "AlertasController"
+Cohesion: 0.08
+Nodes (7): DateTimeInterface, BaseModel, CertificacionDespacho, PackingItem, PackingSesion, ProductoFoto, SesionAsignacion
 
 ### Community 140 - "Stock Dashboard Charts"
 Cohesion: 0.33
@@ -633,6 +624,10 @@ Nodes (4): `anomaly_flags`, `expiry_predictions`, `inventory_guard_log`, `perfor
 Cohesion: 1.00
 Nodes (3): nuevaCita(), nuevaCitaEnFecha(), _recalcHorasYMS()
 
+### Community 147 - "ImportExportController"
+Cohesion: 0.10
+Nodes (3): ImportExportController, PermisoPersonalController, SystemController
+
 ### Community 156 - "Base Model"
 Cohesion: 0.50
 Nodes (5): load(), startAutoRefresh(), stopAutoRefresh(), subLabel(), _updateAutoRefreshBadge()
@@ -641,17 +636,9 @@ Nodes (5): load(), startAutoRefresh(), stopAutoRefresh(), subLabel(), _updateAut
 Cohesion: 1.00
 Nodes (3): _confirmarReinicio(), _renderReinicioDatos(), show_reinicio_datos()
 
-### Community 308 - "BaseController"
-Cohesion: 0.22
-Nodes (3): BaseController, ChatIAController, TraspasoController
-
 ### Community 310 - "SystemController"
 Cohesion: 0.06
-Nodes (5): Psr\Http\Message\ResponseInterface, CrossDockController, DespachoController, InventarioController, UbicacionesController
-
-### Community 312 - "Despacho"
-Cohesion: 0.25
-Nodes (3): Expiry Control (ExpiryGuard) Design Doc, ExpiryGuard, ExpiryResult
+Nodes (3): Psr\Http\Message\ServerRequestInterface, InventarioController, RecepcionController
 
 ### Community 315 - "ImportExportController"
 Cohesion: 0.50
@@ -666,8 +653,8 @@ Cohesion: 0.67
 Nodes (3): _cerrarEventoTomaFisica(), _guardarAsignacionTomaFisica(), verEventoTomaFisica()
 
 ### Community 328 - "InvGeneralEvento"
-Cohesion: 0.07
-Nodes (11): App\Models\Concerns\TenantScoped, AlertaStock, Ambiente, AuditLog, CategoriaProducto, CausalDevolucion, Cliente, Marca (+3 more)
+Cohesion: 0.06
+Nodes (12): App\Models\Concerns\TenantScoped, AlertaStock, Ambiente, AuditLog, CategoriaProducto, CausalDevolucion, Cliente, Marca (+4 more)
 
 ## Ambiguous Edges - Review These
 - `WMS Fénix Product` → `MysticFoods Logo`  [AMBIGUOUS]
@@ -678,7 +665,7 @@ Nodes (11): App\Models\Concerns\TenantScoped, AlertaStock, Ambiente, AuditLog, C
 ## Knowledge Gaps
 - **163 isolated node(s):** `name`, `description`, `type`, `php`, `ext-pdo` (+158 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **80 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **72 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -687,11 +674,11 @@ _Questions this graph is uniquely positioned to answer:_
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
-- **Why does `BaseModel` connect `Core Models & Tenant Scope` to `ConteoInventario`, `AlertasController`, `AlertasController`, `Product Blocking & Quick Search`, `Receiving Controller`, `Auth & Seeding`, `Tenant Context & Middleware`, `Core Controllers Overview`, `Location Adjustment Controller`, `Miscellaneous Items Controller`, `Anomaly Detection Controller`, `Replenishment & Notifications`, `Impresora`, `Traspaso`, `DataResetController`, `InvGeneralEvento`, `NotificacionesController`, `Inventory Count Model`, `Transfer Controller`, `Ubicacion`, `Aprobación de Vencimientos`?**
+- **Why does `BaseModel` connect `AlertasController` to `ConteoInventario`, `AlertasController`, `Core Models & Tenant Scope`, `Product Blocking & Quick Search`, `Receiving Controller`, `Auth & Seeding`, `Tenant Context & Middleware`, `Core Controllers Overview`, `Location Adjustment Controller`, `Inventory V2 Session Controller`, `Miscellaneous Items Controller`, `Anomaly Detection Controller`, `Replenishment & Notifications`, `DataResetController`, `InvGeneralEvento`, `NotificacionesController`, `Inventory Count Model`, `Transfer Controller`, `Ubicacion`, `Aprobación de Vencimientos`?**
   _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **Why does `analyze_product()` connect `Causal Reasons Controller` to `Cross-Dock Operations`?**
   _High betweenness centrality (0.011) - this node is a cross-community bridge._
-- **Why does `Producto` connect `Product Blocking & Quick Search` to `ConteoInventario`, `Location Adjustment Controller`, `Ubicacion`, `InvGeneralEvento`, `Receiving Controller`, `InventoryGuard`, `Inventory Count Model`, `DataResetController`?**
+- **Why does `Producto` connect `Product Blocking & Quick Search` to `Transfer Controller`, `Location Adjustment Controller`, `Ubicacion`, `InvGeneralEvento`, `Receiving Controller`, `InventoryGuard`, `Inventory Count Model`, `DataResetController`?**
   _High betweenness centrality (0.010) - this node is a cross-community bridge._
 - **Are the 145 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
   _`date` has 145 INFERRED edges - model-reasoned connections that need verification._

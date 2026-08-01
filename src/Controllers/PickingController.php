@@ -6304,9 +6304,9 @@ class PickingController extends BaseController
             } else {
                 $cajas = (int)round($cantRaw); $saldo = 0; $und = $cantRaw;
             }
-            $fv   = $it->fecha_vencimiento ? date('d/m/Y', strtotime($it->fecha_vencimiento)) : '&mdash;';
+            $fv   = $it->fecha_vencimiento ? date('d/m/Y', strtotime($it->fecha_vencimiento)) : '-';
             $fc   = $it->fecha_vencimiento ? '#b91c1c' : '#94a3b8';
-            $lote = $it->lote ?? '&mdash;';
+            $lote = ($it->lote && $it->lote !== 'N/A' && $it->lote !== '—' && $it->lote !== '&mdash;') ? $it->lote : '-';
             return compact('cajas', 'saldo', 'und', 'fv', 'fc', 'lote');
         };
 
@@ -6361,7 +6361,7 @@ class PickingController extends BaseController
                     Capsule::raw('COALESCE(p.unidades_caja, 1) as upc'),
                     Capsule::raw('SUM(pf.cantidad_solicitada) as solicitada_cj'),
                     Capsule::raw('SUM(pf.cantidad_faltante) as faltante_cj'),
-                    Capsule::raw("COALESCE(NULLIF(op.numero_factura, ''), op.numero_orden, '—') as pedido"),
+                    Capsule::raw("COALESCE(NULLIF(op.numero_factura, ''), op.numero_orden, '-') as pedido"),
                     Capsule::raw("STRING_AGG(DISTINCT COALESCE(pf.causa, 'Sin stock'), ', ') as causa"),
                     Capsule::raw("STRING_AGG(DISTINCT cn.nombre, ', ') as causal_nombre"),
                     Capsule::raw("STRING_AGG(DISTINCT NULLIF(cn.area_responsable, ''), ', ') as responsable"),
@@ -6380,7 +6380,7 @@ class PickingController extends BaseController
                 $motivo = $r->causal_nombre
                     ? "<b>{$r->causal_nombre}</b>" . ($r->causa ? " — {$r->causa}" : '')
                     : ($r->causa ?: 'Sin causa registrada');
-                $responsable = $r->responsable ?: '&mdash;';
+                $responsable = ($r->responsable && $r->responsable !== '&mdash;' && $r->responsable !== '—') ? $r->responsable : '-';
                 $filas .= "<tr>"
                     . "<td style='white-space:nowrap'>{$r->codigo}</td>"
                     . "<td>{$r->nombre}</td>"
@@ -6731,7 +6731,7 @@ class PickingController extends BaseController
                     $saldo    = 0;
                     $undTotal = $cantRaw;
                 }
-                $fv      = $it->fecha_vencimiento ? date('d/m/Y', strtotime($it->fecha_vencimiento)) : '&mdash;';
+                $fv      = $it->fecha_vencimiento ? date('d/m/Y', strtotime($it->fecha_vencimiento)) : '-';
                 $fvColor = $it->fecha_vencimiento ? '#b91c1c' : '#94a3b8';
                 $subtotalUnd += $undTotal;
                 $subtotalCj  += $cajas;
