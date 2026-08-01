@@ -504,7 +504,7 @@ class InventarioV2Controller extends BaseController
                         'estado'            => SesionAsignacion::ESTADO_PENDIENTE,
                     ]);
 
-                    if (!in_array($sesion->estado, [SesionInventario::ESTADO_CERRADO, SesionInventario::ESTADO_FINALIZADO, 'Cancelado'])) {
+                    if (!in_array($sesion->estado, [SesionInventario::ESTADO_CERRADO, SesionInventario::ESTADO_AJUSTADO, SesionInventario::ESTADO_FINALIZADO, 'Cancelado'])) {
                         $this->crearNotificacionAuxiliar($asignacion, $sesion);
                         $asignacion->estado        = SesionAsignacion::ESTADO_NOTIFICADO;
                         $asignacion->notificado_at = date('Y-m-d H:i:s');
@@ -525,7 +525,7 @@ class InventarioV2Controller extends BaseController
                     'estado'            => SesionAsignacion::ESTADO_PENDIENTE,
                 ]);
 
-                if (!in_array($sesion->estado, [SesionInventario::ESTADO_CERRADO, SesionInventario::ESTADO_FINALIZADO, 'Cancelado'])) {
+                if (!in_array($sesion->estado, [SesionInventario::ESTADO_CERRADO, SesionInventario::ESTADO_AJUSTADO, SesionInventario::ESTADO_FINALIZADO, 'Cancelado'])) {
                     $this->crearNotificacionAuxiliar($asignacion, $sesion);
                     $asignacion->estado        = SesionAsignacion::ESTADO_NOTIFICADO;
                     $asignacion->notificado_at = date('Y-m-d H:i:s');

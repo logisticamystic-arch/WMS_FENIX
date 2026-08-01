@@ -51,6 +51,7 @@ class SesionInventario extends BaseModel
     const ESTADO_PENDIENTE_AJUSTE  = 'PendienteAjuste';
     const ESTADO_AJUSTADO          = 'Ajustado';
     const ESTADO_CERRADO           = 'Cerrado';
+    const ESTADO_FINALIZADO        = 'Finalizado';
 
     // ── Relaciones ──────────────────────────────────────────────────────────
 
