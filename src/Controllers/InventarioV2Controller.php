@@ -692,10 +692,13 @@ class InventarioV2Controller extends BaseController
      */
     public function conteoReferenciaCompleto(Request $req, Response $res, array $args): Response
     {
-        $user       = $req->getAttribute('user');
-        $asigId     = (int)$args['id'];
-        $empresaId  = $this->getEffectiveEmpresaId($user, $req);
-        $sucursalId = $user->sucursal_id;
+        $user         = $req->getAttribute('user');
+        $asigId       = (int)$args['id'];
+        $empresaId    = $this->getEffectiveEmpresaId($user, $req);
+        $effectiveSuc = $this->getEffectiveSucursalId($user, $req);
+        $userSuc      = (int)($user->sucursal_id ?? 0);
+        $sucs         = array_unique(array_filter([$effectiveSuc, $userSuc]));
+        $sucursalId   = $effectiveSuc ?: $userSuc;
 
         $asignacion = SesionAsignacion::with('sesion')->find($asigId);
 
@@ -716,12 +719,19 @@ class InventarioV2Controller extends BaseController
         }
 
         // 1. Obtener ubicaciones existentes registradas en sistema para este producto
-        $rowsStock = Inventario::where('empresa_id', $empresaId)
-            ->where('sucursal_id', $sucursalId)
+        $rowsStockQuery = Inventario::where('empresa_id', $empresaId)
             ->where('producto_id', $productoId)
-            ->where('cantidad', '>', 0)
-            ->with('ubicacion:id,codigo')
-            ->get();
+            ->where(function($q) {
+                $q->where('cantidad', '>', 0)
+                  ->orWhere('cantidad_cajas', '>', 0)
+                  ->orWhere('saldos', '>', 0);
+            });
+
+        if (!empty($sucs)) {
+            $rowsStockQuery->whereIn('sucursal_id', $sucs);
+        }
+
+        $rowsStock = $rowsStockQuery->with('ubicacion:id,codigo')->get();
 
         // Map de conteo recibido: ubicacion_id -> item
         $mapContadosById = [];
@@ -3073,18 +3083,27 @@ class InventarioV2Controller extends BaseController
         $productoId = (int)$args['id'];
 
         try {
-            $empresaId  = $this->getEffectiveEmpresaId($user, $req);
-            $sucursalId = $user->sucursal_id;
+            $empresaId    = $this->getEffectiveEmpresaId($user, $req);
+            $effectiveSuc = $this->getEffectiveSucursalId($user, $req);
+            $userSuc      = (int)($user->sucursal_id ?? 0);
+            $sucs         = array_unique(array_filter([$effectiveSuc, $userSuc]));
 
             $prod = Producto::find($productoId);
             $upc  = max(1, (int)($prod->unidades_caja ?? 1));
 
-            $rows = Inventario::where('empresa_id', $empresaId)
-                ->where('sucursal_id', $sucursalId)
+            $rowsQuery = Inventario::where('empresa_id', $empresaId)
                 ->where('producto_id', $productoId)
-                ->where('cantidad', '>', 0)
-                ->with('ubicacion:id,codigo,nombre')
-                ->get();
+                ->where(function($q) {
+                    $q->where('cantidad', '>', 0)
+                      ->orWhere('cantidad_cajas', '>', 0)
+                      ->orWhere('saldos', '>', 0);
+                });
+
+            if (!empty($sucs)) {
+                $rowsQuery->whereIn('sucursal_id', $sucs);
+            }
+
+            $rows = $rowsQuery->with('ubicacion:id,codigo,nombre')->get();
 
             $ubicaciones = $rows->groupBy('ubicacion_id')->map(function ($items) use ($upc) {
                 $u = $items->first()->ubicacion;
