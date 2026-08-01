@@ -4633,83 +4633,258 @@ const MWMS = {
     const d    = this._op;
     const asig = (d.misAsigs || []).find(a => a.id == asigId) || {};
     const prod = asig.producto || {};
-    const reqVenc = !!(prod && (prod.controla_vencimiento || prod.control_vencimientos));
-    const fvObligatorio = reqVenc && (d.fv_obligatorio !== false);
+    const upc  = Math.max(1, parseInt(prod.unidades_caja || 1));
 
     this._ivRefAsigId    = asigId;
     this._ivRefProd      = prod;
-    this._ivRefProdCodigo = prod.codigo_interno || '';
+    this._ivRefSysUbic   = ubicaciones;
 
     const html = `
-      <div class="op-view">
-        <div style="background:#4f46e5;color:#fff;border-radius:12px;padding:10px 14px;margin-bottom:10px;">
-          <div style="font-size:.65rem;opacity:.75;margin-bottom:2px;">Registrar conteo · Asig. #${asigId}</div>
-          <div style="font-weight:700;font-size:.88rem;">${this.esc(prod.nombre||'—')}</div>
-          <div style="font-size:.68rem;opacity:.75;">Cód: ${this.esc(prod.codigo_interno||'—')}</div>
-        </div>
-
-        ${ubicaciones.length ? `
-        <div class="op-card" id="iv-ref-ubic-chips-card" style="padding:10px 12px;background:#eff6ff;">
-          <div style="font-size:.68rem;font-weight:700;color:#1d4ed8;margin-bottom:6px;">
-            <i class="fa-solid fa-location-dot"></i> SELECCIONE UBICACIÓN CON STOCK
+      <div class="op-view" style="padding-bottom:20px;">
+        <div style="background:#4f46e5;color:#fff;border-radius:12px;padding:12px 14px;margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:.65rem;opacity:.8;">Conteo por Referencia · Asig. #${asigId}</span>
+            <span style="font-size:.65rem;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:10px;font-weight:700;">U/E: ${upc}</span>
           </div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;">
-            ${ubicaciones.map(u => `
-              <button type="button" class="iv-ubic-chip"
-                onclick="MWMS._ivRefClickUbic(this,'${this.esc(u.codigo)}',${u.id||0},${prodId})"
-                style="background:#dbeafe;border:1px solid #93c5fd;color:#1d4ed8;border-radius:8px;padding:6px 12px;font-size:.75rem;font-weight:700;cursor:pointer;transition:all .15s;">
-                <i class="fa-solid fa-location-dot" style="font-size:.7rem;"></i>
-                ${this.esc(u.codigo)} <span style="opacity:.65;font-weight:400;">${u.cantidad} uds</span>
-              </button>`).join('')}
+          <div style="font-weight:800;font-size:.95rem;line-height:1.3;">${this.esc(prod.nombre||'—')}</div>
+          <div style="font-size:.72rem;opacity:.85;margin-top:2px;">Código: <b>${this.esc(prod.codigo_interno||'—')}</b></div>
+        </div>
+
+        <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:.75rem;color:#334155;">
+          <i class="fa-solid fa-circle-info" style="color:#3b82f6;"></i>
+          <b>Regla de Conteo:</b> Debe ingresar el conteo en <b>cada una de las ubicaciones registradas</b> (o presionar <b>Poner en 0</b> si está vacía). Si la referencia está en otra ubicación física no listada, use el botón <b>+ Agregar Ubicación</b>.
+        </div>
+
+        <div style="font-size:.75rem;font-weight:800;color:#1e293b;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+          <span><i class="fa-solid fa-location-dot" style="color:#4f46e5;"></i> UBICACIONES REGISTRADAS (${ubicaciones.length})</span>
+        </div>
+
+        <div id="iv-ref-ubic-list">
+          ${ubicaciones.length ? ubicaciones.map(u => `
+            <div class="op-card ref-ubic-card" id="ref-card-loc-${u.id}" data-locid="${u.id}" data-code="${this.esc(u.codigo)}" style="border-left:4px solid #f59e0b;margin-bottom:10px;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+                <div>
+                  <div style="font-weight:800;font-size:.9rem;color:#0F4C81;">
+                    <i class="fa-solid fa-location-dot" style="font-size:.8rem;"></i> ${this.esc(u.codigo)}
+                  </div>
+                  <div style="font-size:.7rem;color:#64748b;margin-top:2px;">
+                    Sistema: <b>${u.cajas} cj + ${u.saldos} sald</b> (${u.cantidad} und)
+                  </div>
+                  ${u.lote && u.lote !== 'N/A' ? `<div style="font-size:.65rem;color:#475569;margin-top:2px;">Lote: <b>${this.esc(u.lote)}</b></div>` : ''}
+                </div>
+                <span class="ref-loc-status-badge" id="ref-loc-status-${u.id}"
+                  style="font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:12px;background:#fef3c7;color:#d97706;">
+                  PENDIENTE
+                </span>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                <div>
+                  <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;margin-bottom:2px;">CAJAS</label>
+                  <input type="number" class="m-input-full ref-input-cajas" id="ref-cj-${u.id}" value="${u.cajas}" min="0" step="1"
+                    oninput="MWMS._ivRefOnLocChange(${u.id})">
+                </div>
+                <div>
+                  <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;margin-bottom:2px;">SALDOS (UND)</label>
+                  <input type="number" class="m-input-full ref-input-saldos" id="ref-sd-${u.id}" value="${u.saldos}" min="0" step="0.001"
+                    oninput="MWMS._ivRefOnLocChange(${u.id})">
+                </div>
+              </div>
+
+              <div style="display:flex;gap:6px;align-items:center;">
+                <button type="button" onclick="MWMS._ivRefPonerCero(${u.id})"
+                  style="flex:1;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:6px;padding:6px;font-size:.72rem;font-weight:700;cursor:pointer;">
+                  <i class="fa-solid fa-ban"></i> Poner en 0 (Vacía)
+                </button>
+              </div>
+            </div>`).join('')
+          : `<div style="text-align:center;padding:16px;background:#fff;border-radius:8px;border:1px solid #e2e8f0;color:#64748b;font-size:.78rem;margin-bottom:10px;">
+              <i class="fa-solid fa-circle-exclamation" style="color:#d97706;margin-right:4px;"></i> Sin ubicaciones con inventario registradas en sistema.
+            </div>`}
+        </div>
+
+        <div style="margin-top:10px;margin-bottom:12px;">
+          <div style="font-size:.75rem;font-weight:800;color:#1e293b;margin-bottom:8px;">
+            <i class="fa-solid fa-plus-circle" style="color:#10b981;"></i> UBICACIONES ADICIONALES (FÍSICAS)
           </div>
-        </div>` : `
-        <div class="op-card" style="background:#fef3c7;padding:8px 12px;font-size:.75rem;color:#92400e;">
-          <i class="fa-solid fa-triangle-exclamation"></i> Sin stock registrado en sistema para este producto.
-        </div>`}
-
-        <div class="op-card">
-          <div class="m-label">Ubicación <span style="color:#dc2626;">*</span></div>
-          <input id="iv-ref-ubic" class="m-input-full" placeholder="Código de ubicación..." autocomplete="off" style="text-transform:uppercase;">
+          <div id="iv-ref-extra-locs"></div>
+          <button type="button" onclick="MWMS._ivRefAddExtraUbicRow()"
+            style="width:100%;background:#f0fdf4;border:1.5px dashed #10b981;color:#15803d;border-radius:8px;padding:9px;font-size:.78rem;font-weight:800;cursor:pointer;">
+            <i class="fa-solid fa-plus"></i> Agregar Otra Ubicación Física
+          </button>
         </div>
 
-        <div id="iv-ref-fechas-panel"></div>
-
-        <div class="op-card" id="iv-ref-fv-card" style="${!reqVenc ? 'display:none;' : ''}">
-          <div class="m-label">Fecha Vencimiento ${fvObligatorio?'<span style="color:#dc2626;">*</span>':'<span style="font-size:.65rem;color:#94a3b8;">(opcional)</span>'}</div>
-          <input type="date" id="iv-ref-fv" class="m-input-full" placeholder="O seleccione fecha arriba">
-        </div>
-
-        <input type="hidden" id="iv-ref-upc" value="${parseInt(prod.unidades_caja || 1)}">
-        <div class="op-card">
-          <div class="m-label" id="iv-ref-cant-label">${parseInt(prod.unidades_caja || 1) > 1 ? 'Cajas' : 'Cantidad (unidades)'} <span style="color:#dc2626;">*</span></div>
-          <input type="number" id="iv-ref-cant" class="m-input-full" placeholder="0" min="0" step="0.001" oninput="MWMS._ivRefUpdPreview()">
-          <div id="iv-ref-conv-preview" style="display:${parseInt(prod.unidades_caja || 1) > 1 ? 'block' : 'none'};margin-top:6px;padding:8px;background:#eff6ff;border-radius:6px;font-size:.78rem;color:#1e40af;font-weight:600;">
-            <i class="fa-solid fa-calculator"></i> <span id="iv-ref-conv-text"></span>
-          </div>
-        </div>
-
-        <div class="op-card" id="iv-ref-saldos-group" style="border-left:3px solid #d97706;display:${parseInt(prod.unidades_caja || 1) > 1 ? 'block' : 'none'};">
-          <div class="m-label" style="color:#d97706;"><i class="fa-solid fa-cubes-stacked"></i> Saldos (Sueltos)</div>
-          <input type="number" id="iv-ref-saldos" class="m-input-full" value="0" min="0" step="0.001" placeholder="0" oninput="MWMS._ivRefUpdPreview()">
-        </div>
-
-        <button id="iv-ref-submit-btn" onclick="MWMS.ivRefSubmitLine()"
-          style="width:100%;background:#4f46e5;color:#fff;border:none;border-radius:10px;padding:14px;font-size:.9rem;font-weight:800;cursor:pointer;margin-top:4px;">
-          <i class="fa-solid fa-save"></i> Guardar Conteo
+        <button type="button" id="btn-iv-ref-submit" onclick="MWMS.ivRefSubmitBatch(${asigId})"
+          style="width:100%;background:#10b981;color:#fff;border:none;border-radius:10px;padding:14px;font-size:.9rem;font-weight:900;cursor:pointer;margin-top:8px;box-shadow:0 4px 12px rgba(16,185,129,.25);">
+          <i class="fa-solid fa-check-double"></i> Guardar y Ajustar Conteo de Referencia
         </button>
 
-        <div id="iv-ref-lines-here" style="margin-top:12px;"></div>
-
-        <button onclick="MWMS.renderIv()"
-          style="width:100%;margin-top:8px;padding:11px;background:transparent;border:1px solid #e2e8f0;border-radius:10px;font-size:.82rem;color:#64748b;cursor:pointer;">
+        <button type="button" onclick="MWMS.renderIv()"
+          style="width:100%;margin-top:8px;padding:11px;background:transparent;border:1px solid #cbd5e1;border-radius:10px;font-size:.82rem;color:#475569;cursor:pointer;">
           <i class="fa-solid fa-arrow-left"></i> Volver a Referencias
         </button>
       </div>`;
 
-    document.getElementById('m-title').textContent = 'Conteo de Referencia';
+    document.getElementById('m-title').textContent = 'Conteo por Referencia';
     document.getElementById('m-content').innerHTML = html;
-    document.getElementById('iv-ref-ubic').focus();
-    this._ivRefLoadLines(asigId);
+  },
+
+  _ivRefOnLocChange(locId) {
+    const badge = document.getElementById(`ref-loc-status-${locId}`);
+    const card  = document.getElementById(`ref-card-loc-${locId}`);
+    if (!badge || !card) return;
+
+    card.style.borderLeftColor = '#10b981';
+    badge.style.background = '#dcfce7';
+    badge.style.color = '#15803d';
+    badge.innerHTML = '<i class="fa-solid fa-check"></i> CONTADO';
+  },
+
+  _ivRefPonerCero(locId) {
+    const cjInp = document.getElementById(`ref-cj-${locId}`);
+    const sdInp = document.getElementById(`ref-sd-${locId}`);
+    if (cjInp) cjInp.value = 0;
+    if (sdInp) sdInp.value = 0;
+    this._ivRefOnLocChange(locId);
+    this.toast('Ubicación establecida en 0', 'info');
+  },
+
+  _ivRefAddExtraUbicRow() {
+    const container = document.getElementById('iv-ref-extra-locs');
+    if (!container) return;
+    const rowId = 'extra-loc-' + Date.now();
+    const div = document.createElement('div');
+    div.className = 'op-card ref-extra-ubic-card';
+    div.id = rowId;
+    div.style.cssText = 'border-left:4px solid #3b82f6;margin-bottom:8px;padding:10px;background:#f0f9ff;';
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:.72rem;font-weight:800;color:#1d4ed8;">NUEVA UBICACIÓN ADICIONAL</span>
+        <button type="button" onclick="document.getElementById('${rowId}').remove()"
+          style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:.85rem;">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+      <div style="margin-bottom:6px;">
+        <label style="font-size:.65rem;font-weight:700;color:#374151;display:block;margin-bottom:2px;">CÓDIGO DE UBICACIÓN *</label>
+        <input type="text" class="m-input-full ref-extra-code" placeholder="Ej: A-01-02..." style="text-transform:uppercase;">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+        <div>
+          <label style="font-size:.65rem;font-weight:700;color:#374151;display:block;margin-bottom:2px;">CAJAS</label>
+          <input type="number" class="m-input-full ref-extra-cajas" value="0" min="0" step="1">
+        </div>
+        <div>
+          <label style="font-size:.65rem;font-weight:700;color:#374151;display:block;margin-bottom:2px;">SALDOS (UND)</label>
+          <input type="number" class="m-input-full ref-extra-saldos" value="0" min="0" step="0.001">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        <div>
+          <label style="font-size:.65rem;font-weight:700;color:#374151;display:block;margin-bottom:2px;">LOTE</label>
+          <input type="text" class="m-input-full ref-extra-lote" placeholder="Opcional">
+        </div>
+        <div>
+          <label style="font-size:.65rem;font-weight:700;color:#374151;display:block;margin-bottom:2px;">FECHA VENC.</label>
+          <input type="date" class="m-input-full ref-extra-fv">
+        </div>
+      </div>`;
+    container.appendChild(div);
+  },
+
+  async ivRefSubmitBatch(asigId) {
+    const sysLocCards = document.querySelectorAll('.ref-ubic-card');
+    const extraLocCards = document.querySelectorAll('.ref-extra-ubic-card');
+    const payloadUbicaciones = [];
+    const sinContar = [];
+
+    sysLocCards.forEach(card => {
+      const locId = parseInt(card.dataset.locid);
+      const code = card.dataset.code;
+      const cjInp = document.getElementById(`ref-cj-${locId}`);
+      const sdInp = document.getElementById(`ref-sd-${locId}`);
+      
+      const cjVal = cjInp?.value;
+      const sdVal = sdInp?.value;
+
+      if (cjVal === '' || cjVal === null || sdVal === '' || sdVal === null) {
+        sinContar.push(code);
+        return;
+      }
+
+      const cj = parseFloat(cjVal || 0);
+      const sd = parseFloat(sdVal || 0);
+
+      payloadUbicaciones.push({
+        ubicacion_id: locId,
+        codigo: code,
+        cajas: cj,
+        saldos: sd,
+        es_cero: (cj === 0 && sd === 0)
+      });
+    });
+
+    if (sinContar.length > 0) {
+      return Swal.fire({
+        title: 'Ubicaciones Sin Contar',
+        text: `Debe realizar el conteo en todas las ubicaciones de la referencia (o presionar "Poner en 0"). Falta contar: ${sinContar.join(', ')}`,
+        icon: 'warning',
+        confirmButtonColor: '#d97706'
+      });
+    }
+
+    let extraIncompleta = false;
+    extraLocCards.forEach(card => {
+      const codeInp = card.querySelector('.ref-extra-code');
+      const cjInp   = card.querySelector('.ref-extra-cajas');
+      const sdInp   = card.querySelector('.ref-extra-saldos');
+      const loteInp = card.querySelector('.ref-extra-lote');
+      const fvInp   = card.querySelector('.ref-extra-fv');
+
+      const code = (codeInp?.value || '').trim().toUpperCase();
+      if (!code) { extraIncompleta = true; return; }
+
+      const cj = parseFloat(cjInp?.value || 0);
+      const sd = parseFloat(sdInp?.value || 0);
+
+      payloadUbicaciones.push({
+        codigo: code,
+        cajas: cj,
+        saldos: sd,
+        lote: loteInp?.value || 'N/A',
+        fecha_vencimiento: fvInp?.value || null,
+        es_cero: (cj === 0 && sd === 0)
+      });
+    });
+
+    if (extraIncompleta) {
+      return Swal.fire({
+        title: 'Ubicación Adicional Incompleta',
+        text: 'Por favor ingrese el código de ubicación para todas las ubicaciones adicionales agregadas.',
+        icon: 'warning',
+        confirmButtonColor: '#d97706'
+      });
+    }
+
+    this.loading(true);
+    try {
+      await mApi('POST', `/v2/inventario/asignaciones/${asigId}/conteo-referencia`, {
+        conteo_ubicaciones: payloadUbicaciones
+      });
+
+      await Swal.fire({
+        title: '¡Conteo Registrado y Ajustado!',
+        text: 'Se han actualizado las ubicaciones de la referencia contada y asentado el movimiento en inventario.',
+        icon: 'success',
+        confirmButtonColor: '#10b981'
+      });
+
+      this.startIv(this._op.id);
+    } catch(e) {
+      this.toast(e.message || 'Error guardando conteo de referencia', 'error');
+    } finally {
+      this.loading(false);
+    }
   },
 
   async _ivRefLoadLines(asigId) {

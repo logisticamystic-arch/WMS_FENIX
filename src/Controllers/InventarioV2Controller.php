@@ -684,6 +684,219 @@ class InventarioV2Controller extends BaseController
     }
 
     /**
+     * POST /api/v2/inventario/asignaciones/{id}/conteo-referencia
+     * Recibe los conteos por ubicación para una referencia asignada en inventario cíclico.
+     * Exige que TODAS las ubicaciones registradas en sistema para esa referencia hayan sido contadas (o puestas en cero).
+     * Permite agregar nuevas ubicaciones.
+     * Al finalizar, ajusta automáticamente el inventario de la referencia contada sin tocar los demás productos de esas ubicaciones.
+     */
+    public function conteoReferenciaCompleto(Request $req, Response $res, array $args): Response
+    {
+        $user       = $req->getAttribute('user');
+        $asigId     = (int)$args['id'];
+        $empresaId  = $this->getEffectiveEmpresaId($user, $req);
+        $sucursalId = $user->sucursal_id;
+
+        $asignacion = SesionAsignacion::with('sesion')->find($asigId);
+
+        if (!$asignacion || $asignacion->auxiliar_id !== $user->id) {
+            return $this->notFound($res, 'Asignación no encontrada');
+        }
+
+        $productoId = (int)$asignacion->producto_id;
+        if (!$productoId) {
+            return $this->error($res, 'La asignación no tiene una referencia o producto asociado');
+        }
+
+        $data = $req->getParsedBody() ?? [];
+        $ubicacionesContadas = $data['conteo_ubicaciones'] ?? [];
+
+        if (!is_array($ubicacionesContadas)) {
+            return $this->error($res, 'Se requiere la lista de conteo por ubicaciones');
+        }
+
+        // 1. Obtener ubicaciones existentes registradas en sistema para este producto
+        $rowsStock = Inventario::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->where('producto_id', $productoId)
+            ->where('cantidad', '>', 0)
+            ->with('ubicacion:id,codigo')
+            ->get();
+
+        // Map de conteo recibido: ubicacion_id -> item
+        $mapContadosById = [];
+        $mapContadosByCode = [];
+        foreach ($ubicacionesContadas as $item) {
+            $uId = isset($item['ubicacion_id']) ? (int)$item['ubicacion_id'] : null;
+            $code = !empty($item['codigo']) ? strtoupper(trim($item['codigo'])) : null;
+            if ($uId) $mapContadosById[$uId] = $item;
+            if ($code) $mapContadosByCode[$code] = $item;
+        }
+
+        // 2. REGLA OBLIGATORIA: Verificar que CADA ubicación registrada en sistema fue contada (o puesta en cero)
+        $faltantes = [];
+        foreach ($rowsStock as $inv) {
+            $uId = $inv->ubicacion_id;
+            $uCode = strtoupper(trim($inv->ubicacion->codigo ?? ''));
+            if (!isset($mapContadosById[$uId]) && (!isset($mapContadosByCode[$uCode]))) {
+                $faltantes[] = $uCode ?: "ID #{$uId}";
+            }
+        }
+
+        if (!empty($faltantes)) {
+            $listaFaltantes = implode(', ', array_unique($faltantes));
+            return $this->error($res, "Debe realizar el conteo de todas las ubicaciones registradas en sistema (o colocar cero 0). Faltan por contar: {$listaFaltantes}");
+        }
+
+        // 3. Ejecutar guardado de líneas y ajuste de inventario en una transacción
+        try {
+            Capsule::transaction(function () use ($asignacion, $productoId, $ubicacionesContadas, $user, $empresaId, $sucursalId) {
+                $prod = Producto::find($productoId);
+                $upc  = max(1, (int)($prod->unidades_caja ?? 1));
+                $sesionId = $asignacion->sesion_id;
+
+                foreach ($ubicacionesContadas as $item) {
+                    $ubicId = !empty($item['ubicacion_id']) ? (int)$item['ubicacion_id'] : null;
+                    $code   = !empty($item['codigo']) ? strtoupper(trim($item['codigo'])) : null;
+
+                    if (!$ubicId && $code) {
+                        $uObj = Ubicacion::where('empresa_id', $empresaId)
+                            ->where('sucursal_id', $sucursalId)
+                            ->whereRaw('UPPER(codigo) = ?', [$code])
+                            ->first();
+                        if ($uObj) {
+                            $ubicId = $uObj->id;
+                        } else {
+                            $uObj = Ubicacion::create([
+                                'empresa_id'     => $empresaId,
+                                'sucursal_id'    => $sucursalId,
+                                'codigo'         => $code,
+                                'nombre'         => "Ubicación {$code}",
+                                'zona'           => 'General',
+                                'pasillo'        => 'GENERAL',
+                                'modulo'         => '01',
+                                'nivel'          => '01',
+                                'tipo'           => 'Normal',
+                                'tipo_ubicacion' => 'Almacenamiento',
+                                'estado'         => 'Libre',
+                            ]);
+                            $ubicId = $uObj->id;
+                        }
+                    }
+
+                    if (!$ubicId) continue;
+
+                    $cajas  = max(0, (float)($item['cajas'] ?? 0));
+                    $saldos = max(0, (float)($item['saldos'] ?? 0));
+                    $esCero = !empty($item['es_cero']);
+                    $lote   = !empty($item['lote']) ? trim($item['lote']) : 'N/A';
+                    $fv     = !empty($item['fecha_vencimiento']) ? $item['fecha_vencimiento'] : null;
+
+                    $cantContada = $esCero ? 0 : round(($cajas * $upc) + $saldos, 3);
+
+                    // Stock actual en esa ubicación para esta referencia
+                    $stockActual = (float)Inventario::where('empresa_id', $empresaId)
+                        ->where('sucursal_id', $sucursalId)
+                        ->where('producto_id', $productoId)
+                        ->where('ubicacion_id', $ubicId)
+                        ->when($lote && $lote !== 'N/A', fn($q) => $q->where('lote', $lote))
+                        ->sum('cantidad');
+
+                    $diff = $cantContada - $stockActual;
+
+                    // Crear/Actualizar SesionLinea
+                    SesionLinea::create([
+                        'sesion_id'        => $sesionId,
+                        'asignacion_id'    => $asignacion->id,
+                        'auxiliar_id'      => $user->id,
+                        'ronda'            => $asignacion->ronda ?: 1,
+                        'producto_id'      => $productoId,
+                        'ubicacion_id'     => $ubicId,
+                        'lote'             => $lote,
+                        'fecha_vencimiento'=> $fv,
+                        'cantidad_cajas'   => (int)$cajas,
+                        'saldos'           => (float)$saldos,
+                        'cantidad_contada' => $cantContada,
+                        'cantidad_sistema' => $stockActual,
+                        'diferencia'       => $diff,
+                        'hora_conteo'      => date('Y-m-d H:i:s'),
+                        'estado'           => SesionLinea::ESTADO_ACTIVO,
+                        'ajustado'         => true,
+                    ]);
+
+                    // 4. AJUSTE DE INVENTARIO ESPECÍFICO PARA ESTA REFERENCIA
+                    if (abs($diff) > 0.0001) {
+                        $invQuery = Inventario::where('empresa_id', $empresaId)
+                            ->where('sucursal_id', $sucursalId)
+                            ->where('producto_id', $productoId)
+                            ->where('ubicacion_id', $ubicId);
+
+                        if ($lote && $lote !== 'N/A') {
+                            $invQuery->where('lote', $lote);
+                        }
+
+                        $invRow = $invQuery->first();
+
+                        if ($cantContada <= 0.0001) {
+                            // Dejar en cero / eliminar stock de esta referencia en esta ubicación
+                            if ($invRow) {
+                                $invRow->delete();
+                            }
+                        } else {
+                            if ($invRow) {
+                                $invRow->cantidad = $cantContada;
+                                if ($lote && $lote !== 'N/A') $invRow->lote = $lote;
+                                if ($fv) $invRow->fecha_vencimiento = $fv;
+                                $invRow->save();
+                            } else {
+                                Inventario::create([
+                                    'empresa_id'        => $empresaId,
+                                    'sucursal_id'       => $sucursalId,
+                                    'producto_id'       => $productoId,
+                                    'ubicacion_id'      => $ubicId,
+                                    'lote'              => $lote,
+                                    'fecha_vencimiento' => $fv,
+                                    'cantidad'          => $cantContada,
+                                    'estado'            => 'Disponible',
+                                ]);
+                            }
+                        }
+
+                        // Registrar Kardex
+                        MovimientoInventario::create([
+                            'empresa_id'           => $empresaId,
+                            'sucursal_id'          => $sucursalId,
+                            'producto_id'          => $productoId,
+                            'ubicacion_destino_id' => $ubicId,
+                            'tipo_movimiento'      => $diff > 0 ? MovimientoInventario::TIPO_AJUSTE_POSITIVO : MovimientoInventario::TIPO_AJUSTE_NEGATIVO,
+                            'cantidad'             => abs($diff),
+                            'lote'                 => $lote,
+                            'fecha_vencimiento'    => $fv,
+                            'referencia_tipo'      => 'conteo_ciclico_referencia',
+                            'referencia_id'        => $asignacion->id,
+                            'auxiliar_id'          => $user->id,
+                            'observaciones'        => "Ajuste cíclico por referencia — Stock anterior: {$stockActual}, Nuevo stock: {$cantContada}",
+                            'fecha_movimiento'     => date('Y-m-d'),
+                            'hora_inicio'          => date('H:i:s'),
+                        ]);
+                    }
+                }
+
+                // Marcar la asignación como finalizada
+                $asignacion->estado        = SesionAsignacion::ESTADO_FINALIZADO;
+                $asignacion->finalizado_at = date('Y-m-d H:i:s');
+                $asignacion->save();
+
+                $this->verificarCompletitudSesion($asignacion->sesion, $asignacion->ronda ?: 1);
+            });
+
+            return $this->ok($res, null, 'Conteo de referencia registrado y ajustado correctamente');
+        } catch (\Throwable $e) {
+            return $this->error($res, 'Error al procesar conteo de referencia: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * Si todas las asignaciones de la ronda ya finalizaron, pasa la sesión a PendienteAjuste.
      */
     private function verificarCompletitudSesion(SesionInventario $sesion, int $ronda): void
@@ -2863,6 +3076,9 @@ class InventarioV2Controller extends BaseController
             $empresaId  = $this->getEffectiveEmpresaId($user, $req);
             $sucursalId = $user->sucursal_id;
 
+            $prod = Producto::find($productoId);
+            $upc  = max(1, (int)($prod->unidades_caja ?? 1));
+
             $rows = Inventario::where('empresa_id', $empresaId)
                 ->where('sucursal_id', $sucursalId)
                 ->where('producto_id', $productoId)
@@ -2870,15 +3086,24 @@ class InventarioV2Controller extends BaseController
                 ->with('ubicacion:id,codigo,nombre')
                 ->get();
 
-            $ubicaciones = $rows->groupBy('ubicacion_id')->map(function ($items) {
+            $ubicaciones = $rows->groupBy('ubicacion_id')->map(function ($items) use ($upc) {
                 $u = $items->first()->ubicacion;
+                $tot = round((float)$items->sum('cantidad'), 3);
+                $cj  = $upc > 1 ? floor($tot / $upc) : round($tot);
+                $sl  = $upc > 1 ? round(($tot - ($cj * $upc)) * 1000) / 1000 : 0;
+                $firstWithLote = $items->first(fn($i) => !empty($i->lote));
+
                 return [
                     'id'                => $u?->id,
+                    'ubicacion_id'      => $u?->id,
                     'codigo'            => $u?->codigo ?? '—',
                     'nombre'            => $u?->nombre ?? '',
-                    'cantidad'          => round($items->sum('cantidad'), 3),
-                    'fecha_vencimiento' => $items->sortBy('fecha_vencimiento')
-                                                 ->first()?->fecha_vencimiento,
+                    'cantidad'          => $tot,
+                    'cajas'             => $cj,
+                    'saldos'            => $sl,
+                    'unidades_caja'     => $upc,
+                    'lote'              => $firstWithLote?->lote ?? 'N/A',
+                    'fecha_vencimiento' => $items->sortBy('fecha_vencimiento')->first()?->fecha_vencimiento,
                 ];
             })->values()->sortBy('codigo')->values();
 

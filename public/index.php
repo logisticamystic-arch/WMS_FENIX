@@ -607,6 +607,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/v2/inventario/asignaciones/{id}/iniciar',   [\App\Controllers\InventarioV2Controller::class, 'iniciarConteo']);
     $group->post('/v2/inventario/asignaciones/{id}/linea',     [\App\Controllers\InventarioV2Controller::class, 'registrarLinea']);
     $group->post('/v2/inventario/asignaciones/{id}/finalizar', [\App\Controllers\InventarioV2Controller::class, 'finalizarAsignacion']);
+    $group->post('/v2/inventario/asignaciones/{id}/conteo-referencia', [\App\Controllers\InventarioV2Controller::class, 'conteoReferenciaCompleto']);
 
     // ── Edición / eliminación de líneas (admin) ─────────────────────────────
     $group->put('/v2/inventario/lineas/{id}',                  [\App\Controllers\InventarioV2Controller::class, 'editarLinea']);
