@@ -1057,16 +1057,13 @@ class PackingController extends BaseController
                 $saldoDB = (float)($it->saldo ?? 0);
 
                 if ($cajasDB > 0 || $saldoDB > 0) {
-                    $cajas = $cajasDB;
-                    $saldo = $saldoDB;
-                    if ($saldo <= 0 && $upc > 1) {
-                        $saldo = max(0, round(($cantRaw - $cajasDB) * $upc, 3));
-                    }
+                    $cajas    = $cajasDB;
+                    $saldo    = $saldoDB;
                     $undTotal = round(($cajas * $upc) + $saldo, 3);
                 } elseif ($upc > 1) {
-                    $cajas    = (int)floor($cantRaw);
-                    $saldo    = round(($cantRaw - floor($cantRaw)) * $upc, 3);
-                    $undTotal = round($cajas * $upc + $saldo, 3);
+                    $cajas    = (int)floor($cantRaw / $upc);
+                    $saldo    = round($cantRaw - ($cajas * $upc), 3);
+                    $undTotal = $cantRaw;
                 } else {
                     $cajas    = $cantRaw;
                     $saldo    = 0;
@@ -1876,7 +1873,7 @@ class PackingController extends BaseController
             ->where('op.empresa_id', $empresaId)
             ->where('op.sucursal_entrega', $sucursalEntrega)
             ->whereIn('op.estado', ['Completada', 'EnProceso'])
-            ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial'])
+            ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial', 'Certificada'])
             ->where(function($sq) {
                 $sq->where('pd.cantidad_pickeada', '>', 0)
                    ->orWhereIn('pd.estado', ['Completado', 'Faltante']);
