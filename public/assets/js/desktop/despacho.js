@@ -1144,14 +1144,14 @@ WMS_MODULES.despacho = {
 
   _renderCertInterface(sucursal, lineas) {
     const totalLines = lineas.length;
-    const certLines  = lineas.filter(l => (l.cantidad_certificada || 0) > 0).length;
+    const certLines  = lineas.filter(l => l.es_certificada || (l.cantidad_certificada || 0) > 0).length;
     const progress   = totalLines > 0 ? Math.round((certLines / totalLines) * 100) : 0;
 
     const ambients = [...new Set(lineas.map(l => l.ambiente_nombre || 'Sin ambiente'))];
     const ambientProgress = ambients.map(a => {
        const lins = lineas.filter(l => (l.ambiente_nombre || 'Sin ambiente') === a);
        const t = lins.length;
-       const c = lins.filter(l => (l.cantidad_certificada || 0) > 0).length;
+       const c = lins.filter(l => l.es_certificada || (l.cantidad_certificada || 0) > 0).length;
        return { name: a, total: t, cert: c };
     });
 
@@ -1223,16 +1223,17 @@ WMS_MODULES.despacho = {
                     const upc = Math.max(1, parseInt(l.unidades_caja || 1));
                     const pick = parseFloat(l.cantidad_pickeada || 0);
                     const cert = parseFloat(l.cantidad_certificada || 0);
+                    const esCert = Boolean(l.es_certificada || cert > 0);
 
                     const pickCajas  = upc > 1 ? Math.floor(pick / upc) : Math.round(pick);
                     const pickSaldos = upc > 1 ? Math.round((pick - (pickCajas * upc)) * 1000) / 1000 : 0;
 
-                    const certCajas  = cert > 0 ? (upc > 1 ? Math.floor(cert / upc) : Math.round(cert)) : pickCajas;
-                    const certSaldos = cert > 0 ? (upc > 1 ? Math.round((cert - (certCajas * upc)) * 1000) / 1000 : 0) : pickSaldos;
+                    const certCajas  = esCert ? (upc > 1 ? Math.floor(cert / upc) : Math.round(cert)) : pickCajas;
+                    const certSaldos = esCert ? (upc > 1 ? Math.round((cert - (certCajas * upc)) * 1000) / 1000 : 0) : pickSaldos;
 
                     const totCert = (certCajas * upc) + certSaldos;
                     const diff    = pick - totCert;
-                    const st      = cert === 0 ? 'pendiente' : (Math.abs(diff) < 0.001 ? 'ok' : 'error');
+                    const st      = !esCert ? 'pendiente' : (Math.abs(diff) < 0.001 ? 'ok' : 'error');
 
                     return `
                     <tr id="cert-row-${l.producto_id}" class="cert-row-${st}" 

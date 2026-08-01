@@ -5609,6 +5609,7 @@ class PickingController extends BaseController
                 'pd.producto_id',
                 'pd.cantidad_pickeada',
                 'pd.cantidad_certificada',
+                'pd.estado_certificacion',
                 'pd.lote',
                 'pd.fecha_vencimiento',
                 'p.nombre',
@@ -5642,12 +5643,20 @@ class PickingController extends BaseController
                     'ambiente_color'       => $d->ambiente_color,
                     'cantidad_pickeada'    => 0,
                     'cantidad_certificada' => 0,
+                    'es_certificada'       => false,
                     'detalles_ids'         => [],
                 ];
             }
             $consolidado[$pid]['cantidad_pickeada']    += (float)$d->cantidad_pickeada;
             $consolidado[$pid]['cantidad_certificada'] += (float)$d->cantidad_certificada;
             $consolidado[$pid]['detalles_ids'][]       = $d->id;
+
+            $isLineCert = in_array($d->estado_certificacion, ['Certificado', 'Certificada', 'Diferencia'])
+                          || ((float)$d->cantidad_certificada > 0.0001 && $d->cantidad_certificada !== null);
+            if ($isLineCert) {
+                $consolidado[$pid]['es_certificada'] = true;
+            }
+
             if ($d->lote && $consolidado[$pid]['lote'] === 'N/A') {
                 $consolidado[$pid]['lote'] = $d->lote;
             }
@@ -5744,8 +5753,8 @@ class PickingController extends BaseController
                 $q->where('empresa_id',  $empresaId)
                   ->where('sucursal_id', $sucursalId)
                   ->where('sucursal_entrega', $sucursal)
-                  ->where('estado', 'Completada')
-                  ->where('estado_certificacion', 'Pendiente');
+                  ->whereIn('estado', ['Completada', 'EnProceso'])
+                  ->whereIn('estado_certificacion', ['Pendiente', 'Parcial', 'EnCertificacion']);
             })
             ->orderBy('id', 'asc')
             ->get();

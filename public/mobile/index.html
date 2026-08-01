@@ -8363,16 +8363,17 @@ const MWMS = {
         <!-- Lista de referencias -->
         <div id="cert-items-list">
           ${ambItems.map(it => {
-            const pick = it.cantidad_pickeada || 0;
-            const cert = it.cantidad_certificada || 0;
-            const done = cert >= pick;
-            const diff = pick - cert;
+            const pick   = it.cantidad_pickeada || 0;
+            const cert   = it.cantidad_certificada || 0;
+            const isCert = Boolean(it.es_certificada || cert > 0);
+            const done   = isCert && Math.abs(pick - cert) < 0.001;
+            const diff   = pick - cert;
             return `
             <div class="op-card cert-item-ref"
               data-nombre="${this.esc((it.nombre||'').toLowerCase())}"
               data-codigo="${this.esc((it.codigo||'').toLowerCase())}"
               onclick="MWMS.certifiCarLineaOrden(${it._idx},'${this.esc(sucursal)}')"
-              style="border-left:4px solid ${done?'#10b981':ambColor};margin-bottom:8px;padding:10px 12px;cursor:pointer;">
+              style="border-left:4px solid ${done ? '#10b981' : (isCert ? '#d97706' : ambColor)};margin-bottom:8px;padding:10px 12px;cursor:pointer;">
               <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
                 <div style="flex:1;min-width:0;">
                   <div style="font-size:.5rem;color:#94a3b8;font-family:monospace;letter-spacing:.4px;margin-bottom:2px;">${this.esc(it.codigo||'')}</div>
@@ -8383,14 +8384,16 @@ const MWMS = {
                   <div style="font-size:.88rem;font-weight:900;">
                     <span style="color:#0F4C81;">${pick}</span>
                     <span style="color:#cbd5e1;font-size:.6rem;"> / </span>
-                    <span style="color:${done?'#059669':cert>0?'#d97706':'#94a3b8'};">${cert||'—'}</span>
+                    <span style="color:${done?'#059669':isCert?'#d97706':'#94a3b8'};">${isCert ? cert : '—'}</span>
                   </div>
-                  ${diff>0&&cert>0 ? `<div style="font-size:.48rem;color:#d97706;font-weight:700;">Falta: ${diff}</div>` : ''}
+                  ${diff>0&&isCert ? `<div style="font-size:.48rem;color:#d97706;font-weight:700;">Falta: ${diff}</div>` : ''}
                 </div>
                 <div style="width:20px;text-align:center;flex-shrink:0;">
                   ${done
                     ? '<i class="fa-solid fa-check-circle" style="color:#10b981;font-size:.9rem;"></i>'
-                    : `<i class="fa-solid fa-pen-to-square" style="color:${ambColor};opacity:.55;font-size:.78rem;"></i>`}
+                    : isCert
+                      ? '<i class="fa-solid fa-circle-exclamation" style="color:#d97706;font-size:.9rem;"></i>'
+                      : `<i class="fa-solid fa-pen-to-square" style="color:${ambColor};opacity:.55;font-size:.78rem;"></i>`}
                 </div>
               </div>
             </div>`;
