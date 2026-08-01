@@ -4661,7 +4661,7 @@ const MWMS = {
 
         <div id="iv-ref-ubic-list">
           ${ubicaciones.length ? ubicaciones.map(u => `
-            <div class="op-card ref-ubic-card" id="ref-card-loc-${u.id}" data-locid="${u.id}" data-code="${this.esc(u.codigo)}" style="border-left:4px solid #f59e0b;margin-bottom:10px;">
+            <div class="op-card ref-ubic-card" id="ref-card-loc-${u.id}" data-locid="${u.id}" data-code="${this.esc(u.codigo)}" data-lote="${this.esc(u.lote||'N/A')}" data-fv="${u.fecha_vencimiento||''}" style="border-left:4px solid #f59e0b;margin-bottom:10px;">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
                 <div>
                   <div style="font-weight:800;font-size:.9rem;color:#0F4C81;">
@@ -4671,6 +4671,7 @@ const MWMS = {
                     Sistema: <b>${u.cajas} cj + ${u.saldos} sald</b> (${u.cantidad} und)
                   </div>
                   ${u.lote && u.lote !== 'N/A' ? `<div style="font-size:.65rem;color:#475569;margin-top:2px;">Lote: <b>${this.esc(u.lote)}</b></div>` : ''}
+                  ${u.fecha_vencimiento ? `<div style="font-size:.65rem;color:#dc2626;font-weight:700;margin-top:2px;"><i class="fa-solid fa-calendar-days"></i> Vence: <b>${this.formatDate(u.fecha_vencimiento)}</b></div>` : ''}
                 </div>
                 <span class="ref-loc-status-badge" id="ref-loc-status-${u.id}"
                   style="font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:12px;background:#fef3c7;color:#d97706;">
@@ -4688,6 +4689,19 @@ const MWMS = {
                   <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;margin-bottom:2px;">SALDOS (UND)</label>
                   <input type="number" class="m-input-full ref-input-saldos" id="ref-sd-${u.id}" value="${u.saldos}" min="0" step="0.001"
                     oninput="MWMS._ivRefOnLocChange(${u.id})">
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                <div>
+                  <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;margin-bottom:2px;">LOTE</label>
+                  <input type="text" class="m-input-full ref-input-lote" id="ref-lote-${u.id}" value="${this.esc(u.lote && u.lote !== 'N/A' ? u.lote : '')}" placeholder="Opcional">
+                </div>
+                <div>
+                  <label style="font-size:.65rem;font-weight:700;color:${prod.controla_vencimiento ? '#dc2626' : '#475569'};display:block;margin-bottom:2px;">
+                    FECHA VENC. ${prod.controla_vencimiento ? '<span style="color:#ef4444">*</span>' : ''}
+                  </label>
+                  <input type="date" class="m-input-full ref-input-fv" id="ref-fv-${u.id}" value="${u.fecha_vencimiento || ''}">
                 </div>
               </div>
 
@@ -4798,11 +4812,15 @@ const MWMS = {
     const payloadUbicaciones = [];
     const sinContar = [];
 
+    let fvFaltante = false;
+
     sysLocCards.forEach(card => {
-      const locId = parseInt(card.dataset.locid);
-      const code = card.dataset.code;
-      const cjInp = document.getElementById(`ref-cj-${locId}`);
-      const sdInp = document.getElementById(`ref-sd-${locId}`);
+      const locId   = parseInt(card.dataset.locid);
+      const code    = card.dataset.code;
+      const cjInp   = document.getElementById(`ref-cj-${locId}`);
+      const sdInp   = document.getElementById(`ref-sd-${locId}`);
+      const loteInp = document.getElementById(`ref-lote-${locId}`);
+      const fvInp   = document.getElementById(`ref-fv-${locId}`);
       
       const cjVal = cjInp?.value;
       const sdVal = sdInp?.value;
@@ -4814,12 +4832,20 @@ const MWMS = {
 
       const cj = parseFloat(cjVal || 0);
       const sd = parseFloat(sdVal || 0);
+      const loteVal = (loteInp?.value || card.dataset.lote || '').trim();
+      const fvVal   = fvInp?.value || card.dataset.fv || null;
+
+      if (this._ivRefProd?.controla_vencimiento && (cj > 0 || sd > 0) && !fvVal) {
+        fvFaltante = true;
+      }
 
       payloadUbicaciones.push({
         ubicacion_id: locId,
         codigo: code,
         cajas: cj,
         saldos: sd,
+        lote: loteVal || 'N/A',
+        fecha_vencimiento: fvVal,
         es_cero: (cj === 0 && sd === 0)
       });
     });
@@ -4846,16 +4872,30 @@ const MWMS = {
 
       const cj = parseFloat(cjInp?.value || 0);
       const sd = parseFloat(sdInp?.value || 0);
+      const fvVal = fvInp?.value || null;
+
+      if (this._ivRefProd?.controla_vencimiento && (cj > 0 || sd > 0) && !fvVal) {
+        fvFaltante = true;
+      }
 
       payloadUbicaciones.push({
         codigo: code,
         cajas: cj,
         saldos: sd,
         lote: loteInp?.value || 'N/A',
-        fecha_vencimiento: fvInp?.value || null,
+        fecha_vencimiento: fvVal,
         es_cero: (cj === 0 && sd === 0)
       });
     });
+
+    if (fvFaltante) {
+      return Swal.fire({
+        title: 'Fecha de Vencimiento Requerida',
+        text: `Este producto controla fecha de vencimiento. Por favor ingrese la fecha de vencimiento para cada ubicación con conteo mayor a 0.`,
+        icon: 'warning',
+        confirmButtonColor: '#d97706'
+      });
+    }
 
     if (extraIncompleta) {
       return Swal.fire({

@@ -454,8 +454,8 @@ class InventarioV2Controller extends BaseController
                 'estado'            => SesionAsignacion::ESTADO_PENDIENTE,
             ]);
 
-            // Si la sesión ya está EnCurso y es ronda activa, notificar de inmediato
-            if ($sesion->estado === SesionInventario::ESTADO_EN_CURSO) {
+            // Si la sesión no está cerrada ni finalizada, notificar la asignación de inmediato
+            if (!in_array($sesion->estado, [SesionInventario::ESTADO_CERRADO, SesionInventario::ESTADO_FINALIZADO, 'Cancelado'])) {
                 $this->crearNotificacionAuxiliar($asignacion, $sesion);
                 $asignacion->estado        = SesionAsignacion::ESTADO_NOTIFICADO;
                 $asignacion->notificado_at = date('Y-m-d H:i:s');
@@ -512,7 +512,7 @@ class InventarioV2Controller extends BaseController
             $user = $req->getAttribute('user');
 
             $asignaciones = SesionAsignacion::where('auxiliar_id', $user->id)
-                ->whereIn('estado', ['Notificado', 'EnConteo'])
+                ->whereIn('estado', ['Pendiente', 'Notificado', 'EnConteo'])
                 ->with([
                     'sesion:id,nombre,tipo,empresa_id,sucursal_id',
                     'producto:id,nombre,codigo_interno,unidades_caja,factor_udm,unidad_contenido,controla_vencimiento',
@@ -521,7 +521,7 @@ class InventarioV2Controller extends BaseController
                     $q->whereHas('sesion', function ($sq) use ($user, $req) {
                         $sq->where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
                            ->where('sucursal_id', $user->sucursal_id)
-                           ->where('estado', SesionInventario::ESTADO_EN_CURSO);
+                           ->whereIn('estado', [SesionInventario::ESTADO_EN_CURSO, 'PendienteAjuste', 'Borrador']);
                     });
                 })
                 ->orderByDesc('created_at')
@@ -802,19 +802,26 @@ class InventarioV2Controller extends BaseController
                     $lote   = !empty($item['lote']) ? trim($item['lote']) : 'N/A';
                     $fv     = !empty($item['fecha_vencimiento']) ? $item['fecha_vencimiento'] : null;
 
-                    $cantContada = $esCero ? 0 : round(($cajas * $upc) + $saldos, 3);
-
-                    // Stock actual en esa ubicación para esta referencia
-                    $stockActual = (float)Inventario::where('empresa_id', $empresaId)
+                    // Buscar registro de inventario existente para obtener la fecha de vencimiento previa si no se envió una nueva
+                    $invQuery = Inventario::where('empresa_id', $empresaId)
                         ->where('sucursal_id', $sucursalId)
                         ->where('producto_id', $productoId)
-                        ->where('ubicacion_id', $ubicId)
-                        ->when($lote && $lote !== 'N/A', fn($q) => $q->where('lote', $lote))
-                        ->sum('cantidad');
+                        ->where('ubicacion_id', $ubicId);
 
-                    $diff = $cantContada - $stockActual;
+                    if ($lote && $lote !== 'N/A') {
+                        $invQuery->where('lote', $lote);
+                    }
 
-                    // Crear/Actualizar SesionLinea
+                    $invRow = $invQuery->first();
+                    if (empty($fv) && $invRow && !empty($invRow->fecha_vencimiento)) {
+                        $fv = $invRow->fecha_vencimiento;
+                    }
+
+                    $cantContada = $esCero ? 0 : round(($cajas * $upc) + $saldos, 3);
+                    $stockActual = (float)($invRow ? $invRow->cantidad : 0);
+                    $diff        = $cantContada - $stockActual;
+
+                    // Crear/Actualizar SesionLinea (El ajuste de inventario y Kardex SOLO lo ejecuta el Administrador desde escritorio)
                     SesionLinea::create([
                         'sesion_id'        => $sesionId,
                         'asignacion_id'    => $asignacion->id,
@@ -827,72 +834,15 @@ class InventarioV2Controller extends BaseController
                         'cantidad_cajas'   => (int)$cajas,
                         'saldos'           => (float)$saldos,
                         'cantidad_contada' => $cantContada,
-                        'cantidad_sistema' => $cantContada,
-                        'diferencia'       => 0,
+                        'cantidad_sistema' => $stockActual,
+                        'diferencia'       => $diff,
                         'hora_conteo'      => date('Y-m-d H:i:s'),
                         'estado'           => SesionLinea::ESTADO_ACTIVO,
-                        'ajustado'         => true,
+                        'ajustado'         => false,
                     ]);
-
-                    // 4. AJUSTE DE INVENTARIO ESPECÍFICO PARA ESTA REFERENCIA
-                    if (abs($diff) > 0.0001) {
-                        $invQuery = Inventario::where('empresa_id', $empresaId)
-                            ->where('sucursal_id', $sucursalId)
-                            ->where('producto_id', $productoId)
-                            ->where('ubicacion_id', $ubicId);
-
-                        if ($lote && $lote !== 'N/A') {
-                            $invQuery->where('lote', $lote);
-                        }
-
-                        $invRow = $invQuery->first();
-
-                        if ($cantContada <= 0.0001) {
-                            // Dejar en cero / eliminar stock de esta referencia en esta ubicación
-                            if ($invRow) {
-                                $invRow->delete();
-                            }
-                        } else {
-                            if ($invRow) {
-                                $invRow->cantidad = $cantContada;
-                                if ($lote && $lote !== 'N/A') $invRow->lote = $lote;
-                                if ($fv) $invRow->fecha_vencimiento = $fv;
-                                $invRow->save();
-                            } else {
-                                Inventario::create([
-                                    'empresa_id'        => $empresaId,
-                                    'sucursal_id'       => $sucursalId,
-                                    'producto_id'       => $productoId,
-                                    'ubicacion_id'      => $ubicId,
-                                    'lote'              => $lote,
-                                    'fecha_vencimiento' => $fv,
-                                    'cantidad'          => $cantContada,
-                                    'estado'            => 'Disponible',
-                                ]);
-                            }
-                        }
-
-                        // Registrar Kardex
-                        MovimientoInventario::create([
-                            'empresa_id'           => $empresaId,
-                            'sucursal_id'          => $sucursalId,
-                            'producto_id'          => $productoId,
-                            'ubicacion_destino_id' => $ubicId,
-                            'tipo_movimiento'      => $diff > 0 ? MovimientoInventario::TIPO_AJUSTE_POSITIVO : MovimientoInventario::TIPO_AJUSTE_NEGATIVO,
-                            'cantidad'             => abs($diff),
-                            'lote'                 => $lote,
-                            'fecha_vencimiento'    => $fv,
-                            'referencia_tipo'      => 'conteo_ciclico_referencia',
-                            'referencia_id'        => $asignacion->id,
-                            'auxiliar_id'          => $user->id,
-                            'observaciones'        => "Ajuste cíclico por referencia — Stock anterior: {$stockActual}, Nuevo stock: {$cantContada}",
-                            'fecha_movimiento'     => date('Y-m-d'),
-                            'hora_inicio'          => date('H:i:s'),
-                        ]);
-                    }
                 }
 
-                // Marcar la asignación como finalizada
+                // Marcar la asignación como finalizada en el móvil (conteo enviado a revisión)
                 $asignacion->estado        = SesionAsignacion::ESTADO_FINALIZADO;
                 $asignacion->finalizado_at = date('Y-m-d H:i:s');
                 $asignacion->save();
@@ -900,7 +850,7 @@ class InventarioV2Controller extends BaseController
                 $this->verificarCompletitudSesion($asignacion->sesion, $asignacion->ronda ?: 1);
             });
 
-            return $this->ok($res, null, 'Conteo de referencia registrado y ajustado correctamente');
+            return $this->ok($res, null, 'Conteo de referencia registrado correctamente. Pendiente por aprobar ajuste.');
         } catch (\Throwable $e) {
             return $this->error($res, 'Error al procesar conteo de referencia: ' . $e->getMessage(), 500);
         }
