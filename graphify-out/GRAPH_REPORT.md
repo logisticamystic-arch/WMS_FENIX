@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-01)
 
 ## Corpus Check
-- 329 files · ~827,880 words
+- 329 files · ~827,859 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `4cd5a283`
+- Built from commit: `7eefcb16`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -688,7 +688,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `Core Models & Tenant Scope` to `ConteoInventario`, `AlertasController`, `AlertasController`, `Product Blocking & Quick Search`, `Receiving Controller`, `Auth & Seeding`, `Tenant Context & Middleware`, `Core Controllers Overview`, `Location Adjustment Controller`, `Miscellaneous Items Controller`, `Anomaly Detection Controller`, `Replenishment & Notifications`, `Impresora`, `Traspaso`, `DataResetController`, `InvGeneralEvento`, `NotificacionesController`, `Inventory Count Model`, `Transfer Controller`, `Ubicacion`, `Aprobación de Vencimientos`?**
-  _High betweenness centrality (0.027) - this node is a cross-community bridge._
+  _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **Why does `analyze_product()` connect `Causal Reasons Controller` to `Cross-Dock Operations`?**
   _High betweenness centrality (0.011) - this node is a cross-community bridge._
 - **Why does `Producto` connect `Product Blocking & Quick Search` to `ConteoInventario`, `Location Adjustment Controller`, `Ubicacion`, `InvGeneralEvento`, `Receiving Controller`, `InventoryGuard`, `Inventory Count Model`, `DataResetController`?**
