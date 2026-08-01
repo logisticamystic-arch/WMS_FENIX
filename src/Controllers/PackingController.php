@@ -1011,16 +1011,20 @@ class PackingController extends BaseController
         $agotados = empty($ordenIds) ? collect() : Capsule::table('picking_faltantes as pf')
             ->join('productos as p', 'p.id', '=', 'pf.producto_id')
             ->leftJoin('orden_pickings as op', 'op.id', '=', 'pf.orden_picking_id')
-            ->leftJoin('personal as per', 'per.id', '=', 'op.auxiliar_id')
+            ->leftJoin('picking_detalles as pd', function ($j) {
+                $j->on('pd.orden_picking_id', '=', 'pf.orden_picking_id')
+                  ->on('pd.producto_id', '=', 'pf.producto_id');
+            })
+            ->leftJoin('personal as per', 'per.id', '=', 'pd.auxiliar_id')
             ->whereIn('pf.orden_picking_id', $ordenIds)
             ->select([
                 'p.codigo_interno as codigo',
                 'p.nombre',
                 'p.unidades_caja',
-                Capsule::raw('SUM(pf.cantidad_solicitada) as solicitado'),
+                Capsule::raw('SUM(pf.cantidad_solicitada * COALESCE(p.unidades_caja, 1)) as solicitado'),
                 Capsule::raw('SUM(pf.cantidad_faltante) as faltante'),
                 Capsule::raw("STRING_AGG(DISTINCT COALESCE(pf.causa,'Sin stock'), ', ') as causa"),
-                Capsule::raw("STRING_AGG(DISTINCT COALESCE(per.nombre,'Sin asignar'), ', ') as responsable"),
+                Capsule::raw("STRING_AGG(DISTINCT COALESCE(per.nombre, 'Sin asignar'), ', ') as responsable"),
             ])
             ->groupBy('p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja')
             ->get();
@@ -1563,16 +1567,23 @@ class PackingController extends BaseController
 
         $agotados = Capsule::table('picking_faltantes as pf')
             ->join('productos as p', 'p.id', '=', 'pf.producto_id')
+            ->leftJoin('picking_detalles as pd', function ($j) {
+                $j->on('pd.orden_picking_id', '=', 'pf.orden_picking_id')
+                  ->on('pd.producto_id', '=', 'pf.producto_id');
+            })
+            ->leftJoin('personal as per', 'per.id', '=', 'pd.auxiliar_id')
             ->whereIn('pf.orden_picking_id', $ordenIds)
             ->select([
                 'p.codigo_interno as codigo',
                 'p.nombre as producto_nombre',
-                Capsule::raw('SUM(pf.cantidad_solicitada) as cantidad_solicitada'),
+                'p.unidades_caja',
+                Capsule::raw('SUM(pf.cantidad_solicitada * COALESCE(p.unidades_caja, 1)) as cantidad_solicitada'),
                 Capsule::raw('SUM(pf.cantidad_faltante) as cantidad_faltante'),
                 Capsule::raw("STRING_AGG(DISTINCT COALESCE(pf.causa,'Sin stock'), ', ') as causa"),
+                Capsule::raw("STRING_AGG(DISTINCT COALESCE(per.nombre, 'Sin asignar'), ', ') as responsable"),
                 Capsule::raw('MIN(pf.created_at) as fecha'),
             ])
-            ->groupBy('p.id', 'p.codigo_interno', 'p.nombre')
+            ->groupBy('p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja')
             ->get();
 
         return $this->ok($res, $agotados);
