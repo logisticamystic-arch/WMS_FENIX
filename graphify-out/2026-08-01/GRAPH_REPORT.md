@@ -1,7 +1,7 @@
-# Graph Report - WMS_FENIX  (2026-08-01)
+# Graph Report - WMS_FENIX  (2026-07-31)
 
 ## Corpus Check
-- 329 files · ~827,823 words
+- 329 files · ~827,628 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `402fa41a`
+- Built from commit: `33a9b835`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -682,7 +682,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `AlertasController` to `Órdenes de Compra Manual`, `Parameters & Approvals`, `AlertasController`, `Packing & Expiry Control`, `FefoEngine`, `TenantScoped.php`, `Product Blocking & Quick Search`, `Receiving Controller`, `.importarODC`, `Auth & Seeding`, `Returns Model & Controller`, `Tenant Context & Middleware`, `Core Controllers Overview`, `Location Adjustment Controller`, `Miscellaneous Items Controller`, `Anomaly Detection Controller`, `Replenishment & Notifications`, `InvGeneralEvento`, `Appointment Controller`, `NotificacionesController`, `Inventory Count Model`, `Transfer Controller`, `Ubicacion`, `Aprobación de Vencimientos`?**
-  _High betweenness centrality (0.023) - this node is a cross-community bridge._
+  _High betweenness centrality (0.022) - this node is a cross-community bridge._
 - **Why does `AnomalyController` connect `TV Dashboard Service Level` to `Assignment Session Management`, `Base Controller Utilities`?**
   _High betweenness centrality (0.011) - this node is a cross-community bridge._
 - **Why does `OrdenPicking` connect `Packing & Expiry Control` to `Transfer Controller`, `Cross-Dock Operations`, `InvGeneralEvento`, `AlertasController`, `Inventory Count Model`?**

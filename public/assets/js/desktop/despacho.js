@@ -1064,6 +1064,7 @@ WMS_MODULES.despacho = {
       const imps = (await API.get('/impresoras')).data || [];
       this._showPackingDialog(sucursal, imps);
     } catch(e) { WMS.toast('error', 'Error al cargar impresoras'); }
+    finally { WMS.spinner(false); }
   },
 
   async autoCertificar(sucursal) {
@@ -1085,6 +1086,8 @@ WMS_MODULES.despacho = {
       this.show_certificacion(); // recargar
     } catch(e) {
       WMS.toast('error', e.message || 'Error en Auto-Certificación');
+    } finally {
+      WMS.spinner(false);
     }
   },
 
@@ -1494,7 +1497,8 @@ WMS_MODULES.despacho = {
         }
 
         this.show_certificacion();
-    } catch(e) { WMS.toast('error', 'Error finalizando'); }
+    } catch(e) { WMS.toast('error', 'Error finalizando: ' + (e.message || 'Desconocido')); }
+    finally { WMS.spinner(false); }
   },
 
   async verPlanilla(id) {

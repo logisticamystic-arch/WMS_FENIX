@@ -2618,7 +2618,12 @@
       },
 
       spinner(container = 'main-content') {
-        const el = document.getElementById(container) || document.getElementById('content-body');
+        if (container === false || container === null || container === 'hide') {
+          document.getElementById('wms-global-spinner')?.remove();
+          return;
+        }
+        const targetId = (typeof container === 'string' && container) ? container : 'main-content';
+        const el = document.getElementById(targetId) || document.getElementById('content-body');
         if (el) el.innerHTML = '<div class="m-empty" style="padding:60px;"><div class="spinner spinner-lg" style="margin:0 auto;"></div></div>';
       },
 
