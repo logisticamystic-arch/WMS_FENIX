@@ -233,8 +233,18 @@ WMS_MODULES.despacho = {
                   </div>
                 </td>
                 <td class="text-center">
-                  ${(s.ambientes || 'Desconocido').split(',').map(a =>
-                    `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:4px;padding:1px 7px;font-size:10px;margin:1px;">${a.trim()}</span>`
+                  ${s.ambientes_detalles && s.ambientes_detalles.length ? s.ambientes_detalles.map(a => {
+                    if (a.es_certificada) {
+                      return `<span style="display:inline-block;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;font-weight:700;" title="Certificado desde móvil/sistema"><i class="fa-solid fa-circle-check"></i> ${WMS.esc(a.nombre)}</span>`;
+                    } else if (a.certificadas > 0) {
+                      return `<span style="display:inline-block;background:#fef3c7;color:#b45309;border:1px solid #fde68a;border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;font-weight:700;" title="${a.certificadas} de ${a.total} líneas certificadas"><i class="fa-solid fa-clock"></i> ${WMS.esc(a.nombre)} (${a.certificadas}/${a.total})</span>`;
+                    } else if (a.estado === 'EnPicking') {
+                      return `<span style="display:inline-block;background:#f3f4f6;color:#4b5563;border:1px solid #e5e7eb;border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;" title="En proceso de picking"><i class="fa-solid fa-hand-holding-hand"></i> ${WMS.esc(a.nombre)}</span>`;
+                    } else {
+                      return `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe;border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;font-weight:600;"><i class="fa-solid fa-box"></i> ${WMS.esc(a.nombre)}</span>`;
+                    }
+                  }).join('') : (s.ambientes || 'Desconocido').split(',').map(a =>
+                    `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;">${a.trim()}</span>`
                   ).join('')}
                 </td>
                 <td class="text-center">
@@ -1195,11 +1205,13 @@ WMS_MODULES.despacho = {
             <button class="btn btn-sm btn-primary cert-amb-tab" id="cert-tab-all" onclick="WMS_MODULES.despacho.filterCertAmbiente('')">
               <i class="fa-solid fa-layer-group"></i> Todos (${certLines}/${totalLines})
             </button>
-            ${ambientProgress.map(ap => `
-              <button class="btn btn-sm btn-outline-primary cert-amb-tab" id="cert-tab-${WMS.esc(ap.name)}" onclick="WMS_MODULES.despacho.filterCertAmbiente('${WMS.esc(ap.name)}')">
-                <i class="fa-solid fa-box"></i> ${WMS.esc(ap.name)} (${ap.cert}/${ap.total})
-              </button>
-            `).join('')}
+            ${ambientProgress.map(ap => {
+              const isDone = ap.total > 0 && ap.cert >= ap.total;
+              return `
+              <button class="btn btn-sm ${isDone ? 'btn-success' : 'btn-outline-primary'} cert-amb-tab" id="cert-tab-${WMS.esc(ap.name)}" onclick="WMS_MODULES.despacho.filterCertAmbiente('${WMS.esc(ap.name)}')">
+                <i class="fa-solid ${isDone ? 'fa-circle-check' : 'fa-box'}"></i> ${WMS.esc(ap.name)} (${ap.cert}/${ap.total}${isDone ? ' ✓' : ''})
+              </button>`;
+            }).join('')}
           </div>
 
           <div class="card">

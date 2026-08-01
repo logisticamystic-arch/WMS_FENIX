@@ -5204,13 +5204,10 @@ class PickingController extends BaseController
 
         if ($ordenes->isEmpty()) return $this->ok($res, []);
 
-        // Step 2: agrega picking_detalles por sucursal (usa idx_pd_orden)
+        // Step 2: agrega picking_detalles por sucursal con desglose completo de ambientes y certificación
         $ids = $ordenes->pluck('id');
-        $ambAgg = $this->isPg()
-            ? "STRING_AGG(DISTINCT COALESCE(amb.descripcion, 'Sin ambiente'), ', ') as ambientes"
-            : "GROUP_CONCAT(DISTINCT COALESCE(amb.descripcion, 'Sin ambiente') SEPARATOR ', ') as ambientes";
-            
-        $aggs = Capsule::table('picking_detalles as pd')
+        
+        $detallesRaw = Capsule::table('picking_detalles as pd')
             ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
             ->join('productos as p', 'p.id', '=', 'pd.producto_id')
             ->leftJoin('ambientes as amb', function ($j) use ($empresaId) {
@@ -5218,24 +5215,59 @@ class PickingController extends BaseController
                   ->where('amb.empresa_id', $empresaId);
             })
             ->whereIn('pd.orden_picking_id', $ids)
-            ->whereExists(function($q) {
-                 $q->select(Capsule::raw(1))
-                   ->from('picking_detalles as pd3')
-                   ->join('productos as p3', 'p3.id', '=', 'pd3.producto_id')
-                   ->whereColumn('pd3.orden_picking_id', 'pd.orden_picking_id')
-                   ->whereRaw('COALESCE(p3.ambiente_id, 0) = COALESCE(p.ambiente_id, 0)')
-                   ->groupByRaw('COALESCE(p3.ambiente_id, 0)')
-                   ->havingRaw("SUM(CASE WHEN pd3.estado IN ('Pendiente', 'EnProceso') THEN 1 ELSE 0 END) = 0");
-            })
             ->select(
                 'op.sucursal_entrega',
-                Capsule::raw('COUNT(pd.id) as total_lineas_cert'),
-                Capsule::raw('COUNT(DISTINCT pd.producto_id) as total_refs'),
-                Capsule::raw('COALESCE(SUM(pd.cantidad_pickeada), 0) as total_unidades'),
-                Capsule::raw($ambAgg)
+                'pd.id as detalle_id',
+                'pd.producto_id',
+                'pd.cantidad_pickeada',
+                'pd.cantidad_certificada',
+                'pd.estado_certificacion',
+                'pd.estado as estado_picking',
+                Capsule::raw("COALESCE(amb.descripcion, 'Sin ambiente') as ambiente_nombre")
             )
-            ->groupBy('op.sucursal_entrega')
-            ->get()->keyBy('sucursal_entrega');
+            ->get();
+
+        $bySuc = $detallesRaw->groupBy('sucursal_entrega');
+
+        $aggs = [];
+        foreach ($bySuc as $suc => $rows) {
+            $byAmb = $rows->groupBy('ambiente_nombre');
+            $ambList = [];
+
+            foreach ($byAmb as $ambName => $items) {
+                $totItems = count($items);
+                $totPick  = (float)$items->sum('cantidad_pickeada');
+                $totCert  = (float)$items->sum('cantidad_certificada');
+
+                $certItems = $items->filter(function($i) {
+                    return in_array($i->estado_certificacion, ['Certificado', 'Certificada', 'Diferencia']) ||
+                           ((float)$i->cantidad_certificada > 0.0001 && $i->cantidad_certificada !== null);
+                })->count();
+
+                $enPickItems = $items->filter(function($i) {
+                    return in_array($i->estado_picking, ['Pendiente', 'EnProceso']) && ((float)$i->cantidad_pickeada <= 0.0001);
+                })->count();
+
+                $esCertCompleta = ($totItems > 0 && $certItems === $totItems);
+                $st = $esCertCompleta ? 'Certificado' : ($certItems > 0 ? 'Parcial' : ($enPickItems > 0 ? 'EnPicking' : 'Listo'));
+
+                $ambList[] = [
+                    'nombre'         => $ambName,
+                    'total'          => $totItems,
+                    'certificadas'   => $certItems,
+                    'es_certificada' => $esCertCompleta,
+                    'estado'         => $st,
+                ];
+            }
+
+            $aggs[$suc] = (object)[
+                'total_lineas_cert' => count($rows),
+                'total_refs'        => $rows->pluck('producto_id')->unique()->count(),
+                'total_unidades'    => (float)$rows->sum('cantidad_pickeada'),
+                'ambientes'         => implode(', ', array_column($ambList, 'nombre')),
+                'ambientes_detalles'=> $ambList,
+            ];
+        }
 
         // Step 3: merge en PHP por sucursal
         $result = [];
@@ -5243,18 +5275,19 @@ class PickingController extends BaseController
             $suc = $o->sucursal_entrega;
             if (!isset($result[$suc])) {
                 $result[$suc] = [
-                    'sucursal_entrega'  => $suc,
-                    'planilla_numero'   => $o->planilla_numero ?: $o->numero_orden,
-                    'total_pedidos'     => 0,
-                    'total_lineas'      => (int)($aggs[$suc]->total_refs      ?? 0),
-                    'total_lineas_cert' => (int)($aggs[$suc]->total_lineas_cert ?? 0),
-                    'total_unidades'    => $aggs[$suc]->total_unidades ?? 0,
-                    'ambientes'         => $aggs[$suc]->ambientes      ?? 'Desconocido',
-                    'auxiliares'        => $o->auxiliar_nombre,
-                    'planillas'         => [],
-                    'ordenes_ids'       => [],
-                    'pedidos_list'      => [],
-                    'pedidos_detalles'  => [],
+                    'sucursal_entrega'   => $suc,
+                    'planilla_numero'    => $o->planilla_numero ?: $o->numero_orden,
+                    'total_pedidos'      => 0,
+                    'total_lineas'       => (int)($aggs[$suc]->total_refs       ?? 0),
+                    'total_lineas_cert'  => (int)($aggs[$suc]->total_lineas_cert  ?? 0),
+                    'total_unidades'     => $aggs[$suc]->total_unidades ?? 0,
+                    'ambientes'          => $aggs[$suc]->ambientes       ?? 'Desconocido',
+                    'ambientes_detalles' => $aggs[$suc]->ambientes_detalles ?? [],
+                    'auxiliares'         => $o->auxiliar_nombre,
+                    'planillas'          => [],
+                    'ordenes_ids'        => [],
+                    'pedidos_list'       => [],
+                    'pedidos_detalles'   => [],
                 ];
             }
             $result[$suc]['total_pedidos']++;
