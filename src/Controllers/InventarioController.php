@@ -588,6 +588,10 @@ class InventarioController extends BaseController
                 ->leftJoin('personal', 'movimiento_inventarios.auxiliar_id', '=', 'personal.id')
                 ->leftJoin('ubicaciones as uo', 'movimiento_inventarios.ubicacion_origen_id', '=', 'uo.id')
                 ->leftJoin('ubicaciones as ud', 'movimiento_inventarios.ubicacion_destino_id', '=', 'ud.id')
+                ->leftJoin('orden_pickings as op_kx', function ($j) {
+                    $j->on('op_kx.id', '=', 'movimiento_inventarios.referencia_id')
+                      ->where('movimiento_inventarios.referencia_tipo', '=', 'OrdenPicking');
+                })
                 ->whereBetween('movimiento_inventarios.fecha_movimiento', [
                     substr($ini, 0, 10), substr($fin, 0, 10)
                 ])
@@ -619,7 +623,8 @@ class InventarioController extends BaseController
                     'ud.codigo as ubicacion_destino',
                     'ud.codigo as ubicacion_codigo',
                     'movimiento_inventarios.tipo_movimiento as tipo',
-                    'movimiento_inventarios.referencia_tipo as referencia'
+                    'movimiento_inventarios.referencia_tipo as referencia',
+                    'op_kx.sucursal_entrega as sucursal_pedido'
                 );
 
             if (!empty($params['producto_id'])) {

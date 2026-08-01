@@ -1112,7 +1112,10 @@ class InventarioV2Controller extends BaseController
                 $r3 = $group->where('ronda', 3)->sum('cantidad_contada');
                 
                 $ultimoConteo = $group->sortByDesc('created_at')->first();
-                
+                $conteoMax    = (float)$group->where('ronda', $group->max('ronda'))->sum('cantidad_contada');
+                $stockSistema = (float)($ultimoConteo->cantidad_sistema ?? 0);
+                $difSistema   = round($conteoMax - $stockSistema, 3);
+
                 return [
                     'producto_id'  => $first->producto_id,
                     'codigo'       => $first->producto->codigo_interno,
@@ -1123,8 +1126,8 @@ class InventarioV2Controller extends BaseController
                     'ronda_1'      => (int)$r1,
                     'ronda_2'      => (int)$r2,
                     'ronda_3'      => (int)$r3,
-                    'sistema'      => (float)$ultimoConteo->cantidad_sistema,
-                    'diferencia'   => (float)($group->where('ronda', $group->max('ronda'))->sum('cantidad_contada') - $ultimoConteo->cantidad_sistema),
+                    'sistema'      => $stockSistema,
+                    'diferencia'   => $difSistema,
                     // Sub-agrupación por Ubicación y Vencimiento para el detalle
                     'detalles'     => $group->groupBy(function($gl) {
                         return $gl->ubicacion_id . '_' . ($gl->fecha_vencimiento ?? 'N/A');
@@ -2510,16 +2513,9 @@ class InventarioV2Controller extends BaseController
                 ->leftJoin('personal', 'movimiento_inventarios.auxiliar_id', '=', 'personal.id')
                 ->leftJoin('ubicaciones as uo', 'movimiento_inventarios.ubicacion_origen_id', '=', 'uo.id')
                 ->leftJoin('ubicaciones as ud', 'movimiento_inventarios.ubicacion_destino_id', '=', 'ud.id')
-                // Salida por pedido (Picking): resuelve la sucursal de entrega del pedido por
-                // aproximación producto + fecha de movimiento (mismo criterio ya usado por
-                // TrazabilidadController para este tipo de movimiento, que no queda enlazado
-                // por referencia_tipo/referencia_id como despachos/devoluciones/recepciones).
-                ->leftJoin('picking_detalles as pd_kx', function ($j) {
-                    $j->on('pd_kx.producto_id', '=', 'movimiento_inventarios.producto_id');
-                })
                 ->leftJoin('orden_pickings as op_kx', function ($j) {
-                    $j->on('op_kx.id', '=', 'pd_kx.orden_picking_id')
-                      ->whereColumn('op_kx.fecha_movimiento', 'movimiento_inventarios.fecha_movimiento');
+                    $j->on('op_kx.id', '=', 'movimiento_inventarios.referencia_id')
+                      ->where('movimiento_inventarios.referencia_tipo', '=', 'OrdenPicking');
                 })
                 ->whereBetween('movimiento_inventarios.fecha_movimiento', [
                     substr($ini, 0, 10), substr($fin, 0, 10)
@@ -2550,7 +2546,7 @@ class InventarioV2Controller extends BaseController
                     'movimiento_inventarios.referencia_tipo',
                     'movimiento_inventarios.referencia_id',
                     'movimiento_inventarios.observaciones',
-                    Capsule::raw("MAX(CASE WHEN movimiento_inventarios.tipo_movimiento = 'Picking' THEN op_kx.sucursal_entrega ELSE NULL END) as sucursal_pedido")
+                    'op_kx.sucursal_entrega as sucursal_pedido'
                 )
                 ->groupBy(
                     'movimiento_inventarios.id', 'movimiento_inventarios.fecha_movimiento', 'movimiento_inventarios.hora_inicio',
@@ -2558,7 +2554,8 @@ class InventarioV2Controller extends BaseController
                     'movimiento_inventarios.cantidad', 'movimiento_inventarios.cantidad_cajas', 'movimiento_inventarios.saldos',
                     'movimiento_inventarios.lote', 'movimiento_inventarios.fecha_vencimiento',
                     'uo.codigo', 'ud.codigo', 'personal.nombre',
-                    'movimiento_inventarios.referencia_tipo', 'movimiento_inventarios.referencia_id', 'movimiento_inventarios.observaciones'
+                    'movimiento_inventarios.referencia_tipo', 'movimiento_inventarios.referencia_id', 'movimiento_inventarios.observaciones',
+                    'op_kx.sucursal_entrega'
                 )
                 ->orderBy('movimiento_inventarios.fecha_movimiento')
                 ->orderBy('movimiento_inventarios.hora_inicio')
