@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-07-31)
 
 ## Corpus Check
-- 329 files · ~826,221 words
+- 329 files · ~826,286 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b5177d0f`
+- Built from commit: `3668c152`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -677,10 +677,10 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `InvGeneralEvento` to `Órdenes de Compra Manual`, `AlertasController`, `Packing & Expiry Control`, `Core Models & Tenant Scope`, `AlertasController`, `TenantScoped.php`, `Product Blocking & Quick Search`, `Receiving Controller`, `Auth & Seeding`, `Tenant Context & Middleware`, `Core Controllers Overview`, `Location Adjustment Controller`, `Sucursal`, `Miscellaneous Items Controller`, `Anomaly Detection Controller`, `Replenishment & Notifications`, `Appointment Controller`, `NotificacionesController`, `Inventory Count Model`, `Transfer Controller`, `Ubicacion`, `Aprobación de Vencimientos`?**
-  _High betweenness centrality (0.023) - this node is a cross-community bridge._
+  _High betweenness centrality (0.024) - this node is a cross-community bridge._
 - **Why does `TenantContext` connect `TenantScoped.php` to `Despacho`, `.__invoke`?**
   _High betweenness centrality (0.011) - this node is a cross-community bridge._
-- **Why does `OrdenPicking` connect `Packing & Expiry Control` to `InvGeneralEvento`, `Inventory Count Model`, `Cross-Dock Operations`, `Tenant Context & Middleware`?**
+- **Why does `Inventario` connect `Location Adjustment Controller` to `Cross-Dock Operations`, `InvGeneralEvento`, `Ubicacion`, `Product Blocking & Quick Search`, `Inventory Count Model`?**
   _High betweenness centrality (0.008) - this node is a cross-community bridge._
 - **Are the 158 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
   _`date` has 158 INFERRED edges - model-reasoned connections that need verification._
