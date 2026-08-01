@@ -1712,11 +1712,12 @@ class PackingController extends BaseController
         $body      = $r->getParsedBody() ?? [];
         $sucursal  = $body['sucursal_entrega'] ?? null;
         $tipoEmp   = $body['tipo_empaque'] ?? 'canasta';
+        $fecha     = $body['fecha'] ?? $body['fecha_movimiento'] ?? null;
         $empresaId = $this->getEffectiveEmpresaId($user, $r);
 
         if (!$sucursal) return $this->badRequest($res, 'Falta sucursal_entrega');
 
-        return Capsule::transaction(function () use ($user, $empresaId, $sucursal, $tipoEmp, $res) {
+        return Capsule::transaction(function () use ($user, $empresaId, $sucursal, $tipoEmp, $fecha, $res) {
             // Obtener o crear sesión
             $sesion = PackingSesion::firstOrCreate(
                 [
@@ -1731,8 +1732,8 @@ class PackingController extends BaseController
                 ]
             );
 
-            // Obtener productos pendientes
-            $pickeados = $this->_getProductosPickados($empresaId, $user->sucursal_id, $sucursal);
+            // Obtener productos pendientes filtrados por fecha si viene especificada
+            $pickeados = $this->_getProductosPickados($empresaId, $user->sucursal_id, $sucursal, $fecha);
             $empacados = $this->_getProductosEmpacados($sesion->id);
 
             $pendientes = [];
@@ -1769,7 +1770,7 @@ class PackingController extends BaseController
                     if ($upc <= 1) { $cajas = 0; $saldo = 0; }
 
                     [$lote, $fechaVenc, $separadorId, $detalleId] = $this->_resolveFromPicking(
-                        $p['producto_id'], $sucursal, $empresaId, $user->sucursal_id
+                        $p['producto_id'], $sucursal, $empresaId, $user->sucursal_id, $fecha
                     );
 
                     PackingItem::create([
@@ -1809,13 +1810,18 @@ class PackingController extends BaseController
             $sesion->estado = 'Completada';
             $sesion->save();
 
-            // Actualizar órdenes (puede ser Parcial o Certificada total)
-            $ordenesAll = Capsule::table('orden_pickings')
+            // Actualizar órdenes (filtrando por fecha si está especificada)
+            $ordenesQuery = Capsule::table('orden_pickings')
                 ->where('empresa_id', $empresaId)
                 ->where('sucursal_entrega', $sucursal)
                 ->whereIn('estado', ['Completada', 'EnProceso'])
-                ->whereIn('estado_certificacion', ['Pendiente', 'Parcial'])
-                ->get();
+                ->whereIn('estado_certificacion', ['Pendiente', 'Parcial']);
+
+            if ($fecha !== null && $fecha !== 'all') {
+                $ordenesQuery->whereDate('fecha_movimiento', $fecha);
+            }
+
+            $ordenesAll = $ordenesQuery->get();
 
             if ($ordenesAll->isNotEmpty()) {
                 $now = date('Y-m-d H:i:s');
@@ -1918,9 +1924,9 @@ class PackingController extends BaseController
         return $result;
     }
 
-    private function _resolveFromPicking(int $productoId, string $sucursalEntrega, int $empresaId, int $sucursalId): array
+    private function _resolveFromPicking(int $productoId, string $sucursalEntrega, int $empresaId, int $sucursalId, ?string $fecha = null): array
     {
-        $detalle = Capsule::table('picking_detalles as pd')
+        $query = Capsule::table('picking_detalles as pd')
             ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
             ->leftJoin('inventarios as i', function ($join) use ($empresaId, $sucursalId) {
                 $join->on('i.producto_id', '=', 'pd.producto_id')
@@ -1932,12 +1938,17 @@ class PackingController extends BaseController
             ->where('op.empresa_id', $empresaId)
             ->where('op.sucursal_id', $sucursalId)
             ->where('op.sucursal_entrega', $sucursalEntrega)
-            ->where('op.estado', 'Completada')
-            ->where('op.estado_certificacion', 'Pendiente')
+            ->whereIn('op.estado', ['Completada', 'EnProceso'])
+            ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial'])
             // Retiro directo (cliente ya lo recogió en bodega) — no entra a packing/remisión.
             ->where('op.despachado_directo', false)
-            ->where('pd.producto_id', $productoId)
-            ->orderByRaw('CASE WHEN COALESCE(pd.fecha_vencimiento, i.fecha_vencimiento) IS NULL THEN 1 ELSE 0 END')
+            ->where('pd.producto_id', $productoId);
+
+        if ($fecha !== null && $fecha !== 'all') {
+            $query->whereDate('op.fecha_movimiento', $fecha);
+        }
+
+        $detalle = $query->orderByRaw('CASE WHEN COALESCE(pd.fecha_vencimiento, i.fecha_vencimiento) IS NULL THEN 1 ELSE 0 END')
             ->orderByRaw('COALESCE(pd.fecha_vencimiento, i.fecha_vencimiento) ASC')
             ->select(['pd.id', 'pd.lote', Capsule::raw('COALESCE(pd.fecha_vencimiento, i.fecha_vencimiento) as fecha_vencimiento'), 'pd.auxiliar_id'])
             ->first();

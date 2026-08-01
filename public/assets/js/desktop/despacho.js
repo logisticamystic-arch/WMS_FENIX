@@ -1080,7 +1080,8 @@ WMS_MODULES.despacho = {
     
     WMS.spinner();
     try {
-      const r = await API.post('/packing/autopack', { sucursal_entrega: sucursal, tipo_empaque: 'canasta' });
+      const fecha = this._certFechaInicio || WMS.getToday();
+      const r = await API.post('/packing/autopack', { sucursal_entrega: sucursal, tipo_empaque: 'canasta', fecha: fecha });
       if (r.error) { WMS.toast('error', r.message); return; }
       WMS.toast('success', 'Certificación automática completada');
       this.show_certificacion(); // recargar
