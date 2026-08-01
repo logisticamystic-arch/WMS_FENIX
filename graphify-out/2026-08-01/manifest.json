@@ -945,8 +945,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/PackingController.php": {
-    "mtime": 1785588487.9082553,
-    "ast_hash": "f01f289dbc482478a40af2c3962a5f18",
+    "mtime": 1785589673.90117,
+    "ast_hash": "c5184012d08081458dffeb582300ed6e",
     "semantic_hash": ""
   },
   "src/Controllers/ParametrosController.php": {

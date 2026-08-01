@@ -3103,7 +3103,7 @@ class InventarioV2Controller extends BaseController
                 $rowsQuery->whereIn('sucursal_id', $sucs);
             }
 
-            $rows = $rowsQuery->with('ubicacion:id,codigo,nombre')->get();
+            $rows = $rowsQuery->with('ubicacion:id,codigo')->get();
 
             $ubicaciones = $rows->groupBy('ubicacion_id')->map(function ($items) use ($upc) {
                 $u = $items->first()->ubicacion;
