@@ -731,49 +731,17 @@ class RecepcionController extends BaseController
     {
         if (!$fechaVencNueva) return null; // sin fecha, la obligatoriedad ya se valida aparte
 
-        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
-        $sucursalId = $user->sucursal_id;
-
-        $mejorVencBodega = Capsule::table('inventarios')
-            ->where('empresa_id', $empresaId)
-            ->where('sucursal_id', $sucursalId)
-            ->where('producto_id', $productoId)
-            ->where('cantidad', '>', 0)
-            ->whereNotNull('fecha_vencimiento')
-            ->max('fecha_vencimiento');
-
-        if (!$mejorVencBodega || $fechaVencNueva >= $mejorVencBodega) {
-            return null; // sin stock previo, o el lote nuevo vence igual o después → OK
+        // Si la fecha ingresada ya expiró (es menor a la fecha actual), rechazar la recepción
+        $today = date('Y-m-d');
+        if ($fechaVencNueva < $today) {
+            return [
+                'error'   => true,
+                '_status' => 422,
+                'message' => "El lote a recibir se encuentra vencido ({$fechaVencNueva}). No se permite la recepción de mercancía vencida.",
+            ];
         }
 
-        $autorizado = !empty($data['autorizar_vencimiento_inferior']);
-        if ($autorizado) {
-            if (!$this->isAdmin($user)) {
-                return [
-                    'error' => true, '_status' => 403,
-                    'message' => 'Solo un Administrador puede autorizar el ingreso de un lote con vencimiento inferior al ya existente en bodega.',
-                    'data' => ['requiere_autorizacion_admin' => true],
-                ];
-            }
-            $this->audit($user, 'Recepciones', 'AutorizarVencimientoInferior', 'recepcion_detalles', null, null,
-                ['producto_id' => $productoId, 'fecha_nueva' => $fechaVencNueva, 'fecha_existente_bodega' => $mejorVencBodega],
-                "Admin autorizó ingreso de lote con vencimiento {$fechaVencNueva}, inferior al mejor vencimiento ya en bodega ({$mejorVencBodega}).");
-            return null; // autorizado por Admin, continuar
-        }
-
-        // Nota: los campos extra van anidados en 'data' porque el cliente desktop
-        // (apiCall en index.html) solo preserva json.data del error HTTP no-2xx;
-        // cualquier campo a nivel raíz distinto de message/error se pierde.
-        return [
-            'error' => true, '_status' => 422,
-            'message' => "El lote a recibir vence el {$fechaVencNueva}, antes que el lote más próximo a vencer que ya hay en bodega ({$mejorVencBodega}). "
-                . 'Debe ser autorizado por un Administrador desde el sistema de escritorio para continuar.',
-            'data' => [
-                'requiere_autorizacion_admin' => true,
-                'fecha_existente_bodega'      => $mejorVencBodega,
-                'fecha_nueva'                 => $fechaVencNueva,
-            ],
-        ];
+        return null;
     }
 
     /**
@@ -818,8 +786,7 @@ class RecepcionController extends BaseController
             return $this->json($response, ['error' => true, 'message' => $checkDate['message']], 422);
         }
 
-        // No permitir ingresar un lote que venza antes que el mejor lote ya en bodega,
-        // salvo autorización explícita de un Admin (validado por rol en servidor).
+        // Validar que la fecha de vencimiento no se encuentre en el pasado
         $venceError = $this->validarVencimientoVsBodega($user, $request, $producto->id, $fechaVenc, $data);
         if ($venceError) {
             $status = $venceError['_status'];
@@ -834,7 +801,6 @@ class RecepcionController extends BaseController
             ->whereNull('odc_id')
             ->where('auxiliar_id', $user->id)
             ->where('estado', 'Borrador')
-            ->whereDate('fecha_movimiento', $hoy)
             ->first();
 
         if (!$recepcion) {
@@ -852,7 +818,7 @@ class RecepcionController extends BaseController
             $recepcion->save();
         }
 
-        // Resolver ubicación destino
+        // Resolver ubicación destino de recepción
         $ubicacionDestinoId = null;
         if (!empty($data['ubicacion_destino_id'])) {
             $ubicacionDestinoId = (int)$data['ubicacion_destino_id'];
@@ -864,13 +830,17 @@ class RecepcionController extends BaseController
         }
         if (!$ubicacionDestinoId) {
             $ubicacionDestinoId = Ubicacion::where('sucursal_id', $user->sucursal_id)
-                ->where('tipo_ubicacion', 'Patio')->value('id');
+                ->whereIn('tipo_ubicacion', ['Patio', 'Recepcion', 'Recepción', 'Recepcion/Entrada', 'Piso', 'Picking'])
+                ->value('id');
+        }
+        if (!$ubicacionDestinoId) {
+            $ubicacionDestinoId = Ubicacion::where('sucursal_id', $user->sucursal_id)->value('id');
         }
 
         if (!$ubicacionDestinoId) {
             return $this->json($response, [
                 'error'   => true,
-                'message' => 'No existe ubicación de tipo Patio para esta sucursal. Créela antes de registrar recepciones.',
+                'message' => 'No existen ubicaciones disponibles para esta sucursal. Configure las ubicaciones antes de recibir.',
             ], 422);
         }
 
