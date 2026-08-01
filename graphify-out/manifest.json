@@ -920,13 +920,13 @@
     "semantic_hash": "9b532f71b8b4b102cd8ecea000623634"
   },
   "src/Controllers/InventarioController.php": {
-    "mtime": 1785522851.4201236,
-    "ast_hash": "b22e1d881962cb07c538ffd785635706",
+    "mtime": 1785593564.7631478,
+    "ast_hash": "b571b9eff4fa0fba83c4e36f67df5112",
     "semantic_hash": ""
   },
   "src/Controllers/InventarioV2Controller.php": {
-    "mtime": 1785592642.2398171,
-    "ast_hash": "ab212e91e3a7e05936f12fe4c8f79e63",
+    "mtime": 1785594581.6532705,
+    "ast_hash": "6e65e1c0ac35a9ecd85d8828d9d5886d",
     "semantic_hash": ""
   },
   "src/Controllers/MiscelaneoController.php": {

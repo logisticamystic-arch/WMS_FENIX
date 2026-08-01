@@ -925,8 +925,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/InventarioV2Controller.php": {
-    "mtime": 1785551919.9281354,
-    "ast_hash": "cd71c38703ee5366b945625d9ffaae2a",
+    "mtime": 1785592642.2398171,
+    "ast_hash": "ab212e91e3a7e05936f12fe4c8f79e63",
     "semantic_hash": ""
   },
   "src/Controllers/MiscelaneoController.php": {
