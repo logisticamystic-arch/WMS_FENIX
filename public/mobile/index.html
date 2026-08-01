@@ -8777,25 +8777,71 @@ const MWMS = {
     }
   },
 
+  recalcMobileCert(upc, pick) {
+    const cj = parseFloat(document.getElementById('swal-cert-cajas')?.value || 0);
+    const sd = parseFloat(document.getElementById('swal-cert-saldos')?.value || 0);
+    const tot = (cj * upc) + sd;
+    const elDisplay = document.getElementById('swal-cert-tot-display');
+    if (elDisplay) {
+      elDisplay.textContent = tot + ' und';
+      elDisplay.dataset.tot = tot;
+      elDisplay.style.color = Math.abs(pick - tot) < 0.001 ? '#15803d' : '#b91c1c';
+    }
+  },
+
   async certifiCarLineaOrden(idx, sucursal) {
     const it   = this._certOrden.items[idx];
-    const pick = it.cantidad_pickeada || 0;
-    const { value, isConfirmed } = await Swal.fire({
+    const pick = parseFloat(it.cantidad_pickeada || 0);
+    const cert = parseFloat(it.cantidad_certificada || 0);
+    const upc  = Math.max(1, parseInt(it.unidades_caja || 1));
+
+    const pickCajas  = upc > 1 ? Math.floor(pick / upc) : Math.round(pick);
+    const pickSaldos = upc > 1 ? Math.round((pick - (pickCajas * upc)) * 1000) / 1000 : 0;
+
+    const certCajas  = cert > 0 ? (upc > 1 ? Math.floor(cert / upc) : Math.round(cert)) : pickCajas;
+    const certSaldos = cert > 0 ? (upc > 1 ? Math.round((cert - (certCajas * upc)) * 1000) / 1000 : 0) : pickSaldos;
+
+    const totInitial = (certCajas * upc) + certSaldos;
+
+    const { isConfirmed } = await Swal.fire({
       title: 'Certificar producto',
       html: `
-        <div style="text-align:left;font-size:.85rem;margin-bottom:10px;">
-          <b>${this.esc(it.nombre)}</b>
-          <div style="color:#64748b;font-size:.75rem;">${it.codigo}</div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-          <div style="background:#eff6ff;padding:8px;border-radius:8px;text-align:center;">
-            <div style="font-size:.6rem;font-weight:700;color:#64748b;">PICKEADO</div>
-            <div style="font-size:1.5rem;font-weight:900;color:#0F4C81;">${pick}</div>
+        <div style="text-align:left;font-size:.82rem;margin-bottom:8px;">
+          <b style="color:#0F4C81;font-size:.9rem;display:block;">${this.esc(it.nombre)}</b>
+          <div style="color:#64748b;font-size:.72rem;">Código: <b>${this.esc(it.codigo)}</b> | EAN: <b>${this.esc(it.ean || '—')}</b></div>
+          <div style="margin-top:4px;font-size:.72rem;display:flex;gap:6px;align-items:center;">
+            <span style="background:#e2e8f0;padding:1px 6px;border-radius:4px;">Lote: <b>${this.esc(it.lote || 'N/A')}</b></span>
+            <span style="color:${it.fecha_vencimiento ? '#b91c1c' : '#64748b'};font-weight:600;">
+              Venc: <b>${it.fecha_vencimiento ? this.formatDate(it.fecha_vencimiento) : 's/v'}</b>
+            </span>
           </div>
-          <div style="background:#f0fdf4;padding:8px;border-radius:8px;text-align:center;">
-            <div style="font-size:.6rem;font-weight:700;color:#64748b;">VERIFICADO</div>
-            <input type="number" id="swal-cert-qty" value="${it.cantidad_certificada || pick}"
-              min="0" style="width:100%;border:2px solid #10b981;border-radius:6px;padding:4px;font-size:1.3rem;font-weight:900;text-align:center;">
+        </div>
+
+        <div style="background:#eff6ff;padding:8px;border-radius:8px;text-align:center;margin-bottom:10px;border:1px solid #bfdbfe;">
+          <div style="font-size:.6rem;font-weight:700;color:#1e40af;text-transform:uppercase;">CANTIDAD PICKEADA (SEPARADA)</div>
+          <div style="font-size:1.3rem;font-weight:900;color:#0F4C81;">${pick} und</div>
+          <div style="font-size:.7rem;color:#3b82f6;font-weight:700;">${pickCajas} cj + ${pickSaldos} saldos sueltos (${upc} U/E)</div>
+        </div>
+
+        <div style="background:#f0fdf4;padding:10px;border-radius:8px;border:1px solid #bbf7d0;margin-bottom:6px;">
+          <div style="font-size:.65rem;font-weight:800;color:#166534;margin-bottom:6px;text-transform:uppercase;text-align:center;">INGRESE CAJAS Y SALDOS CERTIFICADOS</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:.65rem;font-weight:800;color:#374151;display:block;margin-bottom:2px;text-align:center;">CAJAS</label>
+              <input type="number" id="swal-cert-cajas" value="${certCajas}" min="0" step="1"
+                style="width:100%;border:2px solid #10b981;border-radius:6px;padding:6px;font-size:1.2rem;font-weight:900;text-align:center;"
+                oninput="MWMS.recalcMobileCert(${upc}, ${pick})">
+            </div>
+            <div>
+              <label style="font-size:.65rem;font-weight:800;color:#374151;display:block;margin-bottom:2px;text-align:center;">SALDOS (UND)</label>
+              <input type="number" id="swal-cert-saldos" value="${certSaldos}" min="0" step="0.001"
+                style="width:100%;border:2px solid #10b981;border-radius:6px;padding:6px;font-size:1.2rem;font-weight:900;text-align:center;"
+                oninput="MWMS.recalcMobileCert(${upc}, ${pick})">
+            </div>
+          </div>
+          <div style="margin-top:8px;padding:6px;background:#fff;border-radius:6px;display:flex;justify-content:space-between;align-items:center;border:1px solid #d1d5db;">
+            <span style="font-size:.7rem;font-weight:700;color:#475569;">TOTAL CERTIFICADO:</span>
+            <span id="swal-cert-tot-display" data-tot="${totInitial}" style="font-size:1.1rem;font-weight:900;color:${Math.abs(pick - totInitial) < 0.001 ? '#15803d' : '#b91c1c'};">${totInitial} und</span>
           </div>
         </div>`,
       showCancelButton: true,
@@ -8803,18 +8849,26 @@ const MWMS = {
       cancelButtonText: 'Cancelar',
       confirmButtonColor: '#059669',
       preConfirm: () => {
-        const v = parseFloat(document.getElementById('swal-cert-qty').value);
-        if (isNaN(v) || v < 0) { Swal.showValidationMessage('Cantidad inválida'); return false; }
-        return v;
+        const cj = parseFloat(document.getElementById('swal-cert-cajas')?.value || 0);
+        const sd = parseFloat(document.getElementById('swal-cert-saldos')?.value || 0);
+        if (isNaN(cj) || cj < 0 || isNaN(sd) || sd < 0) {
+          Swal.showValidationMessage('Cajas o saldos inválidos');
+          return false;
+        }
+        return (cj * upc) + sd;
       },
     });
     if (!isConfirmed) return;
     
+    const value = parseFloat(Swal.getPopup()?.querySelector('#swal-cert-tot-display')?.dataset?.tot) || (
+      (parseFloat(document.getElementById('swal-cert-cajas')?.value || 0) * upc) + parseFloat(document.getElementById('swal-cert-saldos')?.value || 0)
+    );
+
     if (value < pick) {
       const diff = pick - value;
       const ok2 = await Swal.fire({
         title: 'Cantidad Inferior',
-        text: `La cantidad a certificar (${value}) es menor a la separada (${pick}). Se devolverán ${diff} unidades automáticamente al inventario original. ¿Confirmar devolución?`,
+        text: `La cantidad a certificar (${value} und) es menor a la separada (${pick} und). Se devolverán ${diff} unidades automáticamente al inventario original de la ubicación. ¿Confirmar devolución?`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Sí, confirmar devolución',

@@ -5135,12 +5135,12 @@ class PickingController extends BaseController
             ->whereExists(function($query) {
                 $query->select(Capsule::raw(1))
                       ->from('picking_detalles as pd2')
-                      ->join('productos as p2', 'p2.id', '=', 'pd2.producto_id')
                       ->whereColumn('pd2.orden_picking_id', 'op.id')
-                      ->groupByRaw('COALESCE(p2.ambiente_id, 0)')
-                      ->havingRaw("SUM(CASE WHEN pd2.estado IN ('Pendiente', 'EnProceso') THEN 1 ELSE 0 END) = 0")
-                      ->havingRaw("SUM(CASE WHEN COALESCE(pd2.cantidad_certificada, 0) < pd2.cantidad_pickeada THEN 1 ELSE 0 END) > 0")
-                      ->havingRaw("COUNT(pd2.id) > 0");
+                      ->where(function($sq) {
+                          $sq->where('pd2.cantidad_pickeada', '>', 0)
+                             ->orWhereIn('pd2.estado', ['Completado', 'Faltante']);
+                      })
+                      ->whereRaw("COALESCE(pd2.cantidad_certificada, 0) < pd2.cantidad_pickeada");
             })
             ->when($fechaInicio, fn($q) => $q->where('op.fecha_movimiento', '>=', $fechaInicio))
             ->when($fechaFin, fn($q) => $q->where('op.fecha_movimiento', '<=', $fechaFin))
@@ -5600,14 +5600,9 @@ class PickingController extends BaseController
             ->where('op.sucursal_entrega', $sucursal)
             ->whereIn('op.estado', ['Completada', 'EnProceso'])
             ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial'])
-            ->whereExists(function($q) {
-                $q->select(Capsule::raw(1))
-                  ->from('picking_detalles as pd3')
-                  ->join('productos as p3', 'p3.id', '=', 'pd3.producto_id')
-                  ->whereColumn('pd3.orden_picking_id', 'pd.orden_picking_id')
-                  ->whereRaw('COALESCE(p3.ambiente_id, 0) = COALESCE(p.ambiente_id, 0)')
-                  ->groupByRaw('COALESCE(p3.ambiente_id, 0)')
-                  ->havingRaw("SUM(CASE WHEN pd3.estado IN ('Pendiente', 'EnProceso') THEN 1 ELSE 0 END) = 0");
+            ->where(function($q) {
+                $q->where('pd.cantidad_pickeada', '>', 0)
+                  ->orWhereIn('pd.estado', ['Completado', 'Faltante']);
             })
             ->select(
                 'pd.id',
