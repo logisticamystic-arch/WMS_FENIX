@@ -670,8 +670,8 @@
     "semantic_hash": "cd9541910e52ddcd2321c5c11c866b43"
   },
   "public/assets/js/desktop/despacho.js": {
-    "mtime": 1785541929.5641274,
-    "ast_hash": "f087c0365e8ce63fe978f6775fea09a9",
+    "mtime": 1785543585.9462929,
+    "ast_hash": "0f9878d23b31a6c3d6339f60384887dd",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/devoluciones.js": {
@@ -960,8 +960,8 @@
     "semantic_hash": "e5d5c725bce4a13b3afbb9666f3fe95a"
   },
   "src/Controllers/PickingController.php": {
-    "mtime": 1785542650.7877417,
-    "ast_hash": "07a84d33703ac701c65ac2ed1b567021",
+    "mtime": 1785543562.9790325,
+    "ast_hash": "3715990678380f024e1ec2484de4216e",
     "semantic_hash": ""
   },
   "src/Controllers/PlanillaController.php": {
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785542922.6259477,
-    "ast_hash": "ede51f6a30482d89fe9f4cf2ada178a0",
+    "mtime": 1785543595.0001876,
+    "ast_hash": "f7ba299b9c335705efd7ad52df84394d",
     "semantic_hash": ""
   },
   "public/pitch.html": {
