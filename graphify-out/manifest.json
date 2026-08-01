@@ -665,9 +665,9 @@
     "semantic_hash": "b61234b9cb564028ffca7398cd6cb7a2"
   },
   "public/assets/js/desktop/consulta-rapida.js": {
-    "mtime": 1782517595.04175,
-    "ast_hash": "cd9541910e52ddcd2321c5c11c866b43",
-    "semantic_hash": "cd9541910e52ddcd2321c5c11c866b43"
+    "mtime": 1785617285.1380205,
+    "ast_hash": "fe750a38f1d90140fe75d6555b2f71a4",
+    "semantic_hash": ""
   },
   "public/assets/js/desktop/despacho.js": {
     "mtime": 1785588473.5116265,
@@ -870,9 +870,9 @@
     "semantic_hash": "73aa925e0ca2597411f86134a18f4020"
   },
   "src/Controllers/ConsultaRapidaController.php": {
-    "mtime": 1784123164.6157782,
-    "ast_hash": "100add0103276bccd09672f01ad5eb4e",
-    "semantic_hash": "100add0103276bccd09672f01ad5eb4e"
+    "mtime": 1785617262.8142872,
+    "ast_hash": "21fcf088abc7e91485560b2fa9f09889",
+    "semantic_hash": ""
   },
   "src/Controllers/CrossDockController.php": {
     "mtime": 1782867923.9863305,
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785597248.5586538,
-    "ast_hash": "4a253f39f3500ea1dcc13d3e54bd47dd",
+    "mtime": 1785617294.491572,
+    "ast_hash": "b1834a5af9c7a10d574528b33ac64a38",
     "semantic_hash": ""
   },
   "public/pitch.html": {
