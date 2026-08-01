@@ -50,7 +50,7 @@ class ConsultaRapidaController extends BaseController
         // ── Producto ──────────────────────────────────────────────────────────
         $producto = Producto::where('id', $productoId)
             ->where('empresa_id', $empresaId)
-            ->first(['id', 'codigo_interno', 'nombre', 'unidad_medida',
+            ->first(['id', 'codigo_interno', 'nombre', 'unidad_medida', 'unidades_caja',
                      'controla_lote', 'controla_vencimiento', 'stock_minimo', 'descripcion',
                      'factor_udm', 'unidad_contenido', 'bloqueado']);
 
@@ -59,6 +59,7 @@ class ConsultaRapidaController extends BaseController
         }
 
         $pdo = Capsule::connection()->getPdo();
+        $upc = max(1, (int)($producto->unidades_caja ?? 1));
 
         // ── Totales de inventario ─────────────────────────────────────────────
         $totalDisponible  = (int) Inventario::where('empresa_id', $empresaId)
@@ -66,6 +67,9 @@ class ConsultaRapidaController extends BaseController
             ->where('producto_id', $productoId)
             ->where('estado', 'Disponible')
             ->sum('cantidad');
+
+        $totalCajas = $upc > 1 ? (int)floor((float)$totalDisponible / $upc) : (int)$totalDisponible;
+        $totalSaldos = $upc > 1 ? round(fmod((float)$totalDisponible, (float)$upc), 3) : 0.0;
 
         // ── Disponible PARA VENTA: distinto de disponible físico — descuenta
         //    producto/lotes bloqueados por calidad o vencimiento (BloqueoController). ──
@@ -236,6 +240,9 @@ class ConsultaRapidaController extends BaseController
                 'total_disponible'       => $totalDisponible,
                 'total_disponible_venta' => $totalDisponibleVenta,
                 'total_bloqueado'        => $producto->bloqueado ? $totalDisponible : $cantidadBloqueada,
+                'total_cajas'            => $totalCajas,
+                'total_saldos'           => $totalSaldos,
+                'unidades_caja'          => $upc,
                 'total_reservado'        => $totalReservado,
                 'total_cuarentena'       => $totalCuarentena,
                 'por_lote'               => $porLote,

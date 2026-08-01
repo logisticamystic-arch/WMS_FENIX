@@ -304,17 +304,20 @@ WMS_MODULES['consulta-rapida'] = {
     const res   = parseInt(inv?.total_reservado  || 0);
     const cuar  = parseInt(inv?.total_cuarentena || 0);
     const min   = parseFloat(this._productoActual?.producto?.stock_minimo || 0);
+    const upc   = parseInt(inv?.unidades_caja || this._productoActual?.producto?.unidades_caja || 1);
+    const cajas = parseInt(inv?.total_cajas ?? (upc > 1 ? Math.floor(disp / upc) : disp));
+    const saldos = parseFloat(inv?.total_saldos ?? (upc > 1 ? (disp % upc) : 0));
     const alertMin = min > 0 && disp < min;
 
     const cards = [
-      { icon:'fa-boxes',              bg:'#f0fdf4', ic:'#16a34a', val: this._fmt(disp),  label:'UND/TOTAL',              sub: alertMin ? '<span style="color:#dc2626">⚠ Bajo mínimo</span>' : '' },
-      { icon:'fa-lock',               bg:'#eff6ff', ic:'#2563eb', val: this._fmt(res),   label:'Stock Reservado',         sub: '' },
+      { icon:'fa-boxes',              bg:'#f0fdf4', ic:'#16a34a', val: this._fmt(disp),  label:'UND / TOTAL DISPONIBLE', sub: alertMin ? '<span style="color:#dc2626">⚠ Bajo mínimo</span>' : `U/E: ${upc} und/cj` },
+      { icon:'fa-boxes-stacked',      bg:'#eff6ff', ic:'#2563eb', val: this._fmt(cajas), label:'CAJAS DISPONIBLES',      sub: `Factor: ${upc} U/E` },
+      { icon:'fa-box-open',           bg:'#f0fdf4', ic:'#0d9488', val: this._fmt(saldos),label:'SALDOS (SUELTOS)',       sub: 'Unidades sueltas' },
+      { icon:'fa-lock',               bg:'#fef2f2', ic:'#dc2626', val: this._fmt(res),   label:'Stock Reservado',         sub: '' },
       { icon:'fa-hourglass-half',     bg:'#fff7ed', ic:'#ea580c', val: this._fmt(cuar),  label:'En Cuarentena',           sub: '' },
-      { icon:'fa-arrow-down-wide-short', bg:'#f8fafc', ic:'#64748b', val: min > 0 ? this._fmt(min) : '—', label:'Stock Mínimo configurado', sub: '' },
+      { icon:'fa-arrow-down-wide-short', bg:'#f8fafc', ic:'#64748b', val: min > 0 ? this._fmt(min) : '—', label:'Stock Mínimo', sub: '' },
       { icon:'fa-cart-shopping',      bg:'#ecfeff', ic:'#0891b2', val: this._fmt(kpis?.promedio_por_pedido || 0), label:'Promedio / Pedido (30d)',  sub: 'unidades' },
       { icon:'fa-truck-ramp-box',     bg:'#f0fdf4', ic:'#16a34a', val: this._fmt(kpis?.promedio_ingreso   || 0), label:'Promedio por Ingreso (30d)', sub: 'unidades' },
-      { icon:'fa-file-invoice',       bg:'#eff6ff', ic:'#2563eb', val: this._fmt(kpis?.total_pedidos_30d  || 0), label:'Pedidos completados 30d',  sub: kpis?.unidades_vendidas_30d ? this._fmt(kpis.unidades_vendidas_30d) + ' und' : '' },
-      { icon:'fa-chart-line',         bg:'#fff7ed', ic:'#ea580c', val: this._fmt(kpis?.unidades_vendidas_30d || 0), label:'Unidades vendidas 30d',   sub: kpis?.total_ingresos_30d ? kpis.total_ingresos_30d + ' ingresos' : '' },
     ];
 
     el.innerHTML = cards.map(c => `
@@ -451,16 +454,24 @@ WMS_MODULES['consulta-rapida'] = {
     const tbody = document.getElementById('cr-tbody-ubic');
     if (!tbody) return;
     if (!ubics.length) {
-      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;color:#94a3b8;">Sin stock en ubicaciones</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:#94a3b8;">Sin stock en ubicaciones</td></tr>`;
       return;
     }
+    const upc = parseInt(this._productoActual?.inventario?.unidades_caja || this._productoActual?.producto?.unidades_caja || 1);
+    const hasCajas = upc > 1;
+
     tbody.innerHTML = ubics.map(u => {
       const zona = (u.zona || '').toLowerCase();
       const zonaCls = zona === 'oro' ? 'cr-zona-oro' : zona === 'plata' ? 'cr-zona-plata' : zona === 'bronce' ? 'cr-zona-bronce' : 'cr-zona-other';
+      const cant = parseFloat(u.cantidad || 0);
+      const cajas = hasCajas ? Math.floor(cant / upc) : Math.floor(cant);
+      const saldos = hasCajas ? Math.round((cant % upc) * 1000) / 1000 : 0;
       return `<tr>
         <td style="font-weight:700;color:#1e293b;">${this._esc(u.ubicacion_codigo || '—')}</td>
         <td>${u.zona ? `<span class="cr-zona-badge ${zonaCls}">${this._esc(u.zona)}</span>` : '—'}</td>
         <td style="text-align:right;font-weight:700;color:#16a34a;">${this._fmt(u.cantidad)}</td>
+        <td style="text-align:right;color:#0284c7;font-weight:700;">${hasCajas ? cajas : '—'}</td>
+        <td style="text-align:right;color:#0d9488;font-weight:600;">${hasCajas ? saldos : '—'}</td>
         <td style="text-align:right;color:#2563eb;">${this._fmt(u.cantidad_reservada)}</td>
       </tr>`;
     }).join('');
