@@ -1022,7 +1022,7 @@ class PackingController extends BaseController
                 'p.nombre',
                 'p.unidades_caja',
                 Capsule::raw('SUM(pf.cantidad_solicitada * COALESCE(p.unidades_caja, 1)) as solicitado'),
-                Capsule::raw('SUM(pf.cantidad_faltante) as faltante'),
+                Capsule::raw('SUM(pf.cantidad_faltante * COALESCE(p.unidades_caja, 1)) as faltante'),
                 Capsule::raw("STRING_AGG(DISTINCT COALESCE(pf.causa,'Sin stock'), ', ') as causa"),
                 Capsule::raw("STRING_AGG(DISTINCT COALESCE(per.nombre, 'Sin asignar'), ', ') as responsable"),
             ])
@@ -1122,19 +1122,7 @@ class PackingController extends BaseController
                 $resp = htmlspecialchars($ag->responsable ?? 'Sin asignar', ENT_QUOTES);
                 $caus = htmlspecialchars($ag->causa ?? 'Sin stock', ENT_QUOTES);
 
-                // faltante/solicitado vienen en CAJAS (posiblemente fraccionarias si el
-                // déficit no completó una caja) — se descomponen en cajas+saldos para no
-                // mostrar un número de cajas confuso como "0.25".
-                $upcAg = max(1, (int)($ag->unidades_caja ?? 1));
                 $faltanteTxt = (float)$ag->faltante;
-                if ($upcAg > 1) {
-                    $faltCajas = (int) floor($faltanteTxt);
-                    $faltSaldo = round(($faltanteTxt - $faltCajas) * $upcAg, 3);
-                    $partesFalt = [];
-                    if ($faltCajas > 0) $partesFalt[] = "{$faltCajas} cj";
-                    if ($faltSaldo > 0) $partesFalt[] = "{$faltSaldo} suelt.";
-                    $faltanteTxt = implode(' + ', $partesFalt) ?: '0';
-                }
 
                 $rowsAgo .= "<tr>
                   <td>{$ag->codigo}</td>

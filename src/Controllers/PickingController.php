@@ -6117,7 +6117,7 @@ class PickingController extends BaseController
             ->leftJoin('personal as cert', 'cert.id', '=', 'op.certificador_id')
             ->where('op.empresa_id', $empresaId)
             ->where('op.sucursal_id', $sucursalId)
-            ->where('op.estado', 'Completada')
+            ->whereIn('op.estado', ['Completada', 'EnProceso'])
             ->where('op.estado_certificacion', 'Certificada')
             // Pedidos con retiro directo (cliente ya lo recogió en bodega) se excluyen
             // de la certificación/remisión para que no se mezclen con la planilla.
