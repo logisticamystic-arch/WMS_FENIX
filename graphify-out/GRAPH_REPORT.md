@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-01)
 
 ## Corpus Check
-- 329 files · ~827,979 words
+- 329 files · ~827,808 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `e4495d08`
+- Built from commit: `b2c0ed41`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -691,7 +691,7 @@ _Questions this graph is uniquely positioned to answer:_
   _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **Why does `analyze_product()` connect `Causal Reasons Controller` to `Cross-Dock Operations`?**
   _High betweenness centrality (0.011) - this node is a cross-community bridge._
-- **Why does `OrdenCompra` connect `Receiving Controller` to `Returns & FEFO Alerts`, `ConteoInventario`, `Cross-Dock Operations`, `InvGeneralEvento`, `Core Models & Tenant Scope`, `InventoryGuard`, `Tenant Context & Middleware`?**
+- **Why does `Producto` connect `Product Blocking & Quick Search` to `ConteoInventario`, `Location Adjustment Controller`, `Ubicacion`, `InvGeneralEvento`, `Receiving Controller`, `InventoryGuard`, `Inventory Count Model`, `DataResetController`?**
   _High betweenness centrality (0.010) - this node is a cross-community bridge._
 - **Are the 145 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
   _`date` has 145 INFERRED edges - model-reasoned connections that need verification._

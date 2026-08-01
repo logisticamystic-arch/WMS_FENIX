@@ -142,6 +142,47 @@ class InventarioV2Controller extends BaseController
                 'fecha_inicio'     => $data['fecha_inicio'] ?? date('Y-m-d'),
             ]);
 
+            // Crear asignaciones iniciales si vienen en la petición
+            if (!empty($data['asignaciones']) && is_array($data['asignaciones'])) {
+                foreach ($data['asignaciones'] as $asigData) {
+                    if (empty($asigData['auxiliar_id'])) continue;
+                    $tipoInst = $asigData['tipo_instruccion'] ?? 'Libre';
+                    
+                    $prodIds = [];
+                    if (!empty($asigData['producto_id_list']) && is_array($asigData['producto_id_list'])) {
+                        $prodIds = array_filter(array_map('intval', $asigData['producto_id_list']));
+                    } elseif (!empty($asigData['producto_id'])) {
+                        $prodIds = [(int)$asigData['producto_id']];
+                    }
+
+                    if ($tipoInst === 'Referencia' && !empty($prodIds)) {
+                        foreach ($prodIds as $pid) {
+                            if (!$pid) continue;
+                            SesionAsignacion::create([
+                                'sesion_id'        => $sesion->id,
+                                'auxiliar_id'      => (int)$asigData['auxiliar_id'],
+                                'ronda'            => (int)($asigData['ronda'] ?? 1),
+                                'tipo_instruccion' => 'Referencia',
+                                'producto_id'      => $pid,
+                                'estado'           => SesionAsignacion::ESTADO_PENDIENTE,
+                            ]);
+                        }
+                    } else {
+                        SesionAsignacion::create([
+                            'sesion_id'         => $sesion->id,
+                            'auxiliar_id'       => (int)$asigData['auxiliar_id'],
+                            'ronda'             => (int)($asigData['ronda'] ?? 1),
+                            'tipo_instruccion'  => $tipoInst,
+                            'pasillo'           => $asigData['pasillo'] ?? null,
+                            'modulo'            => $asigData['modulo'] ?? null,
+                            'producto_id'       => !empty($asigData['producto_id']) ? (int)$asigData['producto_id'] : null,
+                            'instruccion_libre' => $asigData['instruccion_libre'] ?? null,
+                            'estado'            => SesionAsignacion::ESTADO_PENDIENTE,
+                        ]);
+                    }
+                }
+            }
+
             $this->audit($user, 'inventario_v2', 'crear_sesion', 'sesiones_inventario', $sesion->id, null, $data);
 
             return $this->ok($res, $sesion->fresh(), 'Sesión creada correctamente');
@@ -437,30 +478,63 @@ class InventarioV2Controller extends BaseController
         if (!in_array($tipoInstruccion, ['Pasillo', 'Modulo', 'Referencia', 'Libre'])) {
             return $this->error($res, "tipo_instruccion inválido");
         }
-        if ($tipoInstruccion === 'Referencia' && empty($data['producto_id'])) {
-            return $this->error($res, 'Se requiere producto_id para tipo_instruccion Referencia');
+
+        $prodIds = [];
+        if (!empty($data['producto_id_list']) && is_array($data['producto_id_list'])) {
+            $prodIds = array_filter(array_map('intval', $data['producto_id_list']));
+        } elseif (!empty($data['producto_id'])) {
+            $prodIds = [(int)$data['producto_id']];
+        }
+
+        if ($tipoInstruccion === 'Referencia' && empty($prodIds)) {
+            return $this->error($res, 'Se requiere al menos un producto válido para asignación por Referencia');
         }
 
         try {
-            $asignacion = SesionAsignacion::create([
-                'sesion_id'         => $sesion->id,
-                'auxiliar_id'       => $data['auxiliar_id'],
-                'ronda'             => $ronda,
-                'tipo_instruccion'  => $tipoInstruccion,
-                'pasillo'           => $data['pasillo']    ?? null,
-                'modulo'            => $data['modulo']     ?? null,
-                'producto_id'       => $data['producto_id'] ?? null,
-                'instruccion_libre' => $data['instruccion_libre'] ?? null,
-                'estado'            => SesionAsignacion::ESTADO_PENDIENTE,
-            ]);
+            $creadas = [];
+            if ($tipoInstruccion === 'Referencia' && !empty($prodIds)) {
+                foreach ($prodIds as $pid) {
+                    $asignacion = SesionAsignacion::create([
+                        'sesion_id'         => $sesion->id,
+                        'auxiliar_id'       => $data['auxiliar_id'],
+                        'ronda'             => $ronda,
+                        'tipo_instruccion'  => 'Referencia',
+                        'producto_id'       => $pid,
+                        'instruccion_libre' => $data['instruccion_libre'] ?? null,
+                        'estado'            => SesionAsignacion::ESTADO_PENDIENTE,
+                    ]);
 
-            // Si la sesión no está cerrada ni finalizada, notificar la asignación de inmediato
-            if (!in_array($sesion->estado, [SesionInventario::ESTADO_CERRADO, SesionInventario::ESTADO_FINALIZADO, 'Cancelado'])) {
-                $this->crearNotificacionAuxiliar($asignacion, $sesion);
-                $asignacion->estado        = SesionAsignacion::ESTADO_NOTIFICADO;
-                $asignacion->notificado_at = date('Y-m-d H:i:s');
-                $asignacion->save();
+                    if (!in_array($sesion->estado, [SesionInventario::ESTADO_CERRADO, SesionInventario::ESTADO_FINALIZADO, 'Cancelado'])) {
+                        $this->crearNotificacionAuxiliar($asignacion, $sesion);
+                        $asignacion->estado        = SesionAsignacion::ESTADO_NOTIFICADO;
+                        $asignacion->notificado_at = date('Y-m-d H:i:s');
+                        $asignacion->save();
+                    }
+                    $creadas[] = $asignacion->load('auxiliar:id,nombre');
+                }
+            } else {
+                $asignacion = SesionAsignacion::create([
+                    'sesion_id'         => $sesion->id,
+                    'auxiliar_id'       => $data['auxiliar_id'],
+                    'ronda'             => $ronda,
+                    'tipo_instruccion'  => $tipoInstruccion,
+                    'pasillo'           => $data['pasillo']    ?? null,
+                    'modulo'            => $data['modulo']     ?? null,
+                    'producto_id'       => $data['producto_id'] ?? null,
+                    'instruccion_libre' => $data['instruccion_libre'] ?? null,
+                    'estado'            => SesionAsignacion::ESTADO_PENDIENTE,
+                ]);
+
+                if (!in_array($sesion->estado, [SesionInventario::ESTADO_CERRADO, SesionInventario::ESTADO_FINALIZADO, 'Cancelado'])) {
+                    $this->crearNotificacionAuxiliar($asignacion, $sesion);
+                    $asignacion->estado        = SesionAsignacion::ESTADO_NOTIFICADO;
+                    $asignacion->notificado_at = date('Y-m-d H:i:s');
+                    $asignacion->save();
+                }
+                $creadas[] = $asignacion->load('auxiliar:id,nombre');
             }
+
+            return $this->ok($res, count($creadas) === 1 ? $creadas[0] : $creadas, 'Asignación creada correctamente');
 
             return $this->ok($res, $asignacion->load('auxiliar:id,nombre'), 'Asignación creada');
         } catch (\Throwable $e) {
@@ -3297,5 +3371,74 @@ class InventarioV2Controller extends BaseController
             'creados' => $creados,
             'sesion'  => $sesion->fresh()
         ], "Se asignaron {$creados} referencia(s) a Segundo Conteo (R2)");
+    }
+
+    /**
+     * POST /api/v2/inventario/validar-codigos
+     * Recibe texto o lista de códigos/EANs y devuelve los productos válidos encontrados.
+     */
+    public function validarCodigos(Request $req, Response $res): Response
+    {
+        $user = $req->getAttribute('user');
+        $data = $req->getParsedBody() ?? [];
+
+        $rawInput = '';
+        if (isset($data['codigos']) && is_string($data['codigos'])) {
+            $rawInput = $data['codigos'];
+        } elseif (isset($data['codigos']) && is_array($data['codigos'])) {
+            $rawInput = implode(',', $data['codigos']);
+        }
+
+        if (empty(trim($rawInput))) {
+            return $this->error($res, 'Ingrese al menos un código de referencia');
+        }
+
+        // Tokenizar por comas, saltos de línea, punto y coma, espacios o tabulaciones
+        $tokens = preg_split('/[\s,;\n\r]+/', trim($rawInput));
+        $tokens = array_values(array_unique(array_filter(array_map('trim', $tokens))));
+
+        if (empty($tokens)) {
+            return $this->error($res, 'No se encontraron códigos válidos');
+        }
+
+        $empresaId = $this->getEffectiveEmpresaId($user, $req);
+
+        // Buscar productos por código interno o por EAN
+        $prods = Producto::where('empresa_id', $empresaId)
+            ->where(function($q) use ($tokens) {
+                $q->whereIn('codigo_interno', $tokens)
+                  ->orWhereHas('eans', function($eq) use ($tokens) {
+                      $eq->whereIn('codigo_ean', $tokens);
+                  });
+            })
+            ->select('id', 'codigo_interno', 'nombre', 'unidades_caja', 'controla_vencimiento')
+            ->get();
+
+        $encontrados = [];
+        $foundCodes = [];
+
+        foreach ($prods as $p) {
+            $encontrados[] = [
+                'id'                   => $p->id,
+                'codigo'               => $p->codigo_interno,
+                'nombre'               => $p->nombre,
+                'unidades_caja'        => $p->unidades_caja ?? 1,
+                'controla_vencimiento' => (bool)$p->controla_vencimiento,
+            ];
+            $foundCodes[] = strtoupper(trim($p->codigo_interno));
+        }
+
+        $noEncontrados = [];
+        foreach ($tokens as $t) {
+            if (!in_array(strtoupper($t), $foundCodes)) {
+                $noEncontrados[] = $t;
+            }
+        }
+
+        return $this->ok($res, [
+            'encontrados'    => $encontrados,
+            'no_encontrados' => array_values(array_unique($noEncontrados)),
+            'total_validos'  => count($encontrados),
+        ]);
     }
 }

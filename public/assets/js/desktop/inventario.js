@@ -1170,7 +1170,7 @@ WMS_MODULES.inventario = {
     const idx = cont.children.length;
     const div = document.createElement('div');
     div.className = 'asig-row';
-    div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;background:#fff;padding:8px;border-radius:6px;border:1px solid #e2e8f0';
+    div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:start;background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:8px;';
     div.innerHTML = `
       <div>
         <label style="font-size:.75rem;font-weight:600;color:#64748b;">Auxiliar</label>
@@ -1185,15 +1185,37 @@ WMS_MODULES.inventario = {
           <option value="Libre">Libre (sin restricción)</option>
           <option value="Pasillo">Por Pasillo</option>
           <option value="Modulo">Por Módulo</option>
-          <option value="Referencia">Por Referencia</option>
+          <option value="Referencia">Por Referencia (Individual / Masivo)</option>
         </select>
       </div>
-      <div>
+      <div class="asig-detalle-container">
         <label style="font-size:.75rem;font-weight:600;color:#64748b;">Detalle / Referencia</label>
         <input class="form-control asig-detalle" placeholder="Pasillo A, Módulo 3..." style="font-size:.8rem">
         <input class="asig-prod-id" type="hidden">
+        <input class="asig-prod-list" type="hidden">
+        <div class="asig-masivo-block" style="display:none;margin-top:6px;">
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+            <button type="button" class="btn btn-xs btn-outline-primary" onclick="WMS_MODULES.inventario._toggleMasivoBox(this)">
+              <i class="fa-solid fa-file-import"></i> Carga Masiva de Códigos
+            </button>
+            <span class="asig-ref-counter badge badge-info" style="display:none;">0 ref. listas</span>
+          </div>
+          <div class="asig-masivo-box" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;padding:8px;border-radius:6px;margin-top:4px;">
+            <label style="font-size:.7rem;font-weight:700;color:#0369a1;display:block;margin-bottom:4px;">
+              Pegue los códigos de referencias (separados por comas, espacios o líneas):
+            </label>
+            <textarea class="form-control asig-masivo-input" rows="3" style="font-size:.78rem;font-family:monospace;" placeholder="Ej: 101037, 112027, 106003, 1100121..."></textarea>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+              <button type="button" class="btn btn-xs btn-success" onclick="WMS_MODULES.inventario._validarMasivoRow(this)">
+                <i class="fa-solid fa-check-double"></i> Validar y Cargar
+              </button>
+              <small class="asig-masivo-status" style="font-size:.7rem;color:#64748b;"></small>
+            </div>
+          </div>
+          <div class="asig-ref-badges" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;max-height:80px;overflow-y:auto;"></div>
+        </div>
       </div>
-      <div style="padding-bottom:2px">
+      <div style="padding-top:22px">
         <button class="btn btn-sm btn-outline-danger" onclick="this.closest('.asig-row').remove()">
           <i class="fa-solid fa-trash"></i>
         </button>
@@ -1201,17 +1223,114 @@ WMS_MODULES.inventario = {
     cont.appendChild(div);
   },
 
+  _toggleMasivoBox(btn) {
+    const row = btn.closest('.asig-row');
+    const box = row.querySelector('.asig-masivo-box');
+    if (!box) return;
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  },
+
+  async _validarMasivoRow(btn) {
+    const row = btn.closest('.asig-row');
+    const txtArea = row.querySelector('.asig-masivo-input');
+    const status  = row.querySelector('.asig-masivo-status');
+    const listInp = row.querySelector('.asig-prod-list');
+    const counter = row.querySelector('.asig-ref-counter');
+
+    const text = (txtArea?.value || '').trim();
+    if (!text) {
+      if (status) status.innerHTML = '<span class="text-danger">Pegue al menos un código</span>';
+      return;
+    }
+
+    btn.disabled = true;
+    if (status) status.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Validando...';
+
+    try {
+      const res = await API.post('/v2/inventario/validar-codigos', { codigos: text });
+      btn.disabled = false;
+      if (res.error) throw new Error(res.message);
+
+      const encontrados = res.data.encontrados || [];
+      const noEncontrados = res.data.no_encontrados || [];
+
+      if (encontrados.length === 0) {
+        if (status) status.innerHTML = '<span class="text-danger">No se encontraron productos coincidentes</span>';
+        return;
+      }
+
+      const ids = encontrados.map(p => p.id);
+      listInp.value = JSON.stringify(ids);
+      row.dataset.refProducts = JSON.stringify(encontrados);
+
+      if (counter) {
+        counter.style.display = 'inline-block';
+        counter.textContent = `${encontrados.length} ref. listas`;
+      }
+
+      let msgHtml = `<span class="text-success"><b>${encontrados.length}</b> referencias listas.</span>`;
+      if (noEncontrados.length > 0) {
+        msgHtml += ` <span class="text-warning">(${noEncontrados.length} no encontrados: ${noEncontrados.join(', ')})</span>`;
+      }
+      if (status) status.innerHTML = msgHtml;
+
+      this._renderRefBadges(row, encontrados);
+    } catch(e) {
+      btn.disabled = false;
+      if (status) status.innerHTML = `<span class="text-danger">${e.message}</span>`;
+    }
+  },
+
+  _renderRefBadges(row, prods) {
+    const container = row.querySelector('.asig-ref-badges');
+    if (!container) return;
+    container.innerHTML = prods.map(p => `
+      <span class="badge badge-light-blue" style="font-size:.72rem;padding:3px 6px;display:inline-flex;align-items:center;gap:4px;">
+        <b>[${WMS.esc(p.codigo)}]</b> ${WMS.esc(p.nombre.substring(0, 20))}
+        <i class="fa-solid fa-times" style="cursor:pointer;" onclick="WMS_MODULES.inventario._removeRefBadge(this, ${p.id})"></i>
+      </span>
+    `).join('');
+  },
+
+  _removeRefBadge(icon, prodId) {
+    const row = icon.closest('.asig-row');
+    const listInp = row.querySelector('.asig-prod-list');
+    const counter = row.querySelector('.asig-ref-counter');
+    
+    let prods = [];
+    try { prods = JSON.parse(row.dataset.refProducts || '[]'); } catch(e){}
+    prods = prods.filter(p => p.id !== prodId);
+    row.dataset.refProducts = JSON.stringify(prods);
+
+    const ids = prods.map(p => p.id);
+    listInp.value = ids.length ? JSON.stringify(ids) : '';
+
+    if (counter) {
+      counter.textContent = `${prods.length} ref. listas`;
+      if (prods.length === 0) counter.style.display = 'none';
+    }
+
+    icon.closest('.badge').remove();
+  },
+
   _toggleAsigDetalle(sel) {
-    const row       = sel.closest('.asig-row');
-    const inp       = row.querySelector('.asig-detalle');
-    const prodIdInp = row.querySelector('.asig-prod-id');
-    const tipo      = sel.value;
+    const row          = sel.closest('.asig-row');
+    const inp          = row.querySelector('.asig-detalle');
+    const prodIdInp    = row.querySelector('.asig-prod-id');
+    const masivoBlock  = row.querySelector('.asig-masivo-block');
+    const tipo         = sel.value;
+
     inp.placeholder = tipo === 'Pasillo'    ? 'Ej: Pasillo A' :
                       tipo === 'Modulo'     ? 'Ej: Módulo 3' :
-                      tipo === 'Referencia' ? 'Buscar producto por nombre o código...' :
+                      tipo === 'Referencia' ? 'Buscar referencia por código o nombre...' :
                                              'Notas adicionales (opcional)';
     inp.value = '';
     if (prodIdInp) prodIdInp.value = '';
+
+    if (masivoBlock) {
+      masivoBlock.style.display = tipo === 'Referencia' ? 'block' : 'none';
+    }
+
     if (tipo === 'Referencia') {
       setTimeout(() => {
         WMS.initProductAutocomplete(inp, (p) => {
@@ -1241,19 +1360,36 @@ WMS_MODULES.inventario = {
       const tipoInstruccion = row.querySelector('.asig-tipo')?.value || 'Libre';
       const detalle  = row.querySelector('.asig-detalle')?.value.trim() || '';
       const prodId   = row.querySelector('.asig-prod-id')?.value || '';
-      if (tipoInstruccion === 'Referencia' && !prodId) {
-        WMS.toast('warning', 'Seleccione un producto válido para la asignación de Referencia');
+      const prodListRaw = row.querySelector('.asig-prod-list')?.value || '';
+
+      let prodIdList = [];
+      if (prodListRaw) {
+        try { prodIdList = JSON.parse(prodListRaw); } catch(e){}
+      }
+
+      if (tipoInstruccion === 'Referencia' && !prodId && prodIdList.length === 0) {
+        WMS.toast('warning', 'Seleccione al menos un producto o cargue la lista masiva para la asignación por Referencia');
         asigError = true; break;
       }
-      asignaciones.push({
+
+      const asigObj = {
         auxiliar_id:       parseInt(auxId),
         tipo_instruccion:  tipoInstruccion,
-        pasillo:           tipoInstruccion === 'Pasillo'    ? detalle          : null,
-        modulo:            tipoInstruccion === 'Modulo'     ? detalle          : null,
-        instruccion_libre: tipoInstruccion === 'Libre'      ? detalle          : null,
-        producto_id:       tipoInstruccion === 'Referencia' ? parseInt(prodId) : null,
+        pasillo:           tipoInstruccion === 'Pasillo'    ? detalle : null,
+        modulo:            tipoInstruccion === 'Modulo'     ? detalle : null,
+        instruccion_libre: tipoInstruccion === 'Libre'      ? detalle : null,
         ronda: 1,
-      });
+      };
+
+      if (tipoInstruccion === 'Referencia') {
+        if (prodIdList.length > 0) {
+          asigObj.producto_id_list = prodIdList;
+        } else if (prodId) {
+          asigObj.producto_id = parseInt(prodId);
+        }
+      }
+
+      asignaciones.push(asigObj);
     }
     if (asigError) return;
     if (asignaciones.length === 0) return WMS.toast('warning', 'Agregue al menos un auxiliar con instrucción');

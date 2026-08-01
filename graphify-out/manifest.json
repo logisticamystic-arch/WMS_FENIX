@@ -975,8 +975,8 @@
     "semantic_hash": "a526a63d521fc75e43f1f5a54d5b1d13"
   },
   "src/Controllers/RecepcionController.php": {
-    "mtime": 1785363369.679799,
-    "ast_hash": "8b418a9a822a1de57fde50a53420b3ed",
+    "mtime": 1785605721.4206266,
+    "ast_hash": "987fc0a46ed7e90ef0a7cb74d670db20",
     "semantic_hash": ""
   },
   "src/Controllers/ReplenishmentController.php": {

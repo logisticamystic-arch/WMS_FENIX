@@ -620,6 +620,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/v2/inventario/ajustes',                      [\App\Controllers\InventarioV2Controller::class, 'getAjustes']);
     $group->get('/v2/inventario/kardex',                       [\App\Controllers\InventarioV2Controller::class, 'getKardexCompleto']);
     $group->get('/v2/inventario/vencimientos',                 [\App\Controllers\InventarioV2Controller::class, 'getVencimientos']);
+    $group->post('/v2/inventario/validar-codigos',             [\App\Controllers\InventarioV2Controller::class, 'validarCodigos']);
 
     // Módulo: Reabastecimiento automático
     $group->post('/reabastecimiento/auto', [\App\Controllers\ReplenishmentController::class, 'runAutoReplenishment']);
