@@ -356,7 +356,16 @@ WMS_MODULES.almacenamiento = {
     // "Disponible: 0" al validar contra el stock realmente libre.
     const reservada  = parseFloat(item.cantidad_reservada || 0);
     const disponible = Math.max(0, parseFloat(item.cantidad || 0) - reservada);
-    this._currentPutawayItem = { ...item, _disponible: disponible };
+    // Regla de oro 2.4 (WMS_FENIX_BRIEF.md): captura en Cajas + Saldos, nunca
+    // unidad total libre. El factor de conversión prioriza factor_udm (U/E)
+    // sobre unidades_caja — antes esta pantalla no tenía modo cajas en absoluto.
+    const factorUdm    = parseFloat(item.factor_udm || 0);
+    const unidadesCaja = Math.max(1, parseInt(item.unidades_caja || 1));
+    const factor       = factorUdm > 0 ? factorUdm : unidadesCaja;
+    const usaCajas     = factor > 1;
+    const cajasDisp    = usaCajas ? Math.floor(disponible / factor) : 0;
+    const saldosDisp   = usaCajas ? Math.round((disponible - cajasDisp * factor) * 1000) / 1000 : disponible;
+    this._currentPutawayItem = { ...item, _disponible: disponible, _factor: factor, _usaCajas: usaCajas };
     WMS.showModal(`Ubicar: ${WMS.esc(item.producto_nombre || '-')}`, `
       <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:16px;font-size:13px;">
         <div style="font-weight:700;color:#1e40af;margin-bottom:4px;">${palletInfo}${WMS.esc(item.codigo_interno || '')} — ${WMS.esc(item.producto_nombre)}</div>
@@ -373,11 +382,24 @@ WMS_MODULES.almacenamiento = {
           ${this._buildUbicDestino('ub-ubicacion', ubis)}
           <div style="font-size:.7rem;color:#64748b;margin-top:4px;"><i class="fa-solid fa-barcode"></i> Escanee el código o escriba para filtrar · Enter confirma coincidencia única</div>
         </div>
+        ${usaCajas ? `
+        <div class="form-group">
+          <label class="form-label">Cajas <span class="required">*</span></label>
+          <input id="ub-cajas" type="number" class="form-control" min="0" max="${cajasDisp}" value="${cajasDisp}" placeholder="0" oninput="WMS_MODULES.almacenamiento._ubCalcPreview()" ${disponible<=0?'disabled':''}>
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="color:#d97706;">Saldos (sueltos)</label>
+          <input id="ub-saldos" type="number" class="form-control" min="0" max="${factor}" value="${saldosDisp}" step="0.001" placeholder="0" oninput="WMS_MODULES.almacenamiento._ubCalcPreview()" ${disponible<=0?'disabled':''}>
+        </div>
+        <div id="ub-preview" style="grid-column:1/-1;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:12px;color:#1e40af;font-weight:600;">
+          <i class="fa-solid fa-calculator"></i> <span id="ub-preview-text"></span>
+        </div>
+        <input type="hidden" id="ub-cantidad" value="${disponible}">` : `
         <div class="form-group">
           <label class="form-label">Cantidad a Ubicar <span class="required">*</span></label>
           <input id="ub-cantidad" type="number" class="form-control" min="1" max="${disponible}" value="${disponible}" placeholder="0" ${disponible<=0?'disabled':''}>
           <div style="font-size:.7rem;color:#64748b;margin-top:3px;">Máximo: ${WMS.formatNum(disponible)} ${WMS.esc(item.unidad_medida||'und')}</div>
-        </div>
+        </div>`}
         <div class="form-group">
           <label class="form-label">Fecha Vencimiento</label>
           <input id="ub-fv" type="date" class="form-control" value="${item.fecha_vencimiento||''}">
@@ -386,6 +408,20 @@ WMS_MODULES.almacenamiento = {
       ${disponible<=0 ? `<div style="margin-top:10px;padding:10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;color:#991b1b;font-size:.8rem;"><i class="fa-solid fa-triangle-exclamation"></i> Todo el stock de esta partida está reservado — no hay cantidad disponible para trasladar.</div>` : ''}`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.almacenamiento.confirmarUbicacion()" ${disponible<=0?'disabled':''}><i class="fa-solid fa-map-pin"></i> Confirmar Ubicación</button>`);
+    if (usaCajas) this._ubCalcPreview();
+  },
+
+  _ubCalcPreview() {
+    const item = this._currentPutawayItem;
+    if (!item?._usaCajas) return;
+    const factor  = item._factor;
+    const cajas   = parseFloat(document.getElementById('ub-cajas')?.value  || '0') || 0;
+    const saldos  = parseFloat(document.getElementById('ub-saldos')?.value || '0') || 0;
+    const total   = Math.round((cajas * factor + saldos) * 1000) / 1000;
+    const cantEl  = document.getElementById('ub-cantidad');
+    if (cantEl) cantEl.value = total;
+    const preview = document.getElementById('ub-preview-text');
+    if (preview) preview.textContent = `${cajas} caja(s) × ${factor} + ${saldos} sueltos = ${total} ${item.unidad_medida||'und'}`;
   },
 
   async confirmarUbicacion() {

@@ -1961,7 +1961,10 @@ const MWMS = {
 
         const itemsHtml = p.idxs.map(idx => {
           const it  = allItems[idx];
-          const upc = Math.max(1, parseInt(it.unidades_caja || 1));
+          // Regla de oro 2.4 (WMS_FENIX_BRIEF.md): factor_udm (U/E) tiene prioridad
+          // sobre unidades_caja para el modo cajas — evita repetir el bug donde el
+          // peso en gramos quedó mal puesto en unidades_caja.
+          const upc = parseFloat(it.factor_udm || 0) > 0 ? parseFloat(it.factor_udm) : Math.max(1, parseInt(it.unidades_caja || 1));
           // Línea de cantidad
           let cantLine;
           if (upc > 1) {
@@ -2076,7 +2079,7 @@ const MWMS = {
     const label = palletId === '__sin_pallet__' ? 'artículos sin pallet' : `Pallet #${palletId}`;
     // Mostrar resumen del pallet y pedir confirmación antes de proceder
     const resumen = pItems.map(x => {
-      const upc = Math.max(1, parseInt(x.unidades_caja || 1));
+      const upc = parseFloat(x.factor_udm || 0) > 0 ? parseFloat(x.factor_udm) : Math.max(1, parseInt(x.unidades_caja || 1));
       return upc > 1
         ? `• ${this.esc(x.producto_nombre)}: ${parseInt(x.cantidad_cajas||0)} caj + ${parseFloat(x.saldos||0)} suel = ${x.cantidad} UND/T`
         : `• ${this.esc(x.producto_nombre)}: ${x.cantidad} UND/T`;
@@ -2115,7 +2118,7 @@ const MWMS = {
     const disponible = i.disponible ?? parseFloat(i.cantidad || 0);
     if (disponible <= 0) return this.toast('Todo el stock de esta partida está reservado — no hay cantidad disponible', 'warning');
     this._qtyItem = i;
-    const upc     = Math.max(1, parseInt(i.unidades_caja || 1));
+    const upc     = parseFloat(i.factor_udm || 0) > 0 ? parseFloat(i.factor_udm) : Math.max(1, parseInt(i.unidades_caja || 1));
     this._qtyUpc  = upc;
     const maxCajas  = parseInt(i.cantidad_cajas || 0);
     const maxSaldos = parseFloat(i.saldos || 0);

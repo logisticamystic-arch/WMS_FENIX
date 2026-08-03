@@ -77,6 +77,8 @@ class InventarioController extends BaseController
                 'productos.nombre as producto_nombre',
                 'productos.codigo_interno',
                 'productos.unidades_caja',
+                'productos.factor_udm',
+                'productos.unidad_contenido',
                 'ubicaciones.codigo as ubicacion_codigo',
                 'inventarios.numero_pallet',
                 'inventarios.*',
