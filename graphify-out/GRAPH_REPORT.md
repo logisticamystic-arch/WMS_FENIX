@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-03)
 
 ## Corpus Check
-- 331 files · ~829,137 words
+- 331 files · ~829,516 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d0fc0731`
+- Built from commit: `2a7dbab4`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -676,10 +676,10 @@ _Questions this graph is uniquely positioned to answer:_
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `Core Models & Tenant Scope` to `OutboundController`, `Product Blocking & Quick Search`, `Receiving Controller`, `Auth & Seeding`, `Dispatch Controller`, `Tenant Context & Middleware`, `Core Controllers Overview`, `Miscellaneous Items Controller`, `Anomaly Detection Controller`, `Replenishment & Notifications`, `Traspaso`, `TV Picking Dashboard`, `InvGeneralEvento`, `PickingDetalle`, `Picking TV Dashboard`, `NotificacionesController`, `Transfer Controller`, `Ubicacion`, `Aprobación de Vencimientos`?**
   _High betweenness centrality (0.023) - this node is a cross-community bridge._
-- **Why does `SesionInventario` connect `Printer Management Controller` to `Dispatch Controller`, `Traspaso`, `TV Picking Dashboard`?**
-  _High betweenness centrality (0.017) - this node is a cross-community bridge._
-- **Why does `Producto` connect `Product Blocking & Quick Search` to `Transfer Controller`, `Ubicacion`, `PickingDetalle`, `Receiving Controller`, `Picking TV Dashboard`, `Traspaso`, `TV Picking Dashboard`?**
-  _High betweenness centrality (0.013) - this node is a cross-community bridge._
+- **Why does `Devolucion` connect `Tenant Context & Middleware` to `Transfer Controller`, `Core Models & Tenant Scope`, `Traspaso`, `TV Picking Dashboard`?**
+  _High betweenness centrality (0.012) - this node is a cross-community bridge._
+- **Why does `analyze_product()` connect `Causal Reasons Controller` to `Cross-Dock Operations`?**
+  _High betweenness centrality (0.011) - this node is a cross-community bridge._
 - **Are the 139 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
   _`date` has 139 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `name`, `description`, `type` to the rest of the system?**
