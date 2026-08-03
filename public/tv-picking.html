@@ -1390,16 +1390,19 @@ async function loadServicio(){
     _svcRenderSinDatos();
     return;
   }
-  // Totales generales
+  // Totales generales — Nivel de Servicio real: ((solicitado - faltantes que
+  // afectan NS) / solicitado) * 100, calculado en el backend (mismo criterio
+  // que /api/dashboard/nivel-servicio). Ya no se promedia con % de referencias:
+  // son dos métricas distintas (unidades vs. SKUs) y mezclarlas 50/50 no tiene
+  // sustento estadístico.
   const g=d.general||{};
-  const pctUnits=typeof g.pct==='number'?g.pct:(g.solicitado>0?Math.round(g.separado/g.solicitado*100):0);
+  const pctGeneral=typeof g.pct==='number'?g.pct:(g.solicitado>0?Math.round(((g.solicitado-(g.faltantes_ns||0))/g.solicitado)*100):100);
   const pctRefs=typeof g.pct_refs==='number'?g.pct_refs:0;
-  const pctGeneral=parseFloat(((pctUnits+pctRefs)/2).toFixed(1));
   const pctColor=_svcColor(pctGeneral);
   const elPct=document.getElementById('svc-pct-general');
-  if(elPct){elPct.textContent=pctGeneral+'%';elPct.style.color=pctColor;}
+  if(elPct){elPct.textContent=pctGeneral+'%';elPct.style.color=pctColor;elPct.title=g.pct_formula||'((solicitado - faltantes que afectan NS) / solicitado) * 100';}
   const elDetail=document.getElementById('svc-pct-detail');
-  if(elDetail) elDetail.textContent=`Und: ${pctUnits}% · Refs: ${pctRefs}%`;
+  if(elDetail) elDetail.textContent=`Faltantes NS: ${fmt(g.faltantes_ns||0)} · Refs: ${pctRefs}%`;
   setText('svc-total-sol', g.solicitado != null ? fmt(g.solicitado) : '--');
   setText('svc-total-sep', g.separado   != null ? fmt(g.separado)   : '--');
   setText('tbadge-servicio',pctGeneral+'%');

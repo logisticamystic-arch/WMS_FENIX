@@ -401,10 +401,27 @@ class DashboardTVController extends BaseController
             $gen = $stmtGen->fetch(\PDO::FETCH_ASSOC) ?: [];
             $solGen        = (float)($gen['total_solicitado'] ?? 0);
             $sepGen        = (float)($gen['total_separado'] ?? 0);
-            $pctGen        = $solGen > 0 ? round($sepGen / $solGen * 100, 1) : 0;
             $totalRefs     = (int)($gen['total_refs'] ?? 0);
             $refsCompletas = (int)($gen['refs_completas'] ?? 0);
             $pctRefs       = $totalRefs > 0 ? round($refsCompletas / $totalRefs * 100, 1) : 0;
+
+            // Nivel de servicio real: descuenta solo los faltantes cuya causal está
+            // marcada como afecta_nivel_servicio (misma regla que getNivelServicio()).
+            // Antes esta tarjeta usaba separado/solicitado sin filtrar causales.
+            $stmtFaltNs = $pdo->prepare("
+                SELECT COALESCE(SUM(pf.cantidad_faltante), 0) AS total
+                FROM picking_faltantes pf
+                JOIN causales_novedad cn ON cn.id = pf.causal_id
+                                        AND cn.afecta_nivel_servicio = TRUE
+                                        AND cn.empresa_id = :emp2
+                JOIN orden_pickings op ON op.id = pf.orden_picking_id
+                WHERE pf.empresa_id   = :emp
+                  AND pf.sucursal_id  = :suc
+                  AND op.fecha_movimiento::date = :fecha
+            ");
+            $stmtFaltNs->execute([':emp' => $empresaId, ':emp2' => $empresaId, ':suc' => $sucursalId, ':fecha' => $fecha]);
+            $faltantesNsGen = (float)($stmtFaltNs->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
+            $pctGen         = $solGen > 0 ? round((($solGen - $faltantesNsGen) / $solGen) * 100, 1) : 100.0;
 
             // ── Por sucursal (fecha dada) — por referencia/SKU ───────────────────
             $stmtSuc = $pdo->prepare("
@@ -577,7 +594,9 @@ class DashboardTVController extends BaseController
                 'general'        => [
                     'solicitado'     => $solGen,
                     'separado'       => $sepGen,
+                    'faltantes_ns'   => $faltantesNsGen,
                     'pct'            => $pctGen,
+                    'pct_formula'    => '((solicitado - faltantes_que_afectan_ns) / solicitado) * 100',
                     'total_refs'     => $totalRefs,
                     'refs_completas' => $refsCompletas,
                     'pct_refs'       => $pctRefs,
