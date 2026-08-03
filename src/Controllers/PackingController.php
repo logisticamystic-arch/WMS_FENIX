@@ -1024,65 +1024,16 @@ class PackingController extends BaseController
         $totalCajas    = $amb['cj'];
         $totalUnd      = $amb['und'];
         $agotadosHtml  = $this->remisionAgotadosHtml($ordenIds);
-        $novedadesHtmlOld = "
-<div class='novedades-section'>
-  <div class='novedades-header'>NOVEDADES DE RECEPCI&Oacute;N</div>
-  <table style='table-layout:fixed;width:100%;'>
-    <colgroup>
-      <col style='width:12%;'>
-      <col style='width:38%;'>
-      <col style='width:10%;'>
-      <col style='width:40%;'>
-    </colgroup>
-    <thead><tr>
-      <th>C&oacute;digo</th>
-      <th>Descripci&oacute;n</th>
-      <th style='text-align:right;'>Cantidad</th>
-      <th>Motivo</th>
-    </tr></thead>
-    <tbody>
-      <tr style='height:22px'><td></td><td></td><td></td><td></td></tr>
-      <tr style='height:22px'><td></td><td></td><td></td><td></td></tr>
-      <tr style='height:22px'><td></td><td></td><td></td><td></td></tr>
-      <tr style='height:22px'><td></td><td></td><td></td><td></td></tr>
-      <tr style='height:22px'><td></td><td></td><td></td><td></td></tr>
-    </tbody>
-  </table>
-</div>";
+        $novedadesHtml = $this->remisionNovedadesHtml();
+        $css           = $this->remisionCss();
 
+        // Mismo layout de encabezado/info-grid/totales que certRemisionMultiple()/
+        // certRemisionDirecta() — "Sesión # X" y "canastas/tipo empaque" eran jerga
+        // interna de packing sin sentido para quien recibe la remisión; se reemplaza
+        // por Planilla + Pedido(s), igual que las otras dos.
         $html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'>
 <title>Remisi&#243;n &mdash; {$clienteNom}</title>
-<style>
-  @page{size:A4 portrait;margin:15mm 18mm}
-  @media print{.no-print{display:none!important} body{margin:0}}
-  body{font-family:Arial,sans-serif;font-size:10.5px;color:#1a1a1a;margin:0;padding:10px}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:8px;margin-bottom:10px}
-  .header-left p{margin:0;font-size:9.5px;color:#555}
-  .header-right{text-align:right;font-size:10px;color:#333}
-  .info-grid{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 20px;margin-bottom:10px;background:#f8fafc;padding:6px 12px;border-radius:4px;border:1px solid #e2e8f0;page-break-after:avoid}
-  .info-grid .campo{white-space:nowrap;font-size:10.5px;color:#1e293b}
-  .info-grid .lbl{font-weight:700;font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:.3px;margin-right:4px}
-  .ambientes-grid{display:grid;grid-template-columns:1fr;gap:10px}
-  .ambiente-block{border:1px solid #cbd5e1;border-radius:4px;overflow:hidden}
-  .ambiente-header-row th{background:#000;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.2px;text-align:left;border:none}
-  table{width:100%;border-collapse:collapse}
-  thead{display:table-header-group}
-  tr{page-break-inside:avoid}
-  th,td{border:1px solid #e2e8f0;padding:4px 6px;font-size:9.5px;text-align:left;vertical-align:middle}
-  th{background:#f1f5f9;font-weight:700;color:#334155;white-space:nowrap}
-  tr:nth-child(even) td{background:#f8fafc}
-  .totales{border-top:3px solid #1e3a5f;padding:8px 0;font-weight:700;font-size:12px;margin-top:10px;color:#1e3a5f}
-  .agotados-section{margin-top:10px;border:2px solid #dc2626;border-radius:4px;overflow:hidden;page-break-inside:avoid}
-  .agotados-header{background:#dc2626;color:#fff;padding:5px 8px;font-weight:700;font-size:10px}
-  .agotados-section td:nth-child(4){color:#dc2626;font-weight:700}
-  .novedades-section{margin-top:12px;border:2px solid #1e3a5f;border-radius:4px;overflow:hidden;page-break-inside:avoid}
-  .novedades-header{background:#1e3a5f;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.3px}
-  .novedades-section td{height:22px}
-  .firmas{display:grid;grid-template-columns:1fr 1fr 1fr;gap:40px;margin-top:30px;page-break-inside:avoid}
-  .firma-line{border-top:2px solid #1e3a5f;padding-top:5px;text-align:center;font-size:10px;color:#334155}
-  .no-print{padding:8px 0;margin-bottom:10px}
-  .no-print button{padding:7px 20px;font-size:13px;cursor:pointer;background:#1e3a5f;color:#fff;border:none;border-radius:6px;margin-right:8px}
-</style></head><body>
+<style>{$css}</style></head><body>
 <div class='no-print'>
   <button onclick='window.print()'>&#128424; Imprimir / Guardar PDF</button>
   <small style='color:#666'>Usa &ldquo;Guardar como PDF&rdquo; en el di&#225;logo de impresi&#243;n para exportar</small>
@@ -1093,21 +1044,22 @@ class PackingController extends BaseController
     <p>REMISI&Oacute;N DE CERTIFICACI&Oacute;N</p>
   </div>
   <div class='header-right'>
-    <strong>Sesi&oacute;n # {$sesion->id}</strong><br>
+    <strong>Planilla: {$planillaStr}</strong><br>
     Fecha: {$fecha}
   </div>
 </div>
 <div class='info-grid'>
   <span class='campo'><span class='lbl'>Cliente / Sucursal:</span>{$clienteNom}</span>
-  <span class='campo'><span class='lbl'>Tipo empaque:</span>{$tipoEmp}</span>
   <span class='campo'><span class='lbl'>Planilla:</span>{$planillaStr}</span>
-  <span class='campo'><span class='lbl'>N&ordm; Pedidos:</span>{$pedidosStr}</span>
+  <span class='campo'><span class='lbl'>Pedido(s):</span>{$pedidosStr}</span>
   <span class='campo'><span class='lbl'>Certificador:</span>{$certNombre}</span>
+  <span class='campo'><span class='lbl'>Fecha:</span>{$fecha}</span>
+  <span class='campo'><span class='lbl'>Total unidades:</span>{$totalUnd}</span>
 </div>
 <div class='ambientes-grid'>{$ambientesHtml}</div>
 {$agotadosHtml}
 {$novedadesHtml}
-<div class='totales'>TOTAL GENERAL: {$numCanastas} {$tipoEmp}(S) &mdash; {$totalCajas} CAJAS / {$totalUnd} UNIDADES CERTIFICADAS</div>
+<div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>
 <div class='firmas'>
   <div class='firma-line'>Firma Certificador<br><strong>{$certNombre}</strong></div>
   <div class='firma-line'>Firma Transportador</div>

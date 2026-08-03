@@ -6293,125 +6293,15 @@ class PickingController extends BaseController
             return $this->error($res, 'Se requiere al menos una sucursal o una selección de pedidos (orden_ids)');
         }
 
-        $empresa   = Capsule::table('empresas')->find($empresaId);
-        $empNombre = $empresa->razon_social ?? 'WMS Fénix';
-        $logoFile  = dirname(__DIR__, 2) . '/logo.jpg';
-        $logoHtml  = file_exists($logoFile)
-            ? "<img src='data:image/jpeg;base64," . base64_encode(file_get_contents($logoFile)) . "' style='height:52px;object-fit:contain;display:block;margin-bottom:4px;' alt='Logo'>"
-            : "<strong style='font-size:16px;color:#1e3a5f;'>{$empNombre}</strong>";
+        $empNombre = $this->remisionEmpresaNombre($empresaId);
+        $logoHtml  = $this->remisionLogoHtml($empNombre);
 
-        // ── Closure: convierte cantidad_certificada (SIEMPRE en UND/TOTAL — unidades reales,
-        // ver confirmLine()/confirmarConsolidado()) a cajas + saldo para mostrar en la
-        // remisión. cantidad_certificada es la fuente de verdad de lo REALMENTE despachado —
-        // si se certificó menos, esa es la cantidad final del documento.
-        // Fórmula dinámica pedida: 3500 und (upc 4000) → 0 cajas + 3500 saldo;
-        // 4800 und (upc 4000) → 1 caja + 800 saldo; separación exacta → cajas = las
-        // solicitadas, saldo = 0.
-        $calcItem = function ($it) {
-            $upc     = max(1, (int)($it->unidades_caja ?? 1));
-            $cantRaw = (float)$it->cantidad; // unidades reales (UND/TOTAL)
-            if ($upc > 1) {
-                $cajas = (int)floor($cantRaw / $upc);
-                $saldo = round($cantRaw - ($cajas * $upc), 3);
-                $und   = round($cantRaw, 3);
-            } else {
-                $cajas = (int)round($cantRaw); $saldo = 0; $und = $cantRaw;
-            }
-            $fv   = $it->fecha_vencimiento ? date('d/m/Y', strtotime($it->fecha_vencimiento)) : '-';
-            $fc   = $it->fecha_vencimiento ? '#b91c1c' : '#94a3b8';
-            $lote = ($it->lote && $it->lote !== 'N/A' && $it->lote !== '—' && $it->lote !== '&mdash;') ? $it->lote : '-';
-            return compact('cajas', 'saldo', 'und', 'fv', 'fc', 'lote');
-        };
-
-        // ── Closure: genera HTML de bloques de ambiente ──────────────────────
-        $buildAmbs = function ($grouped) use ($calcItem) {
-            $totalUnd = 0; $totalCj = 0; $html = '';
-            foreach ($grouped as $ambNombre => $ambItems) {
-                $subUnd = 0; $subCj = 0; $rows = '';
-                foreach ($ambItems as $it) {
-                    ['cajas' => $cajas, 'saldo' => $saldo, 'und' => $und, 'fv' => $fv, 'fc' => $fc, 'lote' => $lote] = $calcItem($it);
-                    $subUnd += $und; $subCj += $cajas;
-                    $rows .= "<tr>"
-                        . "<td style='white-space:nowrap'>{$it->codigo}</td><td>{$it->nombre}</td>"
-                        . "<td style='white-space:nowrap'>" . htmlspecialchars($lote) . "</td>"
-                        . "<td style='text-align:right;font-weight:700'>{$cajas}</td>"
-                        . "<td style='text-align:right;color:#1e3a5f'>{$saldo}</td>"
-                        . "<td style='text-align:right;font-weight:700'>{$und}</td>"
-                        . "<td style='text-align:center;color:{$fc}'>{$fv}</td></tr>";
-                }
-                $totalUnd += $subUnd; $totalCj += $subCj;
-                $ambEsc = htmlspecialchars($ambNombre);
-                $html .= "<div class='ambiente-block'>"
-                    . "<div class='ambiente-header'>{$ambEsc} &mdash; {$subCj} cj / {$subUnd} und</div>"
-                    . "<table style='table-layout:fixed;width:100%;'><colgroup>"
-                    . "<col style='width:10%;'><col style='width:33%;'><col style='width:12%;'><col style='width:8%;'><col style='width:8%;'><col style='width:12%;'><col style='width:17%;'>"
-                    . "</colgroup><thead><tr>"
-                    . "<th>C&oacute;digo</th><th>Producto</th><th>Lote</th>"
-                    . "<th style='text-align:right'>Cajas</th><th style='text-align:right'>Saldo</th>"
-                    . "<th style='text-align:right'>Und/Total</th><th style='text-align:center'>F. Venc.</th>"
-                    . "</tr></thead><tbody>{$rows}</tbody></table></div>";
-            }
-            return ['html' => $html, 'und' => $totalUnd, 'cj' => $totalCj];
-        };
-
-        // ── Closure: query de ítems por lista de orden IDs ───────────────────
-        // ── Closure: agotados (faltantes de picking) por lista de orden IDs,
-        // mostrando a qué pedido pertenece cada uno — antes esta remisión no tenía
-        // ninguna sección de agotados en absoluto.
-        // picking_faltantes.cantidad_solicitada/cantidad_faltante se registran en CAJAS
-        // (convención de este flujo — ver confirmarConsolidado()/agregarLineaPlanilla()).
-        // El requisito es mostrar todo en UND/TOTAL, así que se convierte aquí mismo con
-        // p.unidades_caja, sin tocar el almacenamiento de picking_faltantes.
-        $buildAgotados = function ($ordenIds) {
-            $rows = Capsule::table('picking_faltantes as pf')
-                ->join('productos as p', 'p.id', '=', 'pf.producto_id')
-                ->leftJoin('orden_pickings as op', 'op.id', '=', 'pf.orden_picking_id')
-                ->leftJoin('causales_novedad as cn', 'cn.id', '=', 'pf.causal_id')
-                ->whereIn('pf.orden_picking_id', $ordenIds)
-                ->select([
-                    'p.codigo_interno as codigo',
-                    'p.nombre',
-                    Capsule::raw('COALESCE(p.unidades_caja, 1) as upc'),
-                    Capsule::raw('SUM(pf.cantidad_solicitada) as solicitada_cj'),
-                    Capsule::raw('SUM(pf.cantidad_faltante) as faltante_cj'),
-                    Capsule::raw("COALESCE(NULLIF(op.numero_factura, ''), op.numero_orden, '-') as pedido"),
-                    Capsule::raw("STRING_AGG(DISTINCT COALESCE(pf.causa, 'Sin stock'), ', ') as causa"),
-                    Capsule::raw("STRING_AGG(DISTINCT cn.nombre, ', ') as causal_nombre"),
-                    Capsule::raw("STRING_AGG(DISTINCT NULLIF(cn.area_responsable, ''), ', ') as responsable"),
-                ])
-                ->groupBy('p.codigo_interno', 'p.nombre', 'p.unidades_caja', 'op.numero_factura', 'op.numero_orden')
-                ->orderBy('p.nombre')
-                ->get();
-
-            if ($rows->isEmpty()) return '';
-
-            $filas = '';
-            foreach ($rows as $r) {
-                $upc          = max(1, (int)$r->upc);
-                $solicitadaUnd = round((float)$r->solicitada_cj * $upc, 2);
-                $pendienteUnd  = round((float)$r->faltante_cj * $upc, 2);
-                $motivo = $r->causal_nombre
-                    ? "<b>{$r->causal_nombre}</b>" . ($r->causa ? " — {$r->causa}" : '')
-                    : ($r->causa ?: 'Sin causa registrada');
-                $responsable = ($r->responsable && $r->responsable !== '&mdash;' && $r->responsable !== '—') ? $r->responsable : '-';
-                $filas .= "<tr>"
-                    . "<td style='white-space:nowrap'>{$r->codigo}</td>"
-                    . "<td>{$r->nombre}</td>"
-                    . "<td style='white-space:nowrap;font-weight:700'>{$r->pedido}</td>"
-                    . "<td style='text-align:right'>{$solicitadaUnd}</td>"
-                    . "<td style='text-align:right;color:#b91c1c;font-weight:700'>{$pendienteUnd}</td>"
-                    . "<td>{$motivo}</td>"
-                    . "<td>" . htmlspecialchars($responsable) . "</td>"
-                    . "</tr>";
-            }
-            return "<div class='agotados-section'><div class='agotados-header'>PRODUCTOS AGOTADOS / FALTANTES</div>"
-                . "<table style='table-layout:fixed;width:100%;'><colgroup>"
-                . "<col style='width:10%;'><col style='width:26%;'><col style='width:11%;'><col style='width:11%;'><col style='width:11%;'><col style='width:19%;'><col style='width:12%;'></colgroup>"
-                . "<thead><tr><th>C&oacute;digo</th><th>Producto</th><th>Pedido</th>"
-                . "<th style='text-align:right;'>Und Solicitadas</th><th style='text-align:right;'>Und Pendiente</th>"
-                . "<th>Causa</th><th>Responsable</th></tr></thead>"
-                . "<tbody>{$filas}</tbody></table></div>";
-        };
+        // Generación de tabla de ítems y de agotados: mismos métodos compartidos
+        // que usa PackingController::getRemision() — antes cada endpoint tenía su
+        // propia versión (columnas y secciones distintas), y una misma orden podía
+        // salir con formato diferente según qué camino la certificara.
+        $buildAmbs     = fn($grouped)   => $this->remisionAmbientesHtml($grouped);
+        $buildAgotados = fn($ordenIds)  => $this->remisionAgotadosHtml($ordenIds);
 
         $queryItems = function ($ordenIds) {
             return Capsule::table('picking_detalles as pd')
@@ -6525,41 +6415,8 @@ class PickingController extends BaseController
 
         if (empty($pages)) return $this->error($res, 'No se encontraron órdenes certificadas para las sucursales indicadas');
 
-        // ── CSS compartido ────────────────────────────────────────────────────
-        $css = "@page{size:A4 portrait;margin:15mm 18mm}
-        @media print{.no-print{display:none!important} body{margin:0} .pg-break{page-break-after:always}}
-        body{font-family:Arial,sans-serif;font-size:10.5px;color:#1a1a1a;margin:0;padding:10px}
-        .pg-break{page-break-after:always;margin-bottom:20px}
-        .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:8px;margin-bottom:10px}
-        .header-left p{margin:0;font-size:9.5px;color:#555}
-        .header-right{text-align:right;font-size:10px;color:#333}
-        .info-grid{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 20px;margin-bottom:10px;background:#f8fafc;padding:6px 12px;border-radius:4px;border:1px solid #e2e8f0;page-break-after:avoid}
-        .info-grid .campo{white-space:nowrap;font-size:10.5px;color:#1e293b}
-        .info-grid .lbl{font-weight:700;font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:.3px;margin-right:4px}
-        .ambientes-grid{display:grid;grid-template-columns:1fr;gap:10px}
-        .ambiente-block{border:1px solid #cbd5e1;border-radius:4px;overflow:hidden;page-break-inside:avoid}
-        .ambiente-header{background:#000;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.2px}
-        table{width:100%;border-collapse:collapse}
-        th,td{border:1px solid #e2e8f0;padding:4px 6px;font-size:9.5px;text-align:left;vertical-align:middle}
-        th{background:#f1f5f9;font-weight:700;color:#334155;white-space:nowrap}
-        tr:nth-child(even) td{background:#f8fafc}
-        .totales{border-top:3px solid #1e3a5f;padding:8px 0;font-weight:700;font-size:12px;margin-top:10px;color:#1e3a5f}
-        .novedades-section{margin-top:12px;border:2px solid #1e3a5f;border-radius:4px;overflow:hidden;page-break-inside:avoid}
-        .novedades-header{background:#1e3a5f;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.3px}
-        .novedades-section td{height:22px}
-        .agotados-section{margin-top:10px;border:2px solid #b91c1c;border-radius:4px;overflow:hidden;page-break-inside:avoid}
-        .agotados-header{background:#b91c1c;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.3px}
-        .firmas{display:grid;grid-template-columns:1fr 1fr 1fr;gap:40px;margin-top:30px;page-break-inside:avoid}
-        .firma-line{border-top:2px solid #1e3a5f;padding-top:5px;text-align:center;font-size:10px;color:#334155}
-        .no-print{padding:8px 0;margin-bottom:10px}
-        .no-print button{padding:7px 20px;font-size:13px;cursor:pointer;background:#1e3a5f;color:#fff;border:none;border-radius:6px;margin-right:8px}";
-
-        $novedadesHtml = "<div class='novedades-section'><div class='novedades-header'>NOVEDADES DE RECEPCI&Oacute;N</div>"
-            . "<table style='table-layout:fixed;width:100%;'><colgroup>"
-            . "<col style='width:12%;'><col style='width:38%;'><col style='width:10%;'><col style='width:40%;'></colgroup>"
-            . "<thead><tr><th>C&oacute;digo</th><th>Descripci&oacute;n</th><th style='text-align:right;'>Cantidad</th><th>Motivo</th></tr></thead>"
-            . "<tbody>" . str_repeat("<tr style='height:22px'><td></td><td></td><td></td><td></td></tr>", 5)
-            . "</tbody></table></div>";
+        $css          = $this->remisionCss();
+        $novedadesHtml = $this->remisionNovedadesHtml();
 
         // ── Página consolidada ────────────────────────────────────────────────
         ksort($consoMap);
@@ -6718,7 +6575,10 @@ class PickingController extends BaseController
         $fechaCert  = $ordenes->max('fecha_certificacion');
         $fechaStr   = $fechaMov ? date('d/m/Y', strtotime($fechaMov)) : date('d/m/Y');
 
-        // Items por ambiente desde picking_detalles
+        // Items por ambiente desde picking_detalles — mismo generador compartido
+        // que certRemisionMultiple()/getRemision() (columnas Código, Producto,
+        // Lote, Cajas, Saldo, Und/Total, F.Venc, y sección de agotados, que antes
+        // esta remisión no tenía).
         $rows = Capsule::table('picking_detalles as pd')
             ->join('productos as p', 'p.id', '=', 'pd.producto_id')
             ->leftJoin('ambientes as a', 'a.id', '=', 'p.ambiente_id')
@@ -6726,128 +6586,31 @@ class PickingController extends BaseController
             ->where('pd.cantidad_certificada', '>', 0)
             ->select([
                 Capsule::raw("COALESCE(a.descripcion, 'Sin ambiente') as ambiente_nombre"),
-                Capsule::raw("COALESCE(a.color, '#1e3a5f') as ambiente_color"),
                 'p.id as producto_id',
                 'p.codigo_interno as codigo',
                 'p.nombre',
                 'p.unidades_caja',
                 Capsule::raw('SUM(pd.cantidad_certificada) as cantidad'),
+                Capsule::raw('MAX(pd.lote) as lote'),
                 Capsule::raw("MAX(COALESCE(pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = p.id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
             ])
-            ->groupBy('a.descripcion', 'a.color', 'p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja')
+            ->groupBy('a.descripcion', 'p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja')
             ->orderByRaw("COALESCE(a.descripcion, 'Sin ambiente'), p.nombre")
             ->get()
             ->groupBy('ambiente_nombre');
 
-        $logoFile = dirname(__DIR__, 2) . '/logo.jpg';
-        $logoHtml = file_exists($logoFile)
-            ? "<img src='data:image/jpeg;base64," . base64_encode(file_get_contents($logoFile)) . "' style='height:52px;object-fit:contain;display:block;margin-bottom:4px;' alt='Logo'>"
-            : "<strong style='font-size:16px;color:#1e3a5f;'>{$empNombre}</strong>";
-
-        $totalUnd    = 0;
-        $totalCajas  = 0;
-        $ambientesHtml = '';
-        foreach ($rows as $ambNombre => $ambItems) {
-            $subtotalUnd = 0;
-            $subtotalCj  = 0;
-            $rowsHtml    = '';
-            foreach ($ambItems as $it) {
-                $upc     = max(1, (int)($it->unidades_caja ?? 1));
-                $cantRaw = (float)$it->cantidad;
-                // cantidad_pickeada usa el mismo formato fraccionario que packing_items.cantidad:
-                // parte entera = cajas completas, parte decimal × upc = unidades sueltas
-                if ($upc > 1) {
-                    $cajas    = (int)floor($cantRaw);
-                    $saldo    = round(($cantRaw - floor($cantRaw)) * $upc, 3);
-                    $undTotal = round($cajas * $upc + $saldo, 3);
-                } else {
-                    $cajas    = $cantRaw;
-                    $saldo    = 0;
-                    $undTotal = $cantRaw;
-                }
-                $fv      = $it->fecha_vencimiento ? date('d/m/Y', strtotime($it->fecha_vencimiento)) : '-';
-                $fvColor = $it->fecha_vencimiento ? '#b91c1c' : '#94a3b8';
-                $subtotalUnd += $undTotal;
-                $subtotalCj  += $cajas;
-                $rowsHtml .= "<tr>
-                  <td style='white-space:nowrap'>{$it->codigo}</td>
-                  <td>{$it->nombre}</td>
-                  <td style='text-align:right;font-weight:700'>{$cajas}</td>
-                  <td style='text-align:right;color:#1e3a5f'>{$saldo}</td>
-                  <td style='text-align:right'>{$undTotal}</td>
-                  <td style='text-align:center;color:{$fvColor}'>{$fv}</td>
-                </tr>";
-            }
-            $totalUnd   += $subtotalUnd;
-            $totalCajas += $subtotalCj;
-            $ambientesHtml .= "
-            <div class='ambiente-block'>
-              <div class='ambiente-header'>{$ambNombre} &mdash; {$subtotalCj} cj / {$subtotalUnd} und</div>
-              <table style='table-layout:fixed;width:100%;'>
-                <colgroup>
-                  <col style='width:12%;'>
-                  <col style='width:45%;'>
-                  <col style='width:9%;'>
-                  <col style='width:9%;'>
-                  <col style='width:9%;'>
-                  <col style='width:16%;'>
-                </colgroup>
-                <thead><tr>
-                  <th>C&oacute;digo</th><th>Producto</th>
-                  <th style='text-align:right'>Cajas</th>
-                  <th style='text-align:right'>Saldo</th>
-                  <th style='text-align:right'>Und.</th>
-                  <th style='text-align:center'>F. Venc.</th>
-                </tr></thead>
-                <tbody>{$rowsHtml}</tbody>
-              </table>
-            </div>";
-        }
-
-        $novedadesHtml = "
-<div class='novedades-section'>
-  <div class='novedades-header'>NOVEDADES DE RECEPCI&Oacute;N</div>
-  <table style='table-layout:fixed;width:100%;'>
-    <colgroup><col style='width:12%;'><col style='width:38%;'><col style='width:10%;'><col style='width:40%;'></colgroup>
-    <thead><tr><th>C&oacute;digo</th><th>Descripci&oacute;n</th><th style='text-align:right;'>Cantidad</th><th>Motivo</th></tr></thead>
-    <tbody>
-      <tr style='height:22px'><td></td><td></td><td></td><td></td></tr>
-      <tr style='height:22px'><td></td><td></td><td></td><td></td></tr>
-      <tr style='height:22px'><td></td><td></td><td></td><td></td></tr>
-      <tr style='height:22px'><td></td><td></td><td></td><td></td></tr>
-      <tr style='height:22px'><td></td><td></td><td></td><td></td></tr>
-    </tbody>
-  </table>
-</div>";
+        $logoHtml      = $this->remisionLogoHtml($empNombre);
+        $amb           = $this->remisionAmbientesHtml($rows);
+        $ambientesHtml = $amb['html'];
+        $totalCajas    = $amb['cj'];
+        $totalUnd      = $amb['und'];
+        $agotadosHtml  = $this->remisionAgotadosHtml($ordenIds);
+        $novedadesHtml = $this->remisionNovedadesHtml();
+        $css           = $this->remisionCss();
 
         $html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'>
 <title>Remisi&#243;n &mdash; " . htmlspecialchars($sucursal) . "</title>
-<style>
-  @page{size:A4 portrait;margin:15mm 18mm}
-  @media print{.no-print{display:none!important} body{margin:0}}
-  body{font-family:Arial,sans-serif;font-size:10.5px;color:#1a1a1a;margin:0;padding:10px}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:8px;margin-bottom:10px}
-  .header-left p{margin:0;font-size:9.5px;color:#555}
-  .header-right{text-align:right;font-size:10px;color:#333}
-  .info-grid{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 20px;margin-bottom:10px;background:#f8fafc;padding:6px 12px;border-radius:4px;border:1px solid #e2e8f0;page-break-after:avoid}
-  .info-grid .campo{white-space:nowrap;font-size:10.5px;color:#1e293b}
-  .info-grid .lbl{font-weight:700;font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:.3px;margin-right:4px}
-  .ambientes-grid{display:grid;grid-template-columns:1fr;gap:10px}
-  .ambiente-block{border:1px solid #cbd5e1;border-radius:4px;overflow:hidden;page-break-inside:avoid}
-  .ambiente-header{background:#000;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.2px}
-  table{width:100%;border-collapse:collapse}
-  th,td{border:1px solid #e2e8f0;padding:4px 6px;font-size:9.5px;text-align:left;vertical-align:middle}
-  th{background:#f1f5f9;font-weight:700;color:#334155;white-space:nowrap}
-  tr:nth-child(even) td{background:#f8fafc}
-  .totales{border-top:3px solid #1e3a5f;padding:8px 0;font-weight:700;font-size:12px;margin-top:10px;color:#1e3a5f}
-  .novedades-section{margin-top:12px;border:2px solid #1e3a5f;border-radius:4px;overflow:hidden;page-break-inside:avoid}
-  .novedades-header{background:#1e3a5f;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.3px}
-  .novedades-section td{height:22px}
-  .firmas{display:grid;grid-template-columns:1fr 1fr 1fr;gap:40px;margin-top:30px;page-break-inside:avoid}
-  .firma-line{border-top:2px solid #1e3a5f;padding-top:5px;text-align:center;font-size:10px;color:#334155}
-  .no-print{padding:8px 0;margin-bottom:10px}
-  .no-print button{padding:7px 20px;font-size:13px;cursor:pointer;background:#1e3a5f;color:#fff;border:none;border-radius:6px;margin-right:8px}
-</style></head><body>
+<style>{$css}</style></head><body>
 <div class='no-print'>
   <button onclick='window.print()'>&#128424; Imprimir / Guardar PDF</button>
   <small style='color:#666'>Usa &ldquo;Guardar como PDF&rdquo; en el di&#225;logo de impresi&#243;n para exportar</small>
@@ -6858,21 +6621,22 @@ class PickingController extends BaseController
     <p>REMISI&Oacute;N DE CERTIFICACI&Oacute;N</p>
   </div>
   <div class='header-right'>
-    <strong>" . htmlspecialchars($sucursal) . "</strong><br>
-    Fecha pedido: {$fechaStr}
+    <strong>Planilla: {$planillaStr}</strong><br>
+    Fecha: {$fechaStr}
   </div>
 </div>
 <div class='info-grid'>
-  <span class='campo'><span class='lbl'>Planilla:</span>{$planillaStr}</span>
   <span class='campo'><span class='lbl'>Cliente / Sucursal:</span>" . htmlspecialchars($sucursal) . "</span>
+  <span class='campo'><span class='lbl'>Planilla:</span>{$planillaStr}</span>
   <span class='campo'><span class='lbl'>Pedido(s):</span>{$numOrdenes}</span>
   <span class='campo'><span class='lbl'>Certificador:</span>{$certNombre}</span>
-  <span class='campo'><span class='lbl'>Fecha pedido:</span>{$fechaStr}</span>
+  <span class='campo'><span class='lbl'>Fecha:</span>{$fechaStr}</span>
   <span class='campo'><span class='lbl'>Total unidades:</span>{$totalUnd}</span>
 </div>
 <div class='ambientes-grid'>{$ambientesHtml}</div>
+{$agotadosHtml}
 {$novedadesHtml}
-<div class='totales'>TOTAL GENERAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>
+<div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>
 <div class='firmas'>
   <div class='firma-line'>Firma Certificador<br><strong>{$certNombre}</strong></div>
   <div class='firma-line'>Firma Transportador</div>
