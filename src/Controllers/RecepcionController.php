@@ -829,8 +829,21 @@ class RecepcionController extends BaseController
                 ->value('id');
         }
         if (!$ubicacionDestinoId) {
+            // Patio SIEMPRE tiene prioridad: PutawayController::listarPatio() (módulo
+            // "Ubicar") solo muestra inventario con tipo_ubicacion='Patio'. El whereIn
+            // combinado de antes no garantizaba ese orden (sin ORDER BY, ->value('id')
+            // devuelve la primera fila que traiga la BD) — en esta sucursal la primera
+            // coincidencia real era una ubicación de Picking, así que la mercancía
+            // recibida sin ODC quedaba disponible para picking sin pasar nunca por
+            // Ubicar, y el auxiliar nunca veía el registro para asignarle ubicación final.
             $ubicacionDestinoId = Ubicacion::where('sucursal_id', $user->sucursal_id)
-                ->whereIn('tipo_ubicacion', ['Patio', 'Recepcion', 'Recepción', 'Recepcion/Entrada', 'Piso', 'Picking'])
+                ->where('tipo_ubicacion', 'Patio')
+                ->value('id');
+        }
+        if (!$ubicacionDestinoId) {
+            // Fallback solo si la sucursal no tiene ninguna ubicación de tipo Patio.
+            $ubicacionDestinoId = Ubicacion::where('sucursal_id', $user->sucursal_id)
+                ->whereIn('tipo_ubicacion', ['Recepcion', 'Recepción', 'Recepcion/Entrada', 'Piso', 'Picking'])
                 ->value('id');
         }
         if (!$ubicacionDestinoId) {
