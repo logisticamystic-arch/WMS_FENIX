@@ -145,7 +145,10 @@ WMS_MODULES.almacenamiento = {
     const label = palletKey !== '__sin_pallet__' ? `Pallet #${palletKey}` : 'artículos sin pallet';
     let ubis = [];
     try {
-      const ru = await API.get('/param/ubicaciones', 'activo=1&tipo_ubicacion=Almacenamiento&limit=500');
+      // Antes filtraba por tipo_ubicacion=Almacenamiento (exact match en el backend) —
+      // esta sucursal no tiene ninguna ubicación de ese tipo (solo Patio y Picking), así
+      // que el combo de destino siempre salía vacío. Se trae todo y se excluye Patio aquí.
+      const ru = await API.get('/param/ubicaciones', 'activo=1&limit=500');
       ubis = (ru.data || ru || []).filter(u => u.tipo_ubicacion !== 'Patio');
     } catch (e) {}
 
@@ -339,16 +342,27 @@ WMS_MODULES.almacenamiento = {
 
     let ubis = [];
     try {
-      const ru = await API.get('/param/ubicaciones', 'activo=1&tipo_ubicacion=Almacenamiento&limit=500');
+      // Antes filtraba por tipo_ubicacion=Almacenamiento (exact match en el backend) —
+      // esta sucursal no tiene ninguna ubicación de ese tipo (solo Patio y Picking), así
+      // que el combo de destino siempre salía vacío. Se trae todo y se excluye Patio aquí.
+      const ru = await API.get('/param/ubicaciones', 'activo=1&limit=500');
       ubis = (ru.data || ru || []).filter(u => u.tipo_ubicacion !== 'Patio');
     } catch (e) {}
 
     const palletInfo = item.numero_pallet ? `Pallet #${item.numero_pallet} · ` : '';
+    // Disponible real = cantidad - cantidad_reservada. Antes se mostraba y se
+    // usaba como máximo la cantidad cruda, así que un item con todo (o parte)
+    // reservado mostraba "Disponible: 42000" pero el traslado fallaba con
+    // "Disponible: 0" al validar contra el stock realmente libre.
+    const reservada  = parseFloat(item.cantidad_reservada || 0);
+    const disponible = Math.max(0, parseFloat(item.cantidad || 0) - reservada);
+    this._currentPutawayItem = { ...item, _disponible: disponible };
     WMS.showModal(`Ubicar: ${WMS.esc(item.producto_nombre || '-')}`, `
       <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:16px;font-size:13px;">
         <div style="font-weight:700;color:#1e40af;margin-bottom:4px;">${palletInfo}${WMS.esc(item.codigo_interno || '')} — ${WMS.esc(item.producto_nombre)}</div>
-        <div style="display:flex;gap:20px;color:#1d4ed8;">
-          <span><i class="fa-solid fa-layer-group"></i> Disponible: <strong>${WMS.formatNum(item.cantidad)}</strong> ${WMS.esc(item.unidad_medida||'und')}</span>
+        <div style="display:flex;gap:20px;color:#1d4ed8;flex-wrap:wrap;">
+          <span><i class="fa-solid fa-layer-group"></i> Disponible: <strong>${WMS.formatNum(disponible)}</strong> ${WMS.esc(item.unidad_medida||'und')}</span>
+          ${reservada > 0 ? `<span style="color:#d97706;"><i class="fa-solid fa-lock"></i> Reservado: <strong>${WMS.formatNum(reservada)}</strong></span>` : ''}
           <span><i class="fa-solid fa-tag"></i> Lote: <strong>${WMS.esc(item.lote||'N/A')}</strong></span>
           <span><i class="fa-solid fa-location-dot"></i> Origen: <strong>${WMS.esc(item.ubicacion_codigo||'Patio')}</strong></span>
         </div>
@@ -361,16 +375,17 @@ WMS_MODULES.almacenamiento = {
         </div>
         <div class="form-group">
           <label class="form-label">Cantidad a Ubicar <span class="required">*</span></label>
-          <input id="ub-cantidad" type="number" class="form-control" min="1" max="${item.cantidad}" value="${item.cantidad}" placeholder="0">
-          <div style="font-size:.7rem;color:#64748b;margin-top:3px;">Máximo: ${WMS.formatNum(item.cantidad)} ${WMS.esc(item.unidad_medida||'und')}</div>
+          <input id="ub-cantidad" type="number" class="form-control" min="1" max="${disponible}" value="${disponible}" placeholder="0" ${disponible<=0?'disabled':''}>
+          <div style="font-size:.7rem;color:#64748b;margin-top:3px;">Máximo: ${WMS.formatNum(disponible)} ${WMS.esc(item.unidad_medida||'und')}</div>
         </div>
         <div class="form-group">
           <label class="form-label">Fecha Vencimiento</label>
           <input id="ub-fv" type="date" class="form-control" value="${item.fecha_vencimiento||''}">
         </div>
-      </div>`,
+      </div>
+      ${disponible<=0 ? `<div style="margin-top:10px;padding:10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;color:#991b1b;font-size:.8rem;"><i class="fa-solid fa-triangle-exclamation"></i> Todo el stock de esta partida está reservado — no hay cantidad disponible para trasladar.</div>` : ''}`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-primary" onclick="WMS_MODULES.almacenamiento.confirmarUbicacion()"><i class="fa-solid fa-map-pin"></i> Confirmar Ubicación</button>`);
+       <button class="btn btn-primary" onclick="WMS_MODULES.almacenamiento.confirmarUbicacion()" ${disponible<=0?'disabled':''}><i class="fa-solid fa-map-pin"></i> Confirmar Ubicación</button>`);
   },
 
   async confirmarUbicacion() {
@@ -380,10 +395,11 @@ WMS_MODULES.almacenamiento = {
     const ubi_id  = document.getElementById('ub-ubicacion-id')?.value;
     const cantidad = parseFloat(document.getElementById('ub-cantidad')?.value || 0);
     const fv       = document.getElementById('ub-fv')?.value;
+    const disponible = item._disponible ?? item.cantidad;
 
     if (!ubi_id) return WMS.toast('warning', 'Seleccione una ubicación de destino');
     if (cantidad <= 0) return WMS.toast('warning', 'La cantidad debe ser mayor a cero');
-    if (cantidad > item.cantidad) return WMS.toast('warning', `La cantidad no puede superar ${WMS.formatNum(item.cantidad)}`);
+    if (cantidad > disponible) return WMS.toast('warning', `La cantidad no puede superar ${WMS.formatNum(disponible)} (stock reservado excluido)`);
     if (!item.ubicacion_id) return WMS.toast('error', 'El ítem no tiene ubicación de origen registrada');
 
     try {
