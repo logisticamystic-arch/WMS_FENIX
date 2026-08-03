@@ -608,27 +608,28 @@ const MWMS = {
             ${d.foto_evidencia ? `<div style="margin-bottom:8px;"><img src="/WMS_FENIX/public/${d.foto_evidencia}" style="max-width:100%;border-radius:6px;max-height:150px;object-fit:cover;"></div>` : ''}
             <input type="file" id="cal_foto" accept="image/*" capture="environment" class="m-input-full" style="padding:10px 4px;">
           </div>
-          
+
+          <div class="op-card" style="border:2px solid ${d.conforme==='Inconforme'?'#dc2626':'#0f766e'};">
+            <div class="m-label"><i class="fa-solid fa-clipboard-check"></i> Veredicto General <span style="color:#ef4444">*</span></div>
+            <div style="display:flex;gap:10px;margin-top:6px;">
+              <button id="btn_conforme_C" onclick="MWMS._setConformeToggle('Conforme')"
+                class="m-btn ${d.conforme==='Conforme'?'success':'secondary'} full" style="flex:1;padding:12px;font-weight:800;">
+                <i class="fa-solid fa-check"></i> CONFORME
+              </button>
+              <button id="btn_conforme_NC" onclick="MWMS._setConformeToggle('Inconforme')"
+                class="m-btn ${d.conforme==='Inconforme'?'danger':'secondary'} full" style="flex:1;padding:12px;font-weight:800;">
+                <i class="fa-solid fa-triangle-exclamation"></i> INCONFORME
+              </button>
+            </div>
+            <input type="hidden" id="cal_conforme" value="${this.esc(d.conforme||'')}">
+          </div>
+
           <div class="op-card">
-            <div class="m-label"><i class="fa-solid fa-signature"></i> Firma del Responsable</div>
+            <div class="m-label"><i class="fa-solid fa-signature"></i> Firma del Responsable <span style="color:#ef4444">*</span></div>
             <div style="border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;background:#fafafa;">
-              <canvas id="cal-firma-canvas" width="400" height="150" style="width:100%;display:block;touch-action:none;"></canvas>
+              <canvas id="cal-firma-canvas" width="400" height="150" style="width:100%;height:150px;display:block;touch-action:none;"></canvas>
             </div>
             <button onclick="MWMS._calLimpiarFirma()" class="m-btn secondary" style="width:100%;margin-top:8px;padding:6px;"><i class="fa-solid fa-eraser"></i> Limpiar Firma</button>
-          </div>
-
-          <div class="op-card">
-            <div class="m-label" style="color:#b45309;"><i class="fa-solid fa-truck"></i> Evaluación Transporte</div>
-            ${renderToggle('trans_temperatura', 'Temperatura Transp.', d.trans_temperatura)}
-            ${renderToggle('trans_limpieza', 'Limpieza', d.trans_limpieza)}
-            ${renderToggle('trans_concepto_sanitario', 'Concepto Sanitario', d.trans_concepto_sanitario)}
-            ${renderToggle('trans_carnet_manipulacion', 'Carnet Manipulación', d.trans_carnet_manipulacion)}
-          </div>
-
-          <div class="op-card">
-            <div class="m-label"><i class="fa-solid fa-camera"></i> Evidencia Fotográfica</div>
-            ${d.foto_evidencia ? `<div style="margin-bottom:8px;"><img src="/WMS_FENIX/public/${d.foto_evidencia}" style="max-width:100%;border-radius:6px;max-height:150px;object-fit:cover;"></div>` : ''}
-            <input type="file" id="cal_foto" accept="image/*" capture="environment" class="m-input-full" style="padding:10px 4px;">
           </div>
 
           <div style="display:flex;gap:10px;margin-top:15px;">
@@ -636,6 +637,88 @@ const MWMS = {
             <button class="m-btn primary full" onclick="MWMS._saveCalidadSinOdc()" style="flex:2;background:#0d9488;border-color:#0f766e;"><i class="fa-solid fa-save"></i> Guardar Calidad</button>
           </div>
         </div>`;
+      this._calInitFirma(d.firma_responsable);
+  },
+
+  _setConformeToggle(val) {
+      document.getElementById('cal_conforme').value = val;
+      const btnC  = document.getElementById('btn_conforme_C');
+      const btnNC = document.getElementById('btn_conforme_NC');
+      btnC.className  = 'm-btn ' + (val === 'Conforme'  ? 'success' : 'secondary') + ' full';
+      btnNC.className = 'm-btn ' + (val === 'Inconforme' ? 'danger'  : 'secondary') + ' full';
+  },
+
+  // ── Firma (canvas) ───────────────────────────────────────────────────
+  _calCanvas: null,
+  _calCtx: null,
+  _calHasDrawn: false,
+  _calDrawing: false,
+
+  _calInitFirma(firmaExistente) {
+      const canvas = document.getElementById('cal-firma-canvas');
+      if (!canvas) return;
+      // Resolución interna acorde al tamaño real renderizado (evita firma borrosa/desalineada)
+      const rect = canvas.getBoundingClientRect();
+      canvas.width  = rect.width  || 400;
+      canvas.height = rect.height || 150;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fafafa';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.lineWidth   = 2;
+      ctx.lineCap     = 'round';
+      ctx.strokeStyle = '#1e293b';
+      this._calCanvas   = canvas;
+      this._calCtx      = ctx;
+      this._calHasDrawn = false;
+      this._calDrawing  = false;
+
+      if (firmaExistente) {
+          const img = new Image();
+          img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          img.src = firmaExistente;
+          this._calHasDrawn = true;
+      }
+
+      const posDesde = (e) => {
+          const r = canvas.getBoundingClientRect();
+          const p = e.touches ? e.touches[0] : e;
+          return { x: p.clientX - r.left, y: p.clientY - r.top };
+      };
+      const empezar = (e) => {
+          e.preventDefault();
+          this._calDrawing = true;
+          this._calHasDrawn = true;
+          const { x, y } = posDesde(e);
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+      };
+      const mover = (e) => {
+          if (!this._calDrawing) return;
+          e.preventDefault();
+          const { x, y } = posDesde(e);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+      };
+      const terminar = () => { this._calDrawing = false; };
+
+      canvas.onmousedown  = empezar;
+      canvas.onmousemove  = mover;
+      canvas.onmouseup    = terminar;
+      canvas.onmouseleave = terminar;
+      canvas.ontouchstart = empezar;
+      canvas.ontouchmove  = mover;
+      canvas.ontouchend   = terminar;
+  },
+
+  _calIsFirmaEmpty() {
+      return !this._calHasDrawn;
+  },
+
+  _calLimpiarFirma() {
+      if (!this._calCtx || !this._calCanvas) return;
+      this._calCtx.fillStyle = '#fafafa';
+      this._calCtx.fillRect(0, 0, this._calCanvas.width, this._calCanvas.height);
+      this._calHasDrawn = false;
   },
 
   _setCalToggle(id, val) {
@@ -655,19 +738,21 @@ const MWMS = {
       const recId = this._sinOdc.recepcionId;
       if (!recId) return;
 
+      const conforme = document.getElementById('cal_conforme')?.value || '';
+      if (!conforme) return this.toast('Seleccione Conforme o Inconforme', 'warning');
+      if (this._calIsFirmaEmpty()) return this.toast('Falta la firma del responsable', 'warning');
+
       const fd = new FormData();
       fd.append('factura', document.getElementById('cal_factura')?.value.trim() || '');
       fd.append('trans_placa', document.getElementById('cal_trans_placa')?.value.trim() || '');
-      
+      fd.append('conforme', conforme);
+      fd.append('firma_responsable', this._calCanvas.toDataURL('image/png'));
+
       const toggles = ['trans_temperatura','trans_limpieza','trans_concepto_sanitario','trans_carnet_manipulacion'];
       toggles.forEach(id => {
           const v = document.getElementById('cal_'+id)?.value;
           if (v) fd.append(id, v);
       });
-
-      if (!this._calIsFirmaEmpty()) {
-          fd.append('firma_responsable', this._calCanvas.toDataURL('image/png'));
-      }
 
       const fileInput = document.getElementById('cal_foto');
       if (fileInput.files.length > 0) {

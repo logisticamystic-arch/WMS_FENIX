@@ -22,7 +22,9 @@ class RecepcionCalidad extends Model
         'trans_limpieza',
         'trans_concepto_sanitario',
         'trans_carnet_manipulacion',
-        'foto_evidencia'
+        'foto_evidencia',
+        'firma_responsable',
+        'conforme',
     ];
 
     public function recepcion()

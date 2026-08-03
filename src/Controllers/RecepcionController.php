@@ -2431,7 +2431,8 @@ public function getControlPanelData(Request $request, Response $response): Respo
         $calidad->trans_concepto_sanitario = $data['trans_concepto_sanitario'] ?? $calidad->trans_concepto_sanitario;
         $calidad->trans_carnet_manipulacion = $data['trans_carnet_manipulacion'] ?? $calidad->trans_carnet_manipulacion;
         $calidad->firma_responsable = $data['firma_responsable'] ?? $calidad->firma_responsable;
-        
+        $calidad->conforme = $data['conforme'] ?? $calidad->conforme;
+
         if ($fotoPath) {
             $calidad->foto_evidencia = $fotoPath;
         }
