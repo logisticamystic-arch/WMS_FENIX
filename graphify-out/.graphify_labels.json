@@ -311,7 +311,6 @@
   "309": "ForecastController",
   "310": "SystemController",
   "311": "AlertasController",
-  "312": "ExpiryGuard",
   "313": "126_fix_factor_udm_miel_trufada.php",
   "314": "WMS Fénix phoenix logo",
   "315": "ImportExportController",
@@ -320,7 +319,6 @@
   "318": "InvGeneralAsignacion",
   "319": "_cargarStockGeneral",
   "320": "verEventoTomaFisica",
-  "321": "CrossDockController",
   "322": "GET /aprobaciones/vencimiento/pendientes",
   "323": "POST /devoluciones/{id}/aprobar",
   "324": "Warehouse/truck app icon (192x192)",
@@ -329,7 +327,6 @@
   "327": "SesionInventario",
   "328": "InvGeneralEvento",
   "329": "PickingDetalle",
-  "330": "ExpiryGuard",
   "331": "PermisoPersonalController",
   "332": "TV Dashboard 360 Design Doc"
 }
