@@ -131,13 +131,11 @@
   "129": "Marcas Management",
   "130": "ConteoInventario",
   "131": "Migration Export Script",
-  "132": "AlertasController",
   "133": "Base Service & Tenant Context",
   "134": "Migration: Estado Certificación",
   "135": "Migration: Miscelaneos Tables",
   "136": "Migration: Bloqueo Productos",
   "137": "Cache Helpers & Auto Refresh",
-  "138": "AlertasController",
   "139": "FefoEngine",
   "140": "Stock Dashboard Charts",
   "141": "DataResetController",
@@ -146,7 +144,6 @@
   "144": "Citas Scheduling",
   "145": "NotificacionesController",
   "146": "Service Worker Caching",
-  "147": "ImportExportController",
   "148": "Log Rotation",
   "149": "Expiry Guard Approval",
   "150": "TV Dashboard Picking",
@@ -312,7 +309,6 @@
   "310": "SystemController",
   "311": "AlertasController",
   "312": "ExpiryGuard",
-  "313": "Impresora",
   "314": "WMS Fénix phoenix logo",
   "315": "ImportExportController",
   "316": "120_create_traspaso_documentos_tables.php",
@@ -327,6 +323,5 @@
   "325": "Warehouse/truck app icon (512x512)",
   "326": "124_create_sesion_icg_lineas_table.php",
   "327": "SesionInventario",
-  "328": "InvGeneralEvento",
-  "329": "SystemController"
+  "328": "InvGeneralEvento"
 }

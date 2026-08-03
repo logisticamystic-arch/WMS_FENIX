@@ -18,7 +18,7 @@ return new class {
             ->update([
                 'factor_udm'       => 1100,
                 'unidad_contenido' => 'GR',
-                'updated_at'       => now(),
+                'updated_at'       => date('Y-m-d H:i:s'),
             ]);
     }
 
