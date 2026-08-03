@@ -794,13 +794,18 @@ class RecepcionController extends BaseController
             return $this->json($response, $venceError, $status);
         }
 
-        // Buscar o crear Recepción sin ODC del día en Borrador para este auxiliar
+        // Buscar o crear Recepción sin ODC del día en Borrador para este auxiliar.
+        // Faltaba el whereDate: sin él, un Borrador que un auxiliar dejó abierto (sin
+        // cerrar) cualquier día anterior se reutilizaba indefinidamente — las capturas
+        // de HOY quedaban guardadas con fecha_movimiento de ese día viejo, y por eso
+        // nunca aparecían en las pantallas filtradas por "Hoy" (escritorio, TV).
         $hoy = date('Y-m-d');
         $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereNull('odc_id')
             ->where('auxiliar_id', $user->id)
             ->where('estado', 'Borrador')
+            ->whereDate('fecha_movimiento', $hoy)
             ->first();
 
         if (!$recepcion) {
