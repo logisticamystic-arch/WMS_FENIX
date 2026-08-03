@@ -670,8 +670,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/despacho.js": {
-    "mtime": 1785588473.5116265,
-    "ast_hash": "f3e3e8db3a4ce685c7a4aaa55ba18b95",
+    "mtime": 1785772987.0264528,
+    "ast_hash": "aa6b1298eab1d2a9a489caf213e05398",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/devoluciones.js": {
@@ -845,9 +845,9 @@
     "semantic_hash": "171176c1d47397caf03ad76d421978db"
   },
   "src/Controllers/BaseController.php": {
-    "mtime": 1781624626.5727184,
-    "ast_hash": "5663aca6fc3d5421cd519cf5cc5d7d27",
-    "semantic_hash": "5663aca6fc3d5421cd519cf5cc5d7d27"
+    "mtime": 1785776022.0929842,
+    "ast_hash": "13953f81d0912b8d164ee2fc05d3982a",
+    "semantic_hash": ""
   },
   "src/Controllers/BloqueoController.php": {
     "mtime": 1784896167.7447388,
@@ -945,8 +945,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/PackingController.php": {
-    "mtime": 1785589673.90117,
-    "ast_hash": "c5184012d08081458dffeb582300ed6e",
+    "mtime": 1785776099.7880929,
+    "ast_hash": "57d99018b792a77b45955e6fd8070d98",
     "semantic_hash": ""
   },
   "src/Controllers/ParametrosController.php": {
@@ -960,8 +960,8 @@
     "semantic_hash": "e5d5c725bce4a13b3afbb9666f3fe95a"
   },
   "src/Controllers/PickingController.php": {
-    "mtime": 1785587197.9783373,
-    "ast_hash": "fcb006b44dfefeacbd8f5706a796848e",
+    "mtime": 1785775328.5244,
+    "ast_hash": "7f487a772186bc1ac41e31dbaaed8609",
     "semantic_hash": ""
   },
   "src/Controllers/PlanillaController.php": {
