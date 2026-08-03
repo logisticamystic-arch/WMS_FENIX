@@ -5,9 +5,9 @@
     "semantic_hash": "365a95d6f7d0bf4e23ca6e8bab7f276f"
   },
   "bootstrap.php": {
-    "mtime": 1785756574.919907,
-    "ast_hash": "0ddf8ab7981b08bb77d886fd4af785ec",
-    "semantic_hash": ""
+    "mtime": 1782305000.7254963,
+    "ast_hash": "a29579e3f0dcf34da1e463c115c956ae",
+    "semantic_hash": "a29579e3f0dcf34da1e463c115c956ae"
   },
   "composer.json": {
     "mtime": 1780131428.0,
@@ -885,9 +885,9 @@
     "semantic_hash": "3d2f08121c2ebc07639fe57aea467322"
   },
   "src/Controllers/DashboardTVController.php": {
-    "mtime": 1785756410.777787,
-    "ast_hash": "c90c69e332ee025cc444097cfa38a337",
-    "semantic_hash": ""
+    "mtime": 1783688354.029304,
+    "ast_hash": "03222002a2c96f57cc9082e310859c89",
+    "semantic_hash": "03222002a2c96f57cc9082e310859c89"
   },
   "src/Controllers/DespachoController.php": {
     "mtime": 1785158654.7154856,
@@ -1737,11 +1737,6 @@
   "brain/361a6913-de57-4736-89b7-d89234229562/scratch/test_icg_upload.php": {
     "mtime": 1785459473.6891305,
     "ast_hash": "4fce5b5963d3f1c410231153d090df08",
-    "semantic_hash": ""
-  },
-  "database/migrations/125_widen_ubicaciones_and_seed_ambientes.php": {
-    "mtime": 1785756522.0443816,
-    "ast_hash": "7136069176f52a5f5589d0146d900daa",
     "semantic_hash": ""
   }
 }
