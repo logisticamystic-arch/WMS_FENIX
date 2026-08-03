@@ -190,10 +190,13 @@ class PutawayController extends BaseController
             $cajasMove = $cajasReq  ?? (int)floor($cantidad / $upc);
             $saldosMove= $saldosReq ?? round(fmod($cantidad, (float)$upc), 4);
 
-            // Verificar ubicación destino pertenece a empresa/sucursal
+            // Verificar ubicación destino pertenece a empresa/sucursal.
+            // Antes solo aceptaba tipo_ubicacion='Almacenamiento', pero esta sucursal
+            // no tiene NINGUNA ubicación de ese tipo (solo Patio y Picking) — el módulo
+            // Ubicar nunca podía encontrar un destino válido y siempre rechazaba con 404.
             $destino = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
-                ->where('tipo_ubicacion', 'Almacenamiento')
+                ->whereIn('tipo_ubicacion', ['Almacenamiento', 'Picking'])
                 ->find($ubicacionDestId);
 
             if (!$destino) {
