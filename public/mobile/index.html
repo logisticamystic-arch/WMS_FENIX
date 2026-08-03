@@ -1115,12 +1115,15 @@ const MWMS = {
         </div>
         
         <div style="display:flex;gap:10px;">
-          <button class="m-btn secondary" style="flex:1;" onclick="MWMS.closeModal()">Cancelar</button>
+          <button class="m-btn secondary" style="flex:1;" onclick="Swal.close()">Cancelar</button>
           <button class="m-btn success" style="flex:1;" onclick="MWMS._guardarSinOdc()"><i class="fa-solid fa-check"></i> Confirmar</button>
         </div>
       </div>
     `;
-    this.showModal(html);
+    // Este bundle usa SweetAlert2 (Swal.fire/Swal.close) para diálogos — no existe
+    // this.showModal()/this.closeModal() en MWMS (eran llamadas a métodos
+    // inexistentes, probablemente copiadas del WMS.showModal() de escritorio).
+    Swal.fire({ html, showConfirmButton: false, showCloseButton: true, width: 'min(420px, 92vw)' });
   },
 
   _setPcalToggle(id, val) {
@@ -1209,7 +1212,7 @@ const MWMS = {
       // Reset para siguiente captura (mantener producto y pallet)
       s.fechaAuto    = '';
       s.fechaAutoRaw = '';
-      this.closeModal();
+      Swal.close(); // no-op si no hay modal abierto (captura por QR sin diálogo previo)
       this.toast('Captura registrada ✓', 'success');
       this._renderRecSinOdc();
       
