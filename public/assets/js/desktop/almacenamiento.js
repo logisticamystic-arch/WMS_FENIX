@@ -449,12 +449,20 @@ WMS_MODULES.almacenamiento = {
         numero_pallet:        item.numero_pallet || null,
       });
       if (r.error) { WMS.toast('error', r.message); return; }
-      const restante = item.cantidad - cantidad;
+      const restante = Math.round((item.cantidad - cantidad) * 1000) / 1000;
       WMS.closeModal('generic-modal');
+      // Regla de oro 2.4: reportar en Cajas + Saldos, no solo UND/TOTAL.
+      const fmtCajasSaldos = (cant) => {
+        const factor = item._factor || 1;
+        if (!item._usaCajas || factor <= 1) return `${WMS.formatNum(cant)} und`;
+        const cj = Math.floor(cant / factor);
+        const sl = Math.round((cant - cj * factor) * 1000) / 1000;
+        return `${cj} caja${cj !== 1 ? 's' : ''}${sl > 0 ? ` + ${sl} sueltos` : ''} (${WMS.formatNum(cant)} und)`;
+      };
       if (restante > 0) {
-        WMS.toast('success', `${WMS.formatNum(cantidad)} und ubicadas. Quedan ${WMS.formatNum(restante)} und en patio.`);
+        WMS.toast('success', `Ubicado: ${fmtCajasSaldos(cantidad)}. Faltan por ubicar: ${fmtCajasSaldos(restante)}.`);
       } else {
-        WMS.toast('success', 'Mercancía ubicada completamente');
+        WMS.toast('success', `Mercancía ubicada completamente: ${fmtCajasSaldos(cantidad)}.`);
       }
       this.show_ubicar();
     } catch (e) { WMS.toast('error', e.message || 'Error al ubicar'); }

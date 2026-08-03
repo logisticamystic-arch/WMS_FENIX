@@ -1880,10 +1880,20 @@ const MWMS = {
         const _movido   = parseFloat(this._locationData.cantidad);
         const _total    = parseFloat(this._locationData.item.cantidad);
         const _pendiente = Math.round((_total - _movido) * 1000) / 1000;
+        // Regla de oro 2.4 (WMS_FENIX_BRIEF.md): reportar en Cajas + Saldos, no
+        // solo UND/TOTAL — factor_udm tiene prioridad sobre unidades_caja.
+        const _it = this._locationData.item;
+        const _factor = parseFloat(_it.factor_udm || 0) > 0 ? parseFloat(_it.factor_udm) : Math.max(1, parseInt(_it.unidades_caja || 1));
+        const _fmtCS = (cant) => {
+          if (_factor <= 1) return `${cant} UND/T`;
+          const cj = Math.floor(cant / _factor);
+          const sl = Math.round((cant - cj * _factor) * 1000) / 1000;
+          return `${cj} caja${cj !== 1 ? 's' : ''}${sl > 0 ? ` + ${sl} sueltos` : ''} (${cant} UND/T)`;
+        };
         if (_pendiente > 0) {
-          this.toast(`✔ Ubicado: ${_movido} UND/T → ${this._selectedLocation.codigo}<br><b>Pendiente: ${_pendiente} UND/T</b>`, "success");
+          this.toast(`✔ Ubicado: ${_fmtCS(_movido)} → ${this._selectedLocation.codigo}<br><b>Pendiente: ${_fmtCS(_pendiente)}</b>`, "success");
         } else {
-          this.toast(`✔ Todo ubicado: ${_movido} UND/T → ${this._selectedLocation.codigo}`, "success");
+          this.toast(`✔ Todo ubicado: ${_fmtCS(_movido)} → ${this._selectedLocation.codigo}`, "success");
         }
       }
       this.closeLocationModal();
