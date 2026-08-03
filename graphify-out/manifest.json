@@ -655,8 +655,8 @@
     "semantic_hash": "55a981fc94e0e5956e0c0af77d105af7"
   },
   "public/assets/js/desktop/almacenamiento.js": {
-    "mtime": 1785284991.8649027,
-    "ast_hash": "5fdc5d62e252788d1c4b0a442195f93d",
+    "mtime": 1785797064.715708,
+    "ast_hash": "46469fbe811221a4e4fa23455a572356",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/chat-ia.js": {
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785785927.1389017,
-    "ast_hash": "4c4b31fb78b075a121f2bf7510c20fd4",
+    "mtime": 1785797471.3298683,
+    "ast_hash": "6867608cebd9655a479994dd9d4e9b88",
     "semantic_hash": ""
   },
   "public/pitch.html": {
