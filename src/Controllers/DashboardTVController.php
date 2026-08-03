@@ -736,7 +736,8 @@ class DashboardTVController extends BaseController
                     SUM(rd.cantidad_recibida) AS cajas
                 FROM recepciones r
                 JOIN recepcion_detalles rd ON rd.recepcion_id = r.id
-                LEFT JOIN proveedores p ON p.id = r.proveedor_id
+                LEFT JOIN ordenes_compra oc ON oc.id = r.odc_id
+                LEFT JOIN proveedores p ON p.id = oc.proveedor_id
                 WHERE r.empresa_id  = :emp
                   AND r.sucursal_id = :suc
                   AND TO_CHAR(r.fecha_recepcion, 'YYYY-MM') = :mes
