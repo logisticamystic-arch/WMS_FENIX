@@ -27,6 +27,7 @@ WMS_MODULES.despacho = {
   // Filtros de fecha para certificaciones
   _certFechaInicio: null,
   _certFechaFin: null,
+  _certSearched: false, // true solo después de que el usuario aplica un filtro/búsqueda
 
   _certFechaParams() {
     const fi = this._certFechaInicio;
