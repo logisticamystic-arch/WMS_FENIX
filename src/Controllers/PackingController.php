@@ -1851,7 +1851,12 @@ class PackingController extends BaseController
 
             $this->audit($user, 'packing', 'autopack', 'packing_sesiones', $sesion->id, null, ['sucursal' => $sucursal]);
 
-            return $this->ok($res, ['sesion_id' => $sesion->id], 'Certificación automática completada exitosamente');
+            $certificadas = $ordenesAll->count();
+            $mensaje = $certificadas > 0
+                ? 'Certificación automática completada exitosamente'
+                : 'No se encontraron pedidos pendientes de certificar para la fecha indicada';
+
+            return $this->ok($res, ['sesion_id' => $sesion->id, 'certificadas' => $certificadas], $mensaje);
         });
     }
 

@@ -57,17 +57,19 @@ WMS_MODULES.despacho = {
     const ff = document.getElementById('cert-ff');
     if (fi) fi.value = this._certFechaInicio || '';
     if (ff) ff.value = this._certFechaFin    || '';
+    this._certSearched = true; // "Todo" también cuenta como búsqueda explícita del usuario
+    this.show_certificacion();
+  },
+
+  _certBuscar() {
+    this._certFechaInicio = document.getElementById('cert-fi')?.value || null;
+    this._certFechaFin    = document.getElementById('cert-ff')?.value || null;
+    this._certSearched = true;
     this.show_certificacion();
   },
 
   // ── CERTIFICACIÓN (POR SUCURSAL) ───────────────────────────────
   async show_certificacion(silent = false) {
-    // Inicializar sin filtro de fecha para mostrar todos los pedidos pendientes de certificación
-    // (null/null = modo "Todo"; el usuario puede filtrar con los botones Hoy / Esta semana)
-    if (this._certFechaInicio === null || this._certFechaInicio === undefined) {
-      this._certFechaInicio = null;
-      this._certFechaFin    = null;
-    }
     const fi = this._certFechaInicio || '';
     const ff = this._certFechaFin    || '';
 
@@ -88,7 +90,7 @@ WMS_MODULES.despacho = {
           style="font-size:11px;padding:2px 6px;border:1px solid #d1d5db;border-radius:5px;"
           onchange="WMS_MODULES.despacho._certFechaFin=this.value">
         <button class="btn btn-sm btn-primary" style="font-size:10px;padding:2px 9px;"
-          onclick="WMS_MODULES.despacho.show_certificacion()">
+          onclick="WMS_MODULES.despacho._certBuscar()">
           <i class="fa-solid fa-search"></i> Buscar
         </button>
         <button class="btn btn-sm btn-outline-secondary" style="font-size:10px;padding:2px 7px;"
@@ -98,6 +100,17 @@ WMS_MODULES.despacho = {
         <button class="btn btn-sm btn-outline-secondary" style="font-size:10px;padding:2px 7px;"
           onclick="WMS_MODULES.despacho._certSetFechaRapida('todo')">Todo</button>
       </span>`);
+
+    // No cargar nada hasta que el usuario aplique un filtro/búsqueda explícito
+    // (evita traer todo el histórico de pendientes en cada apertura del módulo).
+    if (!this._certSearched) {
+      WMS.setContent(`
+        <div style="text-align:center;padding:60px 20px;color:#94a3b8;">
+          <i class="fa-solid fa-filter" style="font-size:32px;margin-bottom:12px;display:block;"></i>
+          Seleccione un rango de fechas (o "Todo") y presione <strong>Buscar</strong> para cargar las certificaciones pendientes.
+        </div>`);
+      return;
+    }
 
     if (!silent) WMS.spinner();
     try {
@@ -1081,9 +1094,17 @@ WMS_MODULES.despacho = {
     
     WMS.spinner();
     try {
-      const fecha = this._certFechaInicio || WMS.getToday();
+      // 'all' cuando no hay filtro de fecha activo (vista "Todo"): antes esto
+      // caía en WMS.getToday(), y si los pendientes eran de otro día el backend
+      // filtraba por hoy, no encontraba nada que certificar, y aun así devolvía
+      // éxito — la sesión quedaba "Completada" sin certificar ninguna orden.
+      const fecha = this._certFechaInicio || 'all';
       const r = await API.post('/packing/autopack', { sucursal_entrega: sucursal, tipo_empaque: 'canasta', fecha: fecha });
       if (r.error) { WMS.toast('error', r.message); return; }
+      if (r.data?.certificadas === 0) {
+        WMS.toast('warning', 'No se encontraron pedidos pendientes para certificar en el rango de fechas seleccionado.');
+        return;
+      }
       WMS.toast('success', 'Certificación automática completada');
       this.show_certificacion(); // recargar
     } catch(e) {
