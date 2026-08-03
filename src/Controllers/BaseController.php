@@ -5,6 +5,7 @@ namespace App\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Capsule\Manager as Capsule;
 use App\Helpers\AuditLogger;
 use App\Helpers\ExcelExporter;
 use App\Helpers\TenantContext;
@@ -317,5 +318,209 @@ abstract class BaseController
     protected function isPg(): bool
     {
         return \Illuminate\Database\Capsule\Manager::connection()->getDriverName() === 'pgsql';
+    }
+
+    // ── Remisión — generador compartido ─────────────────────────────────────
+    // Antes existían 3 generadores de remisión independientes (PackingController
+    // ::getRemision(), PickingController::certRemisionMultiple()/certRemisionDirecta())
+    // con columnas, secciones y numeración distintas — la misma orden podía salir
+    // impresa con un formato distinto según qué endpoint la generara. Estos métodos
+    // son la única fuente de verdad del contenido de la remisión; los 3 endpoints
+    // solo difieren en CÓMO seleccionan las órdenes/ítems, no en cómo se ven.
+
+    /**
+     * Nombre comercial de la empresa para el encabezado de la remisión.
+     * La tabla empresas usa razon_social, no nombre.
+     */
+    protected function remisionEmpresaNombre(int $empresaId): string
+    {
+        $empresa = Capsule::table('empresas')->find($empresaId);
+        return ($empresa->razon_social ?? null) ?: 'WMS Fénix';
+    }
+
+    /**
+     * Logo embebido en base64 (evita problemas de ruta relativa en la ventana
+     * de impresión); si no existe el archivo, cae al nombre de la empresa en texto.
+     */
+    protected function remisionLogoHtml(string $empNombre): string
+    {
+        $logoFile = dirname(__DIR__, 2) . '/logo.jpg';
+        return file_exists($logoFile)
+            ? "<img src='data:image/jpeg;base64," . base64_encode(file_get_contents($logoFile)) . "' style='height:52px;object-fit:contain;display:block;margin-bottom:4px;' alt='Logo'>"
+            : "<strong style='font-size:16px;color:#1e3a5f;'>" . htmlspecialchars($empNombre) . "</strong>";
+    }
+
+    /**
+     * Tabla de ítems agrupada por ambiente (Código, Producto, Lote, Cajas,
+     * Saldo, Und/Total, F.Venc). Cada item debe traer: codigo, nombre,
+     * unidades_caja, cantidad (unidades reales). Opcionalmente cantidad_cajas
+     * y saldo (conteo físico real, p.ej. de packing_items) — si vienen, tienen
+     * prioridad sobre el cálculo floor/mod; si no, se calculan a partir de
+     * unidades_caja. lote y fecha_vencimiento son opcionales (se muestran '-').
+     *
+     * @param iterable $grouped  Colección/array indexado por nombre de ambiente.
+     * @return array{html:string, cj:float, und:float}
+     */
+    protected function remisionAmbientesHtml($grouped): array
+    {
+        $totalUnd = 0; $totalCajas = 0; $html = '';
+        foreach ($grouped as $ambNombre => $ambItems) {
+            $subUnd = 0; $subCj = 0; $rows = '';
+            foreach ($ambItems as $it) {
+                $upc     = max(1, (int)($it->unidades_caja ?? 1));
+                $cantRaw = (float)($it->cantidad ?? 0);
+                $cajasDB = (float)($it->cantidad_cajas ?? 0);
+                $saldoDB = (float)($it->saldo ?? 0);
+
+                if ($cajasDB > 0 || $saldoDB > 0) {
+                    $cajas = $cajasDB;
+                    $saldo = $saldoDB;
+                    $und   = round(($cajas * $upc) + $saldo, 3);
+                } elseif ($upc > 1) {
+                    $cajas = (int)floor($cantRaw / $upc);
+                    $saldo = round($cantRaw - ($cajas * $upc), 3);
+                    $und   = round($cantRaw, 3);
+                } else {
+                    $cajas = $cantRaw;
+                    $saldo = 0;
+                    $und   = $cantRaw;
+                }
+
+                $fv   = !empty($it->fecha_vencimiento) ? date('d/m/Y', strtotime($it->fecha_vencimiento)) : '-';
+                $fc   = !empty($it->fecha_vencimiento) ? '#b91c1c' : '#94a3b8';
+                $loteVal = trim((string)($it->lote ?? ''));
+                $lote = ($loteVal !== '' && $loteVal !== 'N/A' && $loteVal !== '—' && $loteVal !== '&mdash;') ? $loteVal : '-';
+
+                $subUnd += $und; $subCj += $cajas;
+                $rows .= "<tr>"
+                    . "<td style='white-space:nowrap'>" . htmlspecialchars($it->codigo ?? '') . "</td>"
+                    . "<td>" . htmlspecialchars($it->nombre ?? '') . "</td>"
+                    . "<td style='white-space:nowrap'>" . htmlspecialchars($lote) . "</td>"
+                    . "<td style='text-align:right;font-weight:700'>{$cajas}</td>"
+                    . "<td style='text-align:right;color:#1e3a5f'>{$saldo}</td>"
+                    . "<td style='text-align:right;font-weight:700'>{$und}</td>"
+                    . "<td style='text-align:center;color:{$fc}'>{$fv}</td></tr>";
+            }
+            $totalUnd += $subUnd; $totalCajas += $subCj;
+            $ambEsc = htmlspecialchars($ambNombre);
+            $html .= "<div class='ambiente-block'>"
+                . "<div class='ambiente-header'>{$ambEsc} &mdash; {$subCj} cj / {$subUnd} und</div>"
+                . "<table style='table-layout:fixed;width:100%;'><colgroup>"
+                . "<col style='width:10%;'><col style='width:33%;'><col style='width:12%;'><col style='width:8%;'><col style='width:8%;'><col style='width:12%;'><col style='width:17%;'>"
+                . "</colgroup><thead><tr>"
+                . "<th>C&oacute;digo</th><th>Producto</th><th>Lote</th>"
+                . "<th style='text-align:right'>Cajas</th><th style='text-align:right'>Saldo</th>"
+                . "<th style='text-align:right'>Und/Total</th><th style='text-align:center'>F. Venc.</th>"
+                . "</tr></thead><tbody>{$rows}</tbody></table></div>";
+        }
+        return ['html' => $html, 'cj' => $totalCajas, 'und' => $totalUnd];
+    }
+
+    /**
+     * Sección de "Productos Agotados/Faltantes" para las órdenes indicadas,
+     * con causal estructurada (causales_novedad) y a qué pedido pertenece cada uno.
+     * Devuelve '' si no hay faltantes que afecten esas órdenes.
+     */
+    protected function remisionAgotadosHtml(array $ordenIds): string
+    {
+        if (empty($ordenIds)) return '';
+
+        $rows = Capsule::table('picking_faltantes as pf')
+            ->join('productos as p', 'p.id', '=', 'pf.producto_id')
+            ->leftJoin('orden_pickings as op', 'op.id', '=', 'pf.orden_picking_id')
+            ->leftJoin('causales_novedad as cn', 'cn.id', '=', 'pf.causal_id')
+            ->whereIn('pf.orden_picking_id', $ordenIds)
+            ->select([
+                'p.codigo_interno as codigo',
+                'p.nombre',
+                Capsule::raw('COALESCE(p.unidades_caja, 1) as upc'),
+                Capsule::raw('SUM(pf.cantidad_solicitada) as solicitada_cj'),
+                Capsule::raw('SUM(pf.cantidad_faltante) as faltante_cj'),
+                Capsule::raw("COALESCE(NULLIF(op.numero_factura, ''), op.numero_orden, '-') as pedido"),
+                Capsule::raw("STRING_AGG(DISTINCT COALESCE(pf.causa, 'Sin stock'), ', ') as causa"),
+                Capsule::raw("STRING_AGG(DISTINCT cn.nombre, ', ') as causal_nombre"),
+                Capsule::raw("STRING_AGG(DISTINCT NULLIF(cn.area_responsable, ''), ', ') as responsable"),
+            ])
+            ->groupBy('p.codigo_interno', 'p.nombre', 'p.unidades_caja', 'op.numero_factura', 'op.numero_orden')
+            ->orderBy('p.nombre')
+            ->get();
+
+        if ($rows->isEmpty()) return '';
+
+        $filas = '';
+        foreach ($rows as $r) {
+            $upc           = max(1, (int)$r->upc);
+            $solicitadaUnd = round((float)$r->solicitada_cj * $upc, 2);
+            $pendienteUnd  = round((float)$r->faltante_cj * $upc, 2);
+            $motivo = $r->causal_nombre
+                ? "<b>" . htmlspecialchars($r->causal_nombre) . "</b>" . ($r->causa ? " — " . htmlspecialchars($r->causa) : '')
+                : ($r->causa ? htmlspecialchars($r->causa) : 'Sin causa registrada');
+            $responsable = ($r->responsable && trim($r->responsable) !== '') ? htmlspecialchars($r->responsable) : '-';
+            $filas .= "<tr>"
+                . "<td style='white-space:nowrap'>" . htmlspecialchars($r->codigo) . "</td>"
+                . "<td>" . htmlspecialchars($r->nombre) . "</td>"
+                . "<td style='white-space:nowrap;font-weight:700'>" . htmlspecialchars($r->pedido) . "</td>"
+                . "<td style='text-align:right'>{$solicitadaUnd}</td>"
+                . "<td style='text-align:right;color:#b91c1c;font-weight:700'>{$pendienteUnd}</td>"
+                . "<td>{$motivo}</td>"
+                . "<td>{$responsable}</td>"
+                . "</tr>";
+        }
+
+        return "<div class='agotados-section'><div class='agotados-header'>&#9888; PRODUCTOS AGOTADOS / FALTANTES</div>"
+            . "<table style='table-layout:fixed;width:100%;'><colgroup>"
+            . "<col style='width:10%;'><col style='width:26%;'><col style='width:11%;'><col style='width:11%;'><col style='width:11%;'><col style='width:19%;'><col style='width:12%;'></colgroup>"
+            . "<thead><tr><th>C&oacute;digo</th><th>Producto</th><th>Pedido</th>"
+            . "<th style='text-align:right;'>Und Solicitadas</th><th style='text-align:right;'>Und Pendiente</th>"
+            . "<th>Causa</th><th>Responsable</th></tr></thead>"
+            . "<tbody>{$filas}</tbody></table></div>";
+    }
+
+    /**
+     * Bloque de "Novedades de Recepción" (filas en blanco para diligenciar a mano).
+     */
+    protected function remisionNovedadesHtml(): string
+    {
+        return "<div class='novedades-section'><div class='novedades-header'>NOVEDADES DE RECEPCI&Oacute;N</div>"
+            . "<table style='table-layout:fixed;width:100%;'><colgroup>"
+            . "<col style='width:12%;'><col style='width:38%;'><col style='width:10%;'><col style='width:40%;'></colgroup>"
+            . "<thead><tr><th>C&oacute;digo</th><th>Descripci&oacute;n</th><th style='text-align:right;'>Cantidad</th><th>Motivo</th></tr></thead>"
+            . "<tbody>" . str_repeat("<tr style='height:22px'><td></td><td></td><td></td><td></td></tr>", 5)
+            . "</tbody></table></div>";
+    }
+
+    /**
+     * CSS compartido por las 3 remisiones (packing, certificación directa/móvil,
+     * consolidada). Incluye .pg-break para documentos multi-página.
+     */
+    protected function remisionCss(): string
+    {
+        return "@page{size:A4 portrait;margin:15mm 18mm}
+        @media print{.no-print{display:none!important} body{margin:0} .pg-break{page-break-after:always}}
+        body{font-family:Arial,sans-serif;font-size:10.5px;color:#1a1a1a;margin:0;padding:10px}
+        .pg-break{page-break-after:always;margin-bottom:20px}
+        .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:8px;margin-bottom:10px}
+        .header-left p{margin:0;font-size:9.5px;color:#555}
+        .header-right{text-align:right;font-size:10px;color:#333}
+        .info-grid{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 20px;margin-bottom:10px;background:#f8fafc;padding:6px 12px;border-radius:4px;border:1px solid #e2e8f0;page-break-after:avoid}
+        .info-grid .campo{white-space:nowrap;font-size:10.5px;color:#1e293b}
+        .info-grid .lbl{font-weight:700;font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:.3px;margin-right:4px}
+        .ambientes-grid{display:grid;grid-template-columns:1fr;gap:10px}
+        .ambiente-block{border:1px solid #cbd5e1;border-radius:4px;overflow:hidden;page-break-inside:avoid}
+        .ambiente-header{background:#000;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.2px}
+        table{width:100%;border-collapse:collapse}
+        th,td{border:1px solid #e2e8f0;padding:4px 6px;font-size:9.5px;text-align:left;vertical-align:middle}
+        th{background:#f1f5f9;font-weight:700;color:#334155;white-space:nowrap}
+        tr:nth-child(even) td{background:#f8fafc}
+        .totales{border-top:3px solid #1e3a5f;padding:8px 0;font-weight:700;font-size:12px;margin-top:10px;color:#1e3a5f}
+        .agotados-section{margin-top:10px;border:2px solid #b91c1c;border-radius:4px;overflow:hidden;page-break-inside:avoid}
+        .agotados-header{background:#b91c1c;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.3px}
+        .novedades-section{margin-top:12px;border:2px solid #1e3a5f;border-radius:4px;overflow:hidden;page-break-inside:avoid}
+        .novedades-header{background:#1e3a5f;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.3px}
+        .novedades-section td{height:22px}
+        .firmas{display:grid;grid-template-columns:1fr 1fr 1fr;gap:40px;margin-top:30px;page-break-inside:avoid}
+        .firma-line{border-top:2px solid #1e3a5f;padding-top:5px;text-align:center;font-size:10px;color:#334155}
+        .no-print{padding:8px 0;margin-bottom:10px}
+        .no-print button{padding:7px 20px;font-size:13px;cursor:pointer;background:#1e3a5f;color:#fff;border:none;border-radius:6px;margin-right:8px}";
     }
 }

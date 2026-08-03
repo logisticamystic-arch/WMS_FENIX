@@ -6125,6 +6125,19 @@ class PickingController extends BaseController
             // Una orden que ya fue despachada/entregada (flujo TMS) no debe volver a
             // aparecer aquí para re-imprimir/agrupar en una nueva remisión.
             ->whereNull('op.estado_despacho')
+            // Esta función solo debe traer órdenes certificadas por el flujo directo
+            // (escaneo/certificación individual). Antes no excluía las que ya fueron
+            // certificadas vía sesión de packing (Iniciar Packing / Auto-Certificar en
+            // escritorio o móvil) — como ambos flujos dejan el mismo estado_certificacion
+            // ='Certificada', la misma orden calificaba para los dos generadores de
+            // remisión (getRemision() y certRemisionMultiple()/certRemisionDirecta()),
+            // permitiendo imprimir dos remisiones distintas para el mismo pedido.
+            ->whereNotExists(function ($q) {
+                $q->select(Capsule::raw(1))
+                  ->from('picking_detalles as pd_pk')
+                  ->join('packing_items as pi', 'pi.picking_detalle_id', '=', 'pd_pk.id')
+                  ->whereColumn('pd_pk.orden_picking_id', 'op.id');
+            })
             ->when($fechaInicio, fn($q) => $q->where('op.fecha_movimiento', '>=', $fechaInicio))
             ->when($fechaFin, fn($q) => $q->where('op.fecha_movimiento', '<=', $fechaFin))
             ->select(
@@ -6281,7 +6294,7 @@ class PickingController extends BaseController
         }
 
         $empresa   = Capsule::table('empresas')->find($empresaId);
-        $empNombre = $empresa->nombre ?? 'WMS Fénix';
+        $empNombre = $empresa->razon_social ?? 'WMS Fénix';
         $logoFile  = dirname(__DIR__, 2) . '/logo.jpg';
         $logoHtml  = file_exists($logoFile)
             ? "<img src='data:image/jpeg;base64," . base64_encode(file_get_contents($logoFile)) . "' style='height:52px;object-fit:contain;display:block;margin-bottom:4px;' alt='Logo'>"
@@ -6437,6 +6450,14 @@ class PickingController extends BaseController
                 ->whereIn('id', $ordenIdsSel)
                 ->where('estado_certificacion', 'Certificada')
                 ->where('despachado_directo', false)
+                // No reimprimir aquí una orden ya certificada vía sesión de packing
+                // (ver certCertificadas() para el detalle de por qué es necesario).
+                ->whereNotExists(function ($q) {
+                    $q->select(Capsule::raw(1))
+                      ->from('picking_detalles as pd_pk')
+                      ->join('packing_items as pi', 'pi.picking_detalle_id', '=', 'pd_pk.id')
+                      ->whereColumn('pd_pk.orden_picking_id', 'orden_pickings.id');
+                })
                 ->get();
             $gruposPorSucursal = $todasOrdenes->groupBy('sucursal_entrega');
         } else {
@@ -6450,6 +6471,12 @@ class PickingController extends BaseController
                     // Retiro directo (cliente ya lo recogió) — no se mezcla con la remisión.
                     ->where('despachado_directo', false)
                     ->whereDate('fecha_movimiento', $fechaFiltro)
+                    ->whereNotExists(function ($q) {
+                        $q->select(Capsule::raw(1))
+                          ->from('picking_detalles as pd_pk')
+                          ->join('packing_items as pi', 'pi.picking_detalle_id', '=', 'pd_pk.id')
+                          ->whereColumn('pd_pk.orden_picking_id', 'orden_pickings.id');
+                    })
                     ->get();
                 if ($ordenesSuc->isNotEmpty()) $gruposPorSucursal->put($suc, $ordenesSuc);
             }
@@ -6653,7 +6680,7 @@ class PickingController extends BaseController
         $sucursal   = urldecode($a['sucursal']);
 
         $empresa  = Capsule::table('empresas')->find($empresaId);
-        $empNombre = $empresa->nombre ?? 'WMS Fénix';
+        $empNombre = $empresa->razon_social ?? 'WMS Fénix';
 
         $qpDirect    = $r->getQueryParams();
         $fechaDirect = $qpDirect['fecha'] ?? date('Y-m-d');
@@ -6665,6 +6692,13 @@ class PickingController extends BaseController
             // Retiro directo (cliente ya lo recogió) — no se mezcla con la remisión.
             ->where('despachado_directo', false)
             ->whereDate('fecha_movimiento', $fechaDirect)
+            // No reimprimir aquí una orden ya certificada vía sesión de packing.
+            ->whereNotExists(function ($q) {
+                $q->select(Capsule::raw(1))
+                  ->from('picking_detalles as pd_pk')
+                  ->join('packing_items as pi', 'pi.picking_detalle_id', '=', 'pd_pk.id')
+                  ->whereColumn('pd_pk.orden_picking_id', 'orden_pickings.id');
+            })
             ->get();
 
         if ($ordenes->isEmpty()) return $this->error($res, 'No se encontraron órdenes certificadas para la fecha indicada');

@@ -112,7 +112,7 @@ class PackingController extends BaseController
             : 'N/A';
 
         $empresa   = Capsule::table('empresas')->find($sesion->empresa_id);
-        $empNombre = $empresa ? $empresa->nombre : 'WMS Fénix';
+        $empNombre = $empresa ? $empresa->razon_social : 'WMS Fénix';
 
         $allUnidades = PackingUnidad::where('sesion_id', $sesion->id)
             ->orderBy('consecutivo')
@@ -962,15 +962,15 @@ class PackingController extends BaseController
                 ->where('pd.cantidad_pickeada', '>', 0)
                 ->select([
                     Capsule::raw("COALESCE(a.descripcion, 'Sin ambiente') as ambiente_nombre"),
-                    Capsule::raw("COALESCE(a.color, '#1e3a5f') as ambiente_color"),
                     'p.id as producto_id',
                     'p.nombre as nombre',
                     'p.codigo_interno as codigo',
                     'p.unidades_caja',
                     Capsule::raw('SUM(pd.cantidad_pickeada) as cantidad'),
+                    Capsule::raw('MAX(pd.lote) as lote'),
                     Capsule::raw("MAX(COALESCE(pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = p.id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
                 ])
-                ->groupBy('a.descripcion', 'a.color', 'p.id', 'p.nombre', 'p.codigo_interno', 'p.unidades_caja')
+                ->groupBy('a.descripcion', 'p.id', 'p.nombre', 'p.codigo_interno', 'p.unidades_caja')
                 ->orderByRaw("COALESCE(a.descripcion, 'Sin ambiente'), p.nombre")
                 ->get()
                 ->groupBy('ambiente_nombre');
@@ -982,7 +982,6 @@ class PackingController extends BaseController
                 ->whereIn('pi.unidad_id', $unidadIds)
                 ->select([
                     Capsule::raw("COALESCE(a.descripcion, 'Sin ambiente') as ambiente_nombre"),
-                    Capsule::raw("COALESCE(a.color, '#1e3a5f') as ambiente_color"),
                     'pi.producto_id',
                     'p.nombre as nombre',
                     'p.codigo_interno as codigo',
@@ -990,9 +989,10 @@ class PackingController extends BaseController
                     Capsule::raw('SUM(pi.cantidad) as cantidad'),
                     Capsule::raw('SUM(COALESCE(pi.cantidad_cajas, 0)) as cantidad_cajas'),
                     Capsule::raw('SUM(COALESCE(pi.saldo, 0)) as saldo'),
+                    Capsule::raw('MAX(COALESCE(pi.lote, pd.lote)) as lote'),
                     Capsule::raw("MAX(COALESCE(pi.fecha_vencimiento, pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = pi.producto_id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
                 ])
-                ->groupBy('a.descripcion', 'a.color', 'pi.producto_id', 'p.nombre', 'p.codigo_interno', 'p.unidades_caja')
+                ->groupBy('a.descripcion', 'pi.producto_id', 'p.nombre', 'p.codigo_interno', 'p.unidades_caja')
                 ->orderByRaw("COALESCE(a.descripcion, 'Sin ambiente'), p.nombre")
                 ->get()
                 ->groupBy('ambiente_nombre');
@@ -1007,143 +1007,24 @@ class PackingController extends BaseController
         $pedidos     = $ordenesObj->map(fn($o) => trim($o->numero_factura ?: $o->numero_orden ?: ''))->filter()->unique()->toArray();
         $pedidosStr  = !empty($pedidos) ? implode(', ', $pedidos) : '-';
 
-        // Agotados: productos que no pudieron pickearse por falta de inventario
-        $agotados = empty($ordenIds) ? collect() : Capsule::table('picking_faltantes as pf')
-            ->join('productos as p', 'p.id', '=', 'pf.producto_id')
-            ->leftJoin('orden_pickings as op', 'op.id', '=', 'pf.orden_picking_id')
-            ->leftJoin('picking_detalles as pd', function ($j) {
-                $j->on('pd.orden_picking_id', '=', 'pf.orden_picking_id')
-                  ->on('pd.producto_id', '=', 'pf.producto_id');
-            })
-            ->leftJoin('personal as per', 'per.id', '=', 'pd.auxiliar_id')
-            ->whereIn('pf.orden_picking_id', $ordenIds)
-            ->select([
-                'p.codigo_interno as codigo',
-                'p.nombre',
-                'p.unidades_caja',
-                Capsule::raw('SUM(pf.cantidad_solicitada * COALESCE(p.unidades_caja, 1)) as solicitado'),
-                Capsule::raw('SUM(pf.cantidad_faltante * COALESCE(p.unidades_caja, 1)) as faltante'),
-                Capsule::raw("STRING_AGG(DISTINCT COALESCE(pf.causa,'Sin stock'), ', ') as causa"),
-                Capsule::raw("STRING_AGG(DISTINCT COALESCE(per.nombre, 'Sin asignar'), ', ') as responsable"),
-            ])
-            ->groupBy('p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja')
-            ->get();
-
-        $empNombre  = $empresa->nombre ?? 'WMS Fénix';
+        $empNombre  = $this->remisionEmpresaNombre($empresaId);
         $certNombre = $cert ? trim($cert->nombre) : '-';
         $fecha      = date('d/m/Y H:i', strtotime($sesion->created_at));
         $tipoEmp    = strtoupper($sesion->tipo_empaque);
         $clienteNom = $sesion->sucursal_entrega;
+        $logoHtml   = $this->remisionLogoHtml($empNombre);
+        $numCanastas = count($unidades);
 
-        // Logo embebido como base64 para evitar problemas de ruta en ventana de impresión
-        $logoFile = dirname(__DIR__, 2) . '/logo.jpg';
-        $logoHtml = file_exists($logoFile)
-            ? "<img src='data:image/jpeg;base64," . base64_encode(file_get_contents($logoFile)) . "' style='height:52px;object-fit:contain;display:block;margin-bottom:4px;' alt='Logo'>"
-            : "<strong style='font-size:16px;color:#1e3a5f;'>{$empNombre}</strong>";
-
-        $totalUnd      = 0;
-        $totalCajas    = 0;
-        $numCanastas   = count($unidades);
-        $ambientesHtml = '';
-        foreach ($itemsRaw as $ambNombre => $ambItems) {
-            $ambColor    = $ambItems->first()->ambiente_color ?? '#1e3a5f';
-            $subtotalUnd = 0;
-            $subtotalCj  = 0;
-            $rowsHtml    = '';
-            foreach ($ambItems as $it) {
-                $upc     = max(1, (int)($it->unidades_caja ?? 1));
-                $cantRaw = (float)$it->cantidad;
-                $cajasDB = (float)($it->cantidad_cajas ?? 0);
-                $saldoDB = (float)($it->saldo ?? 0);
-
-                if ($cajasDB > 0 || $saldoDB > 0) {
-                    $cajas    = $cajasDB;
-                    $saldo    = $saldoDB;
-                    $undTotal = round(($cajas * $upc) + $saldo, 3);
-                } elseif ($upc > 1) {
-                    $cajas    = (int)floor($cantRaw / $upc);
-                    $saldo    = round($cantRaw - ($cajas * $upc), 3);
-                    $undTotal = $cantRaw;
-                } else {
-                    $cajas    = $cantRaw;
-                    $saldo    = 0;
-                    $undTotal = $cantRaw;
-                }
-
-                $fv      = $it->fecha_vencimiento ? date('d/m/Y', strtotime($it->fecha_vencimiento)) : '-';
-                $fvColor = $it->fecha_vencimiento ? '#b91c1c' : '#94a3b8';
-                $subtotalUnd += $undTotal;
-                $subtotalCj  += $cajas;
-                $rowsHtml .= "<tr>
-                  <td style='white-space:nowrap'>{$it->codigo}</td>
-                  <td>{$it->nombre}</td>
-                  <td style='text-align:right;font-weight:700'>{$cajas}</td>
-                  <td style='text-align:right;color:#1e3a5f'>{$saldo}</td>
-                  <td style='text-align:right'>{$undTotal}</td>
-                  <td style='text-align:center;color:{$fvColor}'>{$fv}</td>
-                </tr>";
-            }
-            $totalUnd    += $subtotalUnd;
-            $totalCajas  += $subtotalCj;
-            $ambientesHtml .= "
-            <div class='ambiente-block'>
-              <table style='table-layout:fixed;width:100%;'>
-                <colgroup>
-                  <col style='width:12%;'>
-                  <col style='width:45%;'>
-                  <col style='width:9%;'>
-                  <col style='width:9%;'>
-                  <col style='width:9%;'>
-                  <col style='width:16%;'>
-                </colgroup>
-                <thead>
-                  <tr class='ambiente-header-row'><th colspan='6'>{$ambNombre} &mdash; {$subtotalCj} cj / {$subtotalUnd} und</th></tr>
-                  <tr>
-                    <th>C&oacute;digo</th><th>Producto</th>
-                    <th style='text-align:right'>Cajas</th>
-                    <th style='text-align:right'>Saldo</th>
-                    <th style='text-align:right'>Und.</th>
-                    <th style='text-align:center'>F. Venc.</th>
-                  </tr>
-                </thead>
-                <tbody>{$rowsHtml}</tbody>
-              </table>
-            </div>";
-        }
-
-        // Sección HTML de agotados
-        $agotadosHtml = '';
-        if ($agotados->isNotEmpty()) {
-            $rowsAgo = '';
-            foreach ($agotados as $ag) {
-                $resp = htmlspecialchars(($ag->responsable && $ag->responsable !== 'Sin asignar' && $ag->responsable !== '—' && $ag->responsable !== '&mdash;') ? $ag->responsable : '-', ENT_QUOTES);
-                $caus = htmlspecialchars(($ag->causa && $ag->causa !== '—' && $ag->causa !== '&mdash;') ? $ag->causa : 'Sin stock', ENT_QUOTES);
-
-                $faltanteTxt = (float)$ag->faltante;
-
-                $rowsAgo .= "<tr>
-                  <td>{$ag->codigo}</td>
-                  <td>{$ag->nombre}</td>
-                  <td style='text-align:right'>{$ag->solicitado}</td>
-                  <td style='text-align:right;color:#c00;font-weight:bold'>{$faltanteTxt}</td>
-                  <td>{$caus}</td>
-                  <td style='color:#b45309;font-weight:700'>{$resp}</td>
-                </tr>";
-            }
-            $agotadosHtml = "
-            <div class='agotados-section'>
-              <div class='agotados-header'>&#9888; REFERENCIAS AGOTADAS (sin inventario en asignación)</div>
-              <table>
-                <thead><tr>
-                  <th>Código</th><th>Producto</th><th>Solicitado</th><th>Faltante</th><th>Causa</th><th>Responsable</th>
-                </tr></thead>
-                <tbody>{$rowsAgo}</tbody>
-              </table>
-            </div>";
-        }
-
-        $numAmbientes = $itemsRaw->count();
-        $novedadesHtml = "
+        // Mismo generador de tabla de ítems y de agotados que certRemisionMultiple()/
+        // certRemisionDirecta() (PickingController) — antes cada endpoint tenía su
+        // propia versión con columnas y secciones distintas, y una misma orden podía
+        // salir con formato diferente según qué camino la certificara.
+        $amb           = $this->remisionAmbientesHtml($itemsRaw);
+        $ambientesHtml = $amb['html'];
+        $totalCajas    = $amb['cj'];
+        $totalUnd      = $amb['und'];
+        $agotadosHtml  = $this->remisionAgotadosHtml($ordenIds);
+        $novedadesHtmlOld = "
 <div class='novedades-section'>
   <div class='novedades-header'>NOVEDADES DE RECEPCI&Oacute;N</div>
   <table style='table-layout:fixed;width:100%;'>
@@ -1252,7 +1133,7 @@ class PackingController extends BaseController
 
         $empresa    = Capsule::table('empresas')->find($empresaId);
         $cert       = Capsule::table('personal')->find($sesion->certificador_id);
-        $empNombre  = $empresa->nombre ?? 'WMS Fénix';
+        $empNombre  = $empresa->razon_social ?? 'WMS Fénix';
         $certNombre = $cert ? trim($cert->nombre) : '—';
         $tipoLabel  = strtoupper($sesion->tipo_empaque);
         $fecha      = date('d/m/Y H:i', strtotime($sesion->created_at));
@@ -1363,7 +1244,7 @@ class PackingController extends BaseController
         if (!$impresora) return $this->error($res, 'Impresora no encontrada', 404);
 
         $empresa  = Capsule::table('empresas')->find($empresaId);
-        $empNombre= $empresa->nombre ?? 'WMS Fénix';
+        $empNombre= $empresa->razon_social ?? 'WMS Fénix';
         $cert    = Capsule::table('personal')->find($sesion->certificador_id);
         $certNom = $cert ? trim($cert->nombre) : '—';
         $tipoLbl = strtoupper($sesion->tipo_empaque);
@@ -1584,7 +1465,7 @@ class PackingController extends BaseController
         $sesion     = Capsule::table('packing_sesiones')->find($unidad->sesion_id);
         $empresa    = Capsule::table('empresas')->find($empresaId);
         $cert       = Capsule::table('personal')->find($sesion->certificador_id ?? 0);
-        $empNombre  = $empresa->nombre ?? 'WMS Fénix';
+        $empNombre  = $empresa->razon_social ?? 'WMS Fénix';
         $certNombre = $cert ? trim($cert->nombre) : '—';
         $tipoLabel  = strtoupper($sesion->tipo_empaque ?? 'CANASTA');
         $fecha      = date('d/m/Y H:i', strtotime($sesion->created_at));
