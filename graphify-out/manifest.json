@@ -975,8 +975,8 @@
     "semantic_hash": "a526a63d521fc75e43f1f5a54d5b1d13"
   },
   "src/Controllers/RecepcionController.php": {
-    "mtime": 1785777246.4132414,
-    "ast_hash": "8738e9a874fc478a1ebe47b58df92f9d",
+    "mtime": 1785783743.8578172,
+    "ast_hash": "66e0043a5cd86db143384cfd9c4d17bc",
     "semantic_hash": ""
   },
   "src/Controllers/ReplenishmentController.php": {
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785778787.7557411,
-    "ast_hash": "527c4ac2101802620113c244a3c05a5c",
+    "mtime": 1785783452.7473419,
+    "ast_hash": "26034905b1a141964397800ffbba859f",
     "semantic_hash": ""
   },
   "public/pitch.html": {
