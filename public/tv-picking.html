@@ -1419,9 +1419,13 @@ async function loadServicio(){
   setText('svc-refs-total', g.total_refs != null ? g.total_refs : '--');
   if (elPctRef) { elPctRef.textContent = pctRef + '%'; elPctRef.style.color = refColor; }
 
-  // Gráficos
+  // Gráficos — antes ambos recibían el mismo d.por_dia sin recortar, así que
+  // "POR DÍA (últimos 7)" y "NS POR DÍA (%)" mostraban exactamente los mismos
+  // datos con solo el estilo distinto. Ahora el chart chico sí muestra
+  // únicamente los últimos 7 días (como dice su título) y el grande conserva
+  // el detalle completo del mes.
   if(Array.isArray(d.por_sucursal)&&d.por_sucursal.length) _renderSvcSucursal(d.por_sucursal);
-  if(Array.isArray(d.por_dia)&&d.por_dia.length) _renderSvcDia(d.por_dia);
+  if(Array.isArray(d.por_dia)&&d.por_dia.length) _renderSvcDia(d.por_dia.slice(-7));
   if(Array.isArray(d.por_dia)) _renderSvcRef(d.por_dia); // chart grande: NS por día (por SKU, mes completo)
   if(Array.isArray(d.por_mes)&&d.por_mes.length) _renderSvcMes(d.por_mes);
 

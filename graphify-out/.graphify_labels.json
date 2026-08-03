@@ -119,7 +119,6 @@
   "117": "Inventario General Diferencias",
   "118": "Sucursal",
   "119": "Trazabilidad Controller",
-  "120": "TraspasoDocumento",
   "121": "121_create_recepcion_calidad_table.php",
   "122": "Performance Middleware",
   "123": "Product Pitch Materials",
@@ -318,7 +317,6 @@
   "318": "InvGeneralAsignacion",
   "319": "_cargarStockGeneral",
   "320": "verEventoTomaFisica",
-  "321": ".now",
   "322": "GET /aprobaciones/vencimiento/pendientes",
   "323": "POST /devoluciones/{id}/aprobar",
   "324": "Warehouse/truck app icon (192x192)",
@@ -326,6 +324,5 @@
   "326": "124_create_sesion_icg_lineas_table.php",
   "327": "SesionInventario",
   "328": "InvGeneralEvento",
-  "331": "PermisoPersonalController",
   "332": "TV Dashboard 360 Design Doc"
 }
