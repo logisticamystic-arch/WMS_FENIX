@@ -320,11 +320,16 @@
   "318": "InvGeneralAsignacion",
   "319": "_cargarStockGeneral",
   "320": "verEventoTomaFisica",
+  "321": "CrossDockController",
   "322": "GET /aprobaciones/vencimiento/pendientes",
   "323": "POST /devoluciones/{id}/aprobar",
   "324": "Warehouse/truck app icon (192x192)",
   "325": "Warehouse/truck app icon (512x512)",
   "326": "124_create_sesion_icg_lineas_table.php",
   "327": "SesionInventario",
-  "328": "InvGeneralEvento"
+  "328": "InvGeneralEvento",
+  "329": "PickingDetalle",
+  "330": "ExpiryGuard",
+  "331": "PermisoPersonalController",
+  "332": "TV Dashboard 360 Design Doc"
 }

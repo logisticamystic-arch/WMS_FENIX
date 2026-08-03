@@ -4599,11 +4599,16 @@ WMS_MODULES.inventario = {
     // Autocomplete producto
     WMS.initProductAutocomplete(document.getElementById('aj-prod-ac'), async p => {
       document.getElementById('aj-prod-id').value = p.id;
-      const upc = Math.max(1, parseInt(p.unidades_caja) || 1);
+      // Prioridad: factor_udm (U/E — contenido real por unidad, ej. gramos) sobre
+      // unidades_caja (unidades por caja, un concepto distinto). Antes este módulo
+      // siempre usaba unidades_caja, ignorando el U/E configurado en el maestro.
+      const esUdm = !!p.factor_udm && parseFloat(p.factor_udm) > 0;
+      const upc = esUdm ? parseFloat(p.factor_udm) : Math.max(1, parseInt(p.unidades_caja) || 1);
       document.getElementById('aj-prod-upc').value = upc;
+      this._ajEsUdm = esUdm;
       this._ajProd  = p;
       this._ajStock = [];
-      this._ajRenderCantidadInputs(upc);
+      this._ajRenderCantidadInputs(upc, esUdm);
 
       const selSalida = document.getElementById('aj-ubicacion-salida');
       const prev      = document.getElementById('aj-stock-preview');
@@ -4642,15 +4647,16 @@ WMS_MODULES.inventario = {
   },
 
   /** Reemplaza el bloque de cantidad del ajuste según UPC */
-  _ajRenderCantidadInputs(upc) {
+  _ajRenderCantidadInputs(upc, esUdm) {
     const wrap = document.getElementById('aj-cantidad-wrap');
     if (!wrap) return;
     if (upc > 1) {
+      const labelPrincipal = esUdm ? 'Unidades' : 'Cajas';
       wrap.innerHTML = `
         <label class="form-label">Cantidad <span class="required">*</span></label>
         <div style="display:flex;gap:8px;">
           <div style="flex:1;">
-            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">Cajas</label>
+            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">${labelPrincipal}</label>
             <input id="aj-cajas" type="number" class="form-control" min="0" step="1" value="0"
               oninput="WMS_MODULES.inventario._ajCalcPreview()" placeholder="0">
           </div>
@@ -4713,7 +4719,8 @@ WMS_MODULES.inventario = {
   },
 
   _ajCalcPreview() {
-    const upc = Math.max(1, parseInt(document.getElementById('aj-prod-upc')?.value || '1') || 1);
+    const upc = Math.max(1, parseFloat(document.getElementById('aj-prod-upc')?.value || '1') || 1);
+    const esUdm = !!this._ajEsUdm;
     const preview = document.getElementById('aj-preview');
     if (!preview) return;
     if (upc > 1) {
@@ -4723,7 +4730,8 @@ WMS_MODULES.inventario = {
       const cantEl = document.getElementById('aj-cantidad');
       if (cantEl) cantEl.value = total;
       preview.style.display = 'block';
-      preview.innerHTML = `<b>UND/TOTAL:</b> ${cajas} cajas × ${upc} u/caja + ${saldos} sueltos = `
+      const etiqueta = esUdm ? `${cajas} und × ${upc} u/e` : `${cajas} cajas × ${upc} u/caja`;
+      preview.innerHTML = `<b>UND/TOTAL:</b> ${etiqueta} + ${saldos} sueltos = `
         + `<b style="color:#1e40af;font-size:1.05em;">${total.toFixed(2)}</b>`;
     } else {
       preview.style.display = 'none';
@@ -4763,7 +4771,7 @@ WMS_MODULES.inventario = {
     const prodId = document.getElementById('aj-prod-id')?.value;
     const tipo   = document.getElementById('aj-tipo')?.value;
     const motivo = document.getElementById('aj-motivo')?.value?.trim();
-    const upc    = Math.max(1, parseInt(document.getElementById('aj-prod-upc')?.value || '1') || 1);
+    const upc    = Math.max(1, parseFloat(document.getElementById('aj-prod-upc')?.value || '1') || 1);
 
     // Leer cajas / saldos / cantidad según modo
     let cajas, saldos, cantidad;
@@ -4827,6 +4835,7 @@ WMS_MODULES.inventario = {
       if (r.error) { WMS.toast('error', r.message); return; }
       WMS.toast('success', `Corrección aplicada correctamente`);
       // Limpiar form
+      this._ajEsUdm = false;
       ['aj-prod-ac','aj-lote','aj-motivo','aj-ubicacion-input','aj-ubicacion-id','aj-ubicacion-codigo'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
       ['aj-prod-id','aj-cantidad','aj-prod-upc'].forEach(id => { const el = document.getElementById(id); if(el) el.value = id==='aj-prod-upc'?'1':''; });
       ['aj-cajas','aj-saldos'].forEach(id => { const el = document.getElementById(id); if(el) el.value='0'; });
