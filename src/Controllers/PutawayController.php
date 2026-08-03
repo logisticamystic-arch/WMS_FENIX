@@ -90,9 +90,11 @@ class PutawayController extends BaseController
         }
 
         try {
+            // Igual que ubicar(): esta sucursal no tiene ubicaciones tipo 'Almacenamiento',
+            // solo 'Picking' — con el filtro original esta lista siempre salía vacía.
             $ubicaciones = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
-                ->where('tipo_ubicacion', 'Almacenamiento')
+                ->whereIn('tipo_ubicacion', ['Almacenamiento', 'Picking'])
                 ->where('activo', 1)
                 ->get();
 
@@ -112,7 +114,7 @@ class PutawayController extends BaseController
                 ->where('i.sucursal_id', $user->sucursal_id)
                 ->where('i.producto_id', $productoId)
                 ->where('i.cantidad', '>', 0)
-                ->where('u.tipo_ubicacion', 'Almacenamiento')
+                ->whereIn('u.tipo_ubicacion', ['Almacenamiento', 'Picking'])
                 ->select('u.id', 'u.codigo', 'u.capacidad_maxima', DB::raw('SUM(i.cantidad) as stock_actual'))
                 ->groupBy('u.id', 'u.codigo', 'u.capacidad_maxima')
                 ->orderBy('stock_actual', 'desc')
@@ -136,8 +138,10 @@ class PutawayController extends BaseController
             foreach ($ubicaciones as $u) {
                 if (in_array($u->id, $existentesIds, true)) continue;
                 $stockActual = $stockPorUbicacion[$u->id] ?? 0;
-                $capacidad   = $u->capacidad_maxima ?: 999999;
-                if ($stockActual >= $capacidad) continue;
+                // Sin límite de capacidad: antes se excluía la ubicación de las
+                // sugerencias al alcanzar capacidad_maxima (o 999999 si no tenía
+                // configurada) — ahora todas las ubicaciones activas se sugieren
+                // sin importar el stock que ya tengan.
 
                 $sugerencias[] = [
                     'ubicacion_id'  => $u->id,
