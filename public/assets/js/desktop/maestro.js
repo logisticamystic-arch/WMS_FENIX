@@ -1006,7 +1006,7 @@ WMS_MODULES.maestro = {
 
               <div class="form-group"><label class="form-label">UNIDAD DE MEDIDA</label>
                 <select id="f-pum" class="form-control"><option>UN</option><option>KG</option><option>LT</option><option>CJ</option><option>BL</option></select></div>
-              <div class="form-group"><label class="form-label">U/E (Factor de empaque)</label><input id="f-puxc" class="form-control" type="number" value="1" min="1"></div>
+              <div class="form-group"><label class="form-label">UND/CAJA (unidades por caja)</label><input id="f-puxc" class="form-control" type="number" value="1" min="1"></div>
 
               <div class="form-group"><label class="form-label">PESO BRUTO (kg)</label><input id="f-ppeso" class="form-control" type="number" step="0.01" value="0.00"></div>
               <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.0001" value="0.0000"></div>
@@ -1333,7 +1333,7 @@ WMS_MODULES.maestro = {
               </td>
               <td>
                 <div style="font-weight:600; color:#1e293b;">${WMS.esc(p.descripcion || '')}</div>
-                <div style="font-size:10px; color:#64748b;">U/E: ${p.unidades_caja || 1} · UM: ${WMS.esc(p.unidad_medida || 'UN')}</div>
+                <div style="font-size:10px; color:#64748b;">UND/CJ: ${p.unidades_caja || 1} · UM: ${WMS.esc(p.unidad_medida || 'UN')}</div>
               </td>
               <td>
                  <div style="font-size:11px; font-weight:700; color:#475569;">${WMS.esc(p.categoria_nombre || '-')}</div>
@@ -1481,7 +1481,7 @@ WMS_MODULES.maestro = {
           <select id="f-pum" class="form-control"><option>UN</option><option>KG</option><option>LT</option><option>ML</option><option>GR</option><option>CJ</option><option>BL</option></select></div>
         <div class="form-group"><label class="form-label">PESO (kg)</label><input id="f-ppeso" class="form-control" type="number" step="0.01" placeholder="0.00"></div>
         <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.001" placeholder="0.000"></div>
-        <div class="form-group"><label class="form-label">U/E (Factor de empaque)</label><input id="f-puxc" class="form-control" type="number" value="1" min="1"></div>
+        <div class="form-group"><label class="form-label">UND/CAJA (unidades por caja)</label><input id="f-puxc" class="form-control" type="number" value="1" min="1"></div>
 
         <div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; background:#f8fafc; padding:10px; border-radius:4px; margin-top:5px;">
            <div style="display:flex;flex-direction:column;gap:5px;">
@@ -1571,7 +1571,7 @@ WMS_MODULES.maestro = {
             </select></div>
           <div class="form-group"><label class="form-label">PESO (kg)</label><input id="f-ppeso" class="form-control" type="number" step="0.01" value="${p.peso_unitario || ''}"></div>
           <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.001" value="${p.volumen_unitario || ''}"></div>
-          <div class="form-group"><label class="form-label">U/E (Factor de empaque)</label><input id="f-puxc" class="form-control" type="number" value="${p.unidades_caja || 1}" min="1"></div>
+          <div class="form-group"><label class="form-label">UND/CAJA (unidades por caja)</label><input id="f-puxc" class="form-control" type="number" value="${p.unidades_caja || 1}" min="1"></div>
           <div class="form-group">
             <label class="form-label" style="color:#7c3aed;font-weight:700;">FACTOR U/E <span style="font-size:10px;color:#94a3b8;">(cant. por unidad)</span></label>
             <input id="f-pfudm" class="form-control" type="number" step="0.0001" min="0" value="${p.factor_udm || ''}" placeholder="Ej: 3000">

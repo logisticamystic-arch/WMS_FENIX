@@ -43,6 +43,7 @@ class ImportExportController extends BaseController
                 'unidad_medida', 'peso_unitario', 'volumen_unitario',
                 'controla_lote', 'controla_vencimiento', 'vida_util_dias',
                 'temperatura_almacen', 'stock_minimo', 'unidades_caja',
+                'factor_udm', 'unidad_contenido',
                 'codigo_ean',
             ];
         } else {
@@ -55,6 +56,7 @@ class ImportExportController extends BaseController
         $help[] = "INSTRUCCIONES: Diligencie desde la fila 8. No modifique los encabezados de la fila 7. Use punto y coma (;) como separador.";
         if ($tipo === 'productos') {
             $help[] = "Campos obligatorios: codigo_interno (*), nombre (*), unidad_medida (*). | Booleanos: use 1=Sí / 0=No (controla_lote, controla_vencimiento). | ambiente_id: ID numérico o texto SECO/REFRIGERADO/CONGELADO/FRESCO.";
+            $help[] = "unidades_caja = unidades por caja/empaque (para conversión cajas↔unidades). factor_udm = cantidad de contenido por unidad, ej. 1100 para un producto de 1100 GR (habilita la conversión U/E en recepción/picking). unidad_contenido = GR/KG/ML/LT del factor_udm. Son campos distintos, no confundir.";
             $help[] = "Lógica de Importación: Si el codigo_interno YA EXISTE el registro se ACTUALIZA. Si NO EXISTE se CREA.";
         } else {
             $help[] = "Campos obligatorios (*): Código Interno, Nombre, Unidad Medida, Categoría ID, Marca ID.";
@@ -87,8 +89,9 @@ class ImportExportController extends BaseController
         if ($tipo === 'productos') {
             // Orden: marca_id;categoria_id;ambiente_id;codigo_interno;nombre;descripcion;
             //        unidad_medida;peso_unitario;volumen_unitario;controla_lote;controla_vencimiento;
-            //        vida_util_dias;temperatura_almacen;stock_minimo;unidades_caja;codigo_ean
-            $content .= "1;1;SECO;PROD-001;Producto de Ejemplo Fénix;Descripción opcional del producto;UN;0.500;0.0005;0;0;;AMBIENTE;10.00;12;7701234567890\r\n";
+            //        vida_util_dias;temperatura_almacen;stock_minimo;unidades_caja;
+            //        factor_udm;unidad_contenido;codigo_ean
+            $content .= "1;1;SECO;PROD-001;Producto de Ejemplo Fénix;Descripción opcional del producto;UN;0.500;0.0005;0;0;;AMBIENTE;10.00;12;;;7701234567890\r\n";
         } elseif ($tipo === 'clientes') {
             $content .= "1;900000001;Fénix SAS;CALLE 123;BOGOTA;3000000;ventas@Fénix.com;Contacto Ventas\r\n";
         }
@@ -144,6 +147,8 @@ class ImportExportController extends BaseController
             'nombre'         => ['nombre', 'producto', 'descripcion', 'detalle'],
             'codigo_ean'     => ['ean', 'barcode', 'codigo_ean', 'codigo_barras'],
             'unidades_caja'  => ['unidades_caja', 'unidades x caja', 'uxc', 'caja', 'packaging', 'unidades xcaja'],
+            'factor_udm'     => ['factor_udm', 'factor u/e', 'factor ue', 'u/e', 'ue', 'cantidad por unidad', 'contenido por unidad', 'contenido_unidad'],
+            'unidad_contenido' => ['unidad_contenido', 'und_contenido', 'unidad contenido', 'unidad de contenido'],
             'stock_minimo'   => ['stock_minimo', 'minimo', 'alerta_stock'],
             'unidad_medida'  => ['unidad_medida', 'um', 'u.m', 'unidad'],
             'peso_unitario'  => ['peso_unitario', 'peso', 'peso_kg', 'kg'],
@@ -239,7 +244,7 @@ class ImportExportController extends BaseController
                 }
 
                 // Normalizar decimales: Excel español usa coma → convertir a punto
-                foreach(['peso_unitario','volumen_unitario','stock_minimo'] as $fld) {
+                foreach(['peso_unitario','volumen_unitario','stock_minimo','factor_udm'] as $fld) {
                     if (isset($row[$fld]) && $row[$fld] !== null) {
                         $row[$fld] = str_replace(',', '.', (string)$row[$fld]);
                         if (!is_numeric($row[$fld])) $row[$fld] = null;
@@ -249,6 +254,10 @@ class ImportExportController extends BaseController
                 if (isset($row['unidades_caja']) && $row['unidades_caja'] !== null) {
                     $ucVal = str_replace(',', '.', (string)$row['unidades_caja']);
                     $row['unidades_caja'] = is_numeric($ucVal) ? (int) floor((float)$ucVal) : null;
+                }
+                // unidad_contenido: normalizar a mayúsculas (GR, KG, ML, LT...)
+                if (isset($row['unidad_contenido']) && $row['unidad_contenido'] !== null) {
+                    $row['unidad_contenido'] = strtoupper(trim((string)$row['unidad_contenido']));
                 }
 
                 // Resolver ambiente_id: acepta ID numérico o código texto (SECO, REFRIGERADO, etc.)
@@ -570,6 +579,7 @@ class ImportExportController extends BaseController
             'unidad_medida', 'peso_unitario', 'volumen_unitario',
             'controla_lote', 'controla_vencimiento', 'vida_util_dias',
             'temperatura_almacen', 'stock_minimo', 'unidades_caja',
+            'factor_udm', 'unidad_contenido',
             'codigo_ean', 'activo',
             // ── Columnas de referencia (solo lectura — no se reimportan) ──────
             'marca_nombre', 'categoria_nombre', 'ambiente_codigo',
@@ -599,6 +609,8 @@ class ImportExportController extends BaseController
                 $p->temperatura_almacen ?? '',
                 $p->stock_minimo ?? '0.00',
                 $p->unidades_caja ?? '1',
+                $p->factor_udm ?? '',
+                $p->unidad_contenido ?? '',
                 $ean ? $ean->codigo_ean : '',
                 $p->activo ? '1' : '0',
                 // Referencias (lectura)
