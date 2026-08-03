@@ -1924,7 +1924,13 @@ const MWMS = {
     this.loading(true);
     try {
       const r = await mApi('GET', '/inventario/stock?estado=Disponible&tipo_ubicacion=Patio');
-      const allItems = (r.data || r || []).filter(x => parseFloat(x.cantidad) > 0);
+      // disponible = cantidad - cantidad_reservada. Antes se usaba 'cantidad' cruda
+      // como disponible/máximo en todo este flujo — una partida con stock reservado
+      // mostraba p.ej. "42000 disponibles" pero el traslado fallaba con "disponible 0"
+      // al validar contra el stock realmente libre (mismo fix aplicado en escritorio).
+      const allItems = (r.data || r || [])
+        .filter(x => parseFloat(x.cantidad) > 0)
+        .map(x => ({ ...x, disponible: Math.max(0, parseFloat(x.cantidad || 0) - parseFloat(x.cantidad_reservada || 0)) }));
       this._ubicarItems = allItems;
 
       // Agrupar por pallet
@@ -1965,7 +1971,9 @@ const MWMS = {
           } else {
             cantLine = `${parseFloat(it.cantidad)} und`;
           }
-          const total   = parseFloat(it.cantidad);
+          const total     = parseFloat(it.cantidad);
+          const disp      = parseFloat(it.disponible);
+          const reservada = parseFloat(it.cantidad_reservada || 0);
           const lote    = it.lote && it.lote !== 'N/A' ? it.lote : null;
           const vence   = it.fecha_vencimiento ? this.formatDateShort(it.fecha_vencimiento) : null;
           const dias    = vence ? this.getDaysToExpiry(it.fecha_vencimiento) : null;
@@ -1984,6 +1992,9 @@ const MWMS = {
                 <span style="font-size:.72rem;color:#0891b2;font-weight:600;">
                   <i class="fa-solid fa-cubes" style="font-size:.65rem;"></i> ${cantLine} = <b>${total} UND/T</b>
                 </span>
+                ${reservada > 0
+                  ? `<span style="font-size:.68rem;color:#d97706;font-weight:700;background:#fffbeb;padding:1px 6px;border-radius:4px;"><i class="fa-solid fa-lock" style="font-size:.6rem;"></i> ${reservada} reservado — ${disp} disponible</span>`
+                  : ''}
                 ${lote ? `<span style="font-size:.68rem;color:#64748b;background:#f1f5f9;padding:1px 5px;border-radius:4px;">Lote: ${this.esc(lote)}</span>` : ''}
                 ${vence ? `<span style="font-size:.68rem;color:${vColor};font-weight:600;"><i class="fa-regular fa-calendar-xmark" style="font-size:.63rem;"></i> ${vence}</span>` : ''}
                 ${it.producto_codigo ? `<span style="font-size:.65rem;color:#94a3b8;">${this.esc(it.producto_codigo)}</span>` : ''}
@@ -1991,8 +2002,8 @@ const MWMS = {
             </div>
             <!-- Botón ubicar -->
             <div style="display:flex;align-items:center;padding:8px 10px;flex-shrink:0;">
-              <button onclick="MWMS.stUb(${idx})"
-                      style="background:#059669;color:#fff;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:.62rem;font-weight:700;line-height:1.2;">
+              <button onclick="MWMS.stUb(${idx})" ${disp <= 0 ? 'disabled' : ''}
+                      style="background:${disp <= 0 ? '#cbd5e1' : '#059669'};color:#fff;border:none;border-radius:8px;padding:8px 10px;cursor:${disp <= 0 ? 'not-allowed' : 'pointer'};display:flex;flex-direction:column;align-items:center;gap:2px;font-size:.62rem;font-weight:700;line-height:1.2;">
                 <i class="fa-solid fa-location-dot" style="font-size:1rem;"></i>
                 Ubicar
               </button>
@@ -2101,12 +2112,15 @@ const MWMS = {
   stUb(idx) {
     const i = (this._ubicarItems || [])[idx];
     if (!i) return this.toast("Artículo no encontrado", "error");
+    const disponible = i.disponible ?? parseFloat(i.cantidad || 0);
+    if (disponible <= 0) return this.toast('Todo el stock de esta partida está reservado — no hay cantidad disponible', 'warning');
     this._qtyItem = i;
     const upc     = Math.max(1, parseInt(i.unidades_caja || 1));
     this._qtyUpc  = upc;
     const maxCajas  = parseInt(i.cantidad_cajas || 0);
     const maxSaldos = parseFloat(i.saldos || 0);
-    const maxTotal  = parseFloat(i.cantidad || 0);
+    const maxTotal  = disponible;
+    const reservada = parseFloat(i.cantidad_reservada || 0);
     const palletTxt = i.numero_pallet ? ` · Pallet #${i.numero_pallet}` : '';
     const dispTxt   = upc > 1
       ? `${maxCajas} caj × ${upc} + ${maxSaldos} suel = <b>${maxTotal} UND/T</b>`
@@ -2114,7 +2128,8 @@ const MWMS = {
     document.getElementById('m-qty-product-info').innerHTML =
       `<b>${this.esc(i.producto_nombre)}</b>` +
       `<br><span style="color:#475569;">Lote: ${i.lote || 'N/A'}${palletTxt}</span>` +
-      `<br><span style="color:#059669;">Disponible: ${dispTxt}</span>`;
+      `<br><span style="color:#059669;">Disponible: ${dispTxt}</span>` +
+      (reservada > 0 ? `<br><span style="color:#d97706;"><i class="fa-solid fa-lock"></i> ${reservada} reservado</span>` : '');
     const cajasEl  = document.getElementById('m-qty-cajas');
     const saldosEl = document.getElementById('m-qty-saldos');
     cajasEl.value  = '';
@@ -2137,7 +2152,7 @@ const MWMS = {
     const cajas    = parseFloat(document.getElementById('m-qty-cajas')?.value  || 0) || 0;
     const saldos   = parseFloat(document.getElementById('m-qty-saldos')?.value || 0) || 0;
     const total    = upc > 1 ? cajas * upc + saldos : saldos;
-    const maxTotal = parseFloat(this._qtyItem?.cantidad || 0);
+    const maxTotal = this._qtyItem?.disponible ?? parseFloat(this._qtyItem?.cantidad || 0);
     const el = document.getElementById('m-qty-total');
     if (!el) return;
     if (total > maxTotal && total > 0) {
@@ -2162,7 +2177,7 @@ const MWMS = {
     const cajas    = parseFloat(document.getElementById('m-qty-cajas')?.value  || 0) || 0;
     const saldos   = parseFloat(document.getElementById('m-qty-saldos')?.value || 0) || 0;
     const total    = upc > 1 ? cajas * upc + saldos : saldos;
-    const maxTotal = parseFloat(i.cantidad);
+    const maxTotal = i.disponible ?? parseFloat(i.cantidad);
     if (total <= 0)       return this.toast('Ingrese la cantidad a ubicar', 'error');
     if (total > maxTotal) return this.toast(`Máximo disponible: ${maxTotal} UND/TOTAL`, 'error');
     this._locCajas  = upc > 1 ? cajas : 0;
