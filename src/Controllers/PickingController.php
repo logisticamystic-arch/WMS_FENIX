@@ -882,6 +882,12 @@ class PickingController extends BaseController
                 'p.nombre',
                 'p.unidades_caja'
             )
+            // Solo elegibles para backorder: pedidos aún activos (sin certificar, sin
+            // despachar) — dinámico por estado, no por fecha. Se aplica como HAVING
+            // porque la elegibilidad se calcula sobre el agregado del grupo.
+            ->when(!empty($params['solo_elegibles_backorder']), fn($q) => $q->havingRaw(
+                "BOOL_OR(o.estado_certificacion IS DISTINCT FROM 'Certificada' AND o.estado_despacho IS NULL)"
+            ))
             ->select(
                 'f.producto_id',
                 'f.empresa_id',
@@ -899,6 +905,16 @@ class PickingController extends BaseController
                 Capsule::raw('SUM(f.cantidad_solicitada) * COALESCE(p.unidades_caja, 1) as cantidad_solicitada_und'),
                 Capsule::raw('(SUM(f.cantidad_solicitada) - SUM(f.cantidad_faltante)) * COALESCE(p.unidades_caja, 1) as cantidad_separada_und'),
                 Capsule::raw('SUM(f.cantidad_faltante) * COALESCE(p.unidades_caja, 1) as cantidad_faltante_und'),
+                // Elegibilidad para backorder: DINÁMICA por estado del pedido (activo,
+                // sin certificar, sin despachar), no por fecha — un pedido puede llevar
+                // varios días abierto y seguir siendo elegible. Como esta fila agrupa
+                // potencialmente varios pedidos del mismo producto+sucursal, se separa
+                // cuánto de lo faltante corresponde a pedidos AÚN elegibles vs. ya
+                // cerrados (certificados/despachados), para que la pantalla muestre
+                // primero lo que realmente puede backordearse.
+                Capsule::raw("SUM(CASE WHEN o.estado_certificacion IS DISTINCT FROM 'Certificada' AND o.estado_despacho IS NULL THEN f.cantidad_faltante ELSE 0 END) as cantidad_faltante_elegible_backorder"),
+                Capsule::raw("SUM(CASE WHEN o.estado_certificacion IS DISTINCT FROM 'Certificada' AND o.estado_despacho IS NULL THEN f.cantidad_faltante ELSE 0 END) * COALESCE(p.unidades_caja, 1) as cantidad_faltante_elegible_backorder_und"),
+                Capsule::raw("BOOL_OR(o.estado_certificacion IS DISTINCT FROM 'Certificada' AND o.estado_despacho IS NULL) as tiene_pedidos_elegibles_backorder"),
                 Capsule::raw("STRING_AGG(DISTINCT f.planilla_lote::text, ', ' ORDER BY f.planilla_lote::text) as numero_planilla"),
                 Capsule::raw("STRING_AGG(DISTINCT cn.nombre, ', ') as causal_nombre"),
                 Capsule::raw("STRING_AGG(DISTINCT f.causa, ' | ') as causa"),
@@ -1016,17 +1032,22 @@ class PickingController extends BaseController
         $empresaId  = $this->getEffectiveEmpresaId($user, $r);
         $sucursalId = $user->sucursal_id;
 
-        // Solo procesar faltantes de órdenes recientes (últimos 3 días)
-        // Evita reactivar pedidos viejos; cubre picking nocturno iniciado el día anterior
-        $fechaMinBackorder = date('Y-m-d', strtotime('-2 days'));
+        // Elegibilidad DINÁMICA por estado del pedido, no por fecha fija — a pedido
+        // explícito (urgente): un pedido que arrancó hoy pero solo se certifica
+        // mañana (o al día siguiente) sigue "activo, sin certificar" y debe seguir
+        // siendo elegible para backorder sin importar cuántos días lleve abierto.
+        // Antes esto se acotaba a "últimos 2-3 días" con fecha fija, lo cual excluía
+        // pedidos legítimamente activos que llevaran más tiempo abiertos. La única
+        // condición real de elegibilidad es el ESTADO del pedido: activo (no
+        // certificado) y no despachado — igual que valida el guard por-registro
+        // más abajo, pero aplicado aquí también para que el listado inicial ya
+        // refleje la elegibilidad real.
         $faltantesQuery = Capsule::table('picking_faltantes as pf')
             ->join('orden_pickings as op', 'pf.orden_picking_id', '=', 'op.id')
             ->where('pf.empresa_id', $empresaId)
             ->where('pf.sucursal_id', $sucursalId)
-            ->where(fn($q) => $q
-                ->whereDate('op.fecha_movimiento', '>=', $fechaMinBackorder)
-                ->orWhereDate('op.created_at', '>=', $fechaMinBackorder)
-            )
+            ->where('op.estado_certificacion', '!=', 'Certificada')
+            ->whereNull('op.estado_despacho')
             ->select('pf.*');
 
         if (!empty($productoIds)) {
@@ -1038,7 +1059,7 @@ class PickingController extends BaseController
         $faltantes = $faltantesQuery->get();
 
         if ($faltantes->isEmpty()) {
-            return $this->error($res, 'No hay faltantes recientes para procesar. El backorder solo aplica a pedidos de los últimos 3 días.');
+            return $this->error($res, 'No hay faltantes elegibles para procesar — solo aplica a pedidos activos (en proceso) y sin certificar. Los pedidos ya certificados o despachados no se reabren.');
         }
 
         foreach ($faltantes as $falt) {
