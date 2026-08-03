@@ -1726,6 +1726,13 @@ WMS_MODULES.recepcion = {
             <input type="hidden" id="sodc-factor-udm" value="">
             <input type="hidden" id="sodc-unidad-contenido" value="">
 
+            <!-- Proveedor -->
+            <div class="form-group">
+              <label class="form-label">Proveedor</label>
+              <input type="text" id="sodc-proveedor" class="form-control" placeholder="Nombre del proveedor">
+            </div>
+            <input type="hidden" id="sodc-origen-captura" value="Manual">
+
             <!-- Lote -->
             <div class="form-group" id="sodc-lote-group">
               <label class="form-label">Lote (Opcional)</label>
@@ -1866,11 +1873,21 @@ WMS_MODULES.recepcion = {
         }
       }
 
-      // Rellenar lote si viene en el QR
+      // Rellenar lote si viene en el QR — cuando el backend logró parsearlo como
+      // fecha (formato YYYY-MM-DD), se muestra en formato fecha legible (dd/mm/aaaa)
+      // en vez del texto crudo del QR.
       const loteInput = document.getElementById('sodc-lote');
       if (r.data.lote_raw && loteInput) {
-        loteInput.value = r.data.lote_raw;
+        const esFechaIso = /^\d{4}-\d{2}-\d{2}$/.test(r.data.lote_raw);
+        loteInput.value = esFechaIso ? WMS.formatDate(r.data.lote_raw) : r.data.lote_raw;
       }
+
+      // Ingreso por QR = proveedor CDP, y esta línea no exige Auditoría de Calidad
+      // al confirmar la recepción (ver RecepcionController::confirm()).
+      const provInput = document.getElementById('sodc-proveedor');
+      if (provInput) provInput.value = 'CDP';
+      const origenInput = document.getElementById('sodc-origen-captura');
+      if (origenInput) origenInput.value = 'QR';
 
       this._updateSinODCLoteVencVisibility(p);
       this._actualizarPreviewUnidades();
@@ -1997,6 +2014,12 @@ WMS_MODULES.recepcion = {
     if (hiddenId)    hiddenId.value    = p.id;
     if (upcInput)    upcInput.value    = p.unidades_caja || 1;
 
+    // Selección manual desde el buscador (no QR): esta línea sí exige Auditoría
+    // de Calidad al confirmar la recepción — no se toca el campo Proveedor, el
+    // auxiliar lo diligencia a mano si aplica.
+    const origenInput = document.getElementById('sodc-origen-captura');
+    if (origenInput) origenInput.value = 'Manual';
+
     // Poblar datos U/E
     const factorUdmInp   = document.getElementById('sodc-factor-udm');
     const unidContInp    = document.getElementById('sodc-unidad-contenido');
@@ -2117,6 +2140,8 @@ WMS_MODULES.recepcion = {
     const lote      = document.getElementById('sodc-lote')?.value || '';
     const venc      = document.getElementById('sodc-fecha-venc')?.value || '';
     const estado    = document.getElementById('sodc-estado')?.value || 'BuenEstado';
+    const proveedor = document.getElementById('sodc-proveedor')?.value || '';
+    const origenCaptura = document.getElementById('sodc-origen-captura')?.value || 'Manual';
     const palletNum = this._sinOdcPalletNum || null;
     const factorUdm = parseFloat(document.getElementById('sodc-factor-udm')?.value || '0') || 0;
     const cantUe    = parseFloat(document.getElementById('sodc-cant-ue')?.value  || '0') || 0;
@@ -2143,6 +2168,8 @@ WMS_MODULES.recepcion = {
         fecha_vencimiento: venc || undefined,
         estado_mercancia: estado,
         numero_pallet:  palletNum || undefined,
+        proveedor:      proveedor || undefined,
+        origen_captura: origenCaptura,
       };
       if (factorUdm > 0 && cantUe > 0) {
         payload.cantidad_ue = cantUe;

@@ -857,6 +857,11 @@ class RecepcionController extends BaseController
         $detalle->novedad_motivo     = $data['novedad_motivo'] ?? null;
         $detalle->ubicacion_destino_id = $ubicacionDestinoId;
         $detalle->numero_pallet      = !empty($data['numero_pallet']) ? (int)$data['numero_pallet'] : null;
+        $detalle->proveedor          = trim($data['proveedor'] ?? '') ?: null;
+        // 'QR' cuando la línea se identificó escaneando el código (hoy: proveedor CDP);
+        // 'Manual' cuando se buscó el producto a mano. Determina si esta recepción
+        // exige el formato de Auditoría de Calidad al confirmarla (ver confirm()).
+        $detalle->origen_captura     = ($data['origen_captura'] ?? 'Manual') === 'QR' ? 'QR' : 'Manual';
         $detalle->aprobado_admin     = 1;
         $detalle->save();
 
@@ -1184,6 +1189,24 @@ class RecepcionController extends BaseController
 
         if ($recepcion->estado !== 'Borrador') {
             return $this->json($response, ['error' => true, 'message' => "La recepción ya se encuentra {$recepcion->estado}."], 400);
+        }
+
+        // Auditoría de Calidad obligatoria en Recepción sin ODC cuando al menos una
+        // línea se capturó manualmente (no por QR) — el flujo QR (proveedor CDP) no
+        // la exige. Basta con que exista el registro; su contenido no se valida aquí.
+        if (is_null($recepcion->odc_id)) {
+            $tieneLineaManual = $recepcion->detalles->contains(
+                fn($d) => ($d->origen_captura ?? 'Manual') !== 'QR'
+            );
+            if ($tieneLineaManual) {
+                $tieneCalidad = \App\Models\RecepcionCalidad::where('recepcion_id', $recepcion->id)->exists();
+                if (!$tieneCalidad) {
+                    return $this->json($response, [
+                        'error'   => true,
+                        'message' => 'Esta recepción tiene líneas capturadas manualmente — diligencie el formato de Auditoría de Calidad antes de confirmarla.',
+                    ], 422);
+                }
+            }
         }
 
         \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
