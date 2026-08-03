@@ -1074,18 +1074,21 @@ class PickingController extends BaseController
                         ];
                         return;
                     }
-                    if ($ordenPrevia
-                        && $ordenPrevia->estado_certificacion === 'Certificada'
-                        && $ordenPrevia->fecha_certificacion
-                        && substr($ordenPrevia->fecha_certificacion, 0, 10) !== $hoy
-                    ) {
+                    // ENDURECIDO (urgente, a pedido): antes solo bloqueaba si la certificación
+                    // fue en un día DISTINTO a hoy — una orden certificada HOY MISMO pasaba
+                    // este chequeo y backorder la reabría (estado_certificacion → 'Pendiente',
+                    // fecha_certificacion → null), reviviendo un pedido ya cerrado por el
+                    // proceso de planilla el mismo día. Backorder solo debe tocar pedidos
+                    // en proceso SIN certificar de hoy — una orden ya Certificada NUNCA se
+                    // reabre, sin importar si fue hoy o en un día anterior.
+                    if ($ordenPrevia && $ordenPrevia->estado_certificacion === 'Certificada') {
                         $resultados['omitidos_ya_certificados']++;
                         $resultados['detalle'][] = [
                             'faltante_id' => $falt->id,
                             'producto'    => $nombreProducto,
                             'orden_id'    => $ordenPrevia->id,
                             'estado'      => 'omitido_ya_certificado',
-                            'motivo'      => "La orden #{$ordenPrevia->id} ya fue certificada el " . substr($ordenPrevia->fecha_certificacion, 0, 10) . " — no se reabre automáticamente.",
+                            'motivo'      => "La orden #{$ordenPrevia->id} ya fue certificada" . ($ordenPrevia->fecha_certificacion ? (" el " . substr($ordenPrevia->fecha_certificacion, 0, 10)) : '') . " — no se reabre automáticamente bajo ningún motivo.",
                         ];
                         return;
                     }
