@@ -705,8 +705,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/picking.js": {
-    "mtime": 1785532239.510382,
-    "ast_hash": "b5578da6dd983cba15ecd015c6b3be46",
+    "mtime": 1785799744.4694345,
+    "ast_hash": "58a72564f17e06eecde5e3c3b73e1a4e",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/recepcion.js": {
@@ -905,8 +905,8 @@
     "semantic_hash": "a28ddd098fad995537ad132f0ff84c61"
   },
   "src/Controllers/ImportExportController.php": {
-    "mtime": 1785760456.936407,
-    "ast_hash": "2600506df58318eb2175e4f229c9c0ed",
+    "mtime": 1785799458.5128374,
+    "ast_hash": "d831ae636bbd036e75ec40d16f6d92d8",
     "semantic_hash": ""
   },
   "src/Controllers/ImpresoraController.php": {
@@ -950,9 +950,9 @@
     "semantic_hash": ""
   },
   "src/Controllers/ParametrosController.php": {
-    "mtime": 1783024714.460763,
-    "ast_hash": "6227db301cb4ccbc5c0508e3c29f23c8",
-    "semantic_hash": "6227db301cb4ccbc5c0508e3c29f23c8"
+    "mtime": 1785799445.773694,
+    "ast_hash": "a86af6fb09bafcc4fc639b202bb1ba0c",
+    "semantic_hash": ""
   },
   "src/Controllers/PermisoPersonalController.php": {
     "mtime": 1780262912.0,

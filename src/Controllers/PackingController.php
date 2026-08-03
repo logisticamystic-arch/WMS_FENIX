@@ -688,6 +688,23 @@ class PackingController extends BaseController
             $builder->where('ps.created_at', '>=', date('Y-m-d', strtotime('-30 days')));
         }
 
+        // ctx=cert alimenta "Certificaciones Completadas" (pendientes de imprimir/remisionar):
+        // excluir sesiones cuyas órdenes YA fueron despachadas/entregadas (ya no están pendientes).
+        if ($ctx === 'cert') {
+            $builder->whereExists(function ($sub) {
+                $sub->select(Capsule::raw(1))
+                    ->from('packing_unidades as pu_disp')
+                    ->join('packing_items as pi_disp', 'pi_disp.unidad_id', '=', 'pu_disp.id')
+                    ->join('picking_detalles as pd_disp', 'pd_disp.id', '=', 'pi_disp.picking_detalle_id')
+                    ->join('orden_pickings as op_disp', 'op_disp.id', '=', 'pd_disp.orden_picking_id')
+                    ->whereColumn('pu_disp.sesion_id', 'ps.id')
+                    ->where(function ($w) {
+                        $w->whereNull('op_disp.estado_despacho')
+                          ->orWhereNotIn('op_disp.estado_despacho', ['Despachado', 'Entregado']);
+                    });
+            });
+        }
+
         if ($sesionId) $builder->where('ps.id', (int)$sesionId);
         if ($sucursal) $builder->where('ps.sucursal_entrega', 'like', "%{$sucursal}%");
         if ($desde) $builder->whereDate('ps.created_at', '>=', $desde);
