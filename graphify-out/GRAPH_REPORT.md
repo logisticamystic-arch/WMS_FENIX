@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-03)
 
 ## Corpus Check
-- 331 files · ~829,205 words
+- 331 files · ~829,283 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d80126b6`
+- Built from commit: `e204c2b6`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -686,7 +686,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `Core Models & Tenant Scope` to `OutboundController`, `Product Blocking & Quick Search`, `Receiving Controller`, `NotificacionesController`, `Auth & Seeding`, `Dispatch Controller`, `Tenant Context & Middleware`, `Core Controllers Overview`, `Location Adjustment Controller`, `Inventory V2 Session Controller`, `Miscellaneous Items Controller`, `Anomaly Detection Controller`, `Replenishment & Notifications`, `ExpiryGuard`, `Traspaso`, `TV Picking Dashboard`, `InvGeneralEvento`, `PickingDetalle`, `Picking TV Dashboard`, `NotificacionesController`, `Inventory Count Model`, `Transfer Controller`, `Ubicacion`, `Aprobación de Vencimientos`?**
-  _High betweenness centrality (0.024) - this node is a cross-community bridge._
+  _High betweenness centrality (0.025) - this node is a cross-community bridge._
 - **Why does `Producto` connect `Product Blocking & Quick Search` to `Transfer Controller`, `Location Adjustment Controller`, `Dispatch Controller`, `Ubicacion`, `PickingDetalle`, `Receiving Controller`, `Base Model & Certification`, `Inventory Count Model`, `Traspaso`?**
   _High betweenness centrality (0.015) - this node is a cross-community bridge._
 - **Are the 140 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
