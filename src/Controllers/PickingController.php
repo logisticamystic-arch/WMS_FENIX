@@ -76,6 +76,16 @@ class PickingController extends BaseController
             ->when($params['ruta'] ?? null, fn($q, $v) => $q->where('orden_pickings.ruta', 'like', "%$v%"))
             ->when($params['estado_certificacion'] ?? null, fn($q, $v) => $q->where('orden_pickings.estado_certificacion', $v))
             ->when(isset($params['sin_despacho']), fn($q) => $q->whereNull('orden_pickings.estado_despacho'))
+            // Ocultar por defecto los pedidos ya liquidados (estado_despacho ya asignado,
+            // ej. 'Despachado'/'Entregado' vía DespachoController::liquidar()) del listado
+            // de picking — incluyendo los de HOY, que antes se colaban por el OR de
+            // solo_hoy (whereDate fecha_movimiento=hoy sin filtrar estado_despacho).
+            // Solo se muestran si el usuario busca explícitamente (texto libre 'q' o
+            // por planilla) o pide incluir_finalizados=1.
+            ->when(
+                !$incluirFinalizados && empty($params['q']) && empty($params['planilla']),
+                fn($q) => $q->whereNull('orden_pickings.estado_despacho')
+            )
             ->when($params['q'] ?? null, function($q, $v) {
                 $q->where(fn($sq) => $sq
                     ->where('orden_pickings.numero_pedido', 'like', "%$v%")
