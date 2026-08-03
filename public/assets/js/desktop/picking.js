@@ -3524,7 +3524,10 @@ WMS_MODULES.picking = {
   },
 
   // ── FALTANTES ─────────────────────────────────────────────────────────────
-  _faltFilters: { ini: '', fin: '', planilla: '', producto: '', sucursal_entrega: '', showAll: false, vista: 'detalle' },
+  // soloElegibles=true por defecto: oculta faltantes de pedidos ya certificados/
+  // despachados (no aplican a backorder) — antes la pantalla mezclaba todo sin
+  // distinguir, y la mayoría de lo mostrado terminaba siendo de pedidos cerrados.
+  _faltFilters: { ini: '', fin: '', planilla: '', producto: '', sucursal_entrega: '', showAll: false, vista: 'detalle', soloElegibles: true },
 
   async show_faltantes(filters = null) {
     if (filters) Object.assign(this._faltFilters, filters);
@@ -3551,10 +3554,16 @@ WMS_MODULES.picking = {
         API.get('/picking/novedades-stock', qs),
         API.get('/picking/reabastecimientos'),
       ]);
-      const resp  = faltR.data || faltR || {};
-      const falt  = Array.isArray(resp.rows) ? resp.rows : (Array.isArray(resp) ? resp : []);
-      const total = resp.total ?? falt.length;
-      const rea   = reabast.data || reabast || [];
+      const resp     = faltR.data || faltR || {};
+      const faltAll  = Array.isArray(resp.rows) ? resp.rows : (Array.isArray(resp) ? resp : []);
+      const totalAll = resp.total ?? faltAll.length;
+      // tiene_pedidos_elegibles_backorder: dinámico por estado del pedido (activo,
+      // sin certificar, sin despachar) — no por fecha. Por defecto se oculta lo que
+      // ya no aplica a backorder (pedidos cerrados), con opción de ver todo.
+      const ocultos  = faltAll.filter(r => r.tiene_pedidos_elegibles_backorder === false).length;
+      const falt     = f.soloElegibles ? faltAll.filter(r => r.tiene_pedidos_elegibles_backorder !== false) : faltAll;
+      const total    = f.soloElegibles ? totalAll - ocultos : totalAll;
+      const rea      = reabast.data || reabast || [];
       const conStock = falt.filter(r => {
         const upc = r.unidades_caja || 1;
         return (r.stock_actual||0) >= (r.cantidad_faltante||0) * upc;
@@ -3629,8 +3638,18 @@ WMS_MODULES.picking = {
               <button class="btn btn-secondary" style="height:38px;padding:0 14px;" onclick="WMS_MODULES.picking._clearFaltFilters()">
                 <i class="fa-solid fa-broom"></i>
               </button>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;cursor:pointer;height:38px;">
+                <input type="checkbox" id="falt-solo-elegibles" ${f.soloElegibles ? 'checked' : ''} onchange="WMS_MODULES.picking._toggleSoloElegibles(this.checked)">
+                Solo pedidos activos (ocultar ya cerrados)
+              </label>
             </div>
           </div>
+
+          ${f.soloElegibles && ocultos > 0 ? `<div style="padding:10px 16px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;color:#475569;display:flex;align-items:center;gap:8px;">
+            <i class="fa-solid fa-eye-slash"></i>
+            <span><strong>${ocultos}</strong> faltante(s) de pedidos ya certificados/despachados oculto(s) — no aplican a backorder.</span>
+            <button class="btn btn-xs btn-secondary" style="margin-left:auto;" onclick="WMS_MODULES.picking._toggleSoloElegibles(false)">Ver todos</button>
+          </div>` : ''}
 
           ${!f.showAll && falt.length >= 50 ? `<div style="padding:10px 16px;background:#fef9c3;border:1px solid #fde047;border-radius:6px;font-size:12px;color:#854d0e;display:flex;align-items:center;gap:8px;">
             <i class="fa-solid fa-triangle-exclamation" style="font-size:15px;color:#f59e0b;"></i>
@@ -3846,8 +3865,12 @@ WMS_MODULES.picking = {
   },
 
   _clearFaltFilters() {
-    this._faltFilters = { ini: '', fin: '', planilla: '', producto: '', sucursal_entrega: '', showAll: false, vista: 'detalle' };
+    this._faltFilters = { ini: '', fin: '', planilla: '', producto: '', sucursal_entrega: '', showAll: false, vista: 'detalle', soloElegibles: true };
     this.show_faltantes();
+  },
+
+  _toggleSoloElegibles(checked) {
+    this.show_faltantes({ soloElegibles: !!checked });
   },
 
   async _limpiarFaltantes() {
