@@ -975,8 +975,8 @@
     "semantic_hash": "a526a63d521fc75e43f1f5a54d5b1d13"
   },
   "src/Controllers/RecepcionController.php": {
-    "mtime": 1785783743.8578172,
-    "ast_hash": "66e0043a5cd86db143384cfd9c4d17bc",
+    "mtime": 1785785837.8818064,
+    "ast_hash": "83dfbaa576efde132a6b54a2033d4ba3",
     "semantic_hash": ""
   },
   "src/Controllers/ReplenishmentController.php": {
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785783452.7473419,
-    "ast_hash": "26034905b1a141964397800ffbba859f",
+    "mtime": 1785785927.1389017,
+    "ast_hash": "4c4b31fb78b075a121f2bf7510c20fd4",
     "semantic_hash": ""
   },
   "public/pitch.html": {
@@ -1680,8 +1680,8 @@
     "semantic_hash": ""
   },
   "src/Models/RecepcionCalidad.php": {
-    "mtime": 1785357084.948572,
-    "ast_hash": "03f379a97e692f53cc3a3be90c1e9a07",
+    "mtime": 1785785814.8007338,
+    "ast_hash": "c2dbb714783027343c6fae83ee77f558",
     "semantic_hash": ""
   },
   "public/uploads/firmas/firma_trp_6a6a6cc12d354.png": {
@@ -1747,6 +1747,11 @@
   "database/migrations/126_fix_factor_udm_miel_trufada.php": {
     "mtime": 1785761182.333414,
     "ast_hash": "e58ace9e381929cc2c26dd202610dec7",
+    "semantic_hash": ""
+  },
+  "database/migrations/127_add_conforme_recepcion_calidad.php": {
+    "mtime": 1785785649.030385,
+    "ast_hash": "bba2ba48ebaafe35d761ab8f7972ce17",
     "semantic_hash": ""
   }
 }
