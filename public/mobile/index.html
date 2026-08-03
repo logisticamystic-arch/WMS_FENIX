@@ -944,6 +944,10 @@ const MWMS = {
       this._sinOdc.prodSel      = p;
       this._sinOdc.fechaAuto    = r.data.fecha_vencimiento || '';
       this._sinOdc.fechaAutoRaw = r.data.fecha_raw || '';
+      // Ingreso por QR = proveedor CDP, y esta captura no exige el chequeo de
+      // calidad por línea (ver _iniciarGuardarSinOdc) — mismo criterio que el
+      // formato de Auditoría de Calidad en escritorio (RecepcionController::confirm()).
+      this._sinOdc.origenCaptura = 'QR';
       input.value = '';
       input.style.borderColor = '#10b981';
       input.style.background  = '#f0fdf4';
@@ -956,6 +960,11 @@ const MWMS = {
       el('rs-upc', p.unidades_caja || 1);
       el('rs-factor-udm', p.factor_udm || '');
       el('rs-unidad-contenido', p.unidad_contenido || '');
+      el('rs-proveedor', 'CDP');
+      if (r.data.lote_raw) {
+        const esFechaIso = /^\d{4}-\d{2}-\d{2}$/.test(r.data.lote_raw);
+        el('rs-lote', esFechaIso ? this.formatDate(r.data.lote_raw) : r.data.lote_raw);
+      }
       if (this._sinOdc.fechaAuto) el('rs-fecha-venc', this._sinOdc.fechaAuto);
       const lbl = document.getElementById('rs-cant-label');
       if (lbl) lbl.textContent = parseInt(p.unidades_caja || 1) > 1 ? 'Cajas *' : 'Cantidad (unidades) *';
@@ -1012,6 +1021,7 @@ const MWMS = {
     this._sinOdc.prodSel = p;
     this._sinOdc.fechaAuto = '';
     this._sinOdc.fechaAutoRaw = '';
+    this._sinOdc.origenCaptura = 'Manual';
     const loteCard = document.getElementById('rs-lote-card');
     const fvCard   = document.getElementById('rs-fv-card');
     if (loteCard) loteCard.style.display = p.controla_lote ? 'block' : 'none';
@@ -1038,6 +1048,7 @@ const MWMS = {
       this._sinOdc.prodSel = p;
       this._sinOdc.fechaAuto    = '';
       this._sinOdc.fechaAutoRaw = '';
+      this._sinOdc.origenCaptura = 'Manual';
       this._renderRecSinOdc();
     }, 'Buscar Producto', 'prod');
   },
@@ -1063,6 +1074,12 @@ const MWMS = {
     const hayUe = factorUdm > 0 && cantUe > 0;
     if (!hayUe && cantInput <= 0 && saldos <= 0) return this.toast('Cantidad debe ser mayor a cero', 'error');
     if (hayUe  && cantUe   <= 0) return this.toast('Ingrese la cantidad en U/E', 'error');
+
+    // Captura por QR (proveedor CDP): se guarda directo, sin exigir el chequeo
+    // de calidad por línea (olor/color/textura/…) que sí aplica a las demás.
+    if (s.origenCaptura === 'QR') {
+      return this._guardarSinOdc(true);
+    }
 
     // Abre el modal de calidad del producto
     const renderT = (id, label) => `
@@ -1111,7 +1128,7 @@ const MWMS = {
       }
   },
 
-  async _guardarSinOdc() {
+  async _guardarSinOdc(skipCalidad) {
     const s         = this._sinOdc;
     const prodId    = document.getElementById('rs-prod-id')?.value;
     const cantInput = parseFloat(document.getElementById('rs-cant')?.value    || '0');
@@ -1124,21 +1141,23 @@ const MWMS = {
     const estado    = document.getElementById('rs-estado')?.value || 'BuenEstado';
     const palletNum = parseInt(document.getElementById('rs-pallet-num')?.value) || null;
     const prov      = document.getElementById('rs-proveedor')?.value?.trim() || '';
-    
-    // Capturar variables de calidad
-    const calidad = {
-        olor: document.getElementById('pcal_olor')?.value || null,
-        color: document.getElementById('pcal_color')?.value || null,
-        textura: document.getElementById('pcal_textura')?.value || null,
-        temperatura: document.getElementById('pcal_temperatura')?.value || null,
-        empaque: document.getElementById('pcal_empaque')?.value || null,
-        rotulado: document.getElementById('pcal_rotulado')?.value || null,
-    };
-    
-    if (Object.values(calidad).some(v => v === null || v === '')) {
-        return this.toast('Por favor, evalúe todas las condiciones del producto (C o NC)', 'warning');
+
+    // Captura por QR (proveedor CDP): no se exige el chequeo de calidad por línea.
+    let calidad = null;
+    if (!skipCalidad) {
+      calidad = {
+          olor: document.getElementById('pcal_olor')?.value || null,
+          color: document.getElementById('pcal_color')?.value || null,
+          textura: document.getElementById('pcal_textura')?.value || null,
+          temperatura: document.getElementById('pcal_temperatura')?.value || null,
+          empaque: document.getElementById('pcal_empaque')?.value || null,
+          rotulado: document.getElementById('pcal_rotulado')?.value || null,
+      };
+      if (Object.values(calidad).some(v => v === null || v === '')) {
+          return this.toast('Por favor, evalúe todas las condiciones del producto (C o NC)', 'warning');
+      }
     }
-    
+
         const hayUe = factorUdm > 0 && cantUe > 0;
     const cantCajas = hayUe ? Math.ceil(cantUe / factorUdm) : cantInput;
     if (!hayUe && cantInput <= 0 && saldos <= 0) return this.toast('Cantidad debe ser mayor a cero', 'error');
@@ -1159,8 +1178,9 @@ const MWMS = {
         estado_mercancia: estado,
         numero_pallet:    palletNum || undefined,
         proveedor:        prov,
-        calidad:          calidad
+        origen_captura:   s.origenCaptura || 'Manual',
       };
+      if (calidad) payload.calidad = calidad;
       if (hayUe) payload.cantidad_ue = cantUe;
       const r = await mApi('POST', '/recepciones/sin-odc', payload);
 
