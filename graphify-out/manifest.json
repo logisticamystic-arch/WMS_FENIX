@@ -655,8 +655,8 @@
     "semantic_hash": "55a981fc94e0e5956e0c0af77d105af7"
   },
   "public/assets/js/desktop/almacenamiento.js": {
-    "mtime": 1785798306.5333884,
-    "ast_hash": "b0a8ab7cee56a72564b26057ad312c6f",
+    "mtime": 1785798603.599018,
+    "ast_hash": "52bfb5c4bc02d9faeaa6fa0b77a9ef23",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/chat-ia.js": {
@@ -960,8 +960,8 @@
     "semantic_hash": "e5d5c725bce4a13b3afbb9666f3fe95a"
   },
   "src/Controllers/PickingController.php": {
-    "mtime": 1785777901.2530928,
-    "ast_hash": "5154688b1ab426d8f38aac8a1ee2cb5f",
+    "mtime": 1785799263.2212524,
+    "ast_hash": "c698301704d841ec03b2368378d326e8",
     "semantic_hash": ""
   },
   "src/Controllers/PlanillaController.php": {
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785798359.2947295,
-    "ast_hash": "18febddc250fdfd9e49ddb4f0aa32cab",
+    "mtime": 1785798641.7475753,
+    "ast_hash": "9f519d161fa11077cff8de10796592fd",
     "semantic_hash": ""
   },
   "public/pitch.html": {
@@ -1757,6 +1757,11 @@
   "database/migrations/128_fix_unidades_caja_coleslaw_y_libera_reserva.php": {
     "mtime": 1785797883.0041,
     "ast_hash": "c20772b5ed4f01dc22fdf2bb370fb604",
+    "semantic_hash": ""
+  },
+  "database/migrations/129_fix_factor_udm_masivo_maestro.php": {
+    "mtime": 1785799219.809794,
+    "ast_hash": "2370efad9c440f6fc8f72ad5f34299f9",
     "semantic_hash": ""
   }
 }

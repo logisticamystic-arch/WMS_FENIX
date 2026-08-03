@@ -201,6 +201,10 @@ class ImportExportController extends BaseController
 
         $dataRows = array_slice($lines, $headerRowIndex + 1);
         $summary = ['total' => count($dataRows), 'creados' => 0, 'actualizados' => 0, 'omitiendo' => 0, 'errors' => []];
+        // Advertencia (no bloqueante): nombre con patrón "### GR/ML/KG/..." cuyo
+        // número coincide exactamente con unidades_caja mientras factor_udm quedó vacío
+        // — probable confusión entre el peso/contenido del producto y unidades por caja.
+        $summary['advertencias_unidades_caja'] = ['filas' => 0, 'codigos' => []];
 
         // OPTIMIZACIÓN: Cargar catálogo a memoria para evitar N sentencias SELECT
         $cacheProds = [];
@@ -287,7 +291,18 @@ class ImportExportController extends BaseController
                     if (empty($row['nombre'])) {
                         $row['nombre'] = 'Prod. ' . $codigo;
                     }
-                    
+
+                    // Detección de posible confusión peso/unidades_caja (advertencia, no bloquea)
+                    if (preg_match('/(\d{3,6})\s*(GR|GRAMOS|ML|MG|KG)\b/i', (string)$row['nombre'], $mConf)) {
+                        $numDetectado = (int)$mConf[1];
+                        $ucDetectado = isset($row['unidades_caja']) ? (int)$row['unidades_caja'] : null;
+                        $factorInformado = isset($row['factor_udm']) && $row['factor_udm'] !== null && $row['factor_udm'] !== '';
+                        if ($ucDetectado !== null && $ucDetectado === $numDetectado && !$factorInformado) {
+                            $summary['advertencias_unidades_caja']['filas']++;
+                            $summary['advertencias_unidades_caja']['codigos'][] = $codigo;
+                        }
+                    }
+
                     $exists = $cacheProds[$codigo] ?? null;
                     $ean = $row['codigo_ean'] ?? null;
                     unset($row['codigo_ean']);

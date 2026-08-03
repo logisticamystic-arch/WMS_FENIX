@@ -13,6 +13,29 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 class ParametrosController extends BaseController
 {
     /**
+     * Detecta el error frecuente de confundir el peso/contenido incluido en el
+     * nombre del producto (ej. "Leche 1100 GR") con la cantidad de unidades por
+     * caja. No bloquea el guardado, solo devuelve un mensaje de advertencia
+     * cuando unidades_caja coincide exactamente con ese número y factor_udm
+     * (el campo correcto para el contenido por unidad) no quedó informado.
+     */
+    private function detectarPosibleConfusionUnidadesCaja(?string $nombre, $unidadesCaja, $factorUdm): ?string
+    {
+        if (empty($nombre)) return null;
+        if (!preg_match('/(\d{3,6})\s*(GR|GRAMOS|ML|MG|KG)\b/i', $nombre, $m)) return null;
+
+        $numeroDetectado = (int)$m[1];
+        $factorInformado = $factorUdm !== null && $factorUdm !== '';
+
+        if ((int)$unidadesCaja === $numeroDetectado && !$factorInformado) {
+            return "El nombre del producto incluye '{$m[1]} {$m[2]}' y unidades_caja coincide exactamente con ese número ({$numeroDetectado}). "
+                 . "Es posible que se haya confundido el peso/contenido del producto con la cantidad de unidades por caja. "
+                 . "Si {$numeroDetectado} corresponde al contenido de cada unidad, use el campo factor_udm (y unidad_contenido) en lugar de unidades_caja.";
+        }
+        return null;
+    }
+
+    /**
      * GET /api/param/empresas
      * Also used as public route: GET /api/auth/empresas (no JWT)
      */
@@ -575,6 +598,9 @@ class ParametrosController extends BaseController
                  ? (float)$data['factor_udm'] : null;
              $prod->unidad_contenido = !empty($data['unidad_contenido']) ? $data['unidad_contenido'] : null;
              $prod->activo = true;
+
+             $advertencia = $this->detectarPosibleConfusionUnidadesCaja($prod->nombre, $prod->unidades_caja, $prod->factor_udm);
+
              $prod->save();
 
              // Crear EAN Principal si se proporcionó
@@ -587,9 +613,11 @@ class ParametrosController extends BaseController
                  $eanModel->activo = true;
                  $eanModel->save();
              }
-             
+
              Capsule::commit();
-             return $this->json($response, ['error' => false, 'message' => 'Producto creado con éxito', 'data' => $prod]);
+             $resultado = ['error' => false, 'message' => 'Producto creado con éxito', 'data' => $prod];
+             if ($advertencia) $resultado['advertencias'] = [$advertencia];
+             return $this->json($response, $resultado);
          } catch (\Exception $e) {
              Capsule::rollBack();
              $msg = $e->getMessage();
@@ -668,6 +696,8 @@ class ParametrosController extends BaseController
              if (array_key_exists('unidad_contenido', $data))
                  $prod->unidad_contenido = !empty($data['unidad_contenido']) ? $data['unidad_contenido'] : null;
 
+             $advertencia = $this->detectarPosibleConfusionUnidadesCaja($prod->nombre, $prod->unidades_caja, $prod->factor_udm);
+
              $prod->save();
 
              // Update Main EAN (if provided during edit)
@@ -687,7 +717,9 @@ class ParametrosController extends BaseController
                  }
              }
 
-             return $this->json($response, ['error' => false, 'message' => 'Producto actualizado con éxito', 'data' => $prod]);
+             $resultado = ['error' => false, 'message' => 'Producto actualizado con éxito', 'data' => $prod];
+             if ($advertencia) $resultado['advertencias'] = [$advertencia];
+             return $this->json($response, $resultado);
          } catch (\Exception $e) {
              return $this->json($response, ['error' => true, 'message' => 'Error al actualizar producto: ' . $e->getMessage()], 400);
          }

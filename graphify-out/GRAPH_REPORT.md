@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-03)
 
 ## Corpus Check
-- 333 files · ~831,292 words
+- 334 files · ~833,524 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `30aec541`
+- Built from commit: `18cec3e7`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -675,7 +675,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **Why does `BaseModel` connect `Ubicacion` to `OutboundController`, `Core Models & Tenant Scope`, `Traspaso`, `.__invoke`, `Receiving Controller`, `bkpLog`, `Auth & Seeding`, `Base Controller Utilities`, `Tenant Context & Middleware`, `ML Expiry Prediction`, `Sucursal`, `Miscellaneous Items Controller`, `Anomaly Detection Controller`, `Replenishment & Notifications`, `Inventory Adjustment Model`, `Traspaso`, `TV Picking Dashboard`, `InvGeneralEvento`, `Picking TV Dashboard`, `Transfer Controller`, `Aprobación de Vencimientos`?**
   _High betweenness centrality (0.021) - this node is a cross-community bridge._
 - **Why does `BaseController` connect `Base Controller Utilities` to `Inventory & Dashboard Controller`, `Parameters & Approvals`, `OutboundController`, `Cross-Dock Operations`, `Receiving Controller`, `Auth & Seeding`, `Yard Management Controller`, `Location Adjustment Controller`, `ML Expiry Prediction`, `Despacho`, `Miscellaneous Items Controller`, `Anomaly Detection Controller`, `ForecastController`, `Replenishment & Notifications`, `Database Backup Helper`, `TV Picking Dashboard`, `Picking TV Dashboard`, `DevolucionController.php`, `TenantScoped.php`, `Slotting Assignment Engine`, `Sucursal`, `Trazabilidad Controller`?**
-  _High betweenness centrality (0.016) - this node is a cross-community bridge._
+  _High betweenness centrality (0.015) - this node is a cross-community bridge._
 - **Why does `Producto` connect `Product Blocking & Quick Search` to `ML Expiry Prediction`, `.__invoke`, `Receiving Controller`, `Base Model & Certification`, `TMS Integration Controller`, `Picking TV Dashboard`, `Traspaso`, `TV Picking Dashboard`?**
   _High betweenness centrality (0.012) - this node is a cross-community bridge._
 - **Are the 137 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
