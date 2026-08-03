@@ -1058,29 +1058,16 @@
       _devolucionPendingCount: 0,
       _confirmCallback: null,
 
-      // ── Obtener fecha actual (con salto a mañana después de 7PM) ──
+      // ── Obtener fecha actual en zona horaria Colombia (America/Bogota) ──
       getToday() {
-        const d = new Date();
-        if (d.getHours() >= 19) {
-          d.setDate(d.getDate() + 1);
-        }
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}`;
+        return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
       },
 
-      // ── Obtener fecha anterior/futura relativa a "hoy" (considerando 7PM) ──
+      // ── Obtener fecha anterior/futura relativa a "hoy" (horario Colombia) ──
       getPastDate(days) {
         const d = new Date();
-        if (d.getHours() >= 19) {
-          d.setDate(d.getDate() + 1);
-        }
         d.setDate(d.getDate() - days);
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}`;
+        return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(d);
       },
 
       // ── Inicialización ────────────────────────────────────
@@ -2638,14 +2625,7 @@
       },
 
       getToday() {
-        const d = new Date();
-        if (d.getHours() >= 19) {
-          d.setDate(d.getDate() + 1);
-        }
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}`;
+        return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
       },
 
       get user() { return _wmsUser; }
