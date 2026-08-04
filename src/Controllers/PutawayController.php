@@ -243,6 +243,7 @@ class PutawayController extends BaseController
                 'producto_id'  => $productoId,
                 'ubicacion_id' => $ubicacionDestId,
                 'lote'         => $lote,
+                'numero_pallet'=> $data['numero_pallet'] ?? null,
             ]);
             if (!$invDest->exists) {
                 $invDest->cantidad           = 0;
@@ -267,7 +268,7 @@ class PutawayController extends BaseController
                 'producto_id'          => $productoId,
                 'ubicacion_origen_id'  => $ubicacionOrigId,
                 'ubicacion_destino_id' => $ubicacionDestId,
-                'tipo_movimiento'      => 'Traslado',
+                'tipo_movimiento'      => MovimientoInventario::TIPO_TRASLADO,
                 'cantidad'             => $cantidad,
                 'cantidad_cajas'       => $cajasMove,
                 'saldos'               => $saldosMove,
@@ -278,6 +279,8 @@ class PutawayController extends BaseController
                 'fecha_movimiento'     => date('Y-m-d'),
                 'hora_inicio'          => date('H:i:s'),
                 'hora_fin'             => date('H:i:s'),
+                'observaciones'        => 'Putaway (Ubicar) en ' . $destino->codigo,
+                'numero_pallet'        => $data['numero_pallet'] ?? null,
             ]);
 
             DB::commit();

@@ -944,6 +944,10 @@ const MWMS = {
                     ${l.numero_pallet ? `<span style="background:#dbeafe;color:#1d4ed8;padding:1px 6px;border-radius:99px;font-size:.65rem;font-weight:700;margin-left:4px;">#${l.numero_pallet}</span>` : ''}
                   </div>
                   <small style="color:#64748b;">${l.upc > 1 ? `Cajas: ${l.cajas} × ${l.upc} + ${l.saldos || 0} sueltos = ${l.cant} UND/TOTAL` : `${l.cant} UND/TOTAL`}${l.cantUe ? ` (${l.cantUe} ${l.unidCont || 'U/E'})` : ''} | Lote: ${l.lote || 'N/A'} | Venc: ${l.fv || '-'}</small>
+                  ${l.detalleId ? `
+                  <div style="margin-top:6px;">
+                    <button class="m-btn secondary sm" style="width:100%;border:1px solid #cbd5e1;background:#f8fafc;color:#475569;" onclick="MWMS._showCalidadModalProducto(${l.detalleId}, '${this.esc(l.nombre)}')"><i class="fa-solid fa-microscope"></i> Inspección Calidad</button>
+                  </div>` : ''}
                 </div>
                 ${l.detalleId && ['Admin','Supervisor','SuperAdmin'].includes(_mUser?.rol) ? `
                 <div style="display:flex;gap:4px;flex-shrink:0;">
@@ -1169,27 +1173,25 @@ const MWMS = {
     if (!hayUe && cantInput <= 0 && saldos <= 0) return this.toast('Cantidad debe ser mayor a cero', 'error');
     if (hayUe  && cantUe   <= 0) return this.toast('Ingrese la cantidad en U/E', 'error');
 
-    // Captura por QR (proveedor CDP): se guarda directo, sin exigir el chequeo
-    // de calidad por línea (olor/color/textura/…) que sí aplica a las demás.
-    if (s.origenCaptura === 'QR') {
-      return this._guardarSinOdc(true);
-    }
+    // Se guarda directo, la calidad se hace por producto después en el listado
+    return this._guardarSinOdc(true);
+  },
 
-    // Abre el modal de calidad del producto
+  _showCalidadModalProducto(detalleId, nombre) {
     const renderT = (id, label) => `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2e8f0;">
           <div style="font-size:.85rem;color:#334155;font-weight:600;">${this.esc(label)}</div>
           <div style="display:flex;gap:4px;">
-            <button id="pbtn_${id}_C" onclick="MWMS._setPcalToggle('${id}','C')" class="m-btn success sm" style="min-width:45px;">C</button>
-            <button id="pbtn_${id}_NC" onclick="MWMS._setPcalToggle('${id}','NC')" class="m-btn secondary sm" style="min-width:45px;">NC</button>
-            <input type="hidden" id="pcal_${id}" value="C">
+            <button id="pcalbtn_${id}_C" onclick="MWMS._setPcalToggle2('${id}','C')" class="m-btn success sm" style="min-width:45px;">C</button>
+            <button id="pcalbtn_${id}_NC" onclick="MWMS._setPcalToggle2('${id}','NC')" class="m-btn secondary sm" style="min-width:45px;">NC</button>
+            <input type="hidden" id="pcal2_${id}" value="C">
           </div>
         </div>`;
 
     const html = `
       <div style="text-align:left;">
-        <h3 style="margin-top:0;font-size:1.1rem;color:#0f766e;"><i class="fa-solid fa-box"></i> Calidad del Producto</h3>
-        <p style="font-size:.8rem;color:#64748b;margin-bottom:12px;">Por favor, evalúe las condiciones del producto <b>${this.esc(s.prodSel.nombre)}</b> antes de agregarlo al pallet.</p>
+        <h3 style="margin-top:0;font-size:1.1rem;color:#0f766e;"><i class="fa-solid fa-microscope"></i> Calidad Producto</h3>
+        <p style="font-size:.8rem;color:#64748b;margin-bottom:12px;">Inspección para: <b>${this.esc(nombre)}</b></p>
         
         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:0 12px;margin-bottom:16px;">
             ${renderT('olor', 'Olor')}
@@ -1199,21 +1201,69 @@ const MWMS = {
             ${renderT('empaque', 'Empaque')}
             ${renderT('rotulado', 'Rotulado')}
         </div>
+
+        <div style="margin-bottom:16px;">
+            <label style="font-size:.85rem;font-weight:700;color:#334155;display:block;margin-bottom:4px;">Foto Evidencia</label>
+            <input type="file" id="pcal2_foto" accept="image/*" class="m-input-full" style="padding:6px;font-size:.8rem;">
+        </div>
+
+        <div style="margin-bottom:16px;">
+            <label style="font-size:.85rem;font-weight:700;color:#334155;display:block;margin-bottom:4px;">Observaciones</label>
+            <textarea id="pcal2_observaciones" class="m-input-full" rows="2" placeholder="Opcional..."></textarea>
+        </div>
         
         <div style="display:flex;gap:10px;">
           <button class="m-btn secondary" style="flex:1;" onclick="Swal.close()">Cancelar</button>
-          <button class="m-btn success" style="flex:1;" onclick="MWMS._guardarSinOdc()"><i class="fa-solid fa-check"></i> Confirmar</button>
+          <button class="m-btn success" style="flex:1;" onclick="MWMS._guardarCalidadProducto(${detalleId})"><i class="fa-solid fa-save"></i> Guardar</button>
         </div>
       </div>
     `;
 
-    Swal.fire({
-      html: html,
-      showConfirmButton: false,
-      showCancelButton: false,
-      width: '92%',
-      padding: '16px',
-    });
+    Swal.fire({ html: html, showConfirmButton: false, showCancelButton: false, width: '92%', padding: '16px' });
+  },
+
+  _setPcalToggle2(id, val) {
+      document.getElementById('pcal2_'+id).value = val;
+      const btnC = document.getElementById('pcalbtn_'+id+'_C');
+      const btnNC = document.getElementById('pcalbtn_'+id+'_NC');
+      if(val === 'C') {
+          btnC.className = 'm-btn success sm';
+          btnNC.className = 'm-btn secondary sm';
+      } else {
+          btnC.className = 'm-btn secondary sm';
+          btnNC.className = 'm-btn danger sm';
+      }
+  },
+
+  async _guardarCalidadProducto(detalleId) {
+    const payload = new FormData();
+    payload.append('olor', document.getElementById('pcal2_olor')?.value || 'Conforme');
+    payload.append('color', document.getElementById('pcal2_color')?.value || 'Conforme');
+    payload.append('textura', document.getElementById('pcal2_textura')?.value || 'Conforme');
+    payload.append('temperatura', document.getElementById('pcal2_temperatura')?.value || 'Conforme');
+    payload.append('empaque', document.getElementById('pcal2_empaque')?.value || 'Conforme');
+    payload.append('rotulado', document.getElementById('pcal2_rotulado')?.value || 'Conforme');
+    payload.append('observaciones', document.getElementById('pcal2_observaciones')?.value || '');
+
+    const fotoInput = document.getElementById('pcal2_foto');
+    if (fotoInput && fotoInput.files && fotoInput.files[0]) {
+      payload.append('foto_evidencia', fotoInput.files[0]);
+    }
+
+    Swal.fire({ title: 'Guardando...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+    try {
+      const r = await fetch(MWMS_CONFIG.apiUrl + '/recepciones/detalle/' + detalleId + '/calidad', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') },
+        body: payload
+      });
+      const data = await r.json();
+      if (!r.ok || data.error) throw new Error(data.message || 'Error al guardar');
+      this.toast('Inspección de calidad guardada', 'success');
+      Swal.close();
+    } catch(e) {
+      Swal.fire({ icon: 'error', title: 'Error', text: e.message });
+    }
   },
 
   _setPcalToggle(id, val) {
@@ -1300,6 +1350,7 @@ const MWMS = {
 
       // Reset para siguiente captura (borrar producto seleccionado y dejar listo para la siguiente referencia en el mismo pallet)
       s.prodSel      = null;
+      s.prodSearch   = '';
       s.fechaAuto    = '';
       s.fechaAutoRaw = '';
       s.origenCaptura = 'Manual';

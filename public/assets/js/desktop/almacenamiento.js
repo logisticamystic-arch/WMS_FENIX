@@ -187,7 +187,7 @@ WMS_MODULES.almacenamiento = {
 
     try {
       for (const item of items) {
-        await API.post('/inventario/traslado', {
+        await API.post('/putaway/ubicar', {
           producto_id:          item.producto_id,
           ubicacion_origen_id:  item.ubicacion_id,
           ubicacion_destino_id: parseInt(ubi_id),
@@ -439,7 +439,7 @@ WMS_MODULES.almacenamiento = {
     if (!item.ubicacion_id) return WMS.toast('error', 'El ítem no tiene ubicación de origen registrada');
 
     try {
-      const r = await API.post('/inventario/traslado', {
+      const r = await API.post('/putaway/ubicar', {
         producto_id:          item.producto_id,
         ubicacion_origen_id:  item.ubicacion_id,
         ubicacion_destino_id: parseInt(ubi_id),
