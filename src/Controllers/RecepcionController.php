@@ -763,11 +763,17 @@ class RecepcionController extends BaseController
             return $this->json($response, ['error' => true, 'message' => 'Producto inválido'], 404);
         }
 
-        $cajasUnd = max(1, (int)($producto->unidades_caja ?? 1));
+        $cajasUnd = max(1, (int)($producto->factor_udm > 0 ? $producto->factor_udm : ($producto->unidades_caja ?? 1)));
 
         // Priorizar ingreso por U/E: si viene cantidad_ue y el producto tiene factor_udm, convertir a unidades
         if (!empty($data['cantidad_ue']) && $producto->tieneUdm()) {
             $cantidad = $producto->calcularUnidades((float)$data['cantidad_ue']);
+        } elseif (isset($data['cantidad_cajas']) && (int)$data['cantidad_cajas'] > 0 && $cajasUnd > 1) {
+            // Modo cajas: si se envió cantidad de cajas físicas y el producto tiene factor > 1
+            $saldosInp = isset($data['saldos']) ? (float)$data['saldos'] : 0.0;
+            $cantidadCalculada = ((int)$data['cantidad_cajas'] * $cajasUnd) + $saldosInp;
+            // Si la cantidad calculada en cajas es mayor a la enviada pura, usar la calculada
+            $cantidad = max((float)$data['cantidad'], $cantidadCalculada);
         } else {
             $cantidad = (float)$data['cantidad'];
         }
@@ -935,17 +941,10 @@ class RecepcionController extends BaseController
             $inv->cantidad           = ($inv->cantidad ?? 0) + $cantidad;
             $inv->cantidad_reservada = $inv->cantidad_reservada ?? 0;
             $inv->fecha_vencimiento  = $detalle->fecha_vencimiento ?? $inv->fecha_vencimiento;
-            // ── Arquitectura UND/TOTAL: leer cajas/saldos del body o inferir ──
-            $_bodyCajas  = isset($data['cantidad_cajas']) ? (int)$data['cantidad_cajas'] : 0;
-            $_bodySaldos = isset($data['saldos']) ? (float)$data['saldos'] : 0.0;
-            if ($_bodyCajas === 0 && $_bodySaldos == 0.0 && $inv->cantidad > 0) {
-                // Compatibilidad: inferir descomposición a partir del total acumulado
-                $_invUpc     = max(1, (int)($producto->unidades_caja ?? 1));
-                $_bodyCajas  = (int)floor((float)$inv->cantidad / $_invUpc);
-                $_bodySaldos = fmod((float)$inv->cantidad, (float)$_invUpc);
-            }
-            $inv->cantidad_cajas = $_bodyCajas;
-            $inv->saldos         = $_bodySaldos;
+            // ── Arquitectura UND/TOTAL: recalcular cajas/saldos del inventario acumulado ──
+            $_invUpc     = max(1, (int)($producto->factor_udm > 0 ? $producto->factor_udm : ($producto->unidades_caja ?? 1)));
+            $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $_invUpc);
+            $inv->saldos         = fmod((float)$inv->cantidad, (float)$_invUpc);
             $inv->save();
 
             \Illuminate\Database\Capsule\Manager::connection()->commit();

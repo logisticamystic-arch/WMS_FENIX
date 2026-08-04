@@ -966,8 +966,9 @@ const MWMS = {
   _actualizarPreviewRs() {
     const cajas      = parseFloat(document.getElementById('rs-cant')?.value       || '0') || 0;
     const saldos     = parseFloat(document.getElementById('rs-saldos')?.value     || '0') || 0;
-    const upc        = parseInt(document.getElementById('rs-upc')?.value           || '1') || 1;
+    const upcVal     = parseInt(document.getElementById('rs-upc')?.value           || '1') || 1;
     const factorUdm  = parseFloat(document.getElementById('rs-factor-udm')?.value || '0') || 0;
+    const upc        = Math.max(1, factorUdm > 0 ? factorUdm : upcVal);
     const unidCont   = document.getElementById('rs-unidad-contenido')?.value       || 'U/E';
     const cantUe     = parseFloat(document.getElementById('rs-cant-ue')?.value     || '0') || 0;
     const preview    = document.getElementById('rs-conv-preview');
@@ -976,7 +977,7 @@ const MWMS = {
     const uePreview  = document.getElementById('rs-ue-preview');
     const ueConvText = document.getElementById('rs-ue-conv-text');
 
-    if (label) label.textContent = upc > 1 ? 'Cajas *' : 'Cantidad (unidades) *';
+    if (label) label.textContent = upc > 1 ? `Cajas (UxC: ${upc}) *` : 'Cantidad (unidades) *';
 
     // Mostrar/ocultar campo saldos según UPC
     const saldosGroup = document.getElementById('rs-saldos-group');
@@ -1208,8 +1209,7 @@ const MWMS = {
     // Este bundle usa SweetAlert2 (Swal.fire/Swal.close) para diálogos — no existe
     // this.showModal()/this.closeModal() en MWMS (eran llamadas a métodos
     // inexistentes, probablemente copiadas del WMS.showModal() de escritorio).
-    Swal.fire({ html, showConfirmButton: false, showCloseButton: true, width: 'min(420px, 92vw)' });
-  },
+},
 
   _setPcalToggle(id, val) {
       document.getElementById('pcal_'+id).value = val;
@@ -1229,8 +1229,9 @@ const MWMS = {
     const prodId    = document.getElementById('rs-prod-id')?.value;
     const cantInput = parseFloat(document.getElementById('rs-cant')?.value    || '0');
     const saldos    = parseFloat(document.getElementById('rs-saldos')?.value  || '0') || 0;
-    const upc       = parseInt(document.getElementById('rs-upc')?.value       || '1') || 1;
+    const upcVal    = parseInt(document.getElementById('rs-upc')?.value       || '1') || 1;
     const factorUdm = parseFloat(document.getElementById('rs-factor-udm')?.value || '0') || 0;
+    const upc       = Math.max(1, factorUdm > 0 ? factorUdm : upcVal);
     const cantUe    = parseFloat(document.getElementById('rs-cant-ue')?.value || '0') || 0;
     const lote      = document.getElementById('rs-lote')?.value || '';
     const fv        = document.getElementById('rs-fecha-venc')?.value || '';
@@ -1254,7 +1255,7 @@ const MWMS = {
       }
     }
 
-        const hayUe = factorUdm > 0 && cantUe > 0;
+    const hayUe = factorUdm > 0 && cantUe > 0;
     const cantCajas = hayUe ? Math.ceil(cantUe / factorUdm) : cantInput;
     if (!hayUe && cantInput <= 0 && saldos <= 0) return this.toast('Cantidad debe ser mayor a cero', 'error');
     if (hayUe  && cantUe   <= 0) return this.toast('Ingrese la cantidad en U/E', 'error');
