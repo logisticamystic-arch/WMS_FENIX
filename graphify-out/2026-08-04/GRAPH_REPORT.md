@@ -1,16 +1,16 @@
 # Graph Report - WMS_FENIX  (2026-08-04)
 
 ## Corpus Check
-- 334 files · ~834,681 words
+- 334 files · ~834,717 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2720 nodes · 5374 edges · 322 communities (251 shown, 71 thin omitted)
+- 2720 nodes · 5374 edges · 323 communities (251 shown, 72 thin omitted)
 - Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 329 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `f1399358`
+- Built from commit: `c48a8904`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -105,6 +105,7 @@
 - Picking TV Dashboard
 - Location Model
 - BackupHelper
+- .__invoke
 - Backend/Frontend Rewrite Plan
 - Certification Scanning UI
 - Reservations UI
@@ -197,7 +198,7 @@
 ## God Nodes (most connected - your core abstractions)
 1. `PickingController` - 94 edges
 2. `ParametrosController` - 67 edges
-3. `BaseController` - 64 edges
+3. `BaseController` - 65 edges
 4. `BaseModel` - 59 edges
 5. `InventarioV2Controller` - 42 edges
 6. `InventarioController` - 39 edges
@@ -224,15 +225,15 @@
 ## Hyperedges (group relationships)
 - **Packing Session Data Model** — concept_packing_sesiones, concept_packing_unidades, concept_packing_items, concept_picking_detalles [EXTRACTED 0.85]
 
-## Communities (322 total, 71 thin omitted)
+## Communities (323 total, 72 thin omitted)
 
 ### Community 0 - "Picking Order Management"
 Cohesion: 0.04
 Nodes (5): App\Models\OrdenPicking, App\Models\PickingDetalle, OrdenPicking, PickingDetalle, PickingController
 
 ### Community 3 - "Parameters & Approvals"
-Cohesion: 0.05
-Nodes (4): Psr\Http\Message\ResponseInterface, ParametrosController, SystemController, ApiKeyMiddleware
+Cohesion: 0.04
+Nodes (8): BaseController, Psr\Http\Message\ResponseInterface, ConsultaRapidaController, DespachoController, ImportExportController, ParametrosController, PutawayController, TraspasoController
 
 ### Community 4 - "Cross-Dock Operations"
 Cohesion: 0.04
@@ -635,8 +636,8 @@ Cohesion: 1.00
 Nodes (3): _confirmarReinicio(), _renderReinicioDatos(), show_reinicio_datos()
 
 ### Community 310 - "SystemController"
-Cohesion: 0.03
-Nodes (10): BaseController, Psr\Http\Message\ServerRequestInterface, AprobacionController, ConsultaRapidaController, DespachoController, ImportExportController, InventarioController, PermisoPersonalController (+2 more)
+Cohesion: 0.04
+Nodes (5): Psr\Http\Message\ServerRequestInterface, AprobacionController, InventarioController, PermisoPersonalController, SystemController
 
 ### Community 315 - "ImportExportController"
 Cohesion: 0.50
@@ -663,7 +664,7 @@ Nodes (3): _cerrarEventoTomaFisica(), _guardarAsignacionTomaFisica(), verEventoT
 ## Knowledge Gaps
 - **163 isolated node(s):** `name`, `description`, `type`, `php`, `ext-pdo` (+158 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **71 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **72 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -675,9 +676,9 @@ _Questions this graph is uniquely positioned to answer:_
 - **Why does `SesionInventario` connect `Printer Management Controller` to `Core Controllers Overview`, `Traspaso`?**
   _High betweenness centrality (0.017) - this node is a cross-community bridge._
 - **Why does `BaseModel` connect `Ubicacion` to `OutboundController`, `Core Models & Tenant Scope`, `Product Blocking & Quick Search`, `Receiving Controller`, `bkpLog`, `Auth & Seeding`, `Base Controller Utilities`, `Dispatch Controller`, `Tenant Context & Middleware`, `ML Expiry Prediction`, `Sucursal`, `Miscellaneous Items Controller`, `Replenishment & Notifications`, `Inventory Adjustment Model`, `MovimientoInventario`, `Traspaso`, `TV Picking Dashboard`, `InvGeneralEvento`, `Picking TV Dashboard`, `Aprobación de Vencimientos`?**
-  _High betweenness centrality (0.016) - this node is a cross-community bridge._
-- **Why does `BaseController` connect `Base Controller Utilities` to `Inventory & Dashboard Controller`, `Parameters & Approvals`, `Cross-Dock Operations`, `OutboundController`, `Product Blocking & Quick Search`, `Receiving Controller`, `bkpLog`, `Base Model & Certification`, `Location Adjustment Controller`, `Sucursal`, `Despacho`, `Miscellaneous Items Controller`, `ForecastController`, `SystemController`, `Replenishment & Notifications`, `TMS Integration Controller`, `Database Backup Helper`, `TV Picking Dashboard`, `Picking TV Dashboard`, `TenantScoped.php`, `Sucursal`, `Trazabilidad Controller`?**
-  _High betweenness centrality (0.014) - this node is a cross-community bridge._
+  _High betweenness centrality (0.015) - this node is a cross-community bridge._
+- **Why does `Despacho` connect `TV Picking Dashboard` to `Ubicacion`, `Cross-Dock Operations`, `Traspaso`?**
+  _High betweenness centrality (0.012) - this node is a cross-community bridge._
 - **Are the 136 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
   _`date` has 136 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `name`, `description`, `type` to the rest of the system?**
