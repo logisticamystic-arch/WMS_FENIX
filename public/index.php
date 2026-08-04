@@ -468,6 +468,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // Módulo Calidad (Recepción sin ODC)
     $group->get('/recepciones/{id}/calidad', [\App\Controllers\RecepcionController::class, 'obtenerCalidad']);
     $group->post('/recepciones/{id}/calidad', [\App\Controllers\RecepcionController::class, 'guardarCalidad']);
+    $group->get('/recepciones/detalles/{detalleId}/calidad', [\App\Controllers\RecepcionController::class, 'obtenerCalidadDetalle']);
+    $group->post('/recepciones/detalles/{detalleId}/calidad', [\App\Controllers\RecepcionController::class, 'guardarCalidadDetalle']);
 
     $group->delete('/recepciones/{id}', [\App\Controllers\RecepcionController::class, 'eliminar']);
     $group->get('/recepcion/dashboard', [\App\Controllers\RecepcionController::class, 'index']);

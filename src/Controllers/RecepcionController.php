@@ -2471,4 +2471,32 @@ public function getControlPanelData(Request $request, Response $response): Respo
         return $this->ok($response, $recepcion->calidad);
     }
 
+    public function obtenerCalidadDetalle(Request $request, Response $response, array $args): Response
+    {
+        $detalleId = (int)($args['detalleId'] ?? 0);
+        $calidad = \App\Models\RecepcionDetalleCalidad::where('recepcion_detalle_id', $detalleId)->first();
+        return $this->ok($response, $calidad);
+    }
+
+    public function guardarCalidadDetalle(Request $request, Response $response, array $args): Response
+    {
+        $detalleId = (int)($args['detalleId'] ?? 0);
+        $detalle = RecepcionDetalle::find($detalleId);
+        if (!$detalle) {
+            return $this->error($response, 'Detalle de recepción no encontrado.', 404);
+        }
+
+        $data = $request->getParsedBody() ?? [];
+        $calidad = \App\Models\RecepcionDetalleCalidad::firstOrNew(['recepcion_detalle_id' => $detalleId]);
+        $calidad->olor        = $data['olor'] ?? $calidad->olor;
+        $calidad->color       = $data['color'] ?? $calidad->color;
+        $calidad->textura     = $data['textura'] ?? $calidad->textura;
+        $calidad->temperatura = $data['temperatura'] ?? $calidad->temperatura;
+        $calidad->empaque     = $data['empaque'] ?? $calidad->empaque;
+        $calidad->rotulado    = $data['rotulado'] ?? $calidad->rotulado;
+        $calidad->save();
+
+        return $this->ok($response, $calidad, 'Inspección de calidad por producto guardada correctamente.');
+    }
+
 }

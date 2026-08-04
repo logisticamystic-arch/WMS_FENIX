@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-04)
 
 ## Corpus Check
-- 334 files · ~834,675 words
+- 334 files · ~834,681 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `53d3f8ca`
+- Built from commit: `f1399358`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -675,7 +675,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **Why does `SesionInventario` connect `Printer Management Controller` to `Core Controllers Overview`, `Traspaso`?**
   _High betweenness centrality (0.017) - this node is a cross-community bridge._
 - **Why does `BaseModel` connect `Ubicacion` to `OutboundController`, `Core Models & Tenant Scope`, `Product Blocking & Quick Search`, `Receiving Controller`, `bkpLog`, `Auth & Seeding`, `Base Controller Utilities`, `Dispatch Controller`, `Tenant Context & Middleware`, `ML Expiry Prediction`, `Sucursal`, `Miscellaneous Items Controller`, `Replenishment & Notifications`, `Inventory Adjustment Model`, `MovimientoInventario`, `Traspaso`, `TV Picking Dashboard`, `InvGeneralEvento`, `Picking TV Dashboard`, `Aprobación de Vencimientos`?**
-  _High betweenness centrality (0.015) - this node is a cross-community bridge._
+  _High betweenness centrality (0.016) - this node is a cross-community bridge._
 - **Why does `BaseController` connect `Base Controller Utilities` to `Inventory & Dashboard Controller`, `Parameters & Approvals`, `Cross-Dock Operations`, `OutboundController`, `Product Blocking & Quick Search`, `Receiving Controller`, `bkpLog`, `Base Model & Certification`, `Location Adjustment Controller`, `Sucursal`, `Despacho`, `Miscellaneous Items Controller`, `ForecastController`, `SystemController`, `Replenishment & Notifications`, `TMS Integration Controller`, `Database Backup Helper`, `TV Picking Dashboard`, `Picking TV Dashboard`, `TenantScoped.php`, `Sucursal`, `Trazabilidad Controller`?**
   _High betweenness centrality (0.014) - this node is a cross-community bridge._
 - **Are the 136 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**

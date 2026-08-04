@@ -1610,7 +1610,10 @@ WMS_MODULES.recepcion = {
       <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.recepcion.show_sin_odc()">
         <i class="fa-solid fa-arrow-left"></i> Volver al Monitor
       </button>
-      ${id ? `<button class="btn btn-danger btn-sm" onclick="WMS_MODULES.recepcion._cerrarRecepcionSinODC()">
+      ${id ? `<button class="btn btn-warning btn-sm" onclick="WMS_MODULES.recepcion._abrirModalCalidadGeneral('${id}')">
+        <i class="fa-solid fa-truck"></i> Calidad Vehículo / Logística
+      </button>
+      <button class="btn btn-danger btn-sm" onclick="WMS_MODULES.recepcion._cerrarRecepcionSinODC()">
         <i class="fa-solid fa-lock"></i> Cerrar Recepción
       </button>` : ''}`);
   },
@@ -1768,8 +1771,8 @@ WMS_MODULES.recepcion = {
             </div>
 
             <!-- Botón Guardar -->
-            <button class="btn btn-success" style="padding:14px;font-size:16px;font-weight:800;margin-top:4px;"
-              onclick="WMS_MODULES.recepcion._enviarCapturaSinODC()">
+            <button id="sodc-btn-guardar" class="btn btn-success" style="padding:14px;font-size:16px;font-weight:800;margin-top:4px;"
+              onclick="WMS_MODULES.recepcion._enviarCapturaSinODC(event)">
               <i class="fa-solid fa-check"></i> GUARDAR CAPTURA
             </button>
           </div>
@@ -1808,6 +1811,10 @@ WMS_MODULES.recepcion = {
                       <td style="padding:9px 10px;">${l.fecha_vencimiento ? WMS.formatDate(l.fecha_vencimiento) : '-'}</td>
                       <td style="padding:9px 10px;"><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#166534;">${WMS.esc(l.estado_mercancia || 'BuenEstado')}</span></td>
                       <td style="padding:6px 10px;text-align:center;white-space:nowrap;">
+                        <button onclick="WMS_MODULES.recepcion._abrirModalCalidadProducto(${l.id},'${WMS.esc(l.producto?.nombre||'-').replace(/'/g,"\\'")}')"
+                          style="background:#fef3c7;color:#92400e;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;margin-right:3px;" title="Inspección de Calidad por Referencia / Producto">
+                          <i class="fa-solid fa-clipboard-check"></i> Calidad
+                        </button>
                         <button onclick="WMS_MODULES.recepcion._editarDetalleSinODC('${recepcionId}',${l.id},'${WMS.esc(l.producto?.nombre||'-').replace(/'/g,"\\'")}',${l.cantidad_recibida},${l.cajas_por_unidad||1})"
                           style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;margin-right:3px;" title="Editar cantidad">
                           <i class="fa-solid fa-pencil"></i>
@@ -2131,8 +2138,8 @@ WMS_MODULES.recepcion = {
     return API.post(endpoint, { ...payload, autorizar_vencimiento_inferior: true });
   },
 
-  async _enviarCapturaSinODC() {
-    const btn = event.currentTarget;
+  async _enviarCapturaSinODC(e = window.event) {
+    const btn = e?.currentTarget || document.getElementById('sodc-btn-guardar') || {};
     const prodId    = document.getElementById('sodc-prod-id')?.value;
     const cantCajas = parseFloat(document.getElementById('sodc-cant')?.value    || '0');
     const saldos    = parseFloat(document.getElementById('sodc-saldos')?.value  || '0') || 0;
@@ -2276,6 +2283,10 @@ WMS_MODULES.recepcion = {
       <td style="padding:9px 10px;"><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f0fdf4;color:#166534;">${WMS.esc(det.estado_mercancia || 'BuenEstado')}</span></td>
       <td style="padding:6px 10px;text-align:center;white-space:nowrap;">
         ${detId ? `
+        <button onclick="WMS_MODULES.recepcion._abrirModalCalidadProducto(${detId},'${safeNm}')"
+          style="background:#fef3c7;color:#92400e;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;margin-right:3px;" title="Inspección de Calidad por Referencia / Producto">
+          <i class="fa-solid fa-clipboard-check"></i> Calidad
+        </button>
         <button onclick="WMS_MODULES.recepcion._editarDetalleSinODC('${recId}',${detId},'${safeNm}',${det.cantidad_recibida||0},${upc})"
           style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;margin-right:3px;" title="Editar cantidad">
           <i class="fa-solid fa-pencil"></i>
@@ -4436,5 +4447,184 @@ WMS_MODULES.recepcion = {
       if (r.error) WMS.toast('error', r.message);
       else { WMS.toast('success', 'Eliminado'); this.show_miscelaneos(); }
     });
+  },
+
+  async _abrirModalCalidadGeneral(recepcionId) {
+    WMS.spinner();
+    let c = {};
+    try {
+      const r = await API.get('/recepciones/' + recepcionId + '/calidad');
+      c = r.data || {};
+    } catch (_) {}
+
+    const html = `
+      <div style="text-align:left;font-size:13px;display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:12px;color:#64748b;margin-bottom:4px;">Inspección general de calidad a nivel de transporte / vehículo para la recepción.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-weight:700;font-size:11px;display:block;margin-bottom:2px;">Placa del Vehículo</label>
+            <input type="text" id="cal-g-placa" class="swal2-input" style="margin:0;width:100%;font-size:13px;height:36px;" value="${WMS.esc(c.trans_placa || '')}" placeholder="Ej: AAA123">
+          </div>
+          <div>
+            <label style="font-weight:700;font-size:11px;display:block;margin-bottom:2px;">Temp. Vehículo (°C)</label>
+            <input type="text" id="cal-g-temp" class="swal2-input" style="margin:0;width:100%;font-size:13px;height:36px;" value="${WMS.esc(c.trans_temperatura || '')}" placeholder="Ej: 4°C">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-weight:700;font-size:11px;display:block;margin-bottom:2px;">Limpieza Transporte</label>
+            <select id="cal-g-limpieza" class="swal2-select" style="margin:0;width:100%;font-size:13px;height:36px;">
+              <option value="Conforme" ${c.trans_limpieza === 'Conforme' ? 'selected' : ''}>Conforme / Limpio</option>
+              <option value="NoConforme" ${c.trans_limpieza === 'NoConforme' ? 'selected' : ''}>No Conforme / Sucio</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-weight:700;font-size:11px;display:block;margin-bottom:2px;">Concepto Sanitario</label>
+            <select id="cal-g-concepto" class="swal2-select" style="margin:0;width:100%;font-size:13px;height:36px;">
+              <option value="Vigente" ${c.trans_concepto_sanitario === 'Vigente' ? 'selected' : ''}>Vigente</option>
+              <option value="NoVigente" ${c.trans_concepto_sanitario === 'NoVigente' ? 'selected' : ''}>No Vigente / Ausente</option>
+              <option value="NA" ${c.trans_concepto_sanitario === 'NA' ? 'selected' : ''}>N/A</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-weight:700;font-size:11px;display:block;margin-bottom:2px;">Carnet Manipulación</label>
+            <select id="cal-g-carnet" class="swal2-select" style="margin:0;width:100%;font-size:13px;height:36px;">
+              <option value="Vigente" ${c.trans_carnet_manipulacion === 'Vigente' ? 'selected' : ''}>Vigente</option>
+              <option value="NoVigente" ${c.trans_carnet_manipulacion === 'NoVigente' ? 'selected' : ''}>No Vigente / Ausente</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-weight:700;font-size:11px;display:block;margin-bottom:2px;">Factura / Remisión</label>
+            <input type="text" id="cal-g-factura" class="swal2-input" style="margin:0;width:100%;font-size:13px;height:36px;" value="${WMS.esc(c.factura || '')}" placeholder="Número de factura">
+          </div>
+        </div>
+        <div>
+          <label style="font-weight:700;font-size:11px;display:block;margin-bottom:2px;">Responsable / Inspector</label>
+          <input type="text" id="cal-g-resp" class="swal2-input" style="margin:0;width:100%;font-size:13px;height:36px;" value="${WMS.esc(c.firma_responsable || WMS.user?.nombre || '')}" placeholder="Nombre del inspector">
+        </div>
+      </div>
+    `;
+
+    const res = await Swal.fire({
+      title: '<i class="fa-solid fa-truck" style="color:#d97706;"></i> Calidad Transporte / Vehículo',
+      html,
+      width: '580px',
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-save"></i> Guardar Inspección Vehículo',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0F4C81',
+      preConfirm: () => ({
+        trans_placa: document.getElementById('cal-g-placa')?.value || '',
+        trans_temperatura: document.getElementById('cal-g-temp')?.value || '',
+        trans_limpieza: document.getElementById('cal-g-limpieza')?.value || 'Conforme',
+        trans_concepto_sanitario: document.getElementById('cal-g-concepto')?.value || 'Vigente',
+        trans_carnet_manipulacion: document.getElementById('cal-g-carnet')?.value || 'Vigente',
+        factura: document.getElementById('cal-g-factura')?.value || '',
+        firma_responsable: document.getElementById('cal-g-resp')?.value || '',
+        conforme: 1,
+      })
+    });
+
+    if (!res.isConfirmed || !res.value) return;
+
+    try {
+      const r = await API.post('/recepciones/' + recepcionId + '/calidad', res.value);
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', 'Inspección de vehículo guardada correctamente');
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error guardando calidad del vehículo');
+    }
+  },
+
+  async _abrirModalCalidadProducto(detalleId, productoNombre) {
+    WMS.spinner();
+    let c = {};
+    try {
+      const r = await API.get('/recepciones/detalles/' + detalleId + '/calidad');
+      c = r.data || {};
+    } catch (_) {}
+
+    const html = `
+      <div style="text-align:left;font-size:13px;display:flex;flex-direction:column;gap:10px;">
+        <div style="background:#eff6ff;padding:8px 12px;border-radius:6px;border:1px solid #bfdbfe;font-weight:700;color:#1e40af;">
+          <i class="fa-solid fa-box"></i> Referencia: ${WMS.esc(productoNombre)}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-weight:700;font-size:11px;display:block;margin-bottom:2px;">Olor</label>
+            <select id="cal-p-olor" class="swal2-select" style="margin:0;width:100%;font-size:13px;height:36px;">
+              <option value="Conforme" ${c.olor === 'Conforme' ? 'selected' : ''}>Conforme / Característico</option>
+              <option value="NoConforme" ${c.olor === 'NoConforme' ? 'selected' : ''}>No Conforme / Alterado</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-weight:700;font-size:11px;display:block;margin-bottom:2px;">Color</label>
+            <select id="cal-p-color" class="swal2-select" style="margin:0;width:100%;font-size:13px;height:36px;">
+              <option value="Conforme" ${c.color === 'Conforme' ? 'selected' : ''}>Conforme / Característico</option>
+              <option value="NoConforme" ${c.color === 'NoConforme' ? 'selected' : ''}>No Conforme / Alterado</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-weight:700;font-size:11px;display:block;margin-bottom:2px;">Textura</label>
+            <select id="cal-p-textura" class="swal2-select" style="margin:0;width:100%;font-size:13px;height:36px;">
+              <option value="Conforme" ${c.textura === 'Conforme' ? 'selected' : ''}>Conforme / Adecuada</option>
+              <option value="NoConforme" ${c.textura === 'NoConforme' ? 'selected' : ''}>No Conforme / Anómala</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-weight:700;font-size:11px;display:block;margin-bottom:2px;">Temp. Producto (°C)</label>
+            <input type="text" id="cal-p-temp" class="swal2-input" style="margin:0;width:100%;font-size:13px;height:36px;" value="${WMS.esc(c.temperatura || '')}" placeholder="Ej: 4°C">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-weight:700;font-size:11px;display:block;margin-bottom:2px;">Empaque / Envase</label>
+            <select id="cal-p-empaque" class="swal2-select" style="margin:0;width:100%;font-size:13px;height:36px;">
+              <option value="Conforme" ${c.empaque === 'Conforme' ? 'selected' : ''}>Conforme / Hermético</option>
+              <option value="Dañado" ${c.empaque === 'Dañado' ? 'selected' : ''}>No Conforme / Roto o Abierto</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-weight:700;font-size:11px;display:block;margin-bottom:2px;">Rotulado / Etiquetado</label>
+            <select id="cal-p-rotulado" class="swal2-select" style="margin:0;width:100%;font-size:13px;height:36px;">
+              <option value="Conforme" ${c.rotulado === 'Conforme' ? 'selected' : ''}>Conforme / Legible</option>
+              <option value="Ilegible" ${c.rotulado === 'Ilegible' ? 'selected' : ''}>No Conforme / Ilegible o Incompleto</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const res = await Swal.fire({
+      title: '<i class="fa-solid fa-clipboard-check" style="color:#059669;"></i> Calidad por Producto',
+      html,
+      width: '560px',
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-save"></i> Guardar Inspección Producto',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#059669',
+      preConfirm: () => ({
+        olor: document.getElementById('cal-p-olor')?.value || 'Conforme',
+        color: document.getElementById('cal-p-color')?.value || 'Conforme',
+        textura: document.getElementById('cal-p-textura')?.value || 'Conforme',
+        temperatura: document.getElementById('cal-p-temp')?.value || '',
+        empaque: document.getElementById('cal-p-empaque')?.value || 'Conforme',
+        rotulado: document.getElementById('cal-p-rotulado')?.value || 'Conforme',
+      })
+    });
+
+    if (!res.isConfirmed || !res.value) return;
+
+    try {
+      const r = await API.post('/recepciones/detalles/' + detalleId + '/calidad', res.value);
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', 'Inspección de calidad del producto guardada');
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error guardando calidad del producto');
+    }
   }
 };

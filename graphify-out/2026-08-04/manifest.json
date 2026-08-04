@@ -710,8 +710,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/recepcion.js": {
-    "mtime": 1785777608.257309,
-    "ast_hash": "a9d8ff29ad66e447c28c6b95467c2d4e",
+    "mtime": 1785850275.5153458,
+    "ast_hash": "5ac89cd5d6da883a7ef9ebbbeb2b5bc0",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/reportes.js": {
@@ -975,8 +975,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/RecepcionController.php": {
-    "mtime": 1785805360.3879752,
-    "ast_hash": "f83dabed371ad36307d79e9af38ea868",
+    "mtime": 1785850266.9008546,
+    "ast_hash": "458e623c2715194553c35773563d3e41",
     "semantic_hash": ""
   },
   "src/Controllers/ReplenishmentController.php": {
