@@ -1380,7 +1380,15 @@ const MWMS = {
                  <p style="font-size:.78rem;color:#92400e;text-align:left;margin-top:8px;">
                    Solicite a un Administrador que autorice este ingreso desde el sistema de escritorio.
                  </p>`,
-          confirmButtonText: 'Entendido',
+          confirmButtonText: 'Reintentar',
+          showCancelButton: true,
+          cancelButtonText: 'Cancelar',
+        }).then(res => {
+          if (res.isConfirmed) {
+            // Reintentar la operación que falló (se asume que la última llamada está en contexto)
+            // Forzamos una recarga del stock y retomamos la captura.
+            this.viewUbicar();
+          }
         });
       } else {
         this.toast(e.message, 'error');
