@@ -1,7 +1,7 @@
-# Graph Report - WMS_FENIX  (2026-08-04)
+# Graph Report - WMS_FENIX  (2026-08-03)
 
 ## Corpus Check
-- 334 files · ~834,600 words
+- 334 files · ~834,476 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `9c8b144e`
+- Built from commit: `0b17a72b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
