@@ -70,6 +70,13 @@ WMS_MODULES.despacho = {
 
   // ── CERTIFICACIÓN (POR SUCURSAL) ───────────────────────────────
   async show_certificacion(silent = false) {
+    if (!this._certSearched && !this._certFechaInicio && !this._certFechaFin) {
+      const hoy = WMS.getToday();
+      this._certFechaInicio = hoy;
+      this._certFechaFin    = hoy;
+      this._certSearched    = true;
+    }
+
     const fi = this._certFechaInicio || '';
     const ff = this._certFechaFin    || '';
 

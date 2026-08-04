@@ -516,7 +516,7 @@ class PackingController extends BaseController
         $ordenes = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
             ->where('sucursal_id', $sucId)
             ->where('sucursal_entrega', $sesion->sucursal_entrega)
-            ->whereIn('estado', ['Completada', 'EnProceso'])
+            ->whereIn('estado', ['Pendiente', 'EnProceso', 'Completada', 'Completado'])
             ->whereIn('estado_certificacion', ['Pendiente', 'Parcial'])
             ->get();
 
@@ -1661,7 +1661,7 @@ class PackingController extends BaseController
             $ordenesQuery = Capsule::table('orden_pickings')
                 ->where('empresa_id', $empresaId)
                 ->where('sucursal_entrega', $sucursal)
-                ->whereIn('estado', ['Completada', 'EnProceso'])
+                ->whereIn('estado', ['Pendiente', 'EnProceso', 'Completada', 'Completado'])
                 ->whereIn('estado_certificacion', ['Pendiente', 'Parcial']);
 
             if ($fecha !== null && $fecha !== 'all') {
@@ -1727,7 +1727,7 @@ class PackingController extends BaseController
             })
             ->where('op.empresa_id', $empresaId)
             ->where('op.sucursal_entrega', $sucursalEntrega)
-            ->whereIn('op.estado', ['Completada', 'EnProceso'])
+            ->whereIn('op.estado', ['Pendiente', 'EnProceso', 'Completada', 'Completado'])
             ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial', 'Certificada'])
             ->where(function($sq) {
                 $sq->where('pd.cantidad_pickeada', '>', 0)
@@ -1790,7 +1790,7 @@ class PackingController extends BaseController
             ->where('op.empresa_id', $empresaId)
             ->where('op.sucursal_id', $sucursalId)
             ->where('op.sucursal_entrega', $sucursalEntrega)
-            ->whereIn('op.estado', ['Completada', 'EnProceso'])
+            ->whereIn('op.estado', ['Pendiente', 'EnProceso', 'Completada', 'Completado'])
             ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial'])
             // Retiro directo (cliente ya lo recogió en bodega) — no entra a packing/remisión.
             ->where('op.despachado_directo', false)
