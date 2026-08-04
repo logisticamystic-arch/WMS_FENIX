@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-03)
 
 ## Corpus Check
-- 334 files · ~834,030 words
+- 334 files · ~834,279 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `56667fe2`
+- Built from commit: `23f899c2`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -675,7 +675,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **Why does `SesionInventario` connect `Printer Management Controller` to `Core Controllers Overview`, `Traspaso`?**
   _High betweenness centrality (0.017) - this node is a cross-community bridge._
 - **Why does `BaseModel` connect `Ubicacion` to `OutboundController`, `Core Models & Tenant Scope`, `Product Blocking & Quick Search`, `Receiving Controller`, `bkpLog`, `Auth & Seeding`, `Base Model & Certification`, `Tenant Context & Middleware`, `ML Expiry Prediction`, `Sucursal`, `Miscellaneous Items Controller`, `Replenishment & Notifications`, `TMS Integration Controller`, `MovimientoInventario`, `Traspaso`, `TV Picking Dashboard`, `InvGeneralEvento`, `Picking TV Dashboard`, `Aprobación de Vencimientos`?**
-  _High betweenness centrality (0.016) - this node is a cross-community bridge._
+  _High betweenness centrality (0.015) - this node is a cross-community bridge._
 - **Why does `Despacho` connect `TV Picking Dashboard` to `Ubicacion`, `Cross-Dock Operations`, `Traspaso`?**
   _High betweenness centrality (0.012) - this node is a cross-community bridge._
 - **Are the 136 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
