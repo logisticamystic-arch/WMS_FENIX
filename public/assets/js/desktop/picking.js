@@ -151,8 +151,9 @@ WMS_MODULES.picking = {
           };
         }
         const pr = grupos[key].productos[prodId];
+        const upc = Math.max(1, parseFloat(d.producto?.factor_udm || d.producto?.unidades_caja || 1));
         pr.cantidad_total += parseFloat(d.cantidad_solicitada || 0);
-        pr.cantidad_pendiente += (parseFloat(d.cantidad_solicitada || 0) - parseFloat(d.cantidad_pickeada || 0));
+        pr.cantidad_pendiente += (parseFloat(d.cantidad_solicitada || 0) - (parseFloat(d.cantidad_pickeada || 0) / upc));
         pr.clientes.add(p.cliente || '-');
         pr.pedidosSet.add(p.id);
         // Recopilar auxiliares asignados a nivel de detalle sin importar si está completado o no
@@ -1096,7 +1097,7 @@ WMS_MODULES.picking = {
         </td>
         <td style="text-align:center;">${WMS.formatNum(cantSol)}</td>
         <td style="text-align:center;">${self._fmtCajasDesglose(cantSol, upc)}</td>
-        <td style="text-align:center;font-weight:700;color:${cantPick>0?'#059669':'#94a3b8'}">${WMS.formatNum(cantPick)}</td>
+        <td style="text-align:center;font-weight:700;color:${cantPick>0?'#059669':'#94a3b8'}">${self._fmtCajasDesglose(cantPick / upc, upc)}</td>
         <td><span class="badge ${badgeCls}">${lEst||'Pendiente'}</span></td>
       </tr>`;
     }).join('') || '<tr><td colspan="5" class="table-empty">Sin líneas</td></tr>';

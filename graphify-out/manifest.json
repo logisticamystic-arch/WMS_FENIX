@@ -655,8 +655,8 @@
     "semantic_hash": "55a981fc94e0e5956e0c0af77d105af7"
   },
   "public/assets/js/desktop/almacenamiento.js": {
-    "mtime": 1785798603.599018,
-    "ast_hash": "52bfb5c4bc02d9faeaa6fa0b77a9ef23",
+    "mtime": 1785869940.5778553,
+    "ast_hash": "d076dce7b7f65376cc6dbd07179b42c8",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/chat-ia.js": {
@@ -970,8 +970,8 @@
     "semantic_hash": "bde5212b77e3fca86d0dfdd3eaf6a923"
   },
   "src/Controllers/PutawayController.php": {
-    "mtime": 1785863349.5535367,
-    "ast_hash": "55abe725e8ad249c22fd7deaa3c792f8",
+    "mtime": 1785869902.121998,
+    "ast_hash": "e4bc066d5163fdaa3f7e401431519e8d",
     "semantic_hash": ""
   },
   "src/Controllers/RecepcionController.php": {
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785853745.595335,
-    "ast_hash": "60f0d3b80ea087cda97603ffbd924762",
+    "mtime": 1785870037.811339,
+    "ast_hash": "a382b4d39ad69f12cc3b1a3648277310",
     "semantic_hash": ""
   },
   "public/pitch.html": {

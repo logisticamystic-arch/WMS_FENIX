@@ -4383,53 +4383,43 @@ class PickingController extends BaseController
                         }
                     }
 
-                    // ── Fase 4: Actualizar detalle ──────────────────────────────────────────
-                    // cantidad_pickeada: SIEMPRE en UND/TOTAL (unidades reales), igual que
-                    // confirmLine(). Antes se guardaba en cajas fraccionarias (realmenteDescontado
-                    // / upc), que es la convención que usa cantidad_solicitada en este flujo —
-                    // pero certRemisionMultiple() y el reporte de Faltantes suman
-                    // SUM(cantidad_pickeada) de TODAS las líneas de un producto sin distinguir
-                    // por qué endpoint se confirmaron, asumiendo unidades. Guardar aquí en cajas
-                    // hacía que la certificación/remisión interpretara 0.875 "cajas" como 0.875
-                    // unidades — la separación editada en el móvil (ej. 3500 und) desaparecía
-                    // casi por completo en la certificación. Ver auditoría WMS Fénix 2026-07-22.
-                    $det->cantidad_pickeada = $realmenteDescontado;
-                    $det->estado = ($realmenteDescontado >= (float)$det->cantidad_solicitada * $upcConf)
+                    // Fase 4: Actualizar detalle
+                    // cantidad_pickeada es lo que el usuario REALMENTE separó (tomarInventario), 
+                    // independientemente de si había inventario en el sistema para descontar.
+                    // Esto permite imprimir en la remisión la cantidad física separada.
+                    $det->cantidad_pickeada = $tomarInventario;
+                    $det->estado = ($tomarInventario >= (float)$det->cantidad_solicitada * $upcConf)
                         ? 'Completado' : 'Faltante';
                     if ($novedadNombre) {
                         $det->novedad = trim(($det->novedad ?? '') . ' | ' . $novedadNombre, ' |');
                     }
                     $det->save();
 
-                    // Registrar faltante por bajo picking. picking_faltantes.cantidad_solicitada/
-                    // cantidad_faltante se mantienen en CAJAS en toda la tabla (convención de este
-                    // flujo) — por eso aquí sí convertimos realmenteDescontado (unidades) de vuelta
-                    // a cajas-equivalente, solo para este cálculo de faltante.
-                    if ($det->estado === 'Faltante') {
-                        $pickeadaCajasEquiv = $upcConf > 0 ? ($realmenteDescontado / $upcConf) : $realmenteDescontado;
-                        $faltanteCant = max(0, (float)$det->cantidad_solicitada - $pickeadaCajasEquiv);
-                        
-                        // Eliminar registro previo de faltante si existía para mantener sincronía atómica
-                        Capsule::table('picking_faltantes')
-                            ->where('orden_picking_id', $det->orden_picking_id)
-                            ->where('producto_id', $det->producto_id)
-                            ->delete();
+                    // Registrar en picking_faltantes SOLO si hay una discrepancia de inventario 
+                    // entre lo físico que el usuario separó y lo que el sistema pudo descontar.
+                    $inventarioFaltanteUnd = max(0, $tomarInventario - $realmenteDescontado);
+                    
+                    // Eliminar registro previo de faltante si existía
+                    Capsule::table('picking_faltantes')
+                        ->where('orden_picking_id', $det->orden_picking_id)
+                        ->where('producto_id', $det->producto_id)
+                        ->delete();
 
-                        if ($faltanteCant > 0) {
-                            $ord = OrdenPicking::find($det->orden_picking_id);
-                            Capsule::table('picking_faltantes')->insert([
-                                'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
-                                'sucursal_id'         => $user->sucursal_id,
-                                'orden_picking_id'    => $det->orden_picking_id,
-                                'producto_id'         => $det->producto_id,
-                                'planilla_lote'       => $ord->planilla_lote ?? $ord->planilla_numero,
-                                'cantidad_solicitada' => $det->cantidad_solicitada,
-                                'cantidad_faltante'   => $faltanteCant,
-                                'causa'               => 'Bajo picking — cantidad separada menor a la solicitada',
-                                'created_at'          => $now,
-                                'updated_at'          => $now,
-                            ]);
-                        }
+                    if ($inventarioFaltanteUnd > 0) {
+                        $faltanteCajas = $upcConf > 0 ? ($inventarioFaltanteUnd / $upcConf) : $inventarioFaltanteUnd;
+                        $ord = OrdenPicking::find($det->orden_picking_id);
+                        Capsule::table('picking_faltantes')->insert([
+                            'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
+                            'sucursal_id'         => $user->sucursal_id,
+                            'orden_picking_id'    => $det->orden_picking_id,
+                            'producto_id'         => $det->producto_id,
+                            'planilla_lote'       => $ord->planilla_lote ?? $ord->planilla_numero,
+                            'cantidad_solicitada' => $det->cantidad_solicitada,
+                            'cantidad_faltante'   => $faltanteCajas,
+                            'causa'               => 'Separada sin inventario',
+                            'created_at'          => $now,
+                            'updated_at'          => $now,
+                        ]);
                     }
 
                     $ordenIds[] = $det->orden_picking_id;
