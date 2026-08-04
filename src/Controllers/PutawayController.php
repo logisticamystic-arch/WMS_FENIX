@@ -190,8 +190,16 @@ class PutawayController extends BaseController
             // Ubicar nunca podía encontrar un destino válido y siempre rechazaba con 404.
             $destino = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
-                ->whereIn('tipo_ubicacion', ['Almacenamiento', 'Picking'])
+                ->whereIn('tipo_ubicacion', ['Almacenamiento', 'Picking', 'Patio'])
                 ->find($ubicacionDestId);
+            // Si no se encontró, intentar cualquier ubicación activa de la sucursal
+            if (!$destino) {
+                $destino = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                    ->where('sucursal_id', $user->sucursal_id)
+                    ->where('estado', 'Activo')
+                    ->where('tipo_ubicacion', '!=', 'Bloqueada')
+                    ->find($ubicacionDestId);
+            }
 
             if (!$destino) {
                 DB::rollBack();
