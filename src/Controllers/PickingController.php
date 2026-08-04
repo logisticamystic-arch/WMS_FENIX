@@ -7955,16 +7955,15 @@ class PickingController extends BaseController
             ? "<span style='background:#10b981;color:#fff;padding:2px 10px;border-radius:4px;font-size:11px;'>CERTIFICADO</span>"
             : "<span style='background:#f59e0b;color:#fff;padding:2px 10px;border-radius:4px;font-size:11px;'>EN PROCESO</span>";
 
+        $css = $this->remisionCss();
         $html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'>
         <title>Remisión Consolidada — " . htmlspecialchars($consol->cliente) . "</title>
-        <style>
-            body { font-family:Arial,sans-serif; margin:20px; color:#111; font-size:12px; }
-            h1   { font-size:18px; margin:0 0 4px; }
-            table{ width:100%; border-collapse:collapse; }
-            thead th { background:#1e3a5f; color:#fff; padding:8px; font-size:11px; text-align:left; }
-            @media print { .no-print { display:none; } }
-        </style></head><body>
-        <div style='display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;border-bottom:2px solid #1e3a5f;padding-bottom:12px;'>
+        <style>{$css}</style></head><body>
+        <div class='running-print-header'>
+          <span style='flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>REMISI&Oacute;N CONSOLIDADA: " . htmlspecialchars($consol->cliente) . "</span>
+          <span style='margin-left:10px;white-space:nowrap;'>Planillas: " . count($consolIds) . " &nbsp;|&nbsp; Fecha: " . htmlspecialchars($consol->fecha_consolidacion) . "</span>
+        </div>
+        <div style='display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;border-bottom:2px solid #1e3a5f;padding-bottom:6px;'>
             <div>
                 <h1>REMISIÓN CONSOLIDADA</h1>
                 <div style='font-size:13px;font-weight:700;margin-top:4px;'>" . htmlspecialchars($consol->cliente) . "</div>
