@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-04)
 
 ## Corpus Check
-- 335 files · ~836,359 words
+- 335 files · ~836,332 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `6800ce21`
+- Built from commit: `bf1614bc`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -677,7 +677,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `Ubicacion` to `OutboundController`, `Product Blocking & Quick Search`, `Impresora`, `MovimientoInventario`, `Receiving Controller`, `Auth & Seeding`, `Base Model & Certification`, `Dispatch Controller`, `Tenant Context & Middleware`, `ML Expiry Prediction`, `Sucursal`, `Miscellaneous Items Controller`, `Anomaly Detection Controller`, `Replenishment & Notifications`, `Database Backup Helper`, `Inventory Adjustment Model`, `MovimientoInventario`, `Traspaso`, `TV Picking Dashboard`, `InvGeneralEvento`, `Picking TV Dashboard`, `SesionAsignacion`?**
-  _High betweenness centrality (0.024) - this node is a cross-community bridge._
+  _High betweenness centrality (0.025) - this node is a cross-community bridge._
 - **Why does `ConteoInventario` connect `InvGeneralEvento` to `ML Expiry Prediction`, `Cross-Dock Operations`, `Traspaso`, `Ubicacion`?**
   _High betweenness centrality (0.011) - this node is a cross-community bridge._
 - **Why does `Producto` connect `Product Blocking & Quick Search` to `Core Controllers Overview`, `ML Expiry Prediction`, `Receiving Controller`, `Picking TV Dashboard`, `Inventory Adjustment Model`, `Traspaso`, `TV Picking Dashboard`?**

@@ -920,8 +920,8 @@
     "semantic_hash": "9b532f71b8b4b102cd8ecea000623634"
   },
   "src/Controllers/InventarioController.php": {
-    "mtime": 1785802864.7636065,
-    "ast_hash": "fe8071e8f212250e339f0ebc7aa6b2a0",
+    "mtime": 1785879550.7778933,
+    "ast_hash": "ed1952fc2be9c60ba4547ffb06c06579",
     "semantic_hash": ""
   },
   "src/Controllers/InventarioV2Controller.php": {
@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785872198.3101404,
-    "ast_hash": "1803dbebe9981140df096f47ed2a1081",
+    "mtime": 1785879560.814957,
+    "ast_hash": "ddd79b09fc43b75c518f60ceb18b6e19",
     "semantic_hash": ""
   },
   "public/pitch.html": {

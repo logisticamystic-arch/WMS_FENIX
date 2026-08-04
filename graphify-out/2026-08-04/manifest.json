@@ -970,8 +970,8 @@
     "semantic_hash": "bde5212b77e3fca86d0dfdd3eaf6a923"
   },
   "src/Controllers/PutawayController.php": {
-    "mtime": 1785869902.121998,
-    "ast_hash": "e4bc066d5163fdaa3f7e401431519e8d",
+    "mtime": 1785877605.591993,
+    "ast_hash": "1790d5c406bcecfd2ec3b99b74bd4a62",
     "semantic_hash": ""
   },
   "src/Controllers/RecepcionController.php": {
