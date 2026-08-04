@@ -806,13 +806,24 @@ class RecepcionController extends BaseController
         // de HOY quedaban guardadas con fecha_movimiento de ese día viejo, y por eso
         // nunca aparecían en las pantallas filtradas por "Hoy" (escritorio, TV).
         $hoy = date('Y-m-d');
-        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
-            ->where('sucursal_id', $user->sucursal_id)
-            ->whereNull('odc_id')
-            ->where('auxiliar_id', $user->id)
-            ->where('estado', 'Borrador')
-            ->whereDate('fecha_movimiento', $hoy)
-            ->first();
+        $recepcionId = !empty($data['recepcion_id']) ? (int)$data['recepcion_id'] : null;
+        $recepcion = null;
+        if ($recepcionId) {
+            $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                ->where('sucursal_id', $user->sucursal_id)
+                ->whereNull('odc_id')
+                ->where('estado', 'Borrador')
+                ->find($recepcionId);
+        }
+        if (!$recepcion) {
+            $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+                ->where('sucursal_id', $user->sucursal_id)
+                ->whereNull('odc_id')
+                ->where('auxiliar_id', $user->id)
+                ->where('estado', 'Borrador')
+                ->whereDate('fecha_movimiento', $hoy)
+                ->first();
+        }
 
         if (!$recepcion) {
             $recepcion = new Recepcion();
@@ -1208,21 +1219,18 @@ class RecepcionController extends BaseController
             return $this->json($response, ['error' => true, 'message' => "La recepción ya se encuentra {$recepcion->estado}."], 400);
         }
 
-        // Auditoría de Calidad obligatoria en Recepción sin ODC cuando al menos una
-        // línea se capturó manualmente (no por QR) — el flujo QR (proveedor CDP) no
-        // la exige. Basta con que exista el registro; su contenido no se valida aquí.
+        // Auditoría de Calidad obligatoria en Recepción con ODC (si aplica) — en Recepciones
+        // sin ODC se permite cerrar/confirmar directamente tanto capturas manuales como por QR.
         if (is_null($recepcion->odc_id)) {
-            $tieneLineaManual = $recepcion->detalles->contains(
-                fn($d) => ($d->origen_captura ?? 'Manual') !== 'QR'
-            );
-            if ($tieneLineaManual) {
-                $tieneCalidad = \App\Models\RecepcionCalidad::where('recepcion_id', $recepcion->id)->exists();
-                if (!$tieneCalidad) {
-                    return $this->json($response, [
-                        'error'   => true,
-                        'message' => 'Esta recepción tiene líneas capturadas manualmente — diligencie el formato de Auditoría de Calidad antes de confirmarla.',
-                    ], 422);
-                }
+            // Sin ODC: auto-crear registro de calidad básico si no existe para trazabilidad
+            $tieneCalidad = \App\Models\RecepcionCalidad::where('recepcion_id', $recepcion->id)->exists();
+            if (!$tieneCalidad) {
+                try {
+                    $cal = new \App\Models\RecepcionCalidad();
+                    $cal->recepcion_id = $recepcion->id;
+                    $cal->conforme = 1;
+                    $cal->save();
+                } catch (\Throwable $e) {}
             }
         }
 

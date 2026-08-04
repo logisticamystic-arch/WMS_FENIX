@@ -2160,6 +2160,7 @@ WMS_MODULES.recepcion = {
 
     try {
       const payload = {
+        recepcion_id:   this._sinOdcRecepcionId || undefined,
         producto_id:    prodId,
         cantidad_cajas: upc > 1 ? Math.floor(cantCajas) : 0,
         saldos:         upc > 1 ? saldos : 0,
