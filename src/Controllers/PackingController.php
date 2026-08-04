@@ -1003,13 +1003,14 @@ class PackingController extends BaseController
                     'p.nombre as nombre',
                     'p.codigo_interno as codigo',
                     'p.unidades_caja',
+                    'p.factor_udm',
                     Capsule::raw('SUM(pi.cantidad) as cantidad'),
                     Capsule::raw('SUM(COALESCE(pi.cantidad_cajas, 0)) as cantidad_cajas'),
                     Capsule::raw('SUM(COALESCE(pi.saldo, 0)) as saldo'),
                     Capsule::raw('MAX(COALESCE(pi.lote, pd.lote)) as lote'),
                     Capsule::raw("MAX(COALESCE(pi.fecha_vencimiento, pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = pi.producto_id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
                 ])
-                ->groupBy('a.descripcion', 'pi.producto_id', 'p.nombre', 'p.codigo_interno', 'p.unidades_caja')
+                ->groupBy('a.descripcion', 'pi.producto_id', 'p.nombre', 'p.codigo_interno', 'p.unidades_caja', 'p.factor_udm')
                 ->orderByRaw("COALESCE(a.descripcion, 'Sin ambiente'), p.nombre")
                 ->get()
                 ->groupBy('ambiente_nombre');

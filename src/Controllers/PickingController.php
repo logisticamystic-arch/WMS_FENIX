@@ -4247,8 +4247,11 @@ class PickingController extends BaseController
                 409);
         }
 
-        // Todos los detalles de un confirmarConsolidado son del mismo producto → mismo upc.
-        $upcGlobal = max(1, (int)($detalles->first()?->producto?->unidades_caja ?? 1));
+        // Todos los detalles de un confirmarConsolidado son del mismo producto → mismo upc/factor.
+        $prodFirst = $detalles->first()?->producto;
+        $upcGlobal = (isset($prodFirst->factor_udm) && (float)$prodFirst->factor_udm > 0)
+            ? (float)$prodFirst->factor_udm
+            : max(1, (float)($prodFirst->unidades_caja ?? 1));
 
         // BUG CORREGIDO: este bloque asumía que 'cantidad_tomada' siempre llegaba en CAJAS
         // y lo multiplicaba por upc. Pero el modal de escritorio (picking.js:_dlgConfirmarLinea,
@@ -4269,7 +4272,9 @@ class PickingController extends BaseController
         $lastDetIndex = count($detalles) - 1;
         
         foreach ($detalles as $idx => $det) {
-            $upc          = max(1, (int)($det->producto->unidades_caja ?? 1));
+            $upc = (isset($det->producto->factor_udm) && (float)$det->producto->factor_udm > 0)
+                ? (float)$det->producto->factor_udm
+                : max(1, (float)($det->producto->unidades_caja ?? 1));
             $necesitaUnd  = (float)$det->cantidad_solicitada * $upc; // solicitada en CAJAS → UNIDADES
             $tomar        = min($restante, $necesitaUnd);             // UNIDADES vs UNIDADES ✓
             
@@ -6348,7 +6353,7 @@ class PickingController extends BaseController
                 ->select([
                     Capsule::raw("COALESCE(a.descripcion, 'Sin ambiente') as ambiente_nombre"),
                     Capsule::raw("COALESCE(a.color, '#1e3a5f') as ambiente_color"),
-                    'p.id as producto_id', 'p.codigo_interno as codigo', 'p.nombre', 'p.unidades_caja',
+                    'p.id as producto_id', 'p.codigo_interno as codigo', 'p.nombre', 'p.unidades_caja', 'p.factor_udm',
                     Capsule::raw('SUM(pd.cantidad_certificada) as cantidad'),
                     Capsule::raw("MAX(COALESCE(pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = p.id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
                     // MAX(lote) es una aproximación: si el mismo producto tiene líneas de
@@ -6357,7 +6362,7 @@ class PickingController extends BaseController
                     // dejarlo vacío, ya que el desglose fino por lote no es su propósito aquí.
                     Capsule::raw('MAX(pd.lote) as lote'),
                 ])
-                ->groupBy('a.descripcion', 'a.color', 'p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja')
+                ->groupBy('a.descripcion', 'a.color', 'p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja', 'p.factor_udm')
                 ->orderByRaw("COALESCE(a.descripcion, 'Sin ambiente'), p.nombre")
                 ->get()->groupBy('ambiente_nombre');
         };
@@ -6626,11 +6631,12 @@ class PickingController extends BaseController
                 'p.codigo_interno as codigo',
                 'p.nombre',
                 'p.unidades_caja',
+                'p.factor_udm',
                 Capsule::raw('SUM(pd.cantidad_certificada) as cantidad'),
                 Capsule::raw('MAX(pd.lote) as lote'),
                 Capsule::raw("MAX(COALESCE(pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = p.id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
             ])
-            ->groupBy('a.descripcion', 'p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja')
+            ->groupBy('a.descripcion', 'p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja', 'p.factor_udm')
             ->orderByRaw("COALESCE(a.descripcion, 'Sin ambiente'), p.nombre")
             ->get()
             ->groupBy('ambiente_nombre');

@@ -367,7 +367,9 @@ abstract class BaseController
         foreach ($grouped as $ambNombre => $ambItems) {
             $subUnd = 0; $subCj = 0; $rows = '';
             foreach ($ambItems as $it) {
-                $upc     = max(1, (int)($it->unidades_caja ?? 1));
+                $upc     = (isset($it->factor_udm) && (float)$it->factor_udm > 0)
+                    ? (float)$it->factor_udm
+                    : max(1, (float)($it->unidades_caja ?? 1));
                 $cantRaw = (float)($it->cantidad ?? 0);
                 $cajasDB = (float)($it->cantidad_cajas ?? 0);
                 $saldoDB = (float)($it->saldo ?? 0);
@@ -433,7 +435,7 @@ abstract class BaseController
             ->select([
                 'p.codigo_interno as codigo',
                 'p.nombre',
-                Capsule::raw('COALESCE(p.unidades_caja, 1) as upc'),
+                Capsule::raw('COALESCE(NULLIF(p.factor_udm, 0), p.unidades_caja, 1) as upc'),
                 Capsule::raw('SUM(pf.cantidad_solicitada) as solicitada_cj'),
                 Capsule::raw('SUM(pf.cantidad_faltante) as faltante_cj'),
                 Capsule::raw("COALESCE(NULLIF(op.numero_factura, ''), op.numero_orden, '-') as pedido"),
@@ -441,7 +443,7 @@ abstract class BaseController
                 Capsule::raw("STRING_AGG(DISTINCT cn.nombre, ', ') as causal_nombre"),
                 Capsule::raw("STRING_AGG(DISTINCT NULLIF(cn.area_responsable, ''), ', ') as responsable"),
             ])
-            ->groupBy('p.codigo_interno', 'p.nombre', 'p.unidades_caja', 'op.numero_factura', 'op.numero_orden')
+            ->groupBy('p.codigo_interno', 'p.nombre', 'p.factor_udm', 'p.unidades_caja', 'op.numero_factura', 'op.numero_orden')
             ->orderBy('p.nombre')
             ->get();
 
