@@ -166,11 +166,11 @@ class InventarioController extends BaseController
         $stock->transform(function ($item) use ($ventas) {
             $item->promedio_venta_mensual = $ventas[$item->producto_id] ?? 0;
             // Enriquecer con campos und/total para el frontend
-            $upc = max(1, (int)($item->unidades_caja ?? 1));
+            $upc = max(1, (int)($item->factor_udm > 0 ? $item->factor_udm : ($item->unidades_caja ?? 1)));
             $item->und_total = $item->cantidad;
             $item->und_total_label = $item->cantidad . ' UND/TOTAL';
-            // Si los campos no existen aún en BD, derivarlos on-the-fly
-            if (is_null($item->cantidad_cajas) && is_null($item->saldos)) {
+            // Si la cantidad de cajas es 0/null pero hay cantidad > 0, derivar cajas y saldos on-the-fly
+            if ((empty($item->cantidad_cajas) || (float)$item->cantidad_cajas <= 0) && (float)$item->cantidad > 0) {
                 [$item->cantidad_cajas, $item->saldos] = $this->calcularCajasSaldos((float)$item->cantidad, $upc);
             }
             return $item;
@@ -1930,6 +1930,7 @@ class InventarioController extends BaseController
         [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $req);
         $params = $req->getQueryParams();
         $prodId = !empty($params['producto_id']) ? (int)$params['producto_id'] : null;
+        $qSearch = !empty($params['q']) ? trim($params['q']) : (!empty($params['referencia']) ? trim($params['referencia']) : null);
         
         try {
             // 1. Obtener todas las ubicaciones activas
@@ -1939,54 +1940,72 @@ class InventarioController extends BaseController
                 ->orderBy('codigo', 'asc')
                 ->get();
 
-            // 2. Obtener ocupación actual agrupada por ubicación
-            $stockQuery = Capsule::table('inventarios')
-                ->where('empresa_id', $empresaId)
-                ->where('sucursal_id', $sucursalId);
-            
-            if ($prodId) {
-                $stockQuery->where('producto_id', $prodId);
+            // 2. Obtener ocupación y detalle de productos agrupados por ubicación
+            $detallesInv = Capsule::table('inventarios as i')
+                ->join('productos as p', 'i.producto_id', '=', 'p.id')
+                ->where('i.empresa_id', $empresaId)
+                ->where('i.sucursal_id', $sucursalId)
+                ->where('i.cantidad', '>', 0)
+                ->select(
+                    'i.ubicacion_id',
+                    'i.cantidad',
+                    'i.cantidad_cajas',
+                    'i.saldos',
+                    'i.fecha_vencimiento',
+                    'i.cantidad_reservada',
+                    'p.id as producto_id',
+                    'p.nombre as producto_nombre',
+                    'p.codigo_interno',
+                    'p.unidades_caja',
+                    'p.factor_udm'
+                )->get();
+
+            // Agrupar inventario por ubicación
+            $stockPorUbicacion = [];
+            foreach ($detallesInv as $inv) {
+                $uId = $inv->ubicacion_id;
+                if (!isset($stockPorUbicacion[$uId])) {
+                    $stockPorUbicacion[$uId] = [
+                        'total_unidades'      => 0,
+                        'total_cajas'         => 0,
+                        'total_sueltos'       => 0,
+                        'total_reservado'     => 0,
+                        'proximo_vencimiento' => null,
+                        'productos_ids'       => [],
+                        'referencias_text'    => [],
+                    ];
+                }
+
+                $upc = max(1, (int)($inv->factor_udm > 0 ? $inv->factor_udm : ($inv->unidades_caja ?? 1)));
+                $cant = (float)$inv->cantidad;
+                $cajas = (float)($inv->cantidad_cajas ?? 0);
+                $sueltos = (float)($inv->saldos ?? 0);
+
+                if ($cajas <= 0 && $cant > 0) {
+                    $cajas = (int)floor($cant / $upc);
+                    $sueltos = fmod($cant, (float)$upc);
+                }
+
+                $stockPorUbicacion[$uId]['total_unidades'] += $cant;
+                $stockPorUbicacion[$uId]['total_cajas'] += $cajas;
+                $stockPorUbicacion[$uId]['total_sueltos'] += $sueltos;
+                $stockPorUbicacion[$uId]['total_reservado'] += (float)($inv->cantidad_reservada ?? 0);
+
+                if (!in_array($inv->producto_id, $stockPorUbicacion[$uId]['productos_ids'])) {
+                    $stockPorUbicacion[$uId]['productos_ids'][] = $inv->producto_id;
+                    $refStr = trim(($inv->codigo_interno ?? '') . ' - ' . ($inv->producto_nombre ?? ''));
+                    $stockPorUbicacion[$uId]['referencias_text'][] = $refStr;
+                }
+
+                if ($inv->fecha_vencimiento) {
+                    $currVenc = $stockPorUbicacion[$uId]['proximo_vencimiento'];
+                    if (!$currVenc || $inv->fecha_vencimiento < $currVenc) {
+                        $stockPorUbicacion[$uId]['proximo_vencimiento'] = $inv->fecha_vencimiento;
+                    }
+                }
             }
 
-            $stock = $stockQuery->select(
-                    'ubicacion_id',
-                    Capsule::raw('SUM(cantidad) as total_unidades'),
-                    Capsule::raw('SUM(COALESCE(cantidad_reservada, 0)) as total_reservado'),
-                    Capsule::raw('COUNT(DISTINCT producto_id) as total_refs'),
-                    Capsule::raw('SUM(COALESCE(cantidad_cajas, 0)) as total_cajas_db'),
-                    Capsule::raw('SUM(COALESCE(saldos, 0)) as total_sueltos_db'),
-                    Capsule::raw('MIN(fecha_vencimiento) as proximo_vencimiento')
-                )
-                ->groupBy('ubicacion_id')
-                ->get()
-                ->keyBy('ubicacion_id');
-
-            // 2.1 Fallback: calcular cajas desde cantidad/upc solo cuando cantidad_cajas es NULL en BD
-            $detalleStock = Capsule::table('inventarios')
-                ->join('productos', 'inventarios.producto_id', '=', 'productos.id')
-                ->where('inventarios.empresa_id', $empresaId)
-                ->where('inventarios.sucursal_id', $sucursalId)
-                ->whereNull('inventarios.cantidad_cajas')
-                ->select('inventarios.ubicacion_id', 'inventarios.cantidad', 'productos.unidades_caja')
-                ->get();
-
-            $cajasLegacyPorUbicacion = [];
-            foreach ($detalleStock as $ds) {
-                $factor = max(1, (int)$ds->unidades_caja);
-                $cajas = (float)$ds->cantidad / $factor;
-                $cajasLegacyPorUbicacion[$ds->ubicacion_id] = ($cajasLegacyPorUbicacion[$ds->ubicacion_id] ?? 0) + $cajas;
-            }
-            
-            // Si filtramos por producto, solo queremos las ubicaciones que tienen ese producto
-            if ($prodId) {
-                $ubicIdsWithStock = $stock->keys()->toArray();
-                $ubicaciones = $ubicaciones->filter(function($u) use ($ubicIdsWithStock) {
-                    return in_array($u->id, $ubicIdsWithStock);
-                });
-            }
-
-            // 3. Obtener último movimiento por ubicación (origen o destino)
-            // Usamos un UNION o verificamos ambos campos. Para simplificar, vemos destino que es donde "llega" stock.
+            // 3. Obtener último movimiento por ubicación
             $ultimosMovimientos = Capsule::table('movimiento_inventarios')
                 ->where('empresa_id', $empresaId)
                 ->where('sucursal_id', $sucursalId)
@@ -1996,24 +2015,19 @@ class InventarioController extends BaseController
                 ->keyBy('ubicacion_destino_id');
 
             // 4. Mapear resultados
-            $data = $ubicaciones->map(function($u) use ($stock, $ultimosMovimientos, $cajasLegacyPorUbicacion) {
-                $s = $stock[$u->id] ?? null;
-                $totalStock  = floatval($s->total_unidades ?? 0);
-                $capacidad   = floatval($u->capacidad_maxima ?? 0);
+            $data = $ubicaciones->map(function($u) use ($stockPorUbicacion, $ultimosMovimientos) {
+                $s = $stockPorUbicacion[$u->id] ?? null;
+                $totalStock   = $s ? $s['total_unidades'] : 0;
+                $capacidad    = floatval($u->capacidad_maxima ?? 0);
                 $pctOcupacion = $capacidad > 0 ? round(($totalStock / $capacidad) * 100, 2) : 0;
-
-                // Usar campos reales de BD; si son 0 (registros legacy sin migrar), usar cálculo derivado
-                $totalCajasDb   = floatval($s->total_cajas_db ?? 0);
-                $totalSueltosDb = floatval($s->total_sueltos_db ?? 0);
-                $totalCajas = $totalCajasDb > 0
-                    ? round($totalCajasDb, 2)
-                    : round($cajasLegacyPorUbicacion[$u->id] ?? 0, 2);
 
                 $ultimoMov = $ultimosMovimientos[$u->id]->ultimo_mov ?? null;
                 $diasSinMov = "N/A";
                 if ($ultimoMov) {
                     $diasSinMov = (int)floor((time() - strtotime($ultimoMov)) / 86400);
                 }
+
+                $refText = $s ? implode(' | ', $s['referencias_text']) : '';
 
                 return [
                     'id'                 => $u->id,
@@ -2027,18 +2041,36 @@ class InventarioController extends BaseController
                     'total_productos'    => $totalStock,
                     'und_total'          => $totalStock,
                     'und_total_label'    => $totalStock . ' UND/TOTAL',
-                    'total_cajas'        => $totalCajas,
-                    'total_sueltos'      => round($totalSueltosDb, 4),
-                    'total_reservado'    => floatval($s->total_reservado ?? 0),
-                    'total_refs'         => intval($s->total_refs ?? 0),
+                    'total_cajas'        => $s ? round($s['total_cajas'], 2) : 0,
+                    'total_sueltos'      => $s ? round($s['total_sueltos'], 4) : 0,
+                    'total_reservado'    => $s ? $s['total_reservado'] : 0,
+                    'total_refs'         => $s ? count($s['productos_ids']) : 0,
+                    'referencias_text'   => $refText,
                     'ocupacion_pct'      => $pctOcupacion,
-                    'proximo_vencimiento'=> $s->proximo_vencimiento ?? null,
+                    'proximo_vencimiento'=> $s['proximo_vencimiento'] ?? null,
                     'dias_sin_mov'       => $diasSinMov,
                     'capacidad_maxima'   => $capacidad,
                 ];
-            })->values()->toArray();
+            });
 
-            return $this->ok($res, $data);
+            // Filtrar si viene producto_id o filtro de búsqueda por referencia
+            if ($prodId) {
+                $data = $data->filter(function($u) use ($stockPorUbicacion, $prodId) {
+                    $s = $stockPorUbicacion[$u['id']] ?? null;
+                    return $s && in_array($prodId, $s['productos_ids']);
+                });
+            }
+
+            if ($qSearch) {
+                $qSearchLower = mb_strtolower($qSearch, 'UTF-8');
+                $data = $data->filter(function($u) use ($qSearchLower) {
+                    $ubiLower = mb_strtolower($u['ubicacion'], 'UTF-8');
+                    $refLower = mb_strtolower($u['referencias_text'], 'UTF-8');
+                    return (strpos($ubiLower, $qSearchLower) !== false) || (strpos($refLower, $qSearchLower) !== false);
+                });
+            }
+
+            return $this->ok($res, $data->values()->toArray());
         } catch (\Throwable $e) {
             return $this->error($res, $e->getMessage(), 500);
         }

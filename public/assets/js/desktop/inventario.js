@@ -257,26 +257,41 @@ WMS_MODULES.inventario = {
       const porProducto = {};
       items.forEach(s => {
         const key = s.producto_id || s.ean || s.descripcion || s.codigo_interno;
+        const upc = Math.max(1, parseInt(s.factor_udm || s.unidades_caja || 1));
+        const cant = parseFloat(s.cantidad || 0);
+        let cantCajas = parseInt(s.cantidad_cajas || 0);
+        let saldos = parseFloat(s.saldos || 0);
+
+        if ((cantCajas <= 0 || isNaN(cantCajas)) && cant > 0) {
+          cantCajas = Math.floor(cant / upc);
+          saldos = cant % upc;
+        }
+
         if (!porProducto[key]) {
           porProducto[key] = {
             codigo: s.codigo_interno || s.ean,
             descripcion: s.descripcion || s.producto_nombre || s.producto,
             total: 0,
+            total_cajas: 0,
+            total_sueltos: 0,
             stock_minimo: parseFloat(s.stock_minimo || 0),
-            upc: parseInt(s.unidades_caja || 1),
+            upc: upc,
             prom_venta_mensual: parseFloat(s.promedio_venta_mensual || 0),
             lotes: []
           };
         }
-        porProducto[key].total += parseFloat(s.cantidad||0);
+        porProducto[key].total += cant;
+        porProducto[key].total_cajas += cantCajas;
+        porProducto[key].total_sueltos += saldos;
+
         const fv = s.fecha_vencimiento ? new Date(s.fecha_vencimiento) : null;
         const diasFv = fv ? Math.round((fv - Date.now()) / 86400000) : null;
         porProducto[key].lotes.push({
           ubicacion: s.ubicacion_codigo || s.ubicacion || '-',
-          cantidad: parseFloat(s.cantidad||0),
-          cantidad_cajas: parseInt(s.cantidad_cajas || 0),
-          saldos: parseFloat(s.saldos || 0),
-          upc: parseInt(s.unidades_caja || 1),
+          cantidad: cant,
+          cantidad_cajas: cantCajas,
+          saldos: Number(saldos.toFixed(4)),
+          upc: upc,
           lote: s.lote || '-',
           fecha_vencimiento: s.fecha_vencimiento || '-',
           dias_vencimiento: diasFv,
@@ -683,7 +698,8 @@ WMS_MODULES.inventario = {
           const detId = 'pivot-ubi-' + i;
           const pctBar = Math.min(100, u.ocupacion_pct || 0);
           const pctColor = pctBar >= 90 ? '#ef4444' : pctBar >= 70 ? '#f97316' : '#10b981';
-          return `<tr class="pivot-row" data-ubi="${WMS.esc(u.ubicacion||u.posicion||'')}" data-total="${u.und_total||0}"
+          const refText = u.referencias_text || '';
+          return `<tr class="pivot-row" data-ubi="${WMS.esc(u.ubicacion||u.posicion||'')}" data-refs="${WMS.esc(refText)}" data-total="${u.und_total||0}"
                       onclick="window._toggleUbiPivot(this.querySelector('button'),'${detId}',event)">
             <td class="text-center">
               <button class="btn btn-sm btn-outline-secondary" style="padding:2px 8px;border-radius:6px;border-color:#cbd5e1;">
@@ -692,7 +708,7 @@ WMS_MODULES.inventario = {
             </td>
             <td>
               <span class="badge badge-info" style="font-size:.9rem;padding:6px 12px;">${WMS.esc(u.ubicacion||u.posicion||'-')}</span>
-              <span style="font-size:.72rem;color:#94a3b8;margin-left:6px">${WMS.esc(u.tipo||'')}</span>
+              <span style="font-size:.72rem;color:#64748b;margin-left:6px;display:inline-block;">${WMS.esc(refText ? 'Refs: ' + refText : (u.tipo||''))}</span>
             </td>
             <td class="text-center">
               <div style="display:flex;align-items:center;gap:8px;justify-content:center;">
@@ -763,7 +779,7 @@ WMS_MODULES.inventario = {
         }
       };
 
-      // Debounce para búsqueda dinámica de ubicación (350 ms)
+      // Debounce para búsqueda dinámica por ubicación O por referencia de producto (300 ms)
       let _ubiDebounce;
       window._ubiSearchDebounce = function(val) {
         clearTimeout(_ubiDebounce);
@@ -771,7 +787,8 @@ WMS_MODULES.inventario = {
           const q = val.trim().toLowerCase();
           document.querySelectorAll('#stock-ubi-tbody tr.pivot-row').forEach(tr => {
             const ubi = (tr.dataset.ubi || '').toLowerCase();
-            const show = !q || ubi.includes(q);
+            const refs = (tr.dataset.refs || '').toLowerCase();
+            const show = !q || ubi.includes(q) || refs.includes(q);
             tr.style.display = show ? '' : 'none';
             // Ocultar la fila de detalle correspondiente si su padre está oculto
             const next = tr.nextElementSibling;
@@ -779,7 +796,7 @@ WMS_MODULES.inventario = {
               if (!show) next.style.display = 'none';
             }
           });
-        }, 350);
+        }, 300);
       };
 
       WMS.setContent(`
@@ -791,9 +808,9 @@ WMS_MODULES.inventario = {
           .sort-th:hover { background:#f0f4ff; }
         </style>
         <div class="filter-bar">
-          <div class="search-bar">
+          <div class="search-bar" style="flex:1;max-width:500px;">
             <i class="fa-solid fa-search"></i>
-            <input id="ubi-search-input" placeholder="Buscar por código de ubicación..."
+            <input id="ubi-search-input" placeholder="Buscar por código de ubicación o referencia de producto..."
                    oninput="window._ubiSearchDebounce(this.value)">
           </div>
           <span style="font-size:.78rem;color:#94a3b8;align-self:center">
@@ -848,13 +865,22 @@ WMS_MODULES.inventario = {
             <th>F.Vencimiento</th><th>Estado</th><th style="width:100px"></th>
           </tr></thead>
           <tbody>
-            ${items.map(i => `
+            ${items.map(i => {
+              const upc = Math.max(1, parseInt(i.factor_udm || i.unidades_caja || 1));
+              const cant = parseFloat(i.cantidad || 0);
+              let cj = parseInt(i.cantidad_cajas || 0);
+              let sl = parseFloat(i.saldos || 0);
+              if (cj <= 0 && cant > 0) {
+                cj = Math.floor(cant / upc);
+                sl = cant % upc;
+              }
+              return `
               <tr>
                 <td><b>${WMS.esc(i.codigo_interno || i.ean || '—')}</b><div style="font-size:10px;color:#64748b">${WMS.esc(i.descripcion || i.producto_nombre || '')}</div></td>
                 <td class="muted">${WMS.esc(i.lote || '—')}</td>
-                <td style="text-align:center;color:#0070f2">${i.cantidad_cajas ?? '—'}</td>
-                <td style="text-align:center;color:#6d28d9">${i.saldos ?? '—'}</td>
-                <td style="text-align:center;font-weight:700">${WMS.formatNum(i.cantidad)}</td>
+                <td style="text-align:center;color:#0070f2;font-weight:700">${cj}</td>
+                <td style="text-align:center;color:#6d28d9;font-weight:700">${Number(sl.toFixed(4))}</td>
+                <td style="text-align:center;font-weight:700">${WMS.formatNum(cant)}</td>
                 <td class="muted">${i.fecha_vencimiento ? WMS.formatDate(i.fecha_vencimiento) : 'N/A'}</td>
                 <td><span class="pro-badge ${i.estado==='Disponible'?'ok':'warn'}">${WMS.esc(i.estado || '—')}</span></td>
                 <td>
@@ -863,7 +889,8 @@ WMS_MODULES.inventario = {
                     <i class="fa-solid fa-clock-rotate-left"></i> Historial
                   </button>
                 </td>
-              </tr>`).join('')}
+              </tr>`;
+            }).join('')}
           </tbody>
         </table>`;
     } catch(e) {
