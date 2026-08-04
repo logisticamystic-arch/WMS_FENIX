@@ -1051,6 +1051,10 @@ class PackingController extends BaseController
         $html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'>
 <title>Remisi&#243;n &mdash; {$clienteNom}</title>
 <style>{$css}</style></head><body>
+<div class='running-print-header'>
+  <span style='flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>CLIENTE / SUCURSAL: " . htmlspecialchars($clienteNom) . "</span>
+  <span style='margin-left:10px;white-space:nowrap;'>Planilla: {$planillaStr} &nbsp;|&nbsp; Fecha: {$fecha}</span>
+</div>
 <div class='no-print'>
   <button onclick='window.print()'>&#128424; Imprimir / Guardar PDF</button>
   <small style='color:#666'>Usa &ldquo;Guardar como PDF&rdquo; en el di&#225;logo de impresi&#243;n para exportar</small>

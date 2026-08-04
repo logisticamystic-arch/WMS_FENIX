@@ -346,8 +346,8 @@ abstract class BaseController
     {
         $logoFile = dirname(__DIR__, 2) . '/logo.jpg';
         return file_exists($logoFile)
-            ? "<img src='data:image/jpeg;base64," . base64_encode(file_get_contents($logoFile)) . "' style='height:52px;object-fit:contain;display:block;margin-bottom:4px;' alt='Logo'>"
-            : "<strong style='font-size:16px;color:#1e3a5f;'>" . htmlspecialchars($empNombre) . "</strong>";
+            ? "<img src='data:image/jpeg;base64," . base64_encode(file_get_contents($logoFile)) . "' style='height:36px;object-fit:contain;display:block;margin-bottom:2px;' alt='Logo'>"
+            : "<strong style='font-size:14px;color:#1e3a5f;'>" . htmlspecialchars($empNombre) . "</strong>";
     }
 
     /**
@@ -485,42 +485,53 @@ abstract class BaseController
             . "<table style='table-layout:fixed;width:100%;'><colgroup>"
             . "<col style='width:12%;'><col style='width:38%;'><col style='width:10%;'><col style='width:40%;'></colgroup>"
             . "<thead><tr><th>C&oacute;digo</th><th>Descripci&oacute;n</th><th style='text-align:right;'>Cantidad</th><th>Motivo</th></tr></thead>"
-            . "<tbody>" . str_repeat("<tr style='height:22px'><td></td><td></td><td></td><td></td></tr>", 5)
+            . "<tbody>" . str_repeat("<tr style='height:18px'><td></td><td></td><td></td><td></td></tr>", 4)
             . "</tbody></table></div>";
     }
 
     /**
-     * CSS compartido por las 3 remisiones (packing, certificación directa/móvil,
-     * consolidada). Incluye .pg-break para documentos multi-página.
+     * CSS compartido por las remisiones (packing, certificación directa/móvil,
+     * consolidada). Altamente optimizado para ahorro de papel y legibilidad.
      */
     protected function remisionCss(): string
     {
-        return "@page{size:A4 portrait;margin:15mm 18mm}
-        @media print{.no-print{display:none!important} body{margin:0} .pg-break{page-break-after:always}}
-        body{font-family:Arial,sans-serif;font-size:10.5px;color:#1a1a1a;margin:0;padding:10px}
-        .pg-break{page-break-after:always;margin-bottom:20px}
-        .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:8px;margin-bottom:10px}
-        .header-left p{margin:0;font-size:9.5px;color:#555}
-        .header-right{text-align:right;font-size:10px;color:#333}
-        .info-grid{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 20px;margin-bottom:10px;background:#f8fafc;padding:6px 12px;border-radius:4px;border:1px solid #e2e8f0;page-break-after:avoid}
-        .info-grid .campo{white-space:nowrap;font-size:10.5px;color:#1e293b}
-        .info-grid .lbl{font-weight:700;font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:.3px;margin-right:4px}
-        .ambientes-grid{display:grid;grid-template-columns:1fr;gap:10px}
-        .ambiente-block{border:1px solid #cbd5e1;border-radius:4px;overflow:hidden;page-break-inside:avoid}
-        .ambiente-header{background:#000;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.2px}
-        table{width:100%;border-collapse:collapse}
-        th,td{border:1px solid #e2e8f0;padding:4px 6px;font-size:9.5px;text-align:left;vertical-align:middle}
-        th{background:#f1f5f9;font-weight:700;color:#334155;white-space:nowrap}
+        return "@page{size:A4 portrait;margin:12mm 10mm 10mm 10mm}
+        @media print{
+          .no-print{display:none!important}
+          body{margin:0;padding:0;font-size:9px;line-height:1.2}
+          .pg-break{page-break-after:always;break-after:page}
+          .running-print-header{display:flex!important;position:fixed;top:-8mm;left:0;right:0;height:16px;border-bottom:1.5px solid #1e3a5f;padding-bottom:2px;font-size:8.5px;font-weight:800;color:#1e3a5f;background:#fff;z-index:99999}
+          .ambiente-block{page-break-inside:avoid!important;break-inside:avoid-page!important}
+          .ambiente-block tr{page-break-inside:avoid!important;break-inside:avoid-page!important}
+          .agotados-section,.novedades-section,.firmas{page-break-inside:avoid!important;break-inside:avoid-page!important}
+        }
+        .running-print-header{display:none}
+        body{font-family:Arial,Helvetica,sans-serif;font-size:9.5px;color:#111;margin:0;padding:6px 10px;line-height:1.25}
+        .pg-break{page-break-after:always;break-after:page;margin-bottom:12px}
+        .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1e3a5f;padding-bottom:4px;margin-bottom:6px}
+        .header-left p{margin:0;font-size:9px;font-weight:700;color:#475569}
+        .header-right{text-align:right;font-size:9.5px;color:#1e293b}
+        .info-grid{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 16px;margin-bottom:6px;background:#f8fafc;padding:4px 8px;border-radius:4px;border:1px solid #cbd5e1;page-break-inside:avoid;break-inside:avoid-page}
+        .info-grid .campo{white-space:nowrap;font-size:9.5px;color:#0f172a}
+        .info-grid .lbl{font-weight:800;font-size:8.5px;color:#334155;text-transform:uppercase;letter-spacing:.2px;margin-right:3px}
+        .ambientes-grid{display:flex;flex-direction:column;gap:6px}
+        .ambiente-block{border:1px solid #cbd5e1;border-radius:3px;overflow:hidden;margin-bottom:6px;page-break-inside:avoid!important;break-inside:avoid-page!important}
+        .ambiente-header{background:#1e3a5f;color:#fff;padding:3px 8px;font-weight:800;font-size:9.5px;letter-spacing:.2px;page-break-after:avoid}
+        table{width:100%;border-collapse:collapse;margin:0;font-size:8.5px}
+        thead{display:table-header-group}
+        th,td{border:1px solid #cbd5e1;padding:2.5px 5px;font-size:8.5px;text-align:left;vertical-align:middle}
+        th{background:#f1f5f9;font-weight:800;color:#1e293b;white-space:nowrap;padding:3px 5px}
+        tr{page-break-inside:avoid!important;break-inside:avoid-page!important}
         tr:nth-child(even) td{background:#f8fafc}
-        .totales{border-top:3px solid #1e3a5f;padding:8px 0;font-weight:700;font-size:12px;margin-top:10px;color:#1e3a5f}
-        .agotados-section{margin-top:10px;border:2px solid #b91c1c;border-radius:4px;overflow:hidden;page-break-inside:avoid}
-        .agotados-header{background:#b91c1c;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.3px}
-        .novedades-section{margin-top:12px;border:2px solid #1e3a5f;border-radius:4px;overflow:hidden;page-break-inside:avoid}
-        .novedades-header{background:#1e3a5f;color:#fff;padding:5px 10px;font-weight:700;font-size:10.5px;letter-spacing:.3px}
-        .novedades-section td{height:22px}
-        .firmas{display:grid;grid-template-columns:1fr 1fr 1fr;gap:40px;margin-top:30px;page-break-inside:avoid}
-        .firma-line{border-top:2px solid #1e3a5f;padding-top:5px;text-align:center;font-size:10px;color:#334155}
-        .no-print{padding:8px 0;margin-bottom:10px}
-        .no-print button{padding:7px 20px;font-size:13px;cursor:pointer;background:#1e3a5f;color:#fff;border:none;border-radius:6px;margin-right:8px}";
+        .totales{border-top:2px solid #1e3a5f;padding:4px 0;font-weight:800;font-size:10.5px;margin-top:6px;color:#1e3a5f}
+        .agotados-section{margin-top:8px;border:1.5px solid #b91c1c;border-radius:3px;overflow:hidden;page-break-inside:avoid!important;break-inside:avoid-page!important}
+        .agotados-header{background:#b91c1c;color:#fff;padding:3px 8px;font-weight:800;font-size:9.5px;letter-spacing:.2px}
+        .novedades-section{margin-top:8px;border:1.5px solid #1e3a5f;border-radius:3px;overflow:hidden;page-break-inside:avoid!important;break-inside:avoid-page!important}
+        .novedades-header{background:#1e3a5f;color:#fff;padding:3px 8px;font-weight:800;font-size:9.5px;letter-spacing:.2px}
+        .novedades-section td{height:18px}
+        .firmas{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:14px;page-break-inside:avoid!important;break-inside:avoid-page!important}
+        .firma-line{border-top:1.5px solid #1e3a5f;padding-top:3px;text-align:center;font-size:8.5px;color:#334155}
+        .no-print{padding:6px 0;margin-bottom:8px}
+        .no-print button{padding:6px 16px;font-size:12px;font-weight:bold;cursor:pointer;background:#1e3a5f;color:#fff;border:none;border-radius:5px;margin-right:8px}";
     }
 }
