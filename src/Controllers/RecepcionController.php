@@ -1355,11 +1355,7 @@ class RecepcionController extends BaseController
         $user     = $request->getAttribute('user');
         $detalleId = (int)($args['id'] ?? 0);
 
-        // Supervisor or Admin only
-        $rol = strtolower($user->rol ?? '');
-        if (!in_array($rol, ['admin', 'supervisor'])) {
-            return $this->json($response, ['error' => true, 'message' => 'Se requiere rol Supervisor o Administrador'], 403);
-        }
+        // Permite aprobar pallet a cualquier rol operativo de bodega
 
         $empresaId = $this->getEffectiveEmpresaId($user, $request);
         $detalle = RecepcionDetalle::with('recepcion')
@@ -1631,11 +1627,7 @@ class RecepcionController extends BaseController
     {
         $user     = $request->getAttribute('user');
         $id       = $args['id'] ?? null;
-        $rol      = strtolower($user->rol ?? '');
-
-        if (!in_array($rol, ['admin', 'supervisor'])) {
-            return $this->json($response, ['error' => true, 'message' => 'Se requiere rol Supervisor o Administrador'], 403);
-        }
+        // Permite aprobar recepción a cualquier rol operativo de bodega
 
         $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->with('detalles')->find($id);
         if (!$recepcion || $recepcion->sucursal_id !== $user->sucursal_id) {

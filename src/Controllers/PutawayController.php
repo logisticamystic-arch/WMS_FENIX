@@ -34,21 +34,6 @@ class PutawayController extends BaseController
                     $q->where('u.tipo_ubicacion', 'Patio')
                       ->orWhereNull('i.ubicacion_id');
                 })
-                // Solo mostrar referencias de recepción sin ODC que hayan sido aprobadas
-                // por el admin. Si no viene de recepción sin ODC (sin numero_pallet o
-                // el pallet no está en recepcion_detalles sin ODC) se muestra siempre.
-                ->where(function ($q) {
-                    $q->whereNull('i.numero_pallet')  // sin pallet: no viene de recepción sin ODC
-                      ->orWhereNotExists(function ($sub) {
-                          // Existe algún detalle sin-ODC con este pallet que NO está aprobado
-                          $sub->from('recepcion_detalles as rd')
-                              ->join('recepciones as rec', 'rec.id', '=', 'rd.recepcion_id')
-                              ->whereNull('rec.odc_id')
-                              ->whereColumn('rd.numero_pallet', 'i.numero_pallet')
-                              ->whereColumn('rd.producto_id', 'i.producto_id')
-                              ->where('rd.aprobado_admin', false);
-                      });
-                })
                 ->select([
                     'i.id',
                     'i.producto_id',
@@ -220,6 +205,7 @@ class PutawayController extends BaseController
                     ->where('producto_id', $productoId)
                     ->where('ubicacion_id', $ubicacionOrigId)
                     ->where('lote', $lote)
+                    ->whereIn('estado', ['Disponible', 'En Patio'])
                     ->lockForUpdate()
                     ->first();
 
