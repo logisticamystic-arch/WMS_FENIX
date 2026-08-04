@@ -142,7 +142,9 @@
   "140": "Stock Dashboard Charts",
   "141": "127_add_conforme_recepcion_calidad.php",
   "142": "Recepción Sin ODC Preview",
+  "143": "Impresora",
   "144": "Citas Scheduling",
+  "145": "MovimientoInventario",
   "146": "Service Worker Caching",
   "147": "NotificationService",
   "148": "Log Rotation",
@@ -318,6 +320,7 @@
   "318": "InvGeneralAsignacion",
   "319": "_cargarStockGeneral",
   "320": "verEventoTomaFisica",
+  "321": "App\\Models\\Producto",
   "322": "GET /aprobaciones/vencimiento/pendientes",
   "323": "POST /devoluciones/{id}/aprobar",
   "324": "Warehouse/truck app icon (192x192)",
@@ -325,6 +328,10 @@
   "326": "124_create_sesion_icg_lineas_table.php",
   "327": "SesionInventario",
   "328": "InvGeneralEvento",
+  "329": ".addTenantConstraints",
+  "330": ".__invoke",
+  "331": "TraspasoDocumentoDetalle",
   "332": "TV Dashboard 360 Design Doc",
-  "333": "129_fix_factor_udm_masivo_maestro.php"
+  "333": "129_fix_factor_udm_masivo_maestro.php",
+  "334": "bkpLog"
 }

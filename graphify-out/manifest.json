@@ -1768,5 +1768,10 @@
     "mtime": 1785868499.0376322,
     "ast_hash": "39a20a3c4ecc6e04855a5b81f37beb93",
     "semantic_hash": ""
+  },
+  "src/Helpers/InventoryMath.php": {
+    "mtime": 1785874950.3455856,
+    "ast_hash": "fb1ab7b3963fe1866808b0398c251835",
+    "semantic_hash": ""
   }
 }
