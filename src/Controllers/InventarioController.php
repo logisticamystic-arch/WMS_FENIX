@@ -205,10 +205,7 @@ class InventarioController extends BaseController
         if ($deny = $this->requireSelectedTenantForSuperAdmin($user, $req, $res, true)) {
             return $deny;
         }
-        // Mover inventario entre ubicaciones tiene el mismo impacto que un ajuste manual
-        // (ajuste()/crearConteo() ya exigen supervisor) — sin este control, cualquier
-        // usuario autenticado podía trasladar stock entre ubicaciones sin autorización.
-        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+        // Traslado de inventario entre ubicaciones (operativo para auxiliares, montacarguistas, supervisores y admin)
 
         [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $req);
         $data = $req->getParsedBody() ?? [];

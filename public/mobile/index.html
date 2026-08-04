@@ -1914,7 +1914,7 @@ const MWMS = {
       if (this._palletMove) {
         // Mover todos los items del pallet
         for (const i of this._palletMove) {
-           await mApi('POST', '/inventario/traslado', {
+           await mApi('POST', '/putaway/ubicar', {
               producto_id:          i.producto_id,
               ubicacion_origen_id:  i.ubicacion_id,
               ubicacion_destino_id: this._selectedLocation.id,
@@ -1932,7 +1932,7 @@ const MWMS = {
         this._palletMove = null;
       } else {
         // Mover item individual/parcial
-        await mApi('POST', '/inventario/traslado', {
+        await mApi('POST', '/putaway/ubicar', {
           producto_id:          this._locationData.item.producto_id,
           ubicacion_origen_id:  this._locationData.item.ubicacion_id,
           ubicacion_destino_id: this._selectedLocation.id,
