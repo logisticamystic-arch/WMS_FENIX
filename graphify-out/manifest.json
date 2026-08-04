@@ -670,8 +670,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/despacho.js": {
-    "mtime": 1785772987.0264528,
-    "ast_hash": "aa6b1298eab1d2a9a489caf213e05398",
+    "mtime": 1785847114.2892747,
+    "ast_hash": "c695e4111b221bed5730f6939fe104f3",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/devoluciones.js": {
@@ -945,8 +945,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/PackingController.php": {
-    "mtime": 1785800360.3459208,
-    "ast_hash": "98700ccff490815a7a2aaf702b99dd68",
+    "mtime": 1785847104.0483305,
+    "ast_hash": "c95c77969d7f440abb2b42f24ef1ca5d",
     "semantic_hash": ""
   },
   "src/Controllers/ParametrosController.php": {
