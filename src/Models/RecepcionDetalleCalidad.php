@@ -16,6 +16,8 @@ class RecepcionDetalleCalidad extends Model
         'temperatura',
         'empaque',
         'rotulado',
+        'foto_evidencia',
+        'observaciones',
     ];
 
     public function detalle()

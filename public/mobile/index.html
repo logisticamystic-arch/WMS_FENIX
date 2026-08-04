@@ -1298,18 +1298,21 @@ const MWMS = {
         numero_pallet: palletNum,
       });
 
-      // Reset para siguiente captura (mantener producto y pallet)
+      // Reset para siguiente captura (borrar producto seleccionado y dejar listo para la siguiente referencia en el mismo pallet)
+      s.prodSel      = null;
       s.fechaAuto    = '';
       s.fechaAutoRaw = '';
-      Swal.close(); // no-op si no hay modal abierto (captura por QR sin diálogo previo)
-      this.toast('Captura registrada ✓', 'success');
+      s.origenCaptura = 'Manual';
+      Swal.close();
+      this.toast('Captura registrada ✓ Listo para la siguiente referencia del pallet #' + palletNum, 'success');
       this._renderRecSinOdc();
       
-      // Restaurar el proveedor seleccionado
+      // Restaurar el proveedor seleccionado y reenfocar buscador
       setTimeout(() => {
           if (document.getElementById('rs-proveedor')) {
               document.getElementById('rs-proveedor').value = prov;
           }
+          document.getElementById('rs-prod-search')?.focus();
       }, 50);
     } catch (e) {
       // Vencimiento inferior al ya existente en bodega: en móvil NUNCA se autoriza

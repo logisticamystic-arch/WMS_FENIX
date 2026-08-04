@@ -2486,14 +2486,63 @@ public function getControlPanelData(Request $request, Response $response): Respo
             return $this->error($response, 'Detalle de recepción no encontrado.', 404);
         }
 
+        // Asegurar que la tabla recepcion_detalle_calidad contenga la columna foto_evidencia y observaciones
+        if (!\Illuminate\Database\Capsule\Manager::schema()->hasColumn('recepcion_detalle_calidad', 'foto_evidencia')) {
+            \Illuminate\Database\Capsule\Manager::schema()->table('recepcion_detalle_calidad', function ($table) {
+                $table->longText('foto_evidencia')->nullable();
+                $table->text('observaciones')->nullable();
+            });
+        }
+
         $data = $request->getParsedBody() ?? [];
+        $files = $request->getUploadedFiles();
+
+        $fotoPath = null;
+        if (isset($files['foto_evidencia']) && $files['foto_evidencia']->getError() === UPLOAD_ERR_OK) {
+            $file = $files['foto_evidencia'];
+            $ext = pathinfo($file->getClientFilename(), PATHINFO_EXTENSION);
+            if (empty($ext)) $ext = 'jpg';
+            $filename = sprintf('calidad_det_%s_%s.%s', $detalleId, time(), $ext);
+            $dir = __DIR__ . '/../../../public/uploads/calidad';
+            if (!is_dir($dir)) {
+                mkdir($dir, 0777, true);
+            }
+            $file->moveTo($dir . '/' . $filename);
+            $fotoPath = 'uploads/calidad/' . $filename;
+        } elseif (!empty($data['foto_evidencia']) && str_starts_with($data['foto_evidencia'], 'data:image')) {
+            // Data URI Base64 procedente de cámara o canvas
+            $base64 = $data['foto_evidencia'];
+            if (preg_match('/^data:image\/(\w+);base64,/', $base64, $type)) {
+                $dataImg = substr($base64, strpos($base64, ',') + 1);
+                $ext = strtolower($type[1]);
+                $dataImg = base64_decode($dataImg);
+                if ($dataImg !== false) {
+                    $filename = sprintf('calidad_det_%s_%s.%s', $detalleId, time(), $ext);
+                    $dir = __DIR__ . '/../../../public/uploads/calidad';
+                    if (!is_dir($dir)) {
+                        mkdir($dir, 0777, true);
+                    }
+                    file_put_contents($dir . '/' . $filename, $dataImg);
+                    $fotoPath = 'uploads/calidad/' . $filename;
+                }
+            }
+        } elseif (!empty($data['foto_evidencia'])) {
+            $fotoPath = $data['foto_evidencia'];
+        }
+
         $calidad = \App\Models\RecepcionDetalleCalidad::firstOrNew(['recepcion_detalle_id' => $detalleId]);
-        $calidad->olor        = $data['olor'] ?? $calidad->olor;
-        $calidad->color       = $data['color'] ?? $calidad->color;
-        $calidad->textura     = $data['textura'] ?? $calidad->textura;
-        $calidad->temperatura = $data['temperatura'] ?? $calidad->temperatura;
-        $calidad->empaque     = $data['empaque'] ?? $calidad->empaque;
-        $calidad->rotulado    = $data['rotulado'] ?? $calidad->rotulado;
+        $calidad->olor          = $data['olor'] ?? $calidad->olor;
+        $calidad->color         = $data['color'] ?? $calidad->color;
+        $calidad->textura       = $data['textura'] ?? $calidad->textura;
+        $calidad->temperatura   = $data['temperatura'] ?? $calidad->temperatura;
+        $calidad->empaque       = $data['empaque'] ?? $calidad->empaque;
+        $calidad->rotulado      = $data['rotulado'] ?? $calidad->rotulado;
+        $calidad->observaciones = $data['observaciones'] ?? $calidad->observaciones;
+
+        if ($fotoPath) {
+            $calidad->foto_evidencia = $fotoPath;
+        }
+
         $calidad->save();
 
         return $this->ok($response, $calidad, 'Inspección de calidad por producto guardada correctamente.');

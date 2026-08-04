@@ -2203,27 +2203,53 @@ WMS_MODULES.recepcion = {
       // Agregar fila al panel de historial
       this._agregarLineaSinODC(r.data);
 
-      // Limpiar campos (no el producto, para captura rápida del mismo ítem)
-      const cantInput = document.getElementById('sodc-cant');
-      const ueInput   = document.getElementById('sodc-cant-ue');
-      const loteInput = document.getElementById('sodc-lote');
-      const fechaInput = document.getElementById('sodc-fecha-venc');
-      const fechaInfo  = document.getElementById('sodc-fecha-info');
-      const uePreview  = document.getElementById('sodc-ue-preview');
-      if (cantInput)  cantInput.value  = factorUdm > 0 ? '' : '1';
-      if (ueInput)    ueInput.value    = '';
-      if (loteInput)  loteInput.value  = '';
-      if (fechaInput) fechaInput.value = '';
-      if (fechaInfo)  { fechaInfo.style.display = 'none'; }
-      if (uePreview)  uePreview.style.display = 'none';
-      // Reenfocar campo primario
-      document.getElementById(factorUdm > 0 ? 'sodc-cant-ue' : 'sodc-cant')?.focus();
+      // Limpiar campos completamente para la siguiente referencia en el mismo pallet
+      const searchInput = document.getElementById('sodc-prod-search');
+      const hiddenId    = document.getElementById('sodc-prod-id');
+      const prodInfo    = document.getElementById('sodc-prod-info');
+      const upcInput    = document.getElementById('sodc-upc');
+      const factorUdmInp = document.getElementById('sodc-factor-udm');
+      const unidContInp  = document.getElementById('sodc-unidad-contenido');
+      const cantInput   = document.getElementById('sodc-cant');
+      const saldosInput = document.getElementById('sodc-saldos');
+      const ueInput     = document.getElementById('sodc-cant-ue');
+      const loteInput   = document.getElementById('sodc-lote');
+      const fechaInput  = document.getElementById('sodc-fecha-venc');
+      const fechaInfo   = document.getElementById('sodc-fecha-info');
+      const convPreview = document.getElementById('sodc-conv-preview');
+      const uePreview   = document.getElementById('sodc-ue-preview');
+      const ueGroup     = document.getElementById('sodc-ue-group');
+      const loteGroup   = document.getElementById('sodc-lote-group');
+      const fvencGroup  = document.getElementById('sodc-fvenc-group');
+      const origenInp   = document.getElementById('sodc-origen-captura');
+
+      if (searchInput) searchInput.value = '';
+      if (hiddenId)    hiddenId.value    = '';
+      if (prodInfo)    { prodInfo.style.display = 'none'; prodInfo.innerHTML = ''; }
+      if (upcInput)    upcInput.value    = '1';
+      if (factorUdmInp) factorUdmInp.value = '';
+      if (unidContInp) unidContInp.value = '';
+      if (cantInput)   cantInput.value   = '1';
+      if (saldosInput) saldosInput.value = '0';
+      if (ueInput)     ueInput.value     = '';
+      if (loteInput)   loteInput.value   = '';
+      if (fechaInput)  fechaInput.value  = '';
+      if (fechaInfo)   fechaInfo.style.display  = 'none';
+      if (convPreview) convPreview.style.display = 'none';
+      if (uePreview)   uePreview.style.display   = 'none';
+      if (ueGroup)     ueGroup.style.display     = 'none';
+      if (loteGroup)   loteGroup.style.display   = 'block';
+      if (fvencGroup)  fvencGroup.style.display  = 'block';
+      if (origenInp)   origenInp.value   = 'Manual';
+
+      // Reenfocar buscador para capturar la siguiente referencia del pallet
+      document.getElementById('sodc-prod-search')?.focus();
 
       const conv = r.data?.conversion;
       const msgCajas = upc > 1
         ? ` (${cantCajas} caja${cantCajas !== 1 ? 's' : ''} × ${upc} = ${conv?.total_unidades || totalUnidades} und)`
         : ` (${totalUnidades} und)`;
-      WMS.toast('success', 'Captura registrada' + msgCajas);
+      WMS.toast('success', 'Captura registrada. Formulario listo para la siguiente referencia.' + msgCajas);
     } catch (e) {
       WMS.toast('error', e.message || 'Error al guardar captura');
     } finally {
@@ -4596,6 +4622,15 @@ WMS_MODULES.recepcion = {
             </select>
           </div>
         </div>
+
+        <!-- Evidencia Fotográfica por Referencia -->
+        <div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;padding:10px;margin-top:4px;">
+          <label style="font-weight:700;font-size:11px;display:block;color:#0F4C81;margin-bottom:4px;">
+            <i class="fa-solid fa-camera"></i> Adjuntar Foto / Evidencia del Producto
+          </label>
+          <input type="file" id="cal-p-foto" accept="image/*" style="font-size:12px;width:100%;">
+          ${c.foto_evidencia ? `<div style="margin-top:6px;font-size:11px;"><i class="fa-solid fa-image" style="color:#059669;"></i> Foto Registrada: <a href="${WMS.esc(c.foto_evidencia)}" target="_blank" style="color:#1d4ed8;font-weight:700;text-decoration:underline;">Ver Evidencia</a></div>` : ''}
+        </div>
       </div>
     `;
 
@@ -4607,14 +4642,26 @@ WMS_MODULES.recepcion = {
       confirmButtonText: '<i class="fa-solid fa-save"></i> Guardar Inspección Producto',
       cancelButtonText: 'Cancelar',
       confirmButtonColor: '#059669',
-      preConfirm: () => ({
-        olor: document.getElementById('cal-p-olor')?.value || 'Conforme',
-        color: document.getElementById('cal-p-color')?.value || 'Conforme',
-        textura: document.getElementById('cal-p-textura')?.value || 'Conforme',
-        temperatura: document.getElementById('cal-p-temp')?.value || '',
-        empaque: document.getElementById('cal-p-empaque')?.value || 'Conforme',
-        rotulado: document.getElementById('cal-p-rotulado')?.value || 'Conforme',
-      })
+      preConfirm: async () => {
+        const fileInput = document.getElementById('cal-p-foto');
+        let fotoBase64 = null;
+        if (fileInput && fileInput.files && fileInput.files[0]) {
+          fotoBase64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.readAsDataURL(fileInput.files[0]);
+          });
+        }
+        return {
+          olor: document.getElementById('cal-p-olor')?.value || 'Conforme',
+          color: document.getElementById('cal-p-color')?.value || 'Conforme',
+          textura: document.getElementById('cal-p-textura')?.value || 'Conforme',
+          temperatura: document.getElementById('cal-p-temp')?.value || '',
+          empaque: document.getElementById('cal-p-empaque')?.value || 'Conforme',
+          rotulado: document.getElementById('cal-p-rotulado')?.value || 'Conforme',
+          foto_evidencia: fotoBase64 || c.foto_evidencia || null,
+        };
+      }
     });
 
     if (!res.isConfirmed || !res.value) return;
