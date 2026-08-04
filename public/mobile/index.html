@@ -4826,10 +4826,17 @@ const MWMS = {
           <span><i class="fa-solid fa-location-dot" style="color:#4f46e5;"></i> UBICACIONES REGISTRADAS (${ubicaciones.length})</span>
         </div>
 
+        ${ubicaciones.length ? `
+          <button type="button" onclick="MWMS._ivRefConfirmarTodoSistema()"
+            style="width:100%;background:#eff6ff;border:1.5px solid #93c5fd;color:#1d4ed8;border-radius:10px;padding:9px 12px;font-size:.78rem;font-weight:800;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 6px rgba(59,130,246,.15);">
+            <i class="fa-solid fa-square-check" style="font-size:.9rem;"></i> Confirmar TODAS las ubicaciones OK (según sistema)
+          </button>
+        ` : ''}
+
         <div id="iv-ref-ubic-list">
           ${ubicaciones.length ? ubicaciones.map(u => `
             <div class="op-card ref-ubic-card" id="ref-card-loc-${u.id}" data-locid="${u.id}" data-code="${this.esc(u.codigo)}" data-lote="${this.esc(u.lote||'N/A')}" data-fv="${u.fecha_vencimiento||''}" style="border-left:4px solid #f59e0b;margin-bottom:10px;">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
                 <div>
                   <div style="font-weight:800;font-size:.9rem;color:#0F4C81;">
                     <i class="fa-solid fa-location-dot" style="font-size:.8rem;"></i> ${this.esc(u.codigo)}
@@ -4837,13 +4844,17 @@ const MWMS = {
                   <div style="font-size:.7rem;color:#64748b;margin-top:2px;">
                     Sistema: <b>${u.cajas} cj + ${u.saldos} sald</b> (${u.cantidad} und)
                   </div>
-                  ${u.lote && u.lote !== 'N/A' ? `<div style="font-size:.65rem;color:#475569;margin-top:2px;">Lote: <b>${this.esc(u.lote)}</b></div>` : ''}
-                  ${u.fecha_vencimiento ? `<div style="font-size:.65rem;color:#dc2626;font-weight:700;margin-top:2px;"><i class="fa-solid fa-calendar-days"></i> Vence: <b>${this.formatDate(u.fecha_vencimiento)}</b></div>` : ''}
                 </div>
                 <span class="ref-loc-status-badge" id="ref-loc-status-${u.id}"
                   style="font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:12px;background:#fef3c7;color:#d97706;">
                   PENDIENTE
                 </span>
+              </div>
+
+              <!-- Lote y Vencimiento en Sistema -->
+              <div style="background:#f1f5f9;border-radius:8px;padding:6px 10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;font-size:.73rem;color:#334155;border:1px solid #e2e8f0;">
+                <span><i class="fa-solid fa-box-archive" style="color:#6366f1;"></i> Lote Sistema: <b>${this.esc(u.lote && u.lote !== 'N/A' ? u.lote : 'Sin Lote')}</b></span>
+                <span><i class="fa-solid fa-calendar-days" style="color:${u.fecha_vencimiento ? '#dc2626' : '#94a3b8'};"></i> Venc: <b>${u.fecha_vencimiento ? this.formatDate(u.fecha_vencimiento) : 'N/A'}</b></span>
               </div>
 
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
@@ -4873,8 +4884,12 @@ const MWMS = {
               </div>
 
               <div style="display:flex;gap:6px;align-items:center;">
+                <button type="button" onclick="MWMS._ivRefConfirmarOK(${u.id}, ${u.cajas||0}, ${u.saldos||0}, '${this.esc((u.lote&&u.lote!=='N/A'?u.lote:'').replace(/'/g,"\\'"))}', '${u.fecha_vencimiento||''}')"
+                  style="flex:1.2;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;border-radius:6px;padding:7px;font-size:.72rem;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;">
+                  <i class="fa-solid fa-circle-check"></i> Referencia OK (Sistema)
+                </button>
                 <button type="button" onclick="MWMS._ivRefPonerCero(${u.id})"
-                  style="flex:1;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:6px;padding:6px;font-size:.72rem;font-weight:700;cursor:pointer;">
+                  style="flex:1;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:6px;padding:7px;font-size:.72rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;">
                   <i class="fa-solid fa-ban"></i> Poner en 0 (Vacía)
                 </button>
               </div>
@@ -4919,6 +4934,29 @@ const MWMS = {
     badge.style.background = '#dcfce7';
     badge.style.color = '#15803d';
     badge.innerHTML = '<i class="fa-solid fa-check"></i> CONTADO';
+  },
+
+  _ivRefConfirmarOK(locId, cajas, saldos, lote, fv) {
+    const cjInp = document.getElementById(`ref-cj-${locId}`);
+    const sdInp = document.getElementById(`ref-sd-${locId}`);
+    const ltInp = document.getElementById(`ref-lote-${locId}`);
+    const fvInp = document.getElementById(`ref-fv-${locId}`);
+
+    if (cjInp) cjInp.value = cajas;
+    if (sdInp) sdInp.value = saldos;
+    if (ltInp && lote && lote !== 'N/A') ltInp.value = lote;
+    if (fvInp && fv) fvInp.value = fv;
+
+    this._ivRefOnLocChange(locId);
+    this.toast('✔ Conteo de ubicación verificado según sistema', 'success');
+  },
+
+  _ivRefConfirmarTodoSistema() {
+    if (!this._ivRefSysUbic || !this._ivRefSysUbic.length) return;
+    this._ivRefSysUbic.forEach(u => {
+      this._ivRefConfirmarOK(u.id, u.cajas||0, u.saldos||0, u.lote||'', u.fecha_vencimiento||'');
+    });
+    this.toast('✔ Todas las ubicaciones confirmadas según sistema', 'success');
   },
 
   _ivRefPonerCero(locId) {
