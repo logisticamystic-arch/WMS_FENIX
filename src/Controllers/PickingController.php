@@ -3934,6 +3934,7 @@ class PickingController extends BaseController
                     'productos.nombre as producto_nombre',
                     'productos.codigo_interno as producto_codigo',
                     'productos.unidades_caja',
+                    'productos.factor_udm',
                     'ubicaciones.codigo as ubicacion_codigo',
                     'ubicaciones.id as ubicacion_id',
                     'picking_detalles.lote',
@@ -3950,6 +3951,7 @@ class PickingController extends BaseController
                     'productos.nombre',
                     'productos.codigo_interno',
                     'productos.unidades_caja',
+                    'productos.factor_udm',
                     'ubicaciones.id',
                     'ubicaciones.codigo',
                     'ubicaciones.pasillo',
@@ -4011,7 +4013,7 @@ class PickingController extends BaseController
                     $parts = explode('/', $it->ubicacion_codigo);
                     $it->ubicacion_codigo = end($parts);
                 }
-                $factor = (int)($it->unidades_caja ?: 0);
+                $factor = (float)($it->factor_udm ?? 0) > 0 ? (float)$it->factor_udm : (int)($it->unidades_caja ?: 0);
                 if ($factor <= 1) {
                     // Sin empaque definido: todo se muestra como unidades sueltas
                     $it->cajas = 0;

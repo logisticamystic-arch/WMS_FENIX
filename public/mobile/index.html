@@ -6517,7 +6517,7 @@ const MWMS = {
   },
 
   renderPKConsolidado(it, planillaNumero) {
-    const factor    = parseInt(it.unidades_caja) || 1;
+    const factor    = parseFloat(it.factor_udm || 0) > 0 ? parseFloat(it.factor_udm) : Math.max(1, parseInt(it.unidades_caja || 1));
     const usaCajas  = factor > 1;
     const sugCajas  = it.cantidad_total;
     const sucEnt    = it.sucursal_entrega || '';
@@ -6622,25 +6622,24 @@ const MWMS = {
             <div style="font-size:.66rem;font-weight:800;color:#059669;text-align:center;margin-bottom:8px;text-transform:uppercase;letter-spacing:.3px;">
               <i class="fa-solid fa-boxes-stacked"></i> CANTIDAD A SEPARAR
             </div>
-            <div style="display:grid;grid-template-columns:${usaCajas ? '1fr 1fr' : '1fr'};gap:8px;margin-bottom:8px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
               <div>
                 <label style="font-size:.64rem;font-weight:700;color:#1e293b;display:block;margin-bottom:3px;">
                   <i class="fa-solid fa-box-archive" style="color:#0F4C81;"></i>
-                  ${usaCajas ? 'Cajas' : 'Cantidad (und)'}
+                  ${factor > 1 ? 'Cajas' : 'Cantidad (cj/und)'}
                 </label>
                 <input type="number" id="pk-inline-cajas" value="${sugCajas}" min="0" inputmode="numeric"
                   style="width:100%;border:2px solid #0F4C81;border-radius:8px;padding:8px 6px;font-size:1.7rem;font-weight:900;text-align:center;box-sizing:border-box;"
-                  oninput="MWMS._updPKInlineTotal(${factor},${usaCajas})">
+                  oninput="MWMS._updPKInlineTotal(${factor})">
               </div>
-              ${usaCajas ? `
               <div>
                 <label style="font-size:.64rem;font-weight:700;color:#d97706;display:block;margin-bottom:3px;">
                   <i class="fa-solid fa-layer-group" style="color:#d97706;"></i> Saldos (sueltos)
                 </label>
                 <input type="number" id="pk-inline-saldos" value="0" min="0" inputmode="numeric"
                   style="width:100%;border:2px solid #d97706;border-radius:8px;padding:8px 6px;font-size:1.7rem;font-weight:900;text-align:center;box-sizing:border-box;"
-                  oninput="MWMS._updPKInlineTotal(${factor},${usaCajas})">
-              </div>` : ''}
+                  oninput="MWMS._updPKInlineTotal(${factor})">
+              </div>
             </div>
             <!-- Total UND/TOTAL -->
             <div style="background:#dcfce7;border-radius:8px;padding:6px;text-align:center;margin-bottom:8px;">
@@ -6656,7 +6655,7 @@ const MWMS = {
                 style="background:#450a0a;color:#fca5a5;border:1px solid #991b1b;border-radius:9px;height:46px;font-size:.68rem;font-weight:800;cursor:pointer;letter-spacing:.2px;">
                 <i class="fa-solid fa-circle-xmark"></i><br>AGOTADO
               </button>
-              <button onclick="MWMS._confirmarPKInline('${planillaNumero}',${factor},${it.cantidad_total},${usaCajas})"
+              <button onclick="MWMS._confirmarPKInline('${planillaNumero}',${factor},${it.cantidad_total})"
                 style="background:#059669;color:#fff;border:none;border-radius:9px;height:46px;font-size:.85rem;font-weight:900;cursor:pointer;letter-spacing:.2px;">
                 <i class="fa-solid fa-check-double"></i> CONFIRMAR
               </button>
@@ -6777,16 +6776,16 @@ const MWMS = {
     };
 
     // ─── Actualizar display UND/TOTAL ──────────────────────────────────────────
-    this._updPKInlineTotal = (factor, usaCajas) => {
+    this._updPKInlineTotal = (factor) => {
       const c   = parseFloat(document.getElementById('pk-inline-cajas')?.value  || 0) || 0;
-      const s   = usaCajas ? (parseFloat(document.getElementById('pk-inline-saldos')?.value || 0) || 0) : 0;
-      const tot = usaCajas ? c * factor + s : c;
+      const s   = parseFloat(document.getElementById('pk-inline-saldos')?.value || 0) || 0;
+      const tot = c * factor + s;
       const el  = document.getElementById('pk-inline-total');
       const elU = document.getElementById('pk-inline-und');
       if (el)  el.textContent  = isNaN(tot) ? '—' : tot;
-      if (elU) elU.textContent = usaCajas
+      if (elU) elU.textContent = factor > 1
         ? `${c} cj × ${factor}${s > 0 ? ' + ' + s + ' sueltos' : ''} = ${tot} und`
-        : 'unidades';
+        : `${c} cj${s > 0 ? ' + ' + s + ' sueltos' : ''} = ${tot} und`;
 
       // ── Aviso dinámico de faltante: si lo digitado es menor a lo pedido,
       // descompone el déficit en cajas + saldos (no en cajas fraccionadas) ──
@@ -6795,12 +6794,13 @@ const MWMS = {
       if (faltanteEl) {
         const deficit = Math.round((pedidoUnd - tot) * 1000) / 1000;
         if (!isNaN(tot) && deficit > 0.001) {
-          const deficitCajas = usaCajas ? Math.floor(deficit / factor) : 0;
-          const deficitSaldo = usaCajas ? Math.round((deficit - deficitCajas * factor) * 1000) / 1000 : deficit;
+          const deficitCajas = factor > 1 ? Math.floor(deficit / factor) : 0;
+          const deficitSaldo = factor > 1 ? Math.round((deficit - deficitCajas * factor) * 1000) / 1000 : deficit;
           const partes = [];
           if (deficitCajas > 0) partes.push(`${deficitCajas} caja${deficitCajas === 1 ? '' : 's'}`);
           if (deficitSaldo > 0) partes.push(`${deficitSaldo} suelto${deficitSaldo === 1 ? '' : 's'}`);
-          faltanteEl.textContent = `⚠ Faltarían ${partes.join(' + ')} por separar (${deficit} und) — quedará marcado como faltante`;
+          const txtDef = partes.length > 0 ? partes.join(' + ') : `${deficit} und`;
+          faltanteEl.textContent = `⚠ Faltarían ${txtDef} por separar (${deficit} und) — quedará marcado como faltante`;
           faltanteEl.style.display = 'block';
         } else {
           faltanteEl.style.display = 'none';
@@ -6809,13 +6809,14 @@ const MWMS = {
     };
 
     // ─── Confirmar separación ─────────────────────────────────────────────────
-    this._confirmarPKInline = async (planilla, factor, maxCajas, usaCajas) => {
+    this._confirmarPKInline = async (planilla, factor, maxCajas) => {
+      const usaCajas = factor > 1;
       const c = parseFloat(document.getElementById('pk-inline-cajas')?.value || 0) || 0;
-      const s = usaCajas ? (parseFloat(document.getElementById('pk-inline-saldos')?.value || 0) || 0) : 0;
-      const totalUnd = usaCajas ? c * factor + s : c;
+      const s = parseFloat(document.getElementById('pk-inline-saldos')?.value || 0) || 0;
+      const totalUnd = c * factor + s;
       if (totalUnd <= 0) { this.toast('Ingrese una cantidad mayor a 0', 'error'); return; }
 
-      const totalEnviar = usaCajas ? parseFloat((c + (s / factor)).toFixed(4)) : c;
+      const totalEnviar = parseFloat((c + (s / factor)).toFixed(4));
       let novedadId = null;
 
       if (totalEnviar < maxCajas - 0.0001) {
@@ -7380,49 +7381,43 @@ const MWMS = {
     });
   },
 
-  // ── Diálogo de cantidad (cajas + saldos) para agregar/reemplazar ──────────
   async _pkPedirCantidad(prod, titulo) {
-    const factor   = parseInt(prod.unidades_caja) || 1;
-    const usaCajas = factor > 1;
+    const factor   = parseFloat(prod.factor_udm || 0) > 0 ? parseFloat(prod.factor_udm) : Math.max(1, parseInt(prod.unidades_caja || 1));
     return new Promise(resolve => {
       Swal.fire({
         title: titulo || '<i class="fa-solid fa-boxes-stacked" style="color:#7c3aed;"></i> Cantidad',
         html: `
           <div style="font-size:.8rem;font-weight:700;color:#1e293b;margin-bottom:10px;text-align:left;">${MWMS.esc(prod.nombre)}</div>
-          <div style="display:grid;grid-template-columns:${usaCajas ? '1fr 1fr' : '1fr'};gap:10px;text-align:left;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:left;">
             <div>
               <label style="font-size:.68rem;font-weight:700;color:#0F4C81;display:block;margin-bottom:4px;">
-                <i class="fa-solid fa-box-archive"></i> ${usaCajas ? `Cajas (UxC: ${factor})` : 'Cantidad (und)'}
+                <i class="fa-solid fa-box-archive"></i> ${factor > 1 ? `Cajas (UxC: ${factor})` : 'Cajas'}
               </label>
-              <input type="number" id="pk-qty-cajas" value="1" min="1" inputmode="numeric"
+              <input type="number" id="pk-qty-cajas" value="1" min="0" inputmode="numeric"
                 style="width:100%;border:2px solid #0F4C81;border-radius:8px;padding:10px;font-size:1.8rem;font-weight:900;text-align:center;box-sizing:border-box;">
             </div>
-            ${usaCajas ? `
             <div>
               <label style="font-size:.68rem;font-weight:700;color:#d97706;display:block;margin-bottom:4px;">
                 <i class="fa-solid fa-layer-group"></i> Saldos (sueltos)
               </label>
               <input type="number" id="pk-qty-saldos" value="0" min="0" inputmode="numeric"
                 style="width:100%;border:2px solid #d97706;border-radius:8px;padding:10px;font-size:1.8rem;font-weight:900;text-align:center;box-sizing:border-box;">
-            </div>` : ''}
+            </div>
           </div>
-          ${usaCajas ? `
           <div style="margin-top:10px;background:#f0fdf4;border-radius:8px;padding:6px;text-align:center;">
             <div style="font-size:.55rem;color:#166534;font-weight:700;">UND / TOTAL</div>
             <div id="pk-qty-total" style="font-size:1.5rem;font-weight:900;color:#15803d;">${factor}</div>
-          </div>` : ''}`,
+          </div>`,
         didOpen: () => {
-          if (usaCajas) {
-            const upd = () => {
-              const c = parseInt(document.getElementById('pk-qty-cajas')?.value || 0) || 0;
-              const s = parseInt(document.getElementById('pk-qty-saldos')?.value || 0) || 0;
-              const tot = document.getElementById('pk-qty-total');
-              if (tot) tot.textContent = c * factor + s;
-            };
-            document.getElementById('pk-qty-cajas')?.addEventListener('input', upd);
-            document.getElementById('pk-qty-saldos')?.addEventListener('input', upd);
-            document.getElementById('pk-qty-cajas')?.focus();
-          }
+          const upd = () => {
+            const c = parseInt(document.getElementById('pk-qty-cajas')?.value || 0) || 0;
+            const s = parseInt(document.getElementById('pk-qty-saldos')?.value || 0) || 0;
+            const tot = document.getElementById('pk-qty-total');
+            if (tot) tot.textContent = c * factor + s;
+          };
+          document.getElementById('pk-qty-cajas')?.addEventListener('input', upd);
+          document.getElementById('pk-qty-saldos')?.addEventListener('input', upd);
+          document.getElementById('pk-qty-cajas')?.focus();
         },
         showCancelButton: true,
         confirmButtonText: '<i class="fa-solid fa-check"></i> Confirmar',
@@ -7430,7 +7425,7 @@ const MWMS = {
         confirmButtonColor: '#7c3aed',
         preConfirm: () => {
           const c = parseInt(document.getElementById('pk-qty-cajas')?.value || 0) || 0;
-          const s = usaCajas ? (parseInt(document.getElementById('pk-qty-saldos')?.value || 0) || 0) : 0;
+          const s = (parseInt(document.getElementById('pk-qty-saldos')?.value || 0) || 0);
           if (c <= 0 && s <= 0) { Swal.showValidationMessage('Ingrese al menos 1'); return false; }
           return { cajas: c, saldos: s };
         }
