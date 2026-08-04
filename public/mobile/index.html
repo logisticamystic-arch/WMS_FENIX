@@ -6818,16 +6818,16 @@ const MWMS = {
       const totalEnviar = usaCajas ? parseFloat((c + (s / factor)).toFixed(4)) : c;
       let novedadId = null;
 
-      if (c < maxCajas) {
+      if (totalEnviar < maxCajas - 0.0001) {
         const tolerancia  = this._toleranciaBajoPicking ?? 0;
-        const pctPickeado = maxCajas > 0 ? (c / maxCajas * 100) : 100;
+        const pctPickeado = maxCajas > 0 ? (totalEnviar / maxCajas * 100) : 100;
         const minReq      = 100 - tolerancia;
         const dentroTol   = pctPickeado >= minReq;
 
         // Si hay otra ubicación FEFO (distinta a la actual) con stock disponible
         // para el restante, se ofrece saltar allá en vez de dejarlo como faltante.
         const split = it.fifo_split || [];
-        const restanteUnd = (maxCajas - c) * factor;
+        const restanteUnd = Math.max(0, (maxCajas * factor) - totalUnd);
         const siguienteIdx = split.findIndex(loc => !loc.es_asignada && (loc.disponible || 0) > 0);
         const haySiguiente = siguienteIdx !== -1;
         const siguienteLoc = haySiguiente ? split[siguienteIdx] : null;
@@ -6838,13 +6838,22 @@ const MWMS = {
           ${causalesOpts}
         </select>`;
 
+        const deficitCajasTotal = usaCajas ? Math.floor(restanteUnd / factor) : 0;
+        const deficitSaldosTotal = usaCajas ? Math.round((restanteUnd - deficitCajasTotal * factor) * 1000) / 1000 : restanteUnd;
+        const partesDeficit = [];
+        if (deficitCajasTotal > 0) partesDeficit.push(`${deficitCajasTotal} caja${deficitCajasTotal === 1 ? '' : 's'}`);
+        if (deficitSaldosTotal > 0) partesDeficit.push(`${deficitSaldosTotal} suelto${deficitSaldosTotal === 1 ? '' : 's'}`);
+        const deficitTxt = partesDeficit.length > 0 ? partesDeficit.join(' + ') : `${restanteUnd} und`;
+
+        const separadoTxt = usaCajas ? `${c} cj${s > 0 ? ' + ' + s + ' u' : ''}` : `${c}`;
+
         const ok = await Swal.fire({
-          title: dentroTol ? 'Cajas incompletas' : '⚠ Bajo del mínimo permitido',
+          title: dentroTol ? 'Cantidad incompleta' : '⚠ Bajo del mínimo permitido',
           html: `<div style="text-align:left;font-size:.88rem;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
               <div style="background:#f1f5f9;padding:8px;border-radius:8px;text-align:center;">
                 <div style="font-size:.62rem;color:#64748b;font-weight:700;">SEPARADO</div>
-                <div style="font-size:1.4rem;font-weight:900;color:${dentroTol ? '#d97706' : '#dc2626'};">${c}</div>
+                <div style="font-size:1.4rem;font-weight:900;color:${dentroTol ? '#d97706' : '#dc2626'};">${separadoTxt}</div>
                 <div style="font-size:.6rem;color:#64748b;">de ${maxCajas} cajas</div>
               </div>
               <div style="background:#f1f5f9;padding:8px;border-radius:8px;text-align:center;">
@@ -6859,7 +6868,7 @@ const MWMS = {
               <b>${siguienteLoc.disponible} und</b> disponibles ${siguienteLoc.disponible >= restanteUnd ? '— cubre todo el restante' : `(cubre parte de las ${restanteUnd} und que faltan)`}.
             </div>` : ''}
             <div style="background:${dentroTol ? '#fef3c7' : '#fef2f2'};border-radius:8px;padding:8px;text-align:center;font-size:.8rem;">
-              Diferencia de <b>${(maxCajas - c).toFixed(0)} cajas</b> quedará como <b>FALTANTE</b> si no se completa en otra ubicación.
+              Diferencia de <b>${deficitTxt}</b> quedará como <b>FALTANTE</b> si no se completa en otra ubicación.
             </div>
             ${selectNovedadHtml}
           </div>`,
@@ -6884,26 +6893,28 @@ const MWMS = {
           // NO se confirma nada todavía (confirmar-consolidado cierra la línea como
           // Completado/Faltante de forma definitiva y no admite "parcial, continúa
           // en otra ubicación"). Se reasigna la línea a la siguiente ubicación FEFO
-          // para que el auxiliar siga separando ahí; las cajas que ya tiene en mano
+          // para que el auxiliar siga separando ahí; las cajas/saldos que ya tiene en mano
           // de la ubicación actual las debe sumar al confirmar el total final.
-          if (c > 0) {
-            this.toast(`Recuerda sumar las ${c} cajas que ya tienes en mano al confirmar en la nueva ubicación`, 'info');
+          if (totalUnd > 0) {
+            const enManoTxt = usaCajas ? `${c} cajas${s > 0 ? ' y ' + s + ' sueltos' : ''}` : `${c} unidades`;
+            this.toast(`Recuerda sumar las ${enManoTxt} que ya tienes en mano al confirmar en la nueva ubicación`, 'info');
           }
           this._pkUsarFifoLoc(siguienteIdx, planilla);
           return;
         }
         if (!ok.isConfirmed) return;
         novedadId = ok.value;
-      } else if (c > maxCajas) {
+      } else if (totalEnviar > maxCajas + 0.0001) {
         const causalesOpts = this._causalesNovedad.map(n => `<option value="${n.id}">${this.esc(n.nombre)}</option>`).join('');
         const selectNovedadHtml = `<select id="swal-pk-novedad-id" class="swal2-select" style="display:flex;width:100%;max-width:100%;font-size:0.9rem;margin-top:15px;">
           <option value="">Causal de Novedad *</option>
           ${causalesOpts}
         </select>`;
         
+        const separadoTxt = usaCajas ? `${c} cajas${s > 0 ? ' + ' + s + ' sueltos' : ''}` : `${c} unidades`;
         const ok = await Swal.fire({
-          title: 'Cajas adicionales',
-          html: `<div style="font-size:0.9rem;">Separando ${c} cajas (pedido: ${maxCajas})${s > 0 ? ' + ' + s + ' sueltos' : ''}. ¿Confirmar excedente?</div>${selectNovedadHtml}`,
+          title: 'Cantidad adicional',
+          html: `<div style="font-size:0.9rem;">Separando ${separadoTxt} (pedido: ${maxCajas} cajas). ¿Confirmar excedente?</div>${selectNovedadHtml}`,
           icon: 'info', showCancelButton: true,
           confirmButtonText: 'Sí, confirmar', cancelButtonText: 'Corregir',
           confirmButtonColor: '#0F4C81',
