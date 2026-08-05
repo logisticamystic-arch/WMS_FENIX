@@ -99,7 +99,6 @@ class PickingController extends BaseController
                     ->orWhereHas('detalles.producto', fn($pq) => $pq
                         ->where('productos.nombre', 'ILIKE', "%$v%")
                         ->orWhere('productos.codigo_interno', 'ILIKE', "%$v%")
-                        ->orWhere('productos.codigo_barras', 'ILIKE', "%$v%")
                     )
                 );
             });
