@@ -409,7 +409,7 @@ class DashboardTVController extends BaseController
                 $digitGenTotal += (float)$d['faltante_digitacion'];
             }
 
-            // ── 2. General: Unidades solicitadas válidas vs despachadas ────────────
+            // ── 2. General: Unidades solicitadas válidas vs despachadas efectivas ──
             $stmtGen = $pdo->prepare("
                 SELECT
                     pd.orden_picking_id,
@@ -427,8 +427,11 @@ class DashboardTVController extends BaseController
             $stmtGen->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':fecha' => $fecha]);
             $rawGen = $stmtGen->fetchAll(\PDO::FETCH_ASSOC);
 
-            $solGenBruto = 0;
-            $sepGen      = 0;
+            $solGenValido    = 0;
+            $sepGenEfectivo  = 0;
+            $solGenBruto     = 0;
+            $sepGenBruto     = 0;
+
             $refSolMap   = [];
             $refSepMap   = [];
 
@@ -439,22 +442,30 @@ class DashboardTVController extends BaseController
                 $sep = (float)$g['total_separado'];
                 $digit = $digitMap[$key] ?? 0;
 
+                // Solicitado válido por ítem (descontando digitación)
                 $solValida = max(0, $sol - $digit);
+                // Despachado efectivo (no se cuentan sobre-despachos por encima de lo solicitado)
+                $sepEfectiva = min($solValida, max(0, $sep));
 
-                $solGenBruto += $sol;
-                $sepGen      += $sep;
+                $solGenBruto    += $sol;
+                $sepGenBruto    += $sep;
+                $solGenValido   += $solValida;
+                $sepGenEfectivo += $sepEfectiva;
 
                 if (!isset($refSolMap[$prodId])) {
                     $refSolMap[$prodId] = 0;
                     $refSepMap[$prodId] = 0;
                 }
                 $refSolMap[$prodId] += $solValida;
-                $refSepMap[$prodId] += $sep;
+                $refSepMap[$prodId] += $sepEfectiva;
             }
 
-            $solGen = max(0, $solGenBruto - $digitGenTotal);
-            $pctGen = $solGen > 0 ? round(($sepGen / $solGen) * 100, 1) : 100.0;
+            // Nivel de Servicio Unidades % (máximo 100.0%)
+            $pctGen = $solGenValido > 0
+                ? min(100.0, max(0.0, round(($sepGenEfectivo / $solGenValido) * 100, 1)))
+                : 100.0;
 
+            // Nivel de Servicio Referencias % (máximo 100.0%)
             $totalRefs = 0;
             $refsCompletas = 0;
             foreach ($refSolMap as $prodId => $solVal) {
@@ -465,7 +476,9 @@ class DashboardTVController extends BaseController
                     }
                 }
             }
-            $pctRefs = $totalRefs > 0 ? round(($refsCompletas / $totalRefs) * 100, 1) : 100.0;
+            $pctRefs = $totalRefs > 0
+                ? min(100.0, max(0.0, round(($refsCompletas / $totalRefs) * 100, 1)))
+                : 100.0;
 
             // ── Por sucursal (fecha dada) — por referencia/SKU válidos ───────────
             $stmtSuc = $pdo->prepare("
@@ -639,11 +652,11 @@ class DashboardTVController extends BaseController
 
             return $this->ok($response, [
                 'general'        => [
-                    'solicitado'         => $solGen,
-                    'separado'           => $sepGen,
+                    'solicitado'         => $solGenValido,
+                    'separado'           => $sepGenEfectivo,
                     'digitacion_excluido'=> $digitGenTotal,
                     'pct'                => $pctGen,
-                    'pct_formula'        => '(separado / (solicitado - digitacion_excluido)) * 100',
+                    'pct_formula'        => 'min(100.0, (separado_efectivo / solicitado_valido) * 100)',
                     'total_refs'         => $totalRefs,
                     'refs_completas'     => $refsCompletas,
                     'pct_refs'           => $pctRefs,
