@@ -7317,8 +7317,27 @@ class PickingController extends BaseController
                             $anyUbicacion = \Illuminate\Database\Capsule\Manager::table('ubicaciones')
                                 ->where('empresa_id', $empresaId)
                                 ->where('sucursal_id', $user->sucursal_id)
-                                ->where('estado', 'Activa')
+                                ->where(function($sq) {
+                                    $sq->where('activa', true)
+                                       ->orWhere('activo', 1)
+                                       ->orWhereNotIn('estado', ['Inactiva', 'Inactivo']);
+                                })
+                                ->orderBy('id', 'asc')
                                 ->first();
+
+                            if (!$anyUbicacion) {
+                                $anyUbicacion = \Illuminate\Database\Capsule\Manager::table('ubicaciones')
+                                    ->where('empresa_id', $empresaId)
+                                    ->where('sucursal_id', $user->sucursal_id)
+                                    ->first();
+                            }
+
+                            if (!$anyUbicacion) {
+                                $anyUbicacion = \Illuminate\Database\Capsule\Manager::table('ubicaciones')
+                                    ->where('empresa_id', $empresaId)
+                                    ->first();
+                            }
+
                             $ubicacionId = $anyUbicacion ? $anyUbicacion->id : null;
                         }
                     }
