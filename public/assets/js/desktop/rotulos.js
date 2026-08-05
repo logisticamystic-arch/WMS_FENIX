@@ -19,7 +19,7 @@ WMS_MODULES.rotulos = {
   },
 
   subLabel(sub) {
-    return { productos: 'Rótulos de Producto', ubicaciones: 'Rótulos de Ubicación' }[sub] || sub;
+    return { productos: 'Rótulos de Producto', ubicaciones: 'Rótulos de Ubicación', pdv: 'Rótulo PDV' }[sub] || sub;
   },
 
   // ══════════════════════════════════════════════════════════════
@@ -1050,6 +1050,18 @@ WMS_MODULES.rotulos = {
       payload.nombre = document.getElementById('rot-prod-nombre')?.textContent || '';
       payload.codigo = this._selectedProd.codigo_interno || '';
       payload.ean = ean;
+    } else if (tipo === 'pdv') {
+      const producto = document.getElementById('rotpdv-producto')?.value || '';
+      const fe       = document.getElementById('rotpdv-fe')?.value       || '';
+      const fv       = document.getElementById('rotpdv-fv')?.value       || '';
+      const fd       = document.getElementById('rotpdv-fd')?.value       || '';
+      const copias   = parseInt(document.getElementById('rotpdv-copias')?.value || 1);
+      payload.tipo     = 'pdv';
+      payload.producto = producto;
+      payload.fe       = fe;
+      payload.fv       = fv;
+      payload.fd       = fd;
+      payload.copias   = copias;
     } else {
       const sel = document.getElementById('rotub-sel');
       const opt = sel?.options[sel.selectedIndex];
@@ -1087,5 +1099,278 @@ WMS_MODULES.rotulos = {
       });
       WMS.toast('success', r.message || `${ubicaciones.length} rótulo(s) enviados`);
     } catch(e) { WMS.toast('error', e.message || 'Error al conectar con el servidor de impresión'); }
+  },
+
+  // ══════════════════════════════════════════════════════════════
+  //  RÓTULO PDV
+  // ══════════════════════════════════════════════════════════════
+
+  show_pdv() {
+    WMS.setBreadcrumb('rotulos', 'Rótulo PDV');
+    WMS.setContent(`
+      <div class="card animate-fade-in">
+        <div class="card-header">
+          <h5 class="card-title"><i class="fa-solid fa-store"></i> Rótulo PDV</h5>
+          <span style="font-size:.78rem;color:#64748b;">Rótulo para Punto de Venta (N/ PRODUCTO, F. E, F. V, F. D)</span>
+        </div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:18px;">
+
+          <!-- Configuración TSC TE200 / Térmica -->
+          <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:4px;padding:12px 16px;margin-bottom:4px;">
+            <div style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:#065f46;">
+              <i class="fa-solid fa-print" style="color:#059669;"></i>
+              <strong>TSC TE200</strong> — Rollo de 2 etiquetas: 60 mm × 30 mm c/u
+            </div>
+          </div>
+
+          <!-- Dimensiones y copias -->
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
+            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
+              <i class="fa-solid fa-ruler-combined" style="color:#0F4C81;"></i> Dimensiones del Rótulo
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;max-width:500px;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">Ancho (mm)</label>
+                <input id="rotpdv-ancho" type="number" class="form-control" value="60" min="20" max="300"
+                       oninput="WMS_MODULES.rotulos._actualizarPreviewPDV()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">Alto (mm)</label>
+                <input id="rotpdv-alto" type="number" class="form-control" value="30" min="10" max="300"
+                       oninput="WMS_MODULES.rotulos._actualizarPreviewPDV()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">Copias</label>
+                <input id="rotpdv-copias" type="number" class="form-control" value="1" min="1" max="200">
+              </div>
+            </div>
+          </div>
+
+          <!-- Formato -->
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
+            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
+              <i class="fa-solid fa-rotate" style="color:#0F4C81;"></i> Formato del Rótulo
+            </div>
+            <div style="display:flex;gap:24px;flex-wrap:wrap;">
+              <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid #0F4C81;border-radius:4px;background:#fff;transition:border-color .2s;">
+                <input type="radio" name="rotpdv-formato" value="horizontal" checked
+                       onchange="WMS_MODULES.rotulos._onFormatoPDVChange(this)">
+                <div>
+                  <div style="font-weight:700;font-size:.82rem;color:#1e293b;">
+                    <i class="fa-solid fa-arrows-left-right" style="color:#0F4C81;margin-right:5px;"></i> Horizontal
+                  </div>
+                  <div style="font-size:.72rem;color:#64748b;">Formato estándar apaisado (60mm x 30mm)</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Información Rótulo PDV -->
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
+            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
+              <i class="fa-solid fa-pen-to-square" style="color:#0F4C81;"></i> Datos del Rótulo PDV
+            </div>
+
+            <!-- Buscar o ingresar producto -->
+            <div class="form-group" style="max-width:500px;margin-bottom:12px;">
+              <label class="form-label">N/ PRODUCTO (Nombre del Producto)</label>
+              <div style="display:flex;gap:8px;">
+                <input id="rotpdv-producto" type="text" class="form-control" placeholder="Escriba o busque el producto..."
+                       oninput="WMS_MODULES.rotulos._actualizarPreviewPDV()">
+                <button class="btn btn-outline-primary btn-sm" onclick="WMS_MODULES.rotulos._ejecutarBusquedaPDV()" title="Buscar en catálogo">
+                  <i class="fa-solid fa-search"></i>
+                </button>
+              </div>
+              <div id="rotpdv-resultados" style="display:none;position:relative;max-width:500px;">
+                <div id="rotpdv-resultados-list" style="
+                  border:1px solid #e2e8f0;border-radius:4px;max-height:200px;overflow-y:auto;
+                  background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.1);
+                  position:absolute;width:100%;z-index:100;top:2px;">
+                </div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;max-width:500px;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">F. E (Empaque/Elab.)</label>
+                <input id="rotpdv-fe" type="text" class="form-control" placeholder="dd/mm/aaaa"
+                       oninput="WMS_MODULES.rotulos._actualizarPreviewPDV()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">F. V (Vencimiento)</label>
+                <input id="rotpdv-fv" type="text" class="form-control" placeholder="dd/mm/aaaa"
+                       oninput="WMS_MODULES.rotulos._actualizarPreviewPDV()">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">F. D (Despacho)</label>
+                <input id="rotpdv-fd" type="text" class="form-control" placeholder="dd/mm/aaaa"
+                       oninput="WMS_MODULES.rotulos._actualizarPreviewPDV()">
+              </div>
+            </div>
+            <div style="font-size:.75rem;color:#64748b;margin-top:8px;">
+              <i class="fa-solid fa-circle-info"></i> Si deja los campos en blanco, se imprimirá la plantilla vacía con los encabezados tal cual la imagen.
+            </div>
+          </div>
+
+          <!-- Acciones -->
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn btn-outline-primary" onclick="WMS_MODULES.rotulos._previsualizarPDV()">
+              <i class="fa-solid fa-eye"></i> Previsualizar
+            </button>
+            <button class="btn btn-primary" onclick="WMS_MODULES.rotulos._imprimirPDV()">
+              <i class="fa-solid fa-desktop"></i> Imprimir (Navegador)
+            </button>
+            <button class="btn btn-success" onclick="WMS_MODULES.rotulos._imprimirIP('pdv')">
+              <i class="fa-solid fa-print"></i> Impresión Térmica IP
+            </button>
+          </div>
+
+          <!-- Preview -->
+          <div id="rotpdv-preview-area" style="display:none;">
+            <div style="font-weight:700;font-size:.75rem;text-transform:uppercase;color:#64748b;margin-bottom:8px;letter-spacing:1px;">
+              <i class="fa-solid fa-eye"></i> Vista Previa
+            </div>
+            <div id="rotpdv-preview-container" style="background:#f1f5f9;padding:20px;border-radius:4px;display:inline-block;border:2px dashed #cbd5e1;"></div>
+          </div>
+
+        </div>
+      </div>`);
+    this._actualizarPreviewPDV();
+  },
+
+  async _ejecutarBusquedaPDV() {
+    const input   = document.getElementById('rotpdv-producto');
+    const q       = input?.value.trim();
+    const resDiv  = document.getElementById('rotpdv-resultados');
+    const listDiv = document.getElementById('rotpdv-resultados-list');
+    if (!resDiv || !listDiv) return;
+    if (!q) { resDiv.style.display = 'none'; return; }
+    try {
+      const r = await API.get('/param/productos/buscar?q=' + encodeURIComponent(q) + '&limit=10');
+      const items = r.data || r || [];
+      if (!items.length) {
+        listDiv.innerHTML = '<div style="padding:10px 14px;color:#94a3b8;font-style:italic;">Sin resultados</div>';
+      } else {
+        listDiv.innerHTML = items.map((p) => `
+          <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
+               onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background=''"
+               onclick="WMS_MODULES.rotulos._seleccionarProductoPDV('${WMS.esc(p.nombre||p.descripcion||'').replace(/'/g, "\\'")}')">
+            <div style="font-weight:600;color:#1e293b;font-size:.85rem;">${WMS.esc(p.nombre||p.descripcion||'')}</div>
+            <div style="font-size:.75rem;color:#64748b;">Cod: ${WMS.esc(p.codigo_interno||'')}</div>
+          </div>`).join('');
+      }
+      resDiv.style.display = 'block';
+      document.addEventListener('click', function closeResPDV(e) {
+        if (!e.target.closest('#rotpdv-resultados') && !e.target.closest('#rotpdv-producto')) {
+          resDiv.style.display = 'none';
+          document.removeEventListener('click', closeResPDV);
+        }
+      });
+    } catch(e) { resDiv.style.display = 'none'; }
+  },
+
+  _seleccionarProductoPDV(nombre) {
+    const input = document.getElementById('rotpdv-producto');
+    if (input) input.value = nombre;
+    document.getElementById('rotpdv-resultados').style.display = 'none';
+    this._actualizarPreviewPDV();
+  },
+
+  _onFormatoPDVChange() {
+    this._actualizarPreviewPDV();
+  },
+
+  _getFormatoPDV() {
+    return document.querySelector('input[name="rotpdv-formato"]:checked')?.value || 'horizontal';
+  },
+
+  _buildRotuloPDV(producto, fe, fv, fd, anchomm, altomm, formato = 'horizontal') {
+    const fontSize = Math.max(7, Math.min(15, Math.round(altomm * 0.16)));
+    const prodVal  = producto ? ' ' + WMS.esc(producto) : '';
+    const feVal    = fe       ? ' ' + WMS.esc(fe)       : '';
+    const fvVal    = fv       ? ' ' + WMS.esc(fv)       : '';
+    const fdVal    = fd       ? ' ' + WMS.esc(fd)       : '';
+
+    return `
+      <div class="wms-label-single" style="width:${anchomm}mm;height:${altomm}mm;
+        display:flex;flex-direction:column;justify-content:space-around;
+        box-sizing:border-box;
+        font-family:Arial, 'Helvetica Neue', Helvetica, sans-serif;
+        background:#fff;overflow:hidden;flex-shrink:0;
+        padding:2.5mm 3.5mm;border:0.5mm solid #000;border-radius:2mm;
+        margin:0;page-break-after:always;">
+        <div style="font-size:${fontSize}pt;font-weight:900;color:#000;
+          letter-spacing:0.3px;line-height:1.2;
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          N/ PRODUCTO:${prodVal}
+        </div>
+        <div style="font-size:${fontSize}pt;font-weight:900;color:#000;
+          letter-spacing:0.3px;line-height:1.2;
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          F. E:${feVal}
+        </div>
+        <div style="font-size:${fontSize}pt;font-weight:900;color:#000;
+          letter-spacing:0.3px;line-height:1.2;
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          F. V:${fvVal}
+        </div>
+        <div style="font-size:${fontSize}pt;font-weight:900;color:#000;
+          letter-spacing:0.3px;line-height:1.2;
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          F. D:${fdVal}
+        </div>
+      </div>`;
+  },
+
+  _actualizarPreviewPDV() {
+    const producto = document.getElementById('rotpdv-producto')?.value || '';
+    const fe       = document.getElementById('rotpdv-fe')?.value       || '';
+    const fv       = document.getElementById('rotpdv-fv')?.value       || '';
+    const fd       = document.getElementById('rotpdv-fd')?.value       || '';
+    const ancho    = parseInt(document.getElementById('rotpdv-ancho')?.value || 60);
+    const alto     = parseInt(document.getElementById('rotpdv-alto')?.value  || 30);
+    const formato  = this._getFormatoPDV();
+
+    const area = document.getElementById('rotpdv-preview-area');
+    const cont = document.getElementById('rotpdv-preview-container');
+    if (!area || !cont) return;
+    cont.innerHTML = this._buildRotuloPDV(producto, fe, fv, fd, ancho, alto, formato);
+    area.style.display = 'block';
+  },
+
+  _previsualizarPDV() {
+    this._actualizarPreviewPDV();
+    document.getElementById('rotpdv-preview-area')?.scrollIntoView({ behavior:'smooth' });
+  },
+
+  _imprimirPDV() {
+    const producto = document.getElementById('rotpdv-producto')?.value || '';
+    const fe       = document.getElementById('rotpdv-fe')?.value       || '';
+    const fv       = document.getElementById('rotpdv-fv')?.value       || '';
+    const fd       = document.getElementById('rotpdv-fd')?.value       || '';
+    const ancho    = parseInt(document.getElementById('rotpdv-ancho')?.value  || 60);
+    const alto     = parseInt(document.getElementById('rotpdv-alto')?.value   || 30);
+    const copias   = parseInt(document.getElementById('rotpdv-copias')?.value || 1);
+    const formato  = this._getFormatoPDV();
+
+    const labels = [];
+    for (let i = 0; i < copias; i++) labels.push({ producto, fe, fv, fd });
+    const html = this._buildDualColumnHTMLPDV(labels, ancho, alto, formato);
+    this._imprimir(html, ancho, alto, { dualColumn: true });
+  },
+
+  _buildDualColumnHTMLPDV(labels, anchomm, altomm, formato) {
+    let html = '';
+    for (let i = 0; i < labels.length; i += 2) {
+      const left  = labels[i];
+      const right = labels[i + 1];
+      html += `<div class="wms-label-row" style="display:flex;flex-wrap:nowrap;page-break-after:always;">`;
+      html += this._buildRotuloPDV(left.producto, left.fe, left.fv, left.fd, anchomm, altomm, formato);
+      if (right) {
+        html += this._buildRotuloPDV(right.producto, right.fe, right.fv, right.fd, anchomm, altomm, formato);
+      }
+      html += `</div>`;
+    }
+    return html;
   },
 };

@@ -288,4 +288,52 @@ class PrintHelper
             ['codigo' => $codigo, 'zona' => $zona]
         ]);
     }
+
+    /**
+     * TSC TE200 — Rótulos PDV (N/ PRODUCTO, F. E, F. V, F. D)
+     */
+    public static function generateTSPLPDV(array $pdvList): string
+    {
+        if (empty($pdvList)) return '';
+        $tspl = '';
+        foreach ($pdvList as $item) {
+            $tspl .= self::buildTSPLPDVPage($item);
+        }
+        return $tspl;
+    }
+
+    private static function buildTSPLPDVPage(array $item): string
+    {
+        $dpmm    = 8;
+        $labelW  = 60;
+        $labelH  = 30;
+
+        $ascii = static function (string $s, int $max = 35): string {
+            $s = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s) ?: $s;
+            return substr(preg_replace('/[^\x20-\x7E]/', ' ', $s), 0, $max);
+        };
+
+        $producto = strtoupper(trim($ascii($item['producto'] ?? '', 30)));
+        $fe       = strtoupper(trim($ascii($item['fe']       ?? '', 20)));
+        $fv       = strtoupper(trim($ascii($item['fv']       ?? '', 20)));
+        $fd       = strtoupper(trim($ascii($item['fd']       ?? '', 20)));
+
+        $tspl  = "SIZE {$labelW} mm, {$labelH} mm\n";
+        $tspl .= "GAP 3 mm, 0 mm\n";
+        $tspl .= "DIRECTION 1\n";
+        $tspl .= "CLS\n";
+
+        $l1 = "N/ PRODUCTO:" . ($producto !== '' ? " {$producto}" : "");
+        $l2 = "F. E:" . ($fe !== '' ? " {$fe}" : "");
+        $l3 = "F. V:" . ($fv !== '' ? " {$fv}" : "");
+        $l4 = "F. D:" . ($fd !== '' ? " {$fd}" : "");
+
+        $tspl .= "TEXT 20,20,\"3\",0,1,1,\"{$l1}\"\n";
+        $tspl .= "TEXT 20,70,\"3\",0,1,1,\"{$l2}\"\n";
+        $tspl .= "TEXT 20,120,\"3\",0,1,1,\"{$l3}\"\n";
+        $tspl .= "TEXT 20,170,\"3\",0,1,1,\"{$l4}\"\n";
+
+        $tspl .= "PRINT 1,1\n";
+        return $tspl;
+    }
 }

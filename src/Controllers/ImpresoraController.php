@@ -119,6 +119,18 @@ class ImpresoraController extends BaseController
                 }
             }
             $rawData = \App\Helpers\PrintHelper::generateTSPLUbicaciones($expanded);
+        } elseif ($data['tipo'] === 'pdv') {
+            $copias = max(1, intval($data['copias'] ?? 1));
+            $items = [];
+            for ($i = 0; $i < $copias; $i++) {
+                $items[] = [
+                    'producto' => $data['producto'] ?? '',
+                    'fe'       => $data['fe'] ?? '',
+                    'fv'       => $data['fv'] ?? '',
+                    'fd'       => $data['fd'] ?? ''
+                ];
+            }
+            $rawData = \App\Helpers\PrintHelper::generateTSPLPDV($items);
         } else {
             return $this->error($res, 'Tipo de rótulo no reconocido.');
         }
