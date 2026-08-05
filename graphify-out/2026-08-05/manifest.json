@@ -725,9 +725,9 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/rotulos.js": {
-    "mtime": 1782130478.5767016,
-    "ast_hash": "e91bd3b5bbdc9793f970e4036126da83",
-    "semantic_hash": "e91bd3b5bbdc9793f970e4036126da83"
+    "mtime": 1785946731.561179,
+    "ast_hash": "578490ac14e9e86d361abb188a9148f6",
+    "semantic_hash": ""
   },
   "public/assets/js/desktop/trazabilidad.js": {
     "mtime": 1784567702.9551067,
@@ -910,9 +910,9 @@
     "semantic_hash": ""
   },
   "src/Controllers/ImpresoraController.php": {
-    "mtime": 1783085599.4411736,
-    "ast_hash": "bc290601e36ee98cf03593ccf2d3c65d",
-    "semantic_hash": "bc290601e36ee98cf03593ccf2d3c65d"
+    "mtime": 1785946693.505619,
+    "ast_hash": "7fc0a0f383a63b6ea9f0977b96c9ccf3",
+    "semantic_hash": ""
   },
   "src/Controllers/InboundController.php": {
     "mtime": 1784335294.2447321,
@@ -1090,9 +1090,9 @@
     "semantic_hash": "1b7e1725f4b6cdaf5b479e0418f8ed50"
   },
   "src/Helpers/PrintHelper.php": {
-    "mtime": 1783079334.0056055,
-    "ast_hash": "fc574f9739031426d6564ccccaf360e0",
-    "semantic_hash": "fc574f9739031426d6564ccccaf360e0"
+    "mtime": 1785946678.747874,
+    "ast_hash": "3a45b330be351b8f37b324ff38df5222",
+    "semantic_hash": ""
   },
   "src/Helpers/TenantContext.php": {
     "mtime": 1780093836.0,
@@ -1550,8 +1550,8 @@
     "semantic_hash": "9af6772ebae31c28558f86c610ad83e7"
   },
   "public/index.html": {
-    "mtime": 1785889087.8949966,
-    "ast_hash": "cabb5d0a92886073f2abda5560e4fa92",
+    "mtime": 1785946665.6966846,
+    "ast_hash": "455e9abdda0d7be5af2aac4204385533",
     "semantic_hash": ""
   },
   "public/mobile/index.html": {

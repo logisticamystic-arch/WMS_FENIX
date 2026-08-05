@@ -453,7 +453,7 @@
       "label": "_imprimirIP()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1045",
+      "source_location": "L1058",
       "_origin": "ast",
       "id": "public_assets_js_desktop_rotulos_imprimirip",
       "community": 12,
@@ -464,7 +464,7 @@
       "label": "_imprimirIPMasivo()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1083",
+      "source_location": "L1096",
       "_origin": "ast",
       "id": "public_assets_js_desktop_rotulos_imprimiripmasivo",
       "community": 12,
@@ -475,7 +475,7 @@
       "label": "show_pdv()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1108",
+      "source_location": "L1121",
       "_origin": "ast",
       "id": "public_assets_js_desktop_rotulos_show_pdv",
       "community": 12,
@@ -486,7 +486,7 @@
       "label": "_ejecutarBusquedaPDV()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1241",
+      "source_location": "L1254",
       "_origin": "ast",
       "id": "public_assets_js_desktop_rotulos_ejecutarbusquedapdv",
       "community": 12,
@@ -497,7 +497,7 @@
       "label": "_seleccionarProductoPDV()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1272",
+      "source_location": "L1285",
       "_origin": "ast",
       "id": "public_assets_js_desktop_rotulos_seleccionarproductopdv",
       "community": 12,
@@ -508,7 +508,7 @@
       "label": "_onFormatoPDVChange()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1279",
+      "source_location": "L1292",
       "_origin": "ast",
       "id": "public_assets_js_desktop_rotulos_onformatopdvchange",
       "community": 12,
@@ -519,7 +519,7 @@
       "label": "_getFormatoPDV()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1283",
+      "source_location": "L1296",
       "_origin": "ast",
       "id": "public_assets_js_desktop_rotulos_getformatopdv",
       "community": 12,
@@ -530,7 +530,7 @@
       "label": "_buildRotuloPDV()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1287",
+      "source_location": "L1300",
       "_origin": "ast",
       "id": "public_assets_js_desktop_rotulos_buildrotulopdv",
       "community": 12,
@@ -541,7 +541,7 @@
       "label": "_actualizarPreviewPDV()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1325",
+      "source_location": "L1338",
       "_origin": "ast",
       "id": "public_assets_js_desktop_rotulos_actualizarpreviewpdv",
       "community": 12,
@@ -552,7 +552,7 @@
       "label": "_previsualizarPDV()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1341",
+      "source_location": "L1354",
       "_origin": "ast",
       "id": "public_assets_js_desktop_rotulos_previsualizarpdv",
       "community": 12,
@@ -563,7 +563,7 @@
       "label": "_imprimirPDV()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1346",
+      "source_location": "L1359",
       "_origin": "ast",
       "id": "public_assets_js_desktop_rotulos_imprimirpdv",
       "community": 12,
@@ -574,7 +574,7 @@
       "label": "_buildDualColumnHTMLPDV()",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1362",
+      "source_location": "L1375",
       "_origin": "ast",
       "id": "public_assets_js_desktop_rotulos_builddualcolumnhtmlpdv",
       "community": 12,
@@ -587,10 +587,10 @@
       "source_file": "src/Controllers/ImpresoraController.php",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "src_controllers_impresoracontroller",
       "community": 317,
       "community_name": "Traspaso",
-      "norm_label": "impresoracontroller.php"
+      "norm_label": "impresoracontroller.php",
+      "id": "src_controllers_impresoracontroller"
     },
     {
       "label": "ImpresoraController",
@@ -598,10 +598,10 @@
       "source_file": "src/Controllers/ImpresoraController.php",
       "source_location": "L9",
       "_origin": "ast",
-      "id": "src_controllers_impresoracontroller_impresoracontroller",
       "community": 310,
       "community_name": "SystemController",
-      "norm_label": "impresoracontroller"
+      "norm_label": "impresoracontroller",
+      "id": "src_controllers_impresoracontroller_impresoracontroller"
     },
     {
       "label": "BaseController",
@@ -609,10 +609,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "basecontroller",
       "community": 310,
       "community_name": "SystemController",
-      "norm_label": "basecontroller"
+      "norm_label": "basecontroller",
+      "id": "basecontroller"
     },
     {
       "label": ".listar()",
@@ -620,10 +620,10 @@
       "source_file": "src/Controllers/ImpresoraController.php",
       "source_location": "L11",
       "_origin": "ast",
-      "id": "src_controllers_impresoracontroller_impresoracontroller_listar",
       "community": 310,
       "community_name": "SystemController",
-      "norm_label": ".listar()"
+      "norm_label": ".listar()",
+      "id": "src_controllers_impresoracontroller_impresoracontroller_listar"
     },
     {
       "label": ".guardar()",
@@ -631,10 +631,10 @@
       "source_file": "src/Controllers/ImpresoraController.php",
       "source_location": "L33",
       "_origin": "ast",
-      "id": "src_controllers_impresoracontroller_impresoracontroller_guardar",
       "community": 310,
       "community_name": "SystemController",
-      "norm_label": ".guardar()"
+      "norm_label": ".guardar()",
+      "id": "src_controllers_impresoracontroller_impresoracontroller_guardar"
     },
     {
       "label": ".eliminar()",
@@ -642,10 +642,10 @@
       "source_file": "src/Controllers/ImpresoraController.php",
       "source_location": "L65",
       "_origin": "ast",
-      "id": "src_controllers_impresoracontroller_impresoracontroller_eliminar",
       "community": 310,
       "community_name": "SystemController",
-      "norm_label": ".eliminar()"
+      "norm_label": ".eliminar()",
+      "id": "src_controllers_impresoracontroller_impresoracontroller_eliminar"
     },
     {
       "label": ".imprimirRotulo()",
@@ -653,10 +653,10 @@
       "source_file": "src/Controllers/ImpresoraController.php",
       "source_location": "L76",
       "_origin": "ast",
-      "id": "src_controllers_impresoracontroller_impresoracontroller_imprimirrotulo",
       "community": 310,
       "community_name": "SystemController",
-      "norm_label": ".imprimirrotulo()"
+      "norm_label": ".imprimirrotulo()",
+      "id": "src_controllers_impresoracontroller_impresoracontroller_imprimirrotulo"
     },
     {
       "label": ".testPrint()",
@@ -664,10 +664,10 @@
       "source_file": "src/Controllers/ImpresoraController.php",
       "source_location": "L145",
       "_origin": "ast",
-      "id": "src_controllers_impresoracontroller_impresoracontroller_testprint",
       "community": 310,
       "community_name": "SystemController",
-      "norm_label": ".testprint()"
+      "norm_label": ".testprint()",
+      "id": "src_controllers_impresoracontroller_impresoracontroller_testprint"
     },
     {
       "label": "PrintHelper.php",
@@ -675,10 +675,10 @@
       "source_file": "src/Helpers/PrintHelper.php",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "src_helpers_printhelper",
       "community": 66,
       "community_name": "Label Printing Helper",
-      "norm_label": "printhelper.php"
+      "norm_label": "printhelper.php",
+      "id": "src_helpers_printhelper"
     },
     {
       "label": "PrintHelper",
@@ -686,10 +686,10 @@
       "source_file": "src/Helpers/PrintHelper.php",
       "source_location": "L5",
       "_origin": "ast",
-      "id": "src_helpers_printhelper_printhelper",
       "community": 66,
       "community_name": "Label Printing Helper",
-      "norm_label": "printhelper"
+      "norm_label": "printhelper",
+      "id": "src_helpers_printhelper_printhelper"
     },
     {
       "label": ".sendToPrinter()",
@@ -697,10 +697,10 @@
       "source_file": "src/Helpers/PrintHelper.php",
       "source_location": "L10",
       "_origin": "ast",
-      "id": "src_helpers_printhelper_printhelper_sendtoprinter",
       "community": 66,
       "community_name": "Label Printing Helper",
-      "norm_label": ".sendtoprinter()"
+      "norm_label": ".sendtoprinter()",
+      "id": "src_helpers_printhelper_printhelper_sendtoprinter"
     },
     {
       "label": ".generateZPL()",
@@ -708,10 +708,10 @@
       "source_file": "src/Helpers/PrintHelper.php",
       "source_location": "L30",
       "_origin": "ast",
-      "id": "src_helpers_printhelper_printhelper_generatezpl",
       "community": 66,
       "community_name": "Label Printing Helper",
-      "norm_label": ".generatezpl()"
+      "norm_label": ".generatezpl()",
+      "id": "src_helpers_printhelper_printhelper_generatezpl"
     },
     {
       "label": ".generateZPLProducto()",
@@ -719,10 +719,10 @@
       "source_file": "src/Helpers/PrintHelper.php",
       "source_location": "L46",
       "_origin": "ast",
-      "id": "src_helpers_printhelper_printhelper_generatezplproducto",
       "community": 66,
       "community_name": "Label Printing Helper",
-      "norm_label": ".generatezplproducto()"
+      "norm_label": ".generatezplproducto()",
+      "id": "src_helpers_printhelper_printhelper_generatezplproducto"
     },
     {
       "label": ".generateZPLUbicacion()",
@@ -730,10 +730,10 @@
       "source_file": "src/Helpers/PrintHelper.php",
       "source_location": "L59",
       "_origin": "ast",
-      "id": "src_helpers_printhelper_printhelper_generatezplubicacion",
       "community": 66,
       "community_name": "Label Printing Helper",
-      "norm_label": ".generatezplubicacion()"
+      "norm_label": ".generatezplubicacion()",
+      "id": "src_helpers_printhelper_printhelper_generatezplubicacion"
     },
     {
       "label": ".generateTSPLPacking()",
@@ -741,10 +741,10 @@
       "source_file": "src/Helpers/PrintHelper.php",
       "source_location": "L84",
       "_origin": "ast",
-      "id": "src_helpers_printhelper_printhelper_generatetsplpacking",
       "community": 66,
       "community_name": "Label Printing Helper",
-      "norm_label": ".generatetsplpacking()"
+      "norm_label": ".generatetsplpacking()",
+      "id": "src_helpers_printhelper_printhelper_generatetsplpacking"
     },
     {
       "label": ".generatePCLPacking()",
@@ -752,10 +752,10 @@
       "source_file": "src/Helpers/PrintHelper.php",
       "source_location": "L166",
       "_origin": "ast",
-      "id": "src_helpers_printhelper_printhelper_generatepclpacking",
       "community": 66,
       "community_name": "Label Printing Helper",
-      "norm_label": ".generatepclpacking()"
+      "norm_label": ".generatepclpacking()",
+      "id": "src_helpers_printhelper_printhelper_generatepclpacking"
     },
     {
       "label": ".generateTSPLUbicaciones()",
@@ -763,10 +763,10 @@
       "source_file": "src/Helpers/PrintHelper.php",
       "source_location": "L231",
       "_origin": "ast",
-      "id": "src_helpers_printhelper_printhelper_generatetsplubicaciones",
       "community": 66,
       "community_name": "Label Printing Helper",
-      "norm_label": ".generatetsplubicaciones()"
+      "norm_label": ".generatetsplubicaciones()",
+      "id": "src_helpers_printhelper_printhelper_generatetsplubicaciones"
     },
     {
       "label": ".buildTSPLUbicacionPage()",
@@ -774,10 +774,10 @@
       "source_file": "src/Helpers/PrintHelper.php",
       "source_location": "L250",
       "_origin": "ast",
-      "id": "src_helpers_printhelper_printhelper_buildtsplubicacionpage",
       "community": 66,
       "community_name": "Label Printing Helper",
-      "norm_label": ".buildtsplubicacionpage()"
+      "norm_label": ".buildtsplubicacionpage()",
+      "id": "src_helpers_printhelper_printhelper_buildtsplubicacionpage"
     },
     {
       "label": ".generateTSPLUbicacion()",
@@ -785,10 +785,10 @@
       "source_file": "src/Helpers/PrintHelper.php",
       "source_location": "L285",
       "_origin": "ast",
-      "id": "src_helpers_printhelper_printhelper_generatetsplubicacion",
       "community": 66,
       "community_name": "Label Printing Helper",
-      "norm_label": ".generatetsplubicacion()"
+      "norm_label": ".generatetsplubicacion()",
+      "id": "src_helpers_printhelper_printhelper_generatetsplubicacion"
     },
     {
       "label": ".generateTSPLPDV()",
@@ -796,10 +796,10 @@
       "source_file": "src/Helpers/PrintHelper.php",
       "source_location": "L295",
       "_origin": "ast",
-      "id": "src_helpers_printhelper_printhelper_generatetsplpdv",
       "community": 66,
       "community_name": "Label Printing Helper",
-      "norm_label": ".generatetsplpdv()"
+      "norm_label": ".generatetsplpdv()",
+      "id": "src_helpers_printhelper_printhelper_generatetsplpdv"
     },
     {
       "label": ".buildTSPLPDVPage()",
@@ -807,10 +807,10 @@
       "source_file": "src/Helpers/PrintHelper.php",
       "source_location": "L305",
       "_origin": "ast",
-      "id": "src_helpers_printhelper_printhelper_buildtsplpdvpage",
       "community": 66,
       "community_name": "Label Printing Helper",
-      "norm_label": ".buildtsplpdvpage()"
+      "norm_label": ".buildtsplpdvpage()",
+      "id": "src_helpers_printhelper_printhelper_buildtsplpdvpage"
     },
     {
       "label": "Psr\\Http\\Message\\ServerRequestInterface",
@@ -818,10 +818,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "psr_http_message_serverrequestinterface",
       "community": 3,
       "community_name": "Parameters & Approvals",
-      "norm_label": "psr\\http\\message\\serverrequestinterface"
+      "norm_label": "psr\\http\\message\\serverrequestinterface",
+      "id": "psr_http_message_serverrequestinterface"
     },
     {
       "label": "Psr\\Http\\Message\\ResponseInterface",
@@ -829,10 +829,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "psr_http_message_responseinterface",
       "community": 310,
       "community_name": "SystemController",
-      "norm_label": "psr\\http\\message\\responseinterface"
+      "norm_label": "psr\\http\\message\\responseinterface",
+      "id": "psr_http_message_responseinterface"
     },
     {
       "label": "aprobaciones.js",
@@ -30489,7 +30489,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1325",
+      "source_location": "L1338",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos",
@@ -30533,7 +30533,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1362",
+      "source_location": "L1375",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos",
@@ -30555,7 +30555,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1287",
+      "source_location": "L1300",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos",
@@ -30643,7 +30643,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1241",
+      "source_location": "L1254",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos",
@@ -30665,7 +30665,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1283",
+      "source_location": "L1296",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos",
@@ -30742,7 +30742,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1045",
+      "source_location": "L1058",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos",
@@ -30753,7 +30753,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1083",
+      "source_location": "L1096",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos",
@@ -30775,7 +30775,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1346",
+      "source_location": "L1359",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos",
@@ -30852,7 +30852,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1279",
+      "source_location": "L1292",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos",
@@ -30885,7 +30885,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1341",
+      "source_location": "L1354",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos",
@@ -30951,7 +30951,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1272",
+      "source_location": "L1285",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos",
@@ -30973,7 +30973,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1108",
+      "source_location": "L1121",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos",
@@ -31378,7 +31378,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1084",
+      "source_location": "L1097",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos_imprimiripmasivo",
@@ -31510,7 +31510,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1037",
+      "source_location": "L1050",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos_imprimir",
@@ -31546,7 +31546,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1359",
+      "source_location": "L1372",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos_imprimirpdv",
@@ -31558,7 +31558,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1238",
+      "source_location": "L1251",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos_show_pdv",
@@ -31570,7 +31570,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1276",
+      "source_location": "L1289",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos_seleccionarproductopdv",
@@ -31582,7 +31582,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1280",
+      "source_location": "L1293",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos_onformatopdvchange",
@@ -31594,7 +31594,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1332",
+      "source_location": "L1345",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos_actualizarpreviewpdv",
@@ -31606,7 +31606,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1354",
+      "source_location": "L1367",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos_imprimirpdv",
@@ -31618,7 +31618,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1337",
+      "source_location": "L1350",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos_actualizarpreviewpdv",
@@ -31630,7 +31630,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1368",
+      "source_location": "L1381",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos_builddualcolumnhtmlpdv",
@@ -31642,7 +31642,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1342",
+      "source_location": "L1355",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos_previsualizarpdv",
@@ -31654,23 +31654,11 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1358",
+      "source_location": "L1371",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_assets_js_desktop_rotulos_imprimirpdv",
       "target": "public_assets_js_desktop_rotulos_builddualcolumnhtmlpdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L7",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_controllers_impresoracontroller",
-      "target": "src_models_impresora",
       "confidence_score": 1.0
     },
     {
@@ -31680,9 +31668,21 @@
       "source_location": "L9",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller",
-      "target": "src_controllers_impresoracontroller_impresoracontroller",
-      "confidence_score": 1.0
+      "target": "src_controllers_impresoracontroller_impresoracontroller"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L7",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller",
+      "target": "src_models_impresora"
     },
     {
       "relation": "inherits",
@@ -31691,9 +31691,9 @@
       "source_location": "L9",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller",
-      "target": "basecontroller",
-      "confidence_score": 1.0
+      "target": "basecontroller"
     },
     {
       "relation": "method",
@@ -31702,9 +31702,9 @@
       "source_location": "L65",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller",
-      "target": "src_controllers_impresoracontroller_impresoracontroller_eliminar",
-      "confidence_score": 1.0
+      "target": "src_controllers_impresoracontroller_impresoracontroller_eliminar"
     },
     {
       "relation": "method",
@@ -31713,9 +31713,9 @@
       "source_location": "L33",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller",
-      "target": "src_controllers_impresoracontroller_impresoracontroller_guardar",
-      "confidence_score": 1.0
+      "target": "src_controllers_impresoracontroller_impresoracontroller_guardar"
     },
     {
       "relation": "method",
@@ -31724,9 +31724,9 @@
       "source_location": "L76",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller",
-      "target": "src_controllers_impresoracontroller_impresoracontroller_imprimirrotulo",
-      "confidence_score": 1.0
+      "target": "src_controllers_impresoracontroller_impresoracontroller_imprimirrotulo"
     },
     {
       "relation": "method",
@@ -31735,9 +31735,9 @@
       "source_location": "L11",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller",
-      "target": "src_controllers_impresoracontroller_impresoracontroller_listar",
-      "confidence_score": 1.0
+      "target": "src_controllers_impresoracontroller_impresoracontroller_listar"
     },
     {
       "relation": "method",
@@ -31746,9 +31746,9 @@
       "source_location": "L145",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller",
-      "target": "src_controllers_impresoracontroller_impresoracontroller_testprint",
-      "confidence_score": 1.0
+      "target": "src_controllers_impresoracontroller_impresoracontroller_testprint"
     },
     {
       "relation": "inherits",
@@ -31912,9 +31912,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller_listar",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31924,9 +31924,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller_listar",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -31936,9 +31936,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller_guardar",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31948,9 +31948,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller_guardar",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -31960,9 +31960,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller_eliminar",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31972,9 +31972,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller_eliminar",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -31984,9 +31984,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller_imprimirrotulo",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31996,9 +31996,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller_imprimirrotulo",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -32008,9 +32008,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller_testprint",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -32020,9 +32020,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_impresoracontroller_impresoracontroller_testprint",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "contains",
@@ -32031,9 +32031,9 @@
       "source_location": "L5",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_helpers_printhelper",
-      "target": "src_helpers_printhelper_printhelper",
-      "confidence_score": 1.0
+      "target": "src_helpers_printhelper_printhelper"
     },
     {
       "relation": "method",
@@ -32042,9 +32042,9 @@
       "source_location": "L305",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_buildtsplpdvpage",
-      "confidence_score": 1.0
+      "target": "src_helpers_printhelper_printhelper_buildtsplpdvpage"
     },
     {
       "relation": "method",
@@ -32053,9 +32053,9 @@
       "source_location": "L250",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_buildtsplubicacionpage",
-      "confidence_score": 1.0
+      "target": "src_helpers_printhelper_printhelper_buildtsplubicacionpage"
     },
     {
       "relation": "method",
@@ -32064,9 +32064,9 @@
       "source_location": "L166",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatepclpacking",
-      "confidence_score": 1.0
+      "target": "src_helpers_printhelper_printhelper_generatepclpacking"
     },
     {
       "relation": "method",
@@ -32075,9 +32075,9 @@
       "source_location": "L84",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatetsplpacking",
-      "confidence_score": 1.0
+      "target": "src_helpers_printhelper_printhelper_generatetsplpacking"
     },
     {
       "relation": "method",
@@ -32086,9 +32086,9 @@
       "source_location": "L295",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatetsplpdv",
-      "confidence_score": 1.0
+      "target": "src_helpers_printhelper_printhelper_generatetsplpdv"
     },
     {
       "relation": "method",
@@ -32097,9 +32097,9 @@
       "source_location": "L285",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatetsplubicacion",
-      "confidence_score": 1.0
+      "target": "src_helpers_printhelper_printhelper_generatetsplubicacion"
     },
     {
       "relation": "method",
@@ -32108,9 +32108,9 @@
       "source_location": "L231",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatetsplubicaciones",
-      "confidence_score": 1.0
+      "target": "src_helpers_printhelper_printhelper_generatetsplubicaciones"
     },
     {
       "relation": "method",
@@ -32119,9 +32119,9 @@
       "source_location": "L30",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatezpl",
-      "confidence_score": 1.0
+      "target": "src_helpers_printhelper_printhelper_generatezpl"
     },
     {
       "relation": "method",
@@ -32130,9 +32130,9 @@
       "source_location": "L46",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatezplproducto",
-      "confidence_score": 1.0
+      "target": "src_helpers_printhelper_printhelper_generatezplproducto"
     },
     {
       "relation": "method",
@@ -32141,9 +32141,9 @@
       "source_location": "L59",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatezplubicacion",
-      "confidence_score": 1.0
+      "target": "src_helpers_printhelper_printhelper_generatezplubicacion"
     },
     {
       "relation": "method",
@@ -32152,9 +32152,9 @@
       "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_sendtoprinter",
-      "confidence_score": 1.0
+      "target": "src_helpers_printhelper_printhelper_sendtoprinter"
     },
     {
       "relation": "references",
@@ -92694,5 +92694,5 @@
       "source_file": "docs/superpowers/specs/2026-05-30-packing-certificacion-design.md"
     }
   ],
-  "built_at_commit": "f4b4319002c8b6f197531c24dc4f085748769f74"
+  "built_at_commit": "3a9728e477ef8faafbe0a317e88087ba7630d485"
 }
