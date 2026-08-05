@@ -87,11 +87,20 @@ class PickingController extends BaseController
                 fn($q) => $q->whereNull('orden_pickings.estado_despacho')
             )
             ->when($params['q'] ?? null, function($q, $v) {
+                $v = trim($v);
                 $q->where(fn($sq) => $sq
-                    ->where('orden_pickings.numero_pedido', 'like', "%$v%")
-                    ->orWhere('orden_pickings.cliente', 'like', "%$v%")
-                    ->orWhere('orden_pickings.sucursal_entrega', 'like', "%$v%")
-                    ->orWhere('orden_pickings.ruta', 'like', "%$v%")
+                    ->where('orden_pickings.numero_pedido', 'ILIKE', "%$v%")
+                    ->orWhere('orden_pickings.numero_orden', 'ILIKE', "%$v%")
+                    ->orWhere('orden_pickings.planilla_numero', 'ILIKE', "%$v%")
+                    ->orWhere('orden_pickings.planilla_lote', 'ILIKE', "%$v%")
+                    ->orWhere('orden_pickings.cliente', 'ILIKE', "%$v%")
+                    ->orWhere('orden_pickings.sucursal_entrega', 'ILIKE', "%$v%")
+                    ->orWhere('orden_pickings.ruta', 'ILIKE', "%$v%")
+                    ->orWhereHas('detalles.producto', fn($pq) => $pq
+                        ->where('productos.nombre', 'ILIKE', "%$v%")
+                        ->orWhere('productos.codigo_interno', 'ILIKE', "%$v%")
+                        ->orWhere('productos.codigo_barras', 'ILIKE', "%$v%")
+                    )
                 );
             });
 

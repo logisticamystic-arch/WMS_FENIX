@@ -135,10 +135,20 @@ WMS_MODULES.picking = {
         const barcode = d.producto?.codigo_barras || d.producto?.codigo_interno || '';
         const prodName = (barcode ? `[${barcode}] ` : '') + (d.producto?.nombre || d.descripcion || 'Producto #' + prodId);
         
+        const ambRaw = String(d.ambiente || d.producto?.ambiente || d.producto?.categoria?.nombre || 'SECO').toUpperCase();
+        let ambienteFinal = 'SECO';
+        if (ambRaw.includes('REFRIGER') || ambRaw.includes('FRESCO')) {
+          ambienteFinal = 'REFRIGERADO';
+        } else if (ambRaw.includes('CONGEL') || ambRaw.includes('HIELO')) {
+          ambienteFinal = 'CONGELADO';
+        }
+
         if (!grupos[key].productos[prodId]) {
           grupos[key].productos[prodId] = {
             id: prodId,
             nombre: prodName,
+            ambiente: ambienteFinal,
+            codigo_interno: d.producto?.codigo_interno || barcode,
             cantidad_total: 0,
             cantidad_pendiente: 0,
             unidades_caja: d.producto?.unidades_caja || 1,
@@ -261,29 +271,70 @@ WMS_MODULES.picking = {
       return `<span class="status-chip ${m[s]||'status-creada'}">${WMS.esc(s)}</span>`;
     };
 
-    const prodRows = Object.values(g.productos).map(pr => {
-      // Duración individual relativa al primer producto
-      const durLine = this._getDuration(inicioOp, pr.hora_fin);
-      let estadoFinal = "Pendiente";
-      if (pr.estados.has('EnProceso')) estadoFinal = "En Proceso";
-      if (pr.estados.has('Completado') || pr.estados.has('Faltante')) {
-         estadoFinal = (pr.estados.size === 1 || (pr.estados.size === 2 && pr.estados.has('Completado'))) ? "Cumplida" : "Parcial";
-      }
-      return `
-      <tr style="border-bottom:1px solid #e2e8f0;">
-        <td style="padding:5px 8px;"><b style="color:#1e293b">${WMS.esc(pr.nombre)}</b></td>
-        <td style="padding:5px 8px;text-align:center;font-weight:600;">${this._fmtCajasDesglose(pr.cantidad_total, pr.unidades_caja)}</td>
-        <td style="padding:5px 8px;text-align:center;">${this._fmtCajasDesglose(Math.max(0, (parseFloat(pr.cantidad_total)||0) - (parseFloat(pr.cantidad_pendiente)||0)), pr.unidades_caja)}</td>
-        <td style="padding:5px 8px;text-align:center;color:#dc3545;font-weight:600;">${pr.cantidad_pendiente > 0 ? this._fmtCajasDesglose(pr.cantidad_pendiente, pr.unidades_caja) : '<span style="color:#94a3b8;">0</span>'}</td>
-        <td style="padding:5px 8px;text-align:center;font-size:11px;">${WMS.esc([...pr.auxiliares].join(', ') || '-')}</td>
-        <td style="padding:5px 8px;text-align:center;font-size:11px;color:#2563eb;font-weight:700;">${pr.hora_fin || '-'}</td>
-        <td style="padding:5px 8px;text-align:center;font-size:11px;color:#64748b;font-family:monospace;">${pr.hora_fin ? (durLine.str || '00:00:00') : '-'}</td>
-        <td style="padding:5px 8px;text-align:center;">${stChip(estadoFinal)}</td>
-        <td style="padding:5px 8px;text-align:center;">
-          ${(estadoFinal === 'Cumplida' || estadoFinal === 'Parcial') ? `<button class="btn btn-sm" style="background:#fff3cd; color:#856404; border:1px solid #ffeeba; padding:2px 6px; font-size:10px; cursor:pointer;" onclick="WMS_MODULES.picking.liberarLinea('${g.planilla}', ${pr.id})" title="Liberar/Reversar Línea"><i class="fa-solid fa-rotate-left"></i></button>` : ''}
+    const prodArray = Object.values(g.productos);
+
+    const ambienteConfig = {
+      SECO:        { title: 'AMBIENTE SECO', icon: 'fa-sun', bg: '#fffbeb', border: '#fde68a', color: '#92400e', iconColor: '#d97706', badgeBg: '#fef08a' },
+      REFRIGERADO: { title: 'AMBIENTE REFRIGERADO', icon: 'fa-snowflake', bg: '#f0f9ff', border: '#bae6fd', color: '#075985', iconColor: '#0284c7', badgeBg: '#bae6fd' },
+      CONGELADO:   { title: 'AMBIENTE CONGELADO', icon: 'fa-icicles', bg: '#f8fafc', border: '#cbd5e1', color: '#334155', iconColor: '#475569', badgeBg: '#e2e8f0' },
+      OTRO:        { title: 'OTROS AMBIENTES', icon: 'fa-box', bg: '#f8fafc', border: '#e2e8f0', color: '#475569', iconColor: '#64748b', badgeBg: '#e2e8f0' }
+    };
+
+    const ambientesOrd = ['SECO', 'REFRIGERADO', 'CONGELADO', 'OTRO'];
+    const groupedByAmb = {};
+    prodArray.forEach(pr => {
+      const ambKey = (pr.ambiente || 'SECO').toUpperCase();
+      const normAmb = ambKey.includes('REFRIGER') ? 'REFRIGERADO' : (ambKey.includes('CONGEL') ? 'CONGELADO' : (ambKey.includes('SECO') ? 'SECO' : 'OTRO'));
+      if (!groupedByAmb[normAmb]) groupedByAmb[normAmb] = [];
+      groupedByAmb[normAmb].push(pr);
+    });
+
+    let prodRows = '';
+    ambientesOrd.forEach(ambKey => {
+      const items = groupedByAmb[ambKey];
+      if (!items || !items.length) return;
+      const cfg = ambienteConfig[ambKey] || ambienteConfig.OTRO;
+
+      prodRows += `
+      <tr class="ambiente-header-row" data-ambiente="${ambKey}" style="background:${cfg.bg};color:${cfg.color};font-weight:700;font-size:10.5px;">
+        <td colspan="9" style="padding:6px 10px;border-top:1px solid ${cfg.border};border-bottom:1px solid ${cfg.border};">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span>
+              <i class="fa-solid ${cfg.icon}" style="color:${cfg.iconColor};margin-right:6px;font-size:12px;"></i>
+              <strong>${cfg.title}</strong>
+            </span>
+            <span class="badge" style="background:${cfg.badgeBg};color:${cfg.color};font-size:10px;padding:2px 8px;border-radius:12px;font-weight:700;">
+              ${items.length} ${items.length === 1 ? 'referencia' : 'referencias'}
+            </span>
+          </div>
         </td>
       </tr>`;
-    }).join('');
+
+      items.forEach(pr => {
+        const durLine = this._getDuration(inicioOp, pr.hora_fin);
+        let estadoFinal = "Pendiente";
+        if (pr.estados.has('EnProceso')) estadoFinal = "En Proceso";
+        if (pr.estados.has('Completado') || pr.estados.has('Faltante')) {
+           estadoFinal = (pr.estados.size === 1 || (pr.estados.size === 2 && pr.estados.has('Completado'))) ? "Cumplida" : "Parcial";
+        }
+        const searchTag = WMS.esc(`${pr.nombre || ''} ${pr.codigo_interno || ''} ${pr.id || ''}`).toLowerCase();
+
+        prodRows += `
+        <tr class="prod-item-row" data-ambiente="${ambKey}" data-search="${searchTag}" style="border-bottom:1px solid #e2e8f0;">
+          <td style="padding:5px 8px;"><b style="color:#1e293b">${WMS.esc(pr.nombre)}</b></td>
+          <td style="padding:5px 8px;text-align:center;font-weight:600;">${this._fmtCajasDesglose(pr.cantidad_total, pr.unidades_caja)}</td>
+          <td style="padding:5px 8px;text-align:center;">${this._fmtCajasDesglose(Math.max(0, (parseFloat(pr.cantidad_total)||0) - (parseFloat(pr.cantidad_pendiente)||0)), pr.unidades_caja)}</td>
+          <td style="padding:5px 8px;text-align:center;color:#dc3545;font-weight:600;">${pr.cantidad_pendiente > 0 ? this._fmtCajasDesglose(pr.cantidad_pendiente, pr.unidades_caja) : '<span style="color:#94a3b8;">0</span>'}</td>
+          <td style="padding:5px 8px;text-align:center;font-size:11px;">${WMS.esc([...pr.auxiliares].join(', ') || '-')}</td>
+          <td style="padding:5px 8px;text-align:center;font-size:11px;color:#2563eb;font-weight:700;">${pr.hora_fin || '-'}</td>
+          <td style="padding:5px 8px;text-align:center;font-size:11px;color:#64748b;font-family:monospace;">${pr.hora_fin ? (durLine.str || '00:00:00') : '-'}</td>
+          <td style="padding:5px 8px;text-align:center;">${stChip(estadoFinal)}</td>
+          <td style="padding:5px 8px;text-align:center;">
+            ${(estadoFinal === 'Cumplida' || estadoFinal === 'Parcial') ? `<button class="btn btn-sm" style="background:#fff3cd; color:#856404; border:1px solid #ffeeba; padding:2px 6px; font-size:10px; cursor:pointer;" onclick="WMS_MODULES.picking.liberarLinea('${g.planilla}', ${pr.id})" title="Liberar/Reversar Línea"><i class="fa-solid fa-rotate-left"></i></button>` : ''}
+          </td>
+        </tr>`;
+      });
+    });
 
     return `
     <tr data-estado="${g.estado}" data-planilla="${WMS.esc(g.planilla)}">
@@ -391,6 +442,22 @@ WMS_MODULES.picking = {
           </div>`;
           })() : ''}
           <div id="ied-${planKey}" style="display:none;padding:10px 14px;border-top:1px solid #bfdbfe;background:#f0f7ff;"></div>
+          <!-- BARRA DE BÚSQUEDA DINÁMICA DE REFERENCIAS EN LA PLANILLA -->
+          <div style="background:#f8fafc;padding:8px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:260px;max-width:420px;">
+              <div style="position:relative;width:100%;">
+                <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:11px;"></i>
+                <input type="text" class="form-control form-control-sm" placeholder="🔍 Buscar referencia por nombre o código..." 
+                       oninput="WMS_MODULES.picking._filtrarTablaPlanillaInline('${planKey}', this.value)"
+                       style="padding-left:30px;font-size:11px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;box-shadow:inset 0 1px 2px rgba(0,0,0,.04);">
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+              <span style="color:#64748b;font-weight:600;" id="count-plan-${planKey}">
+                Total: <strong>${prodArray.length}</strong> referencias
+              </span>
+            </div>
+          </div>
           <table style="width:100%;border-collapse:collapse;font-size:11px;">
             <thead style="background:#f1f5f9;color:#64748b;font-weight:700;text-transform:uppercase;font-size:10px;">
               <tr>
@@ -405,11 +472,43 @@ WMS_MODULES.picking = {
                 <th style="padding:6px 8px;text-align:center;"><i class="fa-solid fa-gear"></i></th>
               </tr>
             </thead>
-            <tbody>${prodRows}</tbody>
+            <tbody id="tbl-plan-body-${planKey}">${prodRows}</tbody>
           </table>
         </div>
       </td>
     </tr>`;
+  },
+
+  /** Filtra dinámicamente las referencias de una planilla desplegada */
+  _filtrarTablaPlanillaInline(planKey, query) {
+    const container = document.getElementById(`tbl-plan-body-${planKey}`);
+    if (!container) return;
+    const q = (query || '').toLowerCase().trim();
+    const rows = container.querySelectorAll('tr.prod-item-row');
+    let visibleCount = 0;
+
+    rows.forEach(r => {
+      const searchTag = (r.dataset.search || r.textContent || '').toLowerCase();
+      if (!q || searchTag.includes(q)) {
+        r.style.display = '';
+        visibleCount++;
+      } else {
+        r.style.display = 'none';
+      }
+    });
+
+    const ambHeaders = container.querySelectorAll('tr.ambiente-header-row');
+    ambHeaders.forEach(h => {
+      const amb = h.dataset.ambiente;
+      const childRows = container.querySelectorAll(`tr.prod-item-row[data-ambiente="${amb}"]`);
+      const hasVisible = Array.from(childRows).some(cr => cr.style.display !== 'none');
+      h.style.display = hasVisible ? '' : 'none';
+    });
+
+    const countEl = document.getElementById(`count-plan-${planKey}`);
+    if (countEl) {
+      countEl.innerHTML = q ? `Mostrando <strong>${visibleCount}</strong> de ${rows.length} referencias` : `Total: <strong>${rows.length}</strong> referencias`;
+    }
   },
 
   // ── PEDIDOS / PLANILLAS ───────────────────────────────────────────────────
@@ -707,10 +806,17 @@ WMS_MODULES.picking = {
         </div>
         <div class="card-body" style="padding:0;">
           <div style="padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
-            <div style="flex:1;min-width:200px;">
-              <input id="pick-q" type="text" class="form-control" placeholder="🔍 Buscar ruta, sucursal, N° pedido..."
-                     value="${WMS.esc(f.q||'')}"
-                     oninput="WMS_MODULES.picking._pedidosFiltros.q=this.value;clearTimeout(WMS_MODULES.picking._qt);WMS_MODULES.picking._qt=setTimeout(()=>WMS_MODULES.picking._cargarPedidos(),350)">
+            <div style="flex:1;min-width:240px;position:relative;">
+              <label style="font-size:10px;font-weight:700;color:#475569;margin-bottom:2px;display:block;">
+                <i class="fa-solid fa-magnifying-glass" style="color:#0284c7;"></i> Buscar Referencia / Pedido / Ruta / Cliente:
+              </label>
+              <div style="position:relative;display:flex;align-items:center;">
+                <input id="pick-q" type="text" class="form-control form-control-sm" placeholder="🔍 Escriba para autocompletar referencia (ej: Yog, Pechuga, 109011)..."
+                       value="${WMS.esc(f.q||'')}" autocomplete="off"
+                       oninput="WMS_MODULES.picking._pedidosFiltros.q=this.value; WMS_MODULES.picking._buscarReferenciaAutocomplete(this.value);">
+                ${f.q ? `<button type="button" onclick="WMS_MODULES.picking._limpiarFiltroReferencia()" style="position:absolute;right:8px;background:none;border:none;color:#94a3b8;cursor:pointer;font-size:12px;" title="Limpiar búsqueda">&times;</button>` : ''}
+              </div>
+              <div id="pick-ref-sug-list" style="display:none;position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #bfdbfe;border-radius:6px;max-height:220px;overflow-y:auto;z-index:9999;box-shadow:0 10px 15px -3px rgba(0,0,0,0.1);margin-top:2px;"></div>
             </div>
             <div>
               <select id="pick-ruta" class="form-control" onchange="WMS_MODULES.picking._pedidosFiltros.ruta=this.value;WMS_MODULES.picking._cargarPedidos()">
@@ -767,6 +873,81 @@ WMS_MODULES.picking = {
           </div>
         </div>
       </div>`);
+
+    if (f.q && f.q.trim()) {
+      const qVal = f.q.trim();
+      setTimeout(() => {
+        grupos.forEach(g => {
+          const planKey = g.planilla.replace(/[^a-zA-Z0-9]/g, '_');
+          this._togglePlanilla(g.planilla, true);
+          this._filtrarTablaPlanillaInline(planKey, qVal);
+        });
+      }, 100);
+    }
+  },
+
+  _buscarReferenciaAutocomplete(val) {
+    clearTimeout(this._autocompleteTimer);
+    const container = document.getElementById('pick-ref-sug-list');
+    if (!container) return;
+    const q = (val || '').trim();
+    if (!q || q.length < 2) {
+      container.style.display = 'none';
+      container.innerHTML = '';
+      return;
+    }
+
+    this._autocompleteTimer = setTimeout(async () => {
+      try {
+        const res = await API.get('/param/productos/buscar?q=' + encodeURIComponent(q) + '&limit=10');
+        const items = res.data || res || [];
+        if (!items.length) {
+          container.innerHTML = '<div style="padding:8px 12px;font-size:11px;color:#94a3b8;">Sin coincidencias de referencia</div>';
+          container.style.display = 'block';
+          return;
+        }
+
+        container.innerHTML = items.map((p, idx) => `
+          <div class="pick-ref-sug-item" data-idx="${idx}" style="padding:8px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:11.5px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;" onmouseover="this.style.background='#f0f7ff';" onmouseout="this.style.background='#fff';">
+            <div>
+              <strong style="color:#1e40af;">[${WMS.esc(p.codigo_interno || p.codigo_barras || '')}]</strong>
+              <span style="color:#1e293b;margin-left:4px;font-weight:600;">${WMS.esc(p.nombre || '')}</span>
+            </div>
+            <span class="badge badge-primary" style="font-size:9.5px;padding:3px 7px;">Seleccionar</span>
+          </div>
+        `).join('');
+
+        window._pickRefItemsCache = items;
+        container.querySelectorAll('.pick-ref-sug-item').forEach(el => {
+          el.addEventListener('click', () => {
+            const idx = parseInt(el.dataset.idx, 10);
+            const selectedProd = window._pickRefItemsCache[idx];
+            if (!selectedProd) return;
+            this._seleccionarReferenciaFiltro(selectedProd);
+          });
+        });
+        container.style.display = 'block';
+      } catch (e) {
+        container.style.display = 'none';
+      }
+    }, 200);
+  },
+
+  _seleccionarReferenciaFiltro(p) {
+    const container = document.getElementById('pick-ref-sug-list');
+    if (container) container.style.display = 'none';
+    if (!p) return;
+
+    const queryText = p.nombre || p.codigo_interno || String(p.id);
+    this._pedidosFiltros.q = queryText;
+    this._cargarPedidos();
+  },
+
+  _limpiarFiltroReferencia() {
+    const container = document.getElementById('pick-ref-sug-list');
+    if (container) container.style.display = 'none';
+    this._pedidosFiltros.q = '';
+    this._cargarPedidos();
   },
 
   async _toggleExpandRow(tr, ordenId) {
@@ -1020,11 +1201,11 @@ WMS_MODULES.picking = {
     }
   },
 
-  _togglePlanilla(planilla) {
+  _togglePlanilla(planilla, forceOpen = null) {
     const row  = document.getElementById('sub-plan-' + planilla);
     const icon = document.getElementById('icon-plan-' + planilla);
     if (!row) return;
-    const isHidden = row.style.display === 'none';
+    const isHidden = forceOpen !== null ? !forceOpen : row.style.display === 'none';
     row.style.display = isHidden ? 'table-row' : 'none';
     row.setAttribute('data-open', isHidden ? 'true' : 'false');
     if (icon) icon.style.transform = isHidden ? 'rotate(90deg)' : '';
