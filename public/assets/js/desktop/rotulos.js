@@ -1014,6 +1014,19 @@ WMS_MODULES.rotulos = {
           overflow: visible !important;
           page-break-after: always !important;
         }
+        .wms-label-single.wms-label-pdv {
+          align-items: flex-start !important;
+          justify-content: space-around !important;
+          text-align: left !important;
+          padding: 2.5mm 3.5mm !important;
+          border: 0.5mm solid #000 !important;
+          border-radius: 2mm !important;
+          box-sizing: border-box !important;
+        }
+        .wms-label-pdv > div {
+          text-align: left !important;
+          width: 100% !important;
+        }
         .rot-barcode {
           shape-rendering: crispEdges !important;
           image-rendering: -webkit-optimize-contrast !important;
@@ -1292,30 +1305,30 @@ WMS_MODULES.rotulos = {
     const fdVal    = fd       ? ' ' + WMS.esc(fd)       : '';
 
     return `
-      <div class="wms-label-single" style="width:${anchomm}mm;height:${altomm}mm;
-        display:flex;flex-direction:column;justify-content:space-around;
+      <div class="wms-label-single wms-label-pdv" style="width:${anchomm}mm;height:${altomm}mm;
+        display:flex;flex-direction:column;justify-content:space-around;align-items:flex-start;text-align:left;
         box-sizing:border-box;
         font-family:Arial, 'Helvetica Neue', Helvetica, sans-serif;
         background:#fff;overflow:hidden;flex-shrink:0;
         padding:2.5mm 3.5mm;border:0.5mm solid #000;border-radius:2mm;
         margin:0;page-break-after:always;">
         <div style="font-size:${fontSize}pt;font-weight:900;color:#000;
-          letter-spacing:0.3px;line-height:1.2;
+          letter-spacing:0.3px;line-height:1.2;text-align:left;width:100%;
           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           N/ PRODUCTO:${prodVal}
         </div>
         <div style="font-size:${fontSize}pt;font-weight:900;color:#000;
-          letter-spacing:0.3px;line-height:1.2;
+          letter-spacing:0.3px;line-height:1.2;text-align:left;width:100%;
           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           F. E:${feVal}
         </div>
         <div style="font-size:${fontSize}pt;font-weight:900;color:#000;
-          letter-spacing:0.3px;line-height:1.2;
+          letter-spacing:0.3px;line-height:1.2;text-align:left;width:100%;
           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           F. V:${fvVal}
         </div>
         <div style="font-size:${fontSize}pt;font-weight:900;color:#000;
-          letter-spacing:0.3px;line-height:1.2;
+          letter-spacing:0.3px;line-height:1.2;text-align:left;width:100%;
           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           F. D:${fdVal}
         </div>
