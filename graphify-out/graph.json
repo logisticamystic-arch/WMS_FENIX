@@ -21,15 +21,158 @@
   },
   "nodes": [
     {
+      "label": "DashboardTVController.php",
+      "file_type": "code",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "src_controllers_dashboardtvcontroller",
+      "community": 1,
+      "community_name": "Returns & FEFO Alerts",
+      "norm_label": "dashboardtvcontroller.php"
+    },
+    {
+      "label": "DashboardTVController",
+      "file_type": "code",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L9",
+      "_origin": "ast",
+      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
+      "community": 1,
+      "community_name": "Returns & FEFO Alerts",
+      "norm_label": "dashboardtvcontroller"
+    },
+    {
+      "label": "BaseController",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "basecontroller",
+      "community": 310,
+      "community_name": "SystemController",
+      "norm_label": "basecontroller"
+    },
+    {
+      "label": ".getDashboardTV()",
+      "file_type": "code",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L11",
+      "_origin": "ast",
+      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getdashboardtv",
+      "community": 310,
+      "community_name": "SystemController",
+      "norm_label": ".getdashboardtv()"
+    },
+    {
+      "label": ".getNivelServicio()",
+      "file_type": "code",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L287",
+      "_origin": "ast",
+      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio",
+      "community": 1,
+      "community_name": "Returns & FEFO Alerts",
+      "norm_label": ".getnivelservicio()"
+    },
+    {
+      "label": ".nivelServicio()",
+      "file_type": "code",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L373",
+      "_origin": "ast",
+      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nivelservicio",
+      "community": 1,
+      "community_name": "Returns & FEFO Alerts",
+      "norm_label": ".nivelservicio()"
+    },
+    {
+      "label": "._nsQueryDia()",
+      "file_type": "code",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L667",
+      "_origin": "ast",
+      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerydia",
+      "community": 1,
+      "community_name": "Returns & FEFO Alerts",
+      "norm_label": "._nsquerydia()"
+    },
+    {
+      "label": "PDO",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "pdo",
+      "community": 1,
+      "community_name": "Returns & FEFO Alerts",
+      "norm_label": "pdo"
+    },
+    {
+      "label": "._nsQueryMes()",
+      "file_type": "code",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L721",
+      "_origin": "ast",
+      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerymes",
+      "community": 1,
+      "community_name": "Returns & FEFO Alerts",
+      "norm_label": "._nsquerymes()"
+    },
+    {
+      "label": ".ingresosChart()",
+      "file_type": "code",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L784",
+      "_origin": "ast",
+      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_ingresoschart",
+      "community": 1,
+      "community_name": "Returns & FEFO Alerts",
+      "norm_label": ".ingresoschart()"
+    },
+    {
+      "label": "._nsQuerySucursal()",
+      "file_type": "code",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L861",
+      "_origin": "ast",
+      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerysucursal",
+      "community": 1,
+      "community_name": "Returns & FEFO Alerts",
+      "norm_label": "._nsquerysucursal()"
+    },
+    {
+      "label": "Psr\\Http\\Message\\ServerRequestInterface",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "psr_http_message_serverrequestinterface",
+      "community": 3,
+      "community_name": "Parameters & Approvals",
+      "norm_label": "psr\\http\\message\\serverrequestinterface"
+    },
+    {
+      "label": "Psr\\Http\\Message\\ResponseInterface",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "psr_http_message_responseinterface",
+      "community": 310,
+      "community_name": "SystemController",
+      "norm_label": "psr\\http\\message\\responseinterface"
+    },
+    {
       "label": "rotulos.js",
       "file_type": "code",
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "rotulos.js"
+      "norm_label": "rotulos.js",
+      "id": "public_assets_js_desktop_rotulos"
     },
     {
       "label": "load()",
@@ -37,10 +180,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L12",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_load",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "load()"
+      "norm_label": "load()",
+      "id": "public_assets_js_desktop_rotulos_load"
     },
     {
       "label": "subLabel()",
@@ -48,10 +191,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L21",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_sublabel",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "sublabel()"
+      "norm_label": "sublabel()",
+      "id": "public_assets_js_desktop_rotulos_sublabel"
     },
     {
       "label": "show_productos()",
@@ -59,10 +202,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L29",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_show_productos",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "show_productos()"
+      "norm_label": "show_productos()",
+      "id": "public_assets_js_desktop_rotulos_show_productos"
     },
     {
       "label": "_onBusquedaInput()",
@@ -70,10 +213,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L155",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_onbusquedainput",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_onbusquedainput()"
+      "norm_label": "_onbusquedainput()",
+      "id": "public_assets_js_desktop_rotulos_onbusquedainput"
     },
     {
       "label": "_ejecutarBusqueda()",
@@ -81,10 +224,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L160",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_ejecutarbusqueda",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_ejecutarbusqueda()"
+      "norm_label": "_ejecutarbusqueda()",
+      "id": "public_assets_js_desktop_rotulos_ejecutarbusqueda"
     },
     {
       "label": "_seleccionarProducto()",
@@ -92,10 +235,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L192",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_seleccionarproducto",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_seleccionarproducto()"
+      "norm_label": "_seleccionarproducto()",
+      "id": "public_assets_js_desktop_rotulos_seleccionarproducto"
     },
     {
       "label": "_onFormatoProdChange()",
@@ -103,10 +246,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L224",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_onformatoprodchange",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_onformatoprodchange()"
+      "norm_label": "_onformatoprodchange()",
+      "id": "public_assets_js_desktop_rotulos_onformatoprodchange"
     },
     {
       "label": "_getFormatoProd()",
@@ -114,10 +257,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L234",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_getformatoprod",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_getformatoprod()"
+      "norm_label": "_getformatoprod()",
+      "id": "public_assets_js_desktop_rotulos_getformatoprod"
     },
     {
       "label": "_buildRotuloProd()",
@@ -125,10 +268,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L238",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_buildrotuloprod",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_buildrotuloprod()"
+      "norm_label": "_buildrotuloprod()",
+      "id": "public_assets_js_desktop_rotulos_buildrotuloprod"
     },
     {
       "label": "_buildRotuloProdHorizontal()",
@@ -136,10 +279,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L244",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_buildrotuloprodhorizontal",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_buildrotuloprodhorizontal()"
+      "norm_label": "_buildrotuloprodhorizontal()",
+      "id": "public_assets_js_desktop_rotulos_buildrotuloprodhorizontal"
     },
     {
       "label": "_buildRotuloProdVertical()",
@@ -147,10 +290,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L269",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_buildrotuloprodvertical",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_buildrotuloprodvertical()"
+      "norm_label": "_buildrotuloprodvertical()",
+      "id": "public_assets_js_desktop_rotulos_buildrotuloprodvertical"
     },
     {
       "label": "_actualizarPreviewProd()",
@@ -158,10 +301,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L310",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_actualizarpreviewprod",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_actualizarpreviewprod()"
+      "norm_label": "_actualizarpreviewprod()",
+      "id": "public_assets_js_desktop_rotulos_actualizarpreviewprod"
     },
     {
       "label": "_previsualizarProd()",
@@ -169,10 +312,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L327",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_previsualizarprod",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_previsualizarprod()"
+      "norm_label": "_previsualizarprod()",
+      "id": "public_assets_js_desktop_rotulos_previsualizarprod"
     },
     {
       "label": "_imprimirProd()",
@@ -180,10 +323,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L335",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_imprimirprod",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_imprimirprod()"
+      "norm_label": "_imprimirprod()",
+      "id": "public_assets_js_desktop_rotulos_imprimirprod"
     },
     {
       "label": "show_ubicaciones()",
@@ -191,10 +334,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L355",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_show_ubicaciones",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "show_ubicaciones()"
+      "norm_label": "show_ubicaciones()",
+      "id": "public_assets_js_desktop_rotulos_show_ubicaciones"
     },
     {
       "label": "_onFormatoChange()",
@@ -202,10 +345,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L553",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_onformatochange",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_onformatochange()"
+      "norm_label": "_onformatochange()",
+      "id": "public_assets_js_desktop_rotulos_onformatochange"
     },
     {
       "label": "_getFormatoUbi()",
@@ -213,10 +356,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L564",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_getformatoubi",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_getformatoubi()"
+      "norm_label": "_getformatoubi()",
+      "id": "public_assets_js_desktop_rotulos_getformatoubi"
     },
     {
       "label": "_parseCodigo()",
@@ -224,10 +367,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L570",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_parsecodigo",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_parsecodigo()"
+      "norm_label": "_parsecodigo()",
+      "id": "public_assets_js_desktop_rotulos_parsecodigo"
     },
     {
       "label": "_getUniqueValues()",
@@ -235,10 +378,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L579",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_getuniquevalues",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_getuniquevalues()"
+      "norm_label": "_getuniquevalues()",
+      "id": "public_assets_js_desktop_rotulos_getuniquevalues"
     },
     {
       "label": "_filtrarUbis()",
@@ -246,10 +389,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L594",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_filtrarubis",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_filtrarubis()"
+      "norm_label": "_filtrarubis()",
+      "id": "public_assets_js_desktop_rotulos_filtrarubis"
     },
     {
       "label": "_actualizarFiltroMasivo()",
@@ -257,10 +400,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L606",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_actualizarfiltromasivo",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_actualizarfiltromasivo()"
+      "norm_label": "_actualizarfiltromasivo()",
+      "id": "public_assets_js_desktop_rotulos_actualizarfiltromasivo"
     },
     {
       "label": "_onCheckMasivo()",
@@ -268,10 +411,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L634",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_oncheckmasivo",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_oncheckmasivo()"
+      "norm_label": "_oncheckmasivo()",
+      "id": "public_assets_js_desktop_rotulos_oncheckmasivo"
     },
     {
       "label": "_selectAllMasivo()",
@@ -279,10 +422,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L643",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_selectallmasivo",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_selectallmasivo()"
+      "norm_label": "_selectallmasivo()",
+      "id": "public_assets_js_desktop_rotulos_selectallmasivo"
     },
     {
       "label": "_getSelectedValues()",
@@ -290,10 +433,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L650",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_getselectedvalues",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_getselectedvalues()"
+      "norm_label": "_getselectedvalues()",
+      "id": "public_assets_js_desktop_rotulos_getselectedvalues"
     },
     {
       "label": "_actualizarConteoMasivo()",
@@ -301,10 +444,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L654",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_actualizarconteomasivo",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_actualizarconteomasivo()"
+      "norm_label": "_actualizarconteomasivo()",
+      "id": "public_assets_js_desktop_rotulos_actualizarconteomasivo"
     },
     {
       "label": "_getUbisMasivo()",
@@ -312,10 +455,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L668",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_getubismasivo",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_getubismasivo()"
+      "norm_label": "_getubismasivo()",
+      "id": "public_assets_js_desktop_rotulos_getubismasivo"
     },
     {
       "label": "_imprimirMasivo()",
@@ -323,10 +466,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L680",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_imprimirmasivo",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_imprimirmasivo()"
+      "norm_label": "_imprimirmasivo()",
+      "id": "public_assets_js_desktop_rotulos_imprimirmasivo"
     },
     {
       "label": "_buildDualColumnHTML()",
@@ -334,10 +477,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L705",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_builddualcolumnhtml",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_builddualcolumnhtml()"
+      "norm_label": "_builddualcolumnhtml()",
+      "id": "public_assets_js_desktop_rotulos_builddualcolumnhtml"
     },
     {
       "label": "_buildDualColumnHTMLProd()",
@@ -345,10 +488,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L720",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_builddualcolumnhtmlprod",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_builddualcolumnhtmlprod()"
+      "norm_label": "_builddualcolumnhtmlprod()",
+      "id": "public_assets_js_desktop_rotulos_builddualcolumnhtmlprod"
     },
     {
       "label": "_buildRotuloUbi()",
@@ -356,10 +499,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L739",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_buildrotuloubi",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_buildrotuloubi()"
+      "norm_label": "_buildrotuloubi()",
+      "id": "public_assets_js_desktop_rotulos_buildrotuloubi"
     },
     {
       "label": "_buildRotuloUbiHorizontal()",
@@ -367,10 +510,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L746",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_buildrotuloubihorizontal",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_buildrotuloubihorizontal()"
+      "norm_label": "_buildrotuloubihorizontal()",
+      "id": "public_assets_js_desktop_rotulos_buildrotuloubihorizontal"
     },
     {
       "label": "_buildRotuloUbiVertical()",
@@ -378,10 +521,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L779",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_buildrotuloubivertical",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_buildrotuloubivertical()"
+      "norm_label": "_buildrotuloubivertical()",
+      "id": "public_assets_js_desktop_rotulos_buildrotuloubivertical"
     },
     {
       "label": "_renderQRCodes()",
@@ -389,10 +532,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L815",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_renderqrcodes",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_renderqrcodes()"
+      "norm_label": "_renderqrcodes()",
+      "id": "public_assets_js_desktop_rotulos_renderqrcodes"
     },
     {
       "label": "_renderBarcodes()",
@@ -400,10 +543,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L843",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_renderbarcodes",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_renderbarcodes()"
+      "norm_label": "_renderbarcodes()",
+      "id": "public_assets_js_desktop_rotulos_renderbarcodes"
     },
     {
       "label": "_actualizarPreviewUbi()",
@@ -411,10 +554,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L946",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_actualizarpreviewubi",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_actualizarpreviewubi()"
+      "norm_label": "_actualizarpreviewubi()",
+      "id": "public_assets_js_desktop_rotulos_actualizarpreviewubi"
     },
     {
       "label": "_previsualizarUbi()",
@@ -422,10 +565,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L965",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_previsualizarubi",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_previsualizarubi()"
+      "norm_label": "_previsualizarubi()",
+      "id": "public_assets_js_desktop_rotulos_previsualizarubi"
     },
     {
       "label": "_imprimirUbi()",
@@ -433,10 +576,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L972",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_imprimirubi",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_imprimirubi()"
+      "norm_label": "_imprimirubi()",
+      "id": "public_assets_js_desktop_rotulos_imprimirubi"
     },
     {
       "label": "_imprimir()",
@@ -444,10 +587,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L991",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_imprimir",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_imprimir()"
+      "norm_label": "_imprimir()",
+      "id": "public_assets_js_desktop_rotulos_imprimir"
     },
     {
       "label": "_imprimirIP()",
@@ -455,10 +598,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L1058",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_imprimirip",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_imprimirip()"
+      "norm_label": "_imprimirip()",
+      "id": "public_assets_js_desktop_rotulos_imprimirip"
     },
     {
       "label": "_imprimirIPMasivo()",
@@ -466,10 +609,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L1096",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_imprimiripmasivo",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_imprimiripmasivo()"
+      "norm_label": "_imprimiripmasivo()",
+      "id": "public_assets_js_desktop_rotulos_imprimiripmasivo"
     },
     {
       "label": "show_pdv()",
@@ -477,10 +620,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L1121",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_show_pdv",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "show_pdv()"
+      "norm_label": "show_pdv()",
+      "id": "public_assets_js_desktop_rotulos_show_pdv"
     },
     {
       "label": "_ejecutarBusquedaPDV()",
@@ -488,10 +631,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L1254",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_ejecutarbusquedapdv",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_ejecutarbusquedapdv()"
+      "norm_label": "_ejecutarbusquedapdv()",
+      "id": "public_assets_js_desktop_rotulos_ejecutarbusquedapdv"
     },
     {
       "label": "_seleccionarProductoPDV()",
@@ -499,10 +642,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L1285",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_seleccionarproductopdv",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_seleccionarproductopdv()"
+      "norm_label": "_seleccionarproductopdv()",
+      "id": "public_assets_js_desktop_rotulos_seleccionarproductopdv"
     },
     {
       "label": "_onFormatoPDVChange()",
@@ -510,10 +653,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L1292",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_onformatopdvchange",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_onformatopdvchange()"
+      "norm_label": "_onformatopdvchange()",
+      "id": "public_assets_js_desktop_rotulos_onformatopdvchange"
     },
     {
       "label": "_getFormatoPDV()",
@@ -521,10 +664,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L1296",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_getformatopdv",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_getformatopdv()"
+      "norm_label": "_getformatopdv()",
+      "id": "public_assets_js_desktop_rotulos_getformatopdv"
     },
     {
       "label": "_buildRotuloPDV()",
@@ -532,10 +675,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L1300",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_buildrotulopdv",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_buildrotulopdv()"
+      "norm_label": "_buildrotulopdv()",
+      "id": "public_assets_js_desktop_rotulos_buildrotulopdv"
     },
     {
       "label": "_actualizarPreviewPDV()",
@@ -543,10 +686,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L1338",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_actualizarpreviewpdv",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_actualizarpreviewpdv()"
+      "norm_label": "_actualizarpreviewpdv()",
+      "id": "public_assets_js_desktop_rotulos_actualizarpreviewpdv"
     },
     {
       "label": "_previsualizarPDV()",
@@ -554,10 +697,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L1354",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_previsualizarpdv",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_previsualizarpdv()"
+      "norm_label": "_previsualizarpdv()",
+      "id": "public_assets_js_desktop_rotulos_previsualizarpdv"
     },
     {
       "label": "_imprimirPDV()",
@@ -565,10 +708,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L1359",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_imprimirpdv",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_imprimirpdv()"
+      "norm_label": "_imprimirpdv()",
+      "id": "public_assets_js_desktop_rotulos_imprimirpdv"
     },
     {
       "label": "_buildDualColumnHTMLPDV()",
@@ -576,10 +719,10 @@
       "source_file": "public/assets/js/desktop/rotulos.js",
       "source_location": "L1375",
       "_origin": "ast",
-      "id": "public_assets_js_desktop_rotulos_builddualcolumnhtmlpdv",
       "community": 12,
       "community_name": "Label Printing Module",
-      "norm_label": "_builddualcolumnhtmlpdv()"
+      "norm_label": "_builddualcolumnhtmlpdv()",
+      "id": "public_assets_js_desktop_rotulos_builddualcolumnhtmlpdv"
     },
     {
       "label": "ImpresoraController.php",
@@ -602,17 +745,6 @@
       "community_name": "SystemController",
       "norm_label": "impresoracontroller",
       "id": "src_controllers_impresoracontroller_impresoracontroller"
-    },
-    {
-      "label": "BaseController",
-      "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast",
-      "community": 310,
-      "community_name": "SystemController",
-      "norm_label": "basecontroller",
-      "id": "basecontroller"
     },
     {
       "label": ".listar()",
@@ -811,28 +943,6 @@
       "community_name": "Label Printing Helper",
       "norm_label": ".buildtsplpdvpage()",
       "id": "src_helpers_printhelper_printhelper_buildtsplpdvpage"
-    },
-    {
-      "label": "Psr\\Http\\Message\\ServerRequestInterface",
-      "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast",
-      "community": 3,
-      "community_name": "Parameters & Approvals",
-      "norm_label": "psr\\http\\message\\serverrequestinterface",
-      "id": "psr_http_message_serverrequestinterface"
-    },
-    {
-      "label": "Psr\\Http\\Message\\ResponseInterface",
-      "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast",
-      "community": 310,
-      "community_name": "SystemController",
-      "norm_label": "psr\\http\\message\\responseinterface",
-      "id": "psr_http_message_responseinterface"
     },
     {
       "label": "aprobaciones.js",
@@ -11030,116 +11140,6 @@
       "community_name": "ML Expiry Prediction",
       "norm_label": ".recepcion()",
       "id": "src_models_recepcioncalidad_recepcioncalidad_recepcion"
-    },
-    {
-      "label": "DashboardTVController.php",
-      "file_type": "code",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L1",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "Returns & FEFO Alerts",
-      "norm_label": "dashboardtvcontroller.php",
-      "id": "src_controllers_dashboardtvcontroller"
-    },
-    {
-      "label": "DashboardTVController",
-      "file_type": "code",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L9",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "Returns & FEFO Alerts",
-      "norm_label": "dashboardtvcontroller",
-      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller"
-    },
-    {
-      "label": ".getDashboardTV()",
-      "file_type": "code",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L11",
-      "_origin": "ast",
-      "community": 310,
-      "community_name": "SystemController",
-      "norm_label": ".getdashboardtv()",
-      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getdashboardtv"
-    },
-    {
-      "label": ".getNivelServicio()",
-      "file_type": "code",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L287",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "Returns & FEFO Alerts",
-      "norm_label": ".getnivelservicio()",
-      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio"
-    },
-    {
-      "label": ".nivelServicio()",
-      "file_type": "code",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L373",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "Returns & FEFO Alerts",
-      "norm_label": ".nivelservicio()",
-      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nivelservicio"
-    },
-    {
-      "label": "._nsQueryDia()",
-      "file_type": "code",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L618",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "Returns & FEFO Alerts",
-      "norm_label": "._nsquerydia()",
-      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerydia"
-    },
-    {
-      "label": "PDO",
-      "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "Returns & FEFO Alerts",
-      "norm_label": "pdo",
-      "id": "pdo"
-    },
-    {
-      "label": "._nsQueryMes()",
-      "file_type": "code",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L672",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "Returns & FEFO Alerts",
-      "norm_label": "._nsquerymes()",
-      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerymes"
-    },
-    {
-      "label": ".ingresosChart()",
-      "file_type": "code",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L735",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "Returns & FEFO Alerts",
-      "norm_label": ".ingresoschart()",
-      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_ingresoschart"
-    },
-    {
-      "label": "._nsQuerySucursal()",
-      "file_type": "code",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L812",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "Returns & FEFO Alerts",
-      "norm_label": "._nsquerysucursal()",
-      "id": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerysucursal"
     },
     {
       "label": "126_fix_factor_udm_miel_trufada.php",
@@ -30466,1289 +30466,101 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L654",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_actualizarconteomasivo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L606",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_actualizarfiltromasivo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1338",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_actualizarpreviewpdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L310",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_actualizarpreviewprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L946",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_actualizarpreviewubi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L705",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_builddualcolumnhtml",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1375",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_builddualcolumnhtmlpdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L720",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_builddualcolumnhtmlprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1300",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_buildrotulopdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L238",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L244",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloprodhorizontal",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L269",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloprodvertical",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L739",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloubi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L746",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloubihorizontal",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L779",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloubivertical",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L160",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_ejecutarbusqueda",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1254",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_ejecutarbusquedapdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L594",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_filtrarubis",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1296",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_getformatopdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L234",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_getformatoprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L564",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_getformatoubi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L650",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_getselectedvalues",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L668",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_getubismasivo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L579",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_getuniquevalues",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L991",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_imprimir",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1058",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_imprimirip",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1096",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_imprimiripmasivo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L680",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_imprimirmasivo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1359",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_imprimirpdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L335",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_imprimirprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L972",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_imprimirubi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L12",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_load",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L155",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_onbusquedainput",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L634",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_oncheckmasivo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L553",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_onformatochange",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1292",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_onformatopdvchange",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L224",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_onformatoprodchange",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L570",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_parsecodigo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1354",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_previsualizarpdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L327",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_previsualizarprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L965",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_previsualizarubi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L843",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_renderbarcodes",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L815",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_renderqrcodes",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L192",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_seleccionarproducto",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1285",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_seleccionarproductopdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L643",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_selectallmasivo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1121",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_show_pdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L29",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_show_productos",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L355",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_show_ubicaciones",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L21",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos",
-      "target": "public_assets_js_desktop_rotulos_sublabel",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L18",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_load",
-      "target": "public_assets_js_desktop_rotulos_show_productos",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L15",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_load",
-      "target": "public_assets_js_desktop_rotulos_sublabel",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L157",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_onbusquedainput",
-      "target": "public_assets_js_desktop_rotulos_ejecutarbusqueda",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L221",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_seleccionarproducto",
-      "target": "public_assets_js_desktop_rotulos_actualizarpreviewprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L231",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_onformatoprodchange",
-      "target": "public_assets_js_desktop_rotulos_actualizarpreviewprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L318",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_actualizarpreviewprod",
-      "target": "public_assets_js_desktop_rotulos_getformatoprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L344",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimirprod",
-      "target": "public_assets_js_desktop_rotulos_getformatoprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L322",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_actualizarpreviewprod",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L726",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_builddualcolumnhtmlprod",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L241",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_buildrotuloprod",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloprodhorizontal",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L240",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_buildrotuloprod",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloprodvertical",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L323",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_actualizarpreviewprod",
-      "target": "public_assets_js_desktop_rotulos_renderbarcodes",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L331",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_previsualizarprod",
-      "target": "public_assets_js_desktop_rotulos_actualizarpreviewprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L347",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimirprod",
-      "target": "public_assets_js_desktop_rotulos_builddualcolumnhtmlprod",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L348",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimirprod",
-      "target": "public_assets_js_desktop_rotulos_imprimir",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L544",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_show_ubicaciones",
-      "target": "public_assets_js_desktop_rotulos_actualizarconteomasivo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L561",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_onformatochange",
-      "target": "public_assets_js_desktop_rotulos_actualizarpreviewubi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L955",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_actualizarpreviewubi",
-      "target": "public_assets_js_desktop_rotulos_getformatoubi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L689",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimirmasivo",
-      "target": "public_assets_js_desktop_rotulos_getformatoubi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L983",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimirubi",
-      "target": "public_assets_js_desktop_rotulos_getformatoubi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L598",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_filtrarubis",
-      "target": "public_assets_js_desktop_rotulos_parsecodigo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L585",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_getuniquevalues",
-      "target": "public_assets_js_desktop_rotulos_parsecodigo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L618",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_actualizarfiltromasivo",
-      "target": "public_assets_js_desktop_rotulos_getuniquevalues",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L663",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_actualizarconteomasivo",
-      "target": "public_assets_js_desktop_rotulos_filtrarubis",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L675",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_getubismasivo",
-      "target": "public_assets_js_desktop_rotulos_filtrarubis",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L613",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_actualizarfiltromasivo",
-      "target": "public_assets_js_desktop_rotulos_actualizarconteomasivo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L640",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_oncheckmasivo",
-      "target": "public_assets_js_desktop_rotulos_actualizarconteomasivo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L646",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_selectallmasivo",
-      "target": "public_assets_js_desktop_rotulos_oncheckmasivo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L661",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_actualizarconteomasivo",
-      "target": "public_assets_js_desktop_rotulos_getselectedvalues",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L671",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_getubismasivo",
-      "target": "public_assets_js_desktop_rotulos_getselectedvalues",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1097",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimiripmasivo",
-      "target": "public_assets_js_desktop_rotulos_getubismasivo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L681",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimirmasivo",
-      "target": "public_assets_js_desktop_rotulos_getubismasivo",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L696",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimirmasivo",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloubi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L698",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimirmasivo",
-      "target": "public_assets_js_desktop_rotulos_imprimir",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L711",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_builddualcolumnhtml",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloubi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L987",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimirubi",
-      "target": "public_assets_js_desktop_rotulos_builddualcolumnhtml",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L960",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_actualizarpreviewubi",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloubi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L742",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_buildrotuloubi",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloubihorizontal",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L741",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_buildrotuloubi",
-      "target": "public_assets_js_desktop_rotulos_buildrotuloubivertical",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L844",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_renderbarcodes",
-      "target": "public_assets_js_desktop_rotulos_renderqrcodes",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L961",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_actualizarpreviewubi",
-      "target": "public_assets_js_desktop_rotulos_renderbarcodes",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1050",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimir",
-      "target": "public_assets_js_desktop_rotulos_renderbarcodes",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L968",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_previsualizarubi",
-      "target": "public_assets_js_desktop_rotulos_actualizarpreviewubi",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L988",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimirubi",
-      "target": "public_assets_js_desktop_rotulos_imprimir",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1372",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimirpdv",
-      "target": "public_assets_js_desktop_rotulos_imprimir",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1251",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_show_pdv",
-      "target": "public_assets_js_desktop_rotulos_actualizarpreviewpdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1289",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_seleccionarproductopdv",
-      "target": "public_assets_js_desktop_rotulos_actualizarpreviewpdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1293",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_onformatopdvchange",
-      "target": "public_assets_js_desktop_rotulos_actualizarpreviewpdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1345",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_actualizarpreviewpdv",
-      "target": "public_assets_js_desktop_rotulos_getformatopdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1367",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimirpdv",
-      "target": "public_assets_js_desktop_rotulos_getformatopdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1350",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_actualizarpreviewpdv",
-      "target": "public_assets_js_desktop_rotulos_buildrotulopdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1381",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_builddualcolumnhtmlpdv",
-      "target": "public_assets_js_desktop_rotulos_buildrotulopdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1355",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_previsualizarpdv",
-      "target": "public_assets_js_desktop_rotulos_actualizarpreviewpdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "public/assets/js/desktop/rotulos.js",
-      "source_location": "L1371",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "public_assets_js_desktop_rotulos_imprimirpdv",
-      "target": "public_assets_js_desktop_rotulos_builddualcolumnhtmlpdv",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_file": "src/Controllers/DashboardTVController.php",
       "source_location": "L9",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller",
-      "target": "src_controllers_impresoracontroller_impresoracontroller"
-    },
-    {
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L7",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller",
-      "target": "src_models_impresora"
+      "source": "src_controllers_dashboardtvcontroller",
+      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
+      "confidence_score": 1.0
     },
     {
       "relation": "inherits",
       "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_file": "src/Controllers/DashboardTVController.php",
       "source_location": "L9",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller",
-      "target": "basecontroller"
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
+      "target": "basecontroller",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L65",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller",
-      "target": "src_controllers_impresoracontroller_impresoracontroller_eliminar"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L33",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller",
-      "target": "src_controllers_impresoracontroller_impresoracontroller_guardar"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L76",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller",
-      "target": "src_controllers_impresoracontroller_impresoracontroller_imprimirrotulo"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_file": "src/Controllers/DashboardTVController.php",
       "source_location": "L11",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller",
-      "target": "src_controllers_impresoracontroller_impresoracontroller_listar"
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
+      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getdashboardtv",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L145",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L287",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller",
-      "target": "src_controllers_impresoracontroller_impresoracontroller_testprint"
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
+      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L784",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
+      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_ingresoschart",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L373",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
+      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nivelservicio",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L667",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
+      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerydia",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L721",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
+      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerymes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L861",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
+      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerysucursal",
+      "confidence_score": 1.0
     },
     {
       "relation": "inherits",
@@ -31770,17 +30582,6 @@
       "_origin": "ast",
       "confidence_score": 1.0,
       "source": "src_controllers_consultarapidacontroller_consultarapidacontroller",
-      "target": "basecontroller"
-    },
-    {
-      "relation": "inherits",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L9",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
       "target": "basecontroller"
     },
     {
@@ -31825,6 +30626,17 @@
       "_origin": "ast",
       "confidence_score": 1.0,
       "source": "src_controllers_importexportcontroller_importexportcontroller",
+      "target": "basecontroller"
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller",
       "target": "basecontroller"
     },
     {
@@ -31907,254 +30719,170 @@
     {
       "relation": "references",
       "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_file": "src/Controllers/DashboardTVController.php",
       "source_location": "L11",
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller_listar",
-      "target": "psr_http_message_responseinterface"
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getdashboardtv",
+      "target": "psr_http_message_responseinterface",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
       "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_file": "src/Controllers/DashboardTVController.php",
       "source_location": "L11",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller_listar",
-      "target": "psr_http_message_serverrequestinterface"
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getdashboardtv",
+      "target": "psr_http_message_serverrequestinterface",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
       "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L33",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L287",
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller_guardar",
-      "target": "psr_http_message_responseinterface"
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio",
+      "target": "psr_http_message_responseinterface",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
       "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L33",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L287",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller_guardar",
-      "target": "psr_http_message_serverrequestinterface"
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio",
+      "target": "psr_http_message_serverrequestinterface",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L303",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio",
+      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerydia",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L306",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio",
+      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerymes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L310",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio",
+      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerysucursal",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
       "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L65",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L373",
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller_eliminar",
-      "target": "psr_http_message_responseinterface"
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nivelservicio",
+      "target": "psr_http_message_responseinterface",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
       "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L65",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L373",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller_eliminar",
-      "target": "psr_http_message_serverrequestinterface"
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nivelservicio",
+      "target": "psr_http_message_serverrequestinterface",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
       "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L76",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L667",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "_origin": "ast",
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerydia",
+      "target": "pdo",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L721",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "_origin": "ast",
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerymes",
+      "target": "pdo",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L861",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "_origin": "ast",
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerysucursal",
+      "target": "pdo",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L784",
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller_imprimirrotulo",
-      "target": "psr_http_message_responseinterface"
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_ingresoschart",
+      "target": "psr_http_message_responseinterface",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
       "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L76",
+      "source_file": "src/Controllers/DashboardTVController.php",
+      "source_location": "L784",
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller_imprimirrotulo",
-      "target": "psr_http_message_serverrequestinterface"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L145",
-      "weight": 1.0,
-      "context": "return_type",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller_testprint",
-      "target": "psr_http_message_responseinterface"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/ImpresoraController.php",
-      "source_location": "L145",
-      "weight": 1.0,
-      "context": "parameter_type",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_impresoracontroller_impresoracontroller_testprint",
-      "target": "psr_http_message_serverrequestinterface"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Helpers/PrintHelper.php",
-      "source_location": "L5",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_helpers_printhelper",
-      "target": "src_helpers_printhelper_printhelper"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Helpers/PrintHelper.php",
-      "source_location": "L305",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_buildtsplpdvpage"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Helpers/PrintHelper.php",
-      "source_location": "L250",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_buildtsplubicacionpage"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Helpers/PrintHelper.php",
-      "source_location": "L166",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatepclpacking"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Helpers/PrintHelper.php",
-      "source_location": "L84",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatetsplpacking"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Helpers/PrintHelper.php",
-      "source_location": "L295",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatetsplpdv"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Helpers/PrintHelper.php",
-      "source_location": "L285",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatetsplubicacion"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Helpers/PrintHelper.php",
-      "source_location": "L231",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatetsplubicaciones"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Helpers/PrintHelper.php",
-      "source_location": "L30",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatezpl"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Helpers/PrintHelper.php",
-      "source_location": "L46",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatezplproducto"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Helpers/PrintHelper.php",
-      "source_location": "L59",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_generatezplubicacion"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Helpers/PrintHelper.php",
-      "source_location": "L10",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_helpers_printhelper_printhelper",
-      "target": "src_helpers_printhelper_printhelper_sendtoprinter"
+      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_ingresoschart",
+      "target": "psr_http_message_serverrequestinterface",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -32891,54 +31619,6 @@
     {
       "relation": "references",
       "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L11",
-      "weight": 1.0,
-      "context": "parameter_type",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getdashboardtv",
-      "target": "psr_http_message_serverrequestinterface"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L287",
-      "weight": 1.0,
-      "context": "parameter_type",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio",
-      "target": "psr_http_message_serverrequestinterface"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L735",
-      "weight": 1.0,
-      "context": "parameter_type",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_ingresoschart",
-      "target": "psr_http_message_serverrequestinterface"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L373",
-      "weight": 1.0,
-      "context": "parameter_type",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nivelservicio",
-      "target": "psr_http_message_serverrequestinterface"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
       "source_file": "src/Controllers/DataResetController.php",
       "source_location": "L210",
       "weight": 1.0,
@@ -33390,6 +32070,66 @@
       "_origin": "ast",
       "confidence_score": 1.0,
       "source": "src_controllers_importexportcontroller_importexportcontroller_uploadcsv",
+      "target": "psr_http_message_serverrequestinterface"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L65",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller_eliminar",
+      "target": "psr_http_message_serverrequestinterface"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L33",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller_guardar",
+      "target": "psr_http_message_serverrequestinterface"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L76",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller_imprimirrotulo",
+      "target": "psr_http_message_serverrequestinterface"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L11",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller_listar",
+      "target": "psr_http_message_serverrequestinterface"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L145",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller_testprint",
       "target": "psr_http_message_serverrequestinterface"
     },
     {
@@ -39191,54 +37931,6 @@
     {
       "relation": "references",
       "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L11",
-      "weight": 1.0,
-      "context": "return_type",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getdashboardtv",
-      "target": "psr_http_message_responseinterface"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L287",
-      "weight": 1.0,
-      "context": "return_type",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio",
-      "target": "psr_http_message_responseinterface"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L735",
-      "weight": 1.0,
-      "context": "return_type",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_ingresoschart",
-      "target": "psr_http_message_responseinterface"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L373",
-      "weight": 1.0,
-      "context": "return_type",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nivelservicio",
-      "target": "psr_http_message_responseinterface"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
       "source_file": "src/Controllers/DataResetController.php",
       "source_location": "L210",
       "weight": 1.0,
@@ -39690,6 +38382,66 @@
       "_origin": "ast",
       "confidence_score": 1.0,
       "source": "src_controllers_importexportcontroller_importexportcontroller_uploadcsv",
+      "target": "psr_http_message_responseinterface"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L65",
+      "weight": 1.0,
+      "context": "return_type",
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller_eliminar",
+      "target": "psr_http_message_responseinterface"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L33",
+      "weight": 1.0,
+      "context": "return_type",
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller_guardar",
+      "target": "psr_http_message_responseinterface"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L76",
+      "weight": 1.0,
+      "context": "return_type",
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller_imprimirrotulo",
+      "target": "psr_http_message_responseinterface"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L11",
+      "weight": 1.0,
+      "context": "return_type",
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller_listar",
+      "target": "psr_http_message_responseinterface"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L145",
+      "weight": 1.0,
+      "context": "return_type",
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller_testprint",
       "target": "psr_http_message_responseinterface"
     },
     {
@@ -44719,6 +43471,1414 @@
       "confidence_score": 1.0,
       "source": "src_middleware_tmsauthmiddleware_tmsauthmiddleware_unauthorized",
       "target": "psr_http_message_responseinterface"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L654",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_actualizarconteomasivo"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L606",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_actualizarfiltromasivo"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1338",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_actualizarpreviewpdv"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L310",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_actualizarpreviewprod"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L946",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_actualizarpreviewubi"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L705",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_builddualcolumnhtml"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1375",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_builddualcolumnhtmlpdv"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L720",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_builddualcolumnhtmlprod"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1300",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_buildrotulopdv"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L238",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloprod"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L244",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloprodhorizontal"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L269",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloprodvertical"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L739",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloubi"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L746",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloubihorizontal"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L779",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloubivertical"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L160",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_ejecutarbusqueda"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1254",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_ejecutarbusquedapdv"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L594",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_filtrarubis"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1296",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_getformatopdv"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L234",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_getformatoprod"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L564",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_getformatoubi"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L650",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_getselectedvalues"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L668",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_getubismasivo"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L579",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_getuniquevalues"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L991",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_imprimir"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1058",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_imprimirip"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1096",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_imprimiripmasivo"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L680",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_imprimirmasivo"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1359",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_imprimirpdv"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L335",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_imprimirprod"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L972",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_imprimirubi"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L12",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_load"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L155",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_onbusquedainput"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L634",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_oncheckmasivo"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L553",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_onformatochange"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1292",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_onformatopdvchange"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L224",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_onformatoprodchange"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L570",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_parsecodigo"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1354",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_previsualizarpdv"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L327",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_previsualizarprod"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L965",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_previsualizarubi"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L843",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_renderbarcodes"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L815",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_renderqrcodes"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L192",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_seleccionarproducto"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1285",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_seleccionarproductopdv"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L643",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_selectallmasivo"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1121",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_show_pdv"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L29",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_show_productos"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L355",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_show_ubicaciones"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L21",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos",
+      "target": "public_assets_js_desktop_rotulos_sublabel"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L18",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_load",
+      "target": "public_assets_js_desktop_rotulos_show_productos"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L15",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_load",
+      "target": "public_assets_js_desktop_rotulos_sublabel"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L157",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_onbusquedainput",
+      "target": "public_assets_js_desktop_rotulos_ejecutarbusqueda"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L221",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_seleccionarproducto",
+      "target": "public_assets_js_desktop_rotulos_actualizarpreviewprod"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L231",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_onformatoprodchange",
+      "target": "public_assets_js_desktop_rotulos_actualizarpreviewprod"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L318",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_actualizarpreviewprod",
+      "target": "public_assets_js_desktop_rotulos_getformatoprod"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L344",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimirprod",
+      "target": "public_assets_js_desktop_rotulos_getformatoprod"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L322",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_actualizarpreviewprod",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloprod"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L726",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_builddualcolumnhtmlprod",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloprod"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L241",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_buildrotuloprod",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloprodhorizontal"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L240",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_buildrotuloprod",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloprodvertical"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L323",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_actualizarpreviewprod",
+      "target": "public_assets_js_desktop_rotulos_renderbarcodes"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L331",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_previsualizarprod",
+      "target": "public_assets_js_desktop_rotulos_actualizarpreviewprod"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L347",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimirprod",
+      "target": "public_assets_js_desktop_rotulos_builddualcolumnhtmlprod"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L348",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimirprod",
+      "target": "public_assets_js_desktop_rotulos_imprimir"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L544",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_show_ubicaciones",
+      "target": "public_assets_js_desktop_rotulos_actualizarconteomasivo"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L561",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_onformatochange",
+      "target": "public_assets_js_desktop_rotulos_actualizarpreviewubi"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L955",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_actualizarpreviewubi",
+      "target": "public_assets_js_desktop_rotulos_getformatoubi"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L689",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimirmasivo",
+      "target": "public_assets_js_desktop_rotulos_getformatoubi"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L983",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimirubi",
+      "target": "public_assets_js_desktop_rotulos_getformatoubi"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L598",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_filtrarubis",
+      "target": "public_assets_js_desktop_rotulos_parsecodigo"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L585",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_getuniquevalues",
+      "target": "public_assets_js_desktop_rotulos_parsecodigo"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L618",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_actualizarfiltromasivo",
+      "target": "public_assets_js_desktop_rotulos_getuniquevalues"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L663",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_actualizarconteomasivo",
+      "target": "public_assets_js_desktop_rotulos_filtrarubis"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L675",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_getubismasivo",
+      "target": "public_assets_js_desktop_rotulos_filtrarubis"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L613",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_actualizarfiltromasivo",
+      "target": "public_assets_js_desktop_rotulos_actualizarconteomasivo"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L640",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_oncheckmasivo",
+      "target": "public_assets_js_desktop_rotulos_actualizarconteomasivo"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L646",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_selectallmasivo",
+      "target": "public_assets_js_desktop_rotulos_oncheckmasivo"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L661",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_actualizarconteomasivo",
+      "target": "public_assets_js_desktop_rotulos_getselectedvalues"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L671",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_getubismasivo",
+      "target": "public_assets_js_desktop_rotulos_getselectedvalues"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1097",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimiripmasivo",
+      "target": "public_assets_js_desktop_rotulos_getubismasivo"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L681",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimirmasivo",
+      "target": "public_assets_js_desktop_rotulos_getubismasivo"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L696",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimirmasivo",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloubi"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L698",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimirmasivo",
+      "target": "public_assets_js_desktop_rotulos_imprimir"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L711",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_builddualcolumnhtml",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloubi"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L987",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimirubi",
+      "target": "public_assets_js_desktop_rotulos_builddualcolumnhtml"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L960",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_actualizarpreviewubi",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloubi"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L742",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_buildrotuloubi",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloubihorizontal"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L741",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_buildrotuloubi",
+      "target": "public_assets_js_desktop_rotulos_buildrotuloubivertical"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L844",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_renderbarcodes",
+      "target": "public_assets_js_desktop_rotulos_renderqrcodes"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L961",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_actualizarpreviewubi",
+      "target": "public_assets_js_desktop_rotulos_renderbarcodes"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1050",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimir",
+      "target": "public_assets_js_desktop_rotulos_renderbarcodes"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L968",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_previsualizarubi",
+      "target": "public_assets_js_desktop_rotulos_actualizarpreviewubi"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L988",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimirubi",
+      "target": "public_assets_js_desktop_rotulos_imprimir"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1372",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimirpdv",
+      "target": "public_assets_js_desktop_rotulos_imprimir"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1251",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_show_pdv",
+      "target": "public_assets_js_desktop_rotulos_actualizarpreviewpdv"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1289",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_seleccionarproductopdv",
+      "target": "public_assets_js_desktop_rotulos_actualizarpreviewpdv"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1293",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_onformatopdvchange",
+      "target": "public_assets_js_desktop_rotulos_actualizarpreviewpdv"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1345",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_actualizarpreviewpdv",
+      "target": "public_assets_js_desktop_rotulos_getformatopdv"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1367",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimirpdv",
+      "target": "public_assets_js_desktop_rotulos_getformatopdv"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1350",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_actualizarpreviewpdv",
+      "target": "public_assets_js_desktop_rotulos_buildrotulopdv"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1381",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_builddualcolumnhtmlpdv",
+      "target": "public_assets_js_desktop_rotulos_buildrotulopdv"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1355",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_previsualizarpdv",
+      "target": "public_assets_js_desktop_rotulos_actualizarpreviewpdv"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/rotulos.js",
+      "source_location": "L1371",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "public_assets_js_desktop_rotulos_imprimirpdv",
+      "target": "public_assets_js_desktop_rotulos_builddualcolumnhtmlpdv"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller",
+      "target": "src_controllers_impresoracontroller_impresoracontroller"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L7",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller",
+      "target": "src_models_impresora"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L65",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller",
+      "target": "src_controllers_impresoracontroller_impresoracontroller_eliminar"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller",
+      "target": "src_controllers_impresoracontroller_impresoracontroller_guardar"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L76",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller",
+      "target": "src_controllers_impresoracontroller_impresoracontroller_imprimirrotulo"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L11",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller",
+      "target": "src_controllers_impresoracontroller_impresoracontroller_listar"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/ImpresoraController.php",
+      "source_location": "L145",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_impresoracontroller_impresoracontroller",
+      "target": "src_controllers_impresoracontroller_impresoracontroller_testprint"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Helpers/PrintHelper.php",
+      "source_location": "L5",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_helpers_printhelper",
+      "target": "src_helpers_printhelper_printhelper"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Helpers/PrintHelper.php",
+      "source_location": "L305",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_helpers_printhelper_printhelper",
+      "target": "src_helpers_printhelper_printhelper_buildtsplpdvpage"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Helpers/PrintHelper.php",
+      "source_location": "L250",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_helpers_printhelper_printhelper",
+      "target": "src_helpers_printhelper_printhelper_buildtsplubicacionpage"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Helpers/PrintHelper.php",
+      "source_location": "L166",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_helpers_printhelper_printhelper",
+      "target": "src_helpers_printhelper_printhelper_generatepclpacking"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Helpers/PrintHelper.php",
+      "source_location": "L84",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_helpers_printhelper_printhelper",
+      "target": "src_helpers_printhelper_printhelper_generatetsplpacking"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Helpers/PrintHelper.php",
+      "source_location": "L295",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_helpers_printhelper_printhelper",
+      "target": "src_helpers_printhelper_printhelper_generatetsplpdv"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Helpers/PrintHelper.php",
+      "source_location": "L285",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_helpers_printhelper_printhelper",
+      "target": "src_helpers_printhelper_printhelper_generatetsplubicacion"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Helpers/PrintHelper.php",
+      "source_location": "L231",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_helpers_printhelper_printhelper",
+      "target": "src_helpers_printhelper_printhelper_generatetsplubicaciones"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Helpers/PrintHelper.php",
+      "source_location": "L30",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_helpers_printhelper_printhelper",
+      "target": "src_helpers_printhelper_printhelper_generatezpl"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Helpers/PrintHelper.php",
+      "source_location": "L46",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_helpers_printhelper_printhelper",
+      "target": "src_helpers_printhelper_printhelper_generatezplproducto"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Helpers/PrintHelper.php",
+      "source_location": "L59",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_helpers_printhelper_printhelper",
+      "target": "src_helpers_printhelper_printhelper_generatezplubicacion"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Helpers/PrintHelper.php",
+      "source_location": "L10",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_helpers_printhelper_printhelper",
+      "target": "src_helpers_printhelper_printhelper_sendtoprinter"
     },
     {
       "relation": "contains",
@@ -63228,166 +63388,6 @@
       "confidence_score": 1.0,
       "source": "src_models_recepcioncalidad_recepcioncalidad",
       "target": "src_models_recepcioncalidad_recepcioncalidad_recepcion"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L9",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller",
-      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L11",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
-      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getdashboardtv"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L287",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
-      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L735",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
-      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_ingresoschart"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L373",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
-      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nivelservicio"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L618",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
-      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerydia"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L672",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
-      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerymes"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L812",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller",
-      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerysucursal"
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L303",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio",
-      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerydia"
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L306",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio",
-      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerymes"
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L310",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_getnivelservicio",
-      "target": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerysucursal"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L618",
-      "weight": 1.0,
-      "context": "parameter_type",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerydia",
-      "target": "pdo"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L672",
-      "weight": 1.0,
-      "context": "parameter_type",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerymes",
-      "target": "pdo"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/DashboardTVController.php",
-      "source_location": "L812",
-      "weight": 1.0,
-      "context": "parameter_type",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_controllers_dashboardtvcontroller_dashboardtvcontroller_nsquerysucursal",
-      "target": "pdo"
     },
     {
       "relation": "contains",
@@ -92694,5 +92694,5 @@
       "source_file": "docs/superpowers/specs/2026-05-30-packing-certificacion-design.md"
     }
   ],
-  "built_at_commit": "3a9728e477ef8faafbe0a317e88087ba7630d485"
+  "built_at_commit": "f7412ea3cd5a33f58443f0c8d1a087f50c19489e"
 }

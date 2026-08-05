@@ -725,8 +725,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/rotulos.js": {
-    "mtime": 1785946731.561179,
-    "ast_hash": "578490ac14e9e86d361abb188a9148f6",
+    "mtime": 1785947513.3548493,
+    "ast_hash": "1c41f7131578302252037016d232feb9",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/trazabilidad.js": {
@@ -1782,6 +1782,11 @@
   "public/uploads/firmas/firma_trp_6a735c61e2ca2.png": {
     "mtime": 1785945185.9224048,
     "ast_hash": "5263f256bbc5609e20d58b11a74623be",
+    "semantic_hash": ""
+  },
+  "public/uploads/firmas/firma_trp_6a736ca1770ec.png": {
+    "mtime": 1785949345.487878,
+    "ast_hash": "3740da4c8d217862e9f6031fd8b09db5",
     "semantic_hash": ""
   }
 }

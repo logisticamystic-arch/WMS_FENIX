@@ -885,8 +885,8 @@
     "semantic_hash": "3d2f08121c2ebc07639fe57aea467322"
   },
   "src/Controllers/DashboardTVController.php": {
-    "mtime": 1785762390.9058583,
-    "ast_hash": "d01a8eb436d525e4c192e85d91e10df8",
+    "mtime": 1785953404.981835,
+    "ast_hash": "ac4a803bc6c4caaf40aa8209b346f68e",
     "semantic_hash": ""
   },
   "src/Controllers/DespachoController.php": {

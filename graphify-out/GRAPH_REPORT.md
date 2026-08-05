@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-05)
 
 ## Corpus Check
-- 336 files · ~838,806 words
+- 336 files · ~839,216 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `3a9728e4`
+- Built from commit: `f7412ea3`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -681,8 +681,8 @@ _Questions this graph is uniquely positioned to answer:_
   _High betweenness centrality (0.027) - this node is a cross-community bridge._
 - **Why does `Inventario` connect `App\Models\Producto` to `SesionAsignacion`, `Cross-Dock Operations`, `Product Blocking & Quick Search`, `Receiving Controller`, `Picking TV Dashboard`, `Traspaso`, `TV Picking Dashboard`?**
   _High betweenness centrality (0.010) - this node is a cross-community bridge._
-- **Why does `PickingController` connect `Picking Order Management` to `ML Expiry Prediction`, `SystemController`?**
-  _High betweenness centrality (0.008) - this node is a cross-community bridge._
+- **Why does `BaseController` connect `Base Controller Utilities` to `Cross-Dock Operations`, `OutboundController`, `Packing & Expiry Control`, `InvGeneralConteo`, `Receiving Controller`, `Base Model & Certification`, `Dispatch Controller`, `Location Adjustment Controller`, `Sucursal`, `Despacho`, `Miscellaneous Items Controller`, `ForecastController`, `SystemController`, `Database Backup Helper`, `Replenishment & Notifications`, `TMS Integration Controller`, `TV Picking Dashboard`, `Picking TV Dashboard`, `.__invoke`, `BaseController.php`, `TenantScoped.php`, `Sucursal`, `Trazabilidad Controller`?**
+  _High betweenness centrality (0.010) - this node is a cross-community bridge._
 - **Are the 132 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
   _`date` has 132 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `name`, `description`, `type` to the rest of the system?**

@@ -654,12 +654,6 @@ class DashboardTVController extends BaseController
                 'por_mes'        => $porMes,
                 'agotados'       => $agotados,
             ]);
-                'por_sucursal'   => $porSucursal,
-                'por_dia'        => $porDia,
-                'por_referencia' => $porReferencia,
-                'por_mes'        => $porMes,
-                'agotados'       => $agotados,
-            ]);
         } catch (\Throwable $e) {
             wmsLog('ERROR', 'TV:nivelServicio — ' . $e->getMessage());
             return $this->error($response, 'Error al calcular nivel de servicio TV: ' . $e->getMessage(), 500);

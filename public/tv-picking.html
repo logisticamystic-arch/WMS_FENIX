@@ -7,95 +7,95 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
 :root {
-  --bg:#0f172a; --bg2:#1e293b; --bg3:#334155; --border:rgba(71,85,105,.6);
-  --text:#f1f5f9; --text2:#94a3b8;
-  --blue:#3b82f6; --blue-lt:rgba(59,130,246,.15);
-  --green:#22c55e; --green-lt:rgba(34,197,94,.15);
-  --yellow:#f59e0b; --yel-lt:rgba(245,158,11,.15);
-  --red:#ef4444; --red-lt:rgba(239,68,68,.15);
-  --orange:#f97316; --ora-lt:rgba(249,115,22,.15);
-  --purple:#a855f7; --pur-lt:rgba(168,85,247,.15);
-  --cyan:#06b6d4; --cya-lt:rgba(6,182,212,.15);
-  --gold:#f59e0b; --silver:#94a3b8; --bronze:#c2410c;
+  --bg:#f8fafc; --bg2:#ffffff; --bg3:#f1f5f9; --border:#e2e8f0;
+  --text:#0f172a; --text2:#475569;
+  --blue:#2563eb; --blue-lt:#eff6ff;
+  --green:#16a34a; --green-lt:#f0fdf4;
+  --yellow:#d97706; --yel-lt:#fffbeb;
+  --red:#dc2626; --red-lt:#fef2f2;
+  --orange:#ea580c; --ora-lt:#fff7ed;
+  --purple:#9333ea; --pur-lt:#faf5ff;
+  --cyan:#0891b2; --cya-lt:#ecfeff;
+  --gold:#d97706; --silver:#64748b; --bronze:#c2410c;
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 html,body{height:100%;overflow:hidden;}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;height:100vh;}
 
 /* HEADER */
-.tv-header{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 55%,#0c4a6e 100%);border-bottom:1px solid rgba(59,130,246,.3);padding:6px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:10px;}
+.tv-header{background:linear-gradient(135deg,#0f172a 0%,#1e293b 55%,#0f4c81 100%);border-bottom:1px solid rgba(59,130,246,.3);padding:6px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:10px;}
 .tv-logo{display:flex;align-items:center;gap:9px;flex-shrink:0;}
 .tv-logo-icon{width:32px;height:32px;background:linear-gradient(135deg,#3b82f6,#06b6d4);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;}
 .tv-logo-text{font-size:13px;font-weight:900;letter-spacing:.3px;color:#fff;}
-.tv-logo-sub{font-size:6.5px;color:rgba(255,255,255,.45);letter-spacing:2px;text-transform:uppercase;}
+.tv-logo-sub{font-size:6.5px;color:rgba(255,255,255,.65);letter-spacing:2px;text-transform:uppercase;}
 .tv-ticker{flex:1;overflow:hidden;display:flex;align-items:center;gap:8px;min-width:0;padding:0 8px;}
 .ticker-label{white-space:nowrap;font-size:7px;font-weight:900;color:#fde68a;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:3px;flex-shrink:0;}
 .ticker-track{overflow:hidden;flex:1;}
 .ticker-inner{display:inline-flex;gap:0;white-space:nowrap;animation:ticker 30s linear infinite;}
 @keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 .ticker-item{display:inline-flex;align-items:center;gap:3px;font-size:8px;font-weight:700;color:#fff;padding:0 14px 0 0;}
-.ticker-item .qty{padding:1px 5px;border-radius:99px;font-size:7px;font-weight:900;background:rgba(252,165,165,.2);color:#fca5a5;border:1px solid rgba(252,165,165,.3);}
+.ticker-item .qty{padding:1px 5px;border-radius:99px;font-size:7px;font-weight:900;background:rgba(252,165,165,.25);color:#fca5a5;border:1px solid rgba(252,165,165,.3);}
 .ticker-item .qty.zero{background:rgba(239,68,68,.4);color:#fef2f2;}
 .tv-meta{display:flex;align-items:center;gap:12px;flex-shrink:0;}
 .tv-live{display:flex;align-items:center;gap:4px;font-size:7.5px;font-weight:900;color:#6ee7b7;letter-spacing:1px;}
 .tv-live-dot{width:6px;height:6px;border-radius:50%;background:#6ee7b7;animation:pulse 1.5s ease-in-out infinite;}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.5)}}
 .tv-clock{font-size:20px;font-weight:900;font-variant-numeric:tabular-nums;color:#fff;letter-spacing:1px;}
-.tv-date{font-size:6.5px;color:rgba(255,255,255,.5);text-align:right;}
+.tv-date{font-size:6.5px;color:rgba(255,255,255,.65);text-align:right;}
 .cring{width:20px;height:20px;transform:rotate(-90deg);}
 .cring circle{fill:none;stroke-width:2.5;}
-.cring .track{stroke:rgba(255,255,255,.15);}
+.cring .track{stroke:rgba(255,255,255,.2);}
 .cring .fill{stroke:#3b82f6;stroke-dasharray:50;stroke-dashoffset:0;transition:stroke-dashoffset 1s linear;stroke-linecap:round;}
 
 /* KPI STRIP */
-.kpi-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:4px 8px;flex-shrink:0;border-bottom:1px solid var(--border);}
-.kpi-card{background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:5px 8px;display:flex;align-items:center;gap:7px;}
+.kpi-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:4px 8px;flex-shrink:0;border-bottom:1px solid var(--border);background:var(--bg);}
+.kpi-card{background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:5px 8px;display:flex;align-items:center;gap:7px;box-shadow:0 1px 3px rgba(15,23,42,.04);}
 .kpi-icon{width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;}
 .kpi-body{flex:1;min-width:0;}
 .kpi-label{font-size:6.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);}
-.kpi-value{font-size:17px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums;}
+.kpi-value{font-size:17px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums;color:var(--text);}
 .kpi-sub{font-size:6.5px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
 /* TAB NAV */
 .tab-nav{display:flex;align-items:stretch;gap:0;padding:4px 8px 0;flex-shrink:0;border-bottom:2px solid var(--border);background:var(--bg);position:relative;}
 .tab-btn{display:flex;align-items:center;gap:6px;padding:6px 16px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);background:transparent;border:none;cursor:pointer;border-radius:7px 7px 0 0;border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .2s;}
-.tab-btn:hover{color:var(--text);background:rgba(255,255,255,.04);}
-.tab-btn.active{color:#fff;background:var(--bg2);border-bottom-color:var(--tab-color,var(--blue));}
+.tab-btn:hover{color:var(--text);background:#e2e8f0;}
+.tab-btn.active{color:var(--text);background:var(--bg2);border-bottom-color:var(--tab-color,var(--blue));box-shadow:0 -1px 3px rgba(0,0,0,.04);}
 .tab-btn .tab-icon{font-size:12px;}
 .tab-badge{font-size:6.5px;font-weight:900;padding:1px 5px;border-radius:99px;background:var(--tab-color,var(--blue));color:#fff;margin-left:2px;}
 .tab-rotate-bar{position:absolute;bottom:-2px;left:0;height:2px;background:linear-gradient(90deg,var(--blue),var(--cyan));transition:width 1s linear;pointer-events:none;}
 .tab-auto-label{margin-left:auto;font-size:7px;color:var(--text2);display:flex;align-items:center;gap:4px;padding:0 4px;}
 
 /* TAB CONTENT */
-.tab-content{flex:1;min-height:0;overflow:hidden;}
+.tab-content{flex:1;min-height:0;overflow:hidden;background:var(--bg);}
 .tab-pane{display:none;height:100%;overflow:hidden;}
 .tab-pane.active{display:flex;flex-direction:column;}
 
 /* Generic card */
-.tv-card{background:var(--bg2);border:1px solid var(--border);border-radius:9px;display:flex;flex-direction:column;overflow:hidden;min-height:0;}
-.tv-card-hdr{padding:6px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid var(--border);gap:6px;}
-.tv-card-title{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:5px;}
+.tv-card{background:var(--bg2);border:1px solid var(--border);border-radius:9px;display:flex;flex-direction:column;overflow:hidden;min-height:0;box-shadow:0 1px 3px rgba(15,23,42,.04);}
+.tv-card-hdr{padding:6px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid var(--border);gap:6px;background:#f8fafc;}
+.tv-card-title{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:5px;color:var(--text);}
 .tv-card-body{flex:1;min-height:0;overflow-y:auto;}
 
 /* Tables */
 table.tv{width:100%;border-collapse:collapse;font-size:.65rem;}
-table.tv th{background:rgba(51,65,85,.6);padding:4px 7px;text-align:left;font-size:.55rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1;}
-table.tv td{padding:4px 7px;border-bottom:1px solid rgba(71,85,105,.25);vertical-align:middle;}
-table.tv tbody tr:hover td{background:rgba(255,255,255,.03);}
+table.tv th{background:#f1f5f9;padding:4px 7px;text-align:left;font-size:.55rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1;}
+table.tv td{padding:4px 7px;border-bottom:1px solid #f1f5f9;vertical-align:middle;color:var(--text);}
+table.tv tbody tr:hover td{background:#f8fafc;}
 
 /* Badges */
 .badge{display:inline-block;border-radius:99px;padding:1px 6px;font-size:.52rem;font-weight:700;white-space:nowrap;}
-.badge-blue  {background:var(--blue-lt);color:var(--blue);border:1px solid rgba(59,130,246,.3);}
-.badge-green {background:var(--green-lt);color:var(--green);border:1px solid rgba(34,197,94,.3);}
-.badge-yellow{background:var(--yel-lt);color:var(--yellow);border:1px solid rgba(245,158,11,.3);}
-.badge-red   {background:var(--red-lt);color:var(--red);border:1px solid rgba(239,68,68,.3);}
-.badge-gray  {background:rgba(71,85,105,.3);color:var(--text2);}
-.badge-orange{background:var(--ora-lt);color:var(--orange);border:1px solid rgba(249,115,22,.3);}
-.badge-purple{background:var(--pur-lt);color:var(--purple);}
-.badge-cyan  {background:var(--cya-lt);color:var(--cyan);}
+.badge-blue  {background:var(--blue-lt);color:var(--blue);border:1px solid #bfdbfe;}
+.badge-green {background:var(--green-lt);color:var(--green);border:1px solid #bbf7d0;}
+.badge-yellow{background:var(--yel-lt);color:var(--yellow);border:1px solid #fef08a;}
+.badge-red   {background:var(--red-lt);color:var(--red);border:1px solid #fecaca;}
+.badge-gray  {background:#f1f5f9;color:var(--text2);border:1px solid #cbd5e1;}
+.badge-orange{background:var(--ora-lt);color:var(--orange);border:1px solid #ffedd5;}
+.badge-purple{background:var(--pur-lt);color:var(--purple);border:1px solid #e9d5ff;}
+.badge-cyan  {background:var(--cya-lt);color:var(--cyan);border:1px solid #a5f3fc;}
 
 /* Progress */
-.prog-bar{height:5px;background:rgba(71,85,105,.35);border-radius:99px;overflow:hidden;flex:1;}
+.prog-bar{height:5px;background:#e2e8f0;border-radius:99px;overflow:hidden;flex:1;}
 .prog-fill{height:100%;border-radius:99px;transition:width .6s ease;}
 
 /* No data */
@@ -110,8 +110,8 @@ table.tv tbody tr:hover td{background:rgba(255,255,255,.03);}
 .ing-chart-wrap{flex:1;min-height:0;}
 .chart-container{flex:1;min-height:0;position:relative;padding:6px;}
 
-.sub-tabs{display:flex;gap:4px;padding:4px 8px;flex-shrink:0;border-bottom:1px solid var(--border);}
-.sub-tab{padding:3px 10px;font-size:7.5px;font-weight:700;text-transform:uppercase;border-radius:99px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;transition:all .15s;letter-spacing:.3px;}
+.sub-tabs{display:flex;gap:4px;padding:4px 8px;flex-shrink:0;border-bottom:1px solid var(--border);background:#f8fafc;}
+.sub-tab{padding:3px 10px;font-size:7.5px;font-weight:700;text-transform:uppercase;border-radius:99px;border:1px solid #cbd5e1;background:#ffffff;color:var(--text2);cursor:pointer;transition:all .15s;letter-spacing:.3px;}
 .sub-tab.active{background:var(--blue);color:#fff;border-color:var(--blue);}
 
 /* ─── TAB 2: PICKING ─── */
@@ -125,31 +125,31 @@ table.tv tbody tr:hover td{background:rgba(255,255,255,.03);}
 
 /* Podium */
 .podium-card{flex:1;display:flex;flex-direction:column;overflow:hidden;}
-.podium-hdr{padding:5px 9px;font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:5px;flex-shrink:0;}
-.podium-stage{flex:1;display:flex;align-items:flex-end;justify-content:center;gap:8px;padding:6px 8px 0;min-height:0;}
+.podium-hdr{padding:5px 9px;font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:5px;flex-shrink:0;background:#f8fafc;}
+.podium-stage{flex:1;display:flex;align-items:flex-end;justify-content:center;gap:8px;padding:6px 8px 0;min-height:0;background:#f8fafc;}
 .pod-slot{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;max-width:75px;}
-.pod-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;border:2px solid rgba(255,255,255,.15);flex-shrink:0;}
+.pod-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;border:2px solid #cbd5e1;flex-shrink:0;}
 .pod-name{font-size:6.5px;font-weight:700;text-align:center;color:var(--text);max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.pod-count{font-size:13px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1;}
+.pod-count{font-size:13px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1;color:var(--text);}
 .pod-metric{font-size:6px;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;}
-.pod-bar-1{height:62px;width:100%;max-width:52px;border-radius:5px 5px 0 0;background:linear-gradient(to top,#854d0e,#f59e0b);display:flex;align-items:flex-start;justify-content:center;padding-top:5px;font-size:15px;}
-.pod-bar-2{height:44px;width:100%;max-width:46px;border-radius:5px 5px 0 0;background:linear-gradient(to top,#334155,#94a3b8);display:flex;align-items:flex-start;justify-content:center;padding-top:4px;font-size:13px;}
-.pod-bar-3{height:30px;width:100%;max-width:40px;border-radius:5px 5px 0 0;background:linear-gradient(to top,#431407,#c2410c);display:flex;align-items:flex-start;justify-content:center;padding-top:3px;font-size:11px;}
-.pod-more{padding:3px 7px;border-top:1px solid var(--border);flex-shrink:0;max-height:60px;overflow-y:auto;}
-.pod-more-item{display:flex;align-items:center;gap:5px;padding:1.5px 0;border-bottom:1px solid rgba(71,85,105,.15);font-size:6.5px;}
+.pod-bar-1{height:62px;width:100%;max-width:52px;border-radius:5px 5px 0 0;background:linear-gradient(to top,#b45309,#f59e0b);display:flex;align-items:flex-start;justify-content:center;padding-top:5px;font-size:15px;}
+.pod-bar-2{height:44px;width:100%;max-width:46px;border-radius:5px 5px 0 0;background:linear-gradient(to top,#64748b,#94a3b8);display:flex;align-items:flex-start;justify-content:center;padding-top:4px;font-size:13px;}
+.pod-bar-3{height:30px;width:100%;max-width:40px;border-radius:5px 5px 0 0;background:linear-gradient(to top,#9a3412,#c2410c);display:flex;align-items:flex-start;justify-content:center;padding-top:3px;font-size:11px;}
+.pod-more{padding:3px 7px;border-top:1px solid var(--border);flex-shrink:0;max-height:60px;overflow-y:auto;background:#ffffff;}
+.pod-more-item{display:flex;align-items:center;gap:5px;padding:1.5px 0;border-bottom:1px solid #f1f5f9;font-size:6.5px;}
 .pod-more-item:last-child{border-bottom:none;}
 .pod-rank-num{width:12px;text-align:right;color:var(--text2);font-weight:700;}
-.pod-more-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.pod-more-val{font-weight:800;color:var(--text2);}
+.pod-more-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#334155;}
+.pod-more-val{font-weight:800;color:var(--text);}
 
 /* Ambiente */
-.amb-card{flex-shrink:0;background:var(--bg2);border:1px solid var(--border);border-radius:9px;padding:7px 10px;}
+.amb-card{flex-shrink:0;background:var(--bg2);border:1px solid var(--border);border-radius:9px;padding:7px 10px;box-shadow:0 1px 3px rgba(15,23,42,.04);}
 .amb-hdr{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:5px;display:flex;align-items:center;gap:4px;}
 .amb-row{display:flex;align-items:center;gap:7px;margin-bottom:4px;}
 .amb-row:last-child{margin-bottom:0;}
 .amb-icon{font-size:11px;width:18px;text-align:center;flex-shrink:0;}
-.amb-name{font-size:7.5px;font-weight:700;width:76px;flex-shrink:0;}
-.amb-pct{font-size:9px;font-weight:900;width:30px;text-align:right;flex-shrink:0;}
+.amb-name{font-size:7.5px;font-weight:700;width:76px;flex-shrink:0;color:var(--text);}
+.amb-pct{font-size:9px;font-weight:900;width:30px;text-align:right;flex-shrink:0;color:var(--text);}
 .amb-detail{font-size:6.5px;color:var(--text2);width:50px;flex-shrink:0;text-align:right;}
 
 /* ─── TAB 3: AGOTADOS ─── */
@@ -163,20 +163,20 @@ table.tv tbody tr:hover td{background:rgba(255,255,255,.03);}
 .alert-kpis .kpi-value{font-size:15px;}
 
 /* Misc */
-#tv-error{position:fixed;bottom:10px;right:10px;background:#1e293b;border:1.5px solid var(--red);color:var(--red);padding:7px 12px;border-radius:7px;font-size:10px;display:none;z-index:999;}
-.tv-loading{position:fixed;inset:0;background:rgba(15,23,42,.97);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text2);z-index:998;}
+#tv-error{position:fixed;bottom:10px;right:10px;background:#fef2f2;border:1.5px solid var(--red);color:var(--red);padding:7px 12px;border-radius:7px;font-size:10px;display:none;z-index:999;}
+.tv-loading{position:fixed;inset:0;background:rgba(248,250,252,.98);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text2);z-index:998;}
 .tv-loading .spin{font-size:34px;color:var(--blue);margin-bottom:10px;display:block;}
-select.tv-select{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:7.5px;padding:2px 6px;border-radius:5px;outline:none;cursor:pointer;}
-select.tv-select option{background:var(--bg2);}
+select.tv-select{background:#ffffff;border:1px solid #cbd5e1;color:var(--text);font-size:7.5px;padding:2px 6px;border-radius:5px;outline:none;cursor:pointer;}
+select.tv-select option{background:#ffffff;color:var(--text);}
 
 /* FILTRO FECHA */
 .tv-fecha-filter{display:flex;align-items:center;gap:5px;flex-shrink:0;}
-.tv-fecha-filter label{font-size:6.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.45);}
-.tv-fecha-btn{background:#1e293b;border:1px solid rgba(71,85,105,.6);color:rgba(255,255,255,.7);font-size:7px;font-weight:700;padding:3px 8px;border-radius:5px;cursor:pointer;transition:all .15s;letter-spacing:.3px;text-transform:uppercase;}
-.tv-fecha-btn:hover{border-color:var(--blue);color:#fff;}
-.tv-fecha-btn.active{background:rgba(59,130,246,.2);border-color:var(--blue);color:var(--blue);}
-input.tv-fecha-input{background:#1e293b;border:1px solid rgba(71,85,105,.6);color:rgba(255,255,255,.7);font-size:7px;padding:2px 6px;border-radius:5px;outline:none;cursor:pointer;width:92px;}
-input.tv-fecha-input::-webkit-calendar-picker-indicator{filter:invert(.5);width:9px;cursor:pointer;}
+.tv-fecha-filter label{font-size:6.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.75);}
+.tv-fecha-btn{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#ffffff;font-size:7px;font-weight:700;padding:3px 8px;border-radius:5px;cursor:pointer;transition:all .15s;letter-spacing:.3px;text-transform:uppercase;}
+.tv-fecha-btn:hover{background:rgba(255,255,255,.2);color:#fff;}
+.tv-fecha-btn.active{background:#2563eb;border-color:#2563eb;color:#ffffff;}
+input.tv-fecha-input{background:#ffffff;border:1px solid #cbd5e1;color:#0f172a;font-size:7px;padding:2px 6px;border-radius:5px;outline:none;cursor:pointer;width:92px;}
+input.tv-fecha-input::-webkit-calendar-picker-indicator{filter:none;width:9px;cursor:pointer;}
 </style>
 </head>
 <body>
@@ -1124,30 +1124,35 @@ function _buildOrUpdateChart(ref, canvasId, cfg){
   return new Chart(canvas,cfg);
 }
 
-function _renderSvcSucursal(data) {
-  // Destruir chart previo si existía
+function _svcColor(pct) {
+  if (pct == null) return '#64748b';
+  const val = parseFloat(pct);
+  if (val >= 90) return '#16a34a';
+  if (val >= 70) return '#d97706';
+  return '#dc2626';
+}
+
+function _renderSvcSucursal(items) {
   if (window._svcSucChart) { window._svcSucChart.destroy(); window._svcSucChart = null; }
   _svcChartSucursal = null;
 
   const wrap = document.getElementById('chart-svc-sucursal-wrap');
   if (!wrap) return;
 
-  const items = Array.isArray(data) ? data : [];
-
-  if (!items.length) {
-    wrap.innerHTML = '<div style="color:#64748b;font-size:11px;text-align:center;padding:20px;">Sin datos del período</div>';
+  if (!items || !items.length) {
+    wrap.innerHTML = '<div style="color:var(--text2);font-size:10px;text-align:center;padding:20px;">Sin sucursales registradas</div>';
     return;
   }
 
   const rows = items.map(d => {
     const pct = d.pct_refs !== null && d.pct_refs !== undefined ? parseFloat(d.pct_refs) : 0;
-    const color = pct >= 90 ? '#10b981' : pct >= 70 ? '#f59e0b' : '#ef4444';
-    const bg    = pct >= 90 ? 'rgba(16,185,129,.08)' : pct >= 70 ? 'rgba(245,158,11,.08)' : 'rgba(239,68,68,.08)';
+    const color = _svcColor(pct);
+    const bg    = pct >= 90 ? 'rgba(22,163,74,.1)' : pct >= 70 ? 'rgba(217,119,6,.1)' : 'rgba(220,38,38,.1)';
     return `
-      <tr style="border-bottom:1px solid rgba(255,255,255,.05);">
-        <td style="padding:6px 8px;font-size:9px;color:#e2e8f0;font-weight:600;">${esc(d.sucursal || 'N/A')}</td>
-        <td style="padding:6px 8px;font-size:9px;color:#94a3b8;text-align:right;">${d.total_refs ?? '--'}</td>
-        <td style="padding:6px 8px;font-size:9px;color:#94a3b8;text-align:right;">${d.refs_completas ?? '--'}</td>
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:6px 8px;font-size:9px;color:#0f172a;font-weight:600;">${esc(d.sucursal || 'N/A')}</td>
+        <td style="padding:6px 8px;font-size:9px;color:#475569;text-align:right;">${d.total_refs ?? '--'}</td>
+        <td style="padding:6px 8px;font-size:9px;color:#475569;text-align:right;">${d.refs_completas ?? '--'}</td>
         <td style="padding:6px 8px;text-align:right;">
           <span style="font-size:10px;font-weight:900;color:${color};background:${bg};padding:2px 6px;border-radius:4px;">${pct.toFixed(1)}%</span>
         </td>
@@ -1155,13 +1160,13 @@ function _renderSvcSucursal(data) {
   }).join('');
 
   wrap.innerHTML = `
-    <div style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">
+    <div style="font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">
       NS POR SUCURSAL (por SKU)
     </div>
     <div style="overflow-y:auto;max-height:148px;">
       <table style="width:100%;border-collapse:collapse;">
         <thead>
-          <tr style="border-bottom:1px solid rgba(255,255,255,.1);">
+          <tr style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;">
             <th style="padding:4px 8px;font-size:8px;color:#475569;text-align:left;font-weight:600;">SUCURSAL</th>
             <th style="padding:4px 8px;font-size:8px;color:#475569;text-align:right;font-weight:600;">SOL</th>
             <th style="padding:4px 8px;font-size:8px;color:#475569;text-align:right;font-weight:600;">DESP</th>
@@ -1183,7 +1188,7 @@ const _svcDiaLabelPlugin = {
         const val = ds.data[j];
         if (val == null) return;
         ctx.save();
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = '#0f172a';
         ctx.font = 'bold 10px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(parseFloat(val).toFixed(0) + '%', bar.x, bar.y - 5);
@@ -1196,23 +1201,23 @@ const _svcDiaLabelPlugin = {
 function _renderSvcDia(data){
   const labels=data.map(d=>{try{return new Date(d.fecha+'T00:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit'});}catch{return d.fecha;}});
   const vals=data.map(d=>parseFloat(d.pct_refs!=null?d.pct_refs:d.pct)||0);
-  const colors=vals.map(v=>v>=90?'rgba(16,185,129,.75)':v>=70?'rgba(249,115,22,.75)':'rgba(239,68,68,.75)');
+  const colors=vals.map(v=>_svcColor(v));
   const cfg={
     type:'bar',
     data:{labels,datasets:[
-      {label:'NS % SKUs',data:vals,backgroundColor:colors,borderColor:colors.map(c=>c.replace('.75','.95')),borderWidth:1,borderRadius:5},
-      {label:'Tendencia',data:vals,type:'line',borderColor:'#fbbf24',borderWidth:2,pointRadius:4,pointBackgroundColor:'#fbbf24',fill:false,tension:0.3,order:0},
-      {label:'Meta 90%',data:data.map(()=>90),type:'line',borderColor:'#10b981',borderWidth:1.5,borderDash:[4,4],pointRadius:0,fill:false,tension:0,_noLabel:true}
+      {label:'NS % SKUs',data:vals,backgroundColor:colors,borderColor:colors,borderWidth:1,borderRadius:5},
+      {label:'Tendencia',data:vals,type:'line',borderColor:'#d97706',borderWidth:2,pointRadius:4,pointBackgroundColor:'#d97706',fill:false,tension:0.3,order:0},
+      {label:'Meta 90%',data:data.map(()=>90),type:'line',borderColor:'#16a34a',borderWidth:1.5,borderDash:[4,4],pointRadius:0,fill:false,tension:0,_noLabel:true}
     ]},
     options:{
       responsive:true,maintainAspectRatio:false,
       plugins:{
-        legend:{display:true,position:'bottom',labels:{font:{size:9},color:'#94a3b8',boxWidth:10,padding:4,filter:i=>i.text!=='NS % SKUs'}},
+        legend:{display:true,position:'bottom',labels:{font:{size:9},color:'#475569',boxWidth:10,padding:4,filter:i=>i.text!=='NS % SKUs'}},
         tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${parseFloat(ctx.parsed.y).toFixed(1)}%`}}
       },
       scales:{
-        x:{ticks:{font:{size:9},color:'#94a3b8',maxRotation:0},grid:{display:false}},
-        y:{min:0,max:100,ticks:{font:{size:9},color:'#94a3b8',callback:v=>v+'%'},grid:{color:'rgba(71,85,105,.15)'}}
+        x:{ticks:{font:{size:9},color:'#475569',maxRotation:0},grid:{display:false}},
+        y:{min:0,max:100,ticks:{font:{size:9},color:'#475569',callback:v=>v+'%'},grid:{color:'rgba(226,232,240,0.8)'}}
       },
       animation:{duration:300}
     },
@@ -1224,21 +1229,17 @@ function _renderSvcDia(data){
 }
 
 function _renderSvcRef(data) {
-  // data = array de {fecha, total_refs, refs_completas, pct_refs}
   const dias = Array.isArray(data) ? data : [];
 
   const labels = dias.map(d => {
-    // Formato "08/07" para mostrar día/mes
-    const parts = d.fecha.split('-'); // YYYY-MM-DD
+    const parts = d.fecha.split('-');
     return `${parts[2]}/${parts[1]}`;
   });
 
   const pcts = dias.map(d => d.pct_refs !== null && d.pct_refs !== undefined ? parseFloat(d.pct_refs) : null);
   const refs = dias.map(d => `Sol:${d.total_refs} SKUs · Desp:${d.refs_completas}`);
 
-  const colors = pcts.map(p =>
-    p === null ? '#475569' : p >= 90 ? '#10b981' : p >= 70 ? '#f59e0b' : '#ef4444'
-  );
+  const colors = pcts.map(p => _svcColor(p));
 
   if (window._svcRefChart) window._svcRefChart.destroy();
   const ctx = document.getElementById('chart-svc-ref');
@@ -1264,7 +1265,7 @@ function _renderSvcRef(data) {
         title: {
           display: true,
           text: 'NS POR DÍA — % de SKUs despachados',
-          color: '#94a3b8',
+          color: '#475569',
           font: { size: 9, weight: '700' }
         },
         tooltip: {
@@ -1281,13 +1282,13 @@ function _renderSvcRef(data) {
           min: 0, max: 100,
           ticks: {
             font: { size: 8 },
-            color: '#64748b',
+            color: '#475569',
             callback: v => v + '%'
           },
-          grid: { color: 'rgba(255,255,255,0.05)' }
+          grid: { color: 'rgba(226,232,240,0.8)' }
         },
         x: {
-          ticks: { font: { size: 8 }, color: '#94a3b8' },
+          ticks: { font: { size: 8 }, color: '#475569' },
           grid: { display: false }
         }
       }
@@ -1303,7 +1304,7 @@ function _renderSvcAgotados(agotados){
     el.style.animation='none';
     return;
   }
-  const chips=agotados.map(a=>`<span style="display:inline-flex;align-items:center;background:#450a0a;border:1px solid #ef4444;color:#fca5a5;border-radius:6px;padding:3px 10px;font-size:11px;white-space:nowrap;flex-shrink:0;margin-right:8px;"><strong>${esc(a.nombre||a.producto_nombre||'')}</strong>&nbsp;&middot;&nbsp;Sol:&nbsp;${fmt(a.solicitado||0)}&nbsp;&middot;&nbsp;Sep:&nbsp;${fmt(a.separado||0)}</span>`).join('');
+  const chips=agotados.map(a=>`<span style="display:inline-flex;align-items:center;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:6px;padding:3px 10px;font-size:11px;white-space:nowrap;flex-shrink:0;margin-right:8px;"><strong>${esc(a.nombre||a.producto_nombre||'')}</strong>&nbsp;&middot;&nbsp;Sol:&nbsp;${fmt(a.solicitado||0)}&nbsp;&middot;&nbsp;Sep:&nbsp;${fmt(a.separado||0)}</span>`).join('');
   el.innerHTML=chips+chips;
   const speed=Math.max(20,agotados.length*4);
   el.style.animation='none';el.offsetWidth;
@@ -1315,7 +1316,7 @@ function _renderSvcMes(data) {
   const labels = items.map(d => d.mes_label || d.mes || '');
   const pcts   = items.map(d => d.pct_refs !== null && d.pct_refs !== undefined ? parseFloat(d.pct_refs) : 0);
   const refs   = items.map(d => `${d.refs_completas}/${d.total_refs} SKUs`);
-  const colors = pcts.map(p => p >= 90 ? '#10b981' : p >= 70 ? '#f59e0b' : '#ef4444');
+  const colors = pcts.map(p => _svcColor(p));
 
   if (window._svcMesChart) window._svcMesChart.destroy();
   const ctx = document.getElementById('chart-svc-mes');
@@ -1340,7 +1341,7 @@ function _renderSvcMes(data) {
         title: {
           display: true,
           text: 'NS MENSUAL — % SKUs despachados',
-          color: '#94a3b8',
+          color: '#475569',
           font: { size: 9, weight: '700' }
         },
         tooltip: {
@@ -1352,11 +1353,11 @@ function _renderSvcMes(data) {
       scales: {
         y: {
           min: 0, max: 100,
-          ticks: { font: { size: 8 }, color: '#64748b', callback: v => v + '%' },
-          grid: { color: 'rgba(255,255,255,0.05)' }
+          ticks: { font: { size: 8 }, color: '#475569', callback: v => v + '%' },
+          grid: { color: 'rgba(226,232,240,0.8)' }
         },
         x: {
-          ticks: { font: { size: 8 }, color: '#94a3b8' },
+          ticks: { font: { size: 8 }, color: '#475569' },
           grid: { display: false }
         }
       }
@@ -1365,7 +1366,6 @@ function _renderSvcMes(data) {
   _svcChartMes = window._svcMesChart;
 }
 
-// Estado vacío honesto para cuando el backend no responde — NUNCA simular cifras de negocio
 function _svcRenderSinDatos(){
   const elPct=document.getElementById('svc-pct-general');
   if(elPct){elPct.textContent='—%';elPct.style.color='';}
@@ -1390,26 +1390,28 @@ async function loadServicio(){
     _svcRenderSinDatos();
     return;
   }
-  // Totales generales — Nivel de Servicio real: ((solicitado - faltantes que
-  // afectan NS) / solicitado) * 100, calculado en el backend (mismo criterio
-  // que /api/dashboard/nivel-servicio). Ya no se promedia con % de referencias:
-  // son dos métricas distintas (unidades vs. SKUs) y mezclarlas 50/50 no tiene
-  // sustento estadístico.
+
   const g=d.general||{};
-  const pctGeneral=typeof g.pct==='number'?g.pct:(g.solicitado>0?Math.round(((g.solicitado-(g.faltantes_ns||0))/g.solicitado)*100):100);
-  const pctRefs=typeof g.pct_refs==='number'?g.pct_refs:0;
+  const pctGeneral=typeof g.pct==='number'?g.pct:100;
+  const pctRefs=typeof g.pct_refs==='number'?g.pct_refs:100;
   const pctColor=_svcColor(pctGeneral);
+  const refColor=_svcColor(pctRefs);
+
+  // Card 1: NS GENERAL POR UNIDADES
   const elPct=document.getElementById('svc-pct-general');
-  if(elPct){elPct.textContent=pctGeneral+'%';elPct.style.color=pctColor;elPct.title=g.pct_formula||'((solicitado - faltantes que afectan NS) / solicitado) * 100';}
+  if(elPct){elPct.textContent=pctGeneral+'%';elPct.style.color=pctColor;elPct.title=g.pct_formula||'';}
   const elDetail=document.getElementById('svc-pct-detail');
-  if(elDetail) elDetail.textContent=`Faltantes NS: ${fmt(g.faltantes_ns||0)} · Refs: ${pctRefs}%`;
+  if(elDetail) {
+    const digitExcl = g.digitacion_excluido ? fmt(g.digitacion_excluido) : 0;
+    elDetail.textContent = `Unidades | Excl. Digitación: ${digitExcl}`;
+  }
+
+  // Cards 2 & 3: UNIDADES SOLICITADAS VS SEPARADAS
   setText('svc-total-sol', g.solicitado != null ? fmt(g.solicitado) : '--');
   setText('svc-total-sep', g.separado   != null ? fmt(g.separado)   : '--');
   setText('tbadge-servicio',pctGeneral+'%');
 
-  // Tarjeta "Por Referencias"
-  const pctRef = typeof g.pct_refs === 'number' ? g.pct_refs : 0;
-  const refColor = _svcColor(pctRef);
+  // Card 4: NS REFERENCIAS (SKUs)
   const elRefsComp = document.getElementById('svc-refs-completas');
   const elPctRef   = document.getElementById('svc-pct-ref');
   if (elRefsComp) {
@@ -1417,19 +1419,13 @@ async function loadServicio(){
     elRefsComp.style.color = refColor;
   }
   setText('svc-refs-total', g.total_refs != null ? g.total_refs : '--');
-  if (elPctRef) { elPctRef.textContent = pctRef + '%'; elPctRef.style.color = refColor; }
+  if (elPctRef) { elPctRef.textContent = pctRefs + '% SKUs'; elPctRef.style.color = refColor; }
 
-  // Gráficos — antes ambos recibían el mismo d.por_dia sin recortar, así que
-  // "POR DÍA (últimos 7)" y "NS POR DÍA (%)" mostraban exactamente los mismos
-  // datos con solo el estilo distinto. Ahora el chart chico sí muestra
-  // únicamente los últimos 7 días (como dice su título) y el grande conserva
-  // el detalle completo del mes.
   if(Array.isArray(d.por_sucursal)&&d.por_sucursal.length) _renderSvcSucursal(d.por_sucursal);
   if(Array.isArray(d.por_dia)&&d.por_dia.length) _renderSvcDia(d.por_dia.slice(-7));
-  if(Array.isArray(d.por_dia)) _renderSvcRef(d.por_dia); // chart grande: NS por día (por SKU, mes completo)
+  if(Array.isArray(d.por_dia)) _renderSvcRef(d.por_dia);
   if(Array.isArray(d.por_mes)&&d.por_mes.length) _renderSvcMes(d.por_mes);
 
-  // Agotados con scroll
   if(Array.isArray(d.agotados)) _renderSvcAgotados(d.agotados);
   else _renderSvcAgotados([]);
 }
