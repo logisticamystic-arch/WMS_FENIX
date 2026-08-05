@@ -220,6 +220,10 @@
             <i class="fa-solid fa-rotate-left"></i><span>Devoluciones</span>
           </button>
 
+          <button class="nm-item" data-module="aprobaciones" onclick="WMS.nav('aprobaciones')">
+            <i class="fa-solid fa-stamp"></i><span>Aprobaciones</span>
+          </button>
+
           <button class="nm-item" data-module="inventario" onclick="WMS.nav('inventario')">
             <i class="fa-solid fa-clipboard-list"></i><span>Inventarios</span>
           </button>
@@ -1622,6 +1626,7 @@
         logistica:      'crossdock',
         rotacion:       'abc-xyz',
         rotulos:        'productos',
+        aprobaciones:   'todas',
       },
 
       // ── Navegación por módulos ────────────────────────────
@@ -1661,6 +1666,7 @@
           logistica:     'assets/js/desktop/logistica-avanzada.js',
           rotulos:       'assets/js/desktop/rotulos.js',
           devoluciones:  'assets/js/desktop/devoluciones.js',
+          aprobaciones:  'assets/js/desktop/aprobaciones.js',
           'consulta-rapida': 'assets/js/desktop/consulta-rapida.js',
           'trazabilidad':    'assets/js/desktop/trazabilidad.js',
           'chat-ia':         'assets/js/desktop/chat-ia.js',
@@ -1691,7 +1697,7 @@
         const curEl   = document.getElementById('bc-current');
         const backBtn = document.getElementById('btn-back-breadcrumb');
 
-        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', inventario:'Inventario', reportes:'Reportes', inteligencia:'Inteligencia ML', logistica:'Logística Pro', rotacion:'Rotación ML', rotulos:'Rótulos', devoluciones:'Devoluciones', 'consulta-rapida':'Consulta Rápida', trazabilidad:'Trazabilidad', 'chat-ia':'FENIX IA' };
+        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', inventario:'Inventario', reportes:'Reportes', inteligencia:'Inteligencia ML', logistica:'Logística Pro', rotacion:'Rotación ML', rotulos:'Rótulos', devoluciones:'Devoluciones', aprobaciones:'Aprobaciones', 'consulta-rapida':'Consulta Rápida', trazabilidad:'Trazabilidad', 'chat-ia':'FENIX IA' };
         modEl.textContent = labels[mod] || mod.toUpperCase();
 
         if (sub) {
@@ -1952,6 +1958,17 @@
               section: 'DEVOLUCIONES', items: [
                 { icon: 'fa-rotate-left',   label: 'Listado',          action: "WMS.nav('devoluciones','lista')"  },
                 { icon: 'fa-plus-circle',   label: 'Nueva Devolución', action: "WMS.nav('devoluciones','nueva')"  },
+                { icon: 'fa-stamp',         label: 'Pendientes Aprobación', action: "WMS.nav('aprobaciones','devoluciones')" },
+              ]
+            },
+          ],
+          aprobaciones: [
+            {
+              section: 'CENTRO DE APROBACIONES', items: [
+                { icon: 'fa-layer-group',          label: 'Todas las Pendientes',   action: "WMS.nav('aprobaciones','todas')"        },
+                { icon: 'fa-calendar-xmark',       label: 'Fechas de Vencimiento',  action: "WMS.nav('aprobaciones','vencimientos')" },
+                { icon: 'fa-location-crosshairs',  label: 'Ajustes x Ubicación',    action: "WMS.nav('aprobaciones','ajustes')"      },
+                { icon: 'fa-rotate-left',          label: 'Devoluciones Proveedor', action: "WMS.nav('aprobaciones','devoluciones')" },
               ]
             },
           ],
@@ -2032,8 +2049,8 @@
         });
         const sidebarContentEl = document.getElementById('sidebar-content');
         const sidebarTitleEl   = document.getElementById('sidebar-module-title');
-        const modIcons = { inicio:'fa-house', maestro:'fa-database', recepcion:'fa-truck-ramp-box', almacenamiento:'fa-warehouse', picking:'fa-boxes-stacked', despacho:'fa-truck-fast', inventario:'fa-clipboard-list', reportes:'fa-chart-column', inteligencia:'fa-brain', logistica:'fa-truck-fast', rotulos:'fa-barcode', devoluciones:'fa-rotate-left', 'consulta-rapida':'fa-magnifying-glass', trazabilidad:'fa-timeline', 'chat-ia':'fa-robot' };
-        const modLabels = { inicio:'INICIO', maestro:'MAESTROS', recepcion:'RECEPCIÓN & YMS', almacenamiento:'ALMACENAMIENTO', picking:'PICKING', despacho:'DESPACHO & TMS', inventario:'INVENTARIOS', reportes:'REPORTES', inteligencia:'INTELIGENCIA ML', logistica:'LOGÍSTICA PRO', rotulos:'RÓTULOS', devoluciones:'DEVOLUCIONES', 'consulta-rapida':'CONSULTA RÁPIDA', trazabilidad:'TRAZABILIDAD', 'chat-ia':'FENIX IA' };
+        const modIcons = { inicio:'fa-house', maestro:'fa-database', recepcion:'fa-truck-ramp-box', almacenamiento:'fa-warehouse', picking:'fa-boxes-stacked', despacho:'fa-truck-fast', inventario:'fa-clipboard-list', reportes:'fa-chart-column', inteligencia:'fa-brain', logistica:'fa-truck-fast', rotulos:'fa-barcode', devoluciones:'fa-rotate-left', aprobaciones:'fa-stamp', 'consulta-rapida':'fa-magnifying-glass', trazabilidad:'fa-timeline', 'chat-ia':'fa-robot' };
+        const modLabels = { inicio:'INICIO', maestro:'MAESTROS', recepcion:'RECEPCIÓN & YMS', almacenamiento:'ALMACENAMIENTO', picking:'PICKING', despacho:'DESPACHO & TMS', inventario:'INVENTARIOS', reportes:'REPORTES', inteligencia:'INTELIGENCIA ML', logistica:'LOGÍSTICA PRO', rotulos:'RÓTULOS', devoluciones:'DEVOLUCIONES', aprobaciones:'CENTRO DE APROBACIONES', 'consulta-rapida':'CONSULTA RÁPIDA', trazabilidad:'TRAZABILIDAD', 'chat-ia':'FENIX IA' };
         if (sidebarContentEl) sidebarContentEl.innerHTML = html;
         if (sidebarTitleEl) sidebarTitleEl.innerHTML = `<i class="fa-solid ${modIcons[module]||'fa-circle'}" style="margin-right:8px;opacity:.7"></i>${modLabels[module]||module.toUpperCase()}`;
       },
