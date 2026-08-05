@@ -1882,8 +1882,11 @@ class InventarioV2Controller extends BaseController
             ->where('producto_id',  $linea->producto_id)
             ->where('ubicacion_id', $linea->ubicacion_id);
 
-        if (!empty($linea->lote)) {
-            $invQuery->where('lote', $linea->lote);
+        $loteNorm = trim((string)$linea->lote);
+        if ($loteNorm !== '' && strtoupper($loteNorm) !== 'N/A') {
+            $invQuery->whereRaw("COALESCE(NULLIF(NULLIF(TRIM(lote), 'N/A'), 'n/a'), '') = ?", [$loteNorm]);
+        } else {
+            $invQuery->whereRaw("COALESCE(NULLIF(NULLIF(TRIM(lote), 'N/A'), 'n/a'), '') = ''");
         }
 
         if (!empty($linea->fecha_vencimiento)) {
@@ -2041,8 +2044,8 @@ class InventarioV2Controller extends BaseController
                     ->where('sesion_lineas.estado',    SesionLinea::ESTADO_ACTIVO)
                     ->whereRaw('sesion_lineas.producto_id  = inventarios.producto_id')
                     ->whereRaw('sesion_lineas.ubicacion_id = inventarios.ubicacion_id')
-                    // Comparación segura de lote nullable: NULL = NULL es TRUE aquí
-                    ->whereRaw('(sesion_lineas.lote = inventarios.lote OR (sesion_lineas.lote IS NULL AND inventarios.lote IS NULL))');
+                    // Comparación segura de lote normalizado (trata NULL, '', 'N/A' como idénticos)
+                    ->whereRaw("COALESCE(NULLIF(NULLIF(TRIM(sesion_lineas.lote), 'N/A'), 'n/a'), '') = COALESCE(NULLIF(NULLIF(TRIM(inventarios.lote), 'N/A'), 'n/a'), '')");
             })
             ->select('producto_id', 'ubicacion_id', 'lote', 'fecha_vencimiento', 'cantidad')
             ->get();
