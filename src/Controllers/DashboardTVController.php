@@ -381,49 +381,93 @@ class DashboardTVController extends BaseController
         $fecha  = !empty($params['fecha']) ? $params['fecha'] : date('Y-m-d');
 
         try {
-            // ── General: solicitado vs pickeado para la fecha dada ────────────────
+            // ── 1. Cargar faltantes por digitación (ERROR EN DIGITACION PEDIDO) ─────
+            $stmtFaltDigit = $pdo->prepare("
+                SELECT
+                    pf.orden_picking_id,
+                    pf.producto_id,
+                    COALESCE(SUM(pf.cantidad_faltante), 0) AS faltante_digitacion
+                FROM picking_faltantes pf
+                LEFT JOIN causales_novedad cn ON cn.id = pf.causal_id
+                JOIN orden_pickings op ON op.id = pf.orden_picking_id
+                WHERE pf.empresa_id   = :emp
+                  AND pf.sucursal_id  = :suc
+                  AND op.fecha_movimiento::date = :fecha
+                  AND (
+                      cn.nombre ILIKE '%DIGITACION%'
+                      OR pf.causa ILIKE '%DIGITACION%'
+                  )
+                GROUP BY pf.orden_picking_id, pf.producto_id
+            ");
+            $stmtFaltDigit->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':fecha' => $fecha]);
+            $rawDigit = $stmtFaltDigit->fetchAll(\PDO::FETCH_ASSOC);
+            $digitMap = [];
+            $digitGenTotal = 0;
+            foreach ($rawDigit as $d) {
+                $key = $d['orden_picking_id'] . '_' . $d['producto_id'];
+                $digitMap[$key] = (float)$d['faltante_digitacion'];
+                $digitGenTotal += (float)$d['faltante_digitacion'];
+            }
+
+            // ── 2. General: Unidades solicitadas válidas vs despachadas ────────────
             $stmtGen = $pdo->prepare("
                 SELECT
-                    COALESCE(SUM(pd.cantidad_solicitada), 0)  AS total_solicitado,
-                    COALESCE(SUM(pd.cantidad_pickeada),   0)  AS total_separado,
-                    COUNT(*) AS total_lineas,
-                    COUNT(CASE WHEN pd.cantidad_pickeada >= pd.cantidad_solicitada AND pd.cantidad_solicitada > 0 THEN 1 END) AS lineas_completas,
-                    COUNT(DISTINCT pd.producto_id) AS total_refs,
-                    COUNT(DISTINCT CASE WHEN pd.cantidad_pickeada >= pd.cantidad_solicitada THEN pd.producto_id END) AS refs_completas
+                    pd.orden_picking_id,
+                    pd.producto_id,
+                    COALESCE(SUM(pd.cantidad_solicitada), 0) AS total_solicitado,
+                    COALESCE(SUM(pd.cantidad_pickeada),   0) AS total_separado
                 FROM picking_detalles pd
                 JOIN orden_pickings op ON op.id = pd.orden_picking_id
                 WHERE op.empresa_id  = :emp
                   AND op.sucursal_id = :suc
                   AND op.estado NOT IN ('Anulado')
                   AND op.fecha_movimiento::date = :fecha
+                GROUP BY pd.orden_picking_id, pd.producto_id
             ");
             $stmtGen->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':fecha' => $fecha]);
-            $gen = $stmtGen->fetch(\PDO::FETCH_ASSOC) ?: [];
-            $solGen        = (float)($gen['total_solicitado'] ?? 0);
-            $sepGen        = (float)($gen['total_separado'] ?? 0);
-            $totalRefs     = (int)($gen['total_refs'] ?? 0);
-            $refsCompletas = (int)($gen['refs_completas'] ?? 0);
-            $pctRefs       = $totalRefs > 0 ? round($refsCompletas / $totalRefs * 100, 1) : 0;
+            $rawGen = $stmtGen->fetchAll(\PDO::FETCH_ASSOC);
 
-            // Nivel de servicio real: descuenta solo los faltantes cuya causal está
-            // marcada como afecta_nivel_servicio (misma regla que getNivelServicio()).
-            // Antes esta tarjeta usaba separado/solicitado sin filtrar causales.
-            $stmtFaltNs = $pdo->prepare("
-                SELECT COALESCE(SUM(pf.cantidad_faltante), 0) AS total
-                FROM picking_faltantes pf
-                JOIN causales_novedad cn ON cn.id = pf.causal_id
-                                        AND cn.afecta_nivel_servicio = TRUE
-                                        AND cn.empresa_id = :emp2
-                JOIN orden_pickings op ON op.id = pf.orden_picking_id
-                WHERE pf.empresa_id   = :emp
-                  AND pf.sucursal_id  = :suc
-                  AND op.fecha_movimiento::date = :fecha
-            ");
-            $stmtFaltNs->execute([':emp' => $empresaId, ':emp2' => $empresaId, ':suc' => $sucursalId, ':fecha' => $fecha]);
-            $faltantesNsGen = (float)($stmtFaltNs->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
-            $pctGen         = $solGen > 0 ? round((($solGen - $faltantesNsGen) / $solGen) * 100, 1) : 100.0;
+            $solGenBruto = 0;
+            $sepGen      = 0;
+            $refSolMap   = [];
+            $refSepMap   = [];
 
-            // ── Por sucursal (fecha dada) — por referencia/SKU ───────────────────
+            foreach ($rawGen as $g) {
+                $key = $g['orden_picking_id'] . '_' . $g['producto_id'];
+                $prodId = $g['producto_id'];
+                $sol = (float)$g['total_solicitado'];
+                $sep = (float)$g['total_separado'];
+                $digit = $digitMap[$key] ?? 0;
+
+                $solValida = max(0, $sol - $digit);
+
+                $solGenBruto += $sol;
+                $sepGen      += $sep;
+
+                if (!isset($refSolMap[$prodId])) {
+                    $refSolMap[$prodId] = 0;
+                    $refSepMap[$prodId] = 0;
+                }
+                $refSolMap[$prodId] += $solValida;
+                $refSepMap[$prodId] += $sep;
+            }
+
+            $solGen = max(0, $solGenBruto - $digitGenTotal);
+            $pctGen = $solGen > 0 ? round(($sepGen / $solGen) * 100, 1) : 100.0;
+
+            $totalRefs = 0;
+            $refsCompletas = 0;
+            foreach ($refSolMap as $prodId => $solVal) {
+                if ($solVal > 0) {
+                    $totalRefs++;
+                    if (($refSepMap[$prodId] ?? 0) >= $solVal) {
+                        $refsCompletas++;
+                    }
+                }
+            }
+            $pctRefs = $totalRefs > 0 ? round(($refsCompletas / $totalRefs) * 100, 1) : 100.0;
+
+            // ── Por sucursal (fecha dada) — por referencia/SKU válidos ───────────
             $stmtSuc = $pdo->prepare("
                 SELECT
                     COALESCE(op.sucursal_entrega, 'Sin sucursal') AS sucursal,
@@ -558,7 +602,7 @@ class DashboardTVController extends BaseController
                 ];
             }, $rawMes);
 
-            // ── Agotados del período: referencias con faltantes registrados ─────────
+            // ── Agotados del período: referencias con faltantes registrados (excluye digitación) ──
             $agotados = [];
             try {
                 $stmtAgo = $pdo->prepare("
@@ -570,6 +614,7 @@ class DashboardTVController extends BaseController
                     FROM picking_faltantes pf
                     JOIN productos pr ON pr.id = pf.producto_id
                     JOIN orden_pickings op_ago ON op_ago.id = pf.orden_picking_id
+                    LEFT JOIN causales_novedad cn ON cn.id = pf.causal_id
                     -- Excluir faltantes cuyo producto ya fue pickeado exitosamente después
                     LEFT JOIN picking_detalles pd_res ON (
                         pd_res.orden_picking_id = pf.orden_picking_id
@@ -581,6 +626,8 @@ class DashboardTVController extends BaseController
                       AND pf.sucursal_id = :suc
                       AND op_ago.fecha_movimiento::date = :fecha
                       AND pd_res.id IS NULL
+                      AND (cn.id IS NULL OR cn.nombre NOT ILIKE '%DIGITACION%')
+                      AND (pf.causa IS NULL OR pf.causa NOT ILIKE '%DIGITACION%')
                     GROUP BY pr.id, pr.nombre, pr.codigo_interno
                     ORDER BY solicitado DESC
                 ");
@@ -592,15 +639,21 @@ class DashboardTVController extends BaseController
 
             return $this->ok($response, [
                 'general'        => [
-                    'solicitado'     => $solGen,
-                    'separado'       => $sepGen,
-                    'faltantes_ns'   => $faltantesNsGen,
-                    'pct'            => $pctGen,
-                    'pct_formula'    => '((solicitado - faltantes_que_afectan_ns) / solicitado) * 100',
-                    'total_refs'     => $totalRefs,
-                    'refs_completas' => $refsCompletas,
-                    'pct_refs'       => $pctRefs,
+                    'solicitado'         => $solGen,
+                    'separado'           => $sepGen,
+                    'digitacion_excluido'=> $digitGenTotal,
+                    'pct'                => $pctGen,
+                    'pct_formula'        => '(separado / (solicitado - digitacion_excluido)) * 100',
+                    'total_refs'         => $totalRefs,
+                    'refs_completas'     => $refsCompletas,
+                    'pct_refs'           => $pctRefs,
                 ],
+                'por_sucursal'   => $porSucursal,
+                'por_dia'        => $porDia,
+                'por_referencia' => $porReferencia,
+                'por_mes'        => $porMes,
+                'agotados'       => $agotados,
+            ]);
                 'por_sucursal'   => $porSucursal,
                 'por_dia'        => $porDia,
                 'por_referencia' => $porReferencia,
