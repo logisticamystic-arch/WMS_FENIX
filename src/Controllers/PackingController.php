@@ -533,6 +533,55 @@ class PackingController extends BaseController
         // orden pendiente de la misma sucursal_entrega quedaba certificada "en
         // el papel" sin un solo registro en packing_items (causa confirmada de
         // remisiones con pedidos completos faltantes).
+        // ── Auto-empacar ítems si no estaban en packing_items ───────────────────
+        foreach ($ordenes as $o) {
+            $detalles = Capsule::table('picking_detalles')->where('orden_picking_id', $o->id)->where('cantidad_pickeada', '>', 0)->get();
+            if ($detalles->isEmpty()) continue;
+
+            $detalleIds = $detalles->pluck('id');
+            $totalPickeado = (float) $detalles->sum('cantidad_pickeada');
+            $totalEmpacado = (float) Capsule::table('packing_items')->whereIn('picking_detalle_id', $detalleIds)->sum('cantidad');
+
+            if (round($totalPickeado - $totalEmpacado, 3) > 0.001) {
+                $unidad = Capsule::table('packing_unidades')
+                    ->where('sesion_id', $sesion->id)
+                    ->first();
+
+                if (!$unidad) {
+                    $unidadId = Capsule::table('packing_unidades')->insertGetId([
+                        'sesion_id'      => $sesion->id,
+                        'empresa_id'     => $sesion->empresa_id,
+                        'sucursal_id'    => $sesion->sucursal_id,
+                        'numero_canasta' => 1,
+                        'codigo_barras'  => 'CAN-AUTO-' . $sesion->id . '-1',
+                        'tipo_empaque'   => 'Canasta',
+                        'estado'         => 'Cerrada',
+                        'created_at'     => date('Y-m-d H:i:s'),
+                        'updated_at'     => date('Y-m-d H:i:s')
+                    ]);
+                } else {
+                    $unidadId = $unidad->id;
+                }
+
+                foreach ($detalles as $det) {
+                    $empacadoActual = (float)Capsule::table('packing_items')->where('picking_detalle_id', $det->id)->sum('cantidad');
+                    $faltanteEmpaque = (float)$det->cantidad_pickeada - $empacadoActual;
+
+                    if ($faltanteEmpaque > 0.001) {
+                        Capsule::table('packing_items')->insert([
+                            'unidad_id'          => $unidadId,
+                            'picking_detalle_id' => $det->id,
+                            'producto_id'        => $det->producto_id,
+                            'lote'               => $det->lote,
+                            'fecha_vencimiento'  => $det->fecha_vencimiento,
+                            'separador_id'       => $o->auxiliar_id ?? $user->id,
+                            'cantidad'           => $faltanteEmpaque,
+                        ]);
+                    }
+                }
+            }
+        }
+
         $sinEmpacar = [];
         $ordenesValidas = $ordenes->filter(function ($o) use (&$sinEmpacar) {
             $detalles = Capsule::table('picking_detalles')->where('orden_picking_id', $o->id)->get();
