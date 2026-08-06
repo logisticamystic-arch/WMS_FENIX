@@ -1808,5 +1808,10 @@
     "mtime": 1785983280.8280349,
     "ast_hash": "351fd6b1a9a96ec011ab6a27bd536b60",
     "semantic_hash": ""
+  },
+  "database/migrations/130_unificar_unidades_caja_factor_udm.php": {
+    "mtime": 1786027705.3560355,
+    "ast_hash": "8a9640b38d096dd3fd7da53872c83d1a",
+    "semantic_hash": ""
   }
 }
