@@ -4669,7 +4669,7 @@ WMS_MODULES.picking = {
                       <th>Planilla</th>
                       <th>Producto</th>
                       <th style="text-align:center;">Solicitado (cj)</th>
-                      <th style="text-align:center;">Separado (UND/T)</th>
+                      <th style="text-align:center;">Separado (cj + sueltos)</th>
                       <th style="text-align:center;">Excedente Enviado de Más</th>
                     </tr>
                   </thead>
@@ -4681,6 +4681,8 @@ WMS_MODULES.picking = {
                       const excUnd = parseFloat(exc.excedente_unidades) || 0;
                       const excCj = upc > 1 ? Math.floor(excUnd / upc) : 0;
                       const excSaldos = upc > 1 ? (excUnd % upc) : excUnd;
+                      const pickCj = upc > 1 ? Math.floor(pickUnd / upc) : 0;
+                      const pickSaldos = upc > 1 ? (pickUnd % upc) : pickUnd;
                       return `
                       <tr>
                         <td style="white-space:nowrap;font-size:11px;">${WMS.formatDate((exc.fecha||'').slice(0,10))}</td>

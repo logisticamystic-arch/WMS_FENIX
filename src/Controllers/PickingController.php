@@ -7786,7 +7786,7 @@ class PickingController extends BaseController
             ->where('op.empresa_id', $empresaId)
             ->where(Capsule::raw("DATE(pd.created_at)"), '>=', $fIni)
             ->where(Capsule::raw("DATE(pd.created_at)"), '<=', $fFin)
-            ->whereRaw('pd.cantidad_pickeada > (pd.cantidad_solicitada * COALESCE(pr.unidades_caja, 1))')
+            ->whereRaw('FLOOR(pd.cantidad_pickeada / COALESCE(pr.unidades_caja,1)) > pd.cantidad_solicitada')
             ->select(
                 'pd.id',
                 'pd.created_at as fecha',
@@ -7799,7 +7799,9 @@ class PickingController extends BaseController
                 'pr.unidades_caja',
                 'pd.cantidad_solicitada',
                 'pd.cantidad_pickeada',
-                Capsule::raw('(pd.cantidad_pickeada - (pd.cantidad_solicitada * COALESCE(pr.unidades_caja, 1))) as excedente_unidades')
+                Capsule::raw('(pd.cantidad_pickeada - (pd.cantidad_solicitada * COALESCE(pr.unidades_caja, 1))) as excedente_unidades'),
+                Capsule::raw('FLOOR(pd.cantidad_pickeada / COALESCE(pr.unidades_caja,1)) - pd.cantidad_solicitada as excedente_cajas'),
+                Capsule::raw('MOD(pd.cantidad_pickeada, COALESCE(pr.unidades_caja,1)) as excedente_saldos')
             )
             ->orderBy('pd.created_at', 'desc');
 
