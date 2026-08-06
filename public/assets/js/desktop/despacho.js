@@ -3149,8 +3149,8 @@ WMS_MODULES.despacho = {
               <input type="number" id="pk-qty-${p.producto_id}" min="0.001" max="${p.pendiente}" step="0.001"
                 value="${p.pendiente}" style="width:88px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
               <button class="btn btn-primary btn-sm" style="font-size:11px;"
-                data-sesion="${sesionId}" data-producto="${p.producto_id}"
-                onclick="WMS_MODULES.despacho.agregarItemPacking(+this.dataset.sesion, +this.dataset.producto)">
+                data-sesion="${sesionId}" data-producto="${p.producto_id}" data-upc="${p.unidades_caja || 1}"
+                onclick="WMS_MODULES.despacho.agregarItemPacking(+this.dataset.sesion, +this.dataset.producto, +this.dataset.upc)">
                 <i class="fa-solid fa-plus"></i> Agregar
               </button>
             </div>
@@ -3332,21 +3332,52 @@ WMS_MODULES.despacho = {
     }
   },
 
-  async agregarItemPacking(sesionId, productoId) {
-    const qty = parseFloat(document.getElementById('pk-qty-' + productoId)?.value || 0);
-    if (!qty || qty <= 0) { WMS.toast('error', 'Ingrese una cantidad válida'); return; }
-    try {
-      const r = await API.post('/packing/sesion/' + sesionId + '/item', {
-        producto_id: productoId,
-        cantidad:    qty,
+  async agregarItemPacking(sesionId, productoId, upc) {
+    const qtyInput = parseFloat(document.getElementById('pk-qty-' + productoId)?.value || 0);
+    if (!qtyInput || qtyInput <= 0) { WMS.toast('error', 'Ingrese una cantidad válida'); return; }
+
+    const factor = parseInt(upc) || 1;
+    let payload;
+    if (factor <= 1) {
+      // Sin empaque: el campo único ya es la cantidad real, se manda tal cual.
+      payload = { producto_id: productoId, cantidad: qtyInput };
+    } else {
+      // Con empaque: se pide cajas+saldo por separado y el servidor recalcula
+      // el total — no se manda ya sumado por el cliente.
+      const sugCajas  = Math.floor(qtyInput / factor);
+      const sugSaldos = qtyInput - (sugCajas * factor);
+      const { value, isConfirmed } = await Swal.fire({
+        title: 'Cantidad a empacar',
+        html: `<label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">Cajas (${factor} und/caja):</label>
+               <input id="pk-item-cajas" type="number" min="0" step="1" value="${sugCajas}"
+                 class="swal2-input" style="margin:0 0 8px 0;width:100%;box-sizing:border-box;" oninput="WMS_MODULES.despacho._updPkItemTotal(${factor})">
+               <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;color:#d97706;">Saldo (unidades sueltas):</label>
+               <input id="pk-item-saldo" type="number" min="0" step="0.01" value="${sugSaldos}"
+                 class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" oninput="WMS_MODULES.despacho._updPkItemTotal(${factor})">
+               <p style="font-size:12px;margin-top:8px;">Total: <b id="pk-item-total">${WMS.formatNum(qtyInput)}</b> und</p>`,
+        showCancelButton: true,
+        confirmButtonText: '<i class="fa-solid fa-check"></i> Agregar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#0F4C81',
+        preConfirm: () => {
+          const cj = parseFloat(document.getElementById('pk-item-cajas')?.value);
+          const sl = parseFloat(document.getElementById('pk-item-saldo')?.value);
+          if (isNaN(cj) || cj < 0) { Swal.showValidationMessage('Cajas inválidas'); return false; }
+          if (isNaN(sl) || sl < 0) { Swal.showValidationMessage('Saldo inválido'); return false; }
+          if ((cj * factor + sl) <= 0) { Swal.showValidationMessage('El total debe ser mayor a 0'); return false; }
+          return { cajas: cj, saldo: sl };
+        }
       });
+      if (!isConfirmed || !value) return;
+      payload = { producto_id: productoId, cantidad: (value.cajas * factor) + value.saldo, cantidad_cajas: value.cajas, saldo: value.saldo };
+    }
+
+    try {
+      const r = await API.post('/packing/sesion/' + sesionId + '/item', payload);
       if (r.error) { WMS.toast('error', r.message); return; }
       if (r.status === 'pending_approval') {
         this._showExpiryWaitModal(r.aprobacion_id, r.message, async () => {
-          const r2 = await API.post('/packing/sesion/' + sesionId + '/item', {
-            producto_id: productoId,
-            cantidad:    qty,
-          });
+          const r2 = await API.post('/packing/sesion/' + sesionId + '/item', payload);
           if (!r2.error) { WMS.toast('success', 'Ítem agregado'); await this.show_packing(sesionId); }
           else WMS.toast('error', r2.message);
         });
@@ -3355,6 +3386,13 @@ WMS_MODULES.despacho = {
       WMS.toast('success', 'Ítem agregado');
       await this.show_packing(sesionId);
     } catch(e) { WMS.toast('error', 'Error al agregar'); }
+  },
+
+  _updPkItemTotal(factor) {
+    const cj = parseFloat(document.getElementById('pk-item-cajas')?.value || 0);
+    const sl = parseFloat(document.getElementById('pk-item-saldo')?.value || 0);
+    const totalEl = document.getElementById('pk-item-total');
+    if (totalEl) totalEl.textContent = WMS.formatNum((cj * factor) + sl);
   },
 
   async eliminarItemPacking(itemId) {
