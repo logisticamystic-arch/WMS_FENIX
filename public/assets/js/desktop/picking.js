@@ -4664,7 +4664,7 @@ WMS_MODULES.picking = {
                   <thead>
                     <tr style="background:#f8fafc;">
                       <th>Fecha</th>
-                      <th>Número de Pedido</th>
+                      <th>Pedido Cliente</th>
                       <th>Cliente / Sucursal</th>
                       <th>Planilla</th>
                       <th>Producto</th>
@@ -4678,26 +4678,26 @@ WMS_MODULES.picking = {
                       const upc = parseInt(exc.unidades_caja) || 1;
                       const solCj = parseFloat(exc.cantidad_solicitada) || 0;
                       const pickUnd = parseFloat(exc.cantidad_pickeada) || 0;
+                      const sepCj = Math.floor(pickUnd / upc);
+                      const sepSaldos = pickUnd % upc;
+                      const excCj = parseInt(exc.excedente_cajas) || 0;
+                      const excSaldos = parseInt(exc.excedente_saldos) || 0;
                       const excUnd = parseFloat(exc.excedente_unidades) || 0;
-                      const excCj = upc > 1 ? Math.floor(excUnd / upc) : 0;
-                      const excSaldos = upc > 1 ? (excUnd % upc) : excUnd;
-                      const pickCj = upc > 1 ? Math.floor(pickUnd / upc) : 0;
-                      const pickSaldos = upc > 1 ? (pickUnd % upc) : pickUnd;
                       return `
                       <tr>
                         <td style="white-space:nowrap;font-size:11px;">${WMS.formatDate((exc.fecha||'').slice(0,10))}</td>
-                        <td style="font-family:monospace;font-weight:700;color:#1e40af;">${WMS.esc(exc.numero_orden||'-')}</td>
+                        <td style="font-family:monospace;font-weight:700;color:#1e40af;">${WMS.esc(exc.numero_pedido||exc.numero_orden||'-')}</td>
                         <td style="font-weight:700;color:#1e293b;">${WMS.esc(exc.cliente||exc.sucursal_entrega||'-')}</td>
                         <td><span class="badge badge-secondary" style="font-size:10.5px;">${WMS.esc(exc.planilla_numero||'-')}</span></td>
                         <td>
                           <div style="font-weight:700;color:#1e293b;">${WMS.esc(exc.producto_nombre||'-')}</div>
                           <div style="font-size:10px;color:#64748b;font-family:monospace;">${WMS.esc(exc.producto_codigo||'')} (U/E: ${upc})</div>
                         </td>
-                        <td style="text-align:center;">${WMS.formatNum(solCj)} cj (${WMS.formatNum(solCj * upc)} und)</td>
-                        <td style="text-align:center;font-weight:700;color:#1e293b;">${WMS.formatNum(pickUnd)} und</td>
+                        <td style="text-align:center;font-weight:700;">${WMS.formatNum(solCj)} cj</td>
+                        <td style="text-align:center;font-weight:700;color:#1e293b;">${WMS.formatNum(sepCj)} cj + ${WMS.formatNum(sepSaldos)} sueltos</td>
                         <td style="text-align:center;">
                           <span class="badge" style="background:#dcfce7;color:#15803d;font-weight:800;font-size:11px;padding:3px 8px;border-radius:12px;">
-                            +${WMS.formatNum(excUnd)} und ${excCj > 0 ? `(${excCj} cj + ${excSaldos} sueltos)` : ''}
+                            +${excCj} cj + ${excSaldos} sueltos (${WMS.formatNum(excUnd)} und)
                           </span>
                         </td>
                       </tr>`;
@@ -4822,7 +4822,7 @@ WMS_MODULES.picking = {
 
       matriz[refKey].clientes[cliKey].solicitado += sol;
       matriz[refKey].clientes[cliKey].faltante   += falt;
-      if (r.numero_orden) matriz[refKey].clientes[cliKey].pedidos.add(r.numero_orden);
+      if (r.numero_pedido || r.numero_orden) matriz[refKey].clientes[cliKey].pedidos.add(r.numero_pedido || r.numero_orden);
       if (r.causa) matriz[refKey].clientes[cliKey].causa = r.causa;
     });
 
@@ -4926,12 +4926,12 @@ WMS_MODULES.picking = {
         <thead>
           <tr style="background:#065f46;">
             <th style="width:75px;">Fecha</th>
-            <th style="width:90px;">Número de Pedido</th>
+            <th style="width:90px;">Pedido Cliente</th>
             <th style="text-align:left;">Cliente / Sucursal</th>
             <th style="width:75px;">Código</th>
             <th style="text-align:left;">Producto</th>
-            <th style="width:85px;text-align:center;">Solicitado</th>
-            <th style="width:85px;text-align:center;">Enviado Real</th>
+            <th style="width:85px;text-align:center;">Solicitado (cj)</th>
+            <th style="width:110px;text-align:center;">Separado (cj + sueltos)</th>
             <th style="width:110px;text-align:center;background:#047857;">Excedente Enviado de Más</th>
           </tr>
         </thead>
@@ -4940,20 +4940,22 @@ WMS_MODULES.picking = {
             const upc = parseInt(exc.unidades_caja) || 1;
             const solCj = parseFloat(exc.cantidad_solicitada) || 0;
             const pickUnd = parseFloat(exc.cantidad_pickeada) || 0;
+            const sepCj = Math.floor(pickUnd / upc);
+            const sepSaldos = pickUnd % upc;
+            const excCj = parseInt(exc.excedente_cajas) || 0;
+            const excSaldos = parseInt(exc.excedente_saldos) || 0;
             const excUnd = parseFloat(exc.excedente_unidades) || 0;
-            const excCj = upc > 1 ? Math.floor(excUnd / upc) : 0;
-            const excSaldos = upc > 1 ? (excUnd % upc) : excUnd;
             return `
             <tr>
               <td style="text-align:center;">${(exc.fecha||'').slice(0,10)}</td>
-              <td style="font-family:monospace;font-weight:bold;color:#047857;text-align:center;">${WMS.esc(exc.numero_orden||'-')}</td>
+              <td style="font-family:monospace;font-weight:bold;color:#047857;text-align:center;">${WMS.esc(exc.numero_pedido||exc.numero_orden||'-')}</td>
               <td><b>${WMS.esc(exc.cliente||exc.sucursal_entrega||'-')}</b></td>
               <td style="font-family:monospace;text-align:center;">${WMS.esc(exc.producto_codigo||'-')}</td>
               <td><b>${WMS.esc(exc.producto_nombre||'-')}</b> (U/E: ${upc})</td>
-              <td style="text-align:center;">${WMS.formatNum(solCj)} cj (${WMS.formatNum(solCj * upc)} und)</td>
-              <td style="text-align:center;font-weight:bold;">${WMS.formatNum(pickUnd)} und</td>
+              <td style="text-align:center;font-weight:bold;">${WMS.formatNum(solCj)} cj</td>
+              <td style="text-align:center;font-weight:bold;">${WMS.formatNum(sepCj)} cj + ${WMS.formatNum(sepSaldos)} sueltos</td>
               <td style="text-align:center;background:#dcfce7;color:#15803d;font-weight:900;">
-                +${WMS.formatNum(excUnd)} und ${excCj > 0 ? `(${excCj} cj + ${excSaldos} sueltos)` : ''}
+                +${excCj} cj + ${excSaldos} sueltos (${WMS.formatNum(excUnd)} und)
               </td>
             </tr>`;
           }).join('') || '<tr><td colspan="8" style="text-align:center;padding:10px;color:#059669;">Sin excedentes de envío en el período</td></tr>'}
