@@ -960,8 +960,8 @@
     "semantic_hash": "e5d5c725bce4a13b3afbb9666f3fe95a"
   },
   "src/Controllers/PickingController.php": {
-    "mtime": 1785982536.231071,
-    "ast_hash": "209d64ffc37f1b90d9b3d2f0a880d762",
+    "mtime": 1785983482.9725683,
+    "ast_hash": "10c71753b077d5d76a48221ad1c51f4a",
     "semantic_hash": ""
   },
   "src/Controllers/PlanillaController.php": {
@@ -1802,6 +1802,11 @@
   "docs/AUDITORIA_INVENTARIO_2026-08-05.md": {
     "mtime": 1785971831.627714,
     "ast_hash": "00da1a9c5722e0c050ee2351a76a050e",
+    "semantic_hash": ""
+  },
+  "public/check_db.php": {
+    "mtime": 1785983280.8280349,
+    "ast_hash": "351fd6b1a9a96ec011ab6a27bd536b60",
     "semantic_hash": ""
   }
 }
