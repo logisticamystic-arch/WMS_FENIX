@@ -146,6 +146,23 @@ class DevolucionController extends BaseController
             return $this->error($response, 'Debe incluir al menos un producto a devolver');
         }
 
+        // Blindaje 2026-08-06: si la línea trae cantidad_cajas/cantidad_saldo, el
+        // servidor recalcula la cantidad real de unidades a partir de unidades_caja
+        // del producto — no confía en un total ya sumado por el cliente. Si no llegan
+        // esos campos (pantallas que aún no los envían), se usa 'cantidad' tal cual,
+        // sin cambiar el comportamiento actual.
+        $prodIdsUpc = array_values(array_unique(array_filter(array_map(
+            fn($d) => (int)($d['producto_id'] ?? 0), $detalles
+        ))));
+        $upcMap = $prodIdsUpc ? \App\Models\Producto::whereIn('id', $prodIdsUpc)->pluck('unidades_caja', 'id') : collect();
+        foreach ($detalles as &$d) {
+            if (isset($d['cantidad_cajas']) || isset($d['cantidad_saldo'])) {
+                $upc = max(1, (int)($upcMap[(int)($d['producto_id'] ?? 0)] ?? 1));
+                $d['cantidad'] = ((float)($d['cantidad_cajas'] ?? 0) * $upc) + (float)($d['cantidad_saldo'] ?? 0);
+            }
+        }
+        unset($d);
+
         // Validate causal_devolucion_id if provided
         $causalId = !empty($data['causal_devolucion_id']) ? (int)$data['causal_devolucion_id'] : null;
         if ($causalId !== null) {
