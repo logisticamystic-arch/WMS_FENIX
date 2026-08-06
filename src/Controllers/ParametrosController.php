@@ -594,9 +594,11 @@ class ParametrosController extends BaseController
              $prod->imagen_url = $data['imagen_url'] ?? null;
              $prod->stock_minimo = $data['stock_minimo'] ?? 0;
              $prod->unidades_caja = isset($data['unidades_caja']) ? (int)$data['unidades_caja'] : 1;
-             $prod->factor_udm = isset($data['factor_udm']) && $data['factor_udm'] !== '' && $data['factor_udm'] !== null
-                 ? (float)$data['factor_udm'] : null;
              $prod->unidad_contenido = !empty($data['unidad_contenido']) ? $data['unidad_contenido'] : null;
+             // factor_udm ya no se acepta como valor independiente del formulario: se deriva
+             // siempre de unidades_caja para que nunca pueda desincronizarse de él (auditoría
+             // 2026-08-06 — 176 productos tenían ambos campos con valores distintos).
+             $prod->factor_udm = $prod->unidad_contenido ? $prod->unidades_caja : null;
              $prod->activo = true;
 
              $advertencia = $this->detectarPosibleConfusionUnidadesCaja($prod->nombre, $prod->unidades_caja, $prod->factor_udm);
@@ -691,10 +693,12 @@ class ParametrosController extends BaseController
              if (isset($data['activo'])) $prod->activo = filter_var($data['activo'], FILTER_VALIDATE_BOOLEAN);
              if (isset($data['stock_minimo'])) $prod->stock_minimo = (float)$data['stock_minimo'];
              if (isset($data['unidades_caja'])) $prod->unidades_caja = (int)$data['unidades_caja'];
-             if (array_key_exists('factor_udm', $data))
-                 $prod->factor_udm = $data['factor_udm'] !== '' && $data['factor_udm'] !== null ? (float)$data['factor_udm'] : null;
              if (array_key_exists('unidad_contenido', $data))
                  $prod->unidad_contenido = !empty($data['unidad_contenido']) ? $data['unidad_contenido'] : null;
+             // factor_udm ya no se acepta como valor independiente del formulario: se deriva
+             // siempre de unidades_caja para que nunca pueda desincronizarse de él (auditoría
+             // 2026-08-06 — 176 productos tenían ambos campos con valores distintos).
+             $prod->factor_udm = $prod->unidad_contenido ? $prod->unidades_caja : null;
 
              $advertencia = $this->detectarPosibleConfusionUnidadesCaja($prod->nombre, $prod->unidades_caja, $prod->factor_udm);
 
