@@ -4141,8 +4141,10 @@ WMS_MODULES.picking = {
       const d   = r.data || {};
       const rows = Array.isArray(d.rows) ? d.rows : [];
       const sucs = Array.isArray(d.sucursales) ? d.sucursales : [];
+      const excedentes = Array.isArray(d.excedentes) ? d.excedentes : [];
 
       this._agotDataCache = rows;
+      this._excedentesDataCache = excedentes;
 
       const sucOptions = `<option value="">Todas las sucursales (${sucs.length})</option>` +
         sucs.map(s => `<option value="${WMS.esc(s)}"${f.sucursal===s?' selected':''}>${WMS.esc(s)}</option>`).join('');
@@ -4161,6 +4163,11 @@ WMS_MODULES.picking = {
         const cjF = parseFloat(r.cantidad_faltante) || 0;
         totalCajasFaltantes += cjF;
         totalUnidadesFaltantes += (cjF * upc);
+      });
+
+      let totalExcedenteUnidades = 0;
+      excedentes.forEach(e => {
+        totalExcedenteUnidades += parseFloat(e.excedente_unidades) || 0;
       });
 
       // ── CONSOLIDADO POR REFERENCIA ──
@@ -4216,6 +4223,7 @@ WMS_MODULES.picking = {
         if (esErrorDigitacion) porCliente[cliKey].errores_digitacion_cnt++;
 
         porCliente[cliKey].referencias.push({
+          pedido: r.numero_orden || '-',
           codigo: r.producto_codigo,
           nombre: r.producto_nombre,
           solicitado_cj: parseFloat(r.cantidad_solicitada)||0,
@@ -4260,8 +4268,6 @@ WMS_MODULES.picking = {
       const motivosArray = Object.values(porMotivo).sort((a,b) => b.total_casos - a.total_casos);
 
       // ── CÁLCULO ESTRICTO DE NIVEL DE SERVICIO (NS) EXCLUYENDO "ERROR EN DIGITACION PEDIDO" ──
-      // REGLA: Excluir del denominador de solicitados y numerador de separados cualquier
-      // ítem cuyo motivo contenga ERROR EN DIGITACION PEDIDO o responsabilidad de digitación.
       let globalRefSolicitadasValidas = 0;
       let globalRefSeparadasValidas   = 0;
       let globalUndSolicitadasValidas = 0;
@@ -4273,7 +4279,6 @@ WMS_MODULES.picking = {
         const causaUpper = (r.causa || '').toUpperCase();
         const esErrorDigitacion = causaUpper.includes('DIGITACI') || causaUpper.includes('DIGITACION') || causaUpper.includes('ERROR EN DIGITACION');
 
-        // SI ES ERROR EN DIGITACIÓN PEDIDO -> EXCLUIR POR COMPLETO DEL NIVEL DE SERVICIO
         if (esErrorDigitacion) return;
 
         const cliKey = r.cliente || r.sucursal_entrega || 'Cliente Desconocido';
@@ -4379,7 +4384,7 @@ WMS_MODULES.picking = {
           </div>
 
           <!-- TARJETAS METRICAS EJECUTIVAS (KPIS) -->
-          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
             <div class="card" style="padding:14px;border-left:4px solid #ef4444;background:#fff;">
               <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;">Registros Agotados</div>
               <div style="font-size:1.8rem;font-weight:900;color:#dc2626;margin-top:2px;">${totalRegistros}</div>
@@ -4405,9 +4410,9 @@ WMS_MODULES.picking = {
             </div>
 
             <div class="card" style="padding:14px;border-left:4px solid #10b981;background:#f0fdf4;">
-              <div style="font-size:10px;font-weight:700;color:#166534;text-transform:uppercase;">NS General (Unidades)</div>
-              <div style="font-size:1.8rem;font-weight:900;color:#15803d;margin-top:2px;">${globalNsUndPct.toFixed(1)}%</div>
-              <div style="font-size:9.5px;color:#166534;font-weight:600;">Excluye ERROR DIGITACIÓN</div>
+              <div style="font-size:10px;font-weight:700;color:#166534;text-transform:uppercase;">Envío de Más (Excedentes)</div>
+              <div style="font-size:1.8rem;font-weight:900;color:#059669;margin-top:2px;">+${WMS.formatNum(totalExcedenteUnidades)}</div>
+              <div style="font-size:10px;color:#047857;font-weight:700;">${excedentes.length} línea(s) con exceso</div>
             </div>
           </div>
 
@@ -4425,6 +4430,9 @@ WMS_MODULES.picking = {
               </button>
               <button class="agot-tab-btn" onclick="WMS_MODULES.picking._switchAgotTab('tab-ns', this)">
                 <i class="fa-solid fa-award" style="color:#10b981;"></i> Nivel de Servicio por Cliente (NS)
+              </button>
+              <button class="agot-tab-btn" onclick="WMS_MODULES.picking._switchAgotTab('tab-excedentes', this)">
+                <i class="fa-solid fa-truck-ramp-box" style="color:#059669;"></i> Envío de Más (Excedentes)
               </button>
               <button class="agot-tab-btn" onclick="WMS_MODULES.picking._switchAgotTab('tab-motivos', this)">
                 <i class="fa-solid fa-clipboard-question" style="color:#8b5cf6;"></i> Motivos y Responsables
@@ -4645,7 +4653,59 @@ WMS_MODULES.picking = {
               </div>
             </div>
 
-            <!-- CONTENIDO PESTAÑA 5: MOTIVOS Y RESPONSABLES -->
+            <!-- CONTENIDO PESTAÑA 5: ENVÍO DE MÁS (EXCEDENTES) -->
+            <div id="tab-excedentes" class="agot-tab-pane" style="display:none;padding:0;">
+              <div style="background:#f0fdf4;border-bottom:1px solid #bbf7d0;padding:10px 14px;font-size:11px;color:#166534;display:flex;align-items:center;gap:8px;">
+                <i class="fa-solid fa-circle-check" style="font-size:14px;color:#10b981;"></i>
+                <span><b>REGISTRO DE EXCEDENTES:</b> Muestra las líneas de despacho donde la cantidad total separada superó la cantidad solicitada (ej. envío de sueltos o saldo adicional).</span>
+              </div>
+              <div class="table-container" style="overflow-x:auto;">
+                <table class="erp-table" style="font-size:11.5px;">
+                  <thead>
+                    <tr style="background:#f8fafc;">
+                      <th>Fecha</th>
+                      <th>Número de Pedido</th>
+                      <th>Cliente / Sucursal</th>
+                      <th>Planilla</th>
+                      <th>Producto</th>
+                      <th style="text-align:center;">Solicitado (cj)</th>
+                      <th style="text-align:center;">Separado (UND/T)</th>
+                      <th style="text-align:center;">Excedente Enviado de Más</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${excedentes.map(exc => {
+                      const upc = parseInt(exc.unidades_caja) || 1;
+                      const solCj = parseFloat(exc.cantidad_solicitada) || 0;
+                      const pickUnd = parseFloat(exc.cantidad_pickeada) || 0;
+                      const excUnd = parseFloat(exc.excedente_unidades) || 0;
+                      const excCj = upc > 1 ? Math.floor(excUnd / upc) : 0;
+                      const excSaldos = upc > 1 ? (excUnd % upc) : excUnd;
+                      return `
+                      <tr>
+                        <td style="white-space:nowrap;font-size:11px;">${WMS.formatDate((exc.fecha||'').slice(0,10))}</td>
+                        <td style="font-family:monospace;font-weight:700;color:#1e40af;">${WMS.esc(exc.numero_orden||'-')}</td>
+                        <td style="font-weight:700;color:#1e293b;">${WMS.esc(exc.cliente||exc.sucursal_entrega||'-')}</td>
+                        <td><span class="badge badge-secondary" style="font-size:10.5px;">${WMS.esc(exc.planilla_numero||'-')}</span></td>
+                        <td>
+                          <div style="font-weight:700;color:#1e293b;">${WMS.esc(exc.producto_nombre||'-')}</div>
+                          <div style="font-size:10px;color:#64748b;font-family:monospace;">${WMS.esc(exc.producto_codigo||'')} (U/E: ${upc})</div>
+                        </td>
+                        <td style="text-align:center;">${WMS.formatNum(solCj)} cj (${WMS.formatNum(solCj * upc)} und)</td>
+                        <td style="text-align:center;font-weight:700;color:#1e293b;">${WMS.formatNum(pickUnd)} und</td>
+                        <td style="text-align:center;">
+                          <span class="badge" style="background:#dcfce7;color:#15803d;font-weight:800;font-size:11px;padding:3px 8px;border-radius:12px;">
+                            +${WMS.formatNum(excUnd)} und ${excCj > 0 ? `(${excCj} cj + ${excSaldos} sueltos)` : ''}
+                          </span>
+                        </td>
+                      </tr>`;
+                    }).join('') || '<tr><td colspan="8" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin excedentes de envío en el período seleccionado</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 6: MOTIVOS Y RESPONSABLES -->
             <div id="tab-motivos" class="agot-tab-pane" style="display:none;padding:16px;">
               <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:14px;">
                 ${motivosArray.map(m => {
@@ -4715,40 +4775,97 @@ WMS_MODULES.picking = {
 
   _exportAgotadosPDF() {
     const rows = this._agotDataCache || [];
+    const excedentes = this._excedentesDataCache || [];
     const f = this._agotFilters || {};
     const win = window.open('', '_blank');
     if (!win) { WMS.toast('warning', 'Permita ventanas emergentes para exportar en PDF'); return; }
 
+    // Extraer lista única de clientes/sucursales ordenados
+    const clientesList = [...new Set(rows.map(r => r.cliente || r.sucursal_entrega))].filter(Boolean).sort();
+
+    // Agrupar por producto/referencia para armar la matriz
+    const matriz = {};
+    rows.forEach(r => {
+      const refKey = r.producto_codigo || r.producto_nombre || 'Desconocido';
+      const cliKey = r.cliente || r.sucursal_entrega || 'Cliente Desconocido';
+      const upc    = parseInt(r.unidades_caja) || 1;
+
+      if (!matriz[refKey]) {
+        matriz[refKey] = {
+          codigo: r.producto_codigo || '-',
+          nombre: r.producto_nombre || '-',
+          unidades_caja: upc,
+          total_solicitado: 0,
+          total_faltante: 0,
+          total_faltante_und: 0,
+          clientes: {}
+        };
+      }
+
+      const sol  = parseFloat(r.cantidad_solicitada) || 0;
+      const falt = parseFloat(r.cantidad_faltante) || 0;
+
+      matriz[refKey].total_solicitado += sol;
+      matriz[refKey].total_faltante   += falt;
+      matriz[refKey].total_faltante_und += (falt * upc);
+
+      if (!matriz[refKey].clientes[cliKey]) {
+        matriz[refKey].clientes[cliKey] = {
+          solicitado: 0,
+          faltante: 0,
+          pedidos: new Set(),
+          causa: r.causa || 'Sin causa'
+        };
+      }
+
+      matriz[refKey].clientes[cliKey].solicitado += sol;
+      matriz[refKey].clientes[cliKey].faltante   += falt;
+      if (r.numero_orden) matriz[refKey].clientes[cliKey].pedidos.add(r.numero_orden);
+      if (r.causa) matriz[refKey].clientes[cliKey].causa = r.causa;
+    });
+
+    const matrizList = Object.values(matriz).sort((a,b) => b.total_faltante - a.total_faltante);
+
     let totalUndFalt = 0;
-    rows.forEach(r => { totalUndFalt += ((parseFloat(r.cantidad_faltante)||0) * (parseInt(r.unidades_caja)||1)); });
+    matrizList.forEach(m => { totalUndFalt += m.total_faltante_und; });
+
+    let totalUndExc = 0;
+    excedentes.forEach(e => { totalUndExc += parseFloat(e.excedente_unidades)||0; });
 
     const html = `
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>Reporte Ejecutivo de Agotados - WMS FENIX</title>
+      <title>Informe Consolidado de Agotados y Excedentes - WMS FENIX</title>
       <style>
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 20px; color: #1e293b; background: #fff; font-size: 11px; }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
-        .header h2 { margin: 0; color: #0f172a; font-size: 18px; text-transform: uppercase; }
-        .header p { margin: 2px 0 0 0; color: #64748b; font-size: 10px; }
-        .kpi-row { display: flex; gap: 10px; margin-bottom: 16px; }
-        .kpi-card { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; text-align: center; background: #f8fafc; }
-        .kpi-title { font-size: 9px; font-weight: bold; color: #64748b; text-transform: uppercase; }
-        .kpi-val { font-size: 16px; font-weight: 900; color: #dc2626; margin-top: 3px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th { background: #0f172a; color: #fff; text-align: left; padding: 6px 8px; font-size: 9.5px; text-transform: uppercase; }
-        td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; font-size: 10px; }
+        @page { size: landscape; margin: 8mm; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 15px; color: #1e293b; background: #fff; font-size: 10px; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; }
+        .header h2 { margin: 0; color: #0f172a; font-size: 16px; text-transform: uppercase; }
+        .header p { margin: 2px 0 0 0; color: #64748b; font-size: 9.5px; }
+        .sec-title { font-size: 12px; font-weight: 800; color: #0f172a; margin-top: 18px; margin-bottom: 6px; padding-bottom: 3px; border-bottom: 1.5px solid #cbd5e1; }
+        .kpi-row { display: flex; gap: 10px; margin-bottom: 12px; }
+        .kpi-card { flex: 1; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; text-align: center; background: #f8fafc; }
+        .kpi-title { font-size: 8.5px; font-weight: bold; color: #64748b; text-transform: uppercase; }
+        .kpi-val { font-size: 14px; font-weight: 900; color: #dc2626; margin-top: 2px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9px; }
+        th { background: #0f172a; color: #fff; text-align: center; padding: 6px 4px; font-size: 8.5px; text-transform: uppercase; border: 1px solid #334155; }
+        td { padding: 5px 4px; border: 1px solid #cbd5e1; vertical-align: top; }
         tr:nth-child(even) { background: #f8fafc; }
-        .footer { margin-top: 20px; text-align: right; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+        .cell-cli { font-size: 8.5px; text-align: center; }
+        .cell-cli .sol { color: #0284c7; font-weight: bold; }
+        .cell-cli .agot { color: #dc2626; font-weight: bold; }
+        .cell-cli .ped { color: #4338ca; font-weight: bold; font-family: monospace; display: block; font-size: 7.5px; margin-top: 1px; }
+        .cell-cli .causa { color: #64748b; font-style: italic; display: block; margin-top: 1px; font-size: 7.5px; }
+        .footer { margin-top: 18px; text-align: right; font-size: 8.5px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 6px; }
       </style>
     </head>
     <body>
       <div class="header">
         <div>
-          <h2>WMS FENIX · TABLERO DE AGOTADOS LOGÍSTICOS</h2>
-          <p>Informe Consolidado Ejecutivo · Período: ${f.ini || 'Inicio'} a ${f.fin || 'Hoy'}</p>
+          <h2>WMS FENIX · INFORME DE AGOTADOS Y EXCEDENTES DE ENVÍO</h2>
+          <p>Informe Consolidado General · Período: ${f.ini || 'Inicio'} a ${f.fin || 'Hoy'}</p>
         </div>
         <div style="text-align:right;">
           <strong>Generado:</strong> ${new Date().toLocaleString()}<br>
@@ -4757,42 +4874,91 @@ WMS_MODULES.picking = {
       </div>
 
       <div class="kpi-row">
-        <div class="kpi-card"><div class="kpi-title">Total Registros</div><div class="kpi-val">${rows.length}</div></div>
+        <div class="kpi-card"><div class="kpi-title">Referencias Agotadas</div><div class="kpi-val">${matrizList.length}</div></div>
+        <div class="kpi-card"><div class="kpi-title">Clientes Afectados</div><div class="kpi-val" style="color:#0284c7;">${clientesList.length}</div></div>
         <div class="kpi-card"><div class="kpi-title">Unidades Faltantes</div><div class="kpi-val">${WMS.formatNum(totalUndFalt)}</div></div>
-        <div class="kpi-card"><div class="kpi-title">Período</div><div class="kpi-val" style="color:#0284c7;font-size:12px;">${f.ini} / ${f.fin}</div></div>
+        <div class="kpi-card"><div class="kpi-title">Excedentes Enviados de Más</div><div class="kpi-val" style="color:#059669;">+${WMS.formatNum(totalUndExc)}</div></div>
       </div>
 
-      <h3>Detalle de Agotados y Faltantes</h3>
+      <div class="sec-title">1. Matriz de Agotados por Referencia vs Clientes</div>
       <table>
         <thead>
           <tr>
-            <th>Fecha</th>
-            <th>Cliente / Sucursal</th>
-            <th>Pedido</th>
-            <th>Código</th>
-            <th>Producto</th>
-            <th style="text-align:center;">Solicitado (cj)</th>
-            <th style="text-align:center;">Faltante (cj)</th>
-            <th>Causa / Motivo</th>
+            <th style="width:70px;">Código</th>
+            <th style="text-align:left;">Producto</th>
+            <th style="width:35px;">U/E</th>
+            <th style="width:55px;">Sol. (cj)</th>
+            <th style="width:55px;">Agot. (cj)</th>
+            <th style="width:65px;">Agot. (UND)</th>
+            ${clientesList.map(cli => `<th>${WMS.esc(cli)}<br><span style="font-weight:normal;font-size:7.5px;">Pedido · Sol / Agot (Causa)</span></th>`).join('')}
           </tr>
         </thead>
         <tbody>
-          ${rows.map(r => `
+          ${matrizList.map(m => `
             <tr>
-              <td>${(r.fecha||'').slice(0,10)}</td>
-              <td><b>${WMS.esc(r.cliente||r.sucursal_entrega||'-')}</b></td>
-              <td>${WMS.esc(r.numero_orden||'-')}</td>
-              <td>${WMS.esc(r.producto_codigo||'-')}</td>
-              <td>${WMS.esc(r.producto_nombre||'-')}</td>
-              <td style="text-align:center;">${WMS.formatNum(r.cantidad_solicitada)}</td>
-              <td style="text-align:center;color:#dc2626;font-weight:bold;">${WMS.formatNum(r.cantidad_faltante)}</td>
-              <td>${WMS.esc(r.causa||'-')}</td>
+              <td style="font-family:monospace;font-weight:bold;color:#1e40af;text-align:center;">${WMS.esc(m.codigo)}</td>
+              <td><b>${WMS.esc(m.nombre)}</b></td>
+              <td style="text-align:center;color:#64748b;">${m.unidades_caja}</td>
+              <td style="text-align:center;font-weight:bold;">${WMS.formatNum(m.total_solicitado)}</td>
+              <td style="text-align:center;color:#dc2626;font-weight:bold;">${WMS.formatNum(m.total_faltante)}</td>
+              <td style="text-align:center;color:#dc2626;font-weight:900;">${WMS.formatNum(m.total_faltante_und)}</td>
+              ${clientesList.map(cli => {
+                const cData = m.clientes[cli];
+                if (!cData) return `<td style="text-align:center;color:#94a3b8;">-</td>`;
+                const pedsStr = Array.from(cData.pedidos||[]).join(', ');
+                return `
+                  <td class="cell-cli">
+                    ${pedsStr ? `<span class="ped">Ped #${WMS.esc(pedsStr)}</span>` : ''}
+                    <span class="sol">Sol: ${WMS.formatNum(cData.solicitado)}</span> | 
+                    <span class="agot">Agot: ${WMS.formatNum(cData.faltante)}</span>
+                    <span class="causa">(${WMS.esc(cData.causa)})</span>
+                  </td>`;
+              }).join('')}
             </tr>
           `).join('')}
         </tbody>
       </table>
 
-      <div class="footer">WMS FENIX Logística Avanzada · Documento impreso automáticamente</div>
+      <div class="sec-title" style="margin-top:24px;color:#047857;border-bottom-color:#a7f3d0;">2. Sección de Envío de Más Inventario (Excedentes / Sobre-Separación)</div>
+      <table>
+        <thead>
+          <tr style="background:#065f46;">
+            <th style="width:75px;">Fecha</th>
+            <th style="width:90px;">Número de Pedido</th>
+            <th style="text-align:left;">Cliente / Sucursal</th>
+            <th style="width:75px;">Código</th>
+            <th style="text-align:left;">Producto</th>
+            <th style="width:85px;text-align:center;">Solicitado</th>
+            <th style="width:85px;text-align:center;">Enviado Real</th>
+            <th style="width:110px;text-align:center;background:#047857;">Excedente Enviado de Más</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${excedentes.map(exc => {
+            const upc = parseInt(exc.unidades_caja) || 1;
+            const solCj = parseFloat(exc.cantidad_solicitada) || 0;
+            const pickUnd = parseFloat(exc.cantidad_pickeada) || 0;
+            const excUnd = parseFloat(exc.excedente_unidades) || 0;
+            const excCj = upc > 1 ? Math.floor(excUnd / upc) : 0;
+            const excSaldos = upc > 1 ? (excUnd % upc) : excUnd;
+            return `
+            <tr>
+              <td style="text-align:center;">${(exc.fecha||'').slice(0,10)}</td>
+              <td style="font-family:monospace;font-weight:bold;color:#047857;text-align:center;">${WMS.esc(exc.numero_orden||'-')}</td>
+              <td><b>${WMS.esc(exc.cliente||exc.sucursal_entrega||'-')}</b></td>
+              <td style="font-family:monospace;text-align:center;">${WMS.esc(exc.producto_codigo||'-')}</td>
+              <td><b>${WMS.esc(exc.producto_nombre||'-')}</b> (U/E: ${upc})</td>
+              <td style="text-align:center;">${WMS.formatNum(solCj)} cj (${WMS.formatNum(solCj * upc)} und)</td>
+              <td style="text-align:center;font-weight:bold;">${WMS.formatNum(pickUnd)} und</td>
+              <td style="text-align:center;background:#dcfce7;color:#15803d;font-weight:900;">
+                +${WMS.formatNum(excUnd)} und ${excCj > 0 ? `(${excCj} cj + ${excSaldos} sueltos)` : ''}
+              </td>
+            </tr>`;
+          }).join('') || '<tr><td colspan="8" style="text-align:center;padding:10px;color:#059669;">Sin excedentes de envío en el período</td></tr>'}
+        </tbody>
+      </table>
+
+      <div class="footer">WMS FENIX Logística Avanzada · Informe Consolidado impreso automáticamente</div>
       <script>setTimeout(function(){ window.print(); }, 500);</script>
     </body>
     </html>

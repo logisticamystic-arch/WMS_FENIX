@@ -7692,32 +7692,130 @@ class PickingController extends BaseController
         if ($export) {
             $rows = $query->get();
             $bom  = "\xEF\xBB\xBF";
-            $csv  = $bom . "Fecha,Sucursal Entrega,Pedido,Planilla,Cliente,Código,Producto,Solicitado (cj),Faltante (cj),Causa\n";
             $esc  = fn($v) => '"' . str_replace('"', '""', (string)($v ?? '')) . '"';
-            foreach ($rows as $row) {
-                $csv .= implode(',', [
-                    $esc(substr($row->fecha, 0, 10)),
-                    $esc($row->sucursal_entrega),
-                    $esc($row->numero_orden),
-                    $esc($row->planilla_numero ?? $row->planilla_lote),
-                    $esc($row->cliente),
-                    $esc($row->producto_codigo),
-                    $esc($row->producto_nombre),
-                    (float)$row->cantidad_solicitada,
-                    (float)$row->cantidad_faltante,
-                    $esc($row->causa),
-                ]) . "\n";
+
+            // Extraer lista única de clientes/sucursales ordenados
+            $clientesList = $rows->map(fn($r) => $r->cliente ?: $r->sucursal_entrega)
+                ->filter()->unique()->sort()->values()->all();
+
+            // Agrupar por producto/referencia para armar la matriz
+            $matriz = [];
+            foreach ($rows as $r) {
+                $refKey = $r->producto_codigo ?: $r->producto_nombre;
+                $cliKey = $r->cliente ?: $r->sucursal_entrega ?: 'Cliente Desconocido';
+                $upc    = (int)($r->unidades_caja ?: 1);
+
+                if (!isset($matriz[$refKey])) {
+                    $matriz[$refKey] = [
+                        'codigo'            => $r->producto_codigo ?: '-',
+                        'nombre'            => $r->producto_nombre ?: '-',
+                        'unidades_caja'     => $upc,
+                        'total_solicitado'  => 0.0,
+                        'total_faltante'    => 0.0,
+                        'total_faltante_und'=> 0.0,
+                        'clientes'          => [],
+                    ];
+                }
+
+                $sol  = (float)$r->cantidad_solicitada;
+                $falt = (float)$r->cantidad_faltante;
+
+                $matriz[$refKey]['total_solicitado']   += $sol;
+                $matriz[$refKey]['total_faltante']     += $falt;
+                $matriz[$refKey]['total_faltante_und'] += ($falt * $upc);
+
+                if (!isset($matriz[$refKey]['clientes'][$cliKey])) {
+                    $matriz[$refKey]['clientes'][$cliKey] = [
+                        'solicitado' => 0.0,
+                        'faltante'   => 0.0,
+                        'causa'      => $r->causa ?: 'Sin causa',
+                    ];
+                } else {
+                    $matriz[$refKey]['clientes'][$cliKey]['solicitado'] += $sol;
+                    $matriz[$refKey]['clientes'][$cliKey]['faltante']   += $falt;
+                    if (!empty($r->causa)) {
+                        $matriz[$refKey]['clientes'][$cliKey]['causa'] = $r->causa;
+                    }
+                }
+            }
+
+            // Encabezados CSV
+            $headers = ['Código', 'Producto', 'Factor U/E', 'Total Solicitado (cj)', 'Total Agotado (cj)', 'Total Agotado (UND/TOTAL)'];
+            foreach ($clientesList as $cli) {
+                $headers[] = $cli . ' (Sol / Agot - Causa)';
+            }
+
+            $csv = $bom . implode(',', array_map($esc, $headers)) . "\n";
+
+            foreach ($matriz as $p) {
+                $line = [
+                    $esc($p['codigo']),
+                    $esc($p['nombre']),
+                    $p['unidades_caja'],
+                    $p['total_solicitado'],
+                    $p['total_faltante'],
+                    $p['total_faltante_und'],
+                ];
+
+                foreach ($clientesList as $cli) {
+                    if (isset($p['clientes'][$cli])) {
+                        $cData = $p['clientes'][$cli];
+                        $valStr = "Sol: " . $cData['solicitado'] . " cj | Agot: " . $cData['faltante'] . " cj (" . $cData['causa'] . ")";
+                        $line[] = $esc($valStr);
+                    } else {
+                        $line[] = $esc('-');
+                    }
+                }
+
+                $csv .= implode(',', $line) . "\n";
             }
 
             $body = $res->getBody();
             $body->write($csv);
             return $res
                 ->withHeader('Content-Type', 'text/csv; charset=utf-8')
-                ->withHeader('Content-Disposition', "attachment; filename=\"agotados_{$fIni}_{$fFin}.csv\"")
+                ->withHeader('Content-Disposition', "attachment; filename=\"matriz_agotados_{$fIni}_{$fFin}.csv\"")
                 ->withBody($body);
         }
 
         $rows = $query->limit(1000)->get();
+
+        $excedentesQuery = Capsule::table('picking_detalles as pd')
+            ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
+            ->join('productos as pr', 'pr.id', '=', 'pd.producto_id')
+            ->where('op.empresa_id', $empresaId)
+            ->where(Capsule::raw("DATE(pd.created_at)"), '>=', $fIni)
+            ->where(Capsule::raw("DATE(pd.created_at)"), '<=', $fFin)
+            ->whereRaw('pd.cantidad_pickeada > (pd.cantidad_solicitada * COALESCE(pr.unidades_caja, 1))')
+            ->select(
+                'pd.id',
+                'pd.created_at as fecha',
+                'op.sucursal_entrega',
+                'op.numero_orden',
+                'op.planilla_numero',
+                'op.cliente',
+                'pr.codigo_interno as producto_codigo',
+                'pr.nombre as producto_nombre',
+                'pr.unidades_caja',
+                'pd.cantidad_solicitada',
+                'pd.cantidad_pickeada',
+                Capsule::raw('(pd.cantidad_pickeada - (pd.cantidad_solicitada * COALESCE(pr.unidades_caja, 1))) as excedente_unidades')
+            )
+            ->orderBy('pd.created_at', 'desc');
+
+        if ($sucFiltro !== '') {
+            $excedentesQuery->where('op.sucursal_entrega', $sucFiltro);
+        }
+
+        if (strlen($refQ) >= 2) {
+            $term = '%' . $refQ . '%';
+            $excedentesQuery->where(function ($q) use ($like, $term) {
+                $q->where('pr.nombre',          $like, $term)
+                  ->orWhere('pr.codigo_interno', $like, $term);
+            });
+        }
+
+        $excedentesRows = $excedentesQuery->limit(500)->get();
 
         $sucursales = Capsule::table('picking_faltantes as pf')
             ->join('orden_pickings as op', 'op.id', '=', 'pf.orden_picking_id')
@@ -7731,6 +7829,7 @@ class PickingController extends BaseController
 
         return $this->ok($res, [
             'rows'       => $rows,
+            'excedentes' => $excedentesRows,
             'total'      => $rows->count(),
             'sucursales' => $sucursales,
         ]);
