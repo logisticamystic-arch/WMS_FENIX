@@ -942,6 +942,20 @@ class PackingController extends BaseController
             return $this->error($res, 'Solo se pueden cancelar sesiones en proceso o completadas', 409);
         }
 
+        // Si la sesión ya fue certificada, no permitir cancelarla (y borrar la evidencia
+        // de empaque) cuando alguno de sus pedidos ya salió a despacho o fue entregado —
+        // en ese punto ya no hay forma de recuperar qué se empacó realmente.
+        if ($sesion->estado === 'Completada') {
+            $yaDespachado = OrdenPicking::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->where('sucursal_entrega', $sesion->sucursal_entrega)
+                ->whereNotNull('estado_despacho')
+                ->exists();
+            if ($yaDespachado) {
+                return $this->error($res, 'No se puede cancelar: hay pedidos de esta sesión ya despachados/entregados. Use el reproceso de certificación en su lugar.', 409);
+            }
+        }
+
         return Capsule::transaction(function () use ($sesion, $user, $res) {
             $unidadIds = PackingUnidad::where('sesion_id', $sesion->id)->pluck('id')->toArray();
             if (!empty($unidadIds)) {

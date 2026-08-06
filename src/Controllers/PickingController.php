@@ -5498,27 +5498,23 @@ class PickingController extends BaseController
             }
 
             // Procesar nuevas líneas a agregar
-            if (!empty($nuevasLineas)) {
-                if (true) {
-                    foreach ($nuevasLineas as $nl) {
-                        $prodId = (int)($nl['producto_id'] ?? 0);
-                        $cant   = (float)($nl['cantidad_solicitada'] ?? 0);
-                        if ($prodId <= 0 || $cant <= 0) continue;
-                        $prod = Producto::where('empresa_id', $empresaId)->find($prodId);
-                        if (!$prod) continue;
+            foreach ($nuevasLineas as $nl) {
+                $prodId = (int)($nl['producto_id'] ?? 0);
+                $cant   = (float)($nl['cantidad_solicitada'] ?? 0);
+                if ($prodId <= 0 || $cant <= 0) continue;
+                $prod = Producto::where('empresa_id', $empresaId)->find($prodId);
+                if (!$prod) continue;
 
-                        PickingDetalle::create([
-                            'orden_picking_id'    => $orden->id,
-                            'producto_id'         => $prod->id,
-                            'cantidad_solicitada' => $cant,
-                            'cantidad_pickeada'   => 0,
-                            'devolucion_qty'      => 0,
-                            'estado'              => 'Pendiente',
-                            'ambiente'            => $this->_clasificarAmbiente($prod),
-                            'costo_unitario'      => $prod->costo_unitario ?? $prod->precio_compra ?? 0,
-                        ]);
-                    }
-                }
+                PickingDetalle::create([
+                    'orden_picking_id'    => $orden->id,
+                    'producto_id'         => $prod->id,
+                    'cantidad_solicitada' => $cant,
+                    'cantidad_pickeada'   => 0,
+                    'devolucion_qty'      => 0,
+                    'estado'              => 'Pendiente',
+                    'ambiente'            => $this->_clasificarAmbiente($prod),
+                    'costo_unitario'      => $prod->costo_unitario ?? $prod->precio_compra ?? 0,
+                ]);
             }
         });
 
