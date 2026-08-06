@@ -5395,6 +5395,7 @@ class PickingController extends BaseController
     public function guardarObservacionOrden(Request $r, Response $res): Response
     {
         $user      = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
         $body      = $r->getParsedBody() ?? [];
 
         $pedido        = trim($body['pedido_numero'] ?? $body['pedido'] ?? $body['planilla_numero'] ?? '');
@@ -5405,6 +5406,7 @@ class PickingController extends BaseController
         }
 
         $affected = Capsule::table('orden_pickings')
+            ->where('empresa_id', $empresaId)
             ->where(function($q) use ($pedido) {
                 $q->where('numero_pedido', $pedido)
                   ->orWhere('numero_factura', $pedido)
