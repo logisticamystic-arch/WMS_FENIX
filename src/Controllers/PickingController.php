@@ -4257,9 +4257,7 @@ class PickingController extends BaseController
 
         // Todos los detalles de un confirmarConsolidado son del mismo producto → mismo upc/factor.
         $prodFirst = $detalles->first()?->producto;
-        $upcGlobal = (isset($prodFirst->factor_udm) && (float)$prodFirst->factor_udm > 0)
-            ? (float)$prodFirst->factor_udm
-            : max(1, (float)($prodFirst->unidades_caja ?? 1));
+        $upcGlobal = max(1, (float)($prodFirst->unidades_caja ?? 1));
 
         // BUG CORREGIDO: este bloque asumía que 'cantidad_tomada' siempre llegaba en CAJAS
         // y lo multiplicaba por upc. Pero el modal de escritorio (picking.js:_dlgConfirmarLinea,
@@ -4280,9 +4278,7 @@ class PickingController extends BaseController
         $lastDetIndex = count($detalles) - 1;
         
         foreach ($detalles as $idx => $det) {
-            $upc = (isset($det->producto->factor_udm) && (float)$det->producto->factor_udm > 0)
-                ? (float)$det->producto->factor_udm
-                : max(1, (float)($det->producto->unidades_caja ?? 1));
+            $upc = max(1, (float)($det->producto->unidades_caja ?? 1));
             $necesitaUnd  = (float)$det->cantidad_solicitada * $upc; // solicitada en CAJAS → UNIDADES
             $tomar        = min($restante, $necesitaUnd);             // UNIDADES vs UNIDADES ✓
             
