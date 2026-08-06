@@ -54,6 +54,7 @@
   "52": "Anomaly Detection Controller",
   "53": "Replenishment & Notifications",
   "54": "TMS Integration Controller",
+  "55": "UbicacionesController",
   "56": "Inventory Adjustment Model",
   "57": "ML Anomaly Detection",
   "58": "Company Management UI",
@@ -328,11 +329,8 @@
   "327": "SesionInventario",
   "328": "InvGeneralEvento",
   "329": "BloqueoController",
-  "330": ".__invoke",
   "332": "TV Dashboard 360 Design Doc",
   "333": "129_fix_factor_udm_masivo_maestro.php",
-  "334": "TenantScoped.php",
-  "335": "PermisoPersonalController",
   "336": ".logSlowRequest",
   "338": "📦 INVENTARIO Y MOVIMIENTOS - REGLA SAGRADA DE FORMULACIÓN"
 }
