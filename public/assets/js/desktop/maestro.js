@@ -1012,13 +1012,9 @@ WMS_MODULES.maestro = {
               <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.0001" value="0.0000"></div>
 
               <div class="form-group">
-                <label class="form-label" style="color:#7c3aed;font-weight:700;">FACTOR U/E <span style="font-size:10px;color:#94a3b8;">(cant. por unidad)</span></label>
-                <input id="f-pfudm" class="form-control" type="number" step="0.0001" min="0" placeholder="Ej: 3000 (para 3000g/u)">
-              </div>
-              <div class="form-group">
-                <label class="form-label" style="color:#7c3aed;font-weight:700;">UNIDAD CONTENIDO <span style="font-size:10px;color:#94a3b8;">(GR, ML, LT…)</span></label>
+                <label class="form-label" style="color:#7c3aed;font-weight:700;">UNIDAD DE CONTENIDO <span style="font-size:10px;color:#94a3b8;">(si UND/CAJA es un peso/volumen, ej. GR)</span></label>
                 <select id="f-pucont" class="form-control">
-                  <option value="">-- Sin U/E --</option>
+                  <option value="">-- No aplica --</option>
                   <option>GR</option><option>KG</option><option>ML</option><option>LT</option><option>CM</option><option>MT</option>
                 </select>
               </div>
@@ -1524,7 +1520,6 @@ WMS_MODULES.maestro = {
       volumen_unitario:    parseVal(document.getElementById('f-pvol')?.value),
       stock_minimo:        parseVal(document.getElementById('f-pmin')?.value),
       unidades_caja:       parseInt(document.getElementById('f-puxc')?.value || 1),
-      factor_udm:          parseVal(document.getElementById('f-pfudm')?.value) || null,
       unidad_contenido:    document.getElementById('f-pucont')?.value || null,
       maneja_lotes:        document.getElementById('f-pmlot')?.checked ? 1 : 0,
       controla_vencimiento: document.getElementById('f-pcvenc')?.checked ? 1 : 0
@@ -1573,13 +1568,9 @@ WMS_MODULES.maestro = {
           <div class="form-group"><label class="form-label">VOLUMEN (m³)</label><input id="f-pvol" class="form-control" type="number" step="0.001" value="${p.volumen_unitario || ''}"></div>
           <div class="form-group"><label class="form-label">UND/CAJA (unidades por caja)</label><input id="f-puxc" class="form-control" type="number" value="${p.unidades_caja || 1}" min="1"></div>
           <div class="form-group">
-            <label class="form-label" style="color:#7c3aed;font-weight:700;">FACTOR U/E <span style="font-size:10px;color:#94a3b8;">(cant. por unidad)</span></label>
-            <input id="f-pfudm" class="form-control" type="number" step="0.0001" min="0" value="${p.factor_udm || ''}" placeholder="Ej: 3000">
-          </div>
-          <div class="form-group">
-            <label class="form-label" style="color:#7c3aed;font-weight:700;">UNIDAD CONTENIDO</label>
+            <label class="form-label" style="color:#7c3aed;font-weight:700;">UNIDAD DE CONTENIDO <span style="font-size:10px;color:#94a3b8;">(si UND/CAJA es un peso/volumen, ej. GR)</span></label>
             <select id="f-pucont" class="form-control">
-              <option value="">-- Sin U/E --</option>
+              <option value="">-- No aplica --</option>
               ${['GR','KG','ML','LT','CM','MT'].map(u => `<option ${p.unidad_contenido === u ? 'selected' : ''}>${u}</option>`).join('')}
             </select>
           </div>
