@@ -4021,7 +4021,7 @@ class PickingController extends BaseController
                     $parts = explode('/', $it->ubicacion_codigo);
                     $it->ubicacion_codigo = end($parts);
                 }
-                $factor = (float)($it->factor_udm ?? 0) > 0 ? (float)$it->factor_udm : (int)($it->unidades_caja ?: 0);
+                $factor = (int)($it->unidades_caja ?: 0);
                 if ($factor <= 1) {
                     // Sin empaque definido: todo se muestra como unidades sueltas
                     $it->cajas = 0;
