@@ -1,16 +1,16 @@
 # Graph Report - WMS_FENIX  (2026-08-06)
 
 ## Corpus Check
-- 341 files · ~845,400 words
+- 342 files · ~845,600 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2770 nodes · 5439 edges · 339 communities (254 shown, 85 thin omitted)
+- 2771 nodes · 5439 edges · 340 communities (255 shown, 85 thin omitted)
 - Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 319 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `dd40157a`
+- Built from commit: `5b9c6f69`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -241,7 +241,7 @@
 ## Hyperedges (group relationships)
 - **Packing Session Data Model** — concept_packing_sesiones, concept_packing_unidades, concept_packing_items, concept_picking_detalles [EXTRACTED 0.85]
 
-## Communities (339 total, 85 thin omitted)
+## Communities (340 total, 85 thin omitted)
 
 ### Community 0 - "Picking Order Management"
 Cohesion: 0.04
@@ -702,11 +702,11 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `Traspaso` to `OutboundController`, `Packing & Expiry Control`, `Receiving Controller`, `MovimientoInventario`, `Base Controller Utilities`, `Dispatch Controller`, `Tenant Context & Middleware`, `Yard Management Controller`, `ML Expiry Prediction`, `Sucursal`, `Despacho`, `Miscellaneous Items Controller`, `BloqueoController`, `Replenishment & Notifications`, `OrdenCompraDetalle`, `MovimientoInventario`, `TV Picking Dashboard`, `CacheHelper`, `InvGeneralEvento`, `SesionAsignacion`, `Picking TV Dashboard`, `.__invoke`, `SesionAsignacion`?**
-  _High betweenness centrality (0.022) - this node is a cross-community bridge._
+  _High betweenness centrality (0.021) - this node is a cross-community bridge._
 - **Why does `Producto` connect `Picking TV Dashboard` to `SesionAsignacion`, `RecepcionDetalle`, `BloqueoController`, `OrdenCompraDetalle`, `Traspaso`, `TV Picking Dashboard`, `Tenant Context & Middleware`?**
   _High betweenness centrality (0.015) - this node is a cross-community bridge._
-- **Why does `Despacho` connect `Dispatch Controller` to `Cross-Dock Operations`, `Traspaso`, `TV Picking Dashboard`?**
-  _High betweenness centrality (0.008) - this node is a cross-community bridge._
+- **Why does `Ubicacion` connect `TV Picking Dashboard` to `Picking TV Dashboard`, `Traspaso`, `Sucursal`, `Yard Management Controller`?**
+  _High betweenness centrality (0.009) - this node is a cross-community bridge._
 - **Are the 132 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
   _`date` has 132 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `Reglas Clave:`, `1. Desglose y Equivalencia Inequívoca`, `2. Presentación en Pantallas y Modales de Confirmación` to the rest of the system?**
