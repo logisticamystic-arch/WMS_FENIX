@@ -5445,6 +5445,23 @@ class PickingController extends BaseController
         }
 
         Capsule::transaction(function() use ($empresaId, $target, $sucursal, $observaciones, $detalles, $nuevasLineas) {
+            // Resolver la orden UNA sola vez, acotada a la empresa del usuario —
+            // toda operación posterior (update de cabecera, detalles, nuevas líneas)
+            // se restringe a esta orden para evitar editar/borrar datos de otra empresa.
+            $orden = OrdenPicking::where('empresa_id', $empresaId)
+                ->where(function($q) use ($target) {
+                    $q->where('id', is_numeric($target) ? (int)$target : 0)
+                      ->orWhere('numero_orden', $target)
+                      ->orWhere('planilla_numero', $target)
+                      ->orWhere('numero_pedido', $target)
+                      ->orWhere('numero_factura', $target);
+                })
+                ->first();
+
+            if (!$orden) {
+                throw new \RuntimeException('Pedido no encontrado en esta empresa');
+            }
+
             $updateOrder = ['updated_at' => date('Y-m-d H:i:s')];
             if ($sucursal !== null && $sucursal !== '') {
                 $updateOrder['sucursal_entrega'] = $sucursal;
@@ -5454,48 +5471,35 @@ class PickingController extends BaseController
                 $updateOrder['observaciones'] = $observaciones !== '' ? $observaciones : null;
             }
 
-            Capsule::table('orden_pickings')
-                ->where(function($q) use ($target) {
-                    $q->where('id', is_numeric($target) ? (int)$target : 0)
-                      ->orWhere('numero_orden', $target)
-                      ->orWhere('planilla_numero', $target)
-                      ->orWhere('numero_pedido', $target)
-                      ->orWhere('numero_factura', $target);
-                })
-                ->update($updateOrder);
+            Capsule::table('orden_pickings')->where('id', $orden->id)->update($updateOrder);
 
-            // Procesar líneas existentes
+            // Procesar líneas existentes — siempre acotadas a esta orden (ya validada por empresa_id)
             foreach ($detalles as $det) {
                 $detId = (int)($det['id'] ?? 0);
                 if ($detId <= 0) continue;
                 if (!empty($det['eliminar'])) {
-                    Capsule::table('picking_detalles')->where('id', $detId)->delete();
+                    Capsule::table('picking_detalles')
+                        ->where('id', $detId)->where('orden_picking_id', $orden->id)
+                        ->delete();
                     continue;
                 }
                 $updDet = ['updated_at' => date('Y-m-d H:i:s')];
                 if (isset($det['cantidad_solicitada']) && (float)$det['cantidad_solicitada'] >= 0) {
                     $updDet['cantidad_solicitada'] = (float)$det['cantidad_solicitada'];
                 }
-                if (isset($det['cantidad_pickeada']) && (float)$det['cantidad_pickeada'] >= 0) {
-                    $updDet['cantidad_pickeada'] = (float)$det['cantidad_pickeada'];
-                }
+                // cantidad_pickeada NUNCA se acepta aquí: solo debe cambiar vía la lógica
+                // de picking/reversión (confirmLine/eliminar), que mantiene sincronizados
+                // inventario y kardex. Escribirla desde este endpoint rompe esa garantía.
                 if (count($updDet) > 1) {
-                    Capsule::table('picking_detalles')->where('id', $detId)->update($updDet);
+                    Capsule::table('picking_detalles')
+                        ->where('id', $detId)->where('orden_picking_id', $orden->id)
+                        ->update($updDet);
                 }
             }
 
             // Procesar nuevas líneas a agregar
             if (!empty($nuevasLineas)) {
-                $orden = OrdenPicking::where('empresa_id', $empresaId)
-                    ->where(function($q) use ($target) {
-                        $q->where('id', is_numeric($target) ? (int)$target : 0)
-                          ->orWhere('numero_orden', $target)
-                          ->orWhere('planilla_numero', $target)
-                          ->orWhere('numero_pedido', $target);
-                    })
-                    ->first();
-
-                if ($orden) {
+                if (true) {
                     foreach ($nuevasLineas as $nl) {
                         $prodId = (int)($nl['producto_id'] ?? 0);
                         $cant   = (float)($nl['cantidad_solicitada'] ?? 0);
