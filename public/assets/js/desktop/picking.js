@@ -1362,26 +1362,76 @@ WMS_MODULES.picking = {
   },
 
   async _dlgConfirmarLinea(lineaId, nombre, cantSol, upc) {
+    const factor = parseInt(upc) || 1;
+    // Si el producto no tiene empaque (1 unidad por caja), pedir un solo campo
+    // sigue siendo lo más simple; con empaque, se pide cajas+saldo por separado
+    // y el servidor recalcula el total — no se manda ya sumado por el cliente.
+    if (factor <= 1) {
+      const { value, isConfirmed } = await Swal.fire({
+        title: 'Separar producto',
+        html: `<p style="font-size:13px;margin-bottom:10px;"><b>${WMS.esc(nombre)}</b></p>
+               <p style="font-size:12px;color:#64748b;margin-bottom:8px;">Solicitado: <b>${WMS.formatNum(cantSol)}</b> und</p>
+               <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">Cantidad separada (unidades):</label>
+               <input id="pk-sep-qty" type="number" min="0" step="0.01" value="${cantSol}"
+                 class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;">`,
+        showCancelButton: true,
+        confirmButtonText: '<i class="fa-solid fa-check"></i> Confirmar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#059669',
+        preConfirm: () => {
+          const v = parseFloat(document.getElementById('pk-sep-qty')?.value);
+          if (!v || v <= 0) { Swal.showValidationMessage('Ingresa una cantidad mayor a 0'); return false; }
+          return { cajas: v, saldo: 0 };
+        }
+      });
+      if (!isConfirmed || !value) return;
+      return this._enviarConfirmarConsolidado(lineaId, value.cajas, value.saldo);
+    }
+
+    const sugCajas  = Math.floor(cantSol / factor);
+    const sugSaldos = cantSol - (sugCajas * factor);
     const { value, isConfirmed } = await Swal.fire({
       title: 'Separar producto',
       html: `<p style="font-size:13px;margin-bottom:10px;"><b>${WMS.esc(nombre)}</b></p>
-             <p style="font-size:12px;color:#64748b;margin-bottom:8px;">Solicitado: <b>${WMS.formatNum(cantSol)}</b> und (${this._fmtCantidad(cantSol,upc)})</p>
-             <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">Cantidad separada (unidades):</label>
-             <input id="pk-sep-qty" type="number" min="0" step="0.01" value="${cantSol}"
-               class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;">`,
+             <p style="font-size:12px;color:#64748b;margin-bottom:10px;">Solicitado: <b>${WMS.formatNum(cantSol)}</b> und (${this._fmtCantidad(cantSol,factor)})</p>
+             <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">Cajas (${factor} und/caja):</label>
+             <input id="pk-sep-cajas" type="number" min="0" step="1" value="${sugCajas}"
+               class="swal2-input" style="margin:0 0 8px 0;width:100%;box-sizing:border-box;" oninput="WMS_MODULES.picking._updPkSepTotal(${factor})">
+             <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;color:#d97706;">Saldo (unidades sueltas):</label>
+             <input id="pk-sep-saldo" type="number" min="0" step="0.01" value="${sugSaldos}"
+               class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" oninput="WMS_MODULES.picking._updPkSepTotal(${factor})">
+             <p style="font-size:12px;margin-top:8px;">Total: <b id="pk-sep-total">${WMS.formatNum(cantSol)}</b> und</p>`,
       showCancelButton: true,
       confirmButtonText: '<i class="fa-solid fa-check"></i> Confirmar',
       cancelButtonText: 'Cancelar',
       confirmButtonColor: '#059669',
       preConfirm: () => {
-        const v = parseFloat(document.getElementById('pk-sep-qty')?.value);
-        if (!v || v <= 0) { Swal.showValidationMessage('Ingresa una cantidad mayor a 0'); return false; }
-        return v;
+        const cj = parseFloat(document.getElementById('pk-sep-cajas')?.value);
+        const sl = parseFloat(document.getElementById('pk-sep-saldo')?.value);
+        if (isNaN(cj) || cj < 0) { Swal.showValidationMessage('Cajas inválidas'); return false; }
+        if (isNaN(sl) || sl < 0) { Swal.showValidationMessage('Saldo inválido'); return false; }
+        if ((cj * factor + sl) <= 0) { Swal.showValidationMessage('El total debe ser mayor a 0'); return false; }
+        return { cajas: cj, saldo: sl };
       }
     });
     if (!isConfirmed || !value) return;
+    return this._enviarConfirmarConsolidado(lineaId, value.cajas, value.saldo);
+  },
+
+  _updPkSepTotal(factor) {
+    const cj = parseFloat(document.getElementById('pk-sep-cajas')?.value || 0);
+    const sl = parseFloat(document.getElementById('pk-sep-saldo')?.value || 0);
+    const totalEl = document.getElementById('pk-sep-total');
+    if (totalEl) totalEl.textContent = WMS.formatNum((cj * factor) + sl);
+  },
+
+  async _enviarConfirmarConsolidado(lineaId, cajasTomadas, saldosTomados) {
     try {
-      const r = await API.post('/picking/confirmar-consolidado', { ids: String(lineaId), cantidad_tomada: value });
+      const r = await API.post('/picking/confirmar-consolidado', {
+        ids: String(lineaId),
+        cajas_tomadas: cajasTomadas,
+        saldos_tomados: saldosTomados
+      });
       if (r.error) throw new Error(r.message);
       WMS.toast('success', 'Línea confirmada');
       const p = this._detallePicking;

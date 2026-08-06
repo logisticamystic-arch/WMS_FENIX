@@ -1813,5 +1813,10 @@
     "mtime": 1786027705.3560355,
     "ast_hash": "8a9640b38d096dd3fd7da53872c83d1a",
     "semantic_hash": ""
+  },
+  "database/migrations/131_check_unidades_caja_positivo.php": {
+    "mtime": 1786056792.5665593,
+    "ast_hash": "aad88d322355aaef0fc87af8bc4685f8",
+    "semantic_hash": ""
   }
 }

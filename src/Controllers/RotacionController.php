@@ -132,8 +132,8 @@ class RotacionController extends BaseController
                 'c.cv_demanda', 'c.periodos',
                 'c.vigente', 'c.calculado_at',
                 'c.created_at', 'c.updated_at',
-                'p.nombre as producto_nombre',
-                'p.codigo_interno as codigo'
+                'p.nombre', 'p.nombre as producto_nombre',
+                'p.codigo_interno', 'p.codigo_interno as codigo'
             );
 
         if (!empty($params['segmento'])) {
@@ -614,10 +614,18 @@ class RotacionController extends BaseController
             ->join('productos as p', 'p.id', '=', 'i.producto_id')
             ->where('i.empresa_id',  $empId)
             ->where('i.sucursal_id', $sucId)
-            ->where('i.cantidad', '>', 0)
-            ->selectRaw('i.producto_id, p.nombre, p.codigo_interno AS codigo, SUM(i.cantidad) AS stock')
+            ->whereRaw('(i.cantidad > 0 OR i.saldos > 0)')
+            ->selectRaw('i.producto_id, p.nombre, p.codigo_interno AS codigo, SUM((i.cantidad * COALESCE(p.unidades_caja, 1)) + COALESCE(i.saldos, 0)) AS stock')
             ->groupByRaw('i.producto_id, p.nombre, p.codigo_interno')
             ->get();
+
+        if ($inventario->isEmpty()) {
+            $inventario = Capsule::table('productos as p')
+                ->where('p.empresa_id', $empId)
+                ->where('p.activo', true)
+                ->selectRaw('p.id AS producto_id, p.nombre, p.codigo_interno AS codigo, 0 AS stock')
+                ->get();
+        }
 
         if ($inventario->isEmpty()) return 0;
 

@@ -129,6 +129,23 @@ class TraspasoController extends BaseController
             return $this->error($response, 'Debe incluir al menos un producto');
         }
 
+        // Blindaje 2026-08-06: si la línea trae cantidad_cajas/cantidad_saldo (como ya
+        // manda la captura móvil), el servidor recalcula la cantidad real de unidades
+        // a partir de unidades_caja del producto — no confía en un total ya sumado por
+        // el cliente. Si no llegan esos campos (pantalla de escritorio actual), se usa
+        // 'cantidad' tal cual, sin cambiar el comportamiento actual.
+        $prodIdsUpc = array_values(array_unique(array_filter(array_map(
+            fn($d) => (int)($d['producto_id'] ?? 0), $detalles
+        ))));
+        $upcMap = $prodIdsUpc ? \App\Models\Producto::whereIn('id', $prodIdsUpc)->pluck('unidades_caja', 'id') : collect();
+        foreach ($detalles as &$det0) {
+            if (isset($det0['cantidad_cajas']) || isset($det0['cantidad_saldo'])) {
+                $upc = max(1, (int)($upcMap[(int)($det0['producto_id'] ?? 0)] ?? 1));
+                $det0['cantidad'] = ((float)($det0['cantidad_cajas'] ?? 0) * $upc) + (float)($det0['cantidad_saldo'] ?? 0);
+            }
+        }
+        unset($det0);
+
         $empresaId  = $this->getEffectiveEmpresaId($user, $request);
         $sucursalId = $this->getEffectiveSucursalId($user, $request);
 

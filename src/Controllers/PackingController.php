@@ -218,7 +218,19 @@ class PackingController extends BaseController
         if (!$unidad) return $this->error($res, 'No hay unidad abierta en esta sesión');
 
         $productoId = (int)$data['producto_id'];
-        $cantidad   = round((float)$data['cantidad'], 3);
+        $cantCajas  = max(0, round((float)($data['cantidad_cajas'] ?? 0), 3));
+        $saldo      = max(0, round((float)($data['saldo']          ?? 0), 3));
+
+        // Blindaje 2026-08-06: si la línea trae cantidad_cajas/saldo, el servidor
+        // recalcula la cantidad real de unidades a partir de unidades_caja del
+        // producto — no confía en un total ya sumado por el cliente. Si no llegan
+        // esos campos, se usa 'cantidad' tal cual, sin cambiar el comportamiento actual.
+        if (isset($data['cantidad_cajas']) || isset($data['saldo'])) {
+            $upc      = max(1, (int)(\App\Models\Producto::where('id', $productoId)->value('unidades_caja') ?? 1));
+            $cantidad = round(($cantCajas * $upc) + $saldo, 3);
+        } else {
+            $cantidad = round((float)$data['cantidad'], 3);
+        }
         if ($cantidad <= 0) return $this->error($res, 'La cantidad debe ser mayor a 0');
 
         $pickeados = $this->_getProductosPickados(
@@ -265,9 +277,6 @@ class PackingController extends BaseController
                 return $res->withHeader('Content-Type', 'application/json')->withStatus(202);
             }
         }
-
-        $cantCajas = max(0, round((float)($data['cantidad_cajas'] ?? 0), 3));
-        $saldo     = max(0, round((float)($data['saldo']          ?? 0), 3));
 
         $item = PackingItem::create([
             'unidad_id'          => $unidad->id,

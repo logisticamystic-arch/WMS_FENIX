@@ -34,20 +34,29 @@ WMS_MODULES.rotacion = {
     try {
       const r = await API.get('/rotacion/abc-xyz');
       const data = r.data || r;
-      const items = data.data || data.clasificaciones || [];
+      const items = data.clasificacion || data.clasificaciones || data.productos || (Array.isArray(data) ? data : (data.data || []));
       const matrix = {AX:0,AY:0,AZ:0,BX:0,BY:0,BZ:0,CX:0,CY:0,CZ:0};
       items.forEach(i => { const s = (i.segmento||'').toUpperCase(); if(matrix[s]!==undefined) matrix[s]++; });
       const mCell = (seg,css) => `<div class="abc-matrix-cell ${css}" onclick="WMS_MODULES.rotacion._filterSeg('${seg}')"><div class="cell-count">${matrix[seg]}</div><div class="cell-label">${seg}</div></div>`;
-      const rows = items.slice(0,100).map((p,i) => `<tr style="background:${i%2?'#f8fafc':'#fff'}">
-        <td class="ps-3"><div style="font-weight:700">${WMS.esc(p.nombre||p.producto_id)}</div><div style="font-size:.7rem;color:#64748b">${WMS.esc(p.codigo_interno||'')}</div></td>
-        <td class="text-center"><span class="abc-matrix-cell abc-${(p.segmento||'cz').toLowerCase()}" style="display:inline-flex;min-height:auto;padding:3px 10px;border-radius:6px"><span class="cell-label" style="margin:0;font-size:.72rem">${WMS.esc(p.segmento||'—')}</span></span></td>
-        <td class="text-center fw-bold">${p.clase_abc||'—'}</td>
-        <td class="text-center fw-bold">${p.clase_xyz||'—'}</td>
-        <td class="text-end">$${Number(p.total_valor||0).toLocaleString()}</td>
-        <td class="text-end">${Number(p.demanda_media||0).toFixed(1)}</td>
-        <td class="text-end">${Number(p.coef_variacion||0).toFixed(3)}</td>
-        <td class="text-center"><span class="badge badge-${p.zona_recomendada==='oro'?'warning':p.zona_recomendada==='plata'?'info':'gray'}">${WMS.esc(p.zona_recomendada||'—')}</span></td>
-      </tr>`).join('');
+      const rows = items.slice(0,100).map((p,i) => {
+        const nombre = p.nombre || p.producto_nombre || p.descripcion || `Producto #${p.producto_id}`;
+        const codigo = p.codigo_interno || p.codigo || '';
+        const demanda = p.demanda_media !== undefined ? p.demanda_media : (p.periodos > 0 ? (p.total_unidades / p.periodos) : p.total_unidades);
+        const cv = p.cv_demanda !== undefined ? p.cv_demanda : (p.coef_variacion || 0);
+        const seg = (p.segmento || 'CZ').toUpperCase();
+        const zona = p.zona_recomendada || p.zona || (seg[0]==='A'?'oro':seg[0]==='B'?'plata':'bronce');
+
+        return `<tr style="background:${i%2?'#f8fafc':'#fff'}">
+          <td class="ps-3"><div style="font-weight:700">${WMS.esc(nombre)}</div><div style="font-size:.7rem;color:#64748b">${WMS.esc(codigo)}</div></td>
+          <td class="text-center"><span class="abc-matrix-cell abc-${seg.toLowerCase()}" style="display:inline-flex;min-height:auto;padding:3px 10px;border-radius:6px"><span class="cell-label" style="margin:0;font-size:.72rem">${WMS.esc(seg)}</span></span></td>
+          <td class="text-center fw-bold">${p.clase_abc||seg[0]||'—'}</td>
+          <td class="text-center fw-bold">${p.clase_xyz||seg[1]||'—'}</td>
+          <td class="text-end">$${Number(p.total_valor||0).toLocaleString()}</td>
+          <td class="text-end">${Number(demanda||0).toFixed(1)}</td>
+          <td class="text-end">${Number(cv||0).toFixed(3)}</td>
+          <td class="text-center"><span class="badge badge-${zona==='oro'?'warning':zona==='plata'?'info':'gray'}">${WMS.esc(zona)}</span></td>
+        </tr>`;
+      }).join('');
       WMS.setContent(`<div class="pro-dashboard" style="padding:20px">
         <div class="row g-4 mb-4"><div class="col-12 col-lg-5">
           <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-chess-board me-2" style="color:#7c3aed"></i>Matriz ABC-XYZ — ${items.length} productos</div></div>
