@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-06)
 
 ## Corpus Check
-- 341 files · ~845,369 words
+- 341 files · ~845,424 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `c8efc5d8`
+- Built from commit: `1dddcfc8`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -702,9 +702,9 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `Traspaso` to `OutboundController`, `Packing & Expiry Control`, `Receiving Controller`, `MovimientoInventario`, `Base Controller Utilities`, `Dispatch Controller`, `Tenant Context & Middleware`, `Yard Management Controller`, `ML Expiry Prediction`, `Sucursal`, `Despacho`, `Miscellaneous Items Controller`, `BloqueoController`, `Replenishment & Notifications`, `OrdenCompraDetalle`, `MovimientoInventario`, `TV Picking Dashboard`, `CacheHelper`, `InvGeneralEvento`, `SesionAsignacion`, `Picking TV Dashboard`, `.__invoke`, `SesionAsignacion`?**
-  _High betweenness centrality (0.023) - this node is a cross-community bridge._
+  _High betweenness centrality (0.021) - this node is a cross-community bridge._
 - **Why does `Producto` connect `Picking TV Dashboard` to `SesionAsignacion`, `RecepcionDetalle`, `BloqueoController`, `OrdenCompraDetalle`, `Traspaso`, `TV Picking Dashboard`, `Tenant Context & Middleware`?**
-  _High betweenness centrality (0.014) - this node is a cross-community bridge._
+  _High betweenness centrality (0.015) - this node is a cross-community bridge._
 - **Why does `Despacho` connect `Dispatch Controller` to `Cross-Dock Operations`, `Traspaso`, `TV Picking Dashboard`?**
   _High betweenness centrality (0.008) - this node is a cross-community bridge._
 - **Are the 132 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
