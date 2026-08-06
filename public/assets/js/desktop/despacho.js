@@ -84,6 +84,9 @@ WMS_MODULES.despacho = {
       <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.show_certificacion()">
         <i class="fa-solid fa-rotate"></i> Actualizar
       </button>
+      <button class="btn btn-success btn-sm" onclick="WMS_MODULES.despacho.autoCertificarTodos()" title="Auto-certificar masivamente todas las sucursales pendientes">
+        <i class="fa-solid fa-bolt"></i> Auto-Certificar Todos
+      </button>
       <button class="btn btn-outline-success btn-sm" onclick="WMS_MODULES.despacho.imprimirRemisionesDirectasSeleccionadas()">
         <i class="fa-solid fa-mobile-screen"></i> Imprimir Consolidado
       </button>
@@ -299,7 +302,7 @@ WMS_MODULES.despacho = {
                   <button class="btn btn-sm btn-info" onclick="WMS_MODULES.despacho.verDetallesPendientes('${WMS.esc(s.sucursal_entrega)}')" style="margin-right:4px;">
                     <i class="fa-solid fa-list"></i> Ver
                   </button>
-                  <button class="btn btn-sm btn-success" onclick="WMS_MODULES.despacho.autoCertificar('${WMS.esc(s.sucursal_entrega)}')">
+                  <button class="btn btn-sm btn-success btn-auto-cert-suc" data-sucursal="${WMS.esc(s.sucursal_entrega)}" onclick="WMS_MODULES.despacho.autoCertificar('${WMS.esc(s.sucursal_entrega)}')">
                     <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Cert.
                   </button>
                 </td>
@@ -1116,6 +1119,49 @@ WMS_MODULES.despacho = {
       this.show_certificacion(); // recargar
     } catch(e) {
       WMS.toast('error', e.message || 'Error en Auto-Certificación');
+    } finally {
+      WMS.spinner(false);
+    }
+  },
+
+  async autoCertificarTodos() {
+    const sucursalesBtns = Array.from(document.querySelectorAll('.btn-auto-cert-suc'));
+    const sucursales = sucursalesBtns.map(b => b.dataset.sucursal).filter(Boolean);
+    const uniqueSucs = [...new Set(sucursales)];
+
+    if (!uniqueSucs.length) {
+      return WMS.toast('info', 'No hay sucursales pendientes de certificar en la vista actual.');
+    }
+
+    const res = await Swal.fire({
+      title: '⚡ Auto-Certificar Todos los Pedidos',
+      html: `¿Desea auto-certificar masivamente las <b>${uniqueSucs.length} sucursal(es)</b> pendientes?<br><small style="color:#64748b;">Cada pedido se empacará y certificará automáticamente sin bloquearse.</small>`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, Auto-Certificar Todo',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#10b981'
+    });
+    if (!res.isConfirmed) return;
+
+    WMS.spinner(true);
+    let okCount = 0;
+    let errCount = 0;
+    try {
+      const fecha = this._certFechaInicio || 'all';
+      for (const suc of uniqueSucs) {
+        try {
+          const r = await API.post('/packing/autopack', { sucursal_entrega: suc, tipo_empaque: 'canasta', fecha: fecha });
+          if (r && !r.error) okCount++;
+          else errCount++;
+        } catch (e) {
+          errCount++;
+        }
+      }
+      WMS.toast('success', `Auto-Certificación completada: ${okCount} sucursal(es) certificada(s) exitosamente${errCount > 0 ? ` (${errCount} omitidas)` : ''}`);
+      this.show_certificacion();
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error en Auto-Certificación masiva');
     } finally {
       WMS.spinner(false);
     }

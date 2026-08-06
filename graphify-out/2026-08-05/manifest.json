@@ -1555,8 +1555,8 @@
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785879560.814957,
-    "ast_hash": "ddd79b09fc43b75c518f60ceb18b6e19",
+    "mtime": 1785974549.4200587,
+    "ast_hash": "e7f9e9970eb81b8e879161ba4b4f91ae",
     "semantic_hash": ""
   },
   "public/pitch.html": {
@@ -1787,6 +1787,21 @@
   "public/uploads/firmas/firma_trp_6a736ca1770ec.png": {
     "mtime": 1785949345.487878,
     "ast_hash": "3740da4c8d217862e9f6031fd8b09db5",
+    "semantic_hash": ""
+  },
+  ".agents/AGENTS.md": {
+    "mtime": 1785974568.972958,
+    "ast_hash": "79fed826b1d9a1b885249caa5449d271",
+    "semantic_hash": ""
+  },
+  ".agents/rules/INVENTARIO_FORMULA.md": {
+    "mtime": 1785974559.281006,
+    "ast_hash": "f96b9e20d1b2cfd2aa0d82375fd53fd4",
+    "semantic_hash": ""
+  },
+  "docs/AUDITORIA_INVENTARIO_2026-08-05.md": {
+    "mtime": 1785971831.627714,
+    "ast_hash": "00da1a9c5722e0c050ee2351a76a050e",
     "semantic_hash": ""
   }
 }

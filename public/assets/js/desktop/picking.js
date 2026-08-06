@@ -4127,6 +4127,9 @@ WMS_MODULES.picking = {
       <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking.show_agotados()">
         <i class="fa-solid fa-rotate"></i> Actualizar
       </button>
+      <button class="btn btn-outline-danger btn-sm" onclick="WMS_MODULES.picking._exportAgotadosPDF()">
+        <i class="fa-solid fa-file-pdf"></i> Exportar PDF
+      </button>
       <button class="btn btn-success btn-sm" onclick="WMS_MODULES.picking._exportAgotados()">
         <i class="fa-solid fa-file-csv"></i> Exportar CSV
       </button>
@@ -4139,104 +4142,547 @@ WMS_MODULES.picking = {
       const rows = Array.isArray(d.rows) ? d.rows : [];
       const sucs = Array.isArray(d.sucursales) ? d.sucursales : [];
 
-      const sucOptions = `<option value="">Todas las sucursales</option>` +
+      this._agotDataCache = rows;
+
+      const sucOptions = `<option value="">Todas las sucursales (${sucs.length})</option>` +
         sucs.map(s => `<option value="${WMS.esc(s)}"${f.sucursal===s?' selected':''}>${WMS.esc(s)}</option>`).join('');
 
-      const totalCajas = rows.reduce((acc, row) => acc + (parseFloat(row.cantidad_faltante) || 0), 0);
-      const sucAfect   = new Set(rows.map(row => row.sucursal_entrega)).size;
+      // ── CÁLCULOS ESTADÍSTICOS E INDICADORES (KPIs) ──
+      const totalRegistros = rows.length;
+      const refUnicasSet   = new Set(rows.map(r => r.producto_codigo || r.producto_nombre));
+      const refUnicasCount = refUnicasSet.size;
+      const clientesSet    = new Set(rows.map(r => r.cliente || r.sucursal_entrega));
+      const clientesCount  = clientesSet.size;
+
+      let totalCajasFaltantes = 0;
+      let totalUnidadesFaltantes = 0;
+      rows.forEach(r => {
+        const upc = parseInt(r.unidades_caja) || 1;
+        const cjF = parseFloat(r.cantidad_faltante) || 0;
+        totalCajasFaltantes += cjF;
+        totalUnidadesFaltantes += (cjF * upc);
+      });
+
+      // ── CONSOLIDADO POR REFERENCIA ──
+      const porReferencia = {};
+      rows.forEach(r => {
+        const key = r.producto_codigo || r.producto_nombre || 'Desconocido';
+        if (!porReferencia[key]) {
+          porReferencia[key] = {
+            codigo: r.producto_codigo || '-',
+            nombre: r.producto_nombre || '-',
+            unidades_caja: parseInt(r.unidades_caja) || 1,
+            cajas_solicitadas: 0,
+            cajas_faltantes: 0,
+            unidades_faltantes: 0,
+            clientes: new Set(),
+            causas: {},
+          };
+        }
+        const upc = porReferencia[key].unidades_caja;
+        const cjSol = parseFloat(r.cantidad_solicitada) || 0;
+        const cjFalt = parseFloat(r.cantidad_faltante) || 0;
+        porReferencia[key].cajas_solicitadas += cjSol;
+        porReferencia[key].cajas_faltantes   += cjFalt;
+        porReferencia[key].unidades_faltantes += (cjFalt * upc);
+        if (r.cliente || r.sucursal_entrega) porReferencia[key].clientes.add(r.cliente || r.sucursal_entrega);
+
+        const causaStr = (r.causa || 'SIN ESPECIFICAR').toUpperCase();
+        porReferencia[key].causas[causaStr] = (porReferencia[key].causas[causaStr] || 0) + 1;
+      });
+
+      const refArray = Object.values(porReferencia).sort((a,b) => b.cajas_faltantes - a.cajas_faltantes);
+
+      // ── MATRIZ DE CLIENTES Y SUS AGOTADOS ──
+      const porCliente = {};
+      rows.forEach(r => {
+        const cliKey = r.cliente || r.sucursal_entrega || 'Cliente Desconocido';
+        if (!porCliente[cliKey]) {
+          porCliente[cliKey] = {
+            cliente: cliKey,
+            referencias: [],
+            cajas_faltantes: 0,
+            unidades_faltantes: 0,
+            errores_digitacion_cnt: 0
+          };
+        }
+        const upc = parseInt(r.unidades_caja) || 1;
+        const cjFalt = parseFloat(r.cantidad_faltante) || 0;
+        porCliente[cliKey].cajas_faltantes += cjFalt;
+        porCliente[cliKey].unidades_faltantes += (cjFalt * upc);
+
+        const causaUpper = (r.causa || '').toUpperCase();
+        const esErrorDigitacion = causaUpper.includes('DIGITACI') || causaUpper.includes('DIGITACION') || causaUpper.includes('PEDIDO');
+        if (esErrorDigitacion) porCliente[cliKey].errores_digitacion_cnt++;
+
+        porCliente[cliKey].referencias.push({
+          codigo: r.producto_codigo,
+          nombre: r.producto_nombre,
+          solicitado_cj: parseFloat(r.cantidad_solicitada)||0,
+          faltante_cj: cjFalt,
+          faltante_und: cjFalt * upc,
+          causa: r.causa || 'Sin causa',
+          es_error_digitacion: esErrorDigitacion
+        });
+      });
+
+      const clientesArray = Object.values(porCliente).sort((a,b) => b.cajas_faltantes - a.cajas_faltantes);
+
+      // ── DESGLOSE DE MOTIVOS Y RESPONSABLES ──
+      const porMotivo = {};
+      rows.forEach(r => {
+        const causaUpper = (r.causa || 'SIN MOTIVO DEFINIDO').toUpperCase();
+        let responsable = 'OPERACIONES Y BODEGA';
+        if (causaUpper.includes('DIGITACI') || causaUpper.includes('COMERCIAL') || causaUpper.includes('PEDIDO')) {
+          responsable = 'COMERCIAL / DIGITACIÓN';
+        } else if (causaUpper.includes('PROVEEDOR') || causaUpper.includes('RECEPCION') || causaUpper.includes('COMPRAS')) {
+          responsable = 'PROVEEDORES / COMPRAS';
+        } else if (causaUpper.includes('CALIDAD') || causaUpper.includes('DAÑADO') || causaUpper.includes('AVARIA')) {
+          responsable = 'CONTROL CALIDAD';
+        }
+
+        if (!porMotivo[causaUpper]) {
+          porMotivo[causaUpper] = {
+            motivo: causaUpper,
+            responsable: responsable,
+            total_casos: 0,
+            cajas_faltantes: 0,
+            unidades_faltantes: 0
+          };
+        }
+        const upc = parseInt(r.unidades_caja) || 1;
+        const cjFalt = parseFloat(r.cantidad_faltante) || 0;
+        porMotivo[causaUpper].total_casos++;
+        porMotivo[causaUpper].cajas_faltantes += cjFalt;
+        porMotivo[causaUpper].unidades_faltantes += (cjFalt * upc);
+      });
+
+      const motivosArray = Object.values(porMotivo).sort((a,b) => b.total_casos - a.total_casos);
+
+      // ── CÁLCULO ESTRICTO DE NIVEL DE SERVICIO (NS) EXCLUYENDO "ERROR EN DIGITACION PEDIDO" ──
+      // REGLA: Excluir del denominador de solicitados y numerador de separados cualquier
+      // ítem cuyo motivo contenga ERROR EN DIGITACION PEDIDO o responsabilidad de digitación.
+      let globalRefSolicitadasValidas = 0;
+      let globalRefSeparadasValidas   = 0;
+      let globalUndSolicitadasValidas = 0;
+      let globalUndSeparadasValidas   = 0;
+
+      const nsPorClienteMap = {};
+
+      rows.forEach(r => {
+        const causaUpper = (r.causa || '').toUpperCase();
+        const esErrorDigitacion = causaUpper.includes('DIGITACI') || causaUpper.includes('DIGITACION') || causaUpper.includes('ERROR EN DIGITACION');
+
+        // SI ES ERROR EN DIGITACIÓN PEDIDO -> EXCLUIR POR COMPLETO DEL NIVEL DE SERVICIO
+        if (esErrorDigitacion) return;
+
+        const cliKey = r.cliente || r.sucursal_entrega || 'Cliente Desconocido';
+        if (!nsPorClienteMap[cliKey]) {
+          nsPorClienteMap[cliKey] = {
+            cliente: cliKey,
+            ref_solicitadas: 0,
+            ref_separadas: 0,
+            und_solicitadas: 0,
+            und_separadas: 0,
+            casos_agotados: 0
+          };
+        }
+
+        const upc = parseInt(r.unidades_caja) || 1;
+        const cjSol  = parseFloat(r.cantidad_solicitada) || 0;
+        const cjFalt = parseFloat(r.cantidad_faltante) || 0;
+        const cjSep  = Math.max(0, cjSol - cjFalt);
+
+        const undSol  = cjSol * upc;
+        const undSep  = cjSep * upc;
+
+        nsPorClienteMap[cliKey].ref_solicitadas += 1;
+        if (cjFalt <= 0.001) nsPorClienteMap[cliKey].ref_separadas += 1;
+        nsPorClienteMap[cliKey].und_solicitadas += undSol;
+        nsPorClienteMap[cliKey].und_separadas   += undSep;
+        if (cjFalt > 0) nsPorClienteMap[cliKey].casos_agotados += 1;
+
+        globalRefSolicitadasValidas += 1;
+        if (cjFalt <= 0.001) globalRefSeparadasValidas += 1;
+        globalUndSolicitadasValidas += undSol;
+        globalUndSeparadasValidas   += undSep;
+      });
+
+      const nsClientesList = Object.values(nsPorClienteMap).map(c => {
+        const nsRefPct = c.ref_solicitadas > 0 ? (c.ref_separadas / c.ref_solicitadas * 100) : 100;
+        const nsUndPct = c.und_solicitadas > 0 ? (c.und_separadas / c.und_solicitadas * 100) : 100;
+        return {
+          ...c,
+          ns_ref_pct: Math.min(100, Math.max(0, nsRefPct)),
+          ns_und_pct: Math.min(100, Math.max(0, nsUndPct))
+        };
+      }).sort((a,b) => a.ns_und_pct - b.ns_und_pct);
+
+      const globalNsRefPct = globalRefSolicitadasValidas > 0 ? (globalRefSeparadasValidas / globalRefSolicitadasValidas * 100) : 100;
+      const globalNsUndPct = globalUndSolicitadasValidas > 0 ? (globalUndSeparadasValidas / globalUndSolicitadasValidas * 100) : 100;
 
       WMS.setContent(`
+        <style>
+          .agot-tab-btn {
+            padding: 10px 16px;
+            font-size: 11.5px;
+            font-weight: 700;
+            color: #64748b;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+          }
+          .agot-tab-btn:hover {
+            color: #1e293b;
+            background: #f1f5f9;
+          }
+          .agot-tab-btn.active {
+            color: #0284c7;
+            border-bottom-color: #0284c7;
+            background: #ffffff;
+          }
+        </style>
         <div style="display:flex;flex-direction:column;gap:16px;">
 
-          <div class="card" style="padding:14px 18px;">
+          <!-- BANNER DE FILTROS SUPERIOR -->
+          <div class="card" style="padding:14px 18px;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,.05);">
             <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
               <div>
-                <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">DESDE</label>
-                <input type="date" id="agot-ini" class="form-control" style="width:135px;" value="${f.ini}">
+                <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">📅 DESDE</label>
+                <input type="date" id="agot-ini" class="form-control form-control-sm" style="width:130px;" value="${f.ini}">
               </div>
               <div>
-                <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">HASTA</label>
-                <input type="date" id="agot-fin" class="form-control" style="width:135px;" value="${f.fin}">
+                <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">📅 HASTA</label>
+                <input type="date" id="agot-fin" class="form-control form-control-sm" style="width:130px;" value="${f.fin}">
               </div>
-              <div style="min-width:180px;">
-                <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">SUCURSAL</label>
-                <select id="agot-suc" class="form-control">${sucOptions}</select>
+              <div style="min-width:190px;">
+                <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">🏢 SUCURSAL / CLIENTE</label>
+                <select id="agot-suc" class="form-control form-control-sm">${sucOptions}</select>
               </div>
-              <div style="flex:2;min-width:200px;">
-                <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">REFERENCIA</label>
-                <div class="search-bar" style="margin:0;"><i class="fa-solid fa-search"></i>
-                  <input id="agot-ref" placeholder="Código o nombre..." value="${WMS.esc(f.referencia||'')}">
-                </div>
+              <div style="flex:1;min-width:200px;">
+                <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">📦 REFERENCIA O PRODUCTO</label>
+                <input id="agot-ref" class="form-control form-control-sm" placeholder="Buscar por código o nombre..." value="${WMS.esc(f.referencia||'')}">
               </div>
-              <button class="btn btn-primary" style="height:38px;padding:0 18px;" onclick="WMS_MODULES.picking._applyAgotFilters()">
+              <button class="btn btn-primary btn-sm" style="height:31px;padding:0 16px;font-weight:700;" onclick="WMS_MODULES.picking._applyAgotFilters()">
                 <i class="fa-solid fa-filter"></i> Filtrar
               </button>
-              <button class="btn btn-secondary" style="height:38px;padding:0 14px;" onclick="WMS_MODULES.picking._clearAgotFilters()" title="Limpiar">
+              <button class="btn btn-outline-secondary btn-sm" style="height:31px;padding:0 12px;" onclick="WMS_MODULES.picking._clearAgotFilters()" title="Limpiar Filtros">
                 <i class="fa-solid fa-broom"></i>
               </button>
             </div>
           </div>
 
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
-            <div class="card" style="padding:14px 18px;text-align:center;">
-              <div style="font-size:2rem;font-weight:900;color:#dc2626;">${rows.length}</div>
-              <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Registros Agotados</div>
+          <!-- TARJETAS METRICAS EJECUTIVAS (KPIS) -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;">
+            <div class="card" style="padding:14px;border-left:4px solid #ef4444;background:#fff;">
+              <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;">Registros Agotados</div>
+              <div style="font-size:1.8rem;font-weight:900;color:#dc2626;margin-top:2px;">${totalRegistros}</div>
+              <div style="font-size:10px;color:#94a3b8;">En el período seleccionado</div>
             </div>
-            <div class="card" style="padding:14px 18px;text-align:center;">
-              <div style="font-size:2rem;font-weight:900;color:#f59e0b;">${WMS.formatNum(totalCajas)}</div>
-              <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Total Cajas Faltantes</div>
+
+            <div class="card" style="padding:14px;border-left:4px solid #f59e0b;background:#fff;">
+              <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;">Referencias Únicas</div>
+              <div style="font-size:1.8rem;font-weight:900;color:#d97706;margin-top:2px;">${refUnicasCount}</div>
+              <div style="font-size:10px;color:#94a3b8;">Productos afectados</div>
             </div>
-            <div class="card" style="padding:14px 18px;text-align:center;">
-              <div style="font-size:2rem;font-weight:900;color:#0ea5e9;">${sucAfect}</div>
-              <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Sucursales Afectadas</div>
+
+            <div class="card" style="padding:14px;border-left:4px solid #0284c7;background:#fff;">
+              <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;">Clientes Afectados</div>
+              <div style="font-size:1.8rem;font-weight:900;color:#0284c7;margin-top:2px;">${clientesCount}</div>
+              <div style="font-size:10px;color:#94a3b8;">Sucursales o puntos de entrega</div>
+            </div>
+
+            <div class="card" style="padding:14px;border-left:4px solid #8b5cf6;background:#fff;">
+              <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;">Total Unidades Faltantes</div>
+              <div style="font-size:1.8rem;font-weight:900;color:#7c3aed;margin-top:2px;">${WMS.formatNum(totalUnidadesFaltantes)}</div>
+              <div style="font-size:10px;color:#64748b;">${WMS.formatNum(totalCajasFaltantes)} cajas faltantes</div>
+            </div>
+
+            <div class="card" style="padding:14px;border-left:4px solid #10b981;background:#f0fdf4;">
+              <div style="font-size:10px;font-weight:700;color:#166534;text-transform:uppercase;">NS General (Unidades)</div>
+              <div style="font-size:1.8rem;font-weight:900;color:#15803d;margin-top:2px;">${globalNsUndPct.toFixed(1)}%</div>
+              <div style="font-size:9.5px;color:#166534;font-weight:600;">Excluye ERROR DIGITACIÓN</div>
             </div>
           </div>
 
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">
-                <i class="fa-solid fa-box-open" style="color:#dc2626;"></i> Agotados de Picking
-                <span style="font-size:11px;color:#64748b;font-weight:400;margin-left:6px;">${rows.length} registro(s)</span>
-              </span>
+          <!-- SECTOR DE PESTAÑAS NAVEGABLES DEL DASHBOARD -->
+          <div class="card" style="overflow:hidden;">
+            <div style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:0 12px;display:flex;gap:4px;overflow-x:auto;">
+              <button class="agot-tab-btn active" onclick="WMS_MODULES.picking._switchAgotTab('tab-graficos', this)">
+                <i class="fa-solid fa-chart-pie" style="color:#0284c7;"></i> Tablero & Gráficos
+              </button>
+              <button class="agot-tab-btn" onclick="WMS_MODULES.picking._switchAgotTab('tab-referencias', this)">
+                <i class="fa-solid fa-boxes-stacked" style="color:#f59e0b;"></i> Consolidado por Referencias
+              </button>
+              <button class="agot-tab-btn" onclick="WMS_MODULES.picking._switchAgotTab('tab-matriz', this)">
+                <i class="fa-solid fa-store" style="color:#ec4899;"></i> Matriz de Clientes
+              </button>
+              <button class="agot-tab-btn" onclick="WMS_MODULES.picking._switchAgotTab('tab-ns', this)">
+                <i class="fa-solid fa-award" style="color:#10b981;"></i> Nivel de Servicio por Cliente (NS)
+              </button>
+              <button class="agot-tab-btn" onclick="WMS_MODULES.picking._switchAgotTab('tab-motivos', this)">
+                <i class="fa-solid fa-clipboard-question" style="color:#8b5cf6;"></i> Motivos y Responsables
+              </button>
             </div>
-            <div class="table-container" style="overflow-x:auto;">
-              <table class="erp-table" style="font-size:12px;">
-                <thead><tr>
-                  <th>Fecha</th>
-                  <th>Sucursal</th>
-                  <th>Pedido</th>
-                  <th>Planilla</th>
-                  <th>Cliente</th>
-                  <th>Producto</th>
-                  <th style="text-align:center;">Solicitado (cj)</th>
-                  <th style="text-align:center;">Faltante (cj)</th>
-                  <th>Causa</th>
-                </tr></thead>
-                <tbody>
-                  ${rows.map(row => `<tr>
-                    <td style="white-space:nowrap;font-size:11px;">${WMS.formatDate((row.fecha||'').slice(0,10))}</td>
-                    <td><span class="badge badge-info" style="font-size:11px;">${WMS.esc(row.sucursal_entrega||'-')}</span></td>
-                    <td style="font-family:monospace;font-size:11px;">${WMS.esc(row.numero_orden||'-')}</td>
-                    <td><span class="badge badge-secondary" style="font-size:11px;">${WMS.esc(row.planilla_numero||row.planilla_lote||'-')}</span></td>
-                    <td style="font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${WMS.esc(row.cliente||'')}">${WMS.esc(row.cliente||'-')}</td>
-                    <td>
-                      <div style="font-weight:700;color:#1e293b;">${WMS.esc(row.producto_nombre||'-')}</div>
-                      <div style="font-size:10px;color:#64748b;font-family:monospace;">${WMS.esc(row.producto_codigo||'')}</div>
-                    </td>
-                    <td style="text-align:center;">${WMS.formatNum(row.cantidad_solicitada)}</td>
-                    <td style="text-align:center;"><span class="badge badge-danger">${WMS.formatNum(row.cantidad_faltante)}</span></td>
-                    <td style="font-size:11px;color:#64748b;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${WMS.esc(row.causa||'')}">${WMS.esc(row.causa||'-')}</td>
-                  </tr>`).join('') || '<tr><td colspan="9" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin agotados en el período seleccionado</td></tr>'}
-                </tbody>
-              </table>
+
+            <!-- CONTENIDO PESTAÑA 1: GRAFICOS Y DIDACTICOS -->
+            <div id="tab-graficos" class="agot-tab-pane" style="padding:16px;">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(420px, 1fr));gap:16px;">
+                
+                <!-- GRAFICO 1: TOP REFERENCIAS MÁS AFECTADAS POR CLIENTES -->
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
+                  <h6 style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
+                    <span><i class="fa-solid fa-chart-column" style="color:#0284c7;margin-right:6px;"></i> Top Referencias por Clientes Afectados</span>
+                    <span style="font-size:10px;color:#64748b;font-weight:400;">Top 8 impacto</span>
+                  </h6>
+                  <div style="display:flex;flex-direction:column;gap:10px;">
+                    ${refArray.slice(0, 8).map(ref => {
+                      const cliCount = ref.clientes.size;
+                      const maxCli   = Math.max(1, Math.max(...refArray.map(x => x.clientes.size)));
+                      const pct      = (cliCount / maxCli * 100);
+                      return `
+                      <div>
+                        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
+                          <span style="font-weight:700;color:#334155;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;" title="${WMS.esc(ref.nombre)}">
+                            [${WMS.esc(ref.codigo)}] ${WMS.esc(ref.nombre)}
+                          </span>
+                          <span style="font-weight:800;color:#0284c7;">${cliCount} cliente(s) (${WMS.formatNum(ref.unidades_faltantes)} und)</span>
+                        </div>
+                        <div style="background:#e2e8f0;border-radius:99px;height:7px;overflow:hidden;">
+                          <div style="width:${pct}%;background:linear-gradient(90deg, #3b82f6, #0284c7);height:100%;border-radius:99px;"></div>
+                        </div>
+                      </div>`;
+                    }).join('') || '<div class="text-center p-3 text-muted">Sin datos de gráfico</div>'}
+                  </div>
+                </div>
+
+                <!-- GRAFICO 2: DISTRIBUCIÓN DE AGOTADOS POR MOTIVO/RESPONSABLE -->
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px;">
+                  <h6 style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
+                    <span><i class="fa-solid fa-chart-pie" style="color:#8b5cf6;margin-right:6px;"></i> Agotados por Causal y Responsable</span>
+                    <span style="font-size:10px;color:#64748b;font-weight:400;">Distribución %</span>
+                  </h6>
+                  <div style="display:flex;flex-direction:column;gap:10px;">
+                    ${motivosArray.map(m => {
+                      const pct = totalRegistros > 0 ? (m.total_casos / totalRegistros * 100) : 0;
+                      const isComercial = m.responsable.includes('COMERCIAL');
+                      const barColor = isComercial ? '#f59e0b' : '#ef4444';
+                      return `
+                      <div>
+                        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
+                          <span>
+                            <strong style="color:#1e293b;">${WMS.esc(m.motivo)}</strong>
+                            <span class="badge" style="background:${isComercial ? '#fef3c7' : '#fee2e2'};color:${isComercial ? '#92400e' : '#991b1b'};font-size:9px;margin-left:4px;">${WMS.esc(m.responsable)}</span>
+                          </span>
+                          <span style="font-weight:800;color:#334155;">${m.total_casos} casos (${pct.toFixed(1)}%)</span>
+                        </div>
+                        <div style="background:#e2e8f0;border-radius:99px;height:7px;overflow:hidden;">
+                          <div style="width:${pct}%;background:${barColor};height:100%;border-radius:99px;"></div>
+                        </div>
+                      </div>`;
+                    }).join('') || '<div class="text-center p-3 text-muted">Sin motivos registrados</div>'}
+                  </div>
+                </div>
+
+              </div>
             </div>
+
+            <!-- CONTENIDO PESTAÑA 2: CONSOLIDADO POR REFERENCIAS -->
+            <div id="tab-referencias" class="agot-tab-pane" style="display:none;padding:0;">
+              <div class="table-container" style="overflow-x:auto;">
+                <table class="erp-table" style="font-size:11.5px;">
+                  <thead>
+                    <tr style="background:#f8fafc;color:#475569;">
+                      <th>Código</th>
+                      <th>Producto</th>
+                      <th style="text-align:center;">U/E</th>
+                      <th style="text-align:center;">Solicitado (cj)</th>
+                      <th style="text-align:center;">Faltante (cj)</th>
+                      <th style="text-align:center;">Faltante (UND/T)</th>
+                      <th style="text-align:center;">Clientes Afectados</th>
+                      <th>Causa Principal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${refArray.map(r => {
+                      const causaTop = Object.entries(r.causas).sort((a,b)=>b[1]-a[1])[0]?.[0] || '-';
+                      return `
+                      <tr>
+                        <td style="font-family:monospace;font-weight:700;color:#1e40af;">${WMS.esc(r.codigo)}</td>
+                        <td style="font-weight:700;color:#1e293b;">${WMS.esc(r.nombre)}</td>
+                        <td style="text-align:center;color:#64748b;">${r.unidades_caja}</td>
+                        <td style="text-align:center;font-weight:600;">${WMS.formatNum(r.cajas_solicitadas)}</td>
+                        <td style="text-align:center;"><span class="badge badge-danger" style="font-size:11px;">${WMS.formatNum(r.cajas_faltantes)}</span></td>
+                        <td style="text-align:center;font-weight:800;color:#dc2626;">${WMS.formatNum(r.unidades_faltantes)}</td>
+                        <td style="text-align:center;">
+                          <span class="badge badge-info" style="font-size:10.5px;" title="${WMS.esc([...r.clientes].join(', '))}">
+                            <i class="fa-solid fa-users"></i> ${r.clientes.size} clientes
+                          </span>
+                        </td>
+                        <td style="font-size:10.5px;color:#64748b;">${WMS.esc(causaTop)}</td>
+                      </tr>`;
+                    }).join('') || '<tr><td colspan="8" class="table-empty">Sin referencias en consolidado</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 3: MATRIZ DE CLIENTES -->
+            <div id="tab-matriz" class="agot-tab-pane" style="display:none;padding:16px;">
+              <div style="display:flex;flex-direction:column;gap:12px;">
+                ${clientesArray.map((cli, idx) => `
+                <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#fff;">
+                  <div style="background:#f8fafc;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;"
+                       onclick="const b = document.getElementById('cli-mat-body-${idx}'); if(b) b.style.display = b.style.display==='none'?'block':'none';">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                      <i class="fa-solid fa-store" style="color:#0284c7;"></i>
+                      <strong style="font-size:12.5px;color:#1e293b;">${WMS.esc(cli.cliente)}</strong>
+                      <span class="badge badge-danger" style="font-size:10px;">${cli.referencias.length} ref. agotadas</span>
+                      ${cli.errores_digitacion_cnt > 0 ? `<span class="badge" style="background:#fef3c7;color:#92400e;font-size:10px;" title="Errores de digitación excluidos del NS"><i class="fa-solid fa-triangle-exclamation"></i> ${cli.errores_digitacion_cnt} por digitación</span>` : ''}
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                      <span style="font-size:11px;font-weight:700;color:#dc2626;">${WMS.formatNum(cli.unidades_faltantes)} und faltantes</span>
+                      <i class="fa-solid fa-chevron-down" style="color:#94a3b8;font-size:11px;"></i>
+                    </div>
+                  </div>
+                  <div id="cli-mat-body-${idx}" style="display:none;border-top:1px solid #e2e8f0;">
+                    <table class="erp-table" style="font-size:11px;margin:0;">
+                      <thead style="background:#f1f5f9;">
+                        <tr>
+                          <th>Código</th>
+                          <th>Producto</th>
+                          <th style="text-align:center;">Solicitado (cj)</th>
+                          <th style="text-align:center;">Faltante (cj)</th>
+                          <th style="text-align:center;">Faltante (UND/T)</th>
+                          <th>Motivo / Causa</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${cli.referencias.map(ref => `
+                        <tr>
+                          <td style="font-family:monospace;font-weight:700;color:#1e40af;">${WMS.esc(ref.codigo||'-')}</td>
+                          <td><b>${WMS.esc(ref.nombre||'-')}</b></td>
+                          <td style="text-align:center;">${WMS.formatNum(ref.solicitado_cj)}</td>
+                          <td style="text-align:center;"><span class="badge badge-danger">${WMS.formatNum(ref.faltante_cj)}</span></td>
+                          <td style="text-align:center;font-weight:700;color:#dc2626;">${WMS.formatNum(ref.faltante_und)}</td>
+                          <td>
+                            <span style="font-size:10.5px;color:${ref.es_error_digitacion ? '#b45309' : '#475569'};font-weight:${ref.es_error_digitacion ? '700' : '400'};">
+                              ${ref.es_error_digitacion ? '<i class="fa-solid fa-pen-to-square" style="color:#f59e0b;margin-right:4px;"></i>' : ''}
+                              ${WMS.esc(ref.causa)}
+                            </span>
+                          </td>
+                        </tr>`).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>`).join('') || '<div class="table-empty">Sin clientes en matriz</div>'}
+              </div>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 4: NIVEL DE SERVICIO POR CLIENTE (NS) -->
+            <div id="tab-ns" class="agot-tab-pane" style="display:none;padding:0;">
+              <div style="background:#eff6ff;border-bottom:1px solid #bfdbfe;padding:10px 14px;font-size:11px;color:#1e40af;display:flex;align-items:center;gap:8px;">
+                <i class="fa-solid fa-circle-info" style="font-size:14px;color:#2563eb;"></i>
+                <span><b>REGLA DE NIVEL DE SERVICIO:</b> Las referencias u órdenes con motivo de agotado <b>"ERROR EN DIGITACION PEDIDO"</b> están excluidas del cálculo de NS para garantizar la equidad del indicador operativo.</span>
+              </div>
+              <div class="table-container" style="overflow-x:auto;">
+                <table class="erp-table" style="font-size:11.5px;">
+                  <thead>
+                    <tr style="background:#f8fafc;">
+                      <th>Cliente / Sucursal</th>
+                      <th style="text-align:center;">Ref. Solicitadas</th>
+                      <th style="text-align:center;">Ref. Separadas</th>
+                      <th style="text-align:center;">NS Referencias (%)</th>
+                      <th style="text-align:center;">UND. Solicitadas</th>
+                      <th style="text-align:center;">UND. Separadas</th>
+                      <th style="text-align:center;">NS Unidades (%)</th>
+                      <th style="text-align:center;">Estado NS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${nsClientesList.map(cli => {
+                      const colorNs = cli.ns_und_pct >= 95 ? '#10b981' : (cli.ns_und_pct >= 85 ? '#f59e0b' : '#ef4444');
+                      const bgNs = cli.ns_und_pct >= 95 ? '#dcfce7' : (cli.ns_und_pct >= 85 ? '#fef3c7' : '#fee2e2');
+                      const textNs = cli.ns_und_pct >= 95 ? '#15803d' : (cli.ns_und_pct >= 85 ? '#b45309' : '#991b1b');
+                      return `
+                      <tr>
+                        <td style="font-weight:700;color:#1e293b;">${WMS.esc(cli.cliente)}</td>
+                        <td style="text-align:center;">${cli.ref_solicitadas}</td>
+                        <td style="text-align:center;font-weight:700;color:#15803d;">${cli.ref_separadas}</td>
+                        <td style="text-align:center;">
+                          <div style="display:flex;align-items:center;justify-content:center;gap:6px;">
+                            <div style="flex:1;max-width:60px;background:#e2e8f0;border-radius:99px;height:5px;overflow:hidden;">
+                              <div style="width:${cli.ns_ref_pct}%;background:${colorNs};height:100%;"></div>
+                            </div>
+                            <b style="color:${textNs};font-size:11px;">${cli.ns_ref_pct.toFixed(1)}%</b>
+                          </div>
+                        </td>
+                        <td style="text-align:center;">${WMS.formatNum(cli.und_solicitadas)}</td>
+                        <td style="text-align:center;font-weight:700;color:#15803d;">${WMS.formatNum(cli.und_separadas)}</td>
+                        <td style="text-align:center;">
+                          <div style="display:flex;align-items:center;justify-content:center;gap:6px;">
+                            <div style="flex:1;max-width:60px;background:#e2e8f0;border-radius:99px;height:5px;overflow:hidden;">
+                              <div style="width:${cli.ns_und_pct}%;background:${colorNs};height:100%;"></div>
+                            </div>
+                            <b style="color:${textNs};font-size:11px;">${cli.ns_und_pct.toFixed(1)}%</b>
+                          </div>
+                        </td>
+                        <td style="text-align:center;">
+                          <span class="badge" style="background:${bgNs};color:${textNs};font-weight:800;font-size:10px;padding:3px 8px;border-radius:12px;">
+                            ${cli.ns_und_pct >= 95 ? 'Excelente' : (cli.ns_und_pct >= 85 ? 'Aceptable' : 'Crítico')}
+                          </span>
+                        </td>
+                      </tr>`;
+                    }).join('') || '<tr><td colspan="8" class="table-empty">Sin datos de NS para el período</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- CONTENIDO PESTAÑA 5: MOTIVOS Y RESPONSABLES -->
+            <div id="tab-motivos" class="agot-tab-pane" style="display:none;padding:16px;">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:14px;">
+                ${motivosArray.map(m => {
+                  const isComercial = m.responsable.includes('COMERCIAL');
+                  return `
+                  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.03);">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                      <span class="badge" style="background:${isComercial ? '#fef3c7' : '#fee2e2'};color:${isComercial ? '#92400e' : '#991b1b'};font-size:10px;font-weight:800;">
+                        <i class="fa-solid fa-user-gear"></i> ${WMS.esc(m.responsable)}
+                      </span>
+                      <span style="font-size:11px;font-weight:700;color:#64748b;">${m.total_casos} casos</span>
+                    </div>
+                    <h6 style="font-size:13px;font-weight:800;color:#1e293b;margin-bottom:6px;">${WMS.esc(m.motivo)}</h6>
+                    <div style="font-size:11px;color:#64748b;">
+                      Total Faltante: <b style="color:#dc2626;">${WMS.formatNum(m.unidades_faltantes)} und</b> (${WMS.formatNum(m.cajas_faltantes)} cajas)
+                    </div>
+                  </div>`;
+                }).join('') || '<div class="table-empty">Sin motivos especificados</div>'}
+              </div>
+            </div>
+
           </div>
+
         </div>`);
     } catch(e) {
       if (e.isSessionExpired) return;
       console.error(e);
       WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando agotados</p></div>');
     }
+  },
+
+  _switchAgotTab(tabId, btnEl) {
+    document.querySelectorAll('.agot-tab-pane').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('.agot-tab-btn').forEach(b => b.classList.remove('active'));
+    const pane = document.getElementById(tabId);
+    if (pane) pane.style.display = 'block';
+    if (btnEl) btnEl.classList.add('active');
   },
 
   _applyAgotFilters() {
@@ -4265,6 +4711,95 @@ WMS_MODULES.picking = {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  },
+
+  _exportAgotadosPDF() {
+    const rows = this._agotDataCache || [];
+    const f = this._agotFilters || {};
+    const win = window.open('', '_blank');
+    if (!win) { WMS.toast('warning', 'Permita ventanas emergentes para exportar en PDF'); return; }
+
+    let totalUndFalt = 0;
+    rows.forEach(r => { totalUndFalt += ((parseFloat(r.cantidad_faltante)||0) * (parseInt(r.unidades_caja)||1)); });
+
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Reporte Ejecutivo de Agotados - WMS FENIX</title>
+      <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 20px; color: #1e293b; background: #fff; font-size: 11px; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
+        .header h2 { margin: 0; color: #0f172a; font-size: 18px; text-transform: uppercase; }
+        .header p { margin: 2px 0 0 0; color: #64748b; font-size: 10px; }
+        .kpi-row { display: flex; gap: 10px; margin-bottom: 16px; }
+        .kpi-card { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; text-align: center; background: #f8fafc; }
+        .kpi-title { font-size: 9px; font-weight: bold; color: #64748b; text-transform: uppercase; }
+        .kpi-val { font-size: 16px; font-weight: 900; color: #dc2626; margin-top: 3px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { background: #0f172a; color: #fff; text-align: left; padding: 6px 8px; font-size: 9.5px; text-transform: uppercase; }
+        td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; font-size: 10px; }
+        tr:nth-child(even) { background: #f8fafc; }
+        .footer { margin-top: 20px; text-align: right; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div>
+          <h2>WMS FENIX · TABLERO DE AGOTADOS LOGÍSTICOS</h2>
+          <p>Informe Consolidado Ejecutivo · Período: ${f.ini || 'Inicio'} a ${f.fin || 'Hoy'}</p>
+        </div>
+        <div style="text-align:right;">
+          <strong>Generado:</strong> ${new Date().toLocaleString()}<br>
+          <small>Sucursal: ${WMS.esc(f.sucursal || 'Todas')}</small>
+        </div>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-card"><div class="kpi-title">Total Registros</div><div class="kpi-val">${rows.length}</div></div>
+        <div class="kpi-card"><div class="kpi-title">Unidades Faltantes</div><div class="kpi-val">${WMS.formatNum(totalUndFalt)}</div></div>
+        <div class="kpi-card"><div class="kpi-title">Período</div><div class="kpi-val" style="color:#0284c7;font-size:12px;">${f.ini} / ${f.fin}</div></div>
+      </div>
+
+      <h3>Detalle de Agotados y Faltantes</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Cliente / Sucursal</th>
+            <th>Pedido</th>
+            <th>Código</th>
+            <th>Producto</th>
+            <th style="text-align:center;">Solicitado (cj)</th>
+            <th style="text-align:center;">Faltante (cj)</th>
+            <th>Causa / Motivo</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td>${(r.fecha||'').slice(0,10)}</td>
+              <td><b>${WMS.esc(r.cliente||r.sucursal_entrega||'-')}</b></td>
+              <td>${WMS.esc(r.numero_orden||'-')}</td>
+              <td>${WMS.esc(r.producto_codigo||'-')}</td>
+              <td>${WMS.esc(r.producto_nombre||'-')}</td>
+              <td style="text-align:center;">${WMS.formatNum(r.cantidad_solicitada)}</td>
+              <td style="text-align:center;color:#dc2626;font-weight:bold;">${WMS.formatNum(r.cantidad_faltante)}</td>
+              <td>${WMS.esc(r.causa||'-')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+
+      <div class="footer">WMS FENIX Logística Avanzada · Documento impreso automáticamente</div>
+      <script>setTimeout(function(){ window.print(); }, 500);</script>
+    </body>
+    </html>
+    `;
+
+    win.document.write(html);
+    win.document.close();
   },
 
   // ── DASHBOARD PICKING  ·  Command Center Logístico ───────────────────────
