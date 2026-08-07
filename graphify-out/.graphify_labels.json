@@ -327,14 +327,11 @@
   "325": "Warehouse/truck app icon (512x512)",
   "326": "124_create_sesion_icg_lineas_table.php",
   "327": "RecepcionDetalle",
-  "328": "InvGeneralEvento",
   "329": "BloqueoController",
   "330": "Traspaso",
   "331": "TrazabilidadController",
   "332": "TV Dashboard 360 Design Doc",
   "333": "129_fix_factor_udm_masivo_maestro.php",
-  "334": "Ubicacion",
-  "335": "SystemController",
   "336": ".logSlowRequest",
   "337": "130_unificar_unidades_caja_factor_udm.php",
   "338": "📦 INVENTARIO Y MOVIMIENTOS - REGLA SAGRADA DE FORMULACIÓN",
@@ -343,7 +340,6 @@
   "341": "AnomalyController.php",
   "342": "PermisoPersonalController",
   "343": "ExcelExporter",
-  "344": "TraspasoDocumentoDetalle",
   "345": "check_users.php",
   "346": "test_api.php"
 }
