@@ -1075,8 +1075,12 @@ WMS_MODULES.devoluciones = {
                 <input type="date" id="dv-item-fv" class="form-control form-control-sm">
               </div>
               <div>
-                <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Cantidad</label>
-                <input type="number" id="dv-item-cant" class="form-control form-control-sm" min="0.001" step="0.001" placeholder="0">
+                <label id="dv-cant-label" style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Cantidad</label>
+                <div style="display:flex;gap:4px;">
+                  <input type="number" id="dv-item-cant" class="form-control form-control-sm" min="0.001" step="0.001" placeholder="0" oninput="WMS_MODULES.devoluciones._updDvTotal()">
+                  <input type="number" id="dv-item-saldo" class="form-control form-control-sm" min="0" step="0.001" placeholder="Saldo" style="display:none;" oninput="WMS_MODULES.devoluciones._updDvTotal()">
+                </div>
+                <div id="dv-cant-total" style="font-size:10px;color:#64748b;display:none;"></div>
               </div>
               <div>
                 <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Condición</label>
@@ -1225,6 +1229,43 @@ WMS_MODULES.devoluciones = {
     document.getElementById('dv-item-ubic-q').value             = '';
     document.getElementById('dv-item-ubic-id').value            = '';
     document.getElementById('dv-item-cant')?.focus();
+    this._cargarUpcQrProd(id);
+  },
+
+  // Trae unidades_caja del producto seleccionado para mostrar (o no) el campo
+  // de saldo — si tiene empaque (>1), se captura cajas+saldo por separado.
+  async _cargarUpcQrProd(productoId) {
+    const label   = document.getElementById('dv-cant-label');
+    const saldoEl = document.getElementById('dv-item-saldo');
+    const totalEl = document.getElementById('dv-cant-total');
+    if (label) label.textContent = 'Cantidad';
+    if (saldoEl) saldoEl.style.display = 'none';
+    if (totalEl) totalEl.style.display = 'none';
+    if (!this._state.qrProd) return;
+    this._state.qrProd.unidades_caja = 1;
+    try {
+      const r = await API.get('/param/productos/' + productoId);
+      const p = r.data || r;
+      const factor = parseInt(p?.unidades_caja) || 1;
+      if (!this._state.qrProd) return;
+      this._state.qrProd.unidades_caja = factor;
+      if (factor > 1 && label && saldoEl) {
+        label.textContent = `Cajas (${factor} und/caja)`;
+        saldoEl.placeholder = 'Saldo';
+        saldoEl.style.display = '';
+        if (totalEl) totalEl.style.display = '';
+        this._updDvTotal();
+      }
+    } catch(e) { /* si falla, se captura como cantidad única (comportamiento actual) */ }
+  },
+
+  _updDvTotal() {
+    const factor = parseInt(this._state.qrProd?.unidades_caja) || 1;
+    const totalEl = document.getElementById('dv-cant-total');
+    if (factor <= 1 || !totalEl) return;
+    const cj = parseFloat(document.getElementById('dv-item-cant')?.value || 0);
+    const sl = parseFloat(document.getElementById('dv-item-saldo')?.value || 0);
+    totalEl.textContent = `= ${WMS.formatNum((cj * factor) + sl)} und`;
   },
 
   /* ─── QR buscar (conservado) ─── */
@@ -1247,6 +1288,7 @@ WMS_MODULES.devoluciones = {
       document.getElementById('dv-item-ubic-q').value             = '';
       document.getElementById('dv-item-ubic-id').value            = '';
       document.getElementById('dv-item-cant').focus();
+      this._cargarUpcQrProd(p.id);
       WMS.toast('success', 'Producto: ' + p.nombre);
     } catch(e) { WMS.toast('error', 'Producto no encontrado'); }
   },
@@ -1254,7 +1296,20 @@ WMS_MODULES.devoluciones = {
   agregarItem() {
     const prod = this._state.qrProd;
     if (!prod) { WMS.toast('error', 'Busque un producto primero'); return; }
-    const cant = parseFloat(document.getElementById('dv-item-cant')?.value || 0);
+    const factor = parseInt(prod.unidades_caja) || 1;
+    const inputCant = parseFloat(document.getElementById('dv-item-cant')?.value || 0);
+    let cant, cantCajas, cantSaldo;
+    if (factor > 1) {
+      cantCajas = inputCant;
+      cantSaldo = parseFloat(document.getElementById('dv-item-saldo')?.value || 0);
+      cant = (cantCajas * factor) + cantSaldo;
+    } else {
+      cant = inputCant;
+      // factor=1: se manda como "1 caja" para que el recálculo server-side
+      // (cajas*upc+saldo) dé el mismo total, nunca 0.
+      cantCajas = cant;
+      cantSaldo = 0;
+    }
     if (!cant || cant <= 0) { WMS.toast('error', 'Ingrese una cantidad válida'); return; }
     const ubicOrigenId = parseInt(document.getElementById('dv-item-ubic-id')?.value || 0) || null;
     const ubicOrigenCod = document.getElementById('dv-item-ubic-q')?.value?.trim() || null;
@@ -1265,6 +1320,8 @@ WMS_MODULES.devoluciones = {
       lote:                document.getElementById('dv-item-lote')?.value || null,
       fecha_vencimiento:   document.getElementById('dv-item-fv')?.value || null,
       cantidad:            cant,
+      cantidad_cajas:      cantCajas,
+      cantidad_saldo:      cantSaldo,
       condicion:           document.getElementById('dv-item-cond')?.value || 'bueno',
       ubicacion_origen_id: ubicOrigenId,
       ubicacion_origen_cod:ubicOrigenCod,
@@ -1277,6 +1334,10 @@ WMS_MODULES.devoluciones = {
     document.getElementById('dv-item-lote').value   = '';
     document.getElementById('dv-item-fv').value     = '';
     document.getElementById('dv-item-cant').value   = '';
+    document.getElementById('dv-item-saldo').value  = '';
+    document.getElementById('dv-item-saldo').style.display = 'none';
+    document.getElementById('dv-cant-total').style.display  = 'none';
+    document.getElementById('dv-cant-label').textContent    = 'Cantidad';
     document.getElementById('dv-item-ubic-q').value = '';
     document.getElementById('dv-item-ubic-id').value= '';
     this._renderItemsTable();
@@ -1391,6 +1452,8 @@ WMS_MODULES.devoluciones = {
           lote:                it.lote,
           fecha_vencimiento:   it.fecha_vencimiento,
           cantidad:            it.cantidad,
+          cantidad_cajas:      it.cantidad_cajas || 0,
+          cantidad_saldo:      it.cantidad_saldo || 0,
           condicion:           it.condicion,
           motivo:              'Otro',
           ubicacion_origen_id: it.ubicacion_origen_id || null,
