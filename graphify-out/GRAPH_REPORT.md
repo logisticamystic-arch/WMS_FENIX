@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-06)
 
 ## Corpus Check
-- 345 files · ~847,484 words
+- 345 files · ~847,508 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `1cf5b596`
+- Built from commit: `73077f69`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -701,9 +701,9 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `Yard Management Controller` to `ConteoInventario`, `OutboundController`, `Receiving Controller`, `MovimientoInventario`, `Dispatch Controller`, `Tenant Context & Middleware`, `Assignment Session Management`, `Sucursal`, `Despacho`, `Miscellaneous Items Controller`, `Replenishment & Notifications`, `MovimientoInventario`, `Traspaso`, `TV Picking Dashboard`, `InvGeneralAsignacion`, `CacheHelper`, `Traspaso`, `Picking TV Dashboard`, `BaseController.php`, `SesionAsignacion`, `.logSlowRequest`?**
-  _High betweenness centrality (0.032) - this node is a cross-community bridge._
+  _High betweenness centrality (0.031) - this node is a cross-community bridge._
 - **Why does `BaseController` connect `Base Controller Utilities` to `Inventory & Dashboard Controller`, `Parameters & Approvals`, `OutboundController`, `Cross-Dock Operations`, `InvGeneralConteo`, `Product Blocking & Quick Search`, `Receiving Controller`, `MovimientoInventario`, `Location Adjustment Controller`, `ML Expiry Prediction`, `Assignment Session Management`, `Sucursal`, `Miscellaneous Items Controller`, `Replenishment & Notifications`, `TMS Integration Controller`, `SesionInventario`, `TV Picking Dashboard`, `CacheHelper`, `.__invoke`, `TrazabilidadController`, `PermisoPersonalController`, `Picking TV Dashboard`, `TenantScoped.php`, `AnomalyController`, `.__invoke`, `.logSlowRequest`?**
-  _High betweenness centrality (0.014) - this node is a cross-community bridge._
+  _High betweenness centrality (0.013) - this node is a cross-community bridge._
 - **Why does `Personal` connect `Sucursal` to `Traspaso`, `MovimientoInventario`, `Replenishment & Notifications`, `Yard Management Controller`?**
   _High betweenness centrality (0.012) - this node is a cross-community bridge._
 - **Are the 129 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
