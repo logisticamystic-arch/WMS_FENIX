@@ -895,8 +895,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/DevolucionController.php": {
-    "mtime": 1785276695.3473203,
-    "ast_hash": "4a7038b6bd044ca8e4203ceba7e10060",
+    "mtime": 1786058476.9855156,
+    "ast_hash": "33059e38eaafe3068a0ca40866d4af87",
     "semantic_hash": ""
   },
   "src/Controllers/ForecastController.php": {

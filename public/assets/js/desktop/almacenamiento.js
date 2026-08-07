@@ -1237,9 +1237,12 @@ WMS_MODULES.almacenamiento = {
 
             <div id="trp-d-seleccion" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:10px;">
               <div id="trp-d-sel-info" style="font-size:.85rem;margin-bottom:8px;"></div>
-              <div style="display:flex;gap:10px;align-items:center;">
-                <label style="margin:0;font-weight:700;">Cantidad *</label>
-                <input id="trp-d-cant" type="number" class="form-control" min="0.01" step="0.01" style="width:120px;">
+              <div id="trp-d-cant-wrap" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <label id="trp-d-cant-label" style="margin:0;font-weight:700;">Cantidad *</label>
+                <input id="trp-d-cant" type="number" class="form-control" min="0.01" step="0.01" style="width:120px;" oninput="WMS_MODULES.almacenamiento._trpDUpdTotal()">
+                <label id="trp-d-saldo-label" style="margin:0;font-weight:700;color:#d97706;display:none;">Saldo</label>
+                <input id="trp-d-saldo" type="number" class="form-control" min="0" step="0.01" style="width:100px;display:none;" oninput="WMS_MODULES.almacenamiento._trpDUpdTotal()">
+                <span id="trp-d-total-preview" style="font-size:.8rem;color:#475569;display:none;"></span>
                 <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.almacenamiento._trpDCancelarItem()">Cancelar</button>
                 <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.almacenamiento._trpDAgregarItem()"><i class="fa-solid fa-plus"></i> Agregar</button>
               </div>

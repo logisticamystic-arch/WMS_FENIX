@@ -1,17 +1,30 @@
 <?php
-require __DIR__ . '/../../vendor/autoload.php';
-$dotenv = Dotenv\Dotenv::createImmutable(dirname(__DIR__, 2));
+require __DIR__ . '/../vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
 $dotenv->load();
-require __DIR__ . '/../../config/app.php';
 
 use Illuminate\Database\Capsule\Manager as Capsule;
 
+$capsule = new Capsule;
+$capsule->addConnection([
+    'driver'   => $_ENV['DB_DRIVER'] ?? 'pgsql',
+    'host'     => $_ENV['DB_HOST'] ?? '127.0.0.1',
+    'port'     => $_ENV['DB_PORT'] ?? '5432',
+    'database' => $_ENV['DB_NAME'] ?? 'wms_fenix',
+    'username' => $_ENV['DB_USER'] ?? 'postgres',
+    'password' => $_ENV['DB_PASS'] ?? 'Logistica2101+',
+    'charset'  => 'utf8',
+    'prefix'   => '',
+    'schema'   => 'public',
+]);
+$capsule->setAsGlobal();
+$capsule->bootEloquent();
+
 echo "=== DIAGNÓSTICO BASE DE DATOS ML ===" . PHP_EOL;
-echo "Tablas:" . PHP_EOL;
 try {
     echo "- clasificaciones_abc_xyz total: " . Capsule::table('clasificaciones_abc_xyz')->count() . PHP_EOL;
     echo "- clasificaciones_abc_xyz vigentes: " . Capsule::table('clasificaciones_abc_xyz')->where('vigente', true)->count() . PHP_EOL;
-    $clasif = Capsule::table('clasificaciones_abc_xyz')->where('vigente', true)->get();
+    $clasif = Capsule::table('clasificaciones_abc_xyz')->where('vigente', true)->limit(5)->get();
     print_r($clasif->toArray());
 } catch (\Exception $e) {
     echo "Error clasificaciones: " . $e->getMessage() . PHP_EOL;

@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-06)
 
 ## Corpus Check
-- 342 files · ~845,600 words
+- 342 files · ~845,709 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5b9c6f69`
+- Built from commit: `7414fe4f`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -703,10 +703,10 @@ _Questions this graph is uniquely positioned to answer:_
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `Traspaso` to `OutboundController`, `Packing & Expiry Control`, `Receiving Controller`, `MovimientoInventario`, `Base Controller Utilities`, `Dispatch Controller`, `Tenant Context & Middleware`, `Yard Management Controller`, `ML Expiry Prediction`, `Sucursal`, `Despacho`, `Miscellaneous Items Controller`, `BloqueoController`, `Replenishment & Notifications`, `OrdenCompraDetalle`, `MovimientoInventario`, `TV Picking Dashboard`, `CacheHelper`, `InvGeneralEvento`, `SesionAsignacion`, `Picking TV Dashboard`, `.__invoke`, `SesionAsignacion`?**
   _High betweenness centrality (0.021) - this node is a cross-community bridge._
-- **Why does `Producto` connect `Picking TV Dashboard` to `SesionAsignacion`, `RecepcionDetalle`, `BloqueoController`, `OrdenCompraDetalle`, `Traspaso`, `TV Picking Dashboard`, `Tenant Context & Middleware`?**
-  _High betweenness centrality (0.015) - this node is a cross-community bridge._
 - **Why does `Ubicacion` connect `TV Picking Dashboard` to `Picking TV Dashboard`, `Traspaso`, `Sucursal`, `Yard Management Controller`?**
   _High betweenness centrality (0.009) - this node is a cross-community bridge._
+- **Why does `OrdenPicking` connect `TV Picking Dashboard` to `Cross-Dock Operations`, `Traspaso`, `Tenant Context & Middleware`?**
+  _High betweenness centrality (0.008) - this node is a cross-community bridge._
 - **Are the 132 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
   _`date` has 132 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `Reglas Clave:`, `1. Desglose y Equivalencia Inequívoca`, `2. Presentación en Pantallas y Modales de Confirmación` to the rest of the system?**
