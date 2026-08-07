@@ -1388,10 +1388,34 @@ WMS_MODULES.almacenamiento = {
         Lote: <strong>${WMS.esc(s.lote||'Sin lote')}</strong> |
         Disponible: <strong style="color:#059669;">${s.cantidad_disponible}</strong>
       </div>`;
-    const cantEl = document.getElementById('trp-d-cant');
+    const factor = parseInt(s.unidades_caja) || 1;
+    const cantEl   = document.getElementById('trp-d-cant');
+    const saldoEl  = document.getElementById('trp-d-saldo');
+    const preview  = document.getElementById('trp-d-total-preview');
     cantEl.value = '';
-    cantEl.max = s.cantidad_disponible;
+    saldoEl.value = '';
+    document.getElementById('trp-d-cant-label').textContent = factor > 1 ? `Cajas (${factor} und/caja) *` : 'Cantidad *';
+    document.getElementById('trp-d-saldo-label').style.display = factor > 1 ? '' : 'none';
+    saldoEl.style.display = factor > 1 ? '' : 'none';
+    preview.style.display = factor > 1 ? '' : 'none';
+    if (factor > 1) {
+      cantEl.removeAttribute('max');
+      cantEl.step = '1';
+    } else {
+      cantEl.max = s.cantidad_disponible;
+      cantEl.step = '0.01';
+    }
     cantEl.focus();
+  },
+
+  _trpDUpdTotal() {
+    if (!this._trpDSelected) return;
+    const factor = parseInt(this._trpDSelected.unidades_caja) || 1;
+    if (factor <= 1) return;
+    const cj = parseFloat(document.getElementById('trp-d-cant')?.value || 0);
+    const sl = parseFloat(document.getElementById('trp-d-saldo')?.value || 0);
+    const preview = document.getElementById('trp-d-total-preview');
+    if (preview) preview.textContent = `= ${WMS.formatNum((cj * factor) + sl)} und (disp: ${this._trpDSelected.cantidad_disponible})`;
   },
 
   _trpDCancelarItem() {
@@ -1401,14 +1425,28 @@ WMS_MODULES.almacenamiento = {
 
   _trpDAgregarItem() {
     if (!this._trpDSelected) return;
-    const cant = parseFloat(document.getElementById('trp-d-cant').value) || 0;
+    const factor = parseInt(this._trpDSelected.unidades_caja) || 1;
+    let cant, cantCajas = 0, cantSaldo = 0;
+    if (factor > 1) {
+      cantCajas = parseFloat(document.getElementById('trp-d-cant').value) || 0;
+      cantSaldo = parseFloat(document.getElementById('trp-d-saldo').value) || 0;
+      cant = (cantCajas * factor) + cantSaldo;
+    } else {
+      cant = parseFloat(document.getElementById('trp-d-cant').value) || 0;
+      // factor=1: la cantidad única se manda como "1 caja" (upc=1) para que el
+      // recálculo server-side (cajas*upc+saldo) dé el mismo total, nunca 0.
+      cantCajas = cant;
+      cantSaldo = 0;
+    }
     if (cant <= 0 || cant > this._trpDSelected.cantidad_disponible) {
       WMS.toast('error', 'Cantidad inválida o excede el disponible');
       return;
     }
     this._trpDItems.push({
       ...this._trpDSelected,
-      cantidad: cant
+      cantidad: cant,
+      cantidad_cajas: cantCajas,
+      cantidad_saldo: cantSaldo
     });
     this._trpDRenderItems();
     this._trpDCancelarItem();
@@ -1463,7 +1501,9 @@ WMS_MODULES.almacenamiento = {
         ubicacion_id: i.ubicacion_id,
         lote: i.lote,
         fecha_vencimiento: i.fecha_vencimiento,
-        cantidad: i.cantidad
+        cantidad: i.cantidad,
+        cantidad_cajas: i.cantidad_cajas || 0,
+        cantidad_saldo: i.cantidad_saldo || 0
       }))
     };
 

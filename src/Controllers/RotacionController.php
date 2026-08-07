@@ -30,13 +30,13 @@ class RotacionController extends BaseController
         $params = $r->getQueryParams();
 
         $empId = $this->getEffectiveEmpresaId($user, $r);
-        $sucId = $user->sucursal_id;
+        $sucId = $this->getEffectiveSucursalId($user, $r);
 
         // Verificar si hay clasificación vigente
         $hayClasificacion = Capsule::table('clasificaciones_abc_xyz')
             ->where('empresa_id',  $empId)
-            ->where('sucursal_id', $sucId)
             ->where('vigente', true)
+            ->when($sucId, fn($q) => $q->where('sucursal_id', $sucId))
             ->exists();
 
         if (!$hayClasificacion) {
@@ -51,8 +51,8 @@ class RotacionController extends BaseController
         $q = Capsule::table('clasificaciones_abc_xyz as c')
             ->join('productos as p', 'c.producto_id', '=', 'p.id')
             ->where('c.empresa_id',  $empId)
-            ->where('c.sucursal_id', $sucId)
             ->where('c.vigente', true)
+            ->when($sucId, fn($sq) => $sq->where('c.sucursal_id', $sucId))
             ->select(
                 'c.producto_id', 'c.clase_abc', 'c.clase_xyz', 'c.segmento',
                 'c.total_valor', 'c.total_unidades', 'c.pct_valor', 'c.pct_unidades',
