@@ -655,8 +655,8 @@
     "semantic_hash": "55a981fc94e0e5956e0c0af77d105af7"
   },
   "public/assets/js/desktop/almacenamiento.js": {
-    "mtime": 1786061133.7786422,
-    "ast_hash": "6fabb3f63f4518046d93dbb21600c1fa",
+    "mtime": 1786062836.2680185,
+    "ast_hash": "1309a29152f050bb6a0670957b07f73d",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/chat-ia.js": {
@@ -745,9 +745,9 @@
     "semantic_hash": "14a00514a28a2a80aa67ffd05d284c4e"
   },
   "public/sw.js": {
-    "mtime": 1780093836.0,
-    "ast_hash": "ec6d577ab140eb43b258b6a2f3d73f62",
-    "semantic_hash": "ec6d577ab140eb43b258b6a2f3d73f62"
+    "mtime": 1786063096.529044,
+    "ast_hash": "f33889510a2238b7961c270469c9765c",
+    "semantic_hash": ""
   },
   "run_migrations.php": {
     "mtime": 1784903025.6887581,
@@ -990,8 +990,8 @@
     "semantic_hash": "e328c960b09461ca3e29880219bea128"
   },
   "src/Controllers/RotacionController.php": {
-    "mtime": 1786059262.7784963,
-    "ast_hash": "83119d2f3a27dd10cc4164dbaab73db4",
+    "mtime": 1786063082.1465425,
+    "ast_hash": "65a533d165daeb7acfec85ce573715aa",
     "semantic_hash": ""
   },
   "src/Controllers/SlottingController.php": {
@@ -1550,8 +1550,8 @@
     "semantic_hash": "9af6772ebae31c28558f86c610ad83e7"
   },
   "public/index.html": {
-    "mtime": 1785946665.6966846,
-    "ast_hash": "455e9abdda0d7be5af2aac4204385533",
+    "mtime": 1786063090.8049045,
+    "ast_hash": "ba65913fd02b1184092fa93767c98ebb",
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
@@ -1822,6 +1822,16 @@
   "scratch/check_db.php": {
     "mtime": 1786061194.5952156,
     "ast_hash": "51525831424aa910a6d223e4c1e6775f",
+    "semantic_hash": ""
+  },
+  "scratch/check_users.php": {
+    "mtime": 1786062645.7688994,
+    "ast_hash": "d982c2ff5ecd127aee831d1a9e7df784",
+    "semantic_hash": ""
+  },
+  "scratch/test_api.php": {
+    "mtime": 1786062845.9113424,
+    "ast_hash": "6297728aae78e2b89a6906d9ba2e4c8f",
     "semantic_hash": ""
   }
 }

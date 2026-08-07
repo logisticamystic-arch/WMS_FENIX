@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-06)
 
 ## Corpus Check
-- 343 files · ~846,632 words
+- 343 files · ~846,689 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `2ed0931b`
+- Built from commit: `9261a058`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -697,7 +697,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `MovimientoInventario` to `SesionAsignacion`, `OutboundController`, `Yard Management Controller`, `InvGeneralEvento`, `ML Expiry Prediction`, `Sucursal`, `Receiving Controller`, `MovimientoInventario`, `Despacho`, `Miscellaneous Items Controller`, `Replenishment & Notifications`, `Base Controller Utilities`, `Picking TV Dashboard`, `Dispatch Controller`, `Tenant Context & Middleware`, `Traspaso`, `TV Picking Dashboard`, `CacheHelper`?**
-  _High betweenness centrality (0.024) - this node is a cross-community bridge._
+  _High betweenness centrality (0.023) - this node is a cross-community bridge._
 - **Why does `BaseController` connect `Base Controller Utilities` to `Inventory & Dashboard Controller`, `Parameters & Approvals`, `Cross-Dock Operations`, `Product Blocking & Quick Search`, `Receiving Controller`, `MovimientoInventario`, `Impresora`, `Location Adjustment Controller`, `Assignment Session Management`, `Sucursal`, `Miscellaneous Items Controller`, `Replenishment & Notifications`, `TMS Integration Controller`, `UbicacionesController`, `SesionInventario`, `TV Picking Dashboard`, `CacheHelper`, `.__invoke`, `Picking TV Dashboard`, `TenantScoped.php`, `AnomalyController`, `.__invoke`?**
   _High betweenness centrality (0.009) - this node is a cross-community bridge._
 - **Why does `OrdenPicking` connect `TV Picking Dashboard` to `Cross-Dock Operations`, `Traspaso`, `Yard Management Controller`, `MovimientoInventario`?**
