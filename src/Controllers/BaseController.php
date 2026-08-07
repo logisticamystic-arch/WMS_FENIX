@@ -432,6 +432,19 @@ abstract class BaseController
             ->leftJoin('orden_pickings as op', 'op.id', '=', 'pf.orden_picking_id')
             ->leftJoin('causales_novedad as cn', 'cn.id', '=', 'pf.causal_id')
             ->whereIn('pf.orden_picking_id', $ordenIds)
+            // picking_faltantes es un log de solo-inserción (sin columna de estado/resuelto):
+            // si la línea se marcó "Faltante" en su momento pero luego SÍ se separó (backorder,
+            // reintento, reposición), el registro queda huérfano y sin este filtro sale como
+            // "agotado" en la remisión para siempre, aunque ya se haya entregado completo.
+            // Solo se muestra si ese producto todavía tiene AL MENOS una línea 'Faltante' hoy
+            // en esa misma orden (auditoría 2026-08-06, incidente planilla 438 / pedido 17183).
+            ->whereExists(function ($q) {
+                $q->select(Capsule::raw(1))
+                  ->from('picking_detalles as pd')
+                  ->whereColumn('pd.orden_picking_id', 'pf.orden_picking_id')
+                  ->whereColumn('pd.producto_id', 'pf.producto_id')
+                  ->where('pd.estado', 'Faltante');
+            })
             ->select([
                 'p.codigo_interno as codigo',
                 'p.nombre',
