@@ -402,6 +402,13 @@ class PackingController extends BaseController
                 ->where('sucursal_entrega', $sesion->sucursal_entrega)
                 ->where('estado', 'Completada')
                 ->where('estado_certificacion', 'Pendiente')
+                // Blindaje 2026-08-06: nunca certificar un pedido ya despachado salvo que
+                // sea del día actual — mismo criterio que recertificar() (ver ese método
+                // para el incidente real que motivó esto).
+                ->where(function ($q) {
+                    $q->whereNull('estado_despacho')
+                      ->orWhereDate('fecha_movimiento', date('Y-m-d'));
+                })
                 ->get();
 
             // Bulk update — 1 query en lugar de N saves
@@ -527,6 +534,19 @@ class PackingController extends BaseController
             ->where('sucursal_entrega', $sesion->sucursal_entrega)
             ->whereIn('estado', ['Pendiente', 'EnProceso', 'Completada', 'Completado'])
             ->whereIn('estado_certificacion', ['Pendiente', 'Parcial'])
+            // Blindaje 2026-08-06: un pedido ya despachado (y por lo tanto liquidado) es
+            // intocable — no debe volver a certificarse ni recibir fecha_certificacion
+            // nueva, sin importar que 'sucursal_entrega' coincida con el nombre de un
+            // cliente recurrente. Solo se permite recertificar pedidos que aún NO se
+            // despacharon, o los del propio día (mismo turno, corrección legítima antes
+            // de salir a reparto). Incidente real: recertificar() sobre la sesión de HOY
+            // de "CLAP BURGER LAURELES" arrastró pedidos ya entregados desde julio que
+            // compartían ese mismo nombre de sucursal_entrega y seguían en 'Parcial' por
+            // una línea permanentemente agotada.
+            ->where(function ($q) {
+                $q->whereNull('estado_despacho')
+                  ->orWhereDate('fecha_movimiento', date('Y-m-d'));
+            })
             ->get();
 
         if ($ordenes->isEmpty()) {
@@ -912,6 +932,15 @@ class PackingController extends BaseController
                 ->where('sucursal_id', $sucId)
                 ->where('sucursal_entrega', $sesion->sucursal_entrega)
                 ->where('estado_certificacion', 'Certificada')
+                // Blindaje 2026-08-06: un pedido ya despachado (liquidado) es intocable —
+                // mismo criterio que recertificar()/finalizarSesion(). Incidente real:
+                // resetCertificacion() sobre una sesión de HOY reseteó a 'Pendiente' y
+                // borró el empaque de un pedido entregado desde julio que compartía
+                // 'sucursal_entrega' con la sesión actual.
+                ->where(function ($q) {
+                    $q->whereNull('estado_despacho')
+                      ->orWhereDate('fecha_movimiento', date('Y-m-d'));
+                })
                 ->get();
 
             foreach ($ordenes as $o) {

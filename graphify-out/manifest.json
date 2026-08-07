@@ -845,8 +845,8 @@
     "semantic_hash": "171176c1d47397caf03ad76d421978db"
   },
   "src/Controllers/BaseController.php": {
-    "mtime": 1785851311.6961508,
-    "ast_hash": "bd4cdb67c273062ac5598d97de4e0243",
+    "mtime": 1786076916.5735233,
+    "ast_hash": "bee73ce0b11d05e5473cc0dbc1470afb",
     "semantic_hash": ""
   },
   "src/Controllers/BloqueoController.php": {
