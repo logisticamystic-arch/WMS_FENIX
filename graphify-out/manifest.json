@@ -655,8 +655,8 @@
     "semantic_hash": "55a981fc94e0e5956e0c0af77d105af7"
   },
   "public/assets/js/desktop/almacenamiento.js": {
-    "mtime": 1785869940.5778553,
-    "ast_hash": "d076dce7b7f65376cc6dbd07179b42c8",
+    "mtime": 1786061133.7786422,
+    "ast_hash": "6fabb3f63f4518046d93dbb21600c1fa",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/chat-ia.js": {
@@ -1820,8 +1820,8 @@
     "semantic_hash": ""
   },
   "scratch/check_db.php": {
-    "mtime": 1786060374.6096885,
-    "ast_hash": "39737d78857cdca83fb20a606b8164e6",
+    "mtime": 1786061194.5952156,
+    "ast_hash": "51525831424aa910a6d223e4c1e6775f",
     "semantic_hash": ""
   }
 }

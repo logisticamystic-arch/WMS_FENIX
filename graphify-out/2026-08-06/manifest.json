@@ -670,8 +670,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/despacho.js": {
-    "mtime": 1785976973.309052,
-    "ast_hash": "5124d763fb321805ca22092fdbae3e1f",
+    "mtime": 1786060336.100257,
+    "ast_hash": "deba5d76ac53cb4f14c56494f2fe0b46",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/devoluciones.js": {
@@ -705,8 +705,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/picking.js": {
-    "mtime": 1785981474.64043,
-    "ast_hash": "5084b0bf3407bc9504054d1cd4bf4afd",
+    "mtime": 1786059442.2450655,
+    "ast_hash": "74876af34ebd69c23ac1a5a196849f76",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/recepcion.js": {
@@ -720,8 +720,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/rotacion.js": {
-    "mtime": 1784764985.6412518,
-    "ast_hash": "4945248dcf3581f8b508c21fb38a93be",
+    "mtime": 1786059254.183005,
+    "ast_hash": "67130cce075dd5c68804cbcd57f9e5ec",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/rotulos.js": {
@@ -945,8 +945,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/PackingController.php": {
-    "mtime": 1786025076.1311572,
-    "ast_hash": "367e4d348412d90e192dbfb09b84586f",
+    "mtime": 1786059136.4686625,
+    "ast_hash": "1323327f59a2acf77f92d6345f5e0736",
     "semantic_hash": ""
   },
   "src/Controllers/ParametrosController.php": {
@@ -990,9 +990,9 @@
     "semantic_hash": "e328c960b09461ca3e29880219bea128"
   },
   "src/Controllers/RotacionController.php": {
-    "mtime": 1782868509.7898836,
-    "ast_hash": "63a7407d8583a09ea1e15dcb080d0099",
-    "semantic_hash": "63a7407d8583a09ea1e15dcb080d0099"
+    "mtime": 1786059262.7784963,
+    "ast_hash": "83119d2f3a27dd10cc4164dbaab73db4",
+    "semantic_hash": ""
   },
   "src/Controllers/SlottingController.php": {
     "mtime": 1782868201.8534946,
@@ -1010,8 +1010,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/TraspasoController.php": {
-    "mtime": 1785438489.6940536,
-    "ast_hash": "6af65a2ef0a82d29d7ac65166073a305",
+    "mtime": 1786058984.2149448,
+    "ast_hash": "dd3446c0dc30cdd91bf35bc97c0e4362",
     "semantic_hash": ""
   },
   "src/Controllers/TrazabilidadController.php": {
@@ -1817,6 +1817,11 @@
   "database/migrations/131_check_unidades_caja_positivo.php": {
     "mtime": 1786056792.5665593,
     "ast_hash": "aad88d322355aaef0fc87af8bc4685f8",
+    "semantic_hash": ""
+  },
+  "scratch/check_db.php": {
+    "mtime": 1786060374.6096885,
+    "ast_hash": "39737d78857cdca83fb20a606b8164e6",
     "semantic_hash": ""
   }
 }
