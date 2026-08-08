@@ -4244,7 +4244,7 @@ WMS_MODULES.picking = {
           porReferencia[key] = {
             codigo: r.producto_codigo || '-',
             nombre: r.producto_nombre || '-',
-            unidades_caja: parseInt(r.unidades_caja) || 1,
+            unidades_caja: this._agotUpc(r),
             cajas_solicitadas: 0,
             cajas_faltantes: 0,
             unidades_faltantes: 0,
