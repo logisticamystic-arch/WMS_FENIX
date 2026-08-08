@@ -4167,6 +4167,22 @@ WMS_MODULES.picking = {
   // ── MÓDULO AGOTADOS ───────────────────────────────────────────────────────
   _agotFilters: { ini: '', fin: '', sucursal: '', referencia: '' },
 
+  // El factor real de conversión cajas→unidades es factor_udm cuando el producto
+  // lo tiene (se vende por contenido/peso); unidades_caja es 1 para esos productos
+  // por diseño (ver auditoría 2026-08-06). Usar solo unidades_caja subestimaba las
+  // unidades reales de agotados/excedentes para todo producto por peso.
+  _agotUpc(r) {
+    const fu = parseFloat(r.factor_udm) || 0;
+    return fu > 0 ? fu : (parseInt(r.unidades_caja) || 1);
+  },
+  // El pedido real del cliente: numero_pedido si existe, si no numero_factura
+  // (que es lo que de verdad identifica el pedido en la mayoría de órdenes),
+  // nunca el número de planilla — mostrar la planilla confundía "qué pedido
+  // causó este agotado/excedente" con el lote de picking que lo agrupó.
+  _agotPedido(r) {
+    return r.numero_pedido || r.numero_factura || r.numero_orden || '-';
+  },
+
   async show_agotados(filters = null) {
     if (filters) Object.assign(this._agotFilters, filters);
     const f = this._agotFilters;

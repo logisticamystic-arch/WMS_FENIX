@@ -7790,25 +7790,33 @@ class PickingController extends BaseController
             ->where('op.empresa_id', $empresaId)
             ->where(Capsule::raw("DATE(pd.created_at)"), '>=', $fIni)
             ->where(Capsule::raw("DATE(pd.created_at)"), '<=', $fFin)
-            ->whereRaw('pd.cantidad_pickeada > (pd.cantidad_solicitada * COALESCE(pr.unidades_caja, 1))')
+            // Blindaje 2026-08-08: el factor real de conversión cajas→unidades es
+            // factor_udm cuando el producto lo tiene (se vende por contenido/peso);
+            // unidades_caja es 1 para esos productos por diseño (ver auditoría del
+            // 2026-08-06). Usar solo unidades_caja aquí comparaba cajas solicitadas
+            // contra gramos separados sin convertir, marcando como "excedente" casi
+            // cualquier producto por peso con algo pickeado.
+            ->whereRaw('pd.cantidad_pickeada > (pd.cantidad_solicitada * COALESCE(NULLIF(pr.factor_udm, 0), pr.unidades_caja, 1))')
             ->select(
                 'pd.id',
                 'pd.created_at as fecha',
                 'op.sucursal_entrega',
                 'op.numero_orden',
                 'op.numero_pedido',
+                'op.numero_factura',
                 'op.planilla_numero',
                 'op.cliente',
                 'pr.codigo_interno as producto_codigo',
                 'pr.nombre as producto_nombre',
                 'pr.unidades_caja',
+                'pr.factor_udm',
                 'pd.cantidad_solicitada',
                 'pd.cantidad_pickeada',
                 // Excedente total en unidades = pickeada(UND) - solicitada(CJ)*U/E
-                Capsule::raw('(pd.cantidad_pickeada - (pd.cantidad_solicitada * COALESCE(pr.unidades_caja, 1))) as excedente_unidades'),
+                Capsule::raw('(pd.cantidad_pickeada - (pd.cantidad_solicitada * COALESCE(NULLIF(pr.factor_udm, 0), pr.unidades_caja, 1))) as excedente_unidades'),
                 // Excedente desglosado: cajas de más y sueltos de más (del exceso, NO del total)
-                Capsule::raw('FLOOR((pd.cantidad_pickeada - (pd.cantidad_solicitada * COALESCE(pr.unidades_caja, 1))) / COALESCE(pr.unidades_caja, 1)) as excedente_cajas'),
-                Capsule::raw('MOD((pd.cantidad_pickeada - (pd.cantidad_solicitada * COALESCE(pr.unidades_caja, 1))), COALESCE(pr.unidades_caja, 1)) as excedente_saldos')
+                Capsule::raw('FLOOR((pd.cantidad_pickeada - (pd.cantidad_solicitada * COALESCE(NULLIF(pr.factor_udm, 0), pr.unidades_caja, 1))) / COALESCE(NULLIF(pr.factor_udm, 0), pr.unidades_caja, 1)) as excedente_cajas'),
+                Capsule::raw('MOD((pd.cantidad_pickeada - (pd.cantidad_solicitada * COALESCE(NULLIF(pr.factor_udm, 0), pr.unidades_caja, 1))), COALESCE(NULLIF(pr.factor_udm, 0), pr.unidades_caja, 1)) as excedente_saldos')
             )
             ->orderBy('pd.created_at', 'desc');
 
