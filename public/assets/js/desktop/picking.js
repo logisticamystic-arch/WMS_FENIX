@@ -4741,7 +4741,7 @@ WMS_MODULES.picking = {
                   </thead>
                   <tbody>
                     ${excedentes.map(exc => {
-                      const upc = parseInt(exc.unidades_caja) || 1;
+                      const upc = this._agotUpc(exc);
                       const solCj = parseFloat(exc.cantidad_solicitada) || 0;
                       const pickUnd = parseFloat(exc.cantidad_pickeada) || 0;
                       const sepCj = Math.floor(pickUnd / upc);
