@@ -4752,7 +4752,7 @@ WMS_MODULES.picking = {
                       return `
                       <tr>
                         <td style="white-space:nowrap;font-size:11px;">${WMS.formatDate((exc.fecha||'').slice(0,10))}</td>
-                        <td style="font-family:monospace;font-weight:700;color:#1e40af;">${WMS.esc(exc.numero_pedido||exc.numero_orden||'-')}</td>
+                        <td style="font-family:monospace;font-weight:700;color:#1e40af;">${WMS.esc(this._agotPedido(exc))}</td>
                         <td style="font-weight:700;color:#1e293b;">${WMS.esc(exc.cliente||exc.sucursal_entrega||'-')}</td>
                         <td><span class="badge badge-secondary" style="font-size:10.5px;">${WMS.esc(exc.planilla_numero||'-')}</span></td>
                         <td>
@@ -5003,7 +5003,7 @@ WMS_MODULES.picking = {
         </thead>
         <tbody>
           ${excedentes.map(exc => {
-            const upc = parseInt(exc.unidades_caja) || 1;
+            const upc = this._agotUpc(exc);
             const solCj = parseFloat(exc.cantidad_solicitada) || 0;
             const pickUnd = parseFloat(exc.cantidad_pickeada) || 0;
             const sepCj = Math.floor(pickUnd / upc);
@@ -5014,7 +5014,7 @@ WMS_MODULES.picking = {
             return `
             <tr>
               <td style="text-align:center;">${(exc.fecha||'').slice(0,10)}</td>
-              <td style="font-family:monospace;font-weight:bold;color:#047857;text-align:center;">${WMS.esc(exc.numero_pedido||exc.numero_orden||'-')}</td>
+              <td style="font-family:monospace;font-weight:bold;color:#047857;text-align:center;">${WMS.esc(this._agotPedido(exc))}</td>
               <td><b>${WMS.esc(exc.cliente||exc.sucursal_entrega||'-')}</b></td>
               <td style="font-family:monospace;text-align:center;">${WMS.esc(exc.producto_codigo||'-')}</td>
               <td><b>${WMS.esc(exc.producto_nombre||'-')}</b> (U/E: ${upc})</td>
