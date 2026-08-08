@@ -4888,7 +4888,8 @@ WMS_MODULES.picking = {
 
       matriz[refKey].clientes[cliKey].solicitado += sol;
       matriz[refKey].clientes[cliKey].faltante   += falt;
-      if (r.numero_pedido || r.numero_orden) matriz[refKey].clientes[cliKey].pedidos.add(r.numero_pedido || r.numero_orden);
+      const pedidoRef = this._agotPedido(r);
+      if (pedidoRef !== '-') matriz[refKey].clientes[cliKey].pedidos.add(pedidoRef);
       if (r.causa) matriz[refKey].clientes[cliKey].causa = r.causa;
     });
 
@@ -4958,7 +4959,7 @@ WMS_MODULES.picking = {
             <th style="width:55px;">Sol. (cj)</th>
             <th style="width:55px;">Agot. (cj)</th>
             <th style="width:65px;">Agot. (UND)</th>
-            ${clientesList.map(cli => `<th>${WMS.esc(cli)}<br><span style="font-weight:normal;font-size:7.5px;">Pedido · Sol / Agot (Causa)</span></th>`).join('')}
+            ${clientesList.map(cli => `<th>${WMS.esc(cli)}<br><span style="font-weight:normal;font-size:7.5px;">Cantidad Agotada (cj)</span></th>`).join('')}
           </tr>
         </thead>
         <tbody>

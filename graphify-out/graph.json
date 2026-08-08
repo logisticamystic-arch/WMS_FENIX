@@ -1270,8 +1270,8 @@
       "source_location": "L4182",
       "_origin": "ast",
       "id": "public_assets_js_desktop_picking_agotpedido",
-      "community": 7,
-      "community_name": "Picking UI Module",
+      "community": 147,
+      "community_name": "show_agotados",
       "norm_label": "_agotpedido()"
     },
     {
@@ -33784,6 +33784,30 @@
       "_origin": "ast",
       "source": "public_assets_js_desktop_picking_show_agotados",
       "target": "public_assets_js_desktop_picking_agotupc",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/picking.js",
+      "source_location": "L5017",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "public_assets_js_desktop_picking_exportagotadospdf",
+      "target": "public_assets_js_desktop_picking_agotpedido",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "public/assets/js/desktop/picking.js",
+      "source_location": "L4755",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "public_assets_js_desktop_picking_show_agotados",
+      "target": "public_assets_js_desktop_picking_agotpedido",
       "confidence_score": 1.0
     },
     {
@@ -93485,5 +93509,5 @@
       "source_file": "docs/superpowers/specs/2026-05-30-packing-certificacion-design.md"
     }
   ],
-  "built_at_commit": "684211906ccf62278ceb7d8c846d30c48fc81971"
+  "built_at_commit": "991215abc8518c7b4df4454604f1227732ac1ed6"
 }
