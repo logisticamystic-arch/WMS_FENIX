@@ -4225,7 +4225,7 @@ WMS_MODULES.picking = {
       let totalCajasFaltantes = 0;
       let totalUnidadesFaltantes = 0;
       rows.forEach(r => {
-        const upc = parseInt(r.unidades_caja) || 1;
+        const upc = this._agotUpc(r);
         const cjF = parseFloat(r.cantidad_faltante) || 0;
         totalCajasFaltantes += cjF;
         totalUnidadesFaltantes += (cjF * upc);
@@ -4279,7 +4279,7 @@ WMS_MODULES.picking = {
             errores_digitacion_cnt: 0
           };
         }
-        const upc = parseInt(r.unidades_caja) || 1;
+        const upc = this._agotUpc(r);
         const cjFalt = parseFloat(r.cantidad_faltante) || 0;
         porCliente[cliKey].cajas_faltantes += cjFalt;
         porCliente[cliKey].unidades_faltantes += (cjFalt * upc);
@@ -4324,7 +4324,7 @@ WMS_MODULES.picking = {
             unidades_faltantes: 0
           };
         }
-        const upc = parseInt(r.unidades_caja) || 1;
+        const upc = this._agotUpc(r);
         const cjFalt = parseFloat(r.cantidad_faltante) || 0;
         porMotivo[causaUpper].total_casos++;
         porMotivo[causaUpper].cajas_faltantes += cjFalt;
@@ -4359,7 +4359,7 @@ WMS_MODULES.picking = {
           };
         }
 
-        const upc = parseInt(r.unidades_caja) || 1;
+        const upc = this._agotUpc(r);
         const cjSol  = parseFloat(r.cantidad_solicitada) || 0;
         const cjFalt = parseFloat(r.cantidad_faltante) || 0;
         const cjSep  = Math.max(0, cjSol - cjFalt);
