@@ -2934,7 +2934,10 @@ class PickingController extends BaseController
                 ->select('pd.numero_pedido_ref', 'pd.producto_id', 'pd.cantidad_solicitada')
                 ->get();
             foreach ($fpRows as $row) {
-                $fp = $row->numero_pedido_ref . '|' . $row->producto_id . '|' . (int)round((float)$row->cantidad_solicitada);
+                // Blindaje 2026-08-08: redondear a entero aquí (mientras el lado nuevo usa 2
+                // decimales) hacía que una cantidad fraccionaria real nunca calzara con su
+                // propia huella al reimportar el mismo archivo — mismo formato en ambos lados.
+                $fp = $row->numero_pedido_ref . '|' . $row->producto_id . '|' . number_format((float)$row->cantidad_solicitada, 2, '.', '');
                 $fpGlobal[$fp] = true;
             }
         } catch (\Throwable $ignored) {}
@@ -2951,6 +2954,10 @@ class PickingController extends BaseController
             'errores'                  => [],
             'productos_pendientes'     => [],  // EANs no encontrados → staging
             'productos_no_encontrados' => 0,
+            // Blindaje 2026-08-08: pedidos completos donde NINGUNA línea encontró producto —
+            // antes desaparecían en silencio (solo quedaba rastro en la tabla técnica de
+            // staging). Se listan aparte para que la UI los muestre de forma prominente.
+            'pedidos_no_cargados'      => [],
             'campos_detectados'        => array_keys($colMap),
             'cantidad_sistema'         => 0,
             'valor_sistema'            => 0,
@@ -3152,7 +3159,7 @@ class PickingController extends BaseController
                     }
 
                     if ($nfRefClean !== '') {
-                        $fp = $nfRefClean . '|' . $prod->id . '|' . $cantidad;
+                        $fp = $nfRefClean . '|' . $prod->id . '|' . number_format($cantidad, 2, '.', '');
                         if (isset($fpGlobal[$fp])) {
                             $summary['lineas_sin_cambio']++;
                             continue;
@@ -3167,7 +3174,20 @@ class PickingController extends BaseController
                     ];
                 }
 
-                if (empty($lineasNuevas)) continue;
+                if (empty($lineasNuevas)) {
+                    // Ninguna línea de esta factura encontró producto ni fue descartada por
+                    // duplicado real (fpGlobal) — el pedido completo se queda sin cargar.
+                    // Antes esto era invisible fuera de la tabla técnica de staging.
+                    if (count($filas) > 0) {
+                        $summary['pedidos_no_cargados'][] = [
+                            'numero_factura' => $nfRefClean ?: '(sin número)',
+                            'sucursal'       => $sucursal,
+                            'lineas_archivo' => count($filas),
+                            'motivo'         => 'Ninguna referencia de este pedido pudo emparejarse con un producto del sistema.',
+                        ];
+                    }
+                    continue;
+                }
 
                 // numero_orden único por orden; el primero reutiliza el seq del grupo si es nuevo,
                 // los siguientes obtienen su propio seq para evitar colisiones.
