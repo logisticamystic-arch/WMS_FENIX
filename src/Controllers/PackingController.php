@@ -422,6 +422,21 @@ class PackingController extends BaseController
                     'certificador_id'      => $user->id,
                 ]);
 
+            // Blindaje 2026-08-08: este flujo (packing normal, finalizarSesion) nunca
+            // sincronizaba cantidad_certificada con cantidad_pickeada — la orden quedaba
+            // 'Certificada' en la cabecera pero cada línea seguía en 0, haciendo que la
+            // remisión mostrara menos de lo realmente separado (incidente real: Planilla
+            // 466/470, líneas certificadas en 0 pese a tener pickeado > 0).
+            if ($ids->isNotEmpty()) {
+                Capsule::table('picking_detalles')
+                    ->whereIn('orden_picking_id', $ids)
+                    ->where('cantidad_pickeada', '>', 0)
+                    ->update([
+                        'cantidad_certificada' => Capsule::raw('cantidad_pickeada'),
+                        'updated_at'            => $now,
+                    ]);
+            }
+
             // ── Certificación granular por ambiente ──────────────────────────────
             // Para cada orden certificada, registrar qué ambientes quedaron cubiertos.
             // Usa UPSERT para ser idempotente: si se re-certifica no genera duplicados.
