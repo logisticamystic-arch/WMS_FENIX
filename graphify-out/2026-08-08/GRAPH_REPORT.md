@@ -1,16 +1,16 @@
 # Graph Report - WMS_FENIX  (2026-08-08)
 
 ## Corpus Check
-- 345 files · ~848,067 words
+- 345 files · ~848,065 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2782 nodes · 5446 edges · 337 communities (259 shown, 78 thin omitted)
+- 2782 nodes · 5448 edges · 337 communities (259 shown, 78 thin omitted)
 - Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 312 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `68421190`
+- Built from commit: `991215ab`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -258,7 +258,7 @@ Cohesion: 0.05
 Nodes (17): addEan(), _clienteModalBody(), deleteEan(), editCliente(), editProducto(), editZona(), eliminarImpresora(), _esc() (+9 more)
 
 ### Community 7 - "Picking UI Module"
-Cohesion: 0.04
+Cohesion: 0.05
 Nodes (14): _cargarConsulta(), _eliminarPendiente(), _limpiarPendientes(), nuevoPedidoManual(), _onFaltCheck(), _pmAgregarLinea(), _pmCargarDatosMaestros(), _pmProdInput() (+6 more)
 
 ### Community 8 - "Storage & Location Blocking"
@@ -639,7 +639,7 @@ Nodes (4): AjusteUbicacionController, AjusteInventario, AjusteUbicacion, AjusteU
 
 ### Community 147 - "show_agotados"
 Cohesion: 0.40
-Nodes (5): _agotUpc(), _applyAgotFilters(), _clearAgotFilters(), _exportAgotadosPDF(), show_agotados()
+Nodes (6): _agotPedido(), _agotUpc(), _applyAgotFilters(), _clearAgotFilters(), _exportAgotadosPDF(), show_agotados()
 
 ### Community 156 - "Base Model"
 Cohesion: 0.50

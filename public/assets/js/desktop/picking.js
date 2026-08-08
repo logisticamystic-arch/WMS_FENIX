@@ -4974,13 +4974,9 @@ WMS_MODULES.picking = {
               ${clientesList.map(cli => {
                 const cData = m.clientes[cli];
                 if (!cData) return `<td style="text-align:center;color:#94a3b8;">-</td>`;
-                const pedsStr = Array.from(cData.pedidos||[]).join(', ');
                 return `
                   <td class="cell-cli">
-                    ${pedsStr ? `<span class="ped">Ped #${WMS.esc(pedsStr)}</span>` : ''}
-                    <span class="sol">Sol: ${WMS.formatNum(cData.solicitado)}</span> | 
-                    <span class="agot">Agot: ${WMS.formatNum(cData.faltante)}</span>
-                    <span class="causa">(${WMS.esc(cData.causa)})</span>
+                    <span class="agot">${WMS.formatNum(cData.faltante)}</span>
                   </td>`;
               }).join('')}
             </tr>
