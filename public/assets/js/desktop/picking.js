@@ -4856,7 +4856,7 @@ WMS_MODULES.picking = {
     rows.forEach(r => {
       const refKey = r.producto_codigo || r.producto_nombre || 'Desconocido';
       const cliKey = r.cliente || r.sucursal_entrega || 'Cliente Desconocido';
-      const upc    = parseInt(r.unidades_caja) || 1;
+      const upc    = this._agotUpc(r);
 
       if (!matriz[refKey]) {
         matriz[refKey] = {
