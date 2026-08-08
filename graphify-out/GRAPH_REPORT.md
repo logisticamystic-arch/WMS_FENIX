@@ -1,7 +1,7 @@
 # Graph Report - WMS_FENIX  (2026-08-08)
 
 ## Corpus Check
-- 346 files · ~849,337 words
+- 346 files · ~849,397 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `83336280`
+- Built from commit: `e51d11c2`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -715,7 +715,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `SesionAsignacion` to `ConteoInventario`, `OutboundController`, `Receiving Controller`, `MovimientoInventario`, `Dispatch Controller`, `Tenant Context & Middleware`, `Yard Management Controller`, `Assignment Session Management`, `Sucursal`, `Miscellaneous Items Controller`, `Replenishment & Notifications`, `UbicacionesController`, `MovimientoInventario`, `Traspaso`, `Despacho`, `CacheHelper`, `TV Picking Dashboard`, `CausalesController`, `ConteoInventario`, `Picking TV Dashboard`, `.now`, `MovimientoInventario`?**
-  _High betweenness centrality (0.039) - this node is a cross-community bridge._
+  _High betweenness centrality (0.038) - this node is a cross-community bridge._
 - **Why does `BaseController` connect `Base Controller Utilities` to `Inventory & Dashboard Controller`, `Parameters & Approvals`, `OutboundController`, `Packing & Expiry Control`, `Cross-Dock Operations`, `TraspasoDocumento`, `Receiving Controller`, `MovimientoInventario`, `Auth & Seeding`, `Location Adjustment Controller`, `Assignment Session Management`, `Sucursal`, `Miscellaneous Items Controller`, `Replenishment & Notifications`, `TMS Integration Controller`, `TV Picking Dashboard`, `CacheHelper`, `.__invoke`, `CausalesController`, `TrazabilidadController`, `.addTenantConstraints`, `Picking TV Dashboard`, `TenantScoped.php`, `AnomalyController`, `.__invoke`?**
   _High betweenness centrality (0.015) - this node is a cross-community bridge._
 - **Why does `Producto` connect `Picking TV Dashboard` to `Yard Management Controller`, `RecepcionDetalle`, `Receiving Controller`, `MovimientoInventario`, `Dispatch Controller`, `Traspaso`, `TV Picking Dashboard`?**

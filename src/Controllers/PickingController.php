@@ -3016,10 +3016,34 @@ class PickingController extends BaseController
             return $max + 1;
         };
 
+        // Blindaje 2026-08-08: la versión anterior siempre trataba el punto como separador
+        // de miles ("0.4" -> "04" -> 4), corrompiendo silenciosamente cualquier cantidad
+        // fraccionaria real del archivo (ej. 0.4 cajas). Ahora se decide según el contexto:
+        // - Coma Y punto presentes: el símbolo que aparece MÁS A LA DERECHA es el decimal.
+        // - Solo coma: es el decimal (convención latina clásica).
+        // - Solo punto: decimal, salvo que tenga exactamente 3 dígitos después del único
+        //   punto (patrón clásico de miles, ej. "1.500"), en cuyo caso se trata como miles.
         $cleanNumber = function($val) {
-            if (empty($val)) return 0.0;
-            $val = str_replace('.', '', $val);
-            $val = str_replace(',', '.', $val);
+            $val = trim((string)$val);
+            if ($val === '') return 0.0;
+            $hasComma = str_contains($val, ',');
+            $hasDot   = str_contains($val, '.');
+            if ($hasComma && $hasDot) {
+                if (strrpos($val, ',') > strrpos($val, '.')) {
+                    $val = str_replace('.', '', $val);   // 1.234,56 -> miles=punto, decimal=coma
+                    $val = str_replace(',', '.', $val);
+                } else {
+                    $val = str_replace(',', '', $val);   // 1,234.56 -> miles=coma, decimal=punto
+                }
+            } elseif ($hasComma) {
+                $val = str_replace(',', '.', $val);
+            } elseif ($hasDot) {
+                $parts = explode('.', $val);
+                if (count($parts) > 2 || strlen(end($parts)) === 3) {
+                    $val = str_replace('.', '', $val);   // "1.500" o "1.234.567" -> miles
+                }
+                // en cualquier otro caso (ej. "0.4", "12.75") el punto ya es el decimal correcto
+            }
             return (float) $val;
         };
 
