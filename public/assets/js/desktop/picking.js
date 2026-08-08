@@ -4289,7 +4289,7 @@ WMS_MODULES.picking = {
         if (esErrorDigitacion) porCliente[cliKey].errores_digitacion_cnt++;
 
         porCliente[cliKey].referencias.push({
-          pedido: r.numero_orden || '-',
+          pedido: this._agotPedido(r),
           codigo: r.producto_codigo,
           nombre: r.producto_nombre,
           solicitado_cj: parseFloat(r.cantidad_solicitada)||0,
