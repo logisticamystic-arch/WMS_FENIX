@@ -2831,6 +2831,7 @@ WMS_MODULES.picking = {
         const lineasNuevas = data.lineas_nuevas || 0;
         const lineasSinCambio = data.lineas_sin_cambio || 0;
         const productosPendientes = data.productos_pendientes || [];
+        const pedidosNoCargados = data.pedidos_no_cargados || [];
 
         // Per-sucursal breakdown table
         const allSucs = [...new Set([...Object.keys(sucArch), ...Object.keys(sucSis)])].sort();
@@ -2962,6 +2963,29 @@ WMS_MODULES.picking = {
               : diff.lineas > 0
                 ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>' + diff.lineas + ' línea(s)</strong> del archivo no se cargaron. Causas: productos no encontrados o datos incompletos.</div>'
                 : '<div style="padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;color:#166534;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-check-circle" style="margin-right:4px;"></i><strong>Importación exitosa.</strong> Todas las líneas del archivo fueron cargadas correctamente.</div>'}
+
+            ${pedidosNoCargados.length > 0 ? `
+            <div style="padding:10px 14px;background:#fef2f2;border:2px solid #dc2626;border-radius:4px;color:#7f1d1d;font-size:12px;margin-bottom:10px;">
+              <div style="font-weight:800;margin-bottom:6px;">
+                <i class="fa-solid fa-circle-exclamation" style="margin-right:4px;"></i>
+                ¡ATENCIÓN! ${pedidosNoCargados.length} pedido(s) completo(s) NO se cargaron al sistema
+              </div>
+              <div style="margin-bottom:6px;">Ninguna referencia de estos pedidos pudo emparejarse con un producto existente. No se creó ninguna orden para ellos — revíselos antes de continuar.</div>
+              <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;">
+                <thead><tr style="background:#fecaca;">
+                  <th style="padding:3px 8px;text-align:left;">N° Pedido</th>
+                  <th style="padding:3px 8px;text-align:left;">Sucursal</th>
+                  <th style="padding:3px 8px;text-align:right;">Líneas en archivo</th>
+                </tr></thead>
+                <tbody>
+                  ${pedidosNoCargados.map(p => `<tr style="border-top:1px solid #fecaca;">
+                    <td style="padding:3px 8px;font-weight:700;font-family:monospace;">${WMS.esc(p.numero_factura || '-')}</td>
+                    <td style="padding:3px 8px;">${WMS.esc(p.sucursal || '')}</td>
+                    <td style="padding:3px 8px;text-align:right;">${p.lineas_archivo || 0}</td>
+                  </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>` : ''}
 
             ${productosPendientes.length > 0 ? `
             <div style="padding:8px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;color:#78350f;font-size:11px;margin-bottom:6px;">
