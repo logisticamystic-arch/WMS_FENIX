@@ -7674,6 +7674,7 @@ class PickingController extends BaseController
                 'pr.codigo_interno         as producto_codigo',
                 'pr.nombre                 as producto_nombre',
                 'pr.unidades_caja',
+                'pr.factor_udm',
                 'pf.cantidad_solicitada',
                 'pf.cantidad_faltante',
                 'pf.causa'
