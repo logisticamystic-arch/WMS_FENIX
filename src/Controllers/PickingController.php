@@ -3132,7 +3132,11 @@ class PickingController extends BaseController
                 $lineasNuevas = [];
                 foreach ($filas as $fila) {
                     $ean        = trim($fila['producto'] ?? '');
-                    $cantidad   = max(0, (int)round($cleanNumber($fila['cantidad'] ?? '0')));
+                    // Blindaje 2026-08-08: antes se forzaba a entero con (int)round(), lo que
+                    // convertía cualquier cantidad fraccionaria real (ej. 0.4 cajas) en 0 y
+                    // descartaba la línea sin aviso (ver "if ($cantidad <= 0) continue"). La
+                    // columna admite 2 decimales — se conserva la fracción real del archivo.
+                    $cantidad   = max(0, round($cleanNumber($fila['cantidad'] ?? '0'), 2));
                     $descripcion= trim($fila['descripcion'] ?? '');
 
                     if ($ean === '' || $cantidad <= 0) continue;
