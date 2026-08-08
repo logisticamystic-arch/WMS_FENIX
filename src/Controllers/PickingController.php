@@ -2918,11 +2918,19 @@ class PickingController extends BaseController
         $auditArchivo['clientes_archivo'] = count($clientesSet);
 
         // ── Pre-cargar huellas globales de líneas ya importadas ─────────────────
-        // Huella: "nf_ref|producto_id|cantidad" — coincidencia exacta de los tres = duplicado.
-        // Se incluyen TODOS los estados salvo Anulada/Cancelada (incluyendo Completada/Separada)
-        // para evitar reimportar pedidos ya despachados.
-        // El set es plano (sin agrupar por sucursal) para detectar duplicados aunque cambie la
-        // sucursal de entrega entre importaciones.
+        // Huella: "cliente|nf_ref|producto_id|cantidad" — coincidencia exacta de los
+        // cuatro = duplicado. Se incluyen TODOS los estados salvo Anulada/Cancelada
+        // (incluyendo Completada/Separada/Despachada) para evitar reimportar pedidos
+        // ya despachados.
+        // Blindaje 2026-08-08: la huella ANTES no incluía el cliente ("para detectar
+        // duplicados aunque cambie la sucursal de entrega") — pero numero_factura NO es
+        // único entre clientes (son secuencias simples: 1, 2, 3...). Dos clientes
+        // distintos que coincidieran en número de factura + producto + cantidad hacían
+        // que el segundo pedido se descartara en silencio como "ya importado", mezclando
+        // datos de un cliente con el histórico de otro. Se usa cliente_id cuando está
+        // resuelto (estable aunque cambie el texto de sucursal_entrega); si no está
+        // resuelto, se usa el texto de sucursal_entrega como último recurso — sigue
+        // acotado a ESE cliente, nunca global.
         $fpGlobal = [];
         try {
             $fpRows = Capsule::table('picking_detalles as pd')
@@ -2931,13 +2939,14 @@ class PickingController extends BaseController
                 ->where('op.sucursal_id', $user->sucursal_id)
                 ->whereNotIn('op.estado', ['Anulado', 'Cancelada'])
                 ->whereNotNull('pd.numero_pedido_ref')
-                ->select('pd.numero_pedido_ref', 'pd.producto_id', 'pd.cantidad_solicitada')
+                ->select('pd.numero_pedido_ref', 'pd.producto_id', 'pd.cantidad_solicitada', 'op.cliente_id', 'op.sucursal_entrega')
                 ->get();
             foreach ($fpRows as $row) {
-                // Blindaje 2026-08-08: redondear a entero aquí (mientras el lado nuevo usa 2
-                // decimales) hacía que una cantidad fraccionaria real nunca calzara con su
-                // propia huella al reimportar el mismo archivo — mismo formato en ambos lados.
-                $fp = $row->numero_pedido_ref . '|' . $row->producto_id . '|' . number_format((float)$row->cantidad_solicitada, 2, '.', '');
+                $clienteKey = $row->cliente_id ? ('c' . $row->cliente_id) : ('s' . strtolower(trim((string)$row->sucursal_entrega)));
+                // Redondear a 2 decimales aquí (mismo formato que el lado nuevo, más abajo)
+                // — antes redondeaba a entero y una cantidad fraccionaria real nunca calzaba
+                // con su propia huella al reimportar el mismo archivo.
+                $fp = $clienteKey . '|' . $row->numero_pedido_ref . '|' . $row->producto_id . '|' . number_format((float)$row->cantidad_solicitada, 2, '.', '');
                 $fpGlobal[$fp] = true;
             }
         } catch (\Throwable $ignored) {}
@@ -3159,7 +3168,8 @@ class PickingController extends BaseController
                     }
 
                     if ($nfRefClean !== '') {
-                        $fp = $nfRefClean . '|' . $prod->id . '|' . number_format($cantidad, 2, '.', '');
+                        $clienteKeyNuevo = $clienteIdParaOrden ? ('c' . $clienteIdParaOrden) : ('s' . strtolower(trim($sucursal)));
+                        $fp = $clienteKeyNuevo . '|' . $nfRefClean . '|' . $prod->id . '|' . number_format($cantidad, 2, '.', '');
                         if (isset($fpGlobal[$fp])) {
                             $summary['lineas_sin_cambio']++;
                             continue;
