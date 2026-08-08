@@ -5597,10 +5597,18 @@ class PickingController extends BaseController
                 ->where('sucursal_id', $sucId)
                 ->where('sucursal_entrega', $sucursal)
                 ->where('estado_certificacion', 'Certificada')
+                // Blindaje 2026-08-08: mismo criterio que PackingController::resetCertificacion()
+                // — un pedido ya despachado/liquidado es intocable salvo que sea del día actual.
+                // Esta función no tenía el guard y podía borrar cantidad_certificada de un pedido
+                // ya entregado, por coincidir el nombre de sucursal_entrega con otro del mismo día.
+                ->where(function ($q) {
+                    $q->whereNull('estado_despacho')
+                      ->orWhereDate('fecha_movimiento', date('Y-m-d'));
+                })
                 ->get();
 
             if ($ordenes->isEmpty()) {
-                return $this->error($res, 'No hay certificaciones completadas para esta sucursal', 404);
+                return $this->error($res, 'No hay certificaciones completadas para esta sucursal (o ya fueron despachadas)', 404);
             }
 
             foreach ($ordenes as $o) {
