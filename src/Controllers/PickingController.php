@@ -2416,7 +2416,7 @@ class PickingController extends BaseController
         }
 
         if ($restante > 0) {
-            $now = now();
+            $now = date('Y-m-d H:i:s');
             Capsule::table('picking_faltantes')->insert([
                 'empresa_id'          => $empresaId,
                 'sucursal_id'         => $user->sucursal_id,
@@ -2530,7 +2530,7 @@ class PickingController extends BaseController
                 ->update([
                     'cantidad_solicitada' => $nuevaCantidad,
                     'cantidad_faltante'   => (int) ceil($faltanteUnidades / $factor),
-                    'updated_at'          => now(),
+                    'updated_at'          => date('Y-m-d H:i:s'),
                 ]);
         }
 
