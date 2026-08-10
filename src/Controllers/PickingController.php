@@ -5684,13 +5684,26 @@ class PickingController extends BaseController
                     ]);
             }
 
-            // Cancelar packing_sesiones completadas para esta sucursal (si las hay)
-            $sesiones = Capsule::table('packing_sesiones')
-                ->where('empresa_id', $empresaId)
-                ->where('sucursal_id', $sucId)
-                ->where('sucursal_entrega', $sucursal)
-                ->where('estado', 'Completada')
-                ->pluck('id');
+            // Cancelar packing_sesiones completadas — SOLO las que realmente tienen
+            // packing_items ligados a las órdenes que se acaban de resetear arriba.
+            // Blindaje 2026-08-08: antes se buscaba por sucursal_entrega+estado sin
+            // ninguna relación con $ordenes ni filtro de fecha/despacho — podía cancelar
+            // y borrar packing_items/unidades de una sesión completamente distinta, ya
+            // despachada hace semanas, por coincidir el nombre del cliente.
+            $ordenIdsReseteadas = $ordenes->pluck('id');
+            $sesiones = Capsule::table('packing_sesiones as ps')
+                ->where('ps.empresa_id', $empresaId)
+                ->where('ps.sucursal_id', $sucId)
+                ->where('ps.estado', 'Completada')
+                ->whereExists(function ($q) use ($ordenIdsReseteadas) {
+                    $q->select(Capsule::raw(1))
+                      ->from('packing_unidades as pu')
+                      ->join('packing_items as pi', 'pi.unidad_id', '=', 'pu.id')
+                      ->join('picking_detalles as pd', 'pd.id', '=', 'pi.picking_detalle_id')
+                      ->whereColumn('pu.sesion_id', 'ps.id')
+                      ->whereIn('pd.orden_picking_id', $ordenIdsReseteadas);
+                })
+                ->pluck('ps.id');
 
             if ($sesiones->isNotEmpty()) {
                 $unidadIds = Capsule::table('packing_unidades')
@@ -5910,7 +5923,14 @@ class PickingController extends BaseController
                   ->where('sucursal_id', $sucursalId)
                   ->where('sucursal_entrega', $sucursal)
                   ->whereIn('estado', ['Completada', 'EnProceso'])
-                  ->whereIn('estado_certificacion', ['Pendiente', 'Parcial', 'EnCertificacion']);
+                  ->whereIn('estado_certificacion', ['Pendiente', 'Parcial', 'EnCertificacion'])
+                  // Blindaje 2026-08-08: mismo criterio que certFinalizar()/recertificar() —
+                  // no certificar ni mover inventario de un pedido ya despachado, salvo que
+                  // sea del día actual.
+                  ->where(function ($q2) {
+                      $q2->whereNull('estado_despacho')
+                         ->orWhereDate('fecha_movimiento', date('Y-m-d'));
+                  });
             })
             ->orderBy('id', 'asc')
             ->get();
@@ -6033,9 +6053,17 @@ class PickingController extends BaseController
             ->where('sucursal_entrega', $sucursal)
             ->whereIn('estado', ['Completada', 'EnProceso'])
             ->whereIn('estado_certificacion', ['Pendiente', 'Parcial'])
+            // Blindaje 2026-08-08: mismo criterio que finalizarSesion()/recertificar()/
+            // resetCertificacion() — un pedido ya despachado es intocable salvo que sea
+            // del día actual. Esta hermana (certFinalizar, flujo de certificación directa
+            // sin sesión de packing) nunca había recibido el blindaje.
+            ->where(function ($q) {
+                $q->whereNull('estado_despacho')
+                  ->orWhereDate('fecha_movimiento', date('Y-m-d'));
+            })
             ->get();
 
-        if ($ordenes->isEmpty()) return $this->error($res, 'No hay órdenes pendientes para finalizar');
+        if ($ordenes->isEmpty()) return $this->error($res, 'No hay órdenes pendientes para finalizar (o ya fueron despachadas)');
 
         $todosIds = $ordenes->pluck('id');
 
@@ -8668,6 +8696,14 @@ class PickingController extends BaseController
                             ->where('empresa_id',       $empresaId)
                             ->where('sucursal_id',      $sucursalId)
                             ->where('sucursal_entrega', $sucursal)
+                            // Blindaje 2026-08-08: el det_id lo manda el cliente — si corresponde
+                            // a una línea de un pedido ya despachado (caché de UI vieja, o
+                            // colisión de nombre con otro pedido del mismo cliente), no debe
+                            // ajustarse inventario/certificación sobre algo ya liquidado.
+                            ->where(fn($q2) => $q2
+                                ->whereNull('estado_despacho')
+                                ->orWhereDate('fecha_movimiento', date('Y-m-d'))
+                            )
                         )
                         ->first();
 

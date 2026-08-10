@@ -1783,7 +1783,15 @@ class PackingController extends BaseController
                 ->where('empresa_id', $empresaId)
                 ->where('sucursal_entrega', $sucursal)
                 ->whereIn('estado', ['Pendiente', 'EnProceso', 'Completada', 'Completado'])
-                ->whereIn('estado_certificacion', ['Pendiente', 'Parcial']);
+                ->whereIn('estado_certificacion', ['Pendiente', 'Parcial'])
+                // Blindaje 2026-08-08: nunca certificar un pedido ya despachado, sin importar
+                // el filtro de fecha recibido (incluye fecha='all', el flujo normal de
+                // "Auto-Certificar Todos") — mismo criterio que el resto de funciones de
+                // certificación ya corregidas hoy.
+                ->where(function ($q) {
+                    $q->whereNull('estado_despacho')
+                      ->orWhereDate('fecha_movimiento', date('Y-m-d'));
+                });
 
             if ($fecha !== null && $fecha !== 'all') {
                 $ordenesQuery->whereDate('fecha_movimiento', $fecha);
@@ -1855,7 +1863,16 @@ class PackingController extends BaseController
                    ->orWhereIn('pd.estado', ['Completado', 'Faltante']);
             })
             // Retiro directo (cliente ya lo recogió en bodega) — no entra a packing/remisión.
-            ->where('op.despachado_directo', false);
+            ->where('op.despachado_directo', false)
+            // Blindaje 2026-08-08: un pedido ya despachado (estado_despacho no nulo) nunca
+            // debe contarse como "pendiente por empacar", sin importar el filtro de fecha —
+            // autoPack() con fecha='all' (el flujo normal de "Auto-Certificar Todos") podía
+            // generar packing_items nuevos para mercancía que ya salió hace semanas, con solo
+            // coincidir el nombre de sucursal_entrega.
+            ->where(function ($q) {
+                $q->whereNull('op.estado_despacho')
+                  ->orWhereDate('op.fecha_movimiento', date('Y-m-d'));
+            });
 
         if ($fecha !== null && $fecha !== 'all') {
             $query->whereDate('op.fecha_movimiento', $fecha);
@@ -1915,7 +1932,13 @@ class PackingController extends BaseController
             ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial'])
             // Retiro directo (cliente ya lo recogió en bodega) — no entra a packing/remisión.
             ->where('op.despachado_directo', false)
-            ->where('pd.producto_id', $productoId);
+            ->where('pd.producto_id', $productoId)
+            // Blindaje 2026-08-08: no resolver lote/vencimiento/detalle desde una línea de
+            // un pedido ya despachado (mismo criterio que _getProductosPickados/autoPack).
+            ->where(function ($q) {
+                $q->whereNull('op.estado_despacho')
+                  ->orWhereDate('op.fecha_movimiento', date('Y-m-d'));
+            });
 
         if ($fecha !== null && $fecha !== 'all') {
             $query->whereDate('op.fecha_movimiento', $fecha);
