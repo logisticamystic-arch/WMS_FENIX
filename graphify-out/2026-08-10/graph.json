@@ -32,6 +32,28 @@
       "norm_label": "diagnose_coleslaw.php"
     },
     {
+      "label": "diagnose_remision_code.php",
+      "file_type": "code",
+      "source_file": "scratch/diagnose_remision_code.php",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "scratch_diagnose_remision_code",
+      "community": 335,
+      "community_name": "diagnose_remision_code.php",
+      "norm_label": "diagnose_remision_code.php"
+    },
+    {
+      "label": "test_remision_fix.php",
+      "file_type": "code",
+      "source_file": "scratch/test_remision_fix.php",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "scratch_test_remision_fix",
+      "community": 340,
+      "community_name": "test_remision_fix.php",
+      "norm_label": "test_remision_fix.php"
+    },
+    {
       "label": "PickingController.php",
       "file_type": "code",
       "source_file": "src/Controllers/PickingController.php",
@@ -93845,5 +93867,5 @@
       "source_file": "docs/superpowers/specs/2026-05-30-packing-certificacion-design.md"
     }
   ],
-  "built_at_commit": "060b116e27bd85f1390c59c62c0a900c9f16e3ab"
+  "built_at_commit": "87cf3d6163ca6107506b569dae72141e9434440c"
 }
