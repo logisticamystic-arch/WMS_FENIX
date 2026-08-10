@@ -844,6 +844,9 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // TV Dashboard — Tab Nivel de Servicio
     $group->get('/tv/nivel-servicio', [\App\Controllers\DashboardTVController::class, 'nivelServicio']);
 
+    // TV Dashboard — Ranking de Auxiliares (Referencias y Unidades)
+    $group->get('/tv/picking-ranking', [\App\Controllers\DashboardTVController::class, 'getPickingRanking']);
+
     // TV Dashboard — Chart de ingresos por día/proveedor
     $group->get('/tv/ingresos-chart', [\App\Controllers\DashboardTVController::class, 'ingresosChart']);
 

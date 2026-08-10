@@ -87,66 +87,46 @@ class DashboardTVController extends BaseController
             wmsLog('ERROR', 'TV:miscelaneos — ' . $e->getMessage());
         }
 
-        // ── 3. Agotados: hoy → picking activo sin stock; histórico → faltantes ─
+        // ── 3. Agotados: Día anterior y actual (rango de 2 días) ──────────────
         $agotados = [];
         try {
-            if ($esHoy) {
-                // Query operacional: líneas de picking activas sin stock disponible
-                $stmtAgo = $pdo->prepare("
-                    SELECT pr.id,
-                           pr.nombre AS descripcion,
-                           pr.codigo_interno,
-                           COALESCE(SUM(inv.cantidad), 0)                                     AS stock_actual,
-                           COUNT(pd.id)                                                        AS lineas_pendientes,
-                           COALESCE(SUM(pd.cantidad_solicitada - COALESCE(pd.cantidad_pickeada,0)), 0) AS demanda_pendiente,
-                           MAX(inv.created_at)                                                 AS ultimo_ingreso,
-                           NULL                                                                AS sucursal
-                    FROM picking_detalles pd
-                    JOIN  orden_pickings op ON op.id  = pd.orden_picking_id
-                    JOIN  productos      pr ON pr.id  = pd.producto_id
-                    LEFT JOIN inventarios inv ON inv.producto_id = pr.id
-                         AND inv.sucursal_id  = :suc2
-                         AND inv.estado       = 'Disponible'
-                    WHERE op.empresa_id  = :emp
-                      AND op.sucursal_id = :suc
-                      AND pd.estado      IN ('EnProceso', 'Parcial', 'Asignado')
-                      AND op.estado      IN ('Asignado', 'EnProceso')
-                    GROUP BY pr.id, pr.nombre, pr.codigo_interno
-                    HAVING COALESCE(SUM(inv.cantidad), 0) <= 0
-                    ORDER BY demanda_pendiente DESC
-                    LIMIT 10
-                ");
-                $stmtAgo->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':suc2' => $sucursalId]);
-            } else {
-                // Query histórica: faltantes registrados en la fecha solicitada
-                $stmtAgo = $pdo->prepare("
-                    SELECT pr.nombre AS descripcion,
-                           pr.codigo_interno,
-                           0 AS stock_actual,
-                           COUNT(pf.id) AS lineas_pendientes,
-                           SUM(pf.cantidad_faltante) AS demanda_pendiente,
-                           MIN(pf.created_at) AS ultimo_ingreso,
-                           op.sucursal_entrega AS sucursal
-                    FROM picking_faltantes pf
-                    JOIN productos pr ON pr.id = pf.producto_id
-                    JOIN orden_pickings op ON op.id = pf.orden_picking_id
-                    -- Excluir faltantes cuyo producto ya fue pickeado exitosamente después
-                    LEFT JOIN picking_detalles pd_res ON (
-                        pd_res.orden_picking_id = pf.orden_picking_id
-                        AND pd_res.producto_id = pf.producto_id
-                        AND pd_res.estado IN ('Completada', 'Completado')
-                        AND pd_res.cantidad_pickeada > 0
-                    )
-                    WHERE pf.empresa_id = :emp
-                      AND pf.sucursal_id = :suc
-                      AND pf.created_at::date = :fecha
-                      AND pd_res.id IS NULL
-                    GROUP BY pr.nombre, pr.codigo_interno, op.sucursal_entrega
-                    ORDER BY demanda_pendiente DESC
-                    LIMIT 20
-                ");
-                $stmtAgo->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':fecha' => $fecha]);
-            }
+            $fechaAyer = date('Y-m-d', strtotime('-1 day', strtotime($fecha)));
+            $dateCol   = $this->isPg() ? "pf.created_at::date" : "DATE(pf.created_at)";
+
+            $stmtAgo = $pdo->prepare("
+                SELECT pr.nombre                                             AS descripcion,
+                       pr.codigo_interno,
+                       0                                                     AS stock_actual,
+                       COUNT(pf.id)                                          AS lineas_pendientes,
+                       COALESCE(SUM(pf.cantidad_solicitada), 0)             AS cantidad_solicitada,
+                       COALESCE(SUM(pf.cantidad_solicitada - pf.cantidad_faltante), 0) AS cantidad_pickeada,
+                       COALESCE(SUM(pf.cantidad_faltante), 0)                AS demanda_pendiente,
+                       COALESCE(pf.causa, 'Agotado')                        AS motivo,
+                       MIN(pf.created_at)                                    AS ultimo_ingreso,
+                       COALESCE(op.cliente, op.sucursal_entrega, '—')       AS sucursal
+                FROM picking_faltantes pf
+                JOIN productos pr ON pr.id = pf.producto_id
+                JOIN orden_pickings op ON op.id = pf.orden_picking_id
+                LEFT JOIN picking_detalles pd_res ON (
+                    pd_res.orden_picking_id = pf.orden_picking_id
+                    AND pd_res.producto_id = pf.producto_id
+                    AND pd_res.estado IN ('Completada', 'Completado')
+                    AND pd_res.cantidad_pickeada > 0
+                )
+                WHERE pf.empresa_id = :emp
+                  AND pf.sucursal_id = :suc
+                  AND {$dateCol} BETWEEN :fecha_ayer AND :fecha
+                  AND pd_res.id IS NULL
+                GROUP BY pr.nombre, pr.codigo_interno, pf.causa, op.cliente, op.sucursal_entrega
+                ORDER BY demanda_pendiente DESC
+                LIMIT 50
+            ");
+            $stmtAgo->execute([
+                ':emp'        => $empresaId,
+                ':suc'        => $sucursalId,
+                ':fecha_ayer' => $fechaAyer,
+                ':fecha'      => $fecha,
+            ]);
             $agotados = $stmtAgo->fetchAll(\PDO::FETCH_ASSOC);
         } catch (\Throwable $e) {
             wmsLog('ERROR', 'TV:agotados — ' . $e->getMessage());
@@ -914,5 +894,103 @@ class DashboardTVController extends BaseController
             ':emp3' => $empresaId,
         ]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * GET /api/tv/picking-ranking
+     *
+     * Devuelve ranking de auxiliares (por referencias y por unidades) y completadas hoy.
+     */
+    public function getPickingRanking(Request $request, Response $response): Response
+    {
+        $user       = $request->getAttribute('user');
+        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
+        $pdo        = Capsule::connection()->getPdo();
+
+        $params = $request->getQueryParams();
+        $fecha  = !empty($params['fecha']) ? $params['fecha'] : date('Y-m-d');
+        $start  = $fecha . ' 00:00:00';
+        $end    = $fecha . ' 23:59:59';
+        $dateCol = $this->isPg() ? "op.fecha_movimiento::date" : "DATE(op.fecha_movimiento)";
+
+        try {
+            // 1. Ranking por Referencias (SKUs distintos pickeados por auxiliar)
+            $stmtRefs = $pdo->prepare("
+                SELECT
+                    COALESCE(pe.nombre, 'Sin asignar') AS nombre,
+                    COUNT(DISTINCT pd.producto_id) AS referencias
+                FROM picking_detalles pd
+                JOIN orden_pickings op ON op.id = pd.orden_picking_id
+                LEFT JOIN personal pe ON pe.id = COALESCE(pd.auxiliar_id, op.auxiliar_id)
+                WHERE op.empresa_id = :emp
+                  AND op.sucursal_id = :suc
+                  AND ({$dateCol} = :fecha OR pd.updated_at BETWEEN :start AND :end)
+                  AND pd.estado IN ('Completado', 'Completada', 'Parcial')
+                  AND pd.cantidad_pickeada > 0
+                GROUP BY pe.id, pe.nombre
+                ORDER BY referencias DESC
+                LIMIT 10
+            ");
+            $stmtRefs->execute([
+                ':emp'   => $empresaId,
+                ':suc'   => $sucursalId,
+                ':fecha' => $fecha,
+                ':start' => $start,
+                ':end'   => $end,
+            ]);
+            $rankingRefs = $stmtRefs->fetchAll(\PDO::FETCH_ASSOC);
+
+            // 2. Ranking por Unidades Reales
+            $stmtUnits = $pdo->prepare("
+                SELECT
+                    COALESCE(pe.nombre, 'Sin asignar') AS nombre,
+                    SUM(pd.cantidad_pickeada) AS unidades
+                FROM picking_detalles pd
+                JOIN orden_pickings op ON op.id = pd.orden_picking_id
+                LEFT JOIN personal pe ON pe.id = COALESCE(pd.auxiliar_id, op.auxiliar_id)
+                WHERE op.empresa_id = :emp
+                  AND op.sucursal_id = :suc
+                  AND ({$dateCol} = :fecha OR pd.updated_at BETWEEN :start AND :end)
+                  AND pd.estado IN ('Completado', 'Completada', 'Parcial')
+                  AND pd.cantidad_pickeada > 0
+                GROUP BY pe.id, pe.nombre
+                ORDER BY unidades DESC
+                LIMIT 10
+            ");
+            $stmtUnits->execute([
+                ':emp'   => $empresaId,
+                ':suc'   => $sucursalId,
+                ':fecha' => $fecha,
+                ':start' => $start,
+                ':end'   => $end,
+            ]);
+            $rankingUnits = $stmtUnits->fetchAll(\PDO::FETCH_ASSOC);
+
+            // 3. Completadas hoy
+            $stmtComp = $pdo->prepare("
+                SELECT COUNT(id)
+                FROM orden_pickings
+                WHERE empresa_id = :emp
+                  AND sucursal_id = :suc
+                  AND {$dateCol} = :fecha
+                  AND estado IN ('Completada', 'Completado', 'Cerrada')
+            ");
+            $stmtComp->execute([
+                ':emp'   => $empresaId,
+                ':suc'   => $sucursalId,
+                ':fecha' => $fecha,
+            ]);
+            $completadasHoy = (int)$stmtComp->fetchColumn();
+
+            return $this->ok($response, [
+                'ranking_refs'    => $rankingRefs,
+                'ranking_units'   => $rankingUnits,
+                'completadas_hoy' => $completadasHoy,
+            ]);
+        } catch (\Throwable $e) {
+            wmsLog('ERROR', 'TV:getPickingRanking — ' . $e->getMessage());
+            return $this->error($response, 'Error al obtener ranking de picking: ' . $e->getMessage(), 500);
+        }
     }
 }

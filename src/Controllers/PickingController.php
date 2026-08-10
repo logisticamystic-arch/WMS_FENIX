@@ -2600,14 +2600,21 @@ class PickingController extends BaseController
                 'detalles as tiene_faltante_count' => fn($q) => $q->where('estado', 'Faltante'),
             ])
             ->with([
-                'detalles' => fn($q) => $q->select('id', 'orden_picking_id', 'auxiliar_id')
-                                           ->with('auxiliar:id,nombre'),
+                'detalles' => fn($q) => $q->select('id', 'orden_picking_id', 'auxiliar_id', 'producto_id', 'ambiente', 'estado')
+                                           ->with(['auxiliar:id,nombre', 'producto:id,ambiente_id', 'producto.ambiente:id,codigo']),
             ])
             ->get();
 
+        // Progreso general por ambiente
+        $progresoAmbienteGeneral = [
+            'seco'        => ['c' => 0, 't' => 0],
+            'refrigerado' => ['c' => 0, 't' => 0],
+            'congelado'   => ['c' => 0, 't' => 0],
+        ];
+
         $stats['planillas_activas'] = $ordenesActivas
             ->groupBy(fn($o) => $o->planilla_numero ?? $o->numero_orden)
-            ->map(function ($orders, $planillaKey) {
+            ->map(function ($orders, $planillaKey) use (&$progresoAmbienteGeneral) {
                 $first       = $orders->first();
                 $totalLineas = $orders->sum('total_lineas');
                 $lineasComp  = $orders->sum('lineas_completadas');
@@ -2617,9 +2624,38 @@ class PickingController extends BaseController
                 $auxiliares  = $orders->flatMap(fn($o) => $o->detalles->pluck('auxiliar.nombre'))
                                       ->filter()->unique()->values();
                 $tieneFalt   = $orders->sum('tiene_faltante_count') > 0;
+                $clienteName = $first->cliente ?: ($first->sucursal_entrega ?: $planillaKey);
+
+                // Desglose de ambientes por cliente/planilla
+                $ambientesClient = [
+                    'seco'        => ['c' => 0, 't' => 0],
+                    'refrigerado' => ['c' => 0, 't' => 0],
+                    'congelado'   => ['c' => 0, 't' => 0],
+                ];
+
+                foreach ($orders as $ord) {
+                    foreach ($ord->detalles as $det) {
+                        $ambRaw = $det->ambiente ?: ($det->producto->ambiente->codigo ?? 'SECO');
+                        $ambKey = match(strtolower((string)$ambRaw)) {
+                            'refrigerado' => 'refrigerado',
+                            'congelado'   => 'congelado',
+                            default       => 'seco',
+                        };
+
+                        $ambientesClient[$ambKey]['t']++;
+                        $progresoAmbienteGeneral[$ambKey]['t']++;
+
+                        if (in_array($det->estado, ['Completada', 'Completado', 'Faltante'], true)) {
+                            $ambientesClient[$ambKey]['c']++;
+                            $progresoAmbienteGeneral[$ambKey]['c']++;
+                        }
+                    }
+                }
 
                 return [
                     'planilla_numero'    => $planillaKey,
+                    'cliente'            => $clienteName,
+                    'sucursal'           => $first->sucursal_entrega ?: $clienteName,
                     'estado'             => $estado,
                     'ruta'               => $first->area_comercial,
                     'hora_inicio'        => $horaInicio,
@@ -2627,10 +2663,13 @@ class PickingController extends BaseController
                     'lineas_completadas' => $lineasComp,
                     'auxiliares'         => $auxiliares,
                     'tiene_faltante'     => $tieneFalt,
+                    'ambientes'          => $ambientesClient,
                 ];
             })
             ->sortBy(fn($p) => $p['estado'] === 'EnProceso' ? 0 : 1)
             ->values();
+
+        $stats['progreso_ambiente'] = $progresoAmbienteGeneral;
 
         // Faltantes Críticos (Alertas)
         $stats['alertas_faltantes'] = PickingDetalle::whereHas('ordenPicking', function($q) use ($ini, $fin, $empresaId, $params, $user) {

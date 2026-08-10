@@ -391,7 +391,7 @@ input.tv-fecha-input::-webkit-calendar-picker-indicator{filter:none;width:9px;cu
           <div class="tv-card-body">
             <table class="tv">
               <thead><tr>
-                <th>Planilla</th><th>Auxiliar(es)</th>
+                <th>Cliente / Sucursal</th><th>Auxiliar(es)</th>
                 <th style="min-width:85px;">Progreso</th>
                 <th style="text-align:center;">%</th>
                 <th style="text-align:center;">Tiempo</th>
@@ -874,7 +874,8 @@ function renderIngresosChart(data){
 }
 
 // ── TAB 2: PICKING ───────────────────────────────────────────────────
-function renderPicking(planillas){
+// ── TAB 2: PICKING ───────────────────────────────────────────────────
+function renderPicking(planillas, progresoGeneral = null){
   if(liveTimerId){clearInterval(liveTimerId);liveTimerId=null;}
 
   const activas=planillas.length;
@@ -891,8 +892,12 @@ function renderPicking(planillas){
   setText('pk-pct-sub',`${fmt(compL)} de ${fmt(totalL)} líneas`);
   setText('pk-badge',activas);
 
-  // Ambiente progress from planillas data
-  buildAmbienteFromPlanillas(planillas);
+  // General ambiente progress
+  if(progresoGeneral && Object.keys(progresoGeneral).length){
+    renderAmbiente(progresoGeneral);
+  } else {
+    buildAmbienteFromPlanillas(planillas);
+  }
 
   const tbody=document.getElementById('tbody-picking');
   if(!planillas.length){
@@ -907,10 +912,37 @@ function renderPicking(planillas){
     const auxChips=(p.auxiliares||[]).length
       ?p.auxiliares.map(a=>`<span style="display:inline-flex;align-items:center;gap:2px;background:var(--blue-lt);border:1px solid rgba(59,130,246,.3);border-radius:8px;padding:1px 5px;font-size:.55rem;color:var(--blue);white-space:nowrap;">${esc(a)}</span>`).join(' ')
       :`<span style="color:var(--text2);font-style:italic;font-size:.62rem;">Sin asignar</span>`;
+
+    // Desglose por ambiente por cliente
+    const ambBadges = [];
+    if(p.ambientes){
+      const items=[
+        {key:'seco',icon:'☀️',name:'Seco'},
+        {key:'refrigerado',icon:'❄️',name:'Ref'},
+        {key:'congelado',icon:'🧊',name:'Cong'},
+      ];
+      items.forEach(it=>{
+        const d=p.ambientes[it.key];
+        if(d && d.t > 0){
+          const pAmb=Math.round(d.c/d.t*100);
+          const col=pAmb>=80?'var(--green)':pAmb>=50?'var(--orange)':'var(--red)';
+          ambBadges.push(`<span style="font-size:0.55rem;font-weight:700;color:${col};background:rgba(241,245,249,0.85);padding:1px 4px;border-radius:4px;border:1px solid rgba(226,232,240,0.9);white-space:nowrap;">${it.icon} ${it.name}: ${pAmb}%</span>`);
+        }
+      });
+    }
+    const ambStr = ambBadges.length ? `<div style="display:flex;gap:3px;margin-top:2px;flex-wrap:wrap;">${ambBadges.join('')}</div>` : '';
+    const clientName = esc(p.cliente || p.sucursal || p.planilla_numero);
+
     return`<tr style="${bdL}" data-hora="${esc(p.hora_inicio||'')}">
-      <td style="font-weight:800;color:var(--blue);font-size:.7rem;white-space:nowrap;">${esc(p.planilla_numero)}</td>
+      <td style="font-weight:800;color:var(--blue);font-size:.7rem;white-space:nowrap;" title="${esc(p.planilla_numero||'')}">${clientName}</td>
       <td style="max-width:100px;">${auxChips}</td>
-      <td><div style="display:flex;align-items:center;gap:4px;"><div class="prog-bar"><div class="prog-fill" style="width:${pct2}%;background:${pc};"></div></div><span style="font-size:.58rem;color:var(--text2);">${p.lineas_completadas}/${p.total_lineas}</span></div></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <div class="prog-bar"><div class="prog-fill" style="width:${pct2}%;background:${pc};"></div></div>
+          <span style="font-size:.58rem;color:var(--text2);">${p.lineas_completadas}/${p.total_lineas}</span>
+        </div>
+        ${ambStr}
+      </td>
       <td style="font-weight:900;font-size:.8rem;color:${pc};text-align:center;">${pct2}%</td>
       <td class="timer-cell" style="text-align:center;color:var(--cyan);font-weight:700;font-size:.7rem;">—</td>
       <td><span class="badge ${isEP?'badge-blue':'badge-gray'}">${isEP?'En Proceso':'Pendiente'}</span></td>
@@ -925,21 +957,20 @@ function renderPicking(planillas){
 }
 
 function buildAmbienteFromPlanillas(planillas){
-  // Group by ambiente field if available on planilla, else show global
   const stats={seco:{c:0,t:0},refrigerado:{c:0,t:0},congelado:{c:0,t:0}};
   planillas.forEach(p=>{
-    const amb=(p.ambiente||'').toLowerCase();
-    const key=amb==='refrigerado'?'refrigerado':amb==='congelado'?'congelado':'seco';
-    stats[key].t+=p.total_lineas||0;
-    stats[key].c+=p.lineas_completadas||0;
+    if(p.ambientes){
+      Object.keys(stats).forEach(k=>{
+        stats[k].t += p.ambientes[k]?.t || 0;
+        stats[k].c += p.ambientes[k]?.c || 0;
+      });
+    } else {
+      const amb=(p.ambiente||'').toLowerCase();
+      const key=amb==='refrigerado'?'refrigerado':amb==='congelado'?'congelado':'seco';
+      stats[key].t+=p.total_lineas||0;
+      stats[key].c+=p.lineas_completadas||0;
+    }
   });
-  // If no ambiente info, show global in seco
-  const hasAmb=planillas.some(p=>p.ambiente);
-  if(!hasAmb){
-    const totalT=planillas.reduce((s,p)=>s+(p.total_lineas||0),0);
-    const totalC=planillas.reduce((s,p)=>s+(p.lineas_completadas||0),0);
-    stats.seco={c:totalC,t:totalT};
-  }
   renderAmbiente(stats);
 }
 
@@ -1445,7 +1476,7 @@ async function loadAll(){
   renderKPIs(tv,picking);
   renderTicker(tv.stock_critico||[]);
   renderIngresos(tv.recepciones||[],tv.miscelaneos||[]);
-  renderPicking(picking.planillas_activas||[]);
+  renderPicking(picking.planillas_activas||[], picking.progreso_ambiente||null);
   const totalDemanda=(picking.planillas_activas||[]).reduce((s,p)=>s+(p.total_lineas||0),0);
   renderAgotados(tv.agotados||[],totalDemanda);
   renderAlertas(tv.proximos_vencer||[]);

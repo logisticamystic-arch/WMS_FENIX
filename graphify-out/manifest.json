@@ -1838,5 +1838,10 @@
     "mtime": 1786218567.197777,
     "ast_hash": "2a15a18692c07d9f7792cb2079e4614c",
     "semantic_hash": ""
+  },
+  "scratch/test_tv_queries.php": {
+    "mtime": 1786362760.6158006,
+    "ast_hash": "f82cd7f08e4452cf57d7290ddde29ca8",
+    "semantic_hash": ""
   }
 }
