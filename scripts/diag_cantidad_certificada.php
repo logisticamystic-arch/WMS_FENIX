@@ -53,3 +53,16 @@ echo "\nDetalle (máx 20):\n";
 foreach (array_slice($rows, 0, 20) as $r) {
     echo "  orden={$r->orden_id} fecha_cert={$r->fecha_certificacion} lineas={$r->lineas_afectadas} pickeado={$r->total_pickeado} certificado={$r->total_certificado}\n";
 }
+
+echo "\n== Detalle del/los caso(s) DESDE 2026-08-08 (no deberían existir si el fix cubrió todo) ==\n";
+$posteriores = Capsule::select("
+    SELECT op.id, op.fecha_certificacion, op.estado_certificacion, pd.id AS detalle_id,
+           pd.cantidad_pickeada, pd.cantidad_certificada, pd.estado AS estado_linea
+    FROM picking_detalles pd JOIN orden_pickings op ON op.id = pd.orden_picking_id
+    WHERE op.estado_certificacion = 'Certificada' AND pd.cantidad_pickeada > 0
+      AND COALESCE(pd.cantidad_certificada,0) <> pd.cantidad_pickeada
+      AND op.fecha_certificacion >= '2026-08-08'
+");
+foreach ($posteriores as $r) {
+    echo "  orden={$r->id} fecha_cert={$r->fecha_certificacion} detalle_id={$r->detalle_id} pickeado={$r->cantidad_pickeada} certificado={$r->cantidad_certificada} estado_linea={$r->estado_linea}\n";
+}

@@ -945,8 +945,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/PackingController.php": {
-    "mtime": 1786233037.2175858,
-    "ast_hash": "fa0cdb3669c28b58c40672088e3f5058",
+    "mtime": 1786380378.9480543,
+    "ast_hash": "85f07436ac2b0b251759f16ee58343d7",
     "semantic_hash": ""
   },
   "src/Controllers/ParametrosController.php": {
@@ -1860,8 +1860,8 @@
     "semantic_hash": ""
   },
   "scratch/test_remision_fix.php": {
-    "mtime": 1786379848.1899416,
-    "ast_hash": "767da6ec11ac0fd445d2ef36f5e0ad6b",
+    "mtime": 1786380384.4378715,
+    "ast_hash": "388e95522335477133c5a4fa8fe5450a",
     "semantic_hash": ""
   }
 }

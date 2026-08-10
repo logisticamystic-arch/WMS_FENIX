@@ -1863,5 +1863,10 @@
     "mtime": 1786380384.4378715,
     "ast_hash": "388e95522335477133c5a4fa8fe5450a",
     "semantic_hash": ""
+  },
+  "scripts/diag_cantidad_certificada.php": {
+    "mtime": 1786398894.5954452,
+    "ast_hash": "964d9ab89ddb5f718f38d49e9767617f",
+    "semantic_hash": ""
   }
 }
