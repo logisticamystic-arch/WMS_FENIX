@@ -735,8 +735,8 @@
     "semantic_hash": ""
   },
   "public/index.php": {
-    "mtime": 1785852316.4796426,
-    "ast_hash": "e01eaaf509e491ecdd7e9d5e783c5152",
+    "mtime": 1786363466.2658458,
+    "ast_hash": "c2c6acc7e1e766927d9d6140d2ea46c8",
     "semantic_hash": ""
   },
   "public/manifest.json": {
@@ -885,8 +885,8 @@
     "semantic_hash": "3d2f08121c2ebc07639fe57aea467322"
   },
   "src/Controllers/DashboardTVController.php": {
-    "mtime": 1785958835.4167309,
-    "ast_hash": "b02b66b7fff1af48f0c93e8761da8047",
+    "mtime": 1786363492.1028416,
+    "ast_hash": "a5a54cbf67383d5a6d87970575984071",
     "semantic_hash": ""
   },
   "src/Controllers/DespachoController.php": {
@@ -960,8 +960,8 @@
     "semantic_hash": "e5d5c725bce4a13b3afbb9666f3fe95a"
   },
   "src/Controllers/PickingController.php": {
-    "mtime": 1786232946.489575,
-    "ast_hash": "1d7c54dfeb1444e68c5ea67ab913d44e",
+    "mtime": 1786363504.5367405,
+    "ast_hash": "e46717fe1ee7beb84e7780b7d8ae76da",
     "semantic_hash": ""
   },
   "src/Controllers/PlanillaController.php": {
@@ -1565,8 +1565,8 @@
     "semantic_hash": "8698adc8034f3390db8dbdda7f832df0"
   },
   "public/tv-picking.html": {
-    "mtime": 1785954230.227283,
-    "ast_hash": "b25066c8c3ab92e73e904d798d704320",
+    "mtime": 1786363545.4036095,
+    "ast_hash": "dbc412796f5047f1051dd9ba686a064a",
     "semantic_hash": ""
   },
   "logo.jpg": {
@@ -1842,6 +1842,11 @@
   "scratch/test_tv_queries.php": {
     "mtime": 1786362760.6158006,
     "ast_hash": "f82cd7f08e4452cf57d7290ddde29ca8",
+    "semantic_hash": ""
+  },
+  "scratch/test_endpoints.php": {
+    "mtime": 1786363622.7524476,
+    "ast_hash": "d832e9e972228e0363f74c537d7c7b76",
     "semantic_hash": ""
   }
 }
