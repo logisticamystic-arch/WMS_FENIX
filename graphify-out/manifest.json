@@ -1865,8 +1865,28 @@
     "semantic_hash": ""
   },
   "scripts/diag_cantidad_certificada.php": {
-    "mtime": 1786398894.5954452,
-    "ast_hash": "964d9ab89ddb5f718f38d49e9767617f",
+    "mtime": 1786398932.6065755,
+    "ast_hash": "6069cd9c01112607353c21b22955b85c",
+    "semantic_hash": ""
+  },
+  "scripts/backfill_cantidad_certificada.php": {
+    "mtime": 1786398980.0230331,
+    "ast_hash": "8ba412c86868efff3959788d59b4ee72",
+    "semantic_hash": ""
+  },
+  "scripts/cols_productos.php": {
+    "mtime": 1786399047.754602,
+    "ast_hash": "0d534d6c756af892e778ed3c878987b3",
+    "semantic_hash": ""
+  },
+  "scripts/diag_certificado_anomalo.php": {
+    "mtime": 1786399038.5037167,
+    "ast_hash": "282672f36d5f5865dc57fda749de487a",
+    "semantic_hash": ""
+  },
+  "scripts/diag_movimientos_certadmin.php": {
+    "mtime": 1786399529.245416,
+    "ast_hash": "8a4976e796f205fb03b6a76c215ee3f9",
     "semantic_hash": ""
   }
 }

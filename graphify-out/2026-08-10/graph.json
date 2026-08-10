@@ -21,15 +21,26 @@
   },
   "nodes": [
     {
+      "label": "diag_cantidad_certificada.php",
+      "file_type": "code",
+      "source_file": "scripts/diag_cantidad_certificada.php",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "scripts_diag_cantidad_certificada",
+      "community": 120,
+      "community_name": "diag_cantidad_certificada.php",
+      "norm_label": "diag_cantidad_certificada.php"
+    },
+    {
       "label": "test_remision_fix.php",
       "file_type": "code",
       "source_file": "scratch/test_remision_fix.php",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "scratch_test_remision_fix",
       "community": 340,
       "community_name": "test_remision_fix.php",
-      "norm_label": "test_remision_fix.php"
+      "norm_label": "test_remision_fix.php",
+      "id": "scratch_test_remision_fix"
     },
     {
       "label": "PackingController.php",
@@ -37,10 +48,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller",
       "community": 132,
       "community_name": "OutboundController",
-      "norm_label": "packingcontroller.php"
+      "norm_label": "packingcontroller.php",
+      "id": "src_controllers_packingcontroller"
     },
     {
       "label": "PackingController",
@@ -48,10 +59,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L14",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": "packingcontroller"
+      "norm_label": "packingcontroller",
+      "id": "src_controllers_packingcontroller_packingcontroller"
     },
     {
       "label": "BaseController",
@@ -59,10 +70,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "basecontroller",
       "community": 1,
       "community_name": "Returns & FEFO Alerts",
-      "norm_label": "basecontroller"
+      "norm_label": "basecontroller",
+      "id": "basecontroller"
     },
     {
       "label": ".iniciarSesion()",
@@ -70,10 +81,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L17",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_iniciarsesion",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".iniciarsesion()"
+      "norm_label": ".iniciarsesion()",
+      "id": "src_controllers_packingcontroller_packingcontroller_iniciarsesion"
     },
     {
       "label": ".getSesion()",
@@ -81,10 +92,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L101",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_getsesion",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".getsesion()"
+      "norm_label": ".getsesion()",
+      "id": "src_controllers_packingcontroller_packingcontroller_getsesion"
     },
     {
       "label": ".agregarItem()",
@@ -92,10 +103,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L204",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_agregaritem",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".agregaritem()"
+      "norm_label": ".agregaritem()",
+      "id": "src_controllers_packingcontroller_packingcontroller_agregaritem"
     },
     {
       "label": ".eliminarItem()",
@@ -103,10 +114,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L297",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_eliminaritem",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".eliminaritem()"
+      "norm_label": ".eliminaritem()",
+      "id": "src_controllers_packingcontroller_packingcontroller_eliminaritem"
     },
     {
       "label": ".cerrarUnidad()",
@@ -114,10 +125,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L318",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_cerrarunidad",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".cerrarunidad()"
+      "norm_label": ".cerrarunidad()",
+      "id": "src_controllers_packingcontroller_packingcontroller_cerrarunidad"
     },
     {
       "label": ".finalizarSesion()",
@@ -125,10 +136,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L354",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_finalizarsesion",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".finalizarsesion()"
+      "norm_label": ".finalizarsesion()",
+      "id": "src_controllers_packingcontroller_packingcontroller_finalizarsesion"
     },
     {
       "label": ".recertificar()",
@@ -136,10 +147,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L533",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_recertificar",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".recertificar()"
+      "norm_label": ".recertificar()",
+      "id": "src_controllers_packingcontroller_packingcontroller_recertificar"
     },
     {
       "label": ".actualizarImpresoras()",
@@ -147,10 +158,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L701",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_actualizarimpresoras",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".actualizarimpresoras()"
+      "norm_label": ".actualizarimpresoras()",
+      "id": "src_controllers_packingcontroller_packingcontroller_actualizarimpresoras"
     },
     {
       "label": ".listarSesiones()",
@@ -158,10 +169,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L719",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_listarsesiones",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".listarsesiones()"
+      "norm_label": ".listarsesiones()",
+      "id": "src_controllers_packingcontroller_packingcontroller_listarsesiones"
     },
     {
       "label": ".getSesionActiva()",
@@ -169,10 +180,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L907",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_getsesionactiva",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".getsesionactiva()"
+      "norm_label": ".getsesionactiva()",
+      "id": "src_controllers_packingcontroller_packingcontroller_getsesionactiva"
     },
     {
       "label": ".resetCertificacion()",
@@ -180,10 +191,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L924",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_resetcertificacion",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".resetcertificacion()"
+      "norm_label": ".resetcertificacion()",
+      "id": "src_controllers_packingcontroller_packingcontroller_resetcertificacion"
     },
     {
       "label": ".cancelarSesion()",
@@ -191,10 +202,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L985",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_cancelarsesion",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".cancelarsesion()"
+      "norm_label": ".cancelarsesion()",
+      "id": "src_controllers_packingcontroller_packingcontroller_cancelarsesion"
     },
     {
       "label": ".getRemision()",
@@ -202,10 +213,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L1028",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_getremision",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".getremision()"
+      "norm_label": ".getremision()",
+      "id": "src_controllers_packingcontroller_packingcontroller_getremision"
     },
     {
       "label": ".getEtiquetasTodas()",
@@ -213,10 +224,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L1230",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_getetiquetastodas",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".getetiquetastodas()"
+      "norm_label": ".getetiquetastodas()",
+      "id": "src_controllers_packingcontroller_packingcontroller_getetiquetastodas"
     },
     {
       "label": ".imprimirEtiquetaRed()",
@@ -224,10 +235,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L1327",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetared",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".imprimiretiquetared()"
+      "norm_label": ".imprimiretiquetared()",
+      "id": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetared"
     },
     {
       "label": "._imprimirEtiquetaRedLegacy()",
@@ -235,10 +246,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L1333",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetaredlegacy",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": "._imprimiretiquetaredlegacy()"
+      "norm_label": "._imprimiretiquetaredlegacy()",
+      "id": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetaredlegacy"
     },
     {
       "label": ".getEtiquetaCanasta()",
@@ -246,10 +257,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L1497",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_getetiquetacanasta",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".getetiquetacanasta()"
+      "norm_label": ".getetiquetacanasta()",
+      "id": "src_controllers_packingcontroller_packingcontroller_getetiquetacanasta"
     },
     {
       "label": ".agotadosSesion()",
@@ -257,10 +268,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L1517",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_agotadossesion",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".agotadossesion()"
+      "norm_label": ".agotadossesion()",
+      "id": "src_controllers_packingcontroller_packingcontroller_agotadossesion"
     },
     {
       "label": "._buildPackingHtml()",
@@ -268,10 +279,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L1569",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_buildpackinghtml",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": "._buildpackinghtml()"
+      "norm_label": "._buildpackinghtml()",
+      "id": "src_controllers_packingcontroller_packingcontroller_buildpackinghtml"
     },
     {
       "label": "PackingUnidad",
@@ -279,10 +290,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "packingunidad",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": "packingunidad"
+      "norm_label": "packingunidad",
+      "id": "packingunidad"
     },
     {
       "label": ".autoPack()",
@@ -290,10 +301,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L1693",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_autopack",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": ".autopack()"
+      "norm_label": ".autopack()",
+      "id": "src_controllers_packingcontroller_packingcontroller_autopack"
     },
     {
       "label": "._getProductosPickados()",
@@ -301,10 +312,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L1858",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_getproductospickados",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": "._getproductospickados()"
+      "norm_label": "._getproductospickados()",
+      "id": "src_controllers_packingcontroller_packingcontroller_getproductospickados"
     },
     {
       "label": "._getProductosEmpacados()",
@@ -312,10 +323,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L1917",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_getproductosempacados",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": "._getproductosempacados()"
+      "norm_label": "._getproductosempacados()",
+      "id": "src_controllers_packingcontroller_packingcontroller_getproductosempacados"
     },
     {
       "label": "._resolveFromPicking()",
@@ -323,10 +334,10 @@
       "source_file": "src/Controllers/PackingController.php",
       "source_location": "L1933",
       "_origin": "ast",
-      "id": "src_controllers_packingcontroller_packingcontroller_resolvefrompicking",
       "community": 90,
       "community_name": "BackupHelper",
-      "norm_label": "._resolvefrompicking()"
+      "norm_label": "._resolvefrompicking()",
+      "id": "src_controllers_packingcontroller_packingcontroller_resolvefrompicking"
     },
     {
       "label": "App\\Models\\PackingUnidad",
@@ -334,10 +345,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "app_models_packingunidad",
       "community": 132,
       "community_name": "OutboundController",
-      "norm_label": "app\\models\\packingunidad"
+      "norm_label": "app\\models\\packingunidad",
+      "id": "app_models_packingunidad"
     },
     {
       "label": "Psr\\Http\\Message\\ServerRequestInterface",
@@ -345,10 +356,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "psr_http_message_serverrequestinterface",
       "community": 5,
       "community_name": "Packing & Expiry Control",
-      "norm_label": "psr\\http\\message\\serverrequestinterface"
+      "norm_label": "psr\\http\\message\\serverrequestinterface",
+      "id": "psr_http_message_serverrequestinterface"
     },
     {
       "label": "Psr\\Http\\Message\\ResponseInterface",
@@ -356,10 +367,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "psr_http_message_responseinterface",
       "community": 3,
       "community_name": "Parameters & Approvals",
-      "norm_label": "psr\\http\\message\\responseinterface"
+      "norm_label": "psr\\http\\message\\responseinterface",
+      "id": "psr_http_message_responseinterface"
     },
     {
       "label": "diagnose_coleslaw.php",
@@ -31021,33 +31032,9 @@
       "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller",
-      "target": "app_models_packingunidad",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/PackingController.php",
-      "source_location": "L11",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_controllers_packingcontroller",
-      "target": "src_helpers_expiryguard",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/PackingController.php",
-      "source_location": "L12",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_controllers_packingcontroller",
-      "target": "src_helpers_expiryresult",
-      "confidence_score": 1.0
+      "target": "app_models_packingunidad"
     },
     {
       "relation": "imports",
@@ -31057,9 +31044,44 @@
       "source_location": "L9",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller",
-      "target": "ordenpicking",
-      "confidence_score": 1.0
+      "target": "ordenpicking"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/PackingController.php",
+      "source_location": "L14",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_packingcontroller",
+      "target": "src_controllers_packingcontroller_packingcontroller"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/PackingController.php",
+      "source_location": "L11",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_packingcontroller",
+      "target": "src_helpers_expiryguard"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/Controllers/PackingController.php",
+      "source_location": "L12",
+      "weight": 1.0,
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_controllers_packingcontroller",
+      "target": "src_helpers_expiryresult"
     },
     {
       "relation": "imports",
@@ -31069,9 +31091,9 @@
       "source_location": "L8",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller",
-      "target": "src_models_packingitem",
-      "confidence_score": 1.0
+      "target": "src_models_packingitem"
     },
     {
       "relation": "imports",
@@ -31081,20 +31103,9 @@
       "source_location": "L6",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller",
-      "target": "src_models_packingsesion",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/Controllers/PackingController.php",
-      "source_location": "L14",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_controllers_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller",
-      "confidence_score": 1.0
+      "target": "src_models_packingsesion"
     },
     {
       "relation": "inherits",
@@ -31103,9 +31114,9 @@
       "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "basecontroller",
-      "confidence_score": 1.0
+      "target": "basecontroller"
     },
     {
       "relation": "method",
@@ -31114,9 +31125,9 @@
       "source_location": "L701",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_actualizarimpresoras",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_actualizarimpresoras"
     },
     {
       "relation": "method",
@@ -31125,9 +31136,9 @@
       "source_location": "L1517",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_agotadossesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_agotadossesion"
     },
     {
       "relation": "method",
@@ -31136,9 +31147,9 @@
       "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_agregaritem",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_agregaritem"
     },
     {
       "relation": "method",
@@ -31147,9 +31158,9 @@
       "source_location": "L1693",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_autopack",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_autopack"
     },
     {
       "relation": "method",
@@ -31158,9 +31169,9 @@
       "source_location": "L1569",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_buildpackinghtml",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_buildpackinghtml"
     },
     {
       "relation": "method",
@@ -31169,9 +31180,9 @@
       "source_location": "L985",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_cancelarsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_cancelarsesion"
     },
     {
       "relation": "method",
@@ -31180,9 +31191,9 @@
       "source_location": "L318",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_cerrarunidad",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_cerrarunidad"
     },
     {
       "relation": "method",
@@ -31191,9 +31202,9 @@
       "source_location": "L297",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_eliminaritem",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_eliminaritem"
     },
     {
       "relation": "method",
@@ -31202,9 +31213,9 @@
       "source_location": "L354",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_finalizarsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_finalizarsesion"
     },
     {
       "relation": "method",
@@ -31213,9 +31224,9 @@
       "source_location": "L1497",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_getetiquetacanasta",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getetiquetacanasta"
     },
     {
       "relation": "method",
@@ -31224,9 +31235,9 @@
       "source_location": "L1230",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_getetiquetastodas",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getetiquetastodas"
     },
     {
       "relation": "method",
@@ -31235,9 +31246,9 @@
       "source_location": "L1917",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_getproductosempacados",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getproductosempacados"
     },
     {
       "relation": "method",
@@ -31246,9 +31257,9 @@
       "source_location": "L1858",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_getproductospickados",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getproductospickados"
     },
     {
       "relation": "method",
@@ -31257,9 +31268,9 @@
       "source_location": "L1028",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_getremision",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getremision"
     },
     {
       "relation": "method",
@@ -31268,9 +31279,9 @@
       "source_location": "L101",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_getsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getsesion"
     },
     {
       "relation": "method",
@@ -31279,9 +31290,9 @@
       "source_location": "L907",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_getsesionactiva",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getsesionactiva"
     },
     {
       "relation": "method",
@@ -31290,9 +31301,9 @@
       "source_location": "L1327",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetared",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetared"
     },
     {
       "relation": "method",
@@ -31301,9 +31312,9 @@
       "source_location": "L1333",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetaredlegacy",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetaredlegacy"
     },
     {
       "relation": "method",
@@ -31312,9 +31323,9 @@
       "source_location": "L17",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_iniciarsesion",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_iniciarsesion"
     },
     {
       "relation": "method",
@@ -31323,9 +31334,9 @@
       "source_location": "L719",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_listarsesiones",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_listarsesiones"
     },
     {
       "relation": "method",
@@ -31334,9 +31345,9 @@
       "source_location": "L533",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_recertificar",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_recertificar"
     },
     {
       "relation": "method",
@@ -31345,9 +31356,9 @@
       "source_location": "L924",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_resetcertificacion",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_resetcertificacion"
     },
     {
       "relation": "method",
@@ -31356,9 +31367,9 @@
       "source_location": "L1933",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller",
-      "target": "src_controllers_packingcontroller_packingcontroller_resolvefrompicking",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_resolvefrompicking"
     },
     {
       "relation": "inherits",
@@ -31544,9 +31555,9 @@
       "source_location": "L87",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_iniciarsesion",
-      "target": "packingunidad",
-      "confidence_score": 1.0
+      "target": "packingunidad"
     },
     {
       "relation": "references",
@@ -31556,9 +31567,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_iniciarsesion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31568,9 +31579,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_iniciarsesion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -31580,9 +31591,9 @@
       "source_location": "L117",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getsesion",
-      "target": "packingunidad",
-      "confidence_score": 1.0
+      "target": "packingunidad"
     },
     {
       "relation": "references",
@@ -31592,9 +31603,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getsesion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31604,9 +31615,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getsesion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -31616,9 +31627,9 @@
       "source_location": "L161",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getsesion",
-      "target": "src_controllers_packingcontroller_packingcontroller_getproductosempacados",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getproductosempacados"
     },
     {
       "relation": "calls",
@@ -31628,9 +31639,9 @@
       "source_location": "L157",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getsesion",
-      "target": "src_controllers_packingcontroller_packingcontroller_getproductospickados",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getproductospickados"
     },
     {
       "relation": "calls",
@@ -31640,9 +31651,9 @@
       "source_location": "L217",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_agregaritem",
-      "target": "packingunidad",
-      "confidence_score": 1.0
+      "target": "packingunidad"
     },
     {
       "relation": "references",
@@ -31652,9 +31663,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_agregaritem",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31664,9 +31675,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_agregaritem",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -31676,9 +31687,9 @@
       "source_location": "L244",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_agregaritem",
-      "target": "src_controllers_packingcontroller_packingcontroller_getproductosempacados",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getproductosempacados"
     },
     {
       "relation": "calls",
@@ -31688,9 +31699,9 @@
       "source_location": "L236",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_agregaritem",
-      "target": "src_controllers_packingcontroller_packingcontroller_getproductospickados",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getproductospickados"
     },
     {
       "relation": "calls",
@@ -31700,9 +31711,9 @@
       "source_location": "L251",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_agregaritem",
-      "target": "src_controllers_packingcontroller_packingcontroller_resolvefrompicking",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_resolvefrompicking"
     },
     {
       "relation": "calls",
@@ -31712,9 +31723,9 @@
       "source_location": "L303",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_eliminaritem",
-      "target": "packingunidad",
-      "confidence_score": 1.0
+      "target": "packingunidad"
     },
     {
       "relation": "references",
@@ -31724,9 +31735,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_eliminaritem",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31736,9 +31747,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_eliminaritem",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -31748,9 +31759,9 @@
       "source_location": "L321",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_cerrarunidad",
-      "target": "packingunidad",
-      "confidence_score": 1.0
+      "target": "packingunidad"
     },
     {
       "relation": "references",
@@ -31760,9 +31771,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_cerrarunidad",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31772,9 +31783,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_cerrarunidad",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -31784,9 +31795,9 @@
       "source_location": "L382",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_finalizarsesion",
-      "target": "packingunidad",
-      "confidence_score": 1.0
+      "target": "packingunidad"
     },
     {
       "relation": "references",
@@ -31796,9 +31807,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_finalizarsesion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31808,9 +31819,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_finalizarsesion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -31820,9 +31831,9 @@
       "source_location": "L372",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_finalizarsesion",
-      "target": "src_controllers_packingcontroller_packingcontroller_getproductosempacados",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getproductosempacados"
     },
     {
       "relation": "calls",
@@ -31832,9 +31843,9 @@
       "source_location": "L368",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_finalizarsesion",
-      "target": "src_controllers_packingcontroller_packingcontroller_getproductospickados",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getproductospickados"
     },
     {
       "relation": "references",
@@ -31844,9 +31855,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_recertificar",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31856,9 +31867,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_recertificar",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -31868,9 +31879,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_actualizarimpresoras",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31880,9 +31891,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_actualizarimpresoras",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -31892,9 +31903,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_listarsesiones",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31904,9 +31915,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_listarsesiones",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -31916,9 +31927,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getsesionactiva",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31928,9 +31939,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getsesionactiva",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -31940,9 +31951,9 @@
       "source_location": "L937",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_resetcertificacion",
-      "target": "packingunidad",
-      "confidence_score": 1.0
+      "target": "packingunidad"
     },
     {
       "relation": "references",
@@ -31952,9 +31963,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_resetcertificacion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -31964,9 +31975,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_resetcertificacion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -31976,9 +31987,9 @@
       "source_location": "L1013",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_cancelarsesion",
-      "target": "packingunidad",
-      "confidence_score": 1.0
+      "target": "packingunidad"
     },
     {
       "relation": "references",
@@ -31988,9 +31999,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_cancelarsesion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -32000,9 +32011,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_cancelarsesion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -32012,9 +32023,9 @@
       "source_location": "L1046",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getremision",
-      "target": "packingunidad",
-      "confidence_score": 1.0
+      "target": "packingunidad"
     },
     {
       "relation": "references",
@@ -32024,9 +32035,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getremision",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -32036,9 +32047,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getremision",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -32048,9 +32059,9 @@
       "source_location": "L1253",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getetiquetastodas",
-      "target": "packingunidad",
-      "confidence_score": 1.0
+      "target": "packingunidad"
     },
     {
       "relation": "references",
@@ -32060,9 +32071,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getetiquetastodas",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -32072,9 +32083,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getetiquetastodas",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -32084,9 +32095,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetared",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -32096,9 +32107,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetared",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -32108,9 +32119,9 @@
       "source_location": "L1338",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetaredlegacy",
-      "target": "packingunidad",
-      "confidence_score": 1.0
+      "target": "packingunidad"
     },
     {
       "relation": "references",
@@ -32120,9 +32131,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetaredlegacy",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -32132,9 +32143,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetaredlegacy",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -32144,9 +32155,9 @@
       "source_location": "L1462",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_imprimiretiquetaredlegacy",
-      "target": "src_controllers_packingcontroller_packingcontroller_buildpackinghtml",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_buildpackinghtml"
     },
     {
       "relation": "calls",
@@ -32156,9 +32167,9 @@
       "source_location": "L1502",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getetiquetacanasta",
-      "target": "packingunidad",
-      "confidence_score": 1.0
+      "target": "packingunidad"
     },
     {
       "relation": "references",
@@ -32168,9 +32179,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getetiquetacanasta",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -32180,9 +32191,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getetiquetacanasta",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -32192,9 +32203,9 @@
       "source_location": "L1510",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_getetiquetacanasta",
-      "target": "src_controllers_packingcontroller_packingcontroller_buildpackinghtml",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_buildpackinghtml"
     },
     {
       "relation": "references",
@@ -32204,9 +32215,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_agotadossesion",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -32216,9 +32227,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_agotadossesion",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "references",
@@ -32228,9 +32239,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_buildpackinghtml",
-      "target": "app_models_packingunidad",
-      "confidence_score": 1.0
+      "target": "app_models_packingunidad"
     },
     {
       "relation": "calls",
@@ -32240,9 +32251,9 @@
       "source_location": "L1738",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_autopack",
-      "target": "packingunidad",
-      "confidence_score": 1.0
+      "target": "packingunidad"
     },
     {
       "relation": "references",
@@ -32252,9 +32263,9 @@
       "weight": 1.0,
       "context": "return_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_autopack",
-      "target": "psr_http_message_responseinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_responseinterface"
     },
     {
       "relation": "references",
@@ -32264,9 +32275,9 @@
       "weight": 1.0,
       "context": "parameter_type",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_autopack",
-      "target": "psr_http_message_serverrequestinterface",
-      "confidence_score": 1.0
+      "target": "psr_http_message_serverrequestinterface"
     },
     {
       "relation": "calls",
@@ -32276,9 +32287,9 @@
       "source_location": "L1721",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_autopack",
-      "target": "src_controllers_packingcontroller_packingcontroller_getproductosempacados",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getproductosempacados"
     },
     {
       "relation": "calls",
@@ -32288,9 +32299,9 @@
       "source_location": "L1720",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_autopack",
-      "target": "src_controllers_packingcontroller_packingcontroller_getproductospickados",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_getproductospickados"
     },
     {
       "relation": "calls",
@@ -32300,9 +32311,9 @@
       "source_location": "L1756",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_controllers_packingcontroller_packingcontroller_autopack",
-      "target": "src_controllers_packingcontroller_packingcontroller_resolvefrompicking",
-      "confidence_score": 1.0
+      "target": "src_controllers_packingcontroller_packingcontroller_resolvefrompicking"
     },
     {
       "relation": "references",
@@ -93819,5 +93830,5 @@
       "source_file": "docs/superpowers/specs/2026-05-30-packing-certificacion-design.md"
     }
   ],
-  "built_at_commit": "f7a1f382bd50c1ae46cab295de5e781cd3c08229"
+  "built_at_commit": "2f23493281b25112a043048b9d1da80e5e5842df"
 }

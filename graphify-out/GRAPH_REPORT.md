@@ -1,16 +1,16 @@
 # Graph Report - WMS_FENIX  (2026-08-10)
 
 ## Corpus Check
-- 352 files · ~852,026 words
+- 356 files · ~852,725 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2799 nodes · 5460 edges · 340 communities (270 shown, 70 thin omitted)
+- 2803 nodes · 5460 edges · 344 communities (274 shown, 70 thin omitted)
 - Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 312 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `2f234932`
+- Built from commit: `ead546b4`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -232,7 +232,7 @@
 ## Hyperedges (group relationships)
 - **Packing Session Data Model** — concept_packing_sesiones, concept_packing_unidades, concept_packing_items, concept_picking_detalles [EXTRACTED 0.85]
 
-## Communities (340 total, 70 thin omitted)
+## Communities (344 total, 70 thin omitted)
 
 ### Community 0 - "Picking Order Management"
 Cohesion: 0.04
@@ -717,10 +717,10 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `WMS Enterprise Management Pitch Page` and `ROI Growth Trend bar/line chart (94.2% FY2023)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **Why does `BaseModel` connect `Yard Management Controller` to `ConteoInventario`, `OutboundController`, `Product Blocking & Quick Search`, `Receiving Controller`, `MovimientoInventario`, `App Routes & Design Docs`, `Base Controller Utilities`, `Tenant Context & Middleware`, `Sucursal`, `Miscellaneous Items Controller`, `Replenishment & Notifications`, `MovimientoInventario`, `Traspaso`, `TV Picking Dashboard`, `CacheHelper`, `.__invoke`, `Picking TV Dashboard`, `.__invoke`, `.now`, `MovimientoInventario`?**
-  _High betweenness centrality (0.026) - this node is a cross-community bridge._
-- **Why does `Personal` connect `Sucursal` to `App Routes & Design Docs`, `Replenishment & Notifications`, `Yard Management Controller`?**
-  _High betweenness centrality (0.012) - this node is a cross-community bridge._
+  _High betweenness centrality (0.027) - this node is a cross-community bridge._
 - **Why does `BaseController` connect `Base Controller Utilities` to `Inventory & Dashboard Controller`, `Cross-Dock Operations`, `Receiving Controller`, `MovimientoInventario`, `Auth & Seeding`, `Base Model & Certification`, `Returns Model & Controller`, `Location Adjustment Controller`, `Sucursal`, `Miscellaneous Items Controller`, `Replenishment & Notifications`, `PermisoPersonalController`, `TMS Integration Controller`, `TV Picking Dashboard`, `CacheHelper`, `.__invoke`, `TrazabilidadController`, `Picking TV Dashboard`, `TenantScoped.php`, `AnomalyController`?**
+  _High betweenness centrality (0.014) - this node is a cross-community bridge._
+- **Why does `OrdenPicking` connect `TV Picking Dashboard` to `App Routes & Design Docs`, `Cross-Dock Operations`, `Yard Management Controller`?**
   _High betweenness centrality (0.011) - this node is a cross-community bridge._
 - **Are the 129 inferred relationships involving `date` (e.g. with `generateReportInternal()` and `getActiveUsers()`) actually correct?**
   _`date` has 129 INFERRED edges - model-reasoned connections that need verification._

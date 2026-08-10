@@ -21,6 +21,28 @@
   },
   "nodes": [
     {
+      "label": "backfill_cantidad_certificada.php",
+      "file_type": "code",
+      "source_file": "scripts/backfill_cantidad_certificada.php",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "scripts_backfill_cantidad_certificada",
+      "community": 138,
+      "community_name": "backfill_cantidad_certificada.php",
+      "norm_label": "backfill_cantidad_certificada.php"
+    },
+    {
+      "label": "cols_productos.php",
+      "file_type": "code",
+      "source_file": "scripts/cols_productos.php",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "scripts_cols_productos",
+      "community": 310,
+      "community_name": "cols_productos.php",
+      "norm_label": "cols_productos.php"
+    },
+    {
       "label": "diag_cantidad_certificada.php",
       "file_type": "code",
       "source_file": "scripts/diag_cantidad_certificada.php",
@@ -30,6 +52,28 @@
       "community": 120,
       "community_name": "diag_cantidad_certificada.php",
       "norm_label": "diag_cantidad_certificada.php"
+    },
+    {
+      "label": "diag_certificado_anomalo.php",
+      "file_type": "code",
+      "source_file": "scripts/diag_certificado_anomalo.php",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "scripts_diag_certificado_anomalo",
+      "community": 328,
+      "community_name": "diag_certificado_anomalo.php",
+      "norm_label": "diag_certificado_anomalo.php"
+    },
+    {
+      "label": "diag_movimientos_certadmin.php",
+      "file_type": "code",
+      "source_file": "scripts/diag_movimientos_certadmin.php",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "scripts_diag_movimientos_certadmin",
+      "community": 330,
+      "community_name": "diag_movimientos_certadmin.php",
+      "norm_label": "diag_movimientos_certadmin.php"
     },
     {
       "label": "test_remision_fix.php",
@@ -93830,5 +93874,5 @@
       "source_file": "docs/superpowers/specs/2026-05-30-packing-certificacion-design.md"
     }
   ],
-  "built_at_commit": "2f23493281b25112a043048b9d1da80e5e5842df"
+  "built_at_commit": "ead546b491043fdbb56fd6870c8dd61de493b96f"
 }
