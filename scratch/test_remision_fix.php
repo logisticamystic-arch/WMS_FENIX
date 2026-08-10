@@ -23,58 +23,27 @@ $capsule->addConnection([
 $capsule->setAsGlobal();
 $capsule->bootEloquent();
 
-echo "=== PRUEBA DE CORRECCIÓN EN REMISIÓN DE PACKING ===" . PHP_EOL;
+echo "=== PRUEBA ENDPOINT /packing/sesion/386/remision ===" . PHP_EOL;
 
-// Buscar sesión de packing para CLAP CHICKEN VIVA ENVIGADO o para estas órdenes
-$sesion = Capsule::table('packing_sesiones')
-    ->where('sucursal_entrega', 'ILIKE', '%CHICKEN VIVA%')
-    ->orderBy('id', 'desc')
-    ->first();
+$packingCtrl = new \App\Controllers\PackingController();
+$reqFactory = new RequestFactory();
+$resFactory = new ResponseFactory();
 
-if (!$sesion) {
-    echo "No se encontró sesión de packing específica, probando lógica sobre planilla 'Planilla 598'..." . PHP_EOL;
-} else {
-    echo "Sesión de packing encontrada: ID " . $sesion->id . PHP_EOL;
-}
+$request = $reqFactory->createRequest('GET', '/api/packing/sesion/386/remision')
+    ->withAttribute('user', (object)['id' => 1, 'empresa_id' => 2, 'sucursal_id' => 2, 'rol' => 'Admin']);
+$response = $resFactory->createResponse(200);
 
-$sesionOrdenIds = [1368, 1369]; // Las que tenían items en packing_items
+$res = $packingCtrl->getRemision($request, $response, ['id' => 386]);
+$html = (string)$res->getBody();
 
-// Con la lógica nueva:
-$planillasSesion = Capsule::table('orden_pickings')
-    ->whereIn('id', $sesionOrdenIds)
-    ->pluck('planilla_numero')
-    ->filter()
-    ->unique()
-    ->toArray();
+echo "Status Code: " . $res->getStatusCode() . PHP_EOL;
+echo "Tiene Pedido 17271: " . (strpos($html, '17271') !== false ? 'SI' : 'NO') . PHP_EOL;
+echo "Tiene Producto 101072 (COLESLAW): " . (strpos($html, '101072') !== false ? 'SI' : 'NO') . PHP_EOL;
 
-$ordenesObj = Capsule::table('orden_pickings')
-    ->where('empresa_id', 2)
-    ->where(function($q) use ($sesionOrdenIds, $planillasSesion) {
-        $q->whereIn('id', $sesionOrdenIds);
-        if (!empty($planillasSesion)) {
-            $q->orWhere(function($subQ) use ($planillasSesion) {
-                $subQ->whereIn('planilla_numero', $planillasSesion)
-                     ->whereIn('estado', ['Completada', 'EnProceso', 'Cerrada']);
-            });
-        }
-    })
-    ->get(['id', 'numero_orden', 'numero_factura', 'numero_pedido', 'planilla_numero', 'fecha_movimiento']);
-
-echo "Órdenes resultantes para la remisión (" . count($ordenesObj) . "):" . PHP_EOL;
-foreach ($ordenesObj as $o) {
-    echo " - ID: {$o->id} | Factura/Pedido: {$o->numero_factura} | Orden: {$o->numero_orden} | Planilla: {$o->planilla_numero}" . PHP_EOL;
-}
-
-$ordenIds = $ordenesObj->pluck('id')->toArray();
-
-// Obtener faltantes
-$agotados = Capsule::table('picking_faltantes as pf')
-    ->join('productos as p', 'p.id', '=', 'pf.producto_id')
-    ->whereIn('pf.orden_picking_id', $ordenIds)
-    ->select('pf.id', 'pf.orden_picking_id', 'p.codigo_interno', 'p.nombre', 'pf.cantidad_faltante')
-    ->get();
-
-echo "Faltantes que aparecerán en la remisión (" . count($agotados) . "):" . PHP_EOL;
-foreach ($agotados as $a) {
-    echo " - Code: {$a->codigo_interno} | Producto: {$a->nombre} | Cant: {$a->cantidad_faltante}" . PHP_EOL;
+if (strpos($html, '101072') !== false) {
+    echo "--- SNIPPET AGOTADOS EN EL HTML DE REMISIÓN ---" . PHP_EOL;
+    $pos = strpos($html, 'PRODUCTOS AGOTADOS');
+    if ($pos !== false) {
+        echo substr($html, $pos, 600) . PHP_EOL;
+    }
 }

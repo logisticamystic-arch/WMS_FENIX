@@ -1848,5 +1848,10 @@
     "mtime": 1786363622.7524476,
     "ast_hash": "d832e9e972228e0363f74c537d7c7b76",
     "semantic_hash": ""
+  },
+  "scratch/diagnose_coleslaw.php": {
+    "mtime": 1786374461.5982864,
+    "ast_hash": "2988da7d7ab9b884be46db2f22af450d",
+    "semantic_hash": ""
   }
 }

@@ -1063,10 +1063,26 @@ class PackingController extends BaseController
             ->toArray();
 
         if (!empty($sesionOrdenIds)) {
-            // Cargar todas las órdenes vinculadas sin filtrar por fecha para asegurar que se muestren todos los pedidos empacados
+            $planillasSesion = OrdenPicking::whereIn('id', $sesionOrdenIds)
+                ->pluck('planilla_numero')
+                ->filter()
+                ->unique()
+                ->toArray();
+
+            // Cargar las órdenes con ítems empacados + órdenes de la misma planilla/sucursal
+            // que hayan sido 100% faltantes/agotados (sin ítems en packing_items).
             $ordenesObj = OrdenPicking::where('empresa_id', $empresaId)
                 ->where('sucursal_id', $user->sucursal_id)
-                ->whereIn('id', $sesionOrdenIds)
+                ->where(function($q) use ($sesionOrdenIds, $planillasSesion, $sesion) {
+                    $q->whereIn('id', $sesionOrdenIds);
+                    if (!empty($planillasSesion)) {
+                        $q->orWhere(function($subQ) use ($planillasSesion, $sesion) {
+                            $subQ->whereIn('planilla_numero', $planillasSesion)
+                                 ->where('sucursal_entrega', $sesion->sucursal_entrega)
+                                 ->whereIn('estado', ['Completada', 'EnProceso', 'Cerrada']);
+                        });
+                    }
+                })
                 ->get(['id', 'numero_orden', 'numero_factura', 'numero_pedido', 'planilla_numero', 'fecha_movimiento']);
         } else {
             // Fallback: órdenes certificadas del cliente en la fecha de creación de la sesión

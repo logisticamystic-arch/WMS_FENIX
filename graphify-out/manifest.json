@@ -1850,8 +1850,18 @@
     "semantic_hash": ""
   },
   "scratch/diagnose_coleslaw.php": {
-    "mtime": 1786374461.5982864,
-    "ast_hash": "2988da7d7ab9b884be46db2f22af450d",
+    "mtime": 1786379820.6182592,
+    "ast_hash": "46d867913075114132d16ddca7505972",
+    "semantic_hash": ""
+  },
+  "scratch/diagnose_remision_code.php": {
+    "mtime": 1786379687.1202314,
+    "ast_hash": "88a5ae52b0655e937883f96691fddfe5",
+    "semantic_hash": ""
+  },
+  "scratch/test_remision_fix.php": {
+    "mtime": 1786379848.1899416,
+    "ast_hash": "767da6ec11ac0fd445d2ef36f5e0ad6b",
     "semantic_hash": ""
   }
 }
