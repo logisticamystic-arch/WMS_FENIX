@@ -1215,14 +1215,19 @@ const _svcDiaLabelPlugin = {
     const {ctx} = chart;
     chart.data.datasets.forEach((ds, i) => {
       if (ds.type === 'line' || ds._noLabel) return;
-      chart.getDatasetMeta(i).data.forEach((bar, j) => {
+      const meta = chart.getDatasetMeta(i);
+      if (!meta || meta.hidden) return;
+      meta.data.forEach((bar, j) => {
         const val = ds.data[j];
-        if (val == null) return;
+        if (val == null || isNaN(val)) return;
         ctx.save();
         ctx.fillStyle = '#0f172a';
-        ctx.font = 'bold 10px sans-serif';
+        ctx.font = 'bold 9px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(parseFloat(val).toFixed(0) + '%', bar.x, bar.y - 5);
+        ctx.textBaseline = 'bottom';
+        const num = parseFloat(val);
+        const txt = (num % 1 === 0 ? num.toFixed(0) : num.toFixed(1)) + '%';
+        ctx.fillText(txt, bar.x, Math.max(12, bar.y - 3));
         ctx.restore();
       });
     });
@@ -1242,13 +1247,14 @@ function _renderSvcDia(data){
     ]},
     options:{
       responsive:true,maintainAspectRatio:false,
+      layout:{padding:{top:16}},
       plugins:{
         legend:{display:true,position:'bottom',labels:{font:{size:9},color:'#475569',boxWidth:10,padding:4,filter:i=>i.text!=='NS % SKUs'}},
         tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${parseFloat(ctx.parsed.y).toFixed(1)}%`}}
       },
       scales:{
         x:{ticks:{font:{size:9},color:'#475569',maxRotation:0},grid:{display:false}},
-        y:{min:0,max:100,ticks:{font:{size:9},color:'#475569',callback:v=>v+'%'},grid:{color:'rgba(226,232,240,0.8)'}}
+        y:{min:0,max:110,ticks:{font:{size:9},color:'#475569',callback:v=>v+'%'},grid:{color:'rgba(226,232,240,0.8)'}}
       },
       animation:{duration:300}
     },
@@ -1291,6 +1297,7 @@ function _renderSvcRef(data) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { top: 16 } },
       plugins: {
         legend: { display: false },
         title: {
@@ -1310,7 +1317,7 @@ function _renderSvcRef(data) {
       },
       scales: {
         y: {
-          min: 0, max: 100,
+          min: 0, max: 110,
           ticks: {
             font: { size: 8 },
             color: '#475569',
@@ -1323,7 +1330,8 @@ function _renderSvcRef(data) {
           grid: { display: false }
         }
       }
-    }
+    },
+    plugins: [_svcDiaLabelPlugin]
   });
 }
 
@@ -1367,6 +1375,7 @@ function _renderSvcMes(data) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { top: 16 } },
       plugins: {
         legend: { display: false },
         title: {
@@ -1383,7 +1392,7 @@ function _renderSvcMes(data) {
       },
       scales: {
         y: {
-          min: 0, max: 100,
+          min: 0, max: 110,
           ticks: { font: { size: 8 }, color: '#475569', callback: v => v + '%' },
           grid: { color: 'rgba(226,232,240,0.8)' }
         },
@@ -1392,7 +1401,8 @@ function _renderSvcMes(data) {
           grid: { display: false }
         }
       }
-    }
+    },
+    plugins: [_svcDiaLabelPlugin]
   });
   _svcChartMes = window._svcMesChart;
 }
