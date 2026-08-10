@@ -970,11 +970,11 @@ class DashboardTVController extends BaseController
             // 3. Completadas hoy
             $stmtComp = $pdo->prepare("
                 SELECT COUNT(id)
-                FROM orden_pickings
-                WHERE empresa_id = :emp
-                  AND sucursal_id = :suc
+                FROM orden_pickings op
+                WHERE op.empresa_id = :emp
+                  AND op.sucursal_id = :suc
                   AND {$dateCol} = :fecha
-                  AND estado IN ('Completada', 'Completado', 'Cerrada')
+                  AND op.estado IN ('Completada', 'Completado', 'Cerrada')
             ");
             $stmtComp->execute([
                 ':emp'   => $empresaId,
