@@ -8617,6 +8617,11 @@ class PickingController extends BaseController
             return $this->notFound($res, 'Línea de detalle no encontrada');
         }
 
+        $pickeadoDetalle = (float)($detalle->cantidad_pickeada ?? 0);
+        if ($cantCert > $pickeadoDetalle + 0.001) {
+            return $this->error($res, "No se puede certificar {$cantCert}: excede lo pickeado ({$pickeadoDetalle}).");
+        }
+
         $estadoCert = $cantCert > 0 ? 'Certificada' : 'Pendiente';
 
         $detalle->cantidad_certificada  = $cantCert;
@@ -8747,6 +8752,16 @@ class PickingController extends BaseController
                         ->first();
 
                     if (!$det) { $errores[] = "Det #{$detId} no encontrado"; continue; }
+
+                    // Invariante: no se puede certificar más de lo físicamente pickeado
+                    // (mismo límite que aplica certConfirmar()). Blindaje 2026-08-10:
+                    // un valor fuera de este rango es casi siempre un error de digitación
+                    // (ej. escribir el precio en vez de la cantidad).
+                    $pickeadoDet = (float)($det->cantidad_pickeada ?? 0);
+                    if ($nuevaCant > $pickeadoDet + 0.001) {
+                        $errores[] = "Det #{$detId}: {$nuevaCant} excede lo pickeado ({$pickeadoDet}), no se guardó";
+                        continue;
+                    }
 
                     $viejaCant = (float)($det->cantidad_certificada ?? 0);
                     $diff      = $nuevaCant - $viejaCant;

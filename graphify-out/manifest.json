@@ -1868,5 +1868,10 @@
     "mtime": 1786398980.0230331,
     "ast_hash": "8ba412c86868efff3959788d59b4ee72",
     "semantic_hash": ""
+  },
+  "scripts/backfill_cert_anomalo_precio.php": {
+    "mtime": 1786409792.1799817,
+    "ast_hash": "a5b833b85758a7214345cbd6ba3541e7",
+    "semantic_hash": ""
   }
 }
