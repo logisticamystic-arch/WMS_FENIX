@@ -915,57 +915,98 @@ class DashboardTVController extends BaseController
         $dateCol = $this->isPg() ? "op.fecha_movimiento::date" : "DATE(op.fecha_movimiento)";
 
         try {
-            // 1. Ranking por Referencias (SKUs distintos pickeados por auxiliar)
-            $stmtRefs = $pdo->prepare("
+            // 1. Totales de progreso global del día (solicitado vs pickeado vs pendiente)
+            $stmtTotals = $pdo->prepare("
                 SELECT
-                    COALESCE(pe.nombre, 'Sin asignar') AS nombre,
-                    COUNT(DISTINCT pd.producto_id) AS referencias
+                    COUNT(DISTINCT pd.producto_id) as total_refs_solicitadas,
+                    COUNT(DISTINCT CASE WHEN pd.estado IN ('Completado', 'Completada') THEN pd.producto_id END) as total_refs_completadas,
+                    COALESCE(SUM(pd.cantidad_solicitada * COALESCE(p.unidades_caja, 1)), 0) as total_unidades_solicitadas,
+                    COALESCE(SUM(pd.cantidad_pickeada), 0) as total_unidades_completadas
                 FROM picking_detalles pd
                 JOIN orden_pickings op ON op.id = pd.orden_picking_id
-                LEFT JOIN personal pe ON pe.id = COALESCE(pd.auxiliar_id, op.auxiliar_id)
+                LEFT JOIN productos p ON p.id = pd.producto_id
                 WHERE op.empresa_id = :emp
                   AND op.sucursal_id = :suc
-                  AND ({$dateCol} = :fecha OR pd.updated_at BETWEEN :start AND :end)
-                  AND pd.estado IN ('Completado', 'Completada', 'Parcial')
-                  AND pd.cantidad_pickeada > 0
-                GROUP BY pe.id, pe.nombre
-                ORDER BY referencias DESC
-                LIMIT 10
+                  AND ({$dateCol} = :fecha OR pd.created_at BETWEEN :start AND :end)
             ");
-            $stmtRefs->execute([
+            $stmtTotals->execute([
                 ':emp'   => $empresaId,
                 ':suc'   => $sucursalId,
                 ':fecha' => $fecha,
                 ':start' => $start,
                 ':end'   => $end,
             ]);
-            $rankingRefs = $stmtRefs->fetchAll(\PDO::FETCH_ASSOC);
+            $totalsRaw = $stmtTotals->fetch(\PDO::FETCH_ASSOC) ?: [];
 
-            // 2. Ranking por Unidades Reales
-            $stmtUnits = $pdo->prepare("
+            $refSol  = (int)($totalsRaw['total_refs_solicitadas'] ?? 0);
+            $refComp = (int)($totalsRaw['total_refs_completadas'] ?? 0);
+            $refPend = max(0, $refSol - $refComp);
+            $refPct  = $refSol > 0 ? round($refComp / $refSol * 100, 1) : 0;
+
+            $undSol  = (float)($totalsRaw['total_unidades_solicitadas'] ?? 0);
+            $undComp = (float)($totalsRaw['total_unidades_completadas'] ?? 0);
+            $undPend = max(0, $undSol - $undComp);
+            $undPct  = $undSol > 0 ? round($undComp / $undSol * 100, 1) : 0;
+
+            $totalesProgreso = [
+                'refs_solicitadas'     => $refSol,
+                'refs_completadas'     => $refComp,
+                'refs_pendientes'      => $refPend,
+                'refs_pct'             => $refPct,
+                'unidades_solicitadas' => $undSol,
+                'unidades_completadas' => $undComp,
+                'unidades_pendientes'  => $undPend,
+                'unidades_pct'         => $undPct,
+            ];
+
+            // 2. Desglose multi-métrica por Auxiliar
+            $stmtAux = $pdo->prepare("
                 SELECT
+                    COALESCE(pe.id, 0) as auxiliar_id,
                     COALESCE(pe.nombre, 'Sin asignar') AS nombre,
-                    SUM(pd.cantidad_pickeada) AS unidades
+                    COUNT(DISTINCT CASE WHEN pd.cantidad_pickeada > 0 THEN pd.producto_id END) AS referencias,
+                    COALESCE(SUM(pd.cantidad_pickeada), 0) AS unidades,
+                    COUNT(DISTINCT CASE WHEN pd.estado = 'Faltante' OR pf.id IS NOT NULL THEN pd.producto_id END) AS agotados,
+                    COALESCE(SUM(CASE WHEN pd.estado = 'Faltante' OR pf.id IS NOT NULL THEN pd.cantidad_solicitada * COALESCE(p.unidades_caja, 1) ELSE 0 END), 0) AS unidades_agotadas,
+                    ROUND(AVG(
+                        CASE 
+                            WHEN op.hora_inicio IS NOT NULL AND op.hora_fin IS NOT NULL AND op.hora_fin >= op.hora_inicio 
+                            THEN EXTRACT(EPOCH FROM (op.hora_fin::time - op.hora_inicio::time))/60 
+                            ELSE NULL 
+                        END
+                    )::numeric, 1) as tiempo_promedio_min
                 FROM picking_detalles pd
                 JOIN orden_pickings op ON op.id = pd.orden_picking_id
+                LEFT JOIN productos p ON p.id = pd.producto_id
                 LEFT JOIN personal pe ON pe.id = COALESCE(pd.auxiliar_id, op.auxiliar_id)
+                LEFT JOIN picking_faltantes pf ON pf.orden_picking_id = op.id AND pf.producto_id = pd.producto_id
                 WHERE op.empresa_id = :emp
                   AND op.sucursal_id = :suc
-                  AND ({$dateCol} = :fecha OR pd.updated_at BETWEEN :start AND :end)
-                  AND pd.estado IN ('Completado', 'Completada', 'Parcial')
-                  AND pd.cantidad_pickeada > 0
+                  AND ({$dateCol} = :fecha OR pd.created_at BETWEEN :start AND :end)
                 GROUP BY pe.id, pe.nombre
-                ORDER BY unidades DESC
-                LIMIT 10
+                HAVING COUNT(pd.id) > 0
             ");
-            $stmtUnits->execute([
+            $stmtAux->execute([
                 ':emp'   => $empresaId,
                 ':suc'   => $sucursalId,
                 ':fecha' => $fecha,
                 ':start' => $start,
                 ':end'   => $end,
             ]);
-            $rankingUnits = $stmtUnits->fetchAll(\PDO::FETCH_ASSOC);
+            $auxiliares = $stmtAux->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Rankings ordenados
+            $rankingRefs = $auxiliares;
+            usort($rankingRefs, fn($a, $b) => $b['referencias'] <=> $a['referencias']);
+
+            $rankingUnits = $auxiliares;
+            usort($rankingUnits, fn($a, $b) => $b['unidades'] <=> $a['unidades']);
+
+            $rankingTiempo = array_values(array_filter($auxiliares, fn($a) => !is_null($a['tiempo_promedio_min']) && $a['tiempo_promedio_min'] > 0));
+            usort($rankingTiempo, fn($a, $b) => $a['tiempo_promedio_min'] <=> $b['tiempo_promedio_min']);
+
+            $rankingAgotados = $auxiliares;
+            usort($rankingAgotados, fn($a, $b) => $b['agotados'] <=> $a['agotados']);
 
             // 3. Completadas hoy
             $stmtComp = $pdo->prepare("
@@ -984,9 +1025,13 @@ class DashboardTVController extends BaseController
             $completadasHoy = (int)$stmtComp->fetchColumn();
 
             return $this->ok($response, [
-                'ranking_refs'    => $rankingRefs,
-                'ranking_units'   => $rankingUnits,
-                'completadas_hoy' => $completadasHoy,
+                'totales_progreso' => $totalesProgreso,
+                'ranking_refs'     => array_slice($rankingRefs, 0, 10),
+                'ranking_units'    => array_slice($rankingUnits, 0, 10),
+                'ranking_tiempo'   => array_slice($rankingTiempo, 0, 10),
+                'ranking_agotados' => array_slice($rankingAgotados, 0, 10),
+                'auxiliares'       => $auxiliares,
+                'completadas_hoy'  => $completadasHoy,
             ]);
         } catch (\Throwable $e) {
             wmsLog('ERROR', 'TV:getPickingRanking — ' . $e->getMessage());

@@ -758,6 +758,44 @@ class InventarioV2Controller extends BaseController
     }
 
     /**
+     * POST /api/v2/inventario/asignaciones/{id}/reabrir
+     * Solo Admin. Reabre una asignación de conteo (Referencia, Pasillo, Módulo o
+     * Libre) que ya fue cerrada por el auxiliar, para que pueda agregar más
+     * ubicaciones. Las líneas ya contadas se CONSERVAN activas (no se marcan
+     * Eliminado) — al reabrir, getProductoUbicaciones() las muestra con el valor
+     * que el auxiliar realmente contó (no el del sistema), y conteoReferenciaCompleto()
+     * actualiza esa misma línea en vez de duplicarla si se reenvía sin cambios.
+     */
+    public function reabrirAsignacion(Request $req, Response $res, array $args): Response
+    {
+        $user = $req->getAttribute('user');
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
+
+        $asignacion = SesionAsignacion::with('sesion')
+            ->whereHas('sesion', function ($q) use ($user, $req) {
+                $q->where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
+                  ->where('sucursal_id', $user->sucursal_id);
+            })->find($args['id']);
+
+        if (!$asignacion) return $this->notFound($res, 'Asignación no encontrada');
+
+        if ($asignacion->estado !== SesionAsignacion::ESTADO_FINALIZADO) {
+            return $this->error($res, 'Esta asignación no está cerrada — no hay nada que reabrir.');
+        }
+
+        $asignacion->estado        = SesionAsignacion::ESTADO_EN_CONTEO;
+        $asignacion->finalizado_at = null;
+        $asignacion->save();
+
+        $this->audit($user, 'inventario', 'reabrir_asignacion_conteo', 'sesion_asignaciones', $asignacion->id,
+            ['estado' => SesionAsignacion::ESTADO_FINALIZADO],
+            ['estado' => SesionAsignacion::ESTADO_EN_CONTEO],
+            "Asignación #{$asignacion->id} reabierta — se conserva el conteo previo, se pueden agregar más ubicaciones");
+
+        return $this->ok($res, $asignacion, 'Asignación reabierta. El conteo anterior se conservó — el auxiliar ya puede agregar más ubicaciones.');
+    }
+
+    /**
      * POST /api/v2/inventario/asignaciones/{id}/conteo-referencia
      * Recibe los conteos por ubicación para una referencia asignada en inventario cíclico.
      * Exige que TODAS las ubicaciones registradas en sistema para esa referencia hayan sido contadas (o puestas en cero).
@@ -778,6 +816,14 @@ class InventarioV2Controller extends BaseController
 
         if (!$asignacion || $asignacion->auxiliar_id !== $user->id) {
             return $this->notFound($res, 'Asignación no encontrada');
+        }
+
+        // Blindaje 2026-08-12: esta función marca la asignación como Finalizado al
+        // terminar (más abajo), pero nunca validaba ESE estado al entrar — permitía
+        // reenviar el conteo indefinidamente después de cerrado, generando líneas
+        // duplicadas. Una vez cerrada, solo un Admin puede reabrirla (ver reabrirAsignacion()).
+        if ($asignacion->estado === SesionAsignacion::ESTADO_FINALIZADO) {
+            return $this->error($res, 'Esta referencia ya fue cerrada. Un administrador debe reabrirla para poder agregar más ubicaciones al conteo.', 409);
         }
 
         $productoId = (int)$asignacion->producto_id;
@@ -836,7 +882,12 @@ class InventarioV2Controller extends BaseController
         try {
             Capsule::transaction(function () use ($asignacion, $productoId, $ubicacionesContadas, $user, $empresaId, $sucursalId) {
                 $prod = Producto::find($productoId);
-                $upc  = max(1, (int)($prod->unidades_caja ?? 1));
+                // Blindaje 2026-08-12: mismo bug de getProductoUbicaciones (ignoraba
+                // factor_udm) — aquí es más grave porque esto es lo que se GUARDA como
+                // cantidad_contada y alimenta la diferencia contra sistema.
+                $upc = (float)($prod->factor_udm ?? 0) > 0
+                    ? (float)$prod->factor_udm
+                    : max(1, (int)($prod->unidades_caja ?? 1));
                 $sesionId = $asignacion->sesion_id;
 
                 foreach ($ubicacionesContadas as $item) {
@@ -895,14 +946,18 @@ class InventarioV2Controller extends BaseController
                     $stockActual = (float)($invRow ? $invRow->cantidad : 0);
                     $diff        = $cantContada - $stockActual;
 
-                    // Crear/Actualizar SesionLinea (El ajuste de inventario y Kardex SOLO lo ejecuta el Administrador desde escritorio)
-                    SesionLinea::create([
-                        'sesion_id'        => $sesionId,
-                        'asignacion_id'    => $asignacion->id,
-                        'auxiliar_id'      => $user->id,
-                        'ronda'            => $asignacion->ronda ?: 1,
-                        'producto_id'      => $productoId,
-                        'ubicacion_id'     => $ubicId,
+                    // Blindaje 2026-08-12: antes SIEMPRE creaba una línea nueva — al
+                    // reabrir una asignación y reenviar (incluyendo ubicaciones ya
+                    // contadas antes de cerrar), esto duplicaba esas líneas en vez de
+                    // conservar/actualizar el conteo ya guardado. Ahora actualiza la
+                    // línea activa existente para esta asignación+ubicación si ya
+                    // existe, y solo crea una nueva si es una ubicación agregada ahora.
+                    $lineaExistente = SesionLinea::where('asignacion_id', $asignacion->id)
+                        ->where('ubicacion_id', $ubicId)
+                        ->where('estado', SesionLinea::ESTADO_ACTIVO)
+                        ->first();
+
+                    $datosLinea = [
                         'lote'             => $lote,
                         'fecha_vencimiento'=> $fv,
                         'cantidad_cajas'   => (int)$cajas,
@@ -911,9 +966,23 @@ class InventarioV2Controller extends BaseController
                         'cantidad_sistema' => $stockActual,
                         'diferencia'       => $diff,
                         'hora_conteo'      => date('Y-m-d H:i:s'),
-                        'estado'           => SesionLinea::ESTADO_ACTIVO,
-                        'ajustado'         => false,
-                    ]);
+                    ];
+
+                    if ($lineaExistente) {
+                        $lineaExistente->fill($datosLinea);
+                        $lineaExistente->save();
+                    } else {
+                        SesionLinea::create(array_merge($datosLinea, [
+                            'sesion_id'        => $sesionId,
+                            'asignacion_id'    => $asignacion->id,
+                            'auxiliar_id'      => $user->id,
+                            'ronda'            => $asignacion->ronda ?: 1,
+                            'producto_id'      => $productoId,
+                            'ubicacion_id'     => $ubicId,
+                            'estado'           => SesionLinea::ESTADO_ACTIVO,
+                            'ajustado'         => false,
+                        ]));
+                    }
                 }
 
                 // Marcar la asignación como finalizada en el móvil (conteo enviado a revisión)
@@ -966,7 +1035,14 @@ class InventarioV2Controller extends BaseController
 
             $sesion = $this->_findSesion((int)$args['id'], $user, $req);
             if ($sesion) {
-                $sesion->load(['creadoPor:id,nombre', 'ajustadoPor:id,nombre', 'asignaciones.auxiliar:id,nombre']);
+                // Blindaje 2026-08-12: la pestaña "Asig." no mostraba QUÉ referencia
+                // tenía asignada cada auxiliar (columna "Instrucción" solo decía
+                // "Referencia" sin producto) porque nunca se cargaba la relación.
+                $sesion->load([
+                    'creadoPor:id,nombre', 'ajustadoPor:id,nombre',
+                    'asignaciones.auxiliar:id,nombre',
+                    'asignaciones.producto:id,nombre,codigo_interno',
+                ]);
             }
 
             if (!$sesion) return $this->notFound($res);
@@ -996,7 +1072,12 @@ class InventarioV2Controller extends BaseController
                     'productos.id as producto_id',
                     'productos.nombre as producto',
                     'productos.codigo_interno as codigo',
-                    'productos.unidades_caja',
+                    // Blindaje 2026-08-12: mostraba productos.unidades_caja crudo — para
+                    // productos donde el factor real es factor_udm (ej. "X 500 GR" con
+                    // unidades_caja=1), la columna U/E de la Matriz mostraba "1" en vez
+                    // del factor real, y por lo tanto UND/TOTAL (cantidad_contada, ya
+                    // guardada correctamente) no coincidía visualmente con Cajas × U/E + Saldos.
+                    Capsule::raw('CASE WHEN productos.factor_udm > 0 THEN productos.factor_udm ELSE productos.unidades_caja END as unidades_caja'),
                     'ubicaciones.id as ubicacion_id',
                     'ubicaciones.codigo as ubicacion',
                     'personal.nombre as auxiliar',
@@ -2929,6 +3010,15 @@ class InventarioV2Controller extends BaseController
             $fv    = !empty($data['fecha_vencimiento']) ? $data['fecha_vencimiento'] : null;
             $asignacionId = !empty($data['asignacion_id']) ? (int)$data['asignacion_id'] : null;
 
+            // Blindaje 2026-08-12: mismo candado de conteoReferenciaCompleto() — si la
+            // línea trae una asignación ya cerrada, no se acepta más conteo sobre ella.
+            if ($asignacionId) {
+                $asigCheck = SesionAsignacion::find($asignacionId);
+                if ($asigCheck && $asigCheck->estado === SesionAsignacion::ESTADO_FINALIZADO) {
+                    return $this->error($res, 'Esta asignación ya fue cerrada. Un administrador debe reabrirla para poder agregar más líneas.', 409);
+                }
+            }
+
             // Obtener stock SNAPSHOT actual (al momento de este ingreso)
             $stockSnapshot = (int) Inventario::where('producto_id', $prod->id)
                 ->where('ubicacion_id', $ubic->id)
@@ -3114,6 +3204,13 @@ class InventarioV2Controller extends BaseController
     {
         $user       = $req->getAttribute('user');
         $productoId = (int)$args['id'];
+        $params     = $req->getQueryParams();
+        // Blindaje 2026-08-12: si se reabre una referencia ya cerrada para agregar
+        // más ubicaciones, esta lista mostraba el stock del SISTEMA (que puede ser
+        // distinto a lo que el auxiliar contó físicamente) — perdiendo de vista el
+        // conteo real ya registrado. Si viene asignacion_id, se sobreescribe con lo
+        // que ya quedó guardado en SesionLinea para esa ubicación.
+        $asigId = !empty($params['asignacion_id']) ? (int)$params['asignacion_id'] : null;
 
         try {
             $empresaId    = $this->getEffectiveEmpresaId($user, $req);
@@ -3122,7 +3219,15 @@ class InventarioV2Controller extends BaseController
             $sucs         = array_unique(array_filter([$effectiveSuc, $userSuc]));
 
             $prod = Producto::find($productoId);
-            $upc  = max(1, (int)($prod->unidades_caja ?? 1));
+            // Blindaje 2026-08-11: usaba solo unidades_caja, ignorando factor_udm —
+            // para productos donde el factor real de conversión es factor_udm (ej.
+            // "X 500 GR" con unidades_caja=1, factor_udm=500), esto mostraba el total
+            // de unidades directo en el campo "Cajas" (35000 en vez de 70), rompiendo
+            // el conteo cíclico. Mismo criterio ya usado en planillaDetalles()/
+            // renderPKConsolidado(): factor_udm manda si aplica, si no, unidades_caja.
+            $upc = (float)($prod->factor_udm ?? 0) > 0
+                ? (float)$prod->factor_udm
+                : max(1, (int)($prod->unidades_caja ?? 1));
 
             $rowsQuery = Inventario::where('empresa_id', $empresaId)
                 ->where('producto_id', $productoId)
@@ -3145,6 +3250,21 @@ class InventarioV2Controller extends BaseController
                 $sl  = $upc > 1 ? round(($tot - ($cj * $upc)) * 1000) / 1000 : 0;
                 $firstWithLote = $items->first(fn($i) => !empty($i->lote));
 
+                // Blindaje 2026-08-11:
+                // 1) `fecha_vencimiento` es cast 'date' (Carbon) — al serializarlo tal
+                //    cual en el JSON sale en formato ISO completo, que el <input
+                //    type="date"> del móvil no reconoce y queda en blanco. Se formatea
+                //    explícito a 'Y-m-d'.
+                // 2) Si en esta ubicación hay más de una fecha de vencimiento distinta
+                //    mezclada (varios lotes físicos juntos), no se debe sugerir
+                //    ninguna al azar — se deja vacío para que el auxiliar la
+                //    diligencie con la fecha real que está contando.
+                $fechasDistintas = $items->pluck('fecha_vencimiento')
+                    ->filter()
+                    ->map(fn($f) => $f->format('Y-m-d'))
+                    ->unique();
+                $fechaVenc = $fechasDistintas->count() === 1 ? $fechasDistintas->first() : null;
+
                 return [
                     'id'                => $u?->id,
                     'ubicacion_id'      => $u?->id,
@@ -3155,9 +3275,52 @@ class InventarioV2Controller extends BaseController
                     'saldos'            => $sl,
                     'unidades_caja'     => $upc,
                     'lote'              => $firstWithLote?->lote ?? 'N/A',
-                    'fecha_vencimiento' => $items->sortBy('fecha_vencimiento')->first()?->fecha_vencimiento,
+                    'fecha_vencimiento' => $fechaVenc,
                 ];
-            })->values()->sortBy('codigo')->values();
+            })->values();
+
+            if ($asigId) {
+                $contadas = SesionLinea::where('asignacion_id', $asigId)
+                    ->where('estado', SesionLinea::ESTADO_ACTIVO)
+                    ->get()
+                    ->keyBy('ubicacion_id');
+
+                $ubicaciones = $ubicaciones->map(function ($u) use ($contadas) {
+                    $c = $contadas->get($u['ubicacion_id']);
+                    if ($c) {
+                        $u['cajas']             = (float)$c->cantidad_cajas;
+                        $u['saldos']            = (float)$c->saldos;
+                        $u['lote']              = $c->lote ?: 'N/A';
+                        $u['fecha_vencimiento'] = $c->fecha_vencimiento?->format('Y-m-d');
+                        $u['ya_contada']        = true;
+                    }
+                    return $u;
+                });
+
+                // Ubicaciones que sí se contaron pero ya no aparecen en el stock del
+                // sistema (ej. se contó en 0 y el registro de inventario desapareció) —
+                // se agregan igual para que el conteo previo nunca se pierda de vista.
+                $idsYaListados = $ubicaciones->pluck('ubicacion_id')->filter()->all();
+                $faltantesPorAgregar = $contadas->filter(fn($c) => !in_array($c->ubicacion_id, $idsYaListados));
+                foreach ($faltantesPorAgregar as $c) {
+                    $ubic = Ubicacion::find($c->ubicacion_id);
+                    $ubicaciones->push([
+                        'id'                => $ubic?->id,
+                        'ubicacion_id'      => $ubic?->id,
+                        'codigo'            => $ubic?->codigo ?? '—',
+                        'nombre'            => $ubic?->nombre ?? '',
+                        'cantidad'          => (float)$c->cantidad_contada,
+                        'cajas'             => (float)$c->cantidad_cajas,
+                        'saldos'            => (float)$c->saldos,
+                        'unidades_caja'     => $upc,
+                        'lote'              => $c->lote ?: 'N/A',
+                        'fecha_vencimiento' => $c->fecha_vencimiento?->format('Y-m-d'),
+                        'ya_contada'        => true,
+                    ]);
+                }
+            }
+
+            $ubicaciones = $ubicaciones->sortBy('codigo')->values();
 
             return $this->ok($res, $ubicaciones);
         } catch (\Throwable $e) {

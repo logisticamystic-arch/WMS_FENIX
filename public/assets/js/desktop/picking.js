@@ -86,9 +86,17 @@ WMS_MODULES.picking = {
    * cantidad_faltante — confirmado contra datos reales, NO dividir de nuevo por upc)
    * mostrando "X cj + Y suelt." y el total en UND/TOTAL debajo.
    */
-  _fmtCajasDesglose(valorCajas, unidades_caja, esBadge = false) {
-    const upc = Math.max(1, parseInt(unidades_caja) || 1);
-    const v   = Math.max(0, parseFloat(valorCajas) || 0);
+  _fmtCajasDesglose(valorCajas, unidades_caja, esBadge = false, factor_udm = null) {
+    const upc = Math.max(1, parseFloat(factor_udm) || parseInt(unidades_caja) || 1);
+    let v = Math.max(0, parseFloat(valorCajas) || 0);
+
+    // Normalizar si v ingresó en unidades totales (ej: 4000 unidades en vez de 8 cajas)
+    if (upc > 1 && v >= upc && (v % upc === 0 || v % 1 === 0)) {
+      if (v > 50 && v >= upc) {
+        v = v / upc;
+      }
+    }
+
     const und = v * upc;
     if (upc <= 1) return `<strong>${WMS.formatNum(v)}</strong>`;
     const cajas = Math.floor(v);
@@ -322,9 +330,9 @@ WMS_MODULES.picking = {
         prodRows += `
         <tr class="prod-item-row" data-ambiente="${ambKey}" data-search="${searchTag}" style="border-bottom:1px solid #e2e8f0;">
           <td style="padding:5px 8px;"><b style="color:#1e293b">${WMS.esc(pr.nombre)}</b></td>
-          <td style="padding:5px 8px;text-align:center;font-weight:600;">${this._fmtCajasDesglose(pr.cantidad_total, pr.unidades_caja)}</td>
-          <td style="padding:5px 8px;text-align:center;">${this._fmtCajasDesglose(Math.max(0, (parseFloat(pr.cantidad_total)||0) - (parseFloat(pr.cantidad_pendiente)||0)), pr.unidades_caja)}</td>
-          <td style="padding:5px 8px;text-align:center;color:#dc3545;font-weight:600;">${pr.cantidad_pendiente > 0 ? this._fmtCajasDesglose(pr.cantidad_pendiente, pr.unidades_caja) : '<span style="color:#94a3b8;">0</span>'}</td>
+          <td style="padding:5px 8px;text-align:center;font-weight:600;">${this._fmtCajasDesglose(pr.cantidad_total, pr.unidades_caja, false, pr.factor_udm)}</td>
+          <td style="padding:5px 8px;text-align:center;">${this._fmtCajasDesglose(Math.max(0, (parseFloat(pr.cantidad_total)||0) - (parseFloat(pr.cantidad_pendiente)||0)), pr.unidades_caja, false, pr.factor_udm)}</td>
+          <td style="padding:5px 8px;text-align:center;color:#dc3545;font-weight:600;">${pr.cantidad_pendiente > 0 ? this._fmtCajasDesglose(pr.cantidad_pendiente, pr.unidades_caja, false, pr.factor_udm) : '<span style="color:#94a3b8;">0</span>'}</td>
           <td style="padding:5px 8px;text-align:center;font-size:11px;">${WMS.esc([...pr.auxiliares].join(', ') || '-')}</td>
           <td style="padding:5px 8px;text-align:center;font-size:11px;color:#2563eb;font-weight:700;">${pr.hora_fin || '-'}</td>
           <td style="padding:5px 8px;text-align:center;font-size:11px;color:#64748b;font-family:monospace;">${pr.hora_fin ? (durLine.str || '00:00:00') : '-'}</td>
@@ -1395,9 +1403,9 @@ WMS_MODULES.picking = {
       html: `<p style="font-size:13px;margin-bottom:10px;"><b>${WMS.esc(nombre)}</b></p>
              <p style="font-size:12px;color:#64748b;margin-bottom:10px;">Solicitado: <b>${WMS.formatNum(cantSol)}</b> und (${this._fmtCantidad(cantSol,factor)})</p>
              <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">Cajas (${factor} und/caja):</label>
-             <input id="pk-sep-cajas" type="number" min="0" step="1" value="${sugCajas}"
-               class="swal2-input" style="margin:0 0 8px 0;width:100%;box-sizing:border-box;" oninput="WMS_MODULES.picking._updPkSepTotal(${factor})">
-             <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;color:#d97706;">Saldo (unidades sueltas):</label>
+             <input id="pk-sep-cajas" type="number" min="0" max="${sugCajas}" step="1" value="${sugCajas}"
+               class="swal2-input" style="margin:0 0 8px 0;width:100%;box-sizing:border-box;" oninput="if(parseFloat(this.value||0)>${sugCajas}){this.value='${sugCajas}';}WMS_MODULES.picking._updPkSepTotal(${factor})">
+             <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;color:#d97706;">Saldo (unidades sueltas, aquí va lo que sobre o falte):</label>
              <input id="pk-sep-saldo" type="number" min="0" step="0.01" value="${sugSaldos}"
                class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" oninput="WMS_MODULES.picking._updPkSepTotal(${factor})">
              <p style="font-size:12px;margin-top:8px;">Total: <b id="pk-sep-total">${WMS.formatNum(cantSol)}</b> und</p>`,
@@ -1409,6 +1417,7 @@ WMS_MODULES.picking = {
         const cj = parseFloat(document.getElementById('pk-sep-cajas')?.value);
         const sl = parseFloat(document.getElementById('pk-sep-saldo')?.value);
         if (isNaN(cj) || cj < 0) { Swal.showValidationMessage('Cajas inválidas'); return false; }
+        if (cj > sugCajas) { Swal.showValidationMessage(`Máximo ${sugCajas} cajas — el excedente va en Saldo`); return false; }
         if (isNaN(sl) || sl < 0) { Swal.showValidationMessage('Saldo inválido'); return false; }
         if ((cj * factor + sl) <= 0) { Swal.showValidationMessage('El total debe ser mayor a 0'); return false; }
         return { cajas: cj, saldo: sl };
@@ -2832,6 +2841,8 @@ WMS_MODULES.picking = {
         const lineasSinCambio = data.lineas_sin_cambio || 0;
         const productosPendientes = data.productos_pendientes || [];
         const pedidosNoCargados = data.pedidos_no_cargados || [];
+        const lineasInvalidas = data.lineas_invalidas || 0;
+        const recon = au.reconciliacion || {};
 
         // Per-sucursal breakdown table
         const allSucs = [...new Set([...Object.keys(sucArch), ...Object.keys(sucSis)])].sort();
@@ -2957,6 +2968,25 @@ WMS_MODULES.picking = {
 
             ${sucTable}
 
+            <!-- Reconciliación garantizada: toda línea del archivo queda explicada -->
+            <div style="margin-bottom:12px;padding:10px 14px;background:${recon.completa ? '#f0fdf4' : '#fef2f2'};border:1px solid ${recon.completa ? '#bbf7d0' : '#fca5a5'};border-radius:6px;font-size:12px;">
+              <div style="font-weight:800;color:${recon.completa ? '#166534' : '#991b1b'};margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                <i class="fa-solid ${recon.completa ? 'fa-check-double' : 'fa-triangle-exclamation'}"></i>
+                ${recon.completa ? 'Reconciliación completa — todas las líneas del archivo quedaron explicadas' : 'Atención — hay líneas del archivo sin explicación'}
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 12px;color:#334155;">
+                <span>📄 Líneas en archivo: <strong>${fmtVal(recon.lineas_en_archivo)}</strong></span>
+                <span>⬜ En blanco: <strong>${fmtVal(recon.lineas_en_blanco)}</strong></span>
+                <span>📋 Con datos: <strong>${fmtVal(recon.lineas_con_datos)}</strong></span>
+                <span>✅ Cargadas nuevas: <strong style="color:#16a34a;">${fmtVal(recon.cargadas_nuevas)}</strong></span>
+                <span>🔁 Duplicadas omitidas: <strong>${fmtVal(recon.duplicadas_omitidas)}</strong></span>
+                <span>⏳ Pendientes (sin producto): <strong style="color:${(recon.pendientes_sin_producto||0)>0?'#d97706':'#16a34a'};">${fmtVal(recon.pendientes_sin_producto)}</strong></span>
+                <span>❌ Inválidas (ref./cant.): <strong style="color:${(recon.invalidas||0)>0?'#dc2626':'#16a34a'};">${fmtVal(recon.invalidas)}</strong></span>
+                <span>Σ Total contabilizado: <strong>${fmtVal(recon.total_contabilizado)}</strong></span>
+                <span>${recon.completa ? '✅' : '⚠'} Sin explicar: <strong style="color:${recon.completa?'#16a34a':'#dc2626'};">${fmtVal(recon.sin_explicar)}</strong></span>
+              </div>
+            </div>
+
             <!-- Status Banner -->
             ${zeroPedidos
               ? ''
@@ -3008,6 +3038,30 @@ WMS_MODULES.picking = {
                     <td style="padding:3px 8px;text-align:right;">${p.cantidad || 1}</td>
                   </tr>`).join('')}
                   ${productosPendientes.length > 15 ? `<tr><td colspan="4" style="padding:3px 8px;color:#92400e;">... y ${productosPendientes.length - 15} más en la tabla de pendientes</td></tr>` : ''}
+                </tbody>
+              </table>
+            </div>` : ''}
+
+            ${(data.detalle_lineas_invalidas || []).length > 0 ? `
+            <div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#7f1d1d;font-size:11px;margin-bottom:6px;">
+              <div style="font-weight:700;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Líneas con datos inválidos — no se cargaron (${lineasInvalidas})</div>
+              <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                <thead><tr style="background:#fecaca;">
+                  <th style="padding:3px 8px;text-align:left;">N° Factura</th>
+                  <th style="padding:3px 8px;text-align:left;">Sucursal</th>
+                  <th style="padding:3px 8px;text-align:left;">Referencia</th>
+                  <th style="padding:3px 8px;text-align:right;">Cant.</th>
+                  <th style="padding:3px 8px;text-align:left;">Motivo</th>
+                </tr></thead>
+                <tbody>
+                  ${data.detalle_lineas_invalidas.slice(0,15).map(l => `<tr style="border-top:1px solid #fecaca;">
+                    <td style="padding:3px 8px;font-family:monospace;">${WMS.esc(l.numero_factura || '-')}</td>
+                    <td style="padding:3px 8px;">${WMS.esc(l.sucursal || '')}</td>
+                    <td style="padding:3px 8px;font-family:monospace;">${WMS.esc(l.referencia || '(vacía)')}</td>
+                    <td style="padding:3px 8px;text-align:right;">${l.cantidad || 0}</td>
+                    <td style="padding:3px 8px;">${WMS.esc(l.motivo || '')}</td>
+                  </tr>`).join('')}
+                  ${data.detalle_lineas_invalidas.length > 15 ? `<tr><td colspan="5" style="padding:3px 8px;color:#7f1d1d;">... y ${data.detalle_lineas_invalidas.length - 15} más</td></tr>` : ''}
                 </tbody>
               </table>
             </div>` : ''}

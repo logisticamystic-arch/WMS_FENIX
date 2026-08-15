@@ -4858,7 +4858,10 @@ const MWMS = {
     this.loading(true);
     let ubicaciones = [];
     try {
-      const r = await mApi('GET', `/v2/inventario/productos/${prodId}/ubicaciones`);
+      // asignacion_id: si esta referencia se reabrió, el backend devuelve lo que
+      // ya se contó (SesionLinea) en vez del stock del sistema, para no perder
+      // el conteo físico real ya registrado.
+      const r = await mApi('GET', `/v2/inventario/productos/${prodId}/ubicaciones?asignacion_id=${asigId}`);
       ubicaciones = r.data || [];
     } catch(_) {}
     this.loading(false);
@@ -4866,7 +4869,12 @@ const MWMS = {
     const d    = this._op;
     const asig = (d.misAsigs || []).find(a => a.id == asigId) || {};
     const prod = asig.producto || {};
-    const upc  = Math.max(1, parseInt(prod.unidades_caja || 1));
+    // Blindaje 2026-08-11: mismo criterio que el backend (getProductoUbicaciones) —
+    // factor_udm manda si aplica, si no, unidades_caja. Antes ignoraba factor_udm
+    // y mostraba "U/E: 1" para productos que en realidad usan ese factor (ej. "X 500 GR").
+    const upc = parseFloat(prod.factor_udm || 0) > 0
+      ? parseFloat(prod.factor_udm)
+      : Math.max(1, parseInt(prod.unidades_caja || 1));
 
     this._ivRefAsigId    = asigId;
     this._ivRefProd      = prod;
@@ -4908,12 +4916,12 @@ const MWMS = {
                     <i class="fa-solid fa-location-dot" style="font-size:.8rem;"></i> ${this.esc(u.codigo)}
                   </div>
                   <div style="font-size:.7rem;color:#64748b;margin-top:2px;">
-                    Sistema: <b>${u.cajas} cj + ${u.saldos} sald</b> (${u.cantidad} und)
+                    ${u.ya_contada ? 'Ya contado' : 'Sistema'}: <b>${u.cajas} cj + ${u.saldos} sald</b> (${u.cantidad} und)
                   </div>
                 </div>
                 <span class="ref-loc-status-badge" id="ref-loc-status-${u.id}"
-                  style="font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:12px;background:#fef3c7;color:#d97706;">
-                  PENDIENTE
+                  style="font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:12px;${u.ya_contada ? 'background:#dcfce7;color:#15803d;' : 'background:#fef3c7;color:#d97706;'}">
+                  ${u.ya_contada ? 'YA CONTADO' : 'PENDIENTE'}
                 </span>
               </div>
 
@@ -6574,10 +6582,30 @@ const MWMS = {
     this.loading(false);
   },
 
-  initPKConsolidado(idx, planillaNumero) {
+  async initPKConsolidado(idx, planillaNumero) {
     const it = this._itemsPlanilla[idx];
     if (!it) return this.toast("Error al recuperar item", "error");
     this._idxActual = idx;
+
+    // Blindaje 2026-08-11: la lista de la planilla se cargó al abrir la pantalla
+    // anterior — si un supervisor editó la cantidad solicitada mientras el auxiliar
+    // navegaba, este dato en memoria queda desactualizado. Se revalida contra el
+    // servidor justo antes de mostrar "cantidad a separar", para que nunca se
+    // muestre un número distinto al que realmente tiene el pedido en este momento.
+    try {
+      const r = await mApi('GET', `/picking/planilla/${planillaNumero}?estado=Pendiente,EnProceso,Faltante`);
+      const fresh = (r.data || []).find(x =>
+        x.producto_id === it.producto_id &&
+        (x.ubicacion_id ?? null) === (it.ubicacion_id ?? null) &&
+        (x.lote ?? null) === (it.lote ?? null)
+      );
+      if (fresh) {
+        this._itemsPlanilla[idx] = fresh;
+        this.renderPKConsolidado(fresh, planillaNumero);
+        return;
+      }
+    } catch (_) { /* sin conexión momentánea: seguir con el dato en memoria en vez de bloquear al auxiliar */ }
+
     this.renderPKConsolidado(it, planillaNumero);
   },
 
@@ -6693,13 +6721,13 @@ const MWMS = {
                   <i class="fa-solid fa-box-archive" style="color:#0F4C81;"></i>
                   ${factor > 1 ? 'Cajas' : 'Cantidad (cj/und)'}
                 </label>
-                <input type="number" id="pk-inline-cajas" value="${sugCajas}" min="0" inputmode="numeric"
+                <input type="number" id="pk-inline-cajas" value="${sugCajas}" min="0" max="${sugCajas}" inputmode="numeric"
                   style="width:100%;border:2px solid #0F4C81;border-radius:8px;padding:8px 6px;font-size:1.7rem;font-weight:900;text-align:center;box-sizing:border-box;"
-                  oninput="MWMS._updPKInlineTotal(${factor})">
+                  oninput="if(parseFloat(this.value||0)>${sugCajas}){this.value='${sugCajas}';MWMS.toast('Máximo ${sugCajas} — el excedente va en Saldos','info');}MWMS._updPKInlineTotal(${factor})">
               </div>
               <div>
                 <label style="font-size:.64rem;font-weight:700;color:#d97706;display:block;margin-bottom:3px;">
-                  <i class="fa-solid fa-layer-group" style="color:#d97706;"></i> Saldos (sueltos)
+                  <i class="fa-solid fa-layer-group" style="color:#d97706;"></i> Saldos (sueltos, aquí va lo que sobre o falte)
                 </label>
                 <input type="number" id="pk-inline-saldos" value="0" min="0" inputmode="numeric"
                   style="width:100%;border:2px solid #d97706;border-radius:8px;padding:8px 6px;font-size:1.7rem;font-weight:900;text-align:center;box-sizing:border-box;"
@@ -7744,7 +7772,7 @@ const MWMS = {
         </div>
         <div style="margin-bottom:10px;">
           <label style="font-size:.8rem;font-weight:700;color:#1e293b;display:block;margin-bottom:4px;"><i class="fa-solid fa-box-archive" style="color:#0F4C81;"></i> ${factor > 1 ? 'Cajas completas' : 'Cantidad'}</label>
-          <input type="number" id="pk-swal-qty" class="swal2-input" value="${sugCajas}" min="0" style="margin:0;width:100%;box-sizing:border-box;font-size:1.3rem;font-weight:900;text-align:center;" oninput="MWMS._updPKSwalTotal(${factor})">
+          <input type="number" id="pk-swal-qty" class="swal2-input" value="${sugCajas}" min="0" max="${sugCajas}" style="margin:0;width:100%;box-sizing:border-box;font-size:1.3rem;font-weight:900;text-align:center;" oninput="if(parseFloat(this.value||0)>${sugCajas}){this.value='${sugCajas}';}MWMS._updPKSwalTotal(${factor})">
         </div>
         ${sugSalHtml}
         <div style="background:#dcfce7;padding:8px;border-radius:8px;text-align:center;">
@@ -7771,12 +7799,14 @@ const MWMS = {
       }
     });
     if (!pkRes.isConfirmed) return;
-    const nQty = pkRes.value;
+    const nQty  = pkRes.value;
+    const cjEnv = Math.min(parseFloat(document.getElementById('pk-swal-qty')?.value || 0), sugCajas);
+    const slEnv = factor > 1 ? parseFloat(document.getElementById('pk-swal-saldos')?.value || 0) : 0;
     if (nQty < maxCant) {
       const ok = await Swal.fire({ title:'Cantidad Menor', text:`Separando ${nQty} de ${maxCant} solicitados. Se generará una NOVEDAD por la diferencia (${(maxCant - nQty).toFixed(2)} und). ¿Continuar?`, icon:'warning', showCancelButton:true, confirmButtonText:'Sí, confirmar', cancelButtonText:'Corregir' });
       if (!ok.isConfirmed) return;
     } else if (nQty > maxCant) {
-      const ok = await Swal.fire({ title:'Cantidad Mayor a lo Solicitado', text:`Separando ${nQty} und (pedido: ${maxCant} und). El excedente (${(nQty - maxCant).toFixed(2)} und) quedará registrado en la línea. ¿Confirmar excedente?`, icon:'info', showCancelButton:true, confirmButtonText:'Sí, confirmar', cancelButtonText:'Corregir' });
+      const ok = await Swal.fire({ title:'Excedente en Saldo', text:`Separando ${nQty} und (pedido: ${maxCant} und). El excedente (${(nQty - maxCant).toFixed(2)} und) va en Saldo — quedará registrado en la línea. ¿Confirmar excedente?`, icon:'info', showCancelButton:true, confirmButtonText:'Sí, confirmar', cancelButtonText:'Corregir' });
       if (!ok.isConfirmed) return;
     }
 
@@ -7786,7 +7816,9 @@ const MWMS = {
     try {
       const r = await mApi('POST', `/picking/${ordenId}/confirmar-linea`, {
         linea_id: lineaId,
-        cantidad_tomada: nQty
+        cantidad_tomada: nQty,
+        cajas_tomadas: cjEnv,
+        saldos_tomados: slEnv
       });
       if (r.status === 'pending_approval') {
         this.loading(false);
@@ -7795,7 +7827,9 @@ const MWMS = {
           try {
             await mApi('POST', `/picking/${ordenId}/confirmar-linea`, {
               linea_id: lineaId,
-              cantidad_tomada: nQty
+              cantidad_tomada: nQty,
+              cajas_tomadas: cjEnv,
+              saldos_tomados: slEnv
             });
             this.toast("Línea confirmada", "success");
             this.goPK(ordenId);
@@ -9702,10 +9736,21 @@ const MWMS = {
       </div>`;
   },
 
-  _miscMobileNuevo() {
-    document.getElementById('misc-mobile-area').innerHTML = `
+  async _miscMobileNuevo() {
+    const area = document.getElementById('misc-mobile-area');
+    area.innerHTML = `<div style="text-align:center;padding:20px;"><div class="spinner"></div></div>`;
+    let clientes = [];
+    try { const r = await mApi('GET', '/param/clientes'); clientes = r.data || r || []; } catch(e) {}
+
+    area.innerHTML = `
       <div class="scan-card" style="padding:16px;">
         <h3 style="font-size:.9rem;font-weight:700;margin-bottom:12px;"><i class="fa-solid fa-cubes-stacked" style="color:#84cc16;"></i> Recibir Misceláneo</h3>
+        <div class="form-group"><label class="form-label">Sucursal de Entrega *</label>
+          <select id="mm-cliente" class="form-control">
+            <option value="">— Seleccione el punto de entrega —</option>
+            ${clientes.map(c => `<option value="${c.id}" data-nombre="${this.esc(c.razon_social||c.nombre||'')}">${this.esc(c.razon_social||c.nombre||'')}</option>`).join('')}
+          </select>
+        </div>
         <div class="form-group"><label class="form-label">Proveedor *</label><input id="mm-prov" class="form-control" placeholder="Nombre del proveedor"></div>
         <div class="form-group"><label class="form-label">Artículo *</label><input id="mm-art" class="form-control" placeholder="Descripción del artículo"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
@@ -9720,9 +9765,13 @@ const MWMS = {
   },
 
   async _miscMobileGuardar() {
+    const clienteSel = document.getElementById('mm-cliente');
+    const clienteId   = clienteSel?.value || '';
+    const clienteNom  = clienteSel?.options[clienteSel.selectedIndex]?.dataset?.nombre || '';
     const prov = document.getElementById('mm-prov')?.value.trim();
     const art  = document.getElementById('mm-art')?.value.trim();
     const cant = parseFloat(document.getElementById('mm-cant')?.value) || 0;
+    if (!clienteId) { this.toast('Seleccione la Sucursal de Entrega', 'warning'); return; }
     if (!prov || !art || cant <= 0) { this.toast('Complete todos los campos obligatorios', 'warning'); return; }
 
     this.loading(true);
@@ -9731,6 +9780,7 @@ const MWMS = {
         proveedor: prov, articulo: art, cantidad: cant,
         unidad_medida: document.getElementById('mm-um')?.value || 'UN',
         observaciones: document.getElementById('mm-obs')?.value.trim() || null,
+        cliente_id: clienteId, cliente_nombre: clienteNom,
       });
       if (r.error) { this.toast(r.message, 'error'); return; }
 

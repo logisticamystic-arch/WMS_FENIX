@@ -1829,8 +1829,8 @@ WMS_MODULES.inventario = {
                     <td><small>${WMS.esc(l.lote)}<br>${WMS.formatDate(l.fecha_vencimiento)}</small></td>
                     <td class="text-center"><b style="color:${color_vu}">${l.dias_vida_util}d</b></td>
                     <td class="text-center">${l.cantidad_cajas ?? '—'}</td>
-                    <td class="text-center" style="color:#64748b">${l.unidades_caja ?? '—'}</td>
-                    <td class="text-center">${l.saldos ?? '—'}</td>
+                    <td class="text-center" style="color:#64748b">${l.unidades_caja != null ? parseFloat(l.unidades_caja) : '—'}</td>
+                    <td class="text-center">${l.saldos != null ? parseFloat(l.saldos) : '—'}</td>
                     <td class="text-center"><b style="font-size:1.1rem;color:#1d4ed8" title="UND/TOTAL">${parseFloat(l.cantidad_contada)}</b></td>
                     <td class="text-center" style="color:#64748b">${parseFloat(l.cantidad_sistema)}</td>
                     <td class="text-center"><b style="color:${difColor}">${difTxt}</b></td>
@@ -2030,7 +2030,10 @@ WMS_MODULES.inventario = {
                 <tr>
                   <td style="font-weight:700">${WMS.esc(a.auxiliar?.nombre||'-')}</td>
                   <td class="text-center"><span class="badge badge-info">R${a.ronda}</span></td>
-                  <td style="font-size:.78rem">${WMS.esc(a.tipo_instruccion)} ${a.pasillo?'— '+a.pasillo:''} ${a.modulo?'— '+a.modulo:''}</td>
+                  <td style="font-size:.78rem">${WMS.esc(a.tipo_instruccion)}
+                    ${a.pasillo?'— '+WMS.esc(a.pasillo):''}${a.modulo?'— '+WMS.esc(a.modulo):''}
+                    ${a.tipo_instruccion === 'Referencia' && a.producto ? `<br><span style="font-weight:700;color:#1e293b;">${WMS.esc(a.producto.codigo_interno||'')} — ${WMS.esc(a.producto.nombre||'')}</span>` : ''}
+                  </td>
                   <td>${a.estado}</td>
                   <td style="font-size:.75rem">${a.notificado_at ? WMS.formatDate(a.notificado_at.substring(0,10)) : '-'}</td>
                   <td style="font-size:.75rem">${a.finalizado_at ? WMS.formatDate(a.finalizado_at.substring(0,10)) : '-'}</td>
@@ -2038,6 +2041,11 @@ WMS_MODULES.inventario = {
                     ${a.estado === 'Pendiente' || a.estado === 'Notificado' ? `
                       <button class="btn btn-xs btn-outline-danger" onclick="WMS_MODULES.inventario._deleteAsig(${a.id},${id})">
                         <i class="fa-solid fa-trash"></i>
+                      </button>` : ''}
+                    ${a.estado === 'Finalizado' ? `
+                      <button class="btn btn-xs btn-outline-warning" title="Reabrir para que el auxiliar pueda agregar más ubicaciones"
+                        onclick="WMS_MODULES.inventario._reabrirAsig(${a.id},${id})">
+                        <i class="fa-solid fa-rotate-left"></i> Reabrir
                       </button>` : ''}
                   </td>
                 </tr>`).join('') || '<tr><td colspan="7" class="table-empty">Sin asignaciones</td></tr>'}
@@ -2837,6 +2845,15 @@ WMS_MODULES.inventario = {
     try {
       await API.delete(`/v2/inventario/asignaciones/${asigId}`, {});
       WMS.toast('success', 'Asignación eliminada');
+      this.verDashboardV2(sesionId);
+    } catch(e) { WMS.toast('error', e.message); }
+  },
+
+  async _reabrirAsig(asigId, sesionId) {
+    if (!confirm('¿Reabrir esta asignación?\n\nEl auxiliar podrá agregar más ubicaciones, pero deberá volver a contar TODAS las ubicaciones registradas (regla del conteo por referencia).')) return;
+    try {
+      await API.post(`/v2/inventario/asignaciones/${asigId}/reabrir`, {});
+      WMS.toast('success', 'Asignación reabierta');
       this.verDashboardV2(sesionId);
     } catch(e) { WMS.toast('error', e.message); }
   },

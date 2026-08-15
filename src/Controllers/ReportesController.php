@@ -245,6 +245,75 @@ class ReportesController extends BaseController
         return $this->ok($res, $recepciones);
     }
 
+    // ── 3B. RECIBO CDP — recepciones capturadas por QR del proveedor CDP ───────
+    // Filtros: fecha_desde, fecha_hasta, referencia (código/nombre de producto)
+    public function reciboCdp(Request $r, Response $res): Response
+    {
+        $user   = $r->getAttribute('user');
+        $params = $r->getQueryParams();
+        [$ini, $fin] = $this->getDateRange($params);
+        $eId = $this->getEffectiveEmpresaId($user, $r);
+
+        $detalles = RecepcionDetalle::where('origen_captura', 'QR')
+            ->where('proveedor', 'ILIKE', '%CDP%')
+            ->whereHas('recepcion', function ($q) use ($eId, $user, $ini, $fin) {
+                $q->where('empresa_id', $eId)
+                  ->where('sucursal_id', $user->sucursal_id)
+                  ->whereBetween('created_at', [$ini, $fin]);
+            })
+            ->when(!empty($params['referencia']), function ($q) use ($params) {
+                $v = $params['referencia'];
+                $q->whereHas('producto', function ($q2) use ($v) {
+                    $q2->where('nombre', 'ILIKE', "%$v%")
+                       ->orWhere('codigo_interno', 'ILIKE', "%$v%");
+                });
+            })
+            ->with(['producto', 'recepcion.auxiliar', 'ubicacionDestino'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        $rows = $detalles->map(function ($d) {
+            $cajas = (int)($d->cantidad_cajas ?? 0);
+            $upc   = (int)($d->cajas_por_unidad ?? 0);
+            // "Saldo" = lo recibido que no alcanza a completar una caja/unidad de empaque.
+            $saldo = $upc > 0 ? max(0, (float)$d->cantidad_recibida - ($cajas * $upc)) : (float)$d->cantidad_recibida;
+            return [
+                'fecha'             => $d->created_at,
+                'numero_recepcion'  => $d->recepcion->numero_recepcion ?? '—',
+                'producto_codigo'   => $d->producto->codigo_interno ?? '—',
+                'producto_nombre'   => $d->producto->nombre ?? '—',
+                'cantidad_recibida' => (float)$d->cantidad_recibida,
+                'fecha_vencimiento' => $d->fecha_vencimiento,
+                'lote'              => $d->lote ?? '—',
+                'total_cajas'       => $cajas,
+                'total_saldo'       => round($saldo, 2),
+                'recibido_por'      => $d->recepcion->auxiliar->nombre ?? '—',
+                'ubicacion'         => $d->ubicacionDestino->codigo ?? '—',
+                'numero_pallet'     => $d->numero_pallet,
+            ];
+        })->values();
+
+        $totales = [
+            'total_lineas'    => $rows->count(),
+            'total_cajas'     => $rows->sum('total_cajas'),
+            'total_saldo'     => round($rows->sum('total_saldo'), 2),
+            'total_recibido'  => round($rows->sum('cantidad_recibida'), 2),
+        ];
+
+        if (($params['export'] ?? '') === 'excel') {
+            $headers = ['Fecha', '# Recepción', 'Código', 'Producto', 'Cant. Recibida (QR)',
+                        'F. Vencimiento', 'Lote', 'Cajas', 'Saldo', 'Recibido Por', 'Ubicación', 'Pallet'];
+            $csvRows = $rows->map(fn($row) => [
+                $row['fecha'], $row['numero_recepcion'], $row['producto_codigo'], $row['producto_nombre'],
+                $row['cantidad_recibida'], $row['fecha_vencimiento'], $row['lote'],
+                $row['total_cajas'], $row['total_saldo'], $row['recibido_por'], $row['ubicacion'], $row['numero_pallet'],
+            ])->toArray();
+            return $this->exportCsv($res, $headers, $csvRows, 'recibo_cdp_' . date('Y-m-d'));
+        }
+
+        return $this->ok($res, ['rows' => $rows, 'totales' => $totales]);
+    }
+
     // ── 4. DESPACHOS ──────────────────────────────────────────────────────────
     public function despachos(Request $r, Response $res): Response
     {
@@ -253,41 +322,78 @@ class ReportesController extends BaseController
         [$ini, $fin] = $this->getDateRange($params);
         $eId = $this->getEffectiveEmpresaId($user, $r);
 
-        // Resolver ubicacion_id
-        $ubicacionId = $params['ubicacion_id'] ?? null;
-        if (empty($ubicacionId) && !empty($params['ubicacion_codigo'])) {
-            $ubicacionId = $this->resolveUbicacionId($params['ubicacion_codigo'], $eId);
-        }
-
-        $despachos = Despacho::where('empresa_id', $eId)
+        // Fuente real de los datos de despacho: órdenes de picking certificadas.
+        // Blindaje 2026-08-11: este reporte consultaba el modelo `Despacho` (consolidación
+        // por camión/ruta/muelle), pero esa tabla en la práctica no se usa — el 100% de
+        // sus registros tiene `cliente = NULL`, por lo que cualquier filtro por cliente
+        // devolvía siempre 0 resultados. El cliente, lote, auxiliar y ubicación reales de
+        // cada despacho viven en orden_pickings/picking_detalles, una vez certificada la orden.
+        $ordenes = OrdenPicking::where('empresa_id', $eId)
             ->where('sucursal_id', $user->sucursal_id)
-            ->whereBetween('fecha_movimiento', [substr($ini, 0, 10), substr($fin, 0, 10)])
+            ->where('estado_certificacion', 'Certificada')
+            ->whereBetween('fecha_certificacion', [substr($ini, 0, 10) . ' 00:00:00', substr($fin, 0, 10) . ' 23:59:59'])
+            // Filtro por cliente (razón social del cliente o sucursal de entrega)
+            ->when(!empty($params['cliente']), function ($q) use ($params) {
+                $v = $params['cliente'];
+                $q->where(function ($q2) use ($v) {
+                    $q2->where('cliente', 'ILIKE', "%$v%")
+                       ->orWhere('sucursal_entrega', 'ILIKE', "%$v%");
+                });
+            })
             // Filtro por referencia/EAN/producto
             ->when(!empty($params['referencia']), function ($q) use ($params) {
                 $v = $params['referencia'];
-                $q->whereHas('certificaciones.producto', function ($q2) use ($v) {
+                $q->whereHas('detalles.producto', function ($q2) use ($v) {
                     $q2->where('nombre', 'ILIKE', "%$v%")
                        ->orWhere('codigo_interno', 'ILIKE', "%$v%");
                 });
             })
-            ->with('certificaciones.producto')
-            ->orderBy('fecha_movimiento', 'desc')
+            ->with(['detalles.producto', 'detalles.auxiliar:id,nombre', 'detalles.ubicacion:id,codigo'])
+            ->orderBy('fecha_certificacion', 'desc')
             ->get();
+
+        // ── Un "despacho" del reporte = una orden certificada. Se arma el detalle
+        // por línea (quién separó, hora, lote, ubicación de origen) y el/los
+        // orden_ids para poder ver/imprimir la remisión desde la pantalla. ──────
+        $despachos = $ordenes->map(function ($orden) {
+            $orden->numero_despacho  = $orden->numero_pedido ?? $orden->numero_orden;
+            $orden->fecha_movimiento = $orden->fecha_certificacion;
+            $orden->estado           = $orden->estado_despacho ?: 'Certificada';
+            $orden->total_bultos     = $orden->detalles->count();
+            $orden->orden_ids        = [$orden->id];
+            $orden->detalle_lineas   = $orden->detalles->map(function ($linea) use ($orden) {
+                return [
+                    'orden_id'             => $orden->id,
+                    'numero_pedido'        => $orden->numero_pedido ?? $orden->numero_orden,
+                    'producto_codigo'      => $linea->producto->codigo_interno ?? '—',
+                    'producto_nombre'      => $linea->producto->nombre ?? '—',
+                    'lote'                 => $linea->lote ?? '—',
+                    'cantidad_solicitada'  => (float)$linea->cantidad_solicitada,
+                    'cantidad_pickeada'    => (float)$linea->cantidad_pickeada,
+                    'cantidad_certificada' => (float)($linea->cantidad_certificada ?? 0),
+                    // Quien separó = quien liberó/tomó la unidad de la ubicación —
+                    // es la misma persona en este sistema, no hay un rol separado
+                    // de "liberador" distinto al auxiliar que picking la línea.
+                    'separado_por'         => $linea->auxiliar->nombre ?? '—',
+                    'ubicacion_origen'     => $linea->ubicacion->codigo ?? '—',
+                    'hora'                 => $linea->updated_at,
+                ];
+            })->values();
+            return $orden;
+        });
 
         if (($params['export'] ?? '') === 'excel') {
             $rows = [];
             foreach ($despachos as $d) {
-                foreach ($d->certificaciones as $c) {
+                foreach ($d->detalle_lineas as $l) {
                     $rows[] = [
-                        $d->numero_despacho, $d->cliente ?? '—', $d->ruta ?? '—',
+                        $d->numero_despacho, $d->cliente ?? $d->sucursal_entrega ?? '—', $d->ruta ?? '—',
                         $d->fecha_movimiento, $d->estado,
-                        $c->producto->nombre ?? '—',
-                        $c->producto->codigo_interno ?? '—',
-                        $c->lote ?? '—', $c->cantidad_certificada,
+                        $l['producto_nombre'], $l['producto_codigo'], $l['lote'], $l['cantidad_certificada'],
                     ];
                 }
             }
-            $headers = ['# Despacho', 'Cliente', 'Ruta', 'Fecha', 'Estado',
+            $headers = ['# Pedido', 'Cliente', 'Ruta', 'Fecha', 'Estado',
                         'Producto', 'Código', 'Lote', 'Cant. Certificada'];
             return $this->exportCsv($res, $headers, $rows, 'despachos_' . date('Y-m-d'));
         }
@@ -1278,41 +1384,221 @@ class ReportesController extends BaseController
      * GET /api/reportes/contingencia/separacion
      * ?fecha=YYYY-MM-DD  &formato=html|csv|json
      */
+    // ── CONCILIACIÓN DE TRAZABILIDAD — Importado → Separado → Remisión ──────────
+    // Garantiza que ninguna referencia ni cantidad se pierda entre lo que llegó
+    // en el pedido (cantidad_solicitada), lo que el auxiliar separó físicamente
+    // (cantidad_pickeada) y lo que efectivamente sale impreso en la remisión de
+    // certificación (cantidad_certificada + su registro real en packing_items
+    // cuando la orden certifica por sesión de packing).
+    public function conciliacionTrazabilidad(Request $r, Response $res): Response
+    {
+        $user   = $r->getAttribute('user');
+        $params = $r->getQueryParams();
+        $eId    = $this->getEffectiveEmpresaId($user, $r);
+        $sucId  = $this->getEffectiveSucursalId($user, $r);
+
+        $desde = $params['fecha_desde'] ?? date('Y-m-d', strtotime('-7 days'));
+        $hasta = $params['fecha_hasta'] ?? date('Y-m-d');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde)) $desde = date('Y-m-d', strtotime('-7 days'));
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta)) $hasta = date('Y-m-d');
+
+        $soloDiferencias = ($params['solo_diferencias'] ?? '1') !== '0';
+
+        $raw = Capsule::table('picking_detalles as pd')
+            ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
+            ->join('productos as p', 'p.id', '=', 'pd.producto_id')
+            ->where('op.empresa_id', $eId)
+            ->where('op.sucursal_id', $sucId)
+            ->whereBetween('op.fecha_movimiento', [$desde, $hasta])
+            ->when(!empty($params['cliente']), function ($q) use ($params) {
+                $v = $params['cliente'];
+                $q->where(function ($w) use ($v) {
+                    $w->where('op.cliente', 'ILIKE', "%$v%")
+                      ->orWhere('op.sucursal_entrega', 'ILIKE', "%$v%");
+                });
+            })
+            ->when(!empty($params['referencia']), function ($q) use ($params) {
+                $v = $params['referencia'];
+                $q->where(function ($w) use ($v) {
+                    $w->where('p.nombre', 'ILIKE', "%$v%")
+                      ->orWhere('p.codigo_interno', 'ILIKE', "%$v%");
+                });
+            })
+            ->select([
+                'op.fecha_movimiento', 'op.planilla_numero', 'op.cliente', 'op.sucursal_entrega',
+                'op.estado_certificacion',
+                'p.codigo_interno', 'p.nombre',
+                'pd.id as det_id', 'pd.cantidad_solicitada', 'pd.cantidad_pickeada', 'pd.cantidad_certificada',
+                Capsule::raw('COALESCE(NULLIF(p.factor_udm,0), p.unidades_caja, 1) as upc'),
+                Capsule::raw('(SELECT COALESCE(SUM(cantidad),0) FROM packing_items WHERE picking_detalle_id = pd.id) as empacado_und'),
+                Capsule::raw('EXISTS(SELECT 1 FROM packing_items pi2 JOIN picking_detalles pd2 ON pd2.id = pi2.picking_detalle_id WHERE pd2.orden_picking_id = pd.orden_picking_id) as orden_usa_packing'),
+                Capsule::raw("EXISTS(SELECT 1 FROM audit_logs WHERE tabla_afectada='picking_detalles' AND registro_id = pd.id AND accion = 'editar_cantidad_linea') as fue_editado"),
+                Capsule::raw('EXISTS(SELECT 1 FROM picking_faltantes WHERE orden_picking_id = pd.orden_picking_id AND producto_id = pd.producto_id) as tiene_novedad'),
+            ])
+            ->orderBy('op.fecha_movimiento', 'desc')
+            ->orderBy('op.planilla_numero')
+            ->get();
+
+        $resumen = ['total' => 0, 'ok' => 0, 'diferencia_separacion' => 0, 'diferencia_certificacion' => 0, 'riesgo_impresion' => 0, 'pendientes' => 0];
+
+        $rows = $raw->map(function ($row) use (&$resumen) {
+            $upc              = max(0.0001, (float)$row->upc);
+            $importadoCajas   = round((float)$row->cantidad_solicitada, 3);
+            $separadoCajas    = round((float)$row->cantidad_pickeada / $upc, 3);
+            $certificadoCajas = round((float)$row->cantidad_certificada / $upc, 3);
+            $empacadoUnd      = (float)$row->empacado_und;
+
+            $resumen['total']++;
+
+            $estado = 'OK';
+            $detalle = '';
+
+            if ((float)$row->cantidad_pickeada <= 0.001) {
+                $estado  = 'PENDIENTE';
+                $detalle = 'Aún no separado';
+                $resumen['pendientes']++;
+            } elseif ($row->orden_usa_packing && (float)$row->cantidad_certificada > 0.001 && round($empacadoUnd - (float)$row->cantidad_certificada, 3) < -0.001) {
+                // Compara contra lo CERTIFICADO, no contra lo pickeado — si una orden
+                // certifica menos de lo separado a propósito (caso ya conocido tipo
+                // orden 1310), eso es DIFERENCIA_CERTIFICACION, no un riesgo de impresión;
+                // el riesgo real es cuando lo certificado no está respaldado en packing_items.
+                $estado  = 'RIESGO_IMPRESION';
+                $detalle = 'Certificado sin registro de empaque completo — puede faltar en la remisión de sesión';
+                $resumen['riesgo_impresion']++;
+            } elseif ($row->estado_certificacion === 'Certificada' && abs($separadoCajas - $certificadoCajas) > 0.005 && !$row->tiene_novedad) {
+                $estado  = 'DIFERENCIA_CERTIFICACION';
+                $detalle = 'Certificado no coincide con lo separado, sin novedad registrada';
+                $resumen['diferencia_certificacion']++;
+            } elseif (abs($importadoCajas - $separadoCajas) > 0.005 && !$row->fue_editado && !$row->tiene_novedad) {
+                $estado  = 'DIFERENCIA_SEPARACION';
+                $detalle = 'Separado no coincide con lo importado/solicitado, sin edición de supervisor ni novedad';
+                $resumen['diferencia_separacion']++;
+            } else {
+                $resumen['ok']++;
+                if ($row->fue_editado)     $detalle = 'Cantidad editada por Supervisor/Admin (con auditoría)';
+                elseif ($row->tiene_novedad) $detalle = 'Diferencia explicada por novedad/causal registrada';
+            }
+
+            // Respuesta directa a "¿esto va a salir en la remisión?" — separada del
+            // Estado interno porque "OK" en una línea aún sin certificar confundía:
+            // no hay nada garantizado todavía si ni siquiera se ha certificado.
+            if ((float)$row->cantidad_pickeada <= 0.001) {
+                $saleRemision = 'Pendiente de separar';
+            } elseif ($row->estado_certificacion !== 'Certificada') {
+                $saleRemision = 'Pendiente de certificar';
+            } elseif ($estado === 'RIESGO_IMPRESION') {
+                $saleRemision = 'NO — falta respaldo de empaque';
+            } else {
+                $saleRemision = 'Sí, completo';
+            }
+
+            return [
+                'fecha'             => $row->fecha_movimiento,
+                'planilla'          => $row->planilla_numero ?: '—',
+                'cliente'           => $row->cliente ?: $row->sucursal_entrega,
+                'codigo'            => $row->codigo_interno,
+                'producto'          => $row->nombre,
+                'importado_cajas'   => $importadoCajas,
+                'separado_cajas'    => $separadoCajas,
+                'separado_und'      => (float)$row->cantidad_pickeada,
+                'certificado_cajas' => $certificadoCajas,
+                'certificado_und'   => (float)$row->cantidad_certificada,
+                'estado'            => $estado,
+                'sale_remision'     => $saleRemision,
+                'detalle'           => $detalle,
+            ];
+        });
+
+        if ($soloDiferencias) {
+            $rows = $rows->filter(fn($row) => !in_array($row['estado'], ['OK', 'PENDIENTE'], true))->values();
+        } else {
+            $rows = $rows->values();
+        }
+
+        if (($params['export'] ?? '') === 'excel') {
+            $headers = ['Fecha', 'Planilla', 'Cliente', 'Código', 'Producto',
+                        'Importado (cj)', 'Separado (cj)', 'Separado (und)',
+                        'Certificado (cj)', 'Certificado (und)', '¿Sale en Remisión?', 'Estado', 'Detalle'];
+            $csvRows = $rows->map(fn($row) => [
+                $row['fecha'], $row['planilla'], $row['cliente'], $row['codigo'], $row['producto'],
+                $row['importado_cajas'], $row['separado_cajas'], $row['separado_und'],
+                $row['certificado_cajas'], $row['certificado_und'], $row['sale_remision'], $row['estado'], $row['detalle'],
+            ])->toArray();
+            return $this->exportCsv($res, $headers, $csvRows, 'conciliacion_trazabilidad_' . date('Y-m-d'));
+        }
+
+        return $this->ok($res, ['rows' => $rows, 'resumen' => $resumen]);
+    }
+
     public function contingenciaSeparacion(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');
         $params = $r->getQueryParams();
         $fecha  = $params['fecha'] ?? date('Y-m-d');
+        $eId    = $this->getEffectiveEmpresaId($user, $r);
 
-        $ordenes = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+        // Blindaje 2026-08-11: esta consulta usaba una relación `asignado` que no
+        // existe en OrdenPicking (solo existe `auxiliar`) — Eloquent tira
+        // BadMethodCallException al intentar el eager-load en cuanto hay al menos
+        // una orden que matchea, y eso daba 500. También filtraba por el estado
+        // 'EnCurso', que no es un valor real (el estado activo es 'EnProceso').
+        $ordenes = OrdenPicking::where('empresa_id', $eId)
             ->where('sucursal_id', $user->sucursal_id)
-            ->whereIn('estado', ['Pendiente', 'EnCurso'])
-            ->whereDate('created_at', $fecha)
-            ->with(['detalles.producto:id,nombre,codigo_interno', 'asignado:id,nombre'])
-            ->orderByRaw($this->isPg()
-                ? "CASE prioridad WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 WHEN 'Normal' THEN 3 WHEN 'Baja' THEN 4 ELSE 5 END ASC"
-                : "FIELD(prioridad,'Alta','Media','Normal','Baja') ASC")
+            ->whereIn('estado', ['Pendiente', 'EnProceso'])
+            ->whereDate('fecha_movimiento', $fecha)
+            // Filtro opcional por cliente — para poder imprimir solo la hoja de un cliente puntual.
+            ->when(!empty($params['cliente']), function ($q) use ($params) {
+                $v = $params['cliente'];
+                $q->where(function ($w) use ($v) {
+                    $w->where('cliente', 'ILIKE', "%$v%")
+                      ->orWhere('sucursal_entrega', 'ILIKE', "%$v%");
+                });
+            })
+            ->with([
+                // Solo líneas realmente pendientes de separar — no las ya Completado/Faltante.
+                'detalles' => fn($q) => $q->whereIn('estado', ['Pendiente', 'EnProceso'])->orderBy('ambiente')->orderBy('id'),
+                'detalles.producto:id,nombre,codigo_interno',
+                'detalles.ubicacion:id,codigo',
+                'auxiliar:id,nombre',
+            ])
+            ->orderBy('cliente')
             ->orderBy('id')
             ->get();
+
+        // Filtro opcional por ambiente — para imprimir solo la hoja de una zona
+        // (Seco/Refrigerado/Congelado). Se aplica sobre el detalle ya cargado
+        // porque una misma orden puede traer líneas de varios ambientes.
+        if (!empty($params['ambiente'])) {
+            $amb = $params['ambiente'];
+            $ordenes->each(function ($o) use ($amb) {
+                $o->detalles = $o->detalles->filter(
+                    fn($d) => strcasecmp($d->ambiente ?? '', $amb) === 0
+                )->values();
+            });
+            $ordenes = $ordenes->filter(fn($o) => $o->detalles->isNotEmpty())->values();
+        }
 
         $formato = $params['formato'] ?? 'json';
 
         if ($formato === 'html') {
-            $html = $this->buildHtmlSeparacion($ordenes, $fecha, $user);
+            $html = $this->buildHtmlSeparacion($ordenes, $fecha);
             $res->getBody()->write($html);
             return $res->withHeader('Content-Type', 'text/html; charset=utf-8');
         }
 
         if ($formato === 'csv') {
-            $headers = ['Orden','Prioridad','Asignado','Producto','Código','Cant. Pedida','Cant. Alistada','Ubicación','Obs.'];
+            $headers = ['Cliente', 'Ambiente', 'Orden', 'Producto', 'Código',
+                        'Cant. a Separar', 'Ubicación', 'Lote', 'F. Vencimiento'];
             $rows    = [];
             foreach ($ordenes as $o) {
+                $cliente = $o->cliente ?: ($o->sucursal_entrega ?: '-');
                 foreach ($o->detalles as $d) {
                     $rows[] = [
-                        $o->numero_orden ?? $o->id, $o->prioridad ?? 'Normal',
-                        $o->asignado->nombre ?? '-',
+                        $cliente, $d->ambiente ?: '-', $o->numero_orden ?? $o->id,
                         $d->producto->nombre ?? '-', $d->producto->codigo_interno ?? '-',
-                        $d->cantidad_solicitada ?? 0, '', $d->ubicacion ?? '-', '',
+                        $d->cantidad_solicitada ?? 0,
+                        $d->ubicacion->codigo ?? 'SIN UBICACIÓN',
+                        $d->lote ?: '-', $d->fecha_vencimiento ?: '-',
                     ];
                 }
             }
@@ -1343,8 +1629,16 @@ class ReportesController extends BaseController
             $query->whereDate('ap.created_at', $params['fecha'] ?? date('Y-m-d'));
         }
 
+        // Blindaje 2026-08-11: `lineas_planilla` no tiene columnas cliente_nombre/ruta
+        // (nunca las tuvo — este reporte llevaba tiempo roto, 500 en cuanto se pedía
+        // formato=html). No hay forma fiable de reconstruir el cliente/ruta desde
+        // aquí sin ambigüedad (un mismo numero_planilla puede repartirse entre varios
+        // pedidos/clientes), así que se deja explícito en vez de adivinar.
         $lineas = $query->select([
-            'lp.numero_planilla', 'lp.cliente_nombre as cliente', 'lp.ruta', 'ap.created_at as fecha_despacho',
+            'lp.numero_planilla',
+            DB::raw("'—' as cliente"),
+            DB::raw("'—' as ruta"),
+            'ap.created_at as fecha_despacho',
             'lp.producto_nombre as producto', 'lp.producto_codigo as codigo',
             'lp.cantidad as cantidad_planilla',
             DB::raw('COALESCE((SELECT SUM(cpd.cantidad_certificada) FROM cert_planilla_det cpd JOIN cert_planillas cp2 ON cp2.id = cpd.cert_id WHERE cp2.numero_planilla = lp.numero_planilla AND cp2.archivo_id = lp.archivo_id AND cpd.producto_codigo = lp.producto_codigo), 0) as cantidad_certificada')
@@ -1380,66 +1674,113 @@ class ReportesController extends BaseController
 
     // ── HTML Builders ─────────────────────────────────────────────────────────
 
-    private function buildHtmlSeparacion($ordenes, string $fecha, $user): string
+    /**
+     * Agrupa TODAS las líneas de TODAS las órdenes por Cliente → Ambiente, y
+     * genera una hoja imprimible por cada combinación (page-break entre hojas).
+     * Si un producto quedó repartido en varias ubicaciones (split FEFO en
+     * picking_detalles — cada ubicación es su propia fila en la BD), esa
+     * repartición ya sale como líneas separadas sin necesidad de recalcularla aquí.
+     */
+    private function buildHtmlSeparacion($ordenes, string $fecha): string
     {
-        $rows = '';
+        $grupos = []; // [cliente => [ambiente => [lineas...]]]
         foreach ($ordenes as $o) {
-            $asig = htmlspecialchars($o->asignado->nombre ?? '___________');
-            $bg   = $o->prioridad === 'Alta' ? '#fff3cd' : 'inherit';
+            $cliente = $o->cliente ?: ($o->sucursal_entrega ?: 'Sin cliente asignado');
             foreach ($o->detalles as $d) {
-                $rows .= "<tr style=\"background:{$bg}\">"
-                    . '<td>' . htmlspecialchars($o->numero_orden ?? $o->id) . '</td>'
-                    . '<td>' . htmlspecialchars($o->prioridad ?? 'Normal') . '</td>'
-                    . '<td>' . $asig . '</td>'
-                    . '<td>' . htmlspecialchars($d->producto->nombre ?? '-') . '</td>'
-                    . '<td>' . htmlspecialchars($d->producto->codigo_interno ?? '-') . '</td>'
-                    . '<td style="text-align:center">' . ($d->cantidad_solicitada ?? 0) . '</td>'
-                    . '<td style="text-align:center;border-bottom:1px solid #555;min-width:55px">&nbsp;</td>'
-                    . '<td>' . htmlspecialchars($d->ubicacion ?? '-') . '</td>'
-                    . '<td style="min-width:130px">&nbsp;</td>'
-                    . '</tr>';
+                $ambiente = $d->ambiente ?: 'Sin ambiente';
+                $grupos[$cliente][$ambiente][] = [
+                    'orden'       => $o->numero_orden ?? $o->id,
+                    'auxiliar'    => $o->auxiliar->nombre ?? null,
+                    'producto'    => $d->producto->nombre ?? '-',
+                    'codigo'      => $d->producto->codigo_interno ?? '-',
+                    'cantidad'    => $d->cantidad_solicitada ?? 0,
+                    'ubicacion'   => $d->ubicacion->codigo ?? null,
+                    'lote'        => $d->lote,
+                    'vencimiento' => $d->fecha_vencimiento,
+                ];
             }
         }
-        $emp      = htmlspecialchars($user->empresa ?? 'Fénix WMS');
-        $total    = $ordenes->count();
-        $impreso  = date('d/m/Y H:i:s');
+
+        $hojas = [];
+        foreach ($grupos as $cliente => $ambientes) {
+            foreach ($ambientes as $ambiente => $lineas) {
+                $hojas[] = $this->_hojaSeparacionHtml($cliente, $ambiente, $lineas, $fecha);
+            }
+        }
+        if (empty($hojas)) {
+            $hojas[] = '<div class="hoja"><p style="padding:40px;text-align:center;color:#64748b;">'
+                . 'No hay pedidos pendientes de separar para esta fecha.</p></div>';
+        }
+
+        $impreso = date('d/m/Y H:i:s');
+        $cuerpo  = implode('', $hojas);
+
         return <<<HTML
 <!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
-<title>Separación {$fecha}</title>
+<title>Plan de Separación (Contingencia) — {$fecha}</title>
 <style>
-  body{font-family:Arial,sans-serif;font-size:11px;margin:18px}
-  h2{margin:0;font-size:15px}
-  .meta{display:flex;gap:36px;margin:6px 0 12px;font-size:11px}
-  table{width:100%;border-collapse:collapse;font-size:10px}
-  th{background:#1e3a5f;color:#fff;padding:5px 4px;text-align:left;font-size:10px}
-  td{padding:4px 3px;border-bottom:1px solid #ddd;vertical-align:middle}
-  .firma{margin-top:36px;display:flex;gap:70px}
-  .firma-box{border-top:1px solid #333;width:190px;padding-top:4px;font-size:10px}
-  @media print{button{display:none!important}}
+  body{font-family:Arial,sans-serif;font-size:11px;margin:0;color:#1e293b}
+  .hoja{padding:18px 22px;page-break-after:always}
+  .hoja:last-child{page-break-after:auto}
+  h2{margin:0 0 2px;font-size:15px;color:#0f172a}
+  .meta{display:flex;flex-wrap:wrap;gap:24px;margin:6px 0 12px;font-size:11px;color:#334155;border-bottom:2px solid #000;padding-bottom:8px}
+  .meta b{color:#0f172a}
+  table{width:100%;border-collapse:collapse;font-size:10.5px}
+  th{background:#1e3a5f;color:#fff;padding:6px 5px;text-align:left;font-size:10px}
+  td{padding:5px;border-bottom:1px solid #ddd;vertical-align:middle}
+  .sin-ubic{color:#dc2626;font-weight:700}
+  .firma{margin-top:40px;display:flex;gap:60px}
+  .firma-box{border-top:1px solid #333;width:220px;padding-top:5px;font-size:10px}
+  .toolbar{padding:10px 22px;background:#f1f5f9}
+  @media print{.toolbar{display:none!important}}
 </style></head><body>
-<div style="border-bottom:2px solid #000;padding-bottom:6px">
-  <h2>WMS Fenix — PLANILLA DE SEPARACIÓN / PICKING</h2>
-  <div class="meta">
-    <span><b>Fecha:</b> {$fecha}</span>
-    <span><b>Impreso:</b> {$impreso}</span>
-    <span><b>Órdenes:</b> {$total}</span>
-  </div>
+<div class="toolbar">
+  <button onclick="window.print()" style="padding:7px 20px;background:#1e3a5f;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Imprimir todas las hojas</button>
+  <span style="margin-left:10px;color:#64748b;font-size:11px;">Impreso: {$impreso}</span>
 </div>
-<button onclick="window.print()" style="margin:10px 0 14px;padding:6px 18px;background:#1e3a5f;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">Imprimir Planilla</button>
-<table>
-  <thead><tr>
-    <th>Orden</th><th>Prioridad</th><th>Operario</th><th>Producto</th><th>Código</th>
-    <th>Cant. Pedida</th><th>Cant. Alistada</th><th>Ubicación</th><th>Observación</th>
-  </tr></thead>
-  <tbody>{$rows}</tbody>
-</table>
-<div class="firma">
-  <div class="firma-box">Jefe de Bodega</div>
-  <div class="firma-box">Picker / Auxiliar</div>
-  <div class="firma-box">Supervisor</div>
-</div>
+{$cuerpo}
 </body></html>
 HTML;
+    }
+
+    private function _hojaSeparacionHtml(string $cliente, string $ambiente, array $lineas, string $fecha): string
+    {
+        $filas = '';
+        foreach ($lineas as $l) {
+            $ubic = $l['ubicacion']
+                ? htmlspecialchars($l['ubicacion'])
+                : '<span class="sin-ubic">SIN UBICACIÓN</span>';
+            $filas .= '<tr>'
+                . '<td>' . htmlspecialchars((string)$l['orden']) . '</td>'
+                . '<td>' . htmlspecialchars($l['producto']) . '</td>'
+                . '<td>' . htmlspecialchars($l['codigo']) . '</td>'
+                . '<td style="text-align:center;font-weight:700;">' . htmlspecialchars((string)$l['cantidad']) . '</td>'
+                . '<td>' . $ubic . '</td>'
+                . '<td>' . htmlspecialchars($l['lote'] ?: '-') . '</td>'
+                . '<td>' . htmlspecialchars($l['vencimiento'] ?: '-') . '</td>'
+                . '</tr>';
+        }
+        $totalLineas = count($lineas);
+        $aux         = $lineas[0]['auxiliar'] ?? null;
+        $auxTxt      = $aux ? ' (' . htmlspecialchars($aux) . ')' : '';
+
+        return '<div class="hoja">'
+            . '<h2>WMS Fénix — Plan de Separación (Contingencia)</h2>'
+            . '<div class="meta">'
+            .   '<span><b>Fecha:</b> ' . htmlspecialchars($fecha) . '</span>'
+            .   '<span><b>Cliente:</b> ' . htmlspecialchars($cliente) . '</span>'
+            .   '<span><b>Ambiente:</b> ' . htmlspecialchars($ambiente) . '</span>'
+            .   '<span><b>Líneas:</b> ' . $totalLineas . '</span>'
+            . '</div>'
+            . '<table><thead><tr>'
+            .   '<th>Orden</th><th>Producto</th><th>Código</th><th>Cant. a Separar</th>'
+            .   '<th>Ubicación</th><th>Lote</th><th>F. Vencimiento</th>'
+            . '</tr></thead><tbody>' . $filas . '</tbody></table>'
+            . '<div class="firma">'
+            .   '<div class="firma-box">Firma de quien separó' . $auxTxt . '</div>'
+            .   '<div class="firma-box">Fecha y hora</div>'
+            . '</div>'
+            . '</div>';
     }
 
     private function buildHtmlCertificacion($lineas, $user): string

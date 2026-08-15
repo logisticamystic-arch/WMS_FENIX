@@ -10,6 +10,7 @@ WMS_MODULES.reportes = {
       gerencial:    this.show_gerencial,
       kardex:       this.show_kardex,
       recepciones:  this.show_recepciones,
+      recibo_cdp:   this.show_recibo_cdp,
       despachos:    this.show_despachos,
       picking:      this.show_picking,
       devoluciones: this.show_devoluciones,
@@ -18,6 +19,7 @@ WMS_MODULES.reportes = {
       odc:          this.show_odc,
       contingencia: this.show_contingencia,
       agotados:     this.show_agotados,
+      conciliacion: this.show_conciliacion,
     };
     (fn[s]?.bind(this) || fn.gerencial.bind(this))();
   },
@@ -25,10 +27,10 @@ WMS_MODULES.reportes = {
   subLabel(s) {
     const m = {
       gerencial:'Dashboard Gerencial', kardex:'Kardex', recepciones:'Recepciones',
-      despachos:'Despachos', picking:'Picking', devoluciones:'Devoluciones',
+      recibo_cdp:'Recibo CDP', despachos:'Despachos', picking:'Picking', devoluciones:'Devoluciones',
       proveedores:'Evaluación Proveedores', audit:'Log de Auditoría',
       odc:'Recibo Detallado (ODC)', contingencia:'Plan de Contingencia',
-      agotados:'Agotados por Demanda',
+      agotados:'Agotados por Demanda', conciliacion:'Conciliación de Trazabilidad',
     };
     return m[s] || s || 'Panel';
   },
@@ -101,6 +103,115 @@ WMS_MODULES.reportes = {
     if (hId)  hId.value = id;
     const hCod = document.getElementById(hiddenCodigoField);
     if (hCod) hCod.value = codigo;
+    const dd = document.getElementById(inputId + '-dd');
+    if (dd) dd.style.display = 'none';
+  },
+
+  // ── Helper genérico: dropdown de sugerencias bajo un input ────────────────
+  _mostrarDropdown(inputId, items, renderItem) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    let dd = document.getElementById(inputId + '-dd');
+    if (!dd) {
+      dd = document.createElement('div');
+      dd.id = inputId + '-dd';
+      dd.style.cssText = 'position:absolute;z-index:9999;background:#fff;border:1px solid #cbd5e1;border-radius:4px;max-height:180px;overflow-y:auto;width:100%;box-shadow:0 4px 12px rgba(0,0,0,.12);display:none;';
+      input.parentElement.style.position = 'relative';
+      input.parentElement.appendChild(dd);
+    }
+    if (!items.length) {
+      dd.innerHTML = '<div style="padding:8px 12px;color:#94a3b8;font-size:.82rem;">Sin resultados</div>';
+    } else {
+      dd.innerHTML = items.map(renderItem).join('');
+    }
+    dd.style.display = 'block';
+    if (!dd.dataset.bound) {
+      dd.dataset.bound = '1';
+      document.addEventListener('click', (e) => {
+        if (!input.contains(e.target) && !dd.contains(e.target)) dd.style.display = 'none';
+      });
+    }
+    return dd;
+  },
+
+  // ── Autocomplete de CLIENTE — carga /param/clientes una sola vez y filtra
+  // localmente (la lista de clientes por empresa es pequeña, no requiere
+  // búsqueda en servidor como productos/ubicaciones) ───────────────────────
+  _clientesCache: null,
+
+  async initClienteAutocomplete(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    const buscarYMostrar = async () => {
+      const val = input.value.trim();
+
+      if (!this._clientesCache) {
+        try {
+          const res = await API.get('/param/clientes');
+          this._clientesCache = res.data || res || [];
+        } catch (_) { this._clientesCache = []; }
+      }
+
+      // Sin texto: mostrar los primeros clientes como lista para elegir (combobox).
+      // Con texto: filtrar por coincidencia.
+      const term = val.toLowerCase();
+      const list = (term
+        ? this._clientesCache.filter(c => (c.razon_social || '').toLowerCase().includes(term))
+        : this._clientesCache
+      ).slice(0, 15);
+
+      this._mostrarDropdown(inputId, list, c => `
+        <div style="padding:8px 12px;cursor:pointer;font-size:.83rem;border-bottom:1px solid #f1f5f9;"
+             onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''"
+             onclick="WMS_MODULES.reportes._selectTexto('${inputId}','${WMS.esc(c.razon_social).replace(/'/g,"\\'")}')">
+          <b>${WMS.esc(c.razon_social)}</b>${c.nit ? ' — ' + WMS.esc(c.nit) : ''}
+        </div>`);
+    };
+
+    // focus + click cubren tanto "primer clic" (dispara focus) como "clic con
+    // el input ya enfocado" (no vuelve a disparar focus, pero sí click) — ambos
+    // llaman a la misma función, es idempotente, no hay conflicto de orden.
+    input.addEventListener('focus', buscarYMostrar);
+    input.addEventListener('click', buscarYMostrar);
+    input.addEventListener('input', buscarYMostrar);
+  },
+
+  // ── Autocomplete de REFERENCIA/PRODUCTO — búsqueda en servidor con debounce ─
+  _refDebounce: {},
+
+  initProductoAutocomplete(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    const buscarYMostrar = () => {
+      clearTimeout(this._refDebounce[inputId]);
+      const val = input.value.trim();
+
+      this._refDebounce[inputId] = setTimeout(async () => {
+        try {
+          // Sin texto: el backend devuelve los productos más recientes por
+          // defecto ("Ver Todos") — sirve como lista inicial del combobox.
+          const res  = await API.get('/param/productos/buscar', `q=${encodeURIComponent(val)}&limit=12`);
+          const list = res.data || res || [];
+          this._mostrarDropdown(inputId, list, p => `
+            <div style="padding:8px 12px;cursor:pointer;font-size:.83rem;border-bottom:1px solid #f1f5f9;"
+                 onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''"
+                 onclick="WMS_MODULES.reportes._selectTexto('${inputId}','${WMS.esc(p.codigo_interno || p.nombre).replace(/'/g,"\\'")}')">
+              <b>${WMS.esc(p.codigo_interno || '-')}</b> — ${WMS.esc(p.nombre)}
+            </div>`);
+        } catch (_) { const dd = document.getElementById(inputId + '-dd'); if (dd) dd.style.display = 'none'; }
+      }, val ? 350 : 0);
+    };
+
+    input.addEventListener('focus', buscarYMostrar);
+    input.addEventListener('click', buscarYMostrar);
+    input.addEventListener('input', buscarYMostrar);
+  },
+
+  _selectTexto(inputId, valor) {
+    const input = document.getElementById(inputId);
+    if (input) input.value = valor;
     const dd = document.getElementById(inputId + '-dd');
     if (dd) dd.style.display = 'none';
   },
@@ -537,29 +648,382 @@ WMS_MODULES.reportes = {
     window.open(url, '_blank');
   },
 
+  // ── RECIBO CDP — recepciones por QR del proveedor CDP ─────────────────────
+  _panelFiltrosReciboCdp({desde='', hasta='', referencia=''} = {}) {
+    const campo = (label, inputHtml) => `
+      <div>
+        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.02em;margin-bottom:5px;">${label}</label>
+        ${inputHtml}
+      </div>`;
+    // Sin clase .card: su overflow:hidden recortaría la lista del combobox de referencia.
+    return `
+      <div style="margin-bottom:16px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+        <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+          <span class="card-title"><i class="fa-solid fa-filter"></i> Filtros de búsqueda</span>
+          <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.reportes._limpiarFiltrosReciboCdp()">
+            <i class="fa-solid fa-eraser"></i> Limpiar
+          </button>
+        </div>
+        <div style="padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;align-items:end;">
+          ${campo('Fecha desde', `<input type="date" class="form-control" id="cdp-desde" value="${desde}">`)}
+          ${campo('Fecha hasta', `<input type="date" class="form-control" id="cdp-hasta" value="${hasta}">`)}
+          ${campo('Producto / Referencia', `
+            <div style="position:relative;">
+              <input type="text" class="form-control" id="cdp-ref" placeholder="Todas las referencias" autocomplete="off"
+                     style="padding-right:28px;" value="${WMS.esc(referencia)}">
+              <i class="fa-solid fa-chevron-down" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:11px;pointer-events:none;"></i>
+            </div>`)}
+          <div>
+            <button class="btn btn-primary" style="width:100%;" onclick="WMS_MODULES.reportes._buscar('cdp','show_recibo_cdp')">
+              <i class="fa-solid fa-magnifying-glass"></i> Filtrar
+            </button>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  _limpiarFiltrosReciboCdp() {
+    ['cdp-desde','cdp-hasta','cdp-ref'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    document.getElementById('cdp-desde').value = WMS.getPastDate(30);
+    document.getElementById('cdp-hasta').value = WMS.getToday();
+    this.show_recibo_cdp();
+  },
+
+  async show_recibo_cdp() {
+    const p = this._getParams('cdp');
+
+    if (!this._buscadoMap.cdp) {
+      WMS.setToolbar('');
+      WMS.setContent(`
+        ${this._panelFiltrosReciboCdp({desde:p.desde, hasta:p.hasta, referencia:p.ref})}
+        ${this._estadoInicialReporte()}`);
+      this.initProductoAutocomplete('cdp-ref');
+      return;
+    }
+
+    WMS.setToolbar(`<button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.exportarReciboCdp()"><i class="fa-solid fa-file-csv"></i> Exportar CSV</button>`);
+    WMS.spinner();
+    try {
+      const qs = `fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}`;
+      const r  = await API.get('/reportes/recibo-cdp', qs);
+      const data = r.data || r || {};
+      const rows = data.rows || [];
+      const tot  = data.totales || {};
+
+      WMS.setContent(`
+        ${this._panelFiltrosReciboCdp({desde:p.desde, hasta:p.hasta, referencia:p.ref})}
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+          <div style="padding:12px;background:#eff6ff;border-radius:8px;text-align:center;border:1px solid #bfdbfe;">
+            <div style="font-size:20px;font-weight:800;color:#1e40af;">${tot.total_lineas || 0}</div>
+            <div style="font-size:10px;color:#1e40af;font-weight:700;text-transform:uppercase;">Líneas Recibidas</div>
+          </div>
+          <div style="padding:12px;background:#f0fdf4;border-radius:8px;text-align:center;border:1px solid #bbf7d0;">
+            <div style="font-size:20px;font-weight:800;color:#16a34a;">${WMS.formatNum(tot.total_cajas || 0)}</div>
+            <div style="font-size:10px;color:#16a34a;font-weight:700;text-transform:uppercase;">Total Cajas</div>
+          </div>
+          <div style="padding:12px;background:#fefce8;border-radius:8px;text-align:center;border:1px solid #fde68a;">
+            <div style="font-size:20px;font-weight:800;color:#d97706;">${WMS.formatNum(tot.total_saldo || 0)}</div>
+            <div style="font-size:10px;color:#d97706;font-weight:700;text-transform:uppercase;">Total Saldo</div>
+          </div>
+          <div style="padding:12px;background:#f8fafc;border-radius:8px;text-align:center;border:1px solid #e2e8f0;">
+            <div style="font-size:20px;font-weight:800;color:#334155;">${WMS.formatNum(tot.total_recibido || 0)}</div>
+            <div style="font-size:10px;color:#334155;font-weight:700;text-transform:uppercase;">Total Recibido (UND)</div>
+          </div>
+        </div>
+
+        <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-qrcode"></i> Recibo CDP — Recepciones por QR (${rows.length})</span></div>
+        <div class="table-container"><table class="erp-table" id="cdp-table">
+          <thead><tr>
+            <th>Fecha</th><th># Recepción</th><th>Código</th><th>Producto</th>
+            <th>Cant. Recibida (QR)</th><th>F. Vencimiento</th><th>Lote</th>
+            <th>Cajas</th><th>Saldo</th><th>Recibido Por</th><th>Ubicación</th>
+          </tr></thead>
+          <tbody>${rows.map(row => `<tr>
+            <td>${WMS.formatDate(row.fecha)}</td>
+            <td>${WMS.esc(row.numero_recepcion)}</td>
+            <td style="font-family:monospace;">${WMS.esc(row.producto_codigo)}</td>
+            <td>${WMS.esc(row.producto_nombre)}</td>
+            <td style="text-align:right;font-weight:700;">${WMS.formatNum(row.cantidad_recibida)}</td>
+            <td>${row.fecha_vencimiento ? WMS.formatDate(row.fecha_vencimiento) : '—'}</td>
+            <td>${WMS.esc(row.lote)}</td>
+            <td style="text-align:right;">${WMS.formatNum(row.total_cajas)}</td>
+            <td style="text-align:right;">${WMS.formatNum(row.total_saldo)}</td>
+            <td>${WMS.esc(row.recibido_por)}</td>
+            <td>${WMS.esc(row.ubicacion)}</td>
+          </tr>`).join('')||'<tr><td colspan="11" class="table-empty">Sin recepciones QR de CDP en este rango</td></tr>'}
+          </tbody></table></div></div>`);
+      this.initProductoAutocomplete('cdp-ref');
+    } catch(e) { WMS.setContent('<div class="m-empty">Error cargando Recibo CDP</div>'); }
+  },
+
+  exportarReciboCdp() {
+    const p = this._getParams('cdp');
+    const token = localStorage.getItem('wms_token');
+    const url = `${API_BASE}/reportes/recibo-cdp?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&token=${encodeURIComponent(token)}`;
+    window.open(url, '_blank');
+  },
+
+  // ── CONCILIACIÓN DE TRAZABILIDAD — Importado → Separado → Remisión ─────────
+  // Garantiza que ninguna referencia ni cantidad se pierda entre lo pedido,
+  // lo separado físicamente y lo que sale impreso en la remisión.
+  _panelFiltrosConciliacion({desde='', hasta='', cliente='', referencia='', soloDif=true} = {}) {
+    const campo = (label, inputHtml) => `
+      <div>
+        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.02em;margin-bottom:5px;">${label}</label>
+        ${inputHtml}
+      </div>`;
+    return `
+      <div style="margin-bottom:16px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+        <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+          <span class="card-title"><i class="fa-solid fa-filter"></i> Filtros de búsqueda</span>
+          <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.reportes._limpiarFiltrosConciliacion()">
+            <i class="fa-solid fa-eraser"></i> Limpiar
+          </button>
+        </div>
+        <div style="padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;align-items:end;">
+          ${campo('Fecha desde', `<input type="date" class="form-control" id="conc-desde" value="${desde}">`)}
+          ${campo('Fecha hasta', `<input type="date" class="form-control" id="conc-hasta" value="${hasta}">`)}
+          ${campo('Cliente', `
+            <div style="position:relative;">
+              <input type="text" class="form-control" id="conc-cliente" placeholder="Todos los clientes" autocomplete="off"
+                     style="padding-right:28px;" value="${WMS.esc(cliente)}">
+            </div>`)}
+          ${campo('Producto / Referencia', `
+            <div style="position:relative;">
+              <input type="text" class="form-control" id="conc-ref" placeholder="Todas las referencias" autocomplete="off"
+                     style="padding-right:28px;" value="${WMS.esc(referencia)}">
+            </div>`)}
+          <div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#334155;margin-bottom:9px;">
+              <input type="checkbox" id="conc-solo-dif" ${soloDif ? 'checked' : ''} style="width:16px;height:16px;">
+              Solo mostrar diferencias
+            </label>
+          </div>
+          <div>
+            <button class="btn btn-primary" style="width:100%;" onclick="WMS_MODULES.reportes._buscar('conc','show_conciliacion')">
+              <i class="fa-solid fa-magnifying-glass"></i> Filtrar
+            </button>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  _limpiarFiltrosConciliacion() {
+    ['conc-desde','conc-hasta','conc-cliente','conc-ref'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    document.getElementById('conc-desde').value = WMS.getPastDate(7);
+    document.getElementById('conc-hasta').value = WMS.getToday();
+    document.getElementById('conc-solo-dif').checked = true;
+    this.show_conciliacion();
+  },
+
+  async show_conciliacion() {
+    const p = this._getParams('conc');
+    const cliente = document.getElementById('conc-cliente')?.value.trim() || '';
+    const soloDif = document.getElementById('conc-solo-dif')?.checked ?? true;
+
+    if (!this._buscadoMap.conc) {
+      WMS.setToolbar('');
+      WMS.setContent(`
+        ${this._panelFiltrosConciliacion({desde:p.desde || WMS.getPastDate(7), hasta:p.hasta, cliente, referencia:p.ref, soloDif:true})}
+        <div class="m-empty" style="padding:24px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;margin-bottom:16px;">
+          <i class="fa-solid fa-shield-halved" style="color:#1e40af;"></i>
+          <p style="margin:6px 0 0;color:#1e3a5f;">Compara, línea por línea, lo <b>importado/solicitado</b> vs. lo <b>separado</b> por el auxiliar vs. lo que efectivamente queda en la <b>remisión</b> certificada. Aplique los filtros y presione "Filtrar".</p>
+        </div>`);
+      this.initClienteAutocomplete('conc-cliente');
+      this.initProductoAutocomplete('conc-ref');
+      return;
+    }
+
+    WMS.setToolbar(`<button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.exportarConciliacion()"><i class="fa-solid fa-file-csv"></i> Exportar CSV</button>`);
+    WMS.spinner();
+    try {
+      const qs = `fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&cliente=${encodeURIComponent(cliente)}&referencia=${encodeURIComponent(p.ref)}&solo_diferencias=${soloDif ? '1' : '0'}`;
+      const r    = await API.get('/reportes/conciliacion-trazabilidad', qs);
+      const data = r.data || r || {};
+      const rows = data.rows || [];
+      const tot  = data.resumen || {};
+
+      const badge = (estado) => {
+        const map = {
+          OK:                       {bg:'#f0fdf4', color:'#16a34a', label:'OK'},
+          PENDIENTE:                {bg:'#f8fafc', color:'#64748b', label:'Pendiente'},
+          DIFERENCIA_SEPARACION:    {bg:'#fefce8', color:'#d97706', label:'Diferencia separación'},
+          DIFERENCIA_CERTIFICACION:{bg:'#fff7ed', color:'#c2410c', label:'Diferencia certificación'},
+          RIESGO_IMPRESION:        {bg:'#fef2f2', color:'#dc2626', label:'Riesgo de impresión'},
+        };
+        const s = map[estado] || map.OK;
+        return `<span style="background:${s.bg};color:${s.color};border-radius:5px;padding:3px 8px;font-size:11px;font-weight:800;white-space:nowrap;">${s.label}</span>`;
+      };
+
+      WMS.setContent(`
+        ${this._panelFiltrosConciliacion({desde:p.desde, hasta:p.hasta, cliente, referencia:p.ref, soloDif})}
+
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;">
+          <div style="padding:12px;background:#f8fafc;border-radius:8px;text-align:center;border:1px solid #e2e8f0;">
+            <div style="font-size:20px;font-weight:800;color:#334155;">${tot.total || 0}</div>
+            <div style="font-size:10px;color:#334155;font-weight:700;text-transform:uppercase;">Líneas Revisadas</div>
+          </div>
+          <div style="padding:12px;background:#f0fdf4;border-radius:8px;text-align:center;border:1px solid #bbf7d0;">
+            <div style="font-size:20px;font-weight:800;color:#16a34a;">${tot.ok || 0}</div>
+            <div style="font-size:10px;color:#16a34a;font-weight:700;text-transform:uppercase;">OK</div>
+          </div>
+          <div style="padding:12px;background:#fefce8;border-radius:8px;text-align:center;border:1px solid #fde68a;">
+            <div style="font-size:20px;font-weight:800;color:#d97706;">${tot.diferencia_separacion || 0}</div>
+            <div style="font-size:10px;color:#d97706;font-weight:700;text-transform:uppercase;">Dif. Separación</div>
+          </div>
+          <div style="padding:12px;background:#fff7ed;border-radius:8px;text-align:center;border:1px solid #fed7aa;">
+            <div style="font-size:20px;font-weight:800;color:#c2410c;">${tot.diferencia_certificacion || 0}</div>
+            <div style="font-size:10px;color:#c2410c;font-weight:700;text-transform:uppercase;">Dif. Certificación</div>
+          </div>
+          <div style="padding:12px;background:#fef2f2;border-radius:8px;text-align:center;border:1px solid #fecaca;">
+            <div style="font-size:20px;font-weight:800;color:#dc2626;">${tot.riesgo_impresion || 0}</div>
+            <div style="font-size:10px;color:#dc2626;font-weight:700;text-transform:uppercase;">Riesgo Impresión</div>
+          </div>
+        </div>
+
+        <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-shield-halved"></i> Conciliación de Trazabilidad (${rows.length})</span></div>
+        <div class="table-container"><table class="erp-table" id="conc-table">
+          <thead><tr>
+            <th>Fecha</th><th>Planilla</th><th>Cliente</th><th>Código</th><th>Producto</th>
+            <th>Importado (cj)</th><th>Separado (cj)</th><th>Certificado (cj)</th>
+            <th style="background:#eff6ff;">¿Sale en Remisión?</th><th>Estado</th><th>Detalle</th>
+          </tr></thead>
+          <tbody>${rows.map(row => {
+            const rem = row.sale_remision || '';
+            const remStyle = rem.startsWith('Sí')
+              ? 'background:#f0fdf4;color:#16a34a;'
+              : rem.startsWith('NO')
+                ? 'background:#fef2f2;color:#dc2626;'
+                : 'background:#f8fafc;color:#64748b;';
+            return `<tr>
+            <td>${WMS.formatDate(row.fecha)}</td>
+            <td>${WMS.esc(row.planilla)}</td>
+            <td>${WMS.esc(row.cliente)}</td>
+            <td style="font-family:monospace;">${WMS.esc(row.codigo)}</td>
+            <td>${WMS.esc(row.producto)}</td>
+            <td style="text-align:right;">${WMS.formatNum(row.importado_cajas)}</td>
+            <td style="text-align:right;">${WMS.formatNum(row.separado_cajas)}</td>
+            <td style="text-align:right;">${WMS.formatNum(row.certificado_cajas)}</td>
+            <td><span style="${remStyle}border-radius:5px;padding:3px 8px;font-size:11px;font-weight:800;white-space:nowrap;">${WMS.esc(rem)}</span></td>
+            <td>${badge(row.estado)}</td>
+            <td style="font-size:11px;color:#64748b;">${WMS.esc(row.detalle || '')}</td>
+          </tr>`;
+          }).join('')||'<tr><td colspan="11" class="table-empty">Sin diferencias en este rango — todo lo separado coincide con lo importado y lo certificado</td></tr>'}
+          </tbody></table></div></div>`);
+      this.initClienteAutocomplete('conc-cliente');
+      this.initProductoAutocomplete('conc-ref');
+    } catch(e) { WMS.setContent('<div class="m-empty">Error cargando Conciliación de Trazabilidad</div>'); }
+  },
+
+  exportarConciliacion() {
+    const p = this._getParams('conc');
+    const cliente = document.getElementById('conc-cliente')?.value.trim() || '';
+    const soloDif = document.getElementById('conc-solo-dif')?.checked ?? true;
+    const token = localStorage.getItem('wms_token');
+    const url = `${API_BASE}/reportes/conciliacion-trazabilidad?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&cliente=${encodeURIComponent(cliente)}&referencia=${encodeURIComponent(p.ref)}&solo_diferencias=${soloDif ? '1' : '0'}&token=${encodeURIComponent(token)}`;
+    window.open(url, '_blank');
+  },
+
+  // ── Panel de filtros de Despacho — grilla etiquetada, campos Cliente y
+  // Referencia como combobox (lista visible al hacer foco, no solo al escribir) ─
+  _panelFiltrosDespacho({desde='', hasta='', cliente='', referencia=''} = {}) {
+    const campo = (label, inputHtml) => `
+      <div>
+        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.02em;margin-bottom:5px;">${label}</label>
+        ${inputHtml}
+      </div>`;
+    const comboInput = (id, placeholder, value) => `
+      <div style="position:relative;">
+        <input type="text" class="form-control" id="${id}" placeholder="${placeholder}" autocomplete="off"
+               style="padding-right:28px;" value="${WMS.esc(value)}">
+        <i class="fa-solid fa-chevron-down" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:11px;pointer-events:none;"></i>
+      </div>`;
+
+    // Nota: NO se usa la clase .card aquí — su CSS trae overflow:hidden (para
+    // recortar esquinas redondeadas), lo que recortaba el dropdown del combobox
+    // justo en el borde inferior de la tarjeta. Mismo look, sin ese recorte.
+    return `
+      <div style="margin-bottom:16px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+        <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+          <span class="card-title"><i class="fa-solid fa-filter"></i> Filtros de búsqueda</span>
+          <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.reportes._limpiarFiltrosDespacho()">
+            <i class="fa-solid fa-eraser"></i> Limpiar
+          </button>
+        </div>
+        <div style="padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;align-items:end;">
+          ${campo('Fecha desde', `<input type="date" class="form-control" id="des-desde" value="${desde}">`)}
+          ${campo('Fecha hasta', `<input type="date" class="form-control" id="des-hasta" value="${hasta}">`)}
+          ${campo('Cliente', comboInput('des-cliente', 'Todos los clientes', cliente))}
+          ${campo('Referencia / Producto', comboInput('des-ref', 'Todas las referencias', referencia))}
+          <div>
+            <button class="btn btn-primary" style="width:100%;" onclick="WMS_MODULES.reportes._buscar('des','show_despachos')">
+              <i class="fa-solid fa-magnifying-glass"></i> Filtrar
+            </button>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  // Chips con los filtros efectivamente aplicados en la última búsqueda —
+  // para que quede claro qué se está viendo, sin tener que mirar los inputs.
+  _chipsFiltrosDespacho({desde, hasta, cliente, referencia}) {
+    const chip = (label, valor) => valor
+      ? `<span style="display:inline-flex;align-items:center;gap:5px;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:20px;padding:4px 12px;font-size:11.5px;font-weight:600;">${label}: ${WMS.esc(valor)}</span>`
+      : '';
+    const chips = [
+      chip('Cliente', cliente),
+      chip('Referencia', referencia),
+      chip('Desde', desde),
+      chip('Hasta', hasta),
+    ].filter(Boolean);
+    if (!chips.length) return '';
+    return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+      <span style="font-size:11px;color:#64748b;font-weight:700;align-self:center;">FILTROS APLICADOS:</span>
+      ${chips.join('')}
+    </div>`;
+  },
+
+  _limpiarFiltrosDespacho() {
+    ['des-desde','des-hasta','des-cliente','des-ref'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    document.getElementById('des-desde').value = WMS.getPastDate(30);
+    document.getElementById('des-hasta').value = WMS.getToday();
+    this.show_despachos();
+  },
+
   // ── DESPACHOS ─────────────────────────────────────────────────────────────
   async show_despachos() {
     const p = this._getParams('des');
+    const cliente = document.getElementById('des-cliente')?.value.trim() || '';
+    this._despachosCache = this._despachosCache || {};
 
     if (!this._buscadoMap.des) {
       WMS.setToolbar('');
       WMS.setContent(`
-        ${this._filtroBarra({id:'des', desde:p.desde, hasta:p.hasta, referencia:p.ref, ubicacion:'', onFiltrar:"WMS_MODULES.reportes._buscar('des','show_despachos')"})}
+        ${this._panelFiltrosDespacho({desde:p.desde, hasta:p.hasta, cliente, referencia:p.ref})}
         ${this._estadoInicialReporte()}`);
+      this.initClienteAutocomplete('des-cliente');
+      this.initProductoAutocomplete('des-ref');
       return;
     }
 
     WMS.setToolbar(`<button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.exportarDespachos()"><i class="fa-solid fa-file-csv"></i> Exportar CSV</button>`);
     WMS.spinner();
     try {
-      const qs    = `fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}`;
+      const qs    = `fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&cliente=${encodeURIComponent(cliente)}`;
       const r     = await API.get('/reportes/despachos', qs);
       const items = r.data || r || [];
+      this._despachosCache = {};
+      items.forEach(i => { this._despachosCache[i.id] = i; });
       WMS.setContent(`
-        ${this._filtroBarra({id:'des', desde:p.desde, hasta:p.hasta, referencia:p.ref, ubicacion:'', onFiltrar:'WMS_MODULES.reportes.show_despachos()'})}
+        ${this._panelFiltrosDespacho({desde:p.desde, hasta:p.hasta, cliente, referencia:p.ref})}
+        ${this._chipsFiltrosDespacho({desde:p.desde, hasta:p.hasta, cliente, referencia:p.ref})}
         <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-truck-fast"></i> Despachos Consolidados (${items.length})</span></div>
         <div class="table-container"><table class="erp-table" id="des-table">
-          <thead><tr><th>Fecha</th><th>N° Despacho</th><th>Cliente</th><th>Ruta</th><th>Estado</th><th>Bultos</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>N° Despacho</th><th>Cliente</th><th>Ruta</th><th>Estado</th><th>Bultos</th><th>Detalle</th></tr></thead>
           <tbody>${items.map(i => `<tr>
             <td>${WMS.formatDate(i.fecha_movimiento||i.created_at)}</td>
             <td><strong>${WMS.esc(i.numero_despacho)}</strong></td>
@@ -567,16 +1031,88 @@ WMS_MODULES.reportes = {
             <td>${WMS.esc(i.ruta||'-')}</td>
             <td><span class="badge badge-success">${i.estado}</span></td>
             <td>${i.total_bultos||0}</td>
-          </tr>`).join('')||'<tr><td colspan="6" class="table-empty">Sin despachos</td></tr>'}
+            <td>
+              <button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.reportes.verDetalleDespacho(${i.id})" title="Ver quién separó, hora, lote y ubicación">
+                <i class="fa-solid fa-list"></i>
+              </button>
+              <button class="btn btn-xs btn-success" onclick="WMS_MODULES.reportes.imprimirRemisionDespacho(${i.id})" title="Ver / imprimir remisión">
+                <i class="fa-solid fa-print"></i>
+              </button>
+            </td>
+          </tr>`).join('')||'<tr><td colspan="7" class="table-empty">Sin despachos</td></tr>'}
           </tbody></table></div></div>`);
+      this.initClienteAutocomplete('des-cliente');
+      this.initProductoAutocomplete('des-ref');
     } catch(e) { WMS.setContent('<div class="m-empty">Error cargando Despachos</div>'); }
   },
 
   exportarDespachos() {
     const p = this._getParams('des');
+    const cliente = document.getElementById('des-cliente')?.value.trim() || '';
     const token = localStorage.getItem('wms_token');
-    const url = `${API_BASE}/reportes/despachos?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&token=${encodeURIComponent(token)}`;
+    const url = `${API_BASE}/reportes/despachos?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&cliente=${encodeURIComponent(cliente)}&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
+  },
+
+  // Detalle de un despacho: quién separó cada línea, hora, lote y de qué
+  // ubicación se tomó. Usa el detalle ya devuelto por /reportes/despachos
+  // (no vuelve a consultar el backend).
+  verDetalleDespacho(despachoId) {
+    const d = (this._despachosCache || {})[despachoId];
+    const lineas = d?.detalle_lineas || [];
+    const body = lineas.length ? `
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="background:#f1f5f9;">
+            <th style="padding:6px 8px;text-align:left;">Pedido</th>
+            <th style="padding:6px 8px;text-align:left;">Producto</th>
+            <th style="padding:6px 8px;text-align:left;">Lote</th>
+            <th style="padding:6px 8px;text-align:right;">Solicitado</th>
+            <th style="padding:6px 8px;text-align:right;">Separado</th>
+            <th style="padding:6px 8px;text-align:left;">Separado por</th>
+            <th style="padding:6px 8px;text-align:left;">Ubicación origen</th>
+            <th style="padding:6px 8px;text-align:left;">Hora</th>
+          </tr></thead>
+          <tbody>
+            ${lineas.map(l => `<tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:5px 8px;">${WMS.esc(l.numero_pedido || '-')}</td>
+              <td style="padding:5px 8px;">${WMS.esc(l.producto_nombre)} <span style="color:#94a3b8;font-family:monospace;">(${WMS.esc(l.producto_codigo)})</span></td>
+              <td style="padding:5px 8px;font-family:monospace;">${WMS.esc(l.lote)}</td>
+              <td style="padding:5px 8px;text-align:right;">${l.cantidad_solicitada}</td>
+              <td style="padding:5px 8px;text-align:right;">${l.cantidad_pickeada}</td>
+              <td style="padding:5px 8px;">${WMS.esc(l.separado_por)}</td>
+              <td style="padding:5px 8px;">${WMS.esc(l.ubicacion_origen)}</td>
+              <td style="padding:5px 8px;">${WMS.formatDateTime ? WMS.formatDateTime(l.hora) : (l.hora || '-')}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : '<div class="m-empty">Sin líneas de detalle para este despacho</div>';
+
+    WMS.showModal(`Detalle despacho ${WMS.esc(d?.numero_despacho || '')}`, body,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')"><i class="fa-solid fa-xmark"></i> Cerrar</button>`, 'xl');
+  },
+
+  // Reutiliza el mismo endpoint de remisión-múltiple que ya usa el módulo de
+  // Despacho (imprimirRemisionPorOrdenes) — self-contenido para no depender de
+  // que ese módulo esté cargado en esta pantalla.
+  imprimirRemisionDespacho(despachoId) {
+    const d = (this._despachosCache || {})[despachoId];
+    const ordenIds = d?.orden_ids || [];
+    if (!ordenIds.length) {
+      WMS.toast('warning', 'Este despacho no tiene pedidos asociados para generar remisión');
+      return;
+    }
+    const token = localStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+    const params = new URLSearchParams();
+    ordenIds.forEach(id => params.append('orden_ids[]', id));
+    const url = `${API_BASE}/picking/certificacion/remision-multiple?${params}`;
+    const win = window.open('', '_blank');
+    if (!win) { WMS.toast('warning', 'Permite ventanas emergentes para imprimir'); return; }
+    win.document.write('<p style="font-family:sans-serif;padding:20px;">Cargando remisión...</p>');
+    fetch(url, { headers: { Authorization: 'Bearer ' + token } })
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(html => { if (!win.closed) { win.document.open(); win.document.write(html); win.document.close(); } })
+      .catch(e => { if (!win.closed) win.document.write('<p style="color:#dc2626;font-family:sans-serif;padding:20px;">Error al cargar remisión: ' + e.message + '</p>'); });
   },
 
   // ── PICKING ───────────────────────────────────────────────────────────────

@@ -437,6 +437,68 @@ class PackingController extends BaseController
                     ]);
             }
 
+            // Blindaje 2026-08-13: el sync de arriba deja cantidad_certificada>0 en
+            // líneas que nunca se registraron en packing_items (el auxiliar la separó
+            // pero, por lo que sea, no quedó escaneada en ninguna canasta). getRemision()
+            // — la remisión de esta misma sesión — solo lee de packing_items, así que esa
+            // línea desaparece en silencio de lo impreso aunque sí se certificó. Se
+            // garantiza aquí que TODA línea con cantidad_pickeada>0 de las órdenes recién
+            // certificadas tenga su packing_item, igual que ya hace recertificar().
+            if ($ids->isNotEmpty()) {
+                $detallesPend = Capsule::table('picking_detalles')
+                    ->whereIn('orden_picking_id', $ids)
+                    ->where('cantidad_pickeada', '>', 0)
+                    ->get();
+
+                if ($detallesPend->isNotEmpty()) {
+                    $empacadoPorLinea = Capsule::table('packing_items')
+                        ->whereIn('picking_detalle_id', $detallesPend->pluck('id'))
+                        ->selectRaw('picking_detalle_id, SUM(cantidad) as total')
+                        ->groupBy('picking_detalle_id')
+                        ->pluck('total', 'picking_detalle_id');
+
+                    $faltantes = $detallesPend->filter(function ($det) use ($empacadoPorLinea) {
+                        $empacado = (float)($empacadoPorLinea[$det->id] ?? 0);
+                        return round((float)$det->cantidad_pickeada - $empacado, 3) > 0.001;
+                    });
+
+                    if ($faltantes->isNotEmpty()) {
+                        $unidad = Capsule::table('packing_unidades')->where('sesion_id', $sesion->id)->first();
+                        if ($unidad) {
+                            $unidadId = $unidad->id;
+                        } else {
+                            $maxConsecutivo = (int)(Capsule::table('packing_unidades')
+                                ->where('sesion_id', $sesion->id)->max('consecutivo') ?? 0);
+                            $unidadId = Capsule::table('packing_unidades')->insertGetId([
+                                'sesion_id'   => $sesion->id,
+                                'consecutivo' => $maxConsecutivo + 1,
+                                'estado'      => 'Cerrada',
+                                'closed_at'   => $now,
+                            ]);
+                        }
+
+                        foreach ($faltantes as $det) {
+                            $empacado = (float)($empacadoPorLinea[$det->id] ?? 0);
+                            $faltante = (float)$det->cantidad_pickeada - $empacado;
+                            Capsule::table('packing_items')->insert([
+                                'unidad_id'          => $unidadId,
+                                'picking_detalle_id' => $det->id,
+                                'producto_id'        => $det->producto_id,
+                                'lote'               => $det->lote,
+                                'fecha_vencimiento'  => $det->fecha_vencimiento,
+                                'separador_id'       => $det->auxiliar_id ?? $user->id,
+                                'cantidad'           => $faltante,
+                                'created_at'         => $now,
+                            ]);
+                        }
+
+                        Capsule::table('packing_unidades')
+                            ->where('id', $unidadId)
+                            ->update(['total_unidades' => Capsule::table('packing_items')->where('unidad_id', $unidadId)->sum('cantidad')]);
+                    }
+                }
+            }
+
             // ── Certificación granular por ambiente ──────────────────────────────
             // Para cada orden certificada, registrar qué ambientes quedaron cubiertos.
             // Usa UPSERT para ser idempotente: si se re-certifica no genera duplicados.
@@ -592,16 +654,18 @@ class PackingController extends BaseController
                     ->first();
 
                 if (!$unidad) {
+                    // packing_unidades NO tiene empresa_id/sucursal_id/numero_canasta/
+                    // codigo_barras/tipo_empaque/created_at (columnas de una versión
+                    // anterior del esquema) — insertar esos campos revienta con "column
+                    // does not exist" y esta rama de auto-empaque queda inoperante para
+                    // cualquier sesión que nunca tuvo ni una sola canasta física.
+                    $maxConsecutivo = (int)(Capsule::table('packing_unidades')
+                        ->where('sesion_id', $sesion->id)->max('consecutivo') ?? 0);
                     $unidadId = Capsule::table('packing_unidades')->insertGetId([
-                        'sesion_id'      => $sesion->id,
-                        'empresa_id'     => $sesion->empresa_id,
-                        'sucursal_id'    => $sesion->sucursal_id,
-                        'numero_canasta' => 1,
-                        'codigo_barras'  => 'CAN-AUTO-' . $sesion->id . '-1',
-                        'tipo_empaque'   => 'Canasta',
-                        'estado'         => 'Cerrada',
-                        'created_at'     => date('Y-m-d H:i:s'),
-                        'updated_at'     => date('Y-m-d H:i:s')
+                        'sesion_id'   => $sesion->id,
+                        'consecutivo' => $maxConsecutivo + 1,
+                        'estado'      => 'Cerrada',
+                        'closed_at'   => date('Y-m-d H:i:s'),
                     ]);
                 } else {
                     $unidadId = $unidad->id;
@@ -1699,9 +1763,18 @@ class PackingController extends BaseController
         $fecha     = $body['fecha'] ?? $body['fecha_movimiento'] ?? null;
         $empresaId = $this->getEffectiveEmpresaId($user, $r);
 
+        // Modo exacto (2026-08-14): si la pantalla de Certificación manda los
+        // orden_ids concretos que el usuario tiene filtrados/visibles, se certifican
+        // SOLO esos — nunca "todo lo pendiente de esta sucursal_entrega" a ciegas.
+        // Sin esto, un pedido suelto de una separación anterior (misma sucursal_entrega,
+        // pero de otra planilla/fecha, que el usuario ni siquiera está viendo en
+        // pantalla) se certificaba y aparecía mezclado en la remisión (caso real:
+        // pedido 17338 mezclado en la remisión de Planilla 671 / Olivia Amsterdam).
+        $ordenIdsExactos = array_values(array_filter(array_map('intval', (array)($body['orden_ids'] ?? []))));
+
         if (!$sucursal) return $this->badRequest($res, 'Falta sucursal_entrega');
 
-        return Capsule::transaction(function () use ($user, $empresaId, $sucursal, $tipoEmp, $fecha, $res) {
+        return Capsule::transaction(function () use ($user, $empresaId, $sucursal, $tipoEmp, $fecha, $ordenIdsExactos, $res) {
             // Obtener o crear sesión
             $sesion = PackingSesion::firstOrCreate(
                 [
@@ -1716,67 +1789,20 @@ class PackingController extends BaseController
                 ]
             );
 
-            // Obtener productos pendientes filtrados por fecha si viene especificada
-            $pickeados = $this->_getProductosPickados($empresaId, $user->sucursal_id, $sucursal, $fecha);
-            $empacados = $this->_getProductosEmpacados($sesion->id);
-
-            $pendientes = [];
-            foreach ($pickeados as $pid => $pick) {
-                $empQty = $empacados[$pid] ?? 0;
-                $pend = round((float)$pick->total_pickeado - $empQty, 3);
-                if ($pend > 0.001) {
-                    $pendientes[] = [
-                        'producto_id' => $pid,
-                        'cantidad'    => $pend,
-                        'upc'         => $pick->unidades_caja ?? 1
-                    ];
-                }
-            }
-
-            if (!empty($pendientes)) {
-                // Si hay unidad abierta, usamos esa o creamos una nueva
-                $unidad = PackingUnidad::where('sesion_id', $sesion->id)->where('estado', 'Abierta')->first();
-                if (!$unidad) {
-                    $consecutivo = PackingUnidad::where('sesion_id', $sesion->id)->max('consecutivo') ?? 0;
-                    $unidad = PackingUnidad::create([
-                        'sesion_id'   => $sesion->id,
-                        'consecutivo' => $consecutivo + 1,
-                        'estado'      => 'Abierta',
-                    ]);
-                }
-
-                $totalAgregado = 0;
-                foreach ($pendientes as $p) {
-                    $cant  = $p['cantidad'];
-                    $upc   = $p['upc'];
-                    $cajas = $upc > 1 ? floor($cant / $upc) : 0;
-                    $saldo = $upc > 1 ? round($cant - ($cajas * $upc), 3) : 0;
-                    if ($upc <= 1) { $cajas = 0; $saldo = 0; }
-
-                    [$lote, $fechaVenc, $separadorId, $detalleId] = $this->_resolveFromPicking(
-                        $p['producto_id'], $sucursal, $empresaId, $user->sucursal_id, $fecha
-                    );
-
-                    PackingItem::create([
-                        'unidad_id'          => $unidad->id,
-                        'picking_detalle_id' => $detalleId,
-                        'producto_id'        => $p['producto_id'],
-                        'lote'               => $lote,
-                        'fecha_vencimiento'  => $fechaVenc,
-                        'separador_id'       => $separadorId,
-                        'cantidad'           => $cant,
-                        'cantidad_cajas'     => $cajas,
-                        'saldo'              => $saldo,
-                    ]);
-                    $totalAgregado += $cant;
-                }
-
-                // Cerrar unidad
-                $unidad->estado = 'Cerrada';
-                $unidad->total_unidades = $totalAgregado;
-                $unidad->closed_at = date('Y-m-d H:i:s');
-                $unidad->save();
-            }
+            // Blindaje 2026-08-14: este bloque agrupaba lo pendiente POR PRODUCTO,
+            // sumando cantidad_pickeada de TODAS las líneas/pedidos del cliente que
+            // compartieran ese producto, y pegaba el total agrupado a UNA sola línea
+            // representativa (_resolveFromPicking, la de vencimiento más próximo) vía
+            // un solo packing_item. Si dos pedidos distintos del mismo cliente tenían
+            // el mismo producto pendiente (caso real: Olivia Amsterdam, Flor de Jamaica
+            // X 200GR, pedidos 17347/17349 — 200 und cada uno), el packing_item creado
+            // para la línea representativa quedaba con el POOL COMPLETO (400) mientras
+            // esa línea individual solo tenía 200 pickeados — la remisión de sesión
+            // terminaba mostrando el doble de lo realmente separado para esa línea.
+            // La reconciliación línea-por-línea de más abajo (antes de certificar)
+            // cubre exactamente este mismo universo de órdenes ($idsAll) creando un
+            // packing_item por CADA línea individual con su propio faltante real, sin
+            // agrupar por producto — sustituye este bloque sin dejar huecos.
 
             // Finalizar sesión y certificar
             $openUnidad = PackingUnidad::where('sesion_id', $sesion->id)->where('estado', 'Abierta')->first();
@@ -1809,7 +1835,11 @@ class PackingController extends BaseController
                       ->orWhereDate('fecha_movimiento', date('Y-m-d'));
                 });
 
-            if ($fecha !== null && $fecha !== 'all') {
+            // Modo exacto: si vinieron orden_ids concretos, restringir a esos —
+            // ignora el filtro de fecha (ya no aplica, el alcance lo define la lista).
+            if (!empty($ordenIdsExactos)) {
+                $ordenesQuery->whereIn('id', $ordenIdsExactos);
+            } elseif ($fecha !== null && $fecha !== 'all') {
                 $ordenesQuery->whereDate('fecha_movimiento', $fecha);
             }
 
@@ -1825,6 +1855,68 @@ class PackingController extends BaseController
                     ->pluck('id');
 
                 if ($detallesIds->isNotEmpty()) {
+                    // Blindaje 2026-08-13: el empaque de arriba agrega pendientes POR
+                    // PRODUCTO (sumado entre varias órdenes/líneas) y ata el packing_item
+                    // resultante a UNA sola línea representativa (_resolveFromPicking) —
+                    // si el mismo producto tiene pendiente repartido en varias líneas
+                    // individuales, algunas quedan sin su propio packing_item aunque el
+                    // total del producto ya esté cubierto. El update de abajo certifica
+                    // TODAS las líneas por igual, así que sin este chequeo esas líneas
+                    // quedan certificadas pero invisibles en la remisión de sesión
+                    // (getRemision() solo lee packing_items). Mismo patrón que finalizarSesion().
+                    $detallesFull = Capsule::table('picking_detalles')
+                        ->whereIn('id', $detallesIds)
+                        ->where('cantidad_pickeada', '>', 0)
+                        ->get();
+
+                    if ($detallesFull->isNotEmpty()) {
+                        $empacadoPorLinea = Capsule::table('packing_items')
+                            ->whereIn('picking_detalle_id', $detallesFull->pluck('id'))
+                            ->selectRaw('picking_detalle_id, SUM(cantidad) as total')
+                            ->groupBy('picking_detalle_id')
+                            ->pluck('total', 'picking_detalle_id');
+
+                        $faltantesAuto = $detallesFull->filter(function ($det) use ($empacadoPorLinea) {
+                            $emp = (float)($empacadoPorLinea[$det->id] ?? 0);
+                            return round((float)$det->cantidad_pickeada - $emp, 3) > 0.001;
+                        });
+
+                        if ($faltantesAuto->isNotEmpty()) {
+                            $unidadAuto = Capsule::table('packing_unidades')->where('sesion_id', $sesion->id)->first();
+                            if ($unidadAuto) {
+                                $unidadAutoId = $unidadAuto->id;
+                            } else {
+                                $maxConsecutivoAuto = (int)(Capsule::table('packing_unidades')
+                                    ->where('sesion_id', $sesion->id)->max('consecutivo') ?? 0);
+                                $unidadAutoId = Capsule::table('packing_unidades')->insertGetId([
+                                    'sesion_id'   => $sesion->id,
+                                    'consecutivo' => $maxConsecutivoAuto + 1,
+                                    'estado'      => 'Cerrada',
+                                    'closed_at'   => $now,
+                                ]);
+                            }
+
+                            foreach ($faltantesAuto as $det) {
+                                $emp = (float)($empacadoPorLinea[$det->id] ?? 0);
+                                $falt = (float)$det->cantidad_pickeada - $emp;
+                                Capsule::table('packing_items')->insert([
+                                    'unidad_id'          => $unidadAutoId,
+                                    'picking_detalle_id' => $det->id,
+                                    'producto_id'        => $det->producto_id,
+                                    'lote'               => $det->lote,
+                                    'fecha_vencimiento'  => $det->fecha_vencimiento,
+                                    'separador_id'       => $det->auxiliar_id ?? $user->id,
+                                    'cantidad'           => $falt,
+                                    'created_at'         => $now,
+                                ]);
+                            }
+
+                            Capsule::table('packing_unidades')
+                                ->where('id', $unidadAutoId)
+                                ->update(['total_unidades' => Capsule::table('packing_items')->where('unidad_id', $unidadAutoId)->sum('cantidad')]);
+                        }
+                    }
+
                     Capsule::table('picking_detalles')
                         ->whereIn('id', $detallesIds)
                         ->update([

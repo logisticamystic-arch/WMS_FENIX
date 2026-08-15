@@ -21,6 +21,17 @@
   },
   "nodes": [
     {
+      "label": "backfill_cert_anomalo_precio.php",
+      "file_type": "code",
+      "source_file": "scripts/backfill_cert_anomalo_precio.php",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "scripts_backfill_cert_anomalo_precio",
+      "community": 120,
+      "community_name": "backfill_cert_anomalo_precio.php",
+      "norm_label": "backfill_cert_anomalo_precio.php"
+    },
+    {
       "label": "backfill_cantidad_certificada.php",
       "file_type": "code",
       "source_file": "scripts/backfill_cantidad_certificada.php",
@@ -93830,5 +93841,5 @@
       "source_file": "docs/superpowers/specs/2026-05-30-packing-certificacion-design.md"
     }
   ],
-  "built_at_commit": "aea9818c366ba81a8694387d625611f5b29a1f29"
+  "built_at_commit": "21e7ba9b5a59d9c8ef71e67a946ed6f6242f234c"
 }

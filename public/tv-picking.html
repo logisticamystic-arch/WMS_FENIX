@@ -169,6 +169,12 @@ table.tv tbody tr:hover td{background:#f8fafc;}
 select.tv-select{background:#ffffff;border:1px solid #cbd5e1;color:var(--text);font-size:7.5px;padding:2px 6px;border-radius:5px;outline:none;cursor:pointer;}
 select.tv-select option{background:#ffffff;color:var(--text);}
 
+/* PODIUM SWITCHER */
+.podium-switcher{display:flex;gap:3px;margin-bottom:3px;align-items:center;}
+.pod-switch-btn{background:#ffffff;border:1px solid #cbd5e1;color:#475569;font-size:6.5px;font-weight:700;padding:2px 7px;border-radius:99px;cursor:pointer;transition:all .15s;}
+.pod-switch-btn:hover{background:#f1f5f9;color:#0f172a;}
+.pod-switch-btn.active{background:#2563eb;color:#ffffff;border-color:#2563eb;box-shadow:0 1px 3px rgba(37,99,235,.3);}
+
 /* FILTRO FECHA */
 .tv-fecha-filter{display:flex;align-items:center;gap:5px;flex-shrink:0;}
 .tv-fecha-filter label{font-size:6.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.75);}
@@ -366,14 +372,47 @@ input.tv-fecha-input::-webkit-calendar-picker-indicator{filter:none;width:9px;cu
       </div>
       <div class="pick-main">
         <div class="pick-left">
+          <div class="podium-switcher" style="display:flex;gap:4px;margin-bottom:4px;align-items:center;justify-content:space-between;background:#f8fafc;padding:4px 8px;border-radius:7px;border:1px solid var(--border);">
+            <span style="font-size:7px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;"><i class="fa-solid fa-sliders"></i> Ranking Auxiliares:</span>
+            <div style="display:flex;gap:3px;">
+              <button class="pod-switch-btn active" id="psw-refs" onclick="setPodiumMetric('refs')">🏆 Referencias</button>
+              <button class="pod-switch-btn" id="psw-units" onclick="setPodiumMetric('units')">📦 Unidades</button>
+              <button class="pod-switch-btn" id="psw-tiempo" onclick="setPodiumMetric('tiempo')">⏱️ Tiempo</button>
+              <button class="pod-switch-btn" id="psw-agotados" onclick="setPodiumMetric('agotados')">⚠️ Agotados</button>
+            </div>
+          </div>
           <div class="pick-podiums">
             <div class="tv-card podium-card">
-              <div class="podium-hdr" style="color:var(--blue);"><i class="fa-solid fa-trophy"></i> Por Referencias</div>
+              <div class="podium-hdr" style="color:var(--blue);display:flex;flex-direction:column;gap:3px;padding:6px 9px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+                  <span><i class="fa-solid fa-trophy"></i> POR REFERENCIAS</span>
+                  <span id="pod-ref-summary" style="font-size:7.5px;font-weight:800;color:var(--text);">0 / 0 Refs</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:5px;width:100%;">
+                  <div class="prog-bar" style="flex:1;height:6px;background:#e2e8f0;border-radius:4px;overflow:hidden;"><div class="prog-fill" id="pod-ref-bar" style="width:0%;background:var(--blue);height:100%;"></div></div>
+                  <span id="pod-ref-pct" style="font-size:7px;font-weight:900;color:var(--blue);">0%</span>
+                </div>
+                <div id="pod-ref-pending" style="font-size:6.5px;color:var(--orange);font-weight:700;display:flex;align-items:center;gap:3px;">
+                  <i class="fa-solid fa-clock"></i> Faltan 0 refs por separar
+                </div>
+              </div>
               <div class="podium-stage" id="podium-refs"><div class="no-data"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
               <div class="pod-more" id="pod-more-refs"></div>
             </div>
             <div class="tv-card podium-card">
-              <div class="podium-hdr" style="color:var(--purple);"><i class="fa-solid fa-boxes-stacked"></i> Por Unidades</div>
+              <div class="podium-hdr" style="color:var(--purple);display:flex;flex-direction:column;gap:3px;padding:6px 9px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+                  <span><i class="fa-solid fa-boxes-stacked"></i> POR UNIDADES</span>
+                  <span id="pod-unit-summary" style="font-size:7.5px;font-weight:800;color:var(--text);">0 / 0 Unds</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:5px;width:100%;">
+                  <div class="prog-bar" style="flex:1;height:6px;background:#e2e8f0;border-radius:4px;overflow:hidden;"><div class="prog-fill" id="pod-unit-bar" style="width:0%;background:var(--purple);height:100%;"></div></div>
+                  <span id="pod-unit-pct" style="font-size:7px;font-weight:900;color:var(--purple);">0%</span>
+                </div>
+                <div id="pod-unit-pending" style="font-size:6.5px;color:var(--orange);font-weight:700;display:flex;align-items:center;gap:3px;">
+                  <i class="fa-solid fa-boxes-packing"></i> Faltan 0 unds por separar
+                </div>
+              </div>
               <div class="podium-stage" id="podium-units"><div class="no-data"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
               <div class="pod-more" id="pod-more-units"></div>
             </div>
@@ -998,6 +1037,105 @@ function renderAmbiente(stats){
   }).filter(Boolean).join('');
 }
 
+let _currentRankingData = null;
+let _selectedPodiumMetric = 'refs';
+
+function setPodiumMetric(metricKey){
+  _selectedPodiumMetric = metricKey;
+  document.querySelectorAll('.pod-switch-btn').forEach(btn => btn.classList.remove('active'));
+  const activeBtn = document.getElementById('psw-' + metricKey);
+  if(activeBtn) activeBtn.classList.add('active');
+  if(_currentRankingData){
+    renderRankingWithMetric(_currentRankingData, metricKey);
+  }
+}
+
+function renderRankingWithMetric(data, metricKey){
+  let refsData = data.ranking_refs || [];
+  let unitsData = data.ranking_units || [];
+  let mLabelRefs = 'refs';
+  let mKeyRefs = 'referencias';
+  let mLabelUnits = 'und';
+  let mKeyUnits = 'unidades';
+
+  if(metricKey === 'tiempo'){
+    refsData = data.ranking_tiempo || data.ranking_refs || [];
+    unitsData = data.ranking_tiempo || data.ranking_units || [];
+    mLabelRefs = 'min. prom';
+    mKeyRefs = 'tiempo_promedio_min';
+    mLabelUnits = 'min. prom';
+    mKeyUnits = 'tiempo_promedio_min';
+  } else if(metricKey === 'agotados'){
+    refsData = data.ranking_agotados || data.ranking_refs || [];
+    unitsData = data.ranking_agotados || data.ranking_units || [];
+    mLabelRefs = 'agotados';
+    mKeyRefs = 'agotados';
+    mLabelUnits = 'und. ag';
+    mKeyUnits = 'unidades_agotadas';
+  } else if(metricKey === 'units'){
+    refsData = data.ranking_units || [];
+    unitsData = data.ranking_refs || [];
+  }
+
+  renderPodium('podium-refs','pod-more-refs', refsData, mKeyRefs, mLabelRefs);
+  renderPodium('podium-units','pod-more-units', unitsData, mKeyUnits, mLabelUnits);
+}
+
+function renderProgresoTotals(totales){
+  if(!totales) return;
+
+  // Referencias (SKUs)
+  const refSol  = totales.refs_solicitadas || 0;
+  const refComp = totales.refs_completadas || 0;
+  const refPend = totales.refs_pendientes !== undefined ? totales.refs_pendientes : Math.max(0, refSol - refComp);
+  const refPct  = totales.refs_pct !== undefined ? totales.refs_pct : (refSol > 0 ? Math.round(refComp / refSol * 100) : 0);
+
+  setText('pod-ref-summary', `${fmt(refComp)} de ${fmt(refSol)} SKUs`);
+  const refBar = document.getElementById('pod-ref-bar');
+  if(refBar) refBar.style.width = Math.min(100, refPct) + '%';
+  setText('pod-ref-pct', refPct + '%');
+
+  const refPendEl = document.getElementById('pod-ref-pending');
+  if(refPendEl){
+    if(refPend > 0){
+      refPendEl.innerHTML = `<i class="fa-solid fa-clock" style="color:var(--orange);"></i> Faltan <strong>${fmt(refPend)} SKUs</strong> por separar (${(100 - refPct).toFixed(1)}% pendiente)`;
+      refPendEl.style.color = 'var(--orange)';
+    } else {
+      refPendEl.innerHTML = `<i class="fa-solid fa-circle-check" style="color:var(--green);"></i> 100% SKUs completados`;
+      refPendEl.style.color = 'var(--green)';
+    }
+  }
+
+  // Unidades
+  const undSol  = totales.unidades_solicitadas || 0;
+  const undComp = totales.unidades_completadas || 0;
+  const undPend = totales.unidades_pendientes !== undefined ? totales.unidades_pendientes : Math.max(0, undSol - undComp);
+  const undPct  = totales.unidades_pct !== undefined ? totales.unidades_pct : (undSol > 0 ? Math.round(undComp / undSol * 100) : 0);
+
+  setText('pod-unit-summary', `${fmtShort(undComp)} de ${fmtShort(undSol)} Unds`);
+  const unitBar = document.getElementById('pod-unit-bar');
+  if(unitBar) unitBar.style.width = Math.min(100, undPct) + '%';
+  setText('pod-unit-pct', undPct + '%');
+
+  const unitPendEl = document.getElementById('pod-unit-pending');
+  if(unitPendEl){
+    if(undPend > 0){
+      unitPendEl.innerHTML = `<i class="fa-solid fa-boxes-packing" style="color:var(--orange);"></i> Faltan <strong>${fmtShort(undPend)} unds</strong> por separar`;
+      unitPendEl.style.color = 'var(--orange)';
+    } else {
+      unitPendEl.innerHTML = `<i class="fa-solid fa-circle-check" style="color:var(--green);"></i> 100% Unidades completadas`;
+      unitPendEl.style.color = 'var(--green)';
+    }
+  }
+}
+
+function fmtShort(num){
+  num = Number(num) || 0;
+  if(num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if(num >= 1000) return (num / 1000).toFixed(1) + 'K';
+  return fmt(num);
+}
+
 function renderPodium(stageId,moreId,data,metricKey,metricLabel){
   const stageEl=document.getElementById(stageId);
   const moreEl=document.getElementById(moreId);
@@ -1009,9 +1147,7 @@ function renderPodium(stageId,moreId,data,metricKey,metricLabel){
   }
   const top3=data.slice(0,3);
   const rest=data.slice(3);
-  // Visual order: 2nd | 1st | 3rd
   const order=top3.length>=3?[top3[1],top3[0],top3[2]]:top3.length===2?[top3[1],top3[0]]:[top3[0]];
-  const rankOf={[0]:2,[1]:1,[2]:3};// maps visual position to rank (for 3-item case)
   const barCls=['pod-bar-2','pod-bar-1','pod-bar-3'];
   const medals={1:'🥇',2:'🥈',3:'🥉'};
   const countColors={1:'var(--gold)',2:'var(--silver)',3:'var(--bronze)'};
@@ -1022,11 +1158,19 @@ function renderPodium(stageId,moreId,data,metricKey,metricLabel){
     const barClass=top3.length>=3?barCls[vi]:rank===1?'pod-bar-1':'pod-bar-2';
     const val=Number(p[metricKey])||0;
     const col=avatarColor(p.nombre||'');
+
+    const subBadges = `<div style="display:flex;gap:2px;font-size:5.5px;margin-top:1px;flex-wrap:wrap;justify-content:center;max-width:72px;">
+      <span style="background:rgba(59,130,246,0.1);color:var(--blue);padding:0 3px;border-radius:3px;white-space:nowrap;" title="Referencias">${p.referencias||0}r</span>
+      <span style="background:rgba(147,51,234,0.1);color:var(--purple);padding:0 3px;border-radius:3px;white-space:nowrap;" title="Unidades">${fmtShort(p.unidades||0)}u</span>
+      ${p.agotados ? `<span style="background:rgba(239,68,68,0.1);color:var(--red);padding:0 3px;border-radius:3px;white-space:nowrap;" title="Agotados">⚠️${p.agotados}</span>` : ''}
+    </div>`;
+
     return`<div class="pod-slot">
       <div class="pod-avatar" style="background:${col};">${initials(p.nombre)}</div>
       <div class="pod-name">${esc(p.nombre||'—')}</div>
-      <div class="pod-count" style="color:${countColors[rank]||'var(--text)'};">${fmt(val)}</div>
+      <div class="pod-count" style="color:${countColors[rank]||'var(--text)'};">${metricKey==='unidades'?fmtShort(val):fmt(val)}</div>
       <div class="pod-metric">${metricLabel}</div>
+      ${subBadges}
       <div class="${barClass}">${medals[rank]||''}</div>
     </div>`;
   }).join('');
@@ -1035,7 +1179,12 @@ function renderPodium(stageId,moreId,data,metricKey,metricLabel){
     moreEl.innerHTML=rest.map((p,i)=>{
       const rank=i+4;
       const val=Number(p[metricKey])||0;
-      return`<div class="pod-more-item"><span class="pod-rank-num">${rank}.</span><span class="pod-more-name">${esc(p.nombre||'—')}</span><span class="pod-more-val">${fmt(val)} ${metricLabel}</span></div>`;
+      return`<div class="pod-more-item">
+        <span class="pod-rank-num">${rank}.</span>
+        <span class="pod-more-name">${esc(p.nombre||'—')}</span>
+        <span class="pod-more-val">${metricKey==='unidades'?fmtShort(val):fmt(val)} ${metricLabel}</span>
+        <span style="font-size:5.5px;color:var(--text2);margin-left:auto;">${p.referencias||0}r · ${fmtShort(p.unidades||0)}u</span>
+      </div>`;
     }).join('')||'<div style="padding:4px 0;font-size:6.5px;color:var(--text2);text-align:center;">—</div>';
   }
 }
@@ -1044,9 +1193,10 @@ async function loadPickingRanking(){
   try{
     const fecha=getFechaForApi();
     const data=await api('/tv/picking-ranking?fecha='+fecha);
-    renderPodium('podium-refs','pod-more-refs',data.ranking_refs||[],'referencias','refs');
-    renderPodium('podium-units','pod-more-units',data.ranking_units||[],'unidades','und');
-    setText('pk-completadas',data.completadas_hoy||'—');
+    _currentRankingData = data;
+    renderProgresoTotals(data.totales_progreso);
+    renderRankingWithMetric(data, _selectedPodiumMetric);
+    setText('pk-completadas', data.completadas_hoy||'—');
   }catch{
     document.getElementById('podium-refs').innerHTML='<div class="no-data"><i class="fa-solid fa-trophy"></i> Sin datos hoy</div>';
     document.getElementById('podium-units').innerHTML='<div class="no-data"><i class="fa-solid fa-boxes-stacked"></i> Sin datos hoy</div>';

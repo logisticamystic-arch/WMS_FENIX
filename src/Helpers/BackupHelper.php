@@ -273,13 +273,14 @@ class BackupHelper
 
         // -F c = custom format (comprimido nativamente por pg_dump, restaurable con pg_restore)
         if (PHP_OS_FAMILY === 'Windows') {
-            // En Windows: usar cmd /c con PGPASSWORD como variable de entorno en el mismo contexto
-            // Rodear el bin con comillas dobles para manejar espacios en el path
-            $quotedBin = '"' . str_replace('/', '\\', $bin) . '"';
+            // putenv() en vez de "cmd /c \"set PGPASSWORD=... && ...\"": PHP ya envuelve
+            // exec() en su propio cmd /c en Windows, así que anidar OTRO "cmd /c "..."" con
+            // escapeshellarg (que también usa comillas dobles) corrompía la contraseña antes
+            // de llegar a pg_dump — causa raíz confirmada del fallo de autenticación silencioso.
+            putenv('PGPASSWORD=' . $cfg['pass']);
             $cmd = \sprintf(
-                'cmd /c "set PGPASSWORD=%s && %s -h %s -p %s -U %s -F c -f %s %s" 2>&1',
-                str_replace('"', '""', $cfg['pass']),
-                $quotedBin,
+                '%s -h %s -p %s -U %s -F c -f %s %s 2>&1',
+                escapeshellarg($bin),
                 escapeshellarg($cfg['host']),
                 escapeshellarg($cfg['port']),
                 escapeshellarg($cfg['user']),
@@ -310,6 +311,9 @@ class BackupHelper
 
         if (isset($pgpassFile)) {
             @unlink($pgpassFile);
+        }
+        if (PHP_OS_FAMILY === 'Windows') {
+            putenv('PGPASSWORD'); // no dejar la contraseña en el entorno del proceso
         }
 
         if ($code !== 0) {

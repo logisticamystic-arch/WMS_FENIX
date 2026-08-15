@@ -155,6 +155,11 @@ WMS_MODULES.despacho = {
       const sinSesion     = pendientes.filter(p =>
         !activas.find(s => s.sucursal_entrega === p.sucursal_entrega)
       );
+      // Guarda los orden_ids EXACTOS que están visibles en pantalla ahora mismo
+      // (respetando el filtro de fecha activo), para que Auto-Certificar certifique
+      // solo esto y no vuelva a arrastrar pedidos sueltos de separaciones anteriores.
+      this._certOrdenIdsPorSucursal = {};
+      sinSesion.forEach(p => { this._certOrdenIdsPorSucursal[p.sucursal_entrega] = p.ordenes_ids || []; });
       const completadasOk = completadas.filter(s => !sucHuerfanas.has(s.sucursal_entrega));
       const certDirectMap = {};
       certDirect.forEach(c => { certDirectMap[c.sucursal_entrega] = c; });
@@ -1092,24 +1097,28 @@ WMS_MODULES.despacho = {
   },
 
   async autoCertificar(sucursal) {
+    // Solo los pedidos que están AHORA MISMO visibles/filtrados en pantalla para
+    // esta sucursal — no una búsqueda amplia en el servidor que podría arrastrar
+    // pedidos sueltos de separaciones anteriores que el usuario ni ve en pantalla.
+    const ordenIds = this._certOrdenIdsPorSucursal?.[sucursal] || [];
+    if (!ordenIds.length) {
+      WMS.toast('warning', 'No hay pedidos visibles en pantalla para esta sucursal. Recargue la lista.');
+      return;
+    }
+
     const ok = await Swal.fire({
       title: '¿Auto-Certificar a una sola canasta?',
-      html: `Se creará una sesión, se empacarán todos los productos pendientes de <b>${WMS.esc(sucursal)}</b> en una sola canasta, y se finalizará automáticamente.`,
+      html: `Se empacarán y certificarán exactamente los <b>${ordenIds.length} pedido(s)</b> de <b>${WMS.esc(sucursal)}</b> que están visibles en esta pantalla (con el filtro de fecha actual) en una sola canasta.`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonText: 'Sí, Auto-Certificar',
       cancelButtonText: 'Cancelar'
     });
     if (!ok.isConfirmed) return;
-    
+
     WMS.spinner();
     try {
-      // 'all' cuando no hay filtro de fecha activo (vista "Todo"): antes esto
-      // caía en WMS.getToday(), y si los pendientes eran de otro día el backend
-      // filtraba por hoy, no encontraba nada que certificar, y aun así devolvía
-      // éxito — la sesión quedaba "Completada" sin certificar ninguna orden.
-      const fecha = this._certFechaInicio || 'all';
-      const r = await API.post('/packing/autopack', { sucursal_entrega: sucursal, tipo_empaque: 'canasta', fecha: fecha });
+      const r = await API.post('/packing/autopack', { sucursal_entrega: sucursal, tipo_empaque: 'canasta', orden_ids: ordenIds });
       if (r.error) { WMS.toast('error', r.message); return; }
       if (r.data?.certificadas === 0) {
         WMS.toast('warning', 'No se encontraron pedidos pendientes para certificar en el rango de fechas seleccionado.');
@@ -1133,9 +1142,11 @@ WMS_MODULES.despacho = {
       return WMS.toast('info', 'No hay sucursales pendientes de certificar en la vista actual.');
     }
 
+    const totalPedidos = uniqueSucs.reduce((acc, s) => acc + (this._certOrdenIdsPorSucursal?.[s]?.length || 0), 0);
+
     const res = await Swal.fire({
       title: '⚡ Auto-Certificar Todos los Pedidos',
-      html: `¿Desea auto-certificar masivamente las <b>${uniqueSucs.length} sucursal(es)</b> pendientes?<br><small style="color:#64748b;">Cada pedido se empacará y certificará automáticamente sin bloquearse.</small>`,
+      html: `¿Desea auto-certificar exactamente los <b>${totalPedidos} pedido(s)</b> visibles en pantalla, de las <b>${uniqueSucs.length} sucursal(es)</b> listadas (respetando el filtro de fecha actual)?<br><small style="color:#64748b;">No se tocará ningún pedido suelto de otras fechas que no esté en esta lista.</small>`,
       icon: 'question',
       showCancelButton: true,
       confirmButtonText: 'Sí, Auto-Certificar Todo',
@@ -1148,10 +1159,11 @@ WMS_MODULES.despacho = {
     let okCount = 0;
     let errCount = 0;
     try {
-      const fecha = this._certFechaInicio || 'all';
       for (const suc of uniqueSucs) {
         try {
-          const r = await API.post('/packing/autopack', { sucursal_entrega: suc, tipo_empaque: 'canasta', fecha: fecha });
+          const ordenIds = this._certOrdenIdsPorSucursal?.[suc] || [];
+          if (!ordenIds.length) { errCount++; continue; }
+          const r = await API.post('/packing/autopack', { sucursal_entrega: suc, tipo_empaque: 'canasta', orden_ids: ordenIds });
           if (r && !r.error) okCount++;
           else errCount++;
         } catch (e) {

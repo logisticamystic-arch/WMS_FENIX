@@ -609,6 +609,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/v2/inventario/asignaciones/{id}/iniciar',   [\App\Controllers\InventarioV2Controller::class, 'iniciarConteo']);
     $group->post('/v2/inventario/asignaciones/{id}/linea',     [\App\Controllers\InventarioV2Controller::class, 'registrarLinea']);
     $group->post('/v2/inventario/asignaciones/{id}/finalizar', [\App\Controllers\InventarioV2Controller::class, 'finalizarAsignacion']);
+    $group->post('/v2/inventario/asignaciones/{id}/reabrir',   [\App\Controllers\InventarioV2Controller::class, 'reabrirAsignacion']);
     $group->post('/v2/inventario/asignaciones/{id}/conteo-referencia', [\App\Controllers\InventarioV2Controller::class, 'conteoReferenciaCompleto']);
 
     // ── Edición / eliminación de líneas (admin) ─────────────────────────────
@@ -813,6 +814,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/reportes/kardex', [\App\Controllers\ReportesController::class, 'kardex']);
     $group->get('/reportes/stock', [\App\Controllers\ReportesController::class, 'stockActual']);
     $group->get('/reportes/recepciones', [\App\Controllers\ReportesController::class, 'recepciones']);
+    $group->get('/reportes/recibo-cdp', [\App\Controllers\ReportesController::class, 'reciboCdp']);
     $group->get('/reportes/despachos', [\App\Controllers\ReportesController::class, 'despachos']);
     $group->get('/reportes/devoluciones', [\App\Controllers\ReportesController::class, 'devoluciones']);
     $group->get('/reportes/picking', [\App\Controllers\ReportesController::class, 'picking']);
@@ -826,6 +828,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/reportes/por-ubicacion', [\App\Controllers\ReportesController::class, 'stockPorUbicacion']);
 
     // ── Reportes de Contingencia (imprimibles sin internet) ───────────────────
+    $group->get('/reportes/conciliacion-trazabilidad', [\App\Controllers\ReportesController::class, 'conciliacionTrazabilidad']);
     $group->get('/reportes/contingencia/separacion', [\App\Controllers\ReportesController::class, 'contingenciaSeparacion']);
     $group->get('/reportes/contingencia/certificacion', [\App\Controllers\ReportesController::class, 'contingenciaCertificacion']);
     $group->get('/reportes/dashboard-gerencial', [\App\Controllers\ReportesController::class, 'dashboardGerencial']);

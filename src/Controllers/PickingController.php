@@ -1516,6 +1516,19 @@ class PickingController extends BaseController
         $cantidadTomada = (float)($data['cantidad_tomada'] ?? 0);
         if ($cantidadTomada <= 0) return $this->error($res, 'Cantidad inválida');
 
+        // Guardrail: mismo tope que confirmarConsolidado() — el campo "cajas" nunca
+        // puede superar lo solicitado, el excedente real debe ir en saldos_tomados.
+        // Este endpoint (confirmar-linea, usado por doPKScan) enviaba antes solo un
+        // total ya mezclado y el frontend ofrecía "confirmar excedente" sin límite.
+        if (isset($data['cajas_tomadas'])) {
+            $cajasTomadasLinea = (float)$data['cajas_tomadas'];
+            if ($cajasTomadasLinea > (float)$linea->cantidad_solicitada + 0.0001) {
+                return $this->error($res,
+                    "cajas_tomadas ({$cajasTomadasLinea}) no puede exceder lo solicitado ({$linea->cantidad_solicitada} cajas). El excedente debe ir en saldos_tomados.",
+                    422);
+            }
+        }
+
         // Validar que la línea tenga ubicación asignada (FEFO debe haberse generado antes)
         if (empty($linea->ubicacion_id)) {
             return $this->error($res,
@@ -2296,6 +2309,10 @@ class PickingController extends BaseController
         $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))->find($a['id']);
         if (!$orden) return $this->notFound($res);
 
+        // Blindaje 2026-08-11: agregar una referencia a un pedido solo puede hacerlo
+        // Supervisor o Admin (confirmado explícitamente por el negocio).
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
         if (in_array($orden->estado, ['Completada', 'Completado', 'Anulado'])) {
             return $this->error($res, "No se pueden agregar líneas a una orden en estado {$orden->estado}");
         }
@@ -3002,6 +3019,8 @@ class PickingController extends BaseController
             'errores'                  => [],
             'productos_pendientes'     => [],  // EANs no encontrados → staging
             'productos_no_encontrados' => 0,
+            'lineas_invalidas'         => 0,   // referencia vacía o cantidad <= 0 — antes se perdían en silencio
+            'detalle_lineas_invalidas' => [],
             // Blindaje 2026-08-08: pedidos completos donde NINGUNA línea encontró producto —
             // antes desaparecían en silencio (solo quedaba rastro en la tabla técnica de
             // staging). Se listan aparte para que la UI los muestre de forma prominente.
@@ -3031,13 +3050,14 @@ class PickingController extends BaseController
         // Si ya existe una planilla del cliente para HOY se reutiliza (importaciones parciales).
         $grupos         = [];   // [sucursal => [nfRef => [rows...]]]
         $sucursalesOmit = [];
+        $lineasEnBlanco = 0;
         foreach ($dataLines as $line) {
             $cols = str_getcsv($line, $sep);
             $row  = [];
             foreach ($colMap as $field => $idx) {
                 $row[$field] = isset($cols[$idx]) ? trim($cols[$idx]) : '';
             }
-            if (empty(array_filter($row))) continue;
+            if (empty(array_filter($row))) { $lineasEnBlanco++; continue; }
             $groupKey = trim($row['sucursal_entrega'] ?? '') ?: '(Sin identificar)';
             $nfRef    = trim($row['numero_factura'] ?? '') ?: '(Sin pedido)';
             if (!empty($clientesValidos) && !isset($clientesValidos[strtolower($groupKey)])) {
@@ -3194,7 +3214,17 @@ class PickingController extends BaseController
                     $cantidad   = max(0, round($cleanNumber($fila['cantidad'] ?? '0'), 2));
                     $descripcion= trim($fila['descripcion'] ?? '');
 
-                    if ($ean === '' || $cantidad <= 0) continue;
+                    if ($ean === '' || $cantidad <= 0) {
+                        $summary['lineas_invalidas']++;
+                        $summary['detalle_lineas_invalidas'][] = [
+                            'numero_factura' => $nfRefClean ?: '(sin número)',
+                            'sucursal'       => $sucursal,
+                            'referencia'     => $ean,
+                            'cantidad'       => $cantidad,
+                            'motivo'         => $ean === '' ? 'Referencia/código vacío' : 'Cantidad inválida (0 o negativa)',
+                        ];
+                        continue;
+                    }
 
                     $prod = $buscarProducto($ean);
                     if (!$prod) {
@@ -3267,6 +3297,7 @@ class PickingController extends BaseController
                             'estado'            => 'Pendiente',
                             'fecha_movimiento'  => date('Y-m-d'),
                             'hora_inicio'       => date('H:i:s'),
+                            'fecha_requerida'   => date('Y-m-d'),
                             'prioridad'         => 5,
                             'auxiliar_id'       => null,
                             // El CSV rara vez trae observaciones (es fila-por-línea, no por
@@ -3387,6 +3418,8 @@ class PickingController extends BaseController
             $partes[] = "{$summary['lineas_sin_cambio']} línea(s) duplicadas omitidas";
         if ($summary['productos_no_encontrados'] > 0)
             $partes[] = "{$summary['productos_no_encontrados']} producto(s) sin codificar (guardados en pendientes)";
+        if ($summary['lineas_invalidas'] > 0)
+            $partes[] = "{$summary['lineas_invalidas']} línea(s) con datos inválidos (referencia vacía o cantidad 0)";
         if (!empty($summary['errores']))
             $partes[] = count($summary['errores']) . ' error(es)';
         $msg = 'Importación completada: ' . implode(', ', $partes ?: ['todo duplicado — sin cambios']);
@@ -3410,6 +3443,28 @@ class PickingController extends BaseController
             'archivo' => $porSucursalArch,
             'sistema' => $summary['por_sucursal_sistema'],
         ];
+
+        // ── Reconciliación final: garantiza que TODA línea con datos del archivo
+        // quede explicada en alguna categoría (cargada, duplicada, pendiente por
+        // producto no encontrado, o inválida) — ninguna se pierde en silencio.
+        $lineasConDatos     = $summary['total']; // filas con al menos un campo mapeado (excluye líneas en blanco)
+        $lineasContabilizadas = $summary['total_lineas']
+            + $summary['lineas_sin_cambio']
+            + $summary['productos_no_encontrados']
+            + $summary['lineas_invalidas'];
+        $audit['reconciliacion'] = [
+            'lineas_en_archivo'        => $auditArchivo['lineas_archivo'],
+            'lineas_en_blanco'         => $lineasEnBlanco,
+            'lineas_con_datos'         => $lineasConDatos,
+            'cargadas_nuevas'          => $summary['total_lineas'],
+            'duplicadas_omitidas'      => $summary['lineas_sin_cambio'],
+            'pendientes_sin_producto'  => $summary['productos_no_encontrados'],
+            'invalidas'                => $summary['lineas_invalidas'],
+            'total_contabilizado'      => $lineasContabilizadas,
+            'sin_explicar'             => $lineasConDatos - $lineasContabilizadas,
+            'completa'                 => ($lineasConDatos - $lineasContabilizadas) === 0,
+        ];
+
         unset($summary['clientes_sistema'], $summary['por_sucursal_sistema']);
 
         $response = $res;
@@ -3657,6 +3712,11 @@ class PickingController extends BaseController
         $costoUnitario = isset($body['costo_unitario']) && $body['costo_unitario'] !== ''
             ? (float)$body['costo_unitario'] : null;
 
+        // Blindaje 2026-08-11: esta edición nunca quedaba en auditoría — un cambio de
+        // cantidad_solicitada aquí no dejaba NINGÚN rastro de quién, cuándo, ni de qué
+        // valor a qué valor. Se captura el "antes" para poder registrarlo tras guardar.
+        $cantidadAnterior = (float)$linea->cantidad_solicitada;
+
         $result = null;
         try {
             Capsule::transaction(function () use ($linea, $cantidad, $costoUnitario, $user, $r, &$result) {
@@ -3692,6 +3752,14 @@ class PickingController extends BaseController
         }
 
         $linea->refresh();
+
+        if ($cantidadAnterior != $cantidad) {
+            $this->audit($user, 'picking', 'editar_cantidad_linea', 'picking_detalles', $linea->id,
+                ['cantidad_solicitada' => $cantidadAnterior],
+                ['cantidad_solicitada' => $cantidad],
+                "Cantidad solicitada de la línea #{$linea->id} (orden {$ordenId}) cambiada de {$cantidadAnterior} a {$cantidad}");
+        }
+
         return $this->ok($res, ['linea' => $linea->toArray()], 'Cantidad actualizada');
     }
 
@@ -4352,6 +4420,20 @@ class PickingController extends BaseController
                 409);
         }
 
+        // Guardrail: el campo "cajas" nunca puede superar lo solicitado — cualquier
+        // excedente real que el auxiliar vaya a enviar debe quedar en saldos_tomados
+        // (unidades sueltas), nunca oculto dentro del conteo de cajas. Defensa en
+        // servidor: el input del móvil ya limita esto en el cliente, pero un request
+        // directo al endpoint podía saltárselo.
+        if ($cajasTomadas !== null) {
+            $solicitadoCajasTotal = (float)$detalles->sum('cantidad_solicitada');
+            if ($cajasTomadas > $solicitadoCajasTotal + 0.0001) {
+                return $this->error($res,
+                    "cajas_tomadas ({$cajasTomadas}) no puede exceder lo solicitado ({$solicitadoCajasTotal} cajas). El excedente debe ir en saldos_tomados.",
+                    422);
+            }
+        }
+
         // Todos los detalles de un confirmarConsolidado son del mismo producto → mismo upc/factor.
         $prodFirst = $detalles->first()?->producto;
         $upcGlobal = (isset($prodFirst->factor_udm) && (float)$prodFirst->factor_udm > 0)
@@ -4500,9 +4582,11 @@ class PickingController extends BaseController
                     }
                     $det->save();
 
-                    // Registrar en picking_faltantes SOLO si hay una discrepancia de inventario 
-                    // entre lo físico que el usuario separó y lo que el sistema pudo descontar.
-                    $inventarioFaltanteUnd = max(0, $tomarInventario - $realmenteDescontado);
+                    // Registrar en picking_faltantes SOLO si el cliente sufrió un faltante físico real
+                    // (lo físicamente separado fue menor a lo solicitado por el cliente).
+                    // Antes se comparaba lo físico vs lo descontado del Kardex ($inventarioFaltanteUnd),
+                    // lo que insertaba falsos agotados 'Separada sin inventario' para pedidos 100% cumplidos físicamente.
+                    $faltanteFisicoUnd = max(0, ((float)$det->cantidad_solicitada * $upcConf) - $tomarInventario);
                     
                     // Eliminar registro previo de faltante si existía
                     Capsule::table('picking_faltantes')
@@ -4510,8 +4594,8 @@ class PickingController extends BaseController
                         ->where('producto_id', $det->producto_id)
                         ->delete();
 
-                    if ($inventarioFaltanteUnd > 0) {
-                        $faltanteCajas = $upcConf > 0 ? ($inventarioFaltanteUnd / $upcConf) : $inventarioFaltanteUnd;
+                    if ($faltanteFisicoUnd > 0) {
+                        $faltanteCajas = $upcConf > 0 ? ($faltanteFisicoUnd / $upcConf) : $faltanteFisicoUnd;
                         $ord = OrdenPicking::find($det->orden_picking_id);
                         Capsule::table('picking_faltantes')->insert([
                             'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
@@ -4521,7 +4605,7 @@ class PickingController extends BaseController
                             'planilla_lote'       => $ord->planilla_lote ?? $ord->planilla_numero,
                             'cantidad_solicitada' => $det->cantidad_solicitada,
                             'cantidad_faltante'   => $faltanteCajas,
-                            'causa'               => 'Separada sin inventario',
+                            'causa'               => $novedadNombre ?: 'Agotado — Sin stock físico',
                             'created_at'          => $now,
                             'updated_at'          => $now,
                         ]);
@@ -5539,6 +5623,28 @@ class PickingController extends BaseController
 
         if ($target === '') {
             return $this->error($res, 'El identificador de orden o planilla es obligatorio', 400);
+        }
+
+        // Blindaje 2026-08-11: este endpoint podía sobrescribir cantidad_solicitada sin
+        // ningún candado de rol (a diferencia de actualizarLinea/editarLineaPicking, que sí
+        // lo exigen) — mismo criterio que esas dos: Pendiente admite Supervisor o Admin,
+        // EnProceso solo Admin.
+        $ordenGate = OrdenPicking::where('empresa_id', $empresaId)
+            ->where(function($q) use ($target) {
+                $q->where('id', is_numeric($target) ? (int)$target : 0)
+                  ->orWhere('numero_orden', $target)
+                  ->orWhere('planilla_numero', $target)
+                  ->orWhere('numero_pedido', $target)
+                  ->orWhere('numero_factura', $target);
+            })
+            ->first();
+        if (!$ordenGate) {
+            return $this->notFound($res, 'Pedido no encontrado en esta empresa');
+        }
+        if ($ordenGate->estado === 'Pendiente') {
+            if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+        } else {
+            if ($deny = $this->requireAdmin($user, $res)) return $deny;
         }
 
         Capsule::transaction(function() use ($empresaId, $target, $sucursal, $observaciones, $detalles, $nuevasLineas) {
@@ -7196,6 +7302,37 @@ class PickingController extends BaseController
                 ->whereIn('id', $idsForz)
                 ->update(['estado' => 'Faltante', 'updated_at' => date('Y-m-d H:i:s')]);
 
+            // Blindaje 2026-08-11: este bulk-update dejaba la línea en Faltante SIN
+            // insertar en picking_faltantes — a diferencia de marcarAgotadoConsolidado()/
+            // marcarFaltante() (que sí insertan al instante), estas referencias solo
+            // aparecían en el módulo de Faltantes cuando certFinalizar() las detectaba
+            // después, en la certificación (su "safety net", línea ~6277). Se agrega el
+            // mismo insert inmediato que usan esas dos funciones, para que "Forzar cierre"
+            // deje la novedad visible de inmediato, no solo al certificar.
+            $ordenesPorId = $ordenes->keyBy('id');
+            $nowForz      = date('Y-m-d H:i:s');
+            $lineasBlock->each(function ($l) use ($empresaId, $user, $ordenesPorId, $nowForz) {
+                $yaEnFaltantes = Capsule::table('picking_faltantes')
+                    ->where('orden_picking_id', $l->orden_picking_id)
+                    ->where('producto_id', $l->producto_id)
+                    ->exists();
+                if (!$yaEnFaltantes) {
+                    $ordenForz = $ordenesPorId->get($l->orden_picking_id);
+                    Capsule::table('picking_faltantes')->insert([
+                        'empresa_id'          => $empresaId,
+                        'sucursal_id'         => $user->sucursal_id,
+                        'orden_picking_id'    => $l->orden_picking_id,
+                        'producto_id'         => $l->producto_id,
+                        'planilla_lote'       => $ordenForz->planilla_lote ?? $ordenForz->planilla_numero ?? null,
+                        'cantidad_solicitada' => $l->cantidad_solicitada,
+                        'cantidad_faltante'   => $l->cantidad_solicitada,
+                        'causa'               => 'Forzado al cerrar planilla — sin separar',
+                        'created_at'          => $nowForz,
+                        'updated_at'          => $nowForz,
+                    ]);
+                }
+            });
+
             // Liberar cantidad_reservada de las líneas forzadas
             $lineasBlock->each(function ($l) use ($empresaId, $user) {
                 if ((float)$l->cantidad_solicitada <= 0) return;
@@ -7590,6 +7727,10 @@ class PickingController extends BaseController
             return $this->error($res, "No se pueden agregar líneas a una orden ya {$orden->estado_despacho}");
         }
 
+        // Blindaje 2026-08-11: agregar una referencia a una planilla solo puede
+        // hacerlo Supervisor o Admin (confirmado explícitamente por el negocio).
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
         $producto = \App\Models\Producto::find($productoId);
         if (!$producto) return $this->error($res, 'Producto no encontrado', 404);
 
@@ -7650,6 +7791,10 @@ class PickingController extends BaseController
         $numero    = $a['numero'];
         $body      = $req->getParsedBody() ?? [];
         $empresaId = $this->getEffectiveEmpresaId($user, $req);
+
+        // Blindaje 2026-08-11: reemplazar una referencia en la planilla solo puede
+        // hacerlo Supervisor o Admin (confirmado explícitamente por el negocio).
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
 
         $idsRaw         = $body['ids']              ?? '';
         $nuevoProdId    = $body['nuevo_producto_id'] ?? null;
@@ -8546,6 +8691,10 @@ class PickingController extends BaseController
             return $this->error($res, "No se puede editar una línea de una orden ya {$ordenDetalle->estado_despacho}");
         }
 
+        // Blindaje 2026-08-11: esta edición nunca quedaba en auditoría (mismo hueco que
+        // actualizarLinea()) — se captura el "antes" para poder registrar el cambio.
+        $cantidadAnterior = (float)$detalle->cantidad_solicitada;
+
         $result = null;
 
         try {
@@ -8574,6 +8723,14 @@ class PickingController extends BaseController
         }
 
         $detalle->refresh();
+
+        if ($cantidadAnterior != $nuevaCant) {
+            $this->audit($user, 'picking', 'editar_cantidad_linea', 'picking_detalles', $detalle->id,
+                ['cantidad_solicitada' => $cantidadAnterior],
+                ['cantidad_solicitada' => $nuevaCant],
+                "Cantidad solicitada de la línea #{$detalle->id} cambiada de {$cantidadAnterior} a {$nuevaCant}" . ($motivo ? " — motivo: {$motivo}" : ''));
+        }
+
         return $this->ok($res, $detalle, 'Línea actualizada correctamente');
     }
 
