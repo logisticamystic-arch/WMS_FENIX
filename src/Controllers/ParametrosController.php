@@ -1730,11 +1730,23 @@ class ParametrosController extends BaseController
     public function getClientes(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
+        $params = $request->getQueryParams();
         try {
-            $clientes = Cliente::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            $query = Cliente::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('activo', 1)
-                ->with('ruta')
-                ->get();
+                ->with('ruta');
+
+            if (!empty($params['q'])) {
+                $q = $params['q'];
+                $query->where(function($sub) use ($q) {
+                    $sub->where('razon_social', 'like', "%{$q}%")
+                        ->orWhere('nombre_comercial', 'like', "%{$q}%")
+                        ->orWhere('nit', 'like', "%{$q}%")
+                        ->orWhere('codigo', 'like', "%{$q}%");
+                });
+            }
+
+            $clientes = $query->get();
             return $this->json($response, ['error' => false, 'data' => $clientes]);
         } catch (\Exception $e) {
             return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 500);

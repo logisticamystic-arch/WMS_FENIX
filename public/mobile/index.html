@@ -243,6 +243,11 @@
 const M_API = '/WMS_FENIX/public/api';
 let _mToken    = localStorage.getItem('wms_token') || '';
 let _mUser     = JSON.parse(localStorage.getItem('wms_user') || 'null');
+// A pedido explícito (2026-08-23): permisos del usuario (rol + overrides
+// individuales) para filtrar qué pantallas ve en el menú "home". Mismo
+// mecanismo que ya existe en escritorio (_wmsPermisos/hasPermiso), el móvil
+// nunca lo leía hasta ahora — el login siempre lo devuelve, solo faltaba usarlo.
+let _mPermisos = JSON.parse(localStorage.getItem('wms_permisos') || '[]');
 
 // Retry queue para operaciones offline
 const _offlineQueue = {
@@ -316,8 +321,11 @@ const MWMS = {
     _expiryOnApproved: null,
     _devItems: [],
     _devQrProd: null,
+    _devFotos: [],
     _causalesNovedad: [],
     _dvCausales: [],
+    _dvSucursales: [],
+    _dvClientes: [],
 
   init() {
     // Listeners para cambios de conexión
@@ -338,10 +346,28 @@ const MWMS = {
 
   async _dvLoadCausales() {
     try {
-      const r = await mApi('GET', '/devoluciones/causales');
+      const r = await mApi('GET', '/devoluciones/causales?activo=1');
       this._dvCausales = r.data || r || [];
     } catch(e) {
       this._dvCausales = [];
+    }
+  },
+
+  async _dvLoadSucursales() {
+    try {
+      const r = await mApi('GET', '/param/sucursales?activo=1');
+      this._dvSucursales = r.data || [];
+    } catch(e) {
+      this._dvSucursales = [];
+    }
+  },
+
+  async _dvLoadClientes() {
+    try {
+      const r = await mApi('GET', '/param/clientes');
+      this._dvClientes = r.data || [];
+    } catch(e) {
+      this._dvClientes = [];
     }
   },
   
@@ -380,7 +406,7 @@ const MWMS = {
   showApp() {
     document.getElementById('login-screen').style.display='none'; document.getElementById('main-screen').style.display='flex';
     document.getElementById('m-subtitle').textContent = _mUser.rol + ' · ' + (_mUser.empresa_nombre || 'Global') + ' / ' + (_mUser.sucursal_nombre || 'Todas');
-    this.showHome(); this.startNotif(); this._loadCausalesNovedad(); this._dvLoadCausales();
+    this.showHome(); this.startNotif(); this._loadCausalesNovedad(); this._dvLoadCausales(); this._dvLoadSucursales(); this._dvLoadClientes();
   },
   updPin() { for(let i=0;i<4;i++){ const d=document.getElementById('mpd'+i); d.style.background=i<this._pin.length?'#0F4C81':'#fff'; d.style.borderColor=i<this._pin.length?'#0F4C81':'#cbd5e1';} },
   pinPress(v) { if(v==='del') this._pin=this._pin.slice(0,-1); else if(this._pin.length<4) this._pin+=v; this.updPin(); if(this._pin.length===4) setTimeout(()=>this.doLogin(),200); },
@@ -412,7 +438,10 @@ const MWMS = {
     this.loading(true);
     try {
       const r = await mApi('POST','/auth/login',{documento:doc,pin:this._pin,empresa_id:empresaId});
-      _mToken=r.token; _mUser=r.user; localStorage.setItem('wms_token',_mToken); localStorage.setItem('wms_user',JSON.stringify(_mUser)); this.showApp();
+      _mToken=r.token; _mUser=r.user; _mPermisos=r.permisos||[];
+      localStorage.setItem('wms_token',_mToken); localStorage.setItem('wms_user',JSON.stringify(_mUser));
+      localStorage.setItem('wms_permisos',JSON.stringify(_mPermisos));
+      this.showApp();
     } catch(e) {
         document.getElementById('m-login-err').textContent=e.message;
         document.getElementById('m-login-err').style.display='block';
@@ -423,6 +452,18 @@ const MWMS = {
     }
   },
   logout() { localStorage.clear(); location.reload(); },
+
+  // A pedido explícito (2026-08-23): control de acceso por PANTALLA del menú
+  // móvil — mismo criterio que hasPermiso() de escritorio (Admin siempre ve
+  // todo). Alcance DELIBERADAMENTE limitado al botón del menú: no bloquea la
+  // función de la pantalla en sí, porque varias (Ubicar, Rec. ODC, Picking,
+  // Inventario) se invocan desde flujos internos legítimos de otras pantallas
+  // o desde notificaciones de tareas asignadas — bloquear la función ahí
+  // rompería esos flujos para alguien que sí tiene permiso de iniciarlos.
+  // Auditado antes de implementar (ver mods filtrados abajo).
+  hasPermisoMobile(id) {
+    return _mUser && (_mUser.rol === 'Admin' || _mPermisos.includes('mobile.' + id));
+  },
 
   showHome() {
     document.getElementById('m-title').textContent='Menú'; document.getElementById('nav-home').classList.add('active'); document.getElementById('nav-notif').classList.remove('active');
@@ -438,10 +479,11 @@ const MWMS = {
       { id:'au', l:'Ajuste Ubic.', i:'fa-location-crosshairs', c:'red',   a:'viewAjusteUbicacion' },
       { id:'pr', l:'Productos',  i:'fa-box',                  c:'blue',    a:'viewProductos' },
       { id:'ci', l:'Consultar',  i:'fa-magnifying-glass-location', c:'cyan', a:'viewConsultaInteligente' },
-      { id:'dv', l:'Devolución',  i:'fa-rotate-left',              c:'amber', a:'viewDevolucion' },
+      { id:'dv', l:'Devolución',  i:'fa-rotate-left',              c:'amber', a:'viewDevolucionHistorial' },
       { id:'ms', l:'Misceláneos', i:'fa-cubes-stacked',            c:'lime',   a:'viewMiscelaneos' },
       { id:'tp', l:'Traspaso',    i:'fa-arrow-right-from-bracket', c:'red',    a:'viewTraspaso' },
-    ];
+      { id:'pv', l:'Preoperacional', i:'fa-truck-field',           c:'orange', a:'viewPreoperacional' },
+    ].filter(m => this.hasPermisoMobile(m.id));
     document.getElementById('m-content').innerHTML = `
       <div class="op-view">
         <div style="margin-bottom:15px;"><h2 style="font-size:1.1rem;font-weight:800;">Hola, ${this.esc(_mUser.nombre.split(' ')[0])}!</h2><p style="font-size:.75rem;color:#64748b;">Seleccione una operación:</p></div>
@@ -449,6 +491,300 @@ const MWMS = {
           ${mods.map(m=>`<button class="module-btn-mobile" onclick="MWMS.${m.a}${m.a.includes('(')?'':'()'}" id="mod-btn-${m.id}"><div class="module-icon-circle ${m.c}"><i class="fa-solid ${m.i}"></i></div><span class="module-label">${m.l}</span></button>`).join('')}
         </div>
       </div>`;
+  },
+
+  // ── PREOPERACIONAL DE VEHÍCULOS (2026-08-21) ────────────────────────────────
+  _pvItems: [],
+  _pvCalificaciones: {},
+  _pvFotoTemp: null,
+
+  async viewPreoperacional() {
+    document.getElementById('m-title').textContent = 'Preoperacional';
+    document.getElementById('nav-home').classList.remove('active');
+    this._pvCalificaciones = {};
+    this._pvFotoTemp = null;
+    this._pvFotosInspeccion = [];
+
+    this.loading(true);
+    try {
+      const r = await mApi('GET', '/preoperacional/items');
+      this._pvItems = r.data || [];
+    } catch(e) {
+      this._pvItems = [];
+      this.toast('No se pudo cargar la lista de chequeo', 'error');
+    }
+    this.loading(false);
+
+    const hoy = new Date().toISOString().slice(0, 10);
+
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view" style="padding-bottom:90px;">
+
+        <div style="background:linear-gradient(135deg,#0F4C81,#1a6bb0);border-radius:12px;padding:14px 16px;color:#fff;margin-bottom:12px;">
+          <div style="font-weight:800;font-size:.9rem;margin-bottom:4px;"><i class="fa-solid fa-truck-field"></i> Preoperacional del vehículo</div>
+          <div style="font-size:.76rem;opacity:.92;">Enfocado en la <b>limpieza y el orden</b> del vehículo antes de salir a ruta. Califique según lo que observe físicamente.</div>
+        </div>
+
+        <button class="m-btn secondary full" style="margin-bottom:12px;" onclick="MWMS.viewPreoperacionalHistorial()">
+          <i class="fa-solid fa-clock-rotate-left"></i> Ver historial
+        </button>
+
+        <div class="op-card" style="margin-bottom:10px;">
+          <label class="m-label">Fecha *</label>
+          <input type="date" id="pv-fecha" class="m-input-full" value="${hoy}">
+          <label class="m-label" style="margin-top:8px;">Vehículo (placa) *</label>
+          <input type="text" id="pv-vehiculo" class="m-input-full" placeholder="Ej: ABC-123" style="text-transform:uppercase;">
+          <label class="m-label" style="margin-top:8px;">Conductor *</label>
+          <input type="text" id="pv-conductor" class="m-input-full" placeholder="Nombre del conductor">
+          <label class="m-label" style="margin-top:8px;">Ruta</label>
+          <input type="text" id="pv-ruta" class="m-input-full" placeholder="Ej: Bogotá - Medellín">
+        </div>
+
+        <div class="op-card" style="margin-bottom:10px;">
+          <div style="font-size:.7rem;font-weight:800;color:#475569;margin-bottom:8px;text-transform:uppercase;">
+            <i class="fa-solid fa-list-check"></i> Inspección
+          </div>
+          <div id="pv-items-list">
+            ${this._pvItems.map(it => this._pvRenderItem(it)).join('')}
+          </div>
+        </div>
+
+        <div class="op-card" style="margin-bottom:10px;">
+          <label class="m-label">Observaciones</label>
+          <textarea id="pv-observaciones" class="m-input-full" rows="3" placeholder="Anote cualquier novedad encontrada..."></textarea>
+        </div>
+
+        <div class="op-card" style="margin-bottom:10px;">
+          <div style="font-size:.7rem;font-weight:800;color:#475569;margin-bottom:8px;text-transform:uppercase;">
+            <i class="fa-solid fa-camera"></i> Fotos de la inspección
+          </div>
+          <p style="font-size:.72rem;color:#64748b;margin:0 0 8px;">Puede tomar varias fotos de evidencia (además de la foto de Temperatura).</p>
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <label for="pv-fotos-cam" class="m-btn secondary" style="flex:1;text-align:center;font-size:.75rem;margin:0;">
+              <i class="fa-solid fa-camera"></i> Cámara
+            </label>
+            <input type="file" id="pv-fotos-cam" accept="image/*" capture="environment" style="position:fixed;top:0;left:0;width:0;height:0;opacity:0;"
+              onchange="if(this.files&&this.files[0]) MWMS._pvAgregarFotoInspeccion(this.files[0])">
+            <label for="pv-fotos-gal" class="m-btn secondary" style="flex:1;text-align:center;font-size:.75rem;margin:0;">
+              <i class="fa-solid fa-image"></i> Galería
+            </label>
+            <input type="file" id="pv-fotos-gal" accept="image/*" multiple style="position:fixed;top:0;left:0;width:0;height:0;opacity:0;"
+              onchange="Array.from(this.files||[]).forEach(f=>MWMS._pvAgregarFotoInspeccion(f)); this.value='';">
+          </div>
+          <div id="pv-fotos-preview" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+        </div>
+
+        <button class="m-btn success full" style="font-weight:800;" onclick="MWMS._pvGuardar()">
+          <i class="fa-solid fa-check"></i> Registrar Preoperacional
+        </button>
+      </div>`;
+  },
+
+  _pvAgregarFotoInspeccion(file) {
+    if (!this._pvFotosInspeccion) this._pvFotosInspeccion = [];
+    this._pvFotosInspeccion.push(file);
+    document.getElementById('pv-fotos-cam').value = '';
+    this._pvRenderFotosPreview();
+  },
+
+  _pvQuitarFotoInspeccion(idx) {
+    this._pvFotosInspeccion.splice(idx, 1);
+    this._pvRenderFotosPreview();
+  },
+
+  _pvRenderFotosPreview() {
+    const cont = document.getElementById('pv-fotos-preview');
+    if (!cont) return;
+    cont.innerHTML = (this._pvFotosInspeccion || []).map((file, idx) => `
+      <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;">
+        <img src="${URL.createObjectURL(file)}" style="width:100%;height:100%;object-fit:cover;">
+        <button type="button" onclick="MWMS._pvQuitarFotoInspeccion(${idx})"
+          style="position:absolute;top:1px;right:1px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;line-height:1;">✕</button>
+      </div>`).join('');
+  },
+
+  _pvRenderItem(it) {
+    const esTemp = it.clave === 'temperatura';
+    return `
+      <div id="pv-item-${it.clave}" style="padding:10px 0;border-bottom:1px solid #f1f5f9;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <span style="font-size:.82rem;font-weight:700;color:#1e293b;">${this.esc(it.nombre)}</span>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <button type="button" id="pv-btn-${it.clave}-C" style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;font-size:.72rem;font-weight:800;" onclick="MWMS._pvCalificar('${it.clave}','C')">Cumple</button>
+            <button type="button" id="pv-btn-${it.clave}-NC" style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;font-size:.72rem;font-weight:800;" onclick="MWMS._pvCalificar('${it.clave}','NC')">No Cumple</button>
+          </div>
+        </div>
+        ${esTemp ? `
+        <div style="margin-top:8px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <label for="pv-foto-temp-cam" class="m-btn secondary sm" style="margin:0;cursor:pointer;font-size:.72rem;">
+              <i class="fa-solid fa-camera"></i> Cámara
+            </label>
+            <input type="file" id="pv-foto-temp-cam" accept="image/*" capture="environment" style="position:fixed;top:0;left:0;width:0;height:0;opacity:0;"
+              onchange="if(this.files&&this.files[0]) MWMS._pvFotoTemperatura(this.files[0])">
+
+            <label for="pv-foto-temp-gal" class="m-btn secondary sm" style="margin:0;cursor:pointer;font-size:.72rem;">
+              <i class="fa-solid fa-image"></i> Galería
+            </label>
+            <input type="file" id="pv-foto-temp-gal" accept="image/*" style="position:fixed;top:0;left:0;width:0;height:0;opacity:0;"
+              onchange="if(this.files&&this.files[0]) MWMS._pvFotoTemperatura(this.files[0])">
+          </div>
+          <div id="pv-foto-temp-preview" style="margin-top:6px;"></div>
+        </div>` : ''}
+      </div>`;
+  },
+
+  _pvCalificar(clave, valor) {
+    this._pvCalificaciones[clave] = valor;
+    const btnC  = document.getElementById(`pv-btn-${clave}-C`);
+    const btnNc = document.getElementById(`pv-btn-${clave}-NC`);
+    if (btnC)  { btnC.style.background  = (valor === 'C')  ? '#059669' : '#f1f5f9'; btnC.style.color  = (valor === 'C')  ? '#fff' : '#64748b'; }
+    if (btnNc) { btnNc.style.background = (valor === 'NC') ? '#dc2626' : '#f1f5f9'; btnNc.style.color = (valor === 'NC') ? '#fff' : '#64748b'; }
+  },
+
+  _pvFotoTemperatura(file) {
+    this._pvFotoTemp = file || null;
+    const cont = document.getElementById('pv-foto-temp-preview');
+    if (!cont) return;
+    if (file) {
+      cont.innerHTML = `
+        <div style="position:relative;width:56px;height:56px;border-radius:6px;overflow:hidden;border:1px solid #e2e8f0;">
+          <img src="${URL.createObjectURL(file)}" style="width:100%;height:100%;object-fit:cover;">
+          <button type="button" onclick="MWMS._pvFotoTemperatura(null)"
+            style="position:absolute;top:1px;right:1px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:16px;height:16px;font-size:9px;line-height:1;cursor:pointer;">✕</button>
+        </div>`;
+    } else {
+      cont.innerHTML = '';
+    }
+  },
+
+  async _pvGuardar() {
+    const fecha     = document.getElementById('pv-fecha')?.value || '';
+    const vehiculo  = (document.getElementById('pv-vehiculo')?.value || '').trim();
+    const conductor = (document.getElementById('pv-conductor')?.value || '').trim();
+    const ruta      = (document.getElementById('pv-ruta')?.value || '').trim();
+    const obs       = (document.getElementById('pv-observaciones')?.value || '').trim();
+
+    if (!fecha || !vehiculo || !conductor) {
+      return this.toast('Fecha, vehículo y conductor son obligatorios', 'error');
+    }
+    const faltantes = this._pvItems.filter(it => !this._pvCalificaciones[it.clave]).map(it => it.nombre);
+    if (faltantes.length) {
+      return this.toast('Falta calificar: ' + faltantes.join(', '), 'error');
+    }
+
+    const items = this._pvItems.map(it => ({ clave: it.clave, calificacion: this._pvCalificaciones[it.clave] }));
+
+    const formData = new FormData();
+    formData.append('fecha', fecha);
+    formData.append('vehiculo', vehiculo);
+    formData.append('conductor', conductor);
+    formData.append('ruta', ruta);
+    formData.append('observaciones', obs);
+    formData.append('items', JSON.stringify(items));
+    if (this._pvFotoTemp) formData.append('foto_temperatura', this._pvFotoTemp);
+    (this._pvFotosInspeccion || []).forEach(file => formData.append('fotos[]', file));
+
+    this.loading(true);
+    try {
+      const token = localStorage.getItem('wms_token');
+      const res = await fetch(`${M_API}/preoperacional`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.message || 'Error al registrar');
+
+      this.toast('Preoperacional registrado correctamente', 'success');
+      this.viewPreoperacionalHistorial();
+    } catch(e) {
+      this.toast(e.message || 'Error al registrar el preoperacional', 'error');
+    } finally {
+      this.loading(false);
+    }
+  },
+
+  async viewPreoperacionalHistorial() {
+    document.getElementById('m-title').textContent = 'Historial Preoperacional';
+    this.loading(true);
+    try {
+      const r = await mApi('GET', '/preoperacional?fecha_inicio=' + this._pvFechaHace(30) + '&fecha_fin=' + new Date().toISOString().slice(0,10));
+      const rows = r.data || [];
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <button class="m-btn secondary full" style="margin-bottom:10px;" onclick="MWMS.viewPreoperacional()">
+            <i class="fa-solid fa-plus"></i> Nuevo Preoperacional
+          </button>
+          ${rows.length ? rows.map(p => `
+            <div class="op-card" style="margin-bottom:8px;cursor:pointer;" onclick="MWMS._pvVerDetalle(${p.id})">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                  <div style="font-weight:800;font-size:.85rem;">${this.esc(p.vehiculo)} · ${this.formatDateShort ? this.formatDateShort(p.fecha) : p.fecha}</div>
+                  <div style="font-size:.72rem;color:#64748b;">${this.esc(p.conductor)}${p.ruta ? ' · ' + this.esc(p.ruta) : ''}</div>
+                </div>
+                <span style="background:${p.nc_count > 0 ? '#fee2e2' : '#dcfce7'};color:${p.nc_count > 0 ? '#dc2626' : '#16a34a'};border-radius:99px;padding:3px 10px;font-size:.7rem;font-weight:800;">
+                  ${p.nc_count > 0 ? p.nc_count + ' NC' : 'OK'}
+                </span>
+              </div>
+            </div>`).join('')
+          : '<p style="text-align:center;color:#94a3b8;font-size:.8rem;margin-top:30px;">Sin registros en los últimos 30 días</p>'}
+        </div>`;
+    } catch(e) {
+      this.toast('Error cargando historial', 'error');
+    } finally {
+      this.loading(false);
+    }
+  },
+
+  _pvFechaHace(dias) {
+    const d = new Date();
+    d.setDate(d.getDate() - dias);
+    return d.toISOString().slice(0, 10);
+  },
+
+  async _pvVerDetalle(id) {
+    this.loading(true);
+    try {
+      const r = await mApi('GET', '/preoperacional/' + id);
+      const p = r.data;
+      document.getElementById('m-title').textContent = 'Detalle Preoperacional';
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <button class="m-btn secondary full" style="margin-bottom:10px;" onclick="MWMS.viewPreoperacionalHistorial()">
+            <i class="fa-solid fa-arrow-left"></i> Volver
+          </button>
+          <div class="op-card" style="margin-bottom:10px;">
+            <div style="font-size:.85rem;"><b>Vehículo:</b> ${this.esc(p.vehiculo)}</div>
+            <div style="font-size:.85rem;"><b>Conductor:</b> ${this.esc(p.conductor)}</div>
+            <div style="font-size:.85rem;"><b>Ruta:</b> ${this.esc(p.ruta || '-')}</div>
+            <div style="font-size:.85rem;"><b>Fecha:</b> ${p.fecha}</div>
+          </div>
+          <div class="op-card" style="margin-bottom:10px;">
+            ${(p.items || []).map(it => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9;">
+                <span style="font-size:.8rem;">${this.esc(it.item_nombre)}</span>
+                <span style="background:${it.calificacion==='C'?'#dcfce7':'#fee2e2'};color:${it.calificacion==='C'?'#16a34a':'#dc2626'};border-radius:99px;padding:2px 9px;font-size:.68rem;font-weight:800;">
+                  ${it.calificacion === 'C' ? 'Cumple' : 'No Cumple'}
+                </span>
+              </div>
+              ${it.foto_url ? `<img src="${this.esc(it.foto_url)}" style="max-width:100%;border-radius:8px;margin:6px 0;">` : ''}
+            `).join('')}
+          </div>
+          ${p.observaciones ? `<div class="op-card" style="margin-bottom:10px;"><b style="font-size:.8rem;">Observaciones:</b><p style="font-size:.78rem;color:#475569;margin-top:4px;">${this.esc(p.observaciones)}</p></div>` : ''}
+          ${(p.fotos && p.fotos.length) ? `
+          <div class="op-card">
+            <b style="font-size:.8rem;">Fotos de la inspección:</b>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+              ${p.fotos.map(f => `<img src="${this.esc(f.url)}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;" onclick="window.open('${this.esc(f.url)}','_blank')">`).join('')}
+            </div>
+          </div>` : ''}
+        </div>`;
+    } catch(e) {
+      this.toast('Error cargando el detalle', 'error');
+    } finally {
+      this.loading(false);
+    }
   },
 
   viewDespachoMenu() {
@@ -606,7 +942,21 @@ const MWMS = {
           <div class="op-card">
             <div class="m-label"><i class="fa-solid fa-camera"></i> Evidencia Fotográfica</div>
             ${d.foto_evidencia ? `<div style="margin-bottom:8px;"><img src="/WMS_FENIX/public/${d.foto_evidencia}" style="max-width:100%;border-radius:6px;max-height:150px;object-fit:cover;"></div>` : ''}
-            <input type="file" id="cal_foto" accept="image/*" capture="environment" class="m-input-full" style="padding:10px 4px;">
+            
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+              <label for="cal-foto-cam" class="m-btn secondary" style="flex:1;text-align:center;font-size:.75rem;margin:0;cursor:pointer;">
+                <i class="fa-solid fa-camera"></i> Tomar Foto
+              </label>
+              <input type="file" id="cal-foto-cam" accept="image/*" capture="environment" style="position:fixed;top:0;left:0;width:0;height:0;opacity:0;"
+                onchange="if(this.files&&this.files[0]) MWMS._calSetFoto(this.files[0])">
+
+              <label for="cal-foto-gal" class="m-btn secondary" style="flex:1;text-align:center;font-size:.75rem;margin:0;cursor:pointer;">
+                <i class="fa-solid fa-image"></i> Galería
+              </label>
+              <input type="file" id="cal-foto-gal" accept="image/*" style="position:fixed;top:0;left:0;width:0;height:0;opacity:0;"
+                onchange="if(this.files&&this.files[0]) MWMS._calSetFoto(this.files[0])">
+            </div>
+            <div id="cal-foto-preview" style="margin-top:4px;"></div>
           </div>
 
           <div class="op-card" style="border:2px solid ${d.conforme==='Inconforme'?'#dc2626':'#0f766e'};">
@@ -721,6 +1071,24 @@ const MWMS = {
       this._calHasDrawn = false;
   },
 
+  _calFotoFile: null,
+
+  _calSetFoto(file) {
+    this._calFotoFile = file || null;
+    const cont = document.getElementById('cal-foto-preview');
+    if (!cont) return;
+    if (file) {
+      cont.innerHTML = `
+        <div style="position:relative;width:64px;height:64px;border-radius:6px;overflow:hidden;border:1px solid #e2e8f0;">
+          <img src="${URL.createObjectURL(file)}" style="width:100%;height:100%;object-fit:cover;">
+          <button type="button" onclick="MWMS._calSetFoto(null)"
+            style="position:absolute;top:1px;right:1px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;line-height:1;cursor:pointer;">✕</button>
+        </div>`;
+    } else {
+      cont.innerHTML = '';
+    }
+  },
+
   _setCalToggle(id, val) {
       document.getElementById('cal_'+id).value = val;
       const btnC = document.getElementById('btn_'+id+'_C');
@@ -754,9 +1122,8 @@ const MWMS = {
           if (v) fd.append(id, v);
       });
 
-      const fileInput = document.getElementById('cal_foto');
-      if (fileInput.files.length > 0) {
-          fd.append('foto_evidencia', fileInput.files[0]);
+      if (this._calFotoFile) {
+          fd.append('foto_evidencia', this._calFotoFile);
       }
 
       this.loading(true);
@@ -1177,7 +1544,26 @@ const MWMS = {
     return this._guardarSinOdc(true);
   },
 
+  _pcal2FotoFile: null,
+
+  _pcal2SetFoto(file) {
+    this._pcal2FotoFile = file || null;
+    const cont = document.getElementById('pcal2_foto_preview');
+    if (!cont) return;
+    if (file) {
+      cont.innerHTML = `
+        <div style="position:relative;width:60px;height:60px;border-radius:6px;overflow:hidden;border:1px solid #e2e8f0;margin-top:6px;">
+          <img src="${URL.createObjectURL(file)}" style="width:100%;height:100%;object-fit:cover;">
+          <button type="button" onclick="MWMS._pcal2SetFoto(null)"
+            style="position:absolute;top:1px;right:1px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:16px;height:16px;font-size:9px;line-height:1;cursor:pointer;">✕</button>
+        </div>`;
+    } else {
+      cont.innerHTML = '';
+    }
+  },
+
   _showCalidadModalProducto(detalleId, nombre) {
+    this._pcal2FotoFile = null;
     const renderT = (id, label) => `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2e8f0;">
           <div style="font-size:.85rem;color:#334155;font-weight:600;">${this.esc(label)}</div>
@@ -1203,8 +1589,21 @@ const MWMS = {
         </div>
 
         <div style="margin-bottom:16px;">
-            <label style="font-size:.85rem;font-weight:700;color:#334155;display:block;margin-bottom:4px;">Foto Evidencia</label>
-            <input type="file" id="pcal2_foto" accept="image/*" class="m-input-full" style="padding:6px;font-size:.8rem;">
+            <label style="font-size:.85rem;font-weight:700;color:#334155;display:block;margin-bottom:4px;"><i class="fa-solid fa-camera"></i> Foto Evidencia</label>
+            <div style="display:flex;gap:8px;margin-bottom:4px;">
+              <label for="pcal2_foto_cam" class="m-btn secondary sm" style="flex:1;text-align:center;margin:0;cursor:pointer;">
+                <i class="fa-solid fa-camera"></i> Cámara
+              </label>
+              <input type="file" id="pcal2_foto_cam" accept="image/*" capture="environment" style="position:fixed;top:0;left:0;width:0;height:0;opacity:0;"
+                onchange="if(this.files&&this.files[0]) MWMS._pcal2SetFoto(this.files[0])">
+
+              <label for="pcal2_foto_gal" class="m-btn secondary sm" style="flex:1;text-align:center;margin:0;cursor:pointer;">
+                <i class="fa-solid fa-image"></i> Galería
+              </label>
+              <input type="file" id="pcal2_foto_gal" accept="image/*" style="position:fixed;top:0;left:0;width:0;height:0;opacity:0;"
+                onchange="if(this.files&&this.files[0]) MWMS._pcal2SetFoto(this.files[0])">
+            </div>
+            <div id="pcal2_foto_preview"></div>
         </div>
 
         <div style="margin-bottom:16px;">
@@ -1245,9 +1644,8 @@ const MWMS = {
     payload.append('rotulado', document.getElementById('pcal2_rotulado')?.value || 'Conforme');
     payload.append('observaciones', document.getElementById('pcal2_observaciones')?.value || '');
 
-    const fotoInput = document.getElementById('pcal2_foto');
-    if (fotoInput && fotoInput.files && fotoInput.files[0]) {
-      payload.append('foto_evidencia', fotoInput.files[0]);
+    if (this._pcal2FotoFile) {
+      payload.append('foto_evidencia', this._pcal2FotoFile);
     }
 
     Swal.fire({ title: 'Guardando...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
@@ -1308,12 +1706,12 @@ const MWMS = {
     }
 
     const hayUe = factorUdm > 0 && cantUe > 0;
-    const cantCajas = hayUe ? Math.ceil(cantUe / factorUdm) : cantInput;
+    const cantCajas = hayUe ? cantUe : cantInput;
     if (!hayUe && cantInput <= 0 && saldos <= 0) return this.toast('Cantidad debe ser mayor a cero', 'error');
     if (hayUe  && cantUe   <= 0) return this.toast('Ingrese la cantidad en U/E', 'error');
 
     const totalUnidades = hayUe
-      ? cantUe / factorUdm
+      ? cantUe * factorUdm
       : (upc > 1 ? cantInput * upc + saldos : cantInput);
     this.loading(true);
     try {
@@ -2038,25 +2436,32 @@ const MWMS = {
         const itemsHtml = p.idxs.map(idx => {
           const it  = allItems[idx];
           // Regla de oro 2.4 (WMS_FENIX_BRIEF.md): factor_udm (U/E) tiene prioridad
-          // sobre unidades_caja para el modo cajas — evita repetir el bug donde el
-          // peso en gramos quedó mal puesto en unidades_caja.
+          // sobre unidades_caja para el modo cajas.
           const upc = parseFloat(it.factor_udm || 0) > 0 ? parseFloat(it.factor_udm) : Math.max(1, parseInt(it.unidades_caja || 1));
-          // Línea de cantidad
+          const total = parseFloat(it.cantidad || 0);
+          const disp  = parseFloat(it.disponible || 0);
+          // Línea de cantidad calculada dinámicamente según la fórmula sagrada
           let cantLine;
           if (upc > 1) {
-            const cajas  = parseInt(it.cantidad_cajas || 0);
-            const suel   = parseFloat(it.saldos || 0);
-            cantLine = `${cajas} caj × ${upc} + ${suel} suel`;
+            const cajas = parseInt(it.cantidad_cajas || 0);
+            const suel  = parseFloat(it.saldos || 0);
+            cantLine = `${cajas} caj × ${upc}${suel > 0 ? ` + ${suel} suel` : ''}`;
           } else {
-            cantLine = `${parseFloat(it.cantidad)} und`;
+            cantLine = `${total} und`;
           }
-          const total     = parseFloat(it.cantidad);
-          const disp      = parseFloat(it.disponible);
           const reservada = parseFloat(it.cantidad_reservada || 0);
           const lote    = it.lote && it.lote !== 'N/A' ? it.lote : null;
           const vence   = it.fecha_vencimiento ? this.formatDateShort(it.fecha_vencimiento) : null;
           const dias    = vence ? this.getDaysToExpiry(it.fecha_vencimiento) : null;
           const vColor  = dias !== null ? (dias <= 30 ? '#dc2626' : dias <= 90 ? '#d97706' : '#16a34a') : '#64748b';
+          
+          let diasPatio = 0;
+          let pColor = '#16a34a';
+          if (it.created_at) {
+              const diffTime = Math.abs(new Date() - new Date(it.created_at.split(' ')[0] + 'T00:00:00'));
+              diasPatio = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+              pColor = diasPatio > 7 ? '#dc2626' : (diasPatio > 3 ? '#d97706' : '#16a34a');
+          }
 
           return `
           <div style="display:flex;align-items:stretch;gap:0;border-bottom:1px solid #f1f5f9;background:#fff;">
@@ -2074,6 +2479,7 @@ const MWMS = {
                 ${reservada > 0
                   ? `<span style="font-size:.68rem;color:#d97706;font-weight:700;background:#fffbeb;padding:1px 6px;border-radius:4px;"><i class="fa-solid fa-lock" style="font-size:.6rem;"></i> ${reservada} reservado — ${disp} disponible</span>`
                   : ''}
+                <span style="font-size:.68rem;color:${pColor};font-weight:700;"><i class="fa-solid fa-clock"></i> ${diasPatio}d en patio</span>
                 ${lote ? `<span style="font-size:.68rem;color:#64748b;background:#f1f5f9;padding:1px 5px;border-radius:4px;">Lote: ${this.esc(lote)}</span>` : ''}
                 ${vence ? `<span style="font-size:.68rem;color:${vColor};font-weight:600;"><i class="fa-regular fa-calendar-xmark" style="font-size:.63rem;"></i> ${vence}</span>` : ''}
                 ${it.producto_codigo ? `<span style="font-size:.65rem;color:#94a3b8;">${this.esc(it.producto_codigo)}</span>` : ''}
@@ -2196,13 +2602,13 @@ const MWMS = {
     this._qtyItem = i;
     const upc     = parseFloat(i.factor_udm || 0) > 0 ? parseFloat(i.factor_udm) : Math.max(1, parseInt(i.unidades_caja || 1));
     this._qtyUpc  = upc;
-    const maxCajas  = parseInt(i.cantidad_cajas || 0);
-    const maxSaldos = parseFloat(i.saldos || 0);
     const maxTotal  = disponible;
+    const maxCajas  = upc > 1 ? parseInt(i.cantidad_cajas || 0) : 0;
+    const maxSaldos = upc > 1 ? parseFloat(i.saldos || 0) : maxTotal;
     const reservada = parseFloat(i.cantidad_reservada || 0);
     const palletTxt = i.numero_pallet ? ` · Pallet #${i.numero_pallet}` : '';
     const dispTxt   = upc > 1
-      ? `${maxCajas} caj × ${upc} + ${maxSaldos} suel = <b>${maxTotal} UND/T</b>`
+      ? `${maxCajas} caj × ${upc}${maxSaldos > 0 ? ` + ${maxSaldos} suel` : ''} = <b>${maxTotal} UND/T</b>`
       : `<b>${maxTotal} UND/T disponibles</b>`;
     document.getElementById('m-qty-product-info').innerHTML =
       `<b>${this.esc(i.producto_nombre)}</b>` +
@@ -2215,8 +2621,8 @@ const MWMS = {
     saldosEl.value = '';
     cajasEl.max    = maxCajas;
     cajasEl.placeholder  = `0 – ${maxCajas}`;
-    saldosEl.max         = upc > 1 ? maxSaldos : maxTotal;
-    saldosEl.placeholder = upc > 1 ? `0 – ${maxSaldos}` : `0 – ${maxTotal}`;
+    saldosEl.max         = maxSaldos;
+    saldosEl.placeholder = `0 – ${maxSaldos}`;
     const cajasWrap = cajasEl.closest('div');
     cajasWrap.style.display = upc > 1 ? '' : 'none';
     const saldosLabel = cajasWrap.nextElementSibling?.querySelector('.m-label');
@@ -2240,9 +2646,19 @@ const MWMS = {
     } else if (total > 0) {
       el.style.cssText = 'background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:8px;font-size:.8rem;font-weight:700;color:#1d4ed8;margin-bottom:12px;';
       const pend = Math.round((maxTotal - total) * 1000) / 1000;
-      el.textContent = pend > 0
-        ? `A mover: ${total} UND/T · Pendiente: ${pend} UND/T`
-        : `A mover: ${total} UND/T (total disponible)`;
+      let pendTxt = '';
+      if (pend > 0) {
+        if (upc > 1) {
+          const pendCajas   = Math.floor(pend / upc);
+          const pendSueltos = Math.round((pend - (pendCajas * upc)) * 1000) / 1000;
+          pendTxt = `${pendCajas} caj${pendSueltos > 0 ? ` + ${pendSueltos} suel` : ''} (${pend} UND/T)`;
+        } else {
+          pendTxt = `${pend} UND/T`;
+        }
+        el.textContent = `A mover: ${total} UND/T · Pendiente: ${pendTxt}`;
+      } else {
+        el.textContent = `A mover: ${total} UND/T (total disponible)`;
+      }
     } else {
       el.style.cssText = 'background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:.8rem;font-weight:400;color:#94a3b8;margin-bottom:12px;';
       el.textContent = 'Ingrese cuánto va a ubicar';
@@ -2257,8 +2673,14 @@ const MWMS = {
     const saldos   = parseFloat(document.getElementById('m-qty-saldos')?.value || 0) || 0;
     const total    = upc > 1 ? cajas * upc + saldos : saldos;
     const maxTotal = i.disponible ?? parseFloat(i.cantidad);
+    const maxCajas  = upc > 1 ? parseInt(i.cantidad_cajas || 0) : 0;
+    const maxSaldos = upc > 1 ? parseFloat(i.saldos || 0) : maxTotal;
+
     if (total <= 0)       return this.toast('Ingrese la cantidad a ubicar', 'error');
     if (total > maxTotal) return this.toast(`Máximo disponible: ${maxTotal} UND/TOTAL`, 'error');
+    if (upc > 1 && cajas > maxCajas) return this.toast(`Máximo cajas disponible: ${maxCajas}`, 'error');
+    if (upc > 1 && saldos > maxSaldos) return this.toast(`Máximo saldos disponible: ${maxSaldos}`, 'error');
+    
     this._locCajas  = upc > 1 ? cajas : 0;
     this._locSaldos = saldos;
     document.getElementById('m-modal-qty').style.display = 'none';
@@ -2347,6 +2769,10 @@ const MWMS = {
   async openDevolucionODC() {
     const odc = this._op?.odc;
     if (!odc) return this.toast('Seleccione una ODC primero', 'error');
+
+    if (!this._dvCausales || !this._dvCausales.length) {
+      await this._dvLoadCausales();
+    }
 
     // Construir form de devolución
     const detalles = odc.detalles || [];
@@ -2502,19 +2928,53 @@ const MWMS = {
   },
 
   // ─── DEVOLUCIÓN CLIENTE ──────────────────────────────────────────────
-  viewDevolucion() {
+  async viewDevolucion() {
     this._devItems  = [];
+    this._devFotos  = [];
     this._devQrProd = null;
+
+    if (!this._dvCausales || !this._dvCausales.length) {
+      await this._dvLoadCausales();
+    }
+
     document.getElementById('m-title').textContent = 'Devolución';
     document.getElementById('nav-home').classList.remove('active');
     document.getElementById('m-content').innerHTML = `
       <div class="op-view">
-        <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+        <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
           <div>
-            <h2 style="font-size:1rem;font-weight:800;margin:0;">Registrar Devolución</h2>
-            <p style="font-size:.72rem;color:#64748b;margin:3px 0 0;">Solo devoluciones Cliente → WMS</p>
+            <h2 style="font-size:1rem;font-weight:800;margin:0;">Devolución de Mercancía</h2>
+            <p style="font-size:.72rem;color:#64748b;margin:2px 0 0;">Registrar e historial</p>
           </div>
-          <button class="m-btn secondary sm" onclick="MWMS.showHome()">Volver</button>
+          <div style="display:flex;gap:6px;">
+            <button class="m-btn secondary sm" onclick="MWMS.viewDevolucionHistorial()">
+              <i class="fa-solid fa-clock-rotate-left"></i> Historial
+            </button>
+            <button class="m-btn secondary sm" onclick="MWMS.showHome()">Inicio</button>
+          </div>
+        </div>
+
+        <!-- Tipo y Cliente / Sucursal Origen -->
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:10px;">
+          <div style="margin-bottom:8px;">
+            <div class="m-label">Tipo de Devolución</div>
+            <select id="dv-m-tipo" class="m-input-full">
+              <option value="cliente">Cliente → WMS</option>
+              <option value="proveedor">WMS → Proveedor</option>
+              <option value="interna">Interna</option>
+            </select>
+          </div>
+          <div style="position:relative;">
+            <div class="m-label">Cliente / Sucursal que Devuelve (Origen) *</div>
+            <input type="text" id="dv-m-cliente-q" class="m-input-full" placeholder="Escriba nombre o NIT para buscar..."
+              oninput="MWMS._dvBuscarClienteOrigen(this.value)"
+              onfocus="MWMS._dvBuscarClienteOrigen(this.value)" autocomplete="off">
+            <div id="dv-m-cliente-drop" style="display:none;position:absolute;left:0;right:0;z-index:300;
+              background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.15);
+              max-height:220px;overflow-y:auto;font-size:.8rem;"></div>
+            <input type="hidden" id="dv-m-cliente-origen">
+            <div id="dv-m-cliente-selected" style="display:none;margin-top:6px;padding:8px 10px;background:#dcfce7;border:1px solid #86efac;border-radius:6px;font-size:.78rem;font-weight:700;color:#166534;"></div>
+          </div>
         </div>
 
         <!-- QR Input -->
@@ -2529,10 +2989,10 @@ const MWMS = {
             </button>
           </div>
         </div>
-        <!-- Búsqueda por nombre -->
+        <!-- Búsqueda dinámica por nombre -->
         <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-bottom:12px;position:relative;">
-          <div class="m-label" style="color:#1e40af;margin-bottom:6px;"><i class="fa-solid fa-font"></i> Buscar por nombre</div>
-          <input type="text" id="dv-m-nombre" class="m-input-full" placeholder="Escriba nombre o código..."
+          <div class="m-label" style="color:#1e40af;margin-bottom:6px;"><i class="fa-solid fa-font"></i> Buscar por nombre o referencia</div>
+          <input type="text" id="dv-m-nombre" class="m-input-full" placeholder="Escriba para buscar en catálogo..."
             oninput="MWMS._dvBuscarNombre(this.value)" autocomplete="off">
           <div id="dv-m-nombre-drop" style="display:none;position:absolute;left:12px;right:12px;z-index:300;
             background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);
@@ -2545,17 +3005,25 @@ const MWMS = {
           <div class="m-label">Lote</div>
           <input type="text" id="dv-m-lote" class="m-input-full" placeholder="Lote (opcional)">
         </div>
-        <div id="dv-m-cajas-group" style="margin-bottom:8px;display:none;">
-          <div class="m-label">Cajas</div>
-          <input type="number" id="dv-m-cajas" class="m-input-full" min="0" step="1" placeholder="0"
-            oninput="MWMS._dvUpdTotal()">
+        <div style="margin-bottom:10px;">
+          <div class="m-label">Fecha Vencimiento</div>
+          <input type="date" id="dv-m-fvence" class="m-input-full">
         </div>
-        <div style="margin-bottom:8px;">
-          <div class="m-label" id="dv-m-cant-label">Cant. (unidades)</div>
-          <input type="number" id="dv-m-cant" class="m-input-full" min="0" step="1" placeholder="0"
-            oninput="MWMS._dvUpdTotal()">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+           <div id="dv-m-cajas-group" style="display:none;">
+              <label class="m-label">Cajas</label>
+              <input type="number" id="dv-m-cajas" class="m-input-full" placeholder="0" min="0" step="0.001" oninput="MWMS._dvUpdTotal()">
+           </div>
+           <div>
+              <label class="m-label" style="color:#d97706;" id="dv-m-cant-label">Saldos (Sueltos)</label>
+              <input type="number" id="dv-m-cant" class="m-input-full" placeholder="0" min="0" step="0.001" oninput="MWMS._dvUpdTotal()">
+           </div>
         </div>
-        <div id="dv-m-total-preview" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:8px;font-size:.8rem;font-weight:700;color:#1d4ed8;margin-bottom:8px;"></div>
+        <div style="margin-bottom:12px;">
+           <label class="m-label">UND/TOTAL</label>
+           <input type="text" id="dv-m-total-readonly" class="m-input-full" readonly style="background:#e0f2fe; color:#0369a1; font-weight:bold; font-size:1.1rem; text-align:center;" placeholder="0">
+           <div id="dv-m-total-preview" style="display:none;font-size:.72rem;font-weight:700;color:#1e40af;background:#eff6ff;padding:6px 10px;border-radius:6px;margin-top:4px;text-align:center;"></div>
+        </div>
         <div style="margin-bottom:10px;">
           <div class="m-label">Condición</div>
           <select id="dv-m-cond" class="m-input-full">
@@ -2572,27 +3040,350 @@ const MWMS = {
         <!-- Lista de ítems -->
         <div id="dv-m-items" style="margin-bottom:12px;"></div>
 
-        <!-- Motivo + submit -->
+        <!-- Causal + Motivo -->
         <div style="margin-bottom:10px;">
           <div class="m-label">Causal de Devolución *</div>
           <select id="dv-m-causal-id" class="m-input-full">
             <option value="">Seleccione causal...</option>
-            ${this._dvCausales.map(c => `<option value="${c.id}">${this.esc(c.causal)}</option>`).join('')}
+            ${(this._dvCausales||[]).map(c => `<option value="${c.id}">${this.esc(c.causal)}</option>`).join('')}
           </select>
-        </div>
-        <div style="margin-bottom:10px;">
-          <div class="m-label">Responsable (Opcional)</div>
-          <input type="text" id="dv-m-responsable-id" class="m-input-full" placeholder="Responsable de la devolución...">
         </div>
         <div style="margin-bottom:10px;">
           <div class="m-label">Motivo general *</div>
           <textarea id="dv-m-motivo" class="m-input-full" rows="2" placeholder="Razón de la devolución..." style="resize:none;"></textarea>
         </div>
-        <button class="m-btn primary" id="dv-m-submit" onclick="MWMS._dvEnviar()" style="width:100%;">
+
+        <!-- Evidencia Fotográfica Móvil -->
+        <div style="margin-bottom:14px;background:#faf5ff;border:1px solid #f0abfc;border-radius:8px;padding:12px;">
+          <div class="m-label" style="color:#7e22ce;"><i class="fa-solid fa-camera"></i> Fotos de evidencia (opcional)</div>
+          <input type="file" id="dv-m-fotos-input" accept="image/*" multiple capture="environment" class="m-input-full"
+            style="background:#fff;padding:6px;font-size:.75rem;"
+            onchange="MWMS._dvPreviewMFotos(this)">
+          <div id="dv-m-fotos-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;"></div>
+        </div>
+
+        <button class="m-btn primary" id="dv-m-submit" onclick="MWMS._dvEnviar()" style="width:100%;padding:14px;font-weight:800;">
           <i class="fa-solid fa-paper-plane"></i> Enviar Devolución
         </button>
       </div>`;
     this._dvRenderItems();
+  },
+
+  _dvClientesSearchData: [],
+  _dvProdSearchData: [],
+
+  _dvBuscarClienteOrigen(q) {
+    clearTimeout(this._dvClienteTimer);
+    const drop = document.getElementById('dv-m-cliente-drop');
+    if (!drop) return;
+    this._dvClienteTimer = setTimeout(async () => {
+      try {
+        const url = (q && q.trim().length > 0)
+          ? '/param/clientes?q=' + encodeURIComponent(q.trim())
+          : '/param/clientes?limit=15';
+        const r = await mApi('GET', url);
+        this._dvClientesSearchData = r.data || [];
+        if (!this._dvClientesSearchData.length) {
+          drop.innerHTML = '<div style="padding:10px;color:#94a3b8;">Sin clientes coincidentes</div>';
+          drop.style.display = 'block';
+          return;
+        }
+        drop.innerHTML = this._dvClientesSearchData.slice(0, 15).map((c, idx) => `
+          <div onclick="MWMS._dvSelClienteOrigenIdx(${idx})"
+            style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;display:flex;flex-direction:column;gap:2px;"
+            onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            <strong>${this.esc(c.nombre_comercial || c.razon_social)}</strong>
+            <span style="color:#64748b;font-size:.7rem;">NIT: ${this.esc(c.nit||'S/N')} ${c.ruta ? ' · Ruta: ' + this.esc(c.ruta.nombre||'') : ''}</span>
+          </div>`).join('');
+        drop.style.display = 'block';
+      } catch(e) { /* sin resultados */ }
+    }, 200);
+  },
+
+  _dvSelClienteOrigenIdx(idx) {
+    const c = this._dvClientesSearchData[idx];
+    if (!c) return;
+    document.getElementById('dv-m-cliente-origen').value = c.id;
+    document.getElementById('dv-m-cliente-q').value      = c.nombre_comercial || c.razon_social;
+    const drop = document.getElementById('dv-m-cliente-drop');
+    if (drop) drop.style.display = 'none';
+    const sel = document.getElementById('dv-m-cliente-selected');
+    if (sel) {
+      sel.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;">
+        <span><i class="fa-solid fa-circle-check"></i> ${this.esc(c.nombre_comercial || c.razon_social)} (NIT: ${this.esc(c.nit || 'S/N')})</span>
+        <button type="button" class="m-btn secondary sm" onclick="MWMS._dvLimpiarClienteOrigen()" style="padding:2px 8px;font-size:.68rem;margin-left:6px;">Cambiar</button>
+      </div>`;
+      sel.style.display = 'block';
+    }
+  },
+
+  _dvLimpiarClienteOrigen() {
+    document.getElementById('dv-m-cliente-origen').value = '';
+    document.getElementById('dv-m-cliente-q').value      = '';
+    const sel = document.getElementById('dv-m-cliente-selected');
+    if (sel) sel.style.display = 'none';
+    document.getElementById('dv-m-cliente-q')?.focus();
+  },
+
+  async viewDevolucionHistorial() {
+    document.getElementById('m-title').textContent = 'Historial Devoluciones';
+    this.loading(true);
+    try {
+      const r = await mApi('GET', '/devoluciones');
+      const list = r.data || r || [];
+      const badgeStyle = (st) => {
+        if (st === 'Aprobada' || st === 'Procesada') return 'background:#dcfce7;color:#166534;border:1px solid #86efac;';
+        if (st === 'Rechazada') return 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;';
+        return 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;';
+      };
+
+      const cardsHtml = list.length ? list.map(d => {
+        const consec   = d.consecutivo_devolucion ? `#${d.consecutivo_devolucion}` : d.numero_devolucion;
+        const cliente  = d.cliente_origen?.nombre_comercial || d.cliente_origen?.razon_social || d.proveedor || 'Sin cliente asignado';
+        const causal   = d.causal?.causal || d.tipo || 'Devolución';
+        const fecha    = d.fecha_movimiento || (d.created_at ? d.created_at.slice(0,10) : '-');
+        const cantItems= d.detalles?.length || 0;
+
+        return `
+          <div class="op-card" style="margin-bottom:10px;padding:12px;cursor:pointer;" onclick="MWMS.viewDevolucionCRM(${d.id})">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+              <div>
+                <span style="font-size:1.1rem;font-weight:900;color:#0F4C81;">${this.esc(consec)}</span>
+                <span style="font-size:.7rem;color:#64748b;margin-left:6px;">(${this.esc(d.numero_devolucion || '')})</span>
+              </div>
+              <span style="border-radius:99px;padding:2px 8px;font-size:.68rem;font-weight:800;${badgeStyle(d.estado)}">
+                ${this.esc(d.estado || 'Pendiente')}
+              </span>
+            </div>
+            <div style="font-size:.82rem;font-weight:700;color:#1e293b;margin-bottom:4px;">
+              <i class="fa-solid fa-building" style="color:#0284c7;font-size:.75rem;"></i> ${this.esc(cliente)}
+            </div>
+            <div style="font-size:.75rem;color:#475569;margin-bottom:6px;">
+              <b>Causal:</b> ${this.esc(causal)} ${d.motivo_general ? '· ' + this.esc(d.motivo_general) : ''}
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:.7rem;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:6px;">
+              <span><i class="fa-regular fa-calendar"></i> ${this.formatDateShort ? this.formatDateShort(fecha) : fecha}</span>
+              <span><i class="fa-solid fa-boxes-stacked"></i> ${cantItems} producto${cantItems!==1?'s':''}</span>
+            </div>
+          </div>`;
+      }).join('') : '<div style="text-align:center;color:#94a3b8;padding:40px;">No hay devoluciones registradas</div>';
+
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+            <button class="m-btn primary sm" onclick="MWMS.viewDevolucion()">
+              <i class="fa-solid fa-plus"></i> Nueva Devolución
+            </button>
+            <button class="m-btn secondary sm" onclick="MWMS.viewDevolucionHistorial()">
+              <i class="fa-solid fa-rotate"></i> Actualizar
+            </button>
+          </div>
+          ${cardsHtml}
+        </div>`;
+    } catch(e) {
+      this.toast('Error al cargar historial: ' + e.message, 'error');
+    } finally {
+      this.loading(false);
+    }
+  },
+
+  async viewDevolucionCRM(id) {
+    document.getElementById('m-title').textContent = 'CRM Devolución';
+    this.loading(true);
+    try {
+      const [rDev, rEstados, rTrack] = await Promise.all([
+        mApi('GET', '/devoluciones/' + id),
+        mApi('GET', '/devoluciones/crm/estados'),
+        mApi('GET', '/devoluciones/' + id + '/tracking')
+      ]);
+      const d = rDev.data || {};
+      const estados = rEstados.data || [];
+      const trackings = rTrack.data || [];
+      const consec = d.consecutivo_devolucion ? `#${d.consecutivo_devolucion}` : d.numero_devolucion;
+      
+      let tlHtml = '<div style="text-align:center;padding:20px;color:#94a3b8;">Sin historial</div>';
+      if (trackings.length) {
+        tlHtml = trackings.map(t => {
+          const evHtml = (t.evidencias||[]).map(e => {
+            const url = e.ruta_archivo.startsWith('/uploads/') ? '/WMS_FENIX/public' + e.ruta_archivo : e.ruta_archivo;
+            return `<a href="${url}" target="_blank"><img src="${url}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1;margin-right:4px;"></a>`;
+          }).join('');
+          return `
+            <div style="display:flex;gap:12px;margin-bottom:12px;">
+              <div style="display:flex;flex-direction:column;align-items:center;">
+                <div style="width:10px;height:10px;border-radius:50%;background:#3b82f6;margin-top:4px;"></div>
+                <div style="flex:1;width:2px;background:#e2e8f0;margin-top:4px;"></div>
+              </div>
+              <div style="flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:12px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                  <strong style="color:#0f172a;">${this.esc(t.usuario_nombre || 'Usuario')}</strong>
+                  <span style="color:#64748b;font-size:10px;">${t.created_at.slice(0,16)}</span>
+                </div>
+                ${t.responsable ? `<div style="color:#0ea5e9;font-weight:700;margin-bottom:4px;"><i class="fa-solid fa-user-tag"></i> Resp: ${this.esc(t.responsable)}</div>` : ''}
+                ${t.estado_anterior !== t.estado_nuevo ? `<div style="color:#6366f1;font-weight:700;margin-bottom:4px;">${this.esc(t.estado_anterior)} → ${this.esc(t.estado_nuevo)}</div>` : ''}
+                <div style="color:#334155;">${this.esc(t.observacion||'')}</div>
+                ${evHtml ? `<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;">${evHtml}</div>` : ''}
+              </div>
+            </div>`;
+        }).join('');
+      }
+
+      const formHtml = d.estado === 'Finalizada' ? `
+        <div style="padding:16px;text-align:center;color:#dc2626;font-weight:700;background:#fef2f2;border-radius:8px;margin-top:20px;">
+          <i class="fa-solid fa-lock"></i> Devolución Finalizada.
+        </div>
+      ` : `
+        <div style="background:#fff;border-radius:8px;padding:16px;margin-top:20px;border:1px dashed #cbd5e1;box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+          <div style="font-weight:700;margin-bottom:12px;"><i class="fa-solid fa-comment-medical" style="color:#10b981;"></i> Registrar Seguimiento</div>
+          
+          <label style="display:block;font-size:12px;margin-bottom:4px;color:#475569;">Cambiar Estado (Opcional)</label>
+          <select id="dv-m-crm-estado" class="m-input-full" style="margin-bottom:12px;">
+            <option value="">Mantener (${this.esc(d.estado)})</option>
+            ${estados.map(e => `<option value="${this.esc(e.nombre)}" ${e.nombre===d.estado?'disabled':''}>→ ${this.esc(e.nombre)}</option>`).join('')}
+          </select>
+          
+          <label style="display:block;font-size:12px;margin-bottom:4px;color:#475569;">Responsable (Opcional)</label>
+          <input type="text" id="dv-m-crm-responsable" class="m-input-full" placeholder="Nombre..." style="margin-bottom:12px;">
+          
+          <label style="display:block;font-size:12px;margin-bottom:4px;color:#475569;">Observaciones</label>
+          <textarea id="dv-m-crm-obs" class="m-input-full" rows="3" placeholder="Detalles..." style="margin-bottom:12px;"></textarea>
+          
+          <label style="display:block;font-size:12px;margin-bottom:4px;color:#475569;">Fotos (Opcional)</label>
+          <input type="file" id="dv-m-crm-fotos" accept="image/*" multiple capture="environment" class="m-input-full" style="margin-bottom:12px;">
+          
+          <button class="m-btn primary full" onclick="MWMS._dvCRMGuardar(${id})">Guardar Registro</button>
+        </div>
+      `;
+
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <button class="m-btn outline full" style="margin-bottom:12px;" onclick="MWMS.viewDevolucionHistorial()"><i class="fa-solid fa-arrow-left"></i> Volver al historial</button>
+          
+          <div class="op-card" style="margin-bottom:16px;padding:16px;">
+            <div style="font-size:1.2rem;font-weight:900;color:#0F4C81;">${this.esc(consec)}</div>
+            <div style="color:#64748b;font-size:.8rem;margin-bottom:8px;">Estado Actual: <strong style="color:#1e293b;">${this.esc(d.estado)}</strong></div>
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:12px 0;">
+            <div style="font-weight:700;margin-bottom:12px;"><i class="fa-solid fa-timeline" style="color:#6366f1;"></i> Línea de Tiempo</div>
+            ${tlHtml}
+          </div>
+          ${formHtml}
+        </div>
+      `;
+    } catch(e) {
+      this.toast('Error al cargar CRM: ' + e.message, 'error');
+    } finally {
+      this.loading(false);
+    }
+  },
+
+  async _dvCRMGuardar(id) {
+    const estado = document.getElementById('dv-m-crm-estado')?.value || '';
+    const responsable = document.getElementById('dv-m-crm-responsable')?.value || '';
+    const obs = document.getElementById('dv-m-crm-obs')?.value || '';
+    const input = document.getElementById('dv-m-crm-fotos');
+
+    if (!estado && !obs.trim()) { this.toast('Escriba observación o cambie estado', 'error'); return; }
+
+    this.loading(true);
+    try {
+      const fotosBase64 = [];
+      if (input && input.files.length > 0) {
+        for (let file of input.files) {
+          if (fotosBase64.length >= 10) break;
+          const compressed = await this._compressMobileImage(file);
+          const reader = new FileReader();
+          const p = new Promise(resolve => {
+            reader.onload = e => resolve(e.target.result);
+            reader.readAsDataURL(compressed);
+          });
+          fotosBase64.push(await p);
+        }
+      }
+
+      const payload = {
+        estado_nuevo: estado,
+        observacion: obs,
+        fotos: fotosBase64,
+        responsable: responsable
+      };
+
+      const res = await fetch(M_API + '/devoluciones/' + id + '/tracking', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + _mToken
+        },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (json.error) throw new Error(json.message);
+
+      this.toast('Registro guardado', 'success');
+      this.viewDevolucionCRM(id);
+    } catch(e) {
+      this.toast('Error al guardar: ' + e.message, 'error');
+      this.loading(false);
+    }
+  },
+
+  async _dvPreviewMFotos(input) {
+    if (!input.files || !input.files.length) return;
+    this.loading(true);
+    try {
+      for (const f of input.files) {
+        if (this._devFotos.length >= 10) { this.toast('Máximo 10 fotos', 'warning'); break; }
+        const compressed = await this._compressMobileImage(f);
+        this._devFotos.push(compressed);
+      }
+      input.value = '';
+      this._dvRenderMFotosPreview();
+    } catch(e) {
+      this.toast('Error procesando foto', 'error');
+    } finally {
+      this.loading(false);
+    }
+  },
+
+  _compressMobileImage(file) {
+    return new Promise((resolve) => {
+      if (!file.type.match(/image.*/)) return resolve(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width, height = img.height;
+          const MAX = 1080;
+          if (width > height && width > MAX) { height = Math.round(height * (MAX/width)); width = MAX; }
+          else if (height > MAX) { width = Math.round(width * (MAX/height)); height = MAX; }
+          canvas.width = width; canvas.height = height;
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          canvas.toBlob(b => b ? resolve(new File([b], file.name, { type: 'image/jpeg' })) : resolve(file), 'image/jpeg', 0.8);
+        };
+        img.onerror = () => resolve(file);
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve(file);
+      reader.readAsDataURL(file);
+    });
+  },
+
+  _dvRenderMFotosPreview() {
+    const el = document.getElementById('dv-m-fotos-preview');
+    if (!el) return;
+    if (!this._devFotos.length) { el.innerHTML = ''; return; }
+    el.innerHTML = this._devFotos.map((f, i) => {
+      const url = URL.createObjectURL(f);
+      return `<div style="position:relative;width:65px;height:65px;border-radius:6px;overflow:hidden;border:1px solid #cbd5e1;">
+        <img src="${url}" style="width:100%;height:100%;object-fit:cover;">
+        <button type="button" onclick="MWMS._dvRemoveMFoto(${i})" style="position:absolute;top:2px;right:2px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+      </div>`;
+    }).join('');
+  },
+
+  _dvRemoveMFoto(i) {
+    this._devFotos.splice(i, 1);
+    this._dvRenderMFotosPreview();
   },
 
   async _dvBuscarQr() {
@@ -2607,6 +3398,7 @@ const MWMS = {
       this._devQrProd = { id: p.id, nombre: p.nombre, upc };
       document.getElementById('dv-m-qr').value = '';
       document.getElementById('dv-m-lote').value = r.data.lote_raw || '';
+      document.getElementById('dv-m-fvence').value = r.data.fecha_vencimiento || '';
       const found = document.getElementById('dv-m-prod-found');
       if (found) { found.textContent = '✓ ' + p.nombre + (r.data.lote_raw ? ' · Lote: ' + r.data.lote_raw : ''); found.style.display = 'block'; }
       this._dvConfigCampos(upc);
@@ -2623,12 +3415,13 @@ const MWMS = {
     if (!q || q.length < 2) { if(drop) drop.style.display='none'; return; }
     this._dvNombreTimer = setTimeout(async () => {
       try {
-        const r = await mApi('GET', '/productos?q=' + encodeURIComponent(q) + '&limit=8');
-        const data = r.data || [];
+        const r = await mApi('GET', '/param/productos/buscar?q=' + encodeURIComponent(q));
+        this._dvProdSearchData = r.data || [];
         if (!drop) return;
-        if (!data.length) { drop.innerHTML='<div style="padding:10px;color:#94a3b8;">Sin resultados</div>'; drop.style.display='block'; return; }
-        drop.innerHTML = data.map(p => `
-          <div onclick="MWMS._dvSelNombre(${p.id},${JSON.stringify(p.nombre || '')},${parseInt(p.unidades_caja||1)})"
+        if (!this._dvProdSearchData.length) { drop.innerHTML='<div style="padding:10px;color:#94a3b8;">Sin resultados</div>'; drop.style.display='block'; return; }
+        drop.innerHTML = this._dvProdSearchData.slice(0, 10).map((p, idx) => `
+          <div onmousedown="MWMS._dvSelNombreIdx(${idx}); event.preventDefault();"
+               ontouchstart="MWMS._dvSelNombreIdx(${idx}); event.preventDefault();"
             style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;display:flex;flex-direction:column;gap:2px;"
             onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
             <strong>${this.esc(p.nombre)}</strong>
@@ -2636,20 +3429,23 @@ const MWMS = {
           </div>`).join('');
         drop.style.display = 'block';
       } catch(e) { /* sin resultados */ }
-    }, 350);
+    }, 300);
   },
 
-  _dvSelNombre(id, nombre, upc) {
-    this._devQrProd = { id, nombre, upc: parseInt(upc || 1) };
+  _dvSelNombreIdx(idx) {
+    const p = this._dvProdSearchData[idx];
+    if (!p) return;
+    const upc = parseInt(p.unidades_caja || 1);
+    this._devQrProd = { id: p.id, nombre: p.nombre, upc };
     const drop = document.getElementById('dv-m-nombre-drop');
     if (drop) drop.style.display = 'none';
-    document.getElementById('dv-m-nombre').value = nombre;
+    document.getElementById('dv-m-nombre').value = p.nombre;
     const found = document.getElementById('dv-m-prod-found');
-    if (found) { found.textContent = '✓ ' + nombre; found.style.display = 'block'; }
-    this._dvConfigCampos(parseInt(upc || 1));
+    if (found) { found.textContent = '✓ ' + p.nombre; found.style.display = 'block'; }
+    this._dvConfigCampos(upc);
     const upcVal = parseInt(upc || 1);
     (upcVal > 1 ? document.getElementById('dv-m-cajas') : document.getElementById('dv-m-cant'))?.focus();
-    this.toast(nombre, 'success');
+    this.toast(p.nombre, 'success');
   },
 
   _dvConfigCampos(upc) {
@@ -2669,14 +3465,18 @@ const MWMS = {
     const upc    = this._devQrProd?.upc || 1;
     const cajas  = parseFloat(document.getElementById('dv-m-cajas')?.value  || 0) || 0;
     const sueltos= parseFloat(document.getElementById('dv-m-cant')?.value   || 0) || 0;
-    const total  = upc > 1 ? cajas * upc + sueltos : sueltos;
+    const total  = upc > 1 ? (cajas * upc) + sueltos : sueltos;
+    
+    const readOnlyTotal = document.getElementById('dv-m-total-readonly');
+    if (readOnlyTotal) readOnlyTotal.value = total > 0 ? total : '';
+    
     const el     = document.getElementById('dv-m-total-preview');
     if (!el) return;
     if (total <= 0) { el.style.display = 'none'; return; }
     el.style.display = 'block';
     el.textContent = upc > 1
-      ? `Total: ${cajas} caj × ${upc} + ${sueltos} sueltos = ${total} UND/T`
-      : `Total: ${total} UND/T`;
+      ? `${cajas} caj × ${upc} + ${sueltos} sueltos = ${total} und/total`
+      : `${total} und/total`;
   },
 
   _dvAgregarItem() {
@@ -2685,13 +3485,15 @@ const MWMS = {
     const cajas  = parseFloat(document.getElementById('dv-m-cajas')?.value  || 0) || 0;
     const sueltos= parseFloat(document.getElementById('dv-m-cant')?.value   || 0) || 0;
     const total  = upc > 1 ? cajas * upc + sueltos : sueltos;
-    if (total <= 0) { this.toast('Ingrese cantidad', 'error'); return; }
+    if (total <= 0) { this.toast('Ingrese cantidad válida', 'error'); return; }
     this._devItems.push({
       producto_id:    this._devQrProd.id,
       nombre:         this._devQrProd.nombre,
       lote:           document.getElementById('dv-m-lote')?.value || null,
+      fecha_vencimiento: document.getElementById('dv-m-fvence')?.value || null,
       cantidad:       total,
       cantidad_cajas: upc > 1 ? cajas : 0,
+      cantidad_saldo: sueltos,
       saldos:         sueltos,
       condicion:      document.getElementById('dv-m-cond')?.value || 'bueno',
       motivo:         'Otro',
@@ -2701,6 +3503,7 @@ const MWMS = {
     if (found) found.style.display = 'none';
     document.getElementById('dv-m-nombre').value = '';
     document.getElementById('dv-m-lote').value   = '';
+    document.getElementById('dv-m-fvence').value = '';
     const cajasEl = document.getElementById('dv-m-cajas');
     if (cajasEl) cajasEl.value = '';
     document.getElementById('dv-m-cant').value   = '';
@@ -2730,30 +3533,77 @@ const MWMS = {
   _dvQuitarItem(i) { this._devItems.splice(i, 1); this._dvRenderItems(); },
 
   async _dvEnviar() {
-    const motivo = document.getElementById('dv-m-motivo')?.value?.trim();
-    if (!motivo) { this.toast('Ingrese el motivo', 'error'); return; }
+    const tipo             = document.getElementById('dv-m-tipo')?.value || 'cliente';
+    const cliente_origen_id= document.getElementById('dv-m-cliente-origen')?.value || null;
+    const causalId         = document.getElementById('dv-m-causal-id')?.value;
+    const motivo           = document.getElementById('dv-m-motivo')?.value?.trim();
+
+    if (!causalId) { this.toast('Seleccione la causal de devolución', 'error'); return; }
+    if (!motivo)   { this.toast('Ingrese el motivo general', 'error'); return; }
     if (!this._devItems.length) { this.toast('Agregue al menos un producto', 'error'); return; }
+
     const btn = document.getElementById('dv-m-submit');
     if (btn) btn.disabled = true;
     this.loading(true);
-    try {
-      const payload = {
-        tipo:           'cliente',
-        motivo_general: motivo,
-        detalles:       this._devItems,
-      };
-      
-      const causalId = document.getElementById('dv-m-causal-id')?.value;
-      if (causalId) payload.causal_devolucion_id = causalId;
-      
-      const responsable = document.getElementById('dv-m-responsable-id')?.value?.trim();
-      if (responsable) payload.responsable_devolucion = responsable;
 
-      const r = await mApi('POST', '/devoluciones', payload);
-      this.toast('Devolución ' + r.data.numero + ' registrada', 'success');
+    try {
+      const formData = new FormData();
+      formData.append('tipo', tipo);
+      if (cliente_origen_id) {
+        formData.append('cliente_origen_id', cliente_origen_id);
+        formData.append('tercero_id', cliente_origen_id);
+      }
+      formData.append('causal_devolucion_id', causalId);
+      formData.append('motivo_general', motivo);
+      formData.append('detalles', JSON.stringify(this._devItems));
+
+      (this._devFotos || []).forEach(f => {
+        formData.append('fotos[]', f);
+      });
+
+      const res = await fetch(M_API + '/devoluciones', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + _mToken },
+        body: formData
+      });
+      const json = await res.json();
+      this.loading(false);
+
+      if (json.error) throw new Error(json.message);
+
+      const consec    = json.data?.consecutivo_devolucion || json.data?.consecutivo;
+      const consecTxt = consec ? `#${consec}` : (json.data?.numero || '');
+
+      // Modal móvil con consecutivo para marcado físico
+      const modalSuccessHtml = `
+        <div id="m-modal-consec-success" style="position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:20px;">
+          <div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:360px;text-align:center;box-shadow:0 12px 32px rgba(0,0,0,0.3);">
+            <div style="width:56px;height:56px;background:#dcfce7;color:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:24px;">
+              <i class="fa-solid fa-check"></i>
+            </div>
+            <h3 style="margin:0 0 6px;font-size:1.1rem;color:#1e293b;">¡Devolución Registrada!</h3>
+            <p style="margin:0 0 14px;color:#64748b;font-size:.78rem;">Consecutivo para marcado de producto:</p>
+
+            <div style="background:#f0f9ff;border:2px dashed #0284c7;border-radius:10px;padding:12px;margin-bottom:16px;">
+              <div style="font-size:.65rem;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:2px;">Consecutivo de Marcado</div>
+              <div style="font-size:2.2rem;font-weight:900;color:#0F4C81;">${this.esc(consecTxt)}</div>
+              <div style="font-size:.65rem;color:#64748b;margin-top:2px;">N° Registro Interno: ${this.esc(json.data?.numero || '-')}</div>
+            </div>
+
+            <button class="m-btn primary" onclick="navigator.clipboard.writeText('${consec || json.data?.numero}');MWMS.toast('Consecutivo copiado','success');" style="width:100%;margin-bottom:8px;">
+              <i class="fa-solid fa-copy"></i> Copiar Consecutivo
+            </button>
+            <button class="m-btn secondary" onclick="document.getElementById('m-modal-consec-success').remove();MWMS.showHome();" style="width:100%;">
+              Entendido
+            </button>
+          </div>
+        </div>`;
+
+      document.body.insertAdjacentHTML('beforeend', modalSuccessHtml);
       this._devItems  = [];
+      this._devFotos  = [];
       this._devQrProd = null;
-      this.showHome();
+
     } catch(e) {
       this.toast(e.message || 'Error al enviar', 'error');
       if (btn) btn.disabled = false;
@@ -6290,7 +7140,7 @@ const MWMS = {
     }
   },
 
-  async viewPlanilla(numero, verFaltantes = false) {
+  async viewPlanilla(numero) {
     this.loading(true);
     document.getElementById('m-title').textContent = 'Planilla ' + numero;
     try {
@@ -6298,7 +7148,7 @@ const MWMS = {
       const rp = await mApi('GET', '/picking/mis-planillas');
       const plan = (rp.data || []).find(p => p.planilla_numero === numero);
       
-      if (plan && !plan.empezada && !verFaltantes) {
+      if (plan && !plan.empezada) {
         document.getElementById('m-content').innerHTML = `
           <div class="op-view" style="text-align:center;padding-top:40px;">
             <div class="op-card" style="padding:30px;border-top:6px solid #0F4C81;">
@@ -6331,11 +7181,11 @@ const MWMS = {
         return;
       }
 
-      const estado = verFaltantes ? 'Faltante' : 'Pendiente,EnProceso';
+      const estado = 'Pendiente,EnProceso';
       const r = await mApi('GET', `/picking/planilla/${numero}?estado=${estado}`);
       const items = r.data || [];
       
-      if (items.length === 0 && !verFaltantes) {
+      if (items.length === 0) {
         document.getElementById('m-content').innerHTML = `
           <div class="op-view">
             <div style="text-align:center;padding-top:32px;padding-bottom:20px;">
@@ -6349,9 +7199,6 @@ const MWMS = {
             <button class="m-btn primary full" onclick="MWMS.finalizarPicking('${numero}')"
               style="margin-top:8px;font-size:1rem;padding:14px;font-weight:900;">
               <i class="fa-solid fa-lock"></i> CERRAR Y FINALIZAR PICKING
-            </button>
-            <button class="m-btn secondary full" onclick="MWMS.viewPlanilla('${numero}', true)" style="margin-top:8px;">
-              <i class="fa-solid fa-triangle-exclamation"></i> Ver agotados / faltantes
             </button>
             <button class="m-btn-text full" onclick="MWMS.viewPicking()" style="margin-top:16px;color:#64748b;">
               Volver a Mis Planillas
@@ -6396,14 +7243,10 @@ const MWMS = {
 
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:6px;flex-wrap:wrap;">
             <div style="font-size:.65rem;font-weight:800;color:#64748b;text-transform:uppercase;">
-               ${verFaltantes ? '<span style="color:#ef4444;">PRODUCTOS FALTANTES</span>' : `PENDIENTES (${items.length})`}:
+               PENDIENTES (${items.length}):
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
-               ${verFaltantes
-                  ? `<button class="m-btn info sm" style="font-size:.65rem;padding:4px 8px;" onclick="MWMS.viewPlanilla('${numero}', false)"><i class="fa-solid fa-list-check"></i> Pendientes</button>`
-                  : `<button class="m-btn secondary sm" style="font-size:.65rem;padding:4px 8px;" onclick="MWMS.viewPlanilla('${numero}', true)"><i class="fa-solid fa-triangle-exclamation"></i> Faltantes</button>`
-               }
-               ${['Admin','Supervisor','SuperAdmin'].includes(_mUser?.rol) && !verFaltantes ? `
+               ${['Admin','Supervisor','SuperAdmin'].includes(_mUser?.rol) ? `
                <button onclick="MWMS._pkAgregarProducto('${numero}')"
                  style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:.65rem;font-weight:800;cursor:pointer;white-space:nowrap;">
                  <i class="fa-solid fa-plus"></i> Agregar ref.
@@ -6417,7 +7260,7 @@ const MWMS = {
             const soloPicos = it.cajas === 0;
             const vence = it.fecha_vencimiento ? this.formatDateShort(it.fecha_vencimiento) : null;
             const tienesFotos = it.fotos && it.fotos.length > 0;
-            const borderColor = verFaltantes ? '#ef4444' : (it.cantidad_pick > 0 ? '#10b981' : '#f59e0b');
+            const borderColor = (it.cantidad_pick > 0 ? '#10b981' : '#f59e0b');
             return `
             <div class="op-card" style="border-left:4px solid ${borderColor};padding:12px 14px;margin-bottom:10px;">
               <!-- Fila 1: nombre + cantidad + foto -->
@@ -6436,7 +7279,7 @@ const MWMS = {
               </div>
 
               <!-- Fila 2: ubicación + cajas + vencimiento -->
-              <div onclick="MWMS.initPKConsolidado(${idx}, '${numero}')" style="display:flex;gap:6px;flex-wrap:wrap;font-size:.7rem;background:#f8fafc;padding:5px 8px;border-radius:6px;align-items:center;margin-bottom:${verFaltantes ? 0 : 6}px;">
+              <div onclick="MWMS.initPKConsolidado(${idx}, '${numero}')" style="display:flex;gap:6px;flex-wrap:wrap;font-size:.7rem;background:#f8fafc;padding:5px 8px;border-radius:6px;align-items:center;margin-bottom:6px;">
                 <span style="font-weight:800;color:${sinUbic ? '#dc2626' : '#0F4C81'};font-family:monospace;white-space:nowrap;" title="${sinUbic ? 'SIN UBICACIÓN' : it.ubicacion_codigo}">
                   <i class="fa-solid fa-location-dot" style="font-size:.65rem;"></i>
                   ${sinUbic ? 'SIN UBIC.' : this._shortUbic(it.ubicacion_codigo)}
@@ -6449,8 +7292,7 @@ const MWMS = {
                 </span>
                 ${vence ? `<span style="margin-left:auto;background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 6px;font-weight:700;white-space:nowrap;"><i class="fa-solid fa-calendar-xmark" style="font-size:.6rem;"></i> ${vence}</span>` : ''}
               </div>
-              <!-- Botón AGOTADO rápido en la lista (solo en vista normal, no faltantes) -->
-              ${!verFaltantes ? `
+              <!-- Botón AGOTADO rápido en la lista -->
               <div style="display:grid;grid-template-columns:3fr 1fr;gap:6px;">
                 <button onclick="MWMS.initPKConsolidado(${idx}, '${numero}')"
                   style="background:#0F4C81;color:#fff;border:none;border-radius:7px;padding:7px 10px;font-size:.72rem;font-weight:800;cursor:pointer;text-align:center;">
@@ -6460,7 +7302,7 @@ const MWMS = {
                   style="background:#450a0a;color:#fca5a5;border:1px solid #991b1b;border-radius:7px;padding:7px 6px;font-size:.68rem;font-weight:800;cursor:pointer;text-align:center;">
                   <i class="fa-solid fa-circle-xmark"></i><br>AGOT.
                 </button>
-              </div>` : ''}
+              </div>
             </div>`;
           }).join('')}
         </div>`;
@@ -6475,6 +7317,18 @@ const MWMS = {
     const ABREV = { CONGELACION: 'CONG', REFRIGERACION: 'REF', SECO: 'SECO', PATIO: 'PAT' };
     const zona = ABREV[codigo.substring(0, i).toUpperCase()] || codigo.substring(0, 4);
     return zona + codigo.substring(i);
+  },
+
+  // A pedido explícito (2026-08-20): el campo de escaneo de ubicación usa
+  // inputmode="none" por defecto para que NO se active el teclado del celular en
+  // cada toque (el flujo normal es con lector físico/bluetooth, que sí escribe en
+  // el campo sin necesitar teclado en pantalla). Este botón habilita el teclado
+  // solo cuando el auxiliar de verdad necesita digitar la ubicación a mano.
+  _pkTecladoManual(btn) {
+    const inp = document.getElementById('m-pk-scan');
+    if (!inp) return;
+    inp.removeAttribute('inputmode');
+    inp.focus();
   },
 
   async iniciarPicking(numero) {
@@ -6634,6 +7488,15 @@ const MWMS = {
 
     let locValidated = false;
 
+    // BUG CORREGIDO 2026-08-19: antes solo se miraba controla_vencimiento/controla_lote
+    // del producto para exigir la fecha manual, ignorando la anulación por pedido
+    // (requiere_fecha_vencimiento: true=SIEMPRE, false=NUNCA) que el Administrador
+    // configura desde Pedidos — con "NUNCA exigir" el móvil la seguía pidiendo igual.
+    const reqFvOverride     = it.requiere_fecha_vencimiento;
+    const requiereFechaManual = reqFvOverride === false ? false
+      : reqFvOverride === true ? true
+      : (!it.ubicacion_codigo && (it.controla_vencimiento || it.controla_lote));
+
     // ─── Render único (sin pasos bloqueantes) ─────────────────────────────────
     const renderAll = () => {
       document.getElementById('m-content').innerHTML = `
@@ -6673,21 +7536,21 @@ const MWMS = {
           <div class="op-card" style="padding:9px 12px;margin-bottom:8px;">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
               ${it.ubicacion_codigo
-                ? `<div id="pk-ubi-txt" style="font-size:1.25rem;font-weight:900;font-family:monospace;color:#0F4C81;letter-spacing:.5px;line-height:1.1;">${this._shortUbic(it.ubicacion_codigo)}</div>`
-                : `<div style="font-size:.85rem;color:#dc2626;font-weight:800;"><i class="fa-solid fa-triangle-exclamation"></i> SIN UBICACIÓN</div>`
+                ? `<div id="pk-ubi-txt" style="font-size:1.25rem;font-weight:900;font-family:monospace;color:#0F4C81;letter-spacing:.5px;line-height:1.1;white-space:nowrap;overflow:hidden;flex:1;min-width:0;">${this._shortUbic(it.ubicacion_codigo)}</div>`
+                : `<div style="font-size:.85rem;color:#dc2626;font-weight:800;white-space:nowrap;"><i class="fa-solid fa-triangle-exclamation"></i> SIN UBICACIÓN</div>`
               }
-              <div style="display:flex;align-items:center;gap:5px;">
-                <span style="background:${vence ? '#fef2f2' : '#f1f5f9'};color:${vence ? '#dc2626' : '#64748b'};border-radius:5px;padding:3px 7px;font-weight:700;font-size:.68rem;white-space:nowrap;">
-                  <i class="fa-solid fa-calendar-days" style="font-size:.58rem;"></i> ${venceTxt}
-                </span>
-                ${tienesFotos ? `
-                <button onclick="MWMS.viewProductoDetail(${it.producto_id},'MWMS.renderPKConsolidado(MWMS._itemsPlanilla[MWMS._idxActual],\\'${planillaNumero}\\')')"
-                  style="background:#e0f2fe;border:1px solid #bae6fd;color:#0284c7;border-radius:5px;padding:3px 7px;font-size:.65rem;font-weight:700;cursor:pointer;">
-                  <i class="fa-solid fa-camera"></i> ${numFotos}
-                </button>` : ''}
-              </div>
+              <span style="background:${vence ? '#fef2f2' : '#f1f5f9'};color:${vence ? '#dc2626' : '#64748b'};border-radius:5px;padding:3px 7px;font-weight:700;font-size:.68rem;white-space:nowrap;flex-shrink:0;">
+                <i class="fa-solid fa-calendar-days" style="font-size:.58rem;"></i> ${venceTxt}
+              </span>
             </div>
-            <div style="font-weight:800;color:#1e293b;font-size:.9rem;line-height:1.2;">${this.esc(it.producto_nombre)}</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <div style="font-weight:800;color:#1e293b;font-size:.9rem;line-height:1.2;">${this.esc(it.producto_nombre)}</div>
+              ${tienesFotos ? `
+              <button onclick="MWMS.viewProductoDetail(${it.producto_id},'MWMS.renderPKConsolidado(MWMS._itemsPlanilla[MWMS._idxActual],\\'${planillaNumero}\\')')"
+                style="background:#e0f2fe;border:1px solid #bae6fd;color:#0284c7;border-radius:5px;padding:3px 7px;font-size:.65rem;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+                <i class="fa-solid fa-camera"></i> ${numFotos}
+              </button>` : ''}
+            </div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.66rem;color:#64748b;margin-top:3px;">
               <span style="font-family:monospace;font-weight:700;">${it.producto_codigo}</span>
               ${it.lote ? `<span>· Lote <b>${it.lote}</b></span>` : ''}
@@ -6697,17 +7560,32 @@ const MWMS = {
             </div>
           </div>
 
-          <!-- ── Scan ubicación (opcional, no bloquea) ── -->
+          <!-- ── Scan ubicación (2026-08-18: obligatorio por defecto — se puede ── -->
+          <!-- desactivar por planilla completa desde escritorio) ── -->
           ${it.ubicacion_codigo ? `
           <div id="pk-scan-bar" style="display:flex;align-items:center;gap:8px;background:#fff8e1;border:1px solid #f59e0b;border-radius:9px;padding:6px 10px;margin-bottom:8px;">
             <i id="pk-loc-icon" class="fa-solid fa-location-crosshairs" style="color:#d97706;font-size:.9rem;flex-shrink:0;"></i>
-            <input type="text" id="m-pk-scan" placeholder="Escanee ubicación para confirmar (opcional)"
+            <input type="text" id="m-pk-scan" inputmode="none" placeholder="${it.requiere_escaneo_ubicacion ? 'Escanee la ubicación (obligatorio)' : 'Escanee ubicación para confirmar (opcional)'}"
               style="flex:1;border:none;background:transparent;font-size:.75rem;font-weight:700;color:#374151;outline:none;min-width:0;"
               onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(v)MWMS._pkValidarLoc(v);}">
+            <button onclick="MWMS._pkTecladoManual(this)" title="Digitar manualmente"
+              style="background:#fff;color:#d97706;border:1px solid #d97706;border-radius:6px;padding:4px 8px;font-size:.7rem;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+              <i class="fa-solid fa-keyboard"></i>
+            </button>
             <button onclick="(()=>{const v=document.getElementById('m-pk-scan')?.value?.trim();if(v)MWMS._pkValidarLoc(v);})()"
               style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:.7rem;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0;">
               <i class="fa-solid fa-check"></i>
             </button>
+          </div>` : ''}
+          ${requiereFechaManual ? `
+          <!-- Sin ubicación asignada (o pedido con "SIEMPRE exigir" explícito): el
+               sistema no puede garantizar de qué lote se está descontando, así que se
+               exige la fecha de vencimiento manual — mismo criterio pedido explícitamente
+               (2026-08-18), ahora respetando también la anulación por pedido. -->
+          <div id="pk-fv-bar" style="display:flex;align-items:center;gap:8px;background:#fef2f2;border:1px solid #dc2626;border-radius:9px;padding:6px 10px;margin-bottom:8px;">
+            <i class="fa-solid fa-calendar-days" style="color:#dc2626;font-size:.9rem;flex-shrink:0;"></i>
+            <input type="date" id="m-pk-fv" style="flex:1;border:none;background:transparent;font-size:.75rem;font-weight:700;color:#374151;outline:none;min-width:0;">
+            <span style="font-size:.62rem;font-weight:800;color:#dc2626;white-space:nowrap;">FECHA VENC. OBLIGATORIA</span>
           </div>` : ''}
 
           <!-- ── Formulario cantidades: SIEMPRE VISIBLE ── -->
@@ -6903,6 +7781,30 @@ const MWMS = {
 
     // ─── Confirmar separación ─────────────────────────────────────────────────
     this._confirmarPKInline = async (planilla, factor, maxCajas) => {
+      // Blindaje 2026-08-18 (a pedido explícito): NO cambia el proceso — solo agrega
+      // dos validaciones antes de dejar continuar:
+      // 1. Si esta línea tiene ubicación asignada y la planilla exige escaneo, no se
+      //    puede confirmar sin haber escaneado/digitado la ubicación correcta primero
+      //    (usar el botón "UBICACIÓN" arriba si la asignada no es la correcta).
+      // 2. Si NO tiene ubicación asignada (el sistema no puede garantizar de qué lote
+      //    se está descontando) y el producto controla vencimiento/lote, se exige la
+      //    fecha de vencimiento manual — mismo comportamiento que ya existía, ahora
+      //    acotado solo a este caso puntual.
+      if (it.ubicacion_codigo && it.requiere_escaneo_ubicacion && !locValidated) {
+        this.toast('Escanee o digite la ubicación correcta antes de confirmar', 'error');
+        document.getElementById('m-pk-scan')?.focus();
+        return;
+      }
+      let fechaVencManual = null;
+      if (requiereFechaManual) {
+        fechaVencManual = document.getElementById('m-pk-fv')?.value || '';
+        if (!fechaVencManual) {
+          this.toast('Ingrese la fecha de vencimiento del producto que va a despachar', 'error');
+          document.getElementById('m-pk-fv')?.focus();
+          return;
+        }
+      }
+
       const usaCajas = factor > 1;
       const c = parseFloat(document.getElementById('pk-inline-cajas')?.value || 0) || 0;
       const s = parseFloat(document.getElementById('pk-inline-saldos')?.value || 0) || 0;
@@ -7024,13 +7926,34 @@ const MWMS = {
         if (!ok.isConfirmed) return;
         novedadId = ok.value;
       }
-      this.confirmarPKActual(planilla, totalUnd, c, s, novedadId);
+      this.confirmarPKActual(planilla, totalUnd, c, s, novedadId, fechaVencManual);
     };
 
     renderAll();
   },
 
-  async confirmarPKActual(planillaNumero, qtyTomada = null, cajasTomadas = null, saldosTomados = null, novedadId = null) {
+  // ── Pide la fecha de vencimiento por un modal bloqueante (Swal con input date) ──
+  // Devuelve la fecha (yyyy-mm-dd) o null si el auxiliar cancela.
+  async _pkPedirFechaVencimiento(productoNombre) {
+    const { value: fecha, isConfirmed } = await Swal.fire({
+      title: '<i class="fa-solid fa-calendar-days" style="color:#dc2626;"></i> Fecha de vencimiento requerida',
+      html: `<p style="font-size:.85rem;margin-bottom:10px;"><b>${this.esc(productoNombre||'')}</b> controla fecha de vencimiento y esta ubicación no la tiene registrada.</p>
+             <input id="swal-fv-manual" type="date" class="swal2-input" style="margin:0;">`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Confirmar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc2626',
+      preConfirm: () => {
+        const v = document.getElementById('swal-fv-manual')?.value;
+        if (!v) { Swal.showValidationMessage('Ingrese la fecha de vencimiento'); return false; }
+        return v;
+      }
+    });
+    return isConfirmed ? fecha : null;
+  },
+
+  async confirmarPKActual(planillaNumero, qtyTomada = null, cajasTomadas = null, saldosTomados = null, novedadId = null, fechaVencManual = null) {
     const it = this._itemsPlanilla[this._idxActual];
     // it.cantidad_total viene en CAJAS (ver renderPKConsolidado: sugCajas = it.cantidad_total).
     // Cuando se acepta todo sin pasar por el modal (qtyTomada === null), hay que enviar
@@ -7043,14 +7966,22 @@ const MWMS = {
     const qtyActual = qtyTomada !== null ? qtyTomada : (cajasActual * factorConfActual + saldosActual);
     this.loading(true);
     try {
-      await mApi('POST', '/picking/confirmar-consolidado', {
+      const confirmResp = await mApi('POST', '/picking/confirmar-consolidado', {
         ids: it.ids,
         cantidad_tomada: qtyActual,
         cajas_tomadas:   cajasActual,
         saldos_tomados:  saldosActual,
         planilla_numero: planillaNumero,
-        novedad_id: novedadId
+        novedad_id: novedadId,
+        fecha_vencimiento_manual: fechaVencManual,
       });
+
+      if (confirmResp.status === 'needs_fecha_vencimiento') {
+        this.loading(false);
+        const fecha = await this._pkPedirFechaVencimiento(confirmResp.producto_nombre);
+        if (!fecha) return; // cancelado — no se separa la línea
+        return this.confirmarPKActual(planillaNumero, qtyTomada, cajasTomadas, saldosTomados, novedadId, fecha);
+      }
 
       // ── Quitar spinner ANTES de mostrar el Swal ──────────────────────────
       // El overlay (z-index:90000) tapaba el Swal (z-index:~1060) impidiendo
@@ -7253,6 +8184,37 @@ const MWMS = {
     }
   },
 
+  // ── Reasignar ubicación con causal FIFO si el backend la exige ──────────────
+  // Centraliza el reintento: si la ubicación elegida no es la sugerida FEFO,
+  // el backend responde needs_causal_fifo con la lista de causales — aquí se
+  // pide la causal y se reintenta la MISMA petición con causal_fifo_id.
+  async _pkReasignarConCausal(body) {
+    let r = await mApi('POST', '/picking/reasignar-ubicacion', body);
+    if (r.status === 'needs_causal_fifo') {
+      const opts = (r.causales || []).map(c => `<option value="${c.id}">${this.esc(c.nombre)}</option>`).join('');
+      const { value: causalId, isConfirmed } = await Swal.fire({
+        title: '<i class="fa-solid fa-arrow-down-up-across-line" style="color:#d97706;"></i> Fuera del orden FEFO',
+        html: `<p style="font-size:.85rem;margin-bottom:10px;">Esta no es la ubicación con la fecha de vencimiento más próxima. Seleccione por qué:</p>
+               <select id="swal-causal-fifo" class="swal2-select" style="display:flex;width:100%;">
+                 <option value="">Causal *</option>${opts}
+               </select>`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Confirmar',
+        cancelButtonText: 'Corregir',
+        confirmButtonColor: '#d97706',
+        preConfirm: () => {
+          const v = document.getElementById('swal-causal-fifo')?.value;
+          if (!v) { Swal.showValidationMessage('Selecciona una causal'); return false; }
+          return v;
+        }
+      });
+      if (!isConfirmed) return { error: true, message: 'Cambio de ubicación cancelado' };
+      r = await mApi('POST', '/picking/reasignar-ubicacion', { ...body, causal_fifo_id: causalId });
+    }
+    return r;
+  },
+
   async _pkSeleccionarAlternativa(idx) {
     const alt = this._pkAltRows?.[idx];
     if (!alt) return;
@@ -7267,7 +8229,7 @@ const MWMS = {
 
     this.loading(true);
     try {
-      const r = await mApi('POST', '/picking/reasignar-ubicacion', {
+      const r = await this._pkReasignarConCausal({
         linea_ids:        lineaIds,
         inventario_id:    alt.inventario_id,
         ubicacion_id:     alt.ubicacion_id,
@@ -7321,12 +8283,13 @@ const MWMS = {
 
     this.loading(true);
     try {
-      await mApi('POST', '/picking/reasignar-ubicacion', {
+      const r = await this._pkReasignarConCausal({
         linea_ids:         lineaIds,
         ubicacion_id:      loc.ubicacion_id,
         lote:              loc.lote || null,
         fecha_vencimiento: loc.fecha_vencimiento || null,
       });
+      if (r.error) { this.toast(r.message || 'Error al cambiar ubicación', 'error'); return; }
       this.toast(`Ubicación cambiada a ${loc.ubicacion_codigo} ✓`, 'success');
       const planillaR = await mApi('GET', `/picking/planilla/${planillaNumero}`);
       this._itemsPlanilla = planillaR.data || [];
@@ -7820,6 +8783,38 @@ const MWMS = {
         cajas_tomadas: cjEnv,
         saldos_tomados: slEnv
       });
+      if (r.status === 'needs_fecha_vencimiento') {
+        this.loading(false);
+        const fecha = await this._pkPedirFechaVencimiento(r.producto_nombre);
+        if (!fecha) return;
+        this.loading(true);
+        const r2 = await mApi('POST', `/picking/${ordenId}/confirmar-linea`, {
+          linea_id: lineaId,
+          cantidad_tomada: nQty,
+          cajas_tomadas: cjEnv,
+          saldos_tomados: slEnv,
+          fecha_vencimiento_manual: fecha,
+        });
+        if (r2.status === 'pending_approval') {
+          this.loading(false);
+          this._showExpiryModal(r2.aprobacion_id, r2.message, async () => {
+            this.loading(true);
+            try {
+              await mApi('POST', `/picking/${ordenId}/confirmar-linea`, {
+                linea_id: lineaId, cantidad_tomada: nQty, cajas_tomadas: cjEnv, saldos_tomados: slEnv,
+                fecha_vencimiento_manual: fecha,
+              });
+              this.toast("Línea confirmada", "success");
+              this.goPK(ordenId);
+            } catch(e) { this.toast(e.message, "error"); }
+            finally { this.loading(false); }
+          });
+          return;
+        }
+        this.toast("Línea confirmada", "success");
+        this.goPK(ordenId);
+        return;
+      }
       if (r.status === 'pending_approval') {
         this.loading(false);
         this._showExpiryModal(r.aprobacion_id, r.message, async () => {
@@ -9724,44 +10719,111 @@ const MWMS = {
     document.getElementById('nav-home').classList.remove('active');
     document.getElementById('m-content').innerHTML = `
       <div class="op-view">
-        <div style="display:flex;gap:8px;margin-bottom:14px;">
-          <button class="btn-mobile primary" style="flex:1;" onclick="MWMS._miscMobileNuevo()">
-            <i class="fa-solid fa-plus"></i> Nueva Recepción
-          </button>
-          <button class="btn-mobile" style="flex:1;" onclick="MWMS._miscMobileLista()">
-            <i class="fa-solid fa-list"></i> Ver Lista
-          </button>
-        </div>
+        <button class="m-btn secondary full" style="margin-bottom:12px;" onclick="MWMS._miscMobileNuevo()">
+          <i class="fa-solid fa-plus"></i> Nueva Recepción
+        </button>
+        <button class="m-btn secondary full" style="margin-bottom:12px;" onclick="MWMS._miscMobileLista()">
+          <i class="fa-solid fa-list"></i> Ver Lista de Ingresos
+        </button>
+        <button class="m-btn secondary full" style="margin-bottom:12px;" onclick="MWMS._miscMobileOdcs()">
+          <i class="fa-solid fa-file-invoice-dollar"></i> Ver Órdenes (ODC)
+        </button>
         <div id="misc-mobile-area"></div>
       </div>`;
+    this._miscMobileLista();
   },
 
-  async _miscMobileNuevo() {
+  _miscFotos: [],
+  _miscEditId: null,
+  _miscOdcId: null,
+  _miscData: [],
+
+  async _miscMobileNuevo(editItem = null, odcItem = null) {
+    this._miscEditId = editItem ? editItem.id : null;
+    this._miscOdcId = odcItem ? odcItem.id : null;
+    this._miscFotos = editItem ? (editItem.fotos || []).map(f => ({ url: M_API.replace('/api','') + '/' + f.ruta })) : [];
+    
     const area = document.getElementById('misc-mobile-area');
     area.innerHTML = `<div style="text-align:center;padding:20px;"><div class="spinner"></div></div>`;
     let clientes = [];
     try { const r = await mApi('GET', '/param/clientes'); clientes = r.data || r || []; } catch(e) {}
 
+    const isOdc = !!odcItem;
+    const isEdit = !!editItem;
+    const title = isEdit ? 'Editar Misceláneo' : (isOdc ? 'Recibir ODC' : 'Recibir Misceláneo');
+    const provVal = isEdit ? this.esc(editItem.proveedor) : (isOdc ? this.esc(odcItem.proveedor_nombre) : '');
+    const artVal = isEdit ? this.esc(editItem.articulo) : (isOdc ? (odcItem.detalles && odcItem.detalles.length > 0 ? this.esc(odcItem.detalles[0].articulo) : '') : '');
+    const cantVal = isEdit ? editItem.cantidad : (isOdc ? (odcItem.detalles && odcItem.detalles.length > 0 ? odcItem.detalles[0].cantidad : '1') : '1');
+    const umVal = isEdit ? editItem.unidad_medida : (isOdc ? (odcItem.detalles && odcItem.detalles.length > 0 ? odcItem.detalles[0].unidad_medida : 'UN') : 'UN');
+    const obsVal = isEdit ? this.esc(editItem.observaciones||'') : (isOdc ? this.esc(odcItem.observaciones||'') : '');
+    const clientVal = isEdit ? editItem.cliente_id : '';
+
     area.innerHTML = `
-      <div class="scan-card" style="padding:16px;">
-        <h3 style="font-size:.9rem;font-weight:700;margin-bottom:12px;"><i class="fa-solid fa-cubes-stacked" style="color:#84cc16;"></i> Recibir Misceláneo</h3>
-        <div class="form-group"><label class="form-label">Sucursal de Entrega *</label>
-          <select id="mm-cliente" class="form-control">
+      <div class="op-card" style="margin-top:10px;">
+        <h3 style="font-size:.9rem;font-weight:700;margin-bottom:12px;color:#0f172a;"><i class="fa-solid fa-cubes-stacked"></i> ${title}</h3>
+        <div style="margin-bottom:12px;">
+          <div class="m-label">Sucursal de Entrega *</div>
+          <select id="mm-cliente" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px;">
             <option value="">— Seleccione el punto de entrega —</option>
-            ${clientes.map(c => `<option value="${c.id}" data-nombre="${this.esc(c.razon_social||c.nombre||'')}">${this.esc(c.razon_social||c.nombre||'')}</option>`).join('')}
+            ${clientes.map(c => `<option value="${c.id}" data-nombre="${this.esc(c.razon_social||c.nombre||'')}" ${clientVal == c.id ? 'selected' : ''}>${this.esc(c.razon_social||c.nombre||'')}</option>`).join('')}
           </select>
         </div>
-        <div class="form-group"><label class="form-label">Proveedor *</label><input id="mm-prov" class="form-control" placeholder="Nombre del proveedor"></div>
-        <div class="form-group"><label class="form-label">Artículo *</label><input id="mm-art" class="form-control" placeholder="Descripción del artículo"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <div class="form-group"><label class="form-label">Cantidad *</label><input id="mm-cant" type="number" class="form-control" value="1" min="0.01" step="0.01"></div>
-          <div class="form-group"><label class="form-label">Unidad</label>
-            <select id="mm-um" class="form-control"><option value="UN">UN</option><option value="KG">KG</option><option value="CJ">CJ</option><option value="LT">LT</option></select></div>
+        <div style="margin-bottom:12px;">
+          <div class="m-label">Proveedor *</div>
+          <input id="mm-prov" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px;" placeholder="Nombre del proveedor" value="${provVal}" ${isOdc ? 'readonly style="background:#f1f5f9"' : ''}>
         </div>
-        <div class="form-group"><label class="form-label">Observaciones</label><textarea id="mm-obs" class="form-control" rows="2"></textarea></div>
-        <div class="form-group"><label class="form-label"><i class="fa-solid fa-camera"></i> Fotos</label><input id="mm-fotos" type="file" class="form-control" accept="image/*" multiple capture="environment"></div>
-        <button class="btn-mobile primary" style="width:100%;margin-top:10px;" onclick="MWMS._miscMobileGuardar()"><i class="fa-solid fa-save"></i> Guardar</button>
+        <div style="margin-bottom:12px;">
+          <div class="m-label">Artículo *</div>
+          <input id="mm-art" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px;" placeholder="Descripción del artículo" value="${artVal}" ${isOdc ? 'readonly style="background:#f1f5f9"' : ''}>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+          <div>
+            <div class="m-label">Cantidad *</div>
+            <input id="mm-cant" type="number" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px;" value="${cantVal}" min="0.01" step="0.01">
+          </div>
+          <div>
+            <div class="m-label">Unidad</div>
+            <select id="mm-um" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px;">
+              <option value="UN" ${umVal==='UN'?'selected':''}>UN</option><option value="KG" ${umVal==='KG'?'selected':''}>KG</option><option value="CJ" ${umVal==='CJ'?'selected':''}>CJ</option><option value="LT" ${umVal==='LT'?'selected':''}>LT</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <div class="m-label">Observaciones</div>
+          <textarea id="mm-obs" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px;" rows="2" placeholder="Notas opcionales...">${obsVal}</textarea>
+        </div>
+
+        <div style="margin-top:12px; ${isEdit ? 'display:none;' : ''}">
+          <div class="m-label"><i class="fa-solid fa-camera"></i> Fotos de evidencia inicial</div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <label for="mm-fotos-cam" class="m-btn secondary sm full" style="margin:0;padding:8px 6px;text-align:center;">
+              <i class="fa-solid fa-camera"></i> Tomar Foto
+            </label>
+            <input type="file" id="mm-fotos-cam" accept="image/*" capture="environment" style="position:fixed;top:0;left:0;width:0;height:0;opacity:0;"
+              onchange="if(this.files&&this.files[0]){ MWMS._miscFotos.push(this.files[0]); MWMS._miscRenderFotos(); this.value=''; }">
+
+            <label for="mm-fotos-gal" class="m-btn secondary sm full" style="margin:0;padding:8px 6px;text-align:center;">
+              <i class="fa-solid fa-image"></i> Galería
+            </label>
+            <input type="file" id="mm-fotos-gal" accept="image/*" multiple style="position:fixed;top:0;left:0;width:0;height:0;opacity:0;"
+              onchange="Array.from(this.files||[]).forEach(f=>MWMS._miscFotos.push(f)); MWMS._miscRenderFotos(); this.value='';">
+          </div>
+          <div id="mm-fotos-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;"></div>
+        </div>
+
+        <button class="m-btn primary full" style="margin-top:12px;" onclick="MWMS._miscMobileGuardar()"><i class="fa-solid fa-save"></i> ${isEdit ? 'Actualizar' : 'Guardar'} Misceláneo</button>
       </div>`;
+  },
+
+  _miscRenderFotos() {
+    const cont = document.getElementById('mm-fotos-preview');
+    if (!cont) return;
+    cont.innerHTML = (this._miscFotos || []).map((file, idx) => `
+      <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;">
+        <img src="${URL.createObjectURL(file)}" style="width:100%;height:100%;object-fit:cover;">
+        <button type="button" onclick="MWMS._miscFotos.splice(${idx},1);MWMS._miscRenderFotos();"
+          style="position:absolute;top:1px;right:1px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;line-height:1;cursor:pointer;">✕</button>
+      </div>`).join('');
   },
 
   async _miscMobileGuardar() {
@@ -9776,24 +10838,42 @@ const MWMS = {
 
     this.loading(true);
     try {
-      const r = await mApi('POST', '/miscelaneos', {
+      const payload = {
         proveedor: prov, articulo: art, cantidad: cant,
         unidad_medida: document.getElementById('mm-um')?.value || 'UN',
         observaciones: document.getElementById('mm-obs')?.value.trim() || null,
         cliente_id: clienteId, cliente_nombre: clienteNom,
-      });
+        misc_odc_id: this._miscOdcId
+      };
+
+      let r;
+      if (this._miscEditId) {
+        r = await mApi('PUT', '/miscelaneos/' + this._miscEditId, payload);
+      } else {
+        r = await mApi('POST', '/miscelaneos', payload);
+      }
+      
       if (r.error) { this.toast(r.message, 'error'); return; }
 
-      const miscId = r.data?.id;
-      const files = document.getElementById('mm-fotos')?.files;
-      if (files?.length && miscId) {
+      const miscId = r.data?.id || this._miscEditId;
+      const files  = this._miscFotos || [];
+      // Solo subir fotos nuevas si no es edición
+      if (!this._miscEditId && files.length && miscId) {
         const fd = new FormData();
         for (const f of files) fd.append('fotos[]', f);
         await fetch(M_API + '/miscelaneos/' + miscId + '/fotos', {
           method: 'POST', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') }, body: fd
         });
       }
-      this.toast('Misceláneo recibido', 'success');
+      
+      if (this._miscOdcId) {
+         // Marcar ODC como procesada/recibida
+         await mApi('POST', '/miscelaneos/odc/' + this._miscOdcId + '/procesar', {});
+      }
+
+      this.toast(this._miscEditId ? 'Misceláneo actualizado' : 'Misceláneo recibido', 'success');
+      this._miscEditId = null;
+      this._miscOdcId = null;
       this._miscMobileLista();
     } catch(e) { this.toast('Error al guardar', 'error'); }
     finally { this.loading(false); }
@@ -9804,18 +10884,247 @@ const MWMS = {
     try {
       const r = await mApi('GET', '/miscelaneos');
       const items = (r.data || []).filter(i => i.estado !== 'Despachado').slice(0, 50);
+      this._miscData = items;
       const area = document.getElementById('misc-mobile-area');
       const badge = (e) => ({ Recibido:'background:#dbeafe;color:#1d4ed8;', Asignado:'background:#fef3c7;color:#92400e;' }[e] || 'background:#e2e8f0;color:#64748b;');
       area.innerHTML = items.length ? items.map(i => `
-        <div class="scan-card" style="padding:12px;margin-bottom:8px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div style="font-weight:700;font-size:.85rem;">${this.esc(i.articulo||'')}</div>
-            <span style="${badge(i.estado)}padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:600;">${i.estado}</span>
+        <div class="op-card" style="margin-bottom:12px;border-left:4px solid ${i.estado==='Recibido'?'#3b82f6':(i.estado==='Despachado'?'#22c55e':'#f59e0b')};">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div style="font-weight:800;font-size:.9rem;color:#0f172a;">${this.esc(i.articulo||'')}</div>
+            <span style="${badge(i.estado)}padding:3px 10px;border-radius:20px;font-size:.7rem;font-weight:700;">${this.esc(i.estado)}</span>
           </div>
-          <div style="font-size:.78rem;color:#64748b;margin-top:4px;">Prov: ${this.esc(i.proveedor||'')} | Cant: ${i.cantidad} ${i.unidad_medida||'UN'}</div>
-          ${i.cliente_nombre ? `<div style="font-size:.75rem;color:#059669;margin-top:2px;"><i class="fa-solid fa-user"></i> ${this.esc(i.cliente_nombre)}</div>` : ''}
-          <div style="font-size:.7rem;color:#94a3b8;margin-top:2px;">${i.numero_recepcion||''} — ${i.created_at ? new Date(i.created_at).toLocaleDateString('es-CO') : ''}</div>
+          <div style="font-size:.78rem;color:#475569;margin-top:6px;">
+            <strong>Prov:</strong> ${this.esc(i.proveedor||'')} <br>
+            <strong>Cant:</strong> <span style="color:#1d4ed8;font-weight:700;">${i.cantidad} ${i.unidad_medida||'UN'}</span>
+          </div>
+          ${i.cliente_nombre ? `<div style="font-size:.75rem;color:#059669;margin-top:6px;background:#f0fdf4;padding:4px 8px;border-radius:6px;display:inline-block;"><i class="fa-solid fa-user"></i> ${this.esc(i.cliente_nombre)}</div>` : ''}
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed #e2e8f0;">
+            <div style="font-size:.7rem;font-weight:700;color:#64748b;">${this.esc(i.consecutivo_ingreso || i.numero_recepcion || '')}</div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <div style="font-size:.7rem;color:#94a3b8;">${i.created_at ? new Date(i.created_at).toLocaleDateString('es-CO') : ''}</div>
+              ${i.estado !== 'Despachado' ? `<button class="m-btn secondary sm" style="padding:4px 8px;font-size:10px;" onclick="MWMS._miscMobileNuevo(MWMS._miscData.find(x => x.id == ${i.id}))"><i class="fa-solid fa-pen"></i></button>` : ''}
+            </div>
+          </div>
         </div>`).join('') : '<div style="text-align:center;color:#94a3b8;padding:30px;">Sin misceláneos pendientes</div>';
+    } catch(e) { this.toast('Error', 'error'); }
+    finally { this.loading(false); }
+  },
+
+  async _miscMobileOdcs() {
+    this.loading(true);
+    try {
+      const r = await mApi('GET', '/miscelaneos/odc');
+      const items = (r.data || []).slice(0, 50);
+      const area = document.getElementById('misc-mobile-area');
+      area.innerHTML = `
+        <button class="m-btn primary full" style="margin-bottom:12px;" onclick="MWMS._miscMobileOdcNueva()">
+          <i class="fa-solid fa-plus"></i> Registrar ODC
+        </button>
+        ${items.length ? items.map(o => `
+        <div class="op-card" style="margin-bottom:12px;border-left:4px solid #6366f1;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div style="font-weight:800;font-size:.9rem;color:#0f172a;">${this.esc(o.consecutivo)}</div>
+            <span style="background:${o.estado==='Anulada'?'#fee2e2':'#e0e7ff'};color:${o.estado==='Anulada'?'#dc2626':'#4338ca'};padding:3px 10px;border-radius:20px;font-size:.7rem;font-weight:700;">${this.esc(o.estado)}</span>
+          </div>
+          <div style="font-size:.78rem;color:#475569;margin-top:6px;">
+            <strong>Proveedor:</strong> ${this.esc(o.proveedor_nombre||'')} <br>
+            <strong>Fecha:</strong> ${this.esc(o.fecha||'')}
+          </div>
+          <div style="display:flex;gap:6px;margin-top:10px;">
+            ${o.estado === 'Pendiente' ? `
+            <button class="m-btn success full" style="font-size:.75rem;padding:8px;flex:1;" onclick="MWMS._miscMobileOdcsReceive(${o.id})">
+              <i class="fa-solid fa-box-open"></i> Recibir
+            </button>
+            <button class="m-btn danger full" style="font-size:.75rem;padding:8px;flex:none;width:auto;" onclick="MWMS._miscMobileOdcAnular(${o.id})">
+              <i class="fa-solid fa-ban"></i>
+            </button>` : ''}
+          </div>
+        </div>`).join('') : '<div style="text-align:center;color:#94a3b8;padding:30px;">Sin Órdenes de Compra registradas</div>'}
+      `;
+    } catch(e) { this.toast('Error', 'error'); }
+    finally { this.loading(false); }
+  },
+
+  async _miscMobileOdcAnular(id) {
+    if (!confirm('¿Estás seguro de anular esta ODC?')) return;
+    this.loading(true);
+    try {
+      const r = await mApi('POST', '/miscelaneos/odc/' + id + '/anular', {});
+      if (r.error) throw new Error(r.message);
+      this.toast('ODC anulada', 'success');
+      this._miscMobileOdcs();
+    } catch(e) { this.toast(e.message || 'Error al anular ODC', 'error'); }
+    finally { this.loading(false); }
+  },
+
+  _odcItems: [],
+  _odcClientes: [],
+
+  async _miscMobileOdcNueva() {
+    this.loading(true);
+    try { 
+      const r = await mApi('GET', '/param/clientes'); 
+      this._odcClientes = r.data || []; 
+    } catch(e){}
+    this.loading(false);
+
+    this._odcItems = [{ id: Date.now(), articulo: '', cantidad: 1, um: 'UN', dists: [] }];
+    this._miscRenderOdcForm();
+  },
+
+  _miscRenderOdcForm() {
+    const area = document.getElementById('misc-mobile-area');
+    const fecha = document.getElementById('mm-odc-fecha')?.value || new Date().toISOString().split('T')[0];
+    const prov = document.getElementById('mm-odc-prov')?.value || '';
+    const obs = document.getElementById('mm-odc-obs')?.value || '';
+
+    let html = `
+      <div class="op-card" style="margin-top:10px;">
+        <h3 style="font-size:.9rem;font-weight:700;margin-bottom:12px;color:#0f172a;"><i class="fa-solid fa-file-invoice"></i> Nueva ODC</h3>
+        <div style="margin-bottom:12px;">
+          <div class="m-label">Fecha Programada *</div>
+          <input type="date" id="mm-odc-fecha" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px;" value="${fecha}">
+        </div>
+        <div style="margin-bottom:12px;">
+          <div class="m-label">Proveedor *</div>
+          <input id="mm-odc-prov" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px;" placeholder="Ej: Papelería Central" value="${this.esc(prov)}">
+        </div>
+        
+        <div style="margin:16px 0;padding:12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <strong style="font-size:.85rem;color:#475569;">Artículos (${this._odcItems.length})</strong>
+            <button class="m-btn primary sm" onclick="MWMS._odcItems.push({id:Date.now(),articulo:'',cantidad:1,um:'UN',dists:[]});MWMS._miscRenderOdcForm()">+ Artículo</button>
+          </div>
+    `;
+
+    this._odcItems.forEach((it, idx) => {
+      let qtyValue = it.cantidad;
+      let qtyReadonly = '';
+      if (it.dists.length > 0) {
+        qtyValue = it.dists.reduce((sum, d) => sum + (parseFloat(d.cantidad) || 0), 0);
+        it.cantidad = qtyValue; // update state
+        qtyReadonly = 'readonly style="background:#f1f5f9"';
+      }
+
+      html += `
+        <div style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:10px;margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="font-size:.8rem;font-weight:700;color:#1e40af;">#${idx+1}</span>
+            ${this._odcItems.length>1 ? `<button class="m-btn danger sm" onclick="MWMS._odcItems.splice(${idx},1);MWMS._miscRenderOdcForm()"><i class="fa-solid fa-trash"></i></button>` : ''}
+          </div>
+          <div style="margin-bottom:8px;">
+            <input type="text" class="m-input-full" placeholder="Descripción del artículo..." value="${this.esc(it.articulo)}" onchange="MWMS._odcItems[${idx}].articulo=this.value">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+            <div>
+              <input type="number" class="m-input-full" placeholder="Cant." value="${qtyValue}" min="0.01" step="0.01" ${qtyReadonly} onchange="MWMS._odcItems[${idx}].cantidad=parseFloat(this.value)||0">
+            </div>
+            <div>
+              <select class="m-input-full" onchange="MWMS._odcItems[${idx}].um=this.value">
+                <option value="UN" ${it.um==='UN'?'selected':''}>UN</option><option value="KG" ${it.um==='KG'?'selected':''}>KG</option><option value="CJ" ${it.um==='CJ'?'selected':''}>CJ</option><option value="LT" ${it.um==='LT'?'selected':''}>LT</option>
+              </select>
+            </div>
+          </div>
+          
+          <!-- Distribuciones -->
+          <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #e2e8f0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="font-size:.7rem;color:#64748b;font-weight:700;">Distribución (Sucursales)</span>
+              <button class="m-btn secondary sm" style="font-size:.65rem;padding:4px 6px;" onclick="MWMS._odcItems[${idx}].dists.push({sucursal:'',cantidad:1});MWMS._miscRenderOdcForm()">+ Agregar Sucursal</button>
+            </div>
+            ${it.dists.map((d, didx) => `
+              <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+                <select class="m-input-full" style="padding:4px;font-size:.75rem;" onchange="MWMS._odcItems[${idx}].dists[${didx}].sucursal=this.options[this.selectedIndex].text">
+                  <option value="">— Seleccione —</option>
+                  ${this._odcClientes.map(c => {
+                    const cName = c.razon_social||c.nombre||'';
+                    return `<option value="${c.id}" ${d.sucursal===cName?'selected':''}>${this.esc(cName)}</option>`;
+                  }).join('')}
+                </select>
+                <input type="number" class="m-input-full" style="width:60px;padding:4px;font-size:.75rem;" value="${d.cantidad}" min="0.01" step="0.01" onchange="MWMS._odcItems[${idx}].dists[${didx}].cantidad=parseFloat(this.value)||0;MWMS._miscRenderOdcForm()">
+                <button class="m-btn danger sm" style="padding:4px;" onclick="MWMS._odcItems[${idx}].dists.splice(${didx},1);MWMS._miscRenderOdcForm()"><i class="fa-solid fa-times"></i></button>
+              </div>
+            `).join('')}
+            ${it.dists.length > 0 ? `<div style="font-size:.7rem;color:#10b981;text-align:right;">Total: <b>${qtyValue}</b></div>` : ''}
+          </div>
+        </div>
+      `;
+    });
+
+    html += `
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <div class="m-label">Observaciones Generales</div>
+          <textarea id="mm-odc-obs" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px;" rows="2">${this.esc(obs)}</textarea>
+        </div>
+        
+        <div style="display:flex;gap:8px;">
+          <button class="m-btn secondary full" onclick="MWMS._miscMobileOdcs()">Cancelar</button>
+          <button class="m-btn primary full" onclick="MWMS._miscMobileGuardarOdc()"><i class="fa-solid fa-save"></i> Guardar ODC</button>
+        </div>
+      </div>
+    `;
+    area.innerHTML = html;
+  },
+
+  async _miscMobileGuardarOdc() {
+    const proveedor = document.getElementById('mm-odc-prov')?.value.trim();
+    const fecha = document.getElementById('mm-odc-fecha')?.value;
+    
+    if(!proveedor || !fecha) {
+      this.toast('Proveedor y Fecha son obligatorios.', 'warning');
+      return;
+    }
+
+    const detalles = [];
+    for (let it of this._odcItems) {
+      if (!it.articulo.trim()) {
+        this.toast('Todos los artículos deben tener descripción.', 'warning');
+        return;
+      }
+      if (it.cantidad <= 0) {
+        this.toast('Las cantidades deben ser mayores a cero.', 'warning');
+        return;
+      }
+
+      // Format distribuciones
+      const distribuciones = it.dists.filter(d => d.sucursal).map(d => ({
+        cliente: d.sucursal, // backend espera cliente
+        sucursal: d.sucursal, // backend espera sucursal
+        cantidad: d.cantidad
+      }));
+
+      detalles.push({
+        articulo: it.articulo.trim(),
+        cantidad: it.cantidad,
+        unidad_medida: it.um,
+        distribuciones: distribuciones
+      });
+    }
+
+    const payload = {
+      proveedor: proveedor, // Note: The backend expects 'proveedor' (not 'proveedor_nombre')
+      fecha: fecha,
+      observaciones: document.getElementById('mm-odc-obs')?.value.trim() || null,
+      detalles: detalles
+    };
+
+    this.loading(true);
+    try {
+      const r = await mApi('POST', '/miscelaneos/odc', payload);
+      if (r.error) throw new Error(r.message);
+      this.toast('ODC Creada Exitosamente', 'success');
+      this._miscMobileOdcs();
+    } catch(e) { this.toast(e.message || 'Error al guardar', 'error'); }
+    finally { this.loading(false); }
+  },
+
+  async _miscMobileOdcsReceive(id) {
+    this.loading(true);
+    try {
+      const r = await mApi('GET', '/miscelaneos/odc/' + id);
+      this._miscMobileNuevo(null, r.data);
     } catch(e) { this.toast('Error', 'error'); }
     finally { this.loading(false); }
   },

@@ -216,6 +216,16 @@
             <i class="fa-solid fa-truck-fast"></i><span>Despacho</span>
           </button>
 
+          <!-- Preoperacional integrado dentro del módulo de Calidad
+          <button class="nm-item" data-module="preoperacional" onclick="WMS.nav('preoperacional')">
+            <i class="fa-solid fa-truck-field"></i><span>Preoperacional</span>
+          </button>
+          -->
+
+          <button class="nm-item" data-module="calidad" onclick="WMS.nav('calidad')">
+            <i class="fa-solid fa-award"></i><span>Calidad</span>
+          </button>
+
           <button class="nm-item" data-module="devoluciones" onclick="WMS.nav('devoluciones')">
             <i class="fa-solid fa-rotate-left"></i><span>Devoluciones</span>
           </button>
@@ -236,9 +246,11 @@
             <i class="fa-solid fa-chart-column"></i><span>Reportes</span>
           </button>
 
+          <!-- Módulo ML deshabilitado (2026-09-01)
           <button class="nm-item" data-module="inteligencia" onclick="WMS.nav('inteligencia')">
             <i class="fa-solid fa-brain"></i><span>Inteligencia ML</span>
           </button>
+          -->
 
           <!-- Logística Avanzada oculta del menú (2026-07-17): Cross-Dock/Yard/Wave están
                conectados a endpoints reales pero con 0 registros históricos — nunca se ha
@@ -259,6 +271,10 @@
 
           <button class="nm-item" data-module="chat-ia" onclick="WMS.nav('chat-ia')">
             <i class="fa-solid fa-robot"></i><span>FENIX IA</span>
+          </button>
+
+          <button class="nm-item" title="Grafo de arquitectura y flujo del sistema" onclick="window.open('../graphify-out/graph.html', '_blank')">
+            <i class="fa-solid fa-diagram-project" style="color:#38bdf8;"></i><span>Grafo Sistema</span>
           </button>
         </nav>
 
@@ -1368,6 +1384,21 @@
             document.getElementById('um-rol').textContent = u.rol;
           }
         }
+        this._filtrarModulosNav();
+      },
+
+      // A pedido explícito (2026-08-23): oculta del menú superior los módulos
+      // que este usuario (por rol o por override individual en "Permisos por
+      // Usuario") no tiene concedidos — Admin siempre ve todo (hasPermiso ya
+      // lo bypasea). El único módulo cuya clave de navegación no coincide con
+      // el nombre del permiso en catálogo es 'maestro' (routing) vs 'maestros'
+      // (permiso) — se resuelve con este alias puntual.
+      _NAV_MODULO_ALIAS: { maestro: 'maestros' },
+      _filtrarModulosNav() {
+        document.querySelectorAll('.nm-item[data-module]').forEach(btn => {
+          const clave = this._NAV_MODULO_ALIAS[btn.dataset.module] || btn.dataset.module;
+          btn.style.display = this.hasPermiso(clave, 'ver') ? '' : 'none';
+        });
       },
 
       // ── Login ─────────────────────────────────────────────
@@ -1620,6 +1651,8 @@
         almacenamiento: 'ubicar',
         picking:        'pedidos',
         despacho:       'certificacion',
+        preoperacional: 'nueva',
+        calidad:        'dashboard',
         inventario:     'ciclico',
         reportes:       'gerencial',
         inteligencia:   'vencimientos',
@@ -1659,6 +1692,8 @@
           almacenamiento: 'assets/js/desktop/almacenamiento.js',
           picking: 'assets/js/desktop/picking.js',
           despacho: 'assets/js/desktop/despacho.js',
+          preoperacional: 'assets/js/desktop/preoperacional.js',
+          calidad: 'assets/js/desktop/calidad.js',
           inventario: 'assets/js/desktop/inventario.js',
           reportes:      'assets/js/desktop/reportes.js',
           inteligencia:  'assets/js/desktop/inteligencia.js',
@@ -1697,7 +1732,7 @@
         const curEl   = document.getElementById('bc-current');
         const backBtn = document.getElementById('btn-back-breadcrumb');
 
-        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', inventario:'Inventario', reportes:'Reportes', inteligencia:'Inteligencia ML', logistica:'Logística Pro', rotacion:'Rotación ML', rotulos:'Rótulos', devoluciones:'Devoluciones', aprobaciones:'Aprobaciones', 'consulta-rapida':'Consulta Rápida', trazabilidad:'Trazabilidad', 'chat-ia':'FENIX IA' };
+        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', preoperacional:'Preoperacional', calidad:'Calidad', inventario:'Inventario', reportes:'Reportes', logistica:'Logística Pro', rotacion:'Rotación ML', rotulos:'Rótulos', devoluciones:'Devoluciones', aprobaciones:'Aprobaciones', 'consulta-rapida':'Consulta Rápida', trazabilidad:'Trazabilidad', 'chat-ia':'FENIX IA' };
         modEl.textContent = labels[mod] || mod.toUpperCase();
 
         if (sub) {
@@ -1816,6 +1851,7 @@
                 { icon: 'fa-truck', label: 'Proveedores', action: "WMS.nav('maestro','proveedores')" },
                 { icon: 'fa-route', label: 'Rutas', action: "WMS.nav('maestro','rutas')" },
                 { icon: 'fa-list-check', label: 'Causales de Novedad', action: "WMS.nav('maestro','causales-novedad')" },
+                { icon: 'fa-arrow-down-up-across-line', label: 'Causales FIFO', action: "WMS.nav('maestro','causales-fifo')" },
                 { icon: 'fa-print', label: 'Impresoras IP', action: "WMS.nav('maestro','impresoras')" },
               ]
             },
@@ -1871,7 +1907,7 @@
               section: 'OPERACIÓN', items: [
                 { icon: 'fa-file-import', label: 'Pedidos', action: "WMS.nav('picking','pedidos')" },
                 { icon: 'fa-list-check', label: 'Asignación', action: "WMS.nav('picking','asignacion')" },
-                { icon: 'fa-triangle-exclamation', label: 'Faltantes', action: "WMS.nav('picking','faltantes')" },
+                <!-- { icon: 'fa-triangle-exclamation', label: 'Faltantes', action: "WMS.nav('picking','faltantes')" }, -->
                 { icon: 'fa-box-open', label: 'Agotados', action: "WMS.nav('picking','agotados')" },
               ]
             },
@@ -1901,6 +1937,34 @@
               ]
             },
           ],
+          preoperacional: [
+            {
+              section: 'PREOPERACIONAL', items: [
+                { icon: 'fa-clipboard-check', label: 'Registrar Preoperacional', action: "WMS.nav('preoperacional','nueva')" },
+                { icon: 'fa-list', label: 'Historial', action: "WMS.nav('preoperacional','historial')" },
+              ]
+            },
+          ],
+          calidad: [
+            {
+              section: 'CALIDAD', items: [
+                { icon: 'fa-gauge', label: 'Tablero de Control', action: "WMS.nav('calidad','dashboard')" },
+                { icon: 'fa-table-list', label: 'Matriz de Registros', action: "WMS.nav('calidad','matriz')" },
+              ]
+            },
+            {
+              section: 'PREOPERACIONAL', items: [
+                { icon: 'fa-clipboard-check', label: 'Registrar Preoperacional', action: "WMS.nav('calidad','preoperacional-nueva')" },
+                { icon: 'fa-list', label: 'Historial Inspecciones', action: "WMS.nav('calidad','preoperacional-historial')" },
+              ]
+            },
+            {
+              section: 'DEVOLUCIONES', items: [
+                { icon: 'fa-magnifying-glass', label: 'Consultar Consecutivo', action: "WMS.nav('calidad','devoluciones-consulta')" },
+                { icon: 'fa-camera', label: 'Devoluciones', action: "WMS.nav('calidad','devoluciones-informe')" },
+              ]
+            },
+          ],
           inventario: [
             {
               section: 'CONTEOS', items: [
@@ -1920,6 +1984,7 @@
                 { icon: 'fa-chart-simple', label: 'Stock General', action: "WMS.nav('inventario','stock')" },
                 { icon: 'fa-map-location', label: 'Stock por Ubicación', action: "WMS.nav('inventario','stock-ubi')" },
                 { icon: 'fa-calendar-xmark', label: 'Vencimientos', action: "WMS.nav('inventario','vencimientos')" },
+                { icon: 'fa-file-excel', label: 'Reporte Inventario Excel', action: "WMS.nav('inventario','multimodal')" },
               ]
             },
           ],
@@ -1990,6 +2055,7 @@
           reportes: [
             {
               section: 'REPORTES', items: [
+                { icon: 'fa-file-excel', label: 'Reporte Inventario Excel', action: "WMS.nav('reportes','multimodal')" },
                 { icon: 'fa-chart-line', label: 'Dashboard Gerencial', action: "WMS.nav('reportes','gerencial')" },
                 { icon: 'fa-file-excel', label: 'Kardex', action: "WMS.nav('reportes','kardex')" },
                 { icon: 'fa-file-excel', label: 'Recepciones', action: "WMS.nav('reportes','recepciones')" },
@@ -2052,8 +2118,8 @@
         });
         const sidebarContentEl = document.getElementById('sidebar-content');
         const sidebarTitleEl   = document.getElementById('sidebar-module-title');
-        const modIcons = { inicio:'fa-house', maestro:'fa-database', recepcion:'fa-truck-ramp-box', almacenamiento:'fa-warehouse', picking:'fa-boxes-stacked', despacho:'fa-truck-fast', inventario:'fa-clipboard-list', reportes:'fa-chart-column', inteligencia:'fa-brain', logistica:'fa-truck-fast', rotulos:'fa-barcode', devoluciones:'fa-rotate-left', aprobaciones:'fa-stamp', 'consulta-rapida':'fa-magnifying-glass', trazabilidad:'fa-timeline', 'chat-ia':'fa-robot' };
-        const modLabels = { inicio:'INICIO', maestro:'MAESTROS', recepcion:'RECEPCIÓN & YMS', almacenamiento:'ALMACENAMIENTO', picking:'PICKING', despacho:'DESPACHO & TMS', inventario:'INVENTARIOS', reportes:'REPORTES', inteligencia:'INTELIGENCIA ML', logistica:'LOGÍSTICA PRO', rotulos:'RÓTULOS', devoluciones:'DEVOLUCIONES', aprobaciones:'CENTRO DE APROBACIONES', 'consulta-rapida':'CONSULTA RÁPIDA', trazabilidad:'TRAZABILIDAD', 'chat-ia':'FENIX IA' };
+        const modIcons = { inicio:'fa-house', maestro:'fa-database', recepcion:'fa-truck-ramp-box', almacenamiento:'fa-warehouse', picking:'fa-boxes-stacked', despacho:'fa-truck-fast', preoperacional:'fa-truck-field', calidad:'fa-award', inventario:'fa-clipboard-list', reportes:'fa-chart-column', inteligencia:'fa-brain', logistica:'fa-truck-fast', rotulos:'fa-barcode', devoluciones:'fa-rotate-left', aprobaciones:'fa-stamp', 'consulta-rapida':'fa-magnifying-glass', trazabilidad:'fa-timeline', 'chat-ia':'fa-robot' };
+        const modLabels = { inicio:'INICIO', maestro:'MAESTROS', recepcion:'RECEPCIÓN & YMS', almacenamiento:'ALMACENAMIENTO', picking:'PICKING', despacho:'DESPACHO & TMS', preoperacional:'PREOPERACIONAL DE VEHÍCULOS', calidad:'CALIDAD', inventario:'INVENTARIOS', reportes:'REPORTES', inteligencia:'INTELIGENCIA ML', logistica:'LOGÍSTICA PRO', rotulos:'RÓTULOS', devoluciones:'DEVOLUCIONES', aprobaciones:'CENTRO DE APROBACIONES', 'consulta-rapida':'CONSULTA RÁPIDA', trazabilidad:'TRAZABILIDAD', 'chat-ia':'FENIX IA' };
         if (sidebarContentEl) sidebarContentEl.innerHTML = html;
         if (sidebarTitleEl) sidebarTitleEl.innerHTML = `<i class="fa-solid ${modIcons[module]||'fa-circle'}" style="margin-right:8px;opacity:.7"></i>${modLabels[module]||module.toUpperCase()}`;
       },
@@ -2622,6 +2688,10 @@
         const el = document.getElementById('main-content');
         if (el) el.innerHTML = html;
         else document.getElementById('content-body').innerHTML = html;
+      },
+
+      spinnerHide() {
+        this.spinner(false);
       },
 
       spinner(container = 'main-content') {

@@ -7,9 +7,41 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Personal;
 use App\Models\Empresa;
 use Firebase\JWT\JWT;
+use Illuminate\Database\Capsule\Manager as DB;
 
 class AuthController extends BaseController
 {
+    /**
+     * BUG CORREGIDO (2026-08-23, a pedido explícito): login()/me() calculaban
+     * los permisos SOLO a partir del rol (RolPermiso) — los overrides
+     * individuales guardados en personal_permisos (pantalla "Permisos por
+     * Usuario") nunca se leían de vuelta. El admin podía togglear un permiso
+     * individual y el toggle se guardaba, pero el usuario nunca recibía ese
+     * cambio: el sistema de permisos por usuario existía pero no tenía ningún
+     * efecto real. Este helper aplica los overrides sobre la lista base
+     * (concedido=true agrega, concedido=false quita), igual que ya hacía
+     * PermisoPersonalController::getPermisos() para la pantalla de edición.
+     *
+     * @param array<int, string> $permisosBase  Lista "modulo.accion" del rol
+     */
+    private function aplicarOverridesPersonales(array $permisosBase, int $personalId, int $empresaId): array
+    {
+        $overrides = DB::table('personal_permisos')
+            ->where('empresa_id', $empresaId)
+            ->where('personal_id', $personalId)
+            ->get();
+
+        $permisos = $permisosBase;
+        foreach ($overrides as $o) {
+            $key = $o->modulo . '.' . $o->accion;
+            if ($o->concedido) {
+                if (!in_array($key, $permisos, true)) $permisos[] = $key;
+            } else {
+                $permisos = array_values(array_filter($permisos, fn($p) => $p !== $key));
+            }
+        }
+        return $permisos;
+    }
     /**
      * POST /api/auth/login
      * Espera: { documento, pin, nit }
@@ -106,6 +138,7 @@ class AuthController extends BaseController
                     return $rp ? $rp->permiso->modulo . '.' . $rp->permiso->accion : 'unknown';
                 })->toArray();
         }
+        $permisos = $this->aplicarOverridesPersonales($permisos, $user->id, $user->empresa_id);
 
         return $this->json($response, [
             'error' => false,
@@ -162,6 +195,7 @@ class AuthController extends BaseController
                 ->map(fn($rp) => $rp->permiso ? $rp->permiso->modulo . '.' . $rp->permiso->accion : 'unknown')
                 ->toArray();
         }
+        $permisos = $this->aplicarOverridesPersonales($permisos, $user->id, $user->empresa_id);
 
         return $this->json($response, [
             'error' => false,

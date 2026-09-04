@@ -46,6 +46,36 @@ class FefoEngine
     }
 
     /**
+     * Punto único de control para la dirección de rotación (FIFO/FEFO vs LIFO).
+     *
+     * A pedido explícito del dueño del proyecto (2026-08-18): habrá pedidos que
+     * deben salir con lotes/fechas de vencimiento MÁS PRÓXIMAS a vencer (FIFO/FEFO,
+     * el comportamiento de siempre) y otros — clientes nacionales que exigen
+     * mercancía con fecha larga — que deben salir con la fecha MÁS LEJANA a vencer
+     * ("LIFO" en la terminología del negocio: lo último que entró en vencer, lo
+     * primero que sale). El modo se define por pedido (orden_pickings.modo_rotacion,
+     * asignado al importar la planilla) y TODOS los puntos donde el sistema decide
+     * de qué inventario descontar deben pasar por aquí — antes había ~20 bloques
+     * `orderByRaw` casi idénticos repetidos en PickingController.php, cada uno con
+     * riesgo de quedar desactualizado si alguno olvidaba aplicar el modo.
+     *
+     * Los registros sin fecha_vencimiento (NULL) siempre quedan al final, sin
+     * importar el modo — un producto que no tiene fecha no participa de ninguna
+     * estrategia de rotación por fecha.
+     *
+     * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder $query
+     * @param  string $columna  Nombre de la columna fecha_vencimiento (con o sin prefijo de tabla)
+     * @param  string $modo     'FIFO' (default) o 'LIFO'
+     */
+    public static function ordenVencimiento($query, string $columna = 'fecha_vencimiento', string $modo = 'FIFO')
+    {
+        $direccion = (strtoupper($modo) === 'LIFO') ? 'desc' : 'asc';
+        return $query
+            ->orderByRaw("CASE WHEN {$columna} IS NULL THEN 1 ELSE 0 END ASC")
+            ->orderBy($columna, $direccion);
+    }
+
+    /**
      * Consulta el flag controla_vencimiento del producto desde la BD.
      * Retorna true si el producto requiere control de fecha de vencimiento.
      */

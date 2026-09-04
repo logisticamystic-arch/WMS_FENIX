@@ -15,6 +15,7 @@ class Miscelaneo extends BaseModel
         'empresa_id', 'sucursal_id', 'numero_recepcion', 'proveedor', 'articulo',
         'cantidad', 'unidad_medida', 'observaciones', 'recibido_por',
         'cliente_id', 'cliente_nombre', 'despacho_id', 'estado',
+        'consecutivo_ingreso', 'misc_odc_id'
     ];
 
     const ESTADO_RECIBIDO    = 'Recibido';

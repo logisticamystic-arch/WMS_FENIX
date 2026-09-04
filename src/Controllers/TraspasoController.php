@@ -175,6 +175,8 @@ class TraspasoController extends BaseController
                     ->max('id');
                 $numero = 'TRPD-' . str_pad(($lastId ?? 0) + 1, 6, '0', STR_PAD_LEFT);
 
+                $productosMovidos = [];
+
                 $doc = \App\Models\TraspasoDocumento::create([
                     'empresa_id'       => $empresaId,
                     'sucursal_id'      => $sucursalId,
@@ -258,12 +260,22 @@ class TraspasoController extends BaseController
                         'fecha_vencimiento'=> $fechaVencReal,
                         'cantidad'         => $cantidad,
                     ]);
+
+                    $productosMovidos[$det['producto_id']] = true;
                 }
 
-                return $doc;
+                return [$doc, $productosMovidos];
             });
 
-            return $this->created($response, $result, 'Documento de traspaso creado. Inventario actualizado.');
+            [$doc, $productosMovidos] = $result;
+
+            // Regla de Oro #3 (modo alerta, no bloquea) — mismo patrón que en PickingController.
+            $guard = new \App\Helpers\InventoryGuard($empresaId, $sucursalId, $user->id);
+            foreach (array_keys($productosMovidos) as $productoId) {
+                $guard->assertLedgerMatchesStock((int)$productoId);
+            }
+
+            return $this->created($response, $doc, 'Documento de traspaso creado. Inventario actualizado.');
         } catch (\Exception $e) {
             return $this->error($response, $e->getMessage());
         }

@@ -1846,4 +1846,246 @@ HTML;
 </body></html>
 HTML;
     }
+
+    /**
+     * GET /api/reportes/inventario-multimodal
+     * Reporte multimodal de inventarios exportable a Excel (CSV con BOM)
+     * Vistas / Modos:
+     *   1. consolidado_referencia: Agrupado por producto (Código, Referencia, Cajas, U/E, Sueltos, Total Unidades)
+     *   2. consolidado_vencimiento: Agrupado por producto, lote y fecha vencimiento
+     *   3. por_ubicacion: Agrupado por ubicación, pasillo, producto, lote y fecha vencimiento
+     */
+    public function reporteInventarioMultimodal(Request $r, Response $res): Response
+    {
+        $user   = $r->getAttribute('user');
+        $params = $r->getQueryParams();
+        $eId    = $this->getEffectiveEmpresaId($user, $r);
+        $sId    = $user->sucursal_id;
+
+        $modo   = $params['modo'] ?? 'consolidado_referencia';
+        $search = trim($params['search'] ?? '');
+        $pasillo= trim($params['pasillo'] ?? '');
+        $export = $params['export'] ?? '';
+
+        if (!in_array($modo, ['consolidado_referencia', 'consolidado_vencimiento', 'por_ubicacion'], true)) {
+            $modo = 'consolidado_referencia';
+        }
+
+        if ($modo === 'consolidado_referencia') {
+            $q = Capsule::table('inventarios as i')
+                ->join('productos as p', 'i.producto_id', '=', 'p.id')
+                ->where('i.empresa_id', $eId)
+                ->where('i.sucursal_id', $sId)
+                ->where('i.cantidad', '>', 0);
+
+            if (!empty($search)) {
+                $q->where(function($sub) use ($search) {
+                    $sub->where('p.codigo_interno', 'ILIKE', "%{$search}%")
+                        ->orWhere('p.nombre', 'ILIKE', "%{$search}%");
+                });
+            }
+
+            $raw = $q->select(
+                'p.codigo_interno as codigo',
+                'p.nombre as referencia',
+                Capsule::raw('COALESCE(p.unidades_caja, 1) as u_e'),
+                Capsule::raw('SUM(i.cantidad) as total_unidades')
+            )
+            ->groupBy('p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja')
+            ->orderBy('p.nombre', 'asc')
+            ->get();
+
+            $processed = $raw->map(function($r) {
+                $uE = (float)($r->u_e > 0 ? $r->u_e : 1);
+                $totalUnits = (float)($r->total_unidades ?? 0);
+                $cajas = (int)floor($totalUnits / $uE);
+                $sueltos = round($totalUnits - ($cajas * $uE), 3);
+
+                return [
+                    'codigo'           => $r->codigo,
+                    'referencia'       => $r->referencia,
+                    'cantidad_cajas'   => $cajas,
+                    'u_e'              => $uE,
+                    'sueltos'          => $sueltos,
+                    'total_unidades'   => round(($cajas * $uE) + $sueltos, 3),
+                ];
+            });
+
+            if ($export === 'excel') {
+                $headers = ['CÓDIGO', 'REFERENCIA', 'CANTIDAD CAJAS', 'U/E (UNID/CAJA)', 'SUELTOS (SALDOS)', 'TOTAL UNIDADES'];
+                $excelRows = $processed->map(fn($row) => [
+                    $row['codigo'], $row['referencia'], $row['cantidad_cajas'],
+                    $row['u_e'], $row['sueltos'], $row['total_unidades']
+                ])->toArray();
+
+                return $this->exportCsv($res, $headers, $excelRows, 'reporte_inventario_consolidado_referencias_' . date('Y-m-d'));
+            }
+
+            $summary = [
+                'total_registros' => $processed->count(),
+                'total_cajas'     => $processed->sum('cantidad_cajas'),
+                'total_sueltos'   => round($processed->sum('sueltos'), 3),
+                'total_unidades'  => round($processed->sum('total_unidades'), 3),
+            ];
+
+            return $this->ok($res, [
+                'modo'    => $modo,
+                'resumen' => $summary,
+                'data'    => $processed
+            ]);
+        }
+
+        elseif ($modo === 'consolidado_vencimiento') {
+            $q = Capsule::table('inventarios as i')
+                ->join('productos as p', 'i.producto_id', '=', 'p.id')
+                ->where('i.empresa_id', $eId)
+                ->where('i.sucursal_id', $sId)
+                ->where('i.cantidad', '>', 0);
+
+            if (!empty($search)) {
+                $q->where(function($sub) use ($search) {
+                    $sub->where('p.codigo_interno', 'ILIKE', "%{$search}%")
+                        ->orWhere('p.nombre', 'ILIKE', "%{$search}%")
+                        ->orWhere('i.lote', 'ILIKE', "%{$search}%");
+                });
+            }
+
+            $raw = $q->select(
+                'p.codigo_interno as codigo',
+                'p.nombre as referencia',
+                'i.lote',
+                'i.fecha_vencimiento',
+                Capsule::raw("CASE WHEN i.fecha_vencimiento IS NULL THEN NULL ELSE (i.fecha_vencimiento::date - CURRENT_DATE) END as dias_vida_util"),
+                Capsule::raw('COALESCE(p.unidades_caja, 1) as u_e'),
+                Capsule::raw('SUM(i.cantidad) as total_unidades')
+            )
+            ->groupBy('p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja', 'i.lote', 'i.fecha_vencimiento')
+            ->orderBy('i.fecha_vencimiento', 'asc')
+            ->orderBy('p.nombre', 'asc')
+            ->get();
+
+            $processed = $raw->map(function($r) {
+                $uE = (float)($r->u_e > 0 ? $r->u_e : 1);
+                $totalUnits = (float)($r->total_unidades ?? 0);
+                $cajas = (int)floor($totalUnits / $uE);
+                $sueltos = round($totalUnits - ($cajas * $uE), 3);
+
+                return [
+                    'codigo'            => $r->codigo,
+                    'referencia'        => $r->referencia,
+                    'lote'              => $r->lote ?? 'N/A',
+                    'fecha_vencimiento' => $r->fecha_vencimiento ? substr($r->fecha_vencimiento, 0, 10) : 'N/A',
+                    'dias_vida_util'    => $r->dias_vida_util !== null ? (int)$r->dias_vida_util : '—',
+                    'cantidad_cajas'    => $cajas,
+                    'u_e'               => $uE,
+                    'sueltos'           => $sueltos,
+                    'total_unidades'    => round(($cajas * $uE) + $sueltos, 3),
+                ];
+            });
+
+            if ($export === 'excel') {
+                $headers = ['CÓDIGO', 'REFERENCIA', 'LOTE', 'FECHA VENCIMIENTO', 'DÍAS VIDA ÚTIL', 'CANTIDAD CAJAS', 'U/E (UNID/CAJA)', 'SUELTOS (SALDOS)', 'TOTAL UNIDADES'];
+                $excelRows = $processed->map(fn($row) => [
+                    $row['codigo'], $row['referencia'], $row['lote'], $row['fecha_vencimiento'],
+                    $row['dias_vida_util'], $row['cantidad_cajas'], $row['u_e'],
+                    $row['sueltos'], $row['total_unidades']
+                ])->toArray();
+
+                return $this->exportCsv($res, $headers, $excelRows, 'reporte_inventario_vencimientos_lotes_' . date('Y-m-d'));
+            }
+
+            $summary = [
+                'total_registros' => $processed->count(),
+                'total_cajas'     => $processed->sum('cantidad_cajas'),
+                'total_sueltos'   => round($processed->sum('sueltos'), 3),
+                'total_unidades'  => round($processed->sum('total_unidades'), 3),
+            ];
+
+            return $this->ok($res, [
+                'modo'    => $modo,
+                'resumen' => $summary,
+                'data'    => $processed
+            ]);
+        }
+
+        else { // por_ubicacion
+            $q = Capsule::table('inventarios as i')
+                ->join('productos as p', 'i.producto_id', '=', 'p.id')
+                ->join('ubicaciones as u', 'i.ubicacion_id', '=', 'u.id')
+                ->where('i.empresa_id', $eId)
+                ->where('i.sucursal_id', $sId)
+                ->where('i.cantidad', '>', 0);
+
+            if (!empty($search)) {
+                $q->where(function($sub) use ($search) {
+                    $sub->where('p.codigo_interno', 'ILIKE', "%{$search}%")
+                        ->orWhere('p.nombre', 'ILIKE', "%{$search}%")
+                        ->orWhere('u.codigo', 'ILIKE', "%{$search}%")
+                        ->orWhere('i.lote', 'ILIKE', "%{$search}%");
+                });
+            }
+            if (!empty($pasillo)) {
+                $q->where('u.pasillo', 'ILIKE', "%{$pasillo}%");
+            }
+
+            $raw = $q->select(
+                'u.codigo as ubicacion',
+                'u.pasillo',
+                'p.codigo_interno as codigo',
+                'p.nombre as referencia',
+                'i.lote',
+                'i.fecha_vencimiento',
+                Capsule::raw('COALESCE(p.unidades_caja, 1) as u_e'),
+                Capsule::raw('SUM(i.cantidad) as total_unidades')
+            )
+            ->groupBy('u.codigo', 'u.pasillo', 'p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja', 'i.lote', 'i.fecha_vencimiento')
+            ->orderBy('u.codigo', 'asc')
+            ->orderBy('p.nombre', 'asc')
+            ->get();
+
+            $processed = $raw->map(function($r) {
+                $uE = (float)($r->u_e > 0 ? $r->u_e : 1);
+                $totalUnits = (float)($r->total_unidades ?? 0);
+                $cajas = (int)floor($totalUnits / $uE);
+                $sueltos = round($totalUnits - ($cajas * $uE), 3);
+
+                return [
+                    'ubicacion'         => $r->ubicacion,
+                    'pasillo'           => $r->pasillo ?? '—',
+                    'codigo'            => $r->codigo,
+                    'referencia'        => $r->referencia,
+                    'lote'              => $r->lote ?? 'N/A',
+                    'fecha_vencimiento' => $r->fecha_vencimiento ? substr($r->fecha_vencimiento, 0, 10) : 'N/A',
+                    'cantidad_cajas'    => $cajas,
+                    'u_e'               => $uE,
+                    'sueltos'           => $sueltos,
+                    'total_unidades'    => round(($cajas * $uE) + $sueltos, 3),
+                ];
+            });
+
+            if ($export === 'excel') {
+                $headers = ['UBICACIÓN', 'PASILLO', 'CÓDIGO', 'REFERENCIA', 'LOTE', 'FECHA VENCIMIENTO', 'CANTIDAD CAJAS', 'U/E (UNID/CAJA)', 'SUELTOS (SALDOS)', 'TOTAL UNIDADES'];
+                $excelRows = $processed->map(fn($row) => [
+                    $row['ubicacion'], $row['pasillo'], $row['codigo'], $row['referencia'],
+                    $row['lote'], $row['fecha_vencimiento'], $row['cantidad_cajas'],
+                    $row['u_e'], $row['sueltos'], $row['total_unidades']
+                ])->toArray();
+
+                return $this->exportCsv($res, $headers, $excelRows, 'reporte_inventario_por_ubicacion_' . date('Y-m-d'));
+            }
+
+            $summary = [
+                'total_registros' => $processed->count(),
+                'total_cajas'     => $processed->sum('cantidad_cajas'),
+                'total_sueltos'   => round($processed->sum('sueltos'), 3),
+                'total_unidades'  => round($processed->sum('total_unidades'), 3),
+            ];
+
+            return $this->ok($res, [
+                'modo'    => $modo,
+                'resumen' => $summary,
+                'data'    => $processed
+            ]);
+        }
+    }
 }

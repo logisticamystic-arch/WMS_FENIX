@@ -46,30 +46,45 @@ WMS_MODULES.almacenamiento = {
         const refs = g.items.length;
         const rowsHtml = g.idxs.map(idx => {
           const item = items[idx];
+          let days = 0;
+          if (item.created_at) {
+              const diffTime = Math.abs(new Date() - new Date(item.created_at));
+              days = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+          }
           return `<tr data-pallet="${key}">
             <td style="font-family:monospace;font-size:.75rem;padding-left:28px;">${WMS.esc(item.codigo_interno || '-')}</td>
             <td><strong>${WMS.esc(item.producto_nombre || '-')}</strong></td>
             <td class="text-center fw-700">${WMS.formatNum(item.cantidad || 0)}</td>
             <td>${WMS.esc(item.unidad_medida || '-')}</td>
             <td>${WMS.esc(item.lote || 'N/A')}</td>
-            <td>${item.fecha_vencimiento ? WMS.formatDate(item.fecha_vencimiento) : '-'}</td>
+            <td>${item.created_at ? WMS.formatDate(item.created_at.split(' ')[0]) : '-'}</td>
+            <td style="font-size:.8rem;font-weight:600;color:${days>7?'#dc2626':(days>3?'#d97706':'#16a34a')}">${days} d</td>
             <td style="font-size:.72rem;color:#64748b;">${WMS.esc(item.ubicacion_codigo || 'Patio')}</td>
             <td style="white-space:nowrap;">
               <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.almacenamiento.asignarUbicacion(${idx})">
                 <i class="fa-solid fa-map-pin"></i> Ubicar
               </button>
+              ${['Admin','Supervisor','SuperAdmin'].includes(WMS.user?.rol) ? `
+              <button class="btn btn-sm btn-outline-danger" onclick="WMS_MODULES.almacenamiento.darDeBajaPatio(${idx})" title="Dar de baja (mercancía fantasma, ya ubicada en otro lado)">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>` : ''}
             </td>
           </tr>`;
         }).join('');
 
         return `
           <tr class="pallet-group-header" style="background:#1e3a5f;color:#fff;cursor:pointer;" onclick="WMS_MODULES.almacenamiento.togglePalletGroup('${key}')">
-            <td colspan="5" style="padding:10px 12px;font-weight:700;font-size:.85rem;">
+            <td colspan="6" style="padding:10px 12px;font-weight:700;font-size:.85rem;">
               <i class="fa-solid fa-box-archive" style="margin-right:6px;"></i>
               ${WMS.esc(palletLabel)}
               <span style="background:rgba(255,255,255,.15);padding:1px 8px;border-radius:99px;font-size:.72rem;margin-left:8px;">${refs} ref${refs !== 1 ? 's' : ''} · ${WMS.formatNum(g.total)} und</span>
             </td>
             <td colspan="3" style="text-align:right;padding:8px 12px;">
+              ${key !== '__sin_pallet__' && ['Admin','Supervisor','SuperAdmin'].includes(WMS.user?.rol) ? `
+              <button class="btn btn-sm" style="background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;font-weight:700;font-size:.75rem;padding:4px 12px;margin-right:4px;"
+                onclick="event.stopPropagation();WMS_MODULES.almacenamiento._eliminarPallet('${key}')" title="Eliminar todo el pallet del patio">
+                <i class="fa-solid fa-trash"></i> Eliminar
+              </button>` : ''}
               <button class="btn btn-sm" style="background:#fff;color:#1e3a5f;font-weight:700;font-size:.75rem;padding:4px 12px;"
                 onclick="event.stopPropagation();WMS_MODULES.almacenamiento.ubicarTodoPallet('${key}')">
                 <i class="fa-solid fa-layer-group"></i> Ubicar Todo el Pallet
@@ -93,7 +108,7 @@ WMS_MODULES.almacenamiento = {
           </div>
           <div class="table-container">
             <table class="erp-table" id="ub-table">
-              <thead><tr><th>Código</th><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Lote</th><th>F. Venc.</th><th>Patio</th><th>Acción</th></tr></thead>
+              <thead><tr><th>Código</th><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Lote</th><th>F. Recibo</th><th>Días</th><th>Patio</th><th>Acción</th></tr></thead>
               <tbody>
                 ${groupHtml || '<tr><td colspan="8" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin mercancía pendiente de ubicar</td></tr>'}
               </tbody>
@@ -133,6 +148,32 @@ WMS_MODULES.almacenamiento = {
       const hasRows = [...visiblePallets].some(pk => txt.includes(pk === '__sin_pallet__' ? 'sin pallet' : `#${pk}`));
       h.style.display = (!f || hasRows) ? '' : 'none';
     });
+  },
+
+  async _eliminarPallet(palletKey) {
+    if (palletKey === '__sin_pallet__') return;
+    const items = this._patioItems.filter(i => String(i.numero_pallet) === palletKey);
+    const hasReservations = items.some(i => parseFloat(i.cantidad_reservada||0) > 0);
+    
+    if (hasReservations) {
+      WMS.toast('error', 'No se puede eliminar porque hay stock reservado en este pallet.');
+      return;
+    }
+    
+    const motivo = prompt(`VAS A ELIMINAR COMPLETAMENTE EL PALLET #${palletKey}.\nEsta acción descontará el inventario permanentemente.\n\nEscribe el motivo de la baja obligatoriamente:`);
+    if (!motivo) return;
+    
+    try {
+      WMS.spinner();
+      const r = await API.delete('/putaway/patio/pallet/' + encodeURIComponent(palletKey), { motivo: motivo.trim() });
+      WMS.spinner(false);
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', `Se eliminaron ${r.data?.cantidad_dada_de_baja||'las'} unidades del pallet correctamente.`);
+      this.show_ubicar();
+    } catch(e) {
+      WMS.spinner(false);
+      WMS.toast('error', e.message || 'Error al eliminar el pallet');
+    }
   },
 
   async ubicarTodoPallet(palletKey) {
@@ -192,6 +233,8 @@ WMS_MODULES.almacenamiento = {
           ubicacion_origen_id:  item.ubicacion_id,
           ubicacion_destino_id: parseInt(ubi_id),
           cantidad:             item.cantidad,
+          cantidad_cajas:       item.cantidad_cajas,
+          saldos:               item.saldos,
           lote:                 item.lote || null,
           fecha_vencimiento:    item.fecha_vencimiento || null,
           numero_pallet:        item.numero_pallet || null,
@@ -363,9 +406,19 @@ WMS_MODULES.almacenamiento = {
     const unidadesCaja = Math.max(1, parseInt(item.unidades_caja || 1));
     const factor       = factorUdm > 0 ? factorUdm : unidadesCaja;
     const usaCajas     = factor > 1;
-    const cajasDisp    = usaCajas ? Math.floor(disponible / factor) : 0;
-    const saldosDisp   = usaCajas ? Math.round((disponible - cajasDisp * factor) * 1000) / 1000 : disponible;
-    this._currentPutawayItem = { ...item, _disponible: disponible, _factor: factor, _usaCajas: usaCajas };
+    let cajasDisp = parseInt(item.cantidad_cajas || 0);
+    let saldosDisp = parseFloat(item.saldos || 0);
+    
+    // Si hay reservas parciales, recalculamos el disponible (caso raro en patio)
+    if (reservada > 0 && disponible < item.cantidad) {
+      cajasDisp = usaCajas ? Math.floor(disponible / factor) : 0;
+      saldosDisp = usaCajas ? Math.round((disponible - cajasDisp * factor) * 1000) / 1000 : disponible;
+    } else if (!usaCajas) {
+      cajasDisp = 0;
+      saldosDisp = disponible;
+    }
+
+    this._currentPutawayItem = { ...item, _disponible: disponible, _factor: factor, _usaCajas: usaCajas, _cajasDisp: cajasDisp, _saldosDisp: saldosDisp };
     WMS.showModal(`Ubicar: ${WMS.esc(item.producto_nombre || '-')}`, `
       <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:16px;font-size:13px;">
         <div style="font-weight:700;color:#1e40af;margin-bottom:4px;">${palletInfo}${WMS.esc(item.codigo_interno || '')} — ${WMS.esc(item.producto_nombre)}</div>
@@ -389,7 +442,7 @@ WMS_MODULES.almacenamiento = {
         </div>
         <div class="form-group">
           <label class="form-label" style="color:#d97706;">Saldos (sueltos)</label>
-          <input id="ub-saldos" type="number" class="form-control" min="0" max="${factor}" value="${saldosDisp}" step="0.001" placeholder="0" oninput="WMS_MODULES.almacenamiento._ubCalcPreview()" ${disponible<=0?'disabled':''}>
+          <input id="ub-saldos" type="number" class="form-control" min="0" max="${saldosDisp}" value="${saldosDisp}" step="0.001" placeholder="0" oninput="WMS_MODULES.almacenamiento._ubCalcPreview()" ${disponible<=0?'disabled':''}>
         </div>
         <div id="ub-preview" style="grid-column:1/-1;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:12px;color:#1e40af;font-weight:600;">
           <i class="fa-solid fa-calculator"></i> <span id="ub-preview-text"></span>
@@ -432,6 +485,8 @@ WMS_MODULES.almacenamiento = {
     const cantidad = parseFloat(document.getElementById('ub-cantidad')?.value || 0);
     const fv       = document.getElementById('ub-fv')?.value;
     const disponible = item._disponible ?? item.cantidad;
+    const cajasVal = parseFloat(document.getElementById('ub-cajas')?.value || 0);
+    const saldosVal = parseFloat(document.getElementById('ub-saldos')?.value || 0);
 
     if (!ubi_id) return WMS.toast('warning', 'Seleccione una ubicación de destino');
     if (cantidad <= 0) return WMS.toast('warning', 'La cantidad debe ser mayor a cero');
@@ -439,7 +494,7 @@ WMS_MODULES.almacenamiento = {
     if (!item.ubicacion_id) return WMS.toast('error', 'El ítem no tiene ubicación de origen registrada');
 
     try {
-      const r = await API.post('/putaway/ubicar', {
+      const payload = {
         producto_id:          item.producto_id,
         ubicacion_origen_id:  item.ubicacion_id,
         ubicacion_destino_id: parseInt(ubi_id),
@@ -447,7 +502,17 @@ WMS_MODULES.almacenamiento = {
         lote:                 item.lote || null,
         fecha_vencimiento:    fv || item.fecha_vencimiento || null,
         numero_pallet:        item.numero_pallet || null,
-      });
+      };
+      
+      if (item._usaCajas) {
+        payload.cantidad_cajas = cajasVal;
+        payload.saldos = saldosVal;
+      } else {
+        payload.cantidad_cajas = 0;
+        payload.saldos = cantidad;
+      }
+
+      const r = await API.post('/putaway/ubicar', payload);
       if (r.error) { WMS.toast('error', r.message); return; }
       const restante = Math.round((item.cantidad - cantidad) * 1000) / 1000;
       WMS.closeModal('generic-modal');
@@ -466,6 +531,39 @@ WMS_MODULES.almacenamiento = {
       }
       this.show_ubicar();
     } catch (e) { WMS.toast('error', e.message || 'Error al ubicar'); }
+  },
+
+  // ── DAR DE BAJA (inventario fantasma en Patio) — solo Admin/Supervisor ──────
+  darDeBajaPatio(idx) {
+    const item = this._patioItems[idx];
+    if (!item) return WMS.toast('error', 'Item no encontrado');
+    this._patioBajaItem = item;
+
+    WMS.showModal(`Dar de baja de Patio: ${WMS.esc(item.producto_nombre || '-')}`, `
+      <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:12px;margin-bottom:16px;font-size:13px;color:#991b1b;">
+        <i class="fa-solid fa-triangle-exclamation"></i> Esto da de baja <strong>${WMS.formatNum(item.cantidad)} ${WMS.esc(item.unidad_medida||'und')}</strong> registradas en <strong>${WMS.esc(item.ubicacion_codigo||'Patio')}</strong>.
+        Úselo solo cuando esta mercancía ya se ubicó en otro lado y el registro de Patio quedó como residuo — no borra stock real.
+      </div>
+      <div class="form-group">
+        <label class="form-label">Motivo <span class="required">*</span></label>
+        <textarea id="baja-patio-motivo" class="form-control" rows="3" placeholder="Ej: Ya se ubicó en A-01-02 el 14/08, este registro de Patio quedó residual"></textarea>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+       <button class="btn btn-danger" onclick="WMS_MODULES.almacenamiento.confirmarBajaPatio(${idx})"><i class="fa-solid fa-trash-can"></i> Dar de Baja</button>`);
+  },
+
+  async confirmarBajaPatio(idx) {
+    const item  = this._patioItems[idx];
+    const motivo = document.getElementById('baja-patio-motivo')?.value.trim();
+    if (!motivo) return WMS.toast('warning', 'El motivo es obligatorio');
+
+    try {
+      const r = await API.post(`/putaway/patio/${item.id}/eliminar`, { motivo });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.closeModal('generic-modal');
+      WMS.toast('success', 'Inventario de Patio dado de baja correctamente');
+      this.show_ubicar();
+    } catch (e) { WMS.toast('error', e.message || 'Error al dar de baja'); }
   },
 
   // ── TRANSFERIR ───────────────────────────────────────────────
@@ -1365,7 +1463,7 @@ WMS_MODULES.almacenamiento = {
           onclick="${s.bloqueado ? "WMS.toast('error','Producto bloqueado')" : 'WMS_MODULES.almacenamiento._trpDSeleccionar('+i+')'}">
           <div>
             <div style="font-weight:700;font-size:.85rem;">${WMS.esc(s.nombre)} ${s.bloqueado ? '<span style="color:#dc2626;font-size:.7rem;font-weight:600;">BLOQUEADO</span>' : ''}</div>
-            <div style="font-size:.75rem;color:#64748b;">Cod: ${WMS.esc(s.codigo_interno)} | Ubic: <strong>${WMS.esc(s.ubicacion_codigo)}</strong> | Lote: <strong>${WMS.esc(s.lote||'S/L')}</strong>${s.fecha_vencimiento ? ' | Venc: '+s.fecha_vencimiento : ''}</div>
+            <div style="font-size:.75rem;color:#64748b;">Cod: ${WMS.esc(s.codigo_interno)} | Ubic: <strong>${WMS.esc(s.ubicacion_codigo)}</strong> | Lote: <strong>${WMS.esc(s.lote||'S/L')}</strong>${s.fecha_vencimiento ? ' | Venc: '+WMS.formatDate(s.fecha_vencimiento) : ''}</div>
           </div>
           <div style="font-weight:900;font-size:1.1rem;color:#059669;">${s.cantidad_disponible}</div>
         </div>`).join('') : '<div style="text-align:center;color:#94a3b8;padding:12px;">Sin resultados</div>';
@@ -1648,7 +1746,7 @@ WMS_MODULES.almacenamiento = {
                 <td>${WMS.esc(i.ubicacion?.codigo||'')}</td>
                 <td>${WMS.esc(i.ubicacion?.zona||'')}</td>
                 <td>${WMS.esc(i.lote||'S/L')}</td>
-                <td>${i.fecha_vencimiento||'-'}</td>
+                <td>${i.fecha_vencimiento ? WMS.formatDate(i.fecha_vencimiento) : '-'}</td>
                 <td style="text-align:right;font-weight:700;">${i.cantidad}</td>
                 <td><span style="background:#fecaca;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:600;">BLOQUEADO</span></td>
               </tr>`).join('') || '<tr><td colspan="7" class="table-empty">Sin inventario bloqueado</td></tr>'}</tbody>

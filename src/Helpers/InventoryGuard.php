@@ -483,9 +483,12 @@ class InventoryGuard
      * reserva). Fuente única de verdad — antes vivía duplicada como private const
      * en InventarioController::KARDEX_SIGNOS (ahora la referencia desde aquí).
      * 'Traslado' es 0: reubica dentro de la misma sucursal, no cambia el total en
-     * existencia del producto. 'CorreccionAdmin' es 0: en este sistema solo se
-     * genera al ajustar cantidad_reservada de una línea de picking (ver
-     * PickingController::_ajustarReservaEdicionLinea), nunca cantidad física.
+     * existencia del producto. 'CorreccionAdmin' es 0: descuenta/reversa una
+     * reserva de picking sin tocar cantidad física — ver nota en
+     * PickingController::liberarLineaSeparada(), que registra sus reversos como
+     * 'AjustePositivo' precisamente porque esa ruta SÍ toca cantidad física.
+     * 'Salida' es -1: usado por TraspasoController::create() (traspaso externo
+     * documentado) y DevolucionController::store() para descontar existencia real.
      * Tipos no listados aquí (nuevos, aún no clasificados) cuentan como 0 — más
      * seguro que asumir un signo incorrecto y descuadrar el saldo silenciosamente.
      */
@@ -496,6 +499,7 @@ class InventoryGuard
         'Devolucion'       => 1,
         'Picking'          => -1,
         'AjusteNegativo'   => -1,
+        'Salida'           => -1,
         'Traslado'         => 0,
         'CorreccionAdmin'  => 0,
         'Reabastecimiento' => 0,

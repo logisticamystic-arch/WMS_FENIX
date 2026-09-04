@@ -185,6 +185,55 @@ abstract class BaseController
         return null;
     }
 
+    /**
+     * Verifica un permiso puntual del catálogo (tabla permisos/rol_permisos/
+     * personal_permisos) — a diferencia de requireAdmin/requireSupervisor (por
+     * rol fijo), este exige "modulo.accion" concedido por el rol del usuario O
+     * por un override individual (mismo cálculo que AuthController::login()/me(),
+     * ver aplicarOverridesPersonales()). SuperAdmin y Admin siempre pasan,
+     * igual que en el bypass ya existente de hasPermiso() en el frontend.
+     *
+     * A pedido explícito (2026-08-23), usado para gatear el nuevo módulo de
+     * Calidad en el servidor — no se aplicó retroactivamente a módulos
+     * existentes (hoy el sistema de permisos es enforcement de menú/UI en el
+     * frontend, no de API); agregarlo ahora a endpoints ya en producción
+     * podría bloquear flujos internos no auditados. Ver auditoría de
+     * viabilidad 2026-08-23 antes de extender este helper a otros módulos.
+     *
+     * Uso: if ($deny = $this->requirePermiso($user, $req, 'calidad', 'ver', $res)) return $deny;
+     */
+    protected function requirePermiso($user, Request $request, string $modulo, string $accion, Response $response): ?Response
+    {
+        if ($this->isAdmin($user)) return null; // Admin/SuperAdmin siempre pasan
+
+        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
+        $personalId = (int)($user->uid ?? $user->id ?? 0);
+        $rol        = $user->rol ?? '';
+
+        $concedidoPorRol = \Illuminate\Database\Capsule\Manager::table('rol_permisos as rp')
+            ->join('permisos as p', 'p.id', '=', 'rp.permiso_id')
+            ->where('rp.empresa_id', $empresaId)
+            ->where('rp.rol', $rol)
+            ->where('p.modulo', $modulo)
+            ->where('p.accion', $accion)
+            ->where('rp.concedido', true)
+            ->exists();
+
+        $override = \Illuminate\Database\Capsule\Manager::table('personal_permisos')
+            ->where('empresa_id', $empresaId)
+            ->where('personal_id', $personalId)
+            ->where('modulo', $modulo)
+            ->where('accion', $accion)
+            ->first();
+
+        $concedido = $override ? (bool)$override->concedido : $concedidoPorRol;
+
+        if (!$concedido) {
+            return $this->forbidden($response, "No tiene permiso para '{$modulo}.{$accion}'.");
+        }
+        return null;
+    }
+
     protected function requireSelectedTenantForSuperAdmin($user, Request $request, Response $response, bool $requireSucursal = false): ?Response
     {
         if (!$this->isSuperAdmin($user)) {

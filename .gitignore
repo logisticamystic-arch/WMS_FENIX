@@ -48,6 +48,8 @@ WMS_PROORIENTE_BACKUP/
 monitor/reports/
 public/uploads/miscelaneos/
 public/uploads/productos/
+public/uploads/devoluciones_crm/
+public/uploads/preoperacional/
 0807MEDELLIN.csv
 out_mobile.txt
 *.lock

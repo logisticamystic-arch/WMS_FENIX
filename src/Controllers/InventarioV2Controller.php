@@ -16,6 +16,7 @@ use App\Models\Ubicacion;
 use App\Models\Personal;
 use App\Models\Notificacion;
 use App\Models\SesionIcgLinea;
+use App\Helpers\InventoryGuard;
 use Carbon\Carbon;
 
 /**
@@ -492,8 +493,29 @@ class InventarioV2Controller extends BaseController
 
         try {
             $creadas = [];
+            $omitidosDuplicados = 0;
             if ($tipoInstruccion === 'Referencia' && !empty($prodIds)) {
                 foreach ($prodIds as $pid) {
+                    // BUG CORREGIDO 2026-08-19 (a pedido explícito): sin este chequeo, si el
+                    // usuario hacía clic varias veces en "Guardar" (o la pantalla reabría
+                    // el modal con las mismas filas antes de que el primer guardado
+                    // terminara), cada clic volvía a crear una asignación idéntica —
+                    // caso real confirmado: 11 referencias enviadas terminaban
+                    // duplicadas (hasta 4 copias de la misma referencia en ~15 segundos,
+                    // sesión #48). Ahora, si YA existe una asignación activa para esta
+                    // misma referencia en esta sesión/ronda, se omite en silencio en vez
+                    // de duplicar.
+                    $yaExiste = SesionAsignacion::where('sesion_id', $sesion->id)
+                        ->where('producto_id', $pid)
+                        ->where('tipo_instruccion', 'Referencia')
+                        ->where('ronda', $ronda)
+                        ->first();
+                    if ($yaExiste) {
+                        $omitidosDuplicados++;
+                        $creadas[] = $yaExiste->load('auxiliar:id,nombre');
+                        continue;
+                    }
+
                     $asignacion = SesionAsignacion::create([
                         'sesion_id'         => $sesion->id,
                         'auxiliar_id'       => $data['auxiliar_id'],
@@ -534,12 +556,69 @@ class InventarioV2Controller extends BaseController
                 $creadas[] = $asignacion->load('auxiliar:id,nombre');
             }
 
-            return $this->ok($res, count($creadas) === 1 ? $creadas[0] : $creadas, 'Asignación creada correctamente');
+            $mensaje = 'Asignación creada correctamente';
+            if ($omitidosDuplicados > 0) {
+                $mensaje = count($creadas) . " referencia(s) procesadas — {$omitidosDuplicados} ya existían en esta sesión y se omitieron (no se duplicaron).";
+            }
 
-            return $this->ok($res, $asignacion->load('auxiliar:id,nombre'), 'Asignación creada');
+            return $this->ok($res, count($creadas) === 1 ? $creadas[0] : $creadas, $mensaje);
         } catch (\Throwable $e) {
             return $this->error($res, $e->getMessage(), 500);
         }
+    }
+
+    /**
+     * PUT /api/v2/inventario/asignaciones/{id}/auxiliar
+     * Cambia el auxiliar asignado a una instrucción de conteo (línea por línea).
+     */
+    public function cambiarAuxiliarAsignacion(Request $req, Response $res, array $args): Response
+    {
+        $user = $req->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
+        $empresaId  = $this->getEffectiveEmpresaId($user, $req);
+        $esAdmin    = in_array($user->rol ?? '', ['Admin', 'SuperAdmin']);
+        $asignacion = SesionAsignacion::whereHas('sesion', function ($q) use ($user, $req, $empresaId, $esAdmin) {
+                $q->where('empresa_id', $empresaId);
+                if (!$esAdmin) {
+                    $q->where('sucursal_id', $user->sucursal_id);
+                }
+            })->find($args['id']);
+
+        if (!$asignacion) return $this->notFound($res, 'Asignación no encontrada');
+
+        $data = $req->getParsedBody() ?? [];
+        $nuevoAuxId = (int)($data['auxiliar_id'] ?? 0);
+        if ($nuevoAuxId <= 0) {
+            return $this->error($res, 'Campo requerido: auxiliar_id');
+        }
+
+        $nuevoAuxiliar = Personal::where('empresa_id', $empresaId)->find($nuevoAuxId);
+        if (!$nuevoAuxiliar) {
+            return $this->error($res, 'El auxiliar seleccionado no existe o no pertenece a la empresa');
+        }
+
+        $oldAuxId = $asignacion->auxiliar_id;
+        $asignacion->auxiliar_id = $nuevoAuxId;
+
+        $sesion = $asignacion->sesion;
+
+        if (!in_array($sesion->estado, [SesionInventario::ESTADO_CERRADO, SesionInventario::ESTADO_AJUSTADO, SesionInventario::ESTADO_FINALIZADO, 'Cancelado'])) {
+            $this->crearNotificacionAuxiliar($asignacion, $sesion);
+            if ($asignacion->estado === SesionAsignacion::ESTADO_PENDIENTE) {
+                $asignacion->estado = SesionAsignacion::ESTADO_NOTIFICADO;
+            }
+            $asignacion->notificado_at = date('Y-m-d H:i:s');
+        }
+
+        $asignacion->save();
+
+        $this->audit($user, 'inventario', 'cambiar_auxiliar_asignacion', 'sesion_asignaciones', $asignacion->id, [
+            'auxiliar_anterior' => $oldAuxId,
+            'auxiliar_nuevo'    => $nuevoAuxId,
+        ]);
+
+        return $this->ok($res, $asignacion->load('auxiliar:id,nombre'), 'Auxiliar de asignación actualizado correctamente');
     }
 
     /**
@@ -1726,7 +1805,9 @@ class InventarioV2Controller extends BaseController
     public function ajustarLinea(Request $req, Response $res, array $args): Response
     {
         $user = $req->getAttribute('user');
-        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+        // A pedido explícito (2026-08-20): el ajuste de ciclico sobrescribe el
+        // inventario real — se restringe solo al Administrador.
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
 
         $sesion = $this->_findSesion((int)$args['id'], $user, $req);
 
@@ -1747,7 +1828,46 @@ class InventarioV2Controller extends BaseController
         }
 
         try {
-            $ajuste = $this->ejecutarAjuste($sesion, $linea, $user, AjusteInventario::ORIGEN_CONTEO_LINEA);
+            // Envuelto en transacción: si la limpieza de otras ubicaciones (abajo)
+            // fallara a mitad de camino, no debe quedar el ajuste principal aplicado
+            // sin la reconciliación, ni viceversa.
+            [$ajuste, $ajustesCero] = Capsule::transaction(function () use ($sesion, $linea, $user) {
+                $ajuste = $this->ejecutarAjuste($sesion, $linea, $user, AjusteInventario::ORIGEN_CONTEO_LINEA);
+
+                // BUG CORREGIDO 2026-08-20 (a pedido explícito): esta reconciliación
+                // ("dejar en 0 el stock de esta MISMA referencia en cualquier otra
+                // ubicación no confirmada dentro de esta asignación") antes SOLO corría
+                // dentro de ajustarTodo() — si el administrador ajustaba línea por línea
+                // (botón "Ajustar" individual, el más usado en la pantalla de
+                // diferencias) esa limpieza nunca se ejecutaba, dejando stock duplicado/
+                // huérfano en ubicaciones que el auxiliar nunca contó. Ahora se aplica
+                // también aquí, acotada SOLO a la asignación de esta línea (no a toda la
+                // sesión) — solo aplica cuando la línea viene de una asignación tipo
+                // "Referencia" (verificar una referencia puntual, sin importar ubicación).
+                $ajustesCero = [];
+                if ($linea->asignacion_id) {
+                    $asignacion = SesionAsignacion::find($linea->asignacion_id);
+                    if ($asignacion && $asignacion->tipo_instruccion === SesionAsignacion::INSTRUCCION_REFERENCIA) {
+                        $sinExistencia = $this->detectarReferenciasSinExistencia($sesion, $linea->ronda, [], $asignacion->id);
+                        foreach ($sinExistencia as $lineaVirtual) {
+                            $ajustesCero[] = $this->ejecutarAjuste(
+                                $sesion, $lineaVirtual, $user, AjusteInventario::ORIGEN_CONTEO_LINEA,
+                                true, 'Referencia confirmada sin existencia física en otra ubicación'
+                            );
+                        }
+                    }
+                }
+
+                return [$ajuste, $ajustesCero];
+            });
+
+            // Regla de Oro #3 (modo alerta, no bloquea) — mismo patrón que en PickingController.
+            $productosMovidos = [$ajuste->producto_id => true];
+            foreach ($ajustesCero as $az) { $productosMovidos[$az->producto_id] = true; }
+            $guardInv = new InventoryGuard($sesion->empresa_id, $sesion->sucursal_id, $user->id);
+            foreach (array_keys($productosMovidos) as $productoId) {
+                $guardInv->assertLedgerMatchesStock((int)$productoId);
+            }
 
             // Obtener stock actualizado tras el ajuste (para mostrar en frontend)
             $stockActual = Inventario::where('empresa_id',  $sesion->empresa_id)
@@ -1759,6 +1879,7 @@ class InventarioV2Controller extends BaseController
 
             return $this->ok($res, [
                 'ajuste'         => $ajuste,
+                'ajustes_cero_otras_ubicaciones' => count($ajustesCero),
                 'stock_nuevo'    => (float)$stockActual,
                 'producto_id'    => $linea->producto_id,
                 'ubicacion_id'   => $linea->ubicacion_id,
@@ -1778,7 +1899,9 @@ class InventarioV2Controller extends BaseController
     public function ajustarTodo(Request $req, Response $res, array $args): Response
     {
         $user = $req->getAttribute('user');
-        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+        // A pedido explícito (2026-08-20): ajusta TODO el inventario con diferencia
+        // de golpe — se restringe solo al Administrador.
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
 
         $sesion = $this->_findSesion((int)$args['id'], $user, $req);
 
@@ -1920,6 +2043,13 @@ class InventarioV2Controller extends BaseController
                 'ajustes_ml_cero'  => count($resultado['ajustesCero']),
                 'total'            => $totalAjustes,
             ]);
+
+            // Regla de Oro #3 (modo alerta, no bloquea) — mismo patrón que en PickingController.
+            $productosMovidos = array_unique(array_column($resultado['stockResumen'], 'producto_id'));
+            $guardInv = new InventoryGuard($sesion->empresa_id, $sesion->sucursal_id, $user->id);
+            foreach ($productosMovidos as $productoId) {
+                $guardInv->assertLedgerMatchesStock((int)$productoId);
+            }
 
             return $this->ok($res, [
                 'ajustes_realizados'    => $totalAjustes,
@@ -2092,6 +2222,10 @@ class InventarioV2Controller extends BaseController
      */
     private function detectarReferenciasNoContadas(SesionInventario $sesion, int $rondaFinal): array
     {
+        // BLINDAJE CÍCLICO 2026-08-26: Un inventario Cíclico SOLO ajusta las referencias/ubicaciones
+        // explícitamente contadas. NUNCA deduce ni pone a cero referencias no contadas del sistema.
+        if ($sesion->tipo === 'Ciclico') return [];
+
         // Las ubicaciones se obtienen de las LÍNEAS CONTADAS, no de las asignaciones.
         $ubicacionIds = SesionLinea::where('sesion_id', $sesion->id)
             ->where('ronda', $rondaFinal)
@@ -2165,15 +2299,24 @@ class InventarioV2Controller extends BaseController
      *
      * @param array $yaCubiertas Líneas virtuales ya generadas por detectarReferenciasNoContadas(),
      *                           para no duplicar el ajuste sobre la misma producto+ubicación+lote.
+     * @param int|null $soloAsignacionId Si se indica, acota la reconciliación a UNA sola
+     *                           asignación (uso desde ajustarLinea(), ajuste individual) en
+     *                           vez de todas las asignaciones "Referencia" de la sesión
+     *                           (uso desde ajustarTodo()).
      * @return array Lista de SesionLinea virtuales (cantidad_contada = 0) para ajustar
      */
-    private function detectarReferenciasSinExistencia(SesionInventario $sesion, int $rondaFinal, array $yaCubiertas = []): array
+    private function detectarReferenciasSinExistencia(SesionInventario $sesion, int $rondaFinal, array $yaCubiertas = [], ?int $soloAsignacionId = null): array
     {
+        // BLINDAJE CÍCLICO 2026-08-26: Para inventario Cíclico no se borra el stock de otras ubicaciones
+        // no asignadas al auxiliar. La reconciliación automática de ausencia solo aplica en General/CargueInicial.
+        if ($sesion->tipo === 'Ciclico') return [];
+
         $asignacionesReferencia = SesionAsignacion::where('sesion_id', $sesion->id)
             ->where('ronda', $rondaFinal)
             ->where('tipo_instruccion', SesionAsignacion::INSTRUCCION_REFERENCIA)
             ->where('estado', SesionAsignacion::ESTADO_FINALIZADO)
             ->whereNotNull('producto_id')
+            ->when($soloAsignacionId, fn($q) => $q->where('id', $soloAsignacionId))
             ->get();
 
         if ($asignacionesReferencia->isEmpty()) return [];
@@ -3342,7 +3485,16 @@ class InventarioV2Controller extends BaseController
             if (!$sesion) return $this->notFound($res, 'Sesión de inventario no encontrada');
 
             $parsedLines = [];
+            $filasInvalidas = []; // BUG CORREGIDO 2026-08-19: se reportan en vez de tumbar todo el insert
             $body = $req->getParsedBody() ?? [];
+
+            // Límite defensivo: cantidad_icg es NUMERIC(12,3) — el valor absoluto debe
+            // ser menor a 10^9. Un conteo cíclico real jamás se acerca a esa magnitud;
+            // cualquier valor que la alcance es evidencia de una fila mal leída (columna
+            // corrida, un EAN/código de barras colado en la celda de cantidad, etc.),
+            // no una cantidad real. Se deja margen amplio (10 millones) sobre cualquier
+            // cantidad físicamente plausible en un conteo.
+            $ICG_CANTIDAD_MAX = 10000000.0;
 
             if (!empty($body['lineas']) && is_array($body['lineas'])) {
                 $parsedLines = $body['lineas'];
@@ -3357,34 +3509,68 @@ class InventarioV2Controller extends BaseController
                         $tmpPath = $stream->getMetadata('uri');
                     }
                     $content = file_get_contents($tmpPath);
+                    if (!mb_detect_encoding($content, 'UTF-8', true)) {
+                        $content = mb_convert_encoding($content, 'UTF-8', 'ISO-8859-1');
+                    }
                     $lines = preg_split('/\r\n|\r|\n/', $content);
-                    foreach ($lines as $idx => $lineStr) {
-                        $lineStr = trim($lineStr);
-                        if (empty($lineStr)) continue;
+                    $lines = array_values(array_filter($lines, fn($l) => trim($l) !== ''));
 
-                        $cols = preg_split('/[,;\t]/', $lineStr);
+                    // BUG CORREGIDO 2026-08-19: antes partía cada línea con preg_split
+                    // sobre CUALQUIER coma/punto y coma/tab a la vez — si el nombre del
+                    // producto traía una coma ("JUGO DE NARANJA, SIN AZUCAR"), todas las
+                    // columnas siguientes se corrían y un valor grande (EAN, código de
+                    // barras, etc.) podía terminar en la posición de "cantidad", sin
+                    // ninguna validación antes de insertar — eso rompía la carga completa
+                    // con un error crudo de SQL. Ahora se detecta UN solo delimitador
+                    // real del archivo (mismo criterio que PickingController::importarPedidos())
+                    // y se usa str_getcsv(), que sí respeta comillas alrededor de campos
+                    // con el delimitador adentro.
+                    $sep = ',';
+                    if (!empty($lines[0])) {
+                        if (str_contains($lines[0], "\t")) $sep = "\t";
+                        elseif (str_contains($lines[0], ';')) $sep = ';';
+                    }
+
+                    foreach ($lines as $idx => $lineStr) {
+                        $cols = str_getcsv(trim($lineStr), $sep);
                         if (count($cols) < 2) continue;
 
-                        $codigo = trim($cols[0], " \"'\r\n\t");
-                        $cantStr = trim($cols[1], " \"'\r\n\t");
+                        $codigo = trim($cols[0] ?? '', " \"'\r\n\t");
+                        $cantStr = trim($cols[1] ?? '', " \"'\r\n\t");
 
                         if ($idx === 0 && (stristr($codigo, 'codigo') || stristr($codigo, 'referencia') || stristr($codigo, 'sku'))) {
                             continue;
                         }
 
-                        if (!empty($codigo)) {
-                            $cant = (float)str_replace(',', '.', $cantStr);
-                            $parsedLines[] = [
+                        if (empty($codigo)) continue;
+
+                        // Formato numérico latino: punto = separador de miles, coma =
+                        // decimal (mismo criterio que importarPedidos() para 'costo').
+                        $cantNormalizado = str_replace(',', '.', str_replace('.', '', $cantStr));
+                        $cant = is_numeric($cantNormalizado) ? (float)$cantNormalizado : (float)str_replace(',', '.', $cantStr);
+
+                        if (abs($cant) >= $ICG_CANTIDAD_MAX) {
+                            $filasInvalidas[] = [
+                                'fila'     => $idx + 1,
                                 'codigo'   => $codigo,
-                                'cantidad' => $cant
+                                'valor'    => $cantStr,
                             ];
+                            continue;
                         }
+
+                        $parsedLines[] = [
+                            'codigo'   => $codigo,
+                            'cantidad' => $cant
+                        ];
                     }
                 }
             }
 
             if (empty($parsedLines)) {
-                return $this->badRequest($res, 'No se encontraron registros válidos en el archivo. Asegúrese de que tenga columnas: Código, Cantidad.');
+                $detalle = !empty($filasInvalidas)
+                    ? ' Se descartaron ' . count($filasInvalidas) . ' fila(s) con cantidades inválidas (revise el archivo — probablemente una columna corrida).'
+                    : '';
+                return $this->badRequest($res, 'No se encontraron registros válidos en el archivo. Asegúrese de que tenga columnas: Código, Cantidad.' . $detalle);
             }
 
             // Opcion de Reemplazo en Caliente: Eliminar las líneas ICG anteriores de esta sesión
@@ -3408,6 +3594,22 @@ class InventarioV2Controller extends BaseController
             foreach ($parsedLines as $item) {
                 $cod = strtoupper(trim($item['codigo']));
                 $cant = (float)($item['cantidad'] ?? 0);
+
+                // Segunda barrera (además de la del parseo de archivo más arriba): el
+                // camino de 'lineas' vía JSON (body['lineas']) no pasa por esa
+                // validación — sin este chequeo, una cantidad absurda seguía
+                // rompiendo el insert con un error crudo de SQL en vez de un mensaje
+                // claro. Mismo límite que arriba (10 millones, muy por debajo del
+                // tope real de la columna NUMERIC(12,3)).
+                if (abs($cant) >= $ICG_CANTIDAD_MAX) {
+                    $filasInvalidas[] = [
+                        'fila'   => count($insertData) + count($filasInvalidas) + 1,
+                        'codigo' => $item['codigo'] ?? $cod,
+                        'valor'  => (string)$cant,
+                    ];
+                    continue;
+                }
+
                 $p = $prodMap[$cod] ?? null;
 
                 if ($p) {
@@ -3436,11 +3638,26 @@ class InventarioV2Controller extends BaseController
             $this->audit($user, 'inventario_v2', 'cargar_icg', 'sesiones_inventario', $sesion->id, null, [
                 'total_cargado' => count($insertData),
                 'reconocidos'   => $reconocidos,
-                'no_reconocidos'=> $noReconocidos
+                'no_reconocidos'=> $noReconocidos,
+                'filas_invalidas' => count($filasInvalidas),
             ]);
 
+            $mensaje = 'Archivo plano ICG procesado y cargado exitosamente';
+            if (!empty($filasInvalidas)) {
+                $ejemplos = array_slice($filasInvalidas, 0, 5);
+                $ejemplosTxt = implode('; ', array_map(
+                    fn($f) => "fila {$f['fila']} (código {$f['codigo']}: \"{$f['valor']}\")",
+                    $ejemplos
+                ));
+                $mensaje .= ' — ATENCIÓN: se descartaron ' . count($filasInvalidas)
+                    . ' fila(s) con una cantidad no válida (probablemente una columna corrida '
+                    . 'o un valor mal formateado): ' . $ejemplosTxt
+                    . (count($filasInvalidas) > 5 ? '; ...' : '') . '. Revise esas filas en el archivo original.';
+            }
+
             return $this->ok($res, [
-                'mensaje'        => 'Archivo plano ICG procesado y cargado exitosamente',
+                'mensaje'         => $mensaje,
+                'filas_invalidas' => $filasInvalidas,
                 'total_lineas'   => count($insertData),
                 'reconocidos'    => $reconocidos,
                 'no_reconocidos' => $noReconocidos

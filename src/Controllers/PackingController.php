@@ -869,15 +869,31 @@ class PackingController extends BaseController
 
         // Filtro por fecha_movimiento de las órdenes asociadas a la sesión
         if ($fmDesde || $fmHasta) {
-            $builder->whereExists(function ($sub) use ($fmDesde, $fmHasta) {
-                $sub->select(Capsule::raw(1))
-                    ->from('packing_unidades as pu_fm')
-                    ->join('packing_items as pi_fm', 'pi_fm.unidad_id', '=', 'pu_fm.id')
-                    ->join('picking_detalles as pd_fm', 'pd_fm.id', '=', 'pi_fm.picking_detalle_id')
-                    ->join('orden_pickings as op_fm', 'op_fm.id', '=', 'pd_fm.orden_picking_id')
-                    ->whereColumn('pu_fm.sesion_id', 'ps.id');
-                if ($fmDesde) $sub->where('op_fm.fecha_movimiento', '>=', $fmDesde);
-                if ($fmHasta) $sub->where('op_fm.fecha_movimiento', '<=', $fmHasta);
+            $builder->where(function ($outer) use ($fmDesde, $fmHasta, $ctx) {
+                $outer->whereExists(function ($sub) use ($fmDesde, $fmHasta) {
+                    $sub->select(Capsule::raw(1))
+                        ->from('packing_unidades as pu_fm')
+                        ->join('packing_items as pi_fm', 'pi_fm.unidad_id', '=', 'pu_fm.id')
+                        ->join('picking_detalles as pd_fm', 'pd_fm.id', '=', 'pi_fm.picking_detalle_id')
+                        ->join('orden_pickings as op_fm', 'op_fm.id', '=', 'pd_fm.orden_picking_id')
+                        ->whereColumn('pu_fm.sesion_id', 'ps.id');
+                    if ($fmDesde) $sub->where('op_fm.fecha_movimiento', '>=', $fmDesde);
+                    if ($fmHasta) $sub->where('op_fm.fecha_movimiento', '<=', $fmHasta);
+                });
+                // BUG CORREGIDO 2026-08-17 (urgente): en certificación (ctx=cert), una
+                // sesión completada pasada la medianoche (turno nocturno) hereda el
+                // fecha_movimiento del pedido, que sigue siendo el día anterior — con
+                // solo el whereExists de arriba, esa sesión quedaba invisible bajo el
+                // filtro "Hoy" (caso real: certificaciones de hoy 07:4x a.m. sobre
+                // pedidos con fecha_movimiento de ayer). Se agrega como alternativa
+                // (OR) que la sesión misma (cuándo se creó/completó) caiga en el rango
+                // — solo amplía resultados, nunca oculta lo que ya se veía.
+                if ($ctx === 'cert') {
+                    $outer->orWhere(function ($q2) use ($fmDesde, $fmHasta) {
+                        if ($fmDesde) $q2->whereDate('ps.created_at', '>=', $fmDesde);
+                        if ($fmHasta) $q2->whereDate('ps.created_at', '<=', $fmHasta);
+                    });
+                }
             });
         }
         if ($pedido) $builder->whereExists(function ($sub) use ($pedido) {
@@ -1821,10 +1837,24 @@ class PackingController extends BaseController
             $sesion->save();
 
             // Actualizar órdenes (filtrando por fecha si está especificada)
+            // Blindaje 2026-08-15: certificar solo órdenes con estado='Completada' —
+            // incluir 'EnProceso' aquí es una condición de carrera real: si el auxiliar
+            // sigue separando la misma planilla mientras un supervisor corre
+            // "Auto-Certificar Todos", las líneas que se separan DESPUÉS del instante
+            // exacto de este UPDATE quedan con cantidad_pickeada>0 pero
+            // cantidad_certificada=0 para siempre (confirmarConsolidado() no valida si
+            // la orden ya se certificó, y nada vuelve a tocar esas líneas después).
+            // Caso real: Planilla 711 / Olivia Fabricato, 2026-08-14 — 15 líneas
+            // (incluida Pechuga de Pavo) separadas entre 19:23:39 y 19:24:57 quedaron
+            // así porque el auto-certify masivo corrió a las 19:23:32, a mitad del
+            // picking; la planilla no se marcó 'Completada' (completar_planilla) hasta
+            // las 19:25:02. 'Completado' tampoco es un valor real de esta columna
+            // (CHECK constraint solo permite Pendiente/EnProceso/Completada/Cancelada/
+            // Anulado) — nunca hacía nada, era código muerto.
             $ordenesQuery = Capsule::table('orden_pickings')
                 ->where('empresa_id', $empresaId)
                 ->where('sucursal_entrega', $sucursal)
-                ->whereIn('estado', ['Pendiente', 'EnProceso', 'Completada', 'Completado'])
+                ->where('estado', 'Completada')
                 ->whereIn('estado_certificacion', ['Pendiente', 'Parcial'])
                 // Blindaje 2026-08-08: nunca certificar un pedido ya despachado, sin importar
                 // el filtro de fecha recibido (incluye fecha='all', el flujo normal de

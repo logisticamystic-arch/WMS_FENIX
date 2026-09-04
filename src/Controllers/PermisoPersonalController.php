@@ -27,6 +27,9 @@ class PermisoPersonalController extends BaseController
             return $this->json($response, ['error' => true, 'message' => 'Personal no encontrado'], 404);
         }
 
+        // Auto-discover modules from frontend before reading
+        $this->_syncFrontendModules();
+
         // 1. Get ALL available permissions from the system
         $allPermisos = DB::table('permisos')->orderBy('modulo')->orderBy('accion')->get();
 
@@ -65,11 +68,12 @@ class PermisoPersonalController extends BaseController
             $concedido   = $hasOverride ? $overrideMap[$key] : $fromRol;
 
             $result[] = [
-                'modulo'     => $p->modulo,
-                'submodulo'  => '',
-                'accion'     => $p->accion,
-                'concedido'  => $concedido,
-                'esOverride' => $hasOverride,
+                'modulo'      => $p->modulo,
+                'submodulo'   => '',
+                'accion'      => $p->accion,
+                'descripcion' => $p->descripcion,
+                'concedido'   => $concedido,
+                'esOverride'  => $hasOverride,
             ];
         }
 
@@ -98,6 +102,7 @@ class PermisoPersonalController extends BaseController
 
         $data = $request->getParsedBody() ?? [];
         $modulo    = trim($data['modulo'] ?? '');
+        $submodulo = trim($data['submodulo'] ?? '');
         $accion    = trim($data['accion'] ?? 'ver');
         $concedido = (bool)($data['concedido'] ?? true);
 
@@ -109,6 +114,7 @@ class PermisoPersonalController extends BaseController
             ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
             ->where('personal_id', $personalId)
             ->where('modulo', $modulo)
+            ->where('submodulo', $submodulo)
             ->where('accion', $accion)
             ->first();
 
@@ -122,6 +128,7 @@ class PermisoPersonalController extends BaseController
                 'empresa_id'  => $this->getEffectiveEmpresaId($user, $request),
                 'personal_id' => $personalId,
                 'modulo'      => $modulo,
+                'submodulo'   => $submodulo,
                 'accion'      => $accion,
                 'concedido'   => $concedido,
                 'created_at'  => date('Y-m-d H:i:s'),
@@ -153,5 +160,85 @@ class PermisoPersonalController extends BaseController
             'error'   => false,
             'message' => "Permisos individuales eliminados ({$deleted} registros). El usuario usará los permisos de su rol.",
         ]);
+    }
+
+    /**
+     * Auto-descubrimiento de módulos leyendo los menús HTML del frontend
+     */
+    private function _syncFrontendModules()
+    {
+        try {
+            $modules = [];
+            
+            // 1. Scan Desktop index.html
+            $desktopHtml = @file_get_contents(__DIR__ . '/../../public/index.html');
+            if ($desktopHtml) {
+                // Parse WMS.nav('modulo', 'submodulo') or WMS.nav('modulo')
+                preg_match_all("/WMS\.nav\(\s*'([^']+)'(?:\s*,\s*'([^']+)')?\s*\)/", $desktopHtml, $matches, PREG_SET_ORDER);
+                foreach ($matches as $m) {
+                    $mod = $m[1];
+                    $sub = isset($m[2]) ? $m[2] : 'ver';
+                    if (!isset($modules[$mod])) $modules[$mod] = [];
+                    $modules[$mod][$sub] = true;
+                }
+            }
+            
+            // 2. Scan Mobile index.html
+            $mobileHtml = @file_get_contents(__DIR__ . '/../../public/mobile/index.html');
+            if ($mobileHtml) {
+                // Parse mobile views or logic if needed, e.g. onclick="MWMS.nav('...')"
+                preg_match_all("/MWMS\.nav\(\s*'([^']+)'\s*\)/", $mobileHtml, $matches, PREG_SET_ORDER);
+                foreach ($matches as $m) {
+                    $mod = 'mobile_' . $m[1];
+                    if (!isset($modules[$mod])) $modules[$mod] = [];
+                    $modules[$mod]['ver'] = true;
+                }
+            }
+
+            // Also ensure core 'mobile' module exists
+            if (!isset($modules['mobile'])) $modules['mobile'] = [];
+            $modules['mobile']['acceso'] = true;
+
+            // Upsert to DB
+            foreach ($modules as $modName => $acciones) {
+                foreach ($acciones as $accName => $val) {
+                    $exists = DB::table('permisos')
+                        ->where('modulo', $modName)
+                        ->where('accion', $accName)
+                        ->exists();
+                        
+                    if (!$exists) {
+                        $id = DB::table('permisos')->insertGetId([
+                            'modulo' => $modName,
+                            'accion' => $accName,
+                            'descripcion' => "Permiso autodetectado: {$modName} - {$accName}"
+                        ]);
+                        
+                        // Grant to Admin role automatically by default in all companies
+                        $empresas = DB::table('empresas')->pluck('id');
+                        foreach ($empresas as $empId) {
+                            $rolExists = DB::table('rol_permisos')
+                                ->where('empresa_id', $empId)
+                                ->where('rol', 'Admin')
+                                ->where('permiso_id', $id)
+                                ->exists();
+                            if (!$rolExists) {
+                                DB::table('rol_permisos')->insert([
+                                    'empresa_id' => $empId,
+                                    'rol' => 'Admin',
+                                    'permiso_id' => $id,
+                                    'concedido' => 1,
+                                    'created_at' => date('Y-m-d H:i:s'),
+                                    'updated_at' => date('Y-m-d H:i:s')
+                                ]);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            // Silently ignore if fails, it's just sync
+            error_log("Error in _syncFrontendModules: " . $e->getMessage());
+        }
     }
 }

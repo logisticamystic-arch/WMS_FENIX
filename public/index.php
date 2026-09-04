@@ -512,12 +512,26 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/devoluciones/causales',        [\App\Controllers\DevolucionController::class, 'createCausal']);
     $group->put('/devoluciones/causales/{id}',    [\App\Controllers\DevolucionController::class, 'updateCausal']);
     $group->get('/devoluciones/dashboard',        [\App\Controllers\DevolucionController::class, 'getDashboard']);
+    $group->get('/devoluciones/dashboard-stats',  [\App\Controllers\DevolucionController::class, 'dashboardStats']);
+    $group->get('/devoluciones/buscar-consecutivo', [\App\Controllers\DevolucionController::class, 'buscarConsecutivo']);
+    
+    // CRM Endpoints
+    $group->get('/devoluciones/crm/estados',      [\App\Controllers\DevolucionCrmController::class, 'getEstados']);
+    $group->get('/devoluciones/crm/estados/all',  [\App\Controllers\DevolucionCrmController::class, 'getAllEstados']);
+    $group->post('/devoluciones/crm/estados',     [\App\Controllers\DevolucionCrmController::class, 'createEstado']);
+    $group->put('/devoluciones/crm/estados/{id}', [\App\Controllers\DevolucionCrmController::class, 'updateEstado']);
+    $group->delete('/devoluciones/crm/estados/{id}', [\App\Controllers\DevolucionCrmController::class, 'deleteEstado']);
+    
+    $group->get('/devoluciones/{id}/tracking',    [\App\Controllers\DevolucionCrmController::class, 'getTracking']);
+    $group->post('/devoluciones/{id}/tracking',   [\App\Controllers\DevolucionCrmController::class, 'addTracking']);
+
     $group->get('/devoluciones', [\App\Controllers\DevolucionController::class, 'index']);
     $group->post('/devoluciones', [\App\Controllers\DevolucionController::class, 'store']);
     $group->post('/devoluciones/desde-odc', [\App\Controllers\DevolucionController::class, 'desdeOdcMovil']);
     $group->get('/devoluciones/odc/{odcId}', [\App\Controllers\DevolucionController::class, 'getByOdc']);
     $group->get('/devoluciones/resumen/proveedor/{proveedor_id}', [\App\Controllers\DevolucionController::class, 'resumenProveedor']);
     $group->get('/devoluciones/{id}', [\App\Controllers\DevolucionController::class, 'ver']);
+    $group->post('/devoluciones/{id}/fotos',    [\App\Controllers\DevolucionController::class, 'uploadFotos']);
     $group->post('/devoluciones/{id}/aprobar',  [\App\Controllers\DevolucionController::class, 'aprobar']);
     $group->post('/devoluciones/{id}/rechazar', [\App\Controllers\DevolucionController::class, 'rechazar']);
     $group->post('/devoluciones/{id}/procesar', [\App\Controllers\DevolucionController::class, 'procesar']);
@@ -599,6 +613,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
 
     // ── Asignaciones a auxiliares ───────────────────────────────────────────
     $group->post('/v2/inventario/sesiones/{id}/asignaciones',  [\App\Controllers\InventarioV2Controller::class, 'crearAsignacion']);
+    $group->put('/v2/inventario/asignaciones/{id}/auxiliar',   [\App\Controllers\InventarioV2Controller::class, 'cambiarAuxiliarAsignacion']);
     $group->delete('/v2/inventario/asignaciones/{id}',         [\App\Controllers\InventarioV2Controller::class, 'eliminarAsignacion']);
     $group->delete('/v2/inventario/sesiones/{id}',             [\App\Controllers\InventarioV2Controller::class, 'eliminarSesion']);
     $group->post('/v2/inventario/sesiones/{id}/cerrar',        [\App\Controllers\InventarioV2Controller::class, 'cerrarSesion']);
@@ -701,6 +716,10 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->post('/{id}/reabrir',   [\App\Controllers\PickingController::class, 'reabrir']);
         $group->post('/{id}/marcar-faltante', [\App\Controllers\PickingController::class, 'marcarFaltante']);
         $group->post('/{id}/despachado-directo', [\App\Controllers\PickingController::class, 'marcarDespachadoDirecto']);
+        $group->patch('/{id}/requiere-fecha-vencimiento', [\App\Controllers\PickingController::class, 'setRequiereFechaVencimiento']);
+        $group->patch('/planilla/{numero}/requiere-escaneo-ubicacion', [\App\Controllers\PickingController::class, 'setRequiereEscaneoUbicacion']);
+        $group->patch('/planilla/{numero}/requiere-fecha-vencimiento', [\App\Controllers\PickingController::class, 'setRequiereFechaVencimientoPlanilla']);
+        $group->patch('/planilla/{numero}/modo-rotacion', [\App\Controllers\PickingController::class, 'setModoRotacion']);
         $group->post('/{id}/lineas', [\App\Controllers\PickingController::class, 'agregarLinea']);
 
         // Certificación por Sucursal
@@ -801,6 +820,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/putaway/resolver-ean', [\App\Controllers\PutawayController::class, 'resolverEan']);
     $group->get('/putaway/sugerir/{producto_id}', [\App\Controllers\PutawayController::class, 'sugerirUbicacion']);
     $group->post('/putaway/ubicar', [\App\Controllers\PutawayController::class, 'ubicar']);
+    $group->post('/putaway/patio/{id}/eliminar', [\App\Controllers\PutawayController::class, 'eliminarFantasmaPatio']);
+    $group->delete('/putaway/patio/pallet/{pallet}', [\App\Controllers\PutawayController::class, 'eliminarPalletPatio']);
     $group->post('/putaway/trasladar', [\App\Controllers\PutawayController::class, 'trasladar']);
 
     // Módulo: Alertas
@@ -826,6 +847,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // Alias semánticos: stock-real y por-ubicacion
     $group->get('/reportes/stock-real', [\App\Controllers\ReportesController::class, 'stockActual']);
     $group->get('/reportes/por-ubicacion', [\App\Controllers\ReportesController::class, 'stockPorUbicacion']);
+    $group->get('/reportes/inventario-multimodal', [\App\Controllers\ReportesController::class, 'reporteInventarioMultimodal']);
 
     // ── Reportes de Contingencia (imprimibles sin internet) ───────────────────
     $group->get('/reportes/conciliacion-trazabilidad', [\App\Controllers\ReportesController::class, 'conciliacionTrazabilidad']);
@@ -861,6 +883,11 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/causales-novedad',        [\App\Controllers\CausalesController::class, 'store']);
     $group->put('/causales-novedad/{id}',    [\App\Controllers\CausalesController::class, 'update']);
     $group->delete('/causales-novedad/{id}', [\App\Controllers\CausalesController::class, 'destroy']);
+
+    $group->get('/causales-fifo',         [\App\Controllers\CausalesFifoController::class, 'index']);
+    $group->post('/causales-fifo',        [\App\Controllers\CausalesFifoController::class, 'store']);
+    $group->put('/causales-fifo/{id}',    [\App\Controllers\CausalesFifoController::class, 'update']);
+    $group->delete('/causales-fifo/{id}', [\App\Controllers\CausalesFifoController::class, 'destroy']);
 
     // Módulo: Consulta Rápida de Producto
     $group->get('/consulta-rapida/buscar', [\App\Controllers\ConsultaRapidaController::class, 'buscar']);
@@ -1097,7 +1124,18 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->delete('/bloqueos/lote/{id}', [\App\Controllers\BloqueoController::class, 'desbloquearLote']);
     $group->get('/bloqueos/inventario', [\App\Controllers\BloqueoController::class, 'inventarioBloqueado']);
 
-    // ── MISCELÁNEOS ────────────────────────────────────────────────────────────
+    // ── MISCELÁNEOS ────────────────────────────────────────────────────────────    // Misceláneos CRM y ODC
+    $group->get('/miscelaneos/odc', [\App\Controllers\MiscelaneoCrmController::class, 'getOdcs']);
+    $group->post('/miscelaneos/odc', [\App\Controllers\MiscelaneoCrmController::class, 'createOdc']);
+    $group->get('/miscelaneos/odc/{id}', [\App\Controllers\MiscelaneoCrmController::class, 'getOdcDetalle']);
+    $group->post('/miscelaneos/odc/{id}/procesar', [\App\Controllers\MiscelaneoCrmController::class, 'procesarOdc']);
+    $group->post('/miscelaneos/odc/{id}/anular', [\App\Controllers\MiscelaneoCrmController::class, 'anularOdc']);
+    
+    $group->get('/miscelaneos/crm/estados', [\App\Controllers\MiscelaneoCrmController::class, 'getEstados']);
+    $group->get('/miscelaneos/{id}/tracking', [\App\Controllers\MiscelaneoCrmController::class, 'getTracking']);
+    $group->post('/miscelaneos/{id}/tracking', [\App\Controllers\MiscelaneoCrmController::class, 'addTracking']);
+    $group->put('/miscelaneos/{id}/sucursal', [\App\Controllers\MiscelaneoCrmController::class, 'updateSucursal']);
+
     $group->get('/miscelaneos', [\App\Controllers\MiscelaneoController::class, 'index']);
     $group->get('/miscelaneos/{id}', [\App\Controllers\MiscelaneoController::class, 'show']);
     $group->post('/miscelaneos', [\App\Controllers\MiscelaneoController::class, 'create']);
@@ -1107,6 +1145,19 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->delete('/miscelaneos/fotos/{foto_id}', [\App\Controllers\MiscelaneoController::class, 'deleteFoto']);
     $group->post('/miscelaneos/{id}/despachar', [\App\Controllers\MiscelaneoController::class, 'marcarDespachado']);
     $group->get('/miscelaneos/cliente/{cliente_id}/pendientes', [\App\Controllers\MiscelaneoController::class, 'pendientesPorCliente']);
+
+    // ── PREOPERACIONAL DE VEHÍCULOS ──────────────────────────────────────────
+    $group->get('/preoperacional/items',  [\App\Controllers\PreoperacionalController::class, 'items']);
+    $group->get('/preoperacional',        [\App\Controllers\PreoperacionalController::class, 'listar']);
+    $group->post('/preoperacional',       [\App\Controllers\PreoperacionalController::class, 'crear']);
+    $group->get('/preoperacional/{id}',   [\App\Controllers\PreoperacionalController::class, 'ver']);
+    $group->post('/preoperacional/{id}/fotos', [\App\Controllers\PreoperacionalController::class, 'uploadFotos']);
+    $group->delete('/preoperacional/{id}',[\App\Controllers\PreoperacionalController::class, 'eliminar']);
+
+    // ── CALIDAD (2026-08-23) ──────────────────────────────────────────────────
+    $group->get('/calidad/dashboard',        [\App\Controllers\CalidadController::class, 'dashboard']);
+    $group->get('/calidad/matriz',           [\App\Controllers\CalidadController::class, 'matriz']);
+    $group->get('/calidad/recepcion/{id}',   [\App\Controllers\CalidadController::class, 'verRecepcion']);
 
     // ── INTELIGENCIA / ML / ANOMALÍAS ────────────────────────────────────────
     // Predicción de vencimientos (ML + EMA + regresión lineal)

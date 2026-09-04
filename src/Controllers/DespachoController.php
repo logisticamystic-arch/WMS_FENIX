@@ -83,6 +83,30 @@ class DespachoController extends BaseController
             ])
             ->find($a['id']);
         if (!$d) return $this->notFound($res);
+
+        // Blindaje 2026-08-18 (a pedido explícito): para poder reimprimir la remisión
+        // de un cargue hay que saber, por pedido, si se certificó vía sesión de
+        // packing (remisión sale de packing/sesion/{id}/remision) o vía certificación
+        // directa (remisión sale de picking/certificacion/remision-multiple) — mezclar
+        // ambos caminos en el endpoint equivocado da HTTP 400 (ver certRemisionMultiple(),
+        // que excluye a propósito las órdenes con packing_items). El frontend
+        // (reimprimirCargue() en despacho.js) usa este campo para elegir el endpoint
+        // correcto por cada pedido y fusionarlos en una sola remisión consolidada.
+        $ordenIds = $d->ordenes->pluck('id')->toArray();
+        if (!empty($ordenIds)) {
+            $sesionesPorOrden = Capsule::table('picking_detalles as pd')
+                ->join('packing_items as pi', 'pi.picking_detalle_id', '=', 'pd.id')
+                ->join('packing_unidades as pu', 'pu.id', '=', 'pi.unidad_id')
+                ->whereIn('pd.orden_picking_id', $ordenIds)
+                ->select('pd.orden_picking_id', 'pu.sesion_id')
+                ->distinct()
+                ->get()
+                ->groupBy('orden_picking_id');
+            $d->ordenes->each(function ($o) use ($sesionesPorOrden) {
+                $o->packing_sesion_id = $sesionesPorOrden->get($o->id)?->first()->sesion_id ?? null;
+            });
+        }
+
         return $this->ok($res, $d);
     }
 

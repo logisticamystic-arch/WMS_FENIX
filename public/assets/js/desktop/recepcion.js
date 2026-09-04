@@ -3978,7 +3978,7 @@ WMS_MODULES.recepcion = {
 
   async _guardarDevolucion() {
     const odcId       = document.getElementById('dev-odc')?.value;
-    const razon       = document.getElementById('dev-razon')?.value?.trim() || 'Novedad en recepción';
+    const razon       = document.getElementById('dev-motivo')?.value?.trim() || 'Novedad en recepción';
     const rows        = document.querySelectorAll('#dev-lines-body tr');
 
     const detalles = [];
@@ -4033,6 +4033,8 @@ WMS_MODULES.recepcion = {
   // ══════════════════════════════════════════════════════════════
 
   _miscData: [],
+  _miscEditId: null,
+  _miscOdcId: null,
 
   async show_miscelaneos() {
     WMS.setBreadcrumb('recepcion', 'Misceláneos');
@@ -4075,9 +4077,14 @@ WMS_MODULES.recepcion = {
                 <div style="color:#bfdbfe;font-size:.8rem;">${items.length} registro${items.length!==1?'s':''} en total</div>
               </div>
             </div>
-            <button class="btn btn-primary" onclick="WMS_MODULES.recepcion._miscNuevo()" style="background:rgba(255,255,255,.2);border:1.5px solid rgba(255,255,255,.5);color:#fff;font-weight:700;">
-              <i class="fa-solid fa-plus"></i> Nueva Recepción
-            </button>
+            <div style="display:flex;gap:10px;">
+              <button class="btn" style="background:#f8fafc;color:#1e293b;font-weight:700;" onclick="WMS_MODULES.recepcion._miscShowOdcs()">
+                <i class="fa-solid fa-file-invoice-dollar"></i> Órdenes de Compra (ODC)
+              </button>
+              <button class="btn btn-primary" onclick="WMS_MODULES.recepcion._miscNuevo()" style="background:rgba(255,255,255,.2);border:1.5px solid rgba(255,255,255,.5);color:#fff;font-weight:700;">
+                <i class="fa-solid fa-plus"></i> Nueva Recepción
+              </button>
+            </div>
           </div>
 
           <!-- KPIs -->
@@ -4153,22 +4160,32 @@ WMS_MODULES.recepcion = {
 
                   <!-- Sucursal entrega -->
                   <div style="border-top:1px solid #f1f5f9;padding:8px 14px;background:#fafafa;display:flex;align-items:center;gap:8px;min-height:34px;">
-                    ${i.cliente_nombre
-                      ? `<i class="fa-solid fa-location-dot" style="color:#3b82f6;font-size:.8rem;"></i>
-                         <span style="font-size:.78rem;font-weight:600;color:#1d4ed8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${WMS.esc(i.cliente_nombre)}</span>`
-                      : `<i class="fa-solid fa-location-dot" style="color:#cbd5e1;font-size:.8rem;"></i>
-                         <span style="font-size:.78rem;color:#94a3b8;font-style:italic;">Sin sucursal asignada</span>`
-                    }
+                    <div style="flex:1;display:flex;align-items:center;gap:6px;">
+                      ${i.cliente_nombre
+                        ? `<i class="fa-solid fa-location-dot" style="color:#3b82f6;font-size:.8rem;"></i>
+                           <span style="font-size:.78rem;font-weight:600;color:#1d4ed8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${WMS.esc(i.cliente_nombre)}">${WMS.esc(i.cliente_nombre)}</span>`
+                        : `<i class="fa-solid fa-location-dot" style="color:#cbd5e1;font-size:.8rem;"></i>
+                           <span style="font-size:.78rem;color:#94a3b8;font-style:italic;">Sin sucursal asignada</span>`
+                      }
+                    </div>
+                    <button class="btn btn-sm" style="color:#64748b;padding:2px 6px;" title="Cambiar Sucursal" onclick="WMS_MODULES.recepcion._miscCambiarSucursal(${i.id}, '${WMS.esc(i.cliente_nombre||'')}')">
+                      <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
                     <span style="margin-left:auto;font-size:.7rem;color:#94a3b8;">${i.created_at ? new Date(i.created_at).toLocaleDateString('es-CO') : ''}</span>
                   </div>
 
                   <!-- Acciones -->
                   <div style="border-top:1px solid #f1f5f9;padding:8px 14px;display:flex;gap:6px;">
-                    <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.recepcion._miscEditar(${i.id})" style="flex:1;font-size:.75rem;">
-                      <i class="fa-solid fa-pen"></i> Editar
+                    <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.recepcion._miscCrmDetalle(${i.id})" style="flex:1;font-size:.75rem;font-weight:600;">
+                      <i class="fa-solid fa-timeline"></i> Tracking & CRM
                     </button>
+                    ${i.estado !== 'Despachado' ? `
+                      <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.recepcion._miscNuevo(${this.esc(JSON.stringify(i).replace(/"/g, '&quot;'))})" style="font-size:.75rem;" title="Editar">
+                        <i class="fa-solid fa-pen"></i>
+                      </button>
+                    ` : ''}
                     ${(i.fotos||[]).length ? `
-                    <button class="btn btn-sm btn-outline-info" onclick="WMS_MODULES.recepcion._miscVerFotos(${i.id})" style="font-size:.75rem;" title="Ver todas las fotos">
+                    <button class="btn btn-sm btn-outline-info" onclick="WMS_MODULES.recepcion._miscVerFotos(${i.id})" style="font-size:.75rem;" title="Ver fotos iniciales">
                       <i class="fa-solid fa-images"></i>
                     </button>` : ''}
                     ${i.estado !== 'Despachado' ? `
@@ -4193,58 +4210,60 @@ WMS_MODULES.recepcion = {
     this.show_miscelaneos();
   },
 
-  async _miscNuevo() {
+  async _miscNuevo(editData = null, odcData = null) {
+    this._miscEditId = editData ? editData.id : null;
+    this._miscOdcId = odcData ? odcData.id : null;
+
+    WMS.spinner();
     let clientes = [];
-    try { const r = await API.get('/param/clientes'); clientes = r.data || r || []; } catch(e) {}
+    try { const r = await API.get('/param/clientes'); clientes = r.data || []; } catch(e){}
+    WMS.spinner(false);
 
-    WMS.showModal('Nueva Recepción de Misceláneo', `
-      <div style="display:flex;flex-direction:column;gap:0;">
+    const isOdc = !!odcData;
+    const isEdit = !!editData;
+    const title = isEdit ? 'Editar Misceláneo' : (isOdc ? 'Recibir ODC' : 'Recibir Nuevo Misceláneo');
+    const provVal = isEdit ? WMS.esc(editData.proveedor) : (isOdc ? WMS.esc(odcData.proveedor_nombre) : '');
+    const artVal = isEdit ? WMS.esc(editData.articulo) : (isOdc ? (odcData.detalles && odcData.detalles.length > 0 ? WMS.esc(odcData.detalles[0].articulo) : '') : '');
+    const cantVal = isEdit ? editData.cantidad : (isOdc ? (odcData.detalles && odcData.detalles.length > 0 ? odcData.detalles[0].cantidad : '1') : '1');
+    const umVal = isEdit ? editData.unidad_medida : (isOdc ? (odcData.detalles && odcData.detalles.length > 0 ? odcData.detalles[0].unidad_medida : 'UN') : 'UN');
+    const obsVal = isEdit ? WMS.esc(editData.observaciones||'') : (isOdc ? WMS.esc(odcData.observaciones||'') : '');
+    const clientVal = isEdit ? editData.cliente_id : '';
 
-        <div style="background:linear-gradient(135deg,#1e40af,#2563eb);border-radius:8px 8px 0 0;padding:16px 20px;margin:-20px -20px 20px;display:flex;align-items:center;gap:12px;">
-          <div style="width:42px;height:42px;background:rgba(255,255,255,.15);border-radius:50%;display:flex;align-items:center;justify-content:center;">
-            <i class="fa-solid fa-boxes-packing" style="color:#fff;font-size:18px;"></i>
-          </div>
-          <div>
-            <div style="color:#fff;font-weight:700;font-size:1rem;">Ingresar Misceláneo</div>
-            <div style="color:#bfdbfe;font-size:.78rem;">Complete todos los campos obligatorios</div>
-          </div>
-        </div>
-
-        <div style="display:flex;flex-direction:column;gap:14px;padding:0 4px;">
-
-          <div style="background:#eff6ff;border:1.5px solid #3b82f6;border-radius:8px;padding:14px 16px;">
-            <label class="form-label" style="color:#1d4ed8;font-weight:700;margin-bottom:6px;">
-              <i class="fa-solid fa-location-dot"></i> Sucursal de Entrega <span class="required">*</span>
-            </label>
-            <select id="misc-cliente" class="form-control" style="border-color:#3b82f6;">
-              <option value="">— Seleccione el punto de entrega —</option>
-              ${clientes.map(c => `<option value="${c.id}" data-nombre="${WMS.esc(c.razon_social||c.nombre||'')}">${WMS.esc(c.razon_social||c.nombre||'')}</option>`).join('')}
-            </select>
-          </div>
-
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
-            <div style="font-size:.8rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">
-              <i class="fa-solid fa-truck-ramp-box"></i> Datos del Artículo
+    WMS.showModal(
+      title,
+      `<div style="padding:10px 4px;font-size:.85rem;">
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">Sucursal / Cliente Destino <span style="color:#ef4444">*</span></label>
+              <select id="misc-cliente" class="form-control" style="font-weight:600;">
+                <option value="">— Seleccione el punto de entrega —</option>
+                ${clientes.map(c => `<option value="${c.id}" data-nombre="${WMS.esc(c.razon_social||c.nombre||'')}" ${clientVal == c.id ? 'selected' : ''}>${WMS.esc(c.razon_social||c.nombre||'')}</option>`).join('')}
+              </select>
             </div>
             <div class="form-group" style="margin:0;">
-              <label class="form-label">Proveedor <span class="required">*</span></label>
-              <input id="misc-proveedor" class="form-control" placeholder="Nombre del proveedor o empresa">
+              <label class="form-label">Proveedor / Origen <span style="color:#ef4444">*</span></label>
+              <input id="misc-proveedor" type="text" class="form-control" placeholder="Nombre del proveedor..." value="${provVal}" ${isOdc ? 'readonly style="background:#f1f5f9"' : ''}>
             </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;">
             <div class="form-group" style="margin:0;">
-              <label class="form-label">Artículo / Descripción <span class="required">*</span></label>
-              <input id="misc-articulo" class="form-control" placeholder="Descripción del artículo recibido">
+              <label class="form-label">Artículo / Descripción <span style="color:#ef4444">*</span></label>
+              <input id="misc-articulo" type="text" class="form-control" placeholder="Ej: Resmas de papel Carta" value="${artVal}" ${isOdc ? 'readonly style="background:#f1f5f9"' : ''}>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
               <div class="form-group" style="margin:0;">
-                <label class="form-label">Cantidad <span class="required">*</span></label>
-                <input id="misc-cantidad" type="number" class="form-control" min="0.01" step="0.01" value="1">
+                <label class="form-label">Cantidad</label>
+                <input id="misc-cantidad" type="number" class="form-control" min="0.01" step="0.01" value="${cantVal}">
               </div>
               <div class="form-group" style="margin:0;">
-                <label class="form-label">Unidad Medida</label>
+                <label class="form-label">U.M.</label>
                 <select id="misc-um" class="form-control">
-                  <option value="UN">Unidades</option><option value="KG">Kilos</option>
-                  <option value="LT">Litros</option><option value="MT">Metros</option>
-                  <option value="CJ">Cajas</option><option value="GL">Galón</option>
+                  <option value="UN" ${umVal==='UN'?'selected':''}>Unidades</option><option value="KG" ${umVal==='KG'?'selected':''}>Kilos</option>
+                  <option value="LT" ${umVal==='LT'?'selected':''}>Litros</option><option value="MT" ${umVal==='MT'?'selected':''}>Metros</option>
+                  <option value="CJ" ${umVal==='CJ'?'selected':''}>Cajas</option><option value="GL" ${umVal==='GL'?'selected':''}>Galón</option>
                 </select>
               </div>
             </div>
@@ -4253,10 +4272,10 @@ WMS_MODULES.recepcion = {
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div class="form-group" style="margin:0;">
               <label class="form-label">Observaciones</label>
-              <textarea id="misc-obs" class="form-control" rows="2" placeholder="Notas adicionales..."></textarea>
+              <textarea id="misc-obs" class="form-control" rows="2" placeholder="Notas adicionales...">${obsVal}</textarea>
             </div>
-            <div class="form-group" style="margin:0;">
-              <label class="form-label"><i class="fa-solid fa-camera"></i> Fotos del artículo</label>
+            <div class="form-group" style="margin:0; ${isEdit ? 'display:none;' : ''}">
+              <label class="form-label"><i class="fa-solid fa-camera"></i> Fotos iniciales del artículo</label>
               <input id="misc-fotos" type="file" class="form-control" accept="image/*" multiple>
               <div style="font-size:.72rem;color:#94a3b8;margin-top:4px;">Puede adjuntar múltiples imágenes</div>
             </div>
@@ -4265,7 +4284,7 @@ WMS_MODULES.recepcion = {
         </div>
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <button class="btn btn-primary" id="btn-misc-save" onclick="WMS_MODULES.recepcion._miscGuardar()"><i class="fa-solid fa-save"></i> Registrar Ingreso</button>`);
+       <button class="btn btn-primary" id="btn-misc-save" onclick="WMS_MODULES.recepcion._miscGuardar()"><i class="fa-solid fa-save"></i> ${isEdit ? 'Guardar Cambios' : 'Registrar Ingreso'}</button>`);
   },
 
   async _miscGuardar() {
@@ -4282,32 +4301,44 @@ WMS_MODULES.recepcion = {
     if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner sm"></div> Guardando...'; }
 
     try {
-      const r = await API.post('/miscelaneos', {
+      const payload = {
         proveedor, articulo, cantidad,
         unidad_medida: document.getElementById('misc-um')?.value || 'UN',
         observaciones: document.getElementById('misc-obs')?.value.trim() || null,
         cliente_id:    clienteId,
         cliente_nombre: clienteNom,
-      });
+        misc_odc_id: this._miscOdcId
+      };
 
-      if (r.error) { WMS.toast('error', r.message); return; }
-      const miscId = r.data?.id;
+      let r;
+      if (this._miscEditId) {
+        r = await API.put('/miscelaneos/' + this._miscEditId, payload);
+      } else {
+        r = await API.post('/miscelaneos', payload);
+      }
+      
+      if (r.error) throw new Error(r.message);
 
-      const filesInput = document.getElementById('misc-fotos');
-      if (filesInput?.files.length && miscId) {
-        const formData = new FormData();
-        for (const f of filesInput.files) formData.append('fotos[]', f);
-        await fetch(API_BASE + '/miscelaneos/' + miscId + '/fotos', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') },
-          body: formData
+      const miscId = r.data?.id || this._miscEditId;
+      const fInput = document.getElementById('misc-fotos');
+      if (!this._miscEditId && fInput && fInput.files && fInput.files.length > 0 && miscId) {
+        const fd = new FormData();
+        Array.from(fInput.files).forEach(f => fd.append('fotos[]', f));
+        await fetch(window.location.origin + '/WMS_FENIX/public/api/miscelaneos/' + miscId + '/fotos', {
+          method: 'POST', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') }, body: fd
         });
       }
 
-      WMS.toast('success', r.message || 'Misceláneo recibido');
+      if (this._miscOdcId) {
+        await API.post('/miscelaneos/odc/' + this._miscOdcId + '/procesar', {});
+      }
+
+      WMS.toast('success', this._miscEditId ? 'Misceláneo actualizado' : 'Misceláneo recibido');
+      this._miscEditId = null;
+      this._miscOdcId = null;
       WMS.closeModal('generic-modal');
       this.show_miscelaneos();
-    } catch(e) { WMS.toast('error', 'Error al guardar'); }
+    } catch(e) { WMS.toast('error', e.message || 'Error al guardar'); }
     finally { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-save"></i> Guardar'; } }
   },
 
@@ -4673,5 +4704,455 @@ WMS_MODULES.recepcion = {
     } catch (e) {
       WMS.toast('error', e.message || 'Error guardando calidad del producto');
     }
+  },
+
+  // ══════════════════════════════════════════════════════════════
+  //  MISCELÁNEOS CRM Y ODC
+  // ══════════════════════════════════════════════════════════════
+
+  async _miscCambiarSucursal(miscId, currentCliente) {
+    const r = await Swal.fire({
+      title: 'Cambiar Sucursal / Cliente',
+      input: 'text',
+      inputValue: currentCliente,
+      inputPlaceholder: 'Nombre de la sucursal o cliente...',
+      showCancelButton: true,
+      confirmButtonText: 'Guardar',
+      cancelButtonText: 'Cancelar'
+    });
+    if (!r.isConfirmed) return;
+    
+    WMS.spinner();
+    try {
+      const res = await API.put('/miscelaneos/' + miscId + '/sucursal', { cliente_nombre: r.value });
+      if (res.error) throw new Error(res.message);
+      WMS.toast('success', 'Sucursal actualizada');
+      this.show_miscelaneos();
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error al actualizar');
+    }
+  },
+
+  async _miscCrmDetalle(miscId) {
+    WMS.spinner();
+    try {
+      const [rMisc, rEst, rTrack] = await Promise.all([
+        API.get('/miscelaneos/' + miscId),
+        API.get('/miscelaneos/crm/estados'),
+        API.get('/miscelaneos/' + miscId + '/tracking')
+      ]);
+      const d = rMisc.data;
+      const estados = rEst.data || [];
+      const trackings = rTrack.data || [];
+
+      const html = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+          <!-- Izquierda: Info y Timeline -->
+          <div>
+            <div style="background:#f8fafc;padding:16px;border-radius:10px;margin-bottom:20px;border:1px solid #e2e8f0;">
+              <div style="font-weight:700;font-size:1.1rem;color:#0f172a;margin-bottom:4px;">${WMS.esc(d.articulo)}</div>
+              <div style="color:#64748b;font-size:13px;"><i class="fa-solid fa-hashtag"></i> ${WMS.esc(d.numero_recepcion||'-')}</div>
+              <div style="color:#64748b;font-size:13px;margin-top:4px;"><i class="fa-solid fa-industry"></i> Proveedor: ${WMS.esc(d.proveedor||'-')}</div>
+              <div style="color:#64748b;font-size:13px;margin-top:4px;"><i class="fa-solid fa-location-dot"></i> Destino: ${WMS.esc(d.cliente_nombre||'-')}</div>
+              <div style="margin-top:10px;"><span class="badge" style="background:#1e40af;color:#fff;">ESTADO ACTUAL: ${WMS.esc(d.estado)}</span></div>
+            </div>
+
+            <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:16px;">
+              <i class="fa-solid fa-timeline" style="color:#6366f1;"></i> Historial de Seguimiento
+            </div>
+            <div>
+              ${!trackings.length ? '<div style="color:#94a3b8;font-size:12px;font-style:italic;">No hay registros.</div>' : trackings.map(t => {
+                const evs = (t.evidencias||[]).map(e => {
+                  if (e.tipo==='imagen') return `<a href="${e.ruta_archivo}" target="_blank" style="display:inline-block;margin-right:8px;margin-top:8px;"><img src="${e.ruta_archivo}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0;"></a>`;
+                  return `<a href="${e.ruta_archivo}" target="_blank" style="display:inline-block;margin-right:8px;margin-top:8px;padding:6px 12px;background:#f1f5f9;border-radius:4px;font-size:12px;text-decoration:none;color:#334155;"><i class="fa-solid fa-file-pdf" style="color:#ef4444;"></i> Documento PDF</a>`;
+                }).join('');
+                return `
+                  <div style="display:flex;gap:12px;margin-bottom:16px;">
+                    <div style="display:flex;flex-direction:column;align-items:center;">
+                      <div style="width:10px;height:10px;border-radius:50%;background:#3b82f6;margin-top:4px;"></div>
+                      <div style="flex:1;width:2px;background:#e2e8f0;margin-top:4px;"></div>
+                    </div>
+                    <div style="flex:1;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;font-size:12px;">
+                      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                        <strong style="color:#0f172a;">${WMS.esc(t.usuario_nombre || 'Sistema')}</strong>
+                        <span style="color:#64748b;">${t.created_at}</span>
+                      </div>
+                      ${t.estado_anterior !== t.estado_nuevo ? `<div style="margin-bottom:6px;color:#6366f1;font-weight:600;"><i class="fa-solid fa-arrow-right-arrow-left"></i> ${WMS.esc(t.estado_anterior)} → ${WMS.esc(t.estado_nuevo)}</div>` : ''}
+                      <div style="color:#334155;white-space:pre-wrap;">${WMS.esc(t.observacion||'')}</div>
+                      ${evs ? `<div>${evs}</div>` : ''}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- Derecha: Formulario -->
+          <div style="background:#f8fafc;padding:20px;border-radius:12px;border:1px dashed #cbd5e1;">
+            <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:16px;">
+              <i class="fa-solid fa-comment-medical" style="color:#10b981;"></i> Registrar Novedad / Tracking
+            </div>
+            
+            <label class="form-label">Cambiar Estado (Opcional)</label>
+            <select id="crm-nuevo-estado" class="form-control" style="margin-bottom:12px;">
+              <option value="">Mantener actual (${WMS.esc(d.estado)})</option>
+              ${estados.map(e => `<option value="${WMS.esc(e.nombre)}" ${e.nombre===d.estado?'disabled':''}>→ ${WMS.esc(e.nombre)}</option>`).join('')}
+            </select>
+            
+            <label class="form-label">Observaciones / Novedad</label>
+            <textarea id="crm-observacion" class="form-control" rows="3" placeholder="Detalles de la gestión..." style="margin-bottom:12px;"></textarea>
+            
+            <label class="form-label">Evidencias (Fotos)</label>
+            <input type="file" id="crm-fotos" multiple accept="image/*" class="form-control" style="margin-bottom:12px;">
+            
+            <label class="form-label">Documentos (PDF)</label>
+            <input type="file" id="crm-docs" multiple accept="application/pdf" class="form-control" style="margin-bottom:20px;">
+            
+            <div style="text-align:right;">
+              <button class="btn btn-primary" onclick="WMS_MODULES.recepcion._miscGuardarTracking(${miscId})">
+                <i class="fa-solid fa-paper-plane"></i> Registrar Tracking
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      WMS.openModal({ title: 'Seguimiento CRM - Misceláneo', html, size: 'xl' });
+    } catch(e) {
+      WMS.toast('error', 'Error al cargar CRM');
+    }
+  },
+
+  async _miscGuardarTracking(miscId) {
+    const estado = document.getElementById('crm-nuevo-estado')?.value || '';
+    const obs = document.getElementById('crm-observacion')?.value || '';
+    const inputFotos = document.getElementById('crm-fotos');
+    const inputDocs = document.getElementById('crm-docs');
+    
+    if (!estado && !obs.trim()) {
+      WMS.toast('error', 'Debes escribir una observación o cambiar el estado');
+      return;
+    }
+    
+    WMS.spinner();
+    try {
+      const fotosBase64 = [];
+      if (inputFotos && inputFotos.files.length > 0) {
+        for (let file of inputFotos.files) {
+          const p = new Promise(resolve => { const r = new FileReader(); r.onload=e=>resolve(e.target.result); r.readAsDataURL(file); });
+          fotosBase64.push(await p);
+        }
+      }
+      const docsBase64 = [];
+      if (inputDocs && inputDocs.files.length > 0) {
+        for (let file of inputDocs.files) {
+          const p = new Promise(resolve => { const r = new FileReader(); r.onload=e=>resolve(e.target.result); r.readAsDataURL(file); });
+          docsBase64.push(await p);
+        }
+      }
+      
+      const r = await API.post('/miscelaneos/' + miscId + '/tracking', {
+        estado_nuevo: estado,
+        observacion: obs,
+        fotos: fotosBase64,
+        documentos: docsBase64
+      });
+      
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', 'Registro guardado exitosamente');
+      WMS.closeModal();
+      this.show_miscelaneos();
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error al guardar tracking');
+    }
+  },
+
+  async _miscShowOdcs() {
+    WMS.spinner();
+    try {
+      const r = await API.get('/miscelaneos/odc');
+      const odcs = r.data || [];
+      
+      let html = `
+        <div style="background:linear-gradient(135deg,#475569,#334155);border-radius:12px;padding:20px 24px;display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+          <div style="color:#fff;">
+            <div style="font-weight:800;font-size:1.1rem;"><i class="fa-solid fa-file-invoice-dollar"></i> Órdenes de Compra (Misceláneos)</div>
+            <div style="color:#cbd5e1;font-size:.8rem;">Gestión de ingresos programados multi-sucursal</div>
+          </div>
+          <div style="display:flex;gap:10px;">
+            <button class="btn btn-outline-light" onclick="WMS_MODULES.recepcion.show_miscelaneos()">
+              <i class="fa-solid fa-arrow-left"></i> Volver a Recepciones
+            </button>
+            <button class="btn btn-primary" onclick="WMS_MODULES.recepcion._miscNuevaOdc()" style="background:#3b82f6;border-color:#2563eb;">
+              <i class="fa-solid fa-plus"></i> Nueva ODC
+            </button>
+          </div>
+        </div>
+        
+        <div class="table-container">
+          <table class="erp-table">
+            <thead>
+              <tr>
+                <th>Consecutivo ODC</th>
+                <th>Fecha</th>
+                <th>Proveedor</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${odcs.map(o => `
+                <tr>
+                  <td><strong>${WMS.esc(o.consecutivo)}</strong></td>
+                  <td>${WMS.esc(o.fecha)}</td>
+                  <td>${WMS.esc(o.proveedor_nombre)}</td>
+                  <td><span style="background:${o.estado==='Anulada'?'#fee2e2':'#e0e7ff'};color:${o.estado==='Anulada'?'#dc2626':'#4338ca'};padding:3px 10px;border-radius:20px;font-size:.7rem;font-weight:700;">${WMS.esc(o.estado)}</span></td>
+                  <td style="display:flex;gap:5px;">
+                      <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.recepcion._miscVerOdc(${o.id})" title="Ver Detalles">
+                        <i class="fa-solid fa-eye"></i>
+                      </button>
+                      ${o.estado === 'Pendiente' ? `
+                      <button class="btn btn-sm btn-success" onclick="WMS_MODULES.recepcion._miscRecibirOdc(${o.id})" title="Procesar y Recibir ODC">
+                        <i class="fa-solid fa-box-open"></i> Recibir
+                      </button>
+                      <button class="btn btn-sm btn-outline-danger" onclick="WMS_MODULES.recepcion._miscAnularOdc(${o.id})" title="Anular ODC">
+                        <i class="fa-solid fa-ban"></i>
+                      </button>
+                      ` : ''}
+                  </td>
+                </tr>
+              `).join('')}
+              ${!odcs.length ? '<tr><td colspan="5" class="text-center" style="padding:20px;color:#64748b;">No hay ODCs registradas</td></tr>' : ''}
+            </tbody>
+          </table>
+        </div>
+      `;
+      WMS.setContent(html);
+    } catch(e) {
+      WMS.toast('error', 'Error al cargar ODCs');
+    }
+  },
+
+  _odcTempItems: [],
+  
+  _miscNuevaOdc() {
+    this._odcTempItems = [];
+    const html = `
+      <div style="max-width:800px;margin:0 auto;background:#fff;border-radius:12px;padding:24px;border:1px solid #e2e8f0;box-shadow:0 10px 25px rgba(0,0,0,.05);">
+        <h3 style="margin-top:0;margin-bottom:20px;color:#0f172a;"><i class="fa-solid fa-plus-circle"></i> Crear Nueva ODC Misceláneos</h3>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+          <div>
+            <label class="form-label">Proveedor</label>
+            <input type="text" id="odc-prov" class="form-control" placeholder="Nombre del proveedor...">
+          </div>
+          <div>
+            <label class="form-label">Observaciones (Opcional)</label>
+            <input type="text" id="odc-obs" class="form-control" placeholder="Notas adicionales...">
+          </div>
+        </div>
+        
+        <hr style="margin:20px 0;border-top:1px solid #e2e8f0;">
+        <h4 style="font-size:14px;color:#334155;margin-bottom:12px;"><i class="fa-solid fa-box"></i> Artículos / Referencias</h4>
+        
+        <div style="background:#f8fafc;padding:16px;border-radius:8px;border:1px dashed #cbd5e1;margin-bottom:20px;">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end;">
+            <div><label class="form-label" style="font-size:12px;">Referencia / Descripción</label><input type="text" id="odc-ref" class="form-control form-control-sm"></div>
+            <div><label class="form-label" style="font-size:12px;">Cant. Total</label><input type="number" id="odc-cant" class="form-control form-control-sm"></div>
+            <div><label class="form-label" style="font-size:12px;">Unidad</label><input type="text" id="odc-um" class="form-control form-control-sm" value="UND"></div>
+            <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.recepcion._odcAddRef()"><i class="fa-solid fa-plus"></i> Añadir Referencia</button>
+          </div>
+        </div>
+        
+        <div id="odc-items-list" style="margin-bottom:24px;">
+          <div style="color:#94a3b8;font-size:13px;text-align:center;padding:20px;border:1px solid #e2e8f0;border-radius:8px;">Aún no has agregado artículos a la ODC.</div>
+        </div>
+        
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button class="btn btn-secondary" onclick="WMS_MODULES.recepcion._miscShowOdcs()">Cancelar</button>
+          <button class="btn btn-primary" onclick="WMS_MODULES.recepcion._miscGuardarOdc()"><i class="fa-solid fa-save"></i> Guardar ODC</button>
+        </div>
+      </div>
+    `;
+    WMS.setContent(html);
+  },
+
+  _odcAddRef() {
+    const ref = document.getElementById('odc-ref').value.trim();
+    const cant = parseFloat(document.getElementById('odc-cant').value);
+    const um = document.getElementById('odc-um').value.trim();
+    if (!ref || !cant) { WMS.toast('error', 'Referencia y cantidad son obligatorios'); return; }
+    
+    this._odcTempItems.push({ idx: Date.now(), articulo: ref, cantidad: cant, unidad_medida: um, distribuciones: [] });
+    
+    document.getElementById('odc-ref').value = '';
+    document.getElementById('odc-cant').value = '';
+    this._odcRenderItems();
+  },
+
+  _odcRenderItems() {
+    const container = document.getElementById('odc-items-list');
+    if (!this._odcTempItems.length) {
+      container.innerHTML = '<div style="color:#94a3b8;font-size:13px;text-align:center;padding:20px;border:1px solid #e2e8f0;border-radius:8px;">Aún no has agregado artículos a la ODC.</div>';
+      return;
+    }
+    
+    container.innerHTML = this._odcTempItems.map((item, i) => `
+      <div style="border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;overflow:hidden;">
+        <div style="background:#f1f5f9;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+          <div><strong style="color:#0f172a;">${WMS.esc(item.articulo)}</strong> <span class="badge bg-primary" style="margin-left:8px;">Total: ${item.cantidad} ${WMS.esc(item.unidad_medida)}</span></div>
+          <button class="btn btn-sm" style="color:#ef4444;" onclick="WMS_MODULES.recepcion._odcRemRef(${i})"><i class="fa-solid fa-trash"></i></button>
+        </div>
+        <div style="padding:14px;">
+          <div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:8px;"><i class="fa-solid fa-share-nodes"></i> Distribución de este artículo (Opcional)</div>
+          
+          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:12px;">
+            <input type="text" id="odc-dist-cli-${item.idx}" class="form-control form-control-sm" placeholder="Cliente/Sucursal">
+            <input type="number" id="odc-dist-cant-${item.idx}" class="form-control form-control-sm" placeholder="Cantidad a enviar">
+            <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.recepcion._odcAddDist(${i})">Agregar</button>
+          </div>
+          
+          <table class="erp-table" style="font-size:12px;">
+            <thead><tr><th>Destino</th><th>Cantidad</th><th></th></tr></thead>
+            <tbody>
+              ${item.distribuciones.map((d, dIdx) => `
+                <tr>
+                  <td>${WMS.esc(d.sucursal)}</td>
+                  <td>${d.cantidad}</td>
+                  <td class="text-right"><i class="fa-solid fa-times" style="color:#ef4444;cursor:pointer;" onclick="WMS_MODULES.recepcion._odcRemDist(${i}, ${dIdx})"></i></td>
+                </tr>
+              `).join('')}
+              ${!item.distribuciones.length ? '<tr><td colspan="3" class="text-center" style="color:#94a3b8;">Sin distribución especificada</td></tr>' : ''}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `).join('');
+  },
+
+  _odcRemRef(idx) {
+    this._odcTempItems.splice(idx, 1);
+    this._odcRenderItems();
+  },
+
+  _odcAddDist(refIdx) {
+    const item = this._odcTempItems[refIdx];
+    const cli = document.getElementById(`odc-dist-cli-${item.idx}`).value.trim();
+    const cant = parseFloat(document.getElementById(`odc-dist-cant-${item.idx}`).value);
+    
+    if (!cli || !cant) { WMS.toast('error', 'Cliente y cantidad requeridos'); return; }
+    
+    let sum = item.distribuciones.reduce((s,d)=>s+d.cantidad, 0) + cant;
+    if (sum > item.cantidad) {
+      WMS.toast('warning', 'La distribución supera la cantidad total del artículo');
+    }
+    
+    item.distribuciones.push({ cliente: cli, sucursal: cli, cantidad: cant });
+    this._odcRenderItems();
+  },
+
+  _odcRemDist(refIdx, distIdx) {
+    this._odcTempItems[refIdx].distribuciones.splice(distIdx, 1);
+    this._odcRenderItems();
+  },
+
+  async _miscGuardarOdc() {
+    const prov = document.getElementById('odc-prov').value.trim();
+    const obs = document.getElementById('odc-obs').value.trim();
+    
+    if (!prov) { WMS.toast('error', 'El proveedor es obligatorio'); return; }
+    if (!this._odcTempItems.length) { WMS.toast('error', 'Debe agregar al menos un artículo'); return; }
+    
+    WMS.spinner();
+    try {
+      const payload = {
+        proveedor: prov,
+        observaciones: obs,
+        detalles: this._odcTempItems
+      };
+      
+      const r = await API.post('/miscelaneos/odc', payload);
+      if (r.error) throw new Error(r.message);
+      
+      WMS.toast('success', 'ODC creada: ' + r.consecutivo);
+      this._miscShowOdcs();
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error al guardar ODC');
+    }
+  },
+
+  async _miscRecibirOdc(id) {
+    try {
+      WMS.spinner();
+      const r = await API.get('/miscelaneos/odc/' + id);
+      WMS.spinner(false);
+      this._miscNuevo(null, r.data);
+    } catch(e) {
+      WMS.spinner(false);
+      WMS.toast('error', 'Error obteniendo ODC');
+    }
+  },
+
+  async _miscAnularOdc(id) {
+    if (!confirm('¿Estás seguro de anular esta ODC?')) return;
+    try {
+      WMS.spinner();
+      const r = await API.post('/miscelaneos/odc/' + id + '/anular', {});
+      WMS.spinner(false);
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', 'ODC anulada correctamente');
+      this._miscShowOdcs();
+    } catch(e) {
+      WMS.spinner(false);
+      WMS.toast('error', e.message || 'Error al anular ODC');
+    }
+  },
+
+  async _miscVerOdc(id) {
+    WMS.spinner();
+    try {
+      const r = await API.get('/miscelaneos/odc/' + id);
+      const o = r.data;
+      
+      let html = `
+        <div style="background:#fff;padding:20px;border-radius:12px;max-width:800px;margin:0 auto;border:1px solid #e2e8f0;">
+          <button class="btn btn-sm btn-secondary mb-3" onclick="WMS_MODULES.recepcion._miscShowOdcs()"><i class="fa-solid fa-arrow-left"></i> Volver</button>
+          
+          <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #3b82f6;padding-bottom:12px;margin-bottom:20px;">
+            <div>
+              <h2 style="margin:0;color:#0f172a;">${WMS.esc(o.consecutivo)}</h2>
+              <div style="color:#64748b;">Proveedor: ${WMS.esc(o.proveedor_nombre)}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:12px;color:#94a3b8;">Fecha Creación</div>
+              <div style="font-weight:700;">${WMS.esc(o.fecha)}</div>
+            </div>
+          </div>
+          
+          <h4 style="margin-bottom:12px;font-size:15px;"><i class="fa-solid fa-boxes-stacked"></i> Artículos Solicitados</h4>
+          <table class="erp-table">
+            <thead>
+              <tr><th>Referencia</th><th>Cantidad Total</th><th>Estado</th></tr>
+            </thead>
+            <tbody>
+              ${o.detalles.map(d => `
+                <tr>
+                  <td>
+                    <strong>${WMS.esc(d.articulo)}</strong>
+                    ${d.distribuciones.length ? `<div style="font-size:11px;color:#64748b;margin-top:4px;">Distribución:<br>${d.distribuciones.map(dist=>`• ${WMS.esc(dist.sucursal_destino)}: ${dist.cantidad_asignada}`).join('<br>')}</div>` : ''}
+                  </td>
+                  <td>${d.cantidad_total} ${WMS.esc(d.unidad_medida||'UND')}</td>
+                  <td><span class="badge bg-secondary">${WMS.esc(d.estado)}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+      WMS.setContent(html);
+    } catch(e) {
+      WMS.toast('error', 'Error al cargar ODC');
+    }
   }
 };
+

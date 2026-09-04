@@ -13,6 +13,7 @@ WMS_MODULES.inventario = {
       'toma-fisica': this.show_tomaFisica,
       dashboard: this.show_dashboard, ajuste: this.show_ajuste, 'ajuste-ubicacion': this.show_ajuste_ubicacion,
       stock: this.show_stock, 'stock-ubi': this.show_stock_ubi, vencimientos: this.show_vencimientos,
+      multimodal: () => WMS_MODULES.reportes.show_inventario_multimodal(),
     };
     (fn[s]?.bind(this) || fn.stock.bind(this))();
   },
@@ -24,6 +25,7 @@ WMS_MODULES.inventario = {
       'toma-fisica':'Toma Física General',
       dashboard:'Dashboard Inventario', ajuste:'Ajuste Manual', stock:'Stock General',
       'stock-ubi':'Stock por Ubicación', vencimientos:'Vencimientos',
+      multimodal:'Reporte Inventario Excel',
     };
     return m[s] || s || 'Panel';
   },
@@ -885,7 +887,7 @@ WMS_MODULES.inventario = {
                 <td><span class="pro-badge ${i.estado==='Disponible'?'ok':'warn'}">${WMS.esc(i.estado || '—')}</span></td>
                 <td>
                   <button class="btn btn-xs btn-outline-secondary" style="font-size:10px;padding:3px 8px;"
-                    onclick="WMS_MODULES.inventario._verHistorialUbiProducto(${ubicacionId}, ${i.producto_id}, '${WMS.esc((i.descripcion||i.producto_nombre||'').replace(/'/g,"\\'"))}')">
+                    onclick="WMS_MODULES.inventario._verHistorialUbiProducto(${ubicacionId}, ${i.producto_id})">
                     <i class="fa-solid fa-clock-rotate-left"></i> Historial
                   </button>
                 </td>
@@ -1159,7 +1161,7 @@ WMS_MODULES.inventario = {
         </div>`,
 
         `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-         <button class="btn btn-primary" onclick="WMS_MODULES.inventario.saveConteoV2('${tipo}')">
+         <button class="btn btn-primary" onclick="WMS_MODULES.inventario.saveConteoV2('${tipo}', this)">
            <i class="fa-solid fa-save"></i> Crear Sesión
          </button>`);
 
@@ -1368,7 +1370,11 @@ WMS_MODULES.inventario = {
     }
   },
 
-  async saveConteoV2(tipo) {
+  // BUG CORREGIDO 2026-08-19: mismo patrón de doble clic que _guardarCiclicRefs()
+  // — este flujo también hace un loop de POST (una llamada por fila de
+  // asignación) sin deshabilitar el botón mientras corre.
+  async saveConteoV2(tipo, btn) {
+    if (btn?.dataset.guardando === '1') return;
     const numConteosVal = document.getElementById('cnt-num-conteos')?.value || '1';
 
     // Si el selector dice CargueInicial, sobreescribir tipo
@@ -1423,6 +1429,7 @@ WMS_MODULES.inventario = {
 
     const compararSistema = document.getElementById('cnt-comparar')?.value !== '0';
 
+    if (btn) { btn.dataset.guardando = '1'; btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creando...'; }
     try {
       const fvObligatorioEl = document.getElementById('cnt-fv-obligatorio');
       const fvObligatorio = tipoFinal === 'CargueInicial' ? true : (fvObligatorioEl ? fvObligatorioEl.checked : true);
@@ -1444,7 +1451,10 @@ WMS_MODULES.inventario = {
       WMS.toast('success', 'Sesión creada. Presione "Iniciar" para notificar a los auxiliares.');
       WMS.closeModal('generic-modal');
       this.show_sesiones();
-    } catch(e) { WMS.toast('error', e.message || 'Error creando sesión'); }
+    } catch(e) {
+      WMS.toast('error', e.message || 'Error creando sesión');
+      if (btn) { btn.dataset.guardando = '0'; btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-save"></i> Crear Sesión'; }
+    }
   },
 
   async iniciarSesion(id) {
@@ -1470,8 +1480,12 @@ WMS_MODULES.inventario = {
     const isStandalone = document.body.classList.contains('standalone-mode');
     const rondaParam = ronda ? `ronda=${ronda}` : '';
     try {
-      const r = await API.get(`/v2/inventario/sesiones/${id}/dashboard`, rondaParam);
+      const [r, auxR] = await Promise.all([
+        API.get(`/v2/inventario/sesiones/${id}/dashboard`, rondaParam),
+        this._personalCache ? Promise.resolve({ data: this._personalCache }) : API.get('/param/personal', 'limit=200')
+      ]);
       const d = r.data || {};
+      this._personalCache = auxR.data || [];
       this._dashV2 = d;
       this._dashV2Id = id;
 
@@ -2014,6 +2028,7 @@ WMS_MODULES.inventario = {
 
     else if (tab === 'asig') {
       const sesion = d.sesion;
+      const personal = this._personalCache || [];
       content.innerHTML = `
         <div style="margin-bottom:12px;text-align:right">
           <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.inventario._addAsigExistente(${id})">
@@ -2028,7 +2043,15 @@ WMS_MODULES.inventario = {
             <tbody>
               ${(sesion.asignaciones||[]).map(a => `
                 <tr>
-                  <td style="font-weight:700">${WMS.esc(a.auxiliar?.nombre||'-')}</td>
+                  <td>
+                    <select class="form-control form-control-sm asig-aux-select"
+                      style="font-size:.78rem;font-weight:700;padding:2px 6px;min-width:150px;border-color:#cbd5e1;"
+                      onchange="WMS_MODULES.inventario._cambiarAuxiliarAsignacion(${a.id}, this.value, ${id})"
+                      ${a.estado === 'Finalizado' || ['Cerrado', 'Ajustado'].includes(sesion.estado) ? 'disabled' : ''}>
+                      <option value="">-- Seleccionar --</option>
+                      ${personal.map(p => `<option value="${p.id}" ${p.id == a.auxiliar_id ? 'selected' : ''}>${WMS.esc(p.nombre)}</option>`).join('')}
+                    </select>
+                  </td>
                   <td class="text-center"><span class="badge badge-info">R${a.ronda}</span></td>
                   <td style="font-size:.78rem">${WMS.esc(a.tipo_instruccion)}
                     ${a.pasillo?'— '+WMS.esc(a.pasillo):''}${a.modulo?'— '+WMS.esc(a.modulo):''}
@@ -2858,6 +2881,27 @@ WMS_MODULES.inventario = {
     } catch(e) { WMS.toast('error', e.message); }
   },
 
+  async _cambiarAuxiliarAsignacion(asigId, nuevoAuxId, sesionId) {
+    if (!nuevoAuxId) return;
+    try {
+      const res = await API.put(`/v2/inventario/asignaciones/${asigId}/auxiliar`, { auxiliar_id: parseInt(nuevoAuxId) });
+      if (res.error) throw new Error(res.message || 'Error al cambiar auxiliar');
+      WMS.toast('success', 'Auxiliar de asignación actualizado');
+
+      // Actualizar modelo local
+      if (this._dashV2 && this._dashV2.sesion && Array.isArray(this._dashV2.sesion.asignaciones)) {
+        const asig = this._dashV2.sesion.asignaciones.find(x => x.id == asigId);
+        if (asig) {
+          asig.auxiliar_id = parseInt(nuevoAuxId);
+          asig.auxiliar = res.data?.auxiliar || (this._personalCache || []).find(x => x.id == nuevoAuxId);
+        }
+      }
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error al cambiar auxiliar');
+      if (sesionId) this.verDashboardV2(sesionId);
+    }
+  },
+
   // ── CÍCLICO: GESTIÓN DE REFERENCIAS ───────────────────────────────────────
   async _ciclicoRefs(sesionId) {
     WMS.spinner();
@@ -2883,9 +2927,12 @@ WMS_MODULES.inventario = {
                   <div style="font-weight:700;font-size:.82rem;color:#1e293b;">
                     ${WMS.esc(a.producto?.nombre || '—')}
                   </div>
-                  <div style="font-size:.7rem;color:#64748b;">
+                  <div style="font-size:.7rem;color:#64748b;display:flex;align-items:center;gap:6px;margin-top:2px;">
                     <i class="fa-solid fa-user" style="color:#94a3b8;"></i>
-                    ${WMS.esc(a.auxiliar?.nombre || 'Auxiliar #' + a.auxiliar_id)}
+                    <select class="form-control form-control-sm" style="font-size:.72rem;padding:1px 4px;height:24px;width:auto;"
+                      onchange="WMS_MODULES.inventario._cambiarAuxiliarAsignacion(${a.id}, this.value, ${sesionId})">
+                      ${auxiliares.map(aux => `<option value="${aux.id}" ${aux.id == a.auxiliar_id ? 'selected' : ''}>${WMS.esc(aux.nombre)}</option>`).join('')}
+                    </select>
                     <span style="margin-left:6px;font-family:monospace;color:#94a3b8;">${WMS.esc(a.producto?.codigo_interno || '')}</span>
                   </div>
                 </div>
@@ -2908,7 +2955,7 @@ WMS_MODULES.inventario = {
           </button>
         </div>`,
         `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>
-         <button class="btn btn-primary" onclick="WMS_MODULES.inventario._guardarCiclicRefs(${sesionId})">
+         <button class="btn btn-primary" onclick="WMS_MODULES.inventario._guardarCiclicRefs(${sesionId}, this)">
            <i class="fa-solid fa-save"></i> Guardar Referencias
          </button>`);
 
@@ -2953,7 +3000,17 @@ WMS_MODULES.inventario = {
     }, 50);
   },
 
-  async _guardarCiclicRefs(sesionId) {
+  // BUG CORREGIDO 2026-08-19 (a pedido explícito, caso real confirmado): sin
+  // protección contra doble clic, si el usuario hacía clic varias veces en
+  // "Guardar Referencias" mientras el modal se refrescaba (o si dudaba porque
+  // no había una señal clara de "guardando"), cada clic reenviaba TODA la
+  // lista de referencias otra vez — 11 referencias terminaban duplicadas
+  // (hasta 4 copias de la misma, ver sesión #48). Ahora el botón se deshabilita
+  // mientras la petición está en curso, y el backend (crearAsignacion) además
+  // ignora silenciosamente cualquier referencia que ya exista en la sesión —
+  // doble barrera, no solo una.
+  async _guardarCiclicRefs(sesionId, btn) {
+    if (btn?.dataset.guardando === '1') return; // ya hay un guardado en curso
     const rows = document.querySelectorAll('.ciclic-ref-row');
     const items = [];
     let filaIncompleta = false;
@@ -2967,6 +3024,7 @@ WMS_MODULES.inventario = {
     if (filaIncompleta) return WMS.toast('warning', 'Complete producto y auxiliar en cada fila, o elimine las que no vaya a usar');
     if (items.length === 0) return WMS.toast('warning', 'Agregue al menos una referencia con producto y auxiliar');
 
+    if (btn) { btn.dataset.guardando = '1'; btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando...'; }
     try {
       for (const item of items) {
         await API.post(`/v2/inventario/sesiones/${sesionId}/asignaciones`, {
@@ -2978,7 +3036,10 @@ WMS_MODULES.inventario = {
       }
       WMS.toast('success', `${items.length} referencia(s) agregada(s)`);
       this._ciclicoRefs(sesionId);
-    } catch(e) { WMS.toast('error', e.message); }
+    } catch(e) {
+      WMS.toast('error', e.message);
+      if (btn) { btn.dataset.guardando = '0'; btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-save"></i> Guardar Referencias'; }
+    }
   },
 
   async _deleteAsigCiclic(asigId, sesionId) {
@@ -3650,7 +3711,7 @@ WMS_MODULES.inventario = {
   _ciRenderLayout(esAdmin, pendientes = []) {
     const pRows = pendientes.map(l => {
       const sinId = !l.ubicacion_id;
-      const fv    = l.fecha_vencimiento ? l.fecha_vencimiento.split('T')[0] : '—';
+      const fv    = l.fecha_vencimiento ? WMS.formatDate(l.fecha_vencimiento.split('T')[0]) : '—';
       return `<tr class="${sinId ? 'row-warning' : ''}">
         <td><strong>${WMS.esc(l.producto||'')}</strong><br><small style="color:#6b7280;">${WMS.esc(l.codigo||'')}</small></td>
         <td>
@@ -3748,6 +3809,7 @@ WMS_MODULES.inventario = {
               <i class="fa-solid fa-paper-plane"></i> Enviar a Pendientes
             </button>
 
+            ${(WMS.user?.rol === 'Admin' || WMS.user?.rol === 'SuperAdmin') ? `
             <hr style="margin:14px 0 10px;border-color:#e2e8f0;">
             <div style="font-size:.75rem;font-weight:600;color:#64748b;margin-bottom:6px;">
               <i class="fa-solid fa-box-open"></i> VACIAR UBICACIÓN
@@ -3759,8 +3821,8 @@ WMS_MODULES.inventario = {
               </button>
             </div>
             <div style="font-size:.72rem;color:#94a3b8;margin-top:4px;">
-              Ajusta a 0 todo el inventario de esa ubicación y registra el movimiento.
-            </div>
+              Ajusta a 0 todo el inventario de esa ubicación y registra el movimiento. Exclusivo Administrador.
+            </div>` : ''}
 
           </div>
         </div>
@@ -4094,7 +4156,7 @@ WMS_MODULES.inventario = {
       tbody.innerHTML = pends.map(l => {
         const sinId = !l.ubicacion_id;
         const esVac = parseFloat(l.und_total) <= 0;
-        const fv    = l.fecha_vencimiento ? l.fecha_vencimiento.split('T')[0] : '—';
+        const fv    = l.fecha_vencimiento ? WMS.formatDate(l.fecha_vencimiento.split('T')[0]) : '—';
         return `<tr>
           <td>
             <strong>${WMS.esc(l.producto||'')}</strong>
@@ -5039,6 +5101,10 @@ WMS_MODULES.inventario = {
       const r = await API.get(`/inventario/ajuste-ubicacion/${id}`);
       const { ajuste, inv_actual } = r.data ?? r;
       const esPendiente = ajuste.estado === 'Pendiente';
+      // A pedido explícito (2026-08-20): solo el Administrador aprueba/rechaza
+      // ajustes — el backend ya lo exige; esto solo evita mostrar el botón a quien
+      // de todos modos recibiría un error 403 al presionarlo.
+      const esAdminAjuste = WMS.user?.rol === 'Admin' || WMS.user?.rol === 'SuperAdmin';
 
       // Tabla inventario actual
       const invHtml = (inv_actual || []).length
@@ -5074,7 +5140,7 @@ WMS_MODULES.inventario = {
             return `<tr>
               <td>${WMS.esc(d.producto?.nombre || '-')}<br><small>${WMS.esc(d.producto?.codigo_interno || '')}</small></td>
               <td>${WMS.esc(d.lote || 'N/A')}</td>
-              <td>${d.fecha_vencimiento || '-'}</td>
+              <td>${d.fecha_vencimiento ? WMS.formatDate(d.fecha_vencimiento) : '-'}</td>
               <td>${d.cantidad_cajas}</td>
               <td>${d.saldos}</td>
               <td><b>${WMS.formatNum(d.cantidad)}</b></td>
@@ -5133,7 +5199,7 @@ WMS_MODULES.inventario = {
           </div>
         </div>
 
-        ${esPendiente ? `
+        ${esPendiente && esAdminAjuste ? `
         <div style="border-top:1px solid #e2e8f0;margin-top:20px;padding-top:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
           <div style="flex:1;min-width:220px;">
             <label style="font-size:.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Motivo de rechazo (opcional)</label>
@@ -5146,7 +5212,11 @@ WMS_MODULES.inventario = {
             <i class="fa-solid fa-check"></i> ${btnAprobarLabel}
           </button>
         </div>
-        ${warningHtml}` : ''}
+        ${warningHtml}` : (esPendiente ? `
+        <div style="border-top:1px solid #e2e8f0;margin-top:20px;padding-top:16px;font-size:.8rem;color:#92400e;background:#fef3c7;border-radius:6px;padding:10px 14px;">
+          <i class="fa-solid fa-lock"></i> Este ajuste está pendiente de aprobación — solo el Administrador puede aprobarlo o rechazarlo.
+        </div>
+        ${warningHtml}` : '')}
       `;
     } catch(e) { body.innerHTML = `<p style="color:red;">${WMS.esc(e.message)}</p>`; }
   },
@@ -5226,6 +5296,41 @@ WMS_MODULES.inventario = {
     const icg = d.analisis_icg || {};
     const cargado = icg.cargado;
     const ambientes = (icg.avance_por_ambiente || []).map(a => a.ambiente);
+
+    // A pedido explícito (2026-08-19): filtro "solo contadas físicamente" y
+    // encabezados ordenables (alfabético o numérico según el campo) para la
+    // tabla comparativa ICG vs WMS.
+    this._icgSort = this._icgSort || { col: null, dir: 'asc' };
+    this._icgSoloContados = this._icgSoloContados || false;
+
+    const ICG_COLS = [
+      { key: 'codigo',           label: 'CÓDIGO',              type: 'text'  },
+      { key: 'producto',         label: 'REFERENCIA / PRODUCTO', type: 'text'  },
+      { key: 'ambiente',         label: 'AMBIENTE',            type: 'text'  },
+      { key: 'unidades_caja',    label: 'U/E',                 type: 'num'   },
+      { key: 'cantidad_icg',     label: 'STOCK ICG',           type: 'num'   },
+      { key: 'cantidad_contada', label: 'CONTEO WMS',          type: 'num'   },
+      { key: 'diferencia_icg',   label: 'DIFERENCIA',          type: 'num'   },
+      { key: 'estado',           label: 'ESTADO',              type: 'text'  },
+    ];
+
+    let lineasIcg = (icg.lineas_icg_comparativo || []).slice();
+    if (this._icgSoloContados) {
+      lineasIcg = lineasIcg.filter(l => (l.cantidad_contada || 0) > 0);
+    }
+    if (this._icgSort.col) {
+      const colDef = ICG_COLS.find(c => c.key === this._icgSort.col);
+      const dir = this._icgSort.dir === 'desc' ? -1 : 1;
+      lineasIcg.sort((a, b) => {
+        let va = a[this._icgSort.col], vb = b[this._icgSort.col];
+        if (colDef && colDef.type === 'num') {
+          va = parseFloat(va) || 0; vb = parseFloat(vb) || 0;
+          return (va - vb) * dir;
+        }
+        va = (va ?? '').toString().toLowerCase(); vb = (vb ?? '').toString().toLowerCase();
+        return va.localeCompare(vb) * dir;
+      });
+    }
 
     content.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:16px;">
@@ -5320,11 +5425,16 @@ WMS_MODULES.inventario = {
 
         <!-- Filtro Dinámico por Ambiente & Búsqueda -->
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#f8fafc;padding:10px 14px;border-radius:8px;border:1px solid #e2e8f0;">
-          <div style="display:flex;gap:6px;align-items:center;">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
             <small style="font-weight:800;color:#64748b;">AMBIENTE:</small>
             <button class="btn btn-xs btn-primary icg-amb-btn" onclick="WMS_MODULES.inventario._filterIcgAmb('ALL', this)">TODOS</button>
             ${ambientes.map(amb => `
               <button class="btn btn-xs btn-outline-secondary icg-amb-btn" onclick="WMS_MODULES.inventario._filterIcgAmb('${WMS.esc(amb)}', this)">${WMS.esc(amb)}</button>`).join('')}
+            <span style="width:1px;height:18px;background:#cbd5e1;margin:0 4px;"></span>
+            <button class="btn btn-xs ${this._icgSoloContados ? 'btn-success' : 'btn-outline-secondary'}"
+              onclick="WMS_MODULES.inventario._toggleIcgSoloContados()" title="Mostrar solo las referencias que ya tienen un conteo físico registrado en WMS">
+              <i class="fa-solid ${this._icgSoloContados ? 'fa-check-square' : 'fa-square'}"></i> Solo contadas físicamente
+            </button>
           </div>
           <div style="flex:1;max-width:320px;">
             <input class="form-control form-control-sm" placeholder="Buscar por referencia o código..." oninput="WMS_MODULES.inventario._filterIcgSearch(this.value)">
@@ -5335,24 +5445,21 @@ WMS_MODULES.inventario = {
         <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.05);">
           <div style="background:#1e293b;color:#fff;padding:10px 16px;font-size:.82rem;font-weight:800;display:flex;justify-content:space-between;align-items:center;">
             <span><i class="fa-solid fa-code-compare"></i> Comparativo Detallado ICG vs Conteo WMS</span>
-            <span style="font-size:.72rem;color:#94a3b8;">${(icg.lineas_icg_comparativo||[]).length} referencias ICG</span>
+            <span style="font-size:.72rem;color:#94a3b8;">${lineasIcg.length} de ${(icg.lineas_icg_comparativo||[]).length} referencias ICG</span>
           </div>
           <div style="max-height:420px;overflow-y:auto;">
             <table class="erp-table" id="icg-comp-table">
               <thead>
                 <tr style="background:#f1f5f9;position:sticky;top:0;z-index:10;">
-                  <th>CÓDIGO</th>
-                  <th>REFERENCIA / PRODUCTO</th>
-                  <th class="text-center">AMBIENTE</th>
-                  <th class="text-center">U/E</th>
-                  <th class="text-center" style="background:#fffbeb;color:#92400e;">STOCK ICG</th>
-                  <th class="text-center" style="background:#eff6ff;color:#1e40af;">CONTEO WMS</th>
-                  <th class="text-center">DIFERENCIA</th>
-                  <th class="text-center">ESTADO</th>
+                  ${ICG_COLS.map(c => {
+                    const activo = this._icgSort.col === c.key;
+                    const arrow = activo ? (this._icgSort.dir === 'desc' ? ' <i class="fa-solid fa-arrow-down-short-wide"></i>' : ' <i class="fa-solid fa-arrow-up-short-wide"></i>') : '';
+                    return `<th class="${c.type === 'num' ? 'text-center' : ''}" style="cursor:pointer;user-select:none;${activo ? 'color:#0F4C81;' : ''}" onclick="WMS_MODULES.inventario._sortIcgBy('${c.key}')" title="Ordenar por ${c.label}">${c.label}${arrow}</th>`;
+                  }).join('')}
                 </tr>
               </thead>
               <tbody>
-                ${(icg.lineas_icg_comparativo || []).map(l => {
+                ${lineasIcg.map(l => {
                   const dif = l.diferencia_icg;
                   const difColor = dif === 0 ? '#10b981' : (dif > 0 ? '#0284c7' : '#ef4444');
                   const difTxt   = dif === 0 ? '0' : (dif > 0 ? '+' + WMS.formatNum(dif) : WMS.formatNum(dif));
@@ -5818,7 +5925,14 @@ WMS_MODULES.inventario = {
                     <td class="text-center"><b>${idx + 1}</b></td>
                     <td><b>${WMS.esc(s.codigo)}</b></td>
                     <td><div style="font-weight:700;font-size:.8rem;color:#0f172a;">${WMS.esc(s.producto)}</div></td>
-                    <td><span class="badge badge-light-blue" style="font-weight:700;">👤 ${WMS.esc(s.auxiliar)}</span></td>
+                    <td>
+                      <select class="form-control form-control-sm"
+                        style="font-size:.78rem;font-weight:700;padding:2px 6px;min-width:150px;"
+                        onchange="WMS_MODULES.inventario._cambiarAuxiliarAsignacion(${s.id}, this.value, ${d.sesion.id})"
+                        ${s.estado === 'Finalizado' || ['Cerrado', 'Ajustado'].includes(d.sesion.estado) ? 'disabled' : ''}>
+                        ${(this._personalCache || auxList).map(a => `<option value="${a.id || a.auxiliar_id}" ${(a.id || a.auxiliar_id) == s.auxiliar_id ? 'selected' : ''}>${WMS.esc(a.nombre || a.auxiliar)}</option>`).join('')}
+                      </select>
+                    </td>
                     <td><span class="badge badge-secondary" style="font-weight:700;">🏷️ ${WMS.esc(s.etiqueta)}</span></td>
                     <td class="text-center fw-700" style="font-size:.95rem;">${WMS.formatNum(s.r1)}</td>
                     <td class="text-center fw-900" style="background:#eff6ff;color:#1d4ed8;font-size:1.05rem;">${s.r2 > 0 ? WMS.formatNum(s.r2) : '<span style="color:#94a3b8;font-weight:400;">Pendiente</span>'}</td>
@@ -5984,6 +6098,25 @@ WMS_MODULES.inventario = {
         r.style.display = 'none';
       }
     });
+  },
+
+  // A pedido explícito (2026-08-19): mostrar solo las referencias del ICG que
+  // ya tienen un conteo físico registrado en WMS — para poner el foco en lo
+  // que se está contando ahora mismo, sin el ruido de todo el catálogo ICG.
+  _toggleIcgSoloContados() {
+    this._icgSoloContados = !this._icgSoloContados;
+    this._renderTabIcg();
+  },
+
+  // Encabezados ordenables (alfabético para texto, numérico para cantidades) —
+  // alterna asc/desc si se hace clic de nuevo en la misma columna.
+  _sortIcgBy(colKey) {
+    if (this._icgSort && this._icgSort.col === colKey) {
+      this._icgSort.dir = this._icgSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      this._icgSort = { col: colKey, dir: 'asc' };
+    }
+    this._renderTabIcg();
   },
 
   _toggleModeIcgKpi(isIcgMode) {

@@ -12,6 +12,7 @@ class Devolucion extends BaseModel
 
     protected $fillable = [
         'empresa_id', 'sucursal_id', 'recepcion_id', 'odc_id', 'numero_devolucion',
+        'consecutivo_devolucion',
         'proveedor', 'referencia_externa', 'tipo', 'auxiliar_id', 'solicitado_por',
         'fecha_movimiento', 'hora_inicio', 'hora_fin',
         'estado', 'motivo_general', 'fotos_json', 'observaciones',
@@ -27,6 +28,7 @@ class Devolucion extends BaseModel
         'aprobado_at'        => 'datetime',
         'procesado_at'       => 'datetime',
         'fotos_json'         => 'array',
+        'consecutivo_devolucion' => 'integer',
     ];
 
     // Tipos legacy (proveedor)
@@ -57,6 +59,8 @@ class Devolucion extends BaseModel
     public function detalles()        { return $this->hasMany(DevolucionDetalle::class); }
     public function causal()          { return $this->belongsTo(CausalDevolucion::class, 'causal_devolucion_id'); }
     public function ubicacionPatio()  { return $this->belongsTo(Ubicacion::class, 'ubicacion_patio_id'); }
+    public function sucursalOrigen()  { return $this->belongsTo(Sucursal::class, 'sucursal_origen_id'); }
+    public function clienteOrigen()   { return $this->belongsTo(Cliente::class, 'cliente_origen_id'); }
 
     public static function generarNumero(int $empresaId): string
     {
@@ -65,5 +69,15 @@ class Devolucion extends BaseModel
             ->where('numero_devolucion', 'like', "DEV-{$year}-%")
             ->count();
         return sprintf('DEV-%s-%04d', $year, $last + 1);
+    }
+
+    /**
+     * Genera consecutivo numérico simple (1, 2, 3...) por empresa
+     * para marcado físico de productos devueltos.
+     */
+    public static function generarConsecutivo(int $empresaId): int
+    {
+        $max = (int) self::where('empresa_id', $empresaId)->max('consecutivo_devolucion');
+        return $max + 1;
     }
 }

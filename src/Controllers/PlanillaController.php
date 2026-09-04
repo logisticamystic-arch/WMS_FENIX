@@ -740,6 +740,14 @@ class PlanillaController extends BaseController
         $modo         = $data['modo'] ?? 'por_planilla'; // 'consolidado' | 'por_planilla'
         $filtroMarca  = trim($data['filtro_marca']    ?? '');
         $filtroPasillo= trim($data['filtro_pasillo']  ?? '');
+        // A pedido explícito (2026-08-18): rotación FIFO (default, sale primero lo
+        // más próximo a vencer) o LIFO (sale primero lo que le queda MÁS tiempo
+        // para vencer — clientes nacionales que exigen mercancía con fecha larga).
+        // Se define una sola vez al asignar y queda fija en cada pedido creado.
+        $modoRotacion = strtoupper(trim($data['modo_rotacion'] ?? 'FIFO'));
+        if (!in_array($modoRotacion, ['FIFO', 'LIFO'], true)) {
+            $modoRotacion = 'FIFO';
+        }
 
         if (!$archivoId) return $this->error($res, 'archivo_id requerido');
         if (!$auxiliarId) return $this->error($res, 'auxiliar_id requerido');
@@ -787,6 +795,7 @@ class PlanillaController extends BaseController
                     'auxiliar_id'      => $auxiliarId,
                     'estado'           => 'Pendiente',
                     'prioridad'        => 5,
+                    'modo_rotacion'    => $modoRotacion,
                     'fecha_movimiento' => $hoy,
                     'hora_inicio'      => date('H:i:s'),
                     'created_at'       => $now,
@@ -869,6 +878,7 @@ class PlanillaController extends BaseController
                         'auxiliar_id'      => $auxiliarId,
                         'estado'           => 'Pendiente',
                         'prioridad'        => 5,
+                        'modo_rotacion'    => $modoRotacion,
                         'fecha_movimiento' => $hoy,
                         'hora_inicio'      => date('H:i:s'),
                         'created_at'       => $now,

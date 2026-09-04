@@ -397,6 +397,10 @@ class InventarioController extends BaseController
             $this->audit($user, 'inventario', 'traslado', 'inventarios', $data['producto_id'],
                 null, $data, "Traslado de {$cantidad} unidades del producto {$data['producto_id']}");
 
+            // Regla de Oro #3 (modo alerta, no bloquea) — mismo patrón que en PickingController.
+            (new InventoryGuard($empresaId, $sucursalId, $user->id))
+                ->assertLedgerMatchesStock((int)$data['producto_id']);
+
             return $this->ok($res, null, 'Traslado registrado exitosamente');
         } catch (\Throwable $e) {
             return $this->error($res, $e->getMessage());
@@ -407,7 +411,11 @@ class InventarioController extends BaseController
     public function ajuste(Request $req, Response $res): Response
     {
         $user = $req->getAttribute('user');
-        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+        // A pedido explícito (2026-08-20): antes bastaba con Supervisor; el ajuste
+        // manual sobrescribe directamente la cantidad de una partida (sin pasar por
+        // recepción/picking/packing), así que se restringe solo al Administrador
+        // para evitar que el inventario se manipule de forma inadecuada.
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
 
         $data = $req->getParsedBody() ?? [];
         $required = ['producto_id', 'ubicacion_id', 'cantidad_nueva', 'motivo'];
@@ -558,6 +566,10 @@ class InventarioController extends BaseController
 
             $this->audit($user, 'inventario', 'ajuste', 'inventarios', $data['producto_id'],
                 null, $data, "Ajuste de inventario: {$data['motivo']}");
+
+            // Regla de Oro #3 (modo alerta, no bloquea) — mismo patrón que en PickingController.
+            (new InventoryGuard($this->getEffectiveEmpresaId($user, $req), $user->sucursal_id, $user->id))
+                ->assertLedgerMatchesStock((int)$data['producto_id']);
 
             return $this->ok($res, null, 'Ajuste registrado');
         } catch (\Throwable $e) {
@@ -1819,9 +1831,16 @@ class InventarioController extends BaseController
                     ->where('sucursal_id', $sucursalId)
                     ->where('estado', 'Disponible');
 
-                // Si es Cargue Inicial o Total, el alcance es TODO el almacén.
-                // Si es parcial, solo barremos las ubicaciones que efectivamente se tocaron.
-                if ($evento->tipo !== 'Cargue Inicial' && $evento->tipo !== 'Total') {
+                // Si es Cargue Inicial o Total, el alcance es TODO el almacén (incluidas
+                // ubicaciones no visitadas). Cualquier otro tipo (incluido 'Comparacion',
+                // el único que ofrece hoy el formulario junto con 'CargueInicial') usa
+                // alcance reducido: solo lo efectivamente contado.
+                // BUG CORREGIDO 2026-08-17: esta condición comparaba contra 'Cargue Inicial'
+                // (con espacio), pero el formulario envía 'CargueInicial' (sin espacio, ver
+                // inventario.js _guardarEventoTomaFisica) — nunca coincidía, así que un cierre
+                // de Cargue Inicial jamás barría todo el almacén como debía (sin datos
+                // afectados: inv_general_eventos está vacía a la fecha de este fix).
+                if (!in_array($evento->tipo, ['CargueInicial', 'Total'], true)) {
                     $inventariosQuery->whereIn('ubicacion_id', $ubicacionesContadas);
                 }
 
@@ -2531,6 +2550,10 @@ class InventarioController extends BaseController
     public function vaciarUbicacion(Request $req, Response $res): Response
     {
         $user  = $req->getAttribute('user');
+        // A pedido explícito (2026-08-20): pone en cero TODO el inventario disponible
+        // de una ubicación de un solo golpe — es un ajuste masivo disfrazado de
+        // utilidad de mantenimiento. No tenía ninguna validación de rol.
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
         $empId = $this->getEffectiveEmpresaId($user, $req);
         $sucId = $this->getEffectiveSucursalId($user, $req);
         $data  = (array)($req->getParsedBody() ?? []);

@@ -54,14 +54,227 @@ class PutawayController extends BaseController
                     'i.estado',
                     'u.codigo as ubicacion_codigo',
                     'u.tipo_ubicacion',
+                    'i.created_at',
                 ])
-                ->orderBy('i.fecha_vencimiento')
+                ->orderBy('i.created_at')
                 ->get();
 
             return $this->ok($res, $stock);
         } catch (\Exception $e) {
             error_log('PutawayController::listarPatio error: ' . $e->getMessage());
             return $this->error($res, 'Error al listar patio.', 500);
+        }
+    }
+
+    /**
+     * POST /api/putaway/patio/{id}/eliminar
+     * Da de baja una línea de inventario fantasma en Patio (mercancía que ya se
+     * ubicó en su destino final pero el registro viejo de Patio quedó vivo, ej.
+     * por el bug de traslado sin origen ya corregido). Solo Supervisor/Admin.
+     * Nunca es un DELETE silencioso: siempre deja Kardex (AjusteNegativo) +
+     * audit_logs con el motivo — mismo criterio que cualquier ajuste manual de
+     * inventario en el resto del sistema.
+     */
+    public function eliminarFantasmaPatio(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
+        $data   = (array)($r->getParsedBody() ?? []);
+        $motivo = trim($data['motivo'] ?? '');
+        if ($motivo === '') {
+            return $this->error($res, 'El motivo es obligatorio — explique por qué se está dando de baja este inventario de Patio.', 400);
+        }
+
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+
+        try {
+            DB::beginTransaction();
+
+            $inv = Inventario::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->where('id', (int)$a['id'])
+                ->lockForUpdate()
+                ->first();
+
+            if (!$inv) {
+                DB::rollBack();
+                return $this->error($res, 'Registro de inventario no encontrado.', 404);
+            }
+
+            // Blindaje: solo se puede dar de baja por esta vía si realmente está en
+            // Patio (o huérfano sin ubicación) — nunca una ubicación de almacenamiento
+            // real, para no convertir esto en un atajo de ajuste de inventario general.
+            $ubicacion = $inv->ubicacion_id ? Ubicacion::find($inv->ubicacion_id) : null;
+            $esPatioOHuerfano = !$inv->ubicacion_id || ($ubicacion && $ubicacion->tipo_ubicacion === 'Patio');
+            if (!$esPatioOHuerfano) {
+                DB::rollBack();
+                return $this->error($res, 'Este registro no está en Patio — use el ajuste de inventario normal para corregirlo.', 422);
+            }
+
+            if ((float)($inv->cantidad_reservada ?? 0) > 0) {
+                $hasActivePicking = \App\Models\PickingDetalle::join('orden_pickings', 'orden_pickings.id', '=', 'picking_detalles.orden_picking_id')
+                    ->where('picking_detalles.producto_id', $inv->producto_id)
+                    ->whereIn('orden_pickings.estado', ['Pendiente', 'Asignada', 'En Proceso', 'Pausada'])
+                    ->where(function($q) {
+                        $q->whereNull('orden_pickings.estado_certificacion')
+                          ->orWhere('orden_pickings.estado_certificacion', '!=', 'Certificado');
+                    })
+                    ->where('orden_pickings.empresa_id', $empresaId)
+                    ->where('orden_pickings.sucursal_id', $user->sucursal_id)
+                    ->exists();
+
+                if ($hasActivePicking) {
+                    DB::rollBack();
+                    return $this->error($res, 'Hay stock reservado y pedidos pendientes de separar para este producto. No se puede dar de baja.', 422);
+                }
+            }
+
+            $cantidadBaja = (float)$inv->cantidad;
+            $productoId   = $inv->producto_id;
+            $ubicacionId  = $inv->ubicacion_id;
+            $lote         = $inv->lote;
+            $fechaVenc    = $inv->fecha_vencimiento;
+
+            $inv->delete();
+
+            MovimientoInventario::create([
+                'empresa_id'           => $empresaId,
+                'sucursal_id'          => $user->sucursal_id,
+                'producto_id'          => $productoId,
+                'ubicacion_origen_id'  => $ubicacionId,
+                'ubicacion_destino_id' => null,
+                'tipo_movimiento'      => MovimientoInventario::TIPO_AJUSTE_NEGATIVO,
+                'cantidad'             => $cantidadBaja,
+                'lote'                 => $lote,
+                'fecha_vencimiento'    => $fechaVenc,
+                'referencia_tipo'      => 'baja_fantasma_patio',
+                'auxiliar_id'          => $user->id,
+                'fecha_movimiento'     => date('Y-m-d'),
+                'hora_inicio'          => date('H:i:s'),
+                'hora_fin'             => date('H:i:s'),
+                'observaciones'        => 'Baja de inventario fantasma en Patio — ' . $motivo,
+            ]);
+
+            $this->audit($user, 'almacenamiento', 'baja_fantasma_patio', 'inventarios', (int)$a['id'],
+                ['cantidad' => $cantidadBaja, 'producto_id' => $productoId],
+                null,
+                "Baja de {$cantidadBaja} unidades del producto #{$productoId} en Patio — Motivo: {$motivo}");
+
+            DB::commit();
+
+            return $this->ok($res, ['cantidad_dada_de_baja' => $cantidadBaja], 'Inventario de Patio dado de baja correctamente.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            error_log('PutawayController::eliminarFantasmaPatio error: ' . $e->getMessage());
+            return $this->error($res, 'Error al dar de baja el inventario.', 500);
+        }
+    }
+
+    /**
+     * DELETE /api/putaway/patio/pallet/{pallet}
+     * Elimina por completo todas las líneas de un pallet que se encuentra en Patio.
+     * Solo Supervisor/Admin. Registra Kardex y Auditoría.
+     */
+    public function eliminarPalletPatio(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
+        $pallet = trim($a['pallet'] ?? '');
+        if ($pallet === '') return $this->error($res, 'Número de pallet inválido', 400);
+
+        $data   = (array)($r->getParsedBody() ?? []);
+        $motivo = trim($data['motivo'] ?? '');
+        if ($motivo === '') {
+            return $this->error($res, 'El motivo es obligatorio para eliminar un pallet.', 400);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $empresaId = $this->getEffectiveEmpresaId($user, $r);
+
+            // Buscar todos los inventarios en patio con este pallet
+            $items = Inventario::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->where('numero_pallet', $pallet)
+                ->lockForUpdate()
+                ->get();
+
+            if ($items->isEmpty()) {
+                DB::rollBack();
+                return $this->error($res, 'No se encontró mercancía en este pallet en la sucursal.', 404);
+            }
+
+            $cantidadBajaTotal = 0;
+            $detalles = [];
+
+            foreach ($items as $inv) {
+                if ($inv->estado !== 'En Patio' && $inv->estado !== 'Disponible') {
+                    DB::rollBack();
+                    return $this->error($res, 'El pallet contiene mercancía en un estado que no puede eliminarse: ' . $inv->estado, 422);
+                }
+                if ((float)($inv->cantidad_reservada ?? 0) > 0) {
+                    $hasActivePicking = \App\Models\PickingDetalle::join('orden_pickings', 'orden_pickings.id', '=', 'picking_detalles.orden_picking_id')
+                        ->where('picking_detalles.producto_id', $inv->producto_id)
+                        ->whereIn('orden_pickings.estado', ['Pendiente', 'Asignada', 'En Proceso', 'Pausada'])
+                        ->where(function($q) {
+                            $q->whereNull('orden_pickings.estado_certificacion')
+                              ->orWhere('orden_pickings.estado_certificacion', '!=', 'Certificado');
+                        })
+                        ->where('orden_pickings.empresa_id', $empresaId)
+                        ->where('orden_pickings.sucursal_id', $user->sucursal_id)
+                        ->exists();
+    
+                    if ($hasActivePicking) {
+                        DB::rollBack();
+                        return $this->error($res, 'Hay stock reservado y pedidos pendientes de separar para este producto. No se puede eliminar el pallet.', 422);
+                    }
+                }
+
+                $cantidadBaja = (float)$inv->cantidad;
+                $cantidadBajaTotal += $cantidadBaja;
+                $productoId   = $inv->producto_id;
+                $ubicacionId  = $inv->ubicacion_id;
+                
+                MovimientoInventario::create([
+                    'empresa_id'           => $empresaId,
+                    'sucursal_id'          => $user->sucursal_id,
+                    'producto_id'          => $productoId,
+                    'ubicacion_origen_id'  => $ubicacionId,
+                    'ubicacion_destino_id' => null,
+                    'tipo_movimiento'      => MovimientoInventario::TIPO_AJUSTE_NEGATIVO,
+                    'cantidad'             => $cantidadBaja,
+                    'cantidad_cajas'       => $inv->cantidad_cajas,
+                    'saldos'               => $inv->saldos,
+                    'lote'                 => $inv->lote,
+                    'fecha_vencimiento'    => $inv->fecha_vencimiento,
+                    'referencia_tipo'      => 'baja_pallet_patio',
+                    'auxiliar_id'          => $user->id,
+                    'fecha_movimiento'     => date('Y-m-d'),
+                    'hora_inicio'          => date('H:i:s'),
+                    'hora_fin'             => date('H:i:s'),
+                    'observaciones'        => 'Eliminación completa de pallet de patio #' . $pallet . ' — ' . $motivo,
+                    'numero_pallet'        => $pallet,
+                ]);
+
+                $detalles[] = "Prod #{$productoId}: {$cantidadBaja}";
+                $inv->delete();
+            }
+
+            $this->audit($user, 'almacenamiento', 'baja_pallet_patio', 'inventarios', null,
+                ['pallet' => $pallet, 'total_baja' => $cantidadBajaTotal],
+                null,
+                "Baja del Pallet #{$pallet} completo en Patio — Motivo: {$motivo}. Detalles: " . implode(', ', $detalles));
+
+            DB::commit();
+
+            return $this->ok($res, ['cantidad_dada_de_baja' => $cantidadBajaTotal], 'Pallet eliminado correctamente.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            error_log('PutawayController::eliminarPalletPatio error: ' . $e->getMessage());
+            return $this->error($res, 'Error al eliminar el pallet.', 500);
         }
     }
 
@@ -178,21 +391,31 @@ class PutawayController extends BaseController
         try {
             DB::beginTransaction();
 
-            // Resolver UPC del producto para cálculo de cajas/saldos
-            $producto  = \App\Models\Producto::select('id','unidades_caja')->find($productoId);
-            $upc       = max(1, (int)(($producto->unidades_caja ?? null) ?: 1));
-            $cajasMove = $cajasReq  ?? (int)floor($cantidad / $upc);
-            $saldosMove= $saldosReq ?? round(fmod($cantidad, (float)$upc), 4);
+            // Resolver UPC del producto
+            $producto  = \App\Models\Producto::select('id', 'unidades_caja', 'factor_udm')->find($productoId);
+            $factor    = (float)($producto->factor_udm ?? 0);
+            $upc       = $factor > 0 ? (int)$factor : max(1, (int)(($producto->unidades_caja ?? null) ?: 1));
 
-            // Verificar ubicación destino pertenece a empresa/sucursal.
-            // Antes solo aceptaba tipo_ubicacion='Almacenamiento', pero esta sucursal
-            // no tiene NINGUNA ubicación de ese tipo (solo Patio y Picking) — el módulo
-            // Ubicar nunca podía encontrar un destino válido y siempre rechazaba con 404.
+            // Si el cliente envía cajas y saldos, calculamos cantidad exacta, de lo contrario inferimos (fallback)
+            if ($cajasReq !== null && $saldosReq !== null) {
+                $cajasMove = $cajasReq;
+                $saldosMove = $saldosReq;
+                $cantidad = ($cajasMove * $upc) + $saldosMove;
+            } else {
+                $cajasMove = (int)floor($cantidad / $upc);
+                $saldosMove = round(fmod($cantidad, (float)$upc), 4);
+            }
+
+            if ($cantidad <= 0) {
+                DB::rollBack();
+                return $this->error($res, 'La cantidad total a ubicar debe ser mayor a 0.', 400);
+            }
+
+            // Verificar ubicación destino
             $destino = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
                 ->whereIn('tipo_ubicacion', ['Almacenamiento', 'Picking', 'Patio'])
                 ->find($ubicacionDestId);
-            // Si no se encontró, intentar cualquier ubicación activa de la sucursal
             if (!$destino) {
                 $destino = Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                     ->where('sucursal_id', $user->sucursal_id)
@@ -206,42 +429,48 @@ class PutawayController extends BaseController
                 return $this->error($res, 'Ubicación de destino no válida para esta sucursal.', 404);
             }
 
-            // Descontar del origen (patio) si se especificó
+            // Descontar origen
+            $origenQuery = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                ->where('sucursal_id', $user->sucursal_id)
+                ->where('producto_id', $productoId)
+                ->where('lote', $lote)
+                ->whereIn('estado', ['Disponible', 'En Patio']);
+
             if ($ubicacionOrigId) {
-                $invOrigen = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
-                    ->where('sucursal_id', $user->sucursal_id)
-                    ->where('producto_id', $productoId)
-                    ->where('ubicacion_id', $ubicacionOrigId)
-                    ->where('lote', $lote)
-                    ->whereIn('estado', ['Disponible', 'En Patio'])
-                    ->lockForUpdate()
-                    ->first();
+                $origenQuery->where('ubicacion_id', $ubicacionOrigId);
+            } else {
+                $origenQuery->whereNull('ubicacion_id');
+            }
 
-                if (!$invOrigen || $invOrigen->cantidad < $cantidad) {
-                    DB::rollBack();
-                    return $this->error($res, 'Stock insuficiente en la ubicación de origen.', 400);
-                }
-                if ((float)($invOrigen->cantidad_reservada ?? 0) > 0) {
-                    DB::rollBack();
-                    return $this->error($res, 'Hay stock reservado en esta ubicación. No se puede mover.', 422);
-                }
+            $invOrigen = $origenQuery->lockForUpdate()->first();
 
-                // Heredar fecha de vencimiento del origen si no viene en el request
-                if (!$fechaVenc && $invOrigen->fecha_vencimiento) {
-                    $fechaVenc = $invOrigen->fecha_vencimiento;
-                }
+            if (!$invOrigen) {
+                DB::rollBack();
+                return $this->error($res, 'No se encontró inventario de origen.', 400);
+            }
 
-                $nuevoOrigen = round($invOrigen->cantidad - $cantidad, 4);
-                if ($nuevoOrigen <= 0) {
-                    $invOrigen->delete();
-                } else {
-                    $invOrigen->cantidad      = $nuevoOrigen;
-                    [$invOrigen->cantidad_cajas, $invOrigen->saldos] = [
-                        (int)floor($nuevoOrigen / $upc),
-                        round(fmod($nuevoOrigen, (float)$upc), 4),
-                    ];
-                    $invOrigen->save();
-                }
+            if ($cajasMove > $invOrigen->cantidad_cajas || $saldosMove > $invOrigen->saldos || $cantidad > $invOrigen->cantidad) {
+                DB::rollBack();
+                return $this->error($res, 'No se puede ubicar más cajas o saldos de los recibidos/disponibles en el origen.', 400);
+            }
+
+            if ((float)($invOrigen->cantidad_reservada ?? 0) > 0) {
+                DB::rollBack();
+                return $this->error($res, 'Hay stock reservado en esta ubicación. No se puede mover.', 422);
+            }
+
+            if (!$fechaVenc && $invOrigen->fecha_vencimiento) {
+                $fechaVenc = $invOrigen->fecha_vencimiento;
+            }
+
+            $invOrigen->cantidad_cajas -= $cajasMove;
+            $invOrigen->saldos = round($invOrigen->saldos - $saldosMove, 4);
+            $invOrigen->cantidad = ($invOrigen->cantidad_cajas * $upc) + $invOrigen->saldos;
+
+            if ($invOrigen->cantidad <= 0) {
+                $invOrigen->delete();
+            } else {
+                $invOrigen->save();
             }
 
             // Acreditar en destino
@@ -253,6 +482,7 @@ class PutawayController extends BaseController
                 'lote'         => $lote,
                 'numero_pallet'=> $data['numero_pallet'] ?? null,
             ]);
+            
             if (!$invDest->exists) {
                 $invDest->cantidad           = 0;
                 $invDest->cantidad_cajas     = 0;
@@ -261,12 +491,10 @@ class PutawayController extends BaseController
                 $invDest->estado             = 'Disponible';
             }
             if ($fechaVenc) $invDest->fecha_vencimiento = $fechaVenc;
-            $nuevaDest = round((float)($invDest->cantidad ?? 0) + $cantidad, 4);
-            $invDest->cantidad      = $nuevaDest;
-            [$invDest->cantidad_cajas, $invDest->saldos] = [
-                (int)floor($nuevaDest / $upc),
-                round(fmod($nuevaDest, (float)$upc), 4),
-            ];
+
+            $invDest->cantidad_cajas += $cajasMove;
+            $invDest->saldos = round($invDest->saldos + $saldosMove, 4);
+            $invDest->cantidad = ($invDest->cantidad_cajas * $upc) + $invDest->saldos;
             $invDest->save();
 
             // Registro de movimiento

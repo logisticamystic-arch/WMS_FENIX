@@ -24,6 +24,8 @@ class OrdenPicking extends BaseModel
         // confundir con estado_despacho='Despachado' (asignado a ruta de reparto,
         // ver DespachoController.php:300). Se excluye de la remisión agrupada.
         'despachado_directo', 'despachado_directo_at', 'despachado_directo_por',
+        // Rotación FIFO (default) o LIFO al separar (2026-08-18) — ver FefoEngine.
+        'modo_rotacion',
     ];
 
     protected $casts = [

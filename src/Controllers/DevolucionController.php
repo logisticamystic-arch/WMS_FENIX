@@ -25,7 +25,7 @@ class DevolucionController extends BaseController
         $params     = $request->getQueryParams();
 
         try {
-            $q = Devolucion::with(['detalles', 'causal', 'ubicacionPatio'])
+            $q = Devolucion::with(['detalles.producto', 'causal', 'ubicacionPatio', 'sucursalOrigen', 'clienteOrigen'])
                 ->where('empresa_id',  $empresaId)
                 ->where('sucursal_id', $sucursalId);
 
@@ -39,11 +39,13 @@ class DevolucionController extends BaseController
             if (!empty($params['responsable']))        $q->where('responsable_devolucion', 'like', '%' . $params['responsable'] . '%');
             if (!empty($params['cliente_id']))         $q->where('cliente_origen_id', (int)$params['cliente_id']);
             if (!empty($params['sucursal_origen_id'])) $q->where('sucursal_origen_id', (int)$params['sucursal_origen_id']);
+            if (!empty($params['consecutivo']))        $q->where('consecutivo_devolucion', (int)$params['consecutivo']);
 
             if (!empty($params['referencia'])) {
                 $ref = $params['referencia'];
                 $q->where(function($qb) use ($ref) {
                     $qb->where('numero_devolucion', 'like', "%{$ref}%")
+                       ->orWhere('consecutivo_devolucion', 'like', "%{$ref}%")
                        ->orWhere('referencia_externa', 'like', "%{$ref}%")
                        ->orWhereHas('detalles', function($dq) use ($ref) {
                            $dq->whereHas('producto', function($pq) use ($ref) {
@@ -57,6 +59,7 @@ class DevolucionController extends BaseController
             if (!empty($params['q'])) {
                 $sq = $params['q'];
                 $q->where(fn($qb) => $qb->where('numero_devolucion', 'like', "%{$sq}%")
+                                        ->orWhere('consecutivo_devolucion', 'like', "%{$sq}%")
                                         ->orWhere('referencia_externa', 'like', "%{$sq}%")
                                         ->orWhere('motivo_general', 'like', "%{$sq}%"));
             }
@@ -79,7 +82,7 @@ class DevolucionController extends BaseController
         $sucursalId = $this->getEffectiveSucursalId($user, $request);
         $id = (int)($args['id'] ?? 0);
         try {
-            $devolucion = Devolucion::with('detalles')
+            $devolucion = Devolucion::with(['detalles.producto', 'causal', 'ubicacionPatio', 'sucursalOrigen', 'clienteOrigen', 'auxiliar', 'solicitante', 'aprobador', 'procesador'])
                 ->where('empresa_id', $empresaId)
                 ->where('sucursal_id', $sucursalId)
                 ->find($id);
@@ -132,6 +135,11 @@ class DevolucionController extends BaseController
         $sucursalId = $this->getEffectiveSucursalId($user, $request);
         $data       = $request->getParsedBody() ?? [];
 
+        // Soporte FormData (multipart/form-data) o JSON
+        if (isset($data['detalles']) && is_string($data['detalles'])) {
+            $data['detalles'] = json_decode($data['detalles'], true) ?? [];
+        }
+
         if ($deny = $this->requireFields($data, ['tipo', 'motivo_general', 'detalles'], $response)) {
             return $deny;
         }
@@ -148,9 +156,7 @@ class DevolucionController extends BaseController
 
         // Blindaje 2026-08-06: si la línea trae cantidad_cajas/cantidad_saldo, el
         // servidor recalcula la cantidad real de unidades a partir de unidades_caja
-        // del producto — no confía en un total ya sumado por el cliente. Si no llegan
-        // esos campos (pantallas que aún no los envían), se usa 'cantidad' tal cual,
-        // sin cambiar el comportamiento actual.
+        // del producto — no confía en un total ya sumado por el cliente.
         $prodIdsUpc = array_values(array_unique(array_filter(array_map(
             fn($d) => (int)($d['producto_id'] ?? 0), $detalles
         ))));
@@ -198,15 +204,44 @@ class DevolucionController extends BaseController
             }
         }
 
-        [$devId, $numero] = DB::transaction(function () use (
-            $user, $empresaId, $sucursalId, $data, $detalles, $causalId, $ubicacionPatioId
+        // Procesar fotos si fueron adjuntadas en el request multipart
+        $files     = $request->getUploadedFiles();
+        $fotoPaths = [];
+
+        [$devId, $numero, $consecutivo, $productosMovidos] = DB::transaction(function () use (
+            $user, $empresaId, $sucursalId, $data, $detalles, $causalId, $ubicacionPatioId, $files, &$fotoPaths
         ) {
-            $numero = Devolucion::generarNumero($empresaId);
+            $numero      = Devolucion::generarNumero($empresaId);
+            $consecutivo = Devolucion::generarConsecutivo($empresaId);
+
+            if (!empty($files)) {
+                $uploadDir = dirname(__DIR__, 2) . '/public/uploads/devoluciones/' . $numero . '/';
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0777, true);
+                }
+                $fotoKeys = ['fotos', 'foto_0', 'foto_1', 'foto_2', 'foto_3', 'foto_4', 'foto_5', 'foto_6', 'foto_7', 'foto_8', 'foto_9'];
+                foreach ($fotoKeys as $key) {
+                    if (!isset($files[$key])) continue;
+                    $fileItems = is_array($files[$key]) ? $files[$key] : [$files[$key]];
+                    foreach ($fileItems as $uploadedFile) {
+                        if (!$uploadedFile instanceof \Psr\Http\Message\UploadedFileInterface) continue;
+                        if ($uploadedFile->getError() !== UPLOAD_ERR_OK) continue;
+                        $ext     = strtolower(pathinfo($uploadedFile->getClientFilename() ?? 'foto.jpg', PATHINFO_EXTENSION));
+                        $allowed = ['jpg','jpeg','png','webp','heic'];
+                        if (!in_array($ext, $allowed)) continue;
+                        $fileName = uniqid('ev_', true) . '.' . $ext;
+                        $uploadedFile->moveTo($uploadDir . $fileName);
+                        $fotoPaths[] = '/uploads/devoluciones/' . $numero . '/' . $fileName;
+                        if (count($fotoPaths) >= 10) break 2;
+                    }
+                }
+            }
 
             $dev = Devolucion::create([
                 'empresa_id'              => $empresaId,
                 'sucursal_id'             => $sucursalId,
                 'numero_devolucion'       => $numero,
+                'consecutivo_devolucion'  => $consecutivo,
                 'tipo'                    => $data['tipo'],
                 'estado'                  => Devolucion::ESTADO_PENDIENTE,
                 'motivo_general'          => $data['motivo_general'],
@@ -220,33 +255,36 @@ class DevolucionController extends BaseController
                 'causal_devolucion_id'    => $causalId,
                 'responsable_devolucion'  => $data['responsable_devolucion'] ?? null,
                 'ubicacion_patio_id'      => $ubicacionPatioId,
-                'cliente_origen_id'       => !empty($data['cliente_origen_id']) ? (int)$data['cliente_origen_id'] : null,
+                'cliente_origen_id'       => !empty($data['cliente_origen_id']) ? (int)$data['cliente_origen_id'] : (!empty($data['tercero_id']) ? (int)$data['tercero_id'] : (!empty($data['cliente_id']) ? (int)$data['cliente_id'] : null)),
                 'sucursal_origen_id'      => !empty($data['sucursal_origen_id']) ? (int)$data['sucursal_origen_id'] : null,
+                'fotos_json'              => count($fotoPaths) > 0 ? $fotoPaths : null,
             ]);
 
             foreach ($detalles as $d) {
+                $condicion = $d['condicion'] ?? 'bueno';
+                $tipoDev   = $data['tipo'] ?? 'cliente';
+                $destino   = !empty($d['destino']) ? $d['destino'] : (
+                    ($tipoDev === 'proveedor' || $tipoDev === 'AProveedorAveria' || $tipoDev === 'AProveedorVencido')
+                        ? 'DevolucionProveedor'
+                        : (($condicion === 'dañado' || $condicion === 'vencido') ? 'InventarioObsoleto' : 'Reingreso')
+                );
+
                 DevolucionDetalle::create([
                     'devolucion_id'     => $dev->id,
                     'producto_id'       => (int)$d['producto_id'],
                     'lote'              => $d['lote'] ?? null,
                     'fecha_vencimiento' => $d['fecha_vencimiento'] ?? null,
                     'cantidad'          => (float)($d['cantidad'] ?? 0),
-                    'condicion'         => $d['condicion'] ?? null,
+                    'condicion'         => $condicion,
                     'motivo'            => $d['motivo'] ?? 'Otro',
                     'detalle_motivo'    => $d['motivo_item'] ?? null,
-                    'destino'           => null,
+                    'destino'           => $destino,
                 ]);
             }
 
-            // Descontar inventario por cada ítem devuelto — SOLO para devoluciones que
-            // salen de la bodega (a proveedor, o reingreso desde una recepción/pallet ya
-            // registrado). Una devolución tipo 'cliente' es mercancía que ENTRA a la bodega
-            // (Cliente → WMS): no existe ninguna fila de "stock a descontar" que represente
-            // físicamente lo devuelto, así que descontar aquí solo generaba un faltante
-            // fantasma en una ubicación sin relación con el ítem. El ingreso real de esa
-            // mercancía ocurre al aprobar/procesar con destino=restock (ver procesar()).
+            $productosMovidos = [];
+
             if ($data['tipo'] !== 'cliente') {
-                // Busca primero en Patio; si el ítem trae ubicacion_origen_id la usa directamente.
                 foreach ($detalles as $d) {
                     $productoId   = (int)$d['producto_id'];
                     $cantidad     = (float)($d['cantidad'] ?? 0);
@@ -255,7 +293,6 @@ class DevolucionController extends BaseController
                     $lote         = $d['lote'] ?? null;
                     $ubicOrigenId = !empty($d['ubicacion_origen_id']) ? (int)$d['ubicacion_origen_id'] : null;
 
-                    // Buscar fila de inventario a descontar
                     if ($ubicOrigenId) {
                         $invRow = DB::table('inventarios')
                             ->where('empresa_id',  $empresaId)
@@ -266,7 +303,6 @@ class DevolucionController extends BaseController
                             ->where('cantidad', '>', 0)
                             ->lockForUpdate()->first();
                     } else {
-                        // 1) Buscar en Patio
                         $invRow = DB::table('inventarios as i')
                             ->join('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
                             ->where('i.empresa_id',  $empresaId)
@@ -278,7 +314,6 @@ class DevolucionController extends BaseController
                             ->select('i.*')
                             ->lockForUpdate()->first();
 
-                        // 2) Fallback: cualquier ubicación disponible
                         if (!$invRow) {
                             $invRow = DB::table('inventarios')
                                 ->where('empresa_id',  $empresaId)
@@ -290,9 +325,8 @@ class DevolucionController extends BaseController
                         }
                     }
 
-                    if (!$invRow) continue; // sin inventario registrado — no bloquear la devolución
+                    if (!$invRow) continue;
 
-                    // Calcular cajas/saldos
                     $prod     = DB::table('productos')->where('id', $productoId)->select('unidades_caja')->first();
                     $cajasUnd = max(1, (int)(($prod->unidades_caja ?? 1) ?: 1));
                     $nuevaCant = max(0, $invRow->cantidad - $cantidad);
@@ -323,17 +357,25 @@ class DevolucionController extends BaseController
                         'ubicacion_origen_id'=> $invRow->ubicacion_id,
                         'created_at'         => date('Y-m-d H:i:s'),
                     ]);
+
+                    $productosMovidos[$productoId] = true;
                 }
             }
 
-            return [$dev->id, $numero];
+            return [$dev->id, $numero, $consecutivo, $productosMovidos];
         });
 
-        // Audit (non-transactional — always fires after successful commit)
+        // Audit
         $this->audit($user, 'devoluciones', 'crear', 'devoluciones', $devId,
-            null, ['numero' => $numero, 'tipo' => $data['tipo']]);
+            null, ['numero' => $numero, 'consecutivo' => $consecutivo, 'tipo' => $data['tipo']]);
 
-        // Notify supervisors — best-effort, does not roll back the devolucion if it fails
+        // Regla de Oro #3 (modo alerta, no bloquea) — mismo patrón que en PickingController.
+        $guardInv = new \App\Helpers\InventoryGuard($empresaId, $sucursalId, $user->id);
+        foreach (array_keys($productosMovidos) as $productoId) {
+            $guardInv->assertLedgerMatchesStock((int)$productoId);
+        }
+
+        // Notify supervisors
         try {
             if (\Illuminate\Database\Capsule\Manager::schema()->hasTable('anomaly_flags')) {
                 \Illuminate\Database\Capsule\Manager::table('anomaly_flags')->insert([
@@ -341,9 +383,9 @@ class DevolucionController extends BaseController
                     'sucursal_id'    => $sucursalId,
                     'tipo'           => 'devolucion',
                     'severidad'      => 'media',
-                    'titulo'         => "Devolución {$numero} — aprobación requerida",
+                    'titulo'         => "Devolución #{$consecutivo} ({$numero}) — aprobación requerida",
                     'descripcion'    => count($detalles) . ' ítem(s). Motivo: ' . mb_substr($data['motivo_general'], 0, 100),
-                    'datos_anomalia' => json_encode(['devolucion_id' => $devId, 'tipo' => $data['tipo']], JSON_UNESCAPED_UNICODE),
+                    'datos_anomalia' => json_encode(['devolucion_id' => $devId, 'consecutivo' => $consecutivo, 'tipo' => $data['tipo']], JSON_UNESCAPED_UNICODE),
                     'estado'         => 'pendiente',
                     'created_at'     => date('Y-m-d H:i:s'),
                     'updated_at'     => date('Y-m-d H:i:s'),
@@ -353,7 +395,97 @@ class DevolucionController extends BaseController
             error_log('store devolucion: anomaly_flag insert failed: ' . $e->getMessage());
         }
 
-        return $this->created($response, ['devolucion_id' => $devId, 'numero' => $numero], 'Devolución registrada');
+        return $this->created($response, [
+            'devolucion_id'          => $devId,
+            'numero'                 => $numero,
+            'consecutivo_devolucion' => $consecutivo,
+            'fotos'                  => $fotoPaths
+        ], 'Devolución registrada');
+    }
+
+    /**
+     * POST /api/devoluciones/{id}/fotos
+     * Subir fotos adicionales a una devolución existente.
+     */
+    public function uploadFotos(Request $request, Response $response, array $args): Response
+    {
+        $user      = $request->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $id        = (int)($args['id'] ?? 0);
+
+        $dev = Devolucion::where('empresa_id', $empresaId)->find($id);
+        if (!$dev) return $this->notFound($response);
+
+        $files = $request->getUploadedFiles();
+        if (empty($files)) {
+            return $this->error($response, 'No se enviaron archivos', 400);
+        }
+
+        $uploadDir = dirname(__DIR__, 2) . '/public/uploads/devoluciones/' . $dev->numero_devolucion . '/';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
+        }
+
+        $currentFotos = is_array($dev->fotos_json) ? $dev->fotos_json : (json_decode($dev->fotos_json ?? '[]', true) ?: []);
+        $newFotos     = [];
+
+        $fotoKeys = ['fotos', 'foto', 'foto_0', 'foto_1', 'foto_2', 'foto_3', 'foto_4'];
+        foreach ($fotoKeys as $key) {
+            if (!isset($files[$key])) continue;
+            $fileItems = is_array($files[$key]) ? $files[$key] : [$files[$key]];
+            foreach ($fileItems as $uploadedFile) {
+                if (!$uploadedFile instanceof \Psr\Http\Message\UploadedFileInterface) continue;
+                if ($uploadedFile->getError() !== UPLOAD_ERR_OK) continue;
+                $ext     = strtolower(pathinfo($uploadedFile->getClientFilename() ?? 'foto.jpg', PATHINFO_EXTENSION));
+                $allowed = ['jpg','jpeg','png','webp','heic'];
+                if (!in_array($ext, $allowed)) continue;
+                $fileName = uniqid('ev_', true) . '.' . $ext;
+                $uploadedFile->moveTo($uploadDir . $fileName);
+                $relPath = '/uploads/devoluciones/' . $dev->numero_devolucion . '/' . $fileName;
+                $newFotos[] = $relPath;
+            }
+        }
+
+        $allFotos = array_merge($currentFotos, $newFotos);
+        $dev->fotos_json = $allFotos;
+        $dev->save();
+
+        return $this->ok($response, ['fotos' => $allFotos], 'Fotos subidas con éxito');
+    }
+
+    /**
+     * GET /api/devoluciones/buscar-consecutivo
+     * Consulta por consecutivo numérico simple (consecutivo=47 o q=47)
+     */
+    public function buscarConsecutivo(Request $request, Response $response): Response
+    {
+        $user       = $request->getAttribute('user');
+        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
+        $params     = $request->getQueryParams();
+        $num        = (int)($params['consecutivo'] ?? $params['q'] ?? 0);
+
+        if ($num <= 0) {
+            return $this->error($response, 'Consecutivo no válido', 400);
+        }
+
+        try {
+            $dev = Devolucion::with(['detalles.producto', 'causal', 'ubicacionPatio', 'sucursalOrigen', 'clienteOrigen', 'auxiliar', 'solicitante', 'aprobador', 'procesador'])
+                ->where('empresa_id', $empresaId)
+                ->where(function($q) use ($num) {
+                    $q->where('consecutivo_devolucion', $num)
+                      ->orWhere('numero_devolucion', 'like', "%{$num}");
+                })
+                ->first();
+
+            if (!$dev) {
+                return $this->json($response, ['error' => true, 'message' => "No se encontró devolución con el consecutivo #{$num}"], 404);
+            }
+
+            return $this->ok($response, $dev);
+        } catch (\Exception $e) {
+            error_log('DevolucionController::buscarConsecutivo error: ' . $e->getMessage());
+            return $this->error($response, 'Error al buscar devolución.', 500);
+        }
     }
 
     // ── GET /api/devoluciones/odc/{odcId} ────────────────────────────────────
@@ -426,8 +558,8 @@ class DevolucionController extends BaseController
             return $this->error($response, 'La devolución no está en estado PendienteAprobacion', 409);
         }
 
-        DB::transaction(function () use ($dev, $user, $data) {
-            $this->reponerStockDevolucion($dev, $user, 'Rechazo de devolución');
+        $productosMovidos = DB::transaction(function () use ($dev, $user, $data) {
+            $productos = $this->reponerStockDevolucion($dev, $user, 'Rechazo de devolución');
 
             $dev->estado        = Devolucion::ESTADO_RECHAZADA;
             // Reuse aprobado_por/aprobado_at to record who acted — estado=Rechazada disambiguates
@@ -435,10 +567,18 @@ class DevolucionController extends BaseController
             $dev->aprobado_at   = date('Y-m-d H:i:s');
             $dev->observaciones = $data['motivo_rechazo'] ?? null;
             $dev->save();
+
+            return $productos;
         });
 
         $this->audit($user, 'devoluciones', 'rechazar', 'devoluciones', $dev->id,
             ['estado' => Devolucion::ESTADO_PENDIENTE], ['estado' => Devolucion::ESTADO_RECHAZADA]);
+
+        // Regla de Oro #3 (modo alerta, no bloquea) — mismo patrón que en PickingController.
+        $guardInv = new \App\Helpers\InventoryGuard($empresaId, $sucursalId, $user->id);
+        foreach ($productosMovidos as $productoId) {
+            $guardInv->assertLedgerMatchesStock($productoId);
+        }
 
         return $this->ok($response, null, 'Devolución rechazada');
     }
@@ -449,14 +589,18 @@ class DevolucionController extends BaseController
      * ya no descuentan nada al crear). Se apoya en los MovimientoInventario tipo 'Salida'
      * ya registrados para esta devolución, para reponer exactamente lo que se descontó
      * — misma ubicación, mismo lote — con su propio registro de auditoría inverso.
+     *
+     * @return int[] producto_id únicos tocados (para validar la invariante Regla de Oro #3 tras el commit).
      */
-    private function reponerStockDevolucion(Devolucion $dev, $user, string $motivo): void
+    private function reponerStockDevolucion(Devolucion $dev, $user, string $motivo): array
     {
         $salidas = DB::table('movimiento_inventarios')
             ->where('referencia_tipo', 'devolucion')
             ->where('referencia_id', $dev->id)
             ->where('tipo_movimiento', 'Salida')
             ->get();
+
+        $productosMovidos = [];
 
         foreach ($salidas as $mov) {
             if (!$mov->ubicacion_origen_id) continue;
@@ -517,7 +661,11 @@ class DevolucionController extends BaseController
                 'ubicacion_destino_id'=> $mov->ubicacion_origen_id,
                 'created_at'          => date('Y-m-d H:i:s'),
             ]);
+
+            $productosMovidos[$mov->producto_id] = true;
         }
+
+        return array_map('intval', array_keys($productosMovidos));
     }
 
     // ── POST /api/devoluciones/{id}/anular ────────────────────────────────────
@@ -541,14 +689,21 @@ class DevolucionController extends BaseController
         }
 
         $estadoAnterior = $dev->estado;
-        DB::transaction(function () use ($dev, $user) {
-            $this->reponerStockDevolucion($dev, $user, 'Anulación de devolución');
+        $productosMovidos = DB::transaction(function () use ($dev, $user) {
+            $productos = $this->reponerStockDevolucion($dev, $user, 'Anulación de devolución');
             $dev->estado = Devolucion::ESTADO_ANULADA;
             $dev->save();
+            return $productos;
         });
 
         $this->audit($user, 'devoluciones', 'anular', 'devoluciones', $dev->id,
             ['estado' => $estadoAnterior], ['estado' => Devolucion::ESTADO_ANULADA]);
+
+        // Regla de Oro #3 (modo alerta, no bloquea) — mismo patrón que en PickingController.
+        $guardInv = new \App\Helpers\InventoryGuard($empresaId, $sucursalId, $user->id);
+        foreach ($productosMovidos as $productoId) {
+            $guardInv->assertLedgerMatchesStock($productoId);
+        }
 
         return $this->ok($response, null, 'Devolución anulada');
     }
@@ -557,6 +712,11 @@ class DevolucionController extends BaseController
     public function procesar(Request $request, Response $response, array $args): Response
     {
         $user       = $request->getAttribute('user');
+        // BUG CORREGIDO 2026-08-20: a diferencia de sus 3 hermanas (aprobar/rechazar/
+        // anular, todas con requireSupervisor), procesar() —la que efectivamente
+        // mueve el inventario real (restock/descarte/proveedor)— no validaba ningún
+        // rol. Inconsistencia, no diseño intencional.
+        if ($deny = $this->requireSupervisor($user, $response)) return $deny;
         $empresaId  = $this->getEffectiveEmpresaId($user, $request);
         $sucursalId = $this->getEffectiveSucursalId($user, $request);
         $data       = $request->getParsedBody() ?? [];
@@ -596,11 +756,12 @@ class DevolucionController extends BaseController
             }
         }
 
-        return \Illuminate\Database\Capsule\Manager::transaction(function () use (
+        $resultado = \Illuminate\Database\Capsule\Manager::transaction(function () use (
             $dev, $user, $empresaId, $sucursalId, $itemDecisiones, $response
         ) {
             $devProveedorId    = null;
             $devProveedorItems = [];
+            $productosMovidos  = [];
 
             // Ensure PATIO-DEV location exists
             $patioDev = \Illuminate\Database\Capsule\Manager::table('ubicaciones')
@@ -689,6 +850,8 @@ class DevolucionController extends BaseController
                         'created_at'        => date('Y-m-d H:i:s'),
                     ]);
 
+                    $productosMovidos[$det->producto_id] = true;
+
                 } elseif ($destino === DevolucionDetalle::DESTINO_DESCARTE) {
                     \Illuminate\Database\Capsule\Manager::table('movimiento_inventarios')->insert([
                         'empresa_id'        => $empresaId,
@@ -706,6 +869,13 @@ class DevolucionController extends BaseController
                         'observaciones'     => "Descarte devolución {$dev->numero_devolucion}",
                         'created_at'        => date('Y-m-d H:i:s'),
                     ]);
+
+                    // Sin esto trazado aparte: este tipo NO actualiza `inventarios` en
+                    // ninguna rama (el ítem descartado nunca entró a `inventarios` si
+                    // vino de una devolución tipo 'cliente') — se marca igual para que
+                    // la Regla de Oro #3 (abajo) pueda detectar y loguear el posible
+                    // descuadre en vez de dejarlo pasar en silencio.
+                    $productosMovidos[$det->producto_id] = true;
 
                 } elseif ($destino === DevolucionDetalle::DESTINO_PROVEEDOR) {
                     $devProveedorItems[] = $det;
@@ -735,7 +905,7 @@ class DevolucionController extends BaseController
                         'cantidad'          => $det->cantidad,
                         'condicion'         => $det->condicion,
                         'motivo'            => $det->motivo ?? 'Otro',
-                        'destino'           => null,
+                        'destino'           => 'DevolucionProveedor',
                     ]);
                 }
                 $devProveedorId = $devProv->id;
@@ -749,8 +919,16 @@ class DevolucionController extends BaseController
             $this->audit($user, 'devoluciones', 'procesar', 'devoluciones', $dev->id,
                 ['estado' => Devolucion::ESTADO_APROBADA], ['estado' => Devolucion::ESTADO_PROCESADA]);
 
-            return $this->ok($response, ['devolucion_proveedor_id' => $devProveedorId], 'Devolución procesada correctamente');
+            return ['devolucion_proveedor_id' => $devProveedorId, 'productos_movidos' => $productosMovidos];
         });
+
+        // Regla de Oro #3 (modo alerta, no bloquea) — mismo patrón que en PickingController.
+        $guardInv = new \App\Helpers\InventoryGuard($empresaId, $sucursalId, $user->id);
+        foreach (array_keys($resultado['productos_movidos']) as $productoId) {
+            $guardInv->assertLedgerMatchesStock((int)$productoId);
+        }
+
+        return $this->ok($response, ['devolucion_proveedor_id' => $resultado['devolucion_proveedor_id']], 'Devolución procesada correctamente');
     }
 
     // NOTA: completar() fue eliminado por la misma razón — usaba estado='Completada' (ajeno
@@ -1115,23 +1293,12 @@ class DevolucionController extends BaseController
                 $detalle->destino       = 'DevolucionProveedor';
                 $detalle->save();
 
-                // Registrar movimiento de salida / devolución (NO suma a inventario)
-                $movimiento = new MovimientoInventario();
-                $movimiento->empresa_id        = $empresaId;
-                $movimiento->sucursal_id       = $sucursalId;
-                $movimiento->producto_id        = $productoId;
-                $movimiento->ubicacion_origen_id  = null;
-                $movimiento->ubicacion_destino_id = null;
-                $movimiento->tipo_movimiento    = 'Devolucion';
-                $movimiento->cantidad           = $cantidad;
-                $movimiento->lote               = $linea['lote'] ?? null;
-                $movimiento->referencia_tipo    = 'devolucion';
-                $movimiento->referencia_id      = $devolucion->id;
-                $movimiento->auxiliar_id        = $user->id;
-                $movimiento->fecha_movimiento   = date('Y-m-d');
-                $movimiento->hora_inicio        = $devolucion->hora_inicio;
-                $movimiento->hora_fin           = $devolucion->hora_fin;
-                $movimiento->save();
+                // NO se crea MovimientoInventario aquí: esta devolución nunca toca
+                // `inventarios` (las unidades no entran a bodega, van directo de
+                // vuelta al proveedor) — un asiento de kardex sin contraparte física
+                // descuadraría la invariante SUM(kardex)==existencias. La trazabilidad
+                // completa (producto, cantidad, lote, motivo) ya queda en
+                // DevolucionDetalle, que es la fuente correcta para este caso.
             }
 
             // Si viene con ODC, marcar la ODC con estado especial
@@ -1162,6 +1329,112 @@ class DevolucionController extends BaseController
             \Illuminate\Database\Capsule\Manager::connection()->rollBack();
             error_log('DevolucionController::desdeOdcMovil error: ' . $e->getMessage());
             return $this->json($response, ['error' => true, 'message' => 'Error al registrar devolución: ' . $e->getMessage()], 500);
+        }
+    }
+    // ── GET /api/devoluciones/dashboard-stats ──────────────────────────────
+    public function dashboardStats(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
+
+        try {
+            // 1. Total por estado (últimos 30 días)
+            $hace30 = date('Y-m-d', strtotime('-30 days'));
+            $estados = \Illuminate\Database\Capsule\Manager::table('devoluciones')
+                ->select('estado', \Illuminate\Database\Capsule\Manager::raw('count(*) as total'))
+                ->where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
+                ->where('created_at', '>=', $hace30)
+                ->groupBy('estado')
+                ->get();
+
+            // 2. Top Causales (últimos 30 días)
+            $causales = \Illuminate\Database\Capsule\Manager::table('devolucion_detalles')
+                ->join('devoluciones', 'devoluciones.id', '=', 'devolucion_detalles.devolucion_id')
+                ->select('devolucion_detalles.motivo', \Illuminate\Database\Capsule\Manager::raw('count(*) as total'))
+                ->where('devoluciones.empresa_id', $empresaId)
+                ->where('devoluciones.sucursal_id', $sucursalId)
+                ->where('devoluciones.created_at', '>=', $hace30)
+                ->groupBy('devolucion_detalles.motivo')
+                ->orderBy('total', 'desc')
+                ->limit(10)
+                ->get();
+
+            // 3. Devoluciones por Sucursal (Todas las sucursales de la empresa)
+            $porSucursal = \Illuminate\Database\Capsule\Manager::table('devoluciones')
+                ->join('sucursales', 'sucursales.id', '=', 'devoluciones.sucursal_id')
+                ->select('sucursales.nombre', \Illuminate\Database\Capsule\Manager::raw('count(*) as total'))
+                ->where('devoluciones.empresa_id', $empresaId)
+                ->where('devoluciones.created_at', '>=', $hace30)
+                ->groupBy('sucursales.nombre')
+                ->get();
+
+            // 4. Top 10 Productos (mantenido por si acaso)
+            $topProductos = \Illuminate\Database\Capsule\Manager::table('devolucion_detalles')
+                ->join('devoluciones', 'devoluciones.id', '=', 'devolucion_detalles.devolucion_id')
+                ->join('productos', 'productos.id', '=', 'devolucion_detalles.producto_id')
+                ->select('productos.nombre', 'productos.codigo_interno', \Illuminate\Database\Capsule\Manager::raw('sum(devolucion_detalles.cantidad) as cantidad_total'))
+                ->where('devoluciones.empresa_id', $empresaId)
+                ->where('devoluciones.sucursal_id', $sucursalId)
+                ->where('devoluciones.created_at', '>=', $hace30)
+                ->groupBy('productos.nombre', 'productos.codigo_interno')
+                ->orderBy('cantidad_total', 'desc')
+                ->limit(10)
+                ->get();
+                
+            // Matriz Completa de Productos (Veces devueltas, Unidades, %)
+            $totalVecesGeneral = \Illuminate\Database\Capsule\Manager::table('devolucion_detalles')
+                ->join('devoluciones', 'devoluciones.id', '=', 'devolucion_detalles.devolucion_id')
+                ->where('devoluciones.empresa_id', $empresaId)
+                ->where('devoluciones.sucursal_id', $sucursalId)
+                ->where('devoluciones.created_at', '>=', $hace30)
+                ->count();
+                
+            $matrizProductos = \Illuminate\Database\Capsule\Manager::table('devolucion_detalles')
+                ->join('devoluciones', 'devoluciones.id', '=', 'devolucion_detalles.devolucion_id')
+                ->join('productos', 'productos.id', '=', 'devolucion_detalles.producto_id')
+                ->select(
+                    'productos.nombre', 
+                    'productos.codigo_interno', 
+                    \Illuminate\Database\Capsule\Manager::raw('COUNT(devolucion_detalles.id) as veces_devuelto'),
+                    \Illuminate\Database\Capsule\Manager::raw('SUM(devolucion_detalles.cantidad) as total_unidades')
+                )
+                ->where('devoluciones.empresa_id', $empresaId)
+                ->where('devoluciones.sucursal_id', $sucursalId)
+                ->where('devoluciones.created_at', '>=', $hace30)
+                ->groupBy('productos.nombre', 'productos.codigo_interno')
+                ->orderBy('veces_devuelto', 'desc')
+                ->get();
+                
+            $matrizProductos = $matrizProductos->map(function($item) use ($totalVecesGeneral) {
+                $item->porcentaje_participacion = $totalVecesGeneral > 0 
+                    ? round(($item->veces_devuelto / $totalVecesGeneral) * 100, 2) 
+                    : 0;
+                return $item;
+            });
+
+            // 5. Histórico 30 días
+            $historico = \Illuminate\Database\Capsule\Manager::table('devoluciones')
+                ->select(\Illuminate\Database\Capsule\Manager::raw('DATE(created_at) as fecha'), \Illuminate\Database\Capsule\Manager::raw('count(*) as total'))
+                ->where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
+                ->where('created_at', '>=', $hace30)
+                ->groupBy('fecha')
+                ->orderBy('fecha', 'asc')
+                ->get();
+
+            return $this->ok($res, [
+                'estados' => $estados,
+                'causales' => $causales,
+                'por_sucursal' => $porSucursal,
+                'top_productos' => $topProductos,
+                'matriz_productos' => $matrizProductos,
+                'historico' => $historico
+            ]);
+        } catch (\Exception $e) {
+            error_log('DevolucionController::dashboardStats error: ' . $e->getMessage());
+            return $this->error($res, 'Error al obtener estadísticas del dashboard');
         }
     }
 

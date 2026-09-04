@@ -670,8 +670,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/despacho.js": {
-    "mtime": 1786060336.100257,
-    "ast_hash": "deba5d76ac53cb4f14c56494f2fe0b46",
+    "mtime": 1786740405.9880133,
+    "ast_hash": "8c70d1421d3ffc5c9787d67aa4e6e3a1",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/devoluciones.js": {
@@ -690,8 +690,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/inventario.js": {
-    "mtime": 1785802892.959629,
-    "ast_hash": "a1706ac9854ef7486a22dc85f03a5af7",
+    "mtime": 1786494723.0650697,
+    "ast_hash": "5581a9b3b05ea30a4c525e42b7cab5fd",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/logistica-avanzada.js": {
@@ -705,8 +705,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/picking.js": {
-    "mtime": 1786225195.5957255,
-    "ast_hash": "589c87b54dbde6e1d931f1d8714d613f",
+    "mtime": 1786654784.1688082,
+    "ast_hash": "39dbc358c34488ed83aa1dd59a13db54",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/recepcion.js": {
@@ -715,8 +715,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/reportes.js": {
-    "mtime": 1784767113.7778656,
-    "ast_hash": "317b63e32c993363e6dae598a71fb2a0",
+    "mtime": 1786667583.1804824,
+    "ast_hash": "bc49aaf6fd86b68a7cf85251c3e7bfad",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/rotacion.js": {
@@ -735,8 +735,8 @@
     "semantic_hash": ""
   },
   "public/index.php": {
-    "mtime": 1786363466.2658458,
-    "ast_hash": "c2c6acc7e1e766927d9d6140d2ea46c8",
+    "mtime": 1786662231.8397563,
+    "ast_hash": "1acd9077bed79dad7f708843a846a590",
     "semantic_hash": ""
   },
   "public/manifest.json": {
@@ -885,8 +885,8 @@
     "semantic_hash": "3d2f08121c2ebc07639fe57aea467322"
   },
   "src/Controllers/DashboardTVController.php": {
-    "mtime": 1786364479.0687022,
-    "ast_hash": "2f26ab0e97dc7b22419c29618eff2493",
+    "mtime": 1786444115.3224173,
+    "ast_hash": "c8ab534ba8e65fbdec886ecb9441d691",
     "semantic_hash": ""
   },
   "src/Controllers/DespachoController.php": {
@@ -925,8 +925,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/InventarioV2Controller.php": {
-    "mtime": 1785964570.1388617,
-    "ast_hash": "07afd0bd6d1ad398ac807d0681df91ae",
+    "mtime": 1786494372.424091,
+    "ast_hash": "f7ed13145bbd8b1b726176025fc89ddf",
     "semantic_hash": ""
   },
   "src/Controllers/MiscelaneoController.php": {
@@ -945,8 +945,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/PackingController.php": {
-    "mtime": 1786380378.9480543,
-    "ast_hash": "85f07436ac2b0b251759f16ee58343d7",
+    "mtime": 1786731829.5999398,
+    "ast_hash": "117b5f1eec33b3c703953016a8cedca8",
     "semantic_hash": ""
   },
   "src/Controllers/ParametrosController.php": {
@@ -960,8 +960,8 @@
     "semantic_hash": "e5d5c725bce4a13b3afbb9666f3fe95a"
   },
   "src/Controllers/PickingController.php": {
-    "mtime": 1786410621.5866692,
-    "ast_hash": "c0c68aff006044dfcca2a6d40e00ad4c",
+    "mtime": 1786658165.2021713,
+    "ast_hash": "a75e64b964c6e9d8be99acd9305c7ab4",
     "semantic_hash": ""
   },
   "src/Controllers/PlanillaController.php": {
@@ -985,9 +985,9 @@
     "semantic_hash": "9d8599cbc389c4d9554ed6cef4fa4e2a"
   },
   "src/Controllers/ReportesController.php": {
-    "mtime": 1782867600.64372,
-    "ast_hash": "e328c960b09461ca3e29880219bea128",
-    "semantic_hash": "e328c960b09461ca3e29880219bea128"
+    "mtime": 1786667137.9568455,
+    "ast_hash": "d84008c49ea049d855093f1cf0fcafe5",
+    "semantic_hash": ""
   },
   "src/Controllers/RotacionController.php": {
     "mtime": 1786063082.1465425,
@@ -1040,9 +1040,9 @@
     "semantic_hash": "28a7c7400bf0def8f84328c52912fd49"
   },
   "src/Helpers/BackupHelper.php": {
-    "mtime": 1780093836.0,
-    "ast_hash": "fc5d9b1af1cb3f4239e945ed50dfd727",
-    "semantic_hash": "fc5d9b1af1cb3f4239e945ed50dfd727"
+    "mtime": 1786411776.587746,
+    "ast_hash": "9579f18275a1d14c0d1ffa525aa325a3",
+    "semantic_hash": ""
   },
   "src/Helpers/CacheHelper.php": {
     "mtime": 1776643468.0,
@@ -1550,13 +1550,13 @@
     "semantic_hash": "9af6772ebae31c28558f86c610ad83e7"
   },
   "public/index.html": {
-    "mtime": 1786063090.8049045,
-    "ast_hash": "ba65913fd02b1184092fa93767c98ebb",
+    "mtime": 1786662242.501779,
+    "ast_hash": "f105d9791fb9ef667739f7403dc96212",
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1785974549.4200587,
-    "ast_hash": "e7f9e9970eb81b8e879161ba4b4f91ae",
+    "mtime": 1786742972.4756205,
+    "ast_hash": "b1788922dc3ad456e48dbc89aa9ee2fd",
     "semantic_hash": ""
   },
   "public/pitch.html": {
@@ -1565,8 +1565,8 @@
     "semantic_hash": "8698adc8034f3390db8dbdda7f832df0"
   },
   "public/tv-picking.html": {
-    "mtime": 1786372248.742746,
-    "ast_hash": "9170c57f053225155dfa8992b15f7ed3",
+    "mtime": 1786445561.996131,
+    "ast_hash": "08b02ef6fdfd0d4b533f26328134fca3",
     "semantic_hash": ""
   },
   "logo.jpg": {
@@ -1872,6 +1872,66 @@
   "scripts/backfill_cert_anomalo_precio.php": {
     "mtime": 1786409792.1799817,
     "ast_hash": "a5b833b85758a7214345cbd6ba3541e7",
+    "semantic_hash": ""
+  },
+  "scratch/audit_casarecce.php": {
+    "mtime": 1786450801.09052,
+    "ast_hash": "b8b445b87c527837f846ac1e2429a0b7",
+    "semantic_hash": ""
+  },
+  "scratch/check_causales.php": {
+    "mtime": 1786578216.2216895,
+    "ast_hash": "b812851dbf51ae37d6bdaad9061a38b8",
+    "semantic_hash": ""
+  },
+  "scratch/check_faltantes_hoy.php": {
+    "mtime": 1786579205.8241444,
+    "ast_hash": "3379bb72a9636b2d91f62eea5a8a8177",
+    "semantic_hash": ""
+  },
+  "scratch/check_faltantes_real.php": {
+    "mtime": 1786579402.762911,
+    "ast_hash": "b9d595e7abd8c06010cc0d2f9ad534e6",
+    "semantic_hash": ""
+  },
+  "scratch/check_tz.php": {
+    "mtime": 1786579243.0431416,
+    "ast_hash": "308f7f10db98e3416f0a42ead19a793f",
+    "semantic_hash": ""
+  },
+  "scratch/clean_false_shortage.php": {
+    "mtime": 1786450937.9518163,
+    "ast_hash": "8e180d8b2e79b87b8ff1efa572c6cb6d",
+    "semantic_hash": ""
+  },
+  "scratch/test_ranking_api.php": {
+    "mtime": 1786444121.2293143,
+    "ast_hash": "229a91db4ecb349c191a978fe593885d",
+    "semantic_hash": ""
+  },
+  "scratch/test_ranking_queries.php": {
+    "mtime": 1786444010.3924384,
+    "ast_hash": "4202a6a684d5db2789b0ed7868eb848b",
+    "semantic_hash": ""
+  },
+  "scripts/diag_cierre_ambientes.php": {
+    "mtime": 1786460520.2169082,
+    "ast_hash": "9afe055f3d211ac8157dd1054b5a3888",
+    "semantic_hash": ""
+  },
+  "scripts/diag_planillas_ambiente.php": {
+    "mtime": 1786460627.1231644,
+    "ast_hash": "a8f57dcc8292d3d60714595d06723e27",
+    "semantic_hash": ""
+  },
+  "scripts/test_contingencia2.php": {
+    "mtime": 1786485297.2473917,
+    "ast_hash": "32f4c1776d1a86dc227422372f8eb52f",
+    "semantic_hash": ""
+  },
+  "public/uploads/firmas/firma_trp_6a7debe958767.png": {
+    "mtime": 1786637289.3551881,
+    "ast_hash": "ef47c92755e5ecd3df27e9f81125a920",
     "semantic_hash": ""
   }
 }

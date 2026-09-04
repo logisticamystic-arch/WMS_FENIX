@@ -29,6 +29,13 @@ WMS_MODULES.despacho = {
   _certFechaFin: null,
   _certSearched: false, // true solo después de que el usuario aplica un filtro/búsqueda
 
+  // Clave única (sucursal + planilla) — misma convención que usa el backend en
+  // certPendientes()/certCertificadas() desde el fix del 2026-08-17. Necesaria
+  // porque una misma sucursal puede tener varias planillas pendientes a la vez.
+  _certClave(p) {
+    return (p.sucursal_entrega || '') + '||' + (p.planilla_numero || 'Sin planilla');
+  },
+
   _certFechaParams() {
     const fi = this._certFechaInicio;
     const ff = this._certFechaFin;
@@ -158,8 +165,24 @@ WMS_MODULES.despacho = {
       // Guarda los orden_ids EXACTOS que están visibles en pantalla ahora mismo
       // (respetando el filtro de fecha activo), para que Auto-Certificar certifique
       // solo esto y no vuelva a arrastrar pedidos sueltos de separaciones anteriores.
+      // BUG CORREGIDO 2026-08-17 (urgente): certPendientes() ahora devuelve una fila
+      // por (sucursal + planilla) en vez de una sola fila fusionada por sucursal (ver
+      // fix del mismo día) — con la clave anterior (solo sucursal_entrega), cada
+      // forEach SOBRESCRIBÍA la entrada previa, así que Auto-Certificar solo veía la
+      // última planilla de cada sucursal y "certificaba" pero dejaba las demás sin
+      // procesar. Ahora la clave incluye la planilla.
       this._certOrdenIdsPorSucursal = {};
-      sinSesion.forEach(p => { this._certOrdenIdsPorSucursal[p.sucursal_entrega] = p.ordenes_ids || []; });
+      // Blindaje 2026-08-17 (a pedido explícito, tras el incidente de Olivia Manila):
+      // guarda también la fecha del pedido de cada planilla, para poder advertir/
+      // excluir automáticamente lo que NO sea de hoy al usar Auto-Certificar Todos —
+      // sin esto, ver la pantalla en "Todo"/"Esta semana" y usar Auto-Certificar
+      // Todos certificaba en bloque backlog viejo sin ningún aviso.
+      this._certFechaMovPorClave = {};
+      sinSesion.forEach(p => {
+        const clave = this._certClave(p);
+        this._certOrdenIdsPorSucursal[clave] = p.ordenes_ids || [];
+        this._certFechaMovPorClave[clave] = p.fecha_movimiento || null;
+      });
       const completadasOk = completadas.filter(s => !sucHuerfanas.has(s.sucursal_entrega));
       const certDirectMap = {};
       certDirect.forEach(c => { certDirectMap[c.sucursal_entrega] = c; });
@@ -307,7 +330,7 @@ WMS_MODULES.despacho = {
                   <button class="btn btn-sm btn-info" onclick="WMS_MODULES.despacho.verDetallesPendientes('${WMS.esc(s.sucursal_entrega)}')" style="margin-right:4px;">
                     <i class="fa-solid fa-list"></i> Ver
                   </button>
-                  <button class="btn btn-sm btn-success btn-auto-cert-suc" data-sucursal="${WMS.esc(s.sucursal_entrega)}" onclick="WMS_MODULES.despacho.autoCertificar('${WMS.esc(s.sucursal_entrega)}')">
+                  <button class="btn btn-sm btn-success btn-auto-cert-suc" data-clave="${WMS.esc(this._certClave(s))}" data-sucursal="${WMS.esc(s.sucursal_entrega)}" onclick="WMS_MODULES.despacho.autoCertificar('${WMS.esc(this._certClave(s))}', '${WMS.esc(s.sucursal_entrega)}')">
                     <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Cert.
                   </button>
                 </td>
@@ -686,7 +709,16 @@ WMS_MODULES.despacho = {
       <body style="font-family:sans-serif;padding:20px;color:#555;"><p>&#9203; Cargando ${titulo}...</p></body></html>`);
     win.document.close();
     fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
-      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(r => {
+        if (!r.ok) {
+          return r.text().then(text => {
+            let msg = 'HTTP ' + r.status;
+            try { const j = JSON.parse(text); if (j.message) msg = j.message; } catch(e) {}
+            throw new Error(msg);
+          });
+        }
+        return r.text();
+      })
       .then(html => {
         if (win.closed) return;
         win.document.open(); win.document.write(html); win.document.close();
@@ -1096,23 +1128,38 @@ WMS_MODULES.despacho = {
     finally { WMS.spinner(false); }
   },
 
-  async autoCertificar(sucursal) {
+  // Blindaje 2026-08-17 (a pedido explícito, incidente Olivia Manila): compara
+  // contra la fecha de hoy para poder advertir antes de certificar en bloque
+  // pedidos que no fueron separados hoy.
+  _esFechaHoy(fecha) {
+    return !!fecha && fecha === WMS.getToday();
+  },
+
+  async autoCertificar(clave, sucursalDisplay) {
     // Solo los pedidos que están AHORA MISMO visibles/filtrados en pantalla para
-    // esta sucursal — no una búsqueda amplia en el servidor que podría arrastrar
+    // esta planilla — no una búsqueda amplia en el servidor que podría arrastrar
     // pedidos sueltos de separaciones anteriores que el usuario ni ve en pantalla.
-    const ordenIds = this._certOrdenIdsPorSucursal?.[sucursal] || [];
+    // `clave` es (sucursal + planilla) desde el fix 2026-08-17 — ver _certClave().
+    const ordenIds = this._certOrdenIdsPorSucursal?.[clave] || [];
+    const sucursal = sucursalDisplay || (clave || '').split('||')[0];
     if (!ordenIds.length) {
-      WMS.toast('warning', 'No hay pedidos visibles en pantalla para esta sucursal. Recargue la lista.');
+      WMS.toast('warning', 'No hay pedidos visibles en pantalla para esta planilla. Recargue la lista.');
       return;
     }
 
+    const fechaMov = this._certFechaMovPorClave?.[clave];
+    const esHoy = this._esFechaHoy(fechaMov);
+
     const ok = await Swal.fire({
-      title: '¿Auto-Certificar a una sola canasta?',
-      html: `Se empacarán y certificarán exactamente los <b>${ordenIds.length} pedido(s)</b> de <b>${WMS.esc(sucursal)}</b> que están visibles en esta pantalla (con el filtro de fecha actual) en una sola canasta.`,
-      icon: 'warning',
+      title: esHoy ? '¿Auto-Certificar a una sola canasta?' : '⚠️ Este pedido NO es de hoy',
+      html: esHoy
+        ? `Se empacarán y certificarán exactamente los <b>${ordenIds.length} pedido(s)</b> de <b>${WMS.esc(sucursal)}</b> que están visibles en esta pantalla (con el filtro de fecha actual) en una sola canasta.`
+        : `Esta planilla tiene fecha <b>${WMS.esc(fechaMov || 'desconocida')}</b>, no la de hoy. Se certificarán ${ordenIds.length} pedido(s) de <b>${WMS.esc(sucursal)}</b> de todas formas. ¿Está seguro de que quiere certificar backlog de otro día junto con la remisión de hoy?`,
+      icon: esHoy ? 'warning' : 'error',
       showCancelButton: true,
-      confirmButtonText: 'Sí, Auto-Certificar',
-      cancelButtonText: 'Cancelar'
+      confirmButtonText: esHoy ? 'Sí, Auto-Certificar' : 'Sí, certificar de todas formas',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: esHoy ? undefined : '#dc2626'
     });
     if (!ok.isConfirmed) return;
 
@@ -1134,19 +1181,53 @@ WMS_MODULES.despacho = {
   },
 
   async autoCertificarTodos() {
-    const sucursalesBtns = Array.from(document.querySelectorAll('.btn-auto-cert-suc'));
-    const sucursales = sucursalesBtns.map(b => b.dataset.sucursal).filter(Boolean);
-    const uniqueSucs = [...new Set(sucursales)];
+    // BUG CORREGIDO 2026-08-17 (urgente): antes se deduplicaba por sucursal_entrega
+    // sola — si una sucursal tenía varias planillas pendientes, todas se colapsaban
+    // en una y solo se certificaba la última que sobrescribía _certOrdenIdsPorSucursal,
+    // dejando el resto "sin procesar" aunque el toast dijera éxito. Ahora se itera
+    // por planilla (data-clave = sucursal+planilla), no por sucursal.
+    const btns = Array.from(document.querySelectorAll('.btn-auto-cert-suc'));
+    const porClaveTodas = new Map();
+    btns.forEach(b => {
+      const clave = b.dataset.clave || b.dataset.sucursal;
+      if (clave && !porClaveTodas.has(clave)) porClaveTodas.set(clave, b.dataset.sucursal || clave.split('||')[0]);
+    });
 
-    if (!uniqueSucs.length) {
+    if (!porClaveTodas.size) {
       return WMS.toast('info', 'No hay sucursales pendientes de certificar en la vista actual.');
     }
 
-    const totalPedidos = uniqueSucs.reduce((acc, s) => acc + (this._certOrdenIdsPorSucursal?.[s]?.length || 0), 0);
+    // Blindaje 2026-08-17 (a pedido explícito, incidente Olivia Manila): "Todos" ya
+    // NO incluye por defecto planillas de días distintos a hoy — antes, si la
+    // pantalla estaba en "Todo"/"Esta semana" (p.ej. tras usarlo como workaround
+    // para ver certificaciones nocturnas), este botón certificaba en bloque
+    // backlog viejo sin ningún aviso (6 planillas de 5 días distintos en un solo
+    // clic, caso real). Ahora se separa: solo se procesa lo de HOY automáticamente;
+    // lo de otros días se debe certificar uno por uno con el botón de la fila
+    // (que sí advierte explícitamente que no es de hoy).
+    const porClave = new Map();
+    const viejas = [];
+    for (const [clave, sucursal] of porClaveTodas) {
+      if (this._esFechaHoy(this._certFechaMovPorClave?.[clave])) {
+        porClave.set(clave, sucursal);
+      } else {
+        viejas.push({ clave, sucursal, fecha: this._certFechaMovPorClave?.[clave] || 'desconocida' });
+      }
+    }
+
+    if (!porClave.size) {
+      return WMS.toast('warning', `Ninguna de las planillas visibles es de hoy — Auto-Certificar Todos no procesa backlog de otros días automáticamente. Use el botón "Auto-Cert." de cada fila si de verdad quiere certificarlas.`);
+    }
+
+    const totalPedidos = [...porClave.keys()].reduce((acc, k) => acc + (this._certOrdenIdsPorSucursal?.[k]?.length || 0), 0);
+    const sucursalesUnicas = new Set([...porClave.values()]).size;
+    const avisoViejas = viejas.length
+      ? `<br><br><span style="color:#b45309;"><i class="fa-solid fa-triangle-exclamation"></i> Se excluyeron <b>${viejas.length} planilla(s)</b> de días anteriores (no de hoy) — no se tocarán. Certifíquelas manualmente una por una si corresponde.</span>`
+      : '';
 
     const res = await Swal.fire({
-      title: '⚡ Auto-Certificar Todos los Pedidos',
-      html: `¿Desea auto-certificar exactamente los <b>${totalPedidos} pedido(s)</b> visibles en pantalla, de las <b>${uniqueSucs.length} sucursal(es)</b> listadas (respetando el filtro de fecha actual)?<br><small style="color:#64748b;">No se tocará ningún pedido suelto de otras fechas que no esté en esta lista.</small>`,
+      title: '⚡ Auto-Certificar Todos los Pedidos de HOY',
+      html: `¿Desea auto-certificar exactamente los <b>${totalPedidos} pedido(s)</b> de HOY visibles en pantalla, de las <b>${porClave.size} planilla(s)</b> (${sucursalesUnicas} sucursal(es))?<br><small style="color:#64748b;">No se tocará ningún pedido suelto de otras fechas.</small>${avisoViejas}`,
       icon: 'question',
       showCancelButton: true,
       confirmButtonText: 'Sí, Auto-Certificar Todo',
@@ -1159,18 +1240,18 @@ WMS_MODULES.despacho = {
     let okCount = 0;
     let errCount = 0;
     try {
-      for (const suc of uniqueSucs) {
+      for (const [clave, sucursal] of porClave) {
         try {
-          const ordenIds = this._certOrdenIdsPorSucursal?.[suc] || [];
+          const ordenIds = this._certOrdenIdsPorSucursal?.[clave] || [];
           if (!ordenIds.length) { errCount++; continue; }
-          const r = await API.post('/packing/autopack', { sucursal_entrega: suc, tipo_empaque: 'canasta', orden_ids: ordenIds });
+          const r = await API.post('/packing/autopack', { sucursal_entrega: sucursal, tipo_empaque: 'canasta', orden_ids: ordenIds });
           if (r && !r.error) okCount++;
           else errCount++;
         } catch (e) {
           errCount++;
         }
       }
-      WMS.toast('success', `Auto-Certificación completada: ${okCount} sucursal(es) certificada(s) exitosamente${errCount > 0 ? ` (${errCount} omitidas)` : ''}`);
+      WMS.toast('success', `Auto-Certificación completada: ${okCount} planilla(s) certificada(s) exitosamente${errCount > 0 ? ` (${errCount} omitidas)` : ''}`);
       this.show_certificacion();
     } catch(e) {
       WMS.toast('error', e.message || 'Error en Auto-Certificación masiva');
@@ -2224,6 +2305,7 @@ WMS_MODULES.despacho = {
                   ${d.estado !== 'Entregado' ? `<button class="btn btn-sm btn-info" title="Agregar pedidos" onclick="WMS_MODULES.despacho.agregarPedidosCargue(${d.id})"><i class="fa-solid fa-box-open"></i> Pedidos</button>` : ''}
                   ${d.estado === 'Preparando' || d.estado === 'Certificado' ? `<button class="btn btn-sm btn-success" title="Despachar" onclick="WMS_MODULES.despacho.despacharCargue(${d.id})"><i class="fa-solid fa-truck"></i> Despachar</button>` : ''}
                   ${d.estado === 'Despachado' ? `<button class="btn btn-sm btn-warning" title="Liquidar - marcar como Entregado" onclick="WMS_MODULES.despacho.liquidarCargue(${d.id})"><i class="fa-solid fa-clipboard-check"></i> Liquidar</button>` : ''}
+                  <button class="btn btn-sm btn-success" title="Reimprimir remisión — disponible aunque ya esté liquidada/entregada" onclick="WMS_MODULES.despacho.reimprimirCargue(${d.id})"><i class="fa-solid fa-print"></i></button>
                 </div></td>
               </tr>`).join('') || '<tr><td colspan="8" class="table-empty">Sin planillas de cargue en el rango/filtro seleccionado</td></tr>'}
               </tbody>
@@ -2365,21 +2447,89 @@ WMS_MODULES.despacho = {
         <b style="display:block;margin-bottom:8px;">Pedidos asociados (${ordenes.length})</b>
         <div class="table-container">
           <table class="erp-table">
-            <thead><tr><th>Planilla</th><th>Cliente / Sucursal</th><th>Estado despacho</th>${esEditable ? '<th></th>' : ''}</tr></thead>
+            <thead><tr><th>Planilla</th><th>Cliente / Sucursal</th><th>Estado despacho</th><th></th></tr></thead>
             <tbody>${ordenes.map(o => `<tr>
               <td><span class="badge badge-info">${WMS.esc(o.planilla_numero||'#'+o.id)}</span></td>
               <td>${WMS.esc(o.cliente||o.sucursal_entrega||'-')}</td>
               <td>${stOrd(o.estado_despacho)}</td>
-              ${esEditable ? `<td><button class="btn btn-sm btn-danger" title="Quitar pedido" onclick="WMS_MODULES.despacho.quitarPedidoCargue(${id},${o.id})"><i class="fa-solid fa-xmark"></i></button></td>` : ''}
-            </tr>`).join('') || `<tr><td colspan="${esEditable?4:3}" class="table-empty">Sin pedidos asociados</td></tr>`}
+              <td style="white-space:nowrap;">
+                <button class="btn btn-sm btn-success" title="Reimprimir solo la remisión de este pedido" onclick="WMS_MODULES.despacho.reimprimirPedidoCargue(${o.id}, ${o.packing_sesion_id || 'null'}, '${WMS.esc(o.planilla_numero || o.numero_orden || ('#'+o.id))}')"><i class="fa-solid fa-print"></i></button>
+                ${esEditable ? `<button class="btn btn-sm btn-danger" title="Quitar pedido" onclick="WMS_MODULES.despacho.quitarPedidoCargue(${id},${o.id})"><i class="fa-solid fa-xmark"></i></button>` : ''}
+              </td>
+            </tr>`).join('') || `<tr><td colspan="4" class="table-empty">Sin pedidos asociados</td></tr>`}
             </tbody>
           </table>
         </div>`,
         `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cerrar</button>
+         <button class="btn btn-success" title="Reimprimir remisión — disponible aunque ya esté liquidada/entregada" onclick="WMS_MODULES.despacho.reimprimirCargue(${id})"><i class="fa-solid fa-print"></i> Reimprimir Remisión</button>
          ${esEditable ? `<button class="btn btn-info" onclick="WMS.closeRightPanel();WMS_MODULES.despacho.agregarPedidosCargue(${id})"><i class="fa-solid fa-box-open"></i> Agregar Pedidos</button>` : ''}
          ${d.estado==='Despachado' ? `<button class="btn btn-warning" onclick="WMS.closeRightPanel();WMS_MODULES.despacho.liquidarCargue(${id})"><i class="fa-solid fa-clipboard-check"></i> Liquidar</button>` : ''}
          ${d.estado==='Preparando'||d.estado==='Certificado' ? `<button class="btn btn-success" onclick="WMS.closeRightPanel();WMS_MODULES.despacho.despacharCargue(${id})"><i class="fa-solid fa-truck"></i> Despachar</button>` : ''}`);
     } catch(e) { WMS.toast('error', 'Error cargando detalle'); }
+  },
+
+  // Reimprimir la remisión de una planilla de cargue — a pedido explícito
+  // (2026-08-18): debe funcionar SIN IMPORTAR el estado del despacho, incluidas
+  // planillas ya Despachadas/Entregadas (liquidadas), y debe salir CONSOLIDADA
+  // (un solo documento, un solo clic) igual que "Imprimir Consolidado" en la
+  // pantalla de Certificación. Es de solo lectura: no cambia estado_despacho,
+  // certificación ni nada — solo vuelve a generar el documento.
+  //
+  // BUG CORREGIDO 2026-08-18: al principio esto llamaba siempre a
+  // certificacion/remision-multiple con TODOS los orden_ids del cargue — pero
+  // ese endpoint excluye a propósito las órdenes certificadas vía sesión de
+  // packing (para no duplicar su remisión), así que un cargue con pedidos de
+  // ese origen daba HTTP 400 "No se encontraron órdenes certificadas". Ahora
+  // se separa cada pedido por su origen real (packing_sesion_id, que
+  // DespachoController::ver() ya calcula) y se combinan ambos documentos en
+  // una sola remisión, igual que imprimirRemisionesDirectasSeleccionadas().
+  async reimprimirCargue(despachoId) {
+    WMS.spinner();
+    try {
+      const r = await API.get('/despachos/' + despachoId);
+      const d = r.data || r;
+      const ordenes = d.ordenes || [];
+      if (!ordenes.length) {
+        WMS.toast('warning', 'Esta planilla de cargue no tiene pedidos asociados para reimprimir.');
+        return;
+      }
+
+      const sesionIds = [...new Set(ordenes.filter(o => o.packing_sesion_id).map(o => o.packing_sesion_id))];
+      const ordenIdsDirectos = ordenes.filter(o => !o.packing_sesion_id).map(o => o.id);
+
+      const urls = sesionIds.map(id => `${API_BASE}/packing/sesion/${id}/remision`);
+      if (ordenIdsDirectos.length) {
+        const params = new URLSearchParams();
+        ordenIdsDirectos.forEach(id => params.append('orden_ids[]', id));
+        urls.push(`${API_BASE}/picking/certificacion/remision-multiple?${params}`);
+      }
+
+      if (!urls.length) {
+        WMS.toast('warning', 'No se encontró remisión para reimprimir de esta planilla.');
+        return;
+      }
+
+      WMS.toast('info', `Generando remisión consolidada (${urls.length} documento(s))...`);
+      await this._imprimirConsolidadoUnaPestana(urls);
+    } catch(e) {
+      if (e.isSessionExpired) return;
+      WMS.toast('error', 'Error al reimprimir la remisión');
+    } finally {
+      WMS.spinner(false);
+    }
+  },
+
+  // Reimprime la remisión de UN SOLO pedido dentro de un cargue — a pedido
+  // explícito (2026-08-18): no siempre se necesita reimprimir todo el cargue
+  // completo, a veces solo se perdió/dañó la remisión de un cliente puntual.
+  // `sesionId` viene de packing_sesion_id (ver DespachoController::ver()) —
+  // null si el pedido se certificó directo (sin sesión de packing).
+  async reimprimirPedidoCargue(ordenId, sesionId, label) {
+    if (sesionId) {
+      this.imprimirRemision(sesionId, label);
+    } else {
+      this.imprimirRemisionPorOrdenes([ordenId], label);
+    }
   },
 
   async agregarPedidosCargue(despachoId) {

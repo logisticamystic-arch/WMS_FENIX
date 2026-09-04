@@ -63,6 +63,8 @@ class MiscelaneoController extends BaseController
             ->max('id');
         $numero = 'MSC-' . str_pad(($lastNum ?? 0) + 1, 6, '0', STR_PAD_LEFT);
 
+        $consecutivo = 'MISC-ING-' . date('Ymd-Hi') . '-' . rand(100, 999);
+
         $item = Miscelaneo::create([
             'empresa_id'       => $empresaId,
             'sucursal_id'      => $sucursalId,
@@ -76,9 +78,20 @@ class MiscelaneoController extends BaseController
             'cliente_id'       => (int)$data['cliente_id'],
             'cliente_nombre'   => $data['cliente_nombre'] ?? null,
             'estado'           => Miscelaneo::ESTADO_RECIBIDO,
+            'consecutivo_ingreso' => $consecutivo,
+            'misc_odc_id'      => isset($data['misc_odc_id']) ? (int)$data['misc_odc_id'] : null
         ]);
 
-        return $this->created($response, $item, 'Misceláneo recibido correctamente');
+        \Illuminate\Database\Capsule\Manager::table('misc_tracking')->insert([
+            'miscelaneo_id' => $item->id,
+            'estado_anterior' => null,
+            'estado_nuevo' => Miscelaneo::ESTADO_RECIBIDO,
+            'observacion' => 'Ingreso inicial ' . ($data['observaciones'] ?? ''),
+            'usuario_id' => $user->id,
+            'created_at' => date('Y-m-d H:i:s')
+        ]);
+
+        return $this->created($response, $item, 'Misceláneo recibido correctamente (' . $consecutivo . ')');
     }
 
     public function update(Request $request, Response $response, array $args): Response
@@ -94,12 +107,12 @@ class MiscelaneoController extends BaseController
             return $this->error($response, 'No se puede editar un misceláneo ya despachado');
         }
 
-        $fillable = ['proveedor', 'articulo', 'cantidad', 'unidad_medida', 'observaciones', 'cliente_id', 'cliente_nombre'];
+        $fillable = ['proveedor', 'articulo', 'cantidad', 'unidad_medida', 'observaciones', 'cliente_id', 'cliente_nombre', 'estado'];
         foreach ($fillable as $field) {
             if (isset($data[$field])) $item->$field = $data[$field];
         }
 
-        if (isset($data['cliente_id']) && $data['cliente_id']) {
+        if (isset($data['cliente_id']) && $data['cliente_id'] && !isset($data['estado'])) {
             $item->estado = Miscelaneo::ESTADO_ASIGNADO;
         }
 

@@ -89,13 +89,15 @@ class Producto extends BaseModel
 
     public function calcularUdm(float $unidades): float
     {
-        return $unidades * (float)($this->factor_udm ?? 1);
+        $factor = (float)($this->factor_udm ?? 0);
+        if ($factor <= 0) return $unidades;
+        return $unidades / $factor;
     }
 
     public function calcularUnidades(float $udm): float
     {
         $factor = (float)($this->factor_udm ?? 0);
         if ($factor <= 0) return $udm;
-        return $udm / $factor;
+        return $udm * $factor;
     }
 }

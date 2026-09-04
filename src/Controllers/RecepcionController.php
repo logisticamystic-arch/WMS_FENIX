@@ -765,20 +765,18 @@ class RecepcionController extends BaseController
 
         $cajasUnd = max(1, (int)($producto->factor_udm > 0 ? $producto->factor_udm : ($producto->unidades_caja ?? 1)));
 
-        // Priorizar ingreso por U/E: si viene cantidad_ue y el producto tiene factor_udm, convertir a unidades
+        // Priorizar ingreso por U/E o modo cajas según la regla sagrada de formulación
         if (!empty($data['cantidad_ue']) && $producto->tieneUdm()) {
-            $cantidad = $producto->calcularUnidades((float)$data['cantidad_ue']);
+            $cantidad = (float)$data['cantidad_ue'] * (float)$producto->factor_udm;
         } elseif (isset($data['cantidad_cajas']) && (int)$data['cantidad_cajas'] > 0 && $cajasUnd > 1) {
-            // Modo cajas: si se envió cantidad de cajas físicas y el producto tiene factor > 1
             $saldosInp = isset($data['saldos']) ? (float)$data['saldos'] : 0.0;
             $cantidadCalculada = ((int)$data['cantidad_cajas'] * $cajasUnd) + $saldosInp;
-            // Si la cantidad calculada en cajas es mayor a la enviada pura, usar la calculada
             $cantidad = max((float)$data['cantidad'], $cantidadCalculada);
         } else {
             $cantidad = (float)$data['cantidad'];
         }
 
-        $cantidadCajas = isset($data['cantidad_cajas']) ? (int)$data['cantidad_cajas'] : ceil((float)$cantidad / $cajasUnd);
+        $cantidadCajas = (int)floor((float)$cantidad / $cajasUnd);
 
         if ($cantidad <= 0) {
             return $this->json($response, ['error' => true, 'message' => 'La cantidad debe ser mayor a cero'], 400);
@@ -1261,6 +1259,8 @@ class RecepcionController extends BaseController
                 $user->id
             );
 
+            $productosMovidos = [];
+
             foreach ($recepcion->detalles as $linea) {
                 // ── EVITAR DUPLICIDAD ─────────────────────────────────────────
                 // Si la línea ya fue aprobada (procesada en tiempo real), 
@@ -1334,12 +1334,19 @@ class RecepcionController extends BaseController
                     $linea->aprobado_admin = 1;
                     $linea->save();
                 }
+
+                $productosMovidos[$linea->producto_id] = true;
             }
 
             \Illuminate\Database\Capsule\Manager::connection()->commit();
         } catch (\Exception $e) {
             \Illuminate\Database\Capsule\Manager::connection()->rollBack();
             return $this->json($response, ['error' => true, 'message' => 'Error al confirmar: ' . $e->getMessage()], 500);
+        }
+
+        // Regla de Oro #3 (modo alerta, no bloquea) — mismo patrón que en PickingController.
+        foreach (array_keys($productosMovidos) as $productoId) {
+            $guard->assertLedgerMatchesStock((int)$productoId);
         }
 
         return $this->json($response, ['error' => false, 'message' => 'Recepción confirmada. Stock disponible en Patio para ubicación por montacarguista.', 'data' => $recepcion]);

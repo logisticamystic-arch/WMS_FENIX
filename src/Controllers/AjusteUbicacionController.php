@@ -140,6 +140,11 @@ class AjusteUbicacionController extends BaseController
     public function aprobar(Request $r, Response $res, array $a): Response
     {
         $user = $r->getAttribute('user');
+        // BUG DE SEGURIDAD CORREGIDO 2026-08-20: este endpoint no tenía NINGUNA
+        // validación de rol — cualquier usuario autenticado (incluido un Auxiliar)
+        // podía aprobar un ajuste y modificar el inventario real directamente. A
+        // pedido explícito: solo el Administrador puede aprobar.
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
         [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $r);
         $data = (array)($r->getParsedBody() ?? []);
 
@@ -430,6 +435,9 @@ class AjusteUbicacionController extends BaseController
     public function rechazar(Request $r, Response $res, array $a): Response
     {
         $user = $r->getAttribute('user');
+        // Mismo blindaje que aprobar() — decidir el destino de un ajuste pendiente
+        // (aceptarlo o descartarlo) es una decisión exclusiva del Administrador.
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
         [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $r);
         $data = (array)($r->getParsedBody() ?? []);
 

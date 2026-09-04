@@ -383,10 +383,9 @@ class PickingController extends BaseController
                         ->whereNotIn('producto_id', $prodsBloqueados)
                         ->where('estado', 'Disponible')
                         ->whereRaw('(cantidad - cantidad_reservada) > 0')
-                        ->lockForUpdate()
-                        // FEFO: NULLs al final mediante CASE WHEN (ver _generarRutaFEFO)
-                        ->orderByRaw('CASE WHEN fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
-                        ->orderBy('fecha_vencimiento', 'ASC')
+                        ->lockForUpdate();
+                    // Rotación FIFO (default) o LIFO por pedido — ver FefoEngine::ordenVencimiento().
+                    $stockDisponible = FefoEngine::ordenVencimiento($stockDisponible, 'fecha_vencimiento', $orden->modo_rotacion ?? 'FIFO')
                         ->get()
                         ->filter(function ($inv) use ($lotesBloqueados) {
                             foreach ($lotesBloqueados as $bl) {
@@ -664,13 +663,9 @@ class PickingController extends BaseController
                 ->where('estado', 'Disponible')
                 ->where('cantidad', '>', 0)
                 ->with('ubicacion:id,tipo_ubicacion,codigo,zona')
-                // FEFO: lotes con fecha_vencimiento primero (IS NULL → 1 va al final),
-                // luego ascendente por fecha (el que vence antes, primero).
-                // NOTA: "IS NULL ASC" pondría los NULLs PRIMERO (IS NULL = 1 > 0),
-                // por eso se usa CASE WHEN explícito para garantizar NULLs al final.
-                ->orderByRaw('CASE WHEN fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
-                ->orderBy('fecha_vencimiento', 'ASC')
-                ->lockForUpdate()
+                ->lockForUpdate();
+            // Rotación FIFO (default) o LIFO por pedido — ver FefoEngine::ordenVencimiento().
+            $todosLosStock = FefoEngine::ordenVencimiento($todosLosStock, 'fecha_vencimiento', $orden->modo_rotacion ?? 'FIFO')
                 ->get()
                 ->filter(function ($inv) use ($lotesBloqueados) {
                     foreach ($lotesBloqueados as $bl) {
@@ -866,6 +861,22 @@ class PickingController extends BaseController
         // Fix 1: agrupar por (producto_id, sucursal_entrega) para deduplicar
         $likeOp = (Capsule::connection()->getDriverName() === 'pgsql') ? 'ilike' : 'like';
 
+        // Blindaje 2026-08-17 (a pedido explícito): los faltantes con causal
+        // 'Separado sin Ubicación/Inventario' representan líneas YA separadas al
+        // 100% físicamente — solo falta el ajuste de inventario — así que deben
+        // marcarse elegibles para backorder aunque el pedido ya esté Certificado
+        // o Despachado (a diferencia del resto de faltantes, que si implican
+        // volver a separar y por eso no aplican sobre pedidos ya cerrados). Sin
+        // este ajuste, la pantalla los ocultaría/mostraría como "no elegibles" y
+        // el botón de Procesar Backorder nunca los tomaría, aunque el backend ya
+        // sepa procesarlos (ver procesarBackorder()).
+        $causalSinInventarioIdList = (int)(Capsule::table('causales_novedad')
+            ->where('empresa_id', $empresaId)
+            ->where('nombre', 'SEPARADO SIN UBICACION/INVENTARIO')
+            ->value('id') ?? 0);
+        $elegibleCond = "(o.estado_certificacion IS DISTINCT FROM 'Certificada' AND o.estado_despacho IS NULL)"
+            . ($causalSinInventarioIdList ? " OR f.causal_id = {$causalSinInventarioIdList}" : "");
+
         $query = Capsule::table('picking_faltantes as f')
             ->join('productos as p',         'f.producto_id',       '=', 'p.id')
             ->leftJoin('orden_pickings as o', 'f.orden_picking_id',  '=', 'o.id')
@@ -894,7 +905,7 @@ class PickingController extends BaseController
             // despachar) — dinámico por estado, no por fecha. Se aplica como HAVING
             // porque la elegibilidad se calcula sobre el agregado del grupo.
             ->when(!empty($params['solo_elegibles_backorder']), fn($q) => $q->havingRaw(
-                "BOOL_OR(o.estado_certificacion IS DISTINCT FROM 'Certificada' AND o.estado_despacho IS NULL)"
+                "BOOL_OR({$elegibleCond})"
             ))
             ->select(
                 'f.producto_id',
@@ -920,9 +931,9 @@ class PickingController extends BaseController
                 // cuánto de lo faltante corresponde a pedidos AÚN elegibles vs. ya
                 // cerrados (certificados/despachados), para que la pantalla muestre
                 // primero lo que realmente puede backordearse.
-                Capsule::raw("SUM(CASE WHEN o.estado_certificacion IS DISTINCT FROM 'Certificada' AND o.estado_despacho IS NULL THEN f.cantidad_faltante ELSE 0 END) as cantidad_faltante_elegible_backorder"),
-                Capsule::raw("SUM(CASE WHEN o.estado_certificacion IS DISTINCT FROM 'Certificada' AND o.estado_despacho IS NULL THEN f.cantidad_faltante ELSE 0 END) * COALESCE(p.unidades_caja, 1) as cantidad_faltante_elegible_backorder_und"),
-                Capsule::raw("BOOL_OR(o.estado_certificacion IS DISTINCT FROM 'Certificada' AND o.estado_despacho IS NULL) as tiene_pedidos_elegibles_backorder"),
+                Capsule::raw("SUM(CASE WHEN {$elegibleCond} THEN f.cantidad_faltante ELSE 0 END) as cantidad_faltante_elegible_backorder"),
+                Capsule::raw("SUM(CASE WHEN {$elegibleCond} THEN f.cantidad_faltante ELSE 0 END) * COALESCE(p.unidades_caja, 1) as cantidad_faltante_elegible_backorder_und"),
+                Capsule::raw("BOOL_OR({$elegibleCond}) as tiene_pedidos_elegibles_backorder"),
                 Capsule::raw("STRING_AGG(DISTINCT f.planilla_lote::text, ', ' ORDER BY f.planilla_lote::text) as numero_planilla"),
                 Capsule::raw("STRING_AGG(DISTINCT cn.nombre, ', ') as causal_nombre"),
                 Capsule::raw("STRING_AGG(DISTINCT f.causa, ' | ') as causa"),
@@ -1040,6 +1051,17 @@ class PickingController extends BaseController
         $empresaId  = $this->getEffectiveEmpresaId($user, $r);
         $sucursalId = $user->sucursal_id;
 
+        // Blindaje 2026-08-17 (a pedido explícito): id del causal "Separado sin
+        // Ubicación/Inventario" — estos registros representan líneas YA separadas
+        // físicamente al 100% (solo falta el ajuste de inventario), así que deben
+        // ser elegibles para backorder aunque el pedido ya esté Certificado o
+        // Despachado, a diferencia del resto de faltantes (que sí implican volver
+        // a separar físicamente y por eso no se tocan si ya se certificó/despachó).
+        $causalSinInventarioId = Capsule::table('causales_novedad')
+            ->where('empresa_id', $empresaId)
+            ->where('nombre', 'SEPARADO SIN UBICACION/INVENTARIO')
+            ->value('id');
+
         // Elegibilidad DINÁMICA por estado del pedido, no por fecha fija — a pedido
         // explícito (urgente): un pedido que arrancó hoy pero solo se certifica
         // mañana (o al día siguiente) sigue "activo, sin certificar" y debe seguir
@@ -1049,13 +1071,21 @@ class PickingController extends BaseController
         // condición real de elegibilidad es el ESTADO del pedido: activo (no
         // certificado) y no despachado — igual que valida el guard por-registro
         // más abajo, pero aplicado aquí también para que el listado inicial ya
-        // refleje la elegibilidad real.
+        // refleje la elegibilidad real. Excepción: causal 'Separado sin Ubicación/
+        // Inventario' (ver comentario arriba) siempre es elegible.
         $faltantesQuery = Capsule::table('picking_faltantes as pf')
             ->join('orden_pickings as op', 'pf.orden_picking_id', '=', 'op.id')
             ->where('pf.empresa_id', $empresaId)
             ->where('pf.sucursal_id', $sucursalId)
-            ->where('op.estado_certificacion', '!=', 'Certificada')
-            ->whereNull('op.estado_despacho')
+            ->where(function ($q) use ($causalSinInventarioId) {
+                $q->where(function ($q2) {
+                    $q2->where('op.estado_certificacion', '!=', 'Certificada')
+                       ->whereNull('op.estado_despacho');
+                });
+                if ($causalSinInventarioId) {
+                    $q->orWhere('pf.causal_id', $causalSinInventarioId);
+                }
+            })
             ->select('pf.*');
 
         if (!empty($productoIds)) {
@@ -1072,12 +1102,103 @@ class PickingController extends BaseController
 
         foreach ($faltantes as $falt) {
             try {
-                Capsule::transaction(function () use ($falt, $user, $now, $hoy, &$resultados, $r) {
+                Capsule::transaction(function () use ($falt, $user, $now, $hoy, &$resultados, $r, $causalSinInventarioId) {
                     // Obtener producto y convertir cajas → unidades para comparar inventario
                     $producto = \App\Models\Producto::find($falt->producto_id);
                     $nombreProducto = $producto->nombre ?? $producto->descripcion ?? "ID:{$falt->producto_id}";
                     $upc = max(1, (int)($producto->unidades_caja ?? 1));
                     $cantidadNecesaria = (float)$falt->cantidad_faltante * $upc; // UNIDADES
+
+                    // ── Rama especial (2026-08-17, a pedido explícito): causal 'Separado
+                    // sin Ubicación/Inventario'. La línea de picking YA fue separada
+                    // físicamente al 100% (picking_detalles.estado sigue 'Completado') —
+                    // a diferencia del resto de faltantes, aquí NO hay nada que reabrir
+                    // ni nadie que vuelva a separar. Solo se descuenta ahora el
+                    // inventario real disponible para respaldar lo que ya se separó, y
+                    // se cierra el registro. No pasa por las guardas de certificación/
+                    // despacho de abajo (que existen para impedir REABRIR picking en
+                    // pedidos ya cerrados) porque esta rama nunca reabre nada.
+                    if ($causalSinInventarioId && (int)($falt->causal_id ?? 0) === (int)$causalSinInventarioId) {
+                        $empresaIdSi  = $this->getEffectiveEmpresaId($user, $r);
+                        $sucursalIdSi = $user->sucursal_id;
+                        $upcConfSi = (isset($producto->factor_udm) && (float)$producto->factor_udm > 0)
+                            ? (float)$producto->factor_udm
+                            : max(1, (float)($producto->unidades_caja ?? 1));
+                        $unidadesNecesariasSi = (float)$falt->cantidad_faltante * $upcConfSi;
+
+                        $modoRotacionSi = OrdenPicking::find($falt->orden_picking_id)?->modo_rotacion ?? 'FIFO';
+                        $stockDispSiQ = Inventario::where('empresa_id', $empresaIdSi)
+                            ->where('sucursal_id', $sucursalIdSi)
+                            ->where('producto_id', $falt->producto_id)
+                            ->where('estado', 'Disponible')
+                            ->where('cantidad', '>', 0)
+                            ->lockForUpdate();
+                        $stockDispSi = FefoEngine::ordenVencimiento($stockDispSiQ, 'fecha_vencimiento', $modoRotacionSi)
+                            ->orderBy('id', 'ASC')
+                            ->get();
+
+                        $totalDispSi = $stockDispSi->sum('cantidad');
+                        if ($totalDispSi < $unidadesNecesariasSi) {
+                            $resultados['sin_stock']++;
+                            $resultados['detalle'][] = [
+                                'faltante_id' => $falt->id,
+                                'producto'    => $nombreProducto,
+                                'necesario'   => $falt->cantidad_faltante,
+                                'disponible'  => $upcConfSi > 0 ? floor($totalDispSi / $upcConfSi) : 0,
+                                'estado'      => 'sin_stock',
+                            ];
+                            return;
+                        }
+
+                        $restanteSi = $unidadesNecesariasSi;
+                        foreach ($stockDispSi as $invSi) {
+                            if ($restanteSi <= 0) break;
+                            $descuentoSi = min($restanteSi, (float)$invSi->cantidad);
+                            if ($descuentoSi <= 0) continue;
+
+                            $invSi->cantidad -= $descuentoSi;
+                            if ($invSi->cantidad <= 0) {
+                                $invSi->delete();
+                            } else {
+                                $invSi->cantidad_cajas = (int)floor((float)$invSi->cantidad / $upcConfSi);
+                                $invSi->saldos         = round(fmod((float)$invSi->cantidad, $upcConfSi), 2);
+                                $invSi->save();
+                            }
+
+                            MovimientoInventario::create([
+                                'empresa_id'          => $empresaIdSi,
+                                'sucursal_id'         => $sucursalIdSi,
+                                'producto_id'         => $falt->producto_id,
+                                'tipo_movimiento'     => 'Picking',
+                                'cantidad'            => $descuentoSi,
+                                'cantidad_cajas'      => (int)floor($descuentoSi / $upcConfSi),
+                                'saldos'              => round(fmod($descuentoSi, $upcConfSi), 2),
+                                'ubicacion_origen_id' => $invSi->ubicacion_id,
+                                'lote'                => $invSi->lote,
+                                'fecha_vencimiento'   => $invSi->fecha_vencimiento,
+                                'auxiliar_id'         => $user->id,
+                                'referencia_tipo'     => 'OrdenPicking',
+                                'referencia_id'       => $falt->orden_picking_id,
+                                'observaciones'       => 'Backorder — ajuste retroactivo de inventario (Separado sin Ubicación/Inventario) ubi:' . ($invSi->ubicacion_id ?? 'N/A'),
+                                'fecha_movimiento'    => date('Y-m-d'),
+                                'hora_inicio'         => date('H:i:s'),
+                            ]);
+
+                            $restanteSi -= $descuentoSi;
+                        }
+
+                        Capsule::table('picking_faltantes')->where('id', $falt->id)->delete();
+                        $resultados['eliminados']++;
+                        $resultados['procesados']++;
+                        $resultados['detalle'][] = [
+                            'faltante_id' => $falt->id,
+                            'producto'    => $nombreProducto,
+                            'necesario'   => $unidadesNecesariasSi,
+                            'disponible'  => (int)$totalDispSi,
+                            'estado'      => 'backorder_ok_sin_reabrir',
+                        ];
+                        return;
+                    }
 
                     // ── 0. No tocar órdenes ya certificadas en un día distinto a hoy, o
                     // que YA fueron despachadas/entregadas (estado_despacho) sin importar
@@ -1123,14 +1244,13 @@ class PickingController extends BaseController
                     }
 
                     // ── 1. Verificar stock actual disponible (con lock pesimista) ──
-                    $stockDisponible = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                    $stockDisponibleQ = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                         ->where('sucursal_id', $user->sucursal_id)
                         ->where('producto_id', $falt->producto_id)
                         ->where('estado', 'Disponible')
                         ->whereRaw('(cantidad - cantidad_reservada) > 0')
-                        ->lockForUpdate()
-                        ->orderByRaw('fecha_vencimiento IS NULL ASC')
-                        ->orderBy('fecha_vencimiento', 'ASC')
+                        ->lockForUpdate();
+                    $stockDisponible = FefoEngine::ordenVencimiento($stockDisponibleQ, 'fecha_vencimiento', $ordenPrevia->modo_rotacion ?? 'FIFO')
                         ->get();
 
                     $totalDisponible = $stockDisponible->sum(fn($inv) => max(0, $inv->cantidad - $inv->cantidad_reservada));
@@ -1372,6 +1492,13 @@ class PickingController extends BaseController
                     );
                 }
 
+                // Rotación FIFO (default) o LIFO — mismo criterio que la importación
+                // masiva (ver PickingController::importarPedidos()).
+                $modoRotacionBatch = strtoupper(trim($data['modo_rotacion'] ?? 'FIFO'));
+                if (!in_array($modoRotacionBatch, ['FIFO', 'LIFO'], true)) {
+                    $modoRotacionBatch = 'FIFO';
+                }
+
                 $orden = OrdenPicking::create([
                     'empresa_id'      => $this->getEffectiveEmpresaId($user, $r),
                     'sucursal_id'     => $user->sucursal_id,
@@ -1383,11 +1510,19 @@ class PickingController extends BaseController
                     'estado'          => 'Pendiente',
                     'prioridad'       => $data['prioridad'] ?? 5,
                     'auxiliar_id'     => $data['auxiliar_id'] ?? null,
+                    'modo_rotacion'   => $modoRotacionBatch,
                     'fecha_movimiento'=> date('Y-m-d'),
                     'hora_inicio'     => date('H:i:s'),
                     'fecha_requerida' => date('Y-m-d'),
                     'observaciones'   => !empty($data['observaciones']) ? trim($data['observaciones']) : null,
                 ]);
+
+                // A pedido explícito (2026-08-20): al crear un pedido manual nace
+                // desbloqueado (no exige escaneo de ubicación ni fecha de vencimiento)
+                // — el Administrador lo activa después por planilla, no por pedido.
+                $orden->requiere_escaneo_ubicacion = false;
+                $orden->requiere_fecha_vencimiento = false;
+                $orden->save();
 
                 foreach ($data['detalles'] as $det) {
                     $cantidadDet = (float)($det['cantidad'] ?? 0);
@@ -1491,6 +1626,16 @@ class PickingController extends BaseController
         if (!in_array($orden->estado, ['EnProceso', 'Pendiente'])) {
             return $this->error($res, 'La orden no está en el estado correcto para picking');
         }
+        // Blindaje 2026-08-15: la orden puede seguir 'EnProceso' (picking activo) pero
+        // ya haber sido certificada por una auto-certificación masiva mientras el
+        // auxiliar seguía separando — sin este chequeo, esta línea quedaría separada
+        // pero invisible en la remisión para siempre (caso real: Planilla 711 / Olivia
+        // Fabricato, 2026-08-14).
+        if ($orden->estado_certificacion === 'Certificada') {
+            return $this->error($res,
+                'Esta orden ya fue certificada — no se puede separar más mercancía sin que un supervisor la recertifique primero. Avise a su supervisor.',
+                409);
+        }
 
         // Si estaba en Pendiente, mover a EnProceso
         if ($orden->estado === 'Pendiente') {
@@ -1529,6 +1674,17 @@ class PickingController extends BaseController
             }
         }
 
+        // Blindaje 2026-08-15, RETIRADO 2026-08-18 (a pedido explícito): ya no se le
+        // exige al auxiliar digitar la fecha de vencimiento manualmente. Ahora la
+        // trazabilidad de lote/fecha queda garantizada por el escaneo obligatorio de
+        // ubicación (ver requiere_escaneo_ubicacion) + el descuento FEFO estricto: el
+        // sistema solo permite tomar del inventario/ubicación que ya trae su propia
+        // fecha_vencimiento/lote desde recepción, así que no hace falta preguntarle
+        // al humano. $fechaVencManualLinea se conserva (opcional, ya no bloquea) por
+        // si algún flujo distinto todavía envía una corrección manual de fecha.
+        $fechaVencManualLinea = isset($data['fecha_vencimiento_manual']) && $data['fecha_vencimiento_manual'] !== ''
+            ? $data['fecha_vencimiento_manual'] : null;
+
         // Validar que la línea tenga ubicación asignada (FEFO debe haberse generado antes)
         if (empty($linea->ubicacion_id)) {
             return $this->error($res,
@@ -1564,7 +1720,7 @@ class PickingController extends BaseController
         }
 
         try {
-            Capsule::transaction(function () use ($linea, $orden, $user, $cantidadTomada, $r) {
+            Capsule::transaction(function () use ($linea, $orden, $user, $cantidadTomada, $r, $fechaVencManualLinea) {
                 // ── Fase 1: Liberar reserva (cantidad_reservada) ─────────────
                 // La reserva se creó en asignarMultiple; ahora la liberamos
                 // porque vamos a descontar el stock real.
@@ -1590,8 +1746,12 @@ class PickingController extends BaseController
                 // ── Fase 2: Descontar inventario real (FEFO con fallback multi-ubicación) ──
                 $empresaId  = $this->getEffectiveEmpresaId($user, $r);
                 $sucursalId = $user->sucursal_id;
-                $upcProd    = \App\Models\Producto::where('id', $linea->producto_id)->value('unidades_caja');
-                $upc        = (float)($upcProd ?: 1);
+                // BUG CORREGIDO 2026-08-18: usaba solo unidades_caja, ignorando factor_udm —
+                // mismo criterio que ya se corrigió en confirmarConsolidado() (ver upcGlobal).
+                $prodLineaConf = \App\Models\Producto::find($linea->producto_id);
+                $upc = (isset($prodLineaConf->factor_udm) && (float)$prodLineaConf->factor_udm > 0)
+                    ? (float)$prodLineaConf->factor_udm
+                    : max(1, (float)($prodLineaConf->unidades_caja ?? 1));
 
                 // Búsqueda primaria: ubicación/lote exactos asignados por FEFO
                 $invRegistros = Inventario::where('empresa_id',  $empresaId)
@@ -1617,9 +1777,8 @@ class PickingController extends BaseController
                         ->when((int)$linea->ubicacion_id, fn($q) => $q->orderByRaw(
                             'CASE WHEN ubicacion_id = ? THEN 0 ELSE 1 END',
                             [(int)$linea->ubicacion_id]
-                        ))
-                        ->orderByRaw('fecha_vencimiento IS NULL ASC')
-                        ->orderBy('fecha_vencimiento', 'ASC')
+                        ));
+                    $invRegistros = FefoEngine::ordenVencimiento($invRegistros, 'fecha_vencimiento', $orden->modo_rotacion ?? 'FIFO')
                         ->orderBy('id', 'ASC')
                         ->lockForUpdate()
                         ->get();
@@ -1643,6 +1802,12 @@ class PickingController extends BaseController
 
                     $descuento = min((float)$inv->cantidad, $porDescontar);
                     if ($descuento <= 0) continue;
+
+                    // Corrige la fecha de vencimiento en el ORIGEN cuando faltaba y el
+                    // auxiliar la suministró — mismo criterio que confirmarConsolidado().
+                    if (!$inv->fecha_vencimiento && $fechaVencManualLinea) {
+                        $inv->fecha_vencimiento = $fechaVencManualLinea;
+                    }
 
                     if ($primeraUbicacion === null) {
                         $primeraUbicacion   = $inv->ubicacion_id;
@@ -1703,8 +1868,17 @@ class PickingController extends BaseController
                     $linea->lote = $primerLote;
                 }
 
+                // BUG CORREGIDO 2026-08-18 (a pedido explícito): comparaba $cantidadTomada
+                // (SIEMPRE en UNIDADES — el móvil ya envía cajas×upc+saldos, ver doPKScan())
+                // directamente contra cantidad_solicitada (SIEMPRE en CAJAS), sin convertir.
+                // Para cualquier producto con upc > 1 esto marcaba 'Faltante' aunque el
+                // auxiliar hubiera separado exactamente lo pedido — caso real reportado:
+                // "pedía 5, el auxiliar separó 5, el sistema marcó 4 separadas y 1 faltante".
+                // Se agrega además tolerancia de punto flotante (mismo criterio que
+                // confirmarConsolidado()) para que cajas fraccionarias no generen un
+                // "faltante" de ruido de redondeo.
                 $linea->cantidad_pickeada = $cantidadTomada;
-                $linea->estado = $cantidadTomada >= $linea->cantidad_solicitada
+                $linea->estado = ($cantidadTomada >= (float)$linea->cantidad_solicitada * $upc - 0.0001)
                     ? 'Completado' : 'Faltante';
                 $linea->save();
 
@@ -1972,9 +2146,8 @@ class PickingController extends BaseController
             ->orderByRaw('COALESCE(LENGTH(ubicaciones.pasillo), 0) ASC, ubicaciones.pasillo ASC')
             ->orderByRaw('COALESCE(LENGTH(ubicaciones.modulo), 0) ASC, ubicaciones.modulo ASC')
             ->orderByRaw('COALESCE(LENGTH(ubicaciones.nivel), 0) ASC, ubicaciones.nivel ASC')
-            ->orderByRaw('COALESCE(LENGTH(ubicaciones.posicion), 0) ASC, ubicaciones.posicion ASC')
-            ->orderByRaw('CASE WHEN picking_detalles.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
-            ->orderBy('picking_detalles.fecha_vencimiento', 'ASC')
+            ->orderByRaw('COALESCE(LENGTH(ubicaciones.posicion), 0) ASC, ubicaciones.posicion ASC');
+        $lineaQuery = FefoEngine::ordenVencimiento($lineaQuery, 'picking_detalles.fecha_vencimiento', $orden->modo_rotacion ?? 'FIFO')
             ->orderBy('ubicaciones.codigo', 'ASC');
         
         // Si el usuario no es admin/supervisor, forzar su propio auxiliar_id
@@ -2409,9 +2582,8 @@ class PickingController extends BaseController
                 ->whereRaw('(cantidad - cantidad_reservada) > 0')
                 ->when($loteForzado, fn($q) => $q->where('lote', $loteForzado))
                 ->when(!$loteForzado && !empty($lotesBloqueados), fn($q) => $q->whereNotIn('lote', $lotesBloqueados))
-                ->lockForUpdate()
-                ->orderByRaw('CASE WHEN fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
-                ->orderBy('fecha_vencimiento', 'ASC')
+                ->lockForUpdate();
+            $stockDisponible = FefoEngine::ordenVencimiento($stockDisponible, 'fecha_vencimiento', $orden->modo_rotacion ?? 'FIFO')
                 ->get();
 
             foreach ($stockDisponible as $inv) {
@@ -3190,9 +3362,33 @@ class PickingController extends BaseController
                 ->where('planilla_numero', 'like', 'Planilla %')
                 ->value('planilla_numero');
 
+            // A pedido explícito (2026-08-20): al montar pedidos por primera vez, la
+            // exigencia de ubicación y fecha de vencimiento nace DESBLOQUEADA (false)
+            // — ya no exigir-por-defecto. Es el Administrador quien decide activarla,
+            // y lo hace por PLANILLA COMPLETA (ver setRequiereEscaneoUbicacion() /
+            // setRequiereFechaVencimientoPlanilla()), no pedido por pedido.
+            //
+            // BUG CORREGIDO 2026-08-20: un pedido que se suma a una planilla YA
+            // configurada por el Administrador nacía siempre con el valor por defecto,
+            // deshaciendo en la práctica la configuración de la planilla para ese
+            // pedido puntual — el administrador veía que "seguía pidiendo la
+            // ubicación/fecha" en pedidos que se agregaron después de configurar la
+            // planilla. Ahora el pedido nuevo hereda el ajuste vigente, siempre que
+            // TODOS los pedidos actuales de esa planilla coincidan en el mismo valor
+            // (si están mezclados, nace desbloqueado y queda a criterio del
+            // administrador volver a igualarlos).
+            $heredarReqFv  = false;
+            $heredarReqEsc = false;
             if ($planillaExistente) {
                 // Planilla del cliente ya existía HOY → reutilizar su número compartido
                 $planillaNumeroCompartido = $planillaExistente;
+                $hermanos = OrdenPicking::where('empresa_id', $importEmpresaId)
+                    ->where('planilla_numero', $planillaExistente)
+                    ->get(['requiere_fecha_vencimiento', 'requiere_escaneo_ubicacion']);
+                $valoresFv = $hermanos->pluck('requiere_fecha_vencimiento')->unique();
+                if ($valoresFv->count() === 1 && $valoresFv->first() !== null) $heredarReqFv = (bool)$valoresFv->first();
+                $valoresEsc = $hermanos->pluck('requiere_escaneo_ubicacion')->unique();
+                if ($valoresEsc->count() === 1 && $valoresEsc->first() !== null) $heredarReqEsc = (bool)$valoresEsc->first();
             } else {
                 // Primera importación del cliente hoy → crear planilla nueva
                 $seqGrupo = $getNextSeq();
@@ -3280,7 +3476,8 @@ class PickingController extends BaseController
                         $sucursal, $nfRefClean, $lineasNuevas,
                         $planillaNumeroCompartido, $numeroOrdenActual,
                         $clienteIdParaOrden, $importEmpresaId, $importSucursalId,
-                        &$summary, &$ordenId, $cleanNumber, $ambienteDeUbicacion
+                        &$summary, &$ordenId, $cleanNumber, $ambienteDeUbicacion,
+                        $heredarReqFv, $heredarReqEsc
                     ) {
                         $orden = OrdenPicking::create([
                             'empresa_id'        => $importEmpresaId,
@@ -3306,6 +3503,12 @@ class PickingController extends BaseController
                             // PUT /picking/{id}/observaciones).
                             'observaciones'     => trim($lineasNuevas[0]['fila']['observaciones'] ?? '') ?: null,
                         ]);
+
+                        if ($heredarReqFv !== null || $heredarReqEsc !== null) {
+                            if ($heredarReqFv !== null)  $orden->requiere_fecha_vencimiento  = $heredarReqFv;
+                            if ($heredarReqEsc !== null) $orden->requiere_escaneo_ubicacion = $heredarReqEsc;
+                            $orden->save();
+                        }
 
                         $lineasCreadas = 0;
                         foreach ($lineasNuevas as $item) {
@@ -4091,6 +4294,17 @@ class PickingController extends BaseController
 
         try {
             $esAuxiliar = $user->rol === 'Auxiliar';
+            // Rotación FIFO/LIFO se asigna por pedido al importar, pero es consistente
+            // para toda la planilla — se toma de cualquier pedido que la componga.
+            $modoRotacionPlanilla = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                ->where(function($q) use ($numero) {
+                    $q->where('planilla_numero', $numero)->orWhere('numero_orden', $numero);
+                })
+                ->value('modo_rotacion') ?? 'FIFO';
+            // Nota: requiere_escaneo_ubicacion ya NO se calcula aquí en bloque para toda
+            // la planilla — ver el cálculo por línea consolidada más abajo (evita que un
+            // pedido agregado después a la planilla reviva la exigencia para pedidos que
+            // ya la tenían desactivada).
             // Consolidar por Producto + Ubicación; busca por planilla_numero o numero_orden (fallback)
             $detalles = PickingDetalle::join('orden_pickings', 'picking_detalles.orden_picking_id', '=', 'orden_pickings.id')
                 ->leftJoin('productos', 'picking_detalles.producto_id', '=', 'productos.id')
@@ -4108,6 +4322,8 @@ class PickingController extends BaseController
                     'productos.codigo_interno as producto_codigo',
                     'productos.unidades_caja',
                     'productos.factor_udm',
+                    'productos.controla_vencimiento',
+                    'productos.controla_lote',
                     'ubicaciones.codigo as ubicacion_codigo',
                     'ubicaciones.id as ubicacion_id',
                     'picking_detalles.lote',
@@ -4125,6 +4341,8 @@ class PickingController extends BaseController
                     'productos.codigo_interno',
                     'productos.unidades_caja',
                     'productos.factor_udm',
+                    'productos.controla_vencimiento',
+                    'productos.controla_lote',
                     'ubicaciones.id',
                     'ubicaciones.codigo',
                     'ubicaciones.pasillo',
@@ -4143,9 +4361,8 @@ class PickingController extends BaseController
                 ->orderByRaw('COALESCE(LENGTH(ubicaciones.pasillo), 0) ASC, ubicaciones.pasillo ASC')
                 ->orderByRaw('COALESCE(LENGTH(ubicaciones.modulo), 0) ASC, ubicaciones.modulo ASC')
                 ->orderByRaw('COALESCE(LENGTH(ubicaciones.nivel), 0) ASC, ubicaciones.nivel ASC')
-                ->orderByRaw('COALESCE(LENGTH(ubicaciones.posicion), 0) ASC, ubicaciones.posicion ASC')
-                ->orderByRaw('CASE WHEN picking_detalles.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
-                ->orderBy('picking_detalles.fecha_vencimiento', 'ASC')
+                ->orderByRaw('COALESCE(LENGTH(ubicaciones.posicion), 0) ASC, ubicaciones.posicion ASC');
+            $detalles = FefoEngine::ordenVencimiento($detalles, 'picking_detalles.fecha_vencimiento', $modoRotacionPlanilla)
                 ->orderBy('ubicaciones.codigo', 'ASC')
                 ->orderBy('productos.codigo_interno', 'asc')
                 ->get();
@@ -4154,14 +4371,13 @@ class PickingController extends BaseController
             $sinUbic = $detalles->filter(fn($d) => !$d->ubicacion_id)
                                 ->pluck('producto_id')->unique()->values();
             if ($sinUbic->isNotEmpty()) {
-                $stockMap = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                $stockMapQ = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                     ->where('sucursal_id', $user->sucursal_id)
                     ->whereIn('producto_id', $sinUbic)
                     ->where('estado', 'Disponible')
                     ->where('cantidad', '>', 0)
-                    ->with('ubicacion:id,codigo')
-                    ->orderByRaw('CASE WHEN fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
-                    ->orderBy('fecha_vencimiento', 'ASC')
+                    ->with('ubicacion:id,codigo');
+                $stockMap = FefoEngine::ordenVencimiento($stockMapQ, 'fecha_vencimiento', $modoRotacionPlanilla)
                     ->get()
                     ->groupBy('producto_id')
                     ->map(fn($g) => $g->first()->ubicacion?->codigo);
@@ -4182,10 +4398,12 @@ class PickingController extends BaseController
 
             $detalles->transform(function($it) use ($fotosMap) {
                 $it->fotos = $fotosMap->get($it->producto_id, []);
-                if ($it->ubicacion_codigo && str_contains($it->ubicacion_codigo, '/')) {
-                    $parts = explode('/', $it->ubicacion_codigo);
-                    $it->ubicacion_codigo = end($parts);
-                }
+                // A pedido explícito (2026-08-20): ya NO se recorta el prefijo de zona
+                // (ej. "SECO/01-01-01" → "01-01-01") — el auxiliar escanea/digita el
+                // código COMPLETO tal como aparece en la etiqueta física, así que
+                // _pkValidarLoc() en el móvil debe recibir y validar contra ese mismo
+                // código completo. El móvil ya tiene _shortUbic() para abreviar solo el
+                // nombre de la zona (SECO/REF/CONG/PAT) y evitar que se vea en dos líneas.
                 $factor = (float)($it->factor_udm ?? 0) > 0 ? (float)$it->factor_udm : (int)($it->unidades_caja ?: 0);
                 if ($factor <= 1) {
                     // Sin empaque definido: todo se muestra como unidades sueltas
@@ -4226,7 +4444,7 @@ class PickingController extends BaseController
             if (!empty($prodIds)) {
                 // Una sola query: todo el stock disponible de los productos de la planilla
                 // ordenado por ruta física (pasillo -> modulo -> nivel -> posicion) + FEFO
-                $todosStocks = Inventario::where('inventarios.empresa_id', $empresaId)
+                $todosStocksQ = Inventario::where('inventarios.empresa_id', $empresaId)
                     ->where('inventarios.sucursal_id', $sucursalId)
                     ->whereIn('inventarios.producto_id', $prodIds)
                     ->where('inventarios.estado', 'Disponible')
@@ -4240,9 +4458,8 @@ class PickingController extends BaseController
                         'ui.posicion as ubic_posicion',
                         'ui.nivel as ubic_nivel',
                         'ui.zona as ubic_zona'
-                    )
-                    ->orderByRaw('CASE WHEN inventarios.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
-                    ->orderBy('inventarios.fecha_vencimiento', 'ASC')
+                    );
+                $todosStocks = FefoEngine::ordenVencimiento($todosStocksQ, 'inventarios.fecha_vencimiento', $modoRotacionPlanilla)
                     ->orderByRaw('COALESCE(LENGTH(ui.pasillo), 0) ASC, ui.pasillo ASC')
                     ->orderByRaw('COALESCE(LENGTH(ui.modulo), 0) ASC, ui.modulo ASC')
                     ->orderByRaw('COALESCE(LENGTH(ui.nivel), 0) ASC, ui.nivel ASC')
@@ -4302,6 +4519,54 @@ class PickingController extends BaseController
                 });
             }
             // ─────────────────────────────────────────────────────────────────────
+
+            // BUG CORREGIDO 2026-08-20: $requiereEscaneoUbicacion se calculaba UNA sola vez
+            // para TODA la planilla (con exists()) y se pegaba igual en cada línea. Si un
+            // pedido nuevo se agregaba a una planilla YA configurada como "NUNCA exigir", ese
+            // pedido nuevo volvía al default (exigir) y, por la regla de "ante mezcla gana lo
+            // más restrictivo", terminaba forzando el escaneo en TODA la planilla otra vez —
+            // incluidos los pedidos que el administrador sí había desactivado explícitamente.
+            // Caso real detectado: Planilla 856 con pedidos 1711 (desactivado) y 1717 (nunca
+            // configurado, agregado después) — el administrador veía que "quitó la restricción"
+            // pero el sistema la seguía exigiendo igual. Ahora se calcula POR LÍNEA CONSOLIDADA
+            // (igual que requiere_fecha_vencimiento más abajo): solo mira los pedidos que
+            // realmente componen esa línea, no toda la planilla.
+            $todosDetalleIds = $detalles->flatMap(fn($it) => explode(',', (string)$it->ids))->filter()->unique()->values();
+            $reqEscPorDetalle = PickingDetalle::whereIn('picking_detalles.id', $todosDetalleIds)
+                ->join('orden_pickings', 'picking_detalles.orden_picking_id', '=', 'orden_pickings.id')
+                ->pluck('orden_pickings.requiere_escaneo_ubicacion', 'picking_detalles.id');
+            $detalles->transform(function ($it) use ($reqEscPorDetalle) {
+                $valores = collect(explode(',', (string)$it->ids))->map(fn($id) => $reqEscPorDetalle->get((int)$id));
+                // NULL o true = exigir (default de fábrica); solo cuando TODOS los pedidos que
+                // componen esta línea lo desactivaron explícitamente (false) se releva —no se
+                // puede escanear "a medias" cuando la línea mezcla pedidos con distinto ajuste.
+                $it->requiere_escaneo_ubicacion = !($valores->isNotEmpty() && $valores->every(fn($v) => $v === false));
+                return $it;
+            });
+
+            // BUG CORREGIDO 2026-08-19: el móvil decidía si exigir fecha de vencimiento
+            // mirando solo controla_vencimiento/controla_lote del producto, sin conocer
+            // la anulación por pedido (orden_pickings.requiere_fecha_vencimiento) que el
+            // Administrador configura desde Pedidos — el toggle "NUNCA exigir" no tenía
+            // forma de llegar al móvil, así que seguía pidiendo la fecha igual. Cada línea
+            // consolidada puede agrupar picking_detalles de varios pedidos (mismo producto
+            // + ubicación dentro de la planilla): si alguno de esos pedidos exige SIEMPRE,
+            // gana lo más restrictivo; solo se anula si TODOS los pedidos que la componen
+            // la desactivaron explícitamente.
+            $reqFvPorDetalle = PickingDetalle::whereIn('picking_detalles.id', $todosDetalleIds)
+                ->join('orden_pickings', 'picking_detalles.orden_picking_id', '=', 'orden_pickings.id')
+                ->pluck('orden_pickings.requiere_fecha_vencimiento', 'picking_detalles.id');
+            $detalles->transform(function ($it) use ($reqFvPorDetalle) {
+                $valores = collect(explode(',', (string)$it->ids))->map(fn($id) => $reqFvPorDetalle->get((int)$id));
+                if ($valores->contains(true)) {
+                    $it->requiere_fecha_vencimiento = true;
+                } elseif ($valores->isNotEmpty() && $valores->every(fn($v) => $v === false)) {
+                    $it->requiere_fecha_vencimiento = false;
+                } else {
+                    $it->requiere_fecha_vencimiento = null;
+                }
+                return $it;
+            });
 
             return $this->ok($res, $detalles);
         } catch (\Exception $e) {
@@ -4377,6 +4642,8 @@ class PickingController extends BaseController
         $saldosTomados  = isset($body['saldos_tomados']) ? (float)$body['saldos_tomados'] : null;
         $novedadId      = $body['novedad_id'] ?? null;
         $novedadNombre  = '';
+        $fechaVencManual = isset($body['fecha_vencimiento_manual']) && $body['fecha_vencimiento_manual'] !== ''
+            ? $body['fecha_vencimiento_manual'] : null;
 
         if ($novedadId) {
             $novedadObj = Capsule::table('causales_novedad')->find($novedadId);
@@ -4401,7 +4668,7 @@ class PickingController extends BaseController
         // Load detalles scoped to this empresa (outside transaction — read only)
         $detalles = PickingDetalle::whereIn('id', $ids)
             ->whereHas('ordenPicking', fn($q) => $q->where('empresa_id', $this->getEffectiveEmpresaId($user, $r)))
-            ->with('producto')
+            ->with(['producto', 'ordenPicking'])
             ->orderBy('id')
             ->get();
 
@@ -4417,6 +4684,20 @@ class PickingController extends BaseController
         if ($yaConfirmadas->isNotEmpty()) {
             return $this->error($res,
                 'Una o más líneas ya fueron confirmadas (estado: ' . $yaConfirmadas->pluck('estado')->unique()->implode(', ') . '). Recargue el picking antes de continuar.',
+                409);
+        }
+
+        // Blindaje 2026-08-15: si la ORDEN ya quedó certificada (aunque esta línea
+        // puntual siguiera Pendiente), no aceptar el pick en silencio — quedaría
+        // separado pero invisible en la remisión para siempre (caso real: Planilla
+        // 711 / Olivia Fabricato, 2026-08-14 — auto-certificación masiva a mitad de
+        // picking). Con el filtro de 'Completada' agregado en autoPack()/
+        // certPendientes() esto ya no debería poder pasar, pero se deja este bloqueo
+        // como segunda barrera por si la orden se certifica por otro camino.
+        $ordenYaCertificada = $detalles->filter(fn($d) => $d->ordenPicking?->estado_certificacion === 'Certificada');
+        if ($ordenYaCertificada->isNotEmpty()) {
+            return $this->error($res,
+                'Esta orden ya fue certificada — no se puede separar más mercancía sin que un supervisor la recertifique primero. Avise a su supervisor.',
                 409);
         }
 
@@ -4439,6 +4720,42 @@ class PickingController extends BaseController
         $upcGlobal = (isset($prodFirst->factor_udm) && (float)$prodFirst->factor_udm > 0)
             ? (float)$prodFirst->factor_udm
             : max(1, (float)($prodFirst->unidades_caja ?? 1));
+
+        // Blindaje 2026-08-15, AJUSTADO 2026-08-18 (a pedido explícito): ya NO se exige
+        // fecha de vencimiento cuando la línea tiene ubicación asignada — el escaneo
+        // obligatorio de esa ubicación (requiere_escaneo_ubicacion) + el descuento FEFO
+        // estricto ya garantizan de qué lote/fecha se está descontando. PERO cuando la
+        // línea NO tiene ubicación asignada, el sistema no puede dar esa garantía (cae
+        // al fallback de buscar en cualquier ubicación con stock), así que en ese caso
+        // puntual SÍ se exige que el auxiliar indique la fecha de vencimiento que
+        // físicamente va a despachar, si el producto controla vencimiento o lote.
+        // BUG CORREGIDO 2026-08-19: este bloque ignoraba por completo la anulación
+        // por pedido (orden_pickings.requiere_fecha_vencimiento) que setRequiereFechaVencimiento()
+        // permite configurar desde Pedidos — el toggle "NUNCA exigir" se guardaba en BD
+        // pero nunca se consultaba aquí, así que seguía pidiendo la fecha igual. Ahora:
+        // true = SIEMPRE exigir (sin importar ubicación), false = NUNCA exigir (anula
+        // todo lo demás), null = comportamiento por defecto (solo si no tiene ubicación
+        // y el producto controla vencimiento/lote).
+        $controlaVencOLote = $prodFirst && ((bool)($prodFirst->controla_vencimiento ?? false) || (bool)($prodFirst->controla_lote ?? false));
+        if ($controlaVencOLote && !$fechaVencManual) {
+            $faltaFecha = $detalles->contains(function ($d) {
+                if (!empty($d->fecha_vencimiento)) return false;
+                $override = $d->ordenPicking?->requiere_fecha_vencimiento;
+                if ($override === false) return false;
+                if ($override === true) return true;
+                return empty($d->ubicacion_id);
+            });
+            if ($faltaFecha) {
+                $body2 = $res->getBody();
+                $body2->write(json_encode([
+                    'error'   => false,
+                    'status'  => 'needs_fecha_vencimiento',
+                    'message' => 'Esta referencia no tiene ubicación asignada y el producto controla fecha de vencimiento/lote — ingrésela para continuar.',
+                    'producto_nombre' => $prodFirst->nombre,
+                ], JSON_UNESCAPED_UNICODE));
+                return $res->withHeader('Content-Type', 'application/json')->withStatus(200);
+            }
+        }
 
         // BUG CORREGIDO: este bloque asumía que 'cantidad_tomada' siempre llegaba en CAJAS
         // y lo multiplicaba por upc. Pero el modal de escritorio (picking.js:_dlgConfirmarLinea,
@@ -4476,8 +4793,16 @@ class PickingController extends BaseController
 
         $now = date('Y-m-d H:i:s');
 
+        // Blindaje 2026-08-17 (a pedido explícito): id del causal usado para
+        // visibilizar en Faltantes las líneas que quedan 'Completado' sin
+        // respaldo real de inventario. Se busca una sola vez fuera del loop.
+        $causalSinInventarioId = Capsule::table('causales_novedad')
+            ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+            ->where('nombre', 'SEPARADO SIN UBICACION/INVENTARIO')
+            ->value('id');
+
         try {
-            Capsule::transaction(function () use ($detalles, $asignaciones, $user, $r, $now) {
+            Capsule::transaction(function () use ($detalles, $asignaciones, $user, $r, $now, $fechaVencManual, $causalSinInventarioId) {
 
                 $ordenIds = [];
 
@@ -4506,7 +4831,7 @@ class PickingController extends BaseController
                         // FEFO sin filtro de lote: el lote asignado se prioriza por ubicacion
                         // pero si está agotado el sistema continúa con el lote más próximo a
                         // vencer (FEFO estricto). Filtrar por lote suprimiría lotes más urgentes.
-                        $filasFEFO = Inventario::where('empresa_id', $empresaId)
+                        $filasFEFOq = Inventario::where('empresa_id', $empresaId)
                             ->where('sucursal_id', $sucursalId)
                             ->where('producto_id', $det->producto_id)
                             ->where('estado',      'Disponible')
@@ -4515,9 +4840,8 @@ class PickingController extends BaseController
                             ->when((int)$det->ubicacion_id, fn($q) => $q->orderByRaw(
                                 'CASE WHEN ubicacion_id = ? THEN 0 ELSE 1 END',
                                 [(int)$det->ubicacion_id]
-                            ))
-                            ->orderByRaw('fecha_vencimiento IS NULL ASC')
-                            ->orderBy('fecha_vencimiento', 'ASC')
+                            ));
+                        $filasFEFO = FefoEngine::ordenVencimiento($filasFEFOq, 'fecha_vencimiento', $det->ordenPicking?->modo_rotacion ?? 'FIFO')
                             ->orderBy('id', 'ASC')
                             ->get();
 
@@ -4527,6 +4851,14 @@ class PickingController extends BaseController
 
                             $descuento = min($restante, (float)$inv->cantidad);
                             if ($descuento <= 0) continue;
+
+                            // Corrige la fecha de vencimiento en el ORIGEN (no solo en la
+                            // línea de picking) cuando el auxiliar la suministró porque
+                            // faltaba — así la próxima separación de esta misma ubicación/
+                            // lote ya no vuelve a preguntar.
+                            if (!$inv->fecha_vencimiento && $fechaVencManual) {
+                                $inv->fecha_vencimiento = $fechaVencManual;
+                            }
 
                             $inv->cantidad -= $descuento;
                             if ($inv->cantidad <= 0) {
@@ -4571,14 +4903,25 @@ class PickingController extends BaseController
                     }
 
                     // Fase 4: Actualizar detalle
-                    // cantidad_pickeada es lo que el usuario REALMENTE separó (tomarInventario), 
+                    // cantidad_pickeada es lo que el usuario REALMENTE separó (tomarInventario),
                     // independientemente de si había inventario en el sistema para descontar.
                     // Esto permite imprimir en la remisión la cantidad física separada.
+                    // BUG CORREGIDO 2026-08-18 (a pedido explícito): esta comparación no tenía
+                    // tolerancia de punto flotante — el resto de esta misma función SÍ la usa
+                    // (ver guardrail de cajas_tomadas más arriba, "+0.0001"). cantidad_solicitada
+                    // (cajas) × upc a veces no reconstruye un entero exacto en coma flotante
+                    // (p.ej. cajas fraccionarias con upc no potencia de 2), así que un pedido
+                    // realmente separado al 100% podía quedar en 'Faltante' por una diferencia
+                    // de billonésimas — caso real reportado: "pedía 5, el auxiliar separó 5,
+                    // el sistema marcó 4 separadas y 1 faltante".
                     $det->cantidad_pickeada = $tomarInventario;
-                    $det->estado = ($tomarInventario >= (float)$det->cantidad_solicitada * $upcConf)
+                    $det->estado = ($tomarInventario >= (float)$det->cantidad_solicitada * $upcConf - 0.0001)
                         ? 'Completado' : 'Faltante';
                     if ($novedadNombre) {
                         $det->novedad = trim(($det->novedad ?? '') . ' | ' . $novedadNombre, ' |');
+                    }
+                    if (!$det->fecha_vencimiento && $fechaVencManual) {
+                        $det->fecha_vencimiento = $fechaVencManual;
                     }
                     $det->save();
 
@@ -4586,7 +4929,9 @@ class PickingController extends BaseController
                     // (lo físicamente separado fue menor a lo solicitado por el cliente).
                     // Antes se comparaba lo físico vs lo descontado del Kardex ($inventarioFaltanteUnd),
                     // lo que insertaba falsos agotados 'Separada sin inventario' para pedidos 100% cumplidos físicamente.
-                    $faltanteFisicoUnd = max(0, ((float)$det->cantidad_solicitada * $upcConf) - $tomarInventario);
+                    // Misma tolerancia de 0.0001 que arriba, para no registrar un "faltante" de
+                    // ruido de punto flotante que en realidad es cero.
+                    $faltanteFisicoUnd = max(0, ((float)$det->cantidad_solicitada * $upcConf) - $tomarInventario - 0.0001);
                     
                     // Eliminar registro previo de faltante si existía
                     Capsule::table('picking_faltantes')
@@ -4609,6 +4954,39 @@ class PickingController extends BaseController
                             'created_at'          => $now,
                             'updated_at'          => $now,
                         ]);
+                    }
+
+                    // Blindaje 2026-08-17 (a pedido explícito de Camilo Pérez): visibilizar
+                    // en el módulo de Faltantes cuando la línea quedó 'Completado' (el
+                    // auxiliar separó físicamente el 100% de lo pedido) pero el sistema no
+                    // logró descontar toda esa cantidad de inventario real — o nada — al no
+                    // encontrar stock del producto (típicamente líneas sin ubicación
+                    // asignada, ver auditoría 2026-08-17). No es un faltante para el
+                    // cliente (ya recibió lo solicitado), por eso usa un causal propio,
+                    // separado de 'Agotado', que NO afecta nivel de servicio. Envuelto en
+                    // try/catch: un fallo aquí no debe reventar la confirmación real del
+                    // auxiliar, que ya quedó guardada arriba.
+                    try {
+                        if ($det->estado === 'Completado' && $realmenteDescontado < $tomarInventario - 0.01) {
+                            $gapUnd   = max(0, $tomarInventario - $realmenteDescontado);
+                            $gapCajas = $upcConf > 0 ? ($gapUnd / $upcConf) : $gapUnd;
+                            $ordSinInv = OrdenPicking::find($det->orden_picking_id);
+                            Capsule::table('picking_faltantes')->insert([
+                                'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
+                                'sucursal_id'         => $user->sucursal_id,
+                                'orden_picking_id'    => $det->orden_picking_id,
+                                'producto_id'         => $det->producto_id,
+                                'planilla_lote'       => $ordSinInv->planilla_lote ?? $ordSinInv->planilla_numero,
+                                'cantidad_solicitada' => $det->cantidad_solicitada,
+                                'cantidad_faltante'   => $gapCajas,
+                                'causa'               => 'Separado sin Ubicación/Inventario',
+                                'causal_id'           => $causalSinInventarioId,
+                                'created_at'          => $now,
+                                'updated_at'          => $now,
+                            ]);
+                        }
+                    } catch (\Throwable $eSinInv) {
+                        error_log('[confirmarConsolidado] No se pudo registrar picking_faltantes (separado sin inventario) det_id=' . $det->id . ': ' . $eSinInv->getMessage());
                     }
 
                     $ordenIds[] = $det->orden_picking_id;
@@ -4947,16 +5325,17 @@ class PickingController extends BaseController
 
         if ($detalles->isEmpty()) return;
 
-        $productoIds     = $detalles->pluck('producto_id')->unique()->toArray();
-        $stockDisponible = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+        $productoIds  = $detalles->pluck('producto_id')->unique()->toArray();
+        // Rotación FIFO/LIFO por pedido; para un lote de órdenes se toma la de
+        // cualquiera de ellas (se asignan juntas al importar, comparten el modo).
+        $modoRotacionBatch = OrdenPicking::whereIn('id', $ordenIds)->value('modo_rotacion') ?? 'FIFO';
+        $stockDisponibleQ = Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
             ->whereIn('producto_id', $productoIds)
             ->where('estado', 'Disponible')
             ->whereRaw('(cantidad - cantidad_reservada) > 0')
-            ->lockForUpdate()
-            // FEFO: NULLs al final mediante CASE WHEN (ver _generarRutaFEFO)
-            ->orderByRaw('CASE WHEN fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
-            ->orderBy('fecha_vencimiento', 'ASC')
+            ->lockForUpdate();
+        $stockDisponible = FefoEngine::ordenVencimiento($stockDisponibleQ, 'fecha_vencimiento', $modoRotacionBatch)
             ->get();
 
         $stockPorProducto = $stockDisponible->groupBy('producto_id');
@@ -4964,6 +5343,7 @@ class PickingController extends BaseController
             // cantidad_solicitada está en CAJAS — convertir a unidades para comparar con inventario
             $upc      = max(1, (int)($linea->producto->unidades_caja ?? 1));
             $restante = (float)$linea->cantidad_solicitada * $upc;
+            $tocado   = false;
             foreach ($stockPorProducto->get($linea->producto_id, collect()) as $inv) {
                 if ($restante <= 0) break;
                 $disponible = max(0, $inv->cantidad - $inv->cantidad_reservada);
@@ -4972,7 +5352,25 @@ class PickingController extends BaseController
                 $inv->cantidad_reservada += $reservar;
                 $inv->save();
                 $restante -= $reservar;
+
+                // BUG CORREGIDO 2026-08-20: esta función reservaba la cantidad en
+                // "inventarios" correctamente, pero a diferencia de _reservarLineaNueva()
+                // NUNCA dejaba registrada en el picking_detalle DE QUÉ UBICACIÓN salió la
+                // reserva. Como esta es la vía real usada por asignarPorAmbiente() (el
+                // flujo diario de asignación masiva), casi el 100% de las líneas quedaban
+                // con ubicacion_id NULL desde el arranque — no porque la bodega no tuviera
+                // ubicación, sino porque nunca se guardaba. Esto a su vez disparaba en falso
+                // la exigencia de fecha de vencimiento manual en confirmarConsolidado()
+                // (que sí mira ubicacion_id), aunque el móvil mostrara y hasta exigiera
+                // escanear una ubicación resuelta solo "al vuelo" para mostrarla en pantalla.
+                if (!$linea->ubicacion_id) {
+                    $linea->ubicacion_id      = $inv->ubicacion_id;
+                    $linea->lote              = $inv->lote;
+                    $linea->fecha_vencimiento = $inv->fecha_vencimiento;
+                    $tocado = true;
+                }
             }
+            if ($tocado) $linea->save();
         }
     }
 
@@ -5342,11 +5740,17 @@ class PickingController extends BaseController
         $fechaFin    = $qp['fecha_fin']    ?? null;
 
         // Step 1: órdenes listas (usa idx_op_cert) — ligero, sin JOIN a picking_detalles
+        // Blindaje 2026-08-15: solo 'Completada' — una orden 'EnProceso' significa que
+        // el auxiliar todavía puede estar separando líneas. Mostrarla aquí como
+        // "pendiente de certificar" invita a certificarla a mitad de camino: las
+        // líneas que se separan DESPUÉS de certificar quedan con cantidad_pickeada>0
+        // pero cantidad_certificada=0 para siempre y desaparecen de la remisión sin
+        // ningún aviso (caso real: Planilla 711 / Olivia Fabricato, 2026-08-14).
         $ordenes = Capsule::table('orden_pickings as op')
             ->leftJoin('personal as per', 'per.id', '=', 'op.auxiliar_id')
             ->where('op.empresa_id', $empresaId)
             ->where('op.sucursal_id', $sucursalId)
-            ->whereIn('op.estado', ['Completada', 'EnProceso'])
+            ->where('op.estado', 'Completada')
             ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial'])
             // Defensa adicional: una orden ya despachada/entregada NUNCA debe volver a
             // aparecer como pendiente de certificar, sin importar cómo haya quedado su
@@ -5366,9 +5770,10 @@ class PickingController extends BaseController
                 'op.numero_orden',
                 'op.numero_factura',
                 'op.observaciones',
+                'op.fecha_movimiento',
                 Capsule::raw("$strAgg as auxiliar_nombre")
             )
-            ->groupBy('op.id', 'op.sucursal_entrega', 'op.planilla_numero', 'op.numero_orden', 'op.numero_factura', 'op.observaciones')
+            ->groupBy('op.id', 'op.sucursal_entrega', 'op.planilla_numero', 'op.numero_orden', 'op.numero_factura', 'op.observaciones', 'op.fecha_movimiento')
             ->get();
 
         // Step 1b: órdenes con re-picks dentro del rango (backorder post-certificación).
@@ -5382,14 +5787,29 @@ class PickingController extends BaseController
                 ->join('picking_detalles as pd', 'pd.orden_picking_id', '=', 'op.id')
                 ->where('op.empresa_id', $empresaId)
                 ->where('op.sucursal_id', $sucursalId)
-                ->whereIn('op.estado', ['Completada', 'EnProceso'])
+                ->where('op.estado', 'Completada')
                 ->whereIn('op.estado_certificacion', ['Pendiente', 'Parcial'])
                 ->whereNull('op.estado_despacho')
-                // El re-pick (updated_at de la línea) debe caer dentro del rango buscado
-                ->where('pd.updated_at', '>=', $fechaInicio . ' 00:00:00')
-                ->where('pd.updated_at', '<=', $fechaFin   . ' 23:59:59')
                 ->whereIn('pd.estado', ['Completada', 'Completado'])
                 ->where('pd.cantidad_pickeada', '>', 0)
+                // BUG CORREGIDO 2026-08-18 (urgente): antes usaba pd.updated_at para
+                // detectar "re-pick dentro del rango", pero resetCertificacion() (botón
+                // "Reabrir" de una sesión) también pone updated_at=ahora en TODAS las
+                // líneas al anular una certificación — sin que haya picking físico
+                // nuevo. Un reset masivo de certificaciones viejas (caso real: Olivia
+                // Manila y ~35 planillas más, 2026-08-18) las hacía reaparecer como si
+                // se hubieran separado hoy. Ahora se exige evidencia física real: un
+                // movimiento de Kardex tipo 'Picking' para esa orden dentro del rango
+                // de fechas — un reset administrativo nunca crea movimiento de Kardex.
+                ->whereExists(function ($sub) use ($fechaInicio, $fechaFin) {
+                    $sub->select(Capsule::raw(1))
+                        ->from('movimiento_inventarios as mi')
+                        ->where('mi.tipo_movimiento', 'Picking')
+                        ->where('mi.referencia_tipo', 'OrdenPicking')
+                        ->whereColumn('mi.referencia_id', 'op.id')
+                        ->where('mi.created_at', '>=', $fechaInicio . ' 00:00:00')
+                        ->where('mi.created_at', '<=', $fechaFin   . ' 23:59:59');
+                })
                 // Excluir las ya incluidas por el rango de fecha_movimiento (no duplicar)
                 ->where(function ($q) use ($fechaInicio, $fechaFin) {
                     $q->where('op.fecha_movimiento', '<', $fechaInicio)
@@ -5402,9 +5822,10 @@ class PickingController extends BaseController
                     'op.numero_orden',
                     'op.numero_factura',
                     'op.observaciones',
+                    'op.fecha_movimiento',
                     Capsule::raw("$strAgg as auxiliar_nombre")
                 )
-                ->groupBy('op.id', 'op.sucursal_entrega', 'op.planilla_numero', 'op.numero_orden', 'op.numero_factura', 'op.observaciones')
+                ->groupBy('op.id', 'op.sucursal_entrega', 'op.planilla_numero', 'op.numero_orden', 'op.numero_factura', 'op.observaciones', 'op.fecha_movimiento')
                 ->get();
 
             if ($rePicksRango->isNotEmpty()) {
@@ -5432,6 +5853,7 @@ class PickingController extends BaseController
             ->whereIn('pd.orden_picking_id', $ids)
             ->select(
                 'op.sucursal_entrega',
+                'op.planilla_numero',
                 'pd.id as detalle_id',
                 'pd.producto_id',
                 'pd.cantidad_pickeada',
@@ -5442,7 +5864,14 @@ class PickingController extends BaseController
             )
             ->get();
 
-        $bySuc = $detallesRaw->groupBy('sucursal_entrega');
+        // BUG CORREGIDO 2026-08-17 (urgente): agrupaba solo por sucursal_entrega, así
+        // que dos planillas distintas del mismo cliente (ej. Planilla 733 de hoy +
+        // Planilla 715/679/658/628, huérfanas sin certificar desde días anteriores)
+        // quedaban fusionadas en un solo bloque — el usuario veía "muchos pedidos
+        // agrupados" bajo una sola planilla. Mismo criterio ya aplicado en
+        // certCertificadas(): la clave debe ser (sucursal + planilla).
+        $claveGrupo = fn($row) => $row->sucursal_entrega . '||' . (trim((string)($row->planilla_numero ?? '')) ?: 'Sin planilla');
+        $bySuc = $detallesRaw->groupBy($claveGrupo);
 
         $aggs = [];
         foreach ($bySuc as $suc => $rows) {
@@ -5484,14 +5913,18 @@ class PickingController extends BaseController
             ];
         }
 
-        // Step 3: merge en PHP por sucursal
+        // Step 3: merge en PHP por (sucursal + planilla) — ver comentario en Step 2.
         $result = [];
         foreach ($ordenes as $o) {
-            $suc = $o->sucursal_entrega;
+            $planillaLabelSuc = trim($o->planilla_numero ?? '') ?: 'Sin planilla';
+            $suc = $o->sucursal_entrega . '||' . $planillaLabelSuc;
             if (!isset($result[$suc])) {
                 $result[$suc] = [
-                    'sucursal_entrega'   => $suc,
+                    'sucursal_entrega'   => $o->sucursal_entrega,
                     'planilla_numero'    => $o->planilla_numero ?: $o->numero_orden,
+                    // Fecha del pedido — usada por el frontend para advertir antes de
+                    // auto-certificar en bloque algo que no sea de hoy (2026-08-17).
+                    'fecha_movimiento'   => $o->fecha_movimiento,
                     'total_pedidos'      => 0,
                     'total_lineas'       => (int)($aggs[$suc]->total_refs       ?? 0),
                     'total_lineas_cert'  => (int)($aggs[$suc]->total_lineas_cert  ?? 0),
@@ -5606,6 +6039,190 @@ class PickingController extends BaseController
         ]);
 
         return $this->ok($res, ['pedido' => $pedido, 'observaciones' => $observaciones, 'affected' => $affected], 'Observación actualizada correctamente');
+    }
+
+    // ── PATCH /api/picking/{id}/requiere-fecha-vencimiento ────────────────────
+    // Pedido urgente 2026-08-17: el Administrador decide, por pedido puntual,
+    // si se exige o no la fecha de vencimiento al separar — anula el
+    // comportamiento por defecto (que depende de si el producto la controla).
+    // Body: { valor: true | false | null }  — null = volver al comportamiento
+    // por defecto (quitar la anulación).
+    // SUPERSEDIDO 2026-08-20 (a pedido explícito): el control por pedido puntual
+    // se reemplazó por setRequiereFechaVencimientoPlanilla() (por PLANILLA
+    // completa, igual que el escaneo de ubicación) — el escritorio ya no expone
+    // este endpoint. Se deja intacto sin romper nada por si algo externo lo usa.
+    public function setRequiereFechaVencimiento(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
+
+        $body = $r->getParsedBody() ?? [];
+        if (!array_key_exists('valor', $body)) {
+            return $this->error($res, 'El campo valor es requerido (true, false o null).', 400);
+        }
+        $valor = $body['valor'];
+        $valorNorm = $valor === null ? null : (bool)$valor;
+
+        $orden = OrdenPicking::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+            ->find((int)$a['id']);
+        if (!$orden) return $this->notFound($res);
+
+        $anterior = $orden->requiere_fecha_vencimiento;
+        $orden->requiere_fecha_vencimiento = $valorNorm;
+        $orden->save();
+
+        $etiqueta = $valorNorm === null ? 'por defecto (según producto)' : ($valorNorm ? 'SIEMPRE exigir' : 'NUNCA exigir');
+        $this->audit($user, 'picking', 'set_requiere_fecha_vencimiento', 'orden_pickings', $orden->id,
+            ['requiere_fecha_vencimiento' => $anterior],
+            ['requiere_fecha_vencimiento' => $valorNorm],
+            "Pedido #{$orden->numero_orden}: fecha de vencimiento configurada a '{$etiqueta}'");
+
+        return $this->ok($res, ['requiere_fecha_vencimiento' => $valorNorm], 'Configuración actualizada correctamente');
+    }
+
+    // ── PATCH /api/picking/planilla/{numero}/requiere-escaneo-ubicacion ──────
+    // A pedido explícito (2026-08-18): a diferencia de requiere_fecha_vencimiento
+    // (que se anula por PEDIDO puntual), este interruptor exige escanear la
+    // ubicación al separar y se activa/desactiva por PLANILLA COMPLETA — aplica
+    // en bloque a todos los pedidos que comparten ese planilla_numero, porque es
+    // una decisión operativa de toda la ola de picking, no de un pedido aislado.
+    // Tri-estado en cada orden_pickings.requiere_escaneo_ubicacion:
+    //   NULL  = valor por defecto = EXIGIR (a diferencia de fecha_vencimiento, el
+    //           default aquí es forzar el escaneo, decisión explícita del dueño).
+    //   TRUE  = forzado explícitamente (redundante con el default, por si cambia).
+    //   FALSE = un supervisor lo desactivó puntualmente para esta planilla.
+    public function setRequiereEscaneoUbicacion(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
+        $body = $r->getParsedBody() ?? [];
+        if (!array_key_exists('valor', $body)) {
+            return $this->error($res, 'El campo valor es requerido (true, false o null).', 400);
+        }
+        $valor     = $body['valor'];
+        $valorNorm = $valor === null ? null : (bool)$valor;
+        $numero    = trim((string)($a['numero'] ?? ''));
+        if ($numero === '') return $this->error($res, 'Número de planilla requerido.', 400);
+
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $ordenes = OrdenPicking::where('empresa_id', $empresaId)
+            ->where(function ($q) use ($numero) {
+                $q->where('planilla_numero', $numero)->orWhere('numero_orden', $numero);
+            })
+            ->get();
+
+        if ($ordenes->isEmpty()) return $this->notFound($res, 'Planilla no encontrada.');
+
+        foreach ($ordenes as $orden) {
+            $orden->requiere_escaneo_ubicacion = $valorNorm;
+            $orden->save();
+        }
+
+        $etiqueta = $valorNorm === null ? 'por defecto (exigir)' : ($valorNorm ? 'SIEMPRE exigir' : 'NUNCA exigir');
+        $this->audit($user, 'picking', 'set_requiere_escaneo_ubicacion', 'orden_pickings', null,
+            null,
+            ['planilla_numero' => $numero, 'requiere_escaneo_ubicacion' => $valorNorm, 'pedidos_afectados' => $ordenes->count()],
+            "Planilla {$numero}: escaneo de ubicación configurado a '{$etiqueta}' ({$ordenes->count()} pedido(s))");
+
+        return $this->ok($res, [
+            'requiere_escaneo_ubicacion' => $valorNorm,
+            'pedidos_afectados'          => $ordenes->count(),
+        ], 'Configuración actualizada correctamente');
+    }
+
+    // ── PATCH /api/picking/planilla/{numero}/requiere-fecha-vencimiento ──────
+    // A pedido explícito (2026-08-20): reemplaza el control por PEDIDO puntual de
+    // setRequiereFechaVencimiento() (que se deja intacto por compatibilidad, pero
+    // el escritorio ya no lo expone) — ahora se activa/desactiva por PLANILLA
+    // COMPLETA, igual que requiere_escaneo_ubicacion, porque desde hoy los pedidos
+    // nacen desbloqueados (false) y es el Administrador quien decide, ola por ola,
+    // si necesita exigir la fecha de vencimiento manual. Exclusivo Administrador
+    // (a diferencia del escaneo, que puede relajar un Supervisor).
+    public function setRequiereFechaVencimientoPlanilla(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        if ($deny = $this->requireAdmin($user, $res)) return $deny;
+
+        $body = $r->getParsedBody() ?? [];
+        if (!array_key_exists('valor', $body)) {
+            return $this->error($res, 'El campo valor es requerido (true, false o null).', 400);
+        }
+        $valor     = $body['valor'];
+        $valorNorm = $valor === null ? null : (bool)$valor;
+        $numero    = trim((string)($a['numero'] ?? ''));
+        if ($numero === '') return $this->error($res, 'Número de planilla requerido.', 400);
+
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $ordenes = OrdenPicking::where('empresa_id', $empresaId)
+            ->where(function ($q) use ($numero) {
+                $q->where('planilla_numero', $numero)->orWhere('numero_orden', $numero);
+            })
+            ->get();
+
+        if ($ordenes->isEmpty()) return $this->notFound($res, 'Planilla no encontrada.');
+
+        foreach ($ordenes as $orden) {
+            $orden->requiere_fecha_vencimiento = $valorNorm;
+            $orden->save();
+        }
+
+        $etiqueta = $valorNorm === null ? 'por defecto (desbloqueado)' : ($valorNorm ? 'SIEMPRE exigir' : 'NUNCA exigir');
+        $this->audit($user, 'picking', 'set_requiere_fecha_vencimiento_planilla', 'orden_pickings', null,
+            null,
+            ['planilla_numero' => $numero, 'requiere_fecha_vencimiento' => $valorNorm, 'pedidos_afectados' => $ordenes->count()],
+            "Planilla {$numero}: fecha de vencimiento configurada a '{$etiqueta}' ({$ordenes->count()} pedido(s))");
+
+        return $this->ok($res, [
+            'requiere_fecha_vencimiento' => $valorNorm,
+            'pedidos_afectados'          => $ordenes->count(),
+        ], 'Configuración actualizada correctamente');
+    }
+
+    // ── PATCH /api/picking/planilla/{numero}/modo-rotacion ────────────────────
+    // A pedido explícito (2026-08-18): permite elegir, para pedidos ya
+    // importados/creados, si deben separarse en orden FIFO/FEFO (lo más próximo
+    // a vencer primero — comportamiento de siempre) o LIFO (lo que le queda MÁS
+    // tiempo para vencer primero — clientes nacionales que exigen mercancía con
+    // fecha larga). Se usa desde la pantalla de Pedidos con selección múltiple de
+    // planillas (mismo checkbox ya usado para eliminar en bloque): el usuario
+    // selecciona las planillas que necesita y aplica el modo a todas de una vez.
+    public function setModoRotacion(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
+        $body = $r->getParsedBody() ?? [];
+        $modo = strtoupper(trim($body['modo_rotacion'] ?? ''));
+        if (!in_array($modo, ['FIFO', 'LIFO'], true)) {
+            return $this->error($res, "El campo modo_rotacion debe ser 'FIFO' o 'LIFO'.", 400);
+        }
+        $numero = trim((string)($a['numero'] ?? ''));
+        if ($numero === '') return $this->error($res, 'Número de planilla requerido.', 400);
+
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $ordenes = OrdenPicking::where('empresa_id', $empresaId)
+            ->where(function ($q) use ($numero) {
+                $q->where('planilla_numero', $numero)->orWhere('numero_orden', $numero);
+            })
+            ->get();
+
+        if ($ordenes->isEmpty()) return $this->notFound($res, 'Planilla no encontrada.');
+
+        foreach ($ordenes as $orden) {
+            $orden->modo_rotacion = $modo;
+            $orden->save();
+        }
+
+        $this->audit($user, 'picking', 'set_modo_rotacion', 'orden_pickings', null,
+            null,
+            ['planilla_numero' => $numero, 'modo_rotacion' => $modo, 'pedidos_afectados' => $ordenes->count()],
+            "Planilla {$numero}: modo de rotación configurado a '{$modo}' ({$ordenes->count()} pedido(s))");
+
+        return $this->ok($res, [
+            'modo_rotacion'     => $modo,
+            'pedidos_afectados' => $ordenes->count(),
+        ], 'Configuración actualizada correctamente');
     }
 
     // ── POST /api/picking/ordenes/editar-completo ─────────────────────────────
@@ -6418,8 +7035,15 @@ class PickingController extends BaseController
                   ->join('packing_items as pi', 'pi.picking_detalle_id', '=', 'pd_pk.id')
                   ->whereColumn('pd_pk.orden_picking_id', 'op.id');
             })
-            ->when($fechaInicio, fn($q) => $q->where('op.fecha_movimiento', '>=', $fechaInicio))
-            ->when($fechaFin, fn($q) => $q->where('op.fecha_movimiento', '<=', $fechaFin))
+            // BUG CORREGIDO 2026-08-17 (urgente): filtraba por fecha_movimiento (la fecha
+            // del pedido/planilla), no por fecha_certificacion. Un pedido con
+            // fecha_movimiento=ayer que se certificó pasada la medianoche (turno nocturno,
+            // caso real: certificaciones de hoy 07:4x a.m. con fecha_movimiento del día
+            // anterior) quedaba invisible bajo el filtro "Hoy" — la sección de
+            // certificados parecía vacía/no aparecer. Esta lista es "qué se certificó",
+            // así que debe filtrar por CUÁNDO se certificó, no por la fecha del pedido.
+            ->when($fechaInicio, fn($q) => $q->whereDate('op.fecha_certificacion', '>=', $fechaInicio))
+            ->when($fechaFin, fn($q) => $q->whereDate('op.fecha_certificacion', '<=', $fechaFin))
             ->select(
                 'op.id',
                 'op.sucursal_entrega',
@@ -6569,8 +7193,24 @@ class PickingController extends BaseController
         // elige dinámicamente, desde el listado de certificación, exactamente qué
         // pedidos/planillas deben salir juntos.
         $ordenIdsSel = array_values(array_filter(array_map('intval', (array)($qp['orden_ids'] ?? []))));
+        
+        $planilla = trim($qp['planilla'] ?? '');
+        if (!empty($planilla) && empty($ordenIdsSel)) {
+            $ordenIdsSel = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
+                ->where(function($q) use ($planilla) {
+                    $q->where('planilla_numero', $planilla)
+                      ->orWhere('numero_orden', $planilla)
+                      ->orWhere('planilla_lote', $planilla);
+                })
+                ->pluck('id')
+                ->toArray();
+        }
+
         if (empty($sucursales) && empty($ordenIdsSel)) {
-            return $this->error($res, 'Se requiere al menos una sucursal o una selección de pedidos (orden_ids)');
+            $msg = !empty($planilla) 
+                ? "No se encontraron pedidos válidos para la planilla {$planilla}."
+                : 'Se requiere al menos una sucursal o una selección de pedidos (orden_ids)';
+            return $this->error($res, $msg);
         }
 
         $empNombre = $this->remisionEmpresaNombre($empresaId);
@@ -6615,20 +7255,22 @@ class PickingController extends BaseController
         if (!empty($ordenIdsSel)) {
             // Modo exacto: solo los pedidos que el usuario seleccionó, agrupados por
             // sucursal para conservar la misma estructura de páginas por cliente.
-            $todasOrdenes = OrdenPicking::where('empresa_id', $empresaId)
+            $q = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
                 ->where('sucursal_id', $sucursalId)
-                ->whereIn('id', $ordenIdsSel)
-                ->where('estado_certificacion', 'Certificada')
-                ->where('despachado_directo', false)
-                // No reimprimir aquí una orden ya certificada vía sesión de packing
-                // (ver certCertificadas() para el detalle de por qué es necesario).
-                ->whereNotExists(function ($q) {
-                    $q->select(Capsule::raw(1))
-                      ->from('picking_detalles as pd_pk')
-                      ->join('packing_items as pi', 'pi.picking_detalle_id', '=', 'pd_pk.id')
-                      ->whereColumn('pd_pk.orden_picking_id', 'orden_pickings.id');
-                })
-                ->get();
+                ->whereIn('id', $ordenIdsSel);
+
+            if (empty($planilla)) {
+                $q->where('estado_certificacion', 'Certificada')
+                  ->where('despachado_directo', false)
+                  ->whereNotExists(function ($sq) {
+                      $sq->select(Capsule::raw(1))
+                        ->from('picking_detalles as pd_pk')
+                        ->join('packing_items as pi', 'pi.picking_detalle_id', '=', 'pd_pk.id')
+                        ->whereColumn('pd_pk.orden_picking_id', 'orden_pickings.id');
+                  });
+            }
+
+            $todasOrdenes = $q->get();
             $gruposPorSucursal = $todasOrdenes->groupBy('sucursal_entrega');
         } else {
             // Modo legacy: todo lo certificado del cliente en la fecha indicada.
@@ -7132,6 +7774,23 @@ class PickingController extends BaseController
     /**
      * Release cantidad_reservada rows inside an open transaction.
      * Releases up to $cantidad units from matching inventario rows (lockForUpdate).
+     *
+     * BUG CORREGIDO 2026-08-23 (caso real: producto "I MILANESA POLLO X 5 UND",
+     * pallet #330 en PATIO-01, quedó con 76 und reservadas para siempre — sin
+     * ningún picking pendiente que lo justificara, bloqueando Ubicar y Eliminar).
+     * Causa raíz: la reserva de una línea de picking puede quedar repartida en
+     * VARIAS ubicaciones (el motor FEFO de reserva en lote consume la ubicación
+     * más próxima a vencer y sigue en la siguiente si no alcanza), pero la línea
+     * solo persiste UNA ubicacion_id (la primera que tocó). Este método filtraba
+     * la liberación EXCLUSIVAMENTE a esa ubicación — cualquier parte de la reserva
+     * que hubiera quedado en otra ubicación nunca se liberaba, quedando "reserva
+     * fantasma" para siempre. Como cantidad_reservada es un contador compartido
+     * por ubicación (no atado a una orden específica), no hay riesgo real en
+     * liberar desde cualquier ubicación con reserva del mismo producto — ahora
+     * $ubicacionId es solo una PRIORIDAD de orden (se intenta primero ahí), no un
+     * filtro exclusivo; si no alcanza, continúa liberando en las demás
+     * ubicaciones con reserva de ese producto, igual que ya hace el descuento
+     * FEFO físico (_generarRutaFEFO / confirmarConsolidado) al buscar stock.
      */
     private function _releaseReserva(
         int $empresaId, int $sucursalId, int $productoId,
@@ -7139,14 +7798,22 @@ class PickingController extends BaseController
     ): void {
         if ($cantidad <= 0) return;
 
-        $rows = Inventario::where('empresa_id',        $empresaId)
+        $query = Inventario::where('empresa_id',        $empresaId)
             ->where('sucursal_id',        $sucursalId)
             ->where('producto_id',        $productoId)
             ->where('cantidad_reservada', '>', 0)
-            ->when($ubicacionId, fn($q) => $q->where('ubicacion_id', $ubicacionId))
-            ->when($lote,        fn($q) => $q->where('lote',         $lote))
-            ->lockForUpdate()
-            ->get();
+            ->lockForUpdate();
+
+        if ($ubicacionId) {
+            $query->orderByRaw('CASE WHEN ubicacion_id = ? THEN 0 ELSE 1 END', [$ubicacionId]);
+        }
+        // El lote, si viene informado, también se usa solo como prioridad de
+        // orden (no como filtro exclusivo) — mismo criterio que la ubicación.
+        if ($lote) {
+            $query->orderByRaw('CASE WHEN lote = ? THEN 0 ELSE 1 END', [$lote]);
+        }
+
+        $rows = $query->get();
 
         $porLiberar = $cantidad;
         foreach ($rows as $row) {
@@ -7469,14 +8136,13 @@ class PickingController extends BaseController
                 $cantUnidades = (float)$linea->cantidad_solicitada * $upc;
                 if ($cantUnidades <= 0) continue;
 
-                $stock = Inventario::where('empresa_id',   $empresaId)
+                $stockQ = Inventario::where('empresa_id',   $empresaId)
                     ->where('sucursal_id',                  $user->sucursal_id)
                     ->where('producto_id',                  $linea->producto_id)
                     ->where('estado',                       'Disponible')
                     ->whereRaw('(cantidad - cantidad_reservada) > 0')
-                    ->orderByRaw('fecha_vencimiento IS NULL ASC')
-                    ->orderBy('fecha_vencimiento', 'ASC')
-                    ->lockForUpdate()
+                    ->lockForUpdate();
+                $stock = FefoEngine::ordenVencimiento($stockQ, 'fecha_vencimiento', $ordenes->first()->modo_rotacion ?? 'FIFO')
                     ->get();
 
                 $porReservar   = $cantUnidades;
@@ -7542,6 +8208,10 @@ class PickingController extends BaseController
     // ── POST /api/picking/planilla/{numero}/liberar-linea ───────────────────
     public function liberarLineaSeparada(Request $req, Response $res, $args) {
         $user = $req->getAttribute('user');
+        // A pedido explícito (2026-08-20): revierte líneas ya Completado/Faltante
+        // ("unpick") y devuelve la cantidad al inventario — misma naturaleza
+        // correctiva que liberarLineasVacias(), que ya exige Supervisor.
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
         $empresaId = $this->getEffectiveEmpresaId($user, $req);
         $numero = trim($args['numero'] ?? '');
         $body = $req->getParsedBody() ?? [];
@@ -7650,7 +8320,11 @@ class PickingController extends BaseController
                         'empresa_id'           => $empresaId,
                         'sucursal_id'          => $user->sucursal_id,
                         'producto_id'          => $l->producto_id,
-                        'tipo_movimiento'      => 'CorreccionAdmin',
+                        // 'AjustePositivo', no 'CorreccionAdmin': este reverso SÍ suma
+                        // cantidad física a inventarios (línea de arriba), no solo reserva
+                        // — debe contar en la invariante SUM(kardex)==existencias (ver
+                        // InventoryGuard::KARDEX_SIGNOS).
+                        'tipo_movimiento'      => 'AjustePositivo',
                         'cantidad'             => $cantidadPickeada,
                         'cantidad_cajas'       => (int)floor($cantidadPickeada / $upcProd),
                         'saldos'               => round(fmod($cantidadPickeada, $upcProd), 2),
@@ -7667,10 +8341,22 @@ class PickingController extends BaseController
                     ]);
                 }
 
-                $l->estado = 'EnProceso'; 
+                $l->estado = 'EnProceso';
                 $l->cantidad_pickeada = 0;
                 $l->updated_at = date('Y-m-d H:i:s');
                 $l->save();
+
+                // BUG CORREGIDO 2026-08-20: esta función revertía la línea a EnProceso pero
+                // nunca limpiaba el registro de picking_faltantes que hubiera quedado de la
+                // separación anterior — quedaba un "faltante fantasma" visible para siempre
+                // en el módulo de Agotados aunque la línea se volviera a separar completa.
+                // Caso real: Planilla 851, producto 6408 — reversado y reconfirmado al 100%,
+                // pero el faltante anterior seguía en el reporte.
+                \Illuminate\Database\Capsule\Manager::table('picking_faltantes')
+                    ->where('orden_picking_id', $l->orden_picking_id)
+                    ->where('producto_id', $l->producto_id)
+                    ->delete();
+
                 $lineasAfectadas++;
             }
 
@@ -7931,6 +8617,16 @@ class PickingController extends BaseController
         $sucFiltro = trim($params['sucursal_entrega'] ?? '');
         $refQ      = trim($params['referencia']       ?? '');
         $export    = ($params['export'] ?? '') === 'csv';
+        // A pedido explícito (2026-08-20): por defecto el módulo de Agotados NO
+        // muestra lo real, porque mezcla verdaderos agotados (el cliente se quedó
+        // sin producto) con registros de mera conciliación de inventario donde el
+        // auxiliar SÍ separó el 100% físico y el sistema solo no encontró de dónde
+        // descontarlo en el kardex — ese caso, por diseño (ver procesarBackorder()),
+        // usa la causa 'Separado sin Ubicación/Inventario' y NO afecta al cliente.
+        // En los datos reales esta categoría es la MÁS grande (más de la mitad de
+        // las filas de picking_faltantes), así que sin excluirla el reporte queda
+        // inflado con faltantes que nunca existieron para el cliente.
+        $incluirConciliacion = ($params['incluir_conciliacion'] ?? '') === '1';
 
         $like = $this->isPg() ? 'ILIKE' : 'LIKE';
 
@@ -7940,6 +8636,7 @@ class PickingController extends BaseController
             ->where('pf.empresa_id', $empresaId)
             ->where(Capsule::raw("DATE(pf.created_at)"), '>=', $fIni)
             ->where(Capsule::raw("DATE(pf.created_at)"), '<=', $fFin)
+            ->when(!$incluirConciliacion, fn($q) => $q->where('pf.causa', '!=', 'Separado sin Ubicación/Inventario'))
             ->select(
                 'pf.id',
                 'pf.created_at             as fecha',
@@ -8062,22 +8759,26 @@ class PickingController extends BaseController
 
         $rows = $query->limit(1000)->get();
 
+        // BUG CORREGIDO 2026-08-20 (a pedido explícito): antes se listaba una fila por
+        // cada picking_detalle individual — cuando un mismo pedido+referencia queda
+        // repartido en varias filas (splits FIFO por ubicación, o líneas duplicadas),
+        // el excedente aparecía repetido varias veces en vez de una sola vez por
+        // pedido+referencia. Ahora se agrupa por (orden_picking_id, producto_id) y se
+        // suma lo realmente pickeado antes de comparar contra lo solicitado.
         $excedentesQuery = Capsule::table('picking_detalles as pd')
             ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
             ->join('productos as pr', 'pr.id', '=', 'pd.producto_id')
             ->where('op.empresa_id', $empresaId)
             ->where(Capsule::raw("DATE(pd.created_at)"), '>=', $fIni)
             ->where(Capsule::raw("DATE(pd.created_at)"), '<=', $fFin)
-            // Blindaje 2026-08-08: el factor real de conversión cajas→unidades es
-            // factor_udm cuando el producto lo tiene (se vende por contenido/peso);
-            // unidades_caja es 1 para esos productos por diseño (ver auditoría del
-            // 2026-08-06). Usar solo unidades_caja aquí comparaba cajas solicitadas
-            // contra gramos separados sin convertir, marcando como "excedente" casi
-            // cualquier producto por peso con algo pickeado.
-            ->whereRaw('pd.cantidad_pickeada > (pd.cantidad_solicitada * COALESCE(NULLIF(pr.factor_udm, 0), pr.unidades_caja, 1))')
+            ->groupBy(
+                'pd.orden_picking_id', 'pd.producto_id',
+                'op.sucursal_entrega', 'op.numero_orden', 'op.numero_pedido', 'op.numero_factura', 'op.planilla_numero', 'op.cliente',
+                'pr.codigo_interno', 'pr.nombre', 'pr.unidades_caja', 'pr.factor_udm'
+            )
             ->select(
-                'pd.id',
-                'pd.created_at as fecha',
+                Capsule::raw('MIN(pd.id) as id'),
+                Capsule::raw('MAX(pd.created_at) as fecha'),
                 'op.sucursal_entrega',
                 'op.numero_orden',
                 'op.numero_pedido',
@@ -8088,15 +8789,14 @@ class PickingController extends BaseController
                 'pr.nombre as producto_nombre',
                 'pr.unidades_caja',
                 'pr.factor_udm',
-                'pd.cantidad_solicitada',
-                'pd.cantidad_pickeada',
-                // Excedente total en unidades = pickeada(UND) - solicitada(CJ)*U/E
-                Capsule::raw('(pd.cantidad_pickeada - (pd.cantidad_solicitada * COALESCE(NULLIF(pr.factor_udm, 0), pr.unidades_caja, 1))) as excedente_unidades'),
-                // Excedente desglosado: cajas de más y sueltos de más (del exceso, NO del total)
-                Capsule::raw('FLOOR((pd.cantidad_pickeada - (pd.cantidad_solicitada * COALESCE(NULLIF(pr.factor_udm, 0), pr.unidades_caja, 1))) / COALESCE(NULLIF(pr.factor_udm, 0), pr.unidades_caja, 1)) as excedente_cajas'),
-                Capsule::raw('MOD((pd.cantidad_pickeada - (pd.cantidad_solicitada * COALESCE(NULLIF(pr.factor_udm, 0), pr.unidades_caja, 1))), COALESCE(NULLIF(pr.factor_udm, 0), pr.unidades_caja, 1)) as excedente_saldos')
+                // MAX (no SUM) porque cantidad_solicitada es el mismo valor repetido en
+                // cada fila del mismo pedido+referencia, no una porción distinta a sumar.
+                Capsule::raw('MAX(pd.cantidad_solicitada) as cantidad_solicitada'),
+                // SUM porque cantidad_pickeada sí es lo realmente separado en cada
+                // ubicación/split — hay que sumarlo para saber el total físico real.
+                Capsule::raw('SUM(pd.cantidad_pickeada) as cantidad_pickeada')
             )
-            ->orderBy('pd.created_at', 'desc');
+            ->orderBy(Capsule::raw('MAX(pd.created_at)'), 'desc');
 
         if ($sucFiltro !== '') {
             $excedentesQuery->where('op.sucursal_entrega', $sucFiltro);
@@ -8110,13 +8810,27 @@ class PickingController extends BaseController
             });
         }
 
-        $excedentesRows = $excedentesQuery->limit(500)->get();
+        // Blindaje 2026-08-08: el factor real de conversión cajas→unidades es
+        // factor_udm cuando el producto lo tiene (se vende por contenido/peso);
+        // unidades_caja es 1 para esos productos por diseño (ver auditoría del
+        // 2026-08-06). Usar solo unidades_caja aquí comparaba cajas solicitadas
+        // contra gramos separados sin convertir, marcando como "excedente" casi
+        // cualquier producto por peso con algo pickeado.
+        $excedentesRows = $excedentesQuery->get()->map(function ($r) {
+            $upc = (float)($r->factor_udm ?? 0) > 0 ? (float)$r->factor_udm : max(1, (float)($r->unidades_caja ?? 1));
+            $esperado = (float)$r->cantidad_solicitada * $upc;
+            $r->excedente_unidades = (float)$r->cantidad_pickeada - $esperado;
+            $r->excedente_cajas    = $upc > 0 ? floor($r->excedente_unidades / $upc) : 0;
+            $r->excedente_saldos   = $upc > 0 ? fmod($r->excedente_unidades, $upc) : 0;
+            return $r;
+        })->filter(fn($r) => $r->excedente_unidades > 0.0001)->values()->take(500);
 
         $sucursales = Capsule::table('picking_faltantes as pf')
             ->join('orden_pickings as op', 'op.id', '=', 'pf.orden_picking_id')
             ->where('pf.empresa_id', $empresaId)
             ->where(Capsule::raw("DATE(pf.created_at)"), '>=', $fIni)
             ->where(Capsule::raw("DATE(pf.created_at)"), '<=', $fFin)
+            ->when(!$incluirConciliacion, fn($q) => $q->where('pf.causa', '!=', 'Separado sin Ubicación/Inventario'))
             ->whereNotNull('op.sucursal_entrega')
             ->distinct()
             ->orderBy('op.sucursal_entrega')
@@ -8142,10 +8856,15 @@ class PickingController extends BaseController
         $params    = $r->getQueryParams();
         $productoId        = (int)($params['producto_id'] ?? 0);
         $excluirUbicacionId = (int)($params['excluir_ubicacion_id'] ?? 0);
+        $ordenIdParam       = (int)($params['orden_id'] ?? 0);
 
         if (!$productoId) return $this->error($res, 'producto_id requerido', 400);
 
         [$empresaId, $sucursalId] = $this->getEffectiveTenantIds($user, $r);
+
+        $modoRotacion = $ordenIdParam
+            ? (OrdenPicking::find($ordenIdParam)?->modo_rotacion ?? 'FIFO')
+            : 'FIFO';
 
         $query = Inventario::where('empresa_id', $empresaId)
             ->where('sucursal_id', $sucursalId)
@@ -8158,10 +8877,8 @@ class PickingController extends BaseController
             $query->where('ubicacion_id', '!=', $excluirUbicacionId);
         }
 
-        // FEFO estricto: fechas NULL al final, más antiguas primero
-        $rows = $query
-            ->orderByRaw('fecha_vencimiento IS NULL ASC')
-            ->orderBy('fecha_vencimiento', 'ASC')
+        // Rotación FIFO (default) o LIFO — ver FefoEngine::ordenVencimiento().
+        $rows = FefoEngine::ordenVencimiento($query, 'fecha_vencimiento', $modoRotacion)
             ->orderByRaw('(cantidad - COALESCE(cantidad_reservada, 0)) DESC')
             ->limit(15)
             ->get()
@@ -8194,6 +8911,7 @@ class PickingController extends BaseController
         $ubicacionId  = (int)($data['ubicacion_id']  ?? 0);
         $lote         = isset($data['lote']) && $data['lote'] !== '' ? $data['lote'] : null;
         $fechaVenc    = isset($data['fecha_vencimiento']) && $data['fecha_vencimiento'] !== '' ? $data['fecha_vencimiento'] : null;
+        $causalFifoId = isset($data['causal_fifo_id']) && $data['causal_fifo_id'] !== '' ? (int)$data['causal_fifo_id'] : null;
 
         if (empty($lineaIds) || !$ubicacionId) {
             return $this->error($res, 'linea_ids y ubicacion_id son requeridos', 422);
@@ -8203,7 +8921,7 @@ class PickingController extends BaseController
 
         try {
             $resultado = Capsule::transaction(function () use (
-                $lineaIds, $inventarioId, $ubicacionId, $lote, $fechaVenc,
+                $lineaIds, $inventarioId, $ubicacionId, $lote, $fechaVenc, $causalFifoId,
                 $empresaId, $sucursalId, $user
             ) {
                 // ── 1. Cargar líneas con lock ──────────────────────────────────
@@ -8221,6 +8939,7 @@ class PickingController extends BaseController
 
                 $productoId    = $lineas->first()->producto_id;
                 $cantidadTotal = (float)$lineas->sum('cantidad_solicitada');
+                $modoRotacion  = OrdenPicking::find($lineas->first()->orden_picking_id)?->modo_rotacion ?? 'FIFO';
 
                 // ── 2. Liberar reserva en ubicación(es) anteriores ────────────
                 $ubicsAnteriores = $lineas->pluck('ubicacion_id')->filter()->unique();
@@ -8255,12 +8974,12 @@ class PickingController extends BaseController
                 if ($inventarioId > 0) {
                     $newInvQuery->where('id', $inventarioId);
                 } else {
-                    // Fallback: buscar por lote exacto o el más antiguo (FEFO)
+                    // Fallback: buscar por lote exacto o el más antiguo/próximo según
+                    // el modo de rotación del pedido (FIFO/FEFO o LIFO).
                     if ($lote !== null) {
                         $newInvQuery->where('lote', $lote);
                     }
-                    $newInvQuery->orderByRaw('fecha_vencimiento IS NULL ASC')
-                                ->orderBy('fecha_vencimiento', 'ASC');
+                    $newInvQuery = FefoEngine::ordenVencimiento($newInvQuery, 'fecha_vencimiento', $modoRotacion);
                 }
 
                 $newInv = $newInvQuery->lockForUpdate()->first();
@@ -8276,6 +8995,38 @@ class PickingController extends BaseController
                     );
                 }
 
+                // ── 3b. Blindaje FIFO/FEFO 2026-08-15 (LIFO 2026-08-18) ───────
+                // Si la ubicación elegida NO es la sugerida por el modo de rotación
+                // del pedido (fecha más próxima a vencer para FIFO/FEFO, o fecha
+                // más lejana para LIFO), exigir una causal estructurada — nunca
+                // dejar rotar fuera de orden en silencio. `causal_fifo_id`
+                // (parametrizable en causales_fifo, ver migración 132) queda
+                // guardado en la línea para auditoría.
+                $primeraFefoQ = Inventario::where('empresa_id', $empresaId)
+                    ->where('sucursal_id', $sucursalId)
+                    ->where('producto_id', $productoId)
+                    ->where('estado', 'Disponible')
+                    ->whereRaw('(cantidad - COALESCE(cantidad_reservada, 0)) > 0');
+                $primeraFefo = FefoEngine::ordenVencimiento($primeraFefoQ, 'fecha_vencimiento', $modoRotacion)
+                    ->orderByRaw('(cantidad - COALESCE(cantidad_reservada, 0)) DESC')
+                    ->first();
+
+                $esRotacionFueraDeOrden = $primeraFefo && (int)$primeraFefo->id !== (int)$newInv->id;
+
+                if ($esRotacionFueraDeOrden) {
+                    if (!$causalFifoId) {
+                        throw new \Exception('NEEDS_CAUSAL_FIFO');
+                    }
+                    $causalValida = Capsule::table('causales_fifo')
+                        ->where('id', $causalFifoId)
+                        ->where('empresa_id', $empresaId)
+                        ->where('activo', true)
+                        ->exists();
+                    if (!$causalValida) {
+                        throw new \Exception('Causal FIFO inválida o inactiva.');
+                    }
+                }
+
                 // ── 4. Reservar en nuevo inventario ───────────────────────────
                 $newInv->cantidad_reservada = (float)($newInv->cantidad_reservada ?? 0) + $cantidadTotal;
                 $newInv->save();
@@ -8285,6 +9036,7 @@ class PickingController extends BaseController
                     $linea->ubicacion_id      = $ubicacionId;
                     $linea->lote              = $newInv->lote;
                     $linea->fecha_vencimiento = $newInv->fecha_vencimiento;
+                    $linea->causal_fifo_id    = $esRotacionFueraDeOrden ? $causalFifoId : null;
                     $linea->save();
                 }
 
@@ -8298,6 +9050,24 @@ class PickingController extends BaseController
 
             return $this->ok($res, $resultado, 'Ubicación reasignada correctamente');
         } catch (\Exception $e) {
+            // Señal estructurada (mismo patrón que confirmLine()/pending_approval):
+            // el frontend necesita distinguir "falta seleccionar causal FIFO" de un
+            // error genérico para mostrar el selector en vez de solo un toast rojo.
+            if ($e->getMessage() === 'NEEDS_CAUSAL_FIFO') {
+                $causales = Capsule::table('causales_fifo')
+                    ->where('empresa_id', $empresaId)
+                    ->where('activo', true)
+                    ->orderBy('nombre')
+                    ->get();
+                $body = $res->getBody();
+                $body->write(json_encode([
+                    'error'   => false,
+                    'status'  => 'needs_causal_fifo',
+                    'message' => 'Esta ubicación no es la de fecha de vencimiento más próxima — seleccione una causal para justificar la rotación fuera de orden.',
+                    'causales'=> $causales,
+                ], JSON_UNESCAPED_UNICODE));
+                return $res->withHeader('Content-Type', 'application/json')->withStatus(200);
+            }
             return $this->error($res, $e->getMessage());
         }
     }
@@ -8354,11 +9124,19 @@ class PickingController extends BaseController
                 $totalLineas++;
                 $totalUnd += $det->cantidad_pickeada;
                 $prod = $det->producto;
+                // BUG CORREGIDO 2026-08-18 (a pedido explícito): esta remisión (consolidado
+                // de "Waves") armaba su propio HTML en vez de usar el helper compartido
+                // remisionAmbientesHtml(), y por eso era la única de las 4 rutas de
+                // remisión que NO mostraba el lote — se agrega aquí la columna faltante.
+                $loteVal = trim((string)($det->lote ?? ''));
+                $loteMostrar = ($loteVal !== '' && $loteVal !== 'N/A' && $loteVal !== '-' && $loteVal !== '—')
+                    ? htmlspecialchars($loteVal) : '-';
                 $rowsHtml .= "
                 <tr style='border-bottom:1px solid #e5e7eb;'>
                     <td style='padding:6px 8px;font-size:11px;color:#374151;'>{$lineaNum}</td>
                     <td style='padding:6px 8px;font-size:10px;color:#6b7280;'>" . htmlspecialchars($prod->codigo_interno ?? '') . "</td>
                     <td style='padding:6px 8px;font-size:11px;'>" . htmlspecialchars($prod->nombre ?? 'N/A') . "</td>
+                    <td style='padding:6px 8px;font-size:10px;color:#6b7280;'>{$loteMostrar}</td>
                     <td style='padding:6px 8px;font-size:11px;text-align:right;'>" . number_format($det->cantidad_solicitada, 0) . "</td>
                     <td style='padding:6px 8px;font-size:11px;text-align:right;font-weight:700;color:#059669;'>" . number_format($det->cantidad_pickeada, 0) . "</td>
                     <td style='padding:6px 8px;font-size:10px;'>" . htmlspecialchars($det->ambiente ?? '') . "</td>
@@ -8393,14 +9171,14 @@ class PickingController extends BaseController
         </div>
         <table>
             <thead><tr>
-                <th>#</th><th>Código</th><th>Producto</th>
+                <th>#</th><th>Código</th><th>Producto</th><th>Lote</th>
                 <th style='text-align:right;'>Sol.</th><th style='text-align:right;'>Sep.</th>
                 <th>Ambiente</th><th>Planilla</th><th>Estado cert.</th>
             </tr></thead>
             <tbody>{$rowsHtml}</tbody>
             <tfoot>
                 <tr style='background:#f3f4f6;font-weight:700;'>
-                    <td colspan='3' style='padding:8px;'>TOTALES</td>
+                    <td colspan='4' style='padding:8px;'>TOTALES</td>
                     <td style='padding:8px;text-align:right;'></td>
                     <td style='padding:8px;text-align:right;'>" . number_format($totalUnd, 0) . "</td>
                     <td colspan='3'></td>

@@ -33,10 +33,33 @@ WMS_MODULES['trazabilidad'] = (function () {
               <span style="color:#64748b;">${WMS.esc(doc.subtipo || '')} · ${WMS.esc(doc.motivo || '')}</span></div>`;
     if (doc.tipo === 'Recepción')
       return `<div style="font-size:11px;"><b style="color:#22c55e;">${WMS.esc(doc.numero || '')}</b>${doc.odc_id ? ` <span style="color:#64748b;">ODC#${doc.odc_id}</span>` : ''}</div>`;
-    if (doc.tipo === 'Picking' && doc.pedidos && doc.pedidos.length)
-      return `<div style="font-size:11px;">${doc.pedidos.slice(0, 3).map(p =>
-        `<div><b style="color:#3b82f6;">${WMS.esc(p.numero_orden || '')}</b> <span style="color:#64748b;">${WMS.esc(p.cliente || p.sucursal_entrega || '')}</span></div>`
-      ).join('')}${doc.pedidos.length > 3 ? `<div style="color:#94a3b8;font-size:10px;">+${doc.pedidos.length - 3} más</div>` : ''}</div>`;
+    if (doc.tipo === 'Picking') {
+      if (doc.punto_despacho || doc.cliente || doc.numero) {
+        const dest  = doc.punto_despacho || doc.cliente || '—';
+        const num   = doc.numero || 'Picking';
+        const extra = [];
+        if (doc.planilla) extra.push(`Planilla: ${doc.planilla}`);
+        if (doc.despacho_numero) extra.push(`Despacho: ${doc.despacho_numero}`);
+        if (doc.ruta) extra.push(`Ruta: ${doc.ruta}`);
+        const extraStr = extra.length ? `<div style="color:#64748b;font-size:10px;margin-top:1px;">${WMS.esc(extra.join(' · '))}</div>` : '';
+
+        return `<div style="font-size:11px;">
+          <div style="font-weight:800;color:#2563eb;display:flex;align-items:center;gap:4px;">
+            <i class="fa-solid fa-boxes-stacked" style="font-size:10px;"></i> ${WMS.esc(num)}
+          </div>
+          <div style="font-weight:700;color:#0f172a;margin-top:1px;display:flex;align-items:center;gap:3px;">
+            <i class="fa-solid fa-location-dot" style="color:#dc2626;font-size:10px;"></i> ${WMS.esc(dest)}
+          </div>
+          ${extraStr}
+        </div>`;
+      }
+      if (doc.pedidos && doc.pedidos.length) {
+        return `<div style="font-size:11px;">${doc.pedidos.slice(0, 3).map(p => {
+          const pDest = p.sucursal_entrega || p.cliente || '—';
+          return `<div><b style="color:#2563eb;">${WMS.esc(p.numero_orden || '')}</b> → <b style="color:#0f172a;">${WMS.esc(pDest)}</b></div>`;
+        }).join('')}${doc.pedidos.length > 3 ? `<div style="color:#94a3b8;font-size:10px;">+${doc.pedidos.length - 3} más</div>` : ''}</div>`;
+      }
+    }
     return `<span style="font-size:11px;color:#64748b;">${WMS.esc(doc.tipo || '')}</span>`;
   }
 

@@ -7,6 +7,7 @@ WMS_MODULES.reportes = {
     WMS.renderSidebar('reportes');
     const s = sub || 'gerencial';
     const fn = {
+      multimodal:   this.show_inventario_multimodal,
       gerencial:    this.show_gerencial,
       kardex:       this.show_kardex,
       recepciones:  this.show_recepciones,
@@ -26,6 +27,7 @@ WMS_MODULES.reportes = {
 
   subLabel(s) {
     const m = {
+      multimodal:'Reporte Inventario Excel',
       gerencial:'Dashboard Gerencial', kardex:'Kardex', recepciones:'Recepciones',
       recibo_cdp:'Recibo CDP', despachos:'Despachos', picking:'Picking', devoluciones:'Devoluciones',
       proveedores:'Evaluación Proveedores', audit:'Log de Auditoría',
@@ -1608,5 +1610,222 @@ WMS_MODULES.reportes = {
     table.querySelectorAll('tbody tr').forEach(tr => {
       tr.style.display = tr.innerText.toLowerCase().includes(term) ? '' : 'none';
     });
+  },
+
+  // ── REPORTE MULTIMODAL DE INVENTARIOS CON EXPORTACIÓN A EXCEL ───────────────
+  _invMultimodalModo: 'consolidado_referencia',
+
+  show_inventario_multimodal() {
+    WMS.setToolbar('');
+    const modo = this._invMultimodalModo || 'consolidado_referencia';
+
+    const pillBtn = (id, label, icon) => {
+      const active = modo === id;
+      return `<button class="btn btn-sm ${active ? 'btn-primary' : 'btn-outline-secondary'}"
+        onclick="WMS_MODULES.reportes._setInvMultimodalModo('${id}')"
+        style="font-weight:700;display:inline-flex;align-items:center;gap:6px;padding:6px 14px;">
+        <i class="fa-solid ${icon}"></i> ${label}
+      </button>`;
+    };
+
+    WMS.setContent(`
+      <div style="background:#fff;padding:20px;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+          <div>
+            <h2 style="font-size:1.25rem;font-weight:900;color:#0f172a;margin:0 0 4px;display:flex;align-items:center;gap:8px;">
+              <i class="fa-solid fa-file-excel" style="color:#10b981;"></i> Reporte Multimodal de Inventarios
+            </h2>
+            <p style="font-size:.8rem;color:#64748b;margin:0;">
+              Opciones de visualización y exportación directa a Excel con desglose en cajas, U/E y unidades reales.
+            </p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn btn-success" onclick="WMS_MODULES.reportes._exportarInvMultimodal()" style="font-weight:800;display:flex;align-items:center;gap:6px;">
+              <i class="fa-solid fa-file-excel"></i> Exportar a Excel
+            </button>
+          </div>
+        </div>
+
+        <!-- Selector de Modalidad -->
+        <div style="display:flex;gap:8px;margin-bottom:16px;background:#f8fafc;padding:6px;border-radius:8px;border:1px solid #e2e8f0;flex-wrap:wrap;">
+          ${pillBtn('consolidado_referencia', 'Consolidado por Referencias', 'fa-barcode')}
+          ${pillBtn('consolidado_vencimiento', 'Consolidado por Lote y Vencimiento', 'fa-calendar-days')}
+          ${pillBtn('por_ubicacion', 'Por Ubicación', 'fa-map-location-dot')}
+        </div>
+
+        <!-- Barra de Búsqueda y Filtro -->
+        <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+          <div style="position:relative;flex:1;max-width:400px;">
+            <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.85rem;"></i>
+            <input id="rpt-inv-search" class="form-control" style="padding-left:34px;font-size:.85rem;"
+              placeholder="Buscar por código, referencia, lote o ubicación..."
+              onkeyup="if(event.key==='Enter') WMS_MODULES.reportes._loadInvMultimodal()">
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.reportes._loadInvMultimodal()" style="font-weight:700;">
+            <i class="fa-solid fa-filter"></i> Filtrar
+          </button>
+          <button class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('rpt-inv-search').value='';WMS_MODULES.reportes._loadInvMultimodal()" style="font-weight:600;">
+            <i class="fa-solid fa-rotate-left"></i> Limpiar
+          </button>
+        </div>
+
+        <!-- KPIs Resumen -->
+        <div id="rpt-inv-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:10px 14px;border-radius:8px;">
+            <div style="font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;">Total Registros</div>
+            <div id="kpi-tot-reg" style="font-size:1.3rem;font-weight:900;color:#1e293b;">-</div>
+          </div>
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;padding:10px 14px;border-radius:8px;">
+            <div style="font-size:.68rem;font-weight:700;color:#1e40af;text-transform:uppercase;">Total Cajas</div>
+            <div id="kpi-tot-cajas" style="font-size:1.3rem;font-weight:900;color:#1d4ed8;">-</div>
+          </div>
+          <div style="background:#fefce8;border:1px solid #fef08a;padding:10px 14px;border-radius:8px;">
+            <div style="font-size:.68rem;font-weight:700;color:#854d0e;text-transform:uppercase;">Total Sueltos (Saldos)</div>
+            <div id="kpi-tot-sueltos" style="font-size:1.3rem;font-weight:900;color:#a16207;">-</div>
+          </div>
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;padding:10px 14px;border-radius:8px;">
+            <div style="font-size:.68rem;font-weight:700;color:#166534;text-transform:uppercase;">Total Unidades</div>
+            <div id="kpi-tot-unidades" style="font-size:1.3rem;font-weight:900;color:#15803d;">-</div>
+          </div>
+        </div>
+
+        <!-- Contenedor Tabla -->
+        <div id="rpt-inv-table-cont" class="table-container" style="max-height:540px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;">
+          <div style="text-align:center;padding:40px;"><div class="spinner"></div></div>
+        </div>
+      </div>
+    `);
+
+    this._loadInvMultimodal();
+  },
+
+  _setInvMultimodalModo(modo) {
+    this._invMultimodalModo = modo;
+    this.show_inventario_multimodal();
+  },
+
+  async _loadInvMultimodal() {
+    const cont = document.getElementById('rpt-inv-table-cont');
+    if (!cont) return;
+
+    const modo = this._invMultimodalModo || 'consolidado_referencia';
+    const search = document.getElementById('rpt-inv-search')?.value.trim() || '';
+
+    try {
+      const res = await API.get('/reportes/inventario-multimodal', `modo=${modo}&search=${encodeURIComponent(search)}`);
+      const payload = res.data || {};
+      const list = payload.data || [];
+      const kpis = payload.resumen || {};
+
+      // Actualizar KPIs
+      document.getElementById('kpi-tot-reg').textContent = WMS.formatNum(kpis.total_registros || 0);
+      document.getElementById('kpi-tot-cajas').textContent = WMS.formatNum(kpis.total_cajas || 0);
+      document.getElementById('kpi-tot-sueltos').textContent = WMS.formatNum(kpis.total_sueltos || 0);
+      document.getElementById('kpi-tot-unidades').textContent = WMS.formatNum(kpis.total_unidades || 0);
+
+      if (!list.length) {
+        cont.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fa-solid fa-box-open fa-2x" style="margin-bottom:8px;opacity:.5;"></i><br>No se encontraron registros de inventario.</div>';
+        return;
+      }
+
+      let headerHtml = '';
+      let rowsHtml = '';
+
+      if (modo === 'consolidado_referencia') {
+        headerHtml = `
+          <tr>
+            <th>CÓDIGO</th>
+            <th>REFERENCIA</th>
+            <th class="text-center" style="background:#eff6ff;color:#1e40af;">CANTIDAD CAJAS</th>
+            <th class="text-center">U/E</th>
+            <th class="text-center" style="background:#fefce8;color:#854d0e;">SUELTOS (SALDOS)</th>
+            <th class="text-center" style="background:#f0fdf4;color:#166534;">TOTAL UNIDADES</th>
+          </tr>`;
+        rowsHtml = list.map(r => `
+          <tr>
+            <td><b>${WMS.esc(r.codigo)}</b></td>
+            <td style="font-weight:600;color:#1e293b;">${WMS.esc(r.referencia)}</td>
+            <td class="text-center fw-800" style="background:#eff6ff;color:#1d4ed8;font-size:.95rem;">${WMS.formatNum(r.cantidad_cajas)}</td>
+            <td class="text-center fw-600">${WMS.formatNum(r.u_e)}</td>
+            <td class="text-center fw-700" style="background:#fefce8;color:#a16207;">${WMS.formatNum(r.sueltos)}</td>
+            <td class="text-center fw-900" style="background:#f0fdf4;color:#15803d;font-size:1rem;">${WMS.formatNum(r.total_unidades)}</td>
+          </tr>`).join('');
+      } else if (modo === 'consolidado_vencimiento') {
+        headerHtml = `
+          <tr>
+            <th>CÓDIGO</th>
+            <th>REFERENCIA</th>
+            <th>LOTE</th>
+            <th>F. VENCIMIENTO</th>
+            <th class="text-center">DÍAS ÚTILES</th>
+            <th class="text-center" style="background:#eff6ff;color:#1e40af;">CANTIDAD CAJAS</th>
+            <th class="text-center">U/E</th>
+            <th class="text-center" style="background:#fefce8;color:#854d0e;">SUELTOS (SALDOS)</th>
+            <th class="text-center" style="background:#f0fdf4;color:#166534;">TOTAL UNIDADES</th>
+          </tr>`;
+        rowsHtml = list.map(r => {
+          const dias = r.dias_vida_util;
+          const badgeColor = dias === '—' ? 'badge-secondary' : (dias < 30 ? 'badge-danger' : (dias < 90 ? 'badge-warning' : 'badge-success'));
+          return `
+            <tr>
+              <td><b>${WMS.esc(r.codigo)}</b></td>
+              <td style="font-weight:600;color:#1e293b;">${WMS.esc(r.referencia)}</td>
+              <td><span class="badge badge-light" style="font-weight:700;">${WMS.esc(r.lote)}</span></td>
+              <td>${WMS.formatDate(r.fecha_vencimiento)}</td>
+              <td class="text-center"><span class="badge ${badgeColor}" style="font-weight:700;">${dias !== '—' ? dias + 'd' : '—'}</span></td>
+              <td class="text-center fw-800" style="background:#eff6ff;color:#1d4ed8;font-size:.95rem;">${WMS.formatNum(r.cantidad_cajas)}</td>
+              <td class="text-center fw-600">${WMS.formatNum(r.u_e)}</td>
+              <td class="text-center fw-700" style="background:#fefce8;color:#a16207;">${WMS.formatNum(r.sueltos)}</td>
+              <td class="text-center fw-900" style="background:#f0fdf4;color:#15803d;font-size:1rem;">${WMS.formatNum(r.total_unidades)}</td>
+            </tr>`;
+        }).join('');
+      } else { // por_ubicacion
+        headerHtml = `
+          <tr>
+            <th>UBICACIÓN</th>
+            <th>PASILLO</th>
+            <th>CÓDIGO</th>
+            <th>REFERENCIA</th>
+            <th>LOTE</th>
+            <th>F. VENCIMIENTO</th>
+            <th class="text-center" style="background:#eff6ff;color:#1e40af;">CANTIDAD CAJAS</th>
+            <th class="text-center">U/E</th>
+            <th class="text-center" style="background:#fefce8;color:#854d0e;">SUELTOS (SALDOS)</th>
+            <th class="text-center" style="background:#f0fdf4;color:#166534;">TOTAL UNIDADES</th>
+          </tr>`;
+        rowsHtml = list.map(r => `
+          <tr>
+            <td><span class="badge badge-light-blue" style="font-weight:800;font-size:.82rem;">${WMS.esc(r.ubicacion)}</span></td>
+            <td><span class="badge badge-secondary" style="font-weight:700;">${WMS.esc(r.pasillo)}</span></td>
+            <td><b>${WMS.esc(r.codigo)}</b></td>
+            <td style="font-weight:600;color:#1e293b;">${WMS.esc(r.referencia)}</td>
+            <td><span class="badge badge-light" style="font-weight:700;">${WMS.esc(r.lote)}</span></td>
+            <td>${WMS.formatDate(r.fecha_vencimiento)}</td>
+            <td class="text-center fw-800" style="background:#eff6ff;color:#1d4ed8;font-size:.95rem;">${WMS.formatNum(r.cantidad_cajas)}</td>
+            <td class="text-center fw-600">${WMS.formatNum(r.u_e)}</td>
+            <td class="text-center fw-700" style="background:#fefce8;color:#a16207;">${WMS.formatNum(r.sueltos)}</td>
+            <td class="text-center fw-900" style="background:#f0fdf4;color:#15803d;font-size:1rem;">${WMS.formatNum(r.total_unidades)}</td>
+          </tr>`).join('');
+      }
+
+      cont.innerHTML = `
+        <table class="data-table compact" style="margin:0;">
+          <thead style="position:sticky;top:0;z-index:10;background:#f8fafc;">
+            ${headerHtml}
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>`;
+    } catch(e) {
+      cont.innerHTML = `<div class="text-danger" style="padding:20px;">Error cargando reporte: ${WMS.esc(e.message)}</div>`;
+    }
+  },
+
+  _exportarInvMultimodal() {
+    const modo = this._invMultimodalModo || 'consolidado_referencia';
+    const search = document.getElementById('rpt-inv-search')?.value.trim() || '';
+    const endpoint = `/reportes/inventario-multimodal?modo=${modo}&search=${encodeURIComponent(search)}`;
+    this.exportar(endpoint);
   },
 };

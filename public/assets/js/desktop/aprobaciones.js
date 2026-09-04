@@ -39,26 +39,45 @@ WMS_MODULES.aprobaciones = {
     `);
 
     WMS.setContent(`
-      <div style="padding:20px;max-width:1400px;margin:0 auto;">
+      <div style="padding:20px;max-width:1400px;margin:0 auto;background:#f8fafc;min-height:100vh;">
+        <!-- Cabecera de Módulo -->
+        <div style="background:linear-gradient(135deg, #1e293b, #0f172a);border-radius:16px;padding:24px;margin-bottom:24px;color:#fff;box-shadow:0 10px 25px -5px rgba(0,0,0,0.2);display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <h2 style="margin:0 0 4px 0;font-size:1.5rem;font-weight:800;display:flex;align-items:center;gap:10px;">
+              <i class="fa-solid fa-stamp" style="color:#3b82f6;"></i> Centro de Aprobaciones
+            </h2>
+            <p style="margin:0;color:#94a3b8;font-size:.9rem;">Gestiona las autorizaciones pendientes en tiempo real</p>
+          </div>
+          <div>
+            <button class="btn btn-primary" onclick="WMS_MODULES.aprobaciones.load('${sub}')" style="border-radius:8px;font-weight:700;">
+              <i class="fa-solid fa-arrows-rotate"></i> Actualizar
+            </button>
+          </div>
+        </div>
+
         <!-- Tabs de filtro por tipo de aprobación -->
-        <div style="display:flex;gap:10px;margin-bottom:20px;border-bottom:2px solid #e2e8f0;padding-bottom:12px;">
-          <button class="btn btn-sm ${sub==='todas'?'btn-primary':'btn-secondary'}" onclick="WMS.nav('aprobaciones','todas')">
+        <div style="display:flex;gap:12px;margin-bottom:24px;padding-bottom:16px;overflow-x:auto;">
+          <button class="btn btn-sm ${sub==='todas'?'btn-primary':'btn-light'}" onclick="WMS.nav('aprobaciones','todas')" style="border-radius:20px;padding:8px 16px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,.05);">
             <i class="fa-solid fa-layer-group"></i> Todas las Pendientes
           </button>
-          <button class="btn btn-sm ${sub==='vencimientos'?'btn-primary':'btn-secondary'}" onclick="WMS.nav('aprobaciones','vencimientos')">
-            <i class="fa-solid fa-calendar-xmark"></i> Vencimientos <span id="badge-venc" class="badge badge-warning" style="margin-left:4px;">0</span>
+          <button class="btn btn-sm ${sub==='vencimientos'?'btn-primary':'btn-light'}" onclick="WMS.nav('aprobaciones','vencimientos')" style="border-radius:20px;padding:8px 16px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,.05);">
+            <i class="fa-solid fa-calendar-xmark" style="color:#f59e0b;"></i> Vencimientos 
+            <span id="badge-venc" class="badge" style="background:#fef3c7;color:#b45309;margin-left:6px;border-radius:10px;">0</span>
           </button>
-          <button class="btn btn-sm ${sub==='ajustes'?'btn-primary':'btn-secondary'}" onclick="WMS.nav('aprobaciones','ajustes')">
-            <i class="fa-solid fa-location-crosshairs"></i> Ajustes x Ubicación <span id="badge-ajust" class="badge badge-info" style="margin-left:4px;">0</span>
+          <button class="btn btn-sm ${sub==='ajustes'?'btn-primary':'btn-light'}" onclick="WMS.nav('aprobaciones','ajustes')" style="border-radius:20px;padding:8px 16px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,.05);">
+            <i class="fa-solid fa-location-crosshairs" style="color:#3b82f6;"></i> Ajustes x Ubicación 
+            <span id="badge-ajust" class="badge" style="background:#dbeafe;color:#1e3a8a;margin-left:6px;border-radius:10px;">0</span>
           </button>
-          <button class="btn btn-sm ${sub==='devoluciones'?'btn-primary':'btn-secondary'}" onclick="WMS.nav('aprobaciones','devoluciones')">
-            <i class="fa-solid fa-rotate-left"></i> Devoluciones <span id="badge-dev" class="badge badge-danger" style="margin-left:4px;">0</span>
+          <button class="btn btn-sm ${sub==='devoluciones'?'btn-primary':'btn-light'}" onclick="WMS.nav('aprobaciones','devoluciones')" style="border-radius:20px;padding:8px 16px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,.05);">
+            <i class="fa-solid fa-rotate-left" style="color:#ef4444;"></i> Devoluciones 
+            <span id="badge-dev" class="badge" style="background:#fee2e2;color:#991b1b;margin-left:6px;border-radius:10px;">0</span>
           </button>
         </div>
 
-        <div id="aprobaciones-container" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(360px, 1fr));gap:20px;">
-          <div style="text-align:center;padding:40px;color:#64748b;grid-column:1/-1;">
-            <i class="fa-solid fa-circle-notch fa-spin fa-2x"></i><br><br>Cargando aprobaciones pendientes...
+        <div id="aprobaciones-container" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(340px, 1fr));gap:24px;">
+          <div style="text-align:center;padding:60px;color:#64748b;grid-column:1/-1;background:#fff;border-radius:16px;box-shadow:0 4px 6px -1px rgba(0,0,0,.05);">
+            <i class="fa-solid fa-circle-notch fa-spin fa-3x" style="color:#3b82f6;"></i><br><br>
+            <span style="font-weight:600;font-size:1.1rem;">Obteniendo autorizaciones...</span>
           </div>
         </div>
       </div>
@@ -93,23 +112,33 @@ WMS_MODULES.aprobaciones = {
       if (sub === 'todas' || sub === 'vencimientos') {
         vencimientos.forEach(v => {
           html += `
-            <div style="background:#fff;border-radius:12px;border:1px solid #fed7aa;box-shadow:0 2px 8px rgba(245,158,11,.08);padding:16px;">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-                <span class="badge badge-warning"><i class="fa-solid fa-calendar-xmark"></i> Vencimiento Corto</span>
-                <small style="color:#64748b;font-size:.7rem;">ID #${v.id}</small>
+            <div style="background:#fff;border-radius:16px;border-top:4px solid #f59e0b;box-shadow:0 10px 15px -3px rgba(0,0,0,0.05);padding:20px;display:flex;flex-direction:column;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+                <span class="badge" style="background:#fef3c7;color:#b45309;padding:6px 12px;border-radius:8px;font-weight:700;"><i class="fa-solid fa-calendar-xmark"></i> Vencimiento Corto</span>
+                <span style="background:#f1f5f9;color:#64748b;padding:4px 8px;border-radius:6px;font-size:.7rem;font-weight:600;font-family:monospace;">ID #${v.id}</span>
               </div>
-              <h4 style="margin:0 0 6px 0;font-size:.92rem;font-weight:700;color:#1e293b;">${WMS.esc(v.producto?.nombre || 'Producto')}</h4>
-              <div style="font-size:.78rem;color:#475569;margin-bottom:12px;line-height:1.5;">
-                • Lote: <b>${WMS.esc(v.lote || 'N/A')}</b><br>
-                • Vencimiento recibido: <b style="color:#dc2626;">${v.fecha_vencimiento}</b><br>
-                • Existente en bodega: <span>${v.fecha_existente_bodega || 'Ninguna'}</span><br>
-                • Cantidad: <b>${v.cantidad_recibida} und</b>
+              <h4 style="margin:0 0 12px 0;font-size:1.05rem;font-weight:800;color:#1e293b;flex-grow:1;">${WMS.esc(v.producto?.nombre || 'Producto')}</h4>
+              
+              <div style="background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:20px;font-size:.8rem;color:#475569;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <span>Lote:</span> <b style="color:#0f172a;">${WMS.esc(v.lote || 'N/A')}</b>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <span>Vencimiento:</span> <b style="color:#ef4444;background:#fee2e2;padding:2px 6px;border-radius:4px;">${WMS.formatDate(v.fecha_vencimiento)}</b>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <span>Existencia:</span> <b>${v.fecha_existente_bodega ? WMS.formatDate(v.fecha_existente_bodega) : 'Ninguna'}</b>
+                </div>
+                <div style="display:flex;justify-content:space-between;border-top:1px dashed #cbd5e1;padding-top:6px;margin-top:6px;">
+                  <span>Cantidad:</span> <b style="font-size:1rem;color:#0f172a;">${v.cantidad_recibida} und</b>
+                </div>
               </div>
-              <div style="display:flex;gap:8px;">
-                <button class="btn btn-success btn-sm" style="flex:1;" onclick="WMS_MODULES.aprobaciones.resolverVencimiento(${v.id}, 'aprobar')">
-                  <i class="fa-solid fa-check"></i> Autorizar Ingreso
+
+              <div style="display:flex;gap:10px;">
+                <button class="btn btn-sm" style="flex:1;background:linear-gradient(to right, #10b981, #059669);color:#fff;border:none;border-radius:8px;font-weight:700;box-shadow:0 4px 6px rgba(16, 185, 129, 0.2);" onclick="WMS_MODULES.aprobaciones.resolverVencimiento(${v.id}, 'aprobar')">
+                  <i class="fa-solid fa-check"></i> Autorizar
                 </button>
-                <button class="btn btn-danger btn-sm" style="flex:1;" onclick="WMS_MODULES.aprobaciones.resolverVencimiento(${v.id}, 'rechazar')">
+                <button class="btn btn-sm" style="flex:1;background:#fff;color:#ef4444;border:1px solid #fca5a5;border-radius:8px;font-weight:700;" onclick="WMS_MODULES.aprobaciones.resolverVencimiento(${v.id}, 'rechazar')">
                   <i class="fa-solid fa-xmark"></i> Rechazar
                 </button>
               </div>
@@ -121,22 +150,32 @@ WMS_MODULES.aprobaciones = {
       if (sub === 'todas' || sub === 'ajustes') {
         ajustes.forEach(a => {
           html += `
-            <div style="background:#fff;border-radius:12px;border:1px solid #bfdbfe;box-shadow:0 2px 8px rgba(59,130,246,.08);padding:16px;">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-                <span class="badge badge-info"><i class="fa-solid fa-location-crosshairs"></i> Ajuste Ubicación</span>
-                <small style="color:#64748b;font-size:.7rem;">${a.created_at || ''}</small>
+            <div style="background:#fff;border-radius:16px;border-top:4px solid #3b82f6;box-shadow:0 10px 15px -3px rgba(0,0,0,0.05);padding:20px;display:flex;flex-direction:column;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+                <span class="badge" style="background:#dbeafe;color:#1e3a8a;padding:6px 12px;border-radius:8px;font-weight:700;"><i class="fa-solid fa-location-crosshairs"></i> Ajuste Ubicación</span>
+                <span style="background:#f1f5f9;color:#64748b;padding:4px 8px;border-radius:6px;font-size:.7rem;font-weight:600;">${(a.created_at || '').substring(0,10)}</span>
               </div>
-              <h4 style="margin:0 0 6px 0;font-size:.92rem;font-weight:700;color:#1e293b;">Ubicación: ${WMS.esc(a.ubicacion?.codigo || 'N/A')}</h4>
-              <div style="font-size:.78rem;color:#475569;margin-bottom:12px;line-height:1.5;">
-                • Tipo: <b>${WMS.esc(a.tipo)}</b><br>
-                • Solicitado por: <b>${WMS.esc(a.usuario?.nombre || 'Auxiliar')}</b><br>
-                • Referencias contadas: <b>${a.detalles_count || a.detalles?.length || 0} ítems</b>
+              <h4 style="margin:0 0 12px 0;font-size:1.05rem;font-weight:800;color:#1e293b;flex-grow:1;">
+                <i class="fa-solid fa-warehouse" style="color:#94a3b8;margin-right:6px;"></i> ${WMS.esc(a.ubicacion?.codigo || 'N/A')}
+              </h4>
+              
+              <div style="background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:20px;font-size:.8rem;color:#475569;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <span>Tipo:</span> <b style="color:#0f172a;background:#e2e8f0;padding:2px 6px;border-radius:4px;">${WMS.esc(a.tipo)}</b>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <span>Solicitado por:</span> <b>${WMS.esc(a.usuario?.nombre || 'Auxiliar')}</b>
+                </div>
+                <div style="display:flex;justify-content:space-between;border-top:1px dashed #cbd5e1;padding-top:6px;margin-top:6px;">
+                  <span>Refs. Contadas:</span> <b style="font-size:1rem;color:#0f172a;">${a.detalles_count || a.detalles?.length || 0} ítems</b>
+                </div>
               </div>
-              <div style="display:flex;gap:8px;">
-                <button class="btn btn-success btn-sm" style="flex:1;" onclick="WMS_MODULES.aprobaciones.resolverAjuste(${a.id}, 'aprobar')">
+
+              <div style="display:flex;gap:10px;">
+                <button class="btn btn-sm" style="flex:1;background:linear-gradient(to right, #3b82f6, #2563eb);color:#fff;border:none;border-radius:8px;font-weight:700;box-shadow:0 4px 6px rgba(59, 130, 246, 0.2);" onclick="WMS_MODULES.aprobaciones.resolverAjuste(${a.id}, 'aprobar')">
                   <i class="fa-solid fa-check"></i> Aprobar Ajuste
                 </button>
-                <button class="btn btn-danger btn-sm" style="flex:1;" onclick="WMS_MODULES.aprobaciones.resolverAjuste(${a.id}, 'rechazar')">
+                <button class="btn btn-sm" style="flex:1;background:#fff;color:#ef4444;border:1px solid #fca5a5;border-radius:8px;font-weight:700;" onclick="WMS_MODULES.aprobaciones.resolverAjuste(${a.id}, 'rechazar')">
                   <i class="fa-solid fa-xmark"></i> Rechazar
                 </button>
               </div>
@@ -148,22 +187,32 @@ WMS_MODULES.aprobaciones = {
       if (sub === 'todas' || sub === 'devoluciones') {
         devoluciones.forEach(d => {
           html += `
-            <div style="background:#fff;border-radius:12px;border:1px solid #fecaca;box-shadow:0 2px 8px rgba(220,38,38,.08);padding:16px;">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-                <span class="badge badge-danger"><i class="fa-solid fa-rotate-left"></i> Devolución Proveedor</span>
-                <small style="color:#64748b;font-size:.7rem;">#${d.id}</small>
+            <div style="background:#fff;border-radius:16px;border-top:4px solid #ef4444;box-shadow:0 10px 15px -3px rgba(0,0,0,0.05);padding:20px;display:flex;flex-direction:column;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+                <span class="badge" style="background:#fee2e2;color:#991b1b;padding:6px 12px;border-radius:8px;font-weight:700;"><i class="fa-solid fa-rotate-left"></i> Devolución </span>
+                <span style="background:#f1f5f9;color:#64748b;padding:4px 8px;border-radius:6px;font-size:.7rem;font-weight:600;font-family:monospace;">#${d.id}</span>
               </div>
-              <h4 style="margin:0 0 6px 0;font-size:.92rem;font-weight:700;color:#1e293b;">${WMS.esc(d.proveedor?.razon_social || 'Proveedor')}</h4>
-              <div style="font-size:.78rem;color:#475569;margin-bottom:12px;line-height:1.5;">
-                • Motivo: <b>${WMS.esc(d.motivo || 'N/A')}</b><br>
-                • Documento: <b>${WMS.esc(d.numero_documento || 'Sin doc')}</b><br>
-                • Registrado por: <b>${WMS.esc(d.usuario?.nombre || 'Sistema')}</b>
+              <h4 style="margin:0 0 12px 0;font-size:1.05rem;font-weight:800;color:#1e293b;flex-grow:1;">
+                ${WMS.esc(d.proveedor?.razon_social || d.tercero_nombre || 'Proveedor')}
+              </h4>
+              
+              <div style="background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:20px;font-size:.8rem;color:#475569;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <span>Motivo:</span> <b style="color:#0f172a;">${WMS.esc(d.motivo_general || d.motivo || 'N/A')}</b>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <span>Documento:</span> <b>${WMS.esc(d.numero_documento || 'Sin doc')}</b>
+                </div>
+                <div style="display:flex;justify-content:space-between;border-top:1px dashed #cbd5e1;padding-top:6px;margin-top:6px;">
+                  <span>Registrado por:</span> <b style="color:#0f172a;">${WMS.esc(d.responsable_devolucion || d.usuario?.nombre || 'Sistema')}</b>
+                </div>
               </div>
-              <div style="display:flex;gap:8px;">
-                <button class="btn btn-success btn-sm" style="flex:1;" onclick="WMS_MODULES.aprobaciones.resolverDevolucion(${d.id}, 'aprobar')">
-                  <i class="fa-solid fa-check"></i> Aprobar Devolución
+
+              <div style="display:flex;gap:10px;">
+                <button class="btn btn-sm" style="flex:1;background:linear-gradient(to right, #ef4444, #dc2626);color:#fff;border:none;border-radius:8px;font-weight:700;box-shadow:0 4px 6px rgba(239, 68, 68, 0.2);" onclick="WMS_MODULES.aprobaciones.resolverDevolucion(${d.id}, 'aprobar')">
+                  <i class="fa-solid fa-check"></i> Aprobar
                 </button>
-                <button class="btn btn-danger btn-sm" style="flex:1;" onclick="WMS_MODULES.aprobaciones.resolverDevolucion(${d.id}, 'rechazar')">
+                <button class="btn btn-sm" style="flex:1;background:#fff;color:#64748b;border:1px solid #cbd5e1;border-radius:8px;font-weight:700;" onclick="WMS_MODULES.aprobaciones.resolverDevolucion(${d.id}, 'rechazar')">
                   <i class="fa-solid fa-xmark"></i> Rechazar
                 </button>
               </div>
@@ -173,10 +222,12 @@ WMS_MODULES.aprobaciones = {
 
       if (!html) {
         html = `
-          <div class="m-empty" style="grid-column:1/-1;padding:60px 20px;text-align:center;background:#fff;border-radius:12px;border:1px dashed #cbd5e1;">
-            <i class="fa-solid fa-circle-check" style="font-size:3rem;color:#10b981;margin-bottom:12px;"></i>
-            <h3 style="font-weight:800;color:#1e293b;margin-bottom:6px;">¡Todo al día!</h3>
-            <p style="color:#64748b;font-size:.85rem;margin:0;">No hay solicitudes pendientes de aprobación en este filtro.</p>
+          <div class="m-empty" style="grid-column:1/-1;padding:80px 20px;text-align:center;background:#fff;border-radius:24px;border:2px dashed #e2e8f0;">
+            <div style="width:80px;height:80px;background:#f0fdf4;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 24px;">
+              <i class="fa-solid fa-check-double" style="font-size:2.5rem;color:#22c55e;"></i>
+            </div>
+            <h3 style="font-weight:800;color:#0f172a;margin-bottom:8px;font-size:1.5rem;">¡Bandeja al día!</h3>
+            <p style="color:#64748b;font-size:1rem;margin:0;">No hay solicitudes pendientes de aprobación para esta categoría.</p>
           </div>`;
       }
 

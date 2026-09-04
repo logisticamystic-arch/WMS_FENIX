@@ -43,6 +43,7 @@ WMS_MODULES.maestro = {
       { id: 'ubicaciones', icon: 'fa-map-pin', title: 'Ubicaciones', desc: 'Maestro de posiciones en bodega, zonas y capacidad.' },
       { id: 'proveedores', icon: 'fa-truck', title: 'Proveedores', desc: 'Gestión de proveedores, contactos y tiempos de entrega.' },
       { id: 'causales-novedad', icon: 'fa-list-check', title: 'Causales de Novedad', desc: 'Causas de agotados en picking: área responsable y si afectan el nivel de servicio.' },
+      { id: 'causales-fifo', icon: 'fa-arrow-down-up-across-line', title: 'Causales FIFO', desc: 'Motivos para justificar una separación fuera del orden de rotación (FEFO) sugerido.' },
       { id: 'impresoras', icon: 'fa-print', title: 'Impresoras', desc: 'Configuración de impresoras IP para rótulos y documentos.' },
       { id: 'permisos', icon: 'fa-shield-halved', title: 'Seguridad', desc: 'Matriz de permisos, acceso por roles y auditoría.' },
     ];
@@ -100,7 +101,7 @@ WMS_MODULES.maestro = {
       empresa: 'Empresa', sucursales: 'Sucursales', personal: 'Personal',
       categorias: 'Categorías', marcas: 'Marcas', productos: 'Catálogo de Productos',
       clientes: 'Clientes', ambientes: 'Ambientes', ubicaciones: 'Ubicaciones',
-      proveedores: 'Proveedores', 'causales-novedad': 'Causales de Novedad', rutas: 'Rutas', permisos: 'Seguridad',
+      proveedores: 'Proveedores', 'causales-novedad': 'Causales de Novedad', 'causales-fifo': 'Causales FIFO', rutas: 'Rutas', permisos: 'Seguridad',
       impresoras: 'Impresoras IP',
       sistema: 'Diagnóstico del Sistema',
       'reinicio-datos': 'Reinicio de Datos'
@@ -688,13 +689,32 @@ WMS_MODULES.maestro = {
 
   // Permisos individuales por usuario
   // Respuesta API: { personal, permisos_rol:[{modulo,submodulo,accion,concedido}], permisos_personal:[...] }
+  // A pedido explícito (2026-08-23): etiquetas legibles para las pantallas del
+  // móvil (antes solo se veía el código corto "au", "pv", etc.) y para el
+  // nombre visible de cada módulo — así el administrador entiende exactamente
+  // qué le está concediendo o quitando a cada persona.
+  _PERM_MOBILE_LABELS: {
+    ro: 'Recepción ODC', rs: 'Recepción sin ODC', ub: 'Ubicar Mercancía', tr: 'Traslado',
+    pk: 'Picking', pa: 'Packing', ce: 'Certificar', iv: 'Inventario',
+    au: 'Ajuste x Ubicación', pr: 'Productos', ci: 'Consultar (IA)', dv: 'Devolución',
+    ms: 'Misceláneos', tp: 'Traspaso', pv: 'Preoperacional',
+  },
+  _PERM_MODULO_LABELS: {
+    maestros: 'Maestros', recepcion: 'Recepción & YMS', almacenamiento: 'Almacenamiento',
+    picking: 'Picking', despacho: 'Despacho & TMS', preoperacional: 'Preoperacional',
+    devoluciones: 'Devoluciones', aprobaciones: 'Centro de Aprobaciones', inventario: 'Inventarios',
+    rotulos: 'Rótulos', reportes: 'Reportes', inteligencia: 'Inteligencia ML',
+    logistica: 'Logística Pro', 'consulta-rapida': 'Consulta Rápida', trazabilidad: 'Trazabilidad',
+    'chat-ia': 'Fénix IA', permisos: 'Permisos', calidad: 'Calidad',
+  },
+
   async gestionarPermisos(personalId, nombre) {
     WMS.showModal(`Permisos de: ${WMS.esc(nombre)}`,
       `<div id="perms-user-body"><div class="spinner" style="margin:30px auto;"></div></div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>
        <button class="btn btn-warning btn-sm" onclick="WMS_MODULES.maestro.resetPermisosUsuario(${personalId},'${WMS.esc(nombre)}')">
          <i class="fa-solid fa-rotate-left"></i> Resetear al rol
-       </button>`);
+       </button>`, 'lg');
     try {
       const r   = await API.get('/personal/' + personalId + '/permisos');
       const el  = document.getElementById('perms-user-body');
@@ -704,11 +724,9 @@ WMS_MODULES.maestro = {
       const overrides   = r.permisos_personal || [];
       const persona     = r.personal || {};
 
-      // Construir mapa de overrides: key = modulo|submodulo|accion
       const ovMap = {};
       overrides.forEach(o => { ovMap[`${o.modulo}|${o.submodulo}|${o.accion}`] = o.concedido; });
 
-      // Unir: usar override si existe, si no el valor del rol
       const permisos = rolPermisos.map(p => {
         const key       = `${p.modulo}|${p.submodulo}|${p.accion}`;
         const concedido = key in ovMap ? ovMap[key] : p.concedido;
@@ -724,34 +742,54 @@ WMS_MODULES.maestro = {
         return;
       }
 
-      const grupos = {};
-      permisos.forEach(p => { if (!grupos[p.modulo]) grupos[p.modulo] = []; grupos[p.modulo].push(p); });
+      const desktopPerms = permisos.filter(p => p.modulo !== 'mobile');
+      const mobilePerms  = permisos.filter(p => p.modulo === 'mobile');
+
+      const gruposDesktop = {};
+      desktopPerms.forEach(p => { if (!gruposDesktop[p.modulo]) gruposDesktop[p.modulo] = []; gruposDesktop[p.modulo].push(p); });
+
+      const renderToggle = (p, label) => {
+        const encData = encodeURIComponent(JSON.stringify({ modulo: p.modulo, submodulo: p.submodulo, accion: p.accion }));
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9;">
+          <span style="font-size:.78rem;">${p.esOverride ? '<span style="color:#f59e0b;" title="Override individual activo">⚡</span> ' : ''}${WMS.esc(label)}</span>
+          <label class="wms-switch sm">
+            <input type="checkbox" ${p.concedido ? 'checked' : ''}
+              onchange="WMS_MODULES.maestro.togglePermUsuario(${personalId},decodeURIComponent('${encData}'),this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>`;
+      };
 
       el.innerHTML = `
         <p class="text-sm text-muted" style="margin-bottom:12px;">
           Rol base: <strong>${WMS.esc(persona.rol || '-')}</strong>.
-          Los toggles con <span style="color:#f59e0b;">⚡</span> tienen override individual activo.
+          Los toggles con <span style="color:#f59e0b;">⚡</span> tienen override individual activo (distinto de lo que da el rol).
         </p>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;max-height:60vh;overflow-y:auto;padding-right:4px;">
-          ${Object.entries(grupos).map(([mod, ps]) => `<div class="card">
+
+        <div style="font-size:.72rem;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;">
+          <i class="fa-solid fa-desktop"></i> Módulos de Escritorio
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;max-height:38vh;overflow-y:auto;padding-right:4px;margin-bottom:18px;">
+          ${Object.entries(gruposDesktop).map(([mod, ps]) => `<div class="card">
             <div class="card-header" style="padding:8px 12px;">
-              <span class="card-title" style="font-size:.85rem;"><i class="fa-solid fa-cube"></i> ${WMS.esc(mod)}</span>
+              <span class="card-title" style="font-size:.85rem;"><i class="fa-solid fa-cube"></i> ${WMS.esc(this._PERM_MODULO_LABELS[mod] || mod)}</span>
             </div>
             <div style="padding:6px 12px;">
-              ${ps.map(p => {
-                const encData = encodeURIComponent(JSON.stringify({ modulo: p.modulo, submodulo: p.submodulo, accion: p.accion }));
-                return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9;">
-                  <span style="font-size:.78rem;">${p.esOverride ? '⚡ ' : ''}${WMS.esc(p.accion || p.submodulo || 'ver')}</span>
-                  <label class="wms-switch sm">
-                    <input type="checkbox" ${p.concedido ? 'checked' : ''}
-                      onchange="WMS_MODULES.maestro.togglePermUsuario(${personalId},decodeURIComponent('${encData}'),this.checked)">
-                    <span class="slider"></span>
-                  </label>
-                </div>`;
-              }).join('')}
+              ${ps.map(p => renderToggle(p, p.accion === 'ver' ? 'Ver módulo' : (p.accion || p.submodulo))).join('')}
             </div>
           </div>`).join('')}
-        </div>`;
+        </div>
+
+        ${mobilePerms.length ? `
+        <div style="font-size:.72rem;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;">
+          <i class="fa-solid fa-mobile-screen-button"></i> Pantallas del Móvil
+        </div>
+        <div class="card">
+          <div style="padding:10px 14px;display:flex;flex-direction:column;max-height:38vh;overflow-y:auto;">
+            ${mobilePerms.map(p => renderToggle(p, (p.descripcion || '').replace(/^M[oó]vil:\s*/i, '') || this._PERM_MOBILE_LABELS[p.accion] || p.accion)).join('')}
+          </div>
+        </div>` : ''}
+      `;
     } catch (ex) {
       const el = document.getElementById('perms-user-body');
       if (el) el.innerHTML = '<div class="m-empty" style="padding:20px;">Error cargando permisos del usuario</div>';
@@ -2685,23 +2723,62 @@ WMS_MODULES.maestro = {
     }
   },
 
-  // FIX: show_permisos_usuario ahora muestra instrucción clara y enlaza correctamente
-  // (se accede desde Personal → botón escudo, que llama a gestionarPermisos() directamente)
-  show_permisos_usuario() {
+  // A pedido explícito (2026-08-23): pantalla real de "Permisos por Usuario"
+  // (antes solo redirigía a Personal). Reutiliza gestionarPermisos() (mismo
+  // modal ya usado desde el escudo de Personal) — esta pantalla es solo un
+  // buscador dedicado para llegar directo a esa gestión sin pasar por Personal.
+  async show_permisos_usuario() {
     WMS.setBreadcrumb('maestro', 'Permisos por Usuario');
-    WMS.setToolbar('');
-    WMS.setContent(`
-      <div class="m-empty">
-        <i class="fa-solid fa-user-lock" style="font-size:2.5rem;margin-bottom:16px;color:#64748b;"></i>
-        <p style="font-size:1rem;font-weight:600;">Gestión de Permisos Individuales</p>
-        <p style="max-width:420px;text-align:center;color:#64748b;margin-bottom:16px;">
-          Para gestionar los permisos de un usuario específico, vaya al módulo de Personal
-          y haga clic en el ícono <i class="fa-solid fa-shield-halved"></i> de la persona correspondiente.
-        </p>
-        <button class="btn btn-primary" onclick="WMS.nav('maestro','personal')">
-          <i class="fa-solid fa-users"></i> Ir a Personal
-        </button>
+    WMS.setToolbar(`
+      <div class="search-bar"><i class="fa-solid fa-search"></i>
+        <input id="search-permisos-usuario" placeholder="Buscar por nombre o documento..." oninput="WMS_MODULES.maestro.filtrarPermisosUsuario(this.value)">
       </div>`);
+    WMS.spinner();
+    try {
+      const r = await API.get('/param/personal');
+      this._permisosUsuarioData = r.data || r || [];
+      this.renderPermisosUsuario(this._permisosUsuarioData);
+    } catch (e) {
+      WMS.setContent('<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error de conexión</p></div>');
+    }
+  },
+
+  renderPermisosUsuario(items) {
+    const rolColors = { Admin: 'badge-danger', Supervisor: 'badge-warning', Auxiliar: 'badge-info', Montacarguista: 'badge-success', Analista: 'badge-purple' };
+    WMS.setContent(`
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-user-lock"></i> Permisos por Usuario</span>
+        </div>
+        <p style="padding:12px 16px 0;color:#64748b;font-size:.82rem;max-width:70ch;">
+          Seleccione una persona para conceder o restringir, de forma individual, el acceso a módulos de
+          escritorio y pantallas del móvil — sin importar lo que su rol le dé por defecto.
+        </p>
+        <div class="table-container">
+          <table class="erp-table">
+            <thead><tr><th>Documento</th><th>Nombre</th><th>Rol</th><th>Sucursal</th><th></th></tr></thead>
+            <tbody id="permisos-usuario-tbody">
+              ${items.map(p => `
+                <tr class="main-row" style="cursor:pointer;" onclick="WMS_MODULES.maestro.gestionarPermisos(${p.id},'${WMS.esc(p.nombre || '')}')">
+                  <td><span style="font-family:monospace;color:#475569;">${WMS.esc(p.documento || '')}</span></td>
+                  <td style="font-weight:600;color:#1e293b;">${WMS.esc(p.nombre || '')}</td>
+                  <td><span class="badge ${rolColors[p.rol] || 'badge-gray'}" style="border-radius:4px;">${WMS.esc(p.rol || '')}</span></td>
+                  <td style="color:#64748b;">${WMS.esc(p.sucursal?.nombre || '-')}</td>
+                  <td><button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();WMS_MODULES.maestro.gestionarPermisos(${p.id},'${WMS.esc(p.nombre || '')}')">
+                    <i class="fa-solid fa-shield-halved"></i> Permisos
+                  </button></td>
+                </tr>`).join('') || `<tr><td colspan="5" class="table-empty">Sin personal registrado</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>`);
+  },
+
+  filtrarPermisosUsuario(q) {
+    const term = (q || '').toLowerCase();
+    const filtrado = (this._permisosUsuarioData || []).filter(p =>
+      (p.nombre || '').toLowerCase().includes(term) || (p.documento || '').toLowerCase().includes(term));
+    this.renderPermisosUsuario(filtrado);
   },
 
   // ── CLIENTES ────────────────────────────────────────────────
@@ -3900,6 +3977,129 @@ WMS_MODULES.maestro = {
       if (r.error) { WMS.toast('error', r.message || 'Error al actualizar causal'); return; }
       WMS.toast('success', 'Causal actualizada correctamente');
       this._loadCausales();
+    } catch(e) { WMS.toast('error', e.message || 'Error al actualizar causal'); }
+  },
+
+  // ── CAUSALES FIFO (motivos para rotar fuera del orden FEFO sugerido) ────────
+  show_causales_fifo() {
+    WMS.setToolbar(`
+      <div class="actions">
+        <button class="btn btn-primary" onclick="WMS_MODULES.maestro._nuevaCausalFifo()">
+          <i class="fa-solid fa-plus"></i> Nueva Causal FIFO
+        </button>
+      </div>
+    `);
+    WMS.setContent(`<div id="causales-fifo-container" style="padding:20px;">
+      <div style="text-align:center;color:#64748b;padding:40px;">Cargando...</div>
+    </div>`);
+    this._loadCausalesFifo();
+  },
+
+  async _loadCausalesFifo() {
+    try {
+      const r = await API.get('/causales-fifo?incluir_inactivas=1');
+      this._renderCausalesFifo(r.data || r || []);
+    } catch(e) {
+      const c = document.getElementById('causales-fifo-container');
+      if (c) c.innerHTML = `<div style="color:#dc2626;padding:20px;">Error: ${WMS.esc(e.message)}</div>`;
+    }
+  },
+
+  _renderCausalesFifo(causales) {
+    const rows = causales.map(c => {
+      const activoBadge = c.activo
+        ? `<span class="status-badge success">Activa</span>`
+        : `<span class="status-badge danger">Inactiva</span>`;
+      return `<tr>
+        <td><strong>${WMS.esc(c.nombre)}</strong></td>
+        <td>${activoBadge}</td>
+        <td>
+          <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro._editarCausalFifo(${c.id})">
+            <i class="fa-solid fa-edit"></i> Editar
+          </button>
+        </td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="3" class="table-empty" style="text-align:center;padding:30px;">Sin causales registradas</td></tr>';
+
+    const container = document.getElementById('causales-fifo-container');
+    if (!container) return;
+    container.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-arrow-down-up-across-line"></i> Causales FIFO</span>
+          <span style="font-size:.78rem;color:#64748b;">${causales.length} causal(es)</span>
+        </div>
+        <div style="padding:10px 16px;font-size:.78rem;color:#64748b;border-bottom:1px solid #e2e8f0;">
+          Se le exigen al auxiliar cuando separa de una ubicación distinta a la sugerida por rotación (FEFO) en el picking móvil.
+        </div>
+        <div class="table-container">
+          <table class="erp-table">
+            <thead><tr><th>Nombre</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  },
+
+  async _nuevaCausalFifo() {
+    const { value: nombre, isConfirmed } = await Swal.fire({
+      title: 'Nueva Causal FIFO',
+      input: 'text',
+      inputLabel: 'Nombre',
+      inputPlaceholder: 'Ej: Mala Rotación...',
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-save"></i> Guardar',
+      cancelButtonText: 'Cancelar',
+      inputValidator: (v) => !v?.trim() ? 'El nombre es obligatorio' : undefined,
+    });
+    if (!isConfirmed || !nombre) return;
+    try {
+      const r = await API.post('/causales-fifo', { nombre: nombre.trim() });
+      if (r.error) { WMS.toast('error', r.message || 'Error al crear causal'); return; }
+      WMS.toast('success', 'Causal FIFO creada correctamente');
+      this._loadCausalesFifo();
+    } catch(e) { WMS.toast('error', e.message || 'Error al crear causal'); }
+  },
+
+  async _editarCausalFifo(id) {
+    let causal = null;
+    try {
+      const r = await API.get('/causales-fifo?incluir_inactivas=1');
+      causal = (r.data || r || []).find(c => c.id == id);
+    } catch(_) {}
+    if (!causal) { WMS.toast('error', 'No se encontró la causal'); return; }
+
+    const { value: formValues, isConfirmed } = await Swal.fire({
+      title: 'Editar Causal FIFO',
+      html: `
+        <div style="text-align:left;">
+          <label style="font-size:.82rem;font-weight:700;color:#374151;display:block;margin-bottom:4px;">
+            Nombre <span style="color:#dc2626;">*</span>
+          </label>
+          <input id="cf-nombre" class="swal2-input" value="${WMS.esc(causal.nombre)}" style="margin:0 0 12px;width:100%;box-sizing:border-box;">
+          <label style="font-size:.82rem;font-weight:700;color:#374151;display:block;margin-bottom:4px;">Estado</label>
+          <select id="cf-activo" class="swal2-select" style="width:100%;margin:0;">
+            <option value="1" ${causal.activo?'selected':''}>Activa</option>
+            <option value="0" ${!causal.activo?'selected':''}>Inactiva</option>
+          </select>
+        </div>`,
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-save"></i> Guardar Cambios',
+      cancelButtonText: 'Cancelar',
+      focusConfirm: false,
+      preConfirm: () => {
+        const nombre = document.getElementById('cf-nombre')?.value?.trim();
+        const activo = document.getElementById('cf-activo')?.value === '1';
+        if (!nombre) { Swal.showValidationMessage('El nombre es obligatorio'); return false; }
+        return { nombre, activo };
+      }
+    });
+    if (!isConfirmed || !formValues) return;
+    try {
+      const r = await API.put(`/causales-fifo/${id}`, formValues);
+      if (r.error) { WMS.toast('error', r.message || 'Error al actualizar causal'); return; }
+      WMS.toast('success', 'Causal FIFO actualizada correctamente');
+      this._loadCausalesFifo();
     } catch(e) { WMS.toast('error', e.message || 'Error al actualizar causal'); }
   },
 };

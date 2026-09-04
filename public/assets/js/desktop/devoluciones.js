@@ -11,6 +11,8 @@ WMS_MODULES.devoluciones = {
     qrProd:     null,
     items:      [],
     causales:   [],
+    sucursales: [],
+    fotos:      [],
     vista:      'dashboard',   // 'dashboard' | 'lista' | 'causales' | 'nueva'
   },
   _filterTimer: null,
@@ -25,6 +27,7 @@ WMS_MODULES.devoluciones = {
     if (sub === 'dashboard') return this.loadDevoluciones();
     if (sub === 'lista')     return this.showLista();
     if (sub === 'causales')  return this.showCausales();
+    if (sub === 'estados')   return this.showEstadosCRM();
     if (sub === 'nueva')     return this.showFormDevolucion();
     return this.loadDevoluciones();
   },
@@ -37,6 +40,7 @@ WMS_MODULES.devoluciones = {
       { id: 'dashboard', label: 'Dashboard KPI',    icon: 'fa-chart-pie' },
       { id: 'lista',     label: 'Listado',           icon: 'fa-list' },
       { id: 'causales',  label: 'Causales',          icon: 'fa-tags' },
+      { id: 'estados',   label: 'Estados CRM',       icon: 'fa-list-check' },
       { id: 'nueva',     label: 'Nueva Devolución',  icon: 'fa-plus-circle' },
     ];
     return `
@@ -104,22 +108,55 @@ WMS_MODULES.devoluciones = {
             </div>`).join('')}
         </div>
 
-        <!-- Gráficos -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;" id="dvd-charts-row">
+        <!-- Gráficos Fila 1 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
           <div class="card" style="padding:16px;">
             <div class="pro-section-title" style="margin-bottom:12px;">
-              <i class="fa-solid fa-chart-bar" style="margin-right:6px;color:#3b82f6;"></i> Devoluciones por mes
+              <i class="fa-solid fa-chart-line" style="margin-right:6px;color:#3b82f6;"></i> Devoluciones por fecha
             </div>
-            <div id="dvd-bar-chart" style="min-height:180px;display:flex;align-items:center;justify-content:center;">
-              <span style="color:#94a3b8;font-size:12px;">Cargando...</span>
+            <div style="height:220px;position:relative;">
+              <canvas id="dvd-chart-historico"></canvas>
             </div>
           </div>
           <div class="card" style="padding:16px;">
             <div class="pro-section-title" style="margin-bottom:12px;">
               <i class="fa-solid fa-chart-pie" style="margin-right:6px;color:#8b5cf6;"></i> Distribución por causal
             </div>
-            <div id="dvd-pie-chart" style="min-height:180px;display:flex;align-items:center;justify-content:center;">
-              <span style="color:#94a3b8;font-size:12px;">Cargando...</span>
+            <div style="height:220px;position:relative;">
+              <canvas id="dvd-chart-causales"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gráficos Fila 2 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+          <div class="card" style="padding:16px;">
+            <div class="pro-section-title" style="margin-bottom:12px;">
+              <i class="fa-solid fa-building" style="margin-right:6px;color:#10b981;"></i> Devoluciones por Sucursal
+            </div>
+            <div style="height:220px;position:relative;">
+              <canvas id="dvd-chart-sucursales"></canvas>
+            </div>
+          </div>
+          <div class="card" style="padding:16px;">
+            <div class="pro-section-title" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+              <span><i class="fa-solid fa-table-cells" style="margin-right:6px;color:#f59e0b;"></i> Matriz de Productos Devueltos</span>
+              <span class="badge" style="background:#fef3c7;color:#d97706;" id="dvd-matriz-count">0 Refs</span>
+            </div>
+            <div style="height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;">
+              <table class="erp-table" style="margin:0;width:100%;font-size:11px;">
+                <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+                  <tr>
+                    <th>Referencia / Producto</th>
+                    <th class="text-center">Veces</th>
+                    <th class="text-center">Unidades</th>
+                    <th class="text-center">% Part.</th>
+                  </tr>
+                </thead>
+                <tbody id="dvd-matriz-productos">
+                  <tr><td colspan="4" class="text-center" style="padding:20px;color:#94a3b8;">Cargando...</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -159,114 +196,143 @@ WMS_MODULES.devoluciones = {
   },
 
   async _aplicarDashboard() {
-    const desde      = document.getElementById('dvd-desde')?.value || '';
-    const hasta      = document.getElementById('dvd-hasta')?.value || '';
-    const causal     = document.getElementById('dvd-causal')?.value || '';
-    const responsable= document.getElementById('dvd-responsable')?.value || '';
-    const referencia = document.getElementById('dvd-referencia')?.value || '';
-
-    const params = new URLSearchParams();
-    if (desde)      params.set('desde', desde);
-    if (hasta)      params.set('hasta', hasta);
-    if (causal)     params.set('causal_id', causal);
-    if (responsable)params.set('responsable', responsable);
-    if (referencia) params.set('referencia', referencia);
-
     try {
-      const r = await API.get('/devoluciones/dashboard?' + params.toString());
-      const d = r.data || {};
-      this._renderKPIs(d.kpis || {});
-      this._renderBarChart(d.por_mes || [], 'dvd-bar-chart');
-      this._renderPieChart(d.por_causal || [], 'dvd-pie-chart');
-      this._renderTablaUltimas(d.ultimas || []);
+      const rStats = await API.get('/devoluciones/dashboard-stats');
+      const stats = rStats.data || {};
+      
+      this._renderKPIsStats(stats);
+      this._renderChartsStats(stats);
+      
+      const rUltimas = await API.get('/devoluciones?limit=30');
+      this._renderTablaUltimas(rUltimas.data || []);
     } catch(e) {
-      /* Fallback: cargar lista normal para la tabla */
-      try {
-        const r2 = await API.get('/devoluciones?' + params.toString());
-        const rows = r2.data || [];
-        this._renderKPIs(this._calcKPIsLocales(rows));
-        this._renderBarChart(this._calcPorMesLocal(rows), 'dvd-bar-chart');
-        this._renderPieChart(this._calcPorCausalLocal(rows), 'dvd-pie-chart');
-        this._renderTablaUltimas(rows.slice(0, 30));
-      } catch(e2) {
-        WMS.toast('error', 'Error al cargar dashboard');
-      }
+      WMS.toast('error', 'Error al cargar dashboard');
     }
   },
 
-  /* Cálculos locales cuando no existe endpoint /dashboard */
-  _calcKPIsLocales(rows) {
-    const total = rows.length;
-    const defecto  = rows.filter(r => /defecto|daño|averi/i.test(r.causal || r.motivo_general || '')).length;
-    const errorOp  = rows.filter(r => /error|operac/i.test(r.causal || r.motivo_general || '')).length;
-    const refSet   = new Set(rows.flatMap(r => (r.detalles||[]).map(d => d.producto_id)));
-    return { total, defecto, error_operacion: errorOp, referencias: refSet.size };
-  },
-  _calcPorMesLocal(rows) {
-    const map = {};
-    rows.forEach(r => {
-      const mes = (r.created_at || '').substring(0, 7);
-      if (mes) map[mes] = (map[mes] || 0) + 1;
-    });
-    return Object.entries(map).sort().slice(-6).map(([mes, cantidad]) => ({ mes, cantidad }));
-  },
-  _calcPorCausalLocal(rows) {
-    const map = {};
-    rows.forEach(r => {
-      const clave = r.causal || r.motivo_general || 'Sin causal';
-      map[clave] = (map[clave] || 0) + 1;
-    });
-    return Object.entries(map).map(([causal, cantidad]) => ({ causal, cantidad }));
-  },
-
-  _renderKPIs(kpis) {
+  _renderKPIsStats(stats) {
     const el = document.getElementById('dvd-kpis');
     if (!el) return;
+    
+    const estados = stats.estados || [];
+    const aprobadas = estados.find(e => e.estado === 'Aprobada')?.total || 0;
+    const procesadas = estados.find(e => e.estado === 'Procesada')?.total || 0;
+    const pendientes = estados.find(e => e.estado === 'PendienteAprobacion')?.total || 0;
+    const anuladas = estados.find(e => e.estado === 'Anulada')?.total || 0;
+    const total = estados.reduce((sum, e) => sum + e.total, 0);
+
     const cards = [
-      {
-        label: 'Total devoluciones',
-        value: kpis.total ?? 0,
-        sub:   'Período seleccionado',
-        icon:  'fa-rotate-left',
-        accent:'accent-blue',
-        trend: null,
-      },
-      {
-        label: 'Defecto / Daño',
-        value: kpis.defecto ?? 0,
-        sub:   'Producto defectuoso o dañado',
-        icon:  'fa-triangle-exclamation',
-        accent:'accent-red',
-        trend: null,
-      },
-      {
-        label: 'Error de operación',
-        value: kpis.error_operacion ?? 0,
-        sub:   'Error en picking/despacho',
-        icon:  'fa-clipboard-list',
-        accent:'accent-amber',
-        trend: null,
-      },
-      {
-        label: 'Referencias afectadas',
-        value: kpis.referencias ?? 0,
-        sub:   'SKUs involucrados',
-        icon:  'fa-boxes-stacked',
-        accent:'accent-purple',
-        trend: null,
-      },
+      { label: 'Total Devoluciones', value: total, sub: 'Últimos 30 días', icon: 'fa-rotate-left', accent: 'accent-blue' },
+      { label: 'Pendientes Aprob.', value: pendientes, sub: 'Requieren revisión', icon: 'fa-clock', accent: 'accent-amber' },
+      { label: 'Procesadas', value: procesadas, sub: 'Ya en inventario', icon: 'fa-check-double', accent: 'accent-green' },
+      { label: 'Anuladas', value: anuladas, sub: 'Canceladas', icon: 'fa-ban', accent: 'accent-gray' },
     ];
 
     el.innerHTML = cards.map(c => `
       <div class="pro-kpi-card ${c.accent}">
         <div class="pro-kpi-header">
           <div class="pro-kpi-icon"><i class="fa-solid ${c.icon}"></i></div>
-          ${c.trend ? `<span class="pro-kpi-trend ${c.trend.dir}">${c.trend.label}</span>` : ''}
         </div>
         <div class="pro-kpi-value">${WMS.formatNum ? WMS.formatNum(c.value) : c.value}</div>
         <div class="pro-kpi-label">${c.label}</div>
         <div class="pro-kpi-sub">${c.sub}</div>
       </div>`).join('');
+  },
+
+  _chartInstances: {},
+  _renderChartsStats(stats) {
+    const destroyChart = (id) => {
+      if (this._chartInstances[id]) {
+        this._chartInstances[id].destroy();
+      }
+    };
+
+    // 1. Histórico por fecha (Líneas)
+    const ctxHist = document.getElementById('dvd-chart-historico');
+    if (ctxHist) {
+      destroyChart('hist');
+      this._chartInstances['hist'] = new Chart(ctxHist, {
+        type: 'line',
+        data: {
+          labels: (stats.historico || []).map(d => d.fecha),
+          datasets: [{
+            label: 'Devoluciones',
+            data: (stats.historico || []).map(d => d.total),
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      });
+    }
+
+    // 2. Por Causal (Doughnut)
+    const ctxCausal = document.getElementById('dvd-chart-causales');
+    if (ctxCausal) {
+      destroyChart('causal');
+      this._chartInstances['causal'] = new Chart(ctxCausal, {
+        type: 'doughnut',
+        data: {
+          labels: (stats.causales || []).map(d => d.motivo),
+          datasets: [{
+            data: (stats.causales || []).map(d => d.total),
+            backgroundColor: ['#3b82f6','#ef4444','#f59e0b','#10b981','#8b5cf6','#ec4899','#06b6d4','#84cc16']
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+      });
+    }
+
+    // 3. Por Sucursal (Barras)
+    const ctxSuc = document.getElementById('dvd-chart-sucursales');
+    if (ctxSuc) {
+      destroyChart('suc');
+      this._chartInstances['suc'] = new Chart(ctxSuc, {
+        type: 'bar',
+        data: {
+          labels: (stats.por_sucursal || []).map(d => d.nombre),
+          datasets: [{
+            label: 'Devoluciones',
+            data: (stats.por_sucursal || []).map(d => d.total),
+            backgroundColor: '#10b981'
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      });
+    }
+
+    // 4. Matriz de Productos (Tabla en lugar de gráfico)
+    const tbMatriz = document.getElementById('dvd-matriz-productos');
+    const elCount = document.getElementById('dvd-matriz-count');
+    if (tbMatriz) {
+      const matriz = stats.matriz_productos || [];
+      if (elCount) elCount.textContent = matriz.length + ' Refs';
+      
+      if (!matriz.length) {
+        tbMatriz.innerHTML = '<tr><td colspan="4" class="text-center" style="padding:20px;color:#94a3b8;">Sin datos en el período</td></tr>';
+      } else {
+        tbMatriz.innerHTML = matriz.map(m => `
+          <tr>
+            <td>
+              <strong style="color:#0f172a;">${WMS.esc(m.codigo_interno)}</strong><br>
+              <span style="color:#64748b;font-size:10px;">${WMS.esc(m.nombre)}</span>
+            </td>
+            <td class="text-center"><span class="badge" style="background:#e0f2fe;color:#0369a1;">${m.veces_devuelto}</span></td>
+            <td class="text-center"><b>${m.total_unidades}</b></td>
+            <td class="text-center">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <div style="flex:1;height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden;">
+                  <div style="height:100%;background:#f59e0b;width:${m.porcentaje_participacion}%;"></div>
+                </div>
+                <span style="font-weight:600;min-width:35px;text-align:right;">${m.porcentaje_participacion}%</span>
+              </div>
+            </td>
+          </tr>
+        `).join('');
+      }
+    }
   },
 
   _renderTablaUltimas(rows) {
@@ -283,19 +349,22 @@ WMS_MODULES.devoluciones = {
     el.innerHTML = `
       <table class="erp-table">
         <thead><tr>
-          <th>#</th><th>Fecha</th><th>Proveedor / Cliente</th>
+          <th>Consecutivo</th><th>N° Interno</th><th>Fecha</th><th>Proveedor / Cliente</th><th>Sucursal Origen</th>
           <th>Causal</th><th>Responsable</th><th>Ref</th>
           <th class="text-center">Cant.</th><th>Estado</th>
         </tr></thead>
         <tbody>
           ${rows.map(d => {
             const color = badgeColor[d.estado] || '#94a3b8';
+            const cons  = d.consecutivo_devolucion ? ('#' + d.consecutivo_devolucion) : '-';
             return `<tr style="cursor:pointer;" onclick="WMS_MODULES.devoluciones.showDetalle(${d.id})">
+              <td><span class="badge" style="background:#0F4C81;color:#fff;font-weight:700;font-size:12px;">${WMS.esc(cons)}</span></td>
               <td><strong>${WMS.esc(d.numero_devolucion || ('#' + d.id))}</strong></td>
               <td style="font-size:11px;">${(d.created_at||'').substring(0,10) || '-'}</td>
               <td>${WMS.esc(d.tercero_nombre || d.tercero || d.cliente || d.proveedor || '-')}</td>
-              <td style="font-size:11px;">${WMS.esc(d.causal || d.motivo_general || '-')}</td>
-              <td style="font-size:11px;">${WMS.esc(d.responsable || d.solicitado_por_nombre || '-')}</td>
+              <td style="font-size:11px;">${WMS.esc(d.sucursal_origen?.nombre || d.sucursal_origen_nombre || '-')}</td>
+              <td style="font-size:11px;">${WMS.esc(d.causal?.causal || d.causal || d.motivo_general || '-')}</td>
+              <td style="font-size:11px;">${WMS.esc(d.responsable_devolucion || d.responsable || d.solicitado_por_nombre || '-')}</td>
               <td style="font-size:11px;"><code>${WMS.esc(d.referencia_externa || '-')}</code></td>
               <td class="text-center">${(d.detalles||[]).length || d.cantidad || '-'}</td>
               <td><span class="badge" style="background:${color}20;color:${color};border:1px solid ${color};white-space:nowrap;">
@@ -307,132 +376,7 @@ WMS_MODULES.devoluciones = {
       </table>`;
   },
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     B) GRÁFICO DE BARRAS SVG
-  ═══════════════════════════════════════════════════════════════════════ */
-  _renderBarChart(datos, containerId) {
-    const el = document.getElementById(containerId);
-    if (!el) return;
 
-    if (!datos || !datos.length) {
-      el.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:12px;padding:40px 0;">Sin datos para el período</p>';
-      return;
-    }
-
-    const W = 460, H = 200, PAD = { top: 24, right: 16, bottom: 40, left: 40 };
-    const innerW = W - PAD.left - PAD.right;
-    const innerH = H - PAD.top - PAD.bottom;
-
-    const maxVal  = Math.max(...datos.map(d => d.cantidad), 1);
-    const barW    = Math.floor(innerW / datos.length * 0.55);
-    const gap     = innerW / datos.length;
-    const barColor= '#3b82f6';
-
-    /* Etiquetas de mes amigables */
-    const mesLabel = (s) => {
-      if (!s) return '';
-      const [y, m] = s.split('-');
-      const meses  = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-      return (meses[parseInt(m,10)-1] || m) + ' ' + (y||'').slice(2);
-    };
-
-    /* Líneas de grilla Y (4 niveles) */
-    const gridLines = [0, 0.25, 0.5, 0.75, 1].map(p => {
-      const y = PAD.top + innerH * (1 - p);
-      const v = Math.round(maxVal * p);
-      return `<line x1="${PAD.left}" y1="${y}" x2="${PAD.left + innerW}" y2="${y}"
-                stroke="#e2e8f0" stroke-width="1" stroke-dasharray="${p===0?'0':'4 3'}"/>
-              <text x="${PAD.left - 6}" y="${y + 4}" text-anchor="end"
-                font-size="9" fill="#94a3b8">${v}</text>`;
-    }).join('');
-
-    /* Barras */
-    const bars = datos.map((d, i) => {
-      const x    = PAD.left + gap * i + gap / 2 - barW / 2;
-      const bH   = Math.max(2, (d.cantidad / maxVal) * innerH);
-      const y    = PAD.top + innerH - bH;
-      const lx   = x + barW / 2;
-      return `
-        <rect x="${x}" y="${y}" width="${barW}" height="${bH}" rx="3" fill="${barColor}" opacity=".9">
-          <title>${mesLabel(d.mes)}: ${d.cantidad}</title>
-        </rect>
-        <text x="${lx}" y="${y - 5}" text-anchor="middle" font-size="9" font-weight="700" fill="${barColor}">${d.cantidad}</text>
-        <text x="${lx}" y="${PAD.top + innerH + 14}" text-anchor="middle" font-size="9" fill="#64748b">${mesLabel(d.mes)}</text>`;
-    }).join('');
-
-    el.innerHTML = `
-      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;">
-        ${gridLines}
-        ${bars}
-        <!-- Eje Y -->
-        <line x1="${PAD.left}" y1="${PAD.top}" x2="${PAD.left}" y2="${PAD.top+innerH}"
-          stroke="#cbd5e1" stroke-width="1.5"/>
-        <!-- Eje X -->
-        <line x1="${PAD.left}" y1="${PAD.top+innerH}" x2="${PAD.left+innerW}" y2="${PAD.top+innerH}"
-          stroke="#cbd5e1" stroke-width="1.5"/>
-      </svg>`;
-  },
-
-  /* ═══════════════════════════════════════════════════════════════════════
-     C) GRÁFICO DE TORTA SVG
-  ═══════════════════════════════════════════════════════════════════════ */
-  _renderPieChart(datos, containerId) {
-    const el = document.getElementById(containerId);
-    if (!el) return;
-
-    if (!datos || !datos.length) {
-      el.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:12px;padding:40px 0;">Sin datos</p>';
-      return;
-    }
-
-    const COLORS = ['#3b82f6','#ef4444','#f59e0b','#10b981','#8b5cf6','#ec4899','#06b6d4','#84cc16'];
-    const total  = datos.reduce((s, d) => s + (d.cantidad || 0), 0) || 1;
-
-    /* Segmentos */
-    const CX = 80, CY = 80, R = 65;
-    let angle = -Math.PI / 2;
-    const segs = datos.map((d, i) => {
-      const pct   = d.cantidad / total;
-      const sweep = pct * 2 * Math.PI;
-      const x1    = CX + R * Math.cos(angle);
-      const y1    = CY + R * Math.sin(angle);
-      angle      += sweep;
-      const x2    = CX + R * Math.cos(angle);
-      const y2    = CY + R * Math.sin(angle);
-      const large = sweep > Math.PI ? 1 : 0;
-      const color = COLORS[i % COLORS.length];
-      return `<path d="M ${CX} ${CY} L ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2} Z"
-                fill="${color}" stroke="#fff" stroke-width="2" opacity=".92">
-                <title>${WMS.esc(d.causal||'Sin causal')}: ${d.cantidad} (${Math.round(pct*100)}%)</title>
-              </path>`;
-    }).join('');
-
-    /* Leyenda */
-    const leyenda = datos.map((d, i) => {
-      const pct   = Math.round(d.cantidad / total * 100);
-      const color = COLORS[i % COLORS.length];
-      const label = (d.causal || 'Sin causal').length > 22
-        ? (d.causal || 'Sin causal').substring(0, 22) + '…'
-        : (d.causal || 'Sin causal');
-      return `
-        <div style="display:flex;align-items:center;gap:7px;font-size:11px;margin-bottom:5px;">
-          <span style="width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0;"></span>
-          <span style="color:#1e293b;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${WMS.esc(label)}</span>
-          <span style="color:#64748b;font-weight:600;white-space:nowrap;">${d.cantidad} (${pct}%)</span>
-        </div>`;
-    }).join('');
-
-    el.innerHTML = `
-      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
-        <svg viewBox="0 0 160 160" style="width:160px;height:160px;flex-shrink:0;">
-          ${segs}
-          <circle cx="${CX}" cy="${CY}" r="28" fill="white"/>
-          <text x="${CX}" y="${CY - 4}" text-anchor="middle" font-size="11" font-weight="700" fill="#1e293b">${total}</text>
-          <text x="${CX}" y="${CY + 12}" text-anchor="middle" font-size="8" fill="#64748b">Total</text>
-        </svg>
-        <div style="flex:1;min-width:150px;">${leyenda}</div>
-      </div>`;
-  },
 
   /* ═══════════════════════════════════════════════════════════════════════
      EXPORTAR CSV
@@ -530,7 +474,8 @@ WMS_MODULES.devoluciones = {
             </select>
             <input type="date" id="dv-f-desde" class="form-control form-control-sm" onchange="WMS_MODULES.devoluciones._aplicarFiltros()">
             <input type="date" id="dv-f-hasta" class="form-control form-control-sm" onchange="WMS_MODULES.devoluciones._aplicarFiltros()">
-            <input type="text" id="dv-f-q" class="form-control form-control-sm" placeholder="Buscar N°, referencia..." style="min-width:180px;"
+            <input type="number" id="dv-f-consecutivo" class="form-control form-control-sm" placeholder="N° Consecutivo" style="width:120px;" oninput="WMS_MODULES.devoluciones._aplicarFiltros()">
+            <input type="text" id="dv-f-q" class="form-control form-control-sm" placeholder="Buscar Ref. interna/externa..." style="min-width:180px;"
               oninput="WMS_MODULES.devoluciones._aplicarFiltros()">
             <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.devoluciones._exportarCSVLista()">
               <i class="fa-solid fa-file-csv"></i> CSV
@@ -540,17 +485,23 @@ WMS_MODULES.devoluciones = {
         <div class="table-container">
           <table class="erp-table">
             <thead><tr>
-              <th>N°</th><th>Tipo</th><th>Estado</th><th>Referencia ERP</th>
-              <th class="text-center">Ítems</th><th>Fecha</th><th>Solicitado por</th><th>Acciones</th>
+              <th>Consecutivo</th><th>N° Interno</th><th>Tipo</th><th>Estado</th><th>Sucursal Origen</th><th>Referencia ERP</th>
+              <th class="text-center">Ítems</th><th>Fotos</th><th>Fecha</th><th>Solicitado por</th><th>Acciones</th>
             </tr></thead>
             <tbody id="dv-tbody">
-              ${rows.length ? rows.map(d => `
+              ${rows.length ? rows.map(d => {
+                const cons  = d.consecutivo_devolucion ? ('#' + d.consecutivo_devolucion) : '-';
+                const fotosCount = Array.isArray(d.fotos_json) ? d.fotos_json.length : (typeof d.fotos_json === 'string' ? JSON.parse(d.fotos_json || '[]').length : 0);
+                return `
                 <tr>
+                  <td><span class="badge" style="background:#0F4C81;color:#fff;font-weight:700;font-size:12px;">${WMS.esc(cons)}</span></td>
                   <td><strong>${WMS.esc(d.numero_devolucion)}</strong></td>
                   <td><span class="badge" style="background:#e0f2fe;color:#0369a1;">${WMS.esc(tipoLabel[d.tipo]||d.tipo)}</span></td>
                   <td><span class="badge" style="background:${badgeColor[d.estado]||'#94a3b8'}20;color:${badgeColor[d.estado]||'#94a3b8'};border:1px solid ${badgeColor[d.estado]||'#94a3b8'};">${WMS.esc(d.estado)}</span></td>
+                  <td style="font-size:11px;">${WMS.esc(d.sucursal_origen?.nombre || '-')}</td>
                   <td>${WMS.esc(d.referencia_externa||'-')}</td>
                   <td class="text-center">${(d.detalles||[]).length}</td>
+                  <td class="text-center">${fotosCount > 0 ? `<span class="badge" style="background:#fdf4ff;color:#c026d3;border:1px solid #f5d0fe;"><i class="fa-solid fa-camera"></i> ${fotosCount}</span>` : '<span style="color:#cbd5e1;">0</span>'}</td>
                   <td style="font-size:11px;">${d.created_at ? d.created_at.substring(0,10) : '-'}</td>
                   <td style="font-size:11px;">${WMS.esc(d.solicitado_por_nombre||'-')}</td>
                   <td>
@@ -558,7 +509,8 @@ WMS_MODULES.devoluciones = {
                       <i class="fa-solid fa-eye"></i> Ver
                     </button>
                   </td>
-                </tr>`).join('') : '<tr><td colspan="8" class="table-empty">Sin devoluciones registradas</td></tr>'}
+                </tr>`;
+              }).join('') : '<tr><td colspan="11" class="table-empty">Sin devoluciones registradas</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -573,6 +525,7 @@ WMS_MODULES.devoluciones = {
         estado: document.getElementById('dv-f-estado')?.value || '',
         desde:  document.getElementById('dv-f-desde')?.value  || '',
         hasta:  document.getElementById('dv-f-hasta')?.value  || '',
+        consecutivo: document.getElementById('dv-f-consecutivo')?.value || '',
         q:      document.getElementById('dv-f-q')?.value      || '',
       };
       Object.keys(f).forEach(k => { if (!f[k]) delete f[k]; });
@@ -604,7 +557,7 @@ WMS_MODULES.devoluciones = {
   },
 
   /* ═══════════════════════════════════════════════════════════════════════
-     DETALLE (conservado del original)
+     DETALLE (conservado del original + consecutivo + fotos + sucursal)
   ═══════════════════════════════════════════════════════════════════════ */
   async showDetalle(id) {
     WMS.spinner();
@@ -625,6 +578,13 @@ WMS_MODULES.devoluciones = {
         Rechazada:'#dc2626',Anulada:'#94a3b8',Borrador:'#64748b',
       };
 
+      let fotosList = Array.isArray(d.fotos_json)
+        ? d.fotos_json
+        : (typeof d.fotos_json === 'string' ? JSON.parse(d.fotos_json || '[]') : []);
+      fotosList = fotosList.map(f => f.startsWith('/uploads/') ? '/WMS_FENIX/public' + f : f);
+
+      const consecutivoTxt = d.consecutivo_devolucion ? `#${d.consecutivo_devolucion}` : 'Sin consecutivo';
+
       WMS.setToolbar(`
         <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.devoluciones.showLista()">
           <i class="fa-solid fa-arrow-left"></i> Volver
@@ -635,18 +595,44 @@ WMS_MODULES.devoluciones = {
         ${isSup && canAnular    ? `<button class="btn btn-outline-danger btn-sm" onclick="WMS_MODULES.devoluciones.anular(${d.id})"><i class="fa-solid fa-ban"></i> Anular</button>` : ''}`);
 
       WMS.setContent(`
-        <div class="card">
-          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
-            <span class="card-title"><i class="fa-solid fa-rotate-left"></i> ${WMS.esc(d.numero_devolucion)}</span>
-            <span class="badge" style="background:${badgeColor[estado]||'#94a3b8'}20;color:${badgeColor[estado]||'#94a3b8'};border:1px solid ${badgeColor[estado]||'#94a3b8'};font-size:13px;">${WMS.esc(estado)}</span>
+        <div class="card" style="border:none;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1),0 2px 4px -1px rgba(0,0,0,0.06);overflow:hidden;">
+          <div class="card-header" style="background:linear-gradient(135deg, #0F4C81 0%, #17365C 100%);padding:12px 24px;border:none;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="background:#f97316;color:#fff;font-size:1.4rem;font-weight:900;padding:4px 16px;border-radius:8px;box-shadow:0 4px 6px rgba(249, 115, 22, 0.3);">
+                  <i class="fa-solid fa-hashtag"></i> ${WMS.esc(consecutivoTxt)}
+                </span>
+                <span style="color:#cbd5e1;font-size:13px;font-weight:600;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:6px;">(${WMS.esc(d.numero_devolucion)})</span>
+              </div>
+              <div style="display:flex;gap:10px;margin-top:4px;">
+                <span class="badge" style="background:${badgeColor[estado]||'#94a3b8'};color:#fff;font-size:14px;padding:6px 12px;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,0.2);">${WMS.esc(estado)}</span>
+                <span class="badge" style="background:rgba(255,255,255,0.15);color:#fff;font-size:13px;padding:6px 12px;border-radius:6px;"><i class="fa-solid fa-building"></i> ${WMS.esc(d.tipo)}</span>
+              </div>
+            </div>
+            
+            ${fotosList.length > 0 ? `
+              <div style="background:#fff;padding:4px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.4);transform:rotate(2deg);transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05) rotate(0deg)'" onmouseout="this.style.transform='scale(1) rotate(2deg)'">
+                <img src="${fotosList[0]}" style="width:120px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="window.open('${fotosList[0]}', '_blank')" title="Ver evidencia inicial">
+              </div>
+            ` : `
+              <div style="width:120px;height:80px;border-radius:12px;background:rgba(255,255,255,0.1);border:2px dashed rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.6);font-size:12px;text-align:center;padding:10px;">
+                <div><i class="fa-solid fa-image" style="font-size:24px;margin-bottom:6px;display:block;"></i> Sin foto</div>
+              </div>
+            `}
           </div>
-          <div style="padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:13px;">
-            <div><div style="color:#64748b;font-size:11px;">Tipo</div><strong>${WMS.esc(d.tipo)}</strong></div>
-            <div><div style="color:#64748b;font-size:11px;">Referencia ERP</div>${WMS.esc(d.referencia_externa||'-')}</div>
-            <div><div style="color:#64748b;font-size:11px;">Motivo</div>${WMS.esc(d.motivo_general)}</div>
-            <div><div style="color:#64748b;font-size:11px;">Solicitado por</div>${WMS.esc(d.solicitado_por||d.auxiliar_id||'-')}</div>
-            <div><div style="color:#64748b;font-size:11px;">Aprobado por</div>${WMS.esc(d.aprobado_por||'-')}</div>
-            <div><div style="color:#64748b;font-size:11px;">Fecha</div>${d.created_at?d.created_at.substring(0,10):'-'}</div>
+          
+          <div style="background:#fff;padding:20px;border-bottom:1px dashed #cbd5e1;">
+            <div style="color:#0F4C81;font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin-bottom:8px;"><i class="fa-solid fa-quote-left"></i> Motivo General</div>
+            <div style="font-size:15px;color:#334155;line-height:1.6;font-weight:500;padding:12px;background:#f8fafc;border-left:4px solid #f97316;border-radius:0 8px 8px 0;">
+              ${WMS.esc(d.motivo_general)}
+            </div>
+          </div>
+          
+          <div class="card-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:20px;padding:24px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Referencia ERP</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.referencia_externa||'-')}</div></div>
+            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Solicitado por</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.solicitado_por||d.auxiliar_id||'-')}</div></div>
+            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Aprobado por</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.aprobado_por||'-')}</div></div>
+            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Fecha Registro</div><div style="font-weight:600;color:#0f172a;">${d.created_at?d.created_at.substring(0,10):'-'}</div></div>
           </div>
           <div class="table-container">
             <table class="erp-table" style="font-size:12px;">
@@ -655,7 +641,7 @@ WMS_MODULES.devoluciones = {
                 ${(d.detalles||[]).map(det => `<tr>
                   <td>${WMS.esc(det.producto?.nombre||det.producto_id)}</td>
                   <td><code>${WMS.esc(det.lote||'-')}</code></td>
-                  <td style="font-size:11px;">${det.fecha_vencimiento||'-'}</td>
+                  <td style="font-size:11px;">${det.fecha_vencimiento ? WMS.formatDate(det.fecha_vencimiento) : '-'}</td>
                   <td class="text-center fw-700">${WMS.formatNum(det.cantidad)}</td>
                   <td>${WMS.esc(det.condicion||'-')}</td>
                   <td>${det.destino ? `<span class="badge" style="background:#f0fdf4;color:#16a34a;">${WMS.esc(det.destino)}</span>` : '<span style="color:#94a3b8;">—</span>'}</td>
@@ -664,8 +650,179 @@ WMS_MODULES.devoluciones = {
               </tbody>
             </table>
           </div>
-        </div>`);
+        </div>
+        
+        <!-- CRM TIMELINE, CHART & FORM -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:20px;margin-top:20px;">
+          <!-- Timeline -->
+          <div class="card" style="padding:20px;">
+            <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:16px;">
+              <i class="fa-solid fa-timeline" style="color:#6366f1;"></i> Historial y Seguimiento (CRM)
+            </div>
+            <div id="dv-crm-timeline">
+              <div style="color:#94a3b8;font-size:12px;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando historial...</div>
+            </div>
+          </div>
+          
+          <!-- Galeria -->
+          <div class="card" style="padding:20px;display:flex;flex-direction:column;">
+            <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:16px;">
+              <i class="fa-solid fa-images" style="color:#0ea5e9;"></i> Evidencias Registradas
+            </div>
+            <div style="flex:1;position:relative;min-height:220px;display:flex;flex-wrap:wrap;gap:12px;align-content:flex-start;" id="dv-crm-galeria">
+              ${fotosList.length > 0 ? fotosList.map(f => `<a href="${f}" target="_blank" style="display:block;width:100px;height:100px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 2px 4px rgba(0,0,0,0.05);transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'"><img src="${f}" style="width:100%;height:100%;object-fit:cover;"></a>`).join('') : '<div style="color:#94a3b8;font-size:12px;width:100%;text-align:center;padding:20px;">Sin fotos iniciales</div>'}
+            </div>
+          </div>
+          
+          <!-- Nuevo Registro Tracking -->
+          <div class="card" style="padding:20px;background:#f8fafc;border:1px dashed #cbd5e1;">
+            <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:16px;">
+              <i class="fa-solid fa-comment-medical" style="color:#10b981;"></i> Registrar Seguimiento / Novedad
+            </div>
+            ${estado === 'Finalizada' ? `
+              <div style="padding:20px;text-align:center;color:#dc2626;font-weight:700;background:#fef2f2;border-radius:8px;">
+                <i class="fa-solid fa-lock"></i> La devolución se encuentra Finalizada. No admite más cambios.
+              </div>
+            ` : `
+            <div>
+              <label class="form-label">Cambiar Estado (Opcional)</label>
+              <select id="dv-crm-nuevo-estado" class="form-control" style="margin-bottom:12px;">
+                <option value="">Mantener estado actual (${WMS.esc(estado)})</option>
+              </select>
+              
+              <label class="form-label">Responsable (Opcional)</label>
+              <input type="text" id="dv-crm-responsable" class="form-control" placeholder="Nombre del responsable de esta acción..." style="margin-bottom:12px;">
+              
+              <label class="form-label">Observaciones / Novedad</label>
+              <textarea id="dv-crm-observacion" class="form-control" rows="3" placeholder="Escriba aquí los detalles..." style="margin-bottom:12px;"></textarea>
+              
+              <label class="form-label">Adjuntar Evidencias (Fotos)</label>
+              <input type="file" id="dv-crm-fotos" multiple accept="image/*" capture="environment" class="form-control" style="margin-bottom:12px;">
+              
+              <div style="text-align:right;">
+                <button class="btn btn-primary" onclick="WMS_MODULES.devoluciones.guardarTracking(${id})">
+                  <i class="fa-solid fa-paper-plane"></i> Guardar Registro
+                </button>
+              </div>
+            </div>
+            `}
+          </div>
+        </div>
+      `);
+      
+      // Load CRM Data asynchronously
+      this._loadCRM(id, estado);
+      
     } catch(e) { WMS.toast('error', 'Error al cargar detalle'); }
+  },
+  
+  async _loadCRM(id, currentState) {
+    try {
+      const [rEstados, rTrack] = await Promise.all([
+        API.get('/devoluciones/crm/estados'),
+        API.get('/devoluciones/' + id + '/tracking')
+      ]);
+      
+      const estados = rEstados.data || [];
+      const trackings = rTrack.data || [];
+      
+      // Populate select
+      const sel = document.getElementById('dv-crm-nuevo-estado');
+      if (sel) {
+        sel.innerHTML += estados.map(e => `<option value="${WMS.esc(e.nombre)}" ${e.nombre===currentState?'disabled':''}>→ ${WMS.esc(e.nombre)}</option>`).join('');
+      }
+      
+      // Render timeline
+      const tl = document.getElementById('dv-crm-timeline');
+      if (tl) {
+        if (!trackings.length) {
+          tl.innerHTML = '<div style="padding:10px;color:#94a3b8;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;text-align:center;">No hay registros de seguimiento.</div>';
+          return;
+        }
+        
+        tl.innerHTML = trackings.map(t => {
+          const evHtml = (t.evidencias || []).map(e => {
+            const url = e.ruta_archivo.startsWith('/uploads/') ? '/WMS_FENIX/public' + e.ruta_archivo : e.ruta_archivo;
+            return `
+            <a href="${url}" target="_blank" style="display:inline-block;margin-right:8px;margin-top:8px;">
+              <img src="${url}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0;">
+            </a>
+          `}).join('');
+          
+          if (t.evidencias && t.evidencias.length) {
+            const gal = document.getElementById('dv-crm-galeria');
+            if (gal) {
+              if (gal.innerHTML.includes('Sin fotos iniciales')) gal.innerHTML = '';
+              gal.innerHTML += (t.evidencias).map(e => {
+                const url = e.ruta_archivo.startsWith('/uploads/') ? '/WMS_FENIX/public' + e.ruta_archivo : e.ruta_archivo;
+                return `<a href="${url}" target="_blank" style="display:block;width:100px;height:100px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 2px 4px rgba(0,0,0,0.05);transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'"><img src="${url}" style="width:100%;height:100%;object-fit:cover;"></a>`;
+              }).join('');
+            }
+          }
+          
+          return `
+            <div style="display:flex;gap:12px;margin-bottom:16px;">
+              <div style="display:flex;flex-direction:column;align-items:center;">
+                <div style="width:10px;height:10px;border-radius:50%;background:#3b82f6;margin-top:4px;"></div>
+                <div style="flex:1;width:2px;background:#e2e8f0;margin-top:4px;"></div>
+              </div>
+              <div style="flex:1;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;font-size:12px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <strong style="color:#0f172a;">${WMS.esc(t.usuario_nombre || 'Usuario')}</strong>
+                  <span style="color:#64748b;">${t.created_at}</span>
+                </div>
+                ${t.responsable ? `<div style="font-size:11px;color:#0ea5e9;font-weight:700;margin-bottom:6px;"><i class="fa-solid fa-user-tag"></i> Responsable: ${WMS.esc(t.responsable)}</div>` : ''}
+                ${t.estado_anterior !== t.estado_nuevo ? `<div style="margin-bottom:6px;color:#6366f1;font-weight:600;"><i class="fa-solid fa-arrow-right-arrow-left"></i> ${WMS.esc(t.estado_anterior)} → ${WMS.esc(t.estado_nuevo)}</div>` : ''}
+                <div style="color:#334155;white-space:pre-wrap;">${WMS.esc(t.observacion||'')}</div>
+                ${evHtml ? `<div>${evHtml}</div>` : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    } catch(e) { console.error("Error CRM", e); }
+  },
+  
+  async guardarTracking(id) {
+    const estado = document.getElementById('dv-crm-nuevo-estado')?.value || '';
+    const obs = document.getElementById('dv-crm-observacion')?.value || '';
+    const input = document.getElementById('dv-crm-fotos');
+    
+    if (!estado && !obs.trim()) {
+      WMS.toast('error', 'Debes escribir una observación o cambiar el estado');
+      return;
+    }
+    
+    WMS.spinner();
+    try {
+      const fotosBase64 = [];
+      if (input && input.files.length > 0) {
+        for (let file of input.files) {
+          const compressed = await this._compressImage(file);
+          const reader = new FileReader();
+          const p = new Promise(resolve => {
+            reader.onload = e => resolve(e.target.result);
+            reader.readAsDataURL(compressed);
+          });
+          fotosBase64.push(await p);
+        }
+      }
+      
+      const payload = {
+        estado_nuevo: estado,
+        observacion: obs,
+        fotos: fotosBase64,
+        responsable: document.getElementById('dv-crm-responsable')?.value || ''
+      };
+      
+      const r = await API.post('/devoluciones/' + id + '/tracking', payload);
+      
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success', 'Registro guardado exitosamente');
+      this.showDetalle(id); // recargar detalle
+    } catch(e) {
+      WMS.toast('error', 'Error al guardar tracking');
+    }
   },
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -831,7 +988,131 @@ WMS_MODULES.devoluciones = {
   },
 
   _modalNuevaCausal() {
-    this._abrirModalCausal(null);
+    this._modalCausal();
+  },
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     D.2) GESTIÓN DE ESTADOS CRM
+  ═══════════════════════════════════════════════════════════════════════ */
+  async showEstadosCRM() {
+    this._state.vista = 'estados';
+    WMS.setToolbar(this._navBar('estados'));
+    WMS.spinner();
+    try {
+      const r = await API.get('/devoluciones/crm/estados/all');
+      this._state.estadosCRM = r.data || [];
+      this._renderEstadosCRM(this._state.estadosCRM);
+    } catch(e) { WMS.toast('error', 'Error al cargar estados'); }
+  },
+
+  _renderEstadosCRM(estados) {
+    WMS.setContent(`
+      <div class="card">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <span class="card-title"><i class="fa-solid fa-list-check"></i> Estados CRM (Calidad)</span>
+          <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.devoluciones._modalEstadoCRM()">
+            <i class="fa-solid fa-plus"></i> Nuevo Estado
+          </button>
+        </div>
+        <div class="table-container">
+          <table class="erp-table">
+            <thead><tr>
+              <th>Nombre</th>
+              <th class="text-center">Color</th>
+              <th class="text-center">Orden</th>
+              <th class="text-center">Activo</th>
+              <th>Acciones</th>
+            </tr></thead>
+            <tbody>
+              ${estados.map(e => `
+                <tr>
+                  <td><strong>${WMS.esc(e.nombre)}</strong></td>
+                  <td class="text-center"><span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:${WMS.esc(e.color||'#94a3b8')};"></span></td>
+                  <td class="text-center">${e.orden}</td>
+                  <td class="text-center">${e.activo ? '<span class="badge" style="background:#dcfce7;color:#166534;">SÍ</span>' : '<span class="badge" style="background:#fee2e2;color:#991b1b;">NO</span>'}</td>
+                  <td>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.devoluciones._modalEstadoCRM(${e.id})"><i class="fa-solid fa-pen"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="WMS_MODULES.devoluciones._eliminarEstadoCRM(${e.id})"><i class="fa-solid fa-trash"></i></button>
+                  </td>
+                </tr>
+              `).join('') || '<tr><td colspan="5" class="text-center" style="padding:20px;color:#94a3b8;">Sin estados registrados</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `);
+  },
+
+  _modalEstadoCRM(id = null) {
+    let est = null;
+    if (id) est = this._state.estadosCRM.find(e => e.id === id);
+    
+    const html = `
+      <div id="est-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;display:flex;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:24px 28px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,.3);">
+          <h3 style="margin:0 0 16px;font-size:16px;">${id ? 'Editar Estado' : 'Nuevo Estado'}</h3>
+          
+          <label class="form-label">Nombre del Estado</label>
+          <input type="text" id="est-nombre" class="form-control" value="${est ? WMS.esc(est.nombre) : ''}" style="margin-bottom:12px;">
+          
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+            <div>
+              <label class="form-label">Color (Hex)</label>
+              <input type="color" id="est-color" class="form-control" value="${est ? est.color : '#94a3b8'}" style="height:36px;padding:2px;">
+            </div>
+            <div>
+              <label class="form-label">Orden (0, 1, 2...)</label>
+              <input type="number" id="est-orden" class="form-control" value="${est ? est.orden : '0'}">
+            </div>
+          </div>
+          
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:20px;cursor:pointer;">
+            <input type="checkbox" id="est-activo" ${(!est || est.activo) ? 'checked' : ''}> Estado Activo
+          </label>
+          
+          <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('est-modal').remove()">Cancelar</button>
+            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.devoluciones._guardarEstadoCRM(${id || 'null'})">Guardar</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+  },
+
+  async _guardarEstadoCRM(id) {
+    const data = {
+      nombre: document.getElementById('est-nombre').value.trim(),
+      color: document.getElementById('est-color').value,
+      orden: parseInt(document.getElementById('est-orden').value) || 0,
+      activo: document.getElementById('est-activo').checked
+    };
+    
+    if (!data.nombre) { WMS.toast('error', 'El nombre es obligatorio'); return; }
+    
+    document.getElementById('est-modal')?.remove();
+    WMS.spinner();
+    try {
+      let r;
+      if (id) {
+        r = await API.put('/devoluciones/crm/estados/' + id, data);
+      } else {
+        r = await API.post('/devoluciones/crm/estados', data);
+      }
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success', 'Estado guardado');
+      this.showEstadosCRM();
+    } catch(e) { WMS.toast('error', 'Error al guardar estado'); }
+  },
+
+  async _eliminarEstadoCRM(id) {
+    if (!confirm('¿Eliminar este estado? Si ya está en uso no se podrá borrar.')) return;
+    WMS.spinner();
+    try {
+      const r = await API.delete('/devoluciones/crm/estados/' + id);
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success', 'Estado eliminado');
+      this.showEstadosCRM();
+    } catch(e) { WMS.toast('error', 'Error al eliminar estado'); }
   },
 
   _modalEditarCausal(id) {
@@ -918,12 +1199,30 @@ WMS_MODULES.devoluciones = {
     } catch(e) { WMS.toast('error', 'Error al actualizar causal'); }
   },
 
+  _initGlobalEvents() {
+    if (this._globalEventsBound) return;
+    document.addEventListener('click', (e) => {
+      const dropCliente = document.getElementById('dv-cliente-origen-drop');
+      const dropTercero = document.getElementById('dv-tercero-drop');
+      const dropUbic = document.getElementById('dv-ubic-drop');
+      const dropProd = document.getElementById('dv-prod-drop');
+      
+      if (dropCliente && e.target.closest('#dv-new-cliente-q') === null) dropCliente.style.display = 'none';
+      if (dropTercero && e.target.closest('#dv-new-tercero-q') === null) dropTercero.style.display = 'none';
+      if (dropUbic && e.target.closest('#dv-new-ubic-q') === null) dropUbic.style.display = 'none';
+      if (dropProd && e.target.closest('#dv-prod-nombre') === null) dropProd.style.display = 'none';
+    });
+    this._globalEventsBound = true;
+  },
+
   /* ═══════════════════════════════════════════════════════════════════════
      E) FORMULARIO NUEVA DEVOLUCIÓN (enriquecido)
   ═══════════════════════════════════════════════════════════════════════ */
   async showFormDevolucion() {
+    this._initGlobalEvents();
     this._state.vista = 'nueva';
     this._state.items  = [];
+    this._state.fotos  = [];
     this._state.qrProd = null;
 
     WMS.setToolbar(this._navBar('nueva'));
@@ -941,7 +1240,7 @@ WMS_MODULES.devoluciones = {
     ).join('');
 
     WMS.setContent(`
-      <div class="card" style="max-width:900px;">
+      <div class="card" style="max-width:920px;">
         <div class="card-header">
           <span class="card-title"><i class="fa-solid fa-plus"></i> Nueva Devolución</span>
         </div>
@@ -951,7 +1250,7 @@ WMS_MODULES.devoluciones = {
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:12px;">
             Datos generales
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+          <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:14px;">
             <div>
               <label class="form-label">Tipo <span style="color:#ef4444;">*</span></label>
               <select id="dv-new-tipo" class="form-control">
@@ -960,6 +1259,20 @@ WMS_MODULES.devoluciones = {
                 <option value="interna">Interna</option>
               </select>
             </div>
+            <div style="position:relative;">
+              <label class="form-label">Cliente / Sucursal que Devuelve (Origen) <span style="color:#ef4444;">*</span></label>
+              <input type="text" id="dv-new-cliente-q" class="form-control"
+                placeholder="Escriba para buscar cliente por nombre, NIT o código..."
+                oninput="WMS_MODULES.devoluciones._buscarClienteOrigen(this.value)"
+                onfocus="WMS_MODULES.devoluciones._buscarClienteOrigen(this.value)"
+                onclick="WMS_MODULES.devoluciones._buscarClienteOrigen(this.value)"
+                autocomplete="off">
+              <div id="dv-cliente-origen-drop" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:300;
+                background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.15);
+                max-height:220px;overflow-y:auto;font-size:13px;"></div>
+              <input type="hidden" id="dv-new-cliente-origen">
+              <div id="dv-cliente-origen-selected" style="display:none;margin-top:4px;"></div>
+            </div>
             <div>
               <label class="form-label">Causal <span style="color:#ef4444;">*</span></label>
               <select id="dv-new-causal" class="form-control">
@@ -967,28 +1280,25 @@ WMS_MODULES.devoluciones = {
                 ${causalesOpts}
               </select>
             </div>
-            <div>
-              <label class="form-label">Responsable <span style="color:#ef4444;">*</span></label>
-              <input type="text" id="dv-new-responsable" class="form-control"
-                placeholder="Nombre del responsable">
-            </div>
           </div>
         </div>
 
-        <!-- SECCIÓN 2: Cliente / Proveedor -->
+        <!-- SECCIÓN 2: Cliente / Proveedor & Referencia ERP -->
         <div style="padding:20px;border-bottom:1px solid #e2e8f0;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:12px;">
-            Tercero (Cliente / Proveedor)
+            Tercero ERP & Referencia
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
             <div style="position:relative;">
-              <label class="form-label">Buscar Cliente / Proveedor</label>
+              <label class="form-label">Buscar Tercero (Cliente / Proveedor ERP)</label>
               <input type="text" id="dv-new-tercero-q" class="form-control"
                 placeholder="Escribe para buscar..."
                 oninput="WMS_MODULES.devoluciones._buscarTercero(this.value)"
+                onfocus="WMS_MODULES.devoluciones._buscarTercero(this.value)"
+                onclick="WMS_MODULES.devoluciones._buscarTercero(this.value)"
                 autocomplete="off">
               <div id="dv-tercero-drop" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:200;
-                background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);
+                background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.15);
                 max-height:200px;overflow-y:auto;font-size:13px;"></div>
               <input type="hidden" id="dv-new-tercero-id">
             </div>
@@ -1002,7 +1312,7 @@ WMS_MODULES.devoluciones = {
         <!-- SECCIÓN 3: Ubicación patio -->
         <div style="padding:20px;border-bottom:1px solid #e2e8f0;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:12px;">
-            Ubicación en patio
+            Ubicación en patio & Motivo
           </div>
           <div style="display:grid;grid-template-columns:1fr 2fr;gap:14px;align-items:start;">
             <div style="position:relative;">
@@ -1024,7 +1334,22 @@ WMS_MODULES.devoluciones = {
           </div>
         </div>
 
-        <!-- SECCIÓN 4: Productos -->
+        <!-- SECCIÓN 4: Registro Fotográfico -->
+        <div style="padding:20px;border-bottom:1px solid #e2e8f0;background:#faf5ff;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#7e22ce;margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+            <i class="fa-solid fa-camera"></i> Registro Fotográfico del Producto (Fotos de evidencia)
+          </div>
+          <div>
+            <label class="btn btn-outline-primary btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+              <i class="fa-solid fa-cloud-arrow-up"></i> Seleccionar Fotos del Producto...
+              <input type="file" id="dv-fotos-input" multiple accept="image/*" capture="environment" style="display:none;" onchange="WMS_MODULES.devoluciones._onFotosSelected(this)">
+            </label>
+            <span style="font-size:11px;color:#64748b;margin-left:10px;">Puedes subir múltiples fotos del estado físico del producto</span>
+          </div>
+          <div id="dv-fotos-preview" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;"></div>
+        </div>
+
+        <!-- SECCIÓN 5: Productos -->
         <div style="padding:20px;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:12px;">
             Productos a devolver
@@ -1043,10 +1368,10 @@ WMS_MODULES.devoluciones = {
               </div>
               <div style="flex:1;min-width:200px;position:relative;">
                 <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">
-                  <i class="fa-solid fa-magnifying-glass"></i> Buscar por nombre
+                  <i class="fa-solid fa-magnifying-glass"></i> Buscar por nombre o referencia
                 </label>
                 <input type="text" id="dv-prod-nombre" class="form-control"
-                  placeholder="Nombre del producto..."
+                  placeholder="Nombre o código del producto..."
                   oninput="WMS_MODULES.devoluciones._buscarProducto(this.value)"
                   autocomplete="off">
                 <div id="dv-prod-drop" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:200;
@@ -1136,27 +1461,275 @@ WMS_MODULES.devoluciones = {
     this._renderItemsTable();
   },
 
+  /* Búsqueda dinámica autocompletada de Cliente Origen */
+  _buscarClienteOrigen(q) {
+    clearTimeout(this._debounceClienteOrigen);
+    const drop = document.getElementById('dv-cliente-origen-drop');
+    if (!drop) return;
+    this._debounceClienteOrigen = setTimeout(async () => {
+      try {
+        const url = (q && q.trim().length > 0)
+          ? '/param/clientes?q=' + encodeURIComponent(q.trim())
+          : '/param/clientes?limit=20';
+        const r = await API.get(url);
+        this._state.clientesSearchData = r.data || r || [];
+        if (!this._state.clientesSearchData.length) {
+          drop.innerHTML = '<div style="padding:10px;color:#94a3b8;font-size:12px;">Sin clientes que coincidan</div>';
+          drop.style.display = 'block';
+          return;
+        }
+        drop.innerHTML = this._state.clientesSearchData.map((c, idx) => `
+          <div onclick="WMS_MODULES.devoluciones._selClienteOrigenIdx(${idx})"
+            style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
+            onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            <strong style="font-size:13px;color:#0f172a;">${WMS.esc(c.nombre_comercial || c.razon_social)}</strong>
+            <span style="color:#64748b;font-size:11px;display:block;">NIT: ${WMS.esc(c.nit||'S/N')} | Código: ${WMS.esc(c.codigo||'-')} ${c.ruta ? ' | Ruta: ' + WMS.esc(c.ruta.nombre||'') : ''}</span>
+          </div>`).join('');
+        drop.style.display = 'block';
+      } catch(e) { /* sin resultados */ }
+    }, 200);
+  },
+
+  _selClienteOrigenIdx(idx) {
+    const c = this._state.clientesSearchData?.[idx];
+    if (!c) return;
+    document.getElementById('dv-new-cliente-origen').value = c.id;
+    document.getElementById('dv-new-cliente-q').value      = c.nombre_comercial || c.razon_social;
+    const drop = document.getElementById('dv-cliente-origen-drop');
+    if (drop) drop.style.display = 'none';
+    const sel = document.getElementById('dv-cliente-origen-selected');
+    if (sel) {
+      sel.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;background:#dcfce7;border:1px solid #86efac;border-radius:6px;padding:6px 10px;margin-top:6px;font-size:12px;color:#166534;">
+        <span><i class="fa-solid fa-circle-check" style="color:#16a34a;"></i> <strong>${WMS.esc(c.nombre_comercial || c.razon_social)}</strong> (NIT: ${WMS.esc(c.nit || 'S/N')}) ${c.codigo ? ' · Cód: ' + WMS.esc(c.codigo) : ''}</span>
+        <button type="button" class="btn btn-xs btn-outline-secondary" onclick="WMS_MODULES.devoluciones._limpiarClienteOrigen()"><i class="fa-solid fa-xmark"></i> Cambiar</button>
+      </div>`;
+      sel.style.display = 'block';
+    }
+  },
+
+  _limpiarClienteOrigen() {
+    document.getElementById('dv-new-cliente-origen').value = '';
+    document.getElementById('dv-new-cliente-q').value      = '';
+    const sel = document.getElementById('dv-cliente-origen-selected');
+    if (sel) sel.style.display = 'none';
+    const input = document.getElementById('dv-new-cliente-q');
+    if (input) { input.focus(); this._buscarClienteOrigen(''); }
+  },
+
+  async _onFotosSelected(input) {
+    if (!input.files || !input.files.length) return;
+    WMS.spinner();
+    try {
+      for (const file of input.files) {
+        if (this._state.fotos.length >= 10) {
+          WMS.toast('warning', 'Máximo 10 fotos por devolución');
+          break;
+        }
+        const compressed = await this._compressImage(file);
+        this._state.fotos.push(compressed);
+      }
+      input.value = '';
+      this._renderFotosPreview();
+    } catch(e) {
+      WMS.toast('error', 'Error al procesar imágenes');
+    } finally {
+      WMS.spinnerHide();
+    }
+  },
+
+  _compressImage(file) {
+    return new Promise((resolve) => {
+      if (!file.type.match(/image.*/)) {
+        return resolve(file);
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const MAX_SIZE = 1200;
+
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height = Math.round(height * (MAX_SIZE / width));
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width = Math.round(width * (MAX_SIZE / height));
+              height = MAX_SIZE;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
+            } else {
+              resolve(file);
+            }
+          }, 'image/jpeg', 0.85);
+        };
+        img.onerror = () => resolve(file);
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve(file);
+      reader.readAsDataURL(file);
+    });
+  },
+
+  _renderFotosPreview() {
+    const el = document.getElementById('dv-fotos-preview');
+    if (!el) return;
+    if (!this._state.fotos.length) {
+      el.innerHTML = '';
+      return;
+    }
+    el.innerHTML = this._state.fotos.map((file, i) => {
+      const url = URL.createObjectURL(file);
+      return `
+        <div style="position:relative;width:90px;height:90px;border-radius:8px;overflow:hidden;border:1px solid #cbd5e1;box-shadow:0 2px 6px rgba(0,0,0,0.1);">
+          <img src="${url}" style="width:100%;height:100%;object-fit:cover;">
+          <button type="button" onclick="WMS_MODULES.devoluciones._removeFoto(${i})"
+            style="position:absolute;top:3px;right:3px;background:rgba(220,38,38,0.85);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>`;
+    }).join('');
+  },
+
+  _removeFoto(i) {
+    this._state.fotos.splice(i, 1);
+    this._renderFotosPreview();
+  },
+
+  _quitarItem(i) {
+    this._state.items.splice(i, 1);
+    this._renderItemsTable();
+  },
+
+  async guardarNueva() {
+    const tipo             = document.getElementById('dv-new-tipo')?.value;
+    const cliente_origen_id= document.getElementById('dv-new-cliente-origen')?.value;
+    const causal_id        = document.getElementById('dv-new-causal')?.value;
+    const ref              = document.getElementById('dv-new-ref')?.value?.trim() || null;
+    const motivo           = document.getElementById('dv-new-motivo')?.value?.trim();
+    const tercero_id       = document.getElementById('dv-new-tercero-id')?.value || null;
+    const ubic_id          = document.getElementById('dv-new-ubic-id')?.value || null;
+
+    if (!causal_id)    { WMS.toast('error', 'Seleccione la causal de devolución'); return; }
+    if (!motivo)       { WMS.toast('error', 'Ingrese el motivo general'); return; }
+    if (!this._state.items.length) { WMS.toast('error', 'Agregue al menos un producto'); return; }
+
+    WMS.spinner();
+    try {
+      const formData = new FormData();
+      formData.append('tipo', tipo);
+      if (cliente_origen_id) {
+        formData.append('cliente_origen_id', cliente_origen_id);
+        formData.append('tercero_id', cliente_origen_id);
+      }
+      formData.append('causal_devolucion_id', parseInt(causal_id));
+      if (ref) formData.append('referencia_externa', ref);
+      formData.append('motivo_general', motivo);
+      if (tercero_id && !cliente_origen_id) formData.append('tercero_id', parseInt(tercero_id));
+      if (ubic_id) formData.append('ubicacion_patio_id', parseInt(ubic_id));
+
+      const detallesPayload = this._state.items.map(it => ({
+        producto_id:         it.producto_id,
+        lote:                it.lote,
+        fecha_vencimiento:   it.fecha_vencimiento,
+        cantidad:            it.cantidad,
+        cantidad_cajas:      it.cantidad_cajas || 0,
+        cantidad_saldo:      it.cantidad_saldo || 0,
+        condicion:           it.condicion,
+        motivo:              'Otro',
+        ubicacion_origen_id: it.ubicacion_origen_id || null,
+      }));
+      formData.append('detalles', JSON.stringify(detallesPayload));
+
+      this._state.fotos.forEach((file, idx) => {
+        formData.append('fotos[]', file);
+      });
+
+      const res = await fetch(API_BASE + '/devoluciones', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + _wmsToken },
+        body: formData
+      });
+      const r = await res.json();
+      WMS.spinnerHide();
+
+      if (r.error) { WMS.toast('error', r.message); return; }
+
+      const devId       = r.data?.devolucion_id || r.data?.id;
+      const consecutivo = r.data?.consecutivo_devolucion || r.data?.consecutivo;
+      const consecTxt   = consecutivo ? `#${consecutivo}` : (r.data?.numero || '');
+
+      // Modal de éxito con consecutivo prominente para marcado
+      const modalHtml = `
+        <div id="modal-consecutivo-success" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;">
+          <div style="background:#fff;border-radius:16px;padding:28px;width:480px;max-width:92vw;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.3);animation:popIn 0.3s ease;">
+            <div style="width:64px;height:64px;background:#dcfce7;color:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:28px;">
+              <i class="fa-solid fa-check"></i>
+            </div>
+            <h3 style="margin:0 0 8px;font-size:20px;color:#1e293b;">¡Devolución Registrada!</h3>
+            <p style="margin:0 0 16px;color:#64748b;font-size:13px;">Consecutivo asignado para el marcado físico del producto:</p>
+
+            <div style="background:#f0f9ff;border:2px dashed #0284c7;border-radius:12px;padding:16px;margin-bottom:20px;">
+              <div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Consecutivo de Marcado</div>
+              <div style="font-size:2.4rem;font-weight:900;color:#0F4C81;letter-spacing:1px;" id="val-consecutivo">${WMS.esc(consecTxt)}</div>
+              <div style="font-size:11px;color:#64748b;margin-top:4px;">N° Registro Interno: ${WMS.esc(r.data?.numero || '-')}</div>
+            </div>
+
+            <div style="display:flex;gap:10px;justify-content:center;">
+              <button class="btn btn-outline-primary btn-sm" onclick="navigator.clipboard.writeText('${consecutivo || r.data?.numero}');WMS.toast('success','Consecutivo copiado al portapapeles');">
+                <i class="fa-solid fa-copy"></i> Copiar Consecutivo
+              </button>
+              <button class="btn btn-primary btn-sm" onclick="document.getElementById('modal-consecutivo-success').remove();WMS_MODULES.devoluciones.showDetalle(${devId});">
+                <i class="fa-solid fa-eye"></i> Ver Devolución
+              </button>
+            </div>
+          </div>
+        </div>`;
+
+      document.body.insertAdjacentHTML('beforeend', modalHtml);
+      WMS.toast('success', 'Devolución ' + consecTxt + ' creada correctamente');
+
+    } catch(e) {
+      WMS.spinnerHide();
+      WMS.toast('error', 'Error al registrar la devolución');
+    }
+  },
+
   /* Búsqueda dinámica de terceros (clientes/proveedores) */
   _buscarTercero(q) {
     clearTimeout(this._debounceCliente);
     const drop = document.getElementById('dv-tercero-drop');
-    if (!q || q.length < 2) { if(drop) drop.style.display='none'; return; }
+    if (!drop) return;
     this._debounceCliente = setTimeout(async () => {
       try {
-        const r = await API.get('/terceros?q=' + encodeURIComponent(q) + '&limit=8');
-        const data = r.data || [];
-        if (!drop) return;
-        if (!data.length) { drop.innerHTML='<div style="padding:10px;color:#94a3b8;">Sin resultados</div>'; drop.style.display='block'; return; }
+        const url = (q && q.trim().length > 0)
+          ? '/terceros?q=' + encodeURIComponent(q.trim()) + '&limit=10'
+          : '/terceros?limit=10';
+        const r = await API.get(url);
+        const data = r.data || r || [];
+        if (!data.length) { drop.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:12px;">Sin resultados</div>'; drop.style.display='block'; return; }
         drop.innerHTML = data.map(t => `
-          <div onclick="WMS_MODULES.devoluciones._selTercero(${t.id},'${WMS.esc(t.nombre||t.razon_social||'').replace(/'/g,"\\'")}' )"
+          <div onclick="WMS_MODULES.devoluciones._selTercero(${t.id},'${WMS.esc(t.nombre||t.razon_social||'').replace(/'/g,"\\'")}')"
             style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
             onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-            <strong>${WMS.esc(t.nombre||t.razon_social||t.codigo)}</strong>
+            <strong style="font-size:13px;color:#0f172a;">${WMS.esc(t.nombre||t.razon_social||t.codigo)}</strong>
             <span style="color:#94a3b8;font-size:11px;"> ${WMS.esc(t.nit||t.codigo||'')}</span>
           </div>`).join('');
         drop.style.display = 'block';
       } catch(e) { /* sin resultados */ }
-    }, 350);
+    }, 200);
   },
 
   _selTercero(id, nombre) {
@@ -1177,7 +1750,7 @@ WMS_MODULES.devoluciones = {
         if (!drop) return;
         if (!data.length) { drop.innerHTML='<div style="padding:10px;color:#94a3b8;">Sin resultados</div>'; drop.style.display='block'; return; }
         drop.innerHTML = data.map(u => `
-          <div onclick="WMS_MODULES.devoluciones._selUbicacion(${u.id},'${WMS.esc(u.codigo||u.nombre||'').replace(/'/g,"\\'")}' )"
+          <div onmousedown="WMS_MODULES.devoluciones._selUbicacion(${u.id},'${WMS.esc(u.codigo||u.nombre||'').replace(/'/g,"\\'")}' )"
             style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
             onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
             <code>${WMS.esc(u.codigo)}</code>
@@ -1194,27 +1767,27 @@ WMS_MODULES.devoluciones = {
     document.getElementById('dv-ubic-drop').style.display = 'none';
   },
 
-  /* Búsqueda de producto por nombre */
+  /* Búsqueda de producto por nombre o código interno (index-based) */
   _buscarProducto(q) {
-    clearTimeout(this._debounceCliente);
+    clearTimeout(this._debounceProd);
     const drop = document.getElementById('dv-prod-drop');
     if (!q || q.length < 2) { if(drop) drop.style.display='none'; return; }
-    this._debounceCliente = setTimeout(async () => {
+    this._debounceProd = setTimeout(async () => {
       try {
-        const r = await API.get('/productos?q=' + encodeURIComponent(q) + '&limit=8');
+        const r = await API.get('/param/productos/buscar?q=' + encodeURIComponent(q));
         const data = r.data || [];
         if (!drop) return;
         if (!data.length) { drop.innerHTML='<div style="padding:10px;color:#94a3b8;">Sin resultados</div>'; drop.style.display='block'; return; }
-        drop.innerHTML = data.map(p => `
-          <div onclick="WMS_MODULES.devoluciones._selProducto(${p.id},'${WMS.esc(p.nombre||'').replace(/'/g,"\\'")}','${WMS.esc(p.codigo_interno||'').replace(/'/g,"\\'")}' )"
+        drop.innerHTML = data.slice(0, 10).map(p => `
+          <div onmousedown="WMS_MODULES.devoluciones._selProducto(${p.id},'${WMS.esc(p.nombre||'').replace(/'/g,"\\'")}','${WMS.esc(p.codigo_interno||'').replace(/'/g,"\\'")}')"
             style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
             onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
             <strong style="font-size:12px;">${WMS.esc(p.nombre)}</strong>
-            <span style="color:#94a3b8;font-size:11px;"> [${WMS.esc(p.codigo_interno||'')}]</span>
+            <span style="color:#94a3b8;font-size:11px;"> [${WMS.esc(p.codigo_interno||'')}] UxC: ${parseInt(p.unidades_caja||1)}</span>
           </div>`).join('');
         drop.style.display = 'block';
       } catch(e) { /* sin resultados */ }
-    }, 350);
+    }, 300);
   },
 
   _selProducto(id, nombre, codigo) {
@@ -1282,7 +1855,7 @@ WMS_MODULES.devoluciones = {
       document.getElementById('dv-item-fv').value   = r.data.fecha_vencimiento || '';
       document.getElementById('dv-qr-nombre').textContent = p.nombre;
       document.getElementById('dv-qr-lote').textContent   = r.data.lote_raw || '-';
-      document.getElementById('dv-qr-fv').textContent     = r.data.fecha_vencimiento || '-';
+      document.getElementById('dv-qr-fv').textContent     = r.data.fecha_vencimiento ? WMS.formatDate(r.data.fecha_vencimiento) : '-';
       document.getElementById('dv-qr-found').style.display       = 'block';
       document.getElementById('dv-item-ubic-wrap').style.display  = 'block';
       document.getElementById('dv-item-ubic-q').value             = '';
@@ -1395,7 +1968,7 @@ WMS_MODULES.devoluciones = {
           ${this._state.items.map((it, i) => `<tr>
             <td>${WMS.esc(it.producto_nombre)}</td>
             <td><code>${WMS.esc(it.lote||'-')}</code></td>
-            <td style="font-size:11px;">${it.fecha_vencimiento||'-'}</td>
+            <td style="font-size:11px;">${it.fecha_vencimiento ? WMS.formatDate(it.fecha_vencimiento) : '-'}</td>
             <td class="text-center fw-700">${WMS.formatNum(it.cantidad)}</td>
             <td>${WMS.esc(it.condicion)}</td>
             <td style="font-size:11px;">

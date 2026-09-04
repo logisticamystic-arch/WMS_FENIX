@@ -20,7 +20,7 @@ WMS_MODULES.picking = {
     const s = sub || 'pedidos';
     const fn = {
       pedidos: this.show_pedidos, asignacion: this.show_asignacion,
-      faltantes: this.show_faltantes, dashboard: this.show_dashboard,
+      dashboard: this.show_dashboard,
       reporte: this.show_reporte, pendientes: this.show_productos_pendientes,
       reservas: this.show_reservas, agotados: this.show_agotados,
       consulta: this.show_consulta, novedades: this.show_novedades,
@@ -52,7 +52,7 @@ WMS_MODULES.picking = {
 
   subLabel(s) {
     const m = { pedidos:'Pedidos / Planillas', asignacion:'Asignación de Picking',
-      faltantes:'Faltantes de Stock', dashboard:'Dashboard Picking', reporte:'Reporte Picking',
+      dashboard:'Dashboard Picking', reporte:'Reporte Picking',
       pendientes:'Prod. Sin Codificar', reservas:'Reservas', agotados:'Módulo de Agotados',
       consulta:'Consulta de Picking', novedades:'Novedades de Picking' };
     return m[s] || s || 'Panel';
@@ -344,22 +344,86 @@ WMS_MODULES.picking = {
       });
     });
 
+    // Números de pedido + referencias por pedido, para mostrar junto a la fecha.
+    // numero_pedido/numero_factura/numero_orden: mismo criterio de fallback usado
+    // en el resto del sistema (ver certPendientes()/despacho.js) para identificar
+    // el pedido del cliente cuando numero_pedido viene vacío (carga CSV en bloque).
+    const pedidosInfo = (g.ordenes || []).map(o => ({
+      id:      o.id,
+      numero:  o.numero_pedido || o.numero_factura || o.numero_orden || ('#' + o.id),
+      refs:    (o.detalles || []).length,
+      reqFv:   o.requiere_fecha_vencimiento,
+    }));
+    const totalRefsPedidos = pedidosInfo.reduce((a, p) => a + p.refs, 0);
+
+    // Auto-Certificar desde Picking (a pedido explícito de Camilo, 2026-09-04):
+    // mismo criterio y mismo endpoint (/packing/autopack) que ya usa el botón
+    // "Auto-Certificar" de Despacho > Certificación — no se duplica lógica de
+    // negocio, solo se ofrece el atajo aquí para no tener que cambiar de módulo.
+    // Elegible = orden ya 'Completada' (100% separada) y aún sin certificar del
+    // todo (Pendiente/Parcial). Se agrupa por sucursal_entrega porque autopack()
+    // certifica por sucursal, igual que en despacho.js.
+    const certElegiblesPorSucursal = {};
+    (g.ordenes || []).forEach(o => {
+      if (o.estado === 'Completada' && ['Pendiente', 'Parcial'].includes(o.estado_certificacion)) {
+        const suc = o.sucursal_entrega || o.cliente || '';
+        (certElegiblesPorSucursal[suc] = certElegiblesPorSucursal[suc] || []).push(o.id);
+      }
+    });
+    this._certElegiblesPorPlanilla = this._certElegiblesPorPlanilla || {};
+    this._certElegiblesPorPlanilla[g.planilla] = certElegiblesPorSucursal;
+    const hayCertElegibles = Object.keys(certElegiblesPorSucursal).length > 0;
+
+    // Planilla certificada (a pedido explícito de Camilo, 2026-09-04): "todo o
+    // nada" — solo se trata como certificada si TODAS sus órdenes ya están
+    // 'Certificada'. Si hay una mezcla (parte certificada, parte no), se sigue
+    // mostrando el flujo normal para no ocultar acciones que el usuario aún
+    // necesita sobre lo pendiente.
+    const todasCertificadas = (g.ordenes || []).length > 0
+      && g.ordenes.every(o => o.estado_certificacion === 'Certificada');
+    const certPorSucursal = {};
+    if (todasCertificadas) {
+      g.ordenes.forEach(o => {
+        const suc = o.sucursal_entrega || o.cliente || '';
+        (certPorSucursal[suc] = certPorSucursal[suc] || []).push(o.id);
+      });
+    }
+    this._certCertificadasPorPlanilla = this._certCertificadasPorPlanilla || {};
+    this._certCertificadasPorPlanilla[g.planilla] = {
+      ordenIds: (g.ordenes || []).map(o => o.id),
+      porSucursal: certPorSucursal,
+    };
+
     return `
     <tr data-estado="${g.estado}" data-planilla="${WMS.esc(g.planilla)}">
+      <td style="text-align:center;">
+        <input type="checkbox" class="chk-sel-planilla" data-planilla="${WMS.esc(g.planilla)}" onchange="WMS_MODULES.picking._onTogglePlanillaCheckbox()">
+      </td>
       <td>
-        <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
           <button class="btn btn-xs btn-light" onclick="WMS_MODULES.picking._togglePlanilla('${WMS.esc(g.planilla)}')" title="Ver detalle">
             <i class="fa-solid fa-chevron-right" id="icon-plan-${WMS.esc(g.planilla)}" style="transition:.2s"></i>
           </button>
           <span class="badge badge-info" style="font-size:11.5px;font-weight:700;">#${WMS.esc(g.planilla)}</span>
         </div>
       </td>
-      <td style="white-space:nowrap;font-size:12px;font-weight:600;color:#1d4ed8;">${g.ordenes?.[0]?.fecha_requerida ? WMS.formatDate(g.ordenes[0].fecha_requerida) : '—'}</td>
-      <td style="font-size:11px;font-weight:600;">
+      <td style="white-space:nowrap;font-size:12px;font-weight:600;color:#1d4ed8;text-align:center;">
+        ${g.ordenes?.[0]?.fecha_requerida ? WMS.formatDate(g.ordenes[0].fecha_requerida) : '—'}
+        <div style="margin-top:4px;display:flex;flex-direction:column;align-items:center;gap:2px;font-weight:600;">
+          <span style="font-size:9.5px;color:#64748b;">${pedidosInfo.length} pedido${pedidosInfo.length!==1?'s':''} · ${totalRefsPedidos} ref. total</span>
+          ${pedidosInfo.map(p => {
+            const fvIcon = p.reqFv === true ? '<i class="fa-solid fa-calendar-check" style="color:#dc2626;" title="Fecha de vencimiento: SIEMPRE exigir"></i>' : '';
+            return `<span style="font-size:9.5px;color:#475569;background:#f1f5f9;border-radius:3px;padding:1px 4px;width:fit-content;display:flex;align-items:center;gap:3px;">
+              <span>Pedido ${WMS.esc(String(p.numero))} · ${p.refs} ref ${fvIcon}</span>
+            </span>`;
+          }).join('')}
+        </div>
+      </td>
+      <td style="font-size:11px;font-weight:600;text-align:center;">
         <span>${WMS.esc([...g.clientes].join(', ') || '-')}</span>
         ${g.observaciones.size ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc([...g.observaciones].join(' | '))}"></i>` : ''}
       </td>
-      <td><span style="font-size:11px;font-weight:600;color:#64748b;">${WMS.esc(g.ruta)}</span></td>
+      <td style="text-align:center;"><span style="font-size:11px;font-weight:600;color:#64748b;">${WMS.esc(g.ruta)}</span></td>
       <td class="text-center"><b>${g.total_lineas - g.lineas_pendientes}</b> / ${g.total_lineas}</td>
       <td>
         <div style="display:flex;align-items:center;gap:6px;">
@@ -369,17 +433,60 @@ WMS_MODULES.picking = {
           <span style="font-size:10px;font-weight:700;color:#64748b;">${pct}%</span>
         </div>
       </td>
-      <td>${stChip(g.estado)}</td>
-      <td style="font-size:11px;">${auxList}</td>
+      <td style="text-align:center;">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+          ${stChip(g.estado)}
+          ${todasCertificadas ? `<span style="display:inline-flex;align-items:center;gap:3px;background:#fce7f3;color:#be185d;border:1px solid #fbcfe8;padding:2px 8px;border-radius:99px;font-size:9.5px;font-weight:700;white-space:nowrap;"><i class="fa-solid fa-stamp"></i> Certificado</span>` : ''}
+        </div>
+      </td>
+      <td style="font-size:11px;text-align:center;">${auxList}</td>
       <td class="text-center"><span style="font-family:monospace;font-size:11px;">${inicioOp || '-'}</span></td>
+      <td style="text-align:center;">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+          ${(() => {
+            if (!(WMS.user?.rol === 'Admin' || WMS.user?.rol === 'Supervisor')) return '';
+            const reqEsc = g.ordenes?.[0]?.requiere_escaneo_ubicacion;
+            const escIcon = reqEsc === true
+              ? '<i class="fa-solid fa-map-location-dot" style="color:#16a34a;" title="Escaneo de ubicación: SIEMPRE exigir"></i>'
+              : '<i class="fa-solid fa-map-location-dot" style="color:#94a3b8;" title="Escaneo de ubicación: NO se exige"></i>';
+            return `<span onclick="event.stopPropagation();WMS_MODULES.picking._configurarEscaneoUbicacionPlanilla('${WMS.esc(g.planilla)}', ${reqEsc === true ? 'true' : reqEsc === false ? 'false' : 'null'})"
+              title="Configurar exigencia de escaneo de ubicación para toda la planilla" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 8px;border-radius:4px;background:#f8fafc;border:1px solid #e2e8f0;width:100%;font-size:10px;font-weight:600;color:#475569;">
+              ${escIcon} Ubicación
+            </span>`;
+          })()}
+          ${(() => {
+            if (WMS.user?.rol !== 'Admin' && WMS.user?.rol !== 'SuperAdmin') return '';
+            const reqFv = g.ordenes?.[0]?.requiere_fecha_vencimiento;
+            const fvIcon = reqFv === true
+              ? '<i class="fa-solid fa-calendar-check" style="color:#dc2626;" title="Fecha de vencimiento: SIEMPRE exigir"></i>'
+              : '<i class="fa-solid fa-calendar-xmark" style="color:#94a3b8;" title="Fecha de vencimiento: NO se exige"></i>';
+            return `<span onclick="event.stopPropagation();WMS_MODULES.picking._configurarFechaVencimientoPlanilla('${WMS.esc(g.planilla)}', ${reqFv === true ? 'true' : reqFv === false ? 'false' : 'null'})"
+              title="Configurar exigencia de fecha de vencimiento para toda la planilla" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 8px;border-radius:4px;background:#f8fafc;border:1px solid #e2e8f0;width:100%;font-size:10px;font-weight:600;color:#475569;">
+              ${fvIcon} F. Vence
+            </span>`;
+          })()}
+        </div>
+      </td>
       <td>
         ${!isDash ? `
-          <div class="actions" style="gap:4px;flex-wrap:wrap;">
-            <button class="btn btn-sm btn-outline-primary" style="font-weight:700;" onclick="WMS_MODULES.picking.abrirModalEditarPedido('${WMS.esc(g.planilla)}')" title="Editar sucursal, observaciones y cantidades">
-              <i class="fa-solid fa-pen-to-square"></i> Editar Pedido
-            </button>
-            ${g.estado === 'EnProceso' ? `<button class="btn btn-sm btn-success" onclick="WMS_MODULES.picking._cerrarPlanilla('${WMS.esc(g.planilla)}')"><i class="fa-solid fa-check-double"></i> Cerrar</button>` : ''}
-            ${g.estado === 'Completado' ? `<button class="btn btn-sm btn-warning" onclick="WMS_MODULES.picking._reabrirPlanilla(${ordenIdsJson})"><i class="fa-solid fa-rotate-left"></i> Reabrir</button>` : ''}
+          <div class="actions" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;align-items:center;">
+            ${!todasCertificadas ? `
+              <button class="btn btn-sm btn-outline-primary" style="font-weight:700;" onclick="WMS_MODULES.picking.abrirModalEditarPedido('${WMS.esc(g.planilla)}')" title="Editar sucursal, observaciones y cantidades">
+                <i class="fa-solid fa-pen-to-square"></i> Editar Pedido
+              </button>
+              ${g.estado === 'EnProceso' ? `<button class="btn btn-sm btn-success" onclick="WMS_MODULES.picking._cerrarPlanilla('${WMS.esc(g.planilla)}')"><i class="fa-solid fa-check-double"></i> Cerrar</button>` : ''}
+              ${g.estado === 'Completado' ? `<button class="btn btn-sm btn-warning" onclick="WMS_MODULES.picking._reabrirPlanilla(${ordenIdsJson})"><i class="fa-solid fa-rotate-left"></i> Reabrir</button>` : ''}
+              ${hayCertElegibles ? `<button class="btn btn-sm btn-success" onclick="WMS_MODULES.picking.autoCertificarPlanilla('${WMS.esc(g.planilla)}')" title="Certifica esta planilla para poder imprimir la remisión desde Despachos"><i class="fa-solid fa-stamp"></i> Auto-Certificar</button>` : ''}
+            ` : `
+              <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.picking.imprimirRemisionPlanilla('${WMS.esc(g.planilla)}')" title="Imprimir la remisión de esta planilla">
+                <i class="fa-solid fa-print"></i> Imprimir Remisión
+              </button>
+              ${(WMS.user?.rol === 'Admin' || WMS.user?.rol === 'Supervisor') ? `
+                <button class="btn btn-sm btn-outline-danger" onclick="WMS_MODULES.picking.anularCertificacionPlanilla('${WMS.esc(g.planilla)}')" title="Anula la certificación — vuelve a habilitar Editar y Reabrir">
+                  <i class="fa-solid fa-rotate-left"></i> Anular Certificación
+                </button>
+              ` : ''}
+            `}
           </div>
         ` : `
           <div class="text-right">
@@ -389,7 +496,7 @@ WMS_MODULES.picking = {
       </td>
     </tr>
     <tr id="sub-plan-${WMS.esc(g.planilla)}" style="display:none;background:#f8fafc;" data-estado="${g.estado}">
-      <td colspan="11" style="padding:0 8px 10px 42px;">
+      <td colspan="12" style="padding:0 8px 10px 42px;">
         <div style="border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;background:#fff;box-shadow:inset 0 2px 4px rgba(0,0,0,.02)">
           ${g.ordenes && g.ordenes.length > 0 ? (() => {
             const asignados = g.ordenes.filter(o => o.auxiliar?.nombre).length;
@@ -794,6 +901,9 @@ WMS_MODULES.picking = {
     };
 
     const grupos = this._agruparPorPlanilla(ordenes);
+    this._pedidosCache = ordenes;
+    this._gruposCache = {};
+    grupos.forEach(g => { this._gruposCache[g.planilla] = g; });
     const rows = grupos.map(g => this._renderPlanillaRow(g)).join('');
 
     const rutasUnicas     = [...new Set(ordenes.map(o=>o.ruta).filter(Boolean))];
@@ -804,6 +914,12 @@ WMS_MODULES.picking = {
         <div class="card-header">
           <h5 class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Pedidos de Picking</h5>
           <div class="card-actions">
+            <button class="btn btn-outline-danger btn-sm" id="btn-eliminar-planillas-sel" style="display:none;" onclick="WMS_MODULES.picking._eliminarPlanillasSeleccionadas()">
+              <i class="fa-solid fa-trash-can"></i> Eliminar Seleccionadas (<span id="count-planillas-sel">0</span>)
+            </button>
+            <button class="btn btn-outline-primary btn-sm" id="btn-rotacion-planillas-sel" style="display:none;" onclick="WMS_MODULES.picking._configurarRotacionSeleccionadas()">
+              <i class="fa-solid fa-arrow-down-up-across-line"></i> Configurar Rotación (<span id="count-planillas-sel-rot">0</span>)
+            </button>
             <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking.nuevoPedidoManual()">
               <i class="fa-solid fa-pencil"></i> Nuevo Manual
             </button>
@@ -861,21 +977,24 @@ WMS_MODULES.picking = {
             <table class="erp-table">
               <thead>
                 <tr>
-                  <th style="padding:10px 12px;width:30px;"></th>
-                  <th style="padding:10px 12px;">Planilla</th>
-                  <th style="padding:10px 12px;">Fecha</th>
-                  <th style="padding:10px 12px;">Cliente</th>
-                  <th style="padding:10px 12px;">Ruta</th>
+                  <th style="padding:10px 12px;width:24px;">
+                    <input type="checkbox" id="chk-sel-all-planillas" onchange="WMS_MODULES.picking._toggleSelectAllPlanillas(this.checked)" title="Seleccionar todas">
+                  </th>
+                  <th style="padding:10px 12px;text-align:center;">Planilla</th>
+                  <th style="padding:10px 12px;text-align:center;">Fecha</th>
+                  <th style="padding:10px 12px;text-align:center;">Cliente</th>
+                  <th style="padding:10px 12px;text-align:center;">Ruta</th>
                   <th style="padding:10px 12px;text-align:center;">Progreso</th>
                   <th style="padding:10px 12px;text-align:center;">%</th>
-                  <th style="padding:10px 12px;">Estado</th>
-                  <th style="padding:10px 12px;">Auxiliar</th>
+                  <th style="padding:10px 12px;text-align:center;">Estado</th>
+                  <th style="padding:10px 12px;text-align:center;">Auxiliar</th>
                   <th style="padding:10px 12px;text-align:center;">Hr. Inicio</th>
+                  <th style="padding:10px 12px;text-align:center;">Condicional</th>
                   <th style="padding:10px 12px;text-align:center;">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                ${rows || `<tr><td colspan="11" style="text-align:center;padding:32px;color:#94a3b8;">Sin pedidos activos hoy. Use los filtros para buscar.</td></tr>`}
+                ${rows || `<tr><td colspan="12" style="text-align:center;padding:32px;color:#94a3b8;">Sin pedidos activos hoy. Use los filtros para buscar.</td></tr>`}
               </tbody>
             </table>
           </div>
@@ -1434,13 +1553,39 @@ WMS_MODULES.picking = {
     if (totalEl) totalEl.textContent = WMS.formatNum((cj * factor) + sl);
   },
 
-  async _enviarConfirmarConsolidado(lineaId, cajasTomadas, saldosTomados) {
+  // RETIRADO 2026-08-18, CORREGIDO 2026-08-19 (a pedido explícito): ya no se le
+  // pide fecha de vencimiento manual cuando la línea SÍ tiene ubicación asignada
+  // — la trazabilidad la garantiza el escaneo obligatorio de ubicación + el
+  // descuento FEFO estricto. PERO cuando la línea NO tiene ubicación asignada,
+  // el backend (confirmarConsolidado) sigue exigiéndola si el producto controla
+  // vencimiento/lote — y aquí se había quitado por completo el manejo de esa
+  // respuesta, así que el escritorio mostraba "Línea confirmada" (falso éxito)
+  // sin haber confirmado nada realmente. Se restaura el manejo, igual que ya
+  // existe en el móvil (confirmarPKActual).
+  async _enviarConfirmarConsolidado(lineaId, cajasTomadas, saldosTomados, fechaVencManual = null) {
     try {
       const r = await API.post('/picking/confirmar-consolidado', {
         ids: String(lineaId),
         cajas_tomadas: cajasTomadas,
-        saldos_tomados: saldosTomados
+        saldos_tomados: saldosTomados,
+        fecha_vencimiento_manual: fechaVencManual,
       });
+      if (r.status === 'needs_fecha_vencimiento') {
+        const { value: fecha, isConfirmed } = await Swal.fire({
+          title: '<i class="fa-solid fa-calendar-days" style="color:#dc2626;"></i> Fecha de vencimiento requerida',
+          html: `<p style="font-size:13px;margin-bottom:10px;"><b>${WMS.esc(r.producto_nombre||'')}</b> no tiene ubicación asignada y controla fecha de vencimiento/lote — ingrese la fecha que va a despachar.</p>
+                 <input id="swal-fv-manual-desk" type="date" class="swal2-input" style="margin:0;">`,
+          icon: 'warning', showCancelButton: true,
+          confirmButtonText: 'Confirmar', cancelButtonText: 'Cancelar', confirmButtonColor: '#dc2626',
+          preConfirm: () => {
+            const v = document.getElementById('swal-fv-manual-desk')?.value;
+            if (!v) { Swal.showValidationMessage('Ingrese la fecha de vencimiento'); return false; }
+            return v;
+          }
+        });
+        if (!isConfirmed) return;
+        return this._enviarConfirmarConsolidado(lineaId, cajasTomadas, saldosTomados, fecha);
+      }
       if (r.error) throw new Error(r.message);
       WMS.toast('success', 'Línea confirmada');
       const p = this._detallePicking;
@@ -1895,6 +2040,194 @@ WMS_MODULES.picking = {
     else WMS.toast('error', results[0]?.reason?.message || 'No se pudo reabrir la planilla');
   },
 
+  /**
+   * Auto-Certificar desde Picking (a pedido explícito de Camilo, 2026-09-04).
+   * Llama exactamente el mismo endpoint que usa Despacho > Certificación
+   * (POST /packing/autopack) con los orden_ids EXACTOS de esta planilla que
+   * ya están 'Completada' y sin certificar del todo — no toca backend, no
+   * duplica la lógica de negocio, solo evita tener que cambiar de módulo.
+   * Certifica una vez por cada sucursal_entrega presente en la planilla (lo
+   * normal es que sea una sola). Al terminar, la orden queda visible y lista
+   * para imprimir la remisión desde el módulo de Despachos.
+   */
+  async autoCertificarPlanilla(planilla) {
+    const porSucursal = (this._certElegiblesPorPlanilla || {})[planilla] || {};
+    const sucursales = Object.keys(porSucursal);
+    if (!sucursales.length) {
+      WMS.toast('warning', 'No hay pedidos completados pendientes de certificar en esta planilla. Recargue la lista.');
+      return;
+    }
+
+    const g = (this._gruposCache || {})[planilla];
+    const fechaMov = g?.ordenes?.[0]?.fecha_movimiento;
+    // Mismo criterio que despacho.js::_esFechaHoy() — se repite aquí porque ese
+    // helper vive en el módulo de despacho, no en el de picking.
+    const esHoy = !!fechaMov && fechaMov === WMS.getToday();
+    const totalPedidos = sucursales.reduce((a, s) => a + porSucursal[s].length, 0);
+
+    const ok = await Swal.fire({
+      title: esHoy ? '¿Auto-Certificar esta planilla?' : '⚠️ Esta planilla NO es de hoy',
+      html: esHoy
+        ? `Se empacarán y certificarán exactamente los <b>${totalPedidos} pedido(s)</b> ya completados de la planilla <b>#${WMS.esc(planilla)}</b>. Después podrá imprimir la remisión desde Despachos.`
+        : `Esta planilla tiene fecha <b>${WMS.esc(fechaMov || 'desconocida')}</b>, no la de hoy. Se certificarán ${totalPedidos} pedido(s) de todas formas. ¿Está seguro?`,
+      icon: esHoy ? 'warning' : 'error',
+      showCancelButton: true,
+      confirmButtonText: esHoy ? 'Sí, Auto-Certificar' : 'Sí, certificar de todas formas',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: esHoy ? undefined : '#dc2626'
+    });
+    if (!ok.isConfirmed) return;
+
+    WMS.spinner();
+    try {
+      let okCount = 0, errCount = 0, lastError = '';
+      for (const sucursal of sucursales) {
+        try {
+          const r = await API.post('/packing/autopack', {
+            sucursal_entrega: sucursal,
+            tipo_empaque: 'canasta',
+            orden_ids: porSucursal[sucursal],
+          });
+          if (r && !r.error) okCount++;
+          else { errCount++; lastError = r?.message || lastError; }
+        } catch (e) {
+          errCount++;
+          lastError = e.message || lastError;
+        }
+      }
+      if (okCount > 0) {
+        WMS.toast(errCount ? 'warning' : 'success',
+          errCount ? `Certificado parcialmente (${okCount}/${sucursales.length} sucursal(es)). ${lastError}` : 'Certificación automática completada. Ya puede imprimir la remisión aquí mismo.');
+        this._cargarPedidos();
+      } else {
+        WMS.toast('error', lastError || 'No se pudo certificar la planilla');
+      }
+    } finally {
+      WMS.spinner(false);
+    }
+  },
+
+  /** Abre una ventana nueva, hace fetch autenticado y escribe el HTML recibido
+   *  (mismo patrón que despacho.js::_openPrint — se replica local para que
+   *  Picking no dependa de que el módulo de Despacho ya esté cargado). */
+  _openPrint(url, titulo) {
+    const token = localStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+    const win = window.open('', '_blank');
+    if (!win) { WMS.toast('warning', 'Permite ventanas emergentes para imprimir'); return null; }
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}...</title></head>
+      <body style="font-family:sans-serif;padding:20px;color:#555;"><p>&#9203; Cargando ${titulo}...</p></body></html>`);
+    win.document.close();
+    fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
+      .then(r => {
+        if (!r.ok) {
+          return r.text().then(text => {
+            let msg = 'HTTP ' + r.status;
+            try { const j = JSON.parse(text); if (j.message) msg = j.message; } catch(e) {}
+            throw new Error(msg);
+          });
+        }
+        return r.text();
+      })
+      .then(html => {
+        if (win.closed) return;
+        win.document.open(); win.document.write(html); win.document.close();
+      })
+      .catch(e => {
+        if (!win.closed) {
+          win.document.open();
+          win.document.write(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:20px;">
+            <h3 style="color:#dc2626;">Error al cargar ${titulo}</h3><p>${e.message}</p></body></html>`);
+          win.document.close();
+        }
+        WMS.toast('error', 'Error: ' + e.message);
+      });
+    return win;
+  },
+
+  /** Imprime la remisión de una planilla YA certificada (todas sus órdenes),
+   *  sin salir de Picking — mismo endpoint que usa Despacho > Certificación. */
+  imprimirRemisionPlanilla(planilla) {
+    if (!planilla) {
+      WMS.toast('warning', 'Planilla inválida.');
+      return;
+    }
+    const params = new URLSearchParams();
+    params.append('planilla', planilla);
+    WMS.toast('info', `Generando remisión (Planilla ${planilla})...`);
+    this._openPrint(`${API_BASE}/picking/certificacion/remision-multiple?${params}`, 'Remisión');
+  },
+
+  /**
+   * Anula la certificación de una planilla (a pedido explícito de Camilo,
+   * 2026-09-04). Reutiliza PackingController::resetCertificacion() TAL CUAL
+   * — no se toca el backend — solo se expone aquí.
+   *
+   * IMPORTANTE (por eso el aviso explícito en el diálogo): resetCertificacion()
+   * revierte por sucursal_entrega, no por planilla — si esa sucursal tiene OTRA
+   * planilla certificada hoy sin despachar, también quedará revertida. Es el
+   * comportamiento real y ya existente del endpoint (el mismo que usa Despacho
+   * hoy) — no se reduce el alcance aquí para no arriesgar dejar packing_items
+   * huérfanos de una sesión a medio revertir.
+   */
+  async anularCertificacionPlanilla(planilla) {
+    const info = (this._certCertificadasPorPlanilla || {})[planilla];
+    const porSucursal = info?.porSucursal || {};
+    const sucursales = Object.keys(porSucursal);
+    if (!sucursales.length) {
+      WMS.toast('warning', 'Esta planilla no está certificada.');
+      return;
+    }
+
+    const ok = await Swal.fire({
+      title: '¿Anular certificación?',
+      html: `Se anulará la certificación de <b>#${WMS.esc(planilla)}</b> y de <b>cualquier otra planilla ya certificada hoy de la(s) misma(s) sucursal(es)</b> (<b>${sucursales.map(s => WMS.esc(s)).join(', ')}</b>) que aún no haya sido despachada.<br><br>
+        Los pedidos volverán a estado <b>Pendiente de certificar</b> y podrá editarlos o reabrirlos de nuevo. Esta acción no afecta lo ya despachado.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, anular certificación',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc2626',
+    });
+    if (!ok.isConfirmed) return;
+
+    WMS.spinner();
+    try {
+      let okCount = 0, errCount = 0, lastError = '';
+      for (const sucursal of sucursales) {
+        try {
+          // Resuelve TODAS las sesiones de packing pendientes (ctx=cert) de esta
+          // sucursal — no solo la más reciente — para no dejar packing_items
+          // huérfanos de una sesión distinta a la que se resetea.
+          const rSes = await API.get('/packing/sesiones?sucursal=' + encodeURIComponent(sucursal) + '&ctx=cert');
+          const sesiones = rSes?.data || rSes || [];
+          if (!sesiones.length) { errCount++; lastError = `Sin sesión de certificación encontrada para ${sucursal}`; continue; }
+          for (const s of sesiones) {
+            try {
+              const r = await API.post('/packing/sesion/' + s.id + '/reset', {});
+              if (r && !r.error) okCount++;
+              else { errCount++; lastError = r?.message || lastError; }
+            } catch (e) {
+              errCount++;
+              lastError = e.message || lastError;
+            }
+          }
+        } catch (e) {
+          errCount++;
+          lastError = e.message || lastError;
+        }
+      }
+      if (okCount > 0) {
+        WMS.toast(errCount ? 'warning' : 'success',
+          errCount ? `Certificación anulada parcialmente. ${lastError}` : 'Certificación anulada. El pedido vuelve a estar pendiente de certificar.');
+        this._cargarPedidos();
+      } else {
+        WMS.toast('error', lastError || 'No se pudo anular la certificación');
+      }
+    } finally {
+      WMS.spinner(false);
+    }
+  },
+
   // ── ASIGNACIÓN POR PLANILLA ───────────────────────────────────────────────
   async asignarPlanilla(planilla, ordenIds) {
     let personal = [];
@@ -2202,6 +2535,217 @@ WMS_MODULES.picking = {
     } catch(e) { WMS.toast('error', 'Error'); }
   },
 
+  // ── Exigir/anular fecha de vencimiento por pedido (solo Admin) ──────────────
+  // Pedido urgente 2026-08-17: el flag por defecto lo decide el producto
+  // (controla_vencimiento); esto permite anularlo puntualmente por pedido.
+  // SUPERSEDIDO 2026-08-20: ya no tiene botón en la interfaz — ver
+  // _configurarFechaVencimientoPlanilla() (por planilla completa). Se deja el
+  // método sin romper nada por si algo lo sigue invocando.
+  async _configurarFechaVencimientoPedido(ordenId, numeroLabel, valorActual) {
+    const { value: opcion, isConfirmed } = await Swal.fire({
+      title: `Fecha de vencimiento — Pedido ${WMS.esc(numeroLabel)}`,
+      html: `<p style="font-size:.82rem;color:#64748b;margin-bottom:10px;">Por defecto, la exigencia de fecha de vencimiento al separar la decide cada producto (si controla vencimiento o no). Aquí puedes anular ese comportamiento SOLO para este pedido.</p>`,
+      input: 'radio',
+      inputOptions: {
+        'null':  'Por defecto (según el producto)',
+        'true':  'SIEMPRE exigir fecha de vencimiento en este pedido',
+        'false': 'NUNCA exigir fecha de vencimiento en este pedido',
+      },
+      inputValue: valorActual === true ? 'true' : valorActual === false ? 'false' : 'null',
+      showCancelButton: true,
+      confirmButtonText: 'Guardar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0F4C81',
+      inputValidator: (v) => !v ? 'Selecciona una opción' : undefined,
+    });
+    if (!isConfirmed || !opcion) return;
+
+    const valor = opcion === 'true' ? true : opcion === 'false' ? false : null;
+    try {
+      const r = await API.patch(`/picking/${ordenId}/requiere-fecha-vencimiento`, { valor });
+      if (r.error) { WMS.toast('error', r.message || 'Error al configurar'); return; }
+      WMS.toast('success', 'Configuración guardada');
+      this._cargarPedidos();
+    } catch (e) { WMS.toast('error', e.message || 'Error al configurar'); }
+  },
+
+  // ── Exigir/anular escaneo de ubicación por PLANILLA COMPLETA (Admin/Supervisor) ──
+  // A pedido explícito 2026-08-18: a diferencia de la fecha de vencimiento (que se
+  // anula por pedido puntual), esto se define para toda la planilla — por defecto
+  // el sistema SIEMPRE exige escanear la ubicación al separar; aquí se puede
+  // desactivar para una planilla específica si hace falta.
+  async _configurarEscaneoUbicacionPlanilla(planillaNumero, valorActual) {
+    const { value: opcion, isConfirmed } = await Swal.fire({
+      title: `Escaneo de ubicación — Planilla ${WMS.esc(planillaNumero)}`,
+      html: `<p style="font-size:.82rem;color:#64748b;margin-bottom:10px;">Por defecto, el sistema SIEMPRE exige que el auxiliar escanee la ubicación física antes de separar. Aquí puedes anular ese comportamiento para TODOS los pedidos de esta planilla.</p>`,
+      input: 'radio',
+      inputOptions: {
+        'null':  'Por defecto (exigir escaneo)',
+        'true':  'SIEMPRE exigir escaneo en esta planilla',
+        'false': 'NUNCA exigir escaneo en esta planilla',
+      },
+      inputValue: valorActual === true ? 'true' : valorActual === false ? 'false' : 'null',
+      showCancelButton: true,
+      confirmButtonText: 'Guardar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0F4C81',
+      inputValidator: (v) => !v ? 'Selecciona una opción' : undefined,
+    });
+    if (!isConfirmed || !opcion) return;
+
+    const valor = opcion === 'true' ? true : opcion === 'false' ? false : null;
+    try {
+      const r = await API.patch(`/picking/planilla/${encodeURIComponent(planillaNumero)}/requiere-escaneo-ubicacion`, { valor });
+      if (r.error) { WMS.toast('error', r.message || 'Error al configurar'); return; }
+      WMS.toast('success', `Configuración guardada (${r.data?.pedidos_afectados ?? 0} pedido(s) actualizados)`);
+      this._cargarPedidos();
+    } catch (e) { WMS.toast('error', e.message || 'Error al configurar'); }
+  },
+
+  // ── Exigir/anular fecha de vencimiento por PLANILLA COMPLETA (solo Admin) ───
+  // A pedido explícito 2026-08-20: reemplaza el control por pedido puntual — los
+  // pedidos nacen desbloqueados (no exigen fecha) y es el Administrador quien
+  // decide, por planilla completa, si necesita activarla. Exclusivo Admin (a
+  // diferencia del escaneo de ubicación, que un Supervisor también puede tocar).
+  async _configurarFechaVencimientoPlanilla(planillaNumero, valorActual) {
+    const { value: opcion, isConfirmed } = await Swal.fire({
+      title: `Fecha de vencimiento — Planilla ${WMS.esc(planillaNumero)}`,
+      html: `<p style="font-size:.82rem;color:#64748b;margin-bottom:10px;">Por defecto, el sistema NO exige fecha de vencimiento manual (queda desbloqueado al montar el pedido). Aquí puedes exigirla para TODOS los pedidos de esta planilla.</p>`,
+      input: 'radio',
+      inputOptions: {
+        'null':  'Por defecto (desbloqueado, no exigir)',
+        'true':  'SIEMPRE exigir fecha de vencimiento en esta planilla',
+        'false': 'NUNCA exigir (igual al default, explícito)',
+      },
+      inputValue: valorActual === true ? 'true' : valorActual === false ? 'false' : 'null',
+      showCancelButton: true,
+      confirmButtonText: 'Guardar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0F4C81',
+      inputValidator: (v) => !v ? 'Selecciona una opción' : undefined,
+    });
+    if (!isConfirmed || !opcion) return;
+
+    const valor = opcion === 'true' ? true : opcion === 'false' ? false : null;
+    try {
+      const r = await API.patch(`/picking/planilla/${encodeURIComponent(planillaNumero)}/requiere-fecha-vencimiento`, { valor });
+      if (r.error) { WMS.toast('error', r.message || 'Error al configurar'); return; }
+      WMS.toast('success', `Configuración guardada (${r.data?.pedidos_afectados ?? 0} pedido(s) actualizados)`);
+      this._cargarPedidos();
+    } catch (e) { WMS.toast('error', e.message || 'Error al configurar'); }
+  },
+
+  // ── Selección y eliminación masiva de planillas ─────────────────────────────
+  _toggleSelectAllPlanillas(checked) {
+    document.querySelectorAll('.chk-sel-planilla').forEach(chk => { chk.checked = checked; });
+    this._onTogglePlanillaCheckbox();
+  },
+
+  _onTogglePlanillaCheckbox() {
+    const checked = document.querySelectorAll('.chk-sel-planilla:checked');
+    const btn = document.getElementById('btn-eliminar-planillas-sel');
+    const count = document.getElementById('count-planillas-sel');
+    if (count) count.textContent = checked.length;
+    if (btn) btn.style.display = checked.length > 0 ? '' : 'none';
+    const btnRot = document.getElementById('btn-rotacion-planillas-sel');
+    const countRot = document.getElementById('count-planillas-sel-rot');
+    if (countRot) countRot.textContent = checked.length;
+    if (btnRot) btnRot.style.display = checked.length > 0 ? '' : 'none';
+    const chkAll = document.getElementById('chk-sel-all-planillas');
+    const total = document.querySelectorAll('.chk-sel-planilla').length;
+    if (chkAll) chkAll.checked = total > 0 && checked.length === total;
+  },
+
+  // A pedido explícito (2026-08-18): permite elegir FIFO o LIFO para las
+  // planillas seleccionadas con los mismos checkboxes que ya se usan para
+  // eliminar en bloque — "selección múltiple los pedidos que se deseen aplicar
+  // este proceso".
+  async _configurarRotacionSeleccionadas() {
+    const keys = Array.from(document.querySelectorAll('.chk-sel-planilla:checked')).map(c => c.dataset.planilla);
+    if (!keys.length) return;
+
+    const { value: opcion, isConfirmed } = await Swal.fire({
+      title: `Configurar rotación — ${keys.length} planilla(s)`,
+      html: `<p style="font-size:.82rem;color:#64748b;margin-bottom:10px;">FIFO/FEFO: sale primero lo más próximo a vencer (comportamiento de siempre). LIFO: sale primero lo que le queda MÁS tiempo para vencer — para clientes que exigen mercancía con fecha larga.</p>`,
+      input: 'radio',
+      inputOptions: { 'FIFO': 'FIFO / FEFO (más próximo a vencer primero)', 'LIFO': 'LIFO (fecha más larga primero)' },
+      inputValue: 'FIFO',
+      showCancelButton: true,
+      confirmButtonText: 'Aplicar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0F4C81',
+      inputValidator: (v) => !v ? 'Selecciona una opción' : undefined,
+    });
+    if (!isConfirmed || !opcion) return;
+
+    WMS.spinner(true);
+    let okCount = 0, errCount = 0;
+    try {
+      for (const numero of keys) {
+        try {
+          const r = await API.patch(`/picking/planilla/${encodeURIComponent(numero)}/modo-rotacion`, { modo_rotacion: opcion });
+          if (r && !r.error) okCount++; else errCount++;
+        } catch (e) { errCount++; }
+      }
+      WMS.toast('success', `Rotación '${opcion}' aplicada a ${okCount} planilla(s)${errCount > 0 ? ` (${errCount} con error)` : ''}`);
+      this._cargarPedidos();
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error al configurar rotación');
+    } finally {
+      WMS.spinner(false);
+    }
+  },
+
+  async _eliminarPlanillasSeleccionadas() {
+    const keys = Array.from(document.querySelectorAll('.chk-sel-planilla:checked')).map(c => c.dataset.planilla);
+    if (!keys.length) return;
+
+    // Resolver cada planilla seleccionada a sus órdenes reales (mismo caché que
+    // usa _renderPedidosTabla) — eliminar una planilla es eliminar TODAS sus
+    // órdenes, reutilizando el endpoint DELETE /picking/{id} ya existente y
+    // seguro (Admin, bloquea órdenes ya Completadas o despachadas).
+    const planillasInfo = keys.map(k => this._gruposCache?.[k]).filter(Boolean);
+    const totalOrdenes = planillasInfo.reduce((a, g) => a + (g.ordenes?.length || 0), 0);
+
+    const ok = await Swal.fire({
+      title: '<i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;"></i> Eliminar planillas seleccionadas',
+      html: `<div style="text-align:left;font-size:.85rem;">
+               <p>Se intentarán eliminar <b>${planillasInfo.length}</b> planilla(s) (<b>${totalOrdenes}</b> pedido(s) en total):</p>
+               <ul style="max-height:160px;overflow-y:auto;padding-left:18px;margin:8px 0;">
+                 ${planillasInfo.map(g => `<li>#${WMS.esc(g.planilla)} — ${g.ordenes?.length || 0} pedido(s)</li>`).join('')}
+               </ul>
+               <p style="color:#dc2626;font-weight:700;">Esta acción es irreversible. Los pedidos ya completados o despachados NO se eliminarán — el sistema los omite automáticamente.</p>
+             </div>`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc2626',
+    });
+    if (!ok.isConfirmed) return;
+
+    WMS.spinner(true);
+    let eliminadas = 0, omitidas = 0;
+    const motivosOmitidas = [];
+    try {
+      for (const g of planillasInfo) {
+        for (const o of (g.ordenes || [])) {
+          try {
+            const r = await API.delete('/picking/' + o.id);
+            if (r.error) { omitidas++; motivosOmitidas.push(`#${g.planilla} (pedido ${o.id}): ${r.message}`); }
+            else eliminadas++;
+          } catch (e) { omitidas++; motivosOmitidas.push(`#${g.planilla} (pedido ${o.id}): ${e.message || 'error'}`); }
+        }
+      }
+      const msg = `${eliminadas} pedido(s) eliminado(s)` + (omitidas > 0 ? `, ${omitidas} omitido(s) (ya completados/despachados)` : '');
+      WMS.toast(omitidas > 0 ? 'warning' : 'success', msg);
+      if (omitidas > 0) console.warn('Planillas — omitidas al eliminar:', motivosOmitidas);
+      this.show_pedidos();
+    } finally {
+      WMS.spinner(false);
+    }
+  },
+
   async transferir(id) { WMS.toast('info', 'Función de transferencia próximamente'); },
 
   // ── PEDIDO MANUAL ────────────────────────────────────────────────────────
@@ -2247,6 +2791,13 @@ WMS_MODULES.picking = {
               <label class="form-label">Ruta</label>
               <select id="pm-ruta" class="form-control">
                 <option value="">— Cargando rutas… —</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Rotación al separar</label>
+              <select id="pm-rotacion" class="form-control">
+                <option value="FIFO" selected>FIFO / FEFO (más próximo a vencer primero)</option>
+                <option value="LIFO">LIFO (fecha más larga primero)</option>
               </select>
             </div>
           </div>
@@ -2536,6 +3087,7 @@ WMS_MODULES.picking = {
     const numero   = document.getElementById('pm-numero')?.value.trim();
     const cliente  = document.getElementById('pm-cliente')?.value.trim();
     const ruta     = document.getElementById('pm-ruta')?.value.trim();
+    const modoRotacion  = document.getElementById('pm-rotacion')?.value || 'FIFO';
     const observaciones = document.getElementById('pm-observaciones')?.value.trim();
 
     if (!cliente) {
@@ -2565,6 +3117,7 @@ WMS_MODULES.picking = {
         cliente,
         sucursal_entrega : cliente,
         ruta             : ruta || null,
+        modo_rotacion    : modoRotacion,
         fecha_requerida  : WMS.getToday(),
         observaciones    : observaciones || null,
         detalles,
@@ -3826,7 +4379,7 @@ WMS_MODULES.picking = {
         <strong>Siguiente paso:</strong> Vaya a <strong>Faltantes de Stock</strong> para procesar el backorder cuando llegue inventario.
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cerrar</button>
-       <button class="btn btn-warning" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking.load('faltantes');">
+       <button class="btn btn-warning" onclick="WMS.closeModal('generic-modal');">
          <i class="fa-solid fa-arrow-right"></i> Ver Faltantes
        </button>`,
       { width: '680px' }
@@ -3837,7 +4390,7 @@ WMS_MODULES.picking = {
   // soloElegibles=true por defecto: oculta faltantes de pedidos ya certificados/
   // despachados (no aplican a backorder) — antes la pantalla mezclaba todo sin
   // distinguir, y la mayoría de lo mostrado terminaba siendo de pedidos cerrados.
-  _faltFilters: { ini: '', fin: '', planilla: '', producto: '', sucursal_entrega: '', showAll: false, vista: 'detalle', soloElegibles: true },
+  _faltFilters: { ini: '', fin: '', planilla: '', producto: '', sucursal_entrega: '', showAll: false, vista: 'detalle', soloElegibles: true, panel: 'faltantes' },
 
   async show_faltantes(filters = null) {
     if (filters) Object.assign(this._faltFilters, filters);
@@ -3972,32 +4525,51 @@ WMS_MODULES.picking = {
             <strong>${conStock} producto(s)</strong> ahora tienen stock disponible. Selecciónelos y haga clic en <strong>Procesar Backorder</strong> para reasignarlos al picking.
           </div>` : ''}
 
-          <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;">
-            <div class="card">
-              <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-                <span class="card-title"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Faltantes de Stock
-                  <span style="font-size:11px;color:#64748b;font-weight:400;margin-left:6px;">
-                    ${f.vista === 'consolidado' ? `${consolidado.length} producto(s)` : `${falt.length} de ${total}`}
-                  </span>
-                </span>
-                <div style="display:flex;gap:6px;align-items:center;">
-                  <div class="btn-group" style="display:flex;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;">
-                    <button class="btn btn-xs ${f.vista !== 'consolidado' ? 'btn-primary' : 'btn-secondary'}" style="border-radius:0;" onclick="WMS_MODULES.picking._toggleFaltVista('detalle')">
-                      <i class="fa-solid fa-list"></i> Detalle
-                    </button>
-                    <button class="btn btn-xs ${f.vista === 'consolidado' ? 'btn-primary' : 'btn-secondary'}" style="border-radius:0;" onclick="WMS_MODULES.picking._toggleFaltVista('consolidado')">
-                      <i class="fa-solid fa-layer-group"></i> Consolidado
-                    </button>
-                  </div>
-                  ${f.vista !== 'consolidado' && conStock > 0 ? `<button class="btn btn-xs btn-success" onclick="WMS_MODULES.picking._selFaltConStock()" title="Seleccionar solo los que tienen stock">
-                    <i class="fa-solid fa-check-double"></i> Sel. con stock (${conStock})
-                  </button>` : ''}
-                  ${f.vista !== 'consolidado' && !f.showAll && total > 50 ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:true})"><i class="fa-solid fa-list"></i> Todos (${total})</button>` : ''}
-                  ${f.vista !== 'consolidado' && f.showAll ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:false})"><i class="fa-solid fa-compress"></i> Mostrar 50</button>` : ''}
-                </div>
+          <div class="card">
+            <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div class="btn-group" style="display:flex;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;">
+                <button class="btn btn-xs ${f.panel !== 'reabastecimientos' ? 'btn-primary' : 'btn-secondary'}" style="border-radius:0;" onclick="WMS_MODULES.picking._toggleFaltPanel('faltantes')">
+                  <i class="fa-solid fa-triangle-exclamation"></i> Faltantes de Stock
+                  <span style="font-size:11px;opacity:.85;margin-left:4px;">(${f.vista === 'consolidado' ? consolidado.length : total})</span>
+                </button>
+                <button class="btn btn-xs ${f.panel === 'reabastecimientos' ? 'btn-primary' : 'btn-secondary'}" style="border-radius:0;" onclick="WMS_MODULES.picking._toggleFaltPanel('reabastecimientos')">
+                  <i class="fa-solid fa-rotate"></i> Reabastecimientos
+                  <span style="font-size:11px;opacity:.85;margin-left:4px;">(${rea.length})</span>
+                </button>
               </div>
-              <div class="table-container table-container-scroll">
-                ${f.vista === 'consolidado' ? `
+              ${f.panel !== 'reabastecimientos' ? `
+              <div style="display:flex;gap:6px;align-items:center;">
+                <div class="btn-group" style="display:flex;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;">
+                  <button class="btn btn-xs ${f.vista !== 'consolidado' ? 'btn-primary' : 'btn-secondary'}" style="border-radius:0;" onclick="WMS_MODULES.picking._toggleFaltVista('detalle')">
+                    <i class="fa-solid fa-list"></i> Detalle
+                  </button>
+                  <button class="btn btn-xs ${f.vista === 'consolidado' ? 'btn-primary' : 'btn-secondary'}" style="border-radius:0;" onclick="WMS_MODULES.picking._toggleFaltVista('consolidado')">
+                    <i class="fa-solid fa-layer-group"></i> Consolidado
+                  </button>
+                </div>
+                ${f.vista !== 'consolidado' && conStock > 0 ? `<button class="btn btn-xs btn-success" onclick="WMS_MODULES.picking._selFaltConStock()" title="Seleccionar solo los que tienen stock">
+                  <i class="fa-solid fa-check-double"></i> Sel. con stock (${conStock})
+                </button>` : ''}
+                ${f.vista !== 'consolidado' && !f.showAll && total > 50 ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:true})"><i class="fa-solid fa-list"></i> Todos (${total})</button>` : ''}
+                ${f.vista !== 'consolidado' && f.showAll ? `<button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking.show_faltantes({showAll:false})"><i class="fa-solid fa-compress"></i> Mostrar 50</button>` : ''}
+              </div>` : ''}
+            </div>
+            <div class="table-container table-container-scroll">
+              ${f.panel === 'reabastecimientos' ? `
+              <table class="erp-table">
+                <thead><tr><th>Producto</th><th>Desde</th><th>Hacia</th><th>Cant.</th><th>Estado</th><th></th></tr></thead>
+                <tbody>${rea.map(t => `<tr>
+                  <td style="font-size:.8rem;font-weight:600;">${WMS.esc(t.producto||'-')}</td>
+                  <td><code>${WMS.esc(t.ubicacion_origen||'-')}</code></td>
+                  <td><code>${WMS.esc(t.ubicacion_destino||'-')}</code></td>
+                  <td class="text-center">${WMS.formatNum(t.cantidad||0)}</td>
+                  <td><span class="badge ${t.completada?'badge-success':'badge-warning'}">${t.completada?'Completado':'Pendiente'}</span></td>
+                  <td>${!t.completada?`<button class="btn btn-xs btn-success" onclick="WMS_MODULES.picking.completarReabast(${t.id})"><i class="fa-solid fa-check"></i></button>`:''}</td>
+                </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin tareas activas — se generan automáticamente cuando la ruta de picking encuentra el producto en una ubicación de bodega/reserva pero no en una ubicación de picking, y hace falta trasladarlo antes de poder separarlo.</td></tr>'}
+                </tbody>
+              </table>
+              ` : `
+              ${f.vista === 'consolidado' ? `
                 <table class="erp-table">
                   <thead><tr>
                     <th>Producto</th>
@@ -4089,26 +4661,7 @@ WMS_MODULES.picking = {
                   </tbody>
                 </table>
                 `}
-              </div>
-            </div>
-
-            <!-- Reabastecimientos -->
-            <div class="card">
-              <div class="card-header"><span class="card-title"><i class="fa-solid fa-rotate" style="color:#3b82f6;"></i> Reabastecimientos (${rea.length})</span></div>
-              <div class="table-container">
-                <table class="erp-table">
-                  <thead><tr><th>Producto</th><th>Desde</th><th>Hacia</th><th>Cant.</th><th>Estado</th><th></th></tr></thead>
-                  <tbody>${rea.map(t => `<tr>
-                    <td style="font-size:.8rem;font-weight:600;">${WMS.esc(t.producto||'-')}</td>
-                    <td><code>${WMS.esc(t.ubicacion_origen||'-')}</code></td>
-                    <td><code>${WMS.esc(t.ubicacion_destino||'-')}</code></td>
-                    <td class="text-center">${WMS.formatNum(t.cantidad||0)}</td>
-                    <td><span class="badge ${t.completada?'badge-success':'badge-warning'}">${t.completada?'Completado':'Pendiente'}</span></td>
-                    <td>${!t.completada?`<button class="btn btn-xs btn-success" onclick="WMS_MODULES.picking.completarReabast(${t.id})"><i class="fa-solid fa-check"></i></button>`:''}</td>
-                  </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin tareas activas</td></tr>'}
-                  </tbody>
-                </table>
-              </div>
+              `}
             </div>
           </div>
         </div>`);
@@ -4123,6 +4676,10 @@ WMS_MODULES.picking = {
     // limitado a 50 filas los totales quedarían incompletos, así que se fuerza
     // a traer todo el período filtrado antes de agrupar.
     this.show_faltantes({ vista: v, showAll: v === 'consolidado' ? true : this._faltFilters.showAll });
+  },
+
+  _toggleFaltPanel(panel) {
+    this.show_faltantes({ panel });
   },
 
   _toggleAllFalt(checked) {
@@ -4243,7 +4800,7 @@ WMS_MODULES.picking = {
   },
 
   // ── MÓDULO AGOTADOS ───────────────────────────────────────────────────────
-  _agotFilters: { ini: '', fin: '', sucursal: '', referencia: '' },
+  _agotFilters: { ini: '', fin: '', sucursal: '', referencia: '', incluirConciliacion: false },
 
   // El factor real de conversión cajas→unidades es factor_udm cuando el producto
   // lo tiene (se vende por contenido/peso); unidades_caja es 1 para esos productos
@@ -4280,7 +4837,7 @@ WMS_MODULES.picking = {
     `);
     WMS.spinner();
     try {
-      const qs  = `fecha_inicio=${f.ini}&fecha_fin=${f.fin}&sucursal_entrega=${encodeURIComponent(f.sucursal||'')}&referencia=${encodeURIComponent(f.referencia||'')}`;
+      const qs  = `fecha_inicio=${f.ini}&fecha_fin=${f.fin}&sucursal_entrega=${encodeURIComponent(f.sucursal||'')}&referencia=${encodeURIComponent(f.referencia||'')}&incluir_conciliacion=${f.incluirConciliacion ? '1' : '0'}`;
       const r   = await API.get('/picking/agotados', qs);
       const d   = r.data || {};
       const rows = Array.isArray(d.rows) ? d.rows : [];
@@ -4517,6 +5074,10 @@ WMS_MODULES.picking = {
               <div style="flex:1;min-width:200px;">
                 <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">📦 REFERENCIA O PRODUCTO</label>
                 <input id="agot-ref" class="form-control form-control-sm" placeholder="Buscar por código o nombre..." value="${WMS.esc(f.referencia||'')}">
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;" title="Por defecto se excluyen los registros donde el auxiliar SÍ separó el 100% físico y solo faltó conciliar el inventario en el sistema — esos no son agotados reales para el cliente.">
+                <input type="checkbox" id="agot-incluir-conciliacion" ${f.incluirConciliacion ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;">
+                <label for="agot-incluir-conciliacion" style="font-size:10px;font-weight:700;color:#64748b;cursor:pointer;margin:0;">Incluir conciliación<br>de inventario</label>
               </div>
               <button class="btn btn-primary btn-sm" style="height:31px;padding:0 16px;font-weight:700;" onclick="WMS_MODULES.picking._applyAgotFilters()">
                 <i class="fa-solid fa-filter"></i> Filtrar
@@ -4896,11 +5457,12 @@ WMS_MODULES.picking = {
     const fin = document.getElementById('agot-fin')?.value || '';
     const suc = document.getElementById('agot-suc')?.value || '';
     const ref = document.getElementById('agot-ref')?.value || '';
-    this.show_agotados({ ini, fin, sucursal: suc, referencia: ref });
+    const incluirConciliacion = !!document.getElementById('agot-incluir-conciliacion')?.checked;
+    this.show_agotados({ ini, fin, sucursal: suc, referencia: ref, incluirConciliacion });
   },
 
   _clearAgotFilters() {
-    this._agotFilters = { ini: '', fin: '', sucursal: '', referencia: '' };
+    this._agotFilters = { ini: '', fin: '', sucursal: '', referencia: '', incluirConciliacion: false };
     this.show_agotados();
   },
 
@@ -4910,7 +5472,7 @@ WMS_MODULES.picking = {
     const fin = f.fin || WMS.getToday();
     const token = localStorage.getItem('wms_token') || '';
     const base  = window.API_BASE || '/WMS_FENIX/public/api';
-    const url   = `${base}/picking/agotados?fecha_inicio=${ini}&fecha_fin=${fin}&sucursal_entrega=${encodeURIComponent(f.sucursal||'')}&referencia=${encodeURIComponent(f.referencia||'')}&export=csv&_token=${encodeURIComponent(token)}`;
+    const url   = `${base}/picking/agotados?fecha_inicio=${ini}&fecha_fin=${fin}&sucursal_entrega=${encodeURIComponent(f.sucursal||'')}&referencia=${encodeURIComponent(f.referencia||'')}&incluir_conciliacion=${f.incluirConciliacion ? '1' : '0'}&export=csv&_token=${encodeURIComponent(token)}`;
     const a = document.createElement('a');
     a.href = url;
     a.download = `agotados_${ini}_${fin}.csv`;
@@ -5967,7 +6529,7 @@ WMS_MODULES.picking = {
       const estado = d < 0 ? 'AGOTADO' : d < parseFloat(it.total_pedido||0)*0.2 ? 'RIESGO' : 'OK';
       return [
         it.codigo||'', it.descripcion||'', it.sucursal||'', it.ubicacion||'',
-        it.cantidad_solicitada||'', it.separada||'', it.pendiente||'', it.fecha_vencimiento||'',
+        it.cantidad_solicitada||'', it.separada||'', it.pendiente||'', (it.fecha_vencimiento ? WMS.formatDate(it.fecha_vencimiento) : ''),
         it.stock_total||'', it.stock_reservado||'', it.stock_disponible||'',
         it.total_pedido||'', it.diferencia||'', estado
       ].map(v => '"' + String(v).replace(/"/g,'""') + '"');
