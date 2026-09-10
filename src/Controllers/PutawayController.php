@@ -436,6 +436,15 @@ class PutawayController extends BaseController
                 ->where('lote', $lote)
                 ->whereIn('estado', ['Disponible', 'En Patio']);
 
+            $numPallet = trim($data['numero_pallet'] ?? '');
+            if ($numPallet !== '') {
+                $origenQuery->where('numero_pallet', $numPallet);
+            } else {
+                $origenQuery->where(function($q) {
+                    $q->whereNull('numero_pallet')->orWhere('numero_pallet', '');
+                });
+            }
+
             if ($ubicacionOrigId) {
                 $origenQuery->where('ubicacion_id', $ubicacionOrigId);
             } else {
@@ -446,12 +455,12 @@ class PutawayController extends BaseController
 
             if (!$invOrigen) {
                 DB::rollBack();
-                return $this->error($res, 'No se encontró inventario de origen.', 400);
+                return $this->error($res, "No se encontró inventario de origen (Prod: $productoId, Lote: $lote, UbiOrig: $ubicacionOrigId, PalletReq: ".($data['numero_pallet']??'null').").", 400);
             }
 
             if ($cajasMove > $invOrigen->cantidad_cajas || $saldosMove > $invOrigen->saldos || $cantidad > $invOrigen->cantidad) {
                 DB::rollBack();
-                return $this->error($res, 'No se puede ubicar más cajas o saldos de los recibidos/disponibles en el origen.', 400);
+                return $this->error($res, "Error de cantidades. Req: (C:$cajasMove, S:$saldosMove, T:$cantidad). Disp: (C:$invOrigen->cantidad_cajas, S:$invOrigen->saldos, T:$invOrigen->cantidad).", 400);
             }
 
             if ((float)($invOrigen->cantidad_reservada ?? 0) > 0) {

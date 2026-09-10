@@ -101,7 +101,8 @@ WMS_MODULES.maestro = {
       empresa: 'Empresa', sucursales: 'Sucursales', personal: 'Personal',
       categorias: 'Categorías', marcas: 'Marcas', productos: 'Catálogo de Productos',
       clientes: 'Clientes', ambientes: 'Ambientes', ubicaciones: 'Ubicaciones',
-      proveedores: 'Proveedores', 'causales-novedad': 'Causales de Novedad', 'causales-fifo': 'Causales FIFO', rutas: 'Rutas', permisos: 'Seguridad',
+      proveedores: 'Proveedores', 'causales-novedad': 'Causales de Novedad', 'causales-fifo': 'Causales FIFO', rutas: 'Rutas',
+      conductores: 'Conductores', vehiculos: 'Vehículos', permisos: 'Seguridad',
       impresoras: 'Impresoras IP',
       sistema: 'Diagnóstico del Sistema',
       'reinicio-datos': 'Reinicio de Datos'
@@ -2626,6 +2627,251 @@ WMS_MODULES.maestro = {
         if (r.error) WMS.toast('error', r.message);
         else { WMS.toast('success','Ruta eliminada'); this.show_rutas(); }
       } catch(e) { WMS.toast('error','Error eliminando ruta'); }
+    });
+  },
+
+  // ── CONDUCTORES (maestro usado por Preoperacional móvil) ────────────────
+  filtrarConductores(q) {
+    if (!this._conductoresData) return;
+    const f = q.toLowerCase();
+    this.renderConductores(f
+      ? this._conductoresData.filter(c => c.nombre?.toLowerCase().includes(f) || c.documento?.toLowerCase().includes(f))
+      : this._conductoresData);
+  },
+
+  async show_conductores() {
+    WMS.setToolbar(`
+      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-conductores" placeholder="Buscar conductor o documento..." oninput="WMS_MODULES.maestro.filtrarConductores(this.value)"></div>
+      <div class="actions" style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.show_conductores()" title="Actualizar"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevoConductor()"><i class="fa-solid fa-plus"></i> Nuevo Conductor</button>
+      </div>`);
+    WMS.spinner();
+    try {
+      const r = await API.get('/param/conductores');
+      this._conductoresData = r.data || r || [];
+      this.renderConductores(this._conductoresData);
+    } catch (e) { WMS.setContent('<div class="m-empty">Error cargando conductores</div>'); }
+  },
+
+  renderConductores(items) {
+    WMS.setContent(`
+      <div class="card">
+        <div class="card-header"><span class="card-title"><i class="fa-solid fa-id-card"></i> Conductores (${items.length})</span></div>
+        <div class="table-container">
+          <table class="erp-table">
+            <thead><tr><th>Nombre</th><th>Documento</th><th>Teléfono</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody>${items.map(c => `<tr>
+              <td><strong>${WMS.esc(c.nombre || '')}</strong></td>
+              <td style="font-size:.82rem;">${WMS.esc(c.documento || '-')}</td>
+              <td style="font-size:.82rem;">${WMS.esc(c.telefono || '-')}</td>
+              <td>${c.activo ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>
+              <td><div class="actions">
+                <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editConductor(${c.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
+                <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteConductor(${c.id},'${WMS.esc(c.nombre || '')}')"><i class="fa-solid fa-trash"></i></button>
+              </div></td>
+            </tr>`).join('') || '<tr><td colspan="5" class="table-empty">Sin conductores registrados</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`);
+  },
+
+  nuevoConductor() {
+    WMS.showModal('Nuevo Conductor', `
+      <div class="form-grid form-grid-2">
+        <div class="form-group"><label class="form-label">NOMBRE <span class="required">*</span></label>
+          <input id="f-cnom" class="form-control" placeholder="Nombre completo"></div>
+        <div class="form-group"><label class="form-label">DOCUMENTO</label>
+          <input id="f-cdoc" class="form-control" placeholder="Cédula"></div>
+        <div class="form-group"><label class="form-label">TELÉFONO</label>
+          <input id="f-ctel" class="form-control" placeholder="Celular de contacto"></div>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveConductor(null)"><i class="fa-solid fa-save"></i> Guardar Conductor</button>`);
+  },
+
+  async saveConductor(id) {
+    const nombre = document.getElementById('f-cnom')?.value.trim();
+    const documento = document.getElementById('f-cdoc')?.value.trim() || '';
+    const telefono = document.getElementById('f-ctel')?.value.trim() || '';
+    if (!nombre) { WMS.toast('warning','El nombre es obligatorio'); return; }
+    try {
+      const r = id
+        ? await API.put('/param/conductores/'+id, { nombre, documento, telefono })
+        : await API.post('/param/conductores', { nombre, documento, telefono });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success','Conductor guardado');
+      WMS.closeModal('generic-modal');
+      this.show_conductores();
+    } catch(e) { WMS.toast('error','Error guardando conductor'); }
+  },
+
+  async editConductor(id) {
+    try {
+      const r = await API.get('/param/conductores');
+      const c = (r.data||r||[]).find(x => x.id == id);
+      if (!c) { WMS.toast('error','Conductor no encontrado'); return; }
+      WMS.showModal('Editar Conductor', `
+        <div class="form-grid form-grid-2">
+          <div class="form-group"><label class="form-label">NOMBRE <span class="required">*</span></label>
+            <input id="f-cnom" class="form-control" value="${WMS.esc(c.nombre||'')}"></div>
+          <div class="form-group"><label class="form-label">DOCUMENTO</label>
+            <input id="f-cdoc" class="form-control" value="${WMS.esc(c.documento||'')}"></div>
+          <div class="form-group"><label class="form-label">TELÉFONO</label>
+            <input id="f-ctel" class="form-control" value="${WMS.esc(c.telefono||'')}"></div>
+          <div class="form-group"><label class="form-label">ESTADO</label>
+            <select id="f-cact" class="form-control">
+              <option value="1" ${c.activo ? 'selected' : ''}>Activo</option>
+              <option value="0" ${!c.activo ? 'selected' : ''}>Inactivo</option>
+            </select></div>
+        </div>`,
+        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+         <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveConductorEdit(${id})"><i class="fa-solid fa-save"></i> Actualizar</button>`);
+    } catch(e) { WMS.toast('error','Error cargando conductor'); }
+  },
+
+  async saveConductorEdit(id) {
+    const nombre = document.getElementById('f-cnom')?.value.trim();
+    const documento = document.getElementById('f-cdoc')?.value.trim() || '';
+    const telefono = document.getElementById('f-ctel')?.value.trim() || '';
+    const activo = document.getElementById('f-cact')?.value === '1';
+    if (!nombre) { WMS.toast('warning','El nombre es obligatorio'); return; }
+    try {
+      const r = await API.put('/param/conductores/'+id, { nombre, documento, telefono, activo });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success','Conductor guardado');
+      WMS.closeModal('generic-modal');
+      this.show_conductores();
+    } catch(e) { WMS.toast('error','Error guardando conductor'); }
+  },
+
+  deleteConductor(id, n) {
+    WMS.confirm('Eliminar Conductor', `¿Eliminar "${WMS.esc(n)}"?`, async () => {
+      try {
+        const r = await API.delete('/param/conductores/'+id);
+        if (r.error) WMS.toast('error', r.message);
+        else { WMS.toast('success','Conductor eliminado'); this.show_conductores(); }
+      } catch(e) { WMS.toast('error','Error eliminando conductor'); }
+    });
+  },
+
+  // ── VEHÍCULOS (maestro usado por Preoperacional móvil) ───────────────────
+  filtrarVehiculos(q) {
+    if (!this._vehiculosData) return;
+    const f = q.toLowerCase();
+    this.renderVehiculos(f
+      ? this._vehiculosData.filter(v => v.placa?.toLowerCase().includes(f) || v.tipo?.toLowerCase().includes(f))
+      : this._vehiculosData);
+  },
+
+  async show_vehiculos() {
+    WMS.setToolbar(`
+      <div class="search-bar"><i class="fa-solid fa-search"></i><input id="search-vehiculos" placeholder="Buscar placa o tipo..." oninput="WMS_MODULES.maestro.filtrarVehiculos(this.value)"></div>
+      <div class="actions" style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.maestro.show_vehiculos()" title="Actualizar"><i class="fa-solid fa-rotate"></i></button>
+        <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevoVehiculo()"><i class="fa-solid fa-plus"></i> Nuevo Vehículo</button>
+      </div>`);
+    WMS.spinner();
+    try {
+      const r = await API.get('/param/vehiculos');
+      this._vehiculosData = r.data || r || [];
+      this.renderVehiculos(this._vehiculosData);
+    } catch (e) { WMS.setContent('<div class="m-empty">Error cargando vehículos</div>'); }
+  },
+
+  renderVehiculos(items) {
+    WMS.setContent(`
+      <div class="card">
+        <div class="card-header"><span class="card-title"><i class="fa-solid fa-truck-field"></i> Vehículos (${items.length})</span></div>
+        <div class="table-container">
+          <table class="erp-table">
+            <thead><tr><th>Placa</th><th>Tipo</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody>${items.map(v => `<tr>
+              <td><strong>${WMS.esc(v.placa || '')}</strong></td>
+              <td style="font-size:.82rem;">${WMS.esc(v.tipo || '-')}</td>
+              <td>${v.activo ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>
+              <td><div class="actions">
+                <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editVehiculo(${v.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
+                <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteVehiculo(${v.id},'${WMS.esc(v.placa || '')}')"><i class="fa-solid fa-trash"></i></button>
+              </div></td>
+            </tr>`).join('') || '<tr><td colspan="4" class="table-empty">Sin vehículos registrados</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`);
+  },
+
+  nuevoVehiculo() {
+    WMS.showModal('Nuevo Vehículo', `
+      <div class="form-grid form-grid-2">
+        <div class="form-group"><label class="form-label">PLACA <span class="required">*</span></label>
+          <input id="f-vpla" class="form-control" placeholder="ABC-123" style="text-transform:uppercase;"></div>
+        <div class="form-group"><label class="form-label">TIPO</label>
+          <input id="f-vtip" class="form-control" placeholder="Furgón, camión, tractomula..."></div>
+      </div>`,
+      `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+       <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveVehiculo(null)"><i class="fa-solid fa-save"></i> Guardar Vehículo</button>`);
+  },
+
+  async saveVehiculo(id) {
+    const placa = document.getElementById('f-vpla')?.value.trim() || '';
+    const tipo = document.getElementById('f-vtip')?.value.trim() || '';
+    if (!placa) { WMS.toast('warning','La placa es obligatoria'); return; }
+    try {
+      const r = id
+        ? await API.put('/param/vehiculos/'+id, { placa, tipo })
+        : await API.post('/param/vehiculos', { placa, tipo });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success','Vehículo guardado');
+      WMS.closeModal('generic-modal');
+      this.show_vehiculos();
+    } catch(e) { WMS.toast('error','Error guardando vehículo'); }
+  },
+
+  async editVehiculo(id) {
+    try {
+      const r = await API.get('/param/vehiculos');
+      const v = (r.data||r||[]).find(x => x.id == id);
+      if (!v) { WMS.toast('error','Vehículo no encontrado'); return; }
+      WMS.showModal('Editar Vehículo', `
+        <div class="form-grid form-grid-2">
+          <div class="form-group"><label class="form-label">PLACA <span class="required">*</span></label>
+            <input id="f-vpla" class="form-control" value="${WMS.esc(v.placa||'')}" style="text-transform:uppercase;"></div>
+          <div class="form-group"><label class="form-label">TIPO</label>
+            <input id="f-vtip" class="form-control" value="${WMS.esc(v.tipo||'')}"></div>
+          <div class="form-group"><label class="form-label">ESTADO</label>
+            <select id="f-vact" class="form-control">
+              <option value="1" ${v.activo ? 'selected' : ''}>Activo</option>
+              <option value="0" ${!v.activo ? 'selected' : ''}>Inactivo</option>
+            </select></div>
+        </div>`,
+        `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
+         <button class="btn btn-primary" onclick="WMS_MODULES.maestro.saveVehiculoEdit(${id})"><i class="fa-solid fa-save"></i> Actualizar</button>`);
+    } catch(e) { WMS.toast('error','Error cargando vehículo'); }
+  },
+
+  async saveVehiculoEdit(id) {
+    const placa = document.getElementById('f-vpla')?.value.trim() || '';
+    const tipo = document.getElementById('f-vtip')?.value.trim() || '';
+    const activo = document.getElementById('f-vact')?.value === '1';
+    if (!placa) { WMS.toast('warning','La placa es obligatoria'); return; }
+    try {
+      const r = await API.put('/param/vehiculos/'+id, { placa, tipo, activo });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success','Vehículo guardado');
+      WMS.closeModal('generic-modal');
+      this.show_vehiculos();
+    } catch(e) { WMS.toast('error','Error guardando vehículo'); }
+  },
+
+  deleteVehiculo(id, n) {
+    WMS.confirm('Eliminar Vehículo', `¿Eliminar "${WMS.esc(n)}"?`, async () => {
+      try {
+        const r = await API.delete('/param/vehiculos/'+id);
+        if (r.error) WMS.toast('error', r.message);
+        else { WMS.toast('success','Vehículo eliminado'); this.show_vehiculos(); }
+      } catch(e) { WMS.toast('error','Error eliminando vehículo'); }
     });
   },
 

@@ -7,7 +7,6 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Cita;
 use App\Models\Recepcion;
 use App\Models\OrdenPicking;
-use App\Models\Despacho;
 use App\Models\ConteoInventario;
 use App\Models\Inventario;
 use App\Models\Ubicacion;
@@ -230,17 +229,25 @@ class DashboardController extends BaseController
             $recepciones = Recepcion::where('sucursal_id', $sucursal)->whereDate('created_at', $hoy)->count();
             $pickings    = OrdenPicking::where('sucursal_id', $sucursal)->whereDate('created_at', $hoy)->count();
             $ubicaciones = Ubicacion::where('sucursal_id', $sucursal)->where('activo', 1)->count();
-            $alertas     = DB::table('productos')
+            $alertasList = DB::table('productos')
                 ->where('productos.empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->leftJoin('inventarios', function ($j) use ($sucursal) {
                     $j->on('productos.id', '=', 'inventarios.producto_id')
                       ->where('inventarios.sucursal_id', '=', $sucursal);
                 })
                 ->where('productos.stock_minimo', '>', 0)
-                ->select('productos.id')
-                ->groupBy('productos.id', 'productos.stock_minimo')
+                ->select(
+                    'productos.id',
+                    'productos.codigo_interno as codigo',
+                    'productos.nombre',
+                    'productos.stock_minimo',
+                    DB::raw('COALESCE(SUM(inventarios.cantidad), 0) as total_stock')
+                )
+                ->groupBy('productos.id', 'productos.codigo_interno', 'productos.nombre', 'productos.stock_minimo')
                 ->havingRaw('COALESCE(SUM(inventarios.cantidad), 0) <= productos.stock_minimo')
-                ->get()->count();
+                ->orderByRaw('COALESCE(SUM(inventarios.cantidad), 0) ASC')
+                ->get();
+            $alertas = $alertasList->count();
 
             // Tendencia últimos 7 días (picking completado)
             $trend = [];
@@ -253,14 +260,19 @@ class DashboardController extends BaseController
                 $trend[] = ['fecha' => $fecha, 'valor' => $cnt];
             }
 
-            // 1. Disponibilidad de Productos (Basado en Productos con Presencia en Inventario)
-            // Solo contamos productos que han sido ingresados al WMS (existen en la tabla inventarios)
+            // 1. Disponibilidad de Productos (sobre TODO el catálogo activo, no solo
+            // el que ya tiene fila en inventarios). El JOIN normal excluía del cálculo
+            // cualquier producto sin fila en inventarios (nunca recibido, o agotado y
+            // sin fila residual) — esos productos "desaparecían" del total en vez de
+            // contar como Agotado, lo que inflaba artificialmente Disponible a ~100%.
             $prodStats = DB::table('productos as p')
-                ->join('inventarios as i', 'p.id', '=', 'i.producto_id')
+                ->leftJoin('inventarios as i', function ($j) use ($sucursal) {
+                    $j->on('p.id', '=', 'i.producto_id')
+                      ->where('i.sucursal_id', '=', $sucursal);
+                })
                 ->where('p.empresa_id', $this->getEffectiveEmpresaId($user, $request))
                 ->where('p.activo', 1)
-                ->where('i.sucursal_id', $sucursal)
-                ->select('p.id', 'p.stock_minimo', DB::raw("SUM(i.cantidad) as total_qty"))
+                ->select('p.id', 'p.stock_minimo', DB::raw("COALESCE(SUM(i.cantidad), 0) as total_qty"))
                 ->groupBy('p.id', 'p.stock_minimo')
                 ->get();
 
@@ -277,12 +289,6 @@ class DashboardController extends BaseController
                 } else {
                     $dispEmpty++;
                 }
-            }
-
-            // Fallback: si no hay productos en inventario, usamos catálogo activo (pero permitimos al usuario saber por qué)
-            if ($totalActiveRefs === 0) {
-                $totalActiveRefs = $productos;
-                $dispEmpty = $productos;
             }
 
             // 2. Ocupación de Bodega (Basado en Ubicaciones Físicas)
@@ -318,7 +324,8 @@ class DashboardController extends BaseController
                     'occupied' => $ocupadas,
                     'empty'    => $vacias,
                     'total'    => $totalUbic
-                ]
+                ],
+                'alertas_list' => $alertasList,
             ]);
         } catch (\Exception $e) {
             error_log('DashboardController::summary error: ' . $e->getMessage());
@@ -327,71 +334,92 @@ class DashboardController extends BaseController
     }
 
     /**
-     * GET /api/dashboard/actividad
-     * Feed de actividad reciente para el dashboard de inicio
+     * GET /api/dashboard/matriz-sin-inventario
+     * Referencias con movimiento de kardex en los últimos 15 días que HOY no
+     * tienen inventario (saldo <= 0) en la sucursal — señal de posible fuga,
+     * despacho sin reposición, o dato fantasma que ya se vació.
      */
-    public function actividad(Request $request, Response $response): Response
+    public function matrizSinInventario(Request $request, Response $response): Response
     {
         try {
-            $user     = $request->getAttribute('user');
-            $sucursal = $user->sucursal_id;
+            $user      = $request->getAttribute('user');
+            $empresaId = $this->getEffectiveEmpresaId($user, $request);
+            $sucursal  = $user->sucursal_id;
+            $desde     = \Carbon\Carbon::now()->subDays(15)->startOfDay();
 
-            // Intentar desde kardex/movimientos de inventario
-            $rows = [];
+            $movidos = DB::table('movimiento_inventarios as m')
+                ->join('productos as p', 'p.id', '=', 'm.producto_id')
+                ->where('m.empresa_id', $empresaId)
+                ->where('m.sucursal_id', $sucursal)
+                ->where('m.created_at', '>=', $desde)
+                ->select(
+                    'p.id',
+                    'p.codigo_interno as codigo',
+                    'p.nombre',
+                    DB::raw('MAX(m.created_at) as ultimo_movimiento'),
+                    DB::raw('COUNT(*) as movimientos'),
+                    DB::raw("MAX(m.tipo_movimiento) as ultimo_tipo")
+                )
+                ->groupBy('p.id', 'p.codigo_interno', 'p.nombre')
+                ->get();
 
-            // Recepciones recientes
-            $recs = Recepcion::where('sucursal_id', $sucursal)
-                ->orderBy('created_at', 'desc')
-                ->limit(5)
-                ->get(['id', 'numero_recepcion', 'estado', 'created_at']);
-            foreach ($recs as $r) {
-                $rows[] = [
-                    'tipo'    => 'Recepción',
-                    'icono'   => 'truck-ramp-box',
-                    'color'   => 'blue',
-                    'texto'   => 'Recepción ' . ($r->numero_recepcion ?? '#' . $r->id) . ' — ' . $r->estado,
-                    'fecha'   => $r->created_at,
-                ];
-            }
+            if ($movidos->isEmpty()) return $this->ok($response, []);
 
-            // Despachos recientes
-            $desps = Despacho::where('sucursal_id', $sucursal)
-                ->orderBy('created_at', 'desc')
-                ->limit(5)
-                ->get(['id', 'numero_despacho', 'estado', 'created_at']);
-            foreach ($desps as $d) {
-                $rows[] = [
-                    'tipo'  => 'Despacho',
-                    'icono' => 'truck',
-                    'color' => 'green',
-                    'texto' => 'Despacho ' . ($d->numero_despacho ?? '#' . $d->id) . ' — ' . $d->estado,
-                    'fecha' => $d->created_at,
-                ];
-            }
+            $stockActual = DB::table('inventarios')
+                ->where('sucursal_id', $sucursal)
+                ->whereIn('producto_id', $movidos->pluck('id'))
+                ->groupBy('producto_id')
+                ->select('producto_id', DB::raw('SUM(cantidad) as total'))
+                ->pluck('total', 'producto_id');
 
-            // Órdenes de picking recientes
-            $picks = OrdenPicking::where('sucursal_id', $sucursal)
-                ->orderBy('created_at', 'desc')
-                ->limit(5)
-                ->get(['id', 'numero_orden', 'estado', 'created_at']);
-            foreach ($picks as $p) {
-                $rows[] = [
-                    'tipo'  => 'Picking',
-                    'icono' => 'cart-flatbed',
-                    'color' => 'orange',
-                    'texto' => 'Orden ' . ($p->numero_orden ?? '#' . $p->id) . ' — ' . $p->estado,
-                    'fecha' => $p->created_at,
-                ];
-            }
+            $sinInventario = $movidos
+                ->filter(fn($r) => (float)($stockActual[$r->id] ?? 0) <= 0)
+                ->sortByDesc('ultimo_movimiento')
+                ->values();
 
-            // Ordenar por fecha descendente y limitar a 15 items
-            usort($rows, fn($a, $b) => strcmp((string)($b['fecha'] ?? ''), (string)($a['fecha'] ?? '')));
-            $rows = array_slice($rows, 0, 15);
+            return $this->ok($response, $sinInventario);
+        } catch (\Exception $e) {
+            error_log('DashboardController::matrizSinInventario error: ' . $e->getMessage());
+            return $this->error($response, 'Error al cargar matriz de referencias sin inventario.', 500);
+        }
+    }
+
+    /**
+     * GET /api/dashboard/matriz-top-ajustes
+     * Top 50 referencias con más ajustes de inventario históricos (Ajuste
+     * Positivo/Negativo) — señal de productos con problemas recurrentes de
+     * conteo/kardex que valen un vistazo.
+     */
+    public function matrizTopAjustes(Request $request, Response $response): Response
+    {
+        try {
+            $user      = $request->getAttribute('user');
+            $empresaId = $this->getEffectiveEmpresaId($user, $request);
+            $sucursal  = $user->sucursal_id;
+
+            $rows = DB::table('movimiento_inventarios as m')
+                ->join('productos as p', 'p.id', '=', 'm.producto_id')
+                ->where('m.empresa_id', $empresaId)
+                ->where('m.sucursal_id', $sucursal)
+                ->whereIn('m.tipo_movimiento', ['AjustePositivo', 'AjusteNegativo'])
+                ->select(
+                    'p.id',
+                    'p.codigo_interno as codigo',
+                    'p.nombre',
+                    DB::raw('COUNT(*) as total_ajustes'),
+                    DB::raw("SUM(CASE WHEN m.tipo_movimiento = 'AjustePositivo' THEN m.cantidad ELSE 0 END) as total_positivo"),
+                    DB::raw("SUM(CASE WHEN m.tipo_movimiento = 'AjusteNegativo' THEN m.cantidad ELSE 0 END) as total_negativo"),
+                    DB::raw('MAX(m.created_at) as ultimo_ajuste')
+                )
+                ->groupBy('p.id', 'p.codigo_interno', 'p.nombre')
+                ->orderByDesc('total_ajustes')
+                ->limit(50)
+                ->get();
 
             return $this->ok($response, $rows);
         } catch (\Exception $e) {
-            error_log('DashboardController::actividad error: ' . $e->getMessage());
-            return $this->error($response, 'Error al cargar actividad.', 500);
+            error_log('DashboardController::matrizTopAjustes error: ' . $e->getMessage());
+            return $this->error($response, 'Error al cargar matriz de ajustes.', 500);
         }
     }
 }

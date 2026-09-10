@@ -115,8 +115,15 @@ class TraspasoController extends BaseController
     public function create(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
-        if ($deny = $this->requireSupervisor($user, $response)) return $deny;
-
+        // BUG CORREGIDO (2026-09-08, a pedido explícito): este requireSupervisor()
+        // bloqueaba el envío a cualquier rol que no fuera Supervisor/Admin, pero el
+        // permiso 'mobile.tp' (Traspaso) ya está concedido en rol_permisos también
+        // a Auxiliar, Montacarguista y Analista — el menú móvil les mostraba la
+        // pantalla completa (buscar producto, firma, etc.) y solo al final, al
+        // enviar, el backend los rechazaba. Contradice la regla del proyecto de que
+        // el control de acceso vive en el permiso de pantalla, no en un candado
+        // interno adicional — y a diferencia de los gates de Picking (que sí traen
+        // comentario de decisión explícita del negocio), este no tenía respaldo.
         $data = $request->getParsedBody();
 
         $required = ['motivo', 'quien_recibe', 'detalles'];

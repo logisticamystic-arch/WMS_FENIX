@@ -2646,26 +2646,29 @@ class PickingController extends BaseController
         $sucursalId = $user->sucursal_id;
         $factor     = max(1, (int)(Capsule::table('productos')->where('id', $linea->producto_id)->value('unidades_caja') ?? 1));
 
-        if ($nuevaCantidad < (float)$linea->cantidad_pickeada) {
-            return ['error' => "No se puede reducir a {$nuevaCantidad}: ya hay {$linea->cantidad_pickeada} separadas físicamente. Ajuste primero lo separado o elimine la línea."];
+        // BUG CORREGIDO (auditoría 2026-09-07): cantidad_solicitada vive en CAJAS
+        // y cantidad_pickeada en UNIDADES — esta comparación las mezclaba sin
+        // convertir, dejando pasar reducciones que en realidad quedaban por
+        // debajo de lo ya separado físicamente (caso real: línea con 79 und ya
+        // pickeadas se dejó bajar a "10 cajas" sin rechazo, porque 10 &lt; 79
+        // "colaba" numéricamente aunque las unidades no eran comparables —
+        // ese mismo caso terminó generando una reserva fantasma).
+        $nuevaCantidadUnd = round($nuevaCantidad * $factor, 3);
+        if ($nuevaCantidadUnd < (float)$linea->cantidad_pickeada) {
+            $cajasPickeadas = round((float)$linea->cantidad_pickeada / $factor, 3);
+            return ['error' => "No se puede reducir a {$nuevaCantidad} cajas: ya hay {$cajasPickeadas} cajas ({$linea->cantidad_pickeada} und) separadas físicamente. Ajuste primero lo separado o elimine la línea."];
         }
 
         $viejaQty     = (float)$linea->cantidad_solicitada;
         $diffCajas    = $nuevaCantidad - $viejaQty;
         $diffUnidades = round($diffCajas * $factor, 3);
 
-        if ($diffUnidades < 0 && $linea->ubicacion_id) {
-            $this->_releaseReserva($empresaId, $sucursalId, $linea->producto_id, $linea->ubicacion_id, $linea->lote, abs($diffUnidades));
-            MovimientoInventario::create([
-                'empresa_id' => $empresaId, 'sucursal_id' => $sucursalId,
-                'producto_id' => $linea->producto_id, 'ubicacion_id' => $linea->ubicacion_id,
-                'cantidad' => abs($diffUnidades), 'tipo_movimiento' => MovimientoInventario::TIPO_CORRECCION,
-                'referencia_id' => $linea->id, 'referencia_tipo' => 'picking_detalle',
-                'auxiliar_id' => $user->id,
-                'observaciones' => $motivo ?: 'Edición de cantidad — liberación de reserva',
-                'fecha_movimiento' => date('Y-m-d'), 'hora_inicio' => date('H:i:s'),
-            ]);
-        } elseif ($diffUnidades > 0 && $linea->ubicacion_id) {
+        // Si la cantidad aumenta, validar ANTES de comprometer nada que sí hay
+        // stock físico disponible para cubrir el incremento (mismo criterio de
+        // siempre). Si disminuye, no hace falta validar nada — la reserva real
+        // se recalcula desde cero más abajo, sin importar cuánto "debería" ser
+        // el delta.
+        if ($diffUnidades > 0 && $linea->ubicacion_id) {
             $inv = Inventario::where('empresa_id',  $empresaId)
                 ->where('sucursal_id', $sucursalId)
                 ->where('producto_id', $linea->producto_id)
@@ -2680,22 +2683,32 @@ class PickingController extends BaseController
             if ($stockDisp < $diffUnidades) {
                 return ['conflict' => true, 'ubicacion' => $linea->ubicacion_id, 'stock_disponible' => $stockDisp, 'requerido' => $diffUnidades];
             }
+        }
 
-            $inv->cantidad_reservada = (float)($inv->cantidad_reservada ?? 0) + $diffUnidades;
-            $inv->save();
-
+        if ($diffUnidades !== 0.0 && $linea->ubicacion_id) {
             MovimientoInventario::create([
                 'empresa_id' => $empresaId, 'sucursal_id' => $sucursalId,
                 'producto_id' => $linea->producto_id, 'ubicacion_id' => $linea->ubicacion_id,
-                'cantidad' => $diffUnidades, 'tipo_movimiento' => MovimientoInventario::TIPO_CORRECCION,
+                'cantidad' => abs($diffUnidades), 'tipo_movimiento' => MovimientoInventario::TIPO_CORRECCION,
                 'referencia_id' => $linea->id, 'referencia_tipo' => 'picking_detalle',
                 'auxiliar_id' => $user->id,
-                'observaciones' => $motivo ?: 'Edición de cantidad — refuerzo de reserva',
+                'observaciones' => $motivo ?: ('Edición de cantidad — ' . ($diffUnidades < 0 ? 'liberación' : 'refuerzo') . ' de reserva'),
                 'fecha_movimiento' => date('Y-m-d'), 'hora_inicio' => date('H:i:s'),
             ]);
         }
         // Si $linea->ubicacion_id es null (completamente Faltante, nunca se reservó
         // nada), no hay inventario que tocar — solo cambia cuánto falta.
+
+        // cantidad_solicitada/cantidad_pickeada se guardan ANTES de recalcular la
+        // reserva, porque _resincronizarReservaInventario() la deriva justamente
+        // de estos dos campos ya actualizados — el orden importa.
+        $linea->cantidad_solicitada = $nuevaCantidad;
+        $linea->cantidad_pickeada   = min((float)$linea->cantidad_pickeada, $nuevaCantidadUnd);
+        $linea->save();
+
+        if ($linea->ubicacion_id) {
+            $this->_resincronizarReservaInventario($empresaId, $sucursalId, $linea->producto_id, $linea->ubicacion_id, $linea->lote, $linea->fecha_vencimiento);
+        }
 
         if ($linea->estado === 'Faltante') {
             // Reservado real en este momento (0 si nunca se asignó ubicación) —
@@ -2722,10 +2735,6 @@ class PickingController extends BaseController
                     'updated_at'          => date('Y-m-d H:i:s'),
                 ]);
         }
-
-        $linea->cantidad_solicitada = $nuevaCantidad;
-        $linea->cantidad_pickeada   = min((float)$linea->cantidad_pickeada, $nuevaCantidad);
-        $linea->save();
 
         return null;
     }
@@ -2780,9 +2789,18 @@ class PickingController extends BaseController
                                                 ->whereIn('estado', ['Pendiente', 'Creado', 'Asignado', 'EnProceso'])
                                                 ->sum('cantidad_solicitada');
 
-        // Planillas activas en vivo (agrupadas por planilla_numero)
+        // Planillas activas en vivo (agrupadas por planilla_numero).
+        // BUG CORREGIDO (a pedido explícito, 2026-09-07): antes cualquier orden
+        // EnProceso/Pendiente contaba aquí, sin importar si era una planilla real
+        // o un pedido suelto montado manualmente (formato "PK-fecha-hash", sin
+        // planilla_numero). Un pedido así, abandonado horas atrás sin que nadie
+        // lo retomara, seguía apareciendo como "en curso" indefinidamente (caso
+        // real: orden PK-20260906-79C92, sin actividad 9+ horas). Este widget es
+        // para el trabajo organizado en planillas — se excluyen los pedidos sin
+        // planilla_numero real.
         $ordenesActivas = (clone $baseQ)
             ->whereIn('estado', ['Pendiente', 'EnProceso'])
+            ->whereNotNull('planilla_numero')
             ->withCount([
                 'detalles as total_lineas',
                 'detalles as lineas_completadas' => fn($q) => $q->whereIn('estado', ['Completada', 'Completado', 'Faltante']),
@@ -2927,6 +2945,66 @@ class PickingController extends BaseController
         ];
 
         return $this->ok($res, $stats);
+    }
+
+    /**
+     * GET /picking/dashboard/pendientes-ambiente
+     * Detalle de referencias (picking_detalles) aún pendientes de separar para
+     * una sucursal + ambiente puntuales — el "ver detalle" del bloque de
+     * "Avance de Separación por Ambiente" del dashboard, al hacer click en una
+     * sucursal. Mismo criterio de clasificación de ambiente (ambiente del
+     * detalle, con fallback al ambiente del producto) y de "activa" (misma
+     * planilla real, sin pedidos sueltos) que usa dashboard().
+     */
+    public function dashboardPendientesAmbiente(Request $r, Response $res): Response
+    {
+        $user      = $r->getAttribute('user');
+        $params    = $r->getQueryParams();
+        [$ini, $fin] = $this->getDateRange($params);
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+
+        $sucursal = trim($params['sucursal'] ?? '');
+        $ambiente = strtolower(trim($params['ambiente'] ?? ''));
+        if ($sucursal === '' || !in_array($ambiente, ['seco', 'refrigerado', 'congelado'], true)) {
+            return $this->error($res, 'Parámetros sucursal y ambiente son requeridos', 400);
+        }
+
+        $detalles = PickingDetalle::whereIn('estado', ['Pendiente', 'Creado', 'Asignado', 'EnProceso'])
+            ->whereHas('ordenPicking', function ($q) use ($empresaId, $user, $ini, $fin, $sucursal) {
+                $q->where('empresa_id', $empresaId)
+                  ->where('sucursal_id', $user->sucursal_id)
+                  ->whereBetween('created_at', [$ini, $fin])
+                  ->whereIn('estado', ['Pendiente', 'EnProceso'])
+                  ->whereNotNull('planilla_numero')
+                  ->where(fn($sq) => $sq->where('sucursal_entrega', $sucursal)->orWhere('cliente', $sucursal));
+            })
+            ->with([
+                'producto:id,nombre,codigo_interno,ambiente_id',
+                'producto.ambiente:id,codigo',
+                'ordenPicking:id,planilla_numero,numero_orden',
+            ])
+            ->get()
+            ->filter(function ($det) use ($ambiente) {
+                $ambRaw = $det->ambiente ?: ($det->producto->ambiente->codigo ?? 'SECO');
+                $ambKey = match (strtolower((string)$ambRaw)) {
+                    'refrigerado' => 'refrigerado',
+                    'congelado'   => 'congelado',
+                    default       => 'seco',
+                };
+                return $ambKey === $ambiente;
+            })
+            ->map(fn($det) => [
+                'planilla'           => $det->ordenPicking->planilla_numero ?? $det->ordenPicking->numero_orden,
+                'producto'           => $det->producto->nombre ?? '—',
+                'codigo'             => $det->producto->codigo_interno ?? '—',
+                'cantidad_solicitada'=> (float)$det->cantidad_solicitada,
+                'cantidad_pickeada'  => (float)$det->cantidad_pickeada,
+                'estado'             => $det->estado,
+            ])
+            ->sortBy('producto')
+            ->values();
+
+        return $this->ok($res, $detalles);
     }
 
     /**
@@ -4326,6 +4404,10 @@ class PickingController extends BaseController
                     'productos.controla_lote',
                     'ubicaciones.codigo as ubicacion_codigo',
                     'ubicaciones.id as ubicacion_id',
+                    'ubicaciones.pasillo as ubicacion_pasillo',
+                    'ubicaciones.modulo as ubicacion_modulo',
+                    'ubicaciones.nivel as ubicacion_nivel',
+                    'ubicaciones.posicion as ubicacion_posicion',
                     'picking_detalles.lote',
                     'picking_detalles.fecha_vencimiento',
                     Capsule::raw('MAX(orden_pickings.sucursal_entrega) as sucursal_entrega'),
@@ -4352,16 +4434,14 @@ class PickingController extends BaseController
                     'picking_detalles.lote',
                     'picking_detalles.fecha_vencimiento'
                 )
-                // Ruta física de recorrido en bodega: ambiente (zona de temperatura) →
-                // pasillo → módulo → nivel, para que el auxiliar no zigzaguee entre
-                // pasillos/módulos. El FEFO se conserva como desempate dentro del mismo
-                // tramo de ruta, y se resuelve por ubicación específica en el split de
-                // stock alternativo más abajo (fifo_split) cuando falta stock en el sitio asignado.
-                ->orderByRaw('CASE WHEN ubicaciones.id IS NULL THEN 1 ELSE 0 END ASC')
-                ->orderByRaw('COALESCE(LENGTH(ubicaciones.pasillo), 0) ASC, ubicaciones.pasillo ASC')
-                ->orderByRaw('COALESCE(LENGTH(ubicaciones.modulo), 0) ASC, ubicaciones.modulo ASC')
-                ->orderByRaw('COALESCE(LENGTH(ubicaciones.nivel), 0) ASC, ubicaciones.nivel ASC')
-                ->orderByRaw('COALESCE(LENGTH(ubicaciones.posicion), 0) ASC, ubicaciones.posicion ASC');
+                // Orden a nivel SQL: solo lo estable/seguro (NULLs de ubicación al final,
+                // FEFO, código). El orden REAL de ruta física (pasillo → módulo → nivel →
+                // posición, con ambiente como agrupador exterior) se aplica más abajo, en
+                // PHP, sobre esta colección ya traída — ver el bloque "Reordenar según RUTA
+                // FÍSICA BODEGA" — porque ese resort es quien manda al final y antes lo
+                // hacía con un comparador fràgil (auditoría 2026-09-05: ordenaba mal ante
+                // padding inconsistente, ej. nivel "2" antes que "01").
+                ->orderByRaw('CASE WHEN ubicaciones.id IS NULL THEN 1 ELSE 0 END ASC');
             $detalles = FefoEngine::ordenVencimiento($detalles, 'picking_detalles.fecha_vencimiento', $modoRotacionPlanilla)
                 ->orderBy('ubicaciones.codigo', 'ASC')
                 ->orderBy('productos.codigo_interno', 'asc')
@@ -4417,16 +4497,36 @@ class PickingController extends BaseController
             });
 
             // ── Reordenar según RUTA FÍSICA BODEGA ──────────────────────────────
-            // 1. Ubicaciones válidas primero en orden numérico/alfanumérico natural (01-01-07 -> 02-02-01 -> 02-03-01 -> 02-06-01 -> 03-11-02).
-            // 2. Líneas sin ubicación (SIN UBIC.) al FINAL del recorrido.
-            // 3. Desempate por nombre de producto.
-            $detalles = $detalles->sort(function ($a, $b) {
+            // 1. Líneas sin ubicación resuelta (ni real ni de respaldo) van al FINAL.
+            // 2. Ambiente/zona como agrupador exterior (mismo orden que usa el tablero
+            //    de escritorio: Seco → Refrigerado → Congelado), para no zigzaguear
+            //    entre zonas de temperatura distintas.
+            // 3. Ruta física real Pasillo → Módulo → Nivel → Posición, comparación
+            //    robusta ante padding inconsistente y segmentos no numéricos
+            //    (FefoEngine::compararRutaFisica — ver ese método para el detalle).
+            // 4. Desempate por código completo y, por último, por nombre de producto.
+            //
+            // BUG CORREGIDO (auditoría 2026-09-05): antes se comparaba el CÓDIGO
+            // COMPLETO como un solo string (strnatcasecmp), lo que en la práctica
+            // terminaba agrupando por orden ALFABÉTICO accidental de zona (coincidía
+            // con la ruta física solo por casualidad) y desordenaba pasillo/
+            // módulo/nivel en cuanto el padding no era uniforme (ej. nivel "2" antes
+            // que "01" en ubicaciones reales de producción).
+            $zonaOrden = ['SECO' => 0, 'REFRIGERADO' => 1, 'CONGELADO' => 2];
+            $detalles = $detalles->sort(function ($a, $b) use ($zonaOrden) {
                 $hasA = !empty($a->ubicacion_codigo);
                 $hasB = !empty($b->ubicacion_codigo);
                 if ($hasA !== $hasB) {
                     return $hasA ? -1 : 1; // Ubicaciones válidas primero, SIN UBIC al final
                 }
                 if ($hasA && $hasB) {
+                    $za = $zonaOrden[strtoupper($a->ambiente ?? '')] ?? 99;
+                    $zb = $zonaOrden[strtoupper($b->ambiente ?? '')] ?? 99;
+                    if ($za !== $zb) return $za <=> $zb;
+
+                    $cmp = FefoEngine::compararRutaFisica($a, $b, 'ubicacion_pasillo', 'ubicacion_modulo', 'ubicacion_nivel', 'ubicacion_posicion');
+                    if ($cmp !== 0) return $cmp;
+
                     $cmp = strnatcasecmp($a->ubicacion_codigo, $b->ubicacion_codigo);
                     if ($cmp !== 0) return $cmp;
                 }
@@ -4459,26 +4559,60 @@ class PickingController extends BaseController
                         'ui.nivel as ubic_nivel',
                         'ui.zona as ubic_zona'
                     );
+                // FEFO manda SIEMPRE primero (fecha de vencimiento más próxima) — eso decide
+                // de qué ubicación se separa cuando una sola referencia necesita repartirse
+                // entre varias. La ruta física (pasillo → módulo → nivel → posición) es
+                // el DESEMPATE cuando dos ubicaciones comparten la misma prioridad FEFO
+                // (misma fecha, o ambas sin fecha). El desempate se hace en PHP con un
+                // comparador robusto ante padding inconsistente (FefoEngine::compararRutaFisica)
+                // — el truco SQL `COALESCE(LENGTH,0) ASC` anterior ordenaba mal ante padding
+                // no uniforme (auditoría 2026-09-05, ej. nivel "2" antes que "01").
+                $dirRotacion = (strtoupper($modoRotacionPlanilla) === 'LIFO') ? -1 : 1;
                 $todosStocks = FefoEngine::ordenVencimiento($todosStocksQ, 'inventarios.fecha_vencimiento', $modoRotacionPlanilla)
-                    ->orderByRaw('COALESCE(LENGTH(ui.pasillo), 0) ASC, ui.pasillo ASC')
-                    ->orderByRaw('COALESCE(LENGTH(ui.modulo), 0) ASC, ui.modulo ASC')
-                    ->orderByRaw('COALESCE(LENGTH(ui.nivel), 0) ASC, ui.nivel ASC')
-                    ->orderByRaw('COALESCE(LENGTH(ui.posicion), 0) ASC, ui.posicion ASC')
-                    ->orderBy('ui.codigo', 'ASC')
                     ->get()
-                    ->groupBy('producto_id');
+                    ->groupBy('producto_id')
+                    ->map(function ($grupo) use ($dirRotacion) {
+                        return $grupo->sort(function ($a, $b) use ($dirRotacion) {
+                            // fecha_vencimiento viene casteada a Carbon (Inventario::$casts) — se
+                            // compara por timestamp, nunca como string/objeto directo.
+                            $fa = $a->fecha_vencimiento; $fb = $b->fecha_vencimiento;
+                            $faNula = empty($fa); $fbNula = empty($fb);
+                            if ($faNula !== $fbNula) return $faNula ? 1 : -1; // sin fecha, al final
+                            if (!$faNula && !$fbNula) {
+                                $ta = $fa instanceof \DateTimeInterface ? $fa->getTimestamp() : strtotime((string)$fa);
+                                $tb = $fb instanceof \DateTimeInterface ? $fb->getTimestamp() : strtotime((string)$fb);
+                                if ($ta !== $tb) return $dirRotacion * ($ta <=> $tb);
+                            }
+
+                            $cmp = FefoEngine::compararRutaFisica($a, $b, 'ubic_pasillo', 'ubic_modulo', 'ubic_nivel', 'ubic_posicion');
+                            if ($cmp !== 0) return $cmp;
+
+                            return strnatcasecmp($a->ubic_codigo ?? '', $b->ubic_codigo ?? '');
+                        })->values();
+                    });
 
                 $detalles->transform(function ($it) use ($todosStocks) {
                     $necesario = (float)($it->cantidad_total ?? 0);
                     $stocks    = $todosStocks->get($it->producto_id, collect());
 
-                    // Stock físico en la ubicación asignada
+                    // Stock físico en la ubicación asignada. Algunas líneas quedan con
+                    // ubicacion_id NULL (_reservarInventarioBatch()/confirmarConsolidado()
+                    // no siempre logran persistirlo — ver comentarios ahí) aunque el
+                    // frontend SÍ resuelve y muestra un ubicacion_codigo de fallback más
+                    // arriba. Sin este fallback aquí, dispAsig quedaba en 0 SIEMPRE para
+                    // esas líneas — disparando la ruta FEFO de forma espuria (parecía
+                    // faltar stock cuando en realidad estaba completo en la ubicación que
+                    // ya se le mostraba al auxiliar) y marcando esa misma ubicación como
+                    // "USAR" en vez de "AQUÍ ESTÁS" al comparar ubicacion_id contra NULL.
                     $dispAsig = 0;
                     if ($it->ubicacion_id) {
                         $invAsig  = $stocks->first(fn($s) =>
                             $s->ubicacion_id == $it->ubicacion_id &&
                             ($it->lote ? $s->lote === $it->lote : true)
                         );
+                        $dispAsig = $invAsig ? (float)$invAsig->cantidad : 0;
+                    } elseif (!empty($it->ubicacion_codigo)) {
+                        $invAsig  = $stocks->first(fn($s) => $s->ubic_codigo === $it->ubicacion_codigo);
                         $dispAsig = $invAsig ? (float)$invAsig->cantidad : 0;
                     }
                     $it->stock_disponible = round($dispAsig, 2);
@@ -4509,7 +4643,12 @@ class PickingController extends BaseController
                             'fecha_vencimiento' => $inv->fecha_vencimiento,
                             'disponible'        => round($disp, 2),
                             'tomar'             => round($tomar, 2),
-                            'es_asignada'       => ($inv->ubicacion_id == $it->ubicacion_id),
+                            // Mismo fallback por código cuando la línea no tiene
+                            // ubicacion_id: evita marcar como "USAR" (otra ubicación)
+                            // lo que en realidad es la misma ubicación ya asignada.
+                            'es_asignada'       => $it->ubicacion_id
+                                ? ($inv->ubicacion_id == $it->ubicacion_id)
+                                : (!empty($it->ubicacion_codigo) && $inv->ubic_codigo === $it->ubicacion_codigo),
                         ];
                         $pendiente -= $tomar;
                     }
@@ -4770,6 +4909,36 @@ class PickingController extends BaseController
             ? (($cajasTomadas ?? 0) * $upcGlobal + ($saldosTomados ?? 0))
             : $cantidadTomada;
 
+        // Blindaje 2026-09-07 (a pedido explícito, caso real: Planilla Olivia Arkadia,
+        // Salmón Fresco — el auxiliar solo separó 1 de 3 cajas para seguir buscando el
+        // resto, y el sistema cerró la línea sola marcando las 2 cajas restantes como
+        // Agotado, sin que el auxiliar ejecutara nunca esa acción). Confirmar con una
+        // cantidad menor a lo solicitado usaba a marcar Faltante/Agotado el resto en el
+        // mismo request, sin aviso. Ahora eso exige una segunda confirmación explícita
+        // (confirma_parcial=true) — si no llega, se devuelve el faltante sin tocar BD
+        // para que el frontend se lo pregunte al auxiliar antes de cerrar nada.
+        $confirmaParcial = filter_var($body['confirma_parcial'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        if (!$confirmaParcial) {
+            $totalNecesitadoUnd = $detalles->sum(function ($d) {
+                $upc = (isset($d->producto->factor_udm) && (float)$d->producto->factor_udm > 0)
+                    ? (float)$d->producto->factor_udm
+                    : max(1, (float)($d->producto->unidades_caja ?? 1));
+                return (float)$d->cantidad_solicitada * $upc;
+            });
+            if ($cantidadTomadaUnd < $totalNecesitadoUnd - 0.0001) {
+                $body2 = $res->getBody();
+                $body2->write(json_encode([
+                    'error'   => false,
+                    'status'  => 'needs_confirm_parcial',
+                    'message' => 'Vas a separar menos de lo solicitado — la diferencia quedará registrada como Agotado.',
+                    'solicitado_und' => $totalNecesitadoUnd,
+                    'tomado_und'     => $cantidadTomadaUnd,
+                    'faltante_und'   => round($totalNecesitadoUnd - $cantidadTomadaUnd, 4),
+                ], JSON_UNESCAPED_UNICODE));
+                return $res->withHeader('Content-Type', 'application/json')->withStatus(200);
+            }
+        }
+
         // Distribuir UNIDADES entre las sub-líneas (splits) en orden FIFO
         $restante    = $cantidadTomadaUnd;
         $asignaciones = [];
@@ -4810,6 +4979,7 @@ class PickingController extends BaseController
                     $tomarInventario = $asignaciones[$det->id]['tomar']; // unidades físicamente tomadas
                     $upcConf         = $asignaciones[$det->id]['upc'];
                     $liberarReserva  = (float)$det->cantidad_solicitada * $upcConf; // reserva en unidades
+                    $primerInvUsado  = null; // primera ubicación real de donde se descontó (backfill más abajo)
 
                     // ── Fase 1: Liberar reserva completa ───────────────────────────────────
                     $this->_releaseReserva(
@@ -4846,11 +5016,16 @@ class PickingController extends BaseController
                             ->get();
 
                         $restante = $tomarInventario;
+                        $primerInvUsado = null;
                         foreach ($filasFEFO as $inv) {
                             if ($restante <= 0) break;
 
                             $descuento = min($restante, (float)$inv->cantidad);
                             if ($descuento <= 0) continue;
+
+                            if (!$primerInvUsado) {
+                                $primerInvUsado = ['ubicacion_id' => $inv->ubicacion_id, 'lote' => $inv->lote, 'fecha_vencimiento' => $inv->fecha_vencimiento];
+                            }
 
                             // Corrige la fecha de vencimiento en el ORIGEN (no solo en la
                             // línea de picking) cuando el auxiliar la suministró porque
@@ -4899,6 +5074,20 @@ class PickingController extends BaseController
                             error_log("[confirmarConsolidado] Stock insuficiente producto_id={$det->producto_id}"
                                 . " ubi={$det->ubicacion_id} lote={$det->lote}"
                                 . " solicitado={$tomarInventario} descontado={$realmenteDescontado}");
+                        }
+                    }
+
+                    // Backfill: si la línea llegó sin ubicacion_id/lote asignados (huella
+                    // conocida de _reservarInventarioBatch() cuando no había stock al
+                    // momento de reservar), se persiste aquí la ubicación/lote REALES de
+                    // donde se acaba de descontar al confirmar — así deja de mostrarse
+                    // "sin ubicación" (y la ruta FEFO deja de marcarla como "otra"
+                    // ubicación) mientras la línea siga viva para consultas futuras.
+                    if ($primerInvUsado) {
+                        if (!$det->ubicacion_id) $det->ubicacion_id = $primerInvUsado['ubicacion_id'];
+                        if (!$det->lote)         $det->lote         = $primerInvUsado['lote'];
+                        if (!$det->fecha_vencimiento && $primerInvUsado['fecha_vencimiento']) {
+                            $det->fecha_vencimiento = $primerInvUsado['fecha_vencimiento'];
                         }
                     }
 
@@ -5376,8 +5565,21 @@ class PickingController extends BaseController
 
     /**
      * POST /picking/validar-cobertura
-     * Pre-flight: recibe orden_ids + config y devuelve qué líneas quedarían sin auxiliar.
-     * Permite al frontend mostrar advertencias ANTES de confirmar la asignación.
+     * Pre-flight: recibe orden_ids + config y devuelve (a) qué líneas quedarían
+     * sin auxiliar, y (b) qué productos NO van a alcanzar con el stock físico
+     * disponible una vez reservada toda esta ola. Permite al frontend mostrar
+     * advertencias ANTES de confirmar la asignación.
+     *
+     * Auditoría 2026-09-07: hasta ahora, asignarPorAmbiente()/_reservarInventarioBatch()
+     * reservaban lo que alcanzaban del stock disponible y dejaban la línea con una
+     * reserva PARCIAL sin ningún aviso — el faltante solo se hacía visible mucho
+     * después (al separar físicamente) o nunca, si nadie revisaba el detalle. Se
+     * detectaron 26 casos reales de sobre-demanda ya en producción antes de este
+     * cambio. Este bloque nuevo cierra ese hueco: compara, POR PRODUCTO, cuánto se
+     * va a necesitar reservar en esta ola contra cuánto hay realmente disponible
+     * (cantidad - cantidad_reservada, ya con las reservas de OTRAS órdenes activas
+     * descontadas) — el mismo criterio exacto que usa _reservarInventarioBatch()
+     * al reservar de verdad, para que el aviso sea fiel a lo que va a pasar.
      */
     public function validarCobertura(Request $r, Response $res): Response
     {
@@ -5386,6 +5588,7 @@ class PickingController extends BaseController
         $ordenIds = array_map('intval', $data['orden_ids'] ?? []);
         $modo     = $data['modo'] ?? 'ambiente';
         $config   = $data['config'] ?? [];
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
 
         if (empty($ordenIds)) return $this->error($res, 'Se requieren orden_ids');
 
@@ -5395,12 +5598,18 @@ class PickingController extends BaseController
             ->leftJoin('ubicaciones as u', 'pd.ubicacion_id', '=', 'u.id')
             ->leftJoin('productos as pr', 'pd.producto_id', '=', 'pr.id')
             ->leftJoin('categoria_productos as cat', 'pr.categoria_id', '=', 'cat.id')
-            ->where('op.empresa_id', $this->getEffectiveEmpresaId($user, $r))
+            ->where('op.empresa_id', $empresaId)
             ->where('op.sucursal_id', $user->sucursal_id)
             ->whereIn('pd.orden_picking_id', $ordenIds)
             ->whereIn('pd.estado', ['Pendiente', 'Creado'])
             ->whereNull('pd.auxiliar_id')
-            ->select(['pd.id','pd.orden_picking_id','pd.estado','u.pasillo','cat.nombre as categoria','pr.ambiente_id','pr.nombre as producto_nombre'])
+            ->select([
+                'pd.id', 'pd.orden_picking_id', 'pd.estado', 'pd.producto_id', 'pd.cantidad_solicitada',
+                'u.pasillo', 'cat.nombre as categoria', 'pr.ambiente_id',
+                'pr.nombre as producto_nombre', 'pr.codigo_interno as producto_codigo',
+                'pr.unidades_caja', 'pr.factor_udm',
+                'op.numero_orden', 'op.planilla_numero',
+            ])
             ->get();
 
         $cobertura = [
@@ -5410,9 +5619,11 @@ class PickingController extends BaseController
             'detalle_sin_cubrir'      => [],
             'ambientes_cubiertos'     => [],
             'ambientes_sin_auxiliar'  => [],
+            'sin_stock_suficiente'    => [],
         ];
 
         $ambientesSinAux = [];
+        $demandaPorProducto = []; // [producto_id => ['cantidad'=>und, 'nombre'=>, 'codigo'=>, 'pedidos'=>Set]]
         foreach ($lineas as $linea) {
             $amb   = $this->_clasificarAmbiente($linea, $linea->categoria ?? '');
             $auxId = null;
@@ -5432,6 +5643,24 @@ class PickingController extends BaseController
             if ($auxId) {
                 $cobertura['asignadas']++;
                 $cobertura['ambientes_cubiertos'][$amb] = true;
+
+                // Solo las líneas que SÍ van a quedar con auxiliar son las que
+                // _reservarInventarioBatch() intentará reservar de verdad.
+                $upc = ((float)($linea->factor_udm ?? 0) > 0)
+                    ? (float)$linea->factor_udm
+                    : max(1, (float)($linea->unidades_caja ?? 1));
+                $prodId = (int)$linea->producto_id;
+                if (!isset($demandaPorProducto[$prodId])) {
+                    $demandaPorProducto[$prodId] = [
+                        'cantidad' => 0.0,
+                        'nombre'   => $linea->producto_nombre,
+                        'codigo'   => $linea->producto_codigo,
+                        'pedidos'  => [],
+                    ];
+                }
+                $demandaPorProducto[$prodId]['cantidad'] += (float)$linea->cantidad_solicitada * $upc;
+                $pedidoLabel = $linea->planilla_numero ?: $linea->numero_orden ?: ('Orden #' . $linea->orden_picking_id);
+                $demandaPorProducto[$prodId]['pedidos'][$pedidoLabel] = true;
             } else {
                 $cobertura['sin_cubrir']++;
                 $ambientesSinAux[$amb] = true;
@@ -5444,15 +5673,49 @@ class PickingController extends BaseController
             }
         }
 
+        if (!empty($demandaPorProducto)) {
+            $stockDisponiblePorProducto = Inventario::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $user->sucursal_id)
+                ->whereIn('producto_id', array_keys($demandaPorProducto))
+                ->where('estado', 'Disponible')
+                ->groupBy('producto_id')
+                ->selectRaw('producto_id, SUM(GREATEST(cantidad - cantidad_reservada, 0)) as disponible')
+                ->pluck('disponible', 'producto_id');
+
+            foreach ($demandaPorProducto as $prodId => $d) {
+                $disponible = (float)($stockDisponiblePorProducto[$prodId] ?? 0);
+                $faltante   = round($d['cantidad'] - $disponible, 2);
+                if ($faltante > 0.01) {
+                    $cobertura['sin_stock_suficiente'][] = [
+                        'producto_id'         => $prodId,
+                        'producto_codigo'     => $d['codigo'],
+                        'producto_nombre'     => $d['nombre'],
+                        'cantidad_necesaria'  => round($d['cantidad'], 2),
+                        'cantidad_disponible' => round($disponible, 2),
+                        'faltante'            => $faltante,
+                        'pedidos'             => array_keys($d['pedidos']),
+                    ];
+                }
+            }
+        }
+
         $cobertura['ambientes_cubiertos']     = array_keys($cobertura['ambientes_cubiertos']);
         $cobertura['ambientes_sin_auxiliar']  = array_keys($ambientesSinAux);
         $cobertura['cobertura_completa']      = $cobertura['sin_cubrir'] === 0;
+        $cobertura['stock_ok']                = empty($cobertura['sin_stock_suficiente']);
 
-        return $this->ok($res, $cobertura,
-            $cobertura['cobertura_completa']
-                ? 'Cobertura completa — todas las líneas tendrán auxiliar asignado'
-                : "Atención: {$cobertura['sin_cubrir']} línea(s) sin auxiliar configurado"
-        );
+        $mensajes = [];
+        if (!$cobertura['cobertura_completa']) {
+            $mensajes[] = "{$cobertura['sin_cubrir']} línea(s) sin auxiliar configurado";
+        }
+        if (!$cobertura['stock_ok']) {
+            $mensajes[] = count($cobertura['sin_stock_suficiente']) . " producto(s) sin stock suficiente para toda la ola";
+        }
+        $mensaje = empty($mensajes)
+            ? 'Cobertura completa — todas las líneas tendrán auxiliar asignado y stock suficiente'
+            : 'Atención: ' . implode('; ', $mensajes);
+
+        return $this->ok($res, $cobertura, $mensaje);
     }
 
     public function asignarPorAmbiente(Request $r, Response $res): Response
@@ -6264,7 +6527,7 @@ class PickingController extends BaseController
             if ($deny = $this->requireAdmin($user, $res)) return $deny;
         }
 
-        Capsule::transaction(function() use ($empresaId, $target, $sucursal, $observaciones, $detalles, $nuevasLineas) {
+        Capsule::transaction(function() use ($empresaId, $target, $sucursal, $observaciones, $detalles, $nuevasLineas, $user, $r) {
             // Resolver la orden UNA sola vez, acotada a la empresa del usuario —
             // toda operación posterior (update de cabecera, detalles, nuevas líneas)
             // se restringe a esta orden para evitar editar/borrar datos de otra empresa.
@@ -6291,6 +6554,23 @@ class PickingController extends BaseController
                 $updateOrder['observaciones'] = $observaciones !== '' ? $observaciones : null;
             }
 
+            // Blindaje 2026-09-08 (caso real: Planilla 1249, referencia "Chicken Pollo
+            // Marinado" agregada a una orden ya Completada): esta línea nueva quedaba
+            // creada en 'Pendiente' pero la ORDEN seguía 'Completada', así que nunca
+            // aparecía en la cola de picking activo del auxiliar (que filtra por
+            // Pendiente/EnProceso, igual que agregarLineaPlanilla()), y tampoco se
+            // reservaba inventario porque la reserva automática de más abajo solo
+            // corre si la orden está Asignado/EnProceso. Reabrir la orden aquí, antes
+            // de crear las nuevas líneas, resuelve ambos huecos con el mismo camino
+            // que ya usan esos otros endpoints.
+            if (!empty($nuevasLineas) && $orden->estado === 'Completada') {
+                if (!empty($orden->estado_despacho)) {
+                    throw new \RuntimeException("No se pueden agregar líneas a una orden ya {$orden->estado_despacho}");
+                }
+                $updateOrder['estado'] = 'EnProceso';
+                $orden->estado = 'EnProceso';
+            }
+
             Capsule::table('orden_pickings')->where('id', $orden->id)->update($updateOrder);
 
             // Procesar líneas existentes — siempre acotadas a esta orden (ya validada por empresa_id)
@@ -6298,9 +6578,17 @@ class PickingController extends BaseController
                 $detId = (int)($det['id'] ?? 0);
                 if ($detId <= 0) continue;
                 if (!empty($det['eliminar'])) {
+                    // BUG CORREGIDO (auditoría 2026-09-07): antes se borraba la línea sin
+                    // liberar su reserva — si tenía ubicacion_id, la reserva quedaba
+                    // "fantasma" pegada a esa fila de inventarios para siempre.
+                    $detOld = Capsule::table('picking_detalles')
+                        ->where('id', $detId)->where('orden_picking_id', $orden->id)->first();
                     Capsule::table('picking_detalles')
                         ->where('id', $detId)->where('orden_picking_id', $orden->id)
                         ->delete();
+                    if ($detOld && $detOld->ubicacion_id) {
+                        $this->_resincronizarReservaInventario($empresaId, $orden->sucursal_id, $detOld->producto_id, $detOld->ubicacion_id, $detOld->lote, $detOld->fecha_vencimiento);
+                    }
                     continue;
                 }
                 $updDet = ['updated_at' => date('Y-m-d H:i:s')];
@@ -6311,9 +6599,18 @@ class PickingController extends BaseController
                 // de picking/reversión (confirmLine/eliminar), que mantiene sincronizados
                 // inventario y kardex. Escribirla desde este endpoint rompe esa garantía.
                 if (count($updDet) > 1) {
+                    $detRow = Capsule::table('picking_detalles')
+                        ->where('id', $detId)->where('orden_picking_id', $orden->id)->first();
                     Capsule::table('picking_detalles')
                         ->where('id', $detId)->where('orden_picking_id', $orden->id)
                         ->update($updDet);
+                    // BUG CORREGIDO (auditoría 2026-09-07): este UPDATE crudo cambiaba
+                    // cantidad_solicitada sin tocar cantidad_reservada en absoluto — rompía
+                    // en silencio el invariante reservada≈solicitada de esa línea, dejando
+                    // reserva fantasma (de más) o insuficiente (de menos) según la edición.
+                    if ($detRow && $detRow->ubicacion_id) {
+                        $this->_resincronizarReservaInventario($empresaId, $orden->sucursal_id, $detRow->producto_id, $detRow->ubicacion_id, $detRow->lote, $detRow->fecha_vencimiento);
+                    }
                 }
             }
 
@@ -6325,16 +6622,43 @@ class PickingController extends BaseController
                 $prod = Producto::where('empresa_id', $empresaId)->find($prodId);
                 if (!$prod) continue;
 
-                PickingDetalle::create([
+                $ambienteNueva = $this->_clasificarAmbiente($prod);
+
+                // La planilla puede estar ya en proceso (auxiliares asignados por
+                // ambiente vía asignarPorAmbiente()) — una referencia agregada después
+                // no debe quedar huérfana sin auxiliar: se asigna al mismo auxiliar que
+                // ya está trabajando ese ambiente en esta planilla, si existe alguno.
+                $auxAmbienteId = !empty($orden->planilla_numero)
+                    ? Capsule::table('picking_detalles as pd')
+                        ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
+                        ->where('op.planilla_numero', $orden->planilla_numero)
+                        ->where('op.empresa_id', $empresaId)
+                        ->where('pd.ambiente', $ambienteNueva)
+                        ->whereNotNull('pd.auxiliar_id')
+                        ->value('pd.auxiliar_id')
+                    : null;
+
+                $nl = PickingDetalle::create([
                     'orden_picking_id'    => $orden->id,
                     'producto_id'         => $prod->id,
                     'cantidad_solicitada' => $cant,
                     'cantidad_pickeada'   => 0,
                     'devolucion_qty'      => 0,
                     'estado'              => 'Pendiente',
-                    'ambiente'            => $this->_clasificarAmbiente($prod),
+                    'ambiente'            => $ambienteNueva,
+                    'auxiliar_id'         => $auxAmbienteId,
                     'costo_unitario'      => $prod->costo_unitario ?? $prod->precio_compra ?? 0,
                 ]);
+
+                // BUG CORREGIDO (auditoría 2026-09-07): una referencia agregada a una
+                // planilla YA asignada/en proceso no reservaba inventario — quedaba
+                // "Pendiente" sin ningún candado, a diferencia de agregarLinea()/
+                // agregarLineaPlanilla() (los otros dos endpoints de "agregar línea"),
+                // que sí reservan de inmediato en ese mismo caso. Se iguala el
+                // comportamiento: mismo criterio, mismo helper ya usado y probado.
+                if (in_array($orden->estado, ['Asignado', 'EnProceso'])) {
+                    $this->_reservarStockLineaNueva($nl, $prod, $cant, $orden, $user, $r);
+                }
             }
         });
 
@@ -7196,14 +7520,29 @@ class PickingController extends BaseController
         
         $planilla = trim($qp['planilla'] ?? '');
         if (!empty($planilla) && empty($ordenIdsSel)) {
-            $ordenIdsSel = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
-                ->where(function($q) use ($planilla) {
-                    $q->where('planilla_numero', $planilla)
-                      ->orWhere('numero_orden', $planilla)
-                      ->orWhere('planilla_lote', $planilla);
-                })
-                ->pluck('id')
-                ->toArray();
+            // Pedidos montados manualmente (sin CSV/planilla real) no tienen
+            // planilla_numero/planilla_lote — picking.js::_agruparPorPlanilla()
+            // los agrupa bajo la etiqueta sintética 'DOC-' + id (ej. 'DOC-02083')
+            // solo para mostrarlos en la tabla. Esa etiqueta nunca existe en la
+            // BD, así que buscarla como si fuera un planilla_numero real no
+            // encontraba nada y el botón "Imprimir Remisión" fallaba con "No se
+            // encontraron pedidos válidos" para cualquier pedido manual ya
+            // certificado. Se resuelve aquí al mismo id que generó la etiqueta.
+            if (preg_match('/^DOC-0*(\d+)$/', $planilla, $m)) {
+                $ordenIdsSel = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
+                    ->where('id', (int)$m[1])
+                    ->pluck('id')
+                    ->toArray();
+            } else {
+                $ordenIdsSel = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
+                    ->where(function($q) use ($planilla) {
+                        $q->where('planilla_numero', $planilla)
+                          ->orWhere('numero_orden', $planilla)
+                          ->orWhere('planilla_lote', $planilla);
+                    })
+                    ->pluck('id')
+                    ->toArray();
+            }
         }
 
         if (empty($sucursales) && empty($ordenIdsSel)) {
@@ -7257,7 +7596,11 @@ class PickingController extends BaseController
             // sucursal para conservar la misma estructura de páginas por cliente.
             $q = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
                 ->where('sucursal_id', $sucursalId)
-                ->whereIn('id', $ordenIdsSel);
+                ->whereIn('id', $ordenIdsSel)
+                // Un pedido ya despachado/entregado no debe volver a salir en ninguna
+                // remisión, ni aunque comparta sucursal/fecha con otro pedido de la
+                // misma planilla o de otra planilla aún no despachada.
+                ->whereNull('estado_despacho');
 
             if (empty($planilla)) {
                 $q->where('estado_certificacion', 'Certificada')
@@ -7282,6 +7625,9 @@ class PickingController extends BaseController
                     ->where('estado_certificacion', 'Certificada')
                     // Retiro directo (cliente ya lo recogió) — no se mezcla con la remisión.
                     ->where('despachado_directo', false)
+                    // Ya despachado por ruta (otra planilla de la misma sucursal que ya
+                    // salió) — sus referencias no deben reaparecer en una remisión nueva.
+                    ->whereNull('estado_despacho')
                     ->whereDate('fecha_movimiento', $fechaFiltro)
                     ->whereNotExists(function ($q) {
                         $q->select(Capsule::raw(1))
@@ -7417,11 +7763,7 @@ class PickingController extends BaseController
                 . ($page['agotadosHtml'] ?? '')
                 . $novedadesHtml
                 . "<div class='totales'>TOTAL: {$pr['cj']} cj &mdash; {$pr['und']} und certificadas</div>"
-                . "<div class='firmas'>"
-                . "  <div class='firma-line'>Firma Certificador<br><strong>{$page['certNombre']}</strong></div>"
-                . "  <div class='firma-line'>Firma Transportador</div>"
-                . "  <div class='firma-line'>Firma Recibido</div>"
-                . "</div></div>";
+                . "</div>";
         }
 
         // La página consolidada resume/repite lo mismo que la única página individual
@@ -7442,6 +7784,133 @@ class PickingController extends BaseController
             . "</div>"
             . ($incluirConsolidado ? $consolidadoPage : '')
             . $individualPages
+            . "</body></html>";
+
+        $body = $res->getBody();
+        $body->write($html);
+        return $res->withHeader('Content-Type', 'text/html; charset=utf-8')->withStatus(200);
+    }
+
+    // ── GET /api/picking/certificacion/liberacion-planilla ───────────────────
+    // "Imprimir Liberación": a diferencia de certRemisionMultiple (que consolida
+    // cantidades por producto sin importar de qué pedido vinieron), aquí las
+    // referencias quedan discriminadas por pedido — una sección por cada pedido
+    // del cliente dentro de la planilla —, ordenadas alfabéticamente por producto,
+    // más la sección de agotados. Reutiliza remisionAmbientesHtml() tal cual: su
+    // "bloque" (con header y subtotal cj/und) se agrupa aquí por pedido en vez de
+    // por ambiente.
+    public function certLiberacionPlanilla(Request $r, Response $res): Response
+    {
+        $user      = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $qp        = $r->getQueryParams();
+        $planilla  = trim($qp['planilla'] ?? '');
+
+        if (empty($planilla)) {
+            return $this->error($res, 'Se requiere el parámetro planilla');
+        }
+
+        // Misma resolución planilla -> orden_ids que certRemisionMultiple (pedidos
+        // manuales sin planilla real quedan bajo la etiqueta sintética 'DOC-<id>').
+        if (preg_match('/^DOC-0*(\d+)$/', $planilla, $m)) {
+            $ordenIdsSel = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
+                ->where('id', (int)$m[1])->pluck('id')->toArray();
+        } else {
+            $ordenIdsSel = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
+                ->where(function ($q) use ($planilla) {
+                    $q->where('planilla_numero', $planilla)
+                      ->orWhere('numero_orden', $planilla)
+                      ->orWhere('planilla_lote', $planilla);
+                })
+                ->pluck('id')->toArray();
+        }
+
+        if (empty($ordenIdsSel)) {
+            return $this->error($res, "No se encontraron pedidos válidos para la planilla {$planilla}.");
+        }
+
+        // Un pedido ya despachado (por ruta o por retiro directo) no debe reaparecer
+        // en una liberación nueva, aunque comparta planilla con otro pedido pendiente.
+        $ordenes = \App\Models\OrdenPicking::whereIn('id', $ordenIdsSel)
+            ->whereNull('estado_despacho')
+            ->where('despachado_directo', false)
+            ->get();
+        if ($ordenes->isEmpty()) {
+            return $this->error($res, "No se encontraron pedidos válidos (sin despachar) para la planilla {$planilla}.");
+        }
+        $ordenIds = $ordenes->pluck('id')->toArray();
+
+        // pedido = numero_factura (N° real del cliente) con fallback a numero_orden,
+        // mismo criterio usado en el resto del sistema (certRemisionMultiple, remisionAgotadosHtml).
+        $pedidoPorOrden = [];
+        foreach ($ordenes as $o) {
+            $pedidoPorOrden[$o->id] = trim($o->numero_factura ?: $o->numero_orden ?: ('Pedido #' . $o->id));
+        }
+
+        // Ítems SIN consolidar entre pedidos: se agrupa también por orden_picking_id
+        // para que un mismo producto pedido por dos pedidos distintos de la misma
+        // planilla salga discriminado en dos secciones, no sumado en una sola.
+        $rows = Capsule::table('picking_detalles as pd')
+            ->join('productos as p', 'p.id', '=', 'pd.producto_id')
+            ->whereIn('pd.orden_picking_id', $ordenIds)
+            ->where('pd.cantidad_certificada', '>', 0)
+            ->select([
+                'pd.orden_picking_id',
+                'p.id as producto_id', 'p.codigo_interno as codigo', 'p.nombre', 'p.unidades_caja', 'p.factor_udm',
+                Capsule::raw('SUM(pd.cantidad_certificada) as cantidad'),
+                Capsule::raw("MAX(COALESCE(pd.fecha_vencimiento, (SELECT MIN(inv.fecha_vencimiento) FROM inventarios inv WHERE inv.producto_id = p.id AND inv.fecha_vencimiento IS NOT NULL AND inv.cantidad > 0 LIMIT 1))) as fecha_vencimiento"),
+                Capsule::raw('MAX(pd.lote) as lote'),
+            ])
+            ->groupBy('pd.orden_picking_id', 'p.id', 'p.codigo_interno', 'p.nombre', 'p.unidades_caja', 'p.factor_udm')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return $this->error($res, 'No hay referencias certificadas para esta planilla.');
+        }
+
+        // Agrupar por pedido y ordenar alfabéticamente por descripción del producto.
+        $porPedido = [];
+        foreach ($rows as $it) {
+            $pedido = $pedidoPorOrden[$it->orden_picking_id] ?? ('Pedido #' . $it->orden_picking_id);
+            $porPedido[$pedido][] = $it;
+        }
+        ksort($porPedido, SORT_NATURAL);
+        foreach ($porPedido as &$items) {
+            usort($items, fn($a, $b) => strcmp($a->nombre, $b->nombre));
+        }
+        unset($items);
+
+        $empNombre = $this->remisionEmpresaNombre($empresaId);
+        $logoHtml  = $this->remisionLogoHtml($empNombre);
+        $css       = $this->remisionCss();
+        $pr        = $this->remisionAmbientesHtml($porPedido);
+        $agotadosHtml = $this->remisionAgotadosHtml($ordenIds);
+
+        $sucursales = $ordenes->pluck('sucursal_entrega')->filter()->unique()->implode(', ') ?: '-';
+        $fechaHoy   = date('d/m/Y');
+        $nPedidos   = count($porPedido);
+
+        $html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'>"
+            . "<title>Liberaci&#243;n &mdash; Planilla {$planilla}</title>"
+            . "<style>{$css}</style></head><body>"
+            . "<div class='no-print'>"
+            . "  <button onclick='window.print()'>&#128424; Imprimir / Guardar PDF</button>"
+            . "  <small style='color:#666'>{$nPedidos} pedido(s) discriminados, orden alfab&#233;tico por producto</small>"
+            . "</div>"
+            . "<div class='header'>"
+            . "  <div class='header-left'>{$logoHtml}<p>LIBERACI&Oacute;N DE PEDIDO</p></div>"
+            . "  <div class='header-right'><strong>Planilla: " . htmlspecialchars($planilla) . "</strong><br>Fecha: {$fechaHoy}</div>"
+            . "</div>"
+            . "<div class='info-grid'>"
+            . "  <span class='campo'><span class='lbl'>Cliente / Sucursal:</span>" . htmlspecialchars($sucursales) . "</span>"
+            . "  <span class='campo'><span class='lbl'>N&ordm; Pedidos:</span>{$nPedidos}</span>"
+            . "  <span class='campo'><span class='lbl'>Total cajas:</span>{$pr['cj']}</span>"
+            . "  <span class='campo'><span class='lbl'>Total unidades:</span>{$pr['und']}</span>"
+            . "  <span class='campo'><span class='lbl'>Fecha:</span>{$fechaHoy}</span>"
+            . "</div>"
+            . "<div class='ambientes-grid'>{$pr['html']}</div>"
+            . $agotadosHtml
+            . "<div class='totales'>TOTAL: {$pr['cj']} cj &mdash; {$pr['und']} und certificadas</div>"
             . "</body></html>";
 
         $body = $res->getBody();
@@ -7470,6 +7939,9 @@ class PickingController extends BaseController
             ->where('estado_certificacion', 'Certificada')
             // Retiro directo (cliente ya lo recogió) — no se mezcla con la remisión.
             ->where('despachado_directo', false)
+            // Ya despachado por ruta (otra planilla de la misma sucursal que ya
+            // salió) — sus referencias no deben reaparecer en una remisión nueva.
+            ->whereNull('estado_despacho')
             ->whereDate('fecha_movimiento', $fechaDirect)
             // No reimprimir aquí una orden ya certificada vía sesión de packing.
             ->whereNotExists(function ($q) {
@@ -7564,11 +8036,6 @@ class PickingController extends BaseController
 {$agotadosHtml}
 {$novedadesHtml}
 <div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>
-<div class='firmas'>
-  <div class='firma-line'>Firma Certificador<br><strong>{$certNombre}</strong></div>
-  <div class='firma-line'>Firma Transportador</div>
-  <div class='firma-line'>Firma Recibido</div>
-</div>
 </body></html>";
 
         $body = $res->getBody();
@@ -7825,6 +8292,78 @@ class PickingController extends BaseController
         }
     }
 
+    /**
+     * Fuente de verdad para cantidad_reservada de UNA fila de inventarios
+     * (producto+ubicación+lote): la recalcula desde CERO como SUMA de lo que
+     * las líneas de picking ACTIVAS todavía deben separar de ahí — en vez de
+     * aplicar un delta manual (sumar/restar por diferencia) que se desincroniza
+     * en cuanto una línea ya pasó por sobre-picking, reversas, o ediciones
+     * previas de cantidad_solicitada.
+     *
+     * Auditoría 2026-09-07 (reservas fantasma reales: inventarios id 12820 y
+     * 13199, ambos con sobrante de reserva sin ningún pedido activo detrás —
+     * el mismo patrón de fondo que ya había generado el incidente de
+     * 2026-08-23 documentado arriba en _releaseReserva). Úsalo SIEMPRE que se
+     * edite/reversa una línea de picking YA reservada, en vez de calcular a
+     * mano cuánto sumar o restar — así el resultado es correcto sin importar
+     * el estado previo de la reserva. NO se usa en la reserva INICIAL al
+     * asignar una línea nueva (esa sí es exacta por construcción — ver
+     * _reservarStockLineaNueva/_reservarInventarioBatch), solo en ediciones
+     * posteriores sobre una línea que ya tenía reserva.
+     */
+    private function _resincronizarReservaInventario(
+        int $empresaId, int $sucursalId, int $productoId, ?int $ubicacionId, ?string $lote, $fechaVencimiento = null
+    ): void {
+        if (!$ubicacionId) return; // sin ubicación no hay fila específica de inventarios que ajustar
+
+        // $fechaVencimiento es OPCIONAL pero recomendado: cuando un producto no maneja
+        // código de lote real (lote NULL/''/N/A repetido para varias filas de la MISMA
+        // ubicación), la única forma de distinguir esos lotes entre sí es la fecha de
+        // vencimiento — sin este parámetro, dos filas "sin lote" con fechas distintas
+        // se tratan como si fueran la misma (bug encontrado en la reconciliación
+        // 2026-09-07, ids 12554/13112 y 12690/13063).
+        $loteNorm  = trim((string)$lote);
+        $loteVacio = ($loteNorm === '' || strtoupper($loteNorm) === 'N/A');
+        $loteComp  = $loteVacio ? '' : $loteNorm;
+        $fvComp    = $fechaVencimiento ? date('Y-m-d', strtotime($fechaVencimiento)) : null;
+
+        $invQuery = Inventario::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->where('producto_id', $productoId)
+            ->where('ubicacion_id', $ubicacionId)
+            ->whereRaw("COALESCE(NULLIF(NULLIF(TRIM(lote), 'N/A'), 'n/a'), '') = ?", [$loteComp]);
+        if ($fvComp) {
+            $invQuery->whereDate('fecha_vencimiento', $fvComp);
+        } else {
+            $invQuery->whereNull('fecha_vencimiento');
+        }
+        $inv = $invQuery->lockForUpdate()->first();
+        if (!$inv) return;
+
+        $pdQuery = Capsule::table('picking_detalles as pd')
+            ->join('orden_pickings as op', 'op.id', '=', 'pd.orden_picking_id')
+            ->join('productos as p', 'p.id', '=', 'pd.producto_id')
+            ->where('pd.producto_id', $productoId)
+            ->where('pd.ubicacion_id', $ubicacionId)
+            ->whereRaw("COALESCE(NULLIF(NULLIF(TRIM(pd.lote), 'N/A'), 'n/a'), '') = ?", [$loteComp])
+            ->whereIn('pd.estado', ['Pendiente', 'EnProceso'])
+            ->whereIn('op.estado', ['Pendiente', 'EnProceso']);
+        if ($fvComp) {
+            $pdQuery->whereDate('pd.fecha_vencimiento', $fvComp);
+        } else {
+            $pdQuery->whereNull('pd.fecha_vencimiento');
+        }
+        $reservaReal = $pdQuery
+            ->selectRaw('COALESCE(SUM(pd.cantidad_solicitada * COALESCE(NULLIF(p.factor_udm,0), p.unidades_caja, 1) - pd.cantidad_pickeada), 0) as total')
+            ->value('total');
+
+        $reservaReal = max(0.0, round((float)$reservaReal, 3));
+        if (abs($reservaReal - (float)$inv->cantidad_reservada) > 0.001) {
+            $inv->cantidad_reservada = $reservaReal;
+            $inv->save();
+        }
+    }
+
     private function _getOrdenesPorPlanillaONumero(int $empresaId, ?int $sucursalId, string $numero)
     {
         $numeroClean = trim($numero);
@@ -7926,6 +8465,9 @@ class PickingController extends BaseController
             'pd.estado',
             'pd.cantidad_solicitada',
             'pd.cantidad_pickeada',
+            'pd.ubicacion_id',
+            'pd.lote',
+            'pd.fecha_vencimiento',
             Capsule::raw("COALESCE(p.codigo_interno, CAST(p.id AS VARCHAR)) as codigo"),
             Capsule::raw("COALESCE(p.nombre, '') as nombre_producto"),
             'op.numero_orden',
@@ -8000,21 +8542,20 @@ class PickingController extends BaseController
                 }
             });
 
-            // Liberar cantidad_reservada de las líneas forzadas
+            // Liberar cantidad_reservada de las líneas forzadas.
+            // BUG CORREGIDO (auditoría 2026-09-07): esta liberación traía TODAS las
+            // filas de inventarios del producto con cantidad_reservada>0 (sin filtrar
+            // por ubicación/lote) y a CADA UNA por separado le restaba
+            // min(reservada_de_esa_fila, cantidad_solicitada_de_la_línea) — si el
+            // producto tenía reserva repartida en 3 ubicaciones, se le podía liberar
+            // hasta 3× la cantidad de esta línea, robándole reserva legítima a otras
+            // líneas/pedidos del mismo producto en otras ubicaciones. Ahora se
+            // recalcula SOLO la fila (producto+ubicación+lote) de la línea forzada,
+            // desde la fuente de verdad (picking_detalles ya actualizado arriba a
+            // 'Faltante' — la línea forzada ya no cuenta en la suma).
             $lineasBlock->each(function ($l) use ($empresaId, $user) {
-                if ((float)$l->cantidad_solicitada <= 0) return;
-                Inventario::where('empresa_id',       $empresaId)
-                    ->where('sucursal_id',             $user->sucursal_id)
-                    ->where('producto_id',             $l->producto_id)
-                    ->where('cantidad_reservada', '>', 0)
-                    ->get()
-                    ->each(function ($inv) use ($l) {
-                        $liberar = min((float)$inv->cantidad_reservada, (float)$l->cantidad_solicitada);
-                        if ($liberar > 0) {
-                            $inv->cantidad_reservada = max(0, (float)$inv->cantidad_reservada - $liberar);
-                            $inv->save();
-                        }
-                    });
+                if (!$l->ubicacion_id) return;
+                $this->_resincronizarReservaInventario($empresaId, $user->sucursal_id, $l->producto_id, $l->ubicacion_id, $l->lote, $l->fecha_vencimiento);
             });
         }
 
@@ -8241,9 +8782,10 @@ class PickingController extends BaseController
 
             foreach ($lineas as $l) {
                 $cantidadPickeada = (float)$l->cantidad_pickeada;
+                $ubicacionParaRecompute = null;
                 if ($cantidadPickeada > 0) {
                     $cantidadDevuelta += $cantidadPickeada;
-                    
+
                     $ubicacionId = $l->ubicacion_id;
                     if (!$ubicacionId) {
                         $existingInv = Inventario::where('empresa_id', $empresaId)
@@ -8310,7 +8852,13 @@ class PickingController extends BaseController
                     }
                     
                     $inv->cantidad += $cantidadPickeada;
-                    $inv->cantidad_reservada += $cantidadPickeada;
+                    // BUG CORREGIDO (auditoría 2026-09-07): ya no se suma cantidad_reservada
+                    // a mano aquí — se recalcula desde cero más abajo
+                    // (_resincronizarReservaInventario), después de resetear la línea a
+                    // EnProceso/cantidad_pickeada=0. Sumar a mano lo revertido dejaba
+                    // reserva de más si luego se re-pickeaba una cantidad distinta (caso
+                    // real: se revirtieron 21.000 und y se re-pickearon 28.000 — quedaban
+                    // 21.000 de reserva fantasma pegadas para siempre).
                     $upcProd = \App\Models\Producto::where('id', $l->producto_id)->value('unidades_caja') ?: 1;
                     $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $upcProd);
                     $inv->saldos = round(fmod((float)$inv->cantidad, $upcProd), 2);
@@ -8339,12 +8887,18 @@ class PickingController extends BaseController
                         'fecha_movimiento'     => date('Y-m-d'),
                         'hora_inicio'          => date('H:i:s'),
                     ]);
+
+                    $ubicacionParaRecompute = $ubicacionId;
                 }
 
                 $l->estado = 'EnProceso';
                 $l->cantidad_pickeada = 0;
                 $l->updated_at = date('Y-m-d H:i:s');
                 $l->save();
+
+                if ($ubicacionParaRecompute) {
+                    $this->_resincronizarReservaInventario($empresaId, $user->sucursal_id, $l->producto_id, $ubicacionParaRecompute, $l->lote, $l->fecha_vencimiento);
+                }
 
                 // BUG CORREGIDO 2026-08-20: esta función revertía la línea a EnProceso pero
                 // nunca limpiaba el registro de picking_faltantes que hubiera quedado de la

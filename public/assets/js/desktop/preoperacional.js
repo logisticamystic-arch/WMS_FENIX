@@ -301,6 +301,12 @@ WMS_MODULES.preoperacional = {
       const r = await API.get(`/preoperacional/${id}`);
       const p = r.data;
       const items = p.items || [];
+      // Las fotos vienen del backend como ruta raíz ('/uploads/preoperacional/...'),
+      // sin el prefijo de la app — al usarlas tal cual en href/src, el navegador
+      // las resolvía contra el dominio (localhost/uploads/...) en vez de
+      // localhost/WMS_FENIX/public/uploads/..., dando 404. Mismo patrón que ya usan
+      // otros módulos (recepcion.js) para anteponer el base path de la app.
+      const up = (u) => u ? (window.location.origin + '/WMS_FENIX/public' + u) : u;
 
       const html = `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;font-size:.85rem;">
@@ -320,7 +326,7 @@ WMS_MODULES.preoperacional = {
                     ${it.calificacion === 'C' ? 'Cumple' : 'No Cumple'}
                   </span>
                 </td>
-                <td>${it.foto_url ? `<a href="${WMS.esc(it.foto_url)}" target="_blank"><i class="fa-solid fa-image"></i> Ver foto</a>` : '-'}</td>
+                <td>${it.foto_url ? `<a href="${WMS.esc(up(it.foto_url))}" target="_blank"><i class="fa-solid fa-image"></i> Ver foto</a>` : '-'}</td>
               </tr>`).join('')}
           </tbody>
         </table>
@@ -329,7 +335,7 @@ WMS_MODULES.preoperacional = {
         <div>
           <b>Fotos de la inspección:</b>
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
-            ${p.fotos.map(f => `<a href="${WMS.esc(f.url)}" target="_blank"><img src="${WMS.esc(f.url)}" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;"></a>`).join('')}
+            ${p.fotos.map(f => `<a href="${WMS.esc(up(f.url))}" target="_blank"><img src="${WMS.esc(up(f.url))}" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;"></a>`).join('')}
           </div>
         </div>` : ''}
       `;

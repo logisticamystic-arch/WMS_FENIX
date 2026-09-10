@@ -36,8 +36,13 @@ WMS_MODULES.picking = {
     this._pickInterval = setInterval(() => {
       if (WMS.currentModule !== 'picking') { this.stopAutoRefresh(); return; }
       const cur = WMS.currentSubModule;
-      if (cur === 'dashboard') this.show_dashboard(true);
-      else                     this.stopAutoRefresh();
+      if (cur !== 'dashboard') { this.stopAutoRefresh(); return; }
+      // No interrumpir si el usuario está escribiendo en el campo de
+      // Referencia — reconstruir el HTML le sacaría el foco/cursor a medio
+      // escribir. Se salta este tick nada más; el siguiente (30s después) lo
+      // vuelve a intentar.
+      if (document.activeElement?.id === 'dash-f-ref') return;
+      this.show_dashboard(true);
     }, 30000);
     this._updateAutoRefreshBadge(true);
   },
@@ -256,28 +261,33 @@ WMS_MODULES.picking = {
     return { str, totalMs: diff, finished: !!end };
   },
 
-  /** Renderiza una fila de planilla de forma reutilizable */
-  _renderPlanillaRow(g, options = {}) {
-    const isDash   = options.isDashboard || false;
-    const planKey  = g.planilla.replace(/[^a-zA-Z0-9]/g, '_');
-    const auxArr  = [...g.auxiliares];
-    const auxList = auxArr.length
-      ? auxArr.map(n => `<span style="display:inline-flex;align-items:center;gap:3px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:3px;padding:1px 6px;font-size:.68rem;font-weight:600;color:#166534;margin:1px;"><i class="fa-solid fa-user" style="font-size:.6rem;"></i>${WMS.esc(n)}</span>`).join(' ')
-      : '<span style="color:#94a3b8;font-size:.72rem;font-style:italic;">Sin asignar</span>';
-    const pct = g.total_lineas > 0 ? Math.round(((g.total_lineas - g.lineas_pendientes) / g.total_lineas) * 100) : 100;
-    const ordenIdsJson = JSON.stringify(g.ordenes.map(o=>o.id));
-    
-    // Tiempos Operacionales Centralizados
-    // Punto de partida: La hora del primer producto separado (g.primer_pick_str)
-    const inicioOp = g.primer_pick_str || g.ordenes[0]?.hora_inicio;
-    const durGlobal = this._getDuration(inicioOp, g.estado === 'Completado' ? (g.ordenes[0]?.updated_at || g.ordenes[0]?.hora_fin) : null);
+  _stChip(s) {
+    const m = { Creado:'status-creada', Pendiente:'status-creada', Asignado:'status-confirmada',
+      EnProceso:'status-en-proceso', Completado:'status-cerrada', Cancelado:'status-cancelada',
+      'En Proceso':'status-en-proceso', Cumplida:'status-cerrada', Parcial:'status-confirmada', Faltante:'status-cancelada' };
+    return `<span class="status-chip ${m[s]||'status-creada'}">${WMS.esc(s)}</span>`;
+  },
 
-    const stChip = s => {
-      const m = { Creado:'status-creada', Pendiente:'status-creada', Asignado:'status-confirmada',
-        EnProceso:'status-en-proceso', Completado:'status-cerrada', Cancelado:'status-cancelada',
-        'En Proceso':'status-en-proceso', Cumplida:'status-cerrada', Parcial:'status-confirmada' };
-      return `<span class="status-chip ${m[s]||'status-creada'}">${WMS.esc(s)}</span>`;
-    };
+  /**
+   * Construye las filas de referencias (agrupadas por ambiente, con atributos
+   * data-sort-* para el ordenamiento por columna) de la tabla inline de una
+   * planilla. Reutilizado por el render inicial y por _resetVistaAmbiente.
+   */
+  _buildProdRows(g, inicioOp) {
+    // Duración por referencia = tiempo desde que se separó la referencia
+    // anterior (por orden cronológico real de separación) hasta esta.
+    // La primera separada de la planilla se mide contra el inicio de la orden.
+    const prevPickTime = {};
+    {
+      let prev = g.ordenes[0]?.hora_inicio || inicioOp;
+      Object.values(g.productos)
+        .filter(pr => pr.hora_fin)
+        .sort((a, b) => a.hora_fin.localeCompare(b.hora_fin))
+        .forEach(pr => {
+          prevPickTime[pr.id] = prev;
+          prev = pr.hora_fin;
+        });
+    }
 
     const prodArray = Object.values(g.productos);
 
@@ -319,30 +329,74 @@ WMS_MODULES.picking = {
       </tr>`;
 
       items.forEach(pr => {
-        const durLine = this._getDuration(inicioOp, pr.hora_fin);
+        const durLine = this._getDuration(prevPickTime[pr.id] || inicioOp, pr.hora_fin);
         let estadoFinal = "Pendiente";
         if (pr.estados.has('EnProceso')) estadoFinal = "En Proceso";
         if (pr.estados.has('Completado') || pr.estados.has('Faltante')) {
-           estadoFinal = (pr.estados.size === 1 || (pr.estados.size === 2 && pr.estados.has('Completado'))) ? "Cumplida" : "Parcial";
+           // "Cumplida" solo cuando TODO se separó (únicamente Completado). Si hay
+           // aunque sea una sub-línea Faltante, se ve "Faltante" — nunca "Cumplida":
+           // mostrar en verde un producto con Agotado real ocultaba el faltante al
+           // auxiliar/supervisor (caso real: Planilla Olivia Arkadia, Salmón Fresco,
+           // 2 de 3 cajas agotadas y la fila se veía como cerrada con éxito).
+           // "Parcial" queda solo para cuando aún hay una línea Pendiente/EnProceso
+           // (p.ej. una referencia agregada después a un pedido ya en proceso).
+           if (!pr.estados.has('Faltante') && pr.estados.size === 1) estadoFinal = "Cumplida";
+           else if (pr.estados.has('Faltante') && (pr.estados.size === 1 || (pr.estados.size === 2 && pr.estados.has('Completado')))) estadoFinal = "Faltante";
+           else estadoFinal = "Parcial";
         }
         const searchTag = WMS.esc(`${pr.nombre || ''} ${pr.codigo_interno || ''} ${pr.id || ''}`).toLowerCase();
+        const separado = Math.max(0, (parseFloat(pr.cantidad_total)||0) - (parseFloat(pr.cantidad_pendiente)||0));
 
         prodRows += `
-        <tr class="prod-item-row" data-ambiente="${ambKey}" data-search="${searchTag}" style="border-bottom:1px solid #e2e8f0;">
+        <tr class="prod-item-row" data-ambiente="${ambKey}" data-search="${searchTag}" style="border-bottom:1px solid #e2e8f0;"
+            data-sort-producto="${WMS.esc(pr.nombre).toLowerCase()}"
+            data-sort-total="${parseFloat(pr.cantidad_total)||0}"
+            data-sort-separado="${separado}"
+            data-sort-faltante="${parseFloat(pr.cantidad_pendiente)||0}"
+            data-sort-auxiliar="${WMS.esc([...pr.auxiliares].join(', ')).toLowerCase()}"
+            data-sort-hora="${pr.hora_fin || ''}"
+            data-sort-duracion="${pr.hora_fin ? durLine.totalMs : -1}"
+            data-sort-estado="${estadoFinal}">
           <td style="padding:5px 8px;"><b style="color:#1e293b">${WMS.esc(pr.nombre)}</b></td>
           <td style="padding:5px 8px;text-align:center;font-weight:600;">${this._fmtCajasDesglose(pr.cantidad_total, pr.unidades_caja, false, pr.factor_udm)}</td>
-          <td style="padding:5px 8px;text-align:center;">${this._fmtCajasDesglose(Math.max(0, (parseFloat(pr.cantidad_total)||0) - (parseFloat(pr.cantidad_pendiente)||0)), pr.unidades_caja, false, pr.factor_udm)}</td>
+          <td style="padding:5px 8px;text-align:center;">${this._fmtCajasDesglose(separado, pr.unidades_caja, false, pr.factor_udm)}</td>
           <td style="padding:5px 8px;text-align:center;color:#dc3545;font-weight:600;">${pr.cantidad_pendiente > 0 ? this._fmtCajasDesglose(pr.cantidad_pendiente, pr.unidades_caja, false, pr.factor_udm) : '<span style="color:#94a3b8;">0</span>'}</td>
           <td style="padding:5px 8px;text-align:center;font-size:11px;">${WMS.esc([...pr.auxiliares].join(', ') || '-')}</td>
           <td style="padding:5px 8px;text-align:center;font-size:11px;color:#2563eb;font-weight:700;">${pr.hora_fin || '-'}</td>
           <td style="padding:5px 8px;text-align:center;font-size:11px;color:#64748b;font-family:monospace;">${pr.hora_fin ? (durLine.str || '00:00:00') : '-'}</td>
-          <td style="padding:5px 8px;text-align:center;">${stChip(estadoFinal)}</td>
+          <td style="padding:5px 8px;text-align:center;">${this._stChip(estadoFinal)}</td>
           <td style="padding:5px 8px;text-align:center;">
-            ${(estadoFinal === 'Cumplida' || estadoFinal === 'Parcial') ? `<button class="btn btn-sm" style="background:#fff3cd; color:#856404; border:1px solid #ffeeba; padding:2px 6px; font-size:10px; cursor:pointer;" onclick="WMS_MODULES.picking.liberarLinea('${g.planilla}', ${pr.id})" title="Liberar/Reversar Línea"><i class="fa-solid fa-rotate-left"></i></button>` : ''}
+            ${(estadoFinal === 'Cumplida' || estadoFinal === 'Parcial' || estadoFinal === 'Faltante') ? `<button class="btn btn-sm" style="background:#fff3cd; color:#856404; border:1px solid #ffeeba; padding:2px 6px; font-size:10px; cursor:pointer;" onclick="WMS_MODULES.picking.liberarLinea('${g.planilla}', ${pr.id})" title="Liberar/Reversar Línea"><i class="fa-solid fa-rotate-left"></i></button>` : ''}
           </td>
         </tr>`;
       });
     });
+
+    return prodRows;
+  },
+
+  /** Renderiza una fila de planilla de forma reutilizable */
+  _renderPlanillaRow(g, options = {}) {
+    const isDash   = options.isDashboard || false;
+    const planKey  = g.planilla.replace(/[^a-zA-Z0-9]/g, '_');
+    const auxArr  = [...g.auxiliares];
+    const auxList = auxArr.length
+      ? auxArr.map(n => `<span style="display:inline-flex;align-items:center;gap:3px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:3px;padding:1px 6px;font-size:.68rem;font-weight:600;color:#166534;margin:1px;"><i class="fa-solid fa-user" style="font-size:.6rem;"></i>${WMS.esc(n)}</span>`).join(' ')
+      : '<span style="color:#94a3b8;font-size:.72rem;font-style:italic;">Sin asignar</span>';
+    const pct = g.total_lineas > 0 ? Math.round(((g.total_lineas - g.lineas_pendientes) / g.total_lineas) * 100) : 100;
+    const ordenIdsJson = JSON.stringify(g.ordenes.map(o=>o.id));
+    
+    // Tiempos Operacionales Centralizados
+    // Punto de partida: La hora del primer producto separado (g.primer_pick_str)
+    const inicioOp = g.primer_pick_str || g.ordenes[0]?.hora_inicio;
+    const durGlobal = this._getDuration(inicioOp, g.estado === 'Completado' ? (g.ordenes[0]?.updated_at || g.ordenes[0]?.hora_fin) : null);
+
+    // Cache para poder redibujar/reordenar la tabla de referencias sin recargar todo (ver _ordenarTablaPlanillaInline / _resetVistaAmbiente)
+    this._planRowsCache = this._planRowsCache || {};
+    this._planRowsCache[planKey] = g;
+
+    const prodArray = Object.values(g.productos);
+    const prodRows = this._buildProdRows(g, inicioOp);
 
     // Números de pedido + referencias por pedido, para mostrar junto a la fecha.
     // numero_pedido/numero_factura/numero_orden: mismo criterio de fallback usado
@@ -435,7 +489,7 @@ WMS_MODULES.picking = {
       </td>
       <td style="text-align:center;">
         <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-          ${stChip(g.estado)}
+          ${this._stChip(g.estado)}
           ${todasCertificadas ? `<span style="display:inline-flex;align-items:center;gap:3px;background:#fce7f3;color:#be185d;border:1px solid #fbcfe8;padding:2px 8px;border-radius:99px;font-size:9.5px;font-weight:700;white-space:nowrap;"><i class="fa-solid fa-stamp"></i> Certificado</span>` : ''}
         </div>
       </td>
@@ -480,6 +534,9 @@ WMS_MODULES.picking = {
             ` : `
               <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.picking.imprimirRemisionPlanilla('${WMS.esc(g.planilla)}')" title="Imprimir la remisión de esta planilla">
                 <i class="fa-solid fa-print"></i> Imprimir Remisión
+              </button>
+              <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.picking.imprimirLiberacionPlanilla('${WMS.esc(g.planilla)}')" title="Imprimir liberación: referencias discriminadas por pedido, orden alfabético por producto">
+                <i class="fa-solid fa-file-invoice"></i> Imprimir Liberación
               </button>
               ${(WMS.user?.rol === 'Admin' || WMS.user?.rol === 'Supervisor') ? `
                 <button class="btn btn-sm btn-outline-danger" onclick="WMS_MODULES.picking.anularCertificacionPlanilla('${WMS.esc(g.planilla)}')" title="Anula la certificación — vuelve a habilitar Editar y Reabrir">
@@ -571,19 +628,32 @@ WMS_MODULES.picking = {
               <span style="color:#64748b;font-weight:600;" id="count-plan-${planKey}">
                 Total: <strong>${prodArray.length}</strong> referencias
               </span>
+              <button class="btn btn-xs btn-light" style="font-size:10px;padding:3px 8px;" title="Quitar ordenamiento manual y volver a agrupar por ambiente" onclick="WMS_MODULES.picking._resetVistaAmbiente('${planKey}')">
+                <i class="fa-solid fa-layer-group"></i> Por Ambiente
+              </button>
             </div>
           </div>
           <table style="width:100%;border-collapse:collapse;font-size:11px;">
             <thead style="background:#f1f5f9;color:#64748b;font-weight:700;text-transform:uppercase;font-size:10px;">
               <tr>
-                <th style="padding:6px 8px;">Producto</th>
-                <th style="padding:6px 8px;text-align:center;" title="Cantidad total solicitada en cajas y su equivalente UND/TOTAL">Total Solicitado</th>
-                <th style="padding:6px 8px;text-align:center;" title="Cantidad efectivamente separada">Separado</th>
-                <th style="padding:6px 8px;text-align:center;color:#dc3545;" title="Restante por separar (por agotado o pendiente de picking)">Total Faltante</th>
-                <th style="padding:6px 8px;text-align:center;">Auxiliar</th>
-                <th style="padding:6px 8px;text-align:center;color:#2563eb;">Hr. Separado</th>
-                <th style="padding:6px 8px;text-align:center;">Duración</th>
-                <th style="padding:6px 8px;text-align:center;">Estado</th>
+                ${(() => {
+                  const th = (label, campo, opts = {}) => {
+                    const align = campo === 'producto' ? '' : 'text-align:center;';
+                    const color = opts.color ? `color:${opts.color};` : '';
+                    const title = opts.title ? ` title="${WMS.esc(opts.title)}"` : '';
+                    return `<th style="padding:6px 8px;${align}${color}cursor:pointer;user-select:none;"${title} onclick="WMS_MODULES.picking._ordenarTablaPlanillaInline('${planKey}','${campo}')">${label} <i id="sort-icon-${planKey}-${campo}" class="fa-solid fa-sort" style="opacity:.35;font-size:9px;margin-left:2px;"></i></th>`;
+                  };
+                  return [
+                    th('Producto', 'producto'),
+                    th('Total Solicitado', 'total', { title: 'Cantidad total solicitada en cajas y su equivalente UND/TOTAL' }),
+                    th('Separado', 'separado', { title: 'Cantidad efectivamente separada' }),
+                    th('Total Faltante', 'faltante', { color: '#dc3545', title: 'Restante por separar (por agotado o pendiente de picking)' }),
+                    th('Auxiliar', 'auxiliar'),
+                    th('Hr. Separado', 'hora', { color: '#2563eb' }),
+                    th('Duración', 'duracion', { title: 'Tiempo desde que se separó la referencia anterior hasta que se separó esta' }),
+                    th('Estado', 'estado'),
+                  ].join('');
+                })()}
                 <th style="padding:6px 8px;text-align:center;"><i class="fa-solid fa-gear"></i></th>
               </tr>
             </thead>
@@ -612,18 +682,74 @@ WMS_MODULES.picking = {
       }
     });
 
-    const ambHeaders = container.querySelectorAll('tr.ambiente-header-row');
-    ambHeaders.forEach(h => {
-      const amb = h.dataset.ambiente;
-      const childRows = container.querySelectorAll(`tr.prod-item-row[data-ambiente="${amb}"]`);
-      const hasVisible = Array.from(childRows).some(cr => cr.style.display !== 'none');
-      h.style.display = hasVisible ? '' : 'none';
-    });
+    // En modo "ordenado por columna" los encabezados de ambiente quedan ocultos
+    // (la lista está aplanada) — no reaparecerlos al filtrar.
+    if (!(this._sortState && this._sortState[planKey])) {
+      const ambHeaders = container.querySelectorAll('tr.ambiente-header-row');
+      ambHeaders.forEach(h => {
+        const amb = h.dataset.ambiente;
+        const childRows = container.querySelectorAll(`tr.prod-item-row[data-ambiente="${amb}"]`);
+        const hasVisible = Array.from(childRows).some(cr => cr.style.display !== 'none');
+        h.style.display = hasVisible ? '' : 'none';
+      });
+    }
 
     const countEl = document.getElementById(`count-plan-${planKey}`);
     if (countEl) {
       countEl.innerHTML = q ? `Mostrando <strong>${visibleCount}</strong> de ${rows.length} referencias` : `Total: <strong>${rows.length}</strong> referencias`;
     }
+  },
+
+  /** Ordena las referencias de una planilla desplegada por la columna clickeada (asc/desc, toggle). Abandona el agrupado por ambiente al ordenar. */
+  _ordenarTablaPlanillaInline(planKey, campo) {
+    const tbody = document.getElementById(`tbl-plan-body-${planKey}`);
+    if (!tbody) return;
+
+    this._sortState = this._sortState || {};
+    const prev = this._sortState[planKey];
+    const dir = (prev && prev.campo === campo && prev.dir === 'asc') ? 'desc' : 'asc';
+    this._sortState[planKey] = { campo, dir };
+
+    const numericFields = ['total', 'separado', 'faltante', 'duracion'];
+    const isNum = numericFields.includes(campo);
+    const attr = `data-sort-${campo}`;
+    const rows = Array.from(tbody.querySelectorAll('tr.prod-item-row'));
+    rows.sort((a, b) => {
+      const va = a.getAttribute(attr) || '';
+      const vb = b.getAttribute(attr) || '';
+      const cmp = isNum ? (parseFloat(va) - parseFloat(vb)) : va.localeCompare(vb);
+      return dir === 'asc' ? cmp : -cmp;
+    });
+
+    tbody.querySelectorAll('tr.ambiente-header-row').forEach(h => h.style.display = 'none');
+    rows.forEach(r => tbody.appendChild(r));
+
+    this._pintarIconosOrden(planKey, campo, dir);
+  },
+
+  _pintarIconosOrden(planKey, campoActivo, dir) {
+    ['producto','total','separado','faltante','auxiliar','hora','duracion','estado'].forEach(c => {
+      const el = document.getElementById(`sort-icon-${planKey}-${c}`);
+      if (!el) return;
+      if (c === campoActivo) {
+        el.className = `fa-solid fa-sort-${dir === 'asc' ? 'up' : 'down'}`;
+        el.style.opacity = '1';
+      } else {
+        el.className = 'fa-solid fa-sort';
+        el.style.opacity = '.35';
+      }
+    });
+  },
+
+  /** Restaura la vista agrupada por ambiente (quita el ordenamiento manual de columnas). */
+  _resetVistaAmbiente(planKey) {
+    const g = this._planRowsCache && this._planRowsCache[planKey];
+    if (!g) return;
+    const inicioOp = g.primer_pick_str || g.ordenes[0]?.hora_inicio;
+    const tbody = document.getElementById(`tbl-plan-body-${planKey}`);
+    if (tbody) tbody.innerHTML = this._buildProdRows(g, inicioOp);
+    if (this._sortState) delete this._sortState[planKey];
+    this._pintarIconosOrden(planKey, null, null);
   },
 
   // ── PEDIDOS / PLANILLAS ───────────────────────────────────────────────────
@@ -955,7 +1081,7 @@ WMS_MODULES.picking = {
               </select>
             </div>
             <div>
-              <select id="pick-est" class="form-control" onchange="WMS_MODULES.picking._pedidosFiltros.estado=this.value;WMS_MODULES.picking._cargarPedidos()">
+              <select id="pick-est" class="form-control" onchange="WMS_MODULES.picking._pedidosFiltros.estado=this.value;if(this.value)WMS_MODULES.picking._pedidosFiltros.solo_hoy=0;WMS_MODULES.picking._cargarPedidos()">
                 <option value="">Estado: Activos</option>
                 <option value="Pendiente" ${f.estado==='Pendiente'?'selected':''}>Pendiente</option>
                 <option value="EnProceso" ${f.estado==='EnProceso'?'selected':''}>En Proceso</option>
@@ -1562,14 +1688,35 @@ WMS_MODULES.picking = {
   // respuesta, así que el escritorio mostraba "Línea confirmada" (falso éxito)
   // sin haber confirmado nada realmente. Se restaura el manejo, igual que ya
   // existe en el móvil (confirmarPKActual).
-  async _enviarConfirmarConsolidado(lineaId, cajasTomadas, saldosTomados, fechaVencManual = null) {
+  async _enviarConfirmarConsolidado(lineaId, cajasTomadas, saldosTomados, fechaVencManual = null, confirmaParcial = false) {
     try {
       const r = await API.post('/picking/confirmar-consolidado', {
         ids: String(lineaId),
         cajas_tomadas: cajasTomadas,
         saldos_tomados: saldosTomados,
         fecha_vencimiento_manual: fechaVencManual,
+        confirma_parcial: confirmaParcial,
       });
+      // Blindaje 2026-09-07 (a pedido explícito, caso real: Planilla Olivia Arkadia,
+      // Salmón Fresco): antes, separar menos de lo solicitado cerraba la línea sola
+      // marcando el resto como Agotado, sin que el auxiliar lo pidiera. Ahora el
+      // backend rechaza el faltante silencioso (needs_confirm_parcial) y aquí se le
+      // pregunta explícitamente antes de reenviar con confirma_parcial=true.
+      if (r.status === 'needs_confirm_parcial') {
+        const { isConfirmed } = await Swal.fire({
+          title: '<span style="color:#d97706;"><i class="fa-solid fa-triangle-exclamation"></i> Separación incompleta</span>',
+          html: `<p style="font-size:13px;">Vas a separar <b>${WMS.formatNum(r.tomado_und)}</b> de <b>${WMS.formatNum(r.solicitado_und)}</b> solicitadas.</p>
+                 <p style="font-size:13px;">La diferencia (<b>${WMS.formatNum(r.faltante_und)}</b>) quedará registrada como <b style="color:#dc2626;">Agotado</b>.</p>
+                 <p style="font-size:12px;color:#64748b;">Si aún vas a buscar el resto, cancela y no confirmes todavía.</p>`,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'Sí, registrar el faltante',
+          cancelButtonText: 'Cancelar, sigo buscando',
+          confirmButtonColor: '#d97706',
+        });
+        if (!isConfirmed) return;
+        return this._enviarConfirmarConsolidado(lineaId, cajasTomadas, saldosTomados, fechaVencManual, true);
+      }
       if (r.status === 'needs_fecha_vencimiento') {
         const { value: fecha, isConfirmed } = await Swal.fire({
           title: '<i class="fa-solid fa-calendar-days" style="color:#dc2626;"></i> Fecha de vencimiento requerida',
@@ -2155,6 +2302,21 @@ WMS_MODULES.picking = {
     params.append('planilla', planilla);
     WMS.toast('info', `Generando remisión (Planilla ${planilla})...`);
     this._openPrint(`${API_BASE}/picking/certificacion/remision-multiple?${params}`, 'Remisión');
+  },
+
+  /** Imprime la "Liberación" de una planilla YA certificada: a diferencia de la
+   *  remisión (que consolida cantidades por producto sin importar de qué pedido
+   *  vinieron), aquí las referencias quedan discriminadas por pedido (una sección
+   *  por cada pedido del cliente) y ordenadas alfabéticamente por producto. */
+  imprimirLiberacionPlanilla(planilla) {
+    if (!planilla) {
+      WMS.toast('warning', 'Planilla inválida.');
+      return;
+    }
+    const params = new URLSearchParams();
+    params.append('planilla', planilla);
+    WMS.toast('info', `Generando liberación (Planilla ${planilla})...`);
+    this._openPrint(`${API_BASE}/picking/certificacion/liberacion-planilla?${params}`, 'Liberación');
   },
 
   /**
@@ -4207,6 +4369,22 @@ WMS_MODULES.picking = {
             return;
           }
         }
+
+        // Aviso de stock insuficiente para esta ola (a pedido explícito de Camilo,
+        // 2026-09-07): SOLO informativo — nunca detiene la asignación ni la
+        // separación. No usa confirm() a propósito: el auxiliar puede y debe poder
+        // separar físicamente aunque el sistema no tenga inventario suficiente
+        // registrado (ver confirmarConsolidado, ya lo permite hoy).
+        const sinStock = pd.sin_stock_suficiente || [];
+        if (sinStock.length > 0) {
+          const detalle = sinStock.map(s =>
+            `${WMS.esc(s.producto_nombre)}: necesita ${WMS.formatNum(s.cantidad_necesaria)}, disponible ${WMS.formatNum(s.cantidad_disponible)} (pedidos: ${s.pedidos.join(', ')})`
+          ).join('<br>');
+          WMS.toast('warning',
+            `${sinStock.length} producto(s) no van a alcanzar con el stock actual — la asignación continúa igual:<br>${detalle}`,
+            'Stock insuficiente para esta ola'
+          );
+        }
       } catch (_pf) { /* pre-flight no disponible — continuar */ }
     }
 
@@ -5838,6 +6016,202 @@ WMS_MODULES.picking = {
     }
   },
 
+  /**
+   * Clasifica cada sucursal (agregando TODOS sus ambientes/planillas) en uno
+   * de 3 estados según su avance real: 0% = Por Iniciar, 100% = Terminada,
+   * cualquier punto intermedio = En Ejecución. Estos 3 grupos son mutuamente
+   * excluyentes por diseño — "En Ejecución" nunca incluye una sucursal ya
+   * terminada ni una que no ha arrancado, tal como se pidió explícitamente.
+   */
+  _calcularPuntosPorSucursal(planillas) {
+    const porSucursal = {};
+    (planillas || []).forEach(p => {
+      const suc = p.sucursal || p.cliente || 'Sin sucursal';
+      if (!porSucursal[suc]) porSucursal[suc] = { c: 0, t: 0 };
+      porSucursal[suc].c += p.lineas_completadas || 0;
+      porSucursal[suc].t += p.total_lineas || 0;
+    });
+
+    const buckets = { terminadas: [], porIniciar: [], enEjecucion: [] };
+    Object.keys(porSucursal).forEach(suc => {
+      const { c, t } = porSucursal[suc];
+      if (!t) return;
+      const pct = Math.round(c / t * 100);
+      const item = { sucursal: suc, c, t, pct };
+      if (c >= t)      buckets.terminadas.push(item);
+      else if (c <= 0) buckets.porIniciar.push(item);
+      else             buckets.enEjecucion.push(item);
+    });
+    buckets.terminadas.sort((a, b) => a.sucursal.localeCompare(b.sucursal));
+    buckets.porIniciar.sort((a, b) => a.sucursal.localeCompare(b.sucursal));
+    buckets.enEjecucion.sort((a, b) => a.pct - b.pct);
+    return buckets;
+  },
+
+  /** Modal con el listado de sucursales de una de las 3 tarjetas dinámicas
+   *  (Por Iniciar / En Ejecución / Terminadas) — usa los datos ya cargados
+   *  del dashboard, sin pegarle otra vez al backend. */
+  _verPuntosSucursal(bucket) {
+    const d = this._dashboardDataCache;
+    if (!d) return;
+    const puntos = this._calcularPuntosPorSucursal(d.planillas_activas || []);
+    const items = puntos[bucket] || [];
+    const labels = { porIniciar: 'Por Iniciar', enEjecucion: 'En Ejecución', terminadas: 'Terminadas' };
+    const colorPct = pct => pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#dc2626';
+
+    const rows = items.length ? items.map(p => `
+      <tr>
+        <td style="text-align:left;">${WMS.esc(p.sucursal)}</td>
+        <td class="text-center">${p.c}/${p.t}</td>
+        <td class="text-center" style="font-weight:800;color:${colorPct(p.pct)};">${p.pct}%</td>
+      </tr>`).join('') : '<tr><td colspan="3" class="table-empty">Sin sucursales en este estado</td></tr>';
+
+    Swal.fire({
+      title: `<i class="fa-solid fa-list-check"></i> Sucursales — ${labels[bucket] || bucket}`,
+      width: '520px',
+      html: `<div style="max-height:400px;overflow-y:auto;text-align:left;">
+        <table class="erp-table" style="font-size:12px;width:100%;">
+          <thead><tr><th>Sucursal</th><th class="text-center">Líneas</th><th class="text-center">%</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`,
+      confirmButtonText: 'Cerrar',
+      confirmButtonColor: '#0F4C81',
+    });
+  },
+
+  /**
+   * Avance de separación por ambiente (Seco/Refrigerado/Congelado), con % y
+   * detalle de qué SUCURSALES quedan pendientes en cada ambiente y su propio %
+   * (click en una sucursal abre el detalle de referencias pendientes). Solo
+   * cuenta planillas reales (planilla_numero no nulo) — un pedido suelto
+   * abandonado (sin planilla, ver blindaje en dashboard()) no aparece aquí.
+   * Reutiliza datos que /picking/dashboard YA calcula (progreso_ambiente y
+   * planillas_activas[].ambientes) — mismo criterio de "completado" que usa
+   * el resto del dashboard (Completada/Completado/Faltante cuenta como hecho).
+   * Mismo patrón visual (barras de progreso) que ya usa tv-picking.html.
+   */
+  _renderAmbienteDashboardHtml(d) {
+    const progreso = d.progreso_ambiente || {};
+    const planillas = d.planillas_activas || [];
+    const items = [
+      { key: 'seco',         icon: '☀️', name: 'SECO' },
+      { key: 'refrigerado',  icon: '❄️', name: 'REFRIGERADO' },
+      { key: 'congelado',    icon: '🧊', name: 'CONGELADO' },
+    ];
+
+    const colorPct = pct => pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#dc2626';
+
+    const columnas = items.map(it => {
+      const g = progreso[it.key] || { c: 0, t: 0 };
+      if (!g.t) {
+        return `<div style="flex:1;min-width:220px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span style="font-size:18px;">${it.icon}</span>
+            <span style="font-weight:800;font-size:13px;color:#1e293b;">${it.name}</span>
+          </div>
+          <div style="color:#94a3b8;font-size:11px;font-style:italic;">Sin líneas activas en este ambiente</div>
+        </div>`;
+      }
+      const pct = Math.round(g.c / g.t * 100);
+      const col = colorPct(pct);
+
+      // Agrupado por SUCURSAL (no por planilla — una sucursal puede tener
+      // varias planillas activas a la vez) — TODAS las sucursales con actividad
+      // en este ambiente, incluidas las que ya llegaron a 100% (antes solo se
+      // listaban las que tenían pendientes, ocultando las ya terminadas).
+      // Ordenadas de menor a mayor % (las más atrasadas primero, las 100% al final).
+      const porSucursal = {};
+      planillas.forEach(p => {
+        const a = (p.ambientes || {})[it.key];
+        if (!a || !a.t) return;
+        const suc = p.sucursal || p.cliente || 'Sin sucursal';
+        if (!porSucursal[suc]) porSucursal[suc] = { c: 0, t: 0 };
+        porSucursal[suc].c += a.c;
+        porSucursal[suc].t += a.t;
+      });
+      const sucursales = Object.keys(porSucursal)
+        .map(suc => ({ sucursal: suc, c: porSucursal[suc].c, t: porSucursal[suc].t, pct: Math.round(porSucursal[suc].c / porSucursal[suc].t * 100) }))
+        .sort((x, y) => x.pct - y.pct);
+
+      // Grid de 3 columnas fijas (nombre | c/t | %) para que todas las filas
+      // queden alineadas sin importar el largo del nombre de la sucursal.
+      const listaHtml = sucursales.length
+        ? sucursales.map(p => `
+          <div onclick="WMS_MODULES.picking._verPendientesAmbiente('${WMS.esc(p.sucursal).replace(/'/g, "\\'")}','${it.key}')"
+            style="display:grid;grid-template-columns:1fr 56px 44px;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;"
+            title="Ver referencias pendientes de ${WMS.esc(p.sucursal)}">
+            <span style="font-weight:700;color:#0F4C81;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${WMS.esc(p.sucursal)}</span>
+            <span style="color:#64748b;font-size:10px;text-align:right;">${p.c}/${p.t}</span>
+            <span style="font-weight:800;font-size:11px;text-align:right;color:${colorPct(p.pct)};">${p.pct}%</span>
+          </div>`).join('')
+        : '<div style="color:#94a3b8;font-size:11px;font-style:italic;">Sin sucursales con líneas en este ambiente</div>';
+
+      return `<div style="flex:1;min-width:220px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="font-size:18px;">${it.icon}</span>
+          <span style="font-weight:800;font-size:13px;color:#1e293b;">${it.name}</span>
+          <span style="margin-left:auto;font-weight:900;font-size:16px;color:${col};">${pct}%</span>
+        </div>
+        <div style="height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-bottom:6px;">
+          <div style="height:100%;width:${pct}%;background:${col};border-radius:99px;transition:width .6s ease;"></div>
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:10px;">${g.c} / ${g.t} líneas separadas</div>
+        <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;margin-bottom:6px;">Sucursales (${sucursales.length}) — click para ver detalle</div>
+        <div style="max-height:170px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">${listaHtml}</div>
+      </div>`;
+    }).join('');
+
+    return `<div class="card" style="margin:20px 0;">
+      <div class="card-header"><span class="card-title"><i class="fa-solid fa-chart-simple"></i> Avance de Separación por Ambiente</span></div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap;padding:16px 20px;">${columnas}</div>
+    </div>`;
+  },
+
+  /** Modal con el detalle de referencias pendientes de separar para una
+   *  sucursal + ambiente puntuales (click en una fila del bloque de Avance
+   *  por Ambiente). Usa el mismo rango de fechas activo en el dashboard. */
+  async _verPendientesAmbiente(sucursal, ambienteKey) {
+    const fechaInicio = document.getElementById('dash-f-ini')?.value || '';
+    const fechaFin    = document.getElementById('dash-f-fin')?.value || '';
+    const ambLabel = { seco: 'Seco', refrigerado: 'Refrigerado', congelado: 'Congelado' }[ambienteKey] || ambienteKey;
+
+    WMS.spinner();
+    try {
+      const qs = `sucursal=${encodeURIComponent(sucursal)}&ambiente=${encodeURIComponent(ambienteKey)}&fecha_inicio=${encodeURIComponent(fechaInicio)}&fecha_fin=${encodeURIComponent(fechaFin)}`;
+      const r = await API.get('/picking/dashboard/pendientes-ambiente?' + qs);
+      const items = r.data || r || [];
+      WMS.spinner(false);
+
+      const rows = items.length ? items.map(it => {
+        const falta = Math.max(0, (it.cantidad_solicitada || 0) - (it.cantidad_pickeada || 0));
+        return `<tr>
+          <td style="text-align:left;"><code style="font-size:10px;">${WMS.esc(it.codigo)}</code> ${WMS.esc(it.producto)}</td>
+          <td class="text-center">${WMS.esc(it.planilla || '-')}</td>
+          <td class="text-center">${WMS.formatNum(it.cantidad_solicitada)}</td>
+          <td class="text-center">${WMS.formatNum(it.cantidad_pickeada)}</td>
+          <td class="text-center" style="color:#dc2626;font-weight:700;">${WMS.formatNum(falta)}</td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="5" class="table-empty">Sin referencias pendientes</td></tr>';
+
+      Swal.fire({
+        title: `<i class="fa-solid fa-boxes-stacked"></i> Pendientes — ${WMS.esc(sucursal)} (${ambLabel})`,
+        width: '720px',
+        html: `<div style="max-height:400px;overflow-y:auto;text-align:left;">
+          <table class="erp-table" style="font-size:12px;width:100%;">
+            <thead><tr><th>Referencia</th><th class="text-center">Planilla</th><th class="text-center">Solicitado</th><th class="text-center">Separado</th><th class="text-center">Falta</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`,
+        confirmButtonText: 'Cerrar',
+        confirmButtonColor: '#0F4C81',
+      });
+    } catch (e) {
+      WMS.spinner(false);
+      WMS.toast('error', 'Error al cargar el detalle de pendientes');
+    }
+  },
+
   async show_dashboard(silent = false) {
     WMS.currentSubModule = 'dashboard';
     const isStandalone = document.body.classList.contains('standalone-mode');
@@ -5846,7 +6220,7 @@ WMS_MODULES.picking = {
         <span class="spin"><i class="fa-solid fa-rotate-right"></i></span> Actualizar
       </button>
       <span style="font-size:.72rem;color:rgba(255,255,255,.5);margin-left:8px">
-        <span class="pick-live-dot"></span> Monitoreo en vivo ${isStandalone ? '(Auto 5 min)' : ''}
+        <span class="pick-live-dot"></span> Monitoreo en vivo ${isStandalone ? '(Auto 5 min)' : '(Auto 30s)'}
       </span>
       ${!isStandalone ? `
       <button class="btn btn-warning btn-sm" onclick="WMS_MODULES.picking._openTVDashboard()" style="margin-left:10px;font-weight:700;">
@@ -5959,6 +6333,18 @@ WMS_MODULES.picking = {
 
       this._currentRankingData = d.ranking_auxiliares || [];
 
+      // Tarjetas dinámicas por SUCURSAL (a pedido explícito, 2026-09-07): antes
+      // "Por Iniciar/En Ejecución/Terminadas" contaban ÓRDENES por su estado
+      // crudo (Pendiente/EnProceso/Completada), que no distinguía si una
+      // sucursal ya tenía algo separado. Ahora clasifican por el AVANCE REAL de
+      // cada sucursal sumando todos sus ambientes: 0% = Por Iniciar, 100% =
+      // Terminada, cualquier punto intermedio = En Ejecución (nunca cuenta ahí
+      // una sucursal ya terminada ni una que no ha arrancado). Se cachea `d`
+      // para que el click en cada tarjeta pueda listar el detalle sin otra
+      // llamada al backend.
+      this._dashboardDataCache = d;
+      const puntosSucursal = this._calcularPuntosPorSucursal(d.planillas_activas || []);
+
       WMS.setContent(`
 <div class="pro-dashboard">
   <div class="filter-bar dashboard-filters" style="background:#fff;padding:16px;border-radius:4px;margin-bottom:20px;box-shadow:0 4px 20px rgba(0,0,0,.04);display:flex;flex-wrap:wrap;gap:18px;align-items:center;border:1px solid #f1f5f9;">
@@ -6018,20 +6404,20 @@ WMS_MODULES.picking = {
          <div style="font-size:11px; color:#94a3b8;">Líneas procesadas hoy</div>
        </div>
     </div>
-    <div class="pro-kpi-card accent-amber">
-      <div class="pro-kpi-value">${stCount.Pendiente}</div>
+    <div class="pro-kpi-card accent-amber" style="cursor:pointer;" onclick="WMS_MODULES.picking._verPuntosSucursal('porIniciar')" title="Ver sucursales">
+      <div class="pro-kpi-value">${puntosSucursal.porIniciar.length}</div>
       <div class="pro-kpi-label">POR INICIAR</div>
-      <div class="pro-kpi-sub">Planillas pendientes</div>
+      <div class="pro-kpi-sub">Sucursales sin separar nada aún</div>
     </div>
-    <div class="pro-kpi-card accent-blue">
-      <div class="pro-kpi-value">${stCount.EnProceso}</div>
+    <div class="pro-kpi-card accent-blue" style="cursor:pointer;" onclick="WMS_MODULES.picking._verPuntosSucursal('enEjecucion')" title="Ver sucursales">
+      <div class="pro-kpi-value">${puntosSucursal.enEjecucion.length}</div>
       <div class="pro-kpi-label">EN EJECUCIÓN</div>
-      <div class="pro-kpi-sub">Picking activo</div>
+      <div class="pro-kpi-sub">Sucursales con separación iniciada</div>
     </div>
-    <div class="pro-kpi-card accent-green">
-      <div class="pro-kpi-value">${stCount.Completado}</div>
+    <div class="pro-kpi-card accent-green" style="cursor:pointer;" onclick="WMS_MODULES.picking._verPuntosSucursal('terminadas')" title="Ver sucursales">
+      <div class="pro-kpi-value">${puntosSucursal.terminadas.length}</div>
       <div class="pro-kpi-label">TERMINADAS</div>
-      <div class="pro-kpi-sub">Finalizadas hoy</div>
+      <div class="pro-kpi-sub">Sucursales 100% completas</div>
     </div>
     <div class="pro-kpi-card accent-red">
       <div class="pro-kpi-value">${(d.alertas_faltantes||[]).length}</div>
@@ -6039,6 +6425,8 @@ WMS_MODULES.picking = {
       <div class="pro-kpi-sub">Alertas críticas</div>
     </div>
   </div>
+
+  ${this._renderAmbienteDashboardHtml(d)}
 
   <div style="display:grid;grid-template-columns:1fr 2fr;gap:20px;margin:20px 0;">
     <!-- Alertas de Faltantes -->
@@ -6107,6 +6495,12 @@ WMS_MODULES.picking = {
   </div>
 </div>`);
       this._initDashboardCharts(d.series || null, stCount);
+      // Auto-actualiza cada 30s con los filtros actuales (fecha/sucursal/auxiliar/
+      // planilla/referencia/estado) — reutiliza el mecanismo ya existente
+      // (startAutoRefresh) que solo estaba armado pero nunca se invocaba desde
+      // aquí. En modo standalone (TV embebido) ya tiene su propio refresh cada
+      // 5 min más arriba — no se duplica.
+      if (!isStandalone) this.startAutoRefresh();
     } catch(e) {
       console.error(e);
       WMS.setContent('<div class="m-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>Error cargando dashboard</p></div>');

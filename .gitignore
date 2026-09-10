@@ -39,6 +39,7 @@ Thumbs.db
 public/uploads/devoluciones/*.jpg
 public/uploads/devoluciones/*.png
 public/uploads/devoluciones/*.jpeg
+public/uploads/firmas/
 
 # ── Proyectos legacy ─────────────────────────────────────────
 WMS_PROORIENTE/
@@ -64,3 +65,10 @@ WMS FENIX/
 /fix_ambientes.php
 /fix_column.php
 /delete_old_picking.php
+
+# ── Scripts de scratch con credenciales de BD hardcodeadas ────
+scratch/test_db_prod*.php
+
+# ── Herramienta de túnel (binario, no código) ──────────────────
+/cloudflared.exe
+/cloudflared_tunnel.log

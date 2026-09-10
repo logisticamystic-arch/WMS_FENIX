@@ -1148,17 +1148,31 @@ WMS_MODULES.reportes = {
           onFiltrar:'WMS_MODULES.reportes.show_picking()'})}
         <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Reporte de Picking por Línea (${items.length})</span></div>
         <div class="table-container"><table class="erp-table" id="pick-table">
-          <thead><tr><th>Planilla</th><th>Ruta</th><th>Producto (EAN)</th><th>Solicitado</th><th>Separado</th><th>Ubicación</th><th>Auxiliar</th><th>Estado</th></tr></thead>
+          <thead><tr>
+            <th>Fecha</th><th>Sucursal Despacho</th><th>Planilla</th><th>Ruta</th>
+            <th>Código</th><th>Descripción</th>
+            <th>Solicitado (cj)</th><th>Separado (cj)</th><th>Saldo</th><th>Total Unidad</th>
+            <th>Auxiliar</th><th>Ubicación Separación</th><th>Hora Separación</th>
+            <th>Lote</th><th>F. Venc.</th><th>Estado</th>
+          </tr></thead>
           <tbody>${items.map(i => `<tr>
+            <td>${i.fecha ? WMS.formatDate(i.fecha) : '-'}</td>
+            <td>${WMS.esc(i.sucursal||'-')}</td>
             <td><strong>${WMS.esc(i.planilla_numero||'-')}</strong></td>
             <td>${WMS.esc(i.ruta||'-')}</td>
-            <td><code style="font-size:.75rem;">${WMS.esc(i.ean||'-')}</code> ${WMS.esc(i.producto||'-')}</td>
+            <td><code style="font-size:.75rem;">${WMS.esc(i.ean||'-')}</code></td>
+            <td>${WMS.esc(i.producto||'-')}</td>
             <td>${i.cantidad_solicitada}</td>
-            <td>${i.cantidad_pickeada}</td>
-            <td>${WMS.esc(i.ubicacion||'-')}</td>
+            <td>${i.separado_cajas}</td>
+            <td>${i.separado_saldo}</td>
+            <td>${i.separado_total_unidad}</td>
             <td>${WMS.esc(i.auxiliar||'-')}</td>
+            <td>${WMS.esc(i.ubicacion||'-')}</td>
+            <td style="font-family:monospace;">${i.hora_fin_linea ? WMS.esc(i.hora_fin_linea.split(/[ T]/)[1]?.slice(0,8)||'-') : '-'}</td>
+            <td>${WMS.esc(i.lote||'-')}</td>
+            <td>${i.fecha_vencimiento ? WMS.formatDate(i.fecha_vencimiento) : '-'}</td>
             <td><span class="badge badge-info">${WMS.esc(i.linea_estado||'-')}</span></td>
-          </tr>`).join('')||'<tr><td colspan="8" class="table-empty">Sin líneas de picking</td></tr>'}
+          </tr>`).join('')||'<tr><td colspan="16" class="table-empty">Sin líneas de picking</td></tr>'}
           </tbody></table></div></div>`);
       this.initUbicacionAutocomplete('pick-ubic-input','pick-ubic-id','pick-ubic-codigo');
     } catch(e) { WMS.setContent('<div class="m-empty">Error cargando Picking</div>'); }

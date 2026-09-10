@@ -655,6 +655,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->delete('/productos-pendientes', [\App\Controllers\PickingController::class, 'limpiarProductosPendientes']);
         $group->delete('/productos-pendientes/{id}', [\App\Controllers\PickingController::class, 'eliminarProductoPendiente']);
         $group->get('/dashboard', [\App\Controllers\PickingController::class, 'dashboard']);
+        $group->get('/dashboard/pendientes-ambiente', [\App\Controllers\PickingController::class, 'dashboardPendientesAmbiente']);
         $group->get('/consolidados', [\App\Controllers\PickingController::class, 'consolidados']);
         $group->get('/consolidado/{id}/remision', [\App\Controllers\PickingController::class, 'consolidadoRemision']);
         $group->post('/asignar-multiple', [\App\Controllers\PickingController::class, 'asignarMultiple']);
@@ -734,6 +735,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->post('/certificacion/resetear/{sucursal}',   [\App\Controllers\PickingController::class, 'resetearCertificacion']);
         $group->get('/certificacion/imprimir/{sucursal}',    [\App\Controllers\PickingController::class, 'imprimirCertificado']);
         $group->get('/certificacion/remision-multiple',      [\App\Controllers\PickingController::class, 'certRemisionMultiple']);
+        $group->get('/certificacion/liberacion-planilla',    [\App\Controllers\PickingController::class, 'certLiberacionPlanilla']);
         $group->get('/certificacion/remision/{sucursal}',   [\App\Controllers\PickingController::class, 'certRemisionDirecta']);
         $group->get('/certificacion/vista-hoy',             [\App\Controllers\PickingController::class, 'certVistaHoy']);
 
@@ -861,7 +863,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // Módulo: Dashboard (Real-time Analytics)
     $group->get('/dashboard', [\App\Controllers\DashboardController::class, 'index']);
     $group->get('/dashboard/summary', [\App\Controllers\DashboardController::class, 'summary']);
-    $group->get('/dashboard/actividad', [\App\Controllers\DashboardController::class, 'actividad']);
+    $group->get('/dashboard/matriz-sin-inventario', [\App\Controllers\DashboardController::class, 'matrizSinInventario']);
+    $group->get('/dashboard/matriz-top-ajustes', [\App\Controllers\DashboardController::class, 'matrizTopAjustes']);
 
     // TV Dashboard — 4-secciones (Ingresos + Picking + Agotados + Alertas)
     $group->get('/tv/dashboard', [\App\Controllers\DashboardTVController::class, 'getDashboardTV']);
@@ -1105,6 +1108,16 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/param/rutas', [\App\Controllers\ParametrosController::class, 'createRuta']);
     $group->put('/param/rutas/{id}', [\App\Controllers\ParametrosController::class, 'updateRuta']);
     $group->delete('/param/rutas/{id}', [\App\Controllers\ParametrosController::class, 'deleteRuta']);
+
+    $group->get('/param/conductores', [\App\Controllers\ParametrosController::class, 'getConductores']);
+    $group->post('/param/conductores', [\App\Controllers\ParametrosController::class, 'createConductor']);
+    $group->put('/param/conductores/{id}', [\App\Controllers\ParametrosController::class, 'updateConductor']);
+    $group->delete('/param/conductores/{id}', [\App\Controllers\ParametrosController::class, 'deleteConductor']);
+
+    $group->get('/param/vehiculos', [\App\Controllers\ParametrosController::class, 'getVehiculos']);
+    $group->post('/param/vehiculos', [\App\Controllers\ParametrosController::class, 'createVehiculo']);
+    $group->put('/param/vehiculos/{id}', [\App\Controllers\ParametrosController::class, 'updateVehiculo']);
+    $group->delete('/param/vehiculos/{id}', [\App\Controllers\ParametrosController::class, 'deleteVehiculo']);
     $group->get('/param/import-export/template/{tipo}', [\App\Controllers\ImportExportController::class, 'getTemplate']);
     $group->get('/param/import-export/export/productos', [\App\Controllers\ImportExportController::class, 'exportProductos']);
     $group->post('/param/import-export/upload/{tipo}', [\App\Controllers\ImportExportController::class, 'uploadCSV']);

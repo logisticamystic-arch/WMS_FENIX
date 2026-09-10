@@ -448,6 +448,7 @@ WMS_MODULES.devoluciones = {
       Rechazada:'#dc2626', Anulada:'#94a3b8', Borrador:'#64748b',
     };
     const tipoLabel = {
+      BuenEstado:'Buen Estado', MalEstado:'Mal Estado',
       cliente:'Cliente→WMS', proveedor:'WMS→Proveedor', interna:'Interna',
       AProveedorAveria:'Proveedor (Avería)', AProveedorVencido:'Proveedor (Vencido)',
       ReingresoBuenEstado:'Reingreso', Borrador:'Sin tipo',
@@ -1235,7 +1236,9 @@ WMS_MODULES.devoluciones = {
       } catch(e) { /* sin causales */ }
     }
 
-    const causalesOpts = this._state.causales.map(c =>
+    // Buen Estado (opción por defecto del select) solo ofrece estas 3 causales;
+    // Mal Estado sigue mostrando el listado completo de causales activas de siempre.
+    const causalesOpts = this._causalesParaTipo('BuenEstado').map(c =>
       `<option value="${c.id}">${WMS.esc(c.causal)} (${WMS.esc(c.responsable||'?')})</option>`
     ).join('');
 
@@ -1252,11 +1255,10 @@ WMS_MODULES.devoluciones = {
           </div>
           <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:14px;">
             <div>
-              <label class="form-label">Tipo <span style="color:#ef4444;">*</span></label>
-              <select id="dv-new-tipo" class="form-control">
-                <option value="cliente">Cliente → WMS</option>
-                <option value="proveedor">WMS → Proveedor</option>
-                <option value="interna">Interna</option>
+              <label class="form-label">Tipo de Devolución <span style="color:#ef4444;">*</span></label>
+              <select id="dv-new-tipo" class="form-control" onchange="WMS_MODULES.devoluciones._onTipoDevolucionChange()">
+                <option value="BuenEstado">Buen Estado</option>
+                <option value="MalEstado">Mal Estado</option>
               </select>
             </div>
             <div style="position:relative;">
@@ -1342,7 +1344,7 @@ WMS_MODULES.devoluciones = {
           <div>
             <label class="btn btn-outline-primary btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
               <i class="fa-solid fa-cloud-arrow-up"></i> Seleccionar Fotos del Producto...
-              <input type="file" id="dv-fotos-input" multiple accept="image/*" capture="environment" style="display:none;" onchange="WMS_MODULES.devoluciones._onFotosSelected(this)">
+              <input type="file" id="dv-fotos-input" multiple accept="image/*" style="display:none;" onchange="WMS_MODULES.devoluciones._onFotosSelected(this)">
             </label>
             <span style="font-size:11px;color:#64748b;margin-left:10px;">Puedes subir múltiples fotos del estado físico del producto</span>
           </div>
@@ -1390,13 +1392,13 @@ WMS_MODULES.devoluciones = {
             </div>
 
             <!-- Campos adicionales ítem -->
-            <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin-top:8px;">
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;align-items:end;margin-top:8px;">
               <div>
-                <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Lote</label>
+                <label id="dv-item-lote-label" style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Lote</label>
                 <input type="text" id="dv-item-lote" class="form-control form-control-sm" placeholder="Lote">
               </div>
               <div>
-                <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Fecha Venc.</label>
+                <label id="dv-item-fv-label" style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Fecha Venc.</label>
                 <input type="date" id="dv-item-fv" class="form-control form-control-sm">
               </div>
               <div>
@@ -1407,18 +1409,6 @@ WMS_MODULES.devoluciones = {
                 </div>
                 <div id="dv-cant-total" style="font-size:10px;color:#64748b;display:none;"></div>
               </div>
-              <div>
-                <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Condición</label>
-                <select id="dv-item-cond" class="form-control form-control-sm">
-                  <option value="bueno">Bueno</option>
-                  <option value="dañado">Dañado</option>
-                  <option value="vencido">Vencido</option>
-                  <option value="otro">Otro</option>
-                </select>
-              </div>
-              <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.devoluciones.agregarItem()" style="height:34px;">
-                <i class="fa-solid fa-plus"></i> Agregar
-              </button>
             </div>
             <!-- Ubicación origen (solo si no está en Patio) -->
             <div id="dv-item-ubic-wrap" style="display:none;margin-top:8px;background:#fffbeb;border:1px solid #fbbf24;border-radius:6px;padding:8px 12px;">
@@ -1445,6 +1435,13 @@ WMS_MODULES.devoluciones = {
 
           <!-- Tabla de ítems -->
           <div id="dv-items-table"></div>
+
+          <!-- Botón para agregar el producto capturado arriba a la tabla -->
+          <div style="margin-top:14px;display:flex;justify-content:flex-end;">
+            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.devoluciones.agregarItem()">
+              <i class="fa-solid fa-plus"></i> Agregar Producto
+            </button>
+          </div>
         </div>
 
         <!-- Footer -->
@@ -1459,6 +1456,7 @@ WMS_MODULES.devoluciones = {
       </div>`);
 
     this._renderItemsTable();
+    this._actualizarCamposLoteVenc();
   },
 
   /* Búsqueda dinámica autocompletada de Cliente Origen */
@@ -1647,7 +1645,9 @@ WMS_MODULES.devoluciones = {
         cantidad:            it.cantidad,
         cantidad_cajas:      it.cantidad_cajas || 0,
         cantidad_saldo:      it.cantidad_saldo || 0,
-        condicion:           it.condicion,
+        // Sin campo "condición" por ítem: el tipo de devolución (Buen/Mal Estado),
+        // ya viaja en `tipo` arriba, y el backend deriva la condición por defecto
+        // de cada línea a partir de ese tipo (ver DevolucionController::store).
         motivo:              'Otro',
         ubicacion_origen_id: it.ubicacion_origen_id || null,
       }));
@@ -1805,8 +1805,10 @@ WMS_MODULES.devoluciones = {
     this._cargarUpcQrProd(id);
   },
 
-  // Trae unidades_caja del producto seleccionado para mostrar (o no) el campo
-  // de saldo — si tiene empaque (>1), se captura cajas+saldo por separado.
+  // Trae unidades_caja + controla_lote/controla_vencimiento del producto
+  // seleccionado: unidades_caja decide si se captura cajas+saldo por separado;
+  // controla_lote/controla_vencimiento deciden (solo para tipo Buen Estado) si
+  // Lote/Fecha Venc. se muestran y exigen, según la condición propia del producto.
   async _cargarUpcQrProd(productoId) {
     const label   = document.getElementById('dv-cant-label');
     const saldoEl = document.getElementById('dv-item-saldo');
@@ -1816,12 +1818,16 @@ WMS_MODULES.devoluciones = {
     if (totalEl) totalEl.style.display = 'none';
     if (!this._state.qrProd) return;
     this._state.qrProd.unidades_caja = 1;
+    this._state.qrProd.controla_lote = false;
+    this._state.qrProd.controla_vencimiento = false;
     try {
       const r = await API.get('/param/productos/' + productoId);
       const p = r.data || r;
       const factor = parseInt(p?.unidades_caja) || 1;
       if (!this._state.qrProd) return;
       this._state.qrProd.unidades_caja = factor;
+      this._state.qrProd.controla_lote = !!p?.controla_lote;
+      this._state.qrProd.controla_vencimiento = !!p?.controla_vencimiento;
       if (factor > 1 && label && saldoEl) {
         label.textContent = `Cajas (${factor} und/caja)`;
         saldoEl.placeholder = 'Saldo';
@@ -1830,6 +1836,62 @@ WMS_MODULES.devoluciones = {
         this._updDvTotal();
       }
     } catch(e) { /* si falla, se captura como cantidad única (comportamiento actual) */ }
+    this._actualizarCamposLoteVenc();
+  },
+
+  // Solo aplica la exigencia condicional de Lote/Fecha Venc. cuando el tipo de
+  // devolución es Buen Estado; Mal Estado conserva el comportamiento de siempre
+  // (ambos campos visibles, nunca obligatorios).
+  _actualizarCamposLoteVenc() {
+    const tipo       = document.getElementById('dv-new-tipo')?.value;
+    const loteInput  = document.getElementById('dv-item-lote');
+    const fvInput    = document.getElementById('dv-item-fv');
+    const loteWrap   = loteInput?.closest('div');
+    const fvWrap     = fvInput?.closest('div');
+    const loteLabel  = document.getElementById('dv-item-lote-label');
+    const fvLabel    = document.getElementById('dv-item-fv-label');
+    if (!loteInput || !fvInput) return;
+
+    if (tipo !== 'BuenEstado') {
+      if (loteWrap) loteWrap.style.display = '';
+      if (fvWrap)   fvWrap.style.display   = '';
+      if (loteLabel) loteLabel.innerHTML = 'Lote';
+      if (fvLabel)   fvLabel.innerHTML   = 'Fecha Venc.';
+      return;
+    }
+
+    const p       = this._state.qrProd || {};
+    const reqLote = !!p.controla_lote;
+    const reqFv   = !!p.controla_vencimiento;
+    if (loteWrap) loteWrap.style.display = reqLote ? '' : 'none';
+    if (fvWrap)   fvWrap.style.display   = reqFv   ? '' : 'none';
+    if (loteLabel) loteLabel.innerHTML = reqLote ? 'Lote <span style="color:#ef4444;">*</span>' : 'Lote';
+    if (fvLabel)   fvLabel.innerHTML   = reqFv   ? 'Fecha Venc. <span style="color:#ef4444;">*</span>' : 'Fecha Venc.';
+  },
+
+  // Filtra las causales disponibles según el tipo de devolución. Buen Estado
+  // solo ofrece estas 3 (a pedido explícito de Camilo); Mal Estado sigue
+  // mostrando el listado completo de causales activas de siempre.
+  _BUEN_ESTADO_CAUSALES: ['exceso de inventario', 'no pedido', 'error en pedido'],
+  _causalesParaTipo(tipo) {
+    if (tipo !== 'BuenEstado') return this._state.causales;
+    return this._state.causales.filter(c =>
+      this._BUEN_ESTADO_CAUSALES.includes((c.causal || '').trim().toLowerCase())
+    );
+  },
+
+  _onTipoDevolucionChange() {
+    const tipo = document.getElementById('dv-new-tipo')?.value;
+    const sel  = document.getElementById('dv-new-causal');
+    if (sel) {
+      const valorPrevio = sel.value;
+      const opts = this._causalesParaTipo(tipo).map(c =>
+        `<option value="${c.id}">${WMS.esc(c.causal)} (${WMS.esc(c.responsable||'?')})</option>`
+      ).join('');
+      sel.innerHTML = `<option value="">-- Seleccionar causal --</option>${opts}`;
+      if ([...sel.options].some(o => o.value === valorPrevio)) sel.value = valorPrevio;
+    }
+    this._actualizarCamposLoteVenc();
   },
 
   _updDvTotal() {
@@ -1884,18 +1946,24 @@ WMS_MODULES.devoluciones = {
       cantSaldo = 0;
     }
     if (!cant || cant <= 0) { WMS.toast('error', 'Ingrese una cantidad válida'); return; }
+    const loteVal = document.getElementById('dv-item-lote')?.value?.trim() || '';
+    const fvVal   = document.getElementById('dv-item-fv')?.value || '';
+    const tipoSel = document.getElementById('dv-new-tipo')?.value;
+    if (tipoSel === 'BuenEstado') {
+      if (prod.controla_lote && !loteVal) { WMS.toast('error', 'Este producto exige indicar el Lote'); return; }
+      if (prod.controla_vencimiento && !fvVal) { WMS.toast('error', 'Este producto exige indicar la Fecha de Vencimiento'); return; }
+    }
     const ubicOrigenId = parseInt(document.getElementById('dv-item-ubic-id')?.value || 0) || null;
     const ubicOrigenCod = document.getElementById('dv-item-ubic-q')?.value?.trim() || null;
     this._state.items.push({
       producto_id:         prod.id,
       producto_nombre:     prod.nombre,
       codigo:              prod.codigo,
-      lote:                document.getElementById('dv-item-lote')?.value || null,
-      fecha_vencimiento:   document.getElementById('dv-item-fv')?.value || null,
+      lote:                loteVal || null,
+      fecha_vencimiento:   fvVal || null,
       cantidad:            cant,
       cantidad_cajas:      cantCajas,
       cantidad_saldo:      cantSaldo,
-      condicion:           document.getElementById('dv-item-cond')?.value || 'bueno',
       ubicacion_origen_id: ubicOrigenId,
       ubicacion_origen_cod:ubicOrigenCod,
     });
@@ -1913,6 +1981,7 @@ WMS_MODULES.devoluciones = {
     document.getElementById('dv-cant-label').textContent    = 'Cantidad';
     document.getElementById('dv-item-ubic-q').value = '';
     document.getElementById('dv-item-ubic-id').value= '';
+    this._actualizarCamposLoteVenc();
     this._renderItemsTable();
   },
 
@@ -1962,7 +2031,7 @@ WMS_MODULES.devoluciones = {
       <table class="erp-table" style="font-size:12px;">
         <thead><tr>
           <th>Producto</th><th>Lote</th><th>Vence</th>
-          <th class="text-center">Cant.</th><th>Condición</th><th>Ubicación origen</th><th></th>
+          <th class="text-center">Cant.</th><th>Ubicación origen</th><th></th>
         </tr></thead>
         <tbody>
           ${this._state.items.map((it, i) => `<tr>
@@ -1970,7 +2039,6 @@ WMS_MODULES.devoluciones = {
             <td><code>${WMS.esc(it.lote||'-')}</code></td>
             <td style="font-size:11px;">${it.fecha_vencimiento ? WMS.formatDate(it.fecha_vencimiento) : '-'}</td>
             <td class="text-center fw-700">${WMS.formatNum(it.cantidad)}</td>
-            <td>${WMS.esc(it.condicion)}</td>
             <td style="font-size:11px;">
               ${it.ubicacion_origen_cod
                 ? `<code style="background:#fffbeb;color:#92400e;">${WMS.esc(it.ubicacion_origen_cod)}</code>`
@@ -1994,48 +2062,6 @@ WMS_MODULES.devoluciones = {
   _quitarItem(i) {
     this._state.items.splice(i, 1);
     this._renderItemsTable();
-  },
-
-  async guardarNueva() {
-    const tipo       = document.getElementById('dv-new-tipo')?.value;
-    const causal_id  = document.getElementById('dv-new-causal')?.value;
-    const responsable= document.getElementById('dv-new-responsable')?.value?.trim();
-    const ref        = document.getElementById('dv-new-ref')?.value?.trim() || null;
-    const motivo     = document.getElementById('dv-new-motivo')?.value?.trim();
-    const tercero_id = document.getElementById('dv-new-tercero-id')?.value || null;
-    const ubic_id    = document.getElementById('dv-new-ubic-id')?.value || null;
-
-    if (!causal_id)   { WMS.toast('error', 'Seleccione la causal'); return; }
-    if (!responsable)  { WMS.toast('error', 'Ingrese el nombre del responsable'); return; }
-    if (!motivo)       { WMS.toast('error', 'Ingrese el motivo general'); return; }
-    if (!this._state.items.length) { WMS.toast('error', 'Agregue al menos un producto'); return; }
-
-    WMS.spinner();
-    try {
-      const r = await API.post('/devoluciones', {
-        tipo,
-        causal_devolucion_id:   parseInt(causal_id),
-        responsable_devolucion: responsable,
-        referencia_externa: ref,
-        motivo_general:     motivo,
-        tercero_id:         tercero_id ? parseInt(tercero_id) : null,
-        ubicacion_patio_id: ubic_id    ? parseInt(ubic_id)    : null,
-        detalles:           this._state.items.map(it => ({
-          producto_id:         it.producto_id,
-          lote:                it.lote,
-          fecha_vencimiento:   it.fecha_vencimiento,
-          cantidad:            it.cantidad,
-          cantidad_cajas:      it.cantidad_cajas || 0,
-          cantidad_saldo:      it.cantidad_saldo || 0,
-          condicion:           it.condicion,
-          motivo:              'Otro',
-          ubicacion_origen_id: it.ubicacion_origen_id || null,
-        })),
-      });
-      if (r.error) { WMS.toast('error', r.message); return; }
-      WMS.toast('success', 'Devolución ' + (r.data?.numero||'') + ' registrada. Pendiente de aprobación.');
-      this.showDetalle(r.data?.devolucion_id || r.data?.id);
-    } catch(e) { WMS.toast('error', 'Error al registrar'); }
   },
 
 }; // end WMS_MODULES.devoluciones

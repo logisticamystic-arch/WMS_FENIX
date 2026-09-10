@@ -19,7 +19,7 @@ WMS_MODULES.rotulos = {
   },
 
   subLabel(sub) {
-    return { productos: 'Rótulos de Producto', ubicaciones: 'Rótulos de Ubicación', pdv: 'Rótulo PDV' }[sub] || sub;
+    return { productos: 'Rótulos de Producto', ubicaciones: 'Rótulos de Ubicación', pdv: 'Rótulo PDV', sucursal: 'Rótulo Sucursal' }[sub] || sub;
   },
 
   // ══════════════════════════════════════════════════════════════
@@ -1075,6 +1075,14 @@ WMS_MODULES.rotulos = {
       payload.fv       = fv;
       payload.fd       = fd;
       payload.copias   = copias;
+    } else if (tipo === 'sucursal') {
+      const suc = this._getSucursalSeleccionada();
+      if (!suc) return WMS.toast('warning', 'Seleccione una sucursal / cliente');
+      const copias = parseInt(document.getElementById('rotsuc-copias')?.value || 1);
+      payload.tipo   = 'sucursal';
+      payload.nombre = suc.nombre;
+      payload.codigo = suc.codigo;
+      payload.copias = copias;
     } else {
       const sel = document.getElementById('rotub-sel');
       const opt = sel?.options[sel.selectedIndex];
@@ -1381,6 +1389,301 @@ WMS_MODULES.rotulos = {
       html += this._buildRotuloPDV(left.producto, left.fe, left.fv, left.fd, anchomm, altomm, formato);
       if (right) {
         html += this._buildRotuloPDV(right.producto, right.fe, right.fv, right.fd, anchomm, altomm, formato);
+      }
+      html += `</div>`;
+    }
+    return html;
+  },
+
+  // ══════════════════════════════════════════════════════════════
+  //  RÓTULO SUCURSAL
+  // ══════════════════════════════════════════════════════════════
+
+  async show_sucursal() {
+    WMS.setBreadcrumb('rotulos', 'Rótulo Sucursal');
+    WMS.spinner();
+    try {
+      const r    = await API.get('/param/clientes');
+      const sucs = r.data || r || [];
+      this._sucData = sucs;
+
+      const opts = sucs.map(s =>
+        `<option value="${s.id}"
+           data-nombre="${(s.razon_social||'').replace(/"/g,'&quot;')}"
+           data-codigo="${(s.nit||'').replace(/"/g,'&quot;')}">
+          ${WMS.esc(s.razon_social)}${s.nit ? ' (' + WMS.esc(s.nit) + ')' : ''}
+        </option>`).join('');
+
+      WMS.setContent(`
+        <div class="card animate-fade-in">
+          <div class="card-header">
+            <h5 class="card-title"><i class="fa-solid fa-code-branch"></i> Rótulo Sucursal</h5>
+            <span style="font-size:.78rem;color:#64748b;">Rótulo de identificación de Sucursal / Cliente destino</span>
+          </div>
+          <div class="card-body" style="display:flex;flex-direction:column;gap:18px;">
+
+            <!-- Configuración TSC TE200 / Térmica -->
+            <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:4px;padding:12px 16px;margin-bottom:4px;">
+              <div style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:#065f46;">
+                <i class="fa-solid fa-print" style="color:#059669;"></i>
+                <strong>TSC TE200</strong> — Rollo de 2 etiquetas: 60 mm × 30 mm c/u
+              </div>
+            </div>
+
+            <!-- Dimensiones y copias -->
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
+              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
+                <i class="fa-solid fa-ruler-combined" style="color:#0F4C81;"></i> Dimensiones del Rótulo
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;max-width:500px;">
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Ancho (mm)</label>
+                  <input id="rotsuc-ancho" type="number" class="form-control" value="60" min="20" max="300"
+                         oninput="WMS_MODULES.rotulos._actualizarPreviewSucursal()">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Alto (mm)</label>
+                  <input id="rotsuc-alto" type="number" class="form-control" value="30" min="10" max="300"
+                         oninput="WMS_MODULES.rotulos._actualizarPreviewSucursal()">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Copias</label>
+                  <input id="rotsuc-copias" type="number" class="form-control" value="1" min="1" max="200">
+                </div>
+              </div>
+            </div>
+
+            <!-- Formato -->
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
+              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
+                <i class="fa-solid fa-rotate" style="color:#0F4C81;"></i> Formato del Rótulo
+              </div>
+              <div style="display:flex;gap:24px;flex-wrap:wrap;">
+                <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid #0F4C81;border-radius:4px;background:#fff;transition:border-color .2s;">
+                  <input type="radio" name="rotsuc-formato" value="horizontal" checked
+                         onchange="WMS_MODULES.rotulos._actualizarPreviewSucursal()">
+                  <div>
+                    <div style="font-weight:700;font-size:.82rem;color:#1e293b;">
+                      <i class="fa-solid fa-arrows-left-right" style="color:#0F4C81;margin-right:5px;"></i> Horizontal
+                    </div>
+                    <div style="font-size:.72rem;color:#64748b;">Formato estándar apaisado (60mm x 30mm)</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Selección sucursal/cliente -->
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
+              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
+                <i class="fa-solid fa-code-branch" style="color:#0F4C81;"></i> Sucursal / Cliente
+              </div>
+              <div style="max-width:500px;">
+                <select id="rotsuc-sel" class="form-control" onchange="WMS_MODULES.rotulos._actualizarPreviewSucursal()">
+                  <option value="">— Seleccione una sucursal / cliente —</option>
+                  ${opts}
+                </select>
+              </div>
+              <div style="font-size:.75rem;color:#64748b;margin-top:8px;">
+                <i class="fa-solid fa-circle-info"></i> Si el nombre es muy largo, el rótulo lo distribuye automáticamente en dos líneas.
+              </div>
+            </div>
+
+            <!-- Acciones -->
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <button class="btn btn-outline-primary" onclick="WMS_MODULES.rotulos._previsualizarSucursal()">
+                <i class="fa-solid fa-eye"></i> Previsualizar
+              </button>
+              <button class="btn btn-primary" onclick="WMS_MODULES.rotulos._imprimirSucursal()">
+                <i class="fa-solid fa-desktop"></i> Imprimir (Navegador)
+              </button>
+              <button class="btn btn-success" onclick="WMS_MODULES.rotulos._imprimirIP('sucursal')">
+                <i class="fa-solid fa-print"></i> Impresión Térmica IP
+              </button>
+            </div>
+
+            <!-- Preview -->
+            <div id="rotsuc-preview-area" style="display:none;">
+              <div style="font-weight:700;font-size:.75rem;text-transform:uppercase;color:#64748b;margin-bottom:8px;letter-spacing:1px;">
+                <i class="fa-solid fa-eye"></i> Vista Previa
+              </div>
+              <div id="rotsuc-preview-container" style="background:#f1f5f9;padding:20px;border-radius:4px;display:inline-block;border:2px dashed #cbd5e1;"></div>
+            </div>
+
+          </div>
+        </div>`);
+      this._actualizarPreviewSucursal();
+    } catch(e) {
+      WMS.toast('error', 'No se pudieron cargar los clientes');
+    }
+  },
+
+  _getSucursalSeleccionada() {
+    const sel = document.getElementById('rotsuc-sel');
+    const opt = sel?.options[sel.selectedIndex];
+    if (!opt || !opt.value) return null;
+    return { nombre: opt.dataset.nombre || '', codigo: opt.dataset.codigo || '' };
+  },
+
+  _pxPerMm: 96 / 25.4,
+
+  _mmToPx(mm) {
+    return mm * this._pxPerMm;
+  },
+
+  _measureTextWidthPx(text, fontPx, weight, family) {
+    if (!this._measureCanvas) this._measureCanvas = document.createElement('canvas');
+    const ctx = this._measureCanvas.getContext('2d');
+    ctx.font = `${weight} ${fontPx}px ${family}`;
+    return ctx.measureText(text).width;
+  },
+
+  // Ajusta un texto al mayor tamaño de fuente que quepa en como máximo 2 líneas,
+  // respetando un ancho y un alto máximos reales (medidos con canvas, no estimados).
+  _fitTextoDosLineas(texto, maxWidthPx, maxHeightPx, opts = {}) {
+    const family  = opts.family  || 'Arial, sans-serif';
+    const weight  = opts.weight  || '900';
+    const maxFontPx = opts.maxFontPx || 60;
+    const minFontPx = opts.minFontPx || 14;
+    const lineHeightRatio = opts.lineHeightRatio || 1.15;
+    const palabras = (texto || '').trim().split(/\s+/).filter(Boolean);
+
+    // Línea 1 = el máximo de palabras completas que quepan; línea 2 = todo lo que sobre
+    // (puede seguir sin caber; eso lo decide anchoOk en el llamador, nunca se descarta texto aquí).
+    const wrapAtSize = (fontPx) => {
+      if (palabras.length <= 1) return [texto || ''];
+      let corte = palabras.length;
+      for (let i = 1; i <= palabras.length; i++) {
+        const candidato = palabras.slice(0, i).join(' ');
+        if (this._measureTextWidthPx(candidato, fontPx, weight, family) > maxWidthPx) {
+          corte = i - 1;
+          break;
+        }
+      }
+      corte = Math.max(1, corte);
+      const linea1 = palabras.slice(0, corte).join(' ');
+      const linea2 = palabras.slice(corte).join(' ');
+      return linea2 ? [linea1, linea2] : [linea1];
+    };
+
+    const truncar = (linea, fontPx) => {
+      if (this._measureTextWidthPx(linea, fontPx, weight, family) <= maxWidthPx) return linea;
+      let lo = 0, hi = linea.length;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        const candidato = linea.slice(0, mid) + '…';
+        if (this._measureTextWidthPx(candidato, fontPx, weight, family) <= maxWidthPx) lo = mid; else hi = mid - 1;
+      }
+      return linea.slice(0, lo) + '…';
+    };
+
+    for (let fontPx = maxFontPx; fontPx >= minFontPx; fontPx--) {
+      const lineas = wrapAtSize(fontPx);
+      const anchoOk = lineas.every(l => this._measureTextWidthPx(l, fontPx, weight, family) <= maxWidthPx);
+      const altoTotal = lineas.length * fontPx * lineHeightRatio;
+      if (anchoOk && altoTotal <= maxHeightPx) return { lineas, fontPx };
+    }
+    // Ceiling: en el tamaño mínimo, lo que no quepa se trunca con elipsis.
+    const lineas = wrapAtSize(minFontPx).map(l => truncar(l, minFontPx));
+    return { lineas, fontPx: minFontPx };
+  },
+
+  _ptToPx(pt) {
+    return pt * 96 / 72;
+  },
+
+  _buildRotuloSucursal(nombre, codigo, anchomm, altomm) {
+    const nombreUpper   = (nombre || '').toUpperCase().trim();
+    const codigoMostrado = !!codigo && codigo.trim().toUpperCase() !== nombreUpper;
+    const headerFontPt  = Math.max(6, Math.round(altomm * 0.14));
+    const headerLineHeightRatio = 1.2;
+
+    // Ancho útil: ancho total menos el padding lateral (3mm a cada lado).
+    const anchoDisponiblePx = this._mmToPx(anchomm) - this._mmToPx(6);
+
+    // Alto útil real para el nombre = alto total - padding/borde de la caja
+    // - línea de encabezado (+ su margen) - línea de código si aplica (+ su margen) - colchón de seguridad.
+    const paddingBordePx  = this._mmToPx(4) + this._mmToPx(1); // padding 2mm arriba+abajo, borde 0.5mm arriba+abajo
+    const headerBloquePx  = this._ptToPx(headerFontPt) * headerLineHeightRatio + this._mmToPx(1);
+    const codigoBloquePx  = codigoMostrado ? (this._ptToPx(headerFontPt) * headerLineHeightRatio + this._mmToPx(1)) : 0;
+    const colchonPx       = this._mmToPx(0.3);
+    const altoDisponiblePx = Math.max(
+      this._mmToPx(4),
+      this._mmToPx(altomm) - paddingBordePx - headerBloquePx - codigoBloquePx - colchonPx
+    );
+
+    const { lineas, fontPx } = this._fitTextoDosLineas(nombreUpper, anchoDisponiblePx, altoDisponiblePx, {
+      maxFontPx: this._mmToPx(altomm) * 0.42,
+      minFontPx: Math.min(this._mmToPx(altomm) * 0.16, this._ptToPx(7)),
+    });
+    const fontPt = Math.max(6, Math.round(fontPx * 72 / 96));
+
+    const lineasHtml = lineas.map(l => `
+      <div style="font-size:${fontPt}pt;font-weight:900;color:#000;line-height:1.15;
+        text-align:center;width:100%;white-space:nowrap;">
+        ${WMS.esc(l)}
+      </div>`).join('');
+
+    return `
+      <div class="wms-label-single wms-label-sucursal" style="width:${anchomm}mm;height:${altomm}mm;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        box-sizing:border-box;
+        font-family:Arial, 'Helvetica Neue', Helvetica, sans-serif;
+        background:#fff;overflow:hidden;flex-shrink:0;
+        padding:2mm 3mm;border:0.5mm solid #000;border-radius:2mm;
+        margin:0;page-break-after:always;">
+        <div style="font-size:${headerFontPt}pt;font-weight:700;line-height:${headerLineHeightRatio};
+          color:#475569;letter-spacing:1px;margin-bottom:1mm;">
+          SUCURSAL / CLIENTE
+        </div>
+        ${lineasHtml}
+        ${codigoMostrado ? `
+        <div style="font-size:${headerFontPt}pt;font-weight:600;line-height:${headerLineHeightRatio};
+          color:#334155;margin-top:1mm;letter-spacing:0.5px;">
+          COD: ${WMS.esc(codigo)}
+        </div>` : ''}
+      </div>`;
+  },
+
+  _actualizarPreviewSucursal() {
+    const suc     = this._getSucursalSeleccionada();
+    const ancho   = parseInt(document.getElementById('rotsuc-ancho')?.value || 60);
+    const alto    = parseInt(document.getElementById('rotsuc-alto')?.value  || 30);
+
+    const area = document.getElementById('rotsuc-preview-area');
+    const cont = document.getElementById('rotsuc-preview-container');
+    if (!area || !cont) return;
+    cont.innerHTML = this._buildRotuloSucursal(suc?.nombre || '', suc?.codigo || '', ancho, alto);
+    area.style.display = 'block';
+  },
+
+  _previsualizarSucursal() {
+    this._actualizarPreviewSucursal();
+    document.getElementById('rotsuc-preview-area')?.scrollIntoView({ behavior:'smooth' });
+  },
+
+  _imprimirSucursal() {
+    const suc = this._getSucursalSeleccionada();
+    if (!suc) return WMS.toast('warning', 'Seleccione una sucursal / cliente');
+
+    const ancho  = parseInt(document.getElementById('rotsuc-ancho')?.value  || 60);
+    const alto   = parseInt(document.getElementById('rotsuc-alto')?.value   || 30);
+    const copias = parseInt(document.getElementById('rotsuc-copias')?.value || 1);
+
+    const labels = [];
+    for (let i = 0; i < copias; i++) labels.push(suc);
+    const html = this._buildDualColumnHTMLSucursal(labels, ancho, alto);
+    this._imprimir(html, ancho, alto, { dualColumn: true });
+  },
+
+  _buildDualColumnHTMLSucursal(labels, anchomm, altomm) {
+    let html = '';
+    for (let i = 0; i < labels.length; i += 2) {
+      const left  = labels[i];
+      const right = labels[i + 1];
+      html += `<div class="wms-label-row" style="display:flex;flex-wrap:nowrap;page-break-after:always;">`;
+      html += this._buildRotuloSucursal(left.nombre, left.codigo, anchomm, altomm);
+      if (right) {
+        html += this._buildRotuloSucursal(right.nombre, right.codigo, anchomm, altomm);
       }
       html += `</div>`;
     }

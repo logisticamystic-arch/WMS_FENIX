@@ -258,17 +258,23 @@ class DashboardTVController extends BaseController
      *   tipo  : 'dia' | 'mes' | 'sucursal'  (default: 'dia')
      *   dias  : int 1-90                     (default: 30, aplica a tipo=dia y tipo=mes)
      *
-     * Fórmula:
-     *   nivel_servicio = ((total_solicitado - faltantes_afecta_ns) / total_solicitado) * 100
-     *
-     * faltantes_afecta_ns: registros en picking_faltantes cuyo causal_id apunta a
-     * causales_novedad con afecta_nivel_servicio = true.
+     * A pedido explícito de Camilo (2026-09-05): el Nivel de Servicio es el
+     * PROMEDIO de dos métricas independientes, cada una excluyendo faltantes
+     * causados por error de digitación del pedido (no son una falla de bodega):
+     *   NS1 (Referencias) = referencias solicitadas SIN AGOTADO real / total referencias solicitadas
+     *   NS2 (Unidades)    = unidades solicitadas SIN AGOTADO real / total unidades solicitadas
+     * Antes este endpoint calculaba un único % en base a `picking_faltantes` con
+     * causal `afecta_nivel_servicio = true` — pero NINGÚN causal tenía ese flag
+     * en true (ni siquiera 'AGOTADO'), así que "faltantes" siempre daba 0 y el
+     * nivel de servicio siempre mostraba 100%. Se reemplaza por la misma lógica
+     * ya validada en nivelServicio() (TV), factorizada en _nsCalcularRango().
      */
     public function getNivelServicio(Request $request, Response $response): Response
     {
-        $user      = $request->getAttribute('user');
-        $empresaId = $this->getEffectiveEmpresaId($user, $request);
-        $pdo       = Capsule::connection()->getPdo();
+        $user       = $request->getAttribute('user');
+        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
+        $pdo        = Capsule::connection()->getPdo();
 
         $params = $request->getQueryParams();
         $tipo   = in_array($params['tipo'] ?? '', ['dia', 'mes', 'sucursal'], true)
@@ -279,60 +285,194 @@ class DashboardTVController extends BaseController
         $dias    = max(1, min(90, $diasRaw));
 
         try {
+            $labels        = [];
+            $seriePctRefs  = [];
+            $seriePctUnid  = [];
+            $serieNs       = [];
+
             if ($tipo === 'dia') {
-                $rows = $this->_nsQueryDia($pdo, $empresaId, $dias);
-                $labels = array_column($rows, 'periodo');
+                for ($i = $dias - 1; $i >= 0; $i--) {
+                    $fecha = date('Y-m-d', strtotime("-{$i} days"));
+                    $r     = $this->_nsCalcularRango($pdo, $empresaId, $sucursalId, $fecha, $fecha);
+                    $labels[]       = $fecha;
+                    $seriePctRefs[] = $r['pct_refs'];
+                    $seriePctUnid[] = $r['pct_unidades'];
+                    $serieNs[]      = $r['promedio'];
+                }
             } elseif ($tipo === 'mes') {
-                $rows = $this->_nsQueryMes($pdo, $empresaId, $dias);
-                $labels = array_column($rows, 'periodo');
+                $meses = max(1, (int)ceil($dias / 30));
+                for ($i = $meses - 1; $i >= 0; $i--) {
+                    $desde = date('Y-m-01', strtotime("-{$i} months"));
+                    $hasta = date('Y-m-t', strtotime("-{$i} months"));
+                    $r     = $this->_nsCalcularRango($pdo, $empresaId, $sucursalId, $desde, $hasta);
+                    $labels[]       = date('Y-m', strtotime($desde));
+                    $seriePctRefs[] = $r['pct_refs'];
+                    $seriePctUnid[] = $r['pct_unidades'];
+                    $serieNs[]      = $r['promedio'];
+                }
             } else {
-                // sucursal — últimos 30 días fijo
-                $rows = $this->_nsQuerySucursal($pdo, $empresaId);
-                $labels = array_column($rows, 'periodo');
+                // sucursal (cliente/sucursal_entrega) — últimos 30 días fijo
+                $desde = date('Y-m-d', strtotime('-30 days'));
+                $hasta = date('Y-m-d');
+                $stmt  = $pdo->prepare("
+                    SELECT DISTINCT COALESCE(op.sucursal_entrega, 'Sin sucursal') AS sucursal
+                    FROM orden_pickings op
+                    WHERE op.empresa_id = :emp AND op.sucursal_id = :suc
+                      AND op.fecha_movimiento::date BETWEEN :desde AND :hasta
+                    ORDER BY 1
+                ");
+                $stmt->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':desde' => $desde, ':hasta' => $hasta]);
+                foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $sucEntrega) {
+                    $r = $this->_nsCalcularRango($pdo, $empresaId, $sucursalId, $desde, $hasta, $sucEntrega);
+                    $labels[]       = $sucEntrega;
+                    $seriePctRefs[] = $r['pct_refs'];
+                    $seriePctUnid[] = $r['pct_unidades'];
+                    $serieNs[]      = $r['promedio'];
+                }
             }
 
-            $totalSolicitado = [];
-            $faltantesNs     = [];
-            $nivelServicio   = [];
-            $sumTotal        = 0;
-            $sumFaltantes    = 0;
-
-            foreach ($rows as $row) {
-                $total    = (float)($row['total_solicitado'] ?? 0);
-                $faltante = (float)($row['faltantes_ns']    ?? 0);
-                $ns       = $total > 0
-                    ? round((($total - $faltante) / $total) * 100, 2)
-                    : 100.00;
-
-                $totalSolicitado[] = $total;
-                $faltantesNs[]     = $faltante;
-                $nivelServicio[]   = $ns;
-                $sumTotal         += $total;
-                $sumFaltantes     += $faltante;
+            // Resumen: se recalcula sobre TODO el rango combinado (no promedio de
+            // promedios diarios) para no distorsionar el número con días de bajo volumen.
+            if ($tipo === 'sucursal') {
+                $resumen = $this->_nsCalcularRango($pdo, $empresaId, $sucursalId, date('Y-m-d', strtotime('-30 days')), date('Y-m-d'));
+            } else {
+                $hasta = $tipo === 'mes' ? date('Y-m-t') : date('Y-m-d');
+                $desde = $tipo === 'mes'
+                    ? date('Y-m-01', strtotime('-' . (max(1, (int)ceil($dias / 30)) - 1) . ' months'))
+                    : date('Y-m-d', strtotime('-' . ($dias - 1) . ' days'));
+                $resumen = $this->_nsCalcularRango($pdo, $empresaId, $sucursalId, $desde, $hasta);
             }
-
-            $nsResumen = $sumTotal > 0
-                ? round((($sumTotal - $sumFaltantes) / $sumTotal) * 100, 2)
-                : 100.00;
 
             return $this->ok($response, [
                 'tipo'   => $tipo,
                 'labels' => $labels,
                 'series' => [
-                    ['label' => 'Total Solicitado',   'data' => $totalSolicitado],
-                    ['label' => 'Faltantes NS',        'data' => $faltantesNs],
-                    ['label' => 'Nivel de Servicio %', 'data' => $nivelServicio],
+                    ['label' => 'NS Referencias %',    'data' => $seriePctRefs],
+                    ['label' => 'NS Unidades %',        'data' => $seriePctUnid],
+                    ['label' => 'Nivel de Servicio %', 'data' => $serieNs],
                 ],
                 'resumen' => [
-                    'total_solicitado'  => $sumTotal,
-                    'total_faltantes_ns' => $sumFaltantes,
-                    'nivel_servicio'    => $nsResumen,
+                    'total_solicitado'    => $resumen['solicitado'],
+                    'total_separado'      => $resumen['separado'],
+                    'pct_referencias'     => $resumen['pct_refs'],
+                    'pct_unidades'        => $resumen['pct_unidades'],
+                    'nivel_servicio'      => $resumen['promedio'],
                 ],
             ]);
         } catch (\Throwable $e) {
             wmsLog('ERROR', 'DashboardTV:nivelServicio — ' . $e->getMessage());
             return $this->error($response, 'Error al calcular nivel de servicio: ' . $e->getMessage(), 500);
         }
+    }
+
+    /**
+     * Calcula el Nivel de Servicio real para un rango de fechas [desde, hasta]
+     * (inclusive, ambos incluidos — un solo día si desde === hasta), opcionalmente
+     * filtrado a una sucursal_entrega (cliente) específica.
+     *
+     * NS1 (Referencias): de las referencias solicitadas con cantidad > 0 tras
+     * descontar error de digitación, cuántas fueron despachadas por completo.
+     * NS2 (Unidades): unidades despachadas efectivas / unidades solicitadas
+     * válidas (descontando digitación; el despacho efectivo se topa al 100%
+     * por línea para que un sobre-despacho no infle el % por encima de 100).
+     * 'promedio' = (NS1 + NS2) / 2 — el "Nivel de Servicio" que se muestra.
+     */
+    private function _nsCalcularRango(\PDO $pdo, int $empresaId, int $sucursalId, string $desde, string $hasta, ?string $sucursalEntrega = null): array
+    {
+        $filtroEntrega = $sucursalEntrega !== null ? "AND COALESCE(op.sucursal_entrega, 'Sin sucursal') = :suc_entrega" : '';
+
+        // 1. Faltantes por error de digitación del pedido — no son falla de bodega.
+        $sqlDigit = "
+            SELECT pf.orden_picking_id, pf.producto_id,
+                   COALESCE(SUM(pf.cantidad_faltante), 0) AS faltante_digitacion
+            FROM picking_faltantes pf
+            LEFT JOIN causales_novedad cn ON cn.id = pf.causal_id
+            JOIN orden_pickings op ON op.id = pf.orden_picking_id
+            WHERE pf.empresa_id  = :emp
+              AND pf.sucursal_id = :suc
+              AND op.fecha_movimiento::date BETWEEN :desde AND :hasta
+              {$filtroEntrega}
+              AND (cn.nombre ILIKE '%DIGITACION%' OR pf.causa ILIKE '%DIGITACION%')
+            GROUP BY pf.orden_picking_id, pf.producto_id
+        ";
+        $params = [':emp' => $empresaId, ':suc' => $sucursalId, ':desde' => $desde, ':hasta' => $hasta];
+        if ($sucursalEntrega !== null) $params[':suc_entrega'] = $sucursalEntrega;
+        $stmtDigit = $pdo->prepare($sqlDigit);
+        $stmtDigit->execute($params);
+        $digitMap = [];
+        $digitTotal = 0;
+        foreach ($stmtDigit->fetchAll(\PDO::FETCH_ASSOC) as $d) {
+            $key = $d['orden_picking_id'] . '_' . $d['producto_id'];
+            $digitMap[$key] = (float)$d['faltante_digitacion'];
+            $digitTotal += (float)$d['faltante_digitacion'];
+        }
+
+        // 2. Solicitado vs pickeado por línea, en el rango.
+        $sqlGen = "
+            SELECT pd.orden_picking_id, pd.producto_id,
+                   COALESCE(SUM(pd.cantidad_solicitada), 0) AS total_solicitado,
+                   COALESCE(SUM(pd.cantidad_pickeada),   0) AS total_separado
+            FROM picking_detalles pd
+            JOIN orden_pickings op ON op.id = pd.orden_picking_id
+            WHERE op.empresa_id  = :emp
+              AND op.sucursal_id = :suc
+              AND op.estado NOT IN ('Anulado')
+              AND op.fecha_movimiento::date BETWEEN :desde AND :hasta
+              {$filtroEntrega}
+            GROUP BY pd.orden_picking_id, pd.producto_id
+        ";
+        $stmtGen = $pdo->prepare($sqlGen);
+        $stmtGen->execute($params);
+
+        $solValido   = 0;
+        $sepEfectivo = 0;
+        $refSolMap   = [];
+        $refSepMap   = [];
+
+        foreach ($stmtGen->fetchAll(\PDO::FETCH_ASSOC) as $g) {
+            $key    = $g['orden_picking_id'] . '_' . $g['producto_id'];
+            $prodId = $g['producto_id'];
+            $sol    = (float)$g['total_solicitado'];
+            $sep    = (float)$g['total_separado'];
+            $digit  = $digitMap[$key] ?? 0;
+
+            $solValida   = max(0, $sol - $digit);
+            $sepEfectiva = min($solValida, max(0, $sep));
+
+            $solValido   += $solValida;
+            $sepEfectivo += $sepEfectiva;
+
+            if (!isset($refSolMap[$prodId])) { $refSolMap[$prodId] = 0; $refSepMap[$prodId] = 0; }
+            $refSolMap[$prodId] += $solValida;
+            $refSepMap[$prodId] += $sepEfectiva;
+        }
+
+        $pctUnidades = $solValido > 0
+            ? min(100.0, max(0.0, round(($sepEfectivo / $solValido) * 100, 2)))
+            : 100.0;
+
+        $totalRefs     = 0;
+        $refsCompletas = 0;
+        foreach ($refSolMap as $prodId => $solVal) {
+            if ($solVal > 0) {
+                $totalRefs++;
+                if (($refSepMap[$prodId] ?? 0) >= $solVal) $refsCompletas++;
+            }
+        }
+        $pctRefs = $totalRefs > 0
+            ? min(100.0, max(0.0, round(($refsCompletas / $totalRefs) * 100, 2)))
+            : 100.0;
+
+        return [
+            'solicitado'          => $solValido,
+            'separado'            => $sepEfectivo,
+            'digitacion_excluido' => $digitTotal,
+            'pct_unidades'        => $pctUnidades,
+            'total_refs'          => $totalRefs,
+            'refs_completas'      => $refsCompletas,
+            'pct_refs'            => $pctRefs,
+            'promedio'            => round(($pctUnidades + $pctRefs) / 2, 2),
+        ];
     }
 
     /**
@@ -361,104 +501,16 @@ class DashboardTVController extends BaseController
         $fecha  = !empty($params['fecha']) ? $params['fecha'] : date('Y-m-d');
 
         try {
-            // ── 1. Cargar faltantes por digitación (ERROR EN DIGITACION PEDIDO) ─────
-            $stmtFaltDigit = $pdo->prepare("
-                SELECT
-                    pf.orden_picking_id,
-                    pf.producto_id,
-                    COALESCE(SUM(pf.cantidad_faltante), 0) AS faltante_digitacion
-                FROM picking_faltantes pf
-                LEFT JOIN causales_novedad cn ON cn.id = pf.causal_id
-                JOIN orden_pickings op ON op.id = pf.orden_picking_id
-                WHERE pf.empresa_id   = :emp
-                  AND pf.sucursal_id  = :suc
-                  AND op.fecha_movimiento::date = :fecha
-                  AND (
-                      cn.nombre ILIKE '%DIGITACION%'
-                      OR pf.causa ILIKE '%DIGITACION%'
-                  )
-                GROUP BY pf.orden_picking_id, pf.producto_id
-            ");
-            $stmtFaltDigit->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':fecha' => $fecha]);
-            $rawDigit = $stmtFaltDigit->fetchAll(\PDO::FETCH_ASSOC);
-            $digitMap = [];
-            $digitGenTotal = 0;
-            foreach ($rawDigit as $d) {
-                $key = $d['orden_picking_id'] . '_' . $d['producto_id'];
-                $digitMap[$key] = (float)$d['faltante_digitacion'];
-                $digitGenTotal += (float)$d['faltante_digitacion'];
-            }
-
-            // ── 2. General: Unidades solicitadas válidas vs despachadas efectivas ──
-            $stmtGen = $pdo->prepare("
-                SELECT
-                    pd.orden_picking_id,
-                    pd.producto_id,
-                    COALESCE(SUM(pd.cantidad_solicitada), 0) AS total_solicitado,
-                    COALESCE(SUM(pd.cantidad_pickeada),   0) AS total_separado
-                FROM picking_detalles pd
-                JOIN orden_pickings op ON op.id = pd.orden_picking_id
-                WHERE op.empresa_id  = :emp
-                  AND op.sucursal_id = :suc
-                  AND op.estado NOT IN ('Anulado')
-                  AND op.fecha_movimiento::date = :fecha
-                GROUP BY pd.orden_picking_id, pd.producto_id
-            ");
-            $stmtGen->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':fecha' => $fecha]);
-            $rawGen = $stmtGen->fetchAll(\PDO::FETCH_ASSOC);
-
-            $solGenValido    = 0;
-            $sepGenEfectivo  = 0;
-            $solGenBruto     = 0;
-            $sepGenBruto     = 0;
-
-            $refSolMap   = [];
-            $refSepMap   = [];
-
-            foreach ($rawGen as $g) {
-                $key = $g['orden_picking_id'] . '_' . $g['producto_id'];
-                $prodId = $g['producto_id'];
-                $sol = (float)$g['total_solicitado'];
-                $sep = (float)$g['total_separado'];
-                $digit = $digitMap[$key] ?? 0;
-
-                // Solicitado válido por ítem (descontando digitación)
-                $solValida = max(0, $sol - $digit);
-                // Despachado efectivo (no se cuentan sobre-despachos por encima de lo solicitado)
-                $sepEfectiva = min($solValida, max(0, $sep));
-
-                $solGenBruto    += $sol;
-                $sepGenBruto    += $sep;
-                $solGenValido   += $solValida;
-                $sepGenEfectivo += $sepEfectiva;
-
-                if (!isset($refSolMap[$prodId])) {
-                    $refSolMap[$prodId] = 0;
-                    $refSepMap[$prodId] = 0;
-                }
-                $refSolMap[$prodId] += $solValida;
-                $refSepMap[$prodId] += $sepEfectiva;
-            }
-
-            // Nivel de Servicio Unidades % (máximo 100.0%)
-            $pctGen = $solGenValido > 0
-                ? min(100.0, max(0.0, round(($sepGenEfectivo / $solGenValido) * 100, 1)))
-                : 100.0;
-
-            // Nivel de Servicio Referencias % (máximo 100.0%)
-            $totalRefs = 0;
-            $refsCompletas = 0;
-            foreach ($refSolMap as $prodId => $solVal) {
-                if ($solVal > 0) {
-                    $totalRefs++;
-                    if (($refSepMap[$prodId] ?? 0) >= $solVal) {
-                        $refsCompletas++;
-                    }
-                }
-            }
-            $pctRefs = $totalRefs > 0
-                ? min(100.0, max(0.0, round(($refsCompletas / $totalRefs) * 100, 1)))
-                : 100.0;
+            // General: Unidades (NS2) + Referencias (NS1) del día, excluyendo
+            // faltantes por error de digitación — ver _nsCalcularRango().
+            $gen = $this->_nsCalcularRango($pdo, $empresaId, $sucursalId, $fecha, $fecha);
+            $solGenValido    = $gen['solicitado'];
+            $sepGenEfectivo  = $gen['separado'];
+            $digitGenTotal   = $gen['digitacion_excluido'];
+            $pctGen          = $gen['pct_unidades'];
+            $totalRefs       = $gen['total_refs'];
+            $refsCompletas   = $gen['refs_completas'];
+            $pctRefs         = $gen['pct_refs'];
 
             // ── Por sucursal (fecha dada) — por referencia/SKU válidos ───────────
             $stmtSuc = $pdo->prepare("
@@ -651,249 +703,6 @@ class DashboardTVController extends BaseController
             wmsLog('ERROR', 'TV:nivelServicio — ' . $e->getMessage());
             return $this->error($response, 'Error al calcular nivel de servicio TV: ' . $e->getMessage(), 500);
         }
-    }
-
-    // ── Helpers privados de nivel de servicio ────────────────────────────────
-
-    private function _nsQueryDia(\PDO $pdo, int $empresaId, int $dias): array
-    {
-        // Construir el rango de fechas directamente (no se puede usar parámetro PDO dentro de INTERVAL literal)
-        $fechaDesde = date('Y-m-d', strtotime("-{$dias} days"));
-
-        $sql = "
-            WITH fechas AS (
-                SELECT generate_series(
-                    :fecha_desde::date,
-                    CURRENT_DATE,
-                    INTERVAL '1 day'
-                )::date AS fecha
-            ),
-            solicitado AS (
-                SELECT op.fecha::date                           AS fecha,
-                       COALESCE(SUM(pd.cantidad_solicitada), 0) AS total
-                FROM orden_pickings op
-                JOIN picking_detalles pd ON pd.orden_picking_id = op.id
-                WHERE op.empresa_id = :emp
-                  AND op.fecha::date >= :fecha_desde_b::date
-                GROUP BY op.fecha::date
-            ),
-            faltantes AS (
-                SELECT pf.created_at::date                      AS fecha,
-                       COALESCE(SUM(pf.cantidad_faltante), 0)   AS total
-                FROM picking_faltantes pf
-                JOIN causales_novedad cn ON cn.id = pf.causal_id
-                                        AND cn.afecta_nivel_servicio = TRUE
-                                        AND cn.empresa_id = :emp2
-                WHERE pf.empresa_id = :emp3
-                  AND pf.created_at::date >= :fecha_desde_c::date
-                GROUP BY pf.created_at::date
-            )
-            SELECT f.fecha::text                              AS periodo,
-                   COALESCE(s.total, 0)                      AS total_solicitado,
-                   COALESCE(fa.total, 0)                     AS faltantes_ns
-            FROM fechas f
-            LEFT JOIN solicitado s  ON s.fecha  = f.fecha
-            LEFT JOIN faltantes  fa ON fa.fecha = f.fecha
-            ORDER BY f.fecha ASC
-        ";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
-            ':emp'           => $empresaId,
-            ':emp2'          => $empresaId,
-            ':emp3'          => $empresaId,
-            ':fecha_desde'   => $fechaDesde,
-            ':fecha_desde_b' => $fechaDesde,
-            ':fecha_desde_c' => $fechaDesde,
-        ]);
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
-    }
-
-    private function _nsQueryMes(\PDO $pdo, int $empresaId, int $dias): array
-    {
-        $sql = "
-            WITH solicitado AS (
-                SELECT TO_CHAR(op.fecha::date, 'YYYY-MM')          AS mes,
-                       COALESCE(SUM(pd.cantidad_solicitada), 0)    AS total
-                FROM orden_pickings op
-                JOIN picking_detalles pd ON pd.orden_picking_id = op.id
-                WHERE op.empresa_id = :emp
-                  AND op.fecha::date >= CURRENT_DATE - (:dias_a * INTERVAL '1 day')
-                GROUP BY mes
-            ),
-            faltantes AS (
-                SELECT TO_CHAR(pf.created_at::date, 'YYYY-MM')    AS mes,
-                       COALESCE(SUM(pf.cantidad_faltante), 0)      AS total
-                FROM picking_faltantes pf
-                JOIN causales_novedad cn ON cn.id = pf.causal_id
-                                        AND cn.afecta_nivel_servicio = TRUE
-                                        AND cn.empresa_id = :emp2
-                WHERE pf.empresa_id = :emp3
-                  AND pf.created_at::date >= CURRENT_DATE - (:dias_b * INTERVAL '1 day')
-                GROUP BY mes
-            ),
-            meses AS (
-                SELECT DISTINCT mes FROM solicitado
-                UNION
-                SELECT DISTINCT mes FROM faltantes
-            )
-            SELECT m.mes                         AS periodo,
-                   COALESCE(s.total, 0)          AS total_solicitado,
-                   COALESCE(fa.total, 0)         AS faltantes_ns
-            FROM meses m
-            LEFT JOIN solicitado s  ON s.mes  = m.mes
-            LEFT JOIN faltantes  fa ON fa.mes = m.mes
-            ORDER BY m.mes ASC
-        ";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
-            ':emp'    => $empresaId,
-            ':emp2'   => $empresaId,
-            ':emp3'   => $empresaId,
-            ':dias_a' => $dias,
-            ':dias_b' => $dias,
-        ]);
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
-    }
-
-    /**
-     * GET /api/tv/ingresos-chart?mes=YYYY-MM
-     *
-     * Devuelve cajas recibidas por día y proveedor para el mes indicado
-     * (recepciones en estado 'Cerrada').
-     *
-     * Respuesta:
-     * {
-     *   "labels": ["2026-07-01", "2026-07-02", ...],
-     *   "series": [
-     *     { "proveedor": "Proveedor A", "data": [10, 5, 0, ...] },
-     *     { "proveedor": "Proveedor B", "data": [0, 3, 8, ...] }
-     *   ]
-     * }
-     */
-    public function ingresosChart(Request $request, Response $response): Response
-    {
-        $user       = $request->getAttribute('user');
-        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
-        $sucursalId = $this->getEffectiveSucursalId($user, $request);
-        $pdo        = Capsule::connection()->getPdo();
-
-        $params = $request->getQueryParams();
-        $mes    = !empty($params['mes']) ? $params['mes'] : date('Y-m');
-
-        // Validar formato YYYY-MM
-        if (!preg_match('/^\d{4}-\d{2}$/', $mes)) {
-            return $this->error($response, 'Parámetro mes inválido. Use formato YYYY-MM.', 400);
-        }
-
-        try {
-            $stmt = $pdo->prepare("
-                SELECT
-                    DATE_TRUNC('day', r.fecha_recepcion)::date AS dia,
-                    COALESCE(p.razon_social, p.nombre, 'Sin proveedor') AS proveedor,
-                    SUM(rd.cantidad_recibida) AS cajas
-                FROM recepciones r
-                JOIN recepcion_detalles rd ON rd.recepcion_id = r.id
-                LEFT JOIN ordenes_compra oc ON oc.id = r.odc_id
-                LEFT JOIN proveedores p ON p.id = oc.proveedor_id
-                WHERE r.empresa_id  = :emp
-                  AND r.sucursal_id = :suc
-                  AND TO_CHAR(r.fecha_recepcion, 'YYYY-MM') = :mes
-                  AND r.estado = 'Cerrada'
-                GROUP BY dia, proveedor
-                ORDER BY dia, proveedor
-            ");
-            $stmt->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':mes' => $mes]);
-            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-            // Construir labels (días únicos del mes con datos) y pivotar series
-            $diasSet      = [];
-            $proveedorSet = [];
-            $dataMap      = [];  // ['proveedor']['dia'] = cajas
-
-            foreach ($rows as $row) {
-                $dia  = $row['dia'];
-                $prov = $row['proveedor'];
-                $cajas = (float)$row['cajas'];
-
-                $diasSet[$dia]      = true;
-                $proveedorSet[$prov] = true;
-                $dataMap[$prov][$dia] = $cajas;
-            }
-
-            // Si no hay datos, generar labels vacíos del mes para no romper el chart
-            if (empty($diasSet)) {
-                return $this->ok($response, ['labels' => [], 'series' => []]);
-            }
-
-            $labels = array_keys($diasSet);
-            sort($labels);
-
-            $series = [];
-            foreach (array_keys($proveedorSet) as $prov) {
-                $data = [];
-                foreach ($labels as $dia) {
-                    $data[] = $dataMap[$prov][$dia] ?? 0;
-                }
-                $series[] = ['proveedor' => $prov, 'data' => $data];
-            }
-
-            // Ordenar series por volumen total descendente
-            usort($series, fn($a, $b) => array_sum($b['data']) <=> array_sum($a['data']));
-
-            return $this->ok($response, ['labels' => $labels, 'series' => $series]);
-        } catch (\Throwable $e) {
-            wmsLog('ERROR', 'TV:ingresosChart — ' . $e->getMessage());
-            return $this->error($response, 'Error al obtener ingresos chart: ' . $e->getMessage(), 500);
-        }
-    }
-
-    private function _nsQuerySucursal(\PDO $pdo, int $empresaId): array
-    {
-        $sql = "
-            WITH solicitado AS (
-                SELECT COALESCE(op.sucursal_entrega, 'Sin sucursal')  AS sucursal,
-                       COALESCE(SUM(pd.cantidad_solicitada), 0)        AS total
-                FROM orden_pickings op
-                JOIN picking_detalles pd ON pd.orden_picking_id = op.id
-                WHERE op.empresa_id = :emp
-                  AND op.fecha::date >= CURRENT_DATE - INTERVAL '30 days'
-                GROUP BY sucursal
-            ),
-            faltantes AS (
-                SELECT COALESCE(op2.sucursal_entrega, 'Sin sucursal') AS sucursal,
-                       COALESCE(SUM(pf.cantidad_faltante), 0)          AS total
-                FROM picking_faltantes pf
-                JOIN orden_pickings op2 ON op2.id = pf.orden_picking_id
-                JOIN causales_novedad cn ON cn.id = pf.causal_id
-                                        AND cn.afecta_nivel_servicio = TRUE
-                                        AND cn.empresa_id = :emp2
-                WHERE pf.empresa_id = :emp3
-                  AND pf.created_at::date >= CURRENT_DATE - INTERVAL '30 days'
-                GROUP BY sucursal
-            ),
-            sucursales AS (
-                SELECT DISTINCT sucursal FROM solicitado
-                UNION
-                SELECT DISTINCT sucursal FROM faltantes
-            )
-            SELECT su.sucursal               AS periodo,
-                   COALESCE(s.total,  0)     AS total_solicitado,
-                   COALESCE(fa.total, 0)     AS faltantes_ns
-            FROM sucursales su
-            LEFT JOIN solicitado s  ON s.sucursal  = su.sucursal
-            LEFT JOIN faltantes  fa ON fa.sucursal = su.sucursal
-            ORDER BY su.sucursal ASC
-        ";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
-            ':emp'  => $empresaId,
-            ':emp2' => $empresaId,
-            ':emp3' => $empresaId,
-        ]);
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /**

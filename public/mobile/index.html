@@ -513,6 +513,15 @@ const MWMS = {
       this._pvItems = [];
       this.toast('No se pudo cargar la lista de chequeo', 'error');
     }
+    try {
+      const [rc, rv] = await Promise.all([mApi('GET', '/param/conductores'), mApi('GET', '/param/vehiculos')]);
+      this._pvConductores = (rc.data || []).filter(c => c.activo);
+      this._pvVehiculos    = (rv.data || []).filter(v => v.activo);
+    } catch(e) {
+      this._pvConductores = [];
+      this._pvVehiculos    = [];
+      this.toast('No se pudo cargar conductores/vehículos', 'error');
+    }
     this.loading(false);
 
     const hoy = new Date().toISOString().slice(0, 10);
@@ -533,9 +542,17 @@ const MWMS = {
           <label class="m-label">Fecha *</label>
           <input type="date" id="pv-fecha" class="m-input-full" value="${hoy}">
           <label class="m-label" style="margin-top:8px;">Vehículo (placa) *</label>
-          <input type="text" id="pv-vehiculo" class="m-input-full" placeholder="Ej: ABC-123" style="text-transform:uppercase;">
+          <select id="pv-vehiculo" class="m-input-full">
+            <option value="">Seleccione un vehículo...</option>
+            ${(this._pvVehiculos || []).map(v => `<option value="${this.esc(v.placa)}">${this.esc(v.placa)}${v.tipo ? ' - ' + this.esc(v.tipo) : ''}</option>`).join('')}
+          </select>
+          ${!(this._pvVehiculos || []).length ? '<p style="font-size:.72rem;color:#dc2626;margin:4px 0 0;">No hay vehículos registrados. Pida a un Admin que los agregue en Maestro → Vehículos.</p>' : ''}
           <label class="m-label" style="margin-top:8px;">Conductor *</label>
-          <input type="text" id="pv-conductor" class="m-input-full" placeholder="Nombre del conductor">
+          <select id="pv-conductor" class="m-input-full">
+            <option value="">Seleccione un conductor...</option>
+            ${(this._pvConductores || []).map(c => `<option value="${this.esc(c.nombre)}">${this.esc(c.nombre)}</option>`).join('')}
+          </select>
+          ${!(this._pvConductores || []).length ? '<p style="font-size:.72rem;color:#dc2626;margin:4px 0 0;">No hay conductores registrados. Pida a un Admin que los agregue en Maestro → Conductores.</p>' : ''}
           <label class="m-label" style="margin-top:8px;">Ruta</label>
           <input type="text" id="pv-ruta" class="m-input-full" placeholder="Ej: Bogotá - Medellín">
         </div>
@@ -2371,6 +2388,18 @@ const MWMS = {
   loading(s){ let l=document.getElementById('m-loading'); if(s&&!l)document.body.insertAdjacentHTML('beforeend','<div id="m-loading" style="position:fixed;inset:0;background:rgba(255,255,255,.7);z-index:90000;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#0F4C81;"><i class="fa-solid fa-spinner fa-spin"></i></div>'); else if(!s&&l)l.remove(); },
   toast(m,t='info'){ const c=document.getElementById('m-toast'), e=document.createElement('div'); e.className='m-toast-item '+t; e.innerHTML=m; c.appendChild(e); setTimeout(()=>{e.style.opacity='0';setTimeout(()=>e.remove(),500);},3000); },
   esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); },
+
+  // Vista ampliada de una imagen (moderada, no a pantalla completa) — tap en
+  // cualquier parte (imagen o fondo) para cerrar.
+  _verImagenGrande(url) {
+    if (!url) return;
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;';
+    ov.onclick = () => ov.remove();
+    ov.innerHTML = `<img src="${this.esc(url)}" style="max-width:78vw;max-height:65vh;object-fit:contain;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.5);">`;
+    document.body.appendChild(ov);
+  },
+
   formatDate(d){
     if(!d)return'-';
     const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -7474,6 +7503,12 @@ const MWMS = {
                         : (it.fotos && Object.keys(it.fotos).length > 0);
     const numFotos    = Array.isArray(it.fotos) ? it.fotos.length
                         : (it.fotos ? Object.keys(it.fotos).length : 0);
+    // Imagen del producto (misma construcción de URL que viewProductoDetail)
+    const fotosArr  = Array.isArray(it.fotos) ? it.fotos : (it.fotos ? Object.values(it.fotos) : []);
+    const primeraFoto = fotosArr[0] || null;
+    const imgUrl = (primeraFoto && primeraFoto.url)
+      ? (primeraFoto.url.startsWith('http') ? primeraFoto.url : (M_API.replace('/api', '') + primeraFoto.url))
+      : null;
 
     const allItems = this._itemsPlanilla || [];
     const nextIdx  = (() => {
@@ -7532,36 +7567,83 @@ const MWMS = {
             </div>
           </div>
 
-          <!-- ── Principal: ubicación + vencimiento + producto ── -->
+          <!-- ── Principal: ubicación+nombre (izq.) e imagen (der.), sin superposición ── -->
           <div class="op-card" style="padding:9px 12px;margin-bottom:8px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
-              ${it.ubicacion_codigo
-                ? `<div id="pk-ubi-txt" style="font-size:1.25rem;font-weight:900;font-family:monospace;color:#0F4C81;letter-spacing:.5px;line-height:1.1;white-space:nowrap;overflow:hidden;flex:1;min-width:0;">${this._shortUbic(it.ubicacion_codigo)}</div>`
-                : `<div style="font-size:.85rem;color:#dc2626;font-weight:800;white-space:nowrap;"><i class="fa-solid fa-triangle-exclamation"></i> SIN UBICACIÓN</div>`
-              }
-              <span style="background:${vence ? '#fef2f2' : '#f1f5f9'};color:${vence ? '#dc2626' : '#64748b'};border-radius:5px;padding:3px 7px;font-weight:700;font-size:.68rem;white-space:nowrap;flex-shrink:0;">
-                <i class="fa-solid fa-calendar-days" style="font-size:.58rem;"></i> ${venceTxt}
-              </span>
-            </div>
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-              <div style="font-weight:800;color:#1e293b;font-size:.9rem;line-height:1.2;">${this.esc(it.producto_nombre)}</div>
-              ${tienesFotos ? `
-              <button onclick="MWMS.viewProductoDetail(${it.producto_id},'MWMS.renderPKConsolidado(MWMS._itemsPlanilla[MWMS._idxActual],\\'${planillaNumero}\\')')"
-                style="background:#e0f2fe;border:1px solid #bae6fd;color:#0284c7;border-radius:5px;padding:3px 7px;font-size:.65rem;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">
-                <i class="fa-solid fa-camera"></i> ${numFotos}
-              </button>` : ''}
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.66rem;color:#64748b;margin-top:3px;">
-              <span style="font-family:monospace;font-weight:700;">${it.producto_codigo}</span>
-              ${it.lote ? `<span>· Lote <b>${it.lote}</b></span>` : ''}
-              <span style="margin-left:auto;font-weight:700;color:#0F4C81;white-space:nowrap;">
-                Pedido: ${it.cantidad_total}${usaCajas ? ` cj (${it.cantidad_total * factor} und${factor > 1 ? `, UxC ${factor}` : ''})` : ' und'}
-              </span>
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+                  ${it.ubicacion_codigo
+                    ? `<div id="pk-ubi-txt" style="font-size:1.15rem;font-weight:900;font-family:monospace;color:#0F4C81;letter-spacing:.5px;line-height:1.1;">${this._shortUbic(it.ubicacion_codigo)}</div>`
+                    : `<div style="font-size:.8rem;color:#dc2626;font-weight:800;white-space:nowrap;"><i class="fa-solid fa-triangle-exclamation"></i> SIN UBICACIÓN</div>`
+                  }
+                  <span style="background:${vence ? '#fef2f2' : '#f1f5f9'};color:${vence ? '#dc2626' : '#64748b'};border-radius:5px;padding:2px 6px;font-weight:700;font-size:.6rem;white-space:nowrap;">
+                    <i class="fa-solid fa-calendar-days" style="font-size:.55rem;"></i> ${venceTxt}
+                  </span>
+                </div>
+                <div style="font-weight:800;color:#1e293b;font-size:.86rem;line-height:1.2;word-break:break-word;">${this.esc(it.producto_nombre)}</div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.64rem;color:#64748b;margin-top:3px;">
+                  <span style="font-family:monospace;font-weight:700;">${it.producto_codigo}</span>
+                  ${it.lote ? `<span>· Lote <b>${it.lote}</b></span>` : ''}
+                </div>
+                <div style="font-weight:700;color:#0F4C81;font-size:.68rem;margin-top:3px;white-space:nowrap;">
+                  Pedido: ${it.cantidad_total}${usaCajas ? ` cj (${it.cantidad_total * factor} und${factor > 1 ? `, UxC ${factor}` : ''})` : ' und'}
+                </div>
+              </div>
+              <!-- Imagen del producto: columna fija a la derecha, nunca se superpone con el texto de la izquierda -->
+              <div style="flex-shrink:0;width:62px;display:flex;flex-direction:column;align-items:center;gap:4px;">
+                ${imgUrl
+                  ? `<img src="${imgUrl}" onclick="MWMS._verImagenGrande('${imgUrl.replace(/'/g, "\\'")}')" style="width:62px;height:62px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer;">`
+                  : `<div style="width:62px;height:62px;border-radius:8px;background:#f1f5f9;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:1.15rem;"><i class="fa-solid fa-box"></i></div>`
+                }
+                ${tienesFotos ? `
+                <button onclick="MWMS.viewProductoDetail(${it.producto_id},'MWMS.renderPKConsolidado(MWMS._itemsPlanilla[MWMS._idxActual],\\'${planillaNumero}\\')')"
+                  style="background:#e0f2fe;border:1px solid #bae6fd;color:#0284c7;border-radius:5px;padding:2px 6px;font-size:.58rem;font-weight:700;cursor:pointer;white-space:nowrap;">
+                  <i class="fa-solid fa-camera"></i> ${numFotos}
+                </button>` : ''}
+              </div>
             </div>
           </div>
 
-          <!-- ── Scan ubicación (2026-08-18: obligatorio por defecto — se puede ── -->
-          <!-- desactivar por planilla completa desde escritorio) ── -->
+          <!-- ── Formulario cantidades: SIEMPRE VISIBLE. Cajas y Saldos apilados a la
+               izquierda; Total a la derecha, centrado verticalmente entre ambos. ── -->
+          <div style="background:#f0fdf4;border:2px solid #10b981;padding:10px;border-radius:11px;margin-bottom:8px;">
+            <div style="font-size:.64rem;font-weight:800;color:#059669;text-align:center;margin-bottom:8px;text-transform:uppercase;letter-spacing:.3px;">
+              <i class="fa-solid fa-boxes-stacked"></i> CANTIDAD A SEPARAR
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <div style="flex:1.15;display:flex;flex-direction:column;gap:7px;min-width:0;">
+                <div>
+                  <label style="font-size:.62rem;font-weight:700;color:#1e293b;display:block;margin-bottom:2px;">
+                    <i class="fa-solid fa-box-archive" style="color:#0F4C81;"></i>
+                    ${factor > 1 ? 'Cajas' : 'Cantidad (cj/und)'}
+                  </label>
+                  <input type="number" id="pk-inline-cajas" value="${sugCajas}" min="0" max="${sugCajas}" inputmode="numeric"
+                    style="width:100%;border:2px solid #0F4C81;border-radius:8px;padding:6px;font-size:1.45rem;font-weight:900;text-align:center;box-sizing:border-box;"
+                    oninput="if(parseFloat(this.value||0)>${sugCajas}){this.value='${sugCajas}';MWMS.toast('Máximo ${sugCajas} — el excedente va en Saldos','info');}MWMS._updPKInlineTotal(${factor})">
+                </div>
+                <div>
+                  <label style="font-size:.62rem;font-weight:700;color:#d97706;display:block;margin-bottom:2px;">
+                    <i class="fa-solid fa-layer-group" style="color:#d97706;"></i> Saldos (sueltos)
+                  </label>
+                  <input type="number" id="pk-inline-saldos" value="0" min="0" inputmode="numeric"
+                    style="width:100%;border:2px solid #d97706;border-radius:8px;padding:6px;font-size:1.45rem;font-weight:900;text-align:center;box-sizing:border-box;"
+                    oninput="MWMS._updPKInlineTotal(${factor})">
+                </div>
+              </div>
+              <!-- Total: mismo eje vertical (align-items:center del padre), a la mitad de Cajas+Saldos -->
+              <div style="flex:1;align-self:center;background:#dcfce7;border-radius:8px;padding:8px 4px;text-align:center;">
+                <div style="font-size:.52rem;font-weight:700;color:#166534;text-transform:uppercase;">UND / TOTAL</div>
+                <div id="pk-inline-total" style="font-size:1.45rem;font-weight:900;color:#15803d;line-height:1.1;">—</div>
+                <div id="pk-inline-und" style="font-size:.55rem;color:#166534;margin-top:2px;"></div>
+              </div>
+            </div>
+            <!-- Aviso dinámico de faltante (cajas/saldos), solo si la cantidad digitada es menor a lo pedido -->
+            <div id="pk-inline-faltante" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:6px 10px;text-align:center;margin-top:8px;font-size:.7rem;font-weight:700;color:#b91c1c;"></div>
+          </div>
+
+          <!-- ── Scan ubicación — debajo del formulario de cantidades ── -->
+          <!-- (2026-08-18: obligatorio por defecto — se puede desactivar por planilla ── -->
+          <!-- completa desde escritorio) ── -->
           ${it.ubicacion_codigo ? `
           <div id="pk-scan-bar" style="display:flex;align-items:center;gap:8px;background:#fff8e1;border:1px solid #f59e0b;border-radius:9px;padding:6px 10px;margin-bottom:8px;">
             <i id="pk-loc-icon" class="fa-solid fa-location-crosshairs" style="color:#d97706;font-size:.9rem;flex-shrink:0;"></i>
@@ -7588,49 +7670,16 @@ const MWMS = {
             <span style="font-size:.62rem;font-weight:800;color:#dc2626;white-space:nowrap;">FECHA VENC. OBLIGATORIA</span>
           </div>` : ''}
 
-          <!-- ── Formulario cantidades: SIEMPRE VISIBLE ── -->
-          <div style="background:#f0fdf4;border:2px solid #10b981;padding:10px;border-radius:11px;margin-bottom:8px;">
-            <div style="font-size:.66rem;font-weight:800;color:#059669;text-align:center;margin-bottom:8px;text-transform:uppercase;letter-spacing:.3px;">
-              <i class="fa-solid fa-boxes-stacked"></i> CANTIDAD A SEPARAR
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-              <div>
-                <label style="font-size:.64rem;font-weight:700;color:#1e293b;display:block;margin-bottom:3px;">
-                  <i class="fa-solid fa-box-archive" style="color:#0F4C81;"></i>
-                  ${factor > 1 ? 'Cajas' : 'Cantidad (cj/und)'}
-                </label>
-                <input type="number" id="pk-inline-cajas" value="${sugCajas}" min="0" max="${sugCajas}" inputmode="numeric"
-                  style="width:100%;border:2px solid #0F4C81;border-radius:8px;padding:8px 6px;font-size:1.7rem;font-weight:900;text-align:center;box-sizing:border-box;"
-                  oninput="if(parseFloat(this.value||0)>${sugCajas}){this.value='${sugCajas}';MWMS.toast('Máximo ${sugCajas} — el excedente va en Saldos','info');}MWMS._updPKInlineTotal(${factor})">
-              </div>
-              <div>
-                <label style="font-size:.64rem;font-weight:700;color:#d97706;display:block;margin-bottom:3px;">
-                  <i class="fa-solid fa-layer-group" style="color:#d97706;"></i> Saldos (sueltos, aquí va lo que sobre o falte)
-                </label>
-                <input type="number" id="pk-inline-saldos" value="0" min="0" inputmode="numeric"
-                  style="width:100%;border:2px solid #d97706;border-radius:8px;padding:8px 6px;font-size:1.7rem;font-weight:900;text-align:center;box-sizing:border-box;"
-                  oninput="MWMS._updPKInlineTotal(${factor})">
-              </div>
-            </div>
-            <!-- Total UND/TOTAL -->
-            <div style="background:#dcfce7;border-radius:8px;padding:6px;text-align:center;margin-bottom:8px;">
-              <div style="font-size:.56rem;font-weight:700;color:#166534;text-transform:uppercase;">UND / TOTAL A SEPARAR</div>
-              <div id="pk-inline-total" style="font-size:1.7rem;font-weight:900;color:#15803d;line-height:1.1;">—</div>
-              <div id="pk-inline-und" style="font-size:.58rem;color:#166534;margin-top:2px;"></div>
-            </div>
-            <!-- Aviso dinámico de faltante (cajas/saldos), solo si la cantidad digitada es menor a lo pedido -->
-            <div id="pk-inline-faltante" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:6px 10px;text-align:center;margin-bottom:8px;font-size:.72rem;font-weight:700;color:#b91c1c;"></div>
-            <!-- Agotado + Confirmar, lado a lado -->
-            <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:8px;">
-              <button onclick="MWMS._pkMarcarAgotado('${planillaNumero}','${it.ids}')"
-                style="background:#450a0a;color:#fca5a5;border:1px solid #991b1b;border-radius:9px;height:46px;font-size:.68rem;font-weight:800;cursor:pointer;letter-spacing:.2px;">
-                <i class="fa-solid fa-circle-xmark"></i><br>AGOTADO
-              </button>
-              <button onclick="MWMS._confirmarPKInline('${planillaNumero}',${factor},${it.cantidad_total})"
-                style="background:#059669;color:#fff;border:none;border-radius:9px;height:46px;font-size:.85rem;font-weight:900;cursor:pointer;letter-spacing:.2px;">
-                <i class="fa-solid fa-check-double"></i> CONFIRMAR
-              </button>
-            </div>
+          <!-- ── Agotado + Confirmar: misma orientación de siempre (lado a lado) ── -->
+          <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:8px;margin-bottom:8px;">
+            <button onclick="MWMS._pkMarcarAgotado('${planillaNumero}','${it.ids}')"
+              style="background:#450a0a;color:#fca5a5;border:1px solid #991b1b;border-radius:9px;height:46px;font-size:.68rem;font-weight:800;cursor:pointer;letter-spacing:.2px;">
+              <i class="fa-solid fa-circle-xmark"></i><br>AGOTADO
+            </button>
+            <button onclick="MWMS._confirmarPKInline('${planillaNumero}',${factor},${it.cantidad_total})"
+              style="background:#059669;color:#fff;border:none;border-radius:9px;height:46px;font-size:.85rem;font-weight:900;cursor:pointer;letter-spacing:.2px;">
+              <i class="fa-solid fa-check-double"></i> CONFIRMAR
+            </button>
           </div>
 
           <!-- ── RUTA FEFO DINÁMICA ── -->
@@ -7974,6 +8023,11 @@ const MWMS = {
         planilla_numero: planillaNumero,
         novedad_id: novedadId,
         fecha_vencimiento_manual: fechaVencManual,
+        // El móvil ya advierte explícitamente ("Cantidad Menor... ¿Desea continuar?")
+        // antes de llegar aquí, así que el faltante siempre viene consentido — evita
+        // que el backend lo vuelva a bloquear con needs_confirm_parcial (ver picking.js
+        // de escritorio, que sí carecía de ese aviso).
+        confirma_parcial: true,
       });
 
       if (confirmResp.status === 'needs_fecha_vencimiento') {

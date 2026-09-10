@@ -298,6 +298,17 @@ class InventarioV2Controller extends BaseController
                 return $this->error($res, "No se puede eliminar la sesión '{$sesion->nombre}' porque ya ha sido finalizada o ajustada.");
             }
 
+            // Blindaje: aunque el ESTADO de la sesión todavía no sea Ajustado/Cerrado,
+            // puede haber líneas individuales ya ajustadas vía ajustar-linea() (el botón
+            // más usado en la pantalla de diferencias, uno por uno). Cada ajuste aplicado
+            // queda en ajustes_inventario con FK RESTRICT hacia sesion_lineas.id — borrar
+            // esas líneas violaría esa FK (y, peor, dejaría el inventario real ya movido
+            // sin la línea de conteo que lo originó). Se bloquea con un mensaje claro en
+            // vez de dejar que la base de datos falle con el SQLSTATE crudo.
+            if (AjusteInventario::where('sesion_id', $sesion->id)->exists()) {
+                return $this->error($res, "No se puede eliminar la sesión '{$sesion->nombre}': ya tiene ajustes de inventario aplicados sobre una o más líneas. Esos ajustes ya afectaron el inventario real y no se pueden borrar sin perder la trazabilidad — use 'Cerrar' para finalizarla en vez de 'Eliminar'.");
+            }
+
             $nombre    = $sesion->nombre;
             $sesionId  = $sesion->id;
 
@@ -2120,12 +2131,28 @@ class InventarioV2Controller extends BaseController
             : AjusteInventario::TIPO_SALIDA;
 
         // ── 4. Actualizar tabla inventarios ──
+        // BUG CORREGIDO (2026-09-08, caso real: SOLOMITO X 5 UND, CONGELACION/01-31-03,
+        // lote 31/08/2026 — Sesión #59): el ajuste por conteo físico solo tocaba
+        // 'cantidad' (la verdad absoluta del conteo) y dejaba 'cantidad_cajas'/'saldos'
+        // en su valor previo al conteo (rama existente) o siempre en 0 (rama nueva),
+        // rompiendo el invariante cantidad_cajas*upc+saldos==cantidad que sí mantienen
+        // Picking/Traspaso. Stock General suma 'cantidad' (correcto), pero cualquier
+        // pantalla que muestre el desglose cajas/sueltos quedaba mostrando un conteo
+        // viejo — parecía que el sistema tenía unidades "de más" que no cuadraban con
+        // las cajas físicas. Se deriva el desglose de 'cantidad_contada' con la misma
+        // fórmula que ya usa el resto del sistema (floor/fmod por upc).
+        $upcAjuste = max(1, (float)($linea->producto->factor_udm ?? 0) > 0
+            ? (float)$linea->producto->factor_udm
+            : (float)($linea->producto->unidades_caja ?? 1));
+
         if ($inv) {
             if ($cantidadNueva <= 0) {
                 // Eliminar registro: la referencia no existe físicamente
                 $inv->delete();
             } else {
-                $inv->cantidad = $cantidadNueva;
+                $inv->cantidad       = $cantidadNueva;
+                $inv->cantidad_cajas = (int)floor($cantidadNueva / $upcAjuste);
+                $inv->saldos         = round(fmod($cantidadNueva, $upcAjuste), 2);
                 if ($linea->fecha_vencimiento) {
                     $inv->fecha_vencimiento = $linea->fecha_vencimiento;
                 }
@@ -2142,8 +2169,8 @@ class InventarioV2Controller extends BaseController
                 'fecha_vencimiento'  => $linea->fecha_vencimiento,
                 'cantidad'           => $cantidadNueva,
                 'cantidad_reservada' => 0,
-                'cantidad_cajas'     => 0,
-                'saldos'             => 0,
+                'cantidad_cajas'     => (int)floor($cantidadNueva / $upcAjuste),
+                'saldos'             => round(fmod($cantidadNueva, $upcAjuste), 2),
                 'estado'             => 'Disponible',
             ]);
         }
@@ -2260,7 +2287,13 @@ class InventarioV2Controller extends BaseController
                     ->whereRaw('sesion_lineas.producto_id  = inventarios.producto_id')
                     ->whereRaw('sesion_lineas.ubicacion_id = inventarios.ubicacion_id')
                     // Comparación segura de lote normalizado (trata NULL, '', 'N/A' como idénticos)
-                    ->whereRaw("COALESCE(NULLIF(NULLIF(TRIM(sesion_lineas.lote), 'N/A'), 'n/a'), '') = COALESCE(NULLIF(NULLIF(TRIM(inventarios.lote), 'N/A'), 'n/a'), '')");
+                    ->whereRaw("COALESCE(NULLIF(NULLIF(TRIM(sesion_lineas.lote), 'N/A'), 'n/a'), '') = COALESCE(NULLIF(NULLIF(TRIM(inventarios.lote), 'N/A'), 'n/a'), '')")
+                    // BUG CORREGIDO (2026-09-08): sin comparar fecha_vencimiento, una
+                    // ubicación con el mismo lote pero DOS vencimientos distintos del
+                    // mismo producto solo necesitaba contar UNO para que el otro quedara
+                    // "ya cubierto" y nunca se detectara como ausencia (ver mismo caso
+                    // real en detectarReferenciasSinExistencia(), Jamón Serrano).
+                    ->whereRaw('COALESCE(sesion_lineas.fecha_vencimiento, \'1900-01-01\') = COALESCE(inventarios.fecha_vencimiento, \'1900-01-01\')');
             })
             ->select('producto_id', 'ubicacion_id', 'lote', 'fecha_vencimiento', 'cantidad')
             ->get();
@@ -2307,10 +2340,20 @@ class InventarioV2Controller extends BaseController
      */
     private function detectarReferenciasSinExistencia(SesionInventario $sesion, int $rondaFinal, array $yaCubiertas = [], ?int $soloAsignacionId = null): array
     {
-        // BLINDAJE CÍCLICO 2026-08-26: Para inventario Cíclico no se borra el stock de otras ubicaciones
-        // no asignadas al auxiliar. La reconciliación automática de ausencia solo aplica en General/CargueInicial.
-        if ($sesion->tipo === 'Ciclico') return [];
-
+        // BUG CORREGIDO (2026-09-08, caso real: JAMON SERRANO, sesión Cíclica "por
+        // referencia" en REFRIGERACION/02-31-03): el "Blindaje Cíclico 2026-08-26" de
+        // abajo bloqueaba ESTA función por completo para cualquier sesión tipo
+        // 'Ciclico', pero esta función solo actúa sobre asignaciones tipo 'Referencia'
+        // (ver query debajo) — que por definición le piden al auxiliar ubicar TODA la
+        // existencia de un producto en la bodega, sin importar el tipo de sesión que
+        // lo contenga. El blindaje era correcto para el otro detector
+        // (detectarReferenciasNoContadas(), que sí debe respetar que un Cíclico por
+        // zona/pasillo es parcial), pero aplicado aquí dejaba lotes/vencimientos del
+        // mismo producto NO contados en Stock General con su cantidad vieja intacta
+        // (el jamón serrano de 02-31-03 lote G/21-12-2026 y lote —/13-02-2027 nunca
+        // se ponían en 0 aunque la asignación "Referencia" ya se había cerrado).
+        // Si la sesión no tiene ninguna asignación 'Referencia', el query de abajo
+        // devuelve vacío igual — quitar el guard no afecta un Cíclico por zona normal.
         $asignacionesReferencia = SesionAsignacion::where('sesion_id', $sesion->id)
             ->where('ronda', $rondaFinal)
             ->where('tipo_instruccion', SesionAsignacion::INSTRUCCION_REFERENCIA)
@@ -2328,21 +2371,29 @@ class InventarioV2Controller extends BaseController
 
         $sinExistencia = [];
         foreach ($asignacionesReferencia as $asig) {
-            // Ubicaciones que sí quedaron confirmadas (contadas) en esta asignación —
-            // se excluyen de la reconciliación aunque la cantidad contada sea 0, porque
-            // "0 en una ubicación visitada" también es información confirmada, no ausencia.
-            $ubicIdsCubiertas = SesionLinea::where('sesion_id', $sesion->id)
-                ->where('asignacion_id', $asig->id)
-                ->where('estado', SesionLinea::ESTADO_ACTIVO)
-                ->pluck('ubicacion_id')
-                ->toArray();
-
+            // BUG CORREGIDO (2026-09-08, mismo caso Jamón Serrano): antes se excluía
+            // por 'ubicacion_id' completo — si esa ubicación tenía VARIOS lotes/fechas
+            // de vencimiento del mismo producto y solo se contó uno, los demás quedaban
+            // "ya cubiertos" solo por compartir la ubicación (REFRIGERACION/02-31-03
+            // tenía 3 filas: la contada, y otras 2 con lote/vencimiento distintos que
+            // escapaban a esta reconciliación). Ahora se excluye por la combinación
+            // exacta ubicación+lote(normalizado)+vencimiento realmente contada, igual
+            // que ya hace detectarReferenciasNoContadas() para General/CargueInicial.
             $inventarios = Capsule::table('inventarios')
-                ->where('empresa_id',  $sesion->empresa_id)
-                ->where('sucursal_id', $sesion->sucursal_id)
-                ->where('producto_id', $asig->producto_id)
-                ->where('cantidad', '>', 0)
-                ->when(!empty($ubicIdsCubiertas), fn($q) => $q->whereNotIn('ubicacion_id', $ubicIdsCubiertas))
+                ->where('inventarios.empresa_id',  $sesion->empresa_id)
+                ->where('inventarios.sucursal_id', $sesion->sucursal_id)
+                ->where('inventarios.producto_id', $asig->producto_id)
+                ->where('inventarios.cantidad', '>', 0)
+                ->whereNotExists(function ($sub) use ($sesion, $asig) {
+                    $sub->select(Capsule::raw(1))
+                        ->from('sesion_lineas')
+                        ->where('sesion_lineas.sesion_id', $sesion->id)
+                        ->where('sesion_lineas.asignacion_id', $asig->id)
+                        ->where('sesion_lineas.estado', SesionLinea::ESTADO_ACTIVO)
+                        ->whereRaw('sesion_lineas.ubicacion_id = inventarios.ubicacion_id')
+                        ->whereRaw("COALESCE(NULLIF(NULLIF(TRIM(sesion_lineas.lote), 'N/A'), 'n/a'), '') = COALESCE(NULLIF(NULLIF(TRIM(inventarios.lote), 'N/A'), 'n/a'), '')")
+                        ->whereRaw('COALESCE(sesion_lineas.fecha_vencimiento, \'1900-01-01\') = COALESCE(inventarios.fecha_vencimiento, \'1900-01-01\')');
+                })
                 ->select('producto_id', 'ubicacion_id', 'lote', 'fecha_vencimiento', 'cantidad')
                 ->get();
 

@@ -144,7 +144,7 @@ class DevolucionController extends BaseController
             return $deny;
         }
 
-        $tiposValidos = ['AProveedorAveria','AProveedorVencido','ReingresoBuenEstado','cliente','proveedor','interna'];
+        $tiposValidos = ['AProveedorAveria','AProveedorVencido','ReingresoBuenEstado','cliente','proveedor','interna','BuenEstado','MalEstado'];
         if (!in_array($data['tipo'], $tiposValidos, true)) {
             return $this->error($response, 'tipo inválido');
         }
@@ -261,8 +261,11 @@ class DevolucionController extends BaseController
             ]);
 
             foreach ($detalles as $d) {
-                $condicion = $d['condicion'] ?? 'bueno';
                 $tipoDev   = $data['tipo'] ?? 'cliente';
+                // El nuevo formulario ya no pide "condición" por ítem — el tipo de
+                // devolución (Buen Estado / Mal Estado), elegido una sola vez para
+                // todo el formulario, decide la condición por defecto de cada línea.
+                $condicion = $d['condicion'] ?? ($tipoDev === 'MalEstado' ? 'dañado' : 'bueno');
                 $destino   = !empty($d['destino']) ? $d['destino'] : (
                     ($tipoDev === 'proveedor' || $tipoDev === 'AProveedorAveria' || $tipoDev === 'AProveedorVencido')
                         ? 'DevolucionProveedor'
@@ -284,7 +287,10 @@ class DevolucionController extends BaseController
 
             $productosMovidos = [];
 
-            if ($data['tipo'] !== 'cliente') {
+            // BuenEstado/MalEstado son devoluciones DESDE el cliente (igual que 'cliente'
+            // legacy) — el producto entra físicamente a la bodega y su inventario se suma
+            // recién en procesar() (triage restock/descarte/proveedor), no aquí al crear.
+            if (!in_array($data['tipo'], ['cliente', 'BuenEstado', 'MalEstado'], true)) {
                 foreach ($detalles as $d) {
                     $productoId   = (int)$d['producto_id'];
                     $cantidad     = (float)($d['cantidad'] ?? 0);
@@ -813,10 +819,20 @@ class DevolucionController extends BaseController
                         ->lockForUpdate()
                         ->first();
 
+                    // Pallet genérico de devoluciones: así el ítem cae agrupado y visible
+                    // en el módulo Ubicar (PutawayController::listarPatio agrupa por
+                    // numero_pallet) en vez de caer en "Artículos sin pallet". numero_pallet
+                    // es INTEGER — se usa un número reservado (fuera del rango real 1-469
+                    // usado hoy por los pallets físicos) en vez de un código de texto.
+                    $palletGenericoDevoluciones = 999999;
                     if ($inv) {
                         \Illuminate\Database\Capsule\Manager::table('inventarios')
                             ->where('id', $inv->id)
-                            ->update(['cantidad' => $inv->cantidad + $det->cantidad, 'updated_at' => date('Y-m-d H:i:s')]);
+                            ->update([
+                                'cantidad'      => $inv->cantidad + $det->cantidad,
+                                'numero_pallet' => $inv->numero_pallet ?: $palletGenericoDevoluciones,
+                                'updated_at'    => date('Y-m-d H:i:s'),
+                            ]);
                     } else {
                         \Illuminate\Database\Capsule\Manager::table('inventarios')->insert([
                             'empresa_id'         => $empresaId,
@@ -827,6 +843,7 @@ class DevolucionController extends BaseController
                             'fecha_vencimiento'  => $det->fecha_vencimiento,
                             'cantidad'           => $det->cantidad,
                             'cantidad_reservada' => 0,
+                            'numero_pallet'      => $palletGenericoDevoluciones,
                             'estado'             => 'Disponible',
                             'created_at'         => date('Y-m-d H:i:s'),
                             'updated_at'         => date('Y-m-d H:i:s'),

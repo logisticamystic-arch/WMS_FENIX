@@ -1294,11 +1294,6 @@ class PackingController extends BaseController
 {$agotadosHtml}
 {$novedadesHtml}
 <div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>
-<div class='firmas'>
-  <div class='firma-line'>Firma Certificador<br><strong>{$certNombre}</strong></div>
-  <div class='firma-line'>Firma Transportador</div>
-  <div class='firma-line'>Firma Recibido</div>
-</div>
 </body></html>";
 
         $body = $res->getBody();

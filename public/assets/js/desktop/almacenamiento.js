@@ -42,7 +42,10 @@ WMS_MODULES.almacenamiento = {
       });
 
       const groupHtml = Object.entries(groups).map(([key, g]) => {
-        const palletLabel = key !== '__sin_pallet__' ? `Pallet #${key}` : 'Artículos sin pallet';
+        // 999999 = pallet genérico reservado para devoluciones en buen estado
+        // (DevolucionController::procesar) — no es un pallet físico real.
+        const palletLabel = key === '999999' ? 'Pallet Genérico — Devoluciones'
+          : key !== '__sin_pallet__' ? `Pallet #${key}` : 'Artículos sin pallet';
         const refs = g.items.length;
         const rowsHtml = g.idxs.map(idx => {
           const item = items[idx];
@@ -152,14 +155,14 @@ WMS_MODULES.almacenamiento = {
 
   async _eliminarPallet(palletKey) {
     if (palletKey === '__sin_pallet__') return;
-    const items = this._patioItems.filter(i => String(i.numero_pallet) === palletKey);
-    const hasReservations = items.some(i => parseFloat(i.cantidad_reservada||0) > 0);
-    
-    if (hasReservations) {
-      WMS.toast('error', 'No se puede eliminar porque hay stock reservado en este pallet.');
-      return;
-    }
-    
+    // BUG CORREGIDO (auditoría 2026-09-07): este guard bloqueaba el pallet
+    // COMPLETO con solo mirar cantidad_reservada > 0 en cualquiera de sus
+    // referencias, sin verificar si esa reserva tenía de verdad un pedido activo
+    // detrás — bloqueaba pallets con reservas fantasma (de ediciones/reversas de
+    // picking mal reconciliadas) que el backend (eliminarPalletPatio) SÍ sabe
+    // distinguir correctamente. Se elimina la duplicación: el backend ya hace
+    // esta misma validación (contra picking_detalles/orden_pickings reales) y
+    // devuelve un mensaje de error claro si de verdad hay un pedido pendiente.
     const motivo = prompt(`VAS A ELIMINAR COMPLETAMENTE EL PALLET #${palletKey}.\nEsta acción descontará el inventario permanentemente.\n\nEscribe el motivo de la baja obligatoriamente:`);
     if (!motivo) return;
     

@@ -8,6 +8,8 @@ use App\Models\Empresa;
 use App\Models\Sucursal;
 use App\Models\Cliente;
 use App\Models\Ruta;
+use App\Models\Conductor;
+use App\Models\Vehiculo;
 use Illuminate\Database\Capsule\Manager as Capsule;
 
 class ParametrosController extends BaseController
@@ -1853,6 +1855,157 @@ class ParametrosController extends BaseController
             $ruta = \App\Models\Ruta::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->findOrFail($id);
             $ruta->delete();
             return $this->json($response, ['error' => false, 'message' => 'Ruta eliminada']);
+        } catch (\Exception $e) {
+            return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    // ── CONDUCTORES (maestro para el módulo Preoperacional) ──────────────────
+
+    /**
+     * GET /api/param/conductores
+     */
+    public function getConductores(Request $request, Response $response): Response
+    {
+        $user = $request->getAttribute('user');
+        $conductores = Conductor::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->orderBy('nombre')->get();
+        return $this->json($response, ['error' => false, 'data' => $conductores]);
+    }
+
+    /**
+     * POST /api/param/conductores
+     */
+    public function createConductor(Request $request, Response $response): Response
+    {
+        $user   = $request->getAttribute('user');
+        $data   = $request->getParsedBody();
+        $nombre = trim($data['nombre'] ?? '');
+
+        if (empty($nombre)) {
+            return $this->json($response, ['error' => true, 'message' => 'El nombre del conductor es requerido.'], 400);
+        }
+        try {
+            $conductor              = new Conductor();
+            $conductor->empresa_id  = $this->getEffectiveEmpresaId($user, $request);
+            $conductor->nombre      = $nombre;
+            $conductor->documento   = trim($data['documento'] ?? '') ?: null;
+            $conductor->telefono    = trim($data['telefono'] ?? '') ?: null;
+            $conductor->activo      = 1;
+            $conductor->save();
+            return $this->json($response, ['error' => false, 'message' => 'Conductor creado', 'data' => $conductor], 201);
+        } catch (\Exception $e) {
+            error_log('createConductor error: ' . $e->getMessage());
+            return $this->json($response, ['error' => true, 'message' => 'Error al crear conductor.'], 500);
+        }
+    }
+
+    /**
+     * PUT /api/param/conductores/{id}
+     */
+    public function updateConductor(Request $request, Response $response, array $args): Response
+    {
+        $user      = $request->getAttribute('user');
+        $conductor = Conductor::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($args['id']);
+        if (!$conductor) return $this->json($response, ['error' => true, 'message' => 'Conductor no encontrado'], 404);
+
+        $data = $request->getParsedBody();
+        if (isset($data['nombre']))    $conductor->nombre    = trim($data['nombre']);
+        if (isset($data['documento'])) $conductor->documento = trim($data['documento']) ?: null;
+        if (isset($data['telefono']))  $conductor->telefono  = trim($data['telefono']) ?: null;
+        if (isset($data['activo']))    $conductor->activo    = $data['activo'] ? 1 : 0;
+        $conductor->save();
+
+        return $this->json($response, ['error' => false, 'message' => 'Conductor actualizado', 'data' => $conductor]);
+    }
+
+    /**
+     * DELETE /api/param/conductores/{id}
+     */
+    public function deleteConductor(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        try {
+            $conductor = Conductor::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->findOrFail($args['id']);
+            $conductor->delete();
+            return $this->json($response, ['error' => false, 'message' => 'Conductor eliminado']);
+        } catch (\Exception $e) {
+            return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    // ── VEHÍCULOS (maestro para el módulo Preoperacional) ─────────────────────
+
+    /**
+     * GET /api/param/vehiculos
+     */
+    public function getVehiculos(Request $request, Response $response): Response
+    {
+        $user = $request->getAttribute('user');
+        $vehiculos = Vehiculo::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->orderBy('placa')->get();
+        return $this->json($response, ['error' => false, 'data' => $vehiculos]);
+    }
+
+    /**
+     * POST /api/param/vehiculos
+     */
+    public function createVehiculo(Request $request, Response $response): Response
+    {
+        $user  = $request->getAttribute('user');
+        $data  = $request->getParsedBody();
+        $placa = strtoupper(trim($data['placa'] ?? ''));
+
+        if (empty($placa)) {
+            return $this->json($response, ['error' => true, 'message' => 'La placa del vehículo es requerida.'], 400);
+        }
+        try {
+            $vehiculo             = new Vehiculo();
+            $vehiculo->empresa_id = $this->getEffectiveEmpresaId($user, $request);
+            $vehiculo->placa      = $placa;
+            $vehiculo->tipo       = trim($data['tipo'] ?? '') ?: null;
+            $vehiculo->activo     = 1;
+            $vehiculo->save();
+            return $this->json($response, ['error' => false, 'message' => 'Vehículo creado', 'data' => $vehiculo], 201);
+        } catch (\Exception $e) {
+            error_log('createVehiculo error: ' . $e->getMessage());
+            $msg = str_contains($e->getMessage(), 'idx_vehiculos_empresa_placa') ? 'Ya existe un vehículo con esa placa.' : 'Error al crear vehículo.';
+            return $this->json($response, ['error' => true, 'message' => $msg], 500);
+        }
+    }
+
+    /**
+     * PUT /api/param/vehiculos/{id}
+     */
+    public function updateVehiculo(Request $request, Response $response, array $args): Response
+    {
+        $user     = $request->getAttribute('user');
+        $vehiculo = Vehiculo::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($args['id']);
+        if (!$vehiculo) return $this->json($response, ['error' => true, 'message' => 'Vehículo no encontrado'], 404);
+
+        $data = $request->getParsedBody();
+        if (isset($data['placa'])) $vehiculo->placa = strtoupper(trim($data['placa']));
+        if (isset($data['tipo']))  $vehiculo->tipo   = trim($data['tipo']) ?: null;
+        if (isset($data['activo'])) $vehiculo->activo = $data['activo'] ? 1 : 0;
+
+        try {
+            $vehiculo->save();
+        } catch (\Exception $e) {
+            $msg = str_contains($e->getMessage(), 'idx_vehiculos_empresa_placa') ? 'Ya existe un vehículo con esa placa.' : 'Error al actualizar vehículo.';
+            return $this->json($response, ['error' => true, 'message' => $msg], 500);
+        }
+
+        return $this->json($response, ['error' => false, 'message' => 'Vehículo actualizado', 'data' => $vehiculo]);
+    }
+
+    /**
+     * DELETE /api/param/vehiculos/{id}
+     */
+    public function deleteVehiculo(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        try {
+            $vehiculo = Vehiculo::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->findOrFail($args['id']);
+            $vehiculo->delete();
+            return $this->json($response, ['error' => false, 'message' => 'Vehículo eliminado']);
         } catch (\Exception $e) {
             return $this->json($response, ['error' => true, 'message' => 'Error: ' . $e->getMessage()], 500);
         }

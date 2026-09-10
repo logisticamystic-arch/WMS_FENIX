@@ -2450,7 +2450,7 @@ canvas {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  cursor: default;
+  cursor: pointer;
   transition: box-shadow .25s, transform .25s;
   position: relative;
   overflow: hidden;

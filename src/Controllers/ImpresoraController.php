@@ -131,6 +131,19 @@ class ImpresoraController extends BaseController
                 ];
             }
             $rawData = \App\Helpers\PrintHelper::generateTSPLPDV($items);
+        } elseif ($data['tipo'] === 'sucursal') {
+            if (empty($data['nombre'])) {
+                return $this->error($res, 'Datos incompletos para rótulo de sucursal: nombre requerido.');
+            }
+            $copias = max(1, intval($data['copias'] ?? 1));
+            $items = [];
+            for ($i = 0; $i < $copias; $i++) {
+                $items[] = [
+                    'nombre' => $data['nombre'] ?? '',
+                    'codigo' => $data['codigo'] ?? '',
+                ];
+            }
+            $rawData = \App\Helpers\PrintHelper::generateTSPLSucursal($items);
         } else {
             return $this->error($res, 'Tipo de rótulo no reconocido.');
         }

@@ -336,4 +336,62 @@ class PrintHelper
         $tspl .= "PRINT 1,1\n";
         return $tspl;
     }
+
+    /**
+     * TSC TE200 — Rótulo Sucursal / Cliente (nombre en hasta 2 líneas + código)
+     */
+    public static function generateTSPLSucursal(array $sucList): string
+    {
+        if (empty($sucList)) return '';
+        $tspl = '';
+        foreach ($sucList as $item) {
+            $tspl .= self::buildTSPLSucursalPage($item);
+        }
+        return $tspl;
+    }
+
+    private static function buildTSPLSucursalPage(array $item): string
+    {
+        $labelW = 60;
+        $labelH = 30;
+
+        $ascii = static function (string $s, int $max = 40): string {
+            $s = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s) ?: $s;
+            return substr(preg_replace('/[^\x20-\x7E]/', ' ', $s), 0, $max);
+        };
+
+        $nombre = strtoupper(trim($ascii($item['nombre'] ?? '', 40)));
+        $codigo = strtoupper(trim($ascii($item['codigo'] ?? '', 20)));
+
+        // Parte el nombre en máximo 2 líneas por palabras completas (~18 caracteres por línea a este tamaño).
+        $maxCharsLinea = 18;
+        $linea1 = $nombre;
+        $linea2 = '';
+        if (strlen($nombre) > $maxCharsLinea) {
+            $palabras = preg_split('/\s+/', $nombre);
+            $linea1 = '';
+            $i = 0;
+            for (; $i < count($palabras); $i++) {
+                $candidato = $linea1 === '' ? $palabras[$i] : ($linea1 . ' ' . $palabras[$i]);
+                if (strlen($candidato) > $maxCharsLinea && $linea1 !== '') break;
+                $linea1 = $candidato;
+            }
+            $linea2 = implode(' ', array_slice($palabras, $i));
+        }
+
+        $tspl  = "SIZE {$labelW} mm, {$labelH} mm\n";
+        $tspl .= "GAP 3 mm, 0 mm\n";
+        $tspl .= "DIRECTION 1\n";
+        $tspl .= "CLS\n";
+        $tspl .= "TEXT 20,15,\"2\",0,1,1,\"SUCURSAL / CLIENTE\"\n";
+        $tspl .= "TEXT 20,45,\"4\",0,1,1,\"{$linea1}\"\n";
+        if ($linea2 !== '') {
+            $tspl .= "TEXT 20,95,\"4\",0,1,1,\"{$linea2}\"\n";
+        }
+        if ($codigo !== '') {
+            $tspl .= "TEXT 20,180,\"2\",0,1,1,\"COD: {$codigo}\"\n";
+        }
+        $tspl .= "PRINT 1,1\n";
+        return $tspl;
+    }
 }

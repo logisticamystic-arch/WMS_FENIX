@@ -468,15 +468,25 @@ class ReportesController extends BaseController
             ->leftJoin('personal as aux', 'd.auxiliar_id', '=', 'aux.id')
             ->where('o.empresa_id', $eId)
             ->where('o.sucursal_id', $user->sucursal_id)
-            ->whereBetween('o.created_at', [$ini, $fin])
+            // Alineado con PickingController::reporte() y el resto del sistema:
+            // fecha_movimiento (fecha operativa real), no created_at (fecha de
+            // registro en BD) — antes filtraba por created_at, desalineado del
+            // resto de reportes de picking.
+            ->whereBetween('o.fecha_movimiento', [$ini, $fin])
             ->select(
+                'o.fecha_movimiento as fecha',
                 'o.planilla_numero',
+                'o.sucursal_entrega as sucursal',
                 'o.area_comercial as ruta',
                 'o.cliente',
                 'p.codigo_interno as ean',
                 'p.nombre as producto',
+                'p.unidades_caja',
+                'p.factor_udm',
                 'd.cantidad_solicitada',
                 'd.cantidad_pickeada',
+                'd.lote',
+                'd.fecha_vencimiento',
                 'u.codigo as ubicacion',
                 'aux.nombre as auxiliar',
                 'o.hora_inicio',
@@ -497,25 +507,45 @@ class ReportesController extends BaseController
             // Filtro por ubicación
             ->when($ubicacionId, function ($q) use ($ubicacionId) { $q->where('d.ubicacion_id', $ubicacionId); })
             ->orderBy('o.planilla_numero', 'desc')
-            ->orderBy('o.created_at', 'desc');
+            ->orderBy('o.fecha_movimiento', 'desc');
 
         $rows = $query->get();
 
+        // cantidad_solicitada ya viene en CAJAS y cantidad_pickeada en UNIDADES
+        // (misma convención usada en todo el módulo de picking, ver picking.js
+        // ::_agruparPorPlanilla) — se descompone aquí la separación real en
+        // cajas + saldo + total unidad, igual que en la remisión (BaseController).
+        $rows = $rows->map(function ($row) {
+            $upc = ((float)($row->factor_udm ?? 0) > 0)
+                ? (float)$row->factor_udm
+                : max(1, (float)($row->unidades_caja ?? 1));
+            $totalUnd = round((float)($row->cantidad_pickeada ?? 0), 3);
+            $row->separado_cajas = ($upc > 1) ? (int)floor($totalUnd / $upc) : $totalUnd;
+            $row->separado_saldo = ($upc > 1) ? round($totalUnd - ($row->separado_cajas * $upc), 3) : 0;
+            $row->separado_total_unidad = $totalUnd;
+            return $row;
+        });
+
         if (($params['export'] ?? '') === 'excel') {
             $data = $rows->map(fn($row) => [
+                $row->fecha ?: '—',
+                $row->sucursal ?? '—',
                 $row->planilla_numero ?? '—',
-                $row->ruta            ?? '—',
-                "($row->ean) $row->producto",
+                $row->ean,
+                $row->producto,
                 $row->cantidad_solicitada,
-                $row->cantidad_pickeada,
-                $row->ubicacion       ?? '—',
+                $row->separado_cajas,
+                $row->separado_saldo,
+                $row->separado_total_unidad,
                 $row->auxiliar        ?? '—',
-                $row->hora_inicio     ?? '—',
+                $row->ubicacion       ?? '—',
                 $row->hora_fin_linea ? substr($row->hora_fin_linea, 11, 8) : '—',
+                $row->fecha_vencimiento ?: '—',
+                $row->lote             ?: '—',
                 $row->linea_estado
             ])->toArray();
 
-            $headers = ['Planilla', 'Ruta', 'Producto (EAN)', 'Solicitado', 'Separado', 'Ubicación', 'Auxiliar', 'Hora Inicio', 'Hora Fin', 'Estado'];
+            $headers = ['Fecha', 'Sucursal Despacho', 'Planilla', 'Código', 'Descripción', 'Cant. Solicitada (cj)', 'Cant. Separada (cj)', 'Saldo', 'Total Unidad', 'Auxiliar', 'Ubicación Separación', 'Hora Separación', 'F. Vencimiento', 'Lote', 'Estado'];
             return $this->exportCsv($res, $headers, $data, 'reporte_picking_detallado_' . date('Y-m-d'));
         }
 

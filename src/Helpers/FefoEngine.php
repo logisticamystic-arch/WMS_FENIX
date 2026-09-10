@@ -76,6 +76,64 @@ class FefoEngine
     }
 
     /**
+     * Punto único de control para ordenar por RUTA FÍSICA (Pasillo → Módulo →
+     * Nivel → Posición), robusto ante padding inconsistente en la BD (nivel "2"
+     * vs "02" se comparan como el MISMO valor numérico, no como strings distintos)
+     * y ante segmentos no numéricos (ubicaciones tipo "CALIDAD", "PT", "EX...",
+     * confirmadas en producción), que caen a orden natural de texto en vez de
+     * desordenarse o fallar.
+     *
+     * Reemplaza el patrón `COALESCE(LENGTH(x),0) ASC, x ASC` repetido en SQL en
+     * varios puntos del código — ese truco ordena por LONGITUD del string antes
+     * que por valor, así que "2" (longitud 1) queda ANTES que "02" (longitud 2)
+     * aunque sean el mismo nivel físico (bug real confirmado en auditoría
+     * 2026-09-05, ubicación id 3331). Al ser imposible hacer esta comparación de
+     * forma confiable en SQL puro sin arriesgar errores de cast (hay ubicaciones
+     * con pasillo no numérico), el ordenamiento final por ruta física se hace
+     * aquí, en PHP, sobre la colección ya traída de la BD.
+     *
+     * Úsalo como comparador de desempate (nunca como criterio de ordenamiento
+     * principal si hay que decidir de qué lote/ubicación descontar primero —
+     * eso lo decide SIEMPRE ordenVencimiento()/FEFO; la ruta física es la forma
+     * de decidir el orden de RECORRIDO cuando hay varias opciones igual de
+     * válidas según FEFO, o de listar las tareas de una planilla sin zigzaguear).
+     *
+     * @param object $a  Fila/objeto con las propiedades de pasillo/modulo/nivel/posicion
+     * @param object $b
+     */
+    public static function compararRutaFisica(
+        $a, $b,
+        string $campoPasillo = 'pasillo', string $campoModulo = 'modulo',
+        string $campoNivel = 'nivel', string $campoPosicion = 'posicion'
+    ): int {
+        foreach ([$campoPasillo, $campoModulo, $campoNivel, $campoPosicion] as $campo) {
+            $cmp = self::compararSegmentoUbicacion($a->{$campo} ?? null, $b->{$campo} ?? null);
+            if ($cmp !== 0) return $cmp;
+        }
+        return 0;
+    }
+
+    /**
+     * Compara un solo segmento de ruta física. Numérico vs numérico → comparación
+     * por VALOR (ignora padding, "2" == "02"); cualquier otro caso → orden natural
+     * de texto (strnatcasecmp, para segmentos tipo "CALIDAD"/"PT"/"EX"). Vacío/NULL
+     * siempre al final.
+     */
+    private static function compararSegmentoUbicacion($va, $vb): int
+    {
+        $vaVacio = ($va === null || $va === '');
+        $vbVacio = ($vb === null || $vb === '');
+        if ($vaVacio && $vbVacio) return 0;
+        if ($vaVacio) return 1;
+        if ($vbVacio) return -1;
+
+        if (is_numeric($va) && is_numeric($vb)) {
+            return (float)$va <=> (float)$vb;
+        }
+        return strnatcasecmp((string)$va, (string)$vb);
+    }
+
+    /**
      * Consulta el flag controla_vencimiento del producto desde la BD.
      * Retorna true si el producto requiere control de fecha de vencimiento.
      */
@@ -149,41 +207,43 @@ class FefoEngine
                 'i.lote',
                 'i.ubicacion_id',
                 'u.codigo as ubicacion_codigo',
+                'u.pasillo', 'u.modulo', 'u.nivel', 'u.posicion',
                 'i.fecha_vencimiento',
+                'i.created_at',
                 Capsule::raw('(i.cantidad - i.cantidad_reservada) as disponible'),
             ]);
 
+        // Orden a nivel SQL: solo lo que SÍ es seguro/estable en SQL puro (fecha de
+        // vencimiento y disponible, sin riesgo de padding). El desempate por ruta
+        // física (Pasillo → Módulo → Nivel → Posición) se hace después, en PHP, vía
+        // FefoEngine::compararRutaFisica() — ver ese método para el porqué (el truco
+        // COALESCE(LENGTH,0) ASC anterior ordenaba mal cuando el padding no era
+        // uniforme, ej. nivel "2" antes que "01"; auditoría 2026-09-05).
         if ($controlaVencimiento) {
-            // Ruta física por ubicación primero (Pasillo -> Módulo -> Nivel -> Posición) + FEFO:
-            // 1° Pasillo ASC (Consume todo Pasillo 01 antes de pasar al Pasillo 02)
-            // 2° Módulo ASC (Consume todo Módulo 01 antes de pasar al Módulo 02)
-            // 3° Nivel ASC (Nivel 01, 02, 03...)
-            // 4° Posición ASC
-            // 5° Fecha Vencimiento ASC (FEFO desempate)
-            // FEFO Estricto: 1° Fecha Vencimiento (lo que vence primero sale primero)
+            // FEFO Estricto: 1° Fecha Vencimiento (lo que vence primero sale primero),
             // 2° Ruta física de desempate (Pasillo -> Módulo -> Nivel -> Posición)
             $query
                 ->orderByRaw('CASE WHEN i.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC')
                 ->orderBy('i.fecha_vencimiento', 'asc')
-                ->orderByRaw('COALESCE(LENGTH(u.pasillo), 0) ASC, u.pasillo ASC')
-                ->orderByRaw('COALESCE(LENGTH(u.modulo), 0) ASC, u.modulo ASC')
-                ->orderByRaw('COALESCE(LENGTH(u.nivel), 0) ASC, u.nivel ASC')
-                ->orderByRaw('COALESCE(LENGTH(u.posicion), 0) ASC, u.posicion ASC')
-                ->orderBy('u.codigo', 'asc')
                 ->orderBy('i.created_at', 'asc');
         } else {
-            // Sin control de FV: Ruta física estricta por ubicación primero
-            // Pasillo ASC -> Módulo ASC -> Nivel ASC -> Posición ASC -> Código ASC
-            $query
-                ->orderByRaw('COALESCE(LENGTH(u.pasillo), 0) ASC, u.pasillo ASC')
-                ->orderByRaw('COALESCE(LENGTH(u.modulo), 0) ASC, u.modulo ASC')
-                ->orderByRaw('COALESCE(LENGTH(u.nivel), 0) ASC, u.nivel ASC')
-                ->orderByRaw('COALESCE(LENGTH(u.posicion), 0) ASC, u.posicion ASC')
-                ->orderBy('u.codigo', 'asc')
-                ->orderByRaw('(i.cantidad - i.cantidad_reservada) DESC');
+            // Sin control de FV: no hay FEFO que respetar — ruta física manda directo,
+            // cantidad disponible DESC como desempate final (agotar el registro más lleno).
+            $query->orderByRaw('(i.cantidad - i.cantidad_reservada) DESC');
         }
 
-        $rows = $query->get();
+        $rows = $query->get()->sort(function ($a, $b) use ($controlaVencimiento) {
+            if ($controlaVencimiento) {
+                $fa = $a->fecha_vencimiento; $fb = $b->fecha_vencimiento;
+                if (($fa === null) !== ($fb === null)) return $fa === null ? 1 : -1;
+                if ($fa !== null && $fb !== null && $fa !== $fb) return strcmp($fa, $fb);
+            }
+            $cmp = self::compararRutaFisica($a, $b, 'pasillo', 'modulo', 'nivel', 'posicion');
+            if ($cmp !== 0) return $cmp;
+            $cmpCod = strnatcasecmp($a->ubicacion_codigo ?? '', $b->ubicacion_codigo ?? '');
+            if ($cmpCod !== 0) return $cmpCod;
+            return $controlaVencimiento ? 0 : ($b->disponible <=> $a->disponible);
+        })->values();
 
         $lotes        = [];
         $pendiente    = round($cantidadRequerida, 4);
