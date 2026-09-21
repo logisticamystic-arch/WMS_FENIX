@@ -13,9 +13,10 @@ WMS_MODULES.calidad = {
     this._sub = sub || 'dashboard';
     WMS.renderSidebar('calidad');
 
-    if (this._sub === 'preoperacional-nueva' || this._sub === 'preoperacional-historial') {
-      const subPreop = this._sub === 'preoperacional-historial' ? 'historial' : 'nueva';
-      WMS.setBreadcrumb('calidad', subPreop === 'historial' ? 'Historial Inspecciones Preoperacionales' : 'Registro Preoperacional');
+    if (this._sub.startsWith('preoperacional-')) {
+      const subPreop = this._sub.replace('preoperacional-', '');
+      const labels = { historial: 'Historial Inspecciones Preoperacionales', nueva: 'Registro Preoperacional', dashboard: 'Dashboard Preoperacional', matriz: 'Matriz por Vehículo' };
+      WMS.setBreadcrumb('calidad', labels[subPreop] || 'Preoperacional');
       WMS.setToolbar('');
       WMS.loadScript('assets/js/desktop/preoperacional.js', () => {
         if (WMS_MODULES.preoperacional) {
@@ -246,7 +247,18 @@ WMS_MODULES.calidad = {
       const e = r.data.encabezado;
       const detalles = r.data.detalles || [];
 
-      const badgeCNC = v => v ? `<span class="badge" style="background:${v === 'C' ? '#dcfce7' : '#fee2e2'};color:${v === 'C' ? '#16a34a' : '#dc2626'};">${v}</span>` : '-';
+      // 3 estados desde 2026-09-18 (antes solo C/NC): Cumple/No Cumple/No
+      // Aplica, tanto en el checklist de transporte como el de producto.
+      const LABELS = { C: 'Cumple', NC: 'No Cumple', NA: 'No Aplica' };
+      const COLORS = { C: '#dcfce7,#16a34a', NC: '#fee2e2,#dc2626', NA: '#f1f5f9,#64748b' };
+      const badgeCNC = v => {
+        if (!v || !LABELS[v]) return '-';
+        const [bg, fg] = COLORS[v].split(',');
+        return `<span class="badge" style="background:${bg};color:${fg};">${LABELS[v]}</span>`;
+      };
+      const veredicto = e.conforme === 'Conforme' ? { txt: 'Conforme', bg: '#dcfce7', fg: '#16a34a' }
+        : e.conforme === 'Inconforme' ? { txt: 'Inconforme', bg: '#fee2e2', fg: '#dc2626' }
+        : { txt: 'Sin auditoría', bg: '#f1f5f9', fg: '#64748b' };
 
       const html = `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;font-size:.85rem;">
@@ -254,6 +266,7 @@ WMS_MODULES.calidad = {
           <div><b>Fecha:</b> ${WMS.formatDate(e.fecha_movimiento || e.created_at)}</div>
           <div><b>Placa transporte:</b> ${WMS.esc(e.trans_placa || '-')}</div>
           <div><b>Factura:</b> ${WMS.esc(e.factura || '-')}</div>
+          <div><b>Veredicto general:</b> <span class="badge" style="background:${veredicto.bg};color:${veredicto.fg};">${veredicto.txt}</span></div>
         </div>
         <table class="data-table compact" style="margin-bottom:12px;">
           <thead><tr><th>Temperatura</th><th>Limpieza</th><th>Concepto sanitario</th><th>Carnet manipulación</th></tr></thead>
@@ -273,10 +286,18 @@ WMS_MODULES.calidad = {
                 <td>${WMS.esc(d.producto_nombre || d.producto_codigo || '-')}</td>
                 <td>${badgeCNC(d.olor)}</td><td>${badgeCNC(d.color)}</td><td>${badgeCNC(d.textura)}</td>
                 <td>${badgeCNC(d.temperatura)}</td><td>${badgeCNC(d.empaque)}</td><td>${badgeCNC(d.rotulado)}</td>
-              </tr>`).join('')}
+              </tr>
+              ${(d.observaciones || d.foto_evidencia) ? `
+              <tr>
+                <td colspan="7" style="background:#f8fafc;">
+                  ${d.observaciones ? `<div style="font-size:.78rem;color:#475569;"><b>Observaciones:</b> ${WMS.esc(d.observaciones)}</div>` : ''}
+                  ${d.foto_evidencia ? `<a href="${WMS.esc(d.foto_evidencia)}" target="_blank"><img src="${WMS.esc(d.foto_evidencia)}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;margin-top:4px;"></a>` : ''}
+                </td>
+              </tr>` : ''}`).join('')}
           </tbody>
         </table>` : ''}
-        ${e.foto_evidencia ? `<div><b>Foto de evidencia:</b><br><a href="${WMS.esc(e.foto_evidencia)}" target="_blank"><img src="${WMS.esc(e.foto_evidencia)}" style="width:120px;height:120px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;margin-top:6px;"></a></div>` : ''}
+        ${e.foto_evidencia ? `<div style="margin-bottom:12px;"><b>Foto de evidencia (transporte):</b><br><a href="${WMS.esc(e.foto_evidencia)}" target="_blank"><img src="${WMS.esc(e.foto_evidencia)}" style="width:120px;height:120px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;margin-top:6px;"></a></div>` : ''}
+        ${e.firma_responsable ? `<div><b>Firma del responsable:</b><br><img src="${WMS.esc(e.firma_responsable)}" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;margin-top:6px;"></div>` : ''}
       `;
       WMS.showModal('Auditoría de Calidad — Recepción', html, '', 'lg');
     } catch (e) {
@@ -292,6 +313,10 @@ WMS_MODULES.calidad = {
       const r = await API.get(`/preoperacional/${id}`);
       const p = r.data;
       const items = p.items || [];
+      // Mismo fix que preoperacional.js::_verDetalle(): las fotos vienen del
+      // backend como ruta raíz ('/uploads/...'), hay que anteponer el base path
+      // de la app o el navegador las resuelve contra localhost/uploads/... (404).
+      const up = (u) => u ? (window.location.origin + '/WMS_FENIX/public' + u) : u;
 
       const html = `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;font-size:.85rem;">
@@ -311,17 +336,37 @@ WMS_MODULES.calidad = {
                     ${it.calificacion === 'C' ? 'Cumple' : 'No Cumple'}
                   </span>
                 </td>
-                <td>${it.foto_url ? `<a href="${WMS.esc(it.foto_url)}" target="_blank"><i class="fa-solid fa-image"></i> Ver foto</a>` : '-'}</td>
-              </tr>`).join('')}
+                <td>${it.foto_url ? `<a href="${WMS.esc(up(it.foto_url))}" target="_blank"><i class="fa-solid fa-image"></i> Ver foto</a>` : '-'}</td>
+              </tr>
+              ${(it.calificacion === 'C' && it.producto_desinfeccion) ? `
+              <tr>
+                <td colspan="3" style="background:#f0fdf4;font-size:.8rem;color:#166534;"><b>Producto usado:</b> ${WMS.esc(it.producto_desinfeccion === 'Acido Peracetico' ? 'Ácido Peracético' : it.producto_desinfeccion)}</td>
+              </tr>` : ''}
+              ${it.calificacion === 'NC' ? `
+              <tr>
+                <td colspan="3" style="background:#fef2f2;">
+                  <div style="font-size:.8rem;color:#991b1b;"><b>Detalle:</b> ${WMS.esc(it.detalle_no_conformidad || '-')}</div>
+                  <div style="font-size:.8rem;color:#991b1b;margin-top:2px;"><b>Acción correctiva:</b> ${WMS.esc(it.accion_correctiva || '-')}</div>
+                  ${(it.fotos && it.fotos.length) ? `
+                  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+                    ${it.fotos.map(f => `<a href="${WMS.esc(up(f.url))}" target="_blank"><img src="${WMS.esc(up(f.url))}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;border:1px solid #fecaca;"></a>`).join('')}
+                  </div>` : ''}
+                </td>
+              </tr>` : ''}`).join('')}
           </tbody>
         </table>
         ${p.observaciones ? `<div style="margin-bottom:12px;"><b>Observaciones:</b><p style="margin-top:4px;color:#475569;">${WMS.esc(p.observaciones)}</p></div>` : ''}
         ${(p.fotos && p.fotos.length) ? `
-        <div>
+        <div style="margin-bottom:12px;">
           <b>Fotos de la inspección:</b>
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
-            ${p.fotos.map(f => `<a href="${WMS.esc(f.url)}" target="_blank"><img src="${WMS.esc(f.url)}" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;"></a>`).join('')}
+            ${p.fotos.map(f => `<a href="${WMS.esc(up(f.url))}" target="_blank"><img src="${WMS.esc(up(f.url))}" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;"></a>`).join('')}
           </div>
+        </div>` : ''}
+        ${p.firma_url ? `
+        <div>
+          <b>Firma del conductor:</b>
+          <div style="margin-top:8px;"><img src="${WMS.esc(up(p.firma_url))}" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;"></div>
         </div>` : ''}
       `;
       WMS.showModal('Detalle Preoperacional', html, '', 'lg');

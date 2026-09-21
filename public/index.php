@@ -511,6 +511,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/devoluciones/causales',         [\App\Controllers\DevolucionController::class, 'getCausales']);
     $group->post('/devoluciones/causales',        [\App\Controllers\DevolucionController::class, 'createCausal']);
     $group->put('/devoluciones/causales/{id}',    [\App\Controllers\DevolucionController::class, 'updateCausal']);
+    $group->delete('/devoluciones/causales/{id}', [\App\Controllers\DevolucionController::class, 'deleteCausal']);
     $group->get('/devoluciones/dashboard',        [\App\Controllers\DevolucionController::class, 'getDashboard']);
     $group->get('/devoluciones/dashboard-stats',  [\App\Controllers\DevolucionController::class, 'dashboardStats']);
     $group->get('/devoluciones/buscar-consecutivo', [\App\Controllers\DevolucionController::class, 'buscarConsecutivo']);
@@ -521,7 +522,11 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/devoluciones/crm/estados',     [\App\Controllers\DevolucionCrmController::class, 'createEstado']);
     $group->put('/devoluciones/crm/estados/{id}', [\App\Controllers\DevolucionCrmController::class, 'updateEstado']);
     $group->delete('/devoluciones/crm/estados/{id}', [\App\Controllers\DevolucionCrmController::class, 'deleteEstado']);
-    
+
+    $group->get('/devoluciones/auxiliares-calidad',      [\App\Controllers\DevolucionCrmController::class, 'getAuxiliaresCalidad']);
+    $group->post('/devoluciones/auxiliares-calidad',     [\App\Controllers\DevolucionCrmController::class, 'createAuxiliarCalidad']);
+    $group->put('/devoluciones/auxiliares-calidad/{id}', [\App\Controllers\DevolucionCrmController::class, 'updateAuxiliarCalidad']);
+
     $group->get('/devoluciones/{id}/tracking',    [\App\Controllers\DevolucionCrmController::class, 'getTracking']);
     $group->post('/devoluciones/{id}/tracking',   [\App\Controllers\DevolucionCrmController::class, 'addTracking']);
 
@@ -554,9 +559,13 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         // ── Ajuste x Ubicación (flujo mobile → aprobación desktop) ─────────────
         $g->get('/ajuste-ubicacion',                 [\App\Controllers\AjusteUbicacionController::class, 'listar']);
         $g->post('/ajuste-ubicacion',                [\App\Controllers\AjusteUbicacionController::class, 'crear']);
+        $g->get('/ajuste-ubicacion/mis-pendientes',  [\App\Controllers\AjusteUbicacionController::class, 'misPendientes']);
         $g->get('/ajuste-ubicacion/{id}',            [\App\Controllers\AjusteUbicacionController::class, 'detalle']);
         $g->post('/ajuste-ubicacion/{id}/aprobar',   [\App\Controllers\AjusteUbicacionController::class, 'aprobar']);
         $g->post('/ajuste-ubicacion/{id}/rechazar',  [\App\Controllers\AjusteUbicacionController::class, 'rechazar']);
+        $g->put('/ajuste-ubicacion/{id}/detalles/{detalleId}',    [\App\Controllers\AjusteUbicacionController::class, 'actualizarDetalle']);
+        $g->delete('/ajuste-ubicacion/{id}/detalles/{detalleId}', [\App\Controllers\AjusteUbicacionController::class, 'eliminarDetalle']);
+        $g->delete('/ajuste-ubicacion/{id}',         [\App\Controllers\AjusteUbicacionController::class, 'cancelar']);
         $g->get('/dashboard', [\App\Controllers\InventarioController::class, 'getDashboard']);
         $g->get('/ubicaciones-en-cero', [\App\Controllers\InventarioController::class, 'getUbicacionesEnCero']);
         $g->get('/kardex', [\App\Controllers\InventarioController::class, 'getKardex']);
@@ -639,6 +648,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/v2/inventario/kardex',                       [\App\Controllers\InventarioV2Controller::class, 'getKardexCompleto']);
     $group->get('/v2/inventario/vencimientos',                 [\App\Controllers\InventarioV2Controller::class, 'getVencimientos']);
     $group->post('/v2/inventario/validar-codigos',             [\App\Controllers\InventarioV2Controller::class, 'validarCodigos']);
+    $group->get('/v2/inventario/plantilla-referencias',        [\App\Controllers\InventarioV2Controller::class, 'plantillaReferencias']);
+    $group->post('/v2/inventario/importar-referencias-archivo', [\App\Controllers\InventarioV2Controller::class, 'importarReferenciasArchivo']);
 
     // Módulo: Reabastecimiento automático
     $group->post('/reabastecimiento/auto', [\App\Controllers\ReplenishmentController::class, 'runAutoReplenishment']);
@@ -713,6 +724,11 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
         $group->get('/{orden_id}/siguiente-linea', [\App\Controllers\PickingController::class, 'siguienteLinea']);
         $group->post('/{orden_id}/generar-ruta', [\App\Controllers\PickingController::class, 'generateRoute']);
         $group->post('/{orden_id}/confirmar-linea', [\App\Controllers\PickingController::class, 'confirmLine']);
+
+        // Picking Manual (hoja de contingencia sin móvil/internet)
+        $group->get('/manual/lineas',   [\App\Controllers\PickingController::class, 'manualLineas']);
+        $group->get('/manual/hoja',     [\App\Controllers\PickingController::class, 'manualHoja']);
+        $group->post('/manual/aplicar', [\App\Controllers\PickingController::class, 'manualAplicar']);
         $group->post('/{id}/completar', [\App\Controllers\PickingController::class, 'completar']);
         $group->post('/{id}/reabrir',   [\App\Controllers\PickingController::class, 'reabrir']);
         $group->post('/{id}/marcar-faltante', [\App\Controllers\PickingController::class, 'marcarFaltante']);
@@ -877,6 +893,9 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
 
     // TV Dashboard — Chart de ingresos por día/proveedor
     $group->get('/tv/ingresos-chart', [\App\Controllers\DashboardTVController::class, 'ingresosChart']);
+
+    // TV Dashboard — Histórico de referencias negadas (rango de fechas)
+    $group->get('/tv/agotados-historico', [\App\Controllers\DashboardTVController::class, 'agotadosHistorico']);
 
     // Dashboard: KPI Nivel de Servicio
     $group->get('/dashboard/nivel-servicio', [\App\Controllers\DashboardTVController::class, 'getNivelServicio']);
@@ -1160,7 +1179,9 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/miscelaneos/cliente/{cliente_id}/pendientes', [\App\Controllers\MiscelaneoController::class, 'pendientesPorCliente']);
 
     // ── PREOPERACIONAL DE VEHÍCULOS ──────────────────────────────────────────
-    $group->get('/preoperacional/items',  [\App\Controllers\PreoperacionalController::class, 'items']);
+    $group->get('/preoperacional/items',           [\App\Controllers\PreoperacionalController::class, 'items']);
+    $group->get('/preoperacional/dashboard',       [\App\Controllers\PreoperacionalController::class, 'dashboard']);
+    $group->get('/preoperacional/matriz-vehiculos',[\App\Controllers\PreoperacionalController::class, 'matrizVehiculos']);
     $group->get('/preoperacional',        [\App\Controllers\PreoperacionalController::class, 'listar']);
     $group->post('/preoperacional',       [\App\Controllers\PreoperacionalController::class, 'crear']);
     $group->get('/preoperacional/{id}',   [\App\Controllers\PreoperacionalController::class, 'ver']);

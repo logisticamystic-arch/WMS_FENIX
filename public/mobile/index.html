@@ -504,6 +504,7 @@ const MWMS = {
     this._pvCalificaciones = {};
     this._pvFotoTemp = null;
     this._pvFotosInspeccion = [];
+    this._pvNcDetalle = {};
 
     this.loading(true);
     try {
@@ -559,7 +560,7 @@ const MWMS = {
 
         <div class="op-card" style="margin-bottom:10px;">
           <div style="font-size:.7rem;font-weight:800;color:#475569;margin-bottom:8px;text-transform:uppercase;">
-            <i class="fa-solid fa-list-check"></i> Inspección
+            <i class="fa-solid fa-list-check"></i> Limpieza Vehículo
           </div>
           <div id="pv-items-list">
             ${this._pvItems.map(it => this._pvRenderItem(it)).join('')}
@@ -591,10 +592,58 @@ const MWMS = {
           <div id="pv-fotos-preview" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
         </div>
 
+        <div class="op-card" style="margin-bottom:10px;">
+          <div style="font-size:.7rem;font-weight:800;color:#475569;margin-bottom:8px;text-transform:uppercase;">
+            <i class="fa-solid fa-signature"></i> Firma del Conductor
+          </div>
+          <p style="font-size:.72rem;color:#64748b;margin:0 0 8px;">Firme dentro del recuadro con el dedo o el mouse. *</p>
+          <canvas id="pv-firma-canvas" style="width:100%;height:160px;border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;touch-action:none;display:block;"></canvas>
+          <button type="button" class="m-btn secondary sm" style="margin-top:8px;" onclick="MWMS._pvLimpiarFirma()">
+            <i class="fa-solid fa-eraser"></i> Limpiar firma
+          </button>
+        </div>
+
         <button class="m-btn success full" style="font-weight:800;" onclick="MWMS._pvGuardar()">
           <i class="fa-solid fa-check"></i> Registrar Preoperacional
         </button>
       </div>`;
+    this._pvInitFirmaCanvas();
+  },
+
+  _pvInitFirmaCanvas() {
+    const canvas = document.getElementById('pv-firma-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const ratio = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, rect.width) * ratio;
+    canvas.height = Math.max(1, rect.height) * ratio;
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1e293b';
+    this._pvFirmaTieneTrazo = false;
+    let drawing = false;
+    const pos = (e) => {
+      const r = canvas.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    canvas.onpointerdown = (e) => { drawing = true; this._pvFirmaTieneTrazo = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+    canvas.onpointermove = (e) => { if (!drawing) return; const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
+    canvas.onpointerup = () => { drawing = false; };
+    canvas.onpointerleave = () => { drawing = false; };
+  },
+
+  _pvLimpiarFirma() {
+    const canvas = document.getElementById('pv-firma-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    this._pvFirmaTieneTrazo = false;
+  },
+
+  _pvCanvasABlob(canvas) {
+    return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
   },
 
   _pvAgregarFotoInspeccion(file) {
@@ -622,6 +671,7 @@ const MWMS = {
 
   _pvRenderItem(it) {
     const esTemp = it.clave === 'temperatura';
+    const esDesinfeccion = it.clave === 'desinfeccion_vehiculo';
     return `
       <div id="pv-item-${it.clave}" style="padding:10px 0;border-bottom:1px solid #f1f5f9;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
@@ -648,15 +698,136 @@ const MWMS = {
           </div>
           <div id="pv-foto-temp-preview" style="margin-top:6px;"></div>
         </div>` : ''}
+        ${esDesinfeccion ? `
+        <div id="pv-producto-${it.clave}" style="margin-top:8px;display:none;">
+          <label class="m-label" style="font-size:.7rem;">Producto usado *</label>
+          <select id="pv-producto-select-${it.clave}" class="m-input-full">
+            <option value="">Seleccione...</option>
+            <option value="Acido Peracetico">Ácido Peracético</option>
+            <option value="Amonio Cuaternario">Amonio Cuaternario</option>
+          </select>
+        </div>` : ''}
+        <div id="pv-nc-resumen-${it.clave}"></div>
       </div>`;
   },
 
   _pvCalificar(clave, valor) {
+    if (valor === 'NC') {
+      this._pvAbrirModalNc(clave);
+      return;
+    }
+    delete this._pvNcDetalle[clave];
+    this._pvAplicarCalificacion(clave, valor);
+  },
+
+  _pvAplicarCalificacion(clave, valor) {
     this._pvCalificaciones[clave] = valor;
     const btnC  = document.getElementById(`pv-btn-${clave}-C`);
     const btnNc = document.getElementById(`pv-btn-${clave}-NC`);
     if (btnC)  { btnC.style.background  = (valor === 'C')  ? '#059669' : '#f1f5f9'; btnC.style.color  = (valor === 'C')  ? '#fff' : '#64748b'; }
     if (btnNc) { btnNc.style.background = (valor === 'NC') ? '#dc2626' : '#f1f5f9'; btnNc.style.color = (valor === 'NC') ? '#fff' : '#64748b'; }
+    this._pvRenderNcResumen(clave);
+    if (clave === 'desinfeccion_vehiculo') {
+      const cont = document.getElementById(`pv-producto-${clave}`);
+      if (cont) cont.style.display = (valor === 'C') ? 'block' : 'none';
+      if (valor !== 'C') { const sel = document.getElementById(`pv-producto-select-${clave}`); if (sel) sel.value = ''; }
+    }
+  },
+
+  // Detalle obligatorio de la no conformidad (2026-09-17): al marcar "No
+  // Cumple" se exige detalle + acción correctiva antes de dejar la
+  // calificación en firme, y se admiten varias fotos de esa no conformidad.
+  _pvNcDetalle: {},
+
+  _pvAbrirModalNc(clave) {
+    const it = this._pvItems.find(i => i.clave === clave);
+    const prev = this._pvNcDetalle[clave] || { detalle: '', accion: '', fotos: [] };
+    this._pvNcModalFotos = [...(prev.fotos || [])];
+    const modal = document.createElement('div');
+    modal.id = 'pv-nc-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:flex-end;';
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:16px 16px 0 0;padding:16px;width:100%;max-height:88vh;overflow-y:auto;">
+        <div style="font-weight:800;font-size:.9rem;color:#dc2626;margin-bottom:2px;"><i class="fa-solid fa-triangle-exclamation"></i> No Cumple: ${this.esc(it ? it.nombre : clave)}</div>
+        <p style="font-size:.72rem;color:#64748b;margin:0 0 10px;">Debe registrar el detalle y la acción correctiva para poder marcar esta no conformidad.</p>
+        <label class="m-label">Detalle de la no conformidad *</label>
+        <textarea id="pv-nc-detalle" class="m-input-full" rows="3">${this.esc(prev.detalle)}</textarea>
+        <label class="m-label" style="margin-top:8px;">Acción correctiva *</label>
+        <textarea id="pv-nc-accion" class="m-input-full" rows="3">${this.esc(prev.accion)}</textarea>
+        <label class="m-label" style="margin-top:8px;">Fotos de la no conformidad</label>
+        <div style="display:flex;gap:8px;margin:6px 0 10px;">
+          <label for="pv-nc-foto-cam" class="m-btn secondary" style="flex:1;text-align:center;font-size:.75rem;margin:0;">
+            <i class="fa-solid fa-camera"></i> Cámara
+          </label>
+          <input type="file" id="pv-nc-foto-cam" accept="image/*" capture="environment" style="position:fixed;top:0;left:0;width:0;height:0;opacity:0;"
+            onchange="if(this.files&&this.files[0]) MWMS._pvAgregarFotoNc(this.files[0]); this.value='';">
+          <label for="pv-nc-foto-gal" class="m-btn secondary" style="flex:1;text-align:center;font-size:.75rem;margin:0;">
+            <i class="fa-solid fa-image"></i> Galería
+          </label>
+          <input type="file" id="pv-nc-foto-gal" accept="image/*" multiple style="position:fixed;top:0;left:0;width:0;height:0;opacity:0;"
+            onchange="Array.from(this.files||[]).forEach(f=>MWMS._pvAgregarFotoNc(f)); this.value='';">
+        </div>
+        <div id="pv-nc-fotos-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;"></div>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="m-btn secondary" style="flex:1;" onclick="MWMS._pvCerrarModalNc(true)">Cancelar</button>
+          <button type="button" class="m-btn success" style="flex:1;" onclick="MWMS._pvGuardarModalNc('${clave}')">Guardar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    this._pvRenderFotosNcPreview();
+  },
+
+  _pvAgregarFotoNc(file) {
+    if (!this._pvNcModalFotos) this._pvNcModalFotos = [];
+    this._pvNcModalFotos.push(file);
+    this._pvRenderFotosNcPreview();
+  },
+
+  _pvQuitarFotoNc(idx) {
+    this._pvNcModalFotos.splice(idx, 1);
+    this._pvRenderFotosNcPreview();
+  },
+
+  _pvRenderFotosNcPreview() {
+    const cont = document.getElementById('pv-nc-fotos-preview');
+    if (!cont) return;
+    cont.innerHTML = (this._pvNcModalFotos || []).map((file, idx) => `
+      <div style="position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;">
+        <img src="${URL.createObjectURL(file)}" style="width:100%;height:100%;object-fit:cover;">
+        <button type="button" onclick="MWMS._pvQuitarFotoNc(${idx})"
+          style="position:absolute;top:1px;right:1px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;line-height:1;">✕</button>
+      </div>`).join('');
+  },
+
+  _pvCerrarModalNc(revertir) {
+    const modal = document.getElementById('pv-nc-modal');
+    if (modal) modal.remove();
+    this._pvNcModalFotos = [];
+  },
+
+  _pvGuardarModalNc(clave) {
+    const detalle = (document.getElementById('pv-nc-detalle')?.value || '').trim();
+    const accion  = (document.getElementById('pv-nc-accion')?.value || '').trim();
+    if (!detalle || !accion) {
+      return this.toast('El detalle y la acción correctiva son obligatorios', 'error');
+    }
+    this._pvNcDetalle[clave] = { detalle, accion, fotos: this._pvNcModalFotos || [] };
+    this._pvCerrarModalNc(false);
+    this._pvAplicarCalificacion(clave, 'NC');
+  },
+
+  _pvRenderNcResumen(clave) {
+    const cont = document.getElementById(`pv-nc-resumen-${clave}`);
+    if (!cont) return;
+    const info = this._pvNcDetalle[clave];
+    if (!info) { cont.innerHTML = ''; return; }
+    cont.innerHTML = `
+      <div style="margin-top:8px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;">
+        <div style="font-size:.72rem;color:#991b1b;"><b>Detalle:</b> ${this.esc(info.detalle)}</div>
+        <div style="font-size:.72rem;color:#991b1b;margin-top:2px;"><b>Acción correctiva:</b> ${this.esc(info.accion)}</div>
+        ${info.fotos.length ? `<div style="font-size:.7rem;color:#7f1d1d;margin-top:4px;"><i class="fa-solid fa-camera"></i> ${info.fotos.length} foto(s)</div>` : ''}
+        <button type="button" class="m-btn secondary sm" style="margin-top:6px;" onclick="MWMS._pvAbrirModalNc('${clave}')">Editar</button>
+      </div>`;
   },
 
   _pvFotoTemperatura(file) {
@@ -689,8 +860,31 @@ const MWMS = {
     if (faltantes.length) {
       return this.toast('Falta calificar: ' + faltantes.join(', '), 'error');
     }
+    const sinDetalleNc = this._pvItems.filter(it => this._pvCalificaciones[it.clave] === 'NC' && !this._pvNcDetalle[it.clave]).map(it => it.nombre);
+    if (sinDetalleNc.length) {
+      return this.toast('Falta el detalle de no conformidad de: ' + sinDetalleNc.join(', '), 'error');
+    }
 
-    const items = this._pvItems.map(it => ({ clave: it.clave, calificacion: this._pvCalificaciones[it.clave] }));
+    const productoDesinfeccion = document.getElementById('pv-producto-select-desinfeccion_vehiculo')?.value || '';
+    if (this._pvCalificaciones['desinfeccion_vehiculo'] === 'C' && !productoDesinfeccion) {
+      return this.toast('Debe seleccionar el producto usado en la desinfección del vehículo', 'error');
+    }
+
+    const canvasFirma = document.getElementById('pv-firma-canvas');
+    if (!this._pvFirmaTieneTrazo) {
+      return this.toast('La firma del conductor es obligatoria', 'error');
+    }
+
+    const items = this._pvItems.map(it => {
+      const nc = this._pvNcDetalle[it.clave];
+      return {
+        clave: it.clave,
+        calificacion: this._pvCalificaciones[it.clave],
+        detalle_no_conformidad: nc ? nc.detalle : '',
+        accion_correctiva: nc ? nc.accion : '',
+        producto_desinfeccion: it.clave === 'desinfeccion_vehiculo' ? productoDesinfeccion : '',
+      };
+    });
 
     const formData = new FormData();
     formData.append('fecha', fecha);
@@ -701,6 +895,11 @@ const MWMS = {
     formData.append('items', JSON.stringify(items));
     if (this._pvFotoTemp) formData.append('foto_temperatura', this._pvFotoTemp);
     (this._pvFotosInspeccion || []).forEach(file => formData.append('fotos[]', file));
+    Object.keys(this._pvNcDetalle).forEach(clave => {
+      (this._pvNcDetalle[clave].fotos || []).forEach(file => formData.append(`foto_item_${clave}[]`, file));
+    });
+    const blobFirma = await this._pvCanvasABlob(canvasFirma);
+    formData.append('firma', blobFirma, 'firma.png');
 
     this.loading(true);
     try {
@@ -765,6 +964,7 @@ const MWMS = {
     try {
       const r = await mApi('GET', '/preoperacional/' + id);
       const p = r.data;
+      const up = (u) => u && u.startsWith('/uploads/') ? '/WMS_FENIX/public' + u : u;
       document.getElementById('m-title').textContent = 'Detalle Preoperacional';
       document.getElementById('m-content').innerHTML = `
         <div class="op-view">
@@ -785,7 +985,18 @@ const MWMS = {
                   ${it.calificacion === 'C' ? 'Cumple' : 'No Cumple'}
                 </span>
               </div>
-              ${it.foto_url ? `<img src="${this.esc(it.foto_url)}" style="max-width:100%;border-radius:8px;margin:6px 0;">` : ''}
+              ${it.foto_url ? `<img src="${this.esc(up(it.foto_url))}" style="max-width:100%;border-radius:8px;margin:6px 0;">` : ''}
+              ${(it.calificacion === 'C' && it.producto_desinfeccion) ? `
+                <div style="font-size:.72rem;color:#166534;margin:2px 0 8px;"><b>Producto usado:</b> ${this.esc(it.producto_desinfeccion === 'Acido Peracetico' ? 'Ácido Peracético' : it.producto_desinfeccion)}</div>` : ''}
+              ${it.calificacion === 'NC' ? `
+                <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;margin:4px 0 8px;">
+                  <div style="font-size:.72rem;color:#991b1b;"><b>Detalle:</b> ${this.esc(it.detalle_no_conformidad || '-')}</div>
+                  <div style="font-size:.72rem;color:#991b1b;margin-top:2px;"><b>Acción correctiva:</b> ${this.esc(it.accion_correctiva || '-')}</div>
+                  ${(it.fotos && it.fotos.length) ? `
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+                      ${it.fotos.map(f => `<img src="${this.esc(up(f.url))}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid #fecaca;" onclick="window.open('${this.esc(up(f.url))}','_blank')">`).join('')}
+                    </div>` : ''}
+                </div>` : ''}
             `).join('')}
           </div>
           ${p.observaciones ? `<div class="op-card" style="margin-bottom:10px;"><b style="font-size:.8rem;">Observaciones:</b><p style="font-size:.78rem;color:#475569;margin-top:4px;">${this.esc(p.observaciones)}</p></div>` : ''}
@@ -793,7 +1004,14 @@ const MWMS = {
           <div class="op-card">
             <b style="font-size:.8rem;">Fotos de la inspección:</b>
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
-              ${p.fotos.map(f => `<img src="${this.esc(f.url)}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;" onclick="window.open('${this.esc(f.url)}','_blank')">`).join('')}
+              ${p.fotos.map(f => `<img src="${this.esc(up(f.url))}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;" onclick="window.open('${this.esc(up(f.url))}','_blank')">`).join('')}
+            </div>
+          </div>` : ''}
+          ${p.firma_url ? `
+          <div class="op-card">
+            <b style="font-size:.8rem;">Firma del conductor:</b>
+            <div style="margin-top:8px;">
+              <img src="${this.esc(up(p.firma_url))}" style="max-width:220px;width:100%;border:1px solid #e2e8f0;border-radius:8px;background:#fff;">
             </div>
           </div>` : ''}
         </div>`;
@@ -892,48 +1110,63 @@ const MWMS = {
     }
   },
 
-  // ── MÓDULO CALIDAD (RECEPCIÓN SIN ODC) ──────────────────────────────
+  // ── MÓDULO CALIDAD (RECEPCIÓN, CON Y SIN ODC) ────────────────────────
   _calidadData: null,
-  
-  async _abrirCalidadSinOdc() {
-      if (!this._sinOdc.recepcionId) {
+  // Contexto genérico de Condiciones de Transporte — a pedido explícito
+  // (2026-09-18) esta misma pantalla se reutiliza desde Rec. ODC y Rec. Sin
+  // ODC, solo cambia a qué recepcionId aplica y a qué vista volver al
+  // terminar. IMPORTANTE (bug corregido 2026-09-18): "volver" debe apuntar a
+  // una función que solo RE-RENDERIZA la captura en curso (_volverRecSinOdc /
+  // renderRecO), nunca a viewRecSinOdc() — esa reinicia this._sinOdc a cero
+  // (recepcionId, líneas capturadas) y el auxiliar perdía la recepción que
+  // tenía en curso al volver del reporte sin querer guardar de nuevo.
+  _calContext: { recepcionId: null, volver: '_volverRecSinOdc' },
+
+  async _abrirReporteCalidad(recepcionId, volver) {
+      if (!recepcionId) {
           this.toast('Debe guardar al menos una captura para iniciar la recepción antes de llenar el reporte.', 'warning');
           return;
       }
+      this._calContext = { recepcionId, volver };
       this.loading(true);
       try {
-          const r = await mApi('GET', '/recepciones/' + this._sinOdc.recepcionId + '/calidad');
+          const r = await mApi('GET', '/recepciones/' + recepcionId + '/calidad');
           this._calidadData = r.data || {};
       } catch(e) {
           this._calidadData = {};
       }
       this.loading(false);
-      
-      document.getElementById('m-title').textContent = 'Reporte Calidad';
+
+      document.getElementById('m-title').textContent = 'Condiciones de Transporte';
       this._renderCalidadSinOdc();
+  },
+
+  async _abrirCalidadSinOdc() {
+      return this._abrirReporteCalidad(this._sinOdc.recepcionId, '_volverRecSinOdc');
+  },
+
+  async _abrirReporteCalidadOdc() {
+      return this._abrirReporteCalidad(this._op?.recepcionId, 'renderRecO');
+  },
+
+  // Vuelve a la captura de Rec. Sin ODC EN CURSO sin reiniciarla (a
+  // diferencia de viewRecSinOdc, que es el punto de entrada "empezar de
+  // cero" desde el menú principal).
+  _volverRecSinOdc() {
+      document.getElementById('m-title').textContent = 'Rec. Sin ODC';
+      this._renderRecSinOdc();
   },
 
   _renderCalidadSinOdc() {
       const d = this._calidadData || {};
-      
-      const renderToggle = (id, label, val) => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2e8f0;">
-          <div style="font-size:.85rem;color:#334155;font-weight:600;">${this.esc(label)}</div>
-          <div style="display:flex;gap:4px;">
-            <button id="btn_${id}_C" onclick="MWMS._setCalToggle('${id}','C')" class="m-btn ${val==='C'?'success':'secondary'} sm" style="min-width:45px;">C</button>
-            <button id="btn_${id}_NC" onclick="MWMS._setCalToggle('${id}','NC')" class="m-btn ${val==='NC'?'danger':'secondary'} sm" style="min-width:45px;">NC</button>
-            <input type="hidden" id="cal_${id}" value="${val||''}">
-          </div>
-        </div>`;
 
       document.getElementById('m-content').innerHTML = `
         <div class="op-view" style="padding-bottom:40px;">
-          
+
           <div style="background:#e0f2fe;color:#0369a1;padding:12px;border-radius:8px;font-size:.75rem;margin-bottom:12px;">
             <i class="fa-solid fa-circle-info"></i> <b>Guía Temperaturas:</b><br>
             Refrigerado: 0ºC a 4ºC<br>
-            Congelación: -15ºC a -25ºC<br>
-            <i>(C: Cumple | NC: No Cumple)</i>
+            Congelación: -15ºC a -25ºC
           </div>
 
           <div class="op-card">
@@ -950,10 +1183,10 @@ const MWMS = {
 
           <div class="op-card">
             <div class="m-label" style="color:#b45309;"><i class="fa-solid fa-truck"></i> Evaluación Transporte</div>
-            ${renderToggle('trans_temperatura', 'Temperatura Transp.', d.trans_temperatura)}
-            ${renderToggle('trans_limpieza', 'Limpieza', d.trans_limpieza)}
-            ${renderToggle('trans_concepto_sanitario', 'Concepto Sanitario', d.trans_concepto_sanitario)}
-            ${renderToggle('trans_carnet_manipulacion', 'Carnet Manipulación', d.trans_carnet_manipulacion)}
+            ${this._qcToggleRow('cal', 'trans_temperatura', 'Temperatura Transp.', d.trans_temperatura)}
+            ${this._qcToggleRow('cal', 'trans_limpieza', 'Limpieza', d.trans_limpieza)}
+            ${this._qcToggleRow('cal', 'trans_concepto_sanitario', 'Concepto Sanitario', d.trans_concepto_sanitario)}
+            ${this._qcToggleRow('cal', 'trans_carnet_manipulacion', 'Carnet Manipulación', d.trans_carnet_manipulacion)}
           </div>
 
           <div class="op-card">
@@ -1000,7 +1233,7 @@ const MWMS = {
           </div>
 
           <div style="display:flex;gap:10px;margin-top:15px;">
-            <button class="m-btn secondary full" onclick="MWMS.viewRecSinOdc()" style="flex:1;">Volver</button>
+            <button class="m-btn secondary full" onclick="MWMS[MWMS._calContext.volver]()" style="flex:1;">Volver</button>
             <button class="m-btn primary full" onclick="MWMS._saveCalidadSinOdc()" style="flex:2;background:#0d9488;border-color:#0f766e;"><i class="fa-solid fa-save"></i> Guardar Calidad</button>
           </div>
         </div>`;
@@ -1011,8 +1244,8 @@ const MWMS = {
       document.getElementById('cal_conforme').value = val;
       const btnC  = document.getElementById('btn_conforme_C');
       const btnNC = document.getElementById('btn_conforme_NC');
-      btnC.className  = 'm-btn ' + (val === 'Conforme'  ? 'success' : 'secondary') + ' full';
-      btnNC.className = 'm-btn ' + (val === 'Inconforme' ? 'danger'  : 'secondary') + ' full';
+      btnC.setAttribute('style',  'flex:1;padding:12px;font-weight:800;' + (val === 'Conforme'   ? 'background:#059669;color:#fff;' : 'background:#f1f5f9;color:#64748b;'));
+      btnNC.setAttribute('style', 'flex:1;padding:12px;font-weight:800;' + (val === 'Inconforme' ? 'background:#dc2626;color:#fff;' : 'background:#f1f5f9;color:#64748b;'));
   },
 
   // ── Firma (canvas) ───────────────────────────────────────────────────
@@ -1106,21 +1339,8 @@ const MWMS = {
     }
   },
 
-  _setCalToggle(id, val) {
-      document.getElementById('cal_'+id).value = val;
-      const btnC = document.getElementById('btn_'+id+'_C');
-      const btnNC = document.getElementById('btn_'+id+'_NC');
-      if(val === 'C') {
-          btnC.className = 'm-btn success sm';
-          btnNC.className = 'm-btn secondary sm';
-      } else {
-          btnC.className = 'm-btn secondary sm';
-          btnNC.className = 'm-btn danger sm';
-      }
-  },
-
   async _saveCalidadSinOdc() {
-      const recId = this._sinOdc.recepcionId;
+      const recId = this._calContext?.recepcionId || this._sinOdc.recepcionId;
       if (!recId) return;
 
       const conforme = document.getElementById('cal_conforme')?.value || '';
@@ -1157,8 +1377,8 @@ const MWMS = {
           const json = await res.json();
           if (json.error) throw new Error(json.message);
           
-          this.toast('Reporte de calidad guardado', 'success');
-          this.viewRecSinOdc(); // volver a la recepción
+          this.toast('Condiciones de transporte guardadas', 'success');
+          this[this._calContext?.volver || '_volverRecSinOdc'](); // volver a la recepción en curso (Con o Sin ODC), sin reiniciarla
       } catch(e) {
           this.toast(e.message || 'Error guardando', 'error');
       } finally {
@@ -1304,9 +1524,9 @@ const MWMS = {
           <i class="fa-solid fa-check"></i> EVALUAR Y GUARDAR CAPTURA
         </button>
 
-        <!-- Botón Formulario de Calidad -->
+        <!-- Botón Condiciones de Transporte -->
         <button class="m-btn primary full" onclick="MWMS._abrirCalidadSinOdc()" style="font-size:.9rem;padding:12px;font-weight:700;margin-top:6px;background:#0d9488;border-color:#0f766e;">
-          <i class="fa-solid fa-clipboard-check"></i> REPORTE DE CALIDAD
+          <i class="fa-solid fa-clipboard-check"></i> CONDICIONES DE TRANSPORTE
         </button>
 
         <!-- Botón cerrar recepción (solo Admin/Supervisor) -->
@@ -1579,17 +1799,48 @@ const MWMS = {
     }
   },
 
+  // Fila de toggle Cumple/No Cumple/No Aplica — compartida entre la
+  // Inspección Calidad por producto (prefijo 'pcal2') y el Reporte de
+  // Calidad de transporte (prefijo 'cal'), tanto en Con ODC como Sin ODC.
+  // A pedido explícito (2026-09-18): agrega "No Aplica" y usa flex:1 en las
+  // 3 opciones para que queden con el mismo ancho (antes "C"/"NC" quedaban
+  // desalineados porque las clases m-btn success/secondary no existen en el
+  // CSS — solo m-btn-success/m-btn-secondary — así que ahora se estiliza
+  // directo por inline style, sin depender de esas clases rotas).
+  _qcToggleRow(prefix, id, label, val) {
+    const opts = [['C', 'Cumple'], ['NC', 'No Cumple'], ['NA', 'No Aplica']];
+    return `
+      <div style="padding:8px 0;border-bottom:1px solid #e2e8f0;">
+        <div style="font-size:.85rem;color:#334155;font-weight:600;margin-bottom:6px;">${this.esc(label)}</div>
+        <div style="display:flex;gap:6px;">
+          ${opts.map(([v, txt]) => `
+            <button type="button" id="${prefix}btn_${id}_${v}" onclick="MWMS._qcSetToggle('${prefix}','${id}','${v}')"
+              style="flex:1 1 0%;min-width:0;padding:8px 4px;border-radius:6px;border:1px solid #cbd5e1;font-size:.72rem;font-weight:800;${this._qcStyle(v, val)}">${txt}</button>
+          `).join('')}
+        </div>
+        <input type="hidden" id="${prefix}_${id}" value="${val || ''}">
+      </div>`;
+  },
+
+  _qcStyle(v, current) {
+    if (v !== current) return 'background:#f1f5f9;color:#64748b;';
+    if (v === 'C')  return 'background:#059669;color:#fff;border-color:#059669;';
+    if (v === 'NC') return 'background:#dc2626;color:#fff;border-color:#dc2626;';
+    return 'background:#d97706;color:#fff;border-color:#d97706;'; // NA
+  },
+
+  _qcSetToggle(prefix, id, val) {
+    const hidden = document.getElementById(`${prefix}_${id}`);
+    if (hidden) hidden.value = val;
+    ['C', 'NC', 'NA'].forEach(v => {
+      const btn = document.getElementById(`${prefix}btn_${id}_${v}`);
+      if (btn) btn.setAttribute('style', `flex:1 1 0%;min-width:0;padding:8px 4px;border-radius:6px;border:1px solid #cbd5e1;font-size:.72rem;font-weight:800;${this._qcStyle(v, val)}`);
+    });
+  },
+
   _showCalidadModalProducto(detalleId, nombre) {
     this._pcal2FotoFile = null;
-    const renderT = (id, label) => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e2e8f0;">
-          <div style="font-size:.85rem;color:#334155;font-weight:600;">${this.esc(label)}</div>
-          <div style="display:flex;gap:4px;">
-            <button id="pcalbtn_${id}_C" onclick="MWMS._setPcalToggle2('${id}','C')" class="m-btn success sm" style="min-width:45px;">C</button>
-            <button id="pcalbtn_${id}_NC" onclick="MWMS._setPcalToggle2('${id}','NC')" class="m-btn secondary sm" style="min-width:45px;">NC</button>
-            <input type="hidden" id="pcal2_${id}" value="C">
-          </div>
-        </div>`;
+    const renderT = (id, label) => this._qcToggleRow('pcal2', id, label, 'C');
 
     const html = `
       <div style="text-align:left;">
@@ -1638,19 +1889,6 @@ const MWMS = {
     Swal.fire({ html: html, showConfirmButton: false, showCancelButton: false, width: '92%', padding: '16px' });
   },
 
-  _setPcalToggle2(id, val) {
-      document.getElementById('pcal2_'+id).value = val;
-      const btnC = document.getElementById('pcalbtn_'+id+'_C');
-      const btnNC = document.getElementById('pcalbtn_'+id+'_NC');
-      if(val === 'C') {
-          btnC.className = 'm-btn success sm';
-          btnNC.className = 'm-btn secondary sm';
-      } else {
-          btnC.className = 'm-btn secondary sm';
-          btnNC.className = 'm-btn danger sm';
-      }
-  },
-
   async _guardarCalidadProducto(detalleId) {
     const payload = new FormData();
     payload.append('olor', document.getElementById('pcal2_olor')?.value || 'Conforme');
@@ -1667,7 +1905,7 @@ const MWMS = {
 
     Swal.fire({ title: 'Guardando...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
     try {
-      const r = await fetch(MWMS_CONFIG.apiUrl + '/recepciones/detalle/' + detalleId + '/calidad', {
+      const r = await fetch(M_API + '/recepciones/detalles/' + detalleId + '/calidad', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') },
         body: payload
@@ -2632,8 +2870,15 @@ const MWMS = {
     const upc     = parseFloat(i.factor_udm || 0) > 0 ? parseFloat(i.factor_udm) : Math.max(1, parseInt(i.unidades_caja || 1));
     this._qtyUpc  = upc;
     const maxTotal  = disponible;
-    const maxCajas  = upc > 1 ? parseInt(i.cantidad_cajas || 0) : 0;
-    const maxSaldos = upc > 1 ? parseFloat(i.saldos || 0) : maxTotal;
+    // Cajas/sueltos máximos se derivan del NETO disponible (ya descontada la
+    // reserva), no de i.cantidad_cajas/i.saldos crudos — esos son el
+    // desglose físico total de la ubicación y pueden sobrestimar lo que
+    // realmente se puede mover (mismo bug ya corregido en Traspaso, MWMS.selT
+    // — bug real reproducido 2026-09-18: 40 cajas físicas × 300 con 600
+    // reservado mostraba "40 caj × 300 = 11400 UND/T" y luego rechazaba las
+    // 40 cajas por "excede disponible", porque el máximo real eran 38 cajas).
+    const maxCajas  = upc > 1 ? Math.floor(maxTotal / upc) : 0;
+    const maxSaldos = upc > 1 ? Math.round((maxTotal - maxCajas * upc) * 1000) / 1000 : maxTotal;
     const reservada = parseFloat(i.cantidad_reservada || 0);
     const palletTxt = i.numero_pallet ? ` · Pallet #${i.numero_pallet}` : '';
     const dispTxt   = upc > 1
@@ -2702,8 +2947,9 @@ const MWMS = {
     const saldos   = parseFloat(document.getElementById('m-qty-saldos')?.value || 0) || 0;
     const total    = upc > 1 ? cajas * upc + saldos : saldos;
     const maxTotal = i.disponible ?? parseFloat(i.cantidad);
-    const maxCajas  = upc > 1 ? parseInt(i.cantidad_cajas || 0) : 0;
-    const maxSaldos = upc > 1 ? parseFloat(i.saldos || 0) : maxTotal;
+    // Igual que en stUb(): derivar del neto disponible, no de i.cantidad_cajas/i.saldos crudos.
+    const maxCajas  = upc > 1 ? Math.floor(maxTotal / upc) : 0;
+    const maxSaldos = upc > 1 ? Math.round((maxTotal - maxCajas * upc) * 1000) / 1000 : maxTotal;
 
     if (total <= 0)       return this.toast('Ingrese la cantidad a ubicar', 'error');
     if (total > maxTotal) return this.toast(`Máximo disponible: ${maxTotal} UND/TOTAL`, 'error');
@@ -2786,8 +3032,14 @@ const MWMS = {
         </div>
 
         <div id="m-lines-odc" style="margin-top:12px;"></div>
-        
-        <button class="m-btn secondary full" onclick="MWMS.viewRecO()" style="margin-top:20px;">Volver al listado</button>
+
+        <!-- Botón Condiciones de Transporte — misma pantalla que Rec. Sin
+             ODC, reutilizada aquí (2026-09-18). -->
+        <button class="m-btn primary full" onclick="MWMS._abrirReporteCalidadOdc()" style="font-size:.9rem;padding:12px;font-weight:700;margin-top:12px;background:#0d9488;border-color:#0f766e;">
+          <i class="fa-solid fa-clipboard-check"></i> CONDICIONES DE TRANSPORTE
+        </button>
+
+        <button class="m-btn secondary full" onclick="MWMS.viewRecO()" style="margin-top:8px;">Volver al listado</button>
       </div>`;
     const i = document.getElementById('m-odc-scan'); i.focus(); 
     i.onkeydown = e => { if(e.key === 'Enter') this.doRecOScan(); };
@@ -3117,7 +3369,14 @@ const MWMS = {
           drop.style.display = 'block';
           return;
         }
-        drop.innerHTML = this._dvClientesSearchData.slice(0, 15).map((c, idx) => `
+        // BUG CORREGIDO 2026-09-18 (a pedido explícito): el backend (/param/clientes)
+        // ya devuelve TODOS los clientes que coinciden (activos, de la empresa) sin
+        // límite real — el "?limit=15" de la URL es cosmético, el controlador lo
+        // ignora. Este .slice(0, 15) cortaba la lista real a los primeros 15 sin
+        // importar cuántos hubiera, tanto en la carga inicial como en cualquier
+        // búsqueda — el dropdown ya es scrolleable (max-height:220px), así que no
+        // hace falta truncar. El desktop (devoluciones.js) nunca tuvo este corte.
+        drop.innerHTML = this._dvClientesSearchData.map((c, idx) => `
           <div onclick="MWMS._dvSelClienteOrigenIdx(${idx})"
             style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;display:flex;flex-direction:column;gap:2px;"
             onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
@@ -4603,8 +4862,9 @@ const MWMS = {
       try {
           // Obtener las líneas de la recepción actual para esta ODC
           const r = await mApi('GET', `/recepciones?odc_id=${this._op.odc.id}&estado=Borrador`);
+          this._op.recepcionId = r.data?.[0]?.id || this._op.recepcionId;
           const items = (r.data?.[0]?.detalles || []).slice(-5).reverse(); // Últimos 5
-          
+
           if (items.length === 0) {
               container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:.8rem;">No hay productos registrados aún</div>';
               return;
@@ -4620,6 +4880,9 @@ const MWMS = {
                     <small style="color:#64748b;">Cant: ${i.cantidad_recibida} | Lote: ${i.lote || 'N/A'}</small>
                   </div>
                   <i class="fa-solid fa-check-circle" style="color:#10b981;"></i>
+                </div>
+                <div style="margin-top:6px;">
+                  <button class="m-btn secondary sm" style="width:100%;border:1px solid #cbd5e1;background:#f8fafc;color:#475569;" onclick="MWMS._showCalidadModalProducto(${i.id}, '${this.esc(i.producto?.nombre || 'Producto')}')"><i class="fa-solid fa-microscope"></i> Inspección Calidad</button>
                 </div>
               </div>
             `).join('')}`;
@@ -7414,15 +7677,27 @@ const MWMS = {
 
       if (lineas.length) {
         // Mostrar qué líneas bloquean el cierre
-        const items = lineas.map(l =>
-          `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(0,0,0,.06);">
+        // BUG CORREGIDO 2026-09-18: mostraba cantidad_solicitada/cantidad_pickeada
+        // crudas — un pick parcial (unidades que no son múltiplo exacto de
+        // unidades_caja) se veía como decimal feo (ej. "2.4") en vez de "cj + suelt."
+        const fmtCj = (valorCajas, upc) => {
+          const v = Math.max(0, parseFloat(valorCajas) || 0);
+          if (upc <= 1) return String(Math.round(v * 1000) / 1000);
+          const cj = Math.floor(v);
+          const sl = Math.round((v - cj) * upc * 1000) / 1000;
+          if (cj <= 0 && sl > 0) return `${sl} suelt.`;
+          return `${cj} cj${sl > 0 ? ' + ' + sl + ' suelt.' : ''}`;
+        };
+        const items = lineas.map(l => {
+          const upc = Math.max(1, parseFloat(l.factor_udm) || parseInt(l.unidades_caja) || 1);
+          return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(0,0,0,.06);">
             <div style="flex:1;min-width:0;">
               <div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${l.codigo||''} — ${l.nombre_producto||''}</div>
-              <div style="font-size:11px;color:#6b7280;">Pedido ${l.numero_orden||''} · Sol: <b>${l.cantidad_solicitada}</b> · Pick: <b style="color:${l.cantidad_pickeada>0?'#16a34a':'#dc2626'};">${l.cantidad_pickeada}</b></div>
+              <div style="font-size:11px;color:#6b7280;">Pedido ${l.numero_orden||''} · Sol: <b>${fmtCj(l.cantidad_solicitada, upc)}</b> · Pick: <b style="color:${l.cantidad_pickeada>0?'#16a34a':'#dc2626'};">${fmtCj(l.cantidad_pickeada / upc, upc)}</b></div>
             </div>
             <span style="background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:12px;font-size:10px;font-weight:700;white-space:nowrap;">${l.estado}</span>
-          </div>`
-        ).join('');
+          </div>`;
+        }).join('');
 
         // Revisar si el usuario puede liberar (Supervisor/Admin)
         const puedeForz = d.puede_forzar;
@@ -11189,15 +11464,17 @@ const MWMS = {
 
   _auUbicacion: null,   // ubicación seleccionada { id, codigo, nombre }
   _auLineas: [],        // [ { producto, cantidad_cajas, saldos, cantidad, lote, fecha_vencimiento } ]
-  _auTipo: 'AjusteCompleto', // 'AjusteCompleto' | 'AgregarInventario'
+  _auTipo: null, // null (sin elegir) | 'AjusteCompleto' | 'AgregarInventario' | 'AjustarCantidad'
+  _auInvActual: [], // inventario actual de la ubicación, cacheado por escaneo
   _auProdBusTimer: null,
 
   async viewAjusteUbicacion() {
     document.getElementById('m-title').textContent = 'Ajuste x Ubicación';
     document.getElementById('nav-home').classList.remove('active');
-    this._auUbicacion = null;
-    this._auLineas    = [];
-    this._auTipo      = 'AjusteCompleto';
+    this._auUbicacion  = null;
+    this._auLineas     = [];
+    this._auTipo       = null; // sin acción elegida aún — se elige arriba, después de ver el contenido
+    this._auInvActual  = [];
     this._renderAuStep1();
   },
 
@@ -11216,8 +11493,161 @@ const MWMS = {
           </div>
           <div id="au-ubi-result" style="min-height:32px;"></div>
         </div>
+        <button class="m-btn secondary full" style="margin-top:12px;" onclick="MWMS.viewAuPendientes()">
+          <i class="fa-solid fa-list-check"></i> Ver mis ajustes pendientes de aprobación
+        </button>
       </div>`;
     setTimeout(() => document.getElementById('au-ubi-cod')?.focus(), 100);
+  },
+
+  // ══════════════════════════════════════════════════════════════
+  //  MIS AJUSTES PENDIENTES — editar/eliminar referencias enviadas
+  //  MIENTRAS sigan Pendientes (una vez Aprobado, ya no se puede
+  //  tocar: hay que iniciar el proceso de nuevo) — a pedido
+  //  explícito de Camilo (2026-09-16).
+  // ══════════════════════════════════════════════════════════════
+  _auPendientes: [],
+
+  async viewAuPendientes() {
+    document.getElementById('m-title').textContent = 'Mis Ajustes Pendientes';
+    document.getElementById('nav-home').classList.remove('active');
+    this.loading(true);
+    try {
+      const r = await mApi('GET', '/inventario/ajuste-ubicacion/mis-pendientes');
+      this._auPendientes = r.data || r || [];
+    } catch(e) { this._auPendientes = []; }
+    this.loading(false);
+    this._renderAuPendientesLista();
+  },
+
+  _renderAuPendientesLista() {
+    const items = this._auPendientes || [];
+    const tipoInfo = {
+      AjusteCompleto:    { icon: 'fa-rotate-left',   color: '#f59e0b', label: 'Ajuste Completo' },
+      AgregarInventario: { icon: 'fa-plus',          color: '#10b981', label: 'Agregar Inventario' },
+      AjustarCantidad:   { icon: 'fa-pen-to-square', color: '#2563eb', label: 'Ajustar Cantidad' },
+    };
+    const listHtml = items.length ? items.map((a, idx) => {
+      const info = tipoInfo[a.tipo] || { icon: 'fa-location-crosshairs', color: '#64748b', label: a.tipo };
+      return `<div class="op-card" style="margin-bottom:10px;border-left:4px solid ${info.color};cursor:pointer;" onclick="MWMS._auVerDetallePendiente(${idx})">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:700;font-size:.85rem;">${this.esc(a.ubicacion?.codigo || '-')}</div>
+            <span style="color:${info.color};font-weight:800;font-size:.68rem;"><i class="fa-solid ${info.icon}"></i> ${info.label}</span>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:.72rem;color:#64748b;">${(a.detalles || []).length} ref.</div>
+            <i class="fa-solid fa-chevron-right" style="color:#cbd5e1;"></i>
+          </div>
+        </div>
+      </div>`;
+    }).join('') : `<p style="color:#94a3b8;font-size:.85rem;font-style:italic;text-align:center;margin-top:20px;">No tiene ajustes pendientes de aprobación.</p>`;
+
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        <button class="m-btn secondary sm" style="margin-bottom:12px;" onclick="MWMS.viewAjusteUbicacion()">
+          <i class="fa-solid fa-arrow-left"></i> Volver
+        </button>
+        ${listHtml}
+      </div>`;
+  },
+
+  _auVerDetallePendiente(idx) {
+    const a = this._auPendientes[idx];
+    if (!a) return;
+    this._auPendienteActivo = a;
+
+    const rowsHtml = (a.detalles || []).map(d => {
+      const upc = Math.max(1, parseInt(d.producto?.unidades_caja || 1));
+      return `<div class="op-card" style="margin-bottom:10px;" data-det-id="${d.id}">
+        <div style="font-size:.78rem;font-weight:700;">${this.esc(d.producto?.nombre || '-')}</div>
+        <div style="font-size:.7rem;color:#64748b;margin-bottom:8px;">
+          ${this.esc(d.producto?.codigo_interno || '')} · Lote: ${d.lote || 'N/A'}${d.fecha_vencimiento ? ' · Venc: ' + this.formatDateShort(d.fecha_vencimiento) : ''}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div style="display:${upc > 1 ? '' : 'none'}">
+            <label class="m-label">Cajas</label>
+            <input type="number" id="pend-cajas-${d.id}" class="m-input-full" min="0" step="1" value="${d.cantidad_cajas}">
+          </div>
+          <div>
+            <label class="m-label">${upc > 1 ? 'Sueltos' : 'Cantidad'}</label>
+            <input type="number" id="pend-saldos-${d.id}" class="m-input-full" min="0" step="0.001" value="${d.saldos}">
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <button class="m-btn success sm" style="flex:1;" onclick="MWMS._auGuardarLineaPendiente(${a.id},${d.id},${upc})">
+            <i class="fa-solid fa-check"></i> Guardar cambio
+          </button>
+          <button class="m-btn secondary sm" style="background:#fee2e2;color:#dc2626;" onclick="MWMS._auEliminarLineaPendiente(${a.id},${d.id})">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </div>
+      </div>`;
+    }).join('') || '<p style="color:#94a3b8;font-size:.85rem;font-style:italic;">Sin referencias.</p>';
+
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        <button class="m-btn secondary sm" style="margin-bottom:12px;" onclick="MWMS._renderAuPendientesLista()">
+          <i class="fa-solid fa-arrow-left"></i> Volver a la lista
+        </button>
+        <div class="op-card" style="border-left:4px solid #64748b;margin-bottom:10px;">
+          <div style="font-size:.7rem;color:#475569;font-weight:700;">UBICACIÓN</div>
+          <div style="font-weight:700;">${this.esc(a.ubicacion?.codigo || '-')}</div>
+          <div style="font-size:.7rem;color:#92400e;margin-top:2px;">
+            <i class="fa-solid fa-clock"></i> Pendiente de aprobación — puede editar o eliminar mientras no se apruebe
+          </div>
+        </div>
+        ${rowsHtml}
+        <button class="m-btn secondary full" style="background:#fee2e2;color:#dc2626;margin-top:10px;" onclick="MWMS._auCancelarPendiente(${a.id})">
+          <i class="fa-solid fa-ban"></i> Cancelar ajuste completo
+        </button>
+      </div>`;
+  },
+
+  async _auGuardarLineaPendiente(ajusteId, detalleId, upc) {
+    const cajas  = parseFloat(document.getElementById(`pend-cajas-${detalleId}`)?.value  || 0) || 0;
+    const saldos = parseFloat(document.getElementById(`pend-saldos-${detalleId}`)?.value || 0) || 0;
+    const cantidad = upc > 1 ? cajas * upc + saldos : saldos;
+    if (cantidad <= 0) return this.toast('La cantidad debe ser mayor a cero', 'error');
+
+    this.loading(true);
+    try {
+      const r = await mApi('PUT', `/inventario/ajuste-ubicacion/${ajusteId}/detalles/${detalleId}`, {
+        cantidad_cajas: cajas, saldos, cantidad,
+      });
+      if (r.error) throw new Error(r.message);
+      this.toast('✔ Línea actualizada', 'success');
+      await this.viewAuPendientes();
+      const idx = this._auPendientes.findIndex(x => x.id === ajusteId);
+      if (idx >= 0) this._auVerDetallePendiente(idx);
+    } catch(e) { this.toast(e.message || 'Error al actualizar', 'error'); }
+    this.loading(false);
+  },
+
+  async _auEliminarLineaPendiente(ajusteId, detalleId) {
+    if (!confirm('¿Eliminar esta referencia del ajuste pendiente?')) return;
+    this.loading(true);
+    try {
+      const r = await mApi('DELETE', `/inventario/ajuste-ubicacion/${ajusteId}/detalles/${detalleId}`);
+      if (r.error) throw new Error(r.message);
+      this.toast(r.message || 'Línea eliminada', 'success');
+      await this.viewAuPendientes();
+      const idx = this._auPendientes.findIndex(x => x.id === ajusteId);
+      if (idx >= 0) this._auVerDetallePendiente(idx); else this._renderAuPendientesLista();
+    } catch(e) { this.toast(e.message || 'Error al eliminar', 'error'); }
+    this.loading(false);
+  },
+
+  async _auCancelarPendiente(ajusteId) {
+    if (!confirm('¿Cancelar este ajuste completo? Se eliminarán todas sus referencias y deberá iniciar el proceso de nuevo si lo requiere.')) return;
+    this.loading(true);
+    try {
+      const r = await mApi('DELETE', `/inventario/ajuste-ubicacion/${ajusteId}`);
+      if (r.error) throw new Error(r.message);
+      this.toast('✔ Ajuste cancelado', 'success');
+      await this.viewAuPendientes();
+    } catch(e) { this.toast(e.message || 'Error al cancelar', 'error'); }
+    this.loading(false);
   },
 
   async _auBuscarUbi() {
@@ -11231,74 +11661,17 @@ const MWMS = {
       const exact = list.find(u => u.codigo?.toLowerCase() === cod.toLowerCase()) || list[0];
       if (!exact) { el.innerHTML = '<span style="color:#dc2626;">Ubicación no encontrada</span>'; return; }
       this._auUbicacion = exact;
-      el.innerHTML = `<div style="background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px;padding:8px 12px;font-size:.82rem;">
-        <b style="color:#065f46;"><i class="fa-solid fa-check-circle"></i> ${this.esc(exact.codigo)}</b>
-        ${exact.nombre ? ` — ${this.esc(exact.nombre)}` : ''}<br>
-        <button class="m-btn success" style="margin-top:8px;width:100%;" onclick="MWMS._renderAuStepModo()">
-          <i class="fa-solid fa-arrow-right"></i> Continuar con esta ubicación
-        </button>
-      </div>`;
+      this._auTipo      = null;
+      // Al escanear se muestra de inmediato el contenido de la ubicación —
+      // ya no hace falta un paso intermedio de "Continuar" — a pedido
+      // explícito de Camilo (2026-09-16).
+      await this._auMostrarUbicacion();
     } catch(e) { el.innerHTML = `<span style="color:#dc2626;">${this.esc(e.message)}</span>`; }
   },
 
-  _renderAuStepModo() {
-    const ubiTxt = `${this.esc(this._auUbicacion.codigo)}${this._auUbicacion.nombre ? ' — ' + this.esc(this._auUbicacion.nombre) : ''}`;
-    document.getElementById('m-content').innerHTML = `
-      <div class="op-view">
-        <div class="op-card" style="border-left:4px solid #0891b2;background:#f0f9ff;margin-bottom:16px;">
-          <div style="font-size:.7rem;color:#0369a1;font-weight:700;">UBICACIÓN</div>
-          <div style="font-weight:700;">${ubiTxt}</div>
-          <button class="m-btn secondary sm" style="margin-top:6px;" onclick="MWMS._renderAuStep1()">
-            <i class="fa-solid fa-pencil"></i> Cambiar
-          </button>
-        </div>
-
-        <div style="font-size:.75rem;font-weight:700;color:#374151;text-align:center;margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em;">
-          ¿Qué desea hacer con esta ubicación?
-        </div>
-
-        <!-- Opción A: Ajuste Completo -->
-        <div onclick="MWMS._auSeleccionarModo('AjusteCompleto')"
-          style="background:#fff7ed;border:2px solid #f59e0b;border-radius:12px;padding:16px;margin-bottom:12px;cursor:pointer;">
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div style="background:#f59e0b;color:#fff;border-radius:10px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;">
-              <i class="fa-solid fa-rotate-left"></i>
-            </div>
-            <div>
-              <div style="font-weight:900;font-size:.95rem;color:#92400e;">Ajuste Completo</div>
-              <div style="font-size:.75rem;color:#78350f;margin-top:2px;line-height:1.4;">
-                Borra todo el inventario actual de la ubicación y lo reemplaza con lo que se cuente.<br>
-                <b>Genera AjusteNegativo + AjustePositivo en Kardex.</b>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Opción B: Agregar Inventario -->
-        <div onclick="MWMS._auSeleccionarModo('AgregarInventario')"
-          style="background:#f0fdf4;border:2px solid #10b981;border-radius:12px;padding:16px;cursor:pointer;">
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div style="background:#10b981;color:#fff;border-radius:10px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;">
-              <i class="fa-solid fa-plus"></i>
-            </div>
-            <div>
-              <div style="font-weight:900;font-size:.95rem;color:#065f46;">Agregar Inventario</div>
-              <div style="font-size:.75rem;color:#064e3b;margin-top:2px;line-height:1.4;">
-                Suma productos al inventario existente en la ubicación sin borrar lo que ya hay.<br>
-                <b>Genera solo AjustePositivo en Kardex.</b>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>`;
-  },
-
-  async _auSeleccionarModo(tipo) {
-    this._auTipo = tipo;
-    await this._auVerInventarioActual();
-  },
-
-  async _auVerInventarioActual() {
+  // Trae el inventario actual de la ubicación (una sola vez por escaneo,
+  // cacheado en _auInvActual) y dispara el render del contenido + acciones.
+  async _auMostrarUbicacion() {
     if (!this._auUbicacion) return;
     this.loading(true);
     let invActual = [];
@@ -11307,20 +11680,61 @@ const MWMS = {
       invActual = (r.data || r || []);
     } catch(e) {}
     this.loading(false);
-    this._renderAuStep2(invActual);
+    this._auInvActual = invActual;
+    this._renderAuContenido();
   },
 
-  _renderAuStep2(invActual) {
-    const esAgregar = this._auTipo === 'AgregarInventario';
-    const modoBadge = esAgregar
-      ? `<span style="background:#dcfce7;color:#065f46;border-radius:6px;padding:2px 10px;font-size:.65rem;font-weight:800;margin-top:4px;display:inline-block;">
-           <i class="fa-solid fa-plus"></i> AGREGAR INVENTARIO
-         </span>`
-      : `<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:2px 10px;font-size:.65rem;font-weight:800;margin-top:4px;display:inline-block;">
-           <i class="fa-solid fa-rotate-left"></i> AJUSTE COMPLETO — borra y reemplaza
-         </span>`;
+  // Cambia de acción (modo) usando el inventario ya cacheado — no requiere
+  // volver a consultar el servidor.
+  _auSeleccionarModo(tipo) {
+    this._auTipo = tipo;
+    this._renderAuContenido();
+  },
+
+  // Barra de acciones — SIEMPRE visible arriba del contenido de la
+  // ubicación, a pedido explícito de Camilo (2026-09-16): "que las acciones
+  // aparezcan en la parte superior".
+  _auAccionesBar() {
+    const modos = [
+      { tipo: 'AjusteCompleto',    icon: 'fa-rotate-left',    label: 'Ajuste Completo',    color: '#f59e0b' },
+      { tipo: 'AgregarInventario', icon: 'fa-plus',           label: 'Agregar Inventario', color: '#10b981' },
+      { tipo: 'AjustarCantidad',   icon: 'fa-pen-to-square',  label: 'Ajustar Cantidad',   color: '#2563eb' },
+      { tipo: 'AjusteCero',        icon: 'fa-ban',            label: 'Ajustar a Cero',     color: '#dc2626' },
+    ];
+    return `<div style="display:flex;gap:5px;margin-bottom:10px;">
+      ${modos.map(m => {
+        const activo = this._auTipo === m.tipo;
+        return `<button onclick="MWMS._auSeleccionarModo('${m.tipo}')"
+          style="flex:1;padding:8px 3px;border-radius:10px;border:2px solid ${m.color};
+                 background:${activo ? m.color : '#fff'};color:${activo ? '#fff' : m.color};
+                 font-weight:800;font-size:.56rem;text-align:center;cursor:pointer;line-height:1.2;">
+          <i class="fa-solid ${m.icon}" style="display:block;font-size:.9rem;margin-bottom:3px;"></i>${m.label}
+        </button>`;
+      }).join('')}
+    </div>`;
+  },
+
+  // Encabezado de ubicación reutilizado en los 3 modos + estado "sin acción".
+  _auHeaderUbicacion() {
     const ubiTxt = `${this.esc(this._auUbicacion.codigo)}${this._auUbicacion.nombre ? ' — ' + this.esc(this._auUbicacion.nombre) : ''}`;
-    const invHtml = invActual.length
+    return `<div class="op-card" style="border-left:4px solid #64748b;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div>
+        <div style="font-size:.7rem;color:#475569;font-weight:700;">UBICACIÓN</div>
+        <div style="font-weight:700;">${ubiTxt}</div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="m-btn secondary sm" onclick="MWMS._auMostrarUbicacion()" title="Actualizar contenido"><i class="fa-solid fa-rotate"></i></button>
+        <button class="m-btn secondary sm" onclick="MWMS._renderAuStep1()"><i class="fa-solid fa-pencil"></i> Cambiar</button>
+      </div>
+    </div>`;
+  },
+
+  // Listado de solo-lectura del contenido actual — usado en los 3 modos como
+  // referencia (en AjustarCantidad, la versión EDITABLE la pinta
+  // _renderAuStepAjustar, así que este solo-lectura se usa cuando aún no se
+  // eligió ninguna acción).
+  _auInvActualHtml(invActual) {
+    return invActual.length
       ? invActual.map(i => {
           const upc = Math.max(1, parseInt(i.unidades_caja || 1));
           const det = upc > 1 ? `${parseInt(i.cantidad_cajas||0)} caj × ${upc} + ${parseFloat(i.saldos||0)} suel = <b>${i.cantidad}</b> UND/T` : `<b>${i.cantidad}</b> UND/T`;
@@ -11328,31 +11742,92 @@ const MWMS = {
             <b>${this.esc(i.producto_nombre)}</b> <span style="color:#64748b;">Lote: ${i.lote || 'N/A'}</span><br>${det}</div>`;
         }).join('')
       : '<p style="color:#94a3b8;font-size:.8rem;font-style:italic;margin:0;">Sin inventario registrado en esta ubicación.</p>';
+  },
 
+  // Dispatcher: pinta acciones arriba + contenido de la ubicación siempre
+  // visible, y debajo el formulario específico del modo elegido (o un aviso
+  // a elegir uno, si aún no se eligió).
+  _renderAuContenido() {
+    const invActual = this._auInvActual || [];
+    if (this._auTipo === 'AjustarCantidad') { this._renderAuStepAjustar(invActual); return; }
+    if (this._auTipo === 'AjusteCero') { this._renderAuStepCero(invActual); return; }
+    if (this._auTipo === 'AjusteCompleto' || this._auTipo === 'AgregarInventario') { this._renderAuStep2(invActual); return; }
+
+    // Sin acción elegida aún: solo mostrar el contenido de la ubicación.
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        ${this._auHeaderUbicacion()}
+        ${this._auAccionesBar()}
+        <div class="op-card">
+          <div style="font-size:.7rem;color:#64748b;font-weight:700;margin-bottom:6px;">📦 CONTENIDO ACTUAL DE LA UBICACIÓN</div>
+          ${this._auInvActualHtml(invActual)}
+        </div>
+        <p style="text-align:center;color:#94a3b8;font-size:.75rem;font-style:italic;margin-top:10px;">
+          Elija una acción arriba para continuar.
+        </p>
+      </div>`;
+  },
+
+  // Modo "Ajustar a Cero" — no hay inventario físico en la ubicación. No se
+  // piden referencias (no hay nada que contar); solo se confirma vaciar lo
+  // que el sistema tenga registrado AHÍ (otras ubicaciones con la misma
+  // referencia no se tocan). A pedido explícito de Camilo (2026-09-16).
+  _renderAuStepCero(invActual) {
+    const sinInventario = !invActual.length;
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        ${this._auHeaderUbicacion()}
+        ${this._auAccionesBar()}
+        <div class="op-card" style="border-left:4px solid #dc2626;background:#fef2f2;margin-bottom:10px;">
+          <div style="font-weight:800;color:#991b1b;font-size:.85rem;margin-bottom:4px;">
+            <i class="fa-solid fa-triangle-exclamation"></i> Sin inventario físico en esta ubicación
+          </div>
+          <div style="font-size:.78rem;color:#7f1d1d;line-height:1.4;">
+            ${sinInventario
+              ? 'El sistema ya no tiene nada registrado aquí — no hay nada que ajustar.'
+              : `Al confirmar, se pondrán en <b>CERO las ${invActual.length} referencia(s)</b> que el sistema tiene registradas en esta ubicación (se ve abajo). Se registrará como salida negativa en Kardex. <b>No afecta</b> el inventario de esas referencias en otras ubicaciones.`}
+          </div>
+        </div>
+        <div class="op-card">
+          <div style="font-size:.7rem;color:#64748b;font-weight:700;margin-bottom:6px;">📦 SE PONDRÁ EN CERO</div>
+          ${this._auInvActualHtml(invActual)}
+        </div>
+        <button class="m-btn full" style="margin-top:12px;background:#dc2626;color:#fff;${sinInventario ? 'opacity:.5;' : ''}" ${sinInventario ? 'disabled' : ''} onclick="MWMS._auConfirmarCero()">
+          <i class="fa-solid fa-ban"></i> Confirmar ajuste a cero — enviar para aprobación
+        </button>
+      </div>`;
+  },
+
+  async _auConfirmarCero() {
+    if (!this._auUbicacion) return;
+    if (!(this._auInvActual || []).length) return this.toast('No hay inventario para ajustar a cero', 'error');
+    if (!confirm(`¿Confirma poner en CERO ${this._auInvActual.length} referencia(s) en "${this._auUbicacion.codigo}"?\n\nSe eliminará el inventario del sistema en esta ubicación (Kardex negativo). Otras ubicaciones con las mismas referencias NO se afectan.`)) return;
+
+    this.loading(true);
+    try {
+      const r = await mApi('POST', '/inventario/ajuste-ubicacion', {
+        ubicacion_id: this._auUbicacion.id,
+        tipo: 'AjusteCero',
+        detalles: [],
+      });
+      if (r.error) throw new Error(r.message);
+      this.toast(`✔ Ajuste a cero enviado (#${r.data?.id || r.id}). Espere la aprobación del administrador.`, 'success');
+      this._auUbicacion = null;
+      this._auTipo      = null;
+      this._auInvActual = [];
+      setTimeout(() => this.viewHome(), 2500);
+    } catch(e) { this.toast(e.message || 'Error al enviar', 'error'); }
+    this.loading(false);
+  },
+
+  _renderAuStep2(invActual) {
+    const esAgregar = this._auTipo === 'AgregarInventario';
     const lineasHtml = this._auRenderLineas();
 
     document.getElementById('m-content').innerHTML = `
       <div class="op-view">
-        <!-- Ubicación seleccionada + modo -->
-        <div class="op-card" style="border-left:4px solid ${esAgregar ? '#10b981' : '#f59e0b'};background:${esAgregar ? '#f0fdf4' : '#fff7ed'};margin-bottom:10px;">
-          <div style="font-size:.7rem;color:${esAgregar ? '#0369a1' : '#92400e'};font-weight:700;">UBICACIÓN SELECCIONADA</div>
-          <div style="font-weight:700;">${ubiTxt}</div>
-          ${modoBadge}
-          <div style="display:flex;gap:6px;margin-top:8px;">
-            <button class="m-btn secondary sm" onclick="MWMS._renderAuStep1()">
-              <i class="fa-solid fa-pencil"></i> Cambiar ubi.
-            </button>
-            <button class="m-btn secondary sm" onclick="MWMS._renderAuStepModo()">
-              <i class="fa-solid fa-repeat"></i> Cambiar modo
-            </button>
-          </div>
-        </div>
-
-        <!-- Inventario actual (referencia) -->
-        <div class="op-card" style="margin-bottom:10px;">
-          <div style="font-size:.7rem;color:#64748b;font-weight:700;margin-bottom:6px;">📦 INVENTARIO ACTUAL (REFERENCIA)</div>
-          ${invHtml}
-        </div>
+        ${this._auHeaderUbicacion()}
+        ${this._auAccionesBar()}
 
         <!-- Formulario agregar producto -->
         <div class="op-card" style="border-left:4px solid #059669;">
@@ -11401,6 +11876,14 @@ const MWMS = {
           <div id="au-lineas-list">${lineasHtml || '<p style="color:#94a3b8;font-size:.8rem;font-style:italic;">Aún no ha agregado referencias.</p>'}</div>
         </div>
 
+        <!-- Inventario actual (referencia) — abajo, a pedido explícito de
+        Camilo (2026-09-16): el form de captura va arriba, el contenido de
+        la ubicación queda como referencia más abajo -->
+        <div class="op-card" style="margin-top:10px;">
+          <div style="font-size:.7rem;color:#64748b;font-weight:700;margin-bottom:6px;">📦 CONTENIDO ACTUAL DE LA UBICACIÓN</div>
+          ${this._auInvActualHtml(invActual)}
+        </div>
+
         <!-- Botón finalizar -->
         <div style="margin-top:16px;display:flex;gap:8px;">
           <button class="m-btn secondary full" onclick="MWMS.viewHome()">
@@ -11413,6 +11896,135 @@ const MWMS = {
       </div>`;
 
     this._auRefreshLineasUI();
+  },
+
+  // ── Modo "Ajustar Cantidad" — edita las cantidades de lo que YA está en
+  // la ubicación (no agrega referencias nuevas ni borra nada) ────────────
+  _auAjusteRows: [],
+
+  _renderAuStepAjustar(invActual) {
+    this._auAjusteRows = (invActual || []).map(i => ({
+      producto_id:        i.producto_id,
+      producto_nombre:    i.producto_nombre,
+      codigo_interno:     i.codigo_interno,
+      unidades_caja:      Math.max(1, parseInt(i.unidades_caja || 1)),
+      lote:                i.lote || null,
+      fecha_vencimiento:   i.fecha_vencimiento || null,
+      cantidad_cajas_orig: parseInt(i.cantidad_cajas || 0),
+      saldos_orig:         parseFloat(i.saldos || 0),
+      cantidad_orig:       parseFloat(i.cantidad || 0),
+    }));
+
+    if (!this._auAjusteRows.length) {
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          ${this._auHeaderUbicacion()}
+          ${this._auAccionesBar()}
+          <p style="color:#94a3b8;font-size:.85rem;font-style:italic;text-align:center;">
+            Esta ubicación no tiene inventario registrado — no hay nada que ajustar.<br>
+            Use "Agregar Inventario" o "Ajuste Completo" en su lugar.
+          </p>
+        </div>`;
+      return;
+    }
+
+    const rowsHtml = this._auAjusteRows.map((row, idx) => {
+      const upc = row.unidades_caja;
+      return `<div class="op-card" style="margin-bottom:10px;">
+        <div style="font-size:.78rem;font-weight:700;">${this.esc(row.producto_nombre)}</div>
+        <div style="font-size:.7rem;color:#64748b;margin-bottom:8px;">
+          ${this.esc(row.codigo_interno || '')} · Lote: ${row.lote || 'N/A'}${row.fecha_vencimiento ? ' · Venc: ' + this.formatDateShort(row.fecha_vencimiento) : ''}
+          · Actual: <b>${row.cantidad_orig}</b> UND/T
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div style="display:${upc > 1 ? '' : 'none'}">
+            <label class="m-label">Cajas</label>
+            <input type="number" id="ac-cajas-${idx}" class="m-input-full" min="0" step="1"
+                   value="${row.cantidad_cajas_orig}" oninput="MWMS._auAjustarUpdTotal(${idx})">
+          </div>
+          <div>
+            <label class="m-label">${upc > 1 ? 'Sueltos' : 'Cantidad'}</label>
+            <input type="number" id="ac-saldos-${idx}" class="m-input-full" min="0" step="0.001"
+                   value="${row.saldos_orig}" oninput="MWMS._auAjustarUpdTotal(${idx})">
+          </div>
+        </div>
+        <div id="ac-total-${idx}" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:6px 10px;font-size:.78rem;font-weight:700;color:#1d4ed8;margin-top:8px;">
+          NUEVO TOTAL: ${row.cantidad_orig} UND/T <span style="color:#64748b;font-weight:600;">(sin cambio)</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        ${this._auHeaderUbicacion()}
+        ${this._auAccionesBar()}
+
+        <div style="font-size:.7rem;color:#64748b;font-weight:700;margin-bottom:6px;">
+          ✏️ CORRIJA LA CANTIDAD CONTADA DE CADA REFERENCIA
+        </div>
+        ${rowsHtml}
+
+        <div style="margin-top:16px;display:flex;gap:8px;">
+          <button class="m-btn secondary full" onclick="MWMS.viewHome()"><i class="fa-solid fa-xmark"></i> Cancelar</button>
+          <button class="m-btn success full" onclick="MWMS._auConfirmarAjustar()">
+            <i class="fa-solid fa-paper-plane"></i> Enviar para aprobación
+          </button>
+        </div>
+      </div>`;
+  },
+
+  _auAjustarUpdTotal(idx) {
+    const row = this._auAjusteRows[idx];
+    if (!row) return;
+    const cajas  = parseFloat(document.getElementById(`ac-cajas-${idx}`)?.value  || 0) || 0;
+    const saldos = parseFloat(document.getElementById(`ac-saldos-${idx}`)?.value || 0) || 0;
+    const total  = row.unidades_caja > 1 ? cajas * row.unidades_caja + saldos : saldos;
+    const el = document.getElementById(`ac-total-${idx}`);
+    if (!el) return;
+    const delta = total - row.cantidad_orig;
+    const nota  = delta === 0 ? '<span style="color:#64748b;font-weight:600;">(sin cambio)</span>'
+                : delta > 0  ? `<span style="color:#16a34a;font-weight:800;">(+${delta})</span>`
+                             : `<span style="color:#dc2626;font-weight:800;">(${delta})</span>`;
+    el.innerHTML = `NUEVO TOTAL: ${total} UND/T ${nota}`;
+  },
+
+  async _auConfirmarAjustar() {
+    if (!this._auUbicacion || !this._auAjusteRows.length) return this.toast('No hay referencias para ajustar', 'error');
+
+    const detalles = this._auAjusteRows.map((row, idx) => {
+      const cajas  = parseFloat(document.getElementById(`ac-cajas-${idx}`)?.value  || 0) || 0;
+      const saldos = parseFloat(document.getElementById(`ac-saldos-${idx}`)?.value || 0) || 0;
+      const total  = row.unidades_caja > 1 ? cajas * row.unidades_caja + saldos : saldos;
+      return {
+        producto_id:        row.producto_id,
+        cantidad_cajas:     cajas,
+        saldos:             saldos,
+        cantidad:           total,
+        lote:               row.lote,
+        fecha_vencimiento:  row.fecha_vencimiento,
+      };
+    });
+
+    const cambios = detalles.filter((d, idx) => d.cantidad !== this._auAjusteRows[idx].cantidad_orig);
+    if (!cambios.length) return this.toast('No hizo ningún cambio de cantidad', 'error');
+
+    if (!confirm(`¿Enviar ajuste de cantidad para "${this._auUbicacion.codigo}"?\n\n${cambios.length} referencia(s) con cambio de cantidad. Se registrará en Kardex al aprobarse.`)) return;
+
+    this.loading(true);
+    try {
+      const r = await mApi('POST', '/inventario/ajuste-ubicacion', {
+        ubicacion_id: this._auUbicacion.id,
+        tipo:         'AjustarCantidad',
+        detalles,
+      });
+      if (r.error) throw new Error(r.message);
+      this.toast(`✔ Ajuste de cantidad enviado (#${r.data?.id || r.id}). Espere la aprobación del administrador.`, 'success');
+      this._auAjusteRows = [];
+      this._auUbicacion  = null;
+      this._auTipo       = null;
+      setTimeout(() => this.viewHome(), 2500);
+    } catch(e) { this.toast(e.message || 'Error al enviar', 'error'); }
+    this.loading(false);
   },
 
   async _auBuscarProd() {
@@ -11550,7 +12162,7 @@ const MWMS = {
       this.toast(`✔ ${label} (#${r.data?.id || r.id}). Espere la aprobación del administrador.`, 'success');
       this._auLineas    = [];
       this._auUbicacion = null;
-      this._auTipo      = 'AjusteCompleto';
+      this._auTipo      = null;
       setTimeout(() => this.viewHome(), 2500);
     } catch(e) { this.toast(e.message || 'Error al enviar', 'error'); }
     this.loading(false);

@@ -4763,8 +4763,12 @@ WMS_MODULES.recepcion = {
             <div>
               ${!trackings.length ? '<div style="color:#94a3b8;font-size:12px;font-style:italic;">No hay registros.</div>' : trackings.map(t => {
                 const evs = (t.evidencias||[]).map(e => {
-                  if (e.tipo==='imagen') return `<a href="${e.ruta_archivo}" target="_blank" style="display:inline-block;margin-right:8px;margin-top:8px;"><img src="${e.ruta_archivo}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0;"></a>`;
-                  return `<a href="${e.ruta_archivo}" target="_blank" style="display:inline-block;margin-right:8px;margin-top:8px;padding:6px 12px;background:#f1f5f9;border-radius:4px;font-size:12px;text-decoration:none;color:#334155;"><i class="fa-solid fa-file-pdf" style="color:#ef4444;"></i> Documento PDF</a>`;
+                  // Mismo fix ya aplicado en devoluciones.js (tracking CRM de devoluciones):
+                  // ruta_archivo viene como ruta raíz ('/uploads/...') y necesita el base
+                  // path de la app, o el navegador la resuelve contra localhost/uploads/... (404).
+                  const url = e.ruta_archivo.startsWith('/uploads/') ? '/WMS_FENIX/public' + e.ruta_archivo : e.ruta_archivo;
+                  if (e.tipo==='imagen') return `<a href="${url}" target="_blank" style="display:inline-block;margin-right:8px;margin-top:8px;"><img src="${url}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0;"></a>`;
+                  return `<a href="${url}" target="_blank" style="display:inline-block;margin-right:8px;margin-top:8px;padding:6px 12px;background:#f1f5f9;border-radius:4px;font-size:12px;text-decoration:none;color:#334155;"><i class="fa-solid fa-file-pdf" style="color:#ef4444;"></i> Documento PDF</a>`;
                 }).join('');
                 return `
                   <div style="display:flex;gap:12px;margin-bottom:16px;">

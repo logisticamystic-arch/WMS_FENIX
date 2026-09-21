@@ -8,7 +8,7 @@ class Preoperacional extends BaseModel
 
     protected $fillable = [
         'empresa_id', 'sucursal_id', 'fecha', 'vehiculo', 'conductor', 'ruta',
-        'observaciones', 'creado_por',
+        'observaciones', 'creado_por', 'firma_url',
     ];
 
     public function items()

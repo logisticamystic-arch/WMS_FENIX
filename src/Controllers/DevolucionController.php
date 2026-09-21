@@ -125,6 +125,99 @@ class DevolucionController extends BaseController
     }
 
     /**
+     * Crea una devolución con la MISMA numeración real que store() —
+     * Devolucion::generarNumero()/generarConsecutivo(), nunca inventada por el
+     * llamador — para integraciones que no llegan por HTTP multipart (p.ej. el
+     * webhook TMS/YMS de devoluciones registradas en el punto de venta). Sin
+     * manejo de fotos ni $request: el ajuste de inventario para tipo='cliente'
+     * no ocurre aquí (igual que en store()) — queda 'Pendiente' para el mismo
+     * triage de calidad (procesar()) que ya usan las devoluciones manuales.
+     *
+     * @param array $detalles [{producto_id, cantidad, lote?, fecha_vencimiento?, motivo?, condicion?}, ...]
+     * @return array{0:int,1:string,2:int} [devolucion_id, numero_devolucion, consecutivo]
+     * @throws \InvalidArgumentException si algún dato requerido es inválido
+     */
+    public function crearDesdeIntegracion(
+        int $empresaId,
+        int $sucursalId,
+        int $auxiliarId,
+        string $tipo,
+        string $motivoGeneral,
+        array $detalles,
+        ?int $causalId = null,
+        ?string $referenciaExterna = null
+    ): array {
+        $tiposValidos = ['AProveedorAveria','AProveedorVencido','ReingresoBuenEstado','cliente','proveedor','interna','BuenEstado','MalEstado'];
+        if (!in_array($tipo, $tiposValidos, true)) {
+            throw new \InvalidArgumentException("tipo inválido: {$tipo}");
+        }
+        if (empty($detalles)) {
+            throw new \InvalidArgumentException('Debe incluir al menos un producto a devolver');
+        }
+        foreach ($detalles as $i => $d) {
+            if (empty($d['producto_id']) || !is_numeric($d['producto_id'])) {
+                throw new \InvalidArgumentException('Línea ' . ($i + 1) . ': producto_id inválido');
+            }
+            if (empty($d['cantidad']) || (float)$d['cantidad'] <= 0) {
+                throw new \InvalidArgumentException('Línea ' . ($i + 1) . ': cantidad debe ser mayor a cero');
+            }
+        }
+        if ($causalId !== null) {
+            $causalExiste = CausalDevolucion::where('empresa_id', $empresaId)
+                ->where('id', $causalId)->where('activo', true)->exists();
+            if (!$causalExiste) {
+                throw new \InvalidArgumentException('causal_devolucion_id no existe o no está activa');
+            }
+        }
+
+        return DB::transaction(function () use ($empresaId, $sucursalId, $auxiliarId, $tipo, $motivoGeneral, $detalles, $causalId, $referenciaExterna) {
+            $numero      = Devolucion::generarNumero($empresaId);
+            $consecutivo = Devolucion::generarConsecutivo($empresaId);
+
+            $dev = Devolucion::create([
+                'empresa_id'             => $empresaId,
+                'sucursal_id'            => $sucursalId,
+                'numero_devolucion'      => $numero,
+                'consecutivo_devolucion' => $consecutivo,
+                'tipo'                   => $tipo,
+                'estado'                 => Devolucion::ESTADO_PENDIENTE,
+                'motivo_general'         => $motivoGeneral,
+                'referencia_externa'     => $referenciaExterna,
+                'auxiliar_id'            => $auxiliarId,
+                'solicitado_por'         => $auxiliarId,
+                'fecha_movimiento'       => date('Y-m-d'),
+                'hora_inicio'            => date('H:i:s'),
+                'causal_devolucion_id'   => $causalId,
+            ]);
+
+            foreach ($detalles as $d) {
+                $condicion = $d['condicion'] ?? ($tipo === 'MalEstado' ? 'dañado' : 'bueno');
+                $destino   = ($condicion === 'dañado' || $condicion === 'vencido') ? 'InventarioObsoleto' : 'Reingreso';
+                DevolucionDetalle::create([
+                    'devolucion_id'     => $dev->id,
+                    'producto_id'       => (int)$d['producto_id'],
+                    'lote'              => $d['lote'] ?? null,
+                    'fecha_vencimiento' => $d['fecha_vencimiento'] ?? null,
+                    'cantidad'          => (float)$d['cantidad'],
+                    'condicion'         => $condicion,
+                    // devolucion_detalles.motivo tiene un CHECK a solo 5 valores
+                    // fijos (Averia/Vencido/ErrorProveedor/CalidadDeficiente/Otro)
+                    // — no es el mismo campo libre que causal_devolucion_id. El
+                    // llamador de integración (YMS) manda el nombre real de la
+                    // causal en $d['motivo'] para trazabilidad, pero eso violaría
+                    // el CHECK si no coincide exacto; la causal real ya queda
+                    // registrada en el encabezado vía causal_devolucion_id, así
+                    // que aquí siempre se usa 'Otro'.
+                    'motivo'            => 'Otro',
+                    'destino'           => $destino,
+                ]);
+            }
+
+            return [$dev->id, $numero, $consecutivo];
+        });
+    }
+
+    /**
      * POST /api/devoluciones
      * Iniciar proceso de devolución (crear encabezado y líneas)
      */
@@ -1044,6 +1137,39 @@ class DevolucionController extends BaseController
         }
     }
 
+    // ── DELETE /api/devoluciones/causales/{id} ───────────────────────────────────
+    /**
+     * Elimina una causal. Solo Admin/Supervisor. Bloqueada si ya está en uso en
+     * alguna devolución — mismo criterio que deleteEstado() para estados CRM.
+     */
+    public function deleteCausal(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        if (!in_array($user->rol ?? '', ['Admin', 'Supervisor'])) {
+            return $this->json($response, ['error' => true, 'message' => 'Permiso denegado'], 403);
+        }
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $id        = (int)($args['id'] ?? 0);
+
+        try {
+            $causal = CausalDevolucion::where('empresa_id', $empresaId)->find($id);
+            if (!$causal) {
+                return $this->json($response, ['error' => true, 'message' => 'Causal no encontrada.'], 404);
+            }
+
+            $enUso = Devolucion::where('empresa_id', $empresaId)->where('causal_devolucion_id', $id)->exists();
+            if ($enUso) {
+                return $this->json($response, ['error' => true, 'message' => 'No se puede eliminar: esta causal ya está en uso en una o más devoluciones. Desactívela en su lugar.'], 409);
+            }
+
+            $causal->delete();
+            return $this->ok($response, null, 'Causal eliminada');
+        } catch (\Exception $e) {
+            error_log('DevolucionController::deleteCausal error: ' . $e->getMessage());
+            return $this->error($response, 'Error al eliminar causal.', 500);
+        }
+    }
+
     // ── PUT /api/devoluciones/causales/{id} ──────────────────────────────────────
     /**
      * Edita una causal existente. Solo Admin/Supervisor.
@@ -1349,97 +1475,135 @@ class DevolucionController extends BaseController
         }
     }
     // ── GET /api/devoluciones/dashboard-stats ──────────────────────────────
+    // ?fecha_desde=&fecha_hasta=&causal_id=&responsable=&consecutivo=&referencia=
     public function dashboardStats(Request $r, Response $res): Response
     {
         $user = $r->getAttribute('user');
         $empresaId = $this->getEffectiveEmpresaId($user, $r);
         $sucursalId = $this->getEffectiveSucursalId($user, $r);
+        $params = $r->getQueryParams();
 
         try {
-            // 1. Total por estado (últimos 30 días)
-            $hace30 = date('Y-m-d', strtotime('-30 days'));
+            // BUG CORREGIDO 2026-09-17 (a pedido explícito): esta ruta ignoraba
+            // POR COMPLETO los filtros del dashboard (fecha, causal, responsable,
+            // consecutivo, referencia) — siempre calculaba sobre los últimos 30
+            // días fijos, sin importar lo que el usuario seleccionara. Ahora se
+            // arma UNA sola lista de devolucion_id que cumple todos los filtros
+            // (fuente de verdad única) y cada métrica se restringe a esa lista,
+            // en vez de repetir/ignorar el criterio en cada query por separado.
+            $fechaDesde = $params['fecha_desde'] ?? $params['desde'] ?? date('Y-m-d', strtotime('-30 days'));
+            $fechaHasta = $params['fecha_hasta'] ?? $params['hasta'] ?? date('Y-m-d');
+
+            $devQuery = \Illuminate\Database\Capsule\Manager::table('devoluciones as d')
+                ->where('d.empresa_id', $empresaId)
+                ->where('d.sucursal_id', $sucursalId)
+                ->whereDate('d.created_at', '>=', $fechaDesde)
+                ->whereDate('d.created_at', '<=', $fechaHasta);
+            if (!empty($params['causal_id']))    $devQuery->where('d.causal_devolucion_id', (int)$params['causal_id']);
+            if (!empty($params['responsable']))  $devQuery->where('d.responsable_devolucion', 'like', '%' . $params['responsable'] . '%');
+            if (!empty($params['consecutivo']))  $devQuery->where('d.consecutivo_devolucion', (int)$params['consecutivo']);
+            if (!empty($params['referencia']))   $devQuery->where('d.referencia_externa', 'like', '%' . $params['referencia'] . '%');
+            $devIds = $devQuery->pluck('d.id');
+
+            if ($devIds->isEmpty()) {
+                return $this->ok($res, [
+                    'estados' => [], 'causales' => [], 'por_sucursal' => [],
+                    'top_productos' => [], 'matriz_productos' => [], 'historico' => [],
+                ]);
+            }
+
+            // 1. Total por estado
             $estados = \Illuminate\Database\Capsule\Manager::table('devoluciones')
                 ->select('estado', \Illuminate\Database\Capsule\Manager::raw('count(*) as total'))
-                ->where('empresa_id', $empresaId)
-                ->where('sucursal_id', $sucursalId)
-                ->where('created_at', '>=', $hace30)
+                ->whereIn('id', $devIds)
                 ->groupBy('estado')
                 ->get();
 
-            // 2. Top Causales (últimos 30 días)
-            $causales = \Illuminate\Database\Capsule\Manager::table('devolucion_detalles')
-                ->join('devoluciones', 'devoluciones.id', '=', 'devolucion_detalles.devolucion_id')
-                ->select('devolucion_detalles.motivo', \Illuminate\Database\Capsule\Manager::raw('count(*) as total'))
-                ->where('devoluciones.empresa_id', $empresaId)
-                ->where('devoluciones.sucursal_id', $sucursalId)
-                ->where('devoluciones.created_at', '>=', $hace30)
-                ->groupBy('devolucion_detalles.motivo')
+            // 2. Top Causales — agrupado por la causal real del encabezado
+            // (devoluciones.causal_devolucion_id), no por el motivo fijo de la línea.
+            $causales = \Illuminate\Database\Capsule\Manager::table('devoluciones as d')
+                ->leftJoin('causales_devolucion as c', 'c.id', '=', 'd.causal_devolucion_id')
+                ->select(
+                    \Illuminate\Database\Capsule\Manager::raw("COALESCE(c.causal, 'Sin causal') as causal"),
+                    \Illuminate\Database\Capsule\Manager::raw('count(*) as total')
+                )
+                ->whereIn('d.id', $devIds)
+                ->groupBy('d.causal_devolucion_id', 'c.causal')
                 ->orderBy('total', 'desc')
                 ->limit(10)
                 ->get();
 
-            // 3. Devoluciones por Sucursal (Todas las sucursales de la empresa)
-            $porSucursal = \Illuminate\Database\Capsule\Manager::table('devoluciones')
-                ->join('sucursales', 'sucursales.id', '=', 'devoluciones.sucursal_id')
-                ->select('sucursales.nombre', \Illuminate\Database\Capsule\Manager::raw('count(*) as total'))
-                ->where('devoluciones.empresa_id', $empresaId)
-                ->where('devoluciones.created_at', '>=', $hace30)
-                ->groupBy('sucursales.nombre')
+            // 3. Devoluciones por Cliente/Sucursal que devuelve.
+            // BUG CORREGIDO 2026-09-17: agrupaba por devoluciones.sucursal_id, que
+            // es SIEMPRE la sucursal propia del CEDI que opera el WMS (una sola,
+            // constante) — nunca iba a mostrar más de una barra. La sucursal que
+            // realmente varía es la del CLIENTE/punto de venta que devuelve
+            // (cliente_origen_id → clientes.razon_social; así se le llama también
+            // en el formulario "Nueva Devolución": "Cliente / Sucursal que Devuelve").
+            $porSucursal = \Illuminate\Database\Capsule\Manager::table('devoluciones as d')
+                ->join('clientes as cl', 'cl.id', '=', 'd.cliente_origen_id')
+                ->select('cl.razon_social as nombre', \Illuminate\Database\Capsule\Manager::raw('count(*) as total'))
+                ->whereIn('d.id', $devIds)
+                ->groupBy('cl.razon_social')
+                ->orderByDesc('total')
                 ->get();
 
             // 4. Top 10 Productos (mantenido por si acaso)
             $topProductos = \Illuminate\Database\Capsule\Manager::table('devolucion_detalles')
-                ->join('devoluciones', 'devoluciones.id', '=', 'devolucion_detalles.devolucion_id')
                 ->join('productos', 'productos.id', '=', 'devolucion_detalles.producto_id')
                 ->select('productos.nombre', 'productos.codigo_interno', \Illuminate\Database\Capsule\Manager::raw('sum(devolucion_detalles.cantidad) as cantidad_total'))
-                ->where('devoluciones.empresa_id', $empresaId)
-                ->where('devoluciones.sucursal_id', $sucursalId)
-                ->where('devoluciones.created_at', '>=', $hace30)
+                ->whereIn('devolucion_detalles.devolucion_id', $devIds)
                 ->groupBy('productos.nombre', 'productos.codigo_interno')
                 ->orderBy('cantidad_total', 'desc')
                 ->limit(10)
                 ->get();
-                
+
             // Matriz Completa de Productos (Veces devueltas, Unidades, %)
             $totalVecesGeneral = \Illuminate\Database\Capsule\Manager::table('devolucion_detalles')
-                ->join('devoluciones', 'devoluciones.id', '=', 'devolucion_detalles.devolucion_id')
-                ->where('devoluciones.empresa_id', $empresaId)
-                ->where('devoluciones.sucursal_id', $sucursalId)
-                ->where('devoluciones.created_at', '>=', $hace30)
+                ->whereIn('devolucion_id', $devIds)
                 ->count();
-                
+
             $matrizProductos = \Illuminate\Database\Capsule\Manager::table('devolucion_detalles')
-                ->join('devoluciones', 'devoluciones.id', '=', 'devolucion_detalles.devolucion_id')
                 ->join('productos', 'productos.id', '=', 'devolucion_detalles.producto_id')
                 ->select(
-                    'productos.nombre', 
-                    'productos.codigo_interno', 
+                    'productos.nombre',
+                    'productos.codigo_interno',
                     \Illuminate\Database\Capsule\Manager::raw('COUNT(devolucion_detalles.id) as veces_devuelto'),
                     \Illuminate\Database\Capsule\Manager::raw('SUM(devolucion_detalles.cantidad) as total_unidades')
                 )
-                ->where('devoluciones.empresa_id', $empresaId)
-                ->where('devoluciones.sucursal_id', $sucursalId)
-                ->where('devoluciones.created_at', '>=', $hace30)
+                ->whereIn('devolucion_detalles.devolucion_id', $devIds)
                 ->groupBy('productos.nombre', 'productos.codigo_interno')
                 ->orderBy('veces_devuelto', 'desc')
                 ->get();
-                
+
             $matrizProductos = $matrizProductos->map(function($item) use ($totalVecesGeneral) {
-                $item->porcentaje_participacion = $totalVecesGeneral > 0 
-                    ? round(($item->veces_devuelto / $totalVecesGeneral) * 100, 2) 
+                $item->porcentaje_participacion = $totalVecesGeneral > 0
+                    ? round(($item->veces_devuelto / $totalVecesGeneral) * 100, 2)
                     : 0;
                 return $item;
             });
 
-            // 5. Histórico 30 días
-            $historico = \Illuminate\Database\Capsule\Manager::table('devoluciones')
-                ->select(\Illuminate\Database\Capsule\Manager::raw('DATE(created_at) as fecha'), \Illuminate\Database\Capsule\Manager::raw('count(*) as total'))
-                ->where('empresa_id', $empresaId)
-                ->where('sucursal_id', $sucursalId)
-                ->where('created_at', '>=', $hace30)
+            // 5. Histórico por fecha — por devolución (total), por referencias
+            // distintas devueltas y por unidades, para que el gráfico pueda
+            // alternar dinámicamente entre "referencias" y "unidades".
+            $historico = \Illuminate\Database\Capsule\Manager::table('devolucion_detalles as dd')
+                ->join('devoluciones as d', 'd.id', '=', 'dd.devolucion_id')
+                ->select(
+                    \Illuminate\Database\Capsule\Manager::raw('DATE(d.created_at) as fecha'),
+                    \Illuminate\Database\Capsule\Manager::raw('COUNT(DISTINCT d.id) as total'),
+                    \Illuminate\Database\Capsule\Manager::raw('COUNT(DISTINCT dd.producto_id) as referencias'),
+                    \Illuminate\Database\Capsule\Manager::raw('SUM(dd.cantidad) as unidades')
+                )
+                ->whereIn('d.id', $devIds)
                 ->groupBy('fecha')
                 ->orderBy('fecha', 'asc')
-                ->get();
+                ->get()
+                ->map(fn($r) => [
+                    'fecha'      => $r->fecha,
+                    'total'      => (int)$r->total,
+                    'referencias'=> (int)$r->referencias,
+                    'unidades'   => (float)$r->unidades,
+                ]);
 
             return $this->ok($res, [
                 'estados' => $estados,

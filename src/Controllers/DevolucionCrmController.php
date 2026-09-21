@@ -101,6 +101,74 @@ class DevolucionCrmController extends BaseController
         }
     }
 
+    // ── AUXILIARES DE CALIDAD ────────────────────────────────────────────────
+    // Catálogo del personal responsable de los movimientos/estados del CRM de
+    // devoluciones — reemplaza el campo de texto libre "Responsable" del
+    // formulario de tracking por una selección controlada (Camilo, 2026-09-17).
+
+    // GET /api/devoluciones/auxiliares-calidad?activo=1
+    public function getAuxiliaresCalidad(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $params = $r->getQueryParams();
+        try {
+            $q = DB::table('auxiliares_calidad')->where('empresa_id', $empresaId);
+            if (isset($params['activo'])) $q->where('activo', (bool)$params['activo']);
+            $rows = $q->orderBy('nombre')->get();
+            return $this->ok($res, $rows);
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error al obtener auxiliares de calidad: ' . $e->getMessage());
+        }
+    }
+
+    // POST /api/devoluciones/auxiliares-calidad
+    public function createAuxiliarCalidad(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $body = $r->getParsedBody() ?? [];
+        if (empty($body['nombre'])) {
+            return $this->error($res, 'El nombre es obligatorio');
+        }
+        try {
+            $id = DB::table('auxiliares_calidad')->insertGetId([
+                'empresa_id' => $empresaId,
+                'nombre'     => trim($body['nombre']),
+                'cargo'      => $body['cargo'] ?? null,
+                'activo'     => true,
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+            return $this->ok($res, ['id' => $id], 'Auxiliar de calidad creado');
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error al crear auxiliar de calidad: ' . $e->getMessage());
+        }
+    }
+
+    // PUT /api/devoluciones/auxiliares-calidad/{id}
+    public function updateAuxiliarCalidad(Request $r, Response $res, array $args): Response
+    {
+        $user = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $id = (int)($args['id'] ?? 0);
+        $body = $r->getParsedBody() ?? [];
+        try {
+            $existe = DB::table('auxiliares_calidad')->where('id', $id)->where('empresa_id', $empresaId)->exists();
+            if (!$existe) return $this->notFound($res);
+
+            $upd = ['updated_at' => date('Y-m-d H:i:s')];
+            if (!empty($body['nombre'])) $upd['nombre'] = trim($body['nombre']);
+            if (array_key_exists('cargo', $body)) $upd['cargo'] = $body['cargo'];
+            if (array_key_exists('activo', $body)) $upd['activo'] = (bool)$body['activo'];
+
+            DB::table('auxiliares_calidad')->where('id', $id)->update($upd);
+            return $this->ok($res, null, 'Auxiliar de calidad actualizado');
+        } catch (\Exception $e) {
+            return $this->error($res, 'Error al actualizar auxiliar de calidad: ' . $e->getMessage());
+        }
+    }
+
     // GET /api/devoluciones/{id}/tracking
     public function getTracking(Request $r, Response $res, array $args): Response
     {
@@ -137,10 +205,17 @@ class DevolucionCrmController extends BaseController
         $body = $r->getParsedBody() ?? [];
         $estadoNuevo = $body['estado_nuevo'] ?? null;
         $observacion = $body['observacion'] ?? '';
-        $fotosBase64 = $body['fotos'] ?? []; 
+        $fotosBase64 = $body['fotos'] ?? [];
+        $responsable = trim($body['responsable'] ?? '');
 
         if (!$estadoNuevo && empty($observacion)) {
             return $this->error($res, 'Debe especificar un nuevo estado u observación');
+        }
+        // A pedido explícito (2026-09-17): la tarjeta de trazabilidad debe mostrar
+        // siempre quién realizó el movimiento — responsable pasa de opcional a
+        // obligatorio, seleccionado del catálogo auxiliares_calidad.
+        if (empty($responsable)) {
+            return $this->error($res, 'Debe seleccionar el responsable del movimiento');
         }
 
         try {
@@ -165,7 +240,7 @@ class DevolucionCrmController extends BaseController
                 'estado_anterior' => $estadoAnterior,
                 'estado_nuevo' => $estadoNuevo ?: $estadoAnterior,
                 'observacion' => $observacion,
-                'responsable' => $body['responsable'] ?? null,
+                'responsable' => $responsable,
                 'usuario_id' => $user->id ?? null,
                 'created_at' => date('Y-m-d H:i:s')
             ]);

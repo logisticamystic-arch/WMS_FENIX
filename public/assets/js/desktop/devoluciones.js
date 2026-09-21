@@ -24,11 +24,12 @@ WMS_MODULES.devoluciones = {
   ───────────────────────────────────────────────────────────────────────── */
   load(sub) {
     sub = sub || 'dashboard';
-    if (sub === 'dashboard') return this.loadDevoluciones();
-    if (sub === 'lista')     return this.showLista();
-    if (sub === 'causales')  return this.showCausales();
-    if (sub === 'estados')   return this.showEstadosCRM();
-    if (sub === 'nueva')     return this.showFormDevolucion();
+    if (sub === 'dashboard')   return this.loadDevoluciones();
+    if (sub === 'lista')       return this.showLista();
+    if (sub === 'causales')    return this.showCausales();
+    if (sub === 'estados')     return this.showEstadosCRM();
+    if (sub === 'auxiliares')  return this.showAuxiliaresCalidad();
+    if (sub === 'nueva')       return this.showFormDevolucion();
     return this.loadDevoluciones();
   },
 
@@ -37,20 +38,49 @@ WMS_MODULES.devoluciones = {
   ───────────────────────────────────────────────────────────────────────── */
   _navBar(activa) {
     const tabs = [
-      { id: 'dashboard', label: 'Dashboard KPI',    icon: 'fa-chart-pie' },
-      { id: 'lista',     label: 'Listado',           icon: 'fa-list' },
-      { id: 'causales',  label: 'Causales',          icon: 'fa-tags' },
-      { id: 'estados',   label: 'Estados CRM',       icon: 'fa-list-check' },
-      { id: 'nueva',     label: 'Nueva Devolución',  icon: 'fa-plus-circle' },
+      { id: 'dashboard',  label: 'Dashboard KPI',    icon: 'fa-chart-pie' },
+      { id: 'lista',      label: 'Listado',           icon: 'fa-list' },
+      { id: 'causales',   label: 'Causales',          icon: 'fa-tags' },
+      { id: 'estados',    label: 'Estados CRM',       icon: 'fa-list-check' },
+      { id: 'auxiliares', label: 'Auxiliares Calidad',icon: 'fa-user-shield' },
+      { id: 'nueva',      label: 'Nueva Devolución',  icon: 'fa-plus-circle' },
     ];
     return `
-      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-        ${tabs.map(t => `
-          <button class="btn btn-sm ${activa === t.id ? 'btn-primary' : 'btn-secondary'}"
-            onclick="WMS_MODULES.devoluciones.load('${t.id}')">
-            <i class="fa-solid ${t.icon}"></i> ${t.label}
-          </button>`).join('')}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;width:100%;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          ${tabs.map(t => `
+            <button class="btn btn-sm ${activa === t.id ? 'btn-primary' : 'btn-secondary'}"
+              onclick="WMS_MODULES.devoluciones.load('${t.id}')">
+              <i class="fa-solid ${t.icon}"></i> ${t.label}
+            </button>`).join('')}
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <input type="number" id="dv-nav-consecutivo" class="form-control form-control-sm" placeholder="# Consecutivo"
+            style="width:120px;" onkeydown="if(event.key==='Enter'){WMS_MODULES.devoluciones._buscarPorConsecutivoNav();event.preventDefault();}">
+          <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.devoluciones._buscarPorConsecutivoNav()" title="Buscar devolución por consecutivo">
+            <i class="fa-solid fa-magnifying-glass"></i>
+          </button>
+        </div>
       </div>`;
+  },
+
+  /* Búsqueda rápida por consecutivo, disponible desde cualquier vista del módulo */
+  async _buscarPorConsecutivoNav() {
+    const input = document.getElementById('dv-nav-consecutivo');
+    const num = parseInt(input?.value || '');
+    if (!num || num <= 0) { WMS.toast('error', 'Ingrese un número de consecutivo válido'); return; }
+    WMS.spinner();
+    try {
+      const r = await API.get('/devoluciones/buscar-consecutivo?consecutivo=' + num);
+      WMS.spinnerHide();
+      if (r.error) { WMS.toast('error', r.message || `No se encontró la devolución #${num}`); return; }
+      const d = r.data;
+      if (!d?.id) { WMS.toast('error', `No se encontró la devolución #${num}`); return; }
+      this.showDetalle(d.id);
+    } catch(e) {
+      WMS.spinnerHide();
+      WMS.toast('error', 'Error al buscar por consecutivo');
+    }
   },
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -74,25 +104,31 @@ WMS_MODULES.devoluciones = {
           <div style="padding:14px 18px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
             <div>
               <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Desde</label>
-              <input type="date" id="dvd-desde" class="form-control form-control-sm" value="${desde}">
+              <input type="date" id="dvd-desde" class="form-control form-control-sm" value="${desde}" onchange="WMS_MODULES.devoluciones._aplicarDashboard()">
             </div>
             <div>
               <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Hasta</label>
-              <input type="date" id="dvd-hasta" class="form-control form-control-sm" value="${hasta}">
+              <input type="date" id="dvd-hasta" class="form-control form-control-sm" value="${hasta}" onchange="WMS_MODULES.devoluciones._aplicarDashboard()">
             </div>
             <div>
               <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Causal</label>
-              <select id="dvd-causal" class="form-control form-control-sm" style="min-width:160px;">
+              <select id="dvd-causal" class="form-control form-control-sm" style="min-width:160px;" onchange="WMS_MODULES.devoluciones._aplicarDashboard()">
                 <option value="">Todas las causales</option>
               </select>
             </div>
             <div>
               <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Responsable</label>
-              <input type="text" id="dvd-responsable" class="form-control form-control-sm" placeholder="Nombre responsable" style="min-width:160px;">
+              <select id="dvd-responsable" class="form-control form-control-sm" style="min-width:160px;" onchange="WMS_MODULES.devoluciones._aplicarDashboard()">
+                <option value="">Todos los responsables</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Consecutivo</label>
+              <input type="number" id="dvd-consecutivo" class="form-control form-control-sm" placeholder="# Consecutivo" style="width:120px;" oninput="WMS_MODULES.devoluciones._aplicarDashboardDebounced()">
             </div>
             <div>
               <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Referencia</label>
-              <input type="text" id="dvd-referencia" class="form-control form-control-sm" placeholder="N° referencia ERP" style="min-width:140px;">
+              <input type="text" id="dvd-referencia" class="form-control form-control-sm" placeholder="N° referencia ERP" style="min-width:140px;" oninput="WMS_MODULES.devoluciones._aplicarDashboardDebounced()">
             </div>
             <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.devoluciones._aplicarDashboard()">
               <i class="fa-solid fa-filter"></i> Aplicar
@@ -111,18 +147,22 @@ WMS_MODULES.devoluciones = {
         <!-- Gráficos Fila 1 -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
           <div class="card" style="padding:16px;">
-            <div class="pro-section-title" style="margin-bottom:12px;">
-              <i class="fa-solid fa-chart-line" style="margin-right:6px;color:#3b82f6;"></i> Devoluciones por fecha
+            <div class="pro-section-title" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+              <span><i class="fa-solid fa-chart-line" style="margin-right:6px;color:#0070f2;"></i> Devoluciones por fecha</span>
+              <span style="display:flex;gap:4px;">
+                <button class="btn btn-xs btn-primary" id="dvd-hist-btn-referencias" onclick="WMS_MODULES.devoluciones._toggleHistoricoMetric('referencias')">Referencias</button>
+                <button class="btn btn-xs btn-outline-secondary" id="dvd-hist-btn-unidades" onclick="WMS_MODULES.devoluciones._toggleHistoricoMetric('unidades')">Unidades</button>
+              </span>
             </div>
-            <div style="height:220px;position:relative;">
+            <div style="height:220px;position:relative;overflow:hidden;">
               <canvas id="dvd-chart-historico"></canvas>
             </div>
           </div>
           <div class="card" style="padding:16px;">
             <div class="pro-section-title" style="margin-bottom:12px;">
-              <i class="fa-solid fa-chart-pie" style="margin-right:6px;color:#8b5cf6;"></i> Distribución por causal
+              <i class="fa-solid fa-chart-pie" style="margin-right:6px;color:#7c3aed;"></i> Distribución por causal
             </div>
-            <div style="height:220px;position:relative;">
+            <div style="height:220px;position:relative;overflow:hidden;">
               <canvas id="dvd-chart-causales"></canvas>
             </div>
           </div>
@@ -132,15 +172,15 @@ WMS_MODULES.devoluciones = {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
           <div class="card" style="padding:16px;">
             <div class="pro-section-title" style="margin-bottom:12px;">
-              <i class="fa-solid fa-building" style="margin-right:6px;color:#10b981;"></i> Devoluciones por Sucursal
+              <i class="fa-solid fa-building" style="margin-right:6px;color:#00b300;"></i> Devoluciones por Sucursal
             </div>
-            <div style="height:220px;position:relative;">
+            <div style="height:220px;position:relative;overflow:hidden;">
               <canvas id="dvd-chart-sucursales"></canvas>
             </div>
           </div>
           <div class="card" style="padding:16px;">
             <div class="pro-section-title" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
-              <span><i class="fa-solid fa-table-cells" style="margin-right:6px;color:#f59e0b;"></i> Matriz de Productos Devueltos</span>
+              <span><i class="fa-solid fa-table-cells" style="margin-right:6px;color:#e8a000;"></i> Matriz de Productos Devueltos</span>
               <span class="badge" style="background:#fef3c7;color:#d97706;" id="dvd-matriz-count">0 Refs</span>
             </div>
             <div style="height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;">
@@ -150,7 +190,7 @@ WMS_MODULES.devoluciones = {
                     <th>Referencia / Producto</th>
                     <th class="text-center">Veces</th>
                     <th class="text-center">Unidades</th>
-                    <th class="text-center">% Part.</th>
+                    <th class="text-center" title="Participación por cantidad de veces devuelto (no por volumen en unidades)">% Part. (Nº veces)</th>
                   </tr>
                 </thead>
                 <tbody id="dvd-matriz-productos">
@@ -173,8 +213,9 @@ WMS_MODULES.devoluciones = {
         </div>
       </div>`);
 
-    /* Cargar causales para el select */
+    /* Cargar causales y responsables (auxiliares de calidad) para los selects */
     this._cargarCausalesSelect('dvd-causal');
+    this._cargarResponsablesSelect('dvd-responsable');
 
     /* Cargar datos del dashboard */
     await this._aplicarDashboard();
@@ -195,15 +236,51 @@ WMS_MODULES.devoluciones = {
     } catch(e) { /* silencioso */ }
   },
 
+  /* Filtro dinámico de "Responsable" — a pedido explícito (2026-09-17) debe
+     permitir SELECCIONAR, no escribir texto libre; se llena del mismo
+     catálogo de Auxiliares de Calidad usado en el tracking CRM. */
+  async _cargarResponsablesSelect(selectId) {
+    try {
+      const r = await API.get('/devoluciones/auxiliares-calidad?activo=1');
+      const auxiliares = r.data || [];
+      const sel = document.getElementById(selectId);
+      if (!sel) return;
+      const current = sel.value;
+      const extras = auxiliares.map(a =>
+        `<option value="${WMS.esc(a.nombre)}" ${current === a.nombre ? 'selected' : ''}>${WMS.esc(a.nombre)}</option>`
+      ).join('');
+      sel.innerHTML = `<option value="">Todos los responsables</option>${extras}`;
+    } catch(e) { /* silencioso */ }
+  },
+
+  _aplicarDashboardDebounced() {
+    clearTimeout(this._dashboardFilterTimer);
+    this._dashboardFilterTimer = setTimeout(() => this._aplicarDashboard(), 400);
+  },
+
   async _aplicarDashboard() {
     try {
-      const rStats = await API.get('/devoluciones/dashboard-stats');
+      const params = new URLSearchParams();
+      const desde       = document.getElementById('dvd-desde')?.value;
+      const hasta        = document.getElementById('dvd-hasta')?.value;
+      const causal       = document.getElementById('dvd-causal')?.value;
+      const responsable  = document.getElementById('dvd-responsable')?.value;
+      const consecutivo  = document.getElementById('dvd-consecutivo')?.value;
+      const referencia   = document.getElementById('dvd-referencia')?.value;
+      if (desde)       params.set('fecha_desde', desde);
+      if (hasta)        params.set('fecha_hasta', hasta);
+      if (causal)       params.set('causal_id', causal);
+      if (responsable)  params.set('responsable', responsable);
+      if (consecutivo)  params.set('consecutivo', consecutivo);
+      if (referencia)   params.set('referencia', referencia);
+
+      const rStats = await API.get('/devoluciones/dashboard-stats?' + params.toString());
       const stats = rStats.data || {};
-      
+
       this._renderKPIsStats(stats);
       this._renderChartsStats(stats);
-      
-      const rUltimas = await API.get('/devoluciones?limit=30');
+
+      const rUltimas = await API.get('/devoluciones?limit=30&' + params.toString());
       this._renderTablaUltimas(rUltimas.data || []);
     } catch(e) {
       WMS.toast('error', 'Error al cargar dashboard');
@@ -240,52 +317,48 @@ WMS_MODULES.devoluciones = {
   },
 
   _chartInstances: {},
+  _paletteVivid: ['#0070f2','#e03030','#e8a000','#00b300','#7c3aed','#0891b2','#c026d3','#64748b'],
   _renderChartsStats(stats) {
+    this._lastStats = stats; // para poder re-dibujar el histórico al alternar Referencias/Unidades
     const destroyChart = (id) => {
       if (this._chartInstances[id]) {
         this._chartInstances[id].destroy();
       }
     };
 
-    // 1. Histórico por fecha (Líneas)
-    const ctxHist = document.getElementById('dvd-chart-historico');
-    if (ctxHist) {
-      destroyChart('hist');
-      this._chartInstances['hist'] = new Chart(ctxHist, {
-        type: 'line',
-        data: {
-          labels: (stats.historico || []).map(d => d.fecha),
-          datasets: [{
-            label: 'Devoluciones',
-            data: (stats.historico || []).map(d => d.total),
-            borderColor: '#3b82f6',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-            fill: true,
-            tension: 0.3
-          }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-      });
-    }
+    // 1. Histórico por fecha (Líneas) — por defecto "Referencias" (cantidad de
+    // productos distintos devueltos por día); alterna a "Unidades" con los
+    // botones del encabezado (ver _toggleHistoricoMetric).
+    this._historicoMetric = this._historicoMetric || 'referencias';
+    this._dibujarHistorico(stats.historico || []);
 
-    // 2. Por Causal (Doughnut)
+    // 2. Por Causal (Doughnut) — agrupado por la causal real del encabezado
+    // (devoluciones.causal_devolucion_id), no por el motivo fijo de la línea.
     const ctxCausal = document.getElementById('dvd-chart-causales');
     if (ctxCausal) {
       destroyChart('causal');
       this._chartInstances['causal'] = new Chart(ctxCausal, {
         type: 'doughnut',
         data: {
-          labels: (stats.causales || []).map(d => d.motivo),
+          labels: (stats.causales || []).map(d => d.causal),
           datasets: [{
             data: (stats.causales || []).map(d => d.total),
-            backgroundColor: ['#3b82f6','#ef4444','#f59e0b','#10b981','#8b5cf6','#ec4899','#06b6d4','#84cc16']
+            backgroundColor: this._paletteVivid
           }]
         },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'right' },
+            datalabels: { display: true, color: '#fff', font: { weight: '700', size: 12 }, formatter: v => v, clamp: true }
+          }
+        }
       });
     }
 
-    // 3. Por Sucursal (Barras)
+    // 3. Por Sucursal (Barras) — muestra todas las sucursales de la empresa
+    // con devoluciones en el período; si solo aparece una barra es porque la
+    // empresa solo tiene una sucursal con movimientos, no un filtro del código.
     const ctxSuc = document.getElementById('dvd-chart-sucursales');
     if (ctxSuc) {
       destroyChart('suc');
@@ -296,10 +369,16 @@ WMS_MODULES.devoluciones = {
           datasets: [{
             label: 'Devoluciones',
             data: (stats.por_sucursal || []).map(d => d.total),
-            backgroundColor: '#10b981'
+            backgroundColor: this._paletteVivid
           }]
         },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            datalabels: { display: true, color: '#fff', anchor: 'end', align: 'start', offset: 4, font: { weight: '700', size: 12 }, formatter: v => v, clamp: true }
+          }
+        }
       });
     }
 
@@ -324,7 +403,7 @@ WMS_MODULES.devoluciones = {
             <td class="text-center">
               <div style="display:flex;align-items:center;gap:6px;">
                 <div style="flex:1;height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden;">
-                  <div style="height:100%;background:#f59e0b;width:${m.porcentaje_participacion}%;"></div>
+                  <div style="height:100%;background:#e8a000;width:${m.porcentaje_participacion}%;"></div>
                 </div>
                 <span style="font-weight:600;min-width:35px;text-align:right;">${m.porcentaje_participacion}%</span>
               </div>
@@ -335,12 +414,53 @@ WMS_MODULES.devoluciones = {
     }
   },
 
+  /* Dibuja/re-dibuja el gráfico "Devoluciones por fecha" con la métrica activa
+     (referencias o unidades) — llamado al cargar el dashboard y al alternar. */
+  _dibujarHistorico(historico) {
+    const ctxHist = document.getElementById('dvd-chart-historico');
+    if (!ctxHist) return;
+    if (this._chartInstances['hist']) this._chartInstances['hist'].destroy();
+
+    const esUnidades = this._historicoMetric === 'unidades';
+    this._chartInstances['hist'] = new Chart(ctxHist, {
+      type: 'line',
+      data: {
+        labels: historico.map(d => d.fecha),
+        datasets: [{
+          label: esUnidades ? 'Unidades devueltas' : 'Referencias devueltas',
+          data: historico.map(d => esUnidades ? d.unidades : d.referencias),
+          borderColor: '#0070f2',
+          backgroundColor: 'rgba(0,112,242,0.1)',
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        layout: { padding: { top: 18 } },
+        plugins: {
+          legend: { display: false },
+          datalabels: { display: true, color: '#0070f2', align: 'top', font: { weight: '700', size: 11 }, formatter: v => v, clamp: true }
+        }
+      }
+    });
+  },
+
+  _toggleHistoricoMetric(metric) {
+    this._historicoMetric = metric;
+    const btnRef = document.getElementById('dvd-hist-btn-referencias');
+    const btnUnd = document.getElementById('dvd-hist-btn-unidades');
+    if (btnRef) btnRef.className = 'btn btn-xs ' + (metric === 'referencias' ? 'btn-primary' : 'btn-outline-secondary');
+    if (btnUnd) btnUnd.className = 'btn btn-xs ' + (metric === 'unidades' ? 'btn-primary' : 'btn-outline-secondary');
+    this._dibujarHistorico((this._lastStats?.historico) || []);
+  },
+
   _renderTablaUltimas(rows) {
     const el = document.getElementById('dvd-tabla');
     if (!el) return;
     const badgeColor = {
-      PendienteAprobacion:'#f59e0b', Aprobada:'#3b82f6', Procesada:'#16a34a',
-      Rechazada:'#dc2626', Anulada:'#94a3b8', Borrador:'#64748b',
+      PendienteAprobacion:'#f59e0b', Aprobada:'#3b82f6', Procesada:'#10b981',
+      Rechazada:'#ef4444', Anulada:'#94a3b8', Borrador:'#64748b',
     };
     if (!rows.length) {
       el.innerHTML = '<p style="padding:20px;text-align:center;color:#94a3b8;font-size:13px;">Sin registros en el período seleccionado.</p>';
@@ -444,8 +564,8 @@ WMS_MODULES.devoluciones = {
 
   _renderLista(rows) {
     const badgeColor = {
-      PendienteAprobacion:'#f59e0b', Aprobada:'#3b82f6', Procesada:'#16a34a',
-      Rechazada:'#dc2626', Anulada:'#94a3b8', Borrador:'#64748b',
+      PendienteAprobacion:'#f59e0b', Aprobada:'#3b82f6', Procesada:'#10b981',
+      Rechazada:'#ef4444', Anulada:'#94a3b8', Borrador:'#64748b',
     };
     const tipoLabel = {
       BuenEstado:'Buen Estado', MalEstado:'Mal Estado',
@@ -575,8 +695,8 @@ WMS_MODULES.devoluciones = {
       const isSup= ['Admin','Supervisor','SuperAdmin','Jefe'].includes(rol);
 
       const badgeColor = {
-        PendienteAprobacion:'#f59e0b',Aprobada:'#3b82f6',Procesada:'#16a34a',
-        Rechazada:'#dc2626',Anulada:'#94a3b8',Borrador:'#64748b',
+        PendienteAprobacion:'#f59e0b',Aprobada:'#3b82f6',Procesada:'#10b981',
+        Rechazada:'#ef4444',Anulada:'#94a3b8',Borrador:'#64748b',
       };
 
       let fotosList = Array.isArray(d.fotos_json)
@@ -631,8 +751,11 @@ WMS_MODULES.devoluciones = {
           
           <div class="card-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:20px;padding:24px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
             <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Referencia ERP</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.referencia_externa||'-')}</div></div>
-            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Solicitado por</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.solicitado_por||d.auxiliar_id||'-')}</div></div>
-            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Aprobado por</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.aprobado_por||'-')}</div></div>
+            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Cliente / Origen</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.clienteOrigen?.razon_social||d.cliente_origen?.razon_social||'-')}</div></div>
+            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Sucursal Origen</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.sucursalOrigen?.nombre||d.sucursal_origen?.nombre||'-')}</div></div>
+            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Solicitado por</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.solicitante?.nombre||d.solicitado_por||'-')}</div></div>
+            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Aprobado por</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.aprobador?.nombre||'-')}</div></div>
+            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Procesado por</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.procesador?.nombre||'-')}</div></div>
             <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Fecha Registro</div><div style="font-weight:600;color:#0f172a;">${d.created_at?d.created_at.substring(0,10):'-'}</div></div>
           </div>
           <div class="table-container">
@@ -691,8 +814,10 @@ WMS_MODULES.devoluciones = {
                 <option value="">Mantener estado actual (${WMS.esc(estado)})</option>
               </select>
               
-              <label class="form-label">Responsable (Opcional)</label>
-              <input type="text" id="dv-crm-responsable" class="form-control" placeholder="Nombre del responsable de esta acción..." style="margin-bottom:12px;">
+              <label class="form-label">Responsable del movimiento <span style="color:#ef4444;">*</span></label>
+              <select id="dv-crm-responsable" class="form-control" style="margin-bottom:12px;">
+                <option value="">Cargando auxiliares de calidad...</option>
+              </select>
               
               <label class="form-label">Observaciones / Novedad</label>
               <textarea id="dv-crm-observacion" class="form-control" rows="3" placeholder="Escriba aquí los detalles..." style="margin-bottom:12px;"></textarea>
@@ -719,20 +844,40 @@ WMS_MODULES.devoluciones = {
   
   async _loadCRM(id, currentState) {
     try {
-      const [rEstados, rTrack] = await Promise.all([
+      const [rEstados, rTrack, rAux] = await Promise.all([
         API.get('/devoluciones/crm/estados'),
-        API.get('/devoluciones/' + id + '/tracking')
+        API.get('/devoluciones/' + id + '/tracking'),
+        API.get('/devoluciones/auxiliares-calidad?activo=1')
       ]);
-      
+
       const estados = rEstados.data || [];
       const trackings = rTrack.data || [];
-      
+      const auxiliares = rAux.data || [];
+
       // Populate select
       const sel = document.getElementById('dv-crm-nuevo-estado');
       if (sel) {
         sel.innerHTML += estados.map(e => `<option value="${WMS.esc(e.nombre)}" ${e.nombre===currentState?'disabled':''}>→ ${WMS.esc(e.nombre)}</option>`).join('');
       }
-      
+
+      // Populate responsable (Auxiliares de Calidad)
+      // BUG CORREGIDO 2026-09-17 (real, reproducido con Playwright): esta carga
+      // es asíncrona y se dispara sin esperar desde showDetalle() — si el
+      // usuario ya había seleccionado un responsable antes de que esta
+      // respuesta llegara (red lenta, o simplemente rápido para escribir), el
+      // innerHTML se reemplazaba por completo y el <select> volvía a quedar
+      // vacío justo antes de guardar, haciendo fallar el tracking con "Debe
+      // seleccionar el responsable" pese a que el usuario sí lo había elegido
+      // — esta era la causa real de "no deja hacer modificaciones" reportada.
+      // Se preserva la selección actual, mismo criterio que _cargarCausalesSelect().
+      const selResp = document.getElementById('dv-crm-responsable');
+      if (selResp) {
+        const currentResp = selResp.value;
+        selResp.innerHTML = '<option value="">-- Seleccionar responsable --</option>' +
+          auxiliares.map(a => `<option value="${WMS.esc(a.nombre)}" ${currentResp === a.nombre ? 'selected' : ''}>${WMS.esc(a.nombre)}${a.cargo ? ' (' + WMS.esc(a.cargo) + ')' : ''}</option>`).join('') +
+          (!auxiliares.length ? '<option value="" disabled>Sin auxiliares configurados — vaya a "Auxiliares Calidad"</option>' : '');
+      }
+
       // Render timeline
       const tl = document.getElementById('dv-crm-timeline');
       if (tl) {
@@ -787,13 +932,18 @@ WMS_MODULES.devoluciones = {
   async guardarTracking(id) {
     const estado = document.getElementById('dv-crm-nuevo-estado')?.value || '';
     const obs = document.getElementById('dv-crm-observacion')?.value || '';
+    const responsable = document.getElementById('dv-crm-responsable')?.value || '';
     const input = document.getElementById('dv-crm-fotos');
-    
+
     if (!estado && !obs.trim()) {
       WMS.toast('error', 'Debes escribir una observación o cambiar el estado');
       return;
     }
-    
+    if (!responsable) {
+      WMS.toast('error', 'Seleccione el responsable del movimiento');
+      return;
+    }
+
     WMS.spinner();
     try {
       const fotosBase64 = [];
@@ -813,7 +963,7 @@ WMS_MODULES.devoluciones = {
         estado_nuevo: estado,
         observacion: obs,
         fotos: fotosBase64,
-        responsable: document.getElementById('dv-crm-responsable')?.value || ''
+        responsable // reutiliza el valor ya validado arriba, no relee el <select>
       };
       
       const r = await API.post('/devoluciones/' + id + '/tracking', payload);
@@ -936,7 +1086,7 @@ WMS_MODULES.devoluciones = {
       <div class="card">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
           <span class="card-title"><i class="fa-solid fa-tags"></i> Causales de devolución</span>
-          <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.devoluciones._modalNuevaCausal()">
+          <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.devoluciones._abrirModalCausal(null)">
             <i class="fa-solid fa-plus"></i> Nueva Causal
           </button>
         </div>
@@ -970,6 +1120,9 @@ WMS_MODULES.devoluciones = {
                     <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.devoluciones._modalEditarCausal(${c.id})">
                       <i class="fa-solid fa-pen"></i>
                     </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="WMS_MODULES.devoluciones._eliminarCausal(${c.id})">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
                   </td>
                 </tr>`).join('') : '<tr><td colspan="5" class="table-empty">Sin causales configuradas</td></tr>'}
             </tbody>
@@ -988,8 +1141,109 @@ WMS_MODULES.devoluciones = {
     return map[responsable] || 'background:#f1f5f9;color:#64748b;';
   },
 
-  _modalNuevaCausal() {
-    this._modalCausal();
+  /* ═══════════════════════════════════════════════════════════════════════
+     D.3) AUXILIARES DE CALIDAD — personal responsable seleccionable en el
+     tracking/estados CRM (Camilo, 2026-09-17)
+  ═══════════════════════════════════════════════════════════════════════ */
+  async showAuxiliaresCalidad() {
+    this._state.vista = 'auxiliares';
+    WMS.setToolbar(this._navBar('auxiliares'));
+    WMS.spinner();
+    try {
+      const r = await API.get('/devoluciones/auxiliares-calidad');
+      this._state.auxiliaresCalidad = r.data || [];
+      this._renderAuxiliaresCalidad(this._state.auxiliaresCalidad);
+    } catch(e) { WMS.toast('error', 'Error al cargar auxiliares de calidad'); }
+  },
+
+  _renderAuxiliaresCalidad(rows) {
+    WMS.setContent(`
+      <div class="card">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <span class="card-title"><i class="fa-solid fa-user-shield"></i> Auxiliares de Calidad</span>
+          <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.devoluciones._abrirModalAuxiliarCalidad()">
+            <i class="fa-solid fa-plus"></i> Nuevo Auxiliar
+          </button>
+        </div>
+        <div class="table-container">
+          <table class="erp-table">
+            <thead><tr><th>Nombre</th><th>Cargo</th><th class="text-center">Activo</th><th>Acciones</th></tr></thead>
+            <tbody>
+              ${rows.length ? rows.map(a => `
+                <tr>
+                  <td><strong>${WMS.esc(a.nombre)}</strong></td>
+                  <td style="font-size:12px;color:#64748b;">${WMS.esc(a.cargo||'-')}</td>
+                  <td class="text-center">
+                    <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:12px;">
+                      <input type="checkbox" ${a.activo ? 'checked' : ''}
+                        onchange="WMS_MODULES.devoluciones._toggleAuxiliarCalidad(${a.id}, this.checked)"
+                        style="width:15px;height:15px;accent-color:#0070f2;">
+                      <span style="color:${a.activo ? '#00b300' : '#94a3b8'};">${a.activo ? 'Sí' : 'No'}</span>
+                    </label>
+                  </td>
+                  <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.devoluciones._abrirModalAuxiliarCalidad(${a.id})">
+                      <i class="fa-solid fa-pen"></i>
+                    </button>
+                  </td>
+                </tr>`).join('') : '<tr><td colspan="4" class="table-empty">Sin auxiliares de calidad configurados</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`);
+  },
+
+  _abrirModalAuxiliarCalidad(id = null) {
+    const a = id ? (this._state.auxiliaresCalidad || []).find(x => x.id === id) : null;
+    const titulo = a ? 'Editar Auxiliar de Calidad' : 'Nuevo Auxiliar de Calidad';
+    const html = `
+      <div id="aux-cal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;display:flex;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:24px 28px;width:420px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.3);">
+          <h3 style="margin:0 0 18px;font-size:16px;color:#1e293b;"><i class="fa-solid fa-user-shield"></i> ${titulo}</h3>
+          <div style="display:grid;gap:14px;">
+            <div>
+              <label class="form-label">Nombre <span style="color:#ef4444;">*</span></label>
+              <input type="text" id="aux-cal-nombre" class="form-control" placeholder="Nombre completo" value="${WMS.esc(a?.nombre||'')}">
+            </div>
+            <div>
+              <label class="form-label">Cargo</label>
+              <input type="text" id="aux-cal-cargo" class="form-control" placeholder="Ej: Analista de Calidad" value="${WMS.esc(a?.cargo||'')}">
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('aux-cal-overlay').remove()">Cancelar</button>
+            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.devoluciones._guardarAuxiliarCalidad(${a?.id||'null'})"><i class="fa-solid fa-save"></i> Guardar</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+    document.getElementById('aux-cal-nombre')?.focus();
+  },
+
+  async _guardarAuxiliarCalidad(id) {
+    const nombre = document.getElementById('aux-cal-nombre')?.value?.trim();
+    const cargo  = document.getElementById('aux-cal-cargo')?.value?.trim();
+    if (!nombre) { WMS.toast('error', 'Ingrese el nombre del auxiliar'); return; }
+    document.getElementById('aux-cal-overlay')?.remove();
+    WMS.spinner();
+    try {
+      const payload = { nombre, cargo: cargo || null };
+      const r = id ? await API.put('/devoluciones/auxiliares-calidad/' + id, payload)
+                   : await API.post('/devoluciones/auxiliares-calidad', payload);
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success', id ? 'Auxiliar actualizado' : 'Auxiliar creado');
+      this.showAuxiliaresCalidad();
+    } catch(e) { WMS.toast('error', 'Error al guardar auxiliar de calidad'); }
+  },
+
+  async _toggleAuxiliarCalidad(id, activo) {
+    try {
+      const r = await API.put('/devoluciones/auxiliares-calidad/' + id, { activo: activo ? 1 : 0 });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      const idx = (this._state.auxiliaresCalidad||[]).findIndex(a => a.id === id);
+      if (idx >= 0) this._state.auxiliaresCalidad[idx].activo = activo ? 1 : 0;
+      WMS.toast('success', activo ? 'Auxiliar activado' : 'Auxiliar desactivado');
+    } catch(e) { WMS.toast('error', 'Error al actualizar auxiliar'); }
   },
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -1198,6 +1452,18 @@ WMS_MODULES.devoluciones = {
       const idx = this._state.causales.findIndex(c => c.id === id);
       if (idx >= 0) this._state.causales[idx].activo = activo ? 1 : 0;
     } catch(e) { WMS.toast('error', 'Error al actualizar causal'); }
+  },
+
+  async _eliminarCausal(id) {
+    if (!confirm('¿Eliminar esta causal? Si ya está en uso en alguna devolución no se podrá borrar.')) return;
+    WMS.spinner();
+    try {
+      const r = await API.delete('/devoluciones/causales/' + id);
+      WMS.spinnerHide();
+      if (r.error) { WMS.toast('error', r.message); return; }
+      WMS.toast('success', 'Causal eliminada');
+      this.showCausales();
+    } catch(e) { WMS.spinnerHide(); WMS.toast('error', 'Error al eliminar causal'); }
   },
 
   _initGlobalEvents() {
