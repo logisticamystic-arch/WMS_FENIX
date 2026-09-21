@@ -39,10 +39,11 @@ class ApiKeyMiddleware
                 return $this->unauthorized('API key inválida o revocada.');
             }
 
-            // Update ultimo_uso (non-blocking — best-effort)
+            // Update last_used_at (non-blocking — best-effort). Nombre real de
+            // columna corregido 2026-09-14 (ver TmsAuthMiddleware para detalle).
             DB::table('api_keys')
                 ->where('id', $record->id)
-                ->update(['ultimo_uso' => date('Y-m-d H:i:s')]);
+                ->update(['last_used_at' => date('Y-m-d H:i:s')]);
 
             // Inject API key record into request attributes
             $request = $request->withAttribute('api_key', $record);

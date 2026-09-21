@@ -17,6 +17,18 @@
 
   <!-- Chart.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <!-- chartjs-plugin-datalabels — registrado global pero deshabilitado por defecto
+       (Chart.defaults.plugins.datalabels.display=false abajo); cada módulo que
+       quiera mostrar cifras sobre sus gráficos lo habilita explícitamente por
+       chart (ver public/assets/js/desktop/devoluciones.js) para no afectar los
+       demás dashboards de la app. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+  <script>
+    if (window.Chart && window.ChartDataLabels) {
+      Chart.register(ChartDataLabels);
+      Chart.defaults.set('plugins.datalabels', { display: false });
+    }
+  </script>
   <!-- JsBarcode — generación CODE128 para rótulos -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
@@ -1911,6 +1923,7 @@
                 { icon: 'fa-list-check', label: 'Asignación', action: "WMS.nav('picking','asignacion')" },
                 <!-- { icon: 'fa-triangle-exclamation', label: 'Faltantes', action: "WMS.nav('picking','faltantes')" }, -->
                 { icon: 'fa-box-open', label: 'Agotados', action: "WMS.nav('picking','agotados')" },
+                { icon: 'fa-pen-ruler', label: 'Picking Manual', action: "WMS.nav('picking','manual')" },
               ]
             },
             {
@@ -1944,6 +1957,8 @@
               section: 'PREOPERACIONAL', items: [
                 { icon: 'fa-clipboard-check', label: 'Registrar Preoperacional', action: "WMS.nav('preoperacional','nueva')" },
                 { icon: 'fa-list', label: 'Historial', action: "WMS.nav('preoperacional','historial')" },
+                { icon: 'fa-gauge', label: 'Dashboard', action: "WMS.nav('preoperacional','dashboard')" },
+                { icon: 'fa-table-list', label: 'Matriz por Vehículo', action: "WMS.nav('preoperacional','matriz')" },
               ]
             },
           ],
@@ -1958,6 +1973,8 @@
               section: 'PREOPERACIONAL', items: [
                 { icon: 'fa-clipboard-check', label: 'Registrar Preoperacional', action: "WMS.nav('calidad','preoperacional-nueva')" },
                 { icon: 'fa-list', label: 'Historial Inspecciones', action: "WMS.nav('calidad','preoperacional-historial')" },
+                { icon: 'fa-gauge', label: 'Dashboard Preoperacional', action: "WMS.nav('calidad','preoperacional-dashboard')" },
+                { icon: 'fa-table-list', label: 'Matriz por Vehículo', action: "WMS.nav('calidad','preoperacional-matriz')" },
               ]
             },
             {
@@ -2688,6 +2705,11 @@
       },
 
       setContent(html) {
+        // BUG CORREGIDO 2026-09-18: spinner(false) solo intentaba quitar un
+        // #wms-global-spinner que spinner() nunca llegaba a crear (ver más abajo) —
+        // se limpia también aquí por si algún flujo hace setContent() sin pasar antes
+        // por spinner(false).
+        document.getElementById('wms-global-spinner')?.remove();
         const el = document.getElementById('main-content');
         if (el) el.innerHTML = html;
         else document.getElementById('content-body').innerHTML = html;
@@ -2697,14 +2719,28 @@
         this.spinner(false);
       },
 
+      // BUG CORREGIDO 2026-09-18 (afectaba TODOS los módulos): esta función
+      // reemplazaba el innerHTML de #main-content por un spinner, pero spinner(false)
+      // solo borraba un elemento #wms-global-spinner que esta misma función nunca
+      // creaba — el contenido reemplazado JAMÁS se restauraba. Cualquier pantalla que
+      // usara WMS.spinner()/spinner(false) alrededor de una carga corta para abrir un
+      // modal encima (ej. "ver pendientes por ambiente" del Dashboard de Picking, o
+      // cualquier detalle en ventana adicional) dejaba el módulo completo en blanco
+      // al cerrar ese modal (con Escape o el botón cerrar) — solo se arreglaba
+      // volviendo a entrar al módulo. Ahora es un overlay flotante NO destructivo:
+      // no borra lo que hay debajo, y se quita solo (spinner(false) o el siguiente
+      // setContent()) sin perder la página que estaba visible.
       spinner(container = 'main-content') {
         if (container === false || container === null || container === 'hide') {
           document.getElementById('wms-global-spinner')?.remove();
           return;
         }
-        const targetId = (typeof container === 'string' && container) ? container : 'main-content';
-        const el = document.getElementById(targetId) || document.getElementById('content-body');
-        if (el) el.innerHTML = '<div class="m-empty" style="padding:60px;"><div class="spinner spinner-lg" style="margin:0 auto;"></div></div>';
+        if (document.getElementById('wms-global-spinner')) return;
+        const overlay = document.createElement('div');
+        overlay.id = 'wms-global-spinner';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.55);';
+        overlay.innerHTML = '<div class="spinner spinner-lg"></div>';
+        document.body.appendChild(overlay);
       },
 
       toggleFullscreen() {

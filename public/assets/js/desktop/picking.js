@@ -24,6 +24,7 @@ WMS_MODULES.picking = {
       reporte: this.show_reporte, pendientes: this.show_productos_pendientes,
       reservas: this.show_reservas, agotados: this.show_agotados,
       consulta: this.show_consulta, novedades: this.show_novedades,
+      manual: this.show_manual,
     };
     (fn[s]?.bind(this) || fn.pedidos.bind(this))();
     this.stopAutoRefresh();
@@ -59,8 +60,363 @@ WMS_MODULES.picking = {
     const m = { pedidos:'Pedidos / Planillas', asignacion:'Asignación de Picking',
       dashboard:'Dashboard Picking', reporte:'Reporte Picking',
       pendientes:'Prod. Sin Codificar', reservas:'Reservas', agotados:'Módulo de Agotados',
-      consulta:'Consulta de Picking', novedades:'Novedades de Picking' };
+      consulta:'Consulta de Picking', novedades:'Novedades de Picking',
+      manual:'Picking Manual' };
     return m[s] || s || 'Panel';
+  },
+
+  // ── PICKING MANUAL (contingencia sin móvil/internet) ─────────────────────
+  // Hoja imprimible + edición en pantalla (cajas/ubicación/saldo) + "Aplicar
+  // Picking", que llama a los mismos endpoints que ya descuentan inventario,
+  // Kardex y avance de la orden — el auxiliar trabaja en papel cuando el móvil
+  // o el internet fallan, y luego alguien con acceso a escritorio digita el
+  // resultado real aquí para que el sistema siga su flujo normal.
+  _pkmData: [],
+
+  async show_manual() {
+    WMS.setBreadcrumb('picking', 'Picking Manual');
+    WMS.setToolbar(`
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._pkmBuscar()">
+        <i class="fa-solid fa-sync"></i> Actualizar
+      </button>`);
+
+    WMS.setContent(`
+      <div class="px-20 py-16">
+        <div class="card" style="padding:14px 16px;margin-bottom:14px;">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+            <div>
+              <label style="font-size:.68rem;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">FECHA DESDE</label>
+              <input type="date" id="pkm-f-desde" class="form-control form-control-sm">
+            </div>
+            <div>
+              <label style="font-size:.68rem;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">FECHA HASTA</label>
+              <input type="date" id="pkm-f-hasta" class="form-control form-control-sm">
+            </div>
+            <div>
+              <label style="font-size:.68rem;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">AUXILIAR</label>
+              <select id="pkm-f-aux" class="form-control form-control-sm" style="min-width:160px;"><option value="">Todos</option></select>
+            </div>
+            <div>
+              <label style="font-size:.68rem;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">AMBIENTE</label>
+              <select id="pkm-f-amb" class="form-control form-control-sm">
+                <option value="">Todos</option>
+                <option value="Seco">Seco</option>
+                <option value="Refrigerado">Refrigerado</option>
+                <option value="Congelado">Congelado</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:.68rem;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">SUCURSAL / CLIENTE</label>
+              <input type="text" id="pkm-f-suc" class="form-control form-control-sm" placeholder="Buscar...">
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.picking._pkmBuscar()">
+              <i class="fa-solid fa-magnifying-glass"></i> Buscar
+            </button>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+          <span id="pkm-resumen" style="font-size:.8rem;color:#64748b;font-weight:600;">Use los filtros y pulse Buscar</span>
+          <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._pkmImprimir()">
+            <i class="fa-solid fa-print"></i> Imprimir Hoja (todos los pedidos filtrados)
+          </button>
+        </div>
+
+        <!-- Agrupado por PEDIDO — mismo patrón que Picking > Pedidos: una fila
+             resumen por pedido con chevron para desglosar sus líneas, y las
+             acciones (Imprimir / Aplicar Picking) actúan sobre ESE pedido. -->
+        <div class="table-container">
+          <table class="erp-table" id="pkm-tabla">
+            <thead><tr>
+              <th style="width:30px;"></th>
+              <th>Pedido</th>
+              <th>Planilla</th>
+              <th>Sucursal / Cliente</th>
+              <th>Auxiliar(es)</th>
+              <th class="text-center">Referencias</th>
+              <th>Ambiente(s)</th>
+              <th style="width:70px;">Imprimir</th>
+            </tr></thead>
+            <tbody id="pkm-tbody">
+              <tr><td colspan="8" class="table-empty">Use los filtros y pulse Buscar</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>`);
+
+    await this._pkmPoblarAuxiliares();
+  },
+
+  async _pkmPoblarAuxiliares() {
+    try {
+      const r = await API.get('/param/personal?rol=Auxiliar&activo=1');
+      const list = Array.isArray(r.data) ? r.data : (r.data?.data || []);
+      const sel = document.getElementById('pkm-f-aux');
+      if (sel) sel.innerHTML = '<option value="">Todos</option>' + list.map(a =>
+        `<option value="${a.id}">${WMS.esc(a.nombre)}</option>`).join('');
+    } catch (e) { /* filtro opcional, si falla se sigue sin lista */ }
+  },
+
+  _pkmFiltrosQS() {
+    const params = new URLSearchParams();
+    const fd  = document.getElementById('pkm-f-desde')?.value;
+    const fh  = document.getElementById('pkm-f-hasta')?.value;
+    const aux = document.getElementById('pkm-f-aux')?.value;
+    const amb = document.getElementById('pkm-f-amb')?.value;
+    const suc = document.getElementById('pkm-f-suc')?.value;
+    if (fd)  params.append('fecha_inicio', fd);
+    if (fh)  params.append('fecha_fin', fh);
+    if (aux) params.append('auxiliar_id', aux);
+    if (amb) params.append('ambiente', amb);
+    if (suc) params.append('sucursal_entrega', suc);
+    return params.toString();
+  },
+
+  async _pkmBuscar() {
+    // OJO: WMS.spinner() reemplaza TODO #main-content (no solo la tabla) —
+    // usarlo aquí borraría los filtros y el propio #pkm-tbody, dejando la
+    // pantalla en el spinner para siempre porque _pkmRenderTabla() ya no
+    // encontraría dónde pintar los resultados. El indicador de carga va
+    // dentro del tbody, sin tocar el resto del layout.
+    const tbody = document.getElementById('pkm-tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="table-empty"><i class="fa-solid fa-spinner fa-spin"></i> Buscando...</td></tr>';
+    try {
+      const qs = this._pkmFiltrosQS();
+      const r = await API.get('/picking/manual/lineas' + (qs ? '?' + qs : ''));
+      this._pkmData = Array.isArray(r.data) ? r.data : (r.data?.data || []);
+      this._pkmRenderPedidos();
+    } catch (e) {
+      WMS.toast('error', 'Error al buscar líneas: ' + e.message);
+      if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="table-empty">Error al buscar. Intente de nuevo.</td></tr>';
+    }
+  },
+
+  /** Agrupa las líneas planas del backend por pedido (orden_picking_id) —
+   *  mismo espíritu que _agruparPorPlanilla(), pero la unidad aquí es el
+   *  pedido individual, no la planilla completa. */
+  _pkmAgruparPorPedido(data) {
+    const grupos = {};
+    data.forEach((d, idx) => {
+      const key = 'op-' + d.orden_picking_id;
+      if (!grupos[key]) {
+        grupos[key] = {
+          key,
+          orden_picking_id: d.orden_picking_id,
+          pedido: d.pedido,
+          planilla_numero: d.planilla_numero,
+          sucursal_entrega: d.sucursal_entrega,
+          auxiliares: new Set(),
+          ambientes: new Set(),
+          lineas: [],
+        };
+      }
+      const g = grupos[key];
+      if (d.auxiliar_nombre) g.auxiliares.add(d.auxiliar_nombre);
+      if (d.ambiente) g.ambientes.add(d.ambiente);
+      g.lineas.push({ ...d, _idx: idx });
+    });
+    return Object.values(grupos).sort((a, b) => String(a.pedido || '').localeCompare(String(b.pedido || '')));
+  },
+
+  _pkmRenderPedidos() {
+    const tbody   = document.getElementById('pkm-tbody');
+    const resumen = document.getElementById('pkm-resumen');
+    if (!tbody) return;
+    const data   = this._pkmData || [];
+    const grupos = this._pkmAgruparPorPedido(data);
+    this._pkmGrupos = grupos;
+
+    if (resumen) resumen.textContent = data.length
+      ? `${grupos.length} pedido(s) · ${data.length} línea(s) pendiente(s) de separar`
+      : 'Sin líneas pendientes para estos filtros';
+
+    if (!grupos.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="table-empty">No hay líneas pendientes para estos filtros</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = grupos.map(g => {
+      const auxTxt = [...g.auxiliares].join(', ') || '-';
+      const ambTxt = [...g.ambientes].join(', ') || '-';
+      return `
+      <tr data-pedido-key="${g.key}">
+        <td style="text-align:center;">
+          <button class="btn btn-xs btn-light" onclick="WMS_MODULES.picking._pkmToggle('${g.key}')" title="Ver detalle">
+            <i class="fa-solid fa-chevron-right" id="pkm-icon-${g.key}" style="transition:.2s"></i>
+          </button>
+        </td>
+        <td><span class="badge badge-info" style="font-weight:700;">${WMS.esc(g.pedido || '')}</span></td>
+        <td>${WMS.esc(g.planilla_numero || '-')}</td>
+        <td>${WMS.esc(g.sucursal_entrega || '-')}</td>
+        <td style="font-size:.78rem;">${WMS.esc(auxTxt)}</td>
+        <td class="text-center"><b>${g.lineas.length}</b></td>
+        <td style="font-size:.72rem;">${WMS.esc(ambTxt)}</td>
+        <td style="text-align:center;">
+          <button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking._pkmImprimirPedido(${g.orden_picking_id})" title="Imprimir hoja de este pedido">
+            <i class="fa-solid fa-print"></i>
+          </button>
+        </td>
+      </tr>
+      <tr id="pkm-sub-${g.key}" style="display:none;background:#f8fafc;">
+        <td colspan="8" style="padding:10px 12px 14px 42px;">
+          ${this._pkmRenderLineasPedido(g)}
+        </td>
+      </tr>`;
+    }).join('');
+  },
+
+  _pkmToggle(key) {
+    const row  = document.getElementById('pkm-sub-' + key);
+    const icon = document.getElementById('pkm-icon-' + key);
+    if (!row) return;
+    const isHidden = row.style.display === 'none';
+    row.style.display = isHidden ? 'table-row' : 'none';
+    if (icon) icon.style.transform = isHidden ? 'rotate(90deg)' : '';
+  },
+
+  /** Tabla editable de las líneas de UN pedido, con su propio botón "Aplicar
+   *  Picking" — reemplaza el botón global: la acción ahora es por pedido. */
+  _pkmRenderLineasPedido(g) {
+    const filas = g.lineas.map(d => {
+      const fv = d.fecha_vencimiento ? WMS.formatDate(d.fecha_vencimiento) : '-';
+      // La ubicación nunca queda vacía: si no venía asignada por FEFO, el
+      // backend ya sugirió aquí la ubicación real con stock disponible (ver
+      // ubicacion_sugerida) — se resalta en ámbar para que el auxiliar la
+      // confirme o la corrija si físicamente sacó de otra. Si no hay stock en
+      // ningún lado, el backend no manda código y se avisa "Sin stock".
+      const sinStock = !d.ubicacion_codigo;
+      const ubicStyle = d.ubicacion_sugerida
+        ? 'width:95px;background:#fffbeb;border-color:#fcd34d;'
+        : 'width:95px;';
+      const ubicTitle = d.ubicacion_sugerida
+        ? 'Sugerida por FEFO (la línea aún no tiene ruta asignada) — verifique o corrija si sacó de otra ubicación'
+        : (sinStock ? 'Sin stock disponible en el sistema para este producto — verifique antes de aplicar' : '');
+      return `<tr data-idx="${d._idx}">
+        <td><input type="checkbox" class="pkm-chk" checked></td>
+        <td>${WMS.esc(d.codigo || '')}</td>
+        <td>${WMS.esc(d.nombre || '')}</td>
+        <td>
+          <input type="text" class="form-control form-control-sm pkm-ubic" value="${WMS.esc(d.ubicacion_codigo || '')}"
+                 style="${ubicStyle}" placeholder="${sinStock ? 'Sin stock' : 'Ubicación'}" title="${WMS.esc(ubicTitle)}">
+          ${d.ubicacion_sugerida ? '<div style="font-size:.62rem;color:#92400e;font-weight:600;">FEFO sugerida</div>' : ''}
+        </td>
+        <td class="text-center">${d.cantidad_solicitada}</td>
+        <td class="text-center"><input type="number" class="form-control form-control-sm pkm-cajas" value="${d.cantidad_solicitada}" min="0" step="0.01" style="width:75px;"></td>
+        <td class="text-center"><input type="number" class="form-control form-control-sm pkm-saldo" value="0" min="0" step="0.01" style="width:75px;"></td>
+        <td class="text-center" style="white-space:nowrap;">${fv}</td>
+        <td class="pkm-resultado" style="font-size:.72rem;"></td>
+      </tr>`;
+    }).join('');
+
+    return `
+      <div style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;background:#fff;">
+        <table class="erp-table" style="margin:0;">
+          <thead><tr>
+            <th style="width:26px;"></th>
+            <th>Código</th><th>Producto</th><th>Ubicación</th>
+            <th class="text-center">Cajas Sol.</th><th class="text-center">Cajas Tomadas</th>
+            <th class="text-center">Saldo</th><th class="text-center">F. Venc.</th>
+            <th style="width:150px;">Resultado</th>
+          </tr></thead>
+          <tbody>${filas}</tbody>
+        </table>
+        <div style="padding:8px 10px;text-align:right;border-top:1px solid #e2e8f0;background:#f8fafc;">
+          <button id="pkm-btn-aplicar-${g.key}" class="btn btn-sm" style="background:#059669;color:#fff;border:none;" onclick="WMS_MODULES.picking._pkmAplicarPedido('${g.key}')">
+            <i class="fa-solid fa-check-double"></i> Aplicar Picking de este pedido
+          </button>
+        </div>
+      </div>`;
+  },
+
+  _pkmImprimir() {
+    const qs = this._pkmFiltrosQS();
+    this._openPrint(`${API_BASE}/picking/manual/hoja` + (qs ? '?' + qs : ''), 'Picking Manual');
+  },
+
+  _pkmImprimirPedido(ordenPickingId) {
+    this._openPrint(`${API_BASE}/picking/manual/hoja?orden_picking_id=${ordenPickingId}`, 'Picking Manual');
+  },
+
+  async _pkmAplicarPedido(key) {
+    const g   = (this._pkmGrupos || []).find(x => x.key === key);
+    const sub = document.getElementById('pkm-sub-' + key);
+    if (!g || !sub) return;
+
+    const filas = Array.from(sub.querySelectorAll('tr[data-idx]'));
+    if (!filas.length) { WMS.toast('warning', 'No hay líneas para aplicar'); return; }
+
+    const lineas = [];
+    const filasPorLinea = {};
+    filas.forEach(tr => {
+      const idx = parseInt(tr.dataset.idx);
+      const d = this._pkmData[idx];
+      if (!d) return;
+      const chk = tr.querySelector('.pkm-chk');
+      if (!chk?.checked) return;
+      const cajas  = parseFloat(tr.querySelector('.pkm-cajas')?.value || 0);
+      const saldo  = parseFloat(tr.querySelector('.pkm-saldo')?.value || 0);
+      const ubic   = (tr.querySelector('.pkm-ubic')?.value || '').trim();
+      if (cajas <= 0 && saldo <= 0) return;
+      lineas.push({
+        linea_id: d.linea_id,
+        cajas_tomadas: cajas,
+        saldos_tomados: saldo,
+        ubicacion_codigo: ubic,
+      });
+      filasPorLinea[d.linea_id] = tr;
+    });
+
+    if (!lineas.length) {
+      WMS.toast('warning', 'Marque al menos una línea con cantidad mayor a 0');
+      return;
+    }
+
+    const { isConfirmed } = await Swal.fire({
+      title: `¿Aplicar Picking del pedido ${WMS.esc(g.pedido || '')}?`,
+      text: `Se aplicarán ${lineas.length} línea(s) al sistema — descuenta inventario real, igual que si se hubieran separado desde el móvil.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-check-double"></i> Aplicar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#059669',
+    });
+    if (!isConfirmed) return;
+
+    // Mismo motivo que en _pkmBuscar(): WMS.spinner() borraría toda la tabla
+    // (incluidas las filas que acabamos de leer) y filasPorLinea quedarían
+    // huérfanas del DOM. Solo se deshabilita el botón de ESTE pedido.
+    const btn = document.getElementById('pkm-btn-aplicar-' + key);
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Aplicando...'; }
+    try {
+      const r = await API.post('/picking/manual/aplicar', { lineas });
+      const resultados = Array.isArray(r.data) ? r.data : (r.data?.data || []);
+      let nOk = 0, err = 0;
+      resultados.forEach(res => {
+        const tr = filasPorLinea[res.linea_id];
+        const celda = tr?.querySelector('.pkm-resultado');
+        if (!celda) return;
+        if (res.status === 'ok') {
+          nOk++;
+          // ubicacion_fallback: la ubicación indicada no tenía stock y el
+          // sistema tomó de otra parte de la sucursal (mismo mecanismo FEFO
+          // de siempre) — se marca en ámbar, no verde, para que quede visible
+          // que hubo una diferencia, no un error silencioso.
+          celda.innerHTML = res.ubicacion_fallback
+            ? `<span style="color:#b45309;font-weight:700;" title="${WMS.esc(res.message || '')}"><i class="fa-solid fa-triangle-exclamation"></i> Aplicado (otra ubicación)</span>`
+            : '<span style="color:#16a34a;font-weight:700;"><i class="fa-solid fa-check"></i> Aplicado</span>';
+          tr.style.opacity = '.55';
+          tr.querySelectorAll('input').forEach(inp => inp.disabled = true);
+        } else {
+          err++;
+          celda.innerHTML = `<span style="color:#dc2626;font-weight:700;" title="${WMS.esc(res.message || '')}"><i class="fa-solid fa-triangle-exclamation"></i> ${WMS.esc(res.message || 'Error')}</span>`;
+        }
+      });
+      WMS.toast(err ? 'warning' : 'success', `${nOk} línea(s) aplicadas, ${err} con error`);
+    } catch (e) {
+      WMS.toast('error', 'Error al aplicar picking: ' + e.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check-double"></i> Aplicar Picking de este pedido'; }
+    }
   },
 
   // ── UTILIDADES ────────────────────────────────────────────────────────────
@@ -2076,16 +2432,21 @@ WMS_MODULES.picking = {
       const lineas = d.lineas_bloqueadas || [];
       if (lineas.length) {
         // Mostrar tabla con detalle de líneas bloqueantes
-        const filas = lineas.map(l =>
-          `<tr>
+        // BUG CORREGIDO 2026-09-18: mostraba cantidad_solicitada/cantidad_pickeada
+        // crudas — una línea con un pick parcial (unidades que no son múltiplo exacto
+        // de unidades_caja) se veía como un decimal feo (ej. "2.4") en vez del
+        // desglose "cajas + sueltas" que usa el resto del módulo.
+        const filas = lineas.map(l => {
+          const upc = Math.max(1, parseFloat(l.factor_udm) || parseInt(l.unidades_caja) || 1);
+          return `<tr>
             <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;">${WMS.esc(l.numero_orden||'')}</td>
             <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;">${WMS.esc(l.codigo||'')}</td>
             <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${WMS.esc(l.nombre_producto||'')}</td>
-            <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;text-align:center;">${l.cantidad_solicitada}</td>
-            <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;text-align:center;color:${l.cantidad_pickeada>0?'#16a34a':'#dc2626'};">${l.cantidad_pickeada}</td>
+            <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;text-align:center;">${this._fmtCajasDesglose(l.cantidad_solicitada, l.unidades_caja, false, l.factor_udm)}</td>
+            <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;text-align:center;color:${l.cantidad_pickeada>0?'#16a34a':'#dc2626'};">${this._fmtCajasDesglose(l.cantidad_pickeada / upc, l.unidades_caja, false, l.factor_udm)}</td>
             <td style="padding:3px 7px;border-bottom:1px solid #e5e7eb;font-size:11px;"><span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px;">${WMS.esc(l.estado||'')}</span></td>
-          </tr>`
-        ).join('');
+          </tr>`;
+        }).join('');
 
         const html = `<p style="color:#6b7280;margin-bottom:8px;font-size:12px;">${WMS.esc(e.message||'')}</p>
           <div style="overflow-x:auto;max-height:250px;">
@@ -3391,7 +3752,7 @@ WMS_MODULES.picking = {
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
        <a href="/WMS_FENIX/public/api/picking/template?token=${encodeURIComponent(localStorage.getItem('wms_token'))}" target="_blank" class="btn btn-secondary" style="gap:6px;"><i class="fa-solid fa-download"></i> Plantilla</a>
-       <button class="btn btn-primary" id="btn-importar-pick" onclick="WMS_MODULES.picking.uploadCsv()" disabled><i class="fa-solid fa-upload"></i> Importar Pedidos</button>`,
+       <button class="btn btn-primary" id="btn-importar-pick" onclick="WMS_MODULES.picking.uploadCsv()" disabled><i class="fa-solid fa-eye"></i> Ver Vista Previa</button>`,
       { width: '680px' }
     );
   },
@@ -3510,15 +3871,44 @@ WMS_MODULES.picking = {
     reader.readAsText(file, 'UTF-8');
   },
 
+  // A pedido explícito (2026-09-18): flujo de dos pasos. 'uploadCsv' dispara SIEMPRE
+  // una vista previa primero (modo=preview, el backend no escribe nada) — el usuario
+  // ve exactamente qué se va a montar por sucursal, con detalle línea por línea, y
+  // decide Cancelar (no se guarda nada) o Confirmar y Cargar (repite la misma llamada
+  // con modo=confirmar, reenviando el MISMO archivo que ya se tiene en memoria).
   async uploadCsv() {
     const file = document.getElementById('pick-csv-file')?.files[0];
     if (!file) { WMS.toast('warning', 'Seleccione un archivo'); return; }
+    this._pendingImportFile = file;
+    await this._enviarImportacion('preview', document.getElementById('btn-importar-pick'));
+  },
 
-    const btn = document.getElementById('btn-importar-pick');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Importando…'; }
+  async confirmarImportacion() {
+    if (!this._pendingImportFile) { WMS.toast('error', 'Se perdió el archivo seleccionado — vuelva a elegirlo.'); return; }
+    await this._enviarImportacion('confirmar', document.getElementById('btn-confirmar-import'));
+  },
+
+  _cancelarImportacion() {
+    this._pendingImportFile = null;
+    WMS.closeModal('generic-modal');
+    WMS.toast('info', 'Importación cancelada — no se guardó ningún dato.');
+  },
+
+  _toggleDetalleSucursal(idx) {
+    const row = document.getElementById('pick-detalle-row-' + idx);
+    if (row) row.style.display = (row.style.display === 'table-row') ? 'none' : 'table-row';
+  },
+
+  async _enviarImportacion(modo, btn) {
+    const file = this._pendingImportFile;
+    if (!file) { WMS.toast('warning', 'Seleccione un archivo'); return; }
+
+    const btnOriginal = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${modo === 'preview' ? 'Analizando…' : 'Cargando…'}`; }
 
     const fd = new FormData();
     fd.append('file', file);
+    fd.append('modo', modo);
 
     try {
       const token = localStorage.getItem('wms_token') || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
@@ -3533,276 +3923,282 @@ WMS_MODULES.picking = {
 
       if (!r.ok || j.error) {
         WMS.toast('error', j.message || `Error HTTP ${r.status}: ${r.statusText}`);
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-upload"></i> Importar Pedidos'; }
-      } else {
-        const data = j.data || {};
-        const au = j.audit || {};
-        const arch = au.archivo || {};
-        const sys  = au.sistema || {};
-        const diff = au.diferencias || {};
-        const porSuc = au.por_sucursal || {};
-        const sucArch = porSuc.archivo || {};
-        const sucSis  = porSuc.sistema || {};
-        const diffColor = v => v > 0 ? 'color:#dc2626;font-weight:700;' : (v < 0 ? 'color:#f59e0b;font-weight:700;' : 'color:#10b981;font-weight:700;');
-        const fmtVal = v => typeof v === 'number' ? v.toLocaleString('es-CO') : (v || '0');
-        const hasDiff = (diff.lineas > 0 || diff.cantidad > 0);
-        const zeroPedidos = (j.importadas || 0) === 0;
-        const errList = data.errores || [];
-        const noProd = data.productos_no_encontrados || 0;
-        const campos = data.campos_detectados || [];
-        const actualizadas = data.actualizadas || 0;
-        const lineasActualizadas = data.lineas_actualizadas || 0;
-        const lineasNuevas = data.lineas_nuevas || 0;
-        const lineasSinCambio = data.lineas_sin_cambio || 0;
-        const productosPendientes = data.productos_pendientes || [];
-        const pedidosNoCargados = data.pedidos_no_cargados || [];
-        const lineasInvalidas = data.lineas_invalidas || 0;
-        const recon = au.reconciliacion || {};
+        if (btn) { btn.disabled = false; btn.innerHTML = btnOriginal; }
+        return;
+      }
+      this._renderImportResult(j, modo);
+    } catch(e) {
+      if (e.isSessionExpired) return;
+      console.error('[picking] importación error:', e);
+      WMS.toast('error', 'Error al procesar la importación: ' + (e.message || 'Error desconocido'));
+      if (btn) { btn.disabled = false; btn.innerHTML = btnOriginal; }
+    }
+  },
 
-        // Per-sucursal breakdown table
-        const allSucs = [...new Set([...Object.keys(sucArch), ...Object.keys(sucSis)])].sort();
-        const sucTable = allSucs.length > 0 ? `
-          <div style="margin-bottom:12px;">
-            <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:6px;text-transform:uppercase;">📦 Líneas por Sucursal de Entrega</div>
-            <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;">
-              <thead>
-                <tr style="background:#f1f5f9;">
-                  <th style="padding:5px 10px;text-align:left;">Sucursal de Entrega</th>
-                  <th style="padding:5px 10px;text-align:right;">📄 Archivo</th>
-                  <th style="padding:5px 10px;text-align:right;">💾 Cargadas</th>
-                  <th style="padding:5px 10px;text-align:right;">Excluidas</th>
+  _renderImportResult(j, modo) {
+    const data = j.data || {};
+    const au = j.audit || {};
+    const diff = au.diferencias || {};
+    const porSuc = au.por_sucursal || {};
+    const sucArch = porSuc.archivo || {};
+    const sucSis  = porSuc.sistema || {};
+    const sucUndArch = porSuc.unidades_archivo || {};
+    const sucUndSis  = porSuc.unidades_sistema || {};
+    const detallePorSucursal = data.detalle_por_sucursal || {};
+    const fmtVal = v => typeof v === 'number' ? v.toLocaleString('es-CO') : (v || '0');
+    const hasDiff = (diff.lineas > 0 || diff.cantidad > 0);
+    const zeroPedidos = (j.importadas || 0) === 0;
+    const errList = data.errores || [];
+    const noProd = data.productos_no_encontrados || 0;
+    const campos = data.campos_detectados || [];
+    const actualizadas = data.actualizadas || 0;
+    const lineasNuevas = data.lineas_nuevas || 0;
+    const lineasSinCambio = data.lineas_sin_cambio || 0;
+    const productosPendientes = data.productos_pendientes || [];
+    const pedidosNoCargados = data.pedidos_no_cargados || [];
+    const lineasInvalidas = data.lineas_invalidas || 0;
+
+    // Per-sucursal breakdown table
+    // A pedido explícito (2026-09-18): rediseño completo — el panel ya no debe
+    // mostrar TODAS las sucursales del archivo con las que no traen nada nuevo
+    // en rojo como si fuera un problema. Ahora solo se listan las sucursales que
+    // SÍ se van a montar (cargadas > 0), con cantidad (unidades) y líneas,
+    // archivo vs cargado, y un botón para ver el detalle línea por línea antes
+    // de confirmar — sin mezclar duplicados esperados con problemas reales.
+    const sucsAMontar = [...new Set([...Object.keys(sucArch), ...Object.keys(sucSis)])]
+      .filter(s => (sucSis[s] || 0) > 0)
+      .sort();
+    const sucTable = sucsAMontar.length > 0 ? `
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:6px;text-transform:uppercase;">📦 Sucursales a Montar</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;">
+          <thead>
+            <tr style="background:#f1f5f9;">
+              <th style="padding:5px 10px;text-align:left;">Sucursal de Entrega</th>
+              <th style="padding:5px 10px;text-align:right;">Cantidad Archivo</th>
+              <th style="padding:5px 10px;text-align:right;">Cantidad Cargada</th>
+              <th style="padding:5px 10px;text-align:right;">Líneas Archivo</th>
+              <th style="padding:5px 10px;text-align:right;">Líneas Cargadas</th>
+              <th style="padding:5px 10px;text-align:center;">Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sucsAMontar.map((s, idx) => {
+              const a = sucArch[s] || 0, si = sucSis[s] || 0;
+              const ua = sucUndArch[s] || 0, us = sucUndSis[s] || 0;
+              const detalle = detallePorSucursal[s] || [];
+              // A pedido explícito (2026-09-18): el detalle por referencia muestra
+              // archivo vs cargado (unidades y cajas) y líneas archivo vs cargadas —
+              // igual comparación que la tabla de sucursales, pero a nivel de cada
+              // pedido+referencia, para auditar exactamente qué pasó con cada una.
+              const detalleRows = detalle.map(l => {
+                const parcial = l.lineas_cargadas < l.lineas_archivo;
+                return `<tr style="border-bottom:1px solid #f1f5f9;${parcial?'background:#fffbeb;':''}">
+                  <td style="padding:3px 8px;font-family:monospace;">${WMS.esc(l.pedido || '')}</td>
+                  <td style="padding:3px 8px;font-family:monospace;">${WMS.esc(l.codigo || '')}</td>
+                  <td style="padding:3px 8px;">${WMS.esc(l.nombre || '')}</td>
+                  <td style="padding:3px 8px;text-align:right;">${fmtVal(l.cant_solicitada)}</td>
+                  <td style="padding:3px 8px;text-align:right;color:#16a34a;font-weight:600;">${fmtVal(l.cant_cargada)}</td>
+                  <td style="padding:3px 8px;text-align:right;">${l.lineas_archivo}</td>
+                  <td style="padding:3px 8px;text-align:right;color:#16a34a;font-weight:600;">${l.lineas_cargadas}</td>
+                  <td style="padding:3px 8px;text-align:right;">${fmtVal(l.cajas_solicitadas)}</td>
+                  <td style="padding:3px 8px;text-align:right;color:#16a34a;font-weight:600;">${fmtVal(l.cajas_cargadas)}</td>
+                </tr>`;
+              }).join('');
+              return `<tr style="border-bottom:1px solid #f1f5f9;">
+                  <td style="padding:5px 10px;">${WMS.esc(s)}</td>
+                  <td style="padding:5px 10px;text-align:right;">${fmtVal(ua)}</td>
+                  <td style="padding:5px 10px;text-align:right;color:#16a34a;font-weight:600;">${fmtVal(us)}</td>
+                  <td style="padding:5px 10px;text-align:right;">${a}</td>
+                  <td style="padding:5px 10px;text-align:right;color:#16a34a;font-weight:600;">${si}</td>
+                  <td style="padding:5px 10px;text-align:center;">
+                    <button type="button" class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking._toggleDetalleSucursal(${idx})" title="Ver detalle"><i class="fa-solid fa-eye"></i></button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                ${allSucs.map(s => {
-                  const a = sucArch[s] || 0, si = sucSis[s] || 0, ex = a - si;
-                  return `<tr style="border-bottom:1px solid #f1f5f9;">
-                    <td style="padding:5px 10px;">${WMS.esc(s)}</td>
-                    <td style="padding:5px 10px;text-align:right;">${a}</td>
-                    <td style="padding:5px 10px;text-align:right;color:${si>0?'#16a34a':'#dc2626'};font-weight:600;">${si}</td>
-                    <td style="padding:5px 10px;text-align:right;${ex>0?'color:#dc2626;font-weight:700;':''}">${ex > 0 ? '+'+ex : ex}</td>
-                  </tr>`;
-                }).join('')}
-              </tbody>
-            </table>
-          </div>` : '';
+                <tr id="pick-detalle-row-${idx}" style="display:none;background:#f8fafc;">
+                  <td colspan="6" style="padding:8px 12px;">
+                    <div style="overflow-x:auto;">
+                      <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:640px;">
+                        <thead><tr style="color:#64748b;">
+                          <th style="text-align:left;padding:2px 8px;">N° Pedido</th>
+                          <th style="text-align:left;padding:2px 8px;">Código</th>
+                          <th style="text-align:left;padding:2px 8px;">Descripción Producto</th>
+                          <th style="text-align:right;padding:2px 8px;">Cant. Solicitada</th>
+                          <th style="text-align:right;padding:2px 8px;">Cant. Cargada</th>
+                          <th style="text-align:right;padding:2px 8px;">Líneas Archivo</th>
+                          <th style="text-align:right;padding:2px 8px;">Líneas Cargadas</th>
+                          <th style="text-align:right;padding:2px 8px;">Cajas Solicitadas</th>
+                          <th style="text-align:right;padding:2px 8px;">Cajas Cargadas</th>
+                        </tr></thead>
+                        <tbody>${detalleRows || '<tr><td colspan="9" style="padding:4px 8px;color:#94a3b8;">Sin detalle</td></tr>'}</tbody>
+                      </table>
+                    </div>
+                  </td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>` : '';
 
-        // ML Análisis de reconciliación autónoma (debe declararse antes de summaryHtml)
-        const lineasArchivo = arch.lineas_archivo || 0;
-        const lineasSistema = sys.lineas_sistema || 0;
-        const excluidas = lineasArchivo - lineasSistema;
-        const mlIntegro = excluidas === 0 && noProd === 0 && errList.length === 0;
-        const mlBg     = mlIntegro ? '#f0fdf4' : '#fefce8';
-        const mlBorder = mlIntegro ? '#bbf7d0' : '#fde68a';
-        const mlColor  = mlIntegro ? '#166534' : '#92400e';
-        const mlLineas = excluidas > 0
-          ? `⚠ Líneas archivo: <strong>${lineasArchivo}</strong> → cargadas: <strong>${lineasSistema}</strong> <span style="color:#dc2626;">(${excluidas} excluidas)</span>`
-          : `✅ Líneas archivo: <strong>${lineasArchivo}</strong> → cargadas: <strong>${lineasSistema}</strong> <span style="color:#16a34a;">OK</span>`;
-        const mlRefs = noProd > 0
-          ? `⚠ Referencias sin codificar: <strong style="color:#d97706;">${noProd}</strong> — requieren creación`
-          : `✅ Referencias sin codificar: <strong>0</strong> <span style="color:#16a34a;">OK</span>`;
-        const mlConc = mlIntegro
-          ? '<div style="margin-top:6px;color:#166534;font-weight:600;">✅ Importación íntegra — líneas y referencias concuerdan.</div>'
-          : '<div style="margin-top:6px;color:#92400e;">⚠ Acción requerida: revise referencias sin codificar o líneas excluidas antes de asignar.</div>';
-        const mlHtml = `
-          <div style="margin-top:12px;padding:10px 14px;background:${mlBg};border:1px solid ${mlBorder};border-radius:6px;font-size:12px;">
-            <div style="font-weight:700;color:${mlColor};margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-              <i class="fa-solid fa-robot" style="font-size:14px;"></i> Análisis ML — Reconciliación de Importación
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;">
-              <span>${mlLineas}</span>
-              <span>${mlRefs}</span>
-              <span>${(j.importadas||0)>0?'✅':'ℹ'} Planillas nuevas: <strong>${j.importadas||0}</strong> · Actualizadas: <strong>${actualizadas}</strong></span>
-              <span>${errList.length===0?'✅':'❌'} Errores: <strong style="${errList.length>0?'color:#dc2626;':''}">${errList.length}</strong></span>
-            </div>
-            ${mlConc}
-          </div>`;
+    // Build the professional summary HTML
+    const summaryHtml = `
+      <div style="text-align:left;font-size:13px;max-height:70vh;overflow-y:auto;">
+        ${modo === 'preview' ? `<div style="padding:8px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:12px;color:#1e40af;margin-bottom:12px;">
+          <i class="fa-solid fa-eye" style="margin-right:6px;"></i><strong>Vista previa</strong> — todavía no se ha guardado nada. Revise el detalle por sucursal y luego Cancele o Confirme.
+        </div>` : ''}
+        ${zeroPedidos ? `<div style="padding:12px 16px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;margin-bottom:14px;">
+          <div style="font-size:14px;font-weight:700;color:#991b1b;margin-bottom:6px;"><i class="fa-solid fa-circle-xmark" style="margin-right:6px;"></i>No se ${modo === 'preview' ? 'montaría' : 'crearon'} pedidos</div>
+          <div style="font-size:12px;color:#7f1d1d;">El archivo no genera órdenes de picking. Revise los motivos a continuación.</div>
+        </div>` : ''}
 
-        // Build the professional summary HTML
-        const summaryHtml = `
-          <div style="text-align:left;font-size:13px;max-height:70vh;overflow-y:auto;">
-            ${zeroPedidos ? `<div style="padding:12px 16px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;margin-bottom:14px;">
-              <div style="font-size:14px;font-weight:700;color:#991b1b;margin-bottom:6px;"><i class="fa-solid fa-circle-xmark" style="margin-right:6px;"></i>No se crearon pedidos</div>
-              <div style="font-size:12px;color:#7f1d1d;">El archivo no generó órdenes de picking. Revise los motivos a continuación.</div>
-            </div>` : ''}
+        <!-- KPI Cards -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;">
+          <div style="padding:10px;background:${zeroPedidos?'#fef2f2':'#f0fdf4'};border-radius:6px;text-align:center;border:1px solid ${zeroPedidos?'#fca5a5':'#bbf7d0'};">
+            <div style="font-size:22px;font-weight:800;color:${zeroPedidos?'#dc2626':'#16a34a'};">${j.importadas || 0}</div>
+            <div style="font-size:9px;color:${zeroPedidos?'#dc2626':'#16a34a'};font-weight:600;text-transform:uppercase;">Planillas Nuevas</div>
+          </div>
+          <div style="padding:10px;background:${actualizadas>0?'#eff6ff':'#f8fafc'};border-radius:6px;text-align:center;border:1px solid ${actualizadas>0?'#bfdbfe':'#e2e8f0'};">
+            <div style="font-size:22px;font-weight:800;color:${actualizadas>0?'#2563eb':'#94a3b8'};">${actualizadas}</div>
+            <div style="font-size:9px;color:${actualizadas>0?'#2563eb':'#94a3b8'};font-weight:600;text-transform:uppercase;">Actualizadas</div>
+          </div>
+          <div style="padding:10px;background:#eff6ff;border-radius:6px;text-align:center;border:1px solid #bfdbfe;">
+            <div style="font-size:22px;font-weight:800;color:#2563eb;">${data.total_lineas || 0}</div>
+            <div style="font-size:9px;color:#2563eb;font-weight:600;text-transform:uppercase;">Líneas Cargadas</div>
+          </div>
+          <div style="padding:10px;background:${noProd>0?'#fefce8':'#f0fdf4'};border-radius:6px;text-align:center;border:1px solid ${noProd>0?'#fde68a':'#bbf7d0'};">
+            <div style="font-size:22px;font-weight:800;color:${noProd>0?'#d97706':'#16a34a'};">${noProd}</div>
+            <div style="font-size:9px;color:${noProd>0?'#d97706':'#16a34a'};font-weight:600;text-transform:uppercase;">Sin Codificar</div>
+          </div>
+        </div>
+        ${(actualizadas > 0) ? `<div style="padding:7px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:11px;color:#1e40af;margin-bottom:10px;">
+          <i class="fa-solid fa-pen-to-square"></i> <strong>${actualizadas}</strong> planilla(s) existente(s) con referencias nuevas agregadas —
+          <strong>${lineasNuevas}</strong> línea(s) nueva(s) ·
+          <strong>${lineasSinCambio}</strong> ya montada(s) (sin cambios, la cantidad no se compara)
+        </div>` : ''}
 
-            <!-- KPI Cards -->
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;">
-              <div style="padding:10px;background:${zeroPedidos?'#fef2f2':'#f0fdf4'};border-radius:6px;text-align:center;border:1px solid ${zeroPedidos?'#fca5a5':'#bbf7d0'};">
-                <div style="font-size:22px;font-weight:800;color:${zeroPedidos?'#dc2626':'#16a34a'};">${j.importadas || 0}</div>
-                <div style="font-size:9px;color:${zeroPedidos?'#dc2626':'#16a34a'};font-weight:600;text-transform:uppercase;">Planillas Nuevas</div>
-              </div>
-              <div style="padding:10px;background:${actualizadas>0?'#eff6ff':'#f8fafc'};border-radius:6px;text-align:center;border:1px solid ${actualizadas>0?'#bfdbfe':'#e2e8f0'};">
-                <div style="font-size:22px;font-weight:800;color:${actualizadas>0?'#2563eb':'#94a3b8'};">${actualizadas}</div>
-                <div style="font-size:9px;color:${actualizadas>0?'#2563eb':'#94a3b8'};font-weight:600;text-transform:uppercase;">Actualizadas</div>
-              </div>
-              <div style="padding:10px;background:#eff6ff;border-radius:6px;text-align:center;border:1px solid #bfdbfe;">
-                <div style="font-size:22px;font-weight:800;color:#2563eb;">${data.total_lineas || 0}</div>
-                <div style="font-size:9px;color:#2563eb;font-weight:600;text-transform:uppercase;">Líneas Cargadas</div>
-              </div>
-              <div style="padding:10px;background:${noProd>0?'#fefce8':'#f0fdf4'};border-radius:6px;text-align:center;border:1px solid ${noProd>0?'#fde68a':'#bbf7d0'};">
-                <div style="font-size:22px;font-weight:800;color:${noProd>0?'#d97706':'#16a34a'};">${noProd}</div>
-                <div style="font-size:9px;color:${noProd>0?'#d97706':'#16a34a'};font-weight:600;text-transform:uppercase;">Sin Codificar</div>
-              </div>
-            </div>
-            ${(actualizadas > 0) ? `<div style="padding:7px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:11px;color:#1e40af;margin-bottom:10px;">
-              <i class="fa-solid fa-pen-to-square"></i> <strong>${actualizadas}</strong> planilla(s) actualizadas —
-              <strong>${lineasActualizadas}</strong> línea(s) con cantidad modificada ·
-              <strong>${lineasNuevas}</strong> línea(s) nueva(s) agregadas ·
-              <strong>${lineasSinCambio}</strong> sin cambio
-            </div>` : ''}
+        <!-- Campos detectados -->
+        <div style="margin-bottom:12px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;">
+          <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Campos Detectados en el Archivo</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;">
+            ${campos.map(c => '<span style="padding:2px 8px;background:#e0e7ff;color:#4338ca;border-radius:10px;font-size:10px;font-weight:600;">' + WMS.esc(c) + '</span>').join('')}
+            ${!campos.includes('producto') ? '<span style="padding:2px 8px;background:#fee2e2;color:#991b1b;border-radius:10px;font-size:10px;font-weight:600;">⚠ producto NO detectado</span>' : ''}
+            ${!campos.includes('cantidad') ? '<span style="padding:2px 8px;background:#fee2e2;color:#991b1b;border-radius:10px;font-size:10px;font-weight:600;">⚠ cantidad NO detectada</span>' : ''}
+          </div>
+        </div>
 
-            <!-- Campos detectados -->
-            <div style="margin-bottom:12px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;">
-              <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Campos Detectados en el Archivo</div>
-              <div style="display:flex;flex-wrap:wrap;gap:4px;">
-                ${campos.map(c => '<span style="padding:2px 8px;background:#e0e7ff;color:#4338ca;border-radius:10px;font-size:10px;font-weight:600;">' + WMS.esc(c) + '</span>').join('')}
-                ${!campos.includes('producto') ? '<span style="padding:2px 8px;background:#fee2e2;color:#991b1b;border-radius:10px;font-size:10px;font-weight:600;">⚠ producto NO detectado</span>' : ''}
-                ${!campos.includes('cantidad') ? '<span style="padding:2px 8px;background:#fee2e2;color:#991b1b;border-radius:10px;font-size:10px;font-weight:600;">⚠ cantidad NO detectada</span>' : ''}
-              </div>
-            </div>
+        ${sucTable}
 
-            <!-- Audit Table -->
-            <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:6px;text-transform:uppercase;">📊 Auditoría — Archivo vs Sistema</div>
-            <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;margin-bottom:10px;">
-              <thead>
-                <tr style="background:#f1f5f9;">
-                  <th style="padding:6px 10px;text-align:left;">Concepto</th>
-                  <th style="padding:6px 10px;text-align:right;">📄 Archivo</th>
-                  <th style="padding:6px 10px;text-align:right;">💾 Sistema</th>
-                  <th style="padding:6px 10px;text-align:right;">Δ Diferencia</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:5px 10px;">Líneas de datos</td><td style="padding:5px 10px;text-align:right;">${fmtVal(arch.lineas_archivo)}</td><td style="padding:5px 10px;text-align:right;">${fmtVal(sys.lineas_sistema)}</td><td style="padding:5px 10px;text-align:right;${diffColor(diff.lineas)}">${diff.lineas > 0 ? '+' : ''}${fmtVal(diff.lineas)}</td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:5px 10px;">Sucursales / Clientes</td><td style="padding:5px 10px;text-align:right;">${fmtVal(arch.clientes_archivo)}</td><td style="padding:5px 10px;text-align:right;">${fmtVal(sys.clientes_sistema)}</td><td style="padding:5px 10px;text-align:right;${diffColor(diff.clientes)}">${diff.clientes > 0 ? '+' : ''}${fmtVal(diff.clientes)}</td></tr>
-                <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:5px 10px;">Unidades totales</td><td style="padding:5px 10px;text-align:right;">${fmtVal(arch.cantidad_archivo)}</td><td style="padding:5px 10px;text-align:right;">${fmtVal(sys.cantidad_sistema)}</td><td style="padding:5px 10px;text-align:right;${diffColor(diff.cantidad)}">${diff.cantidad > 0 ? '+' : ''}${fmtVal(diff.cantidad)}</td></tr>
-                <tr><td style="padding:5px 10px;">Valor monetario</td><td style="padding:5px 10px;text-align:right;">$${fmtVal(arch.valor_archivo)}</td><td style="padding:5px 10px;text-align:right;">$${fmtVal(sys.valor_sistema)}</td><td style="padding:5px 10px;text-align:right;${diffColor(diff.valor)}">${diff.valor > 0 ? '+$' : diff.valor < 0 ? '-$' : '$'}${fmtVal(Math.abs(diff.valor || 0))}</td></tr>
-              </tbody>
-            </table>
-
-            ${sucTable}
-
-            <!-- Reconciliación garantizada: toda línea del archivo queda explicada -->
-            <div style="margin-bottom:12px;padding:10px 14px;background:${recon.completa ? '#f0fdf4' : '#fef2f2'};border:1px solid ${recon.completa ? '#bbf7d0' : '#fca5a5'};border-radius:6px;font-size:12px;">
-              <div style="font-weight:800;color:${recon.completa ? '#166534' : '#991b1b'};margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-                <i class="fa-solid ${recon.completa ? 'fa-check-double' : 'fa-triangle-exclamation'}"></i>
-                ${recon.completa ? 'Reconciliación completa — todas las líneas del archivo quedaron explicadas' : 'Atención — hay líneas del archivo sin explicación'}
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 12px;color:#334155;">
-                <span>📄 Líneas en archivo: <strong>${fmtVal(recon.lineas_en_archivo)}</strong></span>
-                <span>⬜ En blanco: <strong>${fmtVal(recon.lineas_en_blanco)}</strong></span>
-                <span>📋 Con datos: <strong>${fmtVal(recon.lineas_con_datos)}</strong></span>
-                <span>✅ Cargadas nuevas: <strong style="color:#16a34a;">${fmtVal(recon.cargadas_nuevas)}</strong></span>
-                <span>🔁 Duplicadas omitidas: <strong>${fmtVal(recon.duplicadas_omitidas)}</strong></span>
-                <span>⏳ Pendientes (sin producto): <strong style="color:${(recon.pendientes_sin_producto||0)>0?'#d97706':'#16a34a'};">${fmtVal(recon.pendientes_sin_producto)}</strong></span>
-                <span>❌ Inválidas (ref./cant.): <strong style="color:${(recon.invalidas||0)>0?'#dc2626':'#16a34a'};">${fmtVal(recon.invalidas)}</strong></span>
-                <span>Σ Total contabilizado: <strong>${fmtVal(recon.total_contabilizado)}</strong></span>
-                <span>${recon.completa ? '✅' : '⚠'} Sin explicar: <strong style="color:${recon.completa?'#16a34a':'#dc2626'};">${fmtVal(recon.sin_explicar)}</strong></span>
-              </div>
-            </div>
-
-            <!-- Status Banner -->
-            ${zeroPedidos
-              ? ''
-              : diff.lineas > 0
-                ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i><strong>' + diff.lineas + ' línea(s)</strong> del archivo no se cargaron. Causas: productos no encontrados o datos incompletos.</div>'
-                : '<div style="padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;color:#166534;font-size:11px;margin-bottom:6px;"><i class="fa-solid fa-check-circle" style="margin-right:4px;"></i><strong>Importación exitosa.</strong> Todas las líneas del archivo fueron cargadas correctamente.</div>'}
-
-            ${pedidosNoCargados.length > 0 ? `
+        ${(() => {
+          const pedidosProblema = pedidosNoCargados.filter(p => !p.ya_montado);
+          if (!pedidosProblema.length) return '';
+          return `
             <div style="padding:10px 14px;background:#fef2f2;border:2px solid #dc2626;border-radius:4px;color:#7f1d1d;font-size:12px;margin-bottom:10px;">
               <div style="font-weight:800;margin-bottom:6px;">
                 <i class="fa-solid fa-circle-exclamation" style="margin-right:4px;"></i>
-                ¡ATENCIÓN! ${pedidosNoCargados.length} pedido(s) completo(s) NO se cargaron al sistema
+                ¡ATENCIÓN! ${pedidosProblema.length} pedido(s) completo(s) NO se ${modo === 'preview' ? 'montarían' : 'cargaron'} por un problema real
               </div>
-              <div style="margin-bottom:6px;">Ninguna referencia de estos pedidos pudo emparejarse con un producto existente. No se creó ninguna orden para ellos — revíselos antes de continuar.</div>
+              <div style="margin-bottom:6px;">No se ${modo === 'preview' ? 'crearía' : 'creó'} ninguna orden para ellos — revíselos antes de continuar.</div>
               <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;">
                 <thead><tr style="background:#fecaca;">
                   <th style="padding:3px 8px;text-align:left;">N° Pedido</th>
                   <th style="padding:3px 8px;text-align:left;">Sucursal</th>
                   <th style="padding:3px 8px;text-align:right;">Líneas en archivo</th>
-                </tr></thead>
-                <tbody>
-                  ${pedidosNoCargados.map(p => `<tr style="border-top:1px solid #fecaca;">
-                    <td style="padding:3px 8px;font-weight:700;font-family:monospace;">${WMS.esc(p.numero_factura || '-')}</td>
-                    <td style="padding:3px 8px;">${WMS.esc(p.sucursal || '')}</td>
-                    <td style="padding:3px 8px;text-align:right;">${p.lineas_archivo || 0}</td>
-                  </tr>`).join('')}
-                </tbody>
-              </table>
-            </div>` : ''}
-
-            ${productosPendientes.length > 0 ? `
-            <div style="padding:8px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;color:#78350f;font-size:11px;margin-bottom:6px;">
-              <div style="font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
-                <span><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Productos sin codificar — guardados en tabla de pendientes (${productosPendientes.length})</span>
-                <button class="btn btn-xs" style="background:#92400e;color:#fff;padding:2px 10px;font-size:10px;" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking.show_productos_pendientes();">Ver tabla</button>
-              </div>
-              <table style="width:100%;border-collapse:collapse;font-size:11px;">
-                <thead><tr style="background:#fef08a;">
-                  <th style="padding:3px 8px;text-align:left;">EAN / Código</th>
-                  <th style="padding:3px 8px;text-align:left;">N° Factura</th>
-                  <th style="padding:3px 8px;text-align:left;">Sucursal</th>
-                  <th style="padding:3px 8px;text-align:right;">Cant.</th>
-                </tr></thead>
-                <tbody>
-                  ${productosPendientes.slice(0,15).map(p => `<tr style="border-top:1px solid #fde68a;">
-                    <td style="padding:3px 8px;font-weight:700;font-family:monospace;">${WMS.esc(p.ean || '')}</td>
-                    <td style="padding:3px 8px;">${WMS.esc(p.numero_factura || '-')}</td>
-                    <td style="padding:3px 8px;">${WMS.esc(p.sucursal || '')}</td>
-                    <td style="padding:3px 8px;text-align:right;">${p.cantidad || 1}</td>
-                  </tr>`).join('')}
-                  ${productosPendientes.length > 15 ? `<tr><td colspan="4" style="padding:3px 8px;color:#92400e;">... y ${productosPendientes.length - 15} más en la tabla de pendientes</td></tr>` : ''}
-                </tbody>
-              </table>
-            </div>` : ''}
-
-            ${(data.detalle_lineas_invalidas || []).length > 0 ? `
-            <div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#7f1d1d;font-size:11px;margin-bottom:6px;">
-              <div style="font-weight:700;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Líneas con datos inválidos — no se cargaron (${lineasInvalidas})</div>
-              <table style="width:100%;border-collapse:collapse;font-size:11px;">
-                <thead><tr style="background:#fecaca;">
-                  <th style="padding:3px 8px;text-align:left;">N° Factura</th>
-                  <th style="padding:3px 8px;text-align:left;">Sucursal</th>
-                  <th style="padding:3px 8px;text-align:left;">Referencia</th>
-                  <th style="padding:3px 8px;text-align:right;">Cant.</th>
                   <th style="padding:3px 8px;text-align:left;">Motivo</th>
                 </tr></thead>
                 <tbody>
-                  ${data.detalle_lineas_invalidas.slice(0,15).map(l => `<tr style="border-top:1px solid #fecaca;">
-                    <td style="padding:3px 8px;font-family:monospace;">${WMS.esc(l.numero_factura || '-')}</td>
-                    <td style="padding:3px 8px;">${WMS.esc(l.sucursal || '')}</td>
-                    <td style="padding:3px 8px;font-family:monospace;">${WMS.esc(l.referencia || '(vacía)')}</td>
-                    <td style="padding:3px 8px;text-align:right;">${l.cantidad || 0}</td>
-                    <td style="padding:3px 8px;">${WMS.esc(l.motivo || '')}</td>
+                  ${pedidosProblema.map(p => `<tr style="border-top:1px solid #fecaca;">
+                    <td style="padding:3px 8px;font-weight:700;font-family:monospace;">${WMS.esc(p.numero_factura || '-')}</td>
+                    <td style="padding:3px 8px;">${WMS.esc(p.sucursal || '')}</td>
+                    <td style="padding:3px 8px;text-align:right;">${p.lineas_archivo || 0}</td>
+                    <td style="padding:3px 8px;">${WMS.esc(p.motivo || '')}</td>
                   </tr>`).join('')}
-                  ${data.detalle_lineas_invalidas.length > 15 ? `<tr><td colspan="5" style="padding:3px 8px;color:#7f1d1d;">... y ${data.detalle_lineas_invalidas.length - 15} más</td></tr>` : ''}
                 </tbody>
               </table>
-            </div>` : ''}
+            </div>`;
+        })()}
 
-            ${errList.length > 0 ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><strong>Detalle de errores (' + errList.length + '):</strong><ul style="margin:4px 0 0;padding-left:16px;">' + errList.slice(0,15).map(e => '<li>' + WMS.esc(e) + '</li>').join('') + (errList.length > 15 ? '<li>... y ' + (errList.length-15) + ' más</li>' : '') + '</ul></div>' : ''}
-            ${mlHtml}
-          </div>`;
+        ${productosPendientes.length > 0 ? `
+        <div style="padding:8px 12px;background:#fefce8;border:1px solid #fde68a;border-radius:4px;color:#78350f;font-size:11px;margin-bottom:6px;">
+          <div style="font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+            <span><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Productos sin codificar (${productosPendientes.length})</span>
+            ${modo === 'confirmar' ? `<button class="btn btn-xs" style="background:#92400e;color:#fff;padding:2px 10px;font-size:10px;" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking.show_productos_pendientes();">Ver tabla</button>` : ''}
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead><tr style="background:#fef08a;">
+              <th style="padding:3px 8px;text-align:left;">EAN / Código</th>
+              <th style="padding:3px 8px;text-align:left;">N° Factura</th>
+              <th style="padding:3px 8px;text-align:left;">Sucursal</th>
+              <th style="padding:3px 8px;text-align:right;">Cant.</th>
+            </tr></thead>
+            <tbody>
+              ${productosPendientes.slice(0,15).map(p => `<tr style="border-top:1px solid #fde68a;">
+                <td style="padding:3px 8px;font-weight:700;font-family:monospace;">${WMS.esc(p.ean || '')}</td>
+                <td style="padding:3px 8px;">${WMS.esc(p.numero_factura || '-')}</td>
+                <td style="padding:3px 8px;">${WMS.esc(p.sucursal || '')}</td>
+                <td style="padding:3px 8px;text-align:right;">${p.cantidad || 1}</td>
+              </tr>`).join('')}
+              ${productosPendientes.length > 15 ? `<tr><td colspan="4" style="padding:3px 8px;color:#92400e;">... y ${productosPendientes.length - 15} más</td></tr>` : ''}
+            </tbody>
+          </table>
+        </div>` : ''}
 
-        const modalTitle = zeroPedidos
-          ? '<i class="fa-solid fa-circle-xmark" style="color:#dc2626;margin-right:6px;"></i>Importación sin resultados'
-          : hasDiff
-            ? '<i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;margin-right:6px;"></i>Resultado de Importación'
-            : '<i class="fa-solid fa-circle-check" style="color:#16a34a;margin-right:6px;"></i>Importación Completada';
-        const modalFooter = zeroPedidos
-          ? `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking.importarPedidos()">
-               <i class="fa-solid fa-rotate-left"></i> Intentar de nuevo
-             </button>
-             <button class="btn btn-primary" onclick="WMS.closeModal('generic-modal')">
-               <i class="fa-solid fa-xmark"></i> Cerrar
-             </button>`
-          : `<button class="btn btn-primary" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking.show_pedidos();">
-               <i class="fa-solid fa-check"></i> Aceptar y ver pedidos
-             </button>`;
-        WMS.showModal(modalTitle, summaryHtml, modalFooter);
-      }
-    } catch(e) { if (e.isSessionExpired) return; console.error('[picking] uploadCsv error:', e); WMS.toast('error', 'Error al procesar la importación: ' + (e.message || 'Error desconocido')); if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-upload"></i> Importar Pedidos'; } }
+        ${(data.detalle_lineas_invalidas || []).length > 0 ? `
+        <div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#7f1d1d;font-size:11px;margin-bottom:6px;">
+          <div style="font-weight:700;margin-bottom:6px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>Líneas con datos inválidos — no se cargan (${lineasInvalidas})</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead><tr style="background:#fecaca;">
+              <th style="padding:3px 8px;text-align:left;">N° Factura</th>
+              <th style="padding:3px 8px;text-align:left;">Sucursal</th>
+              <th style="padding:3px 8px;text-align:left;">Referencia</th>
+              <th style="padding:3px 8px;text-align:right;">Cant.</th>
+              <th style="padding:3px 8px;text-align:left;">Motivo</th>
+            </tr></thead>
+            <tbody>
+              ${data.detalle_lineas_invalidas.slice(0,15).map(l => `<tr style="border-top:1px solid #fecaca;">
+                <td style="padding:3px 8px;font-family:monospace;">${WMS.esc(l.numero_factura || '-')}</td>
+                <td style="padding:3px 8px;">${WMS.esc(l.sucursal || '')}</td>
+                <td style="padding:3px 8px;font-family:monospace;">${WMS.esc(l.referencia || '(vacía)')}</td>
+                <td style="padding:3px 8px;text-align:right;">${l.cantidad || 0}</td>
+                <td style="padding:3px 8px;">${WMS.esc(l.motivo || '')}</td>
+              </tr>`).join('')}
+              ${data.detalle_lineas_invalidas.length > 15 ? `<tr><td colspan="5" style="padding:3px 8px;color:#7f1d1d;">... y ${data.detalle_lineas_invalidas.length - 15} más</td></tr>` : ''}
+            </tbody>
+          </table>
+        </div>` : ''}
+
+        ${errList.length > 0 ? '<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;color:#dc2626;font-size:11px;margin-bottom:6px;"><strong>Detalle de errores (' + errList.length + '):</strong><ul style="margin:4px 0 0;padding-left:16px;">' + errList.slice(0,15).map(e => '<li>' + WMS.esc(e) + '</li>').join('') + (errList.length > 15 ? '<li>... y ' + (errList.length-15) + ' más</li>' : '') + '</ul></div>' : ''}
+      </div>`;
+
+    // BUG CORREGIDO 2026-09-18: WMS.showModal() asigna el título con
+    // textContent (por diseño, para no exponerse a XSS si algún día un
+    // título trae datos de usuario) — pasarle HTML aquí lo mostraba como
+    // texto crudo ("<i class=...></i>Resultado...") en vez de un ícono.
+    const modalTitle = zeroPedidos
+      ? (modo === 'preview' ? 'Vista previa: sin resultados' : 'Importación sin resultados')
+      : modo === 'preview'
+        ? 'Vista Previa de Importación'
+        : hasDiff
+          ? 'Resultado de Importación'
+          : 'Importación Completada';
+    const modalFooter = zeroPedidos
+      ? `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking.importarPedidos()">
+           <i class="fa-solid fa-rotate-left"></i> Intentar de nuevo
+         </button>
+         <button class="btn btn-primary" onclick="WMS.closeModal('generic-modal')">
+           <i class="fa-solid fa-xmark"></i> Cerrar
+         </button>`
+      : modo === 'preview'
+        ? `<button class="btn btn-secondary" onclick="WMS_MODULES.picking._cancelarImportacion()">
+             <i class="fa-solid fa-xmark"></i> Cancelar importación
+           </button>
+           <button class="btn btn-primary" id="btn-confirmar-import" onclick="WMS_MODULES.picking.confirmarImportacion()">
+             <i class="fa-solid fa-upload"></i> Confirmar y Cargar
+           </button>`
+        : `<button class="btn btn-primary" onclick="WMS.closeModal('generic-modal');WMS_MODULES.picking.show_pedidos();">
+             <i class="fa-solid fa-check"></i> Aceptar y ver pedidos
+           </button>`;
+    WMS.showModal(modalTitle, summaryHtml, modalFooter);
+    if (modo === 'confirmar') this._pendingImportFile = null;
   },
 
   async _anularPedido(id) {
@@ -4217,8 +4613,54 @@ WMS_MODULES.picking = {
             style="width:100%;font-size:.78rem;">
             ✕ Cancelar
           </button>
+          <!-- A pedido explícito (2026-09-18, urgente): pedidos que quedaron mal
+               importados necesitan poder eliminarse en masa directo desde esta
+               vista, sin entrar al módulo de Pedidos. Reutiliza el mismo
+               DELETE /picking/{id} (Admin, reversión completa de inventario y
+               reservas, hard-delete) que ya usa la eliminación individual — uno
+               por pedido seleccionado, en serie. -->
+          <button class="btn btn-outline-danger btn-sm" onclick="WMS_MODULES.picking._eliminarSeleccionadosAsignacion()"
+            style="width:100%;font-size:.78rem;border-color:#dc2626;color:#dc2626;">
+            <i class="fa-solid fa-trash"></i> Eliminar pedidos seleccionados
+          </button>
         </div>
       </div>`;
+  },
+
+  async _eliminarSeleccionadosAsignacion() {
+    const ids = [...this._asigSeleccionados];
+    if (!ids.length) return WMS.toast('warning', 'No hay pedidos seleccionados');
+
+    const nums = this._asigOrdenes.filter(o => ids.includes(o.id)).map(o => o.numero_orden);
+    const ok = confirm(
+      `⚠ ELIMINAR ${ids.length} PEDIDO(S)\n\n` +
+      (nums.length ? nums.slice(0, 10).join('\n') + (nums.length > 10 ? `\n… y ${nums.length - 10} más` : '') + '\n\n' : '') +
+      `Esta acción es IRREVERSIBLE: se revierte cualquier inventario ya separado, se libera lo reservado y se borran los pedidos por completo.\n\n¿Continuar?`
+    );
+    if (!ok) return;
+
+    WMS.spinner();
+    let eliminados = 0;
+    const errores = [];
+    for (const id of ids) {
+      const num = this._asigOrdenes.find(o => o.id === id)?.numero_orden || id;
+      try {
+        const r = await API.delete(`/picking/${id}`);
+        if (r && r.error) errores.push(`${num}: ${r.message}`);
+        else eliminados++;
+      } catch (e) {
+        errores.push(`${num}: ${e.message || 'error'}`);
+      }
+    }
+    WMS.spinnerHide();
+
+    if (errores.length) {
+      WMS.toast('warning', `${eliminados} eliminado(s), ${errores.length} con error:<br>${errores.join('<br>')}`);
+    } else {
+      WMS.toast('success', `${eliminados} pedido(s) eliminado(s) correctamente`);
+    }
+    this._asigSeleccionados.clear();
+    await this._cargarAsignacion();
   },
 
   _buildRangoPasillo(idx, auxOpts) {
@@ -5929,7 +6371,7 @@ WMS_MODULES.picking = {
   },
   
   _renderRankingTbody(rankingArray) {
-    if (!rankingArray || !rankingArray.length) return '<tr><td colspan="6" class="table-empty">No hay actividad registrada</td></tr>';
+    if (!rankingArray || !rankingArray.length) return '<tr><td colspan="7" class="table-empty">No hay actividad registrada</td></tr>';
     
     const r = [...rankingArray];
     const metric = this._currentRankingMetric || 'unidades';
@@ -5965,6 +6407,7 @@ WMS_MODULES.picking = {
           <td class="text-center"><span style="font-weight:900; color:#94a3b8">${i+1}</span></td>
           <td><b>${WMS.esc(a.nombre)}</b></td>
           <td class="text-center"><b>${a.pedidos}</b></td>
+          <td class="text-center"><span class="badge badge-light" style="border:1px solid #e2e8f0;">${a.sucursales ?? 0}</span></td>
           <td class="text-center"><b>${a.lineas}</b></td>
           <td class="text-center"><span class="badge badge-info">${WMS.formatNum(a.unidades)}</span></td>
           <td>
@@ -5975,7 +6418,23 @@ WMS_MODULES.picking = {
         </tr>`;
     }).join('');
   },
-  
+
+  // Fila de TOTAL GENERAL (todos los auxiliares del rango, no solo el top 10
+  // mostrado en la tabla) — pedidos/sucursales/líneas cuentan sin duplicar los
+  // compartidos entre auxiliares (a pedido explícito, 2026-09-13).
+  _renderRankingTotalRow(totales) {
+    if (!totales) return '';
+    return `<tr style="background:#f8fafc;border-top:2px solid #cbd5e1;">
+      <td></td>
+      <td><b style="color:#1e293b;">TOTAL GENERAL</b></td>
+      <td class="text-center"><b>${WMS.formatNum(totales.pedidos || 0)}</b></td>
+      <td class="text-center"><span class="badge badge-light" style="border:1px solid #e2e8f0;"><b>${WMS.formatNum(totales.sucursales || 0)}</b></span></td>
+      <td class="text-center"><b>${WMS.formatNum(totales.lineas || 0)}</b></td>
+      <td class="text-center"><span class="badge badge-info"><b>${WMS.formatNum(totales.unidades || 0)}</b></span></td>
+      <td></td>
+    </tr>`;
+  },
+
   _renderMatrixHtml(rankingArray) {
     if (!rankingArray || !rankingArray.length) return '';
     
@@ -6332,6 +6791,7 @@ WMS_MODULES.picking = {
       const tableRows = gruposVis.map(g => this._renderPlanillaRow(g, { isDashboard: true })).join('');
 
       this._currentRankingData = d.ranking_auxiliares || [];
+      this._currentRankingTotales = d.ranking_totales || null;
 
       // Tarjetas dinámicas por SUCURSAL (a pedido explícito, 2026-09-07): antes
       // "Por Iniciar/En Ejecución/Terminadas" contaban ÓRDENES por su estado
@@ -6434,12 +6894,12 @@ WMS_MODULES.picking = {
       <div class="card-header" style="background:#fef2f2;border-bottom:1px solid #fecaca;"><span class="card-title text-danger"><i class="fa-solid fa-triangle-exclamation"></i> Alerta de Faltantes Críticos</span></div>
       <div class="table-container" style="max-height:300px;">
         <table class="erp-table" style="font-size:11px;">
-          <thead style="background:#fff;"><tr><th>Producto</th><th class="text-center">Solic.</th><th class="text-center">H.Ini</th><th class="text-center">Planilla</th></tr></thead>
+          <thead style="background:#fff;"><tr><th>Producto</th><th class="text-center">Solic.</th><th class="text-center">H.Ini</th><th class="text-center">Sucursal</th></tr></thead>
           <tbody>${(d.alertas_faltantes||[]).length ? d.alertas_faltantes.map(f => `<tr>
             <td><b style="color:#1e293b">${WMS.esc(f.producto)}</b><br><span style="color:#94a3b8">${WMS.esc(f.ean)}</span></td>
             <td class="text-center"><span class="badge badge-danger">${f.solic}</span></td>
             <td class="text-center" style="font-family:monospace">${f.hora_ini ? f.hora_ini.substr(11,5) : '-'}</td>
-            <td class="text-center"><span class="badge badge-light" style="border:1px solid #e2e8f0;">#${f.planilla}</span></td>
+            <td class="text-center"><span class="badge badge-light" style="border:1px solid #e2e8f0;">${WMS.esc(f.sucursal)}</span></td>
           </tr>`).join('') : '<tr><td colspan="4" class="table-empty">Sin alertas de stock</td></tr>'}</tbody>
         </table>
       </div>
@@ -6473,8 +6933,9 @@ WMS_MODULES.picking = {
 
       <div class="table-container" style="max-height:300px;">
         <table class="erp-table">
-          <thead><tr><th>#</th><th>Auxiliar</th><th class="text-center">Pedidos</th><th class="text-center">Líneas</th><th class="text-center">Unid. Pick</th><th style="width:100px;">Desempeño</th></tr></thead>
+          <thead><tr><th>#</th><th>Auxiliar</th><th class="text-center">Pedidos</th><th class="text-center">Sucursales</th><th class="text-center">Líneas</th><th class="text-center">Unid. Pick</th><th style="width:100px;">Desempeño</th></tr></thead>
           <tbody id="ranking-tbody">${this._renderRankingTbody(this._currentRankingData)}</tbody>
+          <tfoot id="ranking-tfoot">${this._renderRankingTotalRow(this._currentRankingTotales)}</tfoot>
         </table>
       </div>
     </div>

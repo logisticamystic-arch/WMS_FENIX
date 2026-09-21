@@ -112,12 +112,20 @@ class TmsAuthMiddleware
                 return ['ok' => false, 'error' => 'API key inválida o revocada.'];
             }
 
-            // Throttled ultimo_uso: solo escribe si han pasado > 60 s
-            $lastUsed = strtotime($record->ultimo_uso ?? '2000-01-01');
+            // Throttled last_used_at: solo escribe si han pasado > 60 s.
+            // BUG CORREGIDO 2026-09-14: esta columna se llama `last_used_at`
+            // en la tabla real (ver migración de api_keys) — el nombre viejo
+            // `ultimo_uso` no existe, así que el UPDATE de abajo SIEMPRE
+            // lanzaba una excepción SQL real, capturada por el catch genérico
+            // de más abajo: cualquier request con una API key válida fallaba
+            // igual con "Error de autenticación interna". El sistema de API
+            // keys para TMS/YMS nunca había funcionado con una key real hasta
+            // este fix (encontrado al probar la integración YMS end-to-end).
+            $lastUsed = strtotime($record->last_used_at ?? '2000-01-01');
             if (time() - $lastUsed > 60) {
                 Capsule::table('api_keys')
                     ->where('id', $record->id)
-                    ->update(['ultimo_uso' => date('Y-m-d H:i:s')]);
+                    ->update(['last_used_at' => date('Y-m-d H:i:s')]);
             }
 
             return ['ok' => true, 'record' => $record];
