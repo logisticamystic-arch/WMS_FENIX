@@ -180,7 +180,7 @@ class TmsController extends BaseController
             'usuario_id'  => null,
             'modulo'      => 'TMS',
             'accion'      => 'DESPACHO_EN_TRANSITO',
-            'tabla'       => 'despachos',
+            'tabla_afectada'       => 'despachos',
             'registro_id' => $id,
             'descripcion' => 'TMS marcó despacho como En Tránsito. Tracking: ' . ($body['tracking_code'] ?? 'N/A'),
             'created_at'  => date('Y-m-d H:i:s'),
@@ -216,17 +216,26 @@ class TmsController extends BaseController
                 'created_at' => date('Y-m-d H:i:s'),
             ]);
 
-            // Process known events
+            // Process known events. Cada uno puede devolver datos extra para
+            // el llamador (p.ej. el consecutivo real de la devolución creada) —
+            // sin esto, DEVOLUCION_TMS respondía "recibido:true" incluso cuando
+            // la validación interna rechazaba la devolución, dejando al YMS sin
+            // forma de saber que en realidad no se creó nada.
+            $extra = [];
             switch ($evento) {
                 case 'ENTREGA_CONFIRMADA':
                     $this->_procesarEntregaConfirmada($empresaId, $payload);
                     break;
                 case 'DEVOLUCION_TMS':
-                    $this->_procesarDevolucionTms($empresaId, $payload);
+                    $resultado = $this->_procesarDevolucionTms($empresaId, $payload);
+                    if (!$resultado['ok']) {
+                        return $this->error($response, $resultado['message'], 422);
+                    }
+                    $extra = $resultado['data'];
                     break;
             }
 
-            return $this->tmsOk($response, ['evento' => $evento, 'recibido' => true]);
+            return $this->tmsOk($response, array_merge(['evento' => $evento, 'recibido' => true], $extra));
         } catch (\Exception $e) {
             error_log('TmsController::webhook error: ' . $e->getMessage());
             return $this->error($response, 'Error al procesar webhook.', 500);
@@ -255,7 +264,7 @@ class TmsController extends BaseController
         $keys = DB::table('api_keys')
             ->where('empresa_id', $empresaId)
             ->where('activo', 1)
-            ->select(['id', 'nombre', 'key_hash', 'permisos', 'activo', 'ultimo_uso', 'created_at'])
+            ->select(['id', 'nombre', 'key_hash', 'permisos', 'activo', 'last_used_at', 'created_at'])
             ->orderBy('created_at', 'desc')
             ->get()
             ->toArray();
@@ -316,25 +325,125 @@ class TmsController extends BaseController
 
     // ── Private event processors ──────────────────────────────────────────────
 
+    // Entrega confirmada en el punto de venta (YMS). A diferencia del despacho
+    // agregado (una ruta con varias sucursales), esto es POR PEDIDO — el
+    // auxiliar de ruta certifica y firma un pedido a la vez. despacho_id es
+    // opcional (solo si el YMS también sabe a qué ruta pertenece); orden_picking_id
+    // es lo que de verdad cierra el pedido individual en el WMS.
     private function _procesarEntregaConfirmada(int $empresaId, array $payload): void
     {
-        $despachoId = (int)($payload['despacho_id'] ?? 0);
-        if (!$despachoId) return;
+        $despachoId       = (int)($payload['despacho_id'] ?? 0);
+        $ordenPickingId   = (int)($payload['orden_picking_id'] ?? 0);
+        $fecha            = $payload['fecha'] ?? date('Y-m-d H:i:s');
 
-        DB::table('despachos')
-            ->where('id', $despachoId)
+        if ($despachoId) {
+            DB::table('despachos')
+                ->where('id', $despachoId)
+                ->where('empresa_id', $empresaId)
+                ->update([
+                    'estado'            => 'Entregado',
+                    'tms_entregado_at'  => $fecha,
+                    'updated_at'        => date('Y-m-d H:i:s'),
+                ]);
+        }
+
+        if (!$ordenPickingId) return;
+
+        $orden = DB::table('orden_pickings')
+            ->where('id', $ordenPickingId)
             ->where('empresa_id', $empresaId)
-            ->update([
-                'estado'        => 'Entregado',
-                'tms_entregado_at' => $payload['fecha'] ?? date('Y-m-d H:i:s'),
-                'updated_at'    => date('Y-m-d H:i:s'),
-            ]);
+            ->first();
+        if (!$orden) return;
+
+        // Mismo criterio de "pedido entregado" que usa DespachoController::liquidar()
+        // — se reusa aquí en vez de duplicar la transición de estado.
+        DB::table('orden_pickings')
+            ->where('id', $ordenPickingId)
+            ->update(['estado_despacho' => 'Entregado']);
+
+        // Tracking de tiempos + firma — no existía ningún lugar para esto antes
+        // del flujo de entrega en punto de venta (YMS).
+        DB::table('entregas_ruta')->insert([
+            'empresa_id'                => $empresaId,
+            'orden_picking_id'          => $ordenPickingId,
+            'despacho_id'               => $despachoId ?: null,
+            'hora_llegada'              => $payload['hora_llegada'] ?? null,
+            'hora_inicio_certificacion' => $payload['hora_inicio_certificacion'] ?? null,
+            'hora_fin'                  => $payload['hora_fin'] ?? $fecha,
+            'firma'                     => $payload['firma'] ?? null,
+            'auxiliar_nombre_ruta'      => $payload['auxiliar_nombre'] ?? null,
+            'created_at'                => date('Y-m-d H:i:s'),
+        ]);
     }
 
-    private function _procesarDevolucionTms(int $empresaId, array $payload): void
+    // Devolución registrada en el punto de venta (YMS). Crea la devolución con
+    // la MISMA numeración/consecutivo real que el módulo de Devoluciones del
+    // WMS ya usa — nunca un consecutivo inventado por el YMS — reusando
+    // DevolucionController::crearDesdeIntegracion() en vez de duplicar la
+    // lógica de creación. Queda 'Pendiente' para el mismo triage de calidad
+    // (procesar()) que ya usan las devoluciones manuales; no se auto-aprueba.
+    private function _procesarDevolucionTms(int $empresaId, array $payload): array
     {
-        // Placeholder: insert a pre-registered devolucion record
-        // Full logic would mirror DevolucionController::store
+        $sucursalId = (int)($payload['sucursal_id'] ?? 0);
+        if (!$sucursalId) {
+            $sucursalId = (int)(DB::table('orden_pickings')
+                ->where('id', (int)($payload['orden_picking_id'] ?? 0))
+                ->value('sucursal_id') ?? 0);
+        }
+        if (!$sucursalId) {
+            return ['ok' => false, 'message' => 'No se pudo determinar la sucursal (sucursal_id u orden_picking_id inválidos).'];
+        }
+
+        // El auxiliar de ruta es un usuario del YMS, no necesariamente tiene
+        // cuenta en `personal` del WMS — si el payload trae un auxiliar_id
+        // válido se usa (trazabilidad real), si no, se cae a cualquier Admin
+        // activo de la empresa como responsable técnico del registro; el
+        // nombre real del auxiliar queda igual en motivo_general.
+        $auxiliarId = (int)($payload['auxiliar_id'] ?? 0);
+        $auxiliarValido = $auxiliarId && DB::table('personal')
+            ->where('id', $auxiliarId)->where('empresa_id', $empresaId)->where('activo', 1)->exists();
+        if (!$auxiliarValido) {
+            $auxiliarId = (int)(DB::table('personal')
+                ->where('empresa_id', $empresaId)->where('rol', 'Admin')->where('activo', 1)
+                ->orderBy('id')->value('id') ?? 0);
+        }
+        if (!$auxiliarId) {
+            return ['ok' => false, 'message' => 'No hay ningún usuario Admin activo en el WMS para asignar como responsable técnico.'];
+        }
+
+        $auxNombre = trim((string)($payload['auxiliar_nombre'] ?? ''));
+        $motivo    = 'Devolución en punto de venta (YMS)'
+            . ($auxNombre !== '' ? " — reportada por {$auxNombre}" : '');
+
+        $detalles = is_array($payload['detalles'] ?? null) ? $payload['detalles'] : [];
+
+        try {
+            $devCtrl = new DevolucionController();
+            [$devId, $numero, $consecutivo] = $devCtrl->crearDesdeIntegracion(
+                $empresaId,
+                $sucursalId,
+                $auxiliarId,
+                'cliente',
+                $motivo,
+                $detalles,
+                !empty($payload['causal_devolucion_id']) ? (int)$payload['causal_devolucion_id'] : null,
+                $payload['orden_picking_id'] ?? null
+            );
+            DB::table('audit_logs')->insert([
+                'empresa_id'  => $empresaId,
+                'usuario_id'  => null,
+                'modulo'      => 'TMS',
+                'accion'      => 'DEVOLUCION_YMS',
+                'tabla_afectada'       => 'devoluciones',
+                'registro_id' => $devId,
+                'descripcion' => "Devolución #{$consecutivo} ({$numero}) creada desde YMS.",
+                'created_at'  => date('Y-m-d H:i:s'),
+            ]);
+            return ['ok' => true, 'data' => ['devolucion_id' => $devId, 'numero' => $numero, 'consecutivo' => $consecutivo]];
+        } catch (\InvalidArgumentException $e) {
+            error_log('TmsController::_procesarDevolucionTms rechazada: ' . $e->getMessage());
+            return ['ok' => false, 'message' => $e->getMessage()];
+        }
     }
 
     // ── TMS response envelope ─────────────────────────────────────────────────
