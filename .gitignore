@@ -36,9 +36,7 @@ Thumbs.db
 *.swo
 
 # ── Uploads generados por usuarios ───────────────────────────
-public/uploads/devoluciones/*.jpg
-public/uploads/devoluciones/*.png
-public/uploads/devoluciones/*.jpeg
+public/uploads/devoluciones/
 public/uploads/firmas/
 
 # ── Proyectos legacy ─────────────────────────────────────────
@@ -67,7 +65,7 @@ WMS FENIX/
 /delete_old_picking.php
 
 # ── Scripts de scratch con credenciales de BD hardcodeadas ────
-scratch/test_db_prod*.php
+scratch/test_db*.php
 
 # ── Herramienta de túnel (binario, no código) ──────────────────
 /cloudflared.exe
