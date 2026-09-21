@@ -1155,9 +1155,19 @@ WMS_MODULES.inventario = {
           <div id="asig-list" style="display:flex;flex-direction:column;gap:10px;max-height:260px;overflow-y:auto;">
             <!-- Se agrega dinámicamente -->
           </div>
-          <button class="btn btn-sm btn-outline-primary mt-8" onclick="WMS_MODULES.inventario._addAsigRow(${JSON.stringify(auxiliares).replace(/"/g,'&quot;')})">
-            <i class="fa-solid fa-plus"></i> Agregar auxiliar
-          </button>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <button class="btn btn-sm btn-outline-primary mt-8" onclick="WMS_MODULES.inventario._addAsigRow(${JSON.stringify(auxiliares).replace(/"/g,'&quot;')})">
+              <i class="fa-solid fa-plus"></i> Agregar auxiliar
+            </button>
+            <button class="btn btn-sm btn-outline-success mt-8" onclick="document.getElementById('asig-import-file').click()">
+              <i class="fa-solid fa-file-import"></i> Importar archivo (referencias + auxiliar)
+            </button>
+            <input type="file" id="asig-import-file" accept=".csv,.txt" style="display:none;" onchange="WMS_MODULES.inventario._importarReferenciasArchivo(this)">
+            <a href="#" class="mt-8" style="font-size:.75rem;" onclick="WMS_MODULES.inventario._descargarPlantillaReferencias();return false;">
+              <i class="fa-solid fa-download"></i> Plantilla
+            </a>
+          </div>
+          <div id="asig-import-status" style="font-size:.78rem;margin-top:6px;"></div>
         </div>`,
 
         `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
@@ -1166,8 +1176,96 @@ WMS_MODULES.inventario = {
          </button>`);
 
       // Agregar primera fila de asignación automáticamente
+      this._nuevoConteoAuxiliares = auxiliares; // usado por _importarReferenciasArchivo
       this._addAsigRow(auxiliares);
     } catch(e) { WMS.toast('error', 'Error cargando auxiliares'); }
+  },
+
+  // Importar referencias + auxiliar desde archivo (.csv/.txt) — a pedido
+  // explícito de Camilo (2026-09-15): al crear un conteo cíclico "por
+  // referencia" se debe poder cargar de una vez las referencias Y quién las
+  // va a contar, en vez de pegar códigos fila por fila. El backend
+  // (importarReferenciasArchivo) ya agrupa por auxiliar y resuelve los
+  // productos; acá solo se pintan las filas de asignación resultantes.
+  async _importarReferenciasArchivo(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    const status = document.getElementById('asig-import-status');
+    if (status) status.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Procesando archivo...';
+
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const token = localStorage.getItem('wms_token') || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+      const baseUrl = (typeof API_BASE !== 'undefined' ? API_BASE : (API.BASE_URL || '/WMS_FENIX/public/api'));
+      const resp = await fetch(`${baseUrl}/v2/inventario/importar-referencias-archivo`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token },
+        body: formData,
+      });
+      const json = await resp.json();
+      if (!resp.ok || json.error) throw new Error(json.message || 'No se pudo procesar el archivo');
+
+      const { asignaciones = [], auxiliares_no_encontrados = [], total_filas = 0 } = json.data || {};
+      const auxiliares = this._nuevoConteoAuxiliares || [];
+
+      asignaciones.forEach(grupo => {
+        this._addAsigRow(auxiliares);
+        const row = document.getElementById('asig-list').lastElementChild;
+        if (!row) return;
+
+        const auxSel = row.querySelector('.asig-aux');
+        if (auxSel) auxSel.value = String(grupo.auxiliar_id);
+
+        const tipoSel = row.querySelector('.asig-tipo');
+        if (tipoSel) { tipoSel.value = 'Referencia'; this._toggleAsigDetalle(tipoSel); }
+
+        const listInp = row.querySelector('.asig-prod-list');
+        const ids = (grupo.productos || []).map(p => p.id);
+        if (listInp) listInp.value = ids.length ? JSON.stringify(ids) : '';
+        row.dataset.refProducts = JSON.stringify(grupo.productos || []);
+
+        const counter = row.querySelector('.asig-ref-counter');
+        if (counter) {
+          counter.style.display = ids.length ? 'inline-block' : 'none';
+          counter.textContent = `${ids.length} ref. listas`;
+        }
+        this._renderRefBadges(row, grupo.productos || []);
+
+        if (grupo.codigos_no_encontrados?.length) {
+          const statusEl = row.querySelector('.asig-masivo-status');
+          if (statusEl) statusEl.innerHTML = `<span class="text-warning">${grupo.codigos_no_encontrados.length} código(s) del archivo no encontrados: ${WMS.esc(grupo.codigos_no_encontrados.join(', '))}</span>`;
+        }
+      });
+
+      let msg = `<span class="text-success"><b>${asignaciones.length}</b> auxiliar(es) cargados desde ${total_filas} fila(s) del archivo.</span>`;
+      if (auxiliares_no_encontrados.length) {
+        msg += `<br><span class="text-warning"><i class="fa-solid fa-triangle-exclamation"></i> No se encontró ningún auxiliar (por documento o nombre) para: ${WMS.esc(auxiliares_no_encontrados.join(', '))}. Esas filas no se cargaron.</span>`;
+      }
+      if (status) status.innerHTML = msg;
+      WMS.toast(auxiliares_no_encontrados.length ? 'warning' : 'success', `Archivo procesado: ${asignaciones.length} auxiliar(es).`);
+    } catch (e) {
+      if (status) status.innerHTML = `<span class="text-danger">${WMS.esc(e.message)}</span>`;
+      WMS.toast('error', e.message || 'Error importando el archivo');
+    } finally {
+      input.value = '';
+    }
+  },
+
+  _descargarPlantillaReferencias() {
+    // BUG CORREGIDO 2026-09-17: la descarga por Blob + <a download> llegaba
+    // con un nombre UUID genérico y SIN extensión en un Chrome corporativo/
+    // gestionado (visto en vivo, repetidas veces, con "MS Fénix | Enterprise"
+    // en la pestaña) — ese tipo de descarga programática por lo visto la
+    // intercepta la política de descargas de la empresa, que no toca los
+    // archivos servidos por una respuesta HTTP real con Content-Disposition
+    // (diferir la revocación del Blob URL NO fue suficiente para evitarlo).
+    // Se cambia a servir la plantilla desde el backend (mismo patrón ya
+    // probado que usa "Exportar Excel" del dashboard, que sí descarga con el
+    // nombre correcto) — así el nombre de archivo llega intacto.
+    const token = localStorage.getItem('wms_token') || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+    const baseUrl = (typeof API_BASE !== 'undefined' ? API_BASE : (API.BASE_URL || '/WMS_FENIX/public/api'));
+    window.open(`${baseUrl}/v2/inventario/plantilla-referencias?token=${encodeURIComponent(token)}`, '_blank');
   },
 
   _toggleComparar(num) {
@@ -5025,9 +5123,12 @@ WMS_MODULES.inventario = {
         wrap.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:24px;font-style:italic;">No hay ajustes pendientes de aprobación.</p>';
         return;
       }
-      const tipoBadge = (tipo) => tipo === 'AgregarInventario'
-        ? '<span style="background:#dcfce7;color:#065f46;border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-plus"></i> Agregar</span>'
-        : '<span style="background:#fef3c7;color:#92400e;border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-rotate-left"></i> Ajuste Completo</span>';
+      const tipoBadge = (tipo) => {
+        if (tipo === 'AgregarInventario') return '<span style="background:#dcfce7;color:#065f46;border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-plus"></i> Agregar</span>';
+        if (tipo === 'AjustarCantidad')   return '<span style="background:#dbeafe;color:#1e3a8a;border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-pen-to-square"></i> Ajustar Cantidad</span>';
+        if (tipo === 'AjusteCero')        return '<span style="background:#fee2e2;color:#991b1b;border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-ban"></i> Ajustar a Cero</span>';
+        return '<span style="background:#fef3c7;color:#92400e;border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-rotate-left"></i> Ajuste Completo</span>';
+      };
       wrap.innerHTML = `
         <div class="table-container">
           <table class="data-table">
@@ -5148,6 +5249,9 @@ WMS_MODULES.inventario = {
           }).join('')}
           </tbody>
         </table>`;
+      const detHtmlFinal = (ajuste.tipo === 'AjusteCero')
+        ? '<p style="color:#94a3b8;font-style:italic;font-size:.85rem;">Sin referencias que agregar — este modo solo pone en cero lo que ya está en la ubicación (columna izquierda).</p>'
+        : detHtml;
 
       const estadoBadge = {
         Pendiente: '<span style="background:#fef3c7;color:#92400e;padding:2px 10px;border-radius:99px;font-weight:700;">Pendiente</span>',
@@ -5155,24 +5259,47 @@ WMS_MODULES.inventario = {
         Rechazado: '<span style="background:#fee2e2;color:#991b1b;padding:2px 10px;border-radius:99px;font-weight:700;">Rechazado</span>',
       }[ajuste.estado] || ajuste.estado;
 
-      const esAgregar = ajuste.tipo === 'AgregarInventario';
-      const tipoLabel = esAgregar
-        ? '<span style="background:#dcfce7;color:#065f46;border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-plus"></i> Agregar Inventario</span>'
-        : '<span style="background:#fef3c7;color:#92400e;border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-rotate-left"></i> Ajuste Completo</span>';
-      const invLabel = esAgregar
-        ? '<i class="fa-solid fa-database"></i> Inventario Actual (se conservará + se sumará)'
-        : '<i class="fa-solid fa-database"></i> Inventario Actual (será eliminado al aprobar)';
-      const detLabel = esAgregar
-        ? '<i class="fa-solid fa-plus"></i> Stock a Agregar'
-        : '<i class="fa-solid fa-clipboard-check"></i> Conteo del Auxiliar';
-      const warningHtml = esAgregar
-        ? `<div style="background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:#065f46;">
+      const esAgregar         = ajuste.tipo === 'AgregarInventario';
+      const esAjustarCantidad = ajuste.tipo === 'AjustarCantidad';
+      const esCero             = ajuste.tipo === 'AjusteCero';
+      let tipoLabel, invLabel, detLabel, warningHtml, btnAprobarLabel, btnColor;
+      if (esCero) {
+        tipoLabel   = '<span style="background:#fee2e2;color:#991b1b;border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-ban"></i> Ajustar a Cero</span>';
+        invLabel    = '<i class="fa-solid fa-database"></i> Inventario Actual (se pondrá en cero)';
+        detLabel    = '<i class="fa-solid fa-ban"></i> Sin Referencias a Agregar';
+        warningHtml = `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:#991b1b;">
+             <i class="fa-solid fa-triangle-exclamation"></i> <b>Al aprobar:</b> todo el inventario actual de esta ubicación se eliminará (AjusteNegativo en Kardex). No se crea nada nuevo. Las demás ubicaciones con estas referencias <b>no se afectan</b>. Esta acción es <b>irreversible</b>.
+           </div>`;
+        btnAprobarLabel = 'Aprobar Ajuste a Cero';
+        btnColor    = '#dc2626';
+      } else if (esAgregar) {
+        tipoLabel   = '<span style="background:#dcfce7;color:#065f46;border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-plus"></i> Agregar Inventario</span>';
+        invLabel    = '<i class="fa-solid fa-database"></i> Inventario Actual (se conservará + se sumará)';
+        detLabel    = '<i class="fa-solid fa-plus"></i> Stock a Agregar';
+        warningHtml = `<div style="background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:#065f46;">
              <i class="fa-solid fa-circle-info"></i> <b>Al aprobar:</b> las referencias indicadas se <b>SUMARÁN</b> al inventario existente en la ubicación. El stock previo <b>no se elimina</b>. Se registra AjustePositivo en Kardex.
-           </div>`
-        : `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:#92400e;">
+           </div>`;
+        btnAprobarLabel = 'Aprobar y Agregar';
+        btnColor    = '#059669';
+      } else if (esAjustarCantidad) {
+        tipoLabel   = '<span style="background:#dbeafe;color:#1e3a8a;border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-pen-to-square"></i> Ajustar Cantidad</span>';
+        invLabel    = '<i class="fa-solid fa-database"></i> Inventario Actual (referencia)';
+        detLabel    = '<i class="fa-solid fa-clipboard-check"></i> Cantidad Corregida por el Auxiliar';
+        warningHtml = `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:#1e3a8a;">
+             <i class="fa-solid fa-circle-info"></i> <b>Al aprobar:</b> se corrige la cantidad de cada partida al valor indicado (sin borrar ni agregar referencias). La diferencia se registra en Kardex como <b>AjustePositivo</b> (si sube) o <b>AjusteNegativo</b> (si baja).
+           </div>`;
+        btnAprobarLabel = 'Aprobar Corrección';
+        btnColor    = '#2563eb';
+      } else {
+        tipoLabel   = '<span style="background:#fef3c7;color:#92400e;border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-rotate-left"></i> Ajuste Completo</span>';
+        invLabel    = '<i class="fa-solid fa-database"></i> Inventario Actual (será eliminado al aprobar)';
+        detLabel    = '<i class="fa-solid fa-clipboard-check"></i> Conteo del Auxiliar';
+        warningHtml = `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:#92400e;">
              <i class="fa-solid fa-triangle-exclamation"></i> <b>Al aprobar:</b> el inventario actual de la ubicación se eliminará (AjusteSalida en Kardex) y se creará el inventario contado (AjusteEntrada en Kardex). Esta acción es <b>irreversible</b>.
            </div>`;
-      const btnAprobarLabel = esAgregar ? 'Aprobar y Agregar' : 'Aprobar Ajuste';
+        btnAprobarLabel = 'Aprobar Ajuste';
+        btnColor    = '#0F4C81';
+      }
 
       body.innerHTML = `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;font-size:.85rem;">
@@ -5192,10 +5319,10 @@ WMS_MODULES.inventario = {
             ${invHtml}
           </div>
           <div>
-            <div style="font-weight:700;color:${esAgregar ? '#059669' : '#0891b2'};font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">
+            <div style="font-weight:700;color:${btnColor};font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">
               ${detLabel}
             </div>
-            ${detHtml}
+            ${detHtmlFinal}
           </div>
         </div>
 
@@ -5208,7 +5335,7 @@ WMS_MODULES.inventario = {
           <button class="btn btn-danger" onclick="WMS_MODULES.inventario._ajusteUbiRechazar(${id})">
             <i class="fa-solid fa-xmark"></i> Rechazar
           </button>
-          <button class="btn btn-success" onclick="WMS_MODULES.inventario._ajusteUbiAprobar(${id},'${ajuste.tipo||'AjusteCompleto'}',this)" style="background:${esAgregar ? '#059669' : '#0F4C81'};">
+          <button class="btn btn-success" onclick="WMS_MODULES.inventario._ajusteUbiAprobar(${id},'${ajuste.tipo||'AjusteCompleto'}',this)" style="background:${btnColor};">
             <i class="fa-solid fa-check"></i> ${btnAprobarLabel}
           </button>
         </div>

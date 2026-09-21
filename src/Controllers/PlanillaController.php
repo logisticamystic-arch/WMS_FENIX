@@ -65,13 +65,17 @@ class PlanillaController extends BaseController
         // Cruce retroactivo con orden_pickings: si TODAS las órdenes de ese número de planilla
         // están Certificadas en el flujo directo, forzar estado_cert = 'Completada' aunque
         // cert_planillas no haya sido actualizado todavía (ej. por el bug hora_fin previo).
+        // Una orden ya despachada (por ruta o por retiro directo) también cuenta como resuelta
+        // aquí, aunque su estado_certificacion se haya quedado atrás — si no, esa planilla
+        // reaparece como "pendiente" para siempre en la certificación móvil (pedido fantasma
+        // ya despachado, auditoría 2026-09-11).
         $planillaNumeros  = $planillas->pluck('numero_planilla')->toArray();
         $certOrdenes = DB::table('orden_pickings')
             ->whereIn('planilla_numero', $planillaNumeros)
             ->where('empresa_id', $archivo->empresa_id)
             ->select(
                 'planilla_numero',
-                DB::raw("MIN(CASE WHEN estado_certificacion = 'Certificada' THEN 1 ELSE 0 END) as todo_cert")
+                DB::raw("MIN(CASE WHEN estado_certificacion = 'Certificada' OR estado_despacho IS NOT NULL OR despachado_directo = true THEN 1 ELSE 0 END) as todo_cert")
             )
             ->groupBy('planilla_numero')
             ->get()

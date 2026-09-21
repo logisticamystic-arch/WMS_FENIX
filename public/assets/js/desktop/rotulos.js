@@ -1076,12 +1076,15 @@ WMS_MODULES.rotulos = {
       payload.fd       = fd;
       payload.copias   = copias;
     } else if (tipo === 'sucursal') {
-      const suc = this._getSucursalSeleccionada();
-      if (!suc) return WMS.toast('warning', 'Seleccione una sucursal / cliente');
+      // Nota: la impresora térmica IP aún imprime solo texto — si el check de QR
+      // está activado, el texto se envía igual (como nombre) pero NO se convierte
+      // en QR aquí; el QR solo se genera en "Imprimir (Navegador)".
+      const { nombre, codigo, tieneContenido } = this._getContenidoRotuloSucursal();
+      if (!tieneContenido) return WMS.toast('warning', 'Seleccione una sucursal / cliente o escriba un texto');
       const copias = parseInt(document.getElementById('rotsuc-copias')?.value || 1);
       payload.tipo   = 'sucursal';
-      payload.nombre = suc.nombre;
-      payload.codigo = suc.codigo;
+      payload.nombre = nombre;
+      payload.codigo = codigo;
       payload.copias = copias;
     } else {
       const sel = document.getElementById('rotub-sel');
@@ -1488,6 +1491,28 @@ WMS_MODULES.rotulos = {
               </div>
             </div>
 
+            <!-- Texto personalizado (opcional) -->
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
+              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
+                <i class="fa-solid fa-font" style="color:#0F4C81;"></i> Texto Personalizado (opcional)
+              </div>
+              <div style="max-width:500px;">
+                <input id="rotsuc-texto-libre" type="text" class="form-control" maxlength="80"
+                       placeholder="Escriba un texto libre para el rótulo…"
+                       oninput="WMS_MODULES.rotulos._actualizarPreviewSucursal()">
+              </div>
+              <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;font-size:.82rem;color:#334155;">
+                <input type="checkbox" id="rotsuc-texto-qr"
+                       onchange="WMS_MODULES.rotulos._actualizarPreviewSucursal()">
+                Convertir el texto en código QR
+              </label>
+              <div style="font-size:.75rem;color:#64748b;margin-top:8px;">
+                <i class="fa-solid fa-circle-info"></i> Si escribe un texto aquí, reemplaza a la sucursal/cliente seleccionada arriba
+                y se ajusta automáticamente a las dimensiones actuales del rótulo. Con el check activado, en vez de texto se
+                imprime un código QR con lo digitado (solo en "Imprimir (Navegador)" — la impresión térmica IP aún no genera QR).
+              </div>
+            </div>
+
             <!-- Acciones -->
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
               <button class="btn btn-outline-primary" onclick="WMS_MODULES.rotulos._previsualizarSucursal()">
@@ -1522,6 +1547,18 @@ WMS_MODULES.rotulos = {
     const opt = sel?.options[sel.selectedIndex];
     if (!opt || !opt.value) return null;
     return { nombre: opt.dataset.nombre || '', codigo: opt.dataset.codigo || '' };
+  },
+
+  // A pedido explícito (2026-09-18): un texto libre escrito en "Texto Personalizado"
+  // reemplaza a la sucursal/cliente seleccionada — si además está marcado el check,
+  // ese texto se imprime como código QR en vez de como texto ajustado al rótulo.
+  _getContenidoRotuloSucursal() {
+    const suc        = this._getSucursalSeleccionada();
+    const textoLibre = document.getElementById('rotsuc-texto-libre')?.value.trim() || '';
+    const esQR       = !!document.getElementById('rotsuc-texto-qr')?.checked;
+    const nombre     = textoLibre || suc?.nombre || '';
+    const codigo     = textoLibre ? '' : (suc?.codigo || '');
+    return { nombre, codigo, esQR, tieneContenido: !!(textoLibre || suc) };
   },
 
   _pxPerMm: 96 / 25.4,
@@ -1591,7 +1628,25 @@ WMS_MODULES.rotulos = {
     return pt * 96 / 72;
   },
 
-  _buildRotuloSucursal(nombre, codigo, anchomm, altomm) {
+  _buildRotuloSucursal(nombre, codigo, anchomm, altomm, esQR = false) {
+    // A pedido explícito (2026-09-18): modo QR — el texto digitado se codifica como QR
+    // en vez de mostrarse como texto; el QR se centra y se ajusta a las dimensiones
+    // actuales del rótulo (igual criterio de tamaño que ya usan los rótulos de
+    // ubicación). El renderizado real del QR (SVG/img) lo hace _renderQRCodes()
+    // sobre el data-value de este div, tanto en la vista previa como al imprimir.
+    if (esQR) {
+      const qrSizeMm = Math.max(4, Math.min(anchomm, altomm) - 4);
+      return `
+        <div class="wms-label-single wms-label-sucursal" style="width:${anchomm}mm;height:${altomm}mm;
+          display:flex;align-items:center;justify-content:center;
+          box-sizing:border-box;background:#fff;overflow:hidden;flex-shrink:0;
+          padding:2mm;border:0.5mm solid #000;border-radius:2mm;
+          margin:0;page-break-after:always;">
+          <div class="rot-qr" data-value="${WMS.esc(nombre)}"
+               style="width:${qrSizeMm}mm;height:${qrSizeMm}mm;flex-shrink:0;display:flex;align-items:center;justify-content:center;"></div>
+        </div>`;
+    }
+
     const nombreUpper   = (nombre || '').toUpperCase().trim();
     const codigoMostrado = !!codigo && codigo.trim().toUpperCase() !== nombreUpper;
     const headerFontPt  = Math.max(6, Math.round(altomm * 0.14));
@@ -1645,15 +1700,16 @@ WMS_MODULES.rotulos = {
   },
 
   _actualizarPreviewSucursal() {
-    const suc     = this._getSucursalSeleccionada();
+    const { nombre, codigo, esQR } = this._getContenidoRotuloSucursal();
     const ancho   = parseInt(document.getElementById('rotsuc-ancho')?.value || 60);
     const alto    = parseInt(document.getElementById('rotsuc-alto')?.value  || 30);
 
     const area = document.getElementById('rotsuc-preview-area');
     const cont = document.getElementById('rotsuc-preview-container');
     if (!area || !cont) return;
-    cont.innerHTML = this._buildRotuloSucursal(suc?.nombre || '', suc?.codigo || '', ancho, alto);
+    cont.innerHTML = this._buildRotuloSucursal(nombre, codigo, ancho, alto, esQR);
     area.style.display = 'block';
+    if (esQR) this._renderQRCodes(cont);
   },
 
   _previsualizarSucursal() {
@@ -1662,28 +1718,28 @@ WMS_MODULES.rotulos = {
   },
 
   _imprimirSucursal() {
-    const suc = this._getSucursalSeleccionada();
-    if (!suc) return WMS.toast('warning', 'Seleccione una sucursal / cliente');
+    const { nombre, codigo, esQR, tieneContenido } = this._getContenidoRotuloSucursal();
+    if (!tieneContenido) return WMS.toast('warning', 'Seleccione una sucursal / cliente o escriba un texto');
 
     const ancho  = parseInt(document.getElementById('rotsuc-ancho')?.value  || 60);
     const alto   = parseInt(document.getElementById('rotsuc-alto')?.value   || 30);
     const copias = parseInt(document.getElementById('rotsuc-copias')?.value || 1);
 
     const labels = [];
-    for (let i = 0; i < copias; i++) labels.push(suc);
-    const html = this._buildDualColumnHTMLSucursal(labels, ancho, alto);
+    for (let i = 0; i < copias; i++) labels.push({ nombre, codigo });
+    const html = this._buildDualColumnHTMLSucursal(labels, ancho, alto, esQR);
     this._imprimir(html, ancho, alto, { dualColumn: true });
   },
 
-  _buildDualColumnHTMLSucursal(labels, anchomm, altomm) {
+  _buildDualColumnHTMLSucursal(labels, anchomm, altomm, esQR = false) {
     let html = '';
     for (let i = 0; i < labels.length; i += 2) {
       const left  = labels[i];
       const right = labels[i + 1];
       html += `<div class="wms-label-row" style="display:flex;flex-wrap:nowrap;page-break-after:always;">`;
-      html += this._buildRotuloSucursal(left.nombre, left.codigo, anchomm, altomm);
+      html += this._buildRotuloSucursal(left.nombre, left.codigo, anchomm, altomm, esQR);
       if (right) {
-        html += this._buildRotuloSucursal(right.nombre, right.codigo, anchomm, altomm);
+        html += this._buildRotuloSucursal(right.nombre, right.codigo, anchomm, altomm, esQR);
       }
       html += `</div>`;
     }

@@ -2367,6 +2367,7 @@ canvas {
   --pro-grad-red:   linear-gradient(135deg,#e03030 0%,#b00020 100%);
   --pro-grad-purple:linear-gradient(135deg,#7c3aed 0%,#5b21b6 100%);
   --pro-grad-teal:  linear-gradient(135deg,#0891b2 0%,#0e7490 100%);
+  --pro-grad-gray:  linear-gradient(135deg,#64748b 0%,#475569 100%);
   --pro-glass:      rgba(255,255,255,.72);
   --pro-glass-border:rgba(255,255,255,.5);
   --pro-surface:    #f4f6fb;
@@ -2473,6 +2474,7 @@ canvas {
 .pro-kpi-card.accent-red    { --kpi-accent: var(--pro-grad-red); }
 .pro-kpi-card.accent-purple { --kpi-accent: var(--pro-grad-purple); }
 .pro-kpi-card.accent-teal   { --kpi-accent: var(--pro-grad-teal); }
+.pro-kpi-card.accent-gray   { --kpi-accent: var(--pro-grad-gray); }
 
 .pro-kpi-header {
   display: flex;
@@ -2492,6 +2494,7 @@ canvas {
 .accent-red    .pro-kpi-icon { background: rgba(224,48,48,.1); color: #e03030; }
 .accent-purple .pro-kpi-icon { background: rgba(124,58,237,.1);color: #7c3aed; }
 .accent-teal   .pro-kpi-icon { background: rgba(8,145,178,.1); color: #0891b2; }
+.accent-gray   .pro-kpi-icon { background: rgba(100,116,139,.12); color: #64748b; }
 
 .pro-kpi-trend {
   font-size: .72rem;

@@ -15,8 +15,10 @@ class AjusteUbicacion extends BaseModel
     const ESTADO_APROBADO  = 'Aprobado';
     const ESTADO_RECHAZADO = 'Rechazado';
 
-    const TIPO_AJUSTE_COMPLETO   = 'AjusteCompleto';
+    const TIPO_AJUSTE_COMPLETO    = 'AjusteCompleto';
     const TIPO_AGREGAR_INVENTARIO = 'AgregarInventario';
+    const TIPO_AJUSTAR_CANTIDAD   = 'AjustarCantidad';
+    const TIPO_AJUSTE_CERO        = 'AjusteCero';
 
     protected $fillable = [
         'empresa_id', 'sucursal_id', 'ubicacion_id', 'auxiliar_id',

@@ -119,9 +119,20 @@ table.tv tbody tr:hover td{background:#f8fafc;}
 .pick-top{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;flex-shrink:0;}
 .pick-top .kpi-value{font-size:15px;}
 .pick-main{flex:1;min-height:0;display:flex;gap:5px;}
-.pick-left{width:54%;display:flex;flex-direction:column;gap:5px;}
-.pick-podiums{display:flex;gap:5px;flex:1;min-height:0;}
+.pick-left{width:30%;min-width:220px;display:flex;flex-direction:column;gap:5px;}
 .pick-right{flex:1;display:flex;flex-direction:column;}
+
+/* Ranking matriz (reemplaza los podios) */
+.rank-matrix{flex:1;min-height:0;overflow-y:auto;}
+.rank-matrix table.tv th.sortable{cursor:pointer;}
+.rank-matrix table.tv th.sortable.sorted{color:var(--blue);}
+
+/* Ambiente — donuts interactivos */
+.amb-donuts{display:flex;gap:6px;justify-content:space-around;}
+.amb-donut-slot{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:3px 4px;border-radius:6px;border:1px solid transparent;transition:all .15s;flex:1;}
+.amb-donut-slot:hover{background:#f1f5f9;}
+.amb-donut-slot.active{background:var(--blue-lt);border-color:#bfdbfe;}
+.amb-donut-slot svg{transform:rotate(-90deg);}
 
 /* Podium */
 .podium-card{flex:1;display:flex;flex-direction:column;overflow:hidden;}
@@ -154,13 +165,17 @@ table.tv tbody tr:hover td{background:#f8fafc;}
 
 /* ─── TAB 3: AGOTADOS ─── */
 .agot-layout{display:flex;flex-direction:column;height:100%;gap:5px;padding:5px 7px;}
-.agot-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;flex-shrink:0;}
-.agot-kpis .kpi-value{font-size:15px;}
+.agot-kpis{display:flex;flex-direction:column;gap:3px;flex-shrink:0;}
+.agot-kpis .kpi-card{padding:4px 10px;}
+.agot-kpis .kpi-icon{width:24px;height:24px;font-size:10px;}
+.agot-kpis .kpi-value{font-size:13px;}
 
 /* ─── TAB 4: ALERTAS ─── */
 .alert-layout{display:flex;flex-direction:column;height:100%;gap:5px;padding:5px 7px;}
-.alert-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;flex-shrink:0;}
-.alert-kpis .kpi-value{font-size:15px;}
+.alert-kpis{display:flex;flex-direction:column;gap:3px;flex-shrink:0;}
+.alert-kpis .kpi-card{padding:4px 10px;}
+.alert-kpis .kpi-icon{width:24px;height:24px;font-size:10px;}
+.alert-kpis .kpi-value{font-size:13px;}
 
 /* Misc */
 #tv-error{position:fixed;bottom:10px;right:10px;background:#fef2f2;border:1.5px solid var(--red);color:var(--red);padding:7px 12px;border-radius:7px;font-size:10px;display:none;z-index:999;}
@@ -214,6 +229,12 @@ input.tv-fecha-input::-webkit-calendar-picker-indicator{filter:none;width:9px;cu
     <button class="tv-fecha-btn active" id="btn-hoy" onclick="setFecha('hoy')">Hoy</button>
     <button class="tv-fecha-btn" id="btn-ayer" onclick="setFecha('ayer')">Ayer</button>
     <input class="tv-fecha-input" type="date" id="input-fecha" onchange="setFecha('custom')" title="Fecha personalizada">
+  </div>
+  <div class="tv-fecha-filter" style="border-left:1px solid rgba(255,255,255,.2);padding-left:10px;">
+    <label><i class="fa-solid fa-calendar-week" style="margin-right:3px;"></i>Rango (NS / Agotados):</label>
+    <input class="tv-fecha-input" style="width:80px;" type="date" id="input-rango-desde" onchange="setRangoFechas()" title="Desde">
+    <span style="color:rgba(255,255,255,.5);font-size:7px;">a</span>
+    <input class="tv-fecha-input" style="width:80px;" type="date" id="input-rango-hasta" onchange="setRangoFechas()" title="Hasta">
   </div>
 
   <div class="tv-meta">
@@ -372,72 +393,92 @@ input.tv-fecha-input::-webkit-calendar-picker-indicator{filter:none;width:9px;cu
       </div>
       <div class="pick-main">
         <div class="pick-left">
-          <div class="podium-switcher" style="display:flex;gap:4px;margin-bottom:4px;align-items:center;justify-content:space-between;background:#f8fafc;padding:4px 8px;border-radius:7px;border:1px solid var(--border);">
-            <span style="font-size:7px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;"><i class="fa-solid fa-sliders"></i> Ranking Auxiliares:</span>
-            <div style="display:flex;gap:3px;">
-              <button class="pod-switch-btn active" id="psw-refs" onclick="setPodiumMetric('refs')">🏆 Referencias</button>
-              <button class="pod-switch-btn" id="psw-units" onclick="setPodiumMetric('units')">📦 Unidades</button>
-              <button class="pod-switch-btn" id="psw-tiempo" onclick="setPodiumMetric('tiempo')">⏱️ Tiempo</button>
-              <button class="pod-switch-btn" id="psw-agotados" onclick="setPodiumMetric('agotados')">⚠️ Agotados</button>
+          <div class="tv-card" style="padding:5px 8px;flex-shrink:0;gap:3px;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:7px;font-weight:800;color:var(--blue);"><i class="fa-solid fa-trophy"></i> REFS</span>
+              <span id="pod-ref-summary" style="font-size:7px;font-weight:800;color:var(--text);">0 / 0</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;">
+              <div class="prog-bar" style="height:5px;"><div class="prog-fill" id="pod-ref-bar" style="width:0%;background:var(--blue);height:100%;"></div></div>
+              <span id="pod-ref-pct" style="font-size:7px;font-weight:900;color:var(--blue);">0%</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:7px;font-weight:800;color:var(--purple);"><i class="fa-solid fa-boxes-stacked"></i> UNDS</span>
+              <span id="pod-unit-summary" style="font-size:7px;font-weight:800;color:var(--text);">0 / 0</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;">
+              <div class="prog-bar" style="height:5px;"><div class="prog-fill" id="pod-unit-bar" style="width:0%;background:var(--purple);height:100%;"></div></div>
+              <span id="pod-unit-pct" style="font-size:7px;font-weight:900;color:var(--purple);">0%</span>
             </div>
           </div>
-          <div class="pick-podiums">
-            <div class="tv-card podium-card">
-              <div class="podium-hdr" style="color:var(--blue);display:flex;flex-direction:column;gap:3px;padding:6px 9px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
-                  <span><i class="fa-solid fa-trophy"></i> POR REFERENCIAS</span>
-                  <span id="pod-ref-summary" style="font-size:7.5px;font-weight:800;color:var(--text);">0 / 0 Refs</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:5px;width:100%;">
-                  <div class="prog-bar" style="flex:1;height:6px;background:#e2e8f0;border-radius:4px;overflow:hidden;"><div class="prog-fill" id="pod-ref-bar" style="width:0%;background:var(--blue);height:100%;"></div></div>
-                  <span id="pod-ref-pct" style="font-size:7px;font-weight:900;color:var(--blue);">0%</span>
-                </div>
-                <div id="pod-ref-pending" style="font-size:6.5px;color:var(--orange);font-weight:700;display:flex;align-items:center;gap:3px;">
-                  <i class="fa-solid fa-clock"></i> Faltan 0 refs por separar
-                </div>
+          <div class="tv-card" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+            <div class="tv-card-hdr" style="flex-wrap:wrap;gap:4px;">
+              <div class="tv-card-title" style="color:var(--blue);"><i class="fa-solid fa-table-cells"></i> Ranking Auxiliares</div>
+              <div style="display:flex;gap:3px;">
+                <button class="pod-switch-btn active" id="psw-refs" onclick="setPodiumMetric('refs')">Refs</button>
+                <button class="pod-switch-btn" id="psw-units" onclick="setPodiumMetric('units')">Unds</button>
+                <button class="pod-switch-btn" id="psw-tiempo" onclick="setPodiumMetric('tiempo')">Tiempo</button>
+                <button class="pod-switch-btn" id="psw-agotados" onclick="setPodiumMetric('agotados')">Agotados</button>
               </div>
-              <div class="podium-stage" id="podium-refs"><div class="no-data"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
-              <div class="pod-more" id="pod-more-refs"></div>
             </div>
-            <div class="tv-card podium-card">
-              <div class="podium-hdr" style="color:var(--purple);display:flex;flex-direction:column;gap:3px;padding:6px 9px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
-                  <span><i class="fa-solid fa-boxes-stacked"></i> POR UNIDADES</span>
-                  <span id="pod-unit-summary" style="font-size:7.5px;font-weight:800;color:var(--text);">0 / 0 Unds</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:5px;width:100%;">
-                  <div class="prog-bar" style="flex:1;height:6px;background:#e2e8f0;border-radius:4px;overflow:hidden;"><div class="prog-fill" id="pod-unit-bar" style="width:0%;background:var(--purple);height:100%;"></div></div>
-                  <span id="pod-unit-pct" style="font-size:7px;font-weight:900;color:var(--purple);">0%</span>
-                </div>
-                <div id="pod-unit-pending" style="font-size:6.5px;color:var(--orange);font-weight:700;display:flex;align-items:center;gap:3px;">
-                  <i class="fa-solid fa-boxes-packing"></i> Faltan 0 unds por separar
-                </div>
-              </div>
-              <div class="podium-stage" id="podium-units"><div class="no-data"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
-              <div class="pod-more" id="pod-more-units"></div>
+            <div class="rank-matrix">
+              <table class="tv">
+                <thead><tr>
+                  <th>#</th><th>Auxiliar</th>
+                  <th style="text-align:right;">Refs</th>
+                  <th style="text-align:right;">Unds</th>
+                  <th style="text-align:right;">Tiempo</th>
+                  <th style="text-align:right;">Agot.</th>
+                </tr></thead>
+                <tbody id="rank-matrix-body"><tr><td colspan="6"><div class="no-data"><i class="fa-solid fa-spinner fa-spin"></i></div></td></tr></tbody>
+              </table>
             </div>
           </div>
           <div class="amb-card">
-            <div class="amb-hdr"><i class="fa-solid fa-chart-simple"></i> Progreso por Ambiente</div>
-            <div id="amb-rows"><div class="no-data" style="min-height:35px;"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+            <div class="amb-hdr"><i class="fa-solid fa-chart-pie"></i> % por Ambiente — click para filtrar Planillas</div>
+            <div class="amb-donuts" id="amb-donuts"><div class="no-data" style="min-height:60px;"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
           </div>
         </div>
-        <div class="tv-card pick-right">
-          <div class="tv-card-hdr">
-            <div class="tv-card-title" style="color:var(--blue);"><i class="fa-solid fa-clipboard-list"></i> Planillas Activas</div>
-            <span class="badge badge-blue" id="pk-badge">0</span>
+        <div class="pick-right" style="flex:1;min-height:0;display:flex;flex-direction:column;gap:5px;">
+          <div class="tv-card" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+            <div class="tv-card-hdr">
+              <div class="tv-card-title" style="color:var(--blue);"><i class="fa-solid fa-clipboard-list"></i> Planillas Activas</div>
+              <span class="badge badge-blue" id="pk-badge">0</span>
+            </div>
+            <div class="tv-card-body">
+              <table class="tv">
+                <thead><tr>
+                  <th>Cliente / Sucursal</th><th>Auxiliar(es)</th>
+                  <th style="min-width:85px;">Progreso</th>
+                  <th style="text-align:center;">%</th>
+                  <th style="text-align:center;">Tiempo</th>
+                  <th>Estado</th><th>Ruta</th>
+                </tr></thead>
+                <tbody id="tbody-picking"><tr><td colspan="7"><div class="no-data"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</div></td></tr></tbody>
+              </table>
+            </div>
           </div>
-          <div class="tv-card-body">
-            <table class="tv">
-              <thead><tr>
-                <th>Cliente / Sucursal</th><th>Auxiliar(es)</th>
-                <th style="min-width:85px;">Progreso</th>
-                <th style="text-align:center;">%</th>
-                <th style="text-align:center;">Tiempo</th>
-                <th>Estado</th><th>Ruta</th>
-              </tr></thead>
-              <tbody id="tbody-picking"><tr><td colspan="7"><div class="no-data"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</div></td></tr></tbody>
-            </table>
+          <!-- Mismo widget "Alerta de Faltantes Críticos" del módulo Picking/Dashboard
+               Picking de escritorio (picking.js) — misma fuente de datos
+               (picking.alertas_faltantes de /api/picking/dashboard), a pedido
+               explícito de Camilo (2026-09-10): la sesión de Proceso de Picking del
+               TV debe mostrar lo mismo que ese módulo. -->
+          <div class="tv-card" style="flex:1.3;min-height:0;display:flex;flex-direction:column;border:1px solid rgba(220,38,38,.3);">
+            <div class="tv-card-hdr" style="background:rgba(220,38,38,.06);">
+              <div class="tv-card-title" style="color:var(--red);"><i class="fa-solid fa-triangle-exclamation"></i> Alerta de Faltantes Críticos</div>
+              <span class="badge badge-red" id="pk-crit-badge">0</span>
+            </div>
+            <div class="tv-card-body" style="overflow-y:auto;">
+              <table class="tv">
+                <thead><tr>
+                  <th>Producto</th>
+                  <th style="text-align:center;">Solic.</th>
+                  <th style="text-align:center;">H.Ini</th>
+                  <th style="text-align:center;">Sucursal</th>
+                </tr></thead>
+                <tbody id="tbody-picking-faltantes"><tr><td colspan="4"><div class="no-data"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</div></td></tr></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -465,7 +506,7 @@ input.tv-fecha-input::-webkit-calendar-picker-indicator{filter:none;width:9px;cu
           <div class="kpi-body"><div class="kpi-label">Sucursales</div><div class="kpi-value" id="ag-suc" style="color:var(--purple);">—</div><div class="kpi-sub">Afectadas</div></div>
         </div>
       </div>
-      <div class="tv-card" style="flex:1;">
+      <div class="tv-card" style="flex:1.1;min-height:0;">
         <div class="tv-card-hdr">
           <div class="tv-card-title" style="color:var(--red);"><i class="fa-solid fa-triangle-exclamation"></i> Agotados en Operación</div>
           <span class="badge badge-red" id="ag-badge">0</span>
@@ -483,29 +524,50 @@ input.tv-fecha-input::-webkit-calendar-picker-indicator{filter:none;width:9px;cu
           </table>
         </div>
       </div>
+
+      <!-- Histórico de referencias negadas — usa el filtro de rango del encabezado -->
+      <div class="tv-card" style="flex:1;min-height:0;border:1px solid rgba(147,51,234,.3);">
+        <div class="tv-card-hdr" style="background:rgba(147,51,234,.06);">
+          <div class="tv-card-title" style="color:var(--purple);"><i class="fa-solid fa-clock-rotate-left"></i> Histórico de Referencias Negadas <span id="ag-hist-rango" style="font-weight:600;color:var(--text2);text-transform:none;">(últimos 30 días)</span></div>
+          <span class="badge badge-purple" id="ag-hist-badge">0</span>
+        </div>
+        <div class="tv-card-body">
+          <table class="tv">
+            <thead><tr>
+              <th>Código</th><th>Producto</th>
+              <th style="text-align:center;">Veces Negado</th>
+              <th style="min-width:100px;">% Participación</th>
+              <th style="text-align:center;">Unid. Faltantes</th>
+              <th>Motivo Frecuente</th>
+            </tr></thead>
+            <tbody id="tbody-agotados-historico"><tr><td colspan="6"><div class="no-data"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- ④ ALERTA INVENTARIO -->
   <div class="tab-pane" id="pane-alertas">
-    <div class="alert-layout">
+    <div class="alert-layout" style="display:flex;flex-direction:column;gap:10px;height:100%;">
+      <!-- Sección A: Próximos a Vencer (< 10 días) -->
       <div class="alert-kpis">
         <div class="kpi-card">
           <div class="kpi-icon" style="background:var(--red-lt);color:var(--red);font-size:11px;"><i class="fa-solid fa-skull-crossbones"></i></div>
-          <div class="kpi-body"><div class="kpi-label">Crítico ≤ 7 días</div><div class="kpi-value" id="al-k7" style="color:var(--red);">—</div><div class="kpi-sub">Acción inmediata</div></div>
+          <div class="kpi-body"><div class="kpi-label">Crítico ≤ 3 días</div><div class="kpi-value" id="al-k7" style="color:var(--red);">—</div><div class="kpi-sub">Acción inmediata</div></div>
         </div>
         <div class="kpi-card">
           <div class="kpi-icon" style="background:var(--ora-lt);color:var(--orange);font-size:11px;"><i class="fa-solid fa-triangle-exclamation"></i></div>
-          <div class="kpi-body"><div class="kpi-label">Alerta ≤ 15 días</div><div class="kpi-value" id="al-k15" style="color:var(--orange);">—</div><div class="kpi-sub">Seguimiento urgente</div></div>
+          <div class="kpi-body"><div class="kpi-label">Alerta ≤ 6 días</div><div class="kpi-value" id="al-k15" style="color:var(--orange);">—</div><div class="kpi-sub">Seguimiento urgente</div></div>
         </div>
         <div class="kpi-card">
           <div class="kpi-icon" style="background:var(--yel-lt);color:var(--yellow);font-size:11px;"><i class="fa-solid fa-calendar-xmark"></i></div>
-          <div class="kpi-body"><div class="kpi-label">Próximo ≤ 30 días</div><div class="kpi-value" id="al-k30" style="color:var(--yellow);">—</div><div class="kpi-sub">Monitorear</div></div>
+          <div class="kpi-body"><div class="kpi-label">Total &lt; 10 días</div><div class="kpi-value" id="al-k30" style="color:var(--yellow);">—</div><div class="kpi-sub">Monitorear</div></div>
         </div>
       </div>
-      <div class="tv-card" style="flex:1;">
+      <div class="tv-card" style="flex:1.2;min-height:0;">
         <div class="tv-card-hdr">
-          <div class="tv-card-title" style="color:var(--orange);"><i class="fa-solid fa-calendar-xmark"></i> Próximos a Vencer</div>
+          <div class="tv-card-title" style="color:var(--orange);"><i class="fa-solid fa-calendar-xmark"></i> Próximos a Vencer &mdash; menos de 10 días</div>
           <span class="badge badge-orange" id="al-badge">0</span>
         </div>
         <div class="tv-card-body">
@@ -521,6 +583,25 @@ input.tv-fecha-input::-webkit-calendar-picker-indicator{filter:none;width:9px;cu
           </table>
         </div>
       </div>
+
+      <!-- Sección B: Despachando en Cero -->
+      <div class="tv-card" style="flex:1;min-height:0;border:1px solid rgba(220,38,38,.35);">
+        <div class="tv-card-hdr">
+          <div class="tv-card-title" style="color:var(--red);"><i class="fa-solid fa-bolt"></i> Despachando en Cero &mdash; se separó físicamente sin stock en el sistema</div>
+          <span class="badge badge-red" id="dec-badge">0</span>
+        </div>
+        <div class="tv-card-body">
+          <table class="tv">
+            <thead><tr>
+              <th>Código</th><th>Producto</th>
+              <th style="text-align:center;">Und. Despachadas</th>
+              <th style="text-align:center;">Pedidos</th>
+              <th style="text-align:center;">Stock Actual</th>
+            </tr></thead>
+            <tbody id="tbody-dec"><tr><td colspan="5"><div class="no-data"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -528,60 +609,71 @@ input.tv-fecha-input::-webkit-calendar-picker-indicator{filter:none;width:9px;cu
   <!-- ⑤ NIVEL DE SERVICIO -->
   <div class="tab-pane" id="pane-servicio">
     <div style="padding:6px 8px;display:flex;flex-direction:column;gap:6px;height:100%;overflow:hidden;">
-      <!-- KPIs row — fila 1: 4 cards compactas -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;flex-shrink:0;margin-bottom:2px;">
-        <div class="tv-card" style="padding:8px 10px;">
-          <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text2);margin-bottom:2px;">NIVEL GENERAL</div>
-          <div id="svc-pct-general" style="font-size:2.2rem;font-weight:900;color:#8b5cf6;line-height:1.1;">—%</div>
-          <div id="svc-pct-detail" style="font-size:0.72rem;color:var(--text2);">Und: —% · Refs: —%</div>
-        </div>
-        <div class="tv-card" style="padding:8px 10px;">
-          <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text2);margin-bottom:2px;">UND SOLICITADAS</div>
-          <div id="svc-total-sol" style="font-size:2.2rem;font-weight:900;color:var(--blue);line-height:1.1;">—</div>
-          <div style="font-size:0.72rem;color:var(--text2);">Cajas totales</div>
-        </div>
-        <div class="tv-card" style="padding:8px 10px;">
-          <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text2);margin-bottom:2px;">UND SEPARADAS</div>
-          <div id="svc-total-sep" style="font-size:2.2rem;font-weight:900;color:var(--green);line-height:1.1;">—</div>
-          <div style="font-size:0.72rem;color:var(--text2);">Cajas confirmadas</div>
-        </div>
-        <div class="tv-card" style="padding:8px 10px;">
-          <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text2);margin-bottom:2px;">REFS COMPLETAS</div>
-          <div style="display:flex;align-items:baseline;gap:5px;">
-            <div id="svc-refs-completas" style="font-size:2.2rem;font-weight:900;color:var(--cyan);line-height:1.1;">—</div>
-            <div style="font-size:0.72rem;color:var(--text2);">/ <span id="svc-refs-total">—</span></div>
+      <!-- Gráficos arriba: ocupan todo el espacio disponible, ambos visibles siempre -->
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:6px;flex:1;min-height:0;">
+        <div class="tv-card" style="padding:6px 8px;display:flex;flex-direction:column;min-height:0;">
+          <div style="font-size:9px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0;">
+            <i class="fa-solid fa-store"></i> NS POR SUCURSAL — click en una fila para ver el detalle de agotados
           </div>
-          <div id="svc-pct-ref" style="font-size:0.85rem;font-weight:900;color:var(--cyan);">—%</div>
+          <div id="chart-svc-sucursal-wrap" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;"></div>
+          <div id="svc-sucursal-detalle" style="display:none;flex-shrink:0;margin-top:6px;border-top:1px dashed var(--border);padding-top:6px;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;min-height:0;">
+          <div class="tv-card" style="padding:5px 8px;display:flex;flex-direction:column;min-height:0;flex:0.75;">
+            <div style="font-size:8.5px;font-weight:700;color:var(--text2);margin-bottom:2px;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0;">NS POR AMBIENTE</div>
+            <div style="position:relative;flex:1;min-height:0;"><canvas id="chart-svc-ambiente"></canvas></div>
+          </div>
+          <div class="tv-card" style="padding:6px 8px;display:flex;flex-direction:column;min-height:0;flex:1.25;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-shrink:0;margin-bottom:4px;">
+              <div style="font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;">NS POR MES — click en un mes para ver el detalle diario</div>
+              <button id="svc-mes-back" onclick="_svcVolverAMeses()" style="display:none;font-size:7px;font-weight:800;background:var(--blue);color:#fff;border:none;border-radius:5px;padding:3px 8px;cursor:pointer;flex-shrink:0;white-space:nowrap;"><i class="fa-solid fa-arrow-left"></i> Meses</button>
+            </div>
+            <div style="position:relative;flex:1;min-height:0;"><canvas id="chart-svc-ns-mes"></canvas></div>
+          </div>
         </div>
       </div>
-      <!-- Fila 2: 3 charts pequeños -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;flex-shrink:0;">
-        <div class="tv-card" style="padding:6px 8px;">
-          <div style="font-size:9px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;">POR SUCURSAL</div>
-          <div id="chart-svc-sucursal-wrap" style="height:180px;overflow:hidden;"></div>
+      <!-- Tarjetas abajo: fila compacta -->
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;flex-shrink:0;">
+        <div class="tv-card" style="padding:6px 9px;">
+          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text2);margin-bottom:1px;">NIVEL GENERAL</div>
+          <div id="svc-pct-general" style="font-size:1.5rem;font-weight:900;color:#8b5cf6;line-height:1.1;">—%</div>
+          <div id="svc-pct-detail" style="font-size:0.62rem;color:var(--text2);">Und: —% · Refs: —%</div>
         </div>
-        <div class="tv-card" style="padding:6px 8px;">
-          <div style="font-size:9px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;">POR DÍA (últimos 7)</div>
-          <div style="position:relative;height:240px;"><canvas id="chart-svc-dia"></canvas></div>
+        <div class="tv-card" style="padding:6px 9px;">
+          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text2);margin-bottom:1px;">UND SOL. vs DESP.</div>
+          <div style="display:flex;align-items:baseline;gap:4px;">
+            <div id="svc-total-sep" style="font-size:1.2rem;font-weight:900;color:var(--green);line-height:1.1;">—</div>
+            <div style="font-size:0.62rem;color:var(--text2);">/ <span id="svc-total-sol">—</span></div>
+          </div>
         </div>
-        <div class="tv-card" style="padding:6px 8px;">
-          <div style="font-size:9px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;">SKUs SOL vs DESP</div>
-          <div style="position:relative;height:180px;"><canvas id="chart-svc-mes"></canvas></div>
+        <div class="tv-card" style="padding:6px 9px;">
+          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text2);margin-bottom:1px;">REFS SOL. vs DESP.</div>
+          <div style="display:flex;align-items:baseline;gap:4px;">
+            <div id="svc-refs-completas" style="font-size:1.2rem;font-weight:900;color:var(--cyan);line-height:1.1;">—</div>
+            <div style="font-size:0.62rem;color:var(--text2);">/ <span id="svc-refs-total">—</span></div>
+          </div>
+          <div id="svc-pct-ref" style="font-size:0.68rem;font-weight:900;color:var(--cyan);">—%</div>
+        </div>
+        <div class="tv-card" style="padding:6px 9px;">
+          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text2);margin-bottom:1px;">LÍNEAS SOL. vs DESP.</div>
+          <div style="display:flex;align-items:baseline;gap:4px;">
+            <div id="svc-lineas-completas" style="font-size:1.2rem;font-weight:900;color:var(--orange);line-height:1.1;">—</div>
+            <div style="font-size:0.62rem;color:var(--text2);">/ <span id="svc-lineas-total">—</span></div>
+          </div>
+          <div id="svc-pct-lineas" style="font-size:0.68rem;font-weight:900;color:var(--orange);">—%</div>
+        </div>
+        <div class="tv-card" style="padding:6px 9px;grid-column:span 2;">
+          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text2);margin-bottom:1px;"><i class="fa-solid fa-calendar-week"></i> RANGO ACTIVO</div>
+          <div id="svc-rango-label" style="font-size:0.9rem;font-weight:800;color:var(--text);">Día actual</div>
+          <div style="font-size:0.62rem;color:var(--text2);">Usa el filtro "Rango" del encabezado para histórico</div>
         </div>
       </div>
-      <!-- Fila 3: chart grande ancho completo -->
-      <div class="tv-card" style="padding:6px 8px;flex-shrink:0;">
-        <div style="font-size:9px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;">NS POR DÍA (%)</div>
-        <div style="position:relative;height:210px;"><canvas id="chart-svc-ref"></canvas></div>
-      </div>
-      <!-- Fila 4: ticker agotados -->
-      <div class="tv-card" style="padding:6px 10px;flex-shrink:0;">
-        <div style="font-size:9px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;">
-          <i class="fa-solid fa-triangle-exclamation" style="color:#ef4444;"></i> REFERENCIAS AGOTADAS
-        </div>
-        <div class="ticker-track" style="width:100%;height:32px;display:flex;align-items:center;">
+      <!-- Ticker agotados: franja delgada al final -->
+      <div class="tv-card" style="padding:4px 10px;flex-shrink:0;">
+        <div class="ticker-track" style="width:100%;height:22px;display:flex;align-items:center;gap:6px;">
+          <span style="font-size:8px;font-weight:800;color:var(--red);text-transform:uppercase;letter-spacing:.4px;flex-shrink:0;"><i class="fa-solid fa-triangle-exclamation"></i> Agotados:</span>
           <div id="svc-agotados-scroll" style="display:inline-flex;gap:8px;white-space:nowrap;align-items:center;">
-            <span style="color:var(--text2);font-size:11px;font-style:italic;">Cargando...</span>
+            <span style="color:var(--text2);font-size:10px;font-style:italic;">Cargando...</span>
           </div>
         </div>
       </div>
@@ -646,6 +738,22 @@ function getFechaParam(prefix='?'){
 }
 function getFechaForApi(){
   return _tvFecha || getToday();
+}
+
+// ── FILTRO DE RANGO (histórico: Nivel de Servicio + Agotados) ────────
+// Independiente del filtro de fecha única de arriba (que rige las vistas
+// "en vivo" del día). A pedido explícito de Camilo (2026-09-15).
+let _tvRangoDesde = '';
+let _tvRangoHasta = '';
+function setRangoFechas(){
+  _tvRangoDesde = document.getElementById('input-rango-desde')?.value || '';
+  _tvRangoHasta = document.getElementById('input-rango-hasta')?.value || '';
+  loadServicio().catch(()=>{});
+  loadAgotadosHistorico().catch(()=>{});
+}
+function getRangoParams(prefix='?'){
+  if(!_tvRangoDesde || !_tvRangoHasta) return '';
+  return `${prefix}fecha_inicio=${_tvRangoDesde}&fecha_fin=${_tvRangoHasta}`;
 }
 
 const BASE = (() => {
@@ -971,8 +1079,12 @@ function renderPicking(planillas, progresoGeneral = null){
     }
     const ambStr = ambBadges.length ? `<div style="display:flex;gap:3px;margin-top:2px;flex-wrap:wrap;">${ambBadges.join('')}</div>` : '';
     const clientName = esc(p.cliente || p.sucursal || p.planilla_numero);
+    const ambKeys = p.ambientes
+      ? Object.keys(p.ambientes).filter(k=>(p.ambientes[k]?.t||0)>0)
+      : [(p.ambiente||'').toLowerCase()==='refrigerado'?'refrigerado':(p.ambiente||'').toLowerCase()==='congelado'?'congelado':'seco'];
 
-    return`<tr style="${bdL}" data-hora="${esc(p.hora_inicio||'')}">
+    return`<tr style="${bdL}" data-hora="${esc(p.hora_inicio||'')}" data-ambientes="${ambKeys.join(',')}">
+
       <td style="font-weight:800;color:var(--blue);font-size:.7rem;white-space:nowrap;" title="${esc(p.planilla_numero||'')}">${clientName}</td>
       <td style="max-width:100px;">${auxChips}</td>
       <td>
@@ -993,6 +1105,7 @@ function renderPicking(planillas, progresoGeneral = null){
     .map(row=>({hora:row.dataset.hora,cell:row.querySelector('.timer-cell')})).filter(p=>p.cell);
   function tickTimers(){pairs.forEach(({hora,cell})=>{const e=elapsedTime(hora);cell.textContent=e??'No iniciada';cell.style.color=e?'var(--cyan)':'var(--text2)';});}
   tickTimers();liveTimerId=setInterval(tickTimers,1000);
+  applyAmbienteFiltro();
 }
 
 function buildAmbienteFromPlanillas(planillas){
@@ -1013,28 +1126,56 @@ function buildAmbienteFromPlanillas(planillas){
   renderAmbiente(stats);
 }
 
+// Donuts interactivos por ambiente — click filtra la tabla de Planillas
+// Activas (ver toggleAmbienteFiltro/applyAmbienteFiltro), a pedido explícito
+// de Camilo (2026-09-15): "gráfica e interactiva" en lugar de barras.
+let _ambFiltroActivo = null;
+let _lastAmbStats = null;
+
 function renderAmbiente(stats){
-  const el=document.getElementById('amb-rows');if(!el) return;
+  _lastAmbStats = stats;
+  const el=document.getElementById('amb-donuts');if(!el) return;
   const items=[
-    {key:'seco',icon:'☀️',name:'SECO',color:'var(--blue)'},
-    {key:'refrigerado',icon:'❄️',name:'REFRIGERADO',color:'var(--cyan)'},
-    {key:'congelado',icon:'🧊',name:'CONGELADO',color:'var(--purple)'},
+    {key:'seco',icon:'☀️',name:'SECO',color:AMB_COLORS.seco},
+    {key:'refrigerado',icon:'❄️',name:'REFRIG.',color:AMB_COLORS.refrigerado},
+    {key:'congelado',icon:'🧊',name:'CONGEL.',color:AMB_COLORS.congelado},
   ];
   const hasData=items.some(it=>(stats[it.key]?.t||0)>0);
-  if(!hasData){el.innerHTML='<div class="no-data" style="min-height:35px;">Sin datos de ambiente</div>';return;}
+  if(!hasData){el.innerHTML='<div class="no-data" style="min-height:60px;">Sin datos de ambiente</div>';return;}
+  const R=15, C=2*Math.PI*R;
   el.innerHTML=items.map(it=>{
     const d=stats[it.key]||{c:0,t:0};
     if(!d.t) return'';
     const pct=Math.round(d.c/d.t*100);
-    const col=pct>=80?'var(--green)':pct>=50?'var(--orange)':'var(--red)';
-    return`<div class="amb-row">
-      <span class="amb-icon">${it.icon}</span>
-      <span class="amb-name" style="color:var(--text);">${it.name}</span>
-      <div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:${col};"></div></div>
-      <span class="amb-pct" style="color:${col};">${pct}%</span>
-      <span class="amb-detail">${d.c}/${d.t}</span>
+    const offset=C*(1-pct/100);
+    const active=_ambFiltroActivo===it.key;
+    return`<div class="amb-donut-slot${active?' active':''}" onclick="toggleAmbienteFiltro('${it.key}')" title="${it.name}: ${d.c}/${d.t} líneas — click para filtrar Planillas Activas">
+      <div style="position:relative;width:36px;height:36px;">
+        <svg width="36" height="36" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="${R}" fill="none" stroke="#e2e8f0" stroke-width="4"/>
+          <circle cx="18" cy="18" r="${R}" fill="none" stroke="${it.color}" stroke-width="4" stroke-dasharray="${C}" stroke-dashoffset="${offset}" stroke-linecap="round" style="transition:stroke-dashoffset .5s ease;"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;color:${it.color};">${pct}%</div>
+      </div>
+      <div style="font-size:6.5px;font-weight:800;color:var(--text);margin-top:2px;">${it.icon} ${it.name}</div>
+      <div style="font-size:6px;color:var(--text2);">${d.c}/${d.t}</div>
     </div>`;
   }).filter(Boolean).join('');
+}
+
+function toggleAmbienteFiltro(key){
+  _ambFiltroActivo = (_ambFiltroActivo === key) ? null : key;
+  if(_lastAmbStats) renderAmbiente(_lastAmbStats);
+  applyAmbienteFiltro();
+}
+
+function applyAmbienteFiltro(){
+  const rows=document.querySelectorAll('#tbody-picking tr[data-ambientes]');
+  rows.forEach(row=>{
+    if(!_ambFiltroActivo){ row.style.display=''; return; }
+    const ambs=(row.dataset.ambientes||'').split(',');
+    row.style.display = ambs.includes(_ambFiltroActivo) ? '' : 'none';
+  });
 }
 
 let _currentRankingData = null;
@@ -1077,8 +1218,41 @@ function renderRankingWithMetric(data, metricKey){
     unitsData = data.ranking_refs || [];
   }
 
-  renderPodium('podium-refs','pod-more-refs', refsData, mKeyRefs, mLabelRefs);
-  renderPodium('podium-units','pod-more-units', unitsData, mKeyUnits, mLabelUnits);
+  // Matriz única de auxiliares (reemplaza los dos podios) — a pedido
+  // explícito de Camilo (2026-09-15): "quitar los gráficos de racking de los
+  // auxiliares y mostrarla en un espacio más compacto tipo matriz".
+  const metricMap = {
+    refs:     'referencias',
+    units:    'unidades',
+    tiempo:   'tiempo_promedio_min',
+    agotados: 'agotados',
+  };
+  const sortKey = metricMap[metricKey] || 'referencias';
+  const rows = (data.auxiliares || []).slice()
+    .sort((a,b) => (Number(b[sortKey])||0) - (Number(a[sortKey])||0));
+  renderRankMatrix(rows, metricKey);
+}
+
+function renderRankMatrix(rows, highlightMetric){
+  const tbody=document.getElementById('rank-matrix-body');
+  if(!tbody) return;
+  if(!rows || !rows.length){
+    tbody.innerHTML=`<tr><td colspan="6"><div class="no-data"><i class="fa-solid fa-trophy"></i> Sin datos hoy</div></td></tr>`;
+    return;
+  }
+  const medals=['🥇','🥈','🥉'];
+  const bold = (m)=> highlightMetric===m ? 'font-weight:900;color:var(--blue);' : 'color:var(--text2);';
+  tbody.innerHTML=rows.map((p,i)=>{
+    const tiempo = p.tiempo_promedio_min!=null && p.tiempo_promedio_min!=='' ? `${Number(p.tiempo_promedio_min).toFixed(0)}m` : '—';
+    return`<tr>
+      <td style="text-align:center;font-size:.62rem;">${medals[i]||(i+1)}</td>
+      <td style="font-weight:700;white-space:nowrap;max-width:100px;overflow:hidden;text-overflow:ellipsis;font-size:.62rem;">${esc(p.nombre||'—')}</td>
+      <td style="text-align:right;font-size:.62rem;${bold('refs')}">${fmt(p.referencias||0)}</td>
+      <td style="text-align:right;font-size:.62rem;${bold('units')}">${fmtShort(p.unidades||0)}</td>
+      <td style="text-align:right;font-size:.62rem;${bold('tiempo')}">${tiempo}</td>
+      <td style="text-align:right;font-size:.62rem;${highlightMetric==='agotados'?'font-weight:900;color:var(--blue);':(p.agotados?'color:var(--red);':'color:var(--text2);')}">${p.agotados||0}</td>
+    </tr>`;
+  }).join('');
 }
 
 function renderProgresoTotals(totales){
@@ -1136,59 +1310,6 @@ function fmtShort(num){
   return fmt(num);
 }
 
-function renderPodium(stageId,moreId,data,metricKey,metricLabel){
-  const stageEl=document.getElementById(stageId);
-  const moreEl=document.getElementById(moreId);
-  if(!stageEl) return;
-  if(!data||!data.length){
-    stageEl.innerHTML='<div class="no-data"><i class="fa-solid fa-trophy"></i> Sin datos</div>';
-    if(moreEl) moreEl.innerHTML='';
-    return;
-  }
-  const top3=data.slice(0,3);
-  const rest=data.slice(3);
-  const order=top3.length>=3?[top3[1],top3[0],top3[2]]:top3.length===2?[top3[1],top3[0]]:[top3[0]];
-  const barCls=['pod-bar-2','pod-bar-1','pod-bar-3'];
-  const medals={1:'🥇',2:'🥈',3:'🥉'};
-  const countColors={1:'var(--gold)',2:'var(--silver)',3:'var(--bronze)'};
-
-  stageEl.innerHTML=order.map((p,vi)=>{
-    const originalIdx=top3.indexOf(p);
-    const rank=originalIdx+1;
-    const barClass=top3.length>=3?barCls[vi]:rank===1?'pod-bar-1':'pod-bar-2';
-    const val=Number(p[metricKey])||0;
-    const col=avatarColor(p.nombre||'');
-
-    const subBadges = `<div style="display:flex;gap:2px;font-size:5.5px;margin-top:1px;flex-wrap:wrap;justify-content:center;max-width:72px;">
-      <span style="background:rgba(59,130,246,0.1);color:var(--blue);padding:0 3px;border-radius:3px;white-space:nowrap;" title="Referencias">${p.referencias||0}r</span>
-      <span style="background:rgba(147,51,234,0.1);color:var(--purple);padding:0 3px;border-radius:3px;white-space:nowrap;" title="Unidades">${fmtShort(p.unidades||0)}u</span>
-      ${p.agotados ? `<span style="background:rgba(239,68,68,0.1);color:var(--red);padding:0 3px;border-radius:3px;white-space:nowrap;" title="Agotados">⚠️${p.agotados}</span>` : ''}
-    </div>`;
-
-    return`<div class="pod-slot">
-      <div class="pod-avatar" style="background:${col};">${initials(p.nombre)}</div>
-      <div class="pod-name">${esc(p.nombre||'—')}</div>
-      <div class="pod-count" style="color:${countColors[rank]||'var(--text)'};">${metricKey==='unidades'?fmtShort(val):fmt(val)}</div>
-      <div class="pod-metric">${metricLabel}</div>
-      ${subBadges}
-      <div class="${barClass}">${medals[rank]||''}</div>
-    </div>`;
-  }).join('');
-
-  if(moreEl){
-    moreEl.innerHTML=rest.map((p,i)=>{
-      const rank=i+4;
-      const val=Number(p[metricKey])||0;
-      return`<div class="pod-more-item">
-        <span class="pod-rank-num">${rank}.</span>
-        <span class="pod-more-name">${esc(p.nombre||'—')}</span>
-        <span class="pod-more-val">${metricKey==='unidades'?fmtShort(val):fmt(val)} ${metricLabel}</span>
-        <span style="font-size:5.5px;color:var(--text2);margin-left:auto;">${p.referencias||0}r · ${fmtShort(p.unidades||0)}u</span>
-      </div>`;
-    }).join('')||'<div style="padding:4px 0;font-size:6.5px;color:var(--text2);text-align:center;">—</div>';
-  }
-}
-
 async function loadPickingRanking(){
   try{
     const fecha=getFechaForApi();
@@ -1198,12 +1319,31 @@ async function loadPickingRanking(){
     renderRankingWithMetric(data, _selectedPodiumMetric);
     setText('pk-completadas', data.completadas_hoy||'—');
   }catch{
-    document.getElementById('podium-refs').innerHTML='<div class="no-data"><i class="fa-solid fa-trophy"></i> Sin datos hoy</div>';
-    document.getElementById('podium-units').innerHTML='<div class="no-data"><i class="fa-solid fa-boxes-stacked"></i> Sin datos hoy</div>';
+    const tb=document.getElementById('rank-matrix-body');
+    if(tb) tb.innerHTML='<tr><td colspan="6"><div class="no-data"><i class="fa-solid fa-trophy"></i> Sin datos hoy</div></td></tr>';
   }
 }
 
 // ── TAB 3: AGOTADOS ──────────────────────────────────────────────────
+// ── TAB 2 (Proceso Picking): Alerta de Faltantes Críticos ────────────
+// Mismo widget y misma fuente de datos que el módulo Picking/Dashboard
+// Picking de escritorio (picking.js, /api/picking/dashboard → alertas_faltantes).
+function renderPickingFaltantes(alertas){
+  setText('pk-crit-badge', alertas.length);
+  const tbody=document.getElementById('tbody-picking-faltantes');
+  if(!tbody) return;
+  if(!alertas.length){
+    tbody.innerHTML=`<tr><td colspan="4"><div class="no-data"><i class="fa-solid fa-circle-check" style="color:var(--green);"></i> Sin faltantes críticos</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML=alertas.map(f=>`<tr>
+    <td><b style="color:var(--text);">${esc(f.producto||'—')}</b><br><span style="color:var(--text2);font-size:.58rem;">${esc(f.ean||'')}</span></td>
+    <td style="text-align:center;"><span class="badge badge-red">${esc(f.solic??'—')}</span></td>
+    <td style="text-align:center;font-family:monospace;font-size:.6rem;">${f.hora_ini?String(f.hora_ini).substr(11,5):'-'}</td>
+    <td style="text-align:center;font-size:.6rem;">${esc(f.sucursal||'—')}</td>
+  </tr>`).join('');
+}
+
 function renderAgotados(agotados,totalDemandaGlobal){
   const total=agotados.length;
   const cajas=agotados.reduce((s,a)=>s+(parseFloat(a.demanda_pendiente)||0),0);
@@ -1241,28 +1381,78 @@ function renderAgotados(agotados,totalDemandaGlobal){
   }).join('');
 }
 
-// ── TAB 4: ALERTAS ───────────────────────────────────────────────────
-function renderAlertas(prx){
-  const c7=prx.filter(v=>(parseInt(v.dias_restantes)||99)<=7).length;
-  const c15=prx.filter(v=>{const d=parseInt(v.dias_restantes)||99;return d>7&&d<=15;}).length;
-  const c30=prx.filter(v=>{const d=parseInt(v.dias_restantes)||99;return d>15&&d<=30;}).length;
-  setText('al-k7',c7);
-  setText('al-k15',c15);
-  setText('al-k30',c30);
+// ── AGOTADOS: histórico de referencias negadas (rango de fechas) ─────
+function renderAgotadosHistorico(data){
+  const refs = data.referencias || [];
+  setText('ag-hist-badge', refs.length);
+  const rango = data.rango || {};
+  const lbl = rango.desde && rango.hasta
+    ? `(${rango.desde.split('-').reverse().join('/')} — ${rango.hasta.split('-').reverse().join('/')})`
+    : '(últimos 30 días)';
+  setText('ag-hist-rango', lbl);
+
+  const tbody=document.getElementById('tbody-agotados-historico');
+  if(!tbody) return;
+  if(!refs.length){
+    tbody.innerHTML=`<tr><td colspan="6"><div class="no-data"><i class="fa-solid fa-circle-check" style="color:var(--green);"></i> Sin negaciones registradas en el rango</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML=refs.map(r=>{
+    const pct=parseFloat(r.pct_participacion)||0;
+    const col=pct>=20?'var(--red)':pct>=10?'var(--orange)':'var(--purple)';
+    return`<tr>
+      <td style="font-weight:700;color:var(--text2);font-size:.6rem;white-space:nowrap;">${esc(r.codigo_interno||'—')}</td>
+      <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.nombre||'—')}</td>
+      <td style="text-align:center;font-weight:900;color:var(--text);">${fmt(r.veces_negado)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:5px;">
+          <div class="prog-bar"><div class="prog-fill" style="width:${Math.min(100,pct)}%;background:${col};"></div></div>
+          <span style="font-size:.6rem;font-weight:800;color:${col};white-space:nowrap;">${pct}%</span>
+        </div>
+      </td>
+      <td style="text-align:center;color:var(--text2);">${fmt(r.unidades_faltantes)}</td>
+      <td style="font-size:.6rem;color:var(--text2);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.motivo_frecuente||'—')}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadAgotadosHistorico(){
+  try{
+    const rango=getRangoParams();
+    const data=await api('/tv/agotados-historico'+rango);
+    renderAgotadosHistorico(data);
+  }catch(e){
+    console.warn('Histórico de agotados no disponible', e);
+  }
+}
+
+// ── TAB 4: ALERTAS (Próximos a Vencer, < 10 días) ────────────────────
+function renderAlertas(prxTodos){
+  // Sección A de "Alerta de Inventario": solo referencias con menos de 10
+  // días para vencer (a pedido explícito de Camilo, 2026-09-10). El backend
+  // sigue trayendo hasta 30 días (útil para el ticker/otros widgets); esta
+  // tabla se acota aquí a lo realmente urgente.
+  const prx=(prxTodos||[]).filter(v=>(parseInt(v.dias_restantes)??99)<10);
+
+  const c3=prx.filter(v=>(parseInt(v.dias_restantes)||99)<=3).length;
+  const c6=prx.filter(v=>{const d=parseInt(v.dias_restantes)||99;return d>3&&d<=6;}).length;
+  setText('al-k7',c3);
+  setText('al-k15',c6);
+  setText('al-k30',prx.length);
   setText('al-badge',prx.length);
   setText('tbadge-alertas',prx.length);
 
   const tbody=document.getElementById('tbody-alertas');
   if(!prx.length){
-    tbody.innerHTML=`<tr><td colspan="7"><div class="no-data"><i class="fa-solid fa-check" style="color:var(--green);"></i> Sin vencimientos próximos</div></td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="7"><div class="no-data"><i class="fa-solid fa-check" style="color:var(--green);"></i> Sin vencimientos en menos de 10 días</div></td></tr>`;
     return;
   }
   // Sort: critical first
   const sorted=[...prx].sort((a,b)=>(parseInt(a.dias_restantes)||99)-(parseInt(b.dias_restantes)||99));
   tbody.innerHTML=sorted.map(v=>{
     const dias=parseInt(v.dias_restantes)||0;
-    const dBadge=dias<=7?'badge-red':dias<=15?'badge-orange':'badge-yellow';
-    const rowStyle=dias<=7?'background:rgba(239,68,68,.05);':'';
+    const dBadge=dias<=3?'badge-red':dias<=6?'badge-orange':'badge-yellow';
+    const rowStyle=dias<=3?'background:rgba(239,68,68,.05);':'';
     return`<tr style="${rowStyle}">
       <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(v.descripcion||'—')}</td>
       <td style="color:var(--text2);font-size:.6rem;">${esc(v.lote||'—')}</td>
@@ -1275,20 +1465,58 @@ function renderAlertas(prx){
   }).join('');
 }
 
+// ── TAB 4: ALERTAS (Sección B: Despachando en Cero) ──────────────────
+// Productos con pick físico confirmado hoy (cantidad_pickeada > 0) pero
+// stock 'Disponible' actual <= 0 en el WMS — dato real cruzado en vivo por
+// el backend (DashboardTVController::getDashboardTV), sin inventar cifras.
+function renderDespachosCero(items){
+  setText('dec-badge', items.length);
+  const tbody=document.getElementById('tbody-dec');
+  if(!tbody) return;
+  if(!items.length){
+    tbody.innerHTML=`<tr><td colspan="5"><div class="no-data"><i class="fa-solid fa-circle-check" style="color:var(--green);"></i> Sin despachos en cero</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML=items.map(it=>{
+    const und=parseFloat(it.unidades_despachadas)||0;
+    const pedidos=parseInt(it.pedidos_afectados)||0;
+    return`<tr style="background:rgba(220,38,38,.04);">
+      <td style="font-weight:700;color:var(--text2);font-size:.6rem;white-space:nowrap;">${esc(it.codigo_interno||'—')}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;" title="${esc(it.descripcion||'')}">${esc(it.descripcion||'—')}</td>
+      <td style="text-align:center;font-weight:800;">${fmt(und)}</td>
+      <td style="text-align:center;">${pedidos}</td>
+      <td style="text-align:center;"><span style="font-size:.58rem;font-weight:900;color:#fff;background:var(--red);padding:1px 7px;border-radius:10px;">0</span></td>
+    </tr>`;
+  }).join('');
+}
+
 // ── TICKER ───────────────────────────────────────────────────────────
-function renderTicker(stockCritico){
+// Ticker con 3 etiquetas por sección — a pedido explícito de Camilo
+// (2026-09-10): agotado (stock_critico=0), bajo inventario (stock_critico>0)
+// y próximos a vencer (<10 días), cada uno con su propia etiqueta de color.
+function renderTicker(stockCritico, proximosVencer){
   const wrapper=document.getElementById('ticker-wrapper');
   const inner=document.getElementById('ticker-inner');
   if(!wrapper||!inner) return;
-  if(!stockCritico?.length){wrapper.style.display='none';return;}
+
+  const agotados=(stockCritico||[]).filter(p=>(parseInt(p.stock_actual)||0)===0);
+  const bajoStock=(stockCritico||[]).filter(p=>(parseInt(p.stock_actual)||0)>0);
+  const vencenPronto=(proximosVencer||[]).filter(v=>(parseInt(v.dias_restantes)??99)<10);
+
+  if(!agotados.length && !bajoStock.length && !vencenPronto.length){wrapper.style.display='none';return;}
   wrapper.style.display='flex';
-  const items=stockCritico.map(p=>{
-    const qty=parseInt(p.stock_actual)||0;
-    const isZero=qty===0;
-    return`<span class="ticker-item"><i class="fa-solid fa-box-open" style="font-size:7px;color:rgba(255,255,255,.5);"></i><span>${esc(p.descripcion||p.codigo_interno||'—')}</span><span class="qty ${isZero?'zero':''}">${isZero?'AGOTADO':qty+' cajas'}</span><span style="color:rgba(255,255,255,.25);padding:0 2px;">|</span></span>`;
-  }).join('');
+
+  const itemHtml=(icon,label,labelClass,texto)=>
+    `<span class="ticker-item"><i class="fa-solid ${icon}" style="font-size:7px;color:rgba(255,255,255,.5);"></i><span>${esc(texto)}</span><span class="qty ${labelClass}">${label}</span><span style="color:rgba(255,255,255,.25);padding:0 2px;">|</span></span>`;
+
+  const partsAgotados=agotados.map(p=>itemHtml('fa-box-open','AGOTADO','zero',p.descripcion||p.codigo_interno||'—'));
+  const partsBajo=bajoStock.map(p=>itemHtml('fa-boxes-stacked',(parseInt(p.stock_actual)||0)+' cajas','',p.descripcion||p.codigo_interno||'—'));
+  const partsVence=vencenPronto.map(v=>itemHtml('fa-calendar-xmark','VENCE '+((parseInt(v.dias_restantes)||0))+'d','zero',v.descripcion||'—'));
+
+  const items=[...partsAgotados,...partsBajo,...partsVence].join('');
   inner.innerHTML=items+items;
-  const speed=Math.max(20,stockCritico.length*4);
+  const total=agotados.length+bajoStock.length+vencenPronto.length;
+  const speed=Math.max(20,total*4);
   inner.style.animation='none';inner.offsetWidth;
   inner.style.animation=`ticker ${speed}s linear infinite`;
 }
@@ -1313,10 +1541,28 @@ function _svcColor(pct) {
   return '#dc2626';
 }
 
-function _renderSvcSucursal(items) {
-  if (window._svcSucChart) { window._svcSucChart.destroy(); window._svcSucChart = null; }
-  _svcChartSucursal = null;
+let _svcAgotadosData = []; // último payload d.agotados — usado por el detalle click de sucursal
+let _svcSucursalOpenIdx = null;
 
+const AMB_ORDEN = [
+  {key:'Seco',icon:'☀️'},
+  {key:'Refrigerado',icon:'❄️'},
+  {key:'Congelado',icon:'🧊'},
+];
+
+// Colores de ambiente unificados en todo el dashboard (mismos --blue/--cyan/
+// --purple que usan los donuts de Proceso Picking) — a pedido explícito de
+// Camilo (2026-09-15): "que los colores del NS por ambiente sean los mismos
+// que todo el dashboard". Claves en ambas capitalizaciones para reutilizar
+// tanto desde acá (Seco/Refrigerado/Congelado) como desde los donuts
+// (seco/refrigerado/congelado).
+const AMB_COLORS = {
+  Seco:'#2563eb', seco:'#2563eb',
+  Refrigerado:'#0891b2', refrigerado:'#0891b2',
+  Congelado:'#9333ea', congelado:'#9333ea',
+};
+
+function _renderSvcSucursal(items) {
   const wrap = document.getElementById('chart-svc-sucursal-wrap');
   if (!wrap) return;
 
@@ -1325,26 +1571,31 @@ function _renderSvcSucursal(items) {
     return;
   }
 
-  const rows = items.map(d => {
+  const rows = items.map((d,idx) => {
     const pct = d.pct_refs !== null && d.pct_refs !== undefined ? parseFloat(d.pct_refs) : 0;
     const color = _svcColor(pct);
     const bg    = pct >= 90 ? 'rgba(22,163,74,.1)' : pct >= 70 ? 'rgba(217,119,6,.1)' : 'rgba(220,38,38,.1)';
+    const ambChips = AMB_ORDEN.map(a=>{
+      const dd = (d.por_ambiente||{})[a.key];
+      if(!dd || !dd.total_refs) return '';
+      const pa = dd.pct_refs ?? 0;
+      const ca = _svcColor(pa);
+      return `<span style="font-size:8px;font-weight:700;color:${ca};background:rgba(241,245,249,.9);border:1px solid #e2e8f0;border-radius:4px;padding:0 4px;white-space:nowrap;">${a.icon} ${pa.toFixed(0)}%</span>`;
+    }).filter(Boolean).join(' ');
     return `
-      <tr style="border-bottom:1px solid #f1f5f9;">
-        <td style="padding:6px 8px;font-size:9px;color:#0f172a;font-weight:600;">${esc(d.sucursal || 'N/A')}</td>
+      <tr style="border-bottom:1px solid #f1f5f9;cursor:pointer;" onclick="toggleSucursalDetalle(${idx})" title="Ver referencias agotadas de esta sucursal">
+        <td style="padding:6px 8px;font-size:9.5px;color:#0f172a;font-weight:700;"><i class="fa-solid fa-chevron-right" style="font-size:7px;color:var(--text2);margin-right:4px;"></i>${esc(d.sucursal || 'N/A')}</td>
         <td style="padding:6px 8px;font-size:9px;color:#475569;text-align:right;">${d.total_refs ?? '--'}</td>
         <td style="padding:6px 8px;font-size:9px;color:#475569;text-align:right;">${d.refs_completas ?? '--'}</td>
         <td style="padding:6px 8px;text-align:right;">
           <span style="font-size:10px;font-weight:900;color:${color};background:${bg};padding:2px 6px;border-radius:4px;">${pct.toFixed(1)}%</span>
         </td>
+        <td style="padding:6px 8px;">${ambChips||'<span style="color:var(--text2);font-size:8px;">—</span>'}</td>
       </tr>`;
   }).join('');
 
   wrap.innerHTML = `
-    <div style="font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">
-      NS POR SUCURSAL (por SKU)
-    </div>
-    <div style="overflow-y:auto;max-height:148px;">
+    <div style="overflow-y:auto;flex:1;min-height:0;">
       <table style="width:100%;border-collapse:collapse;">
         <thead>
           <tr style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;">
@@ -1352,10 +1603,39 @@ function _renderSvcSucursal(items) {
             <th style="padding:4px 8px;font-size:8px;color:#475569;text-align:right;font-weight:600;">SOL</th>
             <th style="padding:4px 8px;font-size:8px;color:#475569;text-align:right;font-weight:600;">DESP</th>
             <th style="padding:4px 8px;font-size:8px;color:#475569;text-align:right;font-weight:600;">NS %</th>
+            <th style="padding:4px 8px;font-size:8px;color:#475569;text-align:left;font-weight:600;">% POR AMBIENTE</th>
           </tr>
         </thead>
-        <tbody>${rows}</tbody>
+        <tbody id="svc-sucursal-tbody">${rows}</tbody>
       </table>
+    </div>`;
+  _svcSucursalRows = items;
+}
+let _svcSucursalRows = [];
+
+function toggleSucursalDetalle(idx){
+  const panel=document.getElementById('svc-sucursal-detalle');
+  if(!panel) return;
+  if(_svcSucursalOpenIdx === idx){
+    _svcSucursalOpenIdx = null;
+    panel.style.display='none';
+    panel.innerHTML='';
+    return;
+  }
+  _svcSucursalOpenIdx = idx;
+  const suc = (_svcSucursalRows[idx]||{}).sucursal;
+  const detalle = (_svcAgotadosData||[]).filter(a => (a.sucursal||'Sin sucursal') === suc);
+  panel.style.display='block';
+  if(!detalle.length){
+    panel.innerHTML = `<div style="font-size:9px;color:var(--green);"><i class="fa-solid fa-circle-check"></i> ${esc(suc)}: sin referencias agotadas en el rango.</div>`;
+    return;
+  }
+  panel.innerHTML = `
+    <div style="font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">
+      <i class="fa-solid fa-triangle-exclamation" style="color:#ef4444;"></i> Agotados en ${esc(suc)} (${detalle.length})
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;max-height:70px;overflow-y:auto;">
+      ${detalle.map(a=>`<span style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:5px;padding:2px 7px;font-size:8.5px;white-space:nowrap;"><strong>${esc(a.nombre||'')}</strong> · Sol:${fmt(a.solicitado||0)} Sep:${fmt(a.separado||0)}</span>`).join('')}
     </div>`;
 }
 
@@ -1384,101 +1664,166 @@ const _svcDiaLabelPlugin = {
   }
 };
 
-function _renderSvcDia(data){
-  const labels=data.map(d=>{try{return new Date(d.fecha+'T00:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit'});}catch{return d.fecha;}});
-  const vals=data.map(d=>parseFloat(d.pct_refs!=null?d.pct_refs:d.pct)||0);
-  const colors=vals.map(v=>_svcColor(v));
-  const cfg={
-    type:'bar',
-    data:{labels,datasets:[
-      {label:'NS % SKUs',data:vals,backgroundColor:colors,borderColor:colors,borderWidth:1,borderRadius:5},
-      {label:'Tendencia',data:vals,type:'line',borderColor:'#d97706',borderWidth:2,pointRadius:4,pointBackgroundColor:'#d97706',fill:false,tension:0.3,order:0},
-      {label:'Meta 90%',data:data.map(()=>90),type:'line',borderColor:'#16a34a',borderWidth:1.5,borderDash:[4,4],pointRadius:0,fill:false,tension:0,_noLabel:true}
-    ]},
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      layout:{padding:{top:16}},
-      plugins:{
-        legend:{display:true,position:'bottom',labels:{font:{size:9},color:'#475569',boxWidth:10,padding:4,filter:i=>i.text!=='NS % SKUs'}},
-        tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${parseFloat(ctx.parsed.y).toFixed(1)}%`}}
-      },
-      scales:{
-        x:{ticks:{font:{size:9},color:'#475569',maxRotation:0},grid:{display:false}},
-        y:{min:0,max:110,ticks:{font:{size:9},color:'#475569',callback:v=>v+'%'},grid:{color:'rgba(226,232,240,0.8)'}}
-      },
-      animation:{duration:300}
-    },
-    plugins:[_svcDiaLabelPlugin]
-  };
-  if(_svcChartDia){_svcChartDia.destroy();_svcChartDia=null;}
-  const canvas=document.getElementById('chart-svc-dia');
-  if(canvas) _svcChartDia=new Chart(canvas,cfg);
-}
+const NS_META = 90; // meta de Nivel de Servicio (%) — línea azul en el gráfico "NS por día"
 
-function _renderSvcRef(data) {
-  const dias = Array.isArray(data) ? data : [];
+// Dos gráficos separados, a pedido explícito de Camilo (2026-09-15):
+//  1) "NS por Ambiente" (chart-svc-ambiente) — más pequeño, solo informativo,
+//     grouped bar por mes×ambiente, con % en cada barra.
+//  2) "NS por Mes" (chart-svc-ns-mes) — serie única agregada, con click en un
+//     mes para "cortar" (slice) al detalle diario en el MISMO canvas (botón
+//     "← Meses" para volver), también con % en cada barra.
+let _svcLastPorMesAmbiente = [];
+let _svcLastPorMes = [];
 
-  const labels = dias.map(d => {
-    const parts = d.fecha.split('-');
-    return `${parts[2]}/${parts[1]}`;
-  });
-
-  const pcts = dias.map(d => d.pct_refs !== null && d.pct_refs !== undefined ? parseFloat(d.pct_refs) : null);
-  const refs = dias.map(d => `Sol:${d.total_refs} SKUs · Desp:${d.refs_completas}`);
-
-  const colors = pcts.map(p => _svcColor(p));
-
-  if (window._svcRefChart) window._svcRefChart.destroy();
-  const ctx = document.getElementById('chart-svc-ref');
+function _renderSvcMesAmbiente(items) {
+  const labels = items.map(d => d.mes_label || d.mes || '');
+  if (window._svcAmbChart) window._svcAmbChart.destroy();
+  const ctx = document.getElementById('chart-svc-ambiente');
   if (!ctx) return;
 
-  window._svcRefChart = new Chart(ctx, {
+  const datasets = AMB_ORDEN.map(a => ({
+    label: `${a.icon} ${a.key}`,
+    data: items.map(d => {
+      const v = (d.ambientes || {})[a.key];
+      return v === null || v === undefined ? null : parseFloat(v);
+    }),
+    backgroundColor: AMB_COLORS[a.key],
+    borderRadius: 3,
+  }));
+
+  window._svcAmbChart = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'NS % (por SKU)',
-        data: pcts,
-        backgroundColor: colors,
-        borderRadius: 3,
-        borderSkipped: false,
-      }]
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: 16 } },
+      layout: { padding: { top: 14 } },
       plugins: {
-        legend: { display: false },
-        title: {
-          display: true,
-          text: 'NS POR DÍA — % de SKUs despachados',
-          color: '#475569',
-          font: { size: 9, weight: '700' }
-        },
+        legend: { display: true, position: 'bottom', labels: { font: { size: 7 }, color: '#475569', boxWidth: 8, padding: 3 } },
         tooltip: {
           callbacks: {
-            label: (ctx) => {
-              const i = ctx.dataIndex;
-              return ` ${ctx.raw}%  ·  ${refs[i]}`;
-            }
+            label: (ctx) => ` ${ctx.dataset.label}: ${ctx.raw != null ? ctx.raw + '%' : 'sin datos'}`
           }
         }
       },
       scales: {
         y: {
           min: 0, max: 110,
-          ticks: {
-            font: { size: 8 },
-            color: '#475569',
-            callback: v => v + '%'
-          },
+          ticks: { font: { size: 7 }, color: '#475569', callback: v => v + '%' },
           grid: { color: 'rgba(226,232,240,0.8)' }
         },
         x: {
-          ticks: { font: { size: 8 }, color: '#475569' },
+          ticks: { font: { size: 7 }, color: '#475569' },
           grid: { display: false }
         }
+      }
+    },
+    plugins: [_svcDiaLabelPlugin]
+  });
+}
+
+function _renderSvcNsPorMes(items) {
+  _svcLastPorMes = Array.isArray(items) ? items : [];
+  const backBtn = document.getElementById('svc-mes-back');
+  if (backBtn) backBtn.style.display = 'none';
+  _drawSvcNsPorMesChart(_svcLastPorMes);
+}
+
+function _drawSvcNsPorMesChart(items) {
+  const labels = items.map(d => d.mes_label || d.mes || '');
+  const pcts = items.map(d => d.pct_refs !== null && d.pct_refs !== undefined ? parseFloat(d.pct_refs) : null);
+  const colors = pcts.map(p => _svcColor(p));
+  const refs = items.map(d => `Sol:${d.total_refs} SKUs · Desp:${d.refs_completas}`);
+
+  if (window._svcMesChart) window._svcMesChart.destroy();
+  const ctx = document.getElementById('chart-svc-ns-mes');
+  if (!ctx) return;
+
+  window._svcMesChart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'NS %', data: pcts, backgroundColor: colors, borderRadius: 3, borderSkipped: false }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { top: 16 } },
+      onClick: (evt, elements) => {
+        if (!elements || !elements.length) return;
+        const idx = elements[0].index;
+        const item = items[idx];
+        if (item && item.mes) _svcSliceIntoDia(item.mes, item.mes_label || item.mes);
+      },
+      onHover: (evt, elements) => { evt.native.target.style.cursor = elements.length ? 'pointer' : 'default'; },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => ` ${ctx.raw}%  ·  ${refs[ctx.dataIndex]}` } }
+      },
+      scales: {
+        y: { min: 0, max: 110, ticks: { font: { size: 8 }, color: '#475569', callback: v => v + '%' }, grid: { color: 'rgba(226,232,240,0.8)' } },
+        x: { ticks: { font: { size: 8 }, color: '#475569' }, grid: { display: false } }
+      }
+    },
+    plugins: [_svcDiaLabelPlugin]
+  });
+}
+
+async function _svcSliceIntoDia(mesKey, mesLabel) {
+  const backBtn = document.getElementById('svc-mes-back');
+  if (backBtn) backBtn.style.display = 'inline-flex';
+  let dias = [];
+  try {
+    const rango = getRangoParams('&');
+    const d = await api(`/tv/nivel-servicio?fecha=${mesKey}-01${rango}`);
+    dias = Array.isArray(d.por_dia) ? d.por_dia : [];
+  } catch (e) {
+    console.warn('Slice mes→día no disponible', e);
+  }
+  _drawSvcDiaSlice(dias, mesLabel || mesKey);
+}
+
+function _svcVolverAMeses() {
+  const backBtn = document.getElementById('svc-mes-back');
+  if (backBtn) backBtn.style.display = 'none';
+  _drawSvcNsPorMesChart(_svcLastPorMes);
+}
+
+function _drawSvcDiaSlice(dias, label) {
+  const labels = dias.map(d => { const p = d.fecha.split('-'); return `${p[2]}/${p[1]}`; });
+  const pcts = dias.map(d => d.pct_refs !== null && d.pct_refs !== undefined ? parseFloat(d.pct_refs) : null);
+  const refs = dias.map(d => `Sol:${d.total_refs} SKUs · Desp:${d.refs_completas}`);
+  const colors = pcts.map(p => _svcColor(p));
+
+  if (window._svcMesChart) window._svcMesChart.destroy();
+  const ctx = document.getElementById('chart-svc-ns-mes');
+  if (!ctx) return;
+
+  window._svcMesChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'NS % (por SKU)', data: pcts, backgroundColor: colors, borderRadius: 3, borderSkipped: false, order: 1 },
+        { label: `Meta ${NS_META}%`, data: dias.map(() => NS_META), type: 'line', borderColor: '#2563eb', borderWidth: 2, borderDash: [5, 4], pointRadius: 0, fill: false, tension: 0, order: 0, _noLabel: true }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { top: 16 } },
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { font: { size: 8 }, color: '#475569', boxWidth: 10, padding: 4, filter: i => i.text !== 'NS % (por SKU)' } },
+        title: { display: true, text: `NS POR DÍA — ${label}`, color: '#475569', font: { size: 9, weight: '700' } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              if (ctx.dataset._noLabel) return ` Meta: ${NS_META}%`;
+              return ` ${ctx.raw}%  ·  ${refs[ctx.dataIndex]}`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: { min: 0, max: 110, ticks: { font: { size: 8 }, color: '#475569', callback: v => v + '%' }, grid: { color: 'rgba(226,232,240,0.8)' } },
+        x: { ticks: { font: { size: 8 }, color: '#475569' }, grid: { display: false } }
       }
     },
     plugins: [_svcDiaLabelPlugin]
@@ -1500,63 +1845,6 @@ function _renderSvcAgotados(agotados){
   el.style.animation=`ticker ${speed}s linear infinite`;
 }
 
-function _renderSvcMes(data) {
-  const items = Array.isArray(data) ? data : [];
-  const labels = items.map(d => d.mes_label || d.mes || '');
-  const pcts   = items.map(d => d.pct_refs !== null && d.pct_refs !== undefined ? parseFloat(d.pct_refs) : 0);
-  const refs   = items.map(d => `${d.refs_completas}/${d.total_refs} SKUs`);
-  const colors = pcts.map(p => _svcColor(p));
-
-  if (window._svcMesChart) window._svcMesChart.destroy();
-  const ctx = document.getElementById('chart-svc-mes');
-  if (!ctx) return;
-
-  window._svcMesChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'NS % (SKUs)',
-        data: pcts,
-        backgroundColor: colors,
-        borderRadius: 3,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      layout: { padding: { top: 16 } },
-      plugins: {
-        legend: { display: false },
-        title: {
-          display: true,
-          text: 'NS MENSUAL — % SKUs despachados',
-          color: '#475569',
-          font: { size: 9, weight: '700' }
-        },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => ` ${ctx.raw}%  ·  ${refs[ctx.dataIndex]}`
-          }
-        }
-      },
-      scales: {
-        y: {
-          min: 0, max: 110,
-          ticks: { font: { size: 8 }, color: '#475569', callback: v => v + '%' },
-          grid: { color: 'rgba(226,232,240,0.8)' }
-        },
-        x: {
-          ticks: { font: { size: 8 }, color: '#475569' },
-          grid: { display: false }
-        }
-      }
-    },
-    plugins: [_svcDiaLabelPlugin]
-  });
-  _svcChartMes = window._svcMesChart;
-}
-
 function _svcRenderSinDatos(){
   const elPct=document.getElementById('svc-pct-general');
   if(elPct){elPct.textContent='—%';elPct.style.color='';}
@@ -1575,7 +1863,8 @@ function _svcRenderSinDatos(){
 async function loadServicio(){
   let d;
   try{
-    d=await api('/tv/nivel-servicio'+getFechaParam());
+    const rango=getRangoParams(getFechaParam()?'&':'?');
+    d=await api('/tv/nivel-servicio'+getFechaParam()+rango);
   }catch(e){
     console.warn('Nivel de servicio: backend no disponible, se mantiene el estado vacío (sin datos simulados).', e);
     _svcRenderSinDatos();
@@ -1612,10 +1901,30 @@ async function loadServicio(){
   setText('svc-refs-total', g.total_refs != null ? g.total_refs : '--');
   if (elPctRef) { elPctRef.textContent = pctRefs + '% SKUs'; elPctRef.style.color = refColor; }
 
+  // Card 5: LÍNEAS SOL. vs DESP.
+  const pctLineas = typeof g.pct_lineas === 'number' ? g.pct_lineas : 100;
+  const lineasColor = _svcColor(pctLineas);
+  const elLineasComp = document.getElementById('svc-lineas-completas');
+  const elPctLineas  = document.getElementById('svc-pct-lineas');
+  if (elLineasComp) { elLineasComp.textContent = g.lineas_completas != null ? g.lineas_completas : '--'; elLineasComp.style.color = lineasColor; }
+  setText('svc-lineas-total', g.total_lineas != null ? g.total_lineas : '--');
+  if (elPctLineas) { elPctLineas.textContent = pctLineas + '% líneas'; elPctLineas.style.color = lineasColor; }
+
+  // Card 6: rango activo
+  const rango = d.rango || {};
+  setText('svc-rango-label', rango.desde && rango.hasta && rango.desde !== rango.hasta
+    ? `${rango.desde.split('-').reverse().join('/')} — ${rango.hasta.split('-').reverse().join('/')}`
+    : (rango.desde ? rango.desde.split('-').reverse().join('/') : 'Día actual'));
+
+  _svcAgotadosData = Array.isArray(d.agotados) ? d.agotados : [];
+  _svcSucursalOpenIdx = null;
+  const detPanel = document.getElementById('svc-sucursal-detalle');
+  if (detPanel) { detPanel.style.display = 'none'; detPanel.innerHTML = ''; }
+
   if(Array.isArray(d.por_sucursal)&&d.por_sucursal.length) _renderSvcSucursal(d.por_sucursal);
-  if(Array.isArray(d.por_dia)&&d.por_dia.length) _renderSvcDia(d.por_dia.slice(-7));
-  if(Array.isArray(d.por_dia)) _renderSvcRef(d.por_dia);
-  if(Array.isArray(d.por_mes)&&d.por_mes.length) _renderSvcMes(d.por_mes);
+  _svcLastPorMesAmbiente = Array.isArray(d.por_mes_ambiente) ? d.por_mes_ambiente : [];
+  if(_svcLastPorMesAmbiente.length) _renderSvcMesAmbiente(_svcLastPorMesAmbiente);
+  if(Array.isArray(d.por_mes)&&d.por_mes.length) _renderSvcNsPorMes(d.por_mes);
 
   if(Array.isArray(d.agotados)) _renderSvcAgotados(d.agotados);
   else _renderSvcAgotados([]);
@@ -1634,18 +1943,21 @@ async function loadAll(){
   if(tvRes.status==='rejected'&&pickRes.status==='rejected') throw new Error(tvRes.reason?.message||'Sin conexión');
 
   renderKPIs(tv,picking);
-  renderTicker(tv.stock_critico||[]);
+  renderTicker(tv.stock_critico||[], tv.proximos_vencer||[]);
   renderIngresos(tv.recepciones||[],tv.miscelaneos||[]);
   renderPicking(picking.planillas_activas||[], picking.progreso_ambiente||null);
+  renderPickingFaltantes(picking.alertas_faltantes||[]);
   const totalDemanda=(picking.planillas_activas||[]).reduce((s,p)=>s+(p.total_lineas||0),0);
   renderAgotados(tv.agotados||[],totalDemanda);
   renderAlertas(tv.proximos_vencer||[]);
+  renderDespachosCero(tv.despachos_en_cero||[]);
 
   // Async extras
   const mes=document.getElementById('ing-mes-select')?.value||getMesActual();
   loadIngresosChart(mes).catch(()=>{});
   loadPickingRanking().catch(()=>{});
   loadServicio().catch(()=>{});
+  loadAgotadosHistorico().catch(()=>{});
 }
 
 async function refresh(){

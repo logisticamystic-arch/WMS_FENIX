@@ -396,15 +396,19 @@ class PutawayController extends BaseController
             $factor    = (float)($producto->factor_udm ?? 0);
             $upc       = $factor > 0 ? (int)$factor : max(1, (int)(($producto->unidades_caja ?? null) ?: 1));
 
-            // Si el cliente envía cajas y saldos, calculamos cantidad exacta, de lo contrario inferimos (fallback)
+            // Si el cliente envía cajas y saldos, se usan solo para calcular la cantidad
+            // TOTAL exacta; el desglose cajas/saldo a mover SIEMPRE se deriva de ese total
+            // vía floor/mod con el upc del producto — nunca se confía en la partición que
+            // mande el cliente tal cual. Un producto "X UND" (upc=1) puede tener su stock
+            // de origen guardado íntegro en cantidad_cajas mientras el cliente lo pide
+            // mover como saldos: mismo total, desglose distinto, y la validación por campo
+            // (S:523 pedido vs S:0 disponible) rechazaba el movimiento aunque hubiera stock
+            // suficiente (bug "Ubicar — Patio" con SALMON FRESCO X UND, 2026-09-11).
             if ($cajasReq !== null && $saldosReq !== null) {
-                $cajasMove = $cajasReq;
-                $saldosMove = $saldosReq;
-                $cantidad = ($cajasMove * $upc) + $saldosMove;
-            } else {
-                $cajasMove = (int)floor($cantidad / $upc);
-                $saldosMove = round(fmod($cantidad, (float)$upc), 4);
+                $cantidad = ($cajasReq * $upc) + $saldosReq;
             }
+            $cajasMove  = (int)floor($cantidad / $upc);
+            $saldosMove = round($cantidad - ($cajasMove * $upc), 4);
 
             if ($cantidad <= 0) {
                 DB::rollBack();
@@ -472,9 +476,13 @@ class PutawayController extends BaseController
                 $fechaVenc = $invOrigen->fecha_vencimiento;
             }
 
-            $invOrigen->cantidad_cajas -= $cajasMove;
-            $invOrigen->saldos = round($invOrigen->saldos - $saldosMove, 4);
-            $invOrigen->cantidad = ($invOrigen->cantidad_cajas * $upc) + $invOrigen->saldos;
+            // Se recalcula el desglose completo desde el TOTAL restante (no se resta
+            // cajasMove/saldosMove campo por campo) para no arrastrar una partición
+            // previa inconsistente con el upc actual del producto.
+            $totalOrigenNuevo = round($invOrigen->cantidad - $cantidad, 4);
+            $invOrigen->cantidad_cajas = (int)floor($totalOrigenNuevo / $upc);
+            $invOrigen->saldos         = round($totalOrigenNuevo - ($invOrigen->cantidad_cajas * $upc), 4);
+            $invOrigen->cantidad       = $totalOrigenNuevo;
 
             if ($invOrigen->cantidad <= 0) {
                 $invOrigen->delete();
@@ -501,9 +509,10 @@ class PutawayController extends BaseController
             }
             if ($fechaVenc) $invDest->fecha_vencimiento = $fechaVenc;
 
-            $invDest->cantidad_cajas += $cajasMove;
-            $invDest->saldos = round($invDest->saldos + $saldosMove, 4);
-            $invDest->cantidad = ($invDest->cantidad_cajas * $upc) + $invDest->saldos;
+            $totalDestNuevo = round($invDest->cantidad + $cantidad, 4);
+            $invDest->cantidad_cajas = (int)floor($totalDestNuevo / $upc);
+            $invDest->saldos         = round($totalDestNuevo - ($invDest->cantidad_cajas * $upc), 4);
+            $invDest->cantidad       = $totalDestNuevo;
             $invDest->save();
 
             // Registro de movimiento

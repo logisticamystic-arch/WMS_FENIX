@@ -66,6 +66,37 @@ abstract class BaseController
         return $this->error($response, $message, 404);
     }
 
+    /**
+     * Detecta si $content es un archivo BINARIO (Excel real .xlsx/.xls, PDF,
+     * etc.) en vez de texto plano CSV/TXT — a pedido explícito de Camilo
+     * (2026-09-17): los importadores de archivo de este sistema (ICG,
+     * conteo cíclico, etc.) solo saben leer texto plano (str_getcsv sobre
+     * líneas); no hay librería de lectura de Excel real instalada (ni
+     * siquiera la extensión `zip` de PHP está habilitada en este servidor).
+     * Antes, subir un .xlsx real producía un 500 crudo (el contenido binario
+     * se leía como "líneas" y algún fragmento binario terminaba insertado en
+     * una columna VARCHAR, reventando el INSERT). Ahora se detecta ANTES de
+     * parsear y se devuelve un mensaje claro pidiendo guardarlo como CSV.
+     */
+    protected function esArchivoBinario(string $content): bool
+    {
+        if ($content === '') return false;
+        // Firma ZIP (xlsx/docx/xlsm modernos) o OLE2 (xls/doc legado).
+        if (str_starts_with($content, "PK\x03\x04") || str_starts_with($content, "PK\x05\x06") || str_starts_with($content, "PK\x07\x08")) return true;
+        if (str_starts_with($content, "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1")) return true;
+        // Heurística general: un archivo de texto real no debería traer bytes
+        // NUL ni una proporción alta de bytes de control en los primeros KB.
+        $muestra = substr($content, 0, 8192);
+        if (str_contains($muestra, "\x00")) return true;
+        $controles = preg_match_all('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', $muestra);
+        return $controles > (strlen($muestra) * 0.05);
+    }
+
+    protected function errorArchivoBinario(Response $response): Response
+    {
+        return $this->error($response, 'Este archivo parece ser un Excel binario (.xlsx/.xls) o de otro formato no soportado. Guárdelo como CSV (Archivo → Guardar como → CSV UTF-8) y vuelva a cargarlo.', 422);
+    }
+
     protected function forbidden(Response $response, string $message = 'No tienes permiso para esta acción'): Response
     {
         return $this->error($response, $message, 403);
@@ -516,6 +547,11 @@ abstract class BaseController
             $upc           = max(1, (int)$r->upc);
             $solicitadaUnd = round((float)$r->solicitada_cj * $upc, 2);
             $pendienteUnd  = round((float)$r->faltante_cj * $upc, 2);
+            // A pedido explícito (2026-09-18): no mostrar en la remisión filas de
+            // "agotados" sin ninguna cantidad real (solicitada Y pendiente en 0) —
+            // registros fantasma de líneas rotas por un bug ya corregido (split
+            // multi-ubicación), que no aportan información útil al cliente.
+            if ($solicitadaUnd <= 0 && $pendienteUnd <= 0) continue;
             $motivo = $r->causal_nombre
                 ? "<b>" . htmlspecialchars($r->causal_nombre) . "</b>" . ($r->causa ? " — " . htmlspecialchars($r->causa) : '')
                 : ($r->causa ? htmlspecialchars($r->causa) : 'Sin causa registrada');
@@ -530,6 +566,8 @@ abstract class BaseController
                 . "<td>{$responsable}</td>"
                 . "</tr>";
         }
+
+        if ($filas === '') return '';
 
         return "<div class='agotados-section'><div class='agotados-header'>&#9888; PRODUCTOS AGOTADOS / FALTANTES</div>"
             . "<table style='table-layout:fixed;width:100%;'><colgroup>"
@@ -565,9 +603,6 @@ abstract class BaseController
           body{margin:0;padding:0;font-size:9px;line-height:1.2}
           .pg-break{page-break-after:always;break-after:page}
           .running-print-header{display:flex!important;position:fixed;top:-8mm;left:0;right:0;height:16px;border-bottom:1.5px solid #1e3a5f;padding-bottom:2px;font-size:8.5px;font-weight:800;color:#1e3a5f;background:#fff;z-index:99999}
-          .ambiente-block{page-break-inside:avoid!important;break-inside:avoid-page!important}
-          .ambiente-block tr{page-break-inside:avoid!important;break-inside:avoid-page!important}
-          .agotados-section,.novedades-section{page-break-inside:avoid!important;break-inside:avoid-page!important}
         }
         .running-print-header{display:none}
         body{font-family:Arial,Helvetica,sans-serif;font-size:9.5px;color:#111;margin:0;padding:6px 10px;line-height:1.25}
@@ -579,7 +614,7 @@ abstract class BaseController
         .info-grid .campo{white-space:nowrap;font-size:9.5px;color:#0f172a}
         .info-grid .lbl{font-weight:800;font-size:8.5px;color:#334155;text-transform:uppercase;letter-spacing:.2px;margin-right:3px}
         .ambientes-grid{display:flex;flex-direction:column;gap:6px}
-        .ambiente-block{border:1px solid #cbd5e1;border-radius:3px;overflow:hidden;margin-bottom:6px;page-break-inside:avoid!important;break-inside:avoid-page!important}
+        .ambiente-block{border:1px solid #cbd5e1;border-radius:3px;overflow:hidden;margin-bottom:6px}
         .ambiente-header{background:#1e3a5f;color:#fff;padding:3px 8px;font-weight:800;font-size:9.5px;letter-spacing:.2px;page-break-after:avoid}
         table{width:100%;border-collapse:collapse;margin:0;font-size:8.5px}
         thead{display:table-header-group}
@@ -588,10 +623,10 @@ abstract class BaseController
         tr{page-break-inside:avoid!important;break-inside:avoid-page!important}
         tr:nth-child(even) td{background:#f8fafc}
         .totales{border-top:2px solid #1e3a5f;padding:4px 0;font-weight:800;font-size:10.5px;margin-top:6px;margin-bottom:10px;color:#1e3a5f}
-        .agotados-section{margin-top:8px;border:1.5px solid #b91c1c;border-radius:3px;overflow:hidden;page-break-inside:avoid!important;break-inside:avoid-page!important}
-        .agotados-header{background:#b91c1c;color:#fff;padding:3px 8px;font-weight:800;font-size:9.5px;letter-spacing:.2px}
-        .novedades-section{margin-top:8px;margin-bottom:10px;border:1.5px solid #1e3a5f;border-radius:3px;overflow:hidden;page-break-inside:avoid!important;break-inside:avoid-page!important}
-        .novedades-header{background:#1e3a5f;color:#fff;padding:3px 8px;font-weight:800;font-size:9.5px;letter-spacing:.2px}
+        .agotados-section{margin-top:8px;border:1.5px solid #b91c1c;border-radius:3px;overflow:hidden}
+        .agotados-header{background:#b91c1c;color:#fff;padding:3px 8px;font-weight:800;font-size:9.5px;letter-spacing:.2px;page-break-after:avoid}
+        .novedades-section{margin-top:8px;margin-bottom:10px;border:1.5px solid #1e3a5f;border-radius:3px;overflow:hidden}
+        .novedades-header{background:#1e3a5f;color:#fff;padding:3px 8px;font-weight:800;font-size:9.5px;letter-spacing:.2px;page-break-after:avoid}
         .novedades-section td{height:18px}
         .no-print{padding:6px 0;margin-bottom:8px}
         .no-print button{padding:6px 16px;font-size:12px;font-weight:bold;cursor:pointer;background:#1e3a5f;color:#fff;border:none;border-radius:5px;margin-right:8px}";

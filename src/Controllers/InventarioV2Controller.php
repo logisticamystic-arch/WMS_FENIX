@@ -17,6 +17,7 @@ use App\Models\Personal;
 use App\Models\Notificacion;
 use App\Models\SesionIcgLinea;
 use App\Helpers\InventoryGuard;
+use App\Helpers\ExcelExporter;
 use Carbon\Carbon;
 
 /**
@@ -3560,6 +3561,19 @@ class InventarioV2Controller extends BaseController
                         $tmpPath = $stream->getMetadata('uri');
                     }
                     $content = file_get_contents($tmpPath);
+
+                    // BUG CORREGIDO 2026-09-17: un .xlsx/.xls REAL (binario) se leía
+                    // como si fuera texto plano — el contenido binario terminaba
+                    // insertado en columnas VARCHAR y reventaba el INSERT con un
+                    // SQLSTATE crudo ("String data, right truncated"). No hay
+                    // librería de lectura de Excel instalada en este servidor (ni la
+                    // extensión `zip` de PHP habilitada), así que en vez de fallar a
+                    // ciegas se detecta el binario ANTES de parsear y se le pide al
+                    // usuario guardarlo como CSV — que sí funciona correctamente.
+                    if ($this->esArchivoBinario($content)) {
+                        return $this->errorArchivoBinario($res);
+                    }
+
                     if (!mb_detect_encoding($content, 'UTF-8', true)) {
                         $content = mb_convert_encoding($content, 'UTF-8', 'ISO-8859-1');
                     }
@@ -3873,6 +3887,202 @@ class InventarioV2Controller extends BaseController
             'encontrados'    => $encontrados,
             'no_encontrados' => array_values(array_unique($noEncontrados)),
             'total_validos'  => count($encontrados),
+        ]);
+    }
+
+    /**
+     * POST /v2/inventario/importar-referencias-archivo
+     *
+     * Carga un archivo (.csv/.txt, separador , ; o tab) con dos columnas:
+     * código de referencia y auxiliar (documento o nombre) — a pedido
+     * explícito de Camilo (2026-09-15): al crear un conteo cíclico "por
+     * referencia" se debe poder importar de una vez las referencias Y quién
+     * las va a contar, en lugar de pegar códigos fila por fila en el modal.
+     *
+     * Encabezados aceptados (opcionales, se detectan automáticamente):
+     *   codigo | referencia | codigo_interno   →  columna de referencia
+     *   auxiliar | documento | cedula | responsable → columna de auxiliar
+     * Sin encabezado, se asume: columna 1 = código, columna 2 = auxiliar.
+     *
+     * Devuelve las asignaciones ya agrupadas por auxiliar (mismo shape que
+     * validarCodigos() para reusar _renderRefBadges() en el frontend), listas
+     * para poblar el modal "Nueva Sesión" sin más llamadas al backend.
+     */
+
+    /**
+     * GET /api/v2/inventario/plantilla-referencias
+     *
+     * Plantilla CSV de ejemplo para "Importar archivo (referencias +
+     * auxiliar)" — a pedido explícito de Camilo (2026-09-17). Antes se
+     * generaba en el navegador con un Blob + <a download>, pero en un Chrome
+     * corporativo/gestionado (visto en vivo repetidas veces: "MS Fénix |
+     * Enterprise") ese tipo de descarga programática se renombraba a un UUID
+     * genérico sin extensión — probablemente el escaneo de descargas de la
+     * política empresarial, que no toca las descargas servidas por HTTP real
+     * con Content-Disposition (como esta). Se sirve igual que el resto de
+     * exportes del sistema (ExcelExporter, mismo patrón ya probado en
+     * exportConteoV2) para que el nombre de archivo llegue intacto.
+     */
+    public function plantillaReferencias(Request $req, Response $res): Response
+    {
+        $headers = ['codigo', 'auxiliar'];
+        $rows = [
+            ['101037', '1017130145'],
+            ['112027', '1017130145'],
+            ['106003', 'MARIA PEREZ'],
+        ];
+        return ExcelExporter::download($res, $headers, $rows, 'plantilla_conteo_ciclico_referencias');
+    }
+
+    public function importarReferenciasArchivo(Request $req, Response $res): Response
+    {
+        $user       = $req->getAttribute('user');
+        $empresaId  = $this->getEffectiveEmpresaId($user, $req);
+
+        $uploadedFiles = $req->getUploadedFiles();
+        $file = $uploadedFiles['file'] ?? $uploadedFiles['archivo'] ?? null;
+        if (!$file || $file->getError() !== UPLOAD_ERR_OK) {
+            return $this->error($res, 'Debe adjuntar un archivo (.csv o .txt)', 400);
+        }
+
+        $content = $file->getStream()->getContents();
+
+        // Defensivo: si alguien sube un .xlsx real renombrado a .csv, se
+        // rechaza con un mensaje claro en vez de intentar parsearlo como
+        // texto (ver BaseController::esArchivoBinario — mismo bug corregido
+        // 2026-09-17 en uploadIcgFile()).
+        if ($this->esArchivoBinario($content)) {
+            return $this->errorArchivoBinario($res);
+        }
+
+        if (!mb_detect_encoding($content, 'UTF-8', true)) {
+            $content = mb_convert_encoding($content, 'UTF-8', 'ISO-8859-1');
+        }
+        $lines = preg_split('/\r\n|\r|\n/', $content);
+        $lines = array_values(array_filter($lines, fn($l) => trim($l) !== ''));
+        if (empty($lines)) {
+            return $this->error($res, 'El archivo está vacío', 400);
+        }
+
+        $sep = ',';
+        if (str_contains($lines[0], "\t")) $sep = "\t";
+        elseif (str_contains($lines[0], ';')) $sep = ';';
+
+        $colCodigos   = ['codigo', 'referencia', 'codigo_interno', 'ean'];
+        $colAuxNames  = ['auxiliar', 'documento', 'cedula', 'cédula', 'responsable'];
+        $header = array_map(fn($h) => mb_strtolower(trim($h)), str_getcsv($lines[0], $sep));
+        $idxCodigo = 0;
+        $idxAux    = 1;
+        $startIdx  = 0;
+        $tieneEncabezado = count(array_intersect($header, array_merge($colCodigos, $colAuxNames))) > 0;
+        if ($tieneEncabezado) {
+            $startIdx = 1;
+            foreach ($header as $i => $h) {
+                if (in_array($h, $colCodigos, true)) $idxCodigo = $i;
+                if (in_array($h, $colAuxNames, true)) $idxAux = $i;
+            }
+        }
+
+        // Filas crudas [codigo, auxiliarRaw]
+        $filas = [];
+        for ($i = $startIdx; $i < count($lines); $i++) {
+            $cols = str_getcsv(trim($lines[$i]), $sep);
+            $codigo = trim($cols[$idxCodigo] ?? '');
+            $auxRaw = trim($cols[$idxAux] ?? '');
+            if ($codigo === '' && $auxRaw === '') continue;
+            $filas[] = ['codigo' => $codigo, 'auxiliar_raw' => $auxRaw];
+        }
+        if (empty($filas)) {
+            return $this->error($res, 'No se encontraron filas válidas en el archivo', 400);
+        }
+
+        // Resolver productos — mismo criterio que validarCodigos() (código interno o EAN)
+        $tokensCodigo = array_values(array_unique(array_filter(array_column($filas, 'codigo'))));
+        $prods = Producto::where('empresa_id', $empresaId)
+            ->where(function ($q) use ($tokensCodigo) {
+                $q->whereIn('codigo_interno', $tokensCodigo)
+                  ->orWhereHas('eans', function ($eq) use ($tokensCodigo) {
+                      $eq->whereIn('codigo_ean', $tokensCodigo);
+                  });
+            })
+            ->with(['eans:id,producto_id,codigo_ean'])
+            ->select('id', 'codigo_interno', 'nombre')
+            ->get();
+        $prodPorCodigo = [];
+        foreach ($prods as $p) {
+            $prodPorCodigo[mb_strtoupper(trim($p->codigo_interno))] = $p;
+            foreach ($p->eans as $e) {
+                $prodPorCodigo[mb_strtoupper(trim($e->codigo_ean))] = $p;
+            }
+        }
+
+        // Resolver auxiliares — por documento o por nombre. Mismo criterio que
+        // ParametrosController::getPersonal() (que alimenta el <select> de
+        // auxiliares de este mismo modal): withoutTenantScope() + empresa_id,
+        // SIN filtrar por 'activo' (personal.activo es smallint, no boolean —
+        // comparar con `true` revienta en Postgres) para no desincronizar el
+        // universo de auxiliares reconocidos por archivo vs. el del combo.
+        $auxiliares = Personal::withoutTenantScope()
+            ->where('empresa_id', $empresaId)
+            ->select('id', 'nombre', 'documento')
+            ->get();
+        $auxPorDocumento = [];
+        $auxPorNombre    = [];
+        foreach ($auxiliares as $a) {
+            if (!empty($a->documento)) $auxPorDocumento[trim($a->documento)] = $a;
+            if (!empty($a->nombre))    $auxPorNombre[mb_strtoupper(trim($a->nombre))] = $a;
+        }
+
+        $grupos = [];             // auxiliar_id => { auxiliar_id, auxiliar_nombre, productos:[], codigos_no_encontrados:[] }
+        $auxiliaresNoEncontrados = [];
+
+        foreach ($filas as $fila) {
+            $auxRaw = $fila['auxiliar_raw'];
+            if ($auxRaw === '') { $auxiliaresNoEncontrados['(fila sin auxiliar)'] = true; continue; }
+
+            $auxiliar = $auxPorDocumento[$auxRaw] ?? $auxPorNombre[mb_strtoupper($auxRaw)] ?? null;
+            if (!$auxiliar) {
+                $auxiliaresNoEncontrados[$auxRaw] = true;
+                continue;
+            }
+
+            if (!isset($grupos[$auxiliar->id])) {
+                $grupos[$auxiliar->id] = [
+                    'auxiliar_id'            => $auxiliar->id,
+                    'auxiliar_nombre'        => $auxiliar->nombre,
+                    'productos'              => [],
+                    'productos_ids_vistos'   => [],
+                    'codigos_no_encontrados' => [],
+                ];
+            }
+
+            $codigo = $fila['codigo'];
+            if ($codigo === '') continue;
+            $producto = $prodPorCodigo[mb_strtoupper($codigo)] ?? null;
+            if ($producto) {
+                if (!in_array($producto->id, $grupos[$auxiliar->id]['productos_ids_vistos'], true)) {
+                    $grupos[$auxiliar->id]['productos_ids_vistos'][] = $producto->id;
+                    $grupos[$auxiliar->id]['productos'][] = [
+                        'id'     => $producto->id,
+                        'codigo' => $producto->codigo_interno,
+                        'nombre' => $producto->nombre,
+                    ];
+                }
+            } else {
+                $grupos[$auxiliar->id]['codigos_no_encontrados'][] = $codigo;
+            }
+        }
+
+        $asignaciones = array_values(array_map(function ($g) {
+            unset($g['productos_ids_vistos']);
+            $g['codigos_no_encontrados'] = array_values(array_unique($g['codigos_no_encontrados']));
+            return $g;
+        }, $grupos));
+
+        return $this->ok($res, [
+            'asignaciones'              => $asignaciones,
+            'auxiliares_no_encontrados' => array_keys($auxiliaresNoEncontrados),
+            'total_filas'               => count($filas),
         ]);
     }
 }

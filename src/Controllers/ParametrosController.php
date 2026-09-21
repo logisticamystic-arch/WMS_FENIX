@@ -1739,12 +1739,20 @@ class ParametrosController extends BaseController
                 ->with('ruta');
 
             if (!empty($params['q'])) {
+                // BUG CORREGIDO 2026-09-18: filtraba por nombre_comercial/codigo, columnas
+                // que no existen en "clientes" (solo razon_social/nit/contacto_nombre) — la
+                // búsqueda por texto devolvía SQLSTATE 42703 (500) en TODO intento de
+                // búsqueda, silenciado en el móvil por un catch vacío, así que el
+                // desplegable nunca se filtraba al escribir, solo mostraba el listado
+                // inicial sin filtrar.
+                // ilike (no like): los nombres de cliente están en MAYÚSCULAS y el
+                // auxiliar busca en minúscula desde el móvil — like es sensible a
+                // mayúsculas en Postgres, así que nunca hacía match con lo escrito.
                 $q = $params['q'];
                 $query->where(function($sub) use ($q) {
-                    $sub->where('razon_social', 'like', "%{$q}%")
-                        ->orWhere('nombre_comercial', 'like', "%{$q}%")
-                        ->orWhere('nit', 'like', "%{$q}%")
-                        ->orWhere('codigo', 'like', "%{$q}%");
+                    $sub->where('razon_social', 'ilike', "%{$q}%")
+                        ->orWhere('nit', 'ilike', "%{$q}%")
+                        ->orWhere('contacto_nombre', 'ilike', "%{$q}%");
                 });
             }
 

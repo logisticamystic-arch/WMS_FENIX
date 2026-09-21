@@ -87,45 +87,44 @@ class DashboardTVController extends BaseController
             wmsLog('ERROR', 'TV:miscelaneos — ' . $e->getMessage());
         }
 
-        // ── 3. Agotados: Día anterior y actual (rango de 2 días) ──────────────
+        // ── 3. Agotados: dato real y actual de picking_detalles (mismo criterio que
+        // PickingController::dashboard()::alertas_faltantes — el módulo Picking
+        // Dashboard) ────────────────────────────────────────────────────────────
+        // BUG CORREGIDO 2026-09-10 (a pedido explícito de Camilo): esto antes
+        // consultaba `picking_faltantes` (log de solo-inserción, histórico) en un
+        // rango fijo de 2 días (ayer+hoy) sin importar la fecha filtrada — con
+        // fecha=hoy mostraba agotados de ayer también, y no reflejaba el estado
+        // ACTUAL de la línea (una línea ya reabastecida/reasignada seguía saliendo
+        // si el log no se limpiaba). Se reemplaza por la misma fuente que usa el
+        // Dashboard de Picking de escritorio: picking_detalles.estado='Faltante'
+        // en vivo, para la fecha exacta filtrada (fecha_movimiento, igual que el
+        // resto de este endpoint).
         $agotados = [];
         try {
-            $fechaAyer = date('Y-m-d', strtotime('-1 day', strtotime($fecha)));
-            $dateCol   = $this->isPg() ? "pf.created_at::date" : "DATE(pf.created_at)";
-
             $stmtAgo = $pdo->prepare("
-                SELECT pr.nombre                                             AS descripcion,
+                SELECT pr.nombre                                                     AS descripcion,
                        pr.codigo_interno,
-                       0                                                     AS stock_actual,
-                       COUNT(pf.id)                                          AS lineas_pendientes,
-                       COALESCE(SUM(pf.cantidad_solicitada), 0)             AS cantidad_solicitada,
-                       COALESCE(SUM(pf.cantidad_solicitada - pf.cantidad_faltante), 0) AS cantidad_pickeada,
-                       COALESCE(SUM(pf.cantidad_faltante), 0)                AS demanda_pendiente,
-                       COALESCE(pf.causa, 'Agotado')                        AS motivo,
-                       MIN(pf.created_at)                                    AS ultimo_ingreso,
-                       COALESCE(op.cliente, op.sucursal_entrega, '—')       AS sucursal
-                FROM picking_faltantes pf
-                JOIN productos pr ON pr.id = pf.producto_id
-                JOIN orden_pickings op ON op.id = pf.orden_picking_id
-                LEFT JOIN picking_detalles pd_res ON (
-                    pd_res.orden_picking_id = pf.orden_picking_id
-                    AND pd_res.producto_id = pf.producto_id
-                    AND pd_res.estado IN ('Completada', 'Completado')
-                    AND pd_res.cantidad_pickeada > 0
-                )
-                WHERE pf.empresa_id = :emp
-                  AND pf.sucursal_id = :suc
-                  AND {$dateCol} BETWEEN :fecha_ayer AND :fecha
-                  AND pd_res.id IS NULL
-                GROUP BY pr.nombre, pr.codigo_interno, pf.causa, op.cliente, op.sucursal_entrega
+                       pd.cantidad_solicitada,
+                       pd.cantidad_pickeada,
+                       GREATEST(0, pd.cantidad_solicitada - pd.cantidad_pickeada)    AS demanda_pendiente,
+                       COALESCE(NULLIF(pd.novedad, ''), 'Agotado')                   AS motivo,
+                       COALESCE(op.sucursal_entrega, op.cliente, '—')                AS sucursal,
+                       op.planilla_numero,
+                       pd.updated_at                                                  AS ultimo_ingreso
+                FROM picking_detalles pd
+                JOIN orden_pickings op ON op.id = pd.orden_picking_id
+                JOIN productos pr ON pr.id = pd.producto_id
+                WHERE op.empresa_id = :emp
+                  AND op.sucursal_id = :suc
+                  AND op.fecha_movimiento::date = :fecha
+                  AND pd.estado = 'Faltante'
                 ORDER BY demanda_pendiente DESC
                 LIMIT 50
             ");
             $stmtAgo->execute([
-                ':emp'        => $empresaId,
-                ':suc'        => $sucursalId,
-                ':fecha_ayer' => $fechaAyer,
-                ':fecha'      => $fecha,
+                ':emp'   => $empresaId,
+                ':suc'   => $sucursalId,
+                ':fecha' => $fecha,
             ]);
             $agotados = $stmtAgo->fetchAll(\PDO::FETCH_ASSOC);
         } catch (\Throwable $e) {
@@ -229,6 +228,56 @@ class DashboardTVController extends BaseController
             wmsLog('ERROR', 'TV:stock_critico — ' . $e->getMessage());
         }
 
+        // ── 6. Despachando en Cero: productos que SÍ se separaron físicamente en
+        // picking (hoy/fecha filtrada) pero el stock disponible actual en el WMS
+        // ya está en 0 o negativo — es decir, se está despachando mercancía que el
+        // sistema ya no tiene registrada como existencia. A pedido explícito de
+        // Camilo (2026-09-10): detectar en vivo, sin inventar datos, cruzando lo
+        // realmente pickeado hoy contra el stock 'Disponible' vigente.
+        $despachos_en_cero = [];
+        try {
+            $stmtDec = $pdo->prepare("
+                WITH despachado AS (
+                    SELECT pd.producto_id,
+                           SUM(pd.cantidad_pickeada)       AS unidades_despachadas,
+                           COUNT(DISTINCT pd.orden_picking_id) AS pedidos_afectados
+                    FROM picking_detalles pd
+                    JOIN orden_pickings op ON op.id = pd.orden_picking_id
+                    WHERE op.empresa_id  = :emp
+                      AND op.sucursal_id = :suc
+                      AND op.fecha_movimiento::date = :fecha
+                      AND pd.cantidad_pickeada > 0
+                    GROUP BY pd.producto_id
+                ),
+                stock AS (
+                    SELECT producto_id, COALESCE(SUM(cantidad), 0) AS stock_actual
+                    FROM inventarios
+                    WHERE sucursal_id = :suc2 AND estado = 'Disponible'
+                    GROUP BY producto_id
+                )
+                SELECT pr.nombre AS descripcion,
+                       pr.codigo_interno,
+                       d.unidades_despachadas,
+                       d.pedidos_afectados,
+                       COALESCE(s.stock_actual, 0) AS stock_actual
+                FROM despachado d
+                JOIN productos pr ON pr.id = d.producto_id
+                LEFT JOIN stock s ON s.producto_id = d.producto_id
+                WHERE COALESCE(s.stock_actual, 0) <= 0
+                ORDER BY d.unidades_despachadas DESC
+                LIMIT 30
+            ");
+            $stmtDec->execute([
+                ':emp'   => $empresaId,
+                ':suc'   => $sucursalId,
+                ':suc2'  => $sucursalId,
+                ':fecha' => $fecha,
+            ]);
+            $despachos_en_cero = $stmtDec->fetchAll(\PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            wmsLog('ERROR', 'TV:despachos_en_cero — ' . $e->getMessage());
+        }
+
         // ── KPIs ──────────────────────────────────────────────────────────────
         // recepciones es ahora línea-a-línea; contar docs únicos para el badge
         $totalRecDoc  = count(array_unique(array_column($recepciones, 'numero_recepcion')));
@@ -236,17 +285,19 @@ class DashboardTVController extends BaseController
         $unidadesMisc = (float) array_sum(array_map(fn($m) => (float)($m['cantidad'] ?? 0), $miscelaneos));
 
         return $this->ok($response, [
-            'recepciones'     => $recepciones,
-            'miscelaneos'     => $miscelaneos,
-            'agotados'        => $agotados,
-            'proximos_vencer' => $proximos_vencer,
-            'stock_critico'   => $stock_critico,
+            'recepciones'        => $recepciones,
+            'miscelaneos'        => $miscelaneos,
+            'agotados'           => $agotados,
+            'proximos_vencer'    => $proximos_vencer,
+            'stock_critico'      => $stock_critico,
+            'despachos_en_cero'  => $despachos_en_cero,
             'kpis' => [
-                'total_ingresos'           => $totalRecDoc + count($miscelaneos),
+                'total_ingresos'            => $totalRecDoc + count($miscelaneos),
                 'total_unidades_ingresadas' => $unidadesRec + $unidadesMisc,
-                'agotados_count'           => count($agotados),
-                'proximos_vencer_count'    => count($proximos_vencer),
-                'stock_critico_count'      => count($stock_critico),
+                'agotados_count'            => count($agotados),
+                'proximos_vencer_count'     => count($proximos_vencer),
+                'stock_critico_count'       => count($stock_critico),
+                'despachos_en_cero_count'   => count($despachos_en_cero),
             ],
         ]);
     }
@@ -428,6 +479,11 @@ class DashboardTVController extends BaseController
         $sepEfectivo = 0;
         $refSolMap   = [];
         $refSepMap   = [];
+        // Líneas = cada combinación orden_picking + producto (a diferencia de
+        // "referencias", que agrupa por producto en TODO el rango). Pedido
+        // explícito de Camilo (2026-09-15): tarjeta "líneas sol. vs desp.".
+        $totalLineas     = 0;
+        $lineasCompletas = 0;
 
         foreach ($stmtGen->fetchAll(\PDO::FETCH_ASSOC) as $g) {
             $key    = $g['orden_picking_id'] . '_' . $g['producto_id'];
@@ -445,6 +501,11 @@ class DashboardTVController extends BaseController
             if (!isset($refSolMap[$prodId])) { $refSolMap[$prodId] = 0; $refSepMap[$prodId] = 0; }
             $refSolMap[$prodId] += $solValida;
             $refSepMap[$prodId] += $sepEfectiva;
+
+            if ($solValida > 0) {
+                $totalLineas++;
+                if ($sepEfectiva >= $solValida) $lineasCompletas++;
+            }
         }
 
         $pctUnidades = $solValido > 0
@@ -463,6 +524,10 @@ class DashboardTVController extends BaseController
             ? min(100.0, max(0.0, round(($refsCompletas / $totalRefs) * 100, 2)))
             : 100.0;
 
+        $pctLineas = $totalLineas > 0
+            ? min(100.0, max(0.0, round(($lineasCompletas / $totalLineas) * 100, 2)))
+            : 100.0;
+
         return [
             'solicitado'          => $solValido,
             'separado'            => $sepEfectivo,
@@ -471,6 +536,9 @@ class DashboardTVController extends BaseController
             'total_refs'          => $totalRefs,
             'refs_completas'      => $refsCompletas,
             'pct_refs'            => $pctRefs,
+            'total_lineas'        => $totalLineas,
+            'lineas_completas'    => $lineasCompletas,
+            'pct_lineas'          => $pctLineas,
             'promedio'            => round(($pctUnidades + $pctRefs) / 2, 2),
         ];
     }
@@ -499,11 +567,18 @@ class DashboardTVController extends BaseController
 
         $params = $request->getQueryParams();
         $fecha  = !empty($params['fecha']) ? $params['fecha'] : date('Y-m-d');
+        // Rango histórico opcional (a pedido explícito de Camilo, 2026-09-15):
+        // si vienen fecha_inicio/fecha_fin se usan para el resumen general, el
+        // desglose por sucursal y los agotados del período; si no, se usa el
+        // día único de siempre (desde=hasta=fecha) — no cambia el comportamiento
+        // existente cuando no se manda rango.
+        $desde = !empty($params['fecha_inicio']) ? $params['fecha_inicio'] : $fecha;
+        $hasta = !empty($params['fecha_fin'])    ? $params['fecha_fin']    : $fecha;
 
         try {
-            // General: Unidades (NS2) + Referencias (NS1) del día, excluyendo
-            // faltantes por error de digitación — ver _nsCalcularRango().
-            $gen = $this->_nsCalcularRango($pdo, $empresaId, $sucursalId, $fecha, $fecha);
+            // General: Unidades (NS2) + Referencias (NS1) + Líneas del rango,
+            // excluyendo faltantes por error de digitación — ver _nsCalcularRango().
+            $gen = $this->_nsCalcularRango($pdo, $empresaId, $sucursalId, $desde, $hasta);
             $solGenValido    = $gen['solicitado'];
             $sepGenEfectivo  = $gen['separado'];
             $digitGenTotal   = $gen['digitacion_excluido'];
@@ -511,11 +586,16 @@ class DashboardTVController extends BaseController
             $totalRefs       = $gen['total_refs'];
             $refsCompletas   = $gen['refs_completas'];
             $pctRefs         = $gen['pct_refs'];
+            $totalLineas     = $gen['total_lineas'];
+            $lineasCompletas = $gen['lineas_completas'];
+            $pctLineas       = $gen['pct_lineas'];
 
-            // ── Por sucursal (fecha dada) — por referencia/SKU válidos ───────────
+            // ── Por sucursal (rango dado) — por referencia/SKU válidos, con
+            // desglose adicional por ambiente (Seco/Refrigerado/Congelado) ───────
             $stmtSuc = $pdo->prepare("
                 SELECT
                     COALESCE(op.sucursal_entrega, 'Sin sucursal') AS sucursal,
+                    COALESCE(INITCAP(am.codigo), 'Seco') AS ambiente,
                     COUNT(DISTINCT pd.producto_id) AS total_refs,
                     COUNT(DISTINCT CASE
                         WHEN pd.cantidad_pickeada >= pd.cantidad_solicitada
@@ -524,26 +604,37 @@ class DashboardTVController extends BaseController
                     END) AS refs_completas
                 FROM picking_detalles pd
                 JOIN orden_pickings op ON op.id = pd.orden_picking_id
+                JOIN productos pr ON pr.id = pd.producto_id
+                LEFT JOIN ambientes am ON am.id = pr.ambiente_id
                 WHERE op.empresa_id  = :emp
                   AND op.sucursal_id = :suc
                   AND op.estado NOT IN ('Anulado')
-                  AND op.fecha_movimiento::date = :fecha
+                  AND op.fecha_movimiento::date BETWEEN :desde AND :hasta
                   AND pd.estado NOT IN ('Pendiente', 'EnProceso')
-                GROUP BY op.sucursal_entrega
-                ORDER BY refs_completas DESC
+                GROUP BY op.sucursal_entrega, am.codigo
+                ORDER BY 1
             ");
-            $stmtSuc->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':fecha' => $fecha]);
+            $stmtSuc->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':desde' => $desde, ':hasta' => $hasta]);
             $rawSuc = $stmtSuc->fetchAll(\PDO::FETCH_ASSOC);
-            $porSucursal = array_map(function($r) {
-                return [
-                    'sucursal'       => $r['sucursal'],
+            $porSucursalMap = [];
+            foreach ($rawSuc as $r) {
+                $suc = $r['sucursal'];
+                if (!isset($porSucursalMap[$suc])) {
+                    $porSucursalMap[$suc] = ['sucursal' => $suc, 'total_refs' => 0, 'refs_completas' => 0, 'por_ambiente' => []];
+                }
+                $porSucursalMap[$suc]['total_refs']     += (int)$r['total_refs'];
+                $porSucursalMap[$suc]['refs_completas'] += (int)$r['refs_completas'];
+                $porSucursalMap[$suc]['por_ambiente'][$r['ambiente']] = [
                     'total_refs'     => (int)$r['total_refs'],
                     'refs_completas' => (int)$r['refs_completas'],
-                    'pct_refs'       => $r['total_refs'] > 0
-                        ? round($r['refs_completas'] / $r['total_refs'] * 100, 1)
-                        : null,
+                    'pct_refs'       => $r['total_refs'] > 0 ? round($r['refs_completas'] / $r['total_refs'] * 100, 1) : null,
                 ];
-            }, $rawSuc);
+            }
+            $porSucursal = array_values(array_map(function($r) {
+                $r['pct_refs'] = $r['total_refs'] > 0 ? round($r['refs_completas'] / $r['total_refs'] * 100, 1) : null;
+                return $r;
+            }, $porSucursalMap));
+            usort($porSucursal, fn($a, $b) => $b['refs_completas'] <=> $a['refs_completas']);
 
             // ── Por día del mes activo — por referencia (SKU) ────────────────────
             $mes = substr($fecha, 0, 7); // 'YYYY-MM'
@@ -647,13 +738,55 @@ class DashboardTVController extends BaseController
                 ];
             }, $rawMes);
 
-            // ── Agotados del período: referencias con faltantes registrados (excluye digitación) ──
+            // ── Por mes x ambiente (últimos 3 meses) — reemplaza el gráfico "SKU
+            // sol vs SKU desp" por NS% agrupado por Ambiente y por mes, a pedido
+            // explícito de Camilo (2026-09-15) ────────────────────────────────
+            $stmtMesAmb = $pdo->prepare("
+                SELECT
+                    TO_CHAR(op.fecha_movimiento, 'YYYY-MM') AS mes,
+                    TO_CHAR(op.fecha_movimiento, 'Mon')     AS mes_label,
+                    COALESCE(INITCAP(am.codigo), 'Seco') AS ambiente,
+                    COUNT(DISTINCT pd.producto_id) AS total_refs,
+                    COUNT(DISTINCT CASE
+                        WHEN pd.cantidad_pickeada >= pd.cantidad_solicitada
+                         AND pd.cantidad_solicitada > 0
+                        THEN pd.producto_id
+                    END) AS refs_completas
+                FROM picking_detalles pd
+                JOIN orden_pickings op ON op.id = pd.orden_picking_id
+                JOIN productos pr ON pr.id = pd.producto_id
+                LEFT JOIN ambientes am ON am.id = pr.ambiente_id
+                WHERE op.empresa_id  = :emp
+                  AND op.sucursal_id = :suc
+                  AND op.estado NOT IN ('Anulado')
+                  AND op.fecha_movimiento >= (CURRENT_DATE - INTERVAL '3 months')
+                  AND pd.estado NOT IN ('Pendiente', 'EnProceso')
+                GROUP BY 1, 2, am.codigo
+                ORDER BY 1
+            ");
+            $stmtMesAmb->execute([':emp' => $empresaId, ':suc' => $sucursalId]);
+            $porMesAmbienteMap = [];
+            foreach ($stmtMesAmb->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+                $mes = $r['mes'];
+                if (!isset($porMesAmbienteMap[$mes])) {
+                    $porMesAmbienteMap[$mes] = ['mes' => $mes, 'mes_label' => $r['mes_label'], 'ambientes' => []];
+                }
+                $pct = $r['total_refs'] > 0 ? round($r['refs_completas'] / $r['total_refs'] * 100, 1) : null;
+                $porMesAmbienteMap[$mes]['ambientes'][$r['ambiente']] = $pct;
+            }
+            ksort($porMesAmbienteMap);
+            $porMesAmbiente = array_values($porMesAmbienteMap);
+
+            // ── Agotados del período (rango): referencias con faltantes registrados
+            // (excluye digitación), con sucursal para poder filtrar al hacer click
+            // en "Por sucursal" ────────────────────────────────────────────────
             $agotados = [];
             try {
                 $stmtAgo = $pdo->prepare("
                     SELECT
                         pr.nombre,
                         pr.codigo_interno,
+                        COALESCE(op_ago.sucursal_entrega, 'Sin sucursal') AS sucursal,
                         COALESCE(SUM(pf.cantidad_solicitada), 0) AS solicitado,
                         COALESCE(SUM(pf.cantidad_solicitada - pf.cantidad_faltante), 0) AS separado
                     FROM picking_faltantes pf
@@ -669,20 +802,21 @@ class DashboardTVController extends BaseController
                     )
                     WHERE pf.empresa_id  = :emp
                       AND pf.sucursal_id = :suc
-                      AND op_ago.fecha_movimiento::date = :fecha
+                      AND op_ago.fecha_movimiento::date BETWEEN :desde AND :hasta
                       AND pd_res.id IS NULL
                       AND (cn.id IS NULL OR cn.nombre NOT ILIKE '%DIGITACION%')
                       AND (pf.causa IS NULL OR pf.causa NOT ILIKE '%DIGITACION%')
-                    GROUP BY pr.id, pr.nombre, pr.codigo_interno
+                    GROUP BY pr.id, pr.nombre, pr.codigo_interno, op_ago.sucursal_entrega
                     ORDER BY solicitado DESC
                 ");
-                $stmtAgo->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':fecha' => $fecha]);
+                $stmtAgo->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':desde' => $desde, ':hasta' => $hasta]);
                 $agotados = $stmtAgo->fetchAll(\PDO::FETCH_ASSOC);
             } catch (\Throwable $eAgo) {
                 wmsLog('ERROR', 'TV:nivelServicio:agotados — ' . $eAgo->getMessage());
             }
 
             return $this->ok($response, [
+                'rango'          => ['desde' => $desde, 'hasta' => $hasta],
                 'general'        => [
                     'solicitado'         => $solGenValido,
                     'separado'           => $sepGenEfectivo,
@@ -692,12 +826,16 @@ class DashboardTVController extends BaseController
                     'total_refs'         => $totalRefs,
                     'refs_completas'     => $refsCompletas,
                     'pct_refs'           => $pctRefs,
+                    'total_lineas'       => $totalLineas,
+                    'lineas_completas'   => $lineasCompletas,
+                    'pct_lineas'         => $pctLineas,
                 ],
-                'por_sucursal'   => $porSucursal,
-                'por_dia'        => $porDia,
-                'por_referencia' => $porReferencia,
-                'por_mes'        => $porMes,
-                'agotados'       => $agotados,
+                'por_sucursal'      => $porSucursal,
+                'por_dia'           => $porDia,
+                'por_referencia'    => $porReferencia,
+                'por_mes'           => $porMes,
+                'por_mes_ambiente'  => $porMesAmbiente,
+                'agotados'          => $agotados,
             ]);
         } catch (\Throwable $e) {
             wmsLog('ERROR', 'TV:nivelServicio — ' . $e->getMessage());
@@ -845,6 +983,74 @@ class DashboardTVController extends BaseController
         } catch (\Throwable $e) {
             wmsLog('ERROR', 'TV:getPickingRanking — ' . $e->getMessage());
             return $this->error($response, 'Error al obtener ranking de picking: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * GET /api/tv/agotados-historico
+     *
+     * Histórico de cuántas veces se ha "negado" (marcado faltante) cada
+     * referencia en un rango de fechas, con su % de participación sobre el
+     * total de negaciones del período — a pedido explícito de Camilo
+     * (2026-09-15) para la pestaña Agotados del TV Dashboard.
+     *
+     * Query params: fecha_inicio, fecha_fin (default: últimos 30 días)
+     */
+    public function agotadosHistorico(Request $request, Response $response): Response
+    {
+        $user       = $request->getAttribute('user');
+        $empresaId  = $this->getEffectiveEmpresaId($user, $request);
+        $sucursalId = $this->getEffectiveSucursalId($user, $request);
+        $pdo        = Capsule::connection()->getPdo();
+
+        $params = $request->getQueryParams();
+        $hasta  = !empty($params['fecha_fin'])    ? $params['fecha_fin']    : date('Y-m-d');
+        $desde  = !empty($params['fecha_inicio']) ? $params['fecha_inicio'] : date('Y-m-d', strtotime('-30 days'));
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    pr.id,
+                    pr.nombre,
+                    pr.codigo_interno,
+                    COUNT(*)                                  AS veces_negado,
+                    COALESCE(SUM(pf.cantidad_faltante), 0)    AS unidades_faltantes,
+                    COALESCE(NULLIF(MODE() WITHIN GROUP (ORDER BY COALESCE(cn.nombre, pf.causa)), ''), 'Sin motivo') AS motivo_frecuente
+                FROM picking_faltantes pf
+                JOIN productos pr ON pr.id = pf.producto_id
+                JOIN orden_pickings op ON op.id = pf.orden_picking_id
+                LEFT JOIN causales_novedad cn ON cn.id = pf.causal_id
+                WHERE pf.empresa_id  = :emp
+                  AND pf.sucursal_id = :suc
+                  AND op.fecha_movimiento::date BETWEEN :desde AND :hasta
+                GROUP BY pr.id, pr.nombre, pr.codigo_interno
+                ORDER BY veces_negado DESC
+                LIMIT 30
+            ");
+            $stmt->execute([':emp' => $empresaId, ':suc' => $sucursalId, ':desde' => $desde, ':hasta' => $hasta]);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $totalNegaciones = array_sum(array_column($rows, 'veces_negado'));
+            $data = array_map(function($r) use ($totalNegaciones) {
+                $veces = (int)$r['veces_negado'];
+                return [
+                    'nombre'             => $r['nombre'],
+                    'codigo_interno'     => $r['codigo_interno'],
+                    'veces_negado'       => $veces,
+                    'unidades_faltantes' => (float)$r['unidades_faltantes'],
+                    'motivo_frecuente'   => $r['motivo_frecuente'],
+                    'pct_participacion'  => $totalNegaciones > 0 ? round($veces / $totalNegaciones * 100, 1) : 0,
+                ];
+            }, $rows);
+
+            return $this->ok($response, [
+                'rango'            => ['desde' => $desde, 'hasta' => $hasta],
+                'total_negaciones' => $totalNegaciones,
+                'referencias'      => $data,
+            ]);
+        } catch (\Throwable $e) {
+            wmsLog('ERROR', 'TV:agotadosHistorico — ' . $e->getMessage());
+            return $this->error($response, 'Error al obtener histórico de agotados: ' . $e->getMessage(), 500);
         }
     }
 }
