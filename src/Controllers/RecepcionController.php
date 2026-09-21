@@ -2400,7 +2400,16 @@ public function getControlPanelData(Request $request, Response $response): Respo
 
         return $this->ok($response, null, 'Línea de ODC eliminada.');
     }
-    // ── MÓDULO DE CALIDAD (RECEPCIÓN SIN ODC) ────────────────────────────────
+    // ── MÓDULO DE CALIDAD (RECEPCIÓN CON Y SIN ODC) ──────────────────────────
+
+    // A pedido explícito (2026-09-18): "No Aplica" se suma a Cumple/No Cumple
+    // en la inspección de calidad — se valida en el servidor contra el mismo
+    // catálogo fijo que usa el frontend, no se confía en texto libre.
+    private function soloCNCNa(?string $v): ?string
+    {
+        $v = strtoupper(trim((string)$v));
+        return in_array($v, ['C', 'NC', 'NA'], true) ? $v : null;
+    }
 
     public function guardarCalidad(Request $request, Response $response, array $args): Response
     {
@@ -2434,13 +2443,13 @@ public function getControlPanelData(Request $request, Response $response): Respo
 
         // Crear o actualizar
         $calidad = \App\Models\RecepcionCalidad::firstOrNew(['recepcion_id' => $recepcionId]);
-        
+
         $calidad->factura = $data['factura'] ?? $calidad->factura;
         $calidad->trans_placa = $data['trans_placa'] ?? $calidad->trans_placa;
-        $calidad->trans_temperatura = $data['trans_temperatura'] ?? $calidad->trans_temperatura;
-        $calidad->trans_limpieza = $data['trans_limpieza'] ?? $calidad->trans_limpieza;
-        $calidad->trans_concepto_sanitario = $data['trans_concepto_sanitario'] ?? $calidad->trans_concepto_sanitario;
-        $calidad->trans_carnet_manipulacion = $data['trans_carnet_manipulacion'] ?? $calidad->trans_carnet_manipulacion;
+        $calidad->trans_temperatura = $this->soloCNCNa($data['trans_temperatura'] ?? null) ?? $calidad->trans_temperatura;
+        $calidad->trans_limpieza = $this->soloCNCNa($data['trans_limpieza'] ?? null) ?? $calidad->trans_limpieza;
+        $calidad->trans_concepto_sanitario = $this->soloCNCNa($data['trans_concepto_sanitario'] ?? null) ?? $calidad->trans_concepto_sanitario;
+        $calidad->trans_carnet_manipulacion = $this->soloCNCNa($data['trans_carnet_manipulacion'] ?? null) ?? $calidad->trans_carnet_manipulacion;
         $calidad->firma_responsable = $data['firma_responsable'] ?? $calidad->firma_responsable;
         $calidad->conforme = $data['conforme'] ?? $calidad->conforme;
 
@@ -2530,12 +2539,12 @@ public function getControlPanelData(Request $request, Response $response): Respo
         }
 
         $calidad = \App\Models\RecepcionDetalleCalidad::firstOrNew(['recepcion_detalle_id' => $detalleId]);
-        $calidad->olor          = $data['olor'] ?? $calidad->olor;
-        $calidad->color         = $data['color'] ?? $calidad->color;
-        $calidad->textura       = $data['textura'] ?? $calidad->textura;
-        $calidad->temperatura   = $data['temperatura'] ?? $calidad->temperatura;
-        $calidad->empaque       = $data['empaque'] ?? $calidad->empaque;
-        $calidad->rotulado      = $data['rotulado'] ?? $calidad->rotulado;
+        $calidad->olor          = $this->soloCNCNa($data['olor'] ?? null) ?? $calidad->olor;
+        $calidad->color         = $this->soloCNCNa($data['color'] ?? null) ?? $calidad->color;
+        $calidad->textura       = $this->soloCNCNa($data['textura'] ?? null) ?? $calidad->textura;
+        $calidad->temperatura   = $this->soloCNCNa($data['temperatura'] ?? null) ?? $calidad->temperatura;
+        $calidad->empaque       = $this->soloCNCNa($data['empaque'] ?? null) ?? $calidad->empaque;
+        $calidad->rotulado      = $this->soloCNCNa($data['rotulado'] ?? null) ?? $calidad->rotulado;
         $calidad->observaciones = $data['observaciones'] ?? $calidad->observaciones;
 
         if ($fotoPath) {
