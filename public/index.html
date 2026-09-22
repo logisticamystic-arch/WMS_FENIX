@@ -284,10 +284,6 @@
           <button class="nm-item" data-module="chat-ia" onclick="WMS.nav('chat-ia')">
             <i class="fa-solid fa-robot"></i><span>FENIX IA</span>
           </button>
-
-          <button class="nm-item" title="Grafo de arquitectura y flujo del sistema" onclick="window.open('../graphify-out/graph.html', '_blank')">
-            <i class="fa-solid fa-diagram-project" style="color:#38bdf8;"></i><span>Grafo Sistema</span>
-          </button>
         </nav>
 
         <!-- Submenú colapsable del módulo activo -->
@@ -1981,6 +1977,12 @@
               section: 'DEVOLUCIONES', items: [
                 { icon: 'fa-magnifying-glass', label: 'Consultar Consecutivo', action: "WMS.nav('calidad','devoluciones-consulta')" },
                 { icon: 'fa-camera', label: 'Devoluciones', action: "WMS.nav('calidad','devoluciones-informe')" },
+              ]
+            },
+            {
+              section: 'INVENTARIO & TRAZABILIDAD', items: [
+                { icon: 'fa-calendar-days', label: 'Vencimientos', action: "WMS.nav('calidad','vencimientos')" },
+                { icon: 'fa-timeline', label: 'Trazabilidad', action: "WMS.nav('calidad','trazabilidad')" },
               ]
             },
           ],

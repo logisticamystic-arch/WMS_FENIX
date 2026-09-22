@@ -332,7 +332,29 @@ const MWMS = {
     window.addEventListener('online', () => this._processOfflineQueue());
     window.addEventListener('offline', () => this.toast('📡 Sin conexión', 'warning'));
 
+    this._startInactivityWatch();
     if (_mToken && _mUser) this.showApp(); else this.showLogin();
+  },
+
+  // Cierre de sesión automático por inactividad (solo móvil: dispositivos
+  // compartidos entre auxiliares en piso). No cierra si hay operaciones
+  // offline sin sincronizar, para no perder trabajo en cola.
+  _lastActivity: Date.now(),
+  _inactivityTimer: null,
+  _INACTIVITY_LIMIT_MS: 10 * 60 * 1000,
+  _startInactivityWatch() {
+    const reset = () => { this._lastActivity = Date.now(); };
+    ['click', 'touchstart', 'keydown', 'scroll'].forEach(ev =>
+      document.addEventListener(ev, reset, { passive: true }));
+    if (this._inactivityTimer) clearInterval(this._inactivityTimer);
+    this._inactivityTimer = setInterval(() => {
+      if (!_mToken) return;
+      if (_offlineQueue.queue.length > 0) { reset(); return; }
+      if (Date.now() - this._lastActivity >= this._INACTIVITY_LIMIT_MS) {
+        this.toast('Sesión cerrada por inactividad', 'warning');
+        this.logout();
+      }
+    }, 30000);
   },
 
   async _loadCausalesNovedad() {

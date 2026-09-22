@@ -38,6 +38,20 @@ WMS_MODULES.calidad = {
       return this.show_devolucionesInforme();
     }
 
+    if (this._sub === 'vencimientos') {
+      WMS.loadScript('assets/js/desktop/inventario.js', () => {
+        if (WMS_MODULES.inventario) WMS_MODULES.inventario.load('vencimientos');
+      });
+      return;
+    }
+
+    if (this._sub === 'trazabilidad') {
+      WMS.loadScript('assets/js/desktop/trazabilidad.js', () => {
+        if (WMS_MODULES.trazabilidad) WMS_MODULES.trazabilidad.load();
+      });
+      return;
+    }
+
     WMS.setBreadcrumb('calidad', this._sub === 'matriz' ? 'Matriz de Registros' : 'Tablero de Control');
     WMS.setToolbar('');
     if (this._sub === 'matriz') this.show_matriz();
