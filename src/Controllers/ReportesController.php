@@ -279,6 +279,14 @@ class ReportesController extends BaseController
                        ->orWhere('codigo_interno', 'ILIKE', "%$v%");
                 });
             })
+            // Filtro "Recibido Por" (nuevo, a pedido explícito de Camilo): el
+            // input del frontend es un autocomplete contra /param/personal que
+            // solo llena el nombre (sin id), igual que ya hace Cliente en este
+            // mismo módulo — se matchea por texto, no por auxiliar_id.
+            ->when(!empty($params['responsable']), function ($q) use ($params) {
+                $v = $params['responsable'];
+                $q->whereHas('recepcion.auxiliar', fn($q2) => $q2->where('nombre', 'ILIKE', "%$v%"));
+            })
             ->with(['producto', 'recepcion.auxiliar', 'ubicacionDestino'])
             ->orderByDesc('created_at')
             ->get();

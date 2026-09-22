@@ -179,6 +179,44 @@ WMS_MODULES.reportes = {
     input.addEventListener('input', buscarYMostrar);
   },
 
+  // ── Autocomplete de EMPLEADO (Recibido Por) — mismo criterio que Cliente:
+  // carga /param/personal una sola vez y filtra localmente (lista chica por
+  // empresa, no justifica un endpoint de búsqueda en servidor) ─────────────
+  _empleadosCache: null,
+
+  async initEmpleadoAutocomplete(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    const buscarYMostrar = async () => {
+      const val = input.value.trim();
+
+      if (!this._empleadosCache) {
+        try {
+          const res = await API.get('/param/personal', 'limit=200');
+          this._empleadosCache = res.data || res || [];
+        } catch (_) { this._empleadosCache = []; }
+      }
+
+      const term = val.toLowerCase();
+      const list = (term
+        ? this._empleadosCache.filter(p => (p.nombre || '').toLowerCase().includes(term))
+        : this._empleadosCache
+      ).slice(0, 15);
+
+      this._mostrarDropdown(inputId, list, p => `
+        <div style="padding:8px 12px;cursor:pointer;font-size:.83rem;border-bottom:1px solid #f1f5f9;"
+             onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''"
+             onclick="WMS_MODULES.reportes._selectTexto('${inputId}','${WMS.esc(p.nombre).replace(/'/g,"\\'")}')">
+          <b>${WMS.esc(p.nombre)}</b>${p.rol ? ' — ' + WMS.esc(p.rol) : ''}
+        </div>`);
+    };
+
+    input.addEventListener('focus', buscarYMostrar);
+    input.addEventListener('click', buscarYMostrar);
+    input.addEventListener('input', buscarYMostrar);
+  },
+
   // ── Autocomplete de REFERENCIA/PRODUCTO — búsqueda en servidor con debounce ─
   _refDebounce: {},
 
@@ -651,18 +689,15 @@ WMS_MODULES.reportes = {
   },
 
   // ── RECIBO CDP — recepciones por QR del proveedor CDP ─────────────────────
-  _panelFiltrosReciboCdp({desde='', hasta='', referencia=''} = {}) {
+  _panelFiltrosReciboCdp({desde='', hasta='', referencia='', responsable=''} = {}) {
     const campo = (label, inputHtml) => `
       <div>
         <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.02em;margin-bottom:5px;">${label}</label>
         ${inputHtml}
       </div>`;
     // Sin clase .card: su overflow:hidden recortaría la lista del combobox de referencia.
-    // position:sticky (no la página, .content-body es el ancestro real con scroll
-    // — ver .content-body{height:calc(100vh - 56px - 50px);overflow-y:auto} en
-    // index.html) para que los filtros no desaparezcan al bajar a ver más filas.
     return `
-      <div style="position:sticky;top:0;z-index:15;margin-bottom:16px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+      <div style="margin-bottom:16px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
         <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
           <span class="card-title"><i class="fa-solid fa-filter"></i> Filtros de búsqueda</span>
           <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.reportes._limpiarFiltrosReciboCdp()">
@@ -678,8 +713,14 @@ WMS_MODULES.reportes = {
                      style="padding-right:28px;" value="${WMS.esc(referencia)}">
               <i class="fa-solid fa-chevron-down" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:11px;pointer-events:none;"></i>
             </div>`)}
+          ${campo('Recibido Por', `
+            <div style="position:relative;">
+              <input type="text" class="form-control" id="cdp-responsable" placeholder="Todos los empleados" autocomplete="off"
+                     style="padding-right:28px;" value="${WMS.esc(responsable)}">
+              <i class="fa-solid fa-chevron-down" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:11px;pointer-events:none;"></i>
+            </div>`)}
           <div>
-            <button class="btn btn-primary" style="width:100%;" onclick="WMS_MODULES.reportes._buscar('cdp','show_recibo_cdp')">
+            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.reportes._buscar('cdp','show_recibo_cdp')">
               <i class="fa-solid fa-magnifying-glass"></i> Filtrar
             </button>
           </div>
@@ -688,7 +729,7 @@ WMS_MODULES.reportes = {
   },
 
   _limpiarFiltrosReciboCdp() {
-    ['cdp-desde','cdp-hasta','cdp-ref'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    ['cdp-desde','cdp-hasta','cdp-ref','cdp-responsable'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     document.getElementById('cdp-desde').value = WMS.getPastDate(30);
     document.getElementById('cdp-hasta').value = WMS.getToday();
     this.show_recibo_cdp();
@@ -696,44 +737,54 @@ WMS_MODULES.reportes = {
 
   async show_recibo_cdp() {
     const p = this._getParams('cdp');
+    const responsable = document.getElementById('cdp-responsable')?.value.trim() || '';
 
     if (!this._buscadoMap.cdp) {
       WMS.setToolbar('');
       WMS.setContent(`
-        ${this._panelFiltrosReciboCdp({desde:p.desde, hasta:p.hasta, referencia:p.ref})}
+        <div style="position:sticky;top:0;z-index:15;background:#fff;padding-bottom:8px;">
+          ${this._panelFiltrosReciboCdp({desde:p.desde, hasta:p.hasta, referencia:p.ref, responsable})}
+        </div>
         ${this._estadoInicialReporte()}`);
       this.initProductoAutocomplete('cdp-ref');
+      this.initEmpleadoAutocomplete('cdp-responsable');
       return;
     }
 
     WMS.setToolbar(`<button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.exportarReciboCdp()"><i class="fa-solid fa-file-csv"></i> Exportar CSV</button>`);
     WMS.spinner();
     try {
-      const qs = `fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}`;
+      const qs = `fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&responsable=${encodeURIComponent(responsable)}`;
       const r  = await API.get('/reportes/recibo-cdp', qs);
       const data = r.data || r || {};
       const rows = data.rows || [];
       const tot  = data.totales || {};
 
+      // Filtros + tarjetas de totales fusionados en UN solo contenedor sticky:
+      // dos position:sticky separados con el mismo top:0 se pisan entre sí — hay
+      // que fijarlos juntos como una sola unidad para que ninguno de los dos
+      // quede tapado ni se oculte al bajar en la lista.
       WMS.setContent(`
-        ${this._panelFiltrosReciboCdp({desde:p.desde, hasta:p.hasta, referencia:p.ref})}
+        <div style="position:sticky;top:0;z-index:15;background:#fff;padding-bottom:8px;">
+          ${this._panelFiltrosReciboCdp({desde:p.desde, hasta:p.hasta, referencia:p.ref, responsable})}
 
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
-          <div style="padding:12px;background:#eff6ff;border-radius:8px;text-align:center;border:1px solid #bfdbfe;">
-            <div style="font-size:20px;font-weight:800;color:#1e40af;">${tot.total_lineas || 0}</div>
-            <div style="font-size:10px;color:#1e40af;font-weight:700;text-transform:uppercase;">Líneas Recibidas</div>
-          </div>
-          <div style="padding:12px;background:#f0fdf4;border-radius:8px;text-align:center;border:1px solid #bbf7d0;">
-            <div style="font-size:20px;font-weight:800;color:#16a34a;">${WMS.formatNum(tot.total_cajas || 0)}</div>
-            <div style="font-size:10px;color:#16a34a;font-weight:700;text-transform:uppercase;">Total Cajas</div>
-          </div>
-          <div style="padding:12px;background:#fefce8;border-radius:8px;text-align:center;border:1px solid #fde68a;">
-            <div style="font-size:20px;font-weight:800;color:#d97706;">${WMS.formatNum(tot.total_saldo || 0)}</div>
-            <div style="font-size:10px;color:#d97706;font-weight:700;text-transform:uppercase;">Total Saldo</div>
-          </div>
-          <div style="padding:12px;background:#f8fafc;border-radius:8px;text-align:center;border:1px solid #e2e8f0;">
-            <div style="font-size:20px;font-weight:800;color:#334155;">${WMS.formatNum(tot.total_recibido || 0)}</div>
-            <div style="font-size:10px;color:#334155;font-weight:700;text-transform:uppercase;">Total Recibido (UND)</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+            <div style="padding:12px;background:#eff6ff;border-radius:8px;text-align:center;border:1px solid #bfdbfe;">
+              <div style="font-size:20px;font-weight:800;color:#1e40af;">${tot.total_lineas || 0}</div>
+              <div style="font-size:10px;color:#1e40af;font-weight:700;text-transform:uppercase;">Líneas Recibidas</div>
+            </div>
+            <div style="padding:12px;background:#f0fdf4;border-radius:8px;text-align:center;border:1px solid #bbf7d0;">
+              <div style="font-size:20px;font-weight:800;color:#16a34a;">${WMS.formatNum(tot.total_cajas || 0)}</div>
+              <div style="font-size:10px;color:#16a34a;font-weight:700;text-transform:uppercase;">Total Cajas</div>
+            </div>
+            <div style="padding:12px;background:#fefce8;border-radius:8px;text-align:center;border:1px solid #fde68a;">
+              <div style="font-size:20px;font-weight:800;color:#d97706;">${WMS.formatNum(tot.total_saldo || 0)}</div>
+              <div style="font-size:10px;color:#d97706;font-weight:700;text-transform:uppercase;">Total Saldo</div>
+            </div>
+            <div style="padding:12px;background:#f8fafc;border-radius:8px;text-align:center;border:1px solid #e2e8f0;">
+              <div style="font-size:20px;font-weight:800;color:#334155;">${WMS.formatNum(tot.total_recibido || 0)}</div>
+              <div style="font-size:10px;color:#334155;font-weight:700;text-transform:uppercase;">Total Recibido (UND)</div>
+            </div>
           </div>
         </div>
 
@@ -759,13 +810,15 @@ WMS_MODULES.reportes = {
           </tr>`).join('')||'<tr><td colspan="11" class="table-empty">Sin recepciones sin ODC (QR o CDP) en este rango</td></tr>'}
           </tbody></table></div></div>`);
       this.initProductoAutocomplete('cdp-ref');
+      this.initEmpleadoAutocomplete('cdp-responsable');
     } catch(e) { WMS.setContent('<div class="m-empty">Error cargando Recibo CDP</div>'); }
   },
 
   exportarReciboCdp() {
     const p = this._getParams('cdp');
+    const responsable = document.getElementById('cdp-responsable')?.value.trim() || '';
     const token = localStorage.getItem('wms_token');
-    const url = `${API_BASE}/reportes/recibo-cdp?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&token=${encodeURIComponent(token)}`;
+    const url = `${API_BASE}/reportes/recibo-cdp?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&responsable=${encodeURIComponent(responsable)}&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
   },
 
