@@ -3317,6 +3317,7 @@ class PickingController extends BaseController
         $stats['ranking_auxiliares'] = Capsule::table('personal as aux')
             ->join('picking_detalles as d', 'aux.id', '=', 'd.auxiliar_id')
             ->join('orden_pickings as o', 'd.orden_picking_id', '=', 'o.id')
+            ->join('productos as p', 'p.id', '=', 'd.producto_id')
             ->where('o.empresa_id', $empresaId)
             ->where('o.sucursal_id', $user->sucursal_id)
             ->whereBetween('o.created_at', [$ini, $fin])
@@ -3329,6 +3330,11 @@ class PickingController extends BaseController
                 Capsule::raw('COUNT(DISTINCT o.sucursal_entrega) as sucursales'),
                 Capsule::raw('COUNT(d.id) as lineas'),
                 Capsule::raw('SUM(d.cantidad_pickeada) as unidades'),
+                // cantidad_pickeada vive en UNIDADES — se convierte a cajas por línea
+                // con el factor de CADA producto (factor_udm o unidades_caja), no con
+                // un solo divisor global, porque un mismo auxiliar pica productos con
+                // distinto factor caja/unidad en el mismo rango.
+                Capsule::raw('SUM(d.cantidad_pickeada / COALESCE(NULLIF(p.factor_udm,0), NULLIF(p.unidades_caja,0), 1)) as cajas'),
                 Capsule::raw(
                     $this->isPg()
                     ? "ROUND((SELECT GREATEST(0, EXTRACT(EPOCH FROM (MAX(COALESCE(NULLIF(op.hora_fin, '00:00:00')::time, CURRENT_TIME)) - MIN(op.hora_inicio::time)))) / 60
@@ -3361,18 +3367,20 @@ class PickingController extends BaseController
         // explícito, 2026-09-13 — al ranking le faltaba el total agregado).
         $totalesRanking = Capsule::table('picking_detalles as d')
             ->join('orden_pickings as o', 'd.orden_picking_id', '=', 'o.id')
+            ->join('productos as p', 'p.id', '=', 'd.producto_id')
             ->where('o.empresa_id', $empresaId)
             ->where('o.sucursal_id', $user->sucursal_id)
             ->whereBetween('o.created_at', [$ini, $fin])
             ->whereNull('o.estado_despacho')
             ->when($params['auxiliar_id'] ?? null, fn($q, $a) => $q->where('d.auxiliar_id', $a))
-            ->selectRaw('COUNT(DISTINCT o.id) as pedidos, COUNT(DISTINCT o.sucursal_entrega) as sucursales, COUNT(d.id) as lineas, SUM(d.cantidad_pickeada) as unidades')
+            ->selectRaw('COUNT(DISTINCT o.id) as pedidos, COUNT(DISTINCT o.sucursal_entrega) as sucursales, COUNT(d.id) as lineas, SUM(d.cantidad_pickeada) as unidades, SUM(d.cantidad_pickeada / COALESCE(NULLIF(p.factor_udm,0), NULLIF(p.unidades_caja,0), 1)) as cajas')
             ->first();
         $stats['ranking_totales'] = [
             'pedidos'    => (int) ($totalesRanking->pedidos ?? 0),
             'sucursales' => (int) ($totalesRanking->sucursales ?? 0),
             'lineas'     => (int) ($totalesRanking->lineas ?? 0),
             'unidades'   => (float) ($totalesRanking->unidades ?? 0),
+            'cajas'      => (float) ($totalesRanking->cajas ?? 0),
         ];
 
         // Series para gráfico de productividad

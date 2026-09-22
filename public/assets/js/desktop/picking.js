@@ -6342,6 +6342,7 @@ WMS_MODULES.picking = {
         }
         if (metric === 'pedidos') return `${WMS.formatNum(item.pedidos || 0)} pds`;
         if (metric === 'lineas') return `${WMS.formatNum(item.lineas || 0)} lín`;
+        if (metric === 'cajas') return `${WMS.formatNum(Math.round((item.cajas || 0) * 100) / 100)} cj`;
         return `${WMS.formatNum(item.unidades || 0)} unds`;
     };
     
@@ -6371,7 +6372,7 @@ WMS_MODULES.picking = {
   },
   
   _renderRankingTbody(rankingArray) {
-    if (!rankingArray || !rankingArray.length) return '<tr><td colspan="7" class="table-empty">No hay actividad registrada</td></tr>';
+    if (!rankingArray || !rankingArray.length) return '<tr><td colspan="8" class="table-empty">No hay actividad registrada</td></tr>';
     
     const r = [...rankingArray];
     const metric = this._currentRankingMetric || 'unidades';
@@ -6410,6 +6411,7 @@ WMS_MODULES.picking = {
           <td class="text-center"><span class="badge badge-light" style="border:1px solid #e2e8f0;">${a.sucursales ?? 0}</span></td>
           <td class="text-center"><b>${a.lineas}</b></td>
           <td class="text-center"><span class="badge badge-info">${WMS.formatNum(a.unidades)}</span></td>
+          <td class="text-center"><span class="badge badge-light" style="border:1px solid #e2e8f0;">${WMS.formatNum(Math.round((a.cajas || 0) * 100) / 100)}</span></td>
           <td>
             <div style="background:#f1f5f9; height:6px; border-radius:99px; overflow:hidden;">
               <div style="width:${pct}%; background:linear-gradient(to right, ${metric==='avg_minutos'?'#ef4444, #f59e0b':'#3b82f6, #10b981'}); height:100%;"></div>
@@ -6431,6 +6433,7 @@ WMS_MODULES.picking = {
       <td class="text-center"><span class="badge badge-light" style="border:1px solid #e2e8f0;"><b>${WMS.formatNum(totales.sucursales || 0)}</b></span></td>
       <td class="text-center"><b>${WMS.formatNum(totales.lineas || 0)}</b></td>
       <td class="text-center"><span class="badge badge-info"><b>${WMS.formatNum(totales.unidades || 0)}</b></span></td>
+      <td class="text-center"><span class="badge badge-light" style="border:1px solid #e2e8f0;"><b>${WMS.formatNum(Math.round((totales.cajas || 0) * 100) / 100)}</b></span></td>
       <td></td>
     </tr>`;
   },
@@ -6915,6 +6918,7 @@ WMS_MODULES.picking = {
             <span>ORDENAR POR:</span>
             <select class="form-control form-control-sm" style="width:120px; padding:2px 8px; height:26px; font-size:11px;" onchange="WMS_MODULES.picking._setRankingMetric(this.value)">
                 <option value="unidades" ${this._currentRankingMetric==='unidades'||!this._currentRankingMetric?'selected':''}>UNIDADES</option>
+                <option value="cajas" ${this._currentRankingMetric==='cajas'?'selected':''}>CAJAS</option>
                 <option value="pedidos" ${this._currentRankingMetric==='pedidos'?'selected':''}>PEDIDOS</option>
                 <option value="lineas" ${this._currentRankingMetric==='lineas'?'selected':''}>LÍNEAS</option>
                 <option value="avg_minutos" ${this._currentRankingMetric==='avg_minutos'?'selected':''}>TIEMPO TOTAL</option>
@@ -6935,7 +6939,7 @@ WMS_MODULES.picking = {
 
       <div class="table-container" style="max-height:300px;">
         <table class="erp-table">
-          <thead><tr><th>#</th><th>Auxiliar</th><th class="text-center">Pedidos</th><th class="text-center">Sucursales</th><th class="text-center">Líneas</th><th class="text-center">Unid. Pick</th><th style="width:100px;">Desempeño</th></tr></thead>
+          <thead><tr><th>#</th><th>Auxiliar</th><th class="text-center">Pedidos</th><th class="text-center">Sucursales</th><th class="text-center">Líneas</th><th class="text-center">Unid. Pick</th><th class="text-center">Cajas</th><th style="width:100px;">Desempeño</th></tr></thead>
           <tbody id="ranking-tbody">${this._renderRankingTbody(this._currentRankingData)}</tbody>
           <tfoot id="ranking-tfoot">${this._renderRankingTotalRow(this._currentRankingTotales)}</tfoot>
         </table>
