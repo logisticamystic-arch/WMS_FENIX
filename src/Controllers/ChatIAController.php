@@ -20,9 +20,9 @@ class ChatIAController extends BaseController
         if (!$mensaje) return $this->error($res, 'Mensaje vacío', 400);
         if (empty(trim((string)$mensaje))) return $this->error($res, 'Mensaje vacío', 400);
 
-        $apiKey = $_ENV['GROQ_API_KEY'] ?? getenv('GROQ_API_KEY') ?? '';
+        $apiKey = $_ENV['GEMINI_API_KEY'] ?? getenv('GEMINI_API_KEY') ?? '';
         if (!$apiKey) return $this->error($res,
-            'FENIX IA no está configurada. Agrega GROQ_API_KEY al archivo .env', 503);
+            'FENIX IA no está configurada. Agrega GEMINI_API_KEY al archivo .env', 503);
 
         $contexto = $this->_buildContexto($empresaId, $sucursalId, $modulo);
         $contexto .= $this->_enrichFromQuery((string)$mensaje, $empresaId, $sucursalId);
@@ -40,21 +40,24 @@ REGLAS DE ACTUACIÓN ABSOLUTAS:
 CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos reales extraídos en directo de la BD):
 {$contexto}";
 
-        $messages = [['role' => 'system', 'content' => $systemPrompt]];
+        // Gemini usa roles user/model (no user/assistant) dentro de "contents".
+        $contents = [];
         foreach (array_slice((array)$historial, -10) as $msg) {
             if (empty($msg['role']) || empty($msg['content'])) continue;
-            $messages[] = ['role' => $msg['role'], 'content' => (string)$msg['content']];
+            $role = $msg['role'] === 'assistant' ? 'model' : 'user';
+            $contents[] = ['role' => $role, 'parts' => [['text' => (string)$msg['content']]]];
         }
-        $messages[] = ['role' => 'user', 'content' => (string)$mensaje];
+        $contents[] = ['role' => 'user', 'parts' => [['text' => (string)$mensaje]]];
 
         $payload = json_encode([
-            'model'       => 'llama-3.3-70b-versatile',
-            'messages'    => $messages,
-            'max_tokens'  => 2000,
-            'temperature' => 0.1,
+            'system_instruction' => ['parts' => [['text' => $systemPrompt]]],
+            'contents'           => $contents,
+            'generationConfig'   => ['temperature' => 0.1, 'maxOutputTokens' => 2000],
         ]);
 
-        $ch = curl_init('https://api.groq.com/openai/v1/chat/completions');
+        // gemini-2.5-flash y gemini-3.6-flash: descontinuado/saturado en pruebas
+        // reales (2026-09-21). gemini-3.5-flash-lite responde consistentemente.
+        $ch = curl_init('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent');
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
@@ -62,7 +65,7 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos reales extraídos en direc
             CURLOPT_TIMEOUT        => 30,
             CURLOPT_HTTPHEADER     => [
                 'Content-Type: application/json',
-                'Authorization: Bearer ' . $apiKey,
+                'x-goog-api-key: ' . $apiKey,
             ],
             CURLOPT_SSL_VERIFYPEER => true,
         ]);
@@ -72,20 +75,20 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos reales extraídos en direc
         $curlErr  = curl_error($ch);
         curl_close($ch);
 
-        if ($curlErr) return $this->error($res, "Error de conexión con Groq: {$curlErr}", 503);
+        if ($curlErr) return $this->error($res, "Error de conexión con Gemini: {$curlErr}", 503);
 
         $data = json_decode($response, true);
 
         if ($httpCode !== 200) {
             $errMsg = $data['error']['message'] ?? "HTTP {$httpCode}";
-            return $this->error($res, "Error de Groq: {$errMsg}", 503);
+            return $this->error($res, "Error de Gemini: {$errMsg}", 503);
         }
 
-        $texto = $data['choices'][0]['message']['content'] ?? 'Sin respuesta de la IA';
+        $texto = $data['candidates'][0]['content']['parts'][0]['text'] ?? 'Sin respuesta de la IA';
 
         return $this->ok($res, [
             'respuesta' => $texto,
-            'tokens'    => $data['usage'] ?? null,
+            'tokens'    => $data['usageMetadata'] ?? null,
             'modulo'    => $modulo,
         ]);
     }
@@ -422,6 +425,46 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos reales extraídos en direc
             } catch (\Throwable $e) { /* silencio */ }
         }
 
+        // ── Trazabilidad de producto/ubicación (kardex real: movimiento_inventarios) ──
+        if (preg_match('/\b(trazabilidad|kardex|movimientos?|historial)\b/i', $msgLow)) {
+            try {
+                $movQuery = Capsule::table('movimiento_inventarios as m')
+                    ->join('productos as p', 'p.id', '=', 'm.producto_id')
+                    ->leftJoin('ubicaciones as uo', 'uo.id', '=', 'm.ubicacion_origen_id')
+                    ->leftJoin('ubicaciones as ud', 'ud.id', '=', 'm.ubicacion_destino_id')
+                    ->leftJoin('personal as aux', 'aux.id', '=', 'm.auxiliar_id')
+                    ->where('m.empresa_id', $eId)->where('m.sucursal_id', $sId);
+
+                // Si algún término coincide con un producto o ubicación puntual, se
+                // filtra por ese; si no, se muestra el movimiento reciente general.
+                $movFiltrado = false;
+                foreach ($terminos as $termino) {
+                    $match = (clone $movQuery)->where(fn($q) => $q
+                        ->whereRaw('p.nombre ILIKE ?', ["%{$termino}%"])
+                        ->orWhereRaw('p.codigo_interno ILIKE ?', ["%{$termino}%"])
+                        ->orWhereRaw('uo.codigo ILIKE ?', ["%{$termino}%"])
+                        ->orWhereRaw('ud.codigo ILIKE ?', ["%{$termino}%"]));
+                    if ($match->count() > 0) { $movQuery = $match; $movFiltrado = true; break; }
+                }
+
+                $movs = $movQuery
+                    ->selectRaw('p.codigo_interno, p.nombre, m.tipo_movimiento, m.cantidad, m.lote, uo.codigo as ubic_origen, ud.codigo as ubic_destino, aux.nombre as auxiliar, m.fecha_movimiento, m.created_at')
+                    ->orderByDesc('m.created_at')->limit(25)->get();
+
+                if ($movs->isNotEmpty()) {
+                    $lineas = $movs->map(fn($m) =>
+                        "[{$m->codigo_interno}] {$m->nombre} | {$m->tipo_movimiento}: {$m->cantidad} und | " .
+                        "Origen: " . ($m->ubic_origen ?: '—') . " → Destino: " . ($m->ubic_destino ?: '—') .
+                        " | Lote: " . ($m->lote ?: 'S/L') . " | Por: " . ($m->auxiliar ?: 'N/A') .
+                        " | " . date('d/m/Y H:i', strtotime($m->created_at ?: $m->fecha_movimiento))
+                    )->implode("\n  • ");
+                    $extra .= "\nTRAZABILIDAD_MOVIMIENTOS" . ($movFiltrado ? '_FILTRADA' : '_RECIENTES') . ":\n  • {$lineas}";
+                } else {
+                    $extra .= "\nTRAZABILIDAD_MOVIMIENTOS: NO HAY MOVIMIENTOS REGISTRADOS PARA ESE CRITERIO EN LA BD.\n";
+                }
+            } catch (\Throwable $e) { /* silencio */ }
+        }
+
         if (preg_match('/\b(sucursal|empresa|bodega|centro|sede)\b/i', $msgLow)) {
             try {
                 $sName = Capsule::table('sucursales')->where('id', $sId)->value('nombre');
@@ -507,6 +550,19 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos reales extraídos en direc
                 ->orderByDesc('qty')->limit(5)->get()
                 ->map(fn($p) => "[{$p->codigo_interno}] {$p->nombre}: {$p->qty} und")->implode('; ');
 
+            // Catálogo REAL de clientes parametrizados (tabla clientes, no el
+            // texto libre de orden_pickings.cliente). Antes solo se mostraban
+            // hasta 10 nombres sacados de órdenes recientes, así que FENIX IA
+            // improvisaba un "catálogo" incompleto cuando le pedían el listado
+            // completo. Tope de 300 para no disparar el tamaño del prompt;
+            // si hay más, se avisa explícitamente para que la IA no calle el
+            // truncamiento (regla anti-alucinación).
+            $totalClientesActivos = Capsule::table('clientes')
+                ->where('empresa_id', $empresaId)->where('activo', 1)->count();
+            $clientesCatalogo = Capsule::table('clientes')
+                ->where('empresa_id', $empresaId)->where('activo', 1)
+                ->orderBy('razon_social')->limit(300)->pluck('razon_social');
+
             $topClientes = Capsule::table('orden_pickings')
                 ->where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)
                 ->whereNotNull('cliente')->where('cliente', '!=', '')
@@ -518,7 +574,10 @@ CONTEXTO OPERATIVO EN TIEMPO REAL DEL ALMACÉN (datos reales extraídos en direc
             $ctx .= "EMPRESA: {$empresaNombre} (ID: {$empresaId})\n";
             $ctx .= "SUCURSAL: {$sucursalNombre} (ID: {$sucursalId})\n";
             $ctx .= "INVENTARIO: total={$inv->total} und, disponible={$disp} und, reservado={$inv->reservado} und, productos_con_stock={$inv->productos}, ubicaciones_ocupadas={$inv->ubicaciones}\n";
-            $ctx .= "CLIENTES_RECIENTES_ATENDIDOS: " . ($topClientes ?: 'OLIVIA MAYORCA, OLIVIA VIVA ENVIGADO, OLIVIA FABRICATO') . "\n";
+            $ctx .= "CLIENTES_ACTIVOS_PARAMETRIZADOS (total={$totalClientesActivos}"
+                . ($totalClientesActivos > $clientesCatalogo->count() ? ", lista truncada a {$clientesCatalogo->count()}" : '')
+                . "): " . $clientesCatalogo->implode(', ') . "\n";
+            $ctx .= "CLIENTES_RECIENTES_ATENDIDOS: " . ($topClientes ?: 'sin órdenes recientes en el rango') . "\n";
             $ctx .= "TOP_PRODUCTOS_POR_STOCK: {$topStock}\n";
             $ctx .= "PICKING: ordenes_pendientes={$pk->pend}, en_proceso={$pk->proc}, completadas_hoy={$pk->hoy_comp}, faltantes_activos={$faltantes}\n";
             $ctx .= "REABASTECIMIENTOS_PENDIENTES: {$reabastPend}\n";
