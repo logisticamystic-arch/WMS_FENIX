@@ -291,8 +291,16 @@ abstract class BaseController
      */
     protected function getDateRange(array $params): array
     {
-        $inicio = $params['fecha_inicio'] ?? $params['from'] ?? $params['desde'] ?? date('Y-m-d', strtotime('-30 days'));
-        $fin    = $params['fecha_fin']    ?? $params['to']   ?? $params['hasta'] ?? date('Y-m-d');
+        // CORREGIDO 2026-09-22 (a pedido explícito de Camilo): faltaba fecha_desde/
+        // fecha_hasta en la cadena de alias — es el nombre de parámetro que manda
+        // reportes.js (public/assets/js/desktop/reportes.js) en CASI TODOS los
+        // reportes del módulo (recepciones, recibo-cdp, despachos, picking,
+        // devoluciones, evaluación proveedores, audit-log, odc, agotados-demanda),
+        // así que este método SIEMPRE caía al default de últimos 30 días —
+        // el filtro de fecha del usuario se ignoraba en silencio en todos esos
+        // reportes, no solo en uno.
+        $inicio = $params['fecha_inicio'] ?? $params['from'] ?? $params['desde'] ?? $params['fecha_desde'] ?? date('Y-m-d', strtotime('-30 days'));
+        $fin    = $params['fecha_fin']    ?? $params['to']   ?? $params['hasta'] ?? $params['fecha_hasta'] ?? date('Y-m-d');
 
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $inicio)) {
             $inicio = date('Y-m-d', strtotime('-30 days'));

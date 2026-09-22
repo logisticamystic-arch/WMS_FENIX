@@ -264,10 +264,13 @@ class ReportesController extends BaseController
                 ->where('origen_captura', 'QR')
                 ->orWhere('proveedor', 'ILIKE', '%CDP%'))
             ->whereHas('recepcion', function ($q) use ($eId, $user, $ini, $fin) {
+                // fecha_movimiento (fecha real de recibo), no created_at (marca de
+                // tiempo de inserción) — mismo campo que ya se usa para la columna
+                // "Fecha" mostrada, así que el filtro y lo que se ve coinciden.
                 $q->where('empresa_id', $eId)
                   ->where('sucursal_id', $user->sucursal_id)
                   ->whereNull('odc_id')
-                  ->whereBetween('created_at', [$ini, $fin]);
+                  ->whereBetween('fecha_movimiento', [$ini, $fin]);
             })
             ->when(!empty($params['referencia']), function ($q) use ($params) {
                 $v = $params['referencia'];
