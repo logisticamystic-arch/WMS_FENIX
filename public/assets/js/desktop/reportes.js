@@ -658,8 +658,11 @@ WMS_MODULES.reportes = {
         ${inputHtml}
       </div>`;
     // Sin clase .card: su overflow:hidden recortaría la lista del combobox de referencia.
+    // position:sticky (no la página, .content-body es el ancestro real con scroll
+    // — ver .content-body{height:calc(100vh - 56px - 50px);overflow-y:auto} en
+    // index.html) para que los filtros no desaparezcan al bajar a ver más filas.
     return `
-      <div style="margin-bottom:16px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+      <div style="position:sticky;top:0;z-index:15;margin-bottom:16px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
         <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
           <span class="card-title"><i class="fa-solid fa-filter"></i> Filtros de búsqueda</span>
           <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.reportes._limpiarFiltrosReciboCdp()">
