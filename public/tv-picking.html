@@ -473,10 +473,12 @@ input.tv-fecha-input::-webkit-calendar-picker-indicator{filter:none;width:9px;cu
                 <thead><tr>
                   <th>Producto</th>
                   <th style="text-align:center;">Solic.</th>
+                  <th style="text-align:center;">Sep.</th>
+                  <th style="text-align:center;">Pend.</th>
                   <th style="text-align:center;">H.Ini</th>
                   <th style="text-align:center;">Sucursal</th>
                 </tr></thead>
-                <tbody id="tbody-picking-faltantes"><tr><td colspan="4"><div class="no-data"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</div></td></tr></tbody>
+                <tbody id="tbody-picking-faltantes"><tr><td colspan="6"><div class="no-data"><i class="fa-solid fa-spinner fa-spin"></i> Cargando...</div></td></tr></tbody>
               </table>
             </div>
           </div>
@@ -1333,12 +1335,14 @@ function renderPickingFaltantes(alertas){
   const tbody=document.getElementById('tbody-picking-faltantes');
   if(!tbody) return;
   if(!alertas.length){
-    tbody.innerHTML=`<tr><td colspan="4"><div class="no-data"><i class="fa-solid fa-circle-check" style="color:var(--green);"></i> Sin faltantes críticos</div></td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="6"><div class="no-data"><i class="fa-solid fa-circle-check" style="color:var(--green);"></i> Sin faltantes críticos</div></td></tr>`;
     return;
   }
   tbody.innerHTML=alertas.map(f=>`<tr>
     <td><b style="color:var(--text);">${esc(f.producto||'—')}</b><br><span style="color:var(--text2);font-size:.58rem;">${esc(f.ean||'')}</span></td>
-    <td style="text-align:center;"><span class="badge badge-red">${esc(f.solic??'—')}</span></td>
+    <td style="text-align:center;">${esc(f.solic??'—')}</td>
+    <td style="text-align:center;">${esc(f.disp??'—')}</td>
+    <td style="text-align:center;"><span class="badge badge-red">${esc(f.dif??'—')}</span></td>
     <td style="text-align:center;font-family:monospace;font-size:.6rem;">${f.hora_ini?String(f.hora_ini).substr(11,5):'-'}</td>
     <td style="text-align:center;font-size:.6rem;">${esc(f.sucursal||'—')}</td>
   </tr>`).join('');

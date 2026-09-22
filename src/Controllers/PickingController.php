@@ -3281,27 +3281,46 @@ class PickingController extends BaseController
               });
         })
         ->where('estado', 'Faltante')
-        ->with(['producto:id,nombre,codigo_interno', 'ordenPicking:id,planilla_numero,sucursal_entrega'])
+        ->with(['producto:id,nombre,codigo_interno,unidades_caja,factor_udm', 'ordenPicking:id,planilla_numero,sucursal_entrega'])
         ->limit(30)
         ->get()
-        ->map(fn($f) => [
-            'id'        => $f->id,
-            'producto'  => $f->producto->nombre ?? '–',
-            'ean'       => $f->producto->codigo_interno ?? '–',
-            'solic'     => $f->cantidad_solicitada,
-            'disp'      => $f->cantidad_pickeada,
-            'dif'       => $f->cantidad_solicitada - $f->cantidad_pickeada,
-            'planilla'  => $f->ordenPicking->planilla_numero ?? '–',
-            'sucursal'  => $f->ordenPicking->sucursal_entrega ?? '–',
-        ]);
+        ->map(function($f) {
+            // cantidad_solicitada vive en CAJAS y cantidad_pickeada en UNIDADES
+            // (ver notas en _validarCajasContraSaldos/confirmarLinea); hay que
+            // convertir lo solicitado a unidades antes de comparar, si no la
+            // diferencia mezcla escalas distintas.
+            $upc = (isset($f->producto->factor_udm) && (float)$f->producto->factor_udm > 0)
+                ? (float)$f->producto->factor_udm
+                : max(1, (float)($f->producto->unidades_caja ?? 1));
+            $solicUnd = (float)$f->cantidad_solicitada * $upc;
+            $separado = (float)$f->cantidad_pickeada;
+            return [
+                'id'        => $f->id,
+                'producto'  => $f->producto->nombre ?? '–',
+                'ean'       => $f->producto->codigo_interno ?? '–',
+                'solic'     => $solicUnd,
+                'disp'      => $separado,
+                'dif'       => $solicUnd - $separado,
+                'planilla'  => $f->ordenPicking->planilla_numero ?? '–',
+                'sucursal'  => $f->ordenPicking->sucursal_entrega ?? '–',
+            ];
+        });
 
         // Ranking de Auxiliares (Pedidos, Líneas, Unidades, Tiempo Promedio)
+        // CORREGIDO 2026-09-22 (a pedido explícito de Camilo): faltaba excluir
+        // pedidos ya despachados (estado_despacho no nulo — se marca así apenas
+        // el pedido se asocia a una planilla de cargue, ver
+        // DespachoController::agregarPedidos()). Este widget es de PICKING
+        // ACTIVO, no un histórico de todo lo trabajado alguna vez en el rango:
+        // un pedido que ya salió del cargue no debe seguir sumando en la
+        // productividad "activa" del auxiliar.
         $stats['ranking_auxiliares'] = Capsule::table('personal as aux')
             ->join('picking_detalles as d', 'aux.id', '=', 'd.auxiliar_id')
             ->join('orden_pickings as o', 'd.orden_picking_id', '=', 'o.id')
             ->where('o.empresa_id', $empresaId)
             ->where('o.sucursal_id', $user->sucursal_id)
             ->whereBetween('o.created_at', [$ini, $fin])
+            ->whereNull('o.estado_despacho')
             ->when($params['auxiliar_id'] ?? null, fn($q, $a) => $q->where('aux.id', $a))
             ->select(
                 'aux.id',
@@ -3312,18 +3331,20 @@ class PickingController extends BaseController
                 Capsule::raw('SUM(d.cantidad_pickeada) as unidades'),
                 Capsule::raw(
                     $this->isPg()
-                    ? "ROUND((SELECT GREATEST(0, EXTRACT(EPOCH FROM (MAX(COALESCE(NULLIF(op.hora_fin, '00:00:00')::time, CURRENT_TIME)) - MIN(op.hora_inicio::time)))) / 60 
-                        FROM orden_pickings op 
-                        WHERE op.id IN (SELECT d2.orden_picking_id FROM picking_detalles d2 WHERE d2.auxiliar_id = aux.id) 
+                    ? "ROUND((SELECT GREATEST(0, EXTRACT(EPOCH FROM (MAX(COALESCE(NULLIF(op.hora_fin, '00:00:00')::time, CURRENT_TIME)) - MIN(op.hora_inicio::time)))) / 60
+                        FROM orden_pickings op
+                        WHERE op.id IN (SELECT d2.orden_picking_id FROM picking_detalles d2 WHERE d2.auxiliar_id = aux.id)
                         AND op.empresa_id = {$empresaId}
                         AND op.created_at BETWEEN '{$ini}' AND '{$fin}'
+                        AND op.estado_despacho IS NULL
                         AND op.hora_inicio IS NOT NULL
                         AND op.hora_inicio != '00:00:00'), 1) as avg_minutos"
-                    : "ROUND((SELECT GREATEST(0, TIME_TO_SEC(TIMEDIFF(MAX(COALESCE(NULLIF(op.hora_fin, '00:00:00'), CURRENT_TIME())), MIN(op.hora_inicio)))) / 60 
-                        FROM orden_pickings op 
-                        WHERE op.id IN (SELECT d2.orden_picking_id FROM picking_detalles d2 WHERE d2.auxiliar_id = aux.id) 
+                    : "ROUND((SELECT GREATEST(0, TIME_TO_SEC(TIMEDIFF(MAX(COALESCE(NULLIF(op.hora_fin, '00:00:00'), CURRENT_TIME())), MIN(op.hora_inicio)))) / 60
+                        FROM orden_pickings op
+                        WHERE op.id IN (SELECT d2.orden_picking_id FROM picking_detalles d2 WHERE d2.auxiliar_id = aux.id)
                         AND op.empresa_id = {$empresaId}
                         AND op.created_at BETWEEN '{$ini}' AND '{$fin}'
+                        AND op.estado_despacho IS NULL
                         AND op.hora_inicio IS NOT NULL
                         AND op.hora_inicio != '00:00:00'), 1) as avg_minutos"
                 )
@@ -3343,6 +3364,7 @@ class PickingController extends BaseController
             ->where('o.empresa_id', $empresaId)
             ->where('o.sucursal_id', $user->sucursal_id)
             ->whereBetween('o.created_at', [$ini, $fin])
+            ->whereNull('o.estado_despacho')
             ->when($params['auxiliar_id'] ?? null, fn($q, $a) => $q->where('d.auxiliar_id', $a))
             ->selectRaw('COUNT(DISTINCT o.id) as pedidos, COUNT(DISTINCT o.sucursal_entrega) as sucursales, COUNT(d.id) as lineas, SUM(d.cantidad_pickeada) as unidades')
             ->first();
@@ -6134,15 +6156,18 @@ class PickingController extends BaseController
         } else {
             $lineasQuery->whereNull('fecha_vencimiento');
         }
-        $lineas = $lineasQuery->lockForUpdate()->get();
+        $lineas = $lineasQuery->with('ordenPicking:id,modo_rotacion,planilla_lote,planilla_numero')->lockForUpdate()->get();
         if ($lineas->isEmpty()) return;
 
-        foreach ($lineas as $linea) {
-            $prod = \App\Models\Producto::find($linea->producto_id);
-            $upc  = (isset($prod->factor_udm) && (float)$prod->factor_udm > 0)
-                ? (float)$prod->factor_udm
-                : max(1, (float)($prod->unidades_caja ?? 1));
+        // Todas las lineas comparten producto_id (filtrado en $lineasQuery), asi
+        // que el producto y su factor de conversion se resuelven una sola vez
+        // fuera del loop en vez de repetir el SELECT por cada linea.
+        $prod = \App\Models\Producto::find($inv->producto_id);
+        $upc  = (isset($prod->factor_udm) && (float)$prod->factor_udm > 0)
+            ? (float)$prod->factor_udm
+            : max(1, (float)($prod->unidades_caja ?? 1));
 
+        foreach ($lineas as $linea) {
             $restante = round(((float)$linea->cantidad_solicitada * $upc) - (float)$linea->cantidad_pickeada, 2);
             if ($restante <= 0) continue;
 
@@ -8349,7 +8374,11 @@ class PickingController extends BaseController
         // elige dinámicamente, desde el listado de certificación, exactamente qué
         // pedidos/planillas deben salir juntos.
         $ordenIdsSel = array_values(array_filter(array_map('intval', (array)($qp['orden_ids'] ?? []))));
-        
+        // Si orden_ids vino explícito en la query (no resuelto luego desde texto de
+        // planilla), el caller ya sabe exactamente qué pedidos quiere — no se debe
+        // excluir por estado_despacho (ver nota en el query builder más abajo).
+        $ordenIdsExplicit = !empty($ordenIdsSel);
+
         $planilla = trim($qp['planilla'] ?? '');
         if (!empty($planilla) && empty($ordenIdsSel)) {
             // Pedidos montados manualmente (sin CSV/planilla real) no tienen
@@ -8428,11 +8457,19 @@ class PickingController extends BaseController
             // sucursal para conservar la misma estructura de páginas por cliente.
             $q = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
                 ->where('sucursal_id', $sucursalId)
-                ->whereIn('id', $ordenIdsSel)
-                // Un pedido ya despachado/entregado no debe volver a salir en ninguna
-                // remisión, ni aunque comparta sucursal/fecha con otro pedido de la
-                // misma planilla o de otra planilla aún no despachada.
-                ->whereNull('estado_despacho');
+                ->whereIn('id', $ordenIdsSel);
+            if (!$ordenIdsExplicit) {
+                // Resuelto desde texto de planilla/sucursal (no orden_ids explícitos
+                // del caller): un pedido ya despachado/entregado no debe volver a
+                // salir en ninguna remisión, ni aunque comparta sucursal/fecha con
+                // otro pedido de la misma planilla o de otra planilla aún no
+                // despachada. Cuando el caller pasa orden_ids explícitos (ej.
+                // imprimirDocumentosCargue(), que reimprime pedidos que YA están en un
+                // despacho y por eso YA tienen estado_despacho seteado) este filtro
+                // los excluía siempre — se omite porque ahí sí sabemos con certeza
+                // qué pedidos se pidieron.
+                $q->whereNull('estado_despacho');
+            }
 
             if (empty($planilla)) {
                 $q->where('estado_certificacion', 'Certificada')
@@ -8607,15 +8644,23 @@ class PickingController extends BaseController
             ? "{$nSucs} pedido(s): consolidado + remisi&#243;n individual por pedido"
             : "1 pedido/planilla seleccionado";
 
+        // La remisión se imprime en 2 copias físicas (a pedido explícito de
+        // Camilo, planilla de cargue 2026-09-21): el cuerpo completo (consolidado
+        // + páginas individuales) se repite una segunda vez con salto de página
+        // entre copias, cada una rotulada para distinguirlas al firmar/sellar.
+        $cuerpoRemision = ($incluirConsolidado ? $consolidadoPage : '') . $individualPages;
+        $tagCopia = fn($n) => "<div style='text-align:right;font-size:8px;font-weight:800;color:#94a3b8;letter-spacing:.5px;margin-bottom:2px;'>COPIA {$n} DE 2</div>";
+        $cuerpoDosCopias = "<div class='pg-break'>" . $tagCopia(1) . $cuerpoRemision . "</div>"
+            . $tagCopia(2) . $cuerpoRemision;
+
         $html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'>"
             . "<title>Remisi&#243;n M&#250;ltiple &mdash; {$nSucs} pedidos</title>"
             . "<style>{$css}</style></head><body>"
             . "<div class='no-print'>"
             . "  <button onclick='window.print()'>&#128424; Imprimir / Guardar PDF</button>"
-            . "  <small style='color:#666'>{$subtitulo}</small>"
+            . "  <small style='color:#666'>{$subtitulo} &mdash; 2 copias</small>"
             . "</div>"
-            . ($incluirConsolidado ? $consolidadoPage : '')
-            . $individualPages
+            . $cuerpoDosCopias
             . "</body></html>";
 
         $body = $res->getBody();
@@ -8637,38 +8682,55 @@ class PickingController extends BaseController
         $empresaId = $this->getEffectiveEmpresaId($user, $r);
         $qp        = $r->getQueryParams();
         $planilla  = trim($qp['planilla'] ?? '');
+        // orden_ids: selección explícita (ej. reimprimir liberación de un cargue ya
+        // armado). A diferencia de la resolución por texto de $planilla, aquí el
+        // caller ya sabe exactamente qué pedidos quiere — no se filtra por
+        // estado_despacho/despachado_directo, porque esos pedidos YA están en un
+        // despacho (agregarPedidos() marca estado_despacho='Despachado' apenas se
+        // asocian, no cuando se despachan físicamente) y ese filtro los excluía
+        // siempre, dejando "Imprimir Liberación" inutilizable para cualquier
+        // planilla de cargue ya creada.
+        $ordenIdsExplicit = array_values(array_filter(array_map('intval', (array)($qp['orden_ids'] ?? []))));
 
-        if (empty($planilla)) {
-            return $this->error($res, 'Se requiere el parámetro planilla');
-        }
-
-        // Misma resolución planilla -> orden_ids que certRemisionMultiple (pedidos
-        // manuales sin planilla real quedan bajo la etiqueta sintética 'DOC-<id>').
-        if (preg_match('/^DOC-0*(\d+)$/', $planilla, $m)) {
-            $ordenIdsSel = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
-                ->where('id', (int)$m[1])->pluck('id')->toArray();
+        if (!empty($ordenIdsExplicit)) {
+            $ordenes = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
+                ->whereIn('id', $ordenIdsExplicit)->get();
+            if ($ordenes->isEmpty()) {
+                return $this->error($res, 'No se encontraron pedidos válidos para los orden_ids indicados.');
+            }
         } else {
-            $ordenIdsSel = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
-                ->where(function ($q) use ($planilla) {
-                    $q->where('planilla_numero', $planilla)
-                      ->orWhere('numero_orden', $planilla)
-                      ->orWhere('planilla_lote', $planilla);
-                })
-                ->pluck('id')->toArray();
-        }
+            if (empty($planilla)) {
+                return $this->error($res, 'Se requiere el parámetro planilla u orden_ids');
+            }
 
-        if (empty($ordenIdsSel)) {
-            return $this->error($res, "No se encontraron pedidos válidos para la planilla {$planilla}.");
-        }
+            // Misma resolución planilla -> orden_ids que certRemisionMultiple (pedidos
+            // manuales sin planilla real quedan bajo la etiqueta sintética 'DOC-<id>').
+            if (preg_match('/^DOC-0*(\d+)$/', $planilla, $m)) {
+                $ordenIdsSel = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
+                    ->where('id', (int)$m[1])->pluck('id')->toArray();
+            } else {
+                $ordenIdsSel = \App\Models\OrdenPicking::where('empresa_id', $empresaId)
+                    ->where(function ($q) use ($planilla) {
+                        $q->where('planilla_numero', $planilla)
+                          ->orWhere('numero_orden', $planilla)
+                          ->orWhere('planilla_lote', $planilla);
+                    })
+                    ->pluck('id')->toArray();
+            }
 
-        // Un pedido ya despachado (por ruta o por retiro directo) no debe reaparecer
-        // en una liberación nueva, aunque comparta planilla con otro pedido pendiente.
-        $ordenes = \App\Models\OrdenPicking::whereIn('id', $ordenIdsSel)
-            ->whereNull('estado_despacho')
-            ->where('despachado_directo', false)
-            ->get();
-        if ($ordenes->isEmpty()) {
-            return $this->error($res, "No se encontraron pedidos válidos (sin despachar) para la planilla {$planilla}.");
+            if (empty($ordenIdsSel)) {
+                return $this->error($res, "No se encontraron pedidos válidos para la planilla {$planilla}.");
+            }
+
+            // Un pedido ya despachado (por ruta o por retiro directo) no debe reaparecer
+            // en una liberación nueva, aunque comparta planilla con otro pedido pendiente.
+            $ordenes = \App\Models\OrdenPicking::whereIn('id', $ordenIdsSel)
+                ->whereNull('estado_despacho')
+                ->where('despachado_directo', false)
+                ->get();
+            if ($ordenes->isEmpty()) {
+                return $this->error($res, "No se encontraron pedidos válidos (sin despachar) para la planilla {$planilla}.");
+            }
         }
         $ordenIds = $ordenes->pluck('id')->toArray();
 
@@ -8835,17 +8897,7 @@ class PickingController extends BaseController
         $novedadesHtml = $this->remisionNovedadesHtml();
         $css           = $this->remisionCss();
 
-        $html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'>
-<title>Remisi&#243;n &mdash; " . htmlspecialchars($sucursal) . "</title>
-<style>{$css}</style></head><body>
-<div class='running-print-header'>
-  <span style='flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>CLIENTE / SUCURSAL: " . htmlspecialchars($sucursal) . "</span>
-  <span style='margin-left:10px;white-space:nowrap;'>Planilla: {$planillaStr} &nbsp;|&nbsp; Fecha: {$fechaStr}</span>
-</div>
-<div class='no-print'>
-  <button onclick='window.print()'>&#128424; Imprimir / Guardar PDF</button>
-  <small style='color:#666'>Usa &ldquo;Guardar como PDF&rdquo; en el di&#225;logo de impresi&#243;n para exportar</small>
-</div>
+        $cuerpoRemision = "
 <div class='header'>
   <div class='header-left'>
     {$logoHtml}
@@ -8867,7 +8919,26 @@ class PickingController extends BaseController
 <div class='ambientes-grid'>{$ambientesHtml}</div>
 {$agotadosHtml}
 {$novedadesHtml}
-<div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>
+<div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>";
+
+        // 2 copias físicas — mismo criterio que certRemisionMultiple() y
+        // PackingController::getRemision().
+        $tagCopia = fn($n) => "<div style='text-align:right;font-size:8px;font-weight:800;color:#94a3b8;letter-spacing:.5px;margin-bottom:2px;'>COPIA {$n} DE 2</div>";
+        $cuerpoDosCopias = "<div class='pg-break'>" . $tagCopia(1) . $cuerpoRemision . "</div>"
+            . $tagCopia(2) . $cuerpoRemision;
+
+        $html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'>
+<title>Remisi&#243;n &mdash; " . htmlspecialchars($sucursal) . "</title>
+<style>{$css}</style></head><body>
+<div class='running-print-header'>
+  <span style='flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>CLIENTE / SUCURSAL: " . htmlspecialchars($sucursal) . "</span>
+  <span style='margin-left:10px;white-space:nowrap;'>Planilla: {$planillaStr} &nbsp;|&nbsp; Fecha: {$fechaStr}</span>
+</div>
+<div class='no-print'>
+  <button onclick='window.print()'>&#128424; Imprimir / Guardar PDF</button>
+  <small style='color:#666'>Usa &ldquo;Guardar como PDF&rdquo; en el di&#225;logo de impresi&#243;n para exportar &mdash; 2 copias</small>
+</div>
+{$cuerpoDosCopias}
 </body></html>";
 
         $body = $res->getBody();

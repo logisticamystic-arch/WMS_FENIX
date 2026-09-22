@@ -13,7 +13,7 @@ class Despacho extends BaseModel
 
     protected $fillable = [
         'empresa_id', 'sucursal_id', 'numero_despacho', 'cliente', 'ruta', 'ruta_id',
-        'conductor', 'placa', 'planilla_id', 'auxiliares_json',
+        'conductor', 'conductor_id', 'placa', 'vehiculo_id', 'planilla_id', 'auxiliares_json',
         'muelle_id', 'total_bultos', 'peso_total', 'estado', 'observaciones',
         'auxiliar_id', 'fecha_movimiento', 'hora_inicio', 'hora_fin',
     ];
@@ -51,6 +51,16 @@ class Despacho extends BaseModel
     public function rutaObj()
     {
         return $this->belongsTo(Ruta::class, 'ruta_id');
+    }
+
+    public function conductorObj()
+    {
+        return $this->belongsTo(Conductor::class, 'conductor_id');
+    }
+
+    public function vehiculoObj()
+    {
+        return $this->belongsTo(Vehiculo::class, 'vehiculo_id');
     }
 
     public function ordenes()

@@ -1261,17 +1261,7 @@ class PackingController extends BaseController
         // certRemisionDirecta() — "Sesión # X" y "canastas/tipo empaque" eran jerga
         // interna de packing sin sentido para quien recibe la remisión; se reemplaza
         // por Planilla + Pedido(s), igual que las otras dos.
-        $html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'>
-<title>Remisi&#243;n &mdash; {$clienteNom}</title>
-<style>{$css}</style></head><body>
-<div class='running-print-header'>
-  <span style='flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>CLIENTE / SUCURSAL: " . htmlspecialchars($clienteNom) . "</span>
-  <span style='margin-left:10px;white-space:nowrap;'>Planilla: {$planillaStr} &nbsp;|&nbsp; Fecha: {$fecha}</span>
-</div>
-<div class='no-print'>
-  <button onclick='window.print()'>&#128424; Imprimir / Guardar PDF</button>
-  <small style='color:#666'>Usa &ldquo;Guardar como PDF&rdquo; en el di&#225;logo de impresi&#243;n para exportar</small>
-</div>
+        $cuerpoRemision = "
 <div class='header'>
   <div class='header-left'>
     {$logoHtml}
@@ -1293,7 +1283,27 @@ class PackingController extends BaseController
 <div class='ambientes-grid'>{$ambientesHtml}</div>
 {$agotadosHtml}
 {$novedadesHtml}
-<div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>
+<div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>";
+
+        // La remisión se imprime en 2 copias físicas (a pedido explícito de
+        // Camilo, planilla de cargue 2026-09-21): mismo criterio que
+        // PickingController::certRemisionMultiple().
+        $tagCopia = fn($n) => "<div style='text-align:right;font-size:8px;font-weight:800;color:#94a3b8;letter-spacing:.5px;margin-bottom:2px;'>COPIA {$n} DE 2</div>";
+        $cuerpoDosCopias = "<div class='pg-break'>" . $tagCopia(1) . $cuerpoRemision . "</div>"
+            . $tagCopia(2) . $cuerpoRemision;
+
+        $html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'>
+<title>Remisi&#243;n &mdash; {$clienteNom}</title>
+<style>{$css}</style></head><body>
+<div class='running-print-header'>
+  <span style='flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>CLIENTE / SUCURSAL: " . htmlspecialchars($clienteNom) . "</span>
+  <span style='margin-left:10px;white-space:nowrap;'>Planilla: {$planillaStr} &nbsp;|&nbsp; Fecha: {$fecha}</span>
+</div>
+<div class='no-print'>
+  <button onclick='window.print()'>&#128424; Imprimir / Guardar PDF</button>
+  <small style='color:#666'>Usa &ldquo;Guardar como PDF&rdquo; en el di&#225;logo de impresi&#243;n para exportar &mdash; 2 copias</small>
+</div>
+{$cuerpoDosCopias}
 </body></html>";
 
         $body = $res->getBody();

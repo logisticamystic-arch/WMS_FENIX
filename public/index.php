@@ -827,6 +827,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/despachos', [\App\Controllers\DespachoController::class, 'store']);
     $group->get('/despachos/{id}', [\App\Controllers\DespachoController::class, 'ver']);
     $group->get('/despachos/{id}/reporte', [\App\Controllers\DespachoController::class, 'reporte']);
+    $group->get('/despachos/{id}/planilla-cargue', [\App\Controllers\DespachoController::class, 'planillaCargue']);
     $group->post('/despachos/{id}/cerrar', [\App\Controllers\DespachoController::class, 'close']);
     $group->post('/despachos/{id}/pedidos', [\App\Controllers\DespachoController::class, 'agregarPedidos']);
     $group->delete('/despachos/{id}/pedidos/{orden_id}', [\App\Controllers\DespachoController::class, 'eliminarPedido']);

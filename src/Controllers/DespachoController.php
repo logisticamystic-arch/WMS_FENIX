@@ -78,8 +78,10 @@ class DespachoController extends BaseController
             ->where('sucursal_id', $sucursalId)
             ->with([
                 'certificaciones.producto',
-                'ordenes:id,numero_orden,planilla_numero,cliente,sucursal_entrega,estado,estado_certificacion,estado_despacho,fecha_movimiento',
+                'ordenes:id,numero_orden,planilla_numero,planilla_lote,cliente,sucursal_entrega,estado,estado_certificacion,estado_despacho,fecha_movimiento',
                 'rutaObj:id,nombre',
+                'conductorObj:id,nombre,documento,telefono',
+                'vehiculoObj:id,placa,tipo',
             ])
             ->find($a['id']);
         if (!$d) return $this->notFound($res);
@@ -90,7 +92,7 @@ class DespachoController extends BaseController
         // directa (remisión sale de picking/certificacion/remision-multiple) — mezclar
         // ambos caminos en el endpoint equivocado da HTTP 400 (ver certRemisionMultiple(),
         // que excluye a propósito las órdenes con packing_items). El frontend
-        // (reimprimirCargue() en despacho.js) usa este campo para elegir el endpoint
+        // (imprimirDocumentosCargue() en despacho.js) usa este campo para elegir el endpoint
         // correcto por cada pedido y fusionarlos en una sola remisión consolidada.
         $ordenIds = $d->ordenes->pluck('id')->toArray();
         if (!empty($ordenIds)) {
@@ -130,8 +132,18 @@ class DespachoController extends BaseController
                         ? (\App\Models\Ruta::find((int)$data['ruta_id'])?->nombre ?? null)
                         : null
                 ),
-                'conductor'       => $data['conductor']    ?? null,
-                'placa'           => $data['placa']        ?? null,
+                'conductor_id'    => !empty($data['conductor_id']) ? (int)$data['conductor_id'] : null,
+                'conductor'       => $data['conductor'] ?? (
+                    !empty($data['conductor_id'])
+                        ? (\App\Models\Conductor::find((int)$data['conductor_id'])?->nombre ?? null)
+                        : null
+                ),
+                'vehiculo_id'     => !empty($data['vehiculo_id']) ? (int)$data['vehiculo_id'] : null,
+                'placa'           => $data['placa'] ?? (
+                    !empty($data['vehiculo_id'])
+                        ? (\App\Models\Vehiculo::find((int)$data['vehiculo_id'])?->placa ?? null)
+                        : null
+                ),
                 'muelle_id'       => $data['muelle_id']    ?? null,
                 'total_bultos'    => $data['total_bultos'] ?? 0,
                 'peso_total'      => $data['peso_total']   ?? 0,
@@ -445,5 +457,111 @@ class DespachoController extends BaseController
 
         return $this->exportCsv($res, $headers, $rows,
             'despacho_' . $despacho->numero_despacho);
+    }
+
+    // ── GET /api/despachos/{id}/planilla-cargue ───────────────────────────────
+    // Documento "Planilla": resumen apaisado del cargue para que el conductor lo
+    // lleve en ruta — una fila por sucursal con hora de llegada/salida y un
+    // espacio grande para el sello de cada sucursal. A pedido explícito de
+    // Camilo (2026-09-21). Apaisado (landscape) y con celdas amplias tanto de
+    // ancho como de alto para que quepa un sello físico real.
+    public function planillaCargue(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
+        $d = Despacho::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->with([
+                'ordenes:id,cliente,sucursal_entrega,numero_orden',
+                'rutaObj:id,nombre',
+                'conductorObj:id,nombre,documento,telefono',
+                'vehiculoObj:id,placa,tipo',
+            ])
+            ->find($a['id']);
+        if (!$d) return $this->notFound($res);
+
+        $sucursales = $d->ordenes->pluck('sucursal_entrega')->filter()->unique()->sort()->values();
+        if ($sucursales->isEmpty()) {
+            return $this->error($res, 'Esta planilla de cargue no tiene pedidos asociados todavía.');
+        }
+
+        $empNombre = $this->remisionEmpresaNombre($empresaId);
+        $logoHtml  = $this->remisionLogoHtml($empNombre);
+        $fecha     = $d->fecha_movimiento ? date('d/m/Y', strtotime($d->fecha_movimiento)) : date('d/m/Y');
+        $ruta      = htmlspecialchars($d->rutaObj->nombre ?? $d->ruta ?? '—');
+        $conductor = htmlspecialchars($d->conductorObj->nombre ?? $d->conductor ?? '—');
+        $placa     = htmlspecialchars($d->vehiculoObj->placa ?? $d->placa ?? '—');
+        $tipoVeh   = htmlspecialchars($d->vehiculoObj->tipo ?? '');
+
+        $filas = $sucursales->map(fn($suc) => "<tr>
+            <td class='celda-suc'>" . htmlspecialchars($suc) . "</td>
+            <td class='celda-hora'></td>
+            <td class='celda-hora'></td>
+            <td class='celda-sello'></td>
+        </tr>")->implode('');
+
+        // Este documento se fusiona con Remisión/Liberación en una sola pestaña
+        // de impresión (_imprimirConsolidadoUnaPestana en despacho.js), que
+        // combina todos los <style> en una sola hoja. Remisión/Liberación usan
+        // remisionCss() (BaseController) con clases genéricas (.header,
+        // .info-grid, table/th/td, .no-print, etc.) — si esta Planilla usara
+        // las MISMAS clases sin espacio de nombres, sus reglas (pensadas para
+        // hoja apaisada, con fuentes y paddings más grandes) pisarían las de
+        // Remisión/Liberación (pensadas para A4 vertical) en el documento
+        // fusionado: incluso con el @page correcto ya arreglado, el tamaño de
+        // fuente/celdas de Remisión saldría mal. TODO selector va bajo
+        // .planilla-doc para blindarlo, y el propio @page queda nombrado (ver
+        // .planilla-doc{page:...} más abajo) para no forzar horizontal en todo
+        // el trabajo de impresión.
+        // Margen real de 1cm parejo en los 4 lados (ver nota en remisionCss()
+        // sobre por qué margin:0 no era la forma correcta de evitar el pie de
+        // página del navegador).
+        $css = "@page planilla-cargue-page{size:A4 landscape;margin:1cm}
+        .planilla-doc{page:planilla-cargue-page;font-family:Arial,Helvetica,sans-serif;color:#111}
+        @media print{.no-print{display:none!important}}
+        .planilla-doc .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1e3a5f;padding-bottom:8px;margin-bottom:10px}
+        .planilla-doc .header-left p{margin:2px 0 0;font-size:15px;font-weight:800;color:#1e3a5f;letter-spacing:.3px}
+        .planilla-doc .header-right{text-align:right;font-size:12px;color:#1e293b}
+        .planilla-doc .info-grid{display:flex;flex-wrap:wrap;gap:6px 28px;margin-bottom:14px;background:#f8fafc;padding:8px 14px;border-radius:6px;border:1px solid #cbd5e1}
+        .planilla-doc .info-grid .campo{font-size:12px;color:#0f172a}
+        .planilla-doc .info-grid .lbl{font-weight:800;font-size:10.5px;color:#334155;text-transform:uppercase;letter-spacing:.3px;margin-right:4px}
+        .planilla-doc table{width:100%;border-collapse:collapse}
+        .planilla-doc th{background:#1e3a5f;color:#fff;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.3px;padding:8px 10px;text-align:left}
+        .planilla-doc td{border:1px solid #cbd5e1;padding:6px 10px;font-size:13px;vertical-align:middle}
+        .planilla-doc .celda-suc{font-weight:700;width:34%}
+        .planilla-doc .celda-hora{width:14%;height:90px}
+        .planilla-doc .celda-sello{width:210px;height:90px}
+        .planilla-doc tr{page-break-inside:avoid}
+        .no-print{padding:8px 0;margin-bottom:10px}
+        .no-print button{padding:8px 20px;font-size:13px;font-weight:bold;cursor:pointer;background:#1e3a5f;color:#fff;border:none;border-radius:5px}";
+
+        $html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'>
+<title>Planilla de Cargue &mdash; {$d->numero_despacho}</title>
+<style>{$css}</style></head><body>
+<div class='no-print'>
+  <button onclick='window.print()'>&#128424; Imprimir / Guardar PDF</button>
+</div>
+<div class='planilla-doc'>
+<div class='header'>
+  <div class='header-left'>{$logoHtml}<p>PLANILLA DE CARGUE</p></div>
+  <div class='header-right'><strong>{$d->numero_despacho}</strong><br>Fecha: {$fecha}</div>
+</div>
+<div class='info-grid'>
+  <span class='campo'><span class='lbl'>Ruta:</span>{$ruta}</span>
+  <span class='campo'><span class='lbl'>Conductor:</span>{$conductor}</span>
+  <span class='campo'><span class='lbl'>Veh&iacute;culo:</span>{$placa}" . ($tipoVeh ? " ({$tipoVeh})" : '') . "</span>
+  <span class='campo'><span class='lbl'>N&ordm; Sucursales:</span>{$sucursales->count()}</span>
+</div>
+<table>
+  <thead><tr><th>Sucursal / Cliente</th><th>Hora Llegada</th><th>Hora Salida</th><th>Sello</th></tr></thead>
+  <tbody>{$filas}</tbody>
+</table>
+</div>
+</body></html>";
+
+        $body = $res->getBody();
+        $body->write($html);
+        return $res->withHeader('Content-Type', 'text/html; charset=utf-8')->withStatus(200);
     }
 }

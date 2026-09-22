@@ -2124,9 +2124,10 @@ WMS_MODULES.despacho = {
         '        <tr>\n' +
         '          <th><input type="checkbox" id="cp-chk-all" onchange="document.querySelectorAll(\'.cp-chk\').forEach(c => { if(c.offsetParent !== null) c.checked=this.checked })"></th>\n' +
         '          <th>Planilla Picking</th>\n' +
-        '          <th>Pedido / Factura</th>\n' +
+        '          <th>Pedidos</th>\n' +
         '          <th>Cliente / Sucursal</th>\n' +
         '          <th>Fecha</th>\n' +
+        '          <th>Acciones</th>\n' +
         '        </tr>\n' +
         '      </thead>\n' +
         '      <tbody id="cp-tbody">\n' +
@@ -2143,42 +2144,84 @@ WMS_MODULES.despacho = {
     }
   },
 
+  // Agrupa por planilla igual que WMS_MODULES.picking._agruparPorPlanilla():
+  // misma clave (planilla_numero || planilla_lote || DOC-<id>), para que un
+  // cargue se arme por planilla completa en vez de pedido por pedido suelto,
+  // y así la Remisión salga consolidada por planilla (Liberación sigue
+  // discriminada pedido por pedido — eso ya lo hace el endpoint que reutiliza).
+  _agruparPedidosCarguePorPlanilla(pedidos) {
+    const grupos = {};
+    for (const p of pedidos) {
+      const key = p.planilla_numero || p.planilla_lote || ('DOC-' + String(p.id).padStart(5, '0'));
+      if (!grupos[key]) grupos[key] = { planilla: key, pedidos: [], clientes: new Set() };
+      grupos[key].pedidos.push(p);
+      if (p.cliente || p.sucursal_entrega) grupos[key].clientes.add(p.cliente || p.sucursal_entrega);
+    }
+    return Object.values(grupos);
+  },
+
   _filtrarPedidosCargue() {
     const pedidos = this._pedidosCarguePendientes || [];
     const tbody = document.getElementById('cp-tbody');
     if(!tbody) return;
-    
+
     const fDesde = document.getElementById('cp-f-desde')?.value || '';
     const fHasta = document.getElementById('cp-f-hasta')?.value || '';
     const fTexto = (document.getElementById('cp-f-texto')?.value || '').toLowerCase();
     const fPlan = (document.getElementById('cp-f-planilla')?.value || '').toLowerCase();
-    
-    let html = '';
-    let count = 0;
-    
-    for(const p of pedidos) {
-      if (fDesde && p.fecha_movimiento < fDesde) continue;
-      if (fHasta && p.fecha_movimiento > fHasta) continue;
-      if (fPlan && !(p.planilla_numero||'').toLowerCase().includes(fPlan)) continue;
+
+    const filtrados = pedidos.filter(p => {
+      if (fDesde && p.fecha_movimiento < fDesde) return false;
+      if (fHasta && p.fecha_movimiento > fHasta) return false;
+      if (fPlan && !(p.planilla_numero||'').toLowerCase().includes(fPlan)) return false;
       if (fTexto) {
         const textStr = ( (p.numero_orden||'') + ' ' + (p.numero_factura||'') + ' ' + (p.cliente||'') + ' ' + (p.sucursal_entrega||'') ).toLowerCase();
-        if (!textStr.includes(fTexto)) continue;
+        if (!textStr.includes(fTexto)) return false;
       }
-      
+      return true;
+    });
+
+    const grupos = this._agruparPedidosCarguePorPlanilla(filtrados);
+
+    let html = '';
+    for (const g of grupos) {
+      const ids = g.pedidos.map(p => p.id);
+      const pedidosChips = g.pedidos.map(p =>
+        `<span style="font-size:9.5px;color:#475569;background:#f1f5f9;border-radius:3px;padding:1px 5px;margin:1px;display:inline-block;">${WMS.esc(p.numero_orden || p.numero_factura || ('#'+p.id))}</span>`
+      ).join('');
+      const fecha = g.pedidos[0]?.fecha_movimiento;
+
       html += `<tr>
-        <td><input type="checkbox" class="cp-chk" value="${p.id}"></td>
-        <td><span class="badge badge-info">${WMS.esc(p.planilla_numero||'-')}</span></td>
-        <td><strong>${WMS.esc(p.numero_orden || p.numero_factura || ('#'+p.id))}</strong></td>
-        <td>${WMS.esc(p.cliente || p.sucursal_entrega || '-')}</td>
-        <td>${WMS.formatDate(p.fecha_movimiento)}</td>
+        <td><input type="checkbox" class="cp-chk" data-ids='${JSON.stringify(ids)}'></td>
+        <td><span class="badge badge-info">${WMS.esc(g.planilla)}</span></td>
+        <td>${pedidosChips}<div style="font-size:9px;color:#94a3b8;margin-top:2px;">${g.pedidos.length} pedido${g.pedidos.length!==1?'s':''}</div></td>
+        <td>${WMS.esc([...g.clientes].join(', ') || '-')}</td>
+        <td>${WMS.formatDate(fecha)}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.despacho.imprimirRemisionGrupoPlanilla('${WMS.esc(g.planilla)}')" title="Imprimir remisión consolidada de esta planilla"><i class="fa-solid fa-print"></i></button>
+          <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.despacho.imprimirLiberacionGrupoPlanilla('${WMS.esc(g.planilla)}')" title="Imprimir liberación (pedido por pedido)"><i class="fa-solid fa-file-invoice"></i></button>
+        </td>
       </tr>`;
-      count++;
     }
-    
-    if (count === 0) html = '<tr><td colspan="5" class="table-empty">No se encontraron pedidos con estos filtros</td></tr>';
+
+    if (!grupos.length) html = '<tr><td colspan="6" class="table-empty">No se encontraron pedidos con estos filtros</td></tr>';
     tbody.innerHTML = html;
     const cEl = document.getElementById('cp-counter');
-    if(cEl) cEl.innerText = count;
+    if(cEl) cEl.innerText = filtrados.length;
+  },
+
+  // Remisión/Liberación consolidadas por planilla real (planilla_numero) —
+  // mismo endpoint y mismo criterio "?planilla=" que usa el módulo de Picking
+  // (imprimirRemisionPlanilla/imprimirLiberacionPlanilla en picking.js).
+  imprimirRemisionGrupoPlanilla(planilla) {
+    const params = new URLSearchParams();
+    params.append('planilla', planilla);
+    this._openPrint(`${API_BASE}/picking/certificacion/remision-multiple?${params}`, 'Remisión');
+  },
+  imprimirLiberacionGrupoPlanilla(planilla) {
+    const params = new URLSearchParams();
+    params.append('planilla', planilla);
+    this._openPrint(`${API_BASE}/picking/certificacion/liberacion-planilla?${params}`, 'Liberación');
   },
 
   async _renderPlanillasCreadas() {
@@ -2305,7 +2348,7 @@ WMS_MODULES.despacho = {
                   ${d.estado !== 'Entregado' ? `<button class="btn btn-sm btn-info" title="Agregar pedidos" onclick="WMS_MODULES.despacho.agregarPedidosCargue(${d.id})"><i class="fa-solid fa-box-open"></i> Pedidos</button>` : ''}
                   ${d.estado === 'Preparando' || d.estado === 'Certificado' ? `<button class="btn btn-sm btn-success" title="Despachar" onclick="WMS_MODULES.despacho.despacharCargue(${d.id})"><i class="fa-solid fa-truck"></i> Despachar</button>` : ''}
                   ${d.estado === 'Despachado' ? `<button class="btn btn-sm btn-warning" title="Liquidar - marcar como Entregado" onclick="WMS_MODULES.despacho.liquidarCargue(${d.id})"><i class="fa-solid fa-clipboard-check"></i> Liquidar</button>` : ''}
-                  <button class="btn btn-sm btn-success" title="Reimprimir remisión — disponible aunque ya esté liquidada/entregada" onclick="WMS_MODULES.despacho.reimprimirCargue(${d.id})"><i class="fa-solid fa-print"></i></button>
+                  <button class="btn btn-sm btn-success" title="Imprimir Remisión (original + copia), Liberación y Planilla — disponible aunque ya esté liquidada/entregada" onclick="WMS_MODULES.despacho.imprimirDocumentosCargue(${d.id})"><i class="fa-solid fa-print"></i> Imprimir</button>
                 </div></td>
               </tr>`).join('') || '<tr><td colspan="8" class="table-empty">Sin planillas de cargue en el rango/filtro seleccionado</td></tr>'}
               </tbody>
@@ -2321,68 +2364,78 @@ WMS_MODULES.despacho = {
     window.open(`${API_BASE}/despachos?export=excel${qs ? '&' + qs : ''}&token=${encodeURIComponent(token)}`, '_blank');
   },
 
-  async nuevoPlanillaCargue() {
-    // Carga rutas para el selector
-    let rutasOpts = '<option value="">Sin ruta específica</option>';
-    try {
-      const rr = await API.get('/param/rutas');
-      const rutas = rr.data || rr || [];
-      rutasOpts += rutas.map(rt => `<option value="${rt.id}">${WMS.esc(rt.nombre)}</option>`).join('');
-    } catch(e) { /* no rutas disponibles */ }
+  // Selects de Ruta/Conductor/Vehículo del formulario de cargue, contra los
+  // maestros reales (/param/rutas, /param/conductores, /param/vehiculos) —
+  // antes placa/conductor eran texto libre tipeado a mano.
+  async _opcionesCargueForm() {
+    const [rutasOpts, conductoresOpts, vehiculosOpts] = await Promise.all([
+      API.get('/param/rutas').then(r => (r.data || r || [])
+        .map(rt => `<option value="${rt.id}">${WMS.esc(rt.nombre)}</option>`).join(''))
+        .catch(() => ''),
+      API.get('/param/conductores').then(r => (r.data || r || [])
+        .filter(c => c.activo)
+        .map(c => `<option value="${c.id}">${WMS.esc(c.nombre)}</option>`).join(''))
+        .catch(() => ''),
+      API.get('/param/vehiculos').then(r => (r.data || r || [])
+        .filter(v => v.activo)
+        .map(v => `<option value="${v.id}">${WMS.esc(v.placa)}${v.tipo ? ' — ' + WMS.esc(v.tipo) : ''}</option>`).join(''))
+        .catch(() => ''),
+    ]);
+    return {
+      rutasOpts: '<option value="">Sin ruta específica</option>' + rutasOpts,
+      conductoresOpts: '<option value="">— Seleccione conductor —</option>' + conductoresOpts,
+      vehiculosOpts: '<option value="">— Seleccione vehículo —</option>' + vehiculosOpts,
+    };
+  },
 
-    WMS.showRightPanel('Nueva Planilla de Cargue', `
+  _cargueFormFields(o) {
+    return `
       <div class="form-grid form-grid-2">
-        <div class="form-group"><label class="form-label">Placa del Vehículo <span class="required">*</span></label><input id="car-placa" class="form-control" placeholder="ABC-123"></div>
-        <div class="form-group"><label class="form-label">Conductor <span class="required">*</span></label><input id="car-conductor" class="form-control" placeholder="Nombre del conductor"></div>
+        <div class="form-group"><label class="form-label">Vehículo <span class="required">*</span></label><select id="car-vehiculo-id" class="form-control">${o.vehiculosOpts}</select></div>
+        <div class="form-group"><label class="form-label">Conductor <span class="required">*</span></label><select id="car-conductor-id" class="form-control">${o.conductoresOpts}</select></div>
         <div class="form-group" style="grid-column:1/-1;">
           <label class="form-label">Ruta <span class="required">*</span></label>
-          <select id="car-ruta-id" class="form-control">${rutasOpts}</select>
+          <select id="car-ruta-id" class="form-control">${o.rutasOpts}</select>
         </div>
         <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Observaciones</label><textarea id="car-obs" class="form-control" rows="2" placeholder="Notas adicionales"></textarea></div>
-      </div>`,
+      </div>`;
+  },
+
+  async nuevoPlanillaCargue() {
+    const o = await this._opcionesCargueForm();
+    WMS.showRightPanel('Nueva Planilla de Cargue', this._cargueFormFields(o),
       `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.despacho.saveCargue()"><i class="fa-solid fa-save"></i> Crear Cargue</button>`);
   },
 
   async nuevoPlanillaCargueMasivo() {
-    const ids = Array.from(document.querySelectorAll('.cp-chk:checked')).map(c => parseInt(c.value));
+    // Cada checkbox representa una planilla completa (data-ids = array JSON de
+    // orden_picking_id de esa planilla) — se aplana a la lista final de pedidos.
+    const ids = Array.from(document.querySelectorAll('.cp-chk:checked'))
+      .flatMap(c => { try { return JSON.parse(c.dataset.ids || '[]'); } catch(e) { return []; } });
     if (!ids.length) { WMS.toast('warning', 'Selecciona al menos un pedido para crear la planilla'); return; }
-    
-    this._cargueSelectedIds = ids;
-    
-    let rutasOpts = '<option value="">Sin ruta específica</option>';
-    try {
-      const rr = await API.get('/param/rutas');
-      const rutas = rr.data || rr || [];
-      rutasOpts += rutas.map(rt => `<option value="${rt.id}">${WMS.esc(rt.nombre)}</option>`).join('');
-    } catch(e) { }
 
-    WMS.showRightPanel(`Nueva Planilla (${ids.length} pedidos)`, `
-      <div class="form-grid form-grid-2">
-        <div class="form-group"><label class="form-label">Placa del Vehículo <span class="required">*</span></label><input id="car-placa" class="form-control" placeholder="ABC-123"></div>
-        <div class="form-group"><label class="form-label">Conductor <span class="required">*</span></label><input id="car-conductor" class="form-control" placeholder="Nombre del conductor"></div>
-        <div class="form-group" style="grid-column:1/-1;">
-          <label class="form-label">Ruta <span class="required">*</span></label>
-          <select id="car-ruta-id" class="form-control">${rutasOpts}</select>
-        </div>
-        <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Observaciones</label><textarea id="car-obs" class="form-control" rows="2" placeholder="Notas adicionales"></textarea></div>
-      </div>`,
+    this._cargueSelectedIds = ids;
+    const o = await this._opcionesCargueForm();
+
+    WMS.showRightPanel(`Nueva Planilla (${ids.length} pedidos)`, this._cargueFormFields(o),
       `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.despacho.saveCargueMasivo()"><i class="fa-solid fa-save"></i> Crear Cargue y Asociar</button>`);
   },
 
   async saveCargueMasivo() {
-    const placa     = document.getElementById('car-placa')?.value.trim();
-    const conductor = document.getElementById('car-conductor')?.value.trim();
-    const rutaId    = document.getElementById('car-ruta-id')?.value || null;
-    const ordenIds  = this._cargueSelectedIds || [];
-    
-    if (!placa || !conductor) { WMS.toast('warning', 'Placa y Conductor son requeridos'); return; }
-    
+    const vehiculoId  = document.getElementById('car-vehiculo-id')?.value || null;
+    const conductorId = document.getElementById('car-conductor-id')?.value || null;
+    const rutaId      = document.getElementById('car-ruta-id')?.value || null;
+    const ordenIds    = this._cargueSelectedIds || [];
+
+    if (!vehiculoId || !conductorId) { WMS.toast('warning', 'Vehículo y Conductor son requeridos'); return; }
+
     try {
       WMS.spinner();
       const r = await API.post('/despachos', {
-        placa, conductor,
+        vehiculo_id: parseInt(vehiculoId),
+        conductor_id: parseInt(conductorId),
         ruta_id: rutaId ? parseInt(rutaId) : null,
         observaciones: document.getElementById('car-obs')?.value.trim() || null,
       });
@@ -2410,13 +2463,14 @@ WMS_MODULES.despacho = {
   },
 
   async saveCargue() {
-    const placa     = document.getElementById('car-placa')?.value.trim();
-    const conductor = document.getElementById('car-conductor')?.value.trim();
-    const rutaId    = document.getElementById('car-ruta-id')?.value || null;
-    if (!placa || !conductor) { WMS.toast('warning', 'Placa y Conductor son requeridos'); return; }
+    const vehiculoId  = document.getElementById('car-vehiculo-id')?.value || null;
+    const conductorId = document.getElementById('car-conductor-id')?.value || null;
+    const rutaId      = document.getElementById('car-ruta-id')?.value || null;
+    if (!vehiculoId || !conductorId) { WMS.toast('warning', 'Vehículo y Conductor son requeridos'); return; }
     try {
       const r = await API.post('/despachos', {
-        placa, conductor,
+        vehiculo_id: parseInt(vehiculoId),
+        conductor_id: parseInt(conductorId),
         ruta_id: rutaId ? parseInt(rutaId) : null,
         observaciones: document.getElementById('car-obs')?.value.trim() || null,
       });
@@ -2461,59 +2515,79 @@ WMS_MODULES.despacho = {
           </table>
         </div>`,
         `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cerrar</button>
-         <button class="btn btn-success" title="Reimprimir remisión — disponible aunque ya esté liquidada/entregada" onclick="WMS_MODULES.despacho.reimprimirCargue(${id})"><i class="fa-solid fa-print"></i> Reimprimir Remisión</button>
+         <button class="btn btn-success" title="Remisión (original + copia), Liberación y Planilla — disponible aunque ya esté liquidada/entregada" onclick="WMS_MODULES.despacho.imprimirDocumentosCargue(${id})"><i class="fa-solid fa-print"></i> Imprimir Documentos</button>
          ${esEditable ? `<button class="btn btn-info" onclick="WMS.closeRightPanel();WMS_MODULES.despacho.agregarPedidosCargue(${id})"><i class="fa-solid fa-box-open"></i> Agregar Pedidos</button>` : ''}
          ${d.estado==='Despachado' ? `<button class="btn btn-warning" onclick="WMS.closeRightPanel();WMS_MODULES.despacho.liquidarCargue(${id})"><i class="fa-solid fa-clipboard-check"></i> Liquidar</button>` : ''}
          ${d.estado==='Preparando'||d.estado==='Certificado' ? `<button class="btn btn-success" onclick="WMS.closeRightPanel();WMS_MODULES.despacho.despacharCargue(${id})"><i class="fa-solid fa-truck"></i> Despachar</button>` : ''}`);
     } catch(e) { WMS.toast('error', 'Error cargando detalle'); }
   },
 
-  // Reimprimir la remisión de una planilla de cargue — a pedido explícito
-  // (2026-08-18): debe funcionar SIN IMPORTAR el estado del despacho, incluidas
-  // planillas ya Despachadas/Entregadas (liquidadas), y debe salir CONSOLIDADA
-  // (un solo documento, un solo clic) igual que "Imprimir Consolidado" en la
-  // pantalla de Certificación. Es de solo lectura: no cambia estado_despacho,
-  // certificación ni nada — solo vuelve a generar el documento.
+  // Un solo botón/acción para TODOS los documentos de un cargue (a pedido
+  // explícito de Camilo, 2026-09-21): Remisión (original + copia — ya vienen
+  // en un solo documento, ver PickingController::certRemisionMultiple /
+  // certRemisionDirecta y PackingController::getRemision), Liberación
+  // (pedido por pedido, igual que en Picking) y Planilla (apaisada, sellos).
+  // Se abren fusionados en UNA sola pestaña con un único botón "Imprimir
+  // todas" — reutiliza _imprimirConsolidadoUnaPestana(), el mismo mecanismo
+  // que ya fusionaba varias remisiones en un solo documento.
   //
-  // BUG CORREGIDO 2026-08-18: al principio esto llamaba siempre a
-  // certificacion/remision-multiple con TODOS los orden_ids del cargue — pero
-  // ese endpoint excluye a propósito las órdenes certificadas vía sesión de
-  // packing (para no duplicar su remisión), así que un cargue con pedidos de
-  // ese origen daba HTTP 400 "No se encontraron órdenes certificadas". Ahora
-  // se separa cada pedido por su origen real (packing_sesion_id, que
-  // DespachoController::ver() ya calcula) y se combinan ambos documentos en
-  // una sola remisión, igual que imprimirRemisionesDirectasSeleccionadas().
-  async reimprimirCargue(despachoId) {
+  // CORREGIDO 2026-09-21 (a pedido explícito de Camilo): un cargue puede
+  // traer pedidos de VARIAS planillas mezcladas. Antes se armaba UN solo
+  // remision-multiple y UNA sola liberacion-planilla con TODOS los orden_ids
+  // del cargue juntos — eso mezclaba productos/faltantes de planillas
+  // distintas en una sola tabla, ilegible y poco profesional. Ahora se
+  // agrupa por planilla (misma clave que _agruparPedidosCarguePorPlanilla /
+  // WMS_MODULES.picking._agruparPorPlanilla) y se genera un documento de
+  // Remisión + uno de Liberación POR CADA planilla — exactamente como si se
+  // imprimiera "planilla por planilla" desde el módulo de Picking. Los
+  // documentos de todas las planillas se siguen fusionando en una sola
+  // pestaña de impresión (para no tener que abrir N ventanas), solo que cada
+  // uno queda separado y limpio, con su propio salto de página.
+  //
+  // Funciona SIN IMPORTAR el estado del despacho, incluidas planillas ya
+  // Despachadas/Entregadas (liquidadas): es de solo lectura, no cambia nada.
+  async imprimirDocumentosCargue(despachoId) {
     WMS.spinner();
     try {
       const r = await API.get('/despachos/' + despachoId);
       const d = r.data || r;
       const ordenes = d.ordenes || [];
       if (!ordenes.length) {
-        WMS.toast('warning', 'Esta planilla de cargue no tiene pedidos asociados para reimprimir.');
+        WMS.toast('warning', 'Esta planilla de cargue no tiene pedidos asociados para imprimir.');
         return;
       }
 
-      const sesionIds = [...new Set(ordenes.filter(o => o.packing_sesion_id).map(o => o.packing_sesion_id))];
-      const ordenIdsDirectos = ordenes.filter(o => !o.packing_sesion_id).map(o => o.id);
+      const grupos = this._agruparPedidosCarguePorPlanilla(ordenes);
+      const urls = [];
+      for (const g of grupos) {
+        // Remisión de ESTA planilla: packing_sesion_id -> un documento por sesión
+        // (filtrado a esta planilla, por si la sesión mezcló varias); el resto
+        // (certificado directo) -> un solo remision-multiple con esos orden_ids.
+        const sesionIds = [...new Set(g.pedidos.filter(o => o.packing_sesion_id).map(o => o.packing_sesion_id))];
+        const ordenIdsDirectos = g.pedidos.filter(o => !o.packing_sesion_id).map(o => o.id);
+        sesionIds.forEach(id => urls.push(`${API_BASE}/packing/sesion/${id}/remision?planilla=${encodeURIComponent(g.planilla)}`));
+        if (ordenIdsDirectos.length) {
+          const p = new URLSearchParams();
+          ordenIdsDirectos.forEach(id => p.append('orden_ids[]', id));
+          urls.push(`${API_BASE}/picking/certificacion/remision-multiple?${p}`);
+        }
 
-      const urls = sesionIds.map(id => `${API_BASE}/packing/sesion/${id}/remision`);
-      if (ordenIdsDirectos.length) {
-        const params = new URLSearchParams();
-        ordenIdsDirectos.forEach(id => params.append('orden_ids[]', id));
-        urls.push(`${API_BASE}/picking/certificacion/remision-multiple?${params}`);
+        // Liberación de ESTA planilla: sus pedidos, discriminados pedido por pedido.
+        const pLib = new URLSearchParams();
+        g.pedidos.forEach(o => pLib.append('orden_ids[]', o.id));
+        urls.push(`${API_BASE}/picking/certificacion/liberacion-planilla?${pLib}`);
       }
 
-      if (!urls.length) {
-        WMS.toast('warning', 'No se encontró remisión para reimprimir de esta planilla.');
-        return;
-      }
+      // Planilla de cargue: un solo resumen apaisado con TODAS las sucursales del
+      // cargue (esta sí va consolidada — es el resumen para el conductor, no una
+      // remisión/liberación de un cliente puntual).
+      urls.push(`${API_BASE}/despachos/${despachoId}/planilla-cargue`);
 
-      WMS.toast('info', `Generando remisión consolidada (${urls.length} documento(s))...`);
+      WMS.toast('info', `Generando documentos de ${grupos.length} planilla(s)...`);
       await this._imprimirConsolidadoUnaPestana(urls);
     } catch(e) {
       if (e.isSessionExpired) return;
-      WMS.toast('error', 'Error al reimprimir la remisión');
+      WMS.toast('error', 'Error al generar los documentos del cargue');
     } finally {
       WMS.spinner(false);
     }

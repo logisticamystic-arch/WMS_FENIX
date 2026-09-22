@@ -6894,13 +6894,15 @@ WMS_MODULES.picking = {
       <div class="card-header" style="background:#fef2f2;border-bottom:1px solid #fecaca;"><span class="card-title text-danger"><i class="fa-solid fa-triangle-exclamation"></i> Alerta de Faltantes Críticos</span></div>
       <div class="table-container" style="max-height:300px;">
         <table class="erp-table" style="font-size:11px;">
-          <thead style="background:#fff;"><tr><th>Producto</th><th class="text-center">Solic.</th><th class="text-center">H.Ini</th><th class="text-center">Sucursal</th></tr></thead>
+          <thead style="background:#fff;"><tr><th>Producto</th><th class="text-center">Solic.</th><th class="text-center">Sep.</th><th class="text-center">Pend.</th><th class="text-center">H.Ini</th><th class="text-center">Sucursal</th></tr></thead>
           <tbody>${(d.alertas_faltantes||[]).length ? d.alertas_faltantes.map(f => `<tr>
             <td><b style="color:#1e293b">${WMS.esc(f.producto)}</b><br><span style="color:#94a3b8">${WMS.esc(f.ean)}</span></td>
-            <td class="text-center"><span class="badge badge-danger">${f.solic}</span></td>
+            <td class="text-center">${f.solic}</td>
+            <td class="text-center">${f.disp}</td>
+            <td class="text-center"><span class="badge badge-danger">${f.dif}</span></td>
             <td class="text-center" style="font-family:monospace">${f.hora_ini ? f.hora_ini.substr(11,5) : '-'}</td>
             <td class="text-center"><span class="badge badge-light" style="border:1px solid #e2e8f0;">${WMS.esc(f.sucursal)}</span></td>
-          </tr>`).join('') : '<tr><td colspan="4" class="table-empty">Sin alertas de stock</td></tr>'}</tbody>
+          </tr>`).join('') : '<tr><td colspan="6" class="table-empty">Sin alertas de stock</td></tr>'}</tbody>
         </table>
       </div>
     </div>

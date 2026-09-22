@@ -597,14 +597,23 @@ abstract class BaseController
      */
     protected function remisionCss(): string
     {
-        return "@page{size:A4 portrait;margin:12mm 10mm 18mm 10mm}
+        // CORREGIDO 2026-09-21 (a pedido explícito de Camilo): margin:0 en el
+        // @page no era la forma correcta de quitar el pie de página del
+        // navegador — dejaba la página sin margen real (contenido pegado al
+        // borde del papel) y el "pie de página" del navegador (que Chrome
+        // controla por su cuenta desde el diálogo de impresión, no vía CSS) de
+        // todos modos podía seguir apareciendo. Se revierte a un margen real de
+        // 1cm parejo en los 4 lados. La barra fija (.running-print-header) que
+        // se agregaba arriba de cada página con cliente/planilla/fecha se quita
+        // del todo (queda display:none siempre) — era la que se estaba
+        // confundiendo con el encabezado.
+        return "@page{size:A4 portrait;margin:1cm}
         @media print{
           .no-print{display:none!important}
           body{margin:0;padding:0;font-size:9px;line-height:1.2}
           .pg-break{page-break-after:always;break-after:page}
-          .running-print-header{display:flex!important;position:fixed;top:-8mm;left:0;right:0;height:16px;border-bottom:1.5px solid #1e3a5f;padding-bottom:2px;font-size:8.5px;font-weight:800;color:#1e3a5f;background:#fff;z-index:99999}
         }
-        .running-print-header{display:none}
+        .running-print-header{display:none!important}
         body{font-family:Arial,Helvetica,sans-serif;font-size:9.5px;color:#111;margin:0;padding:6px 10px;line-height:1.25}
         .pg-break{page-break-after:always;break-after:page;margin-bottom:12px}
         .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1e3a5f;padding-bottom:4px;margin-bottom:6px}
