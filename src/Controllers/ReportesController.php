@@ -254,11 +254,19 @@ class ReportesController extends BaseController
         [$ini, $fin] = $this->getDateRange($params);
         $eId = $this->getEffectiveEmpresaId($user, $r);
 
-        $detalles = RecepcionDetalle::where('origen_captura', 'QR')
-            ->where('proveedor', 'ILIKE', '%CDP%')
+        // CORREGIDO 2026-09-22 (a pedido explícito de Camilo): el reporte exigía
+        // QR **y** proveedor CDP a la vez (AND) — debe ser QR **o** CDP (OR), para
+        // no dejar fuera recibos por QR de otros proveedores ni recibos manuales
+        // de CDP. También le faltaba el filtro "sin ODC" por completo: sin
+        // whereNull('odc_id') podía incluir recepciones que sí tienen orden de
+        // compra, cuando el reporte es específicamente para lo recibido SIN ODC.
+        $detalles = RecepcionDetalle::where(fn($q) => $q
+                ->where('origen_captura', 'QR')
+                ->orWhere('proveedor', 'ILIKE', '%CDP%'))
             ->whereHas('recepcion', function ($q) use ($eId, $user, $ini, $fin) {
                 $q->where('empresa_id', $eId)
                   ->where('sucursal_id', $user->sucursal_id)
+                  ->whereNull('odc_id')
                   ->whereBetween('created_at', [$ini, $fin]);
             })
             ->when(!empty($params['referencia']), function ($q) use ($params) {
@@ -278,7 +286,10 @@ class ReportesController extends BaseController
             // "Saldo" = lo recibido que no alcanza a completar una caja/unidad de empaque.
             $saldo = $upc > 0 ? max(0, (float)$d->cantidad_recibida - ($cajas * $upc)) : (float)$d->cantidad_recibida;
             return [
-                'fecha'             => $d->created_at,
+                // Fecha de RECIBO real (recepciones.fecha_movimiento), no el
+                // created_at de la línea — antes usaba created_at, que puede
+                // diferir si la línea se guardó/editó después del día del recibo.
+                'fecha'             => $d->recepcion->fecha_movimiento ?? $d->created_at,
                 'numero_recepcion'  => $d->recepcion->numero_recepcion ?? '—',
                 'producto_codigo'   => $d->producto->codigo_interno ?? '—',
                 'producto_nombre'   => $d->producto->nombre ?? '—',

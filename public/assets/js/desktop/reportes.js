@@ -734,7 +734,7 @@ WMS_MODULES.reportes = {
           </div>
         </div>
 
-        <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-qrcode"></i> Recibo CDP — Recepciones por QR (${rows.length})</span></div>
+        <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-qrcode"></i> Recibo sin ODC — QR o Proveedor CDP (${rows.length})</span></div>
         <div class="table-container"><table class="erp-table" id="cdp-table">
           <thead><tr>
             <th>Fecha</th><th># Recepción</th><th>Código</th><th>Producto</th>
@@ -753,7 +753,7 @@ WMS_MODULES.reportes = {
             <td style="text-align:right;">${WMS.formatNum(row.total_saldo)}</td>
             <td>${WMS.esc(row.recibido_por)}</td>
             <td>${WMS.esc(row.ubicacion)}</td>
-          </tr>`).join('')||'<tr><td colspan="11" class="table-empty">Sin recepciones QR de CDP en este rango</td></tr>'}
+          </tr>`).join('')||'<tr><td colspan="11" class="table-empty">Sin recepciones sin ODC (QR o CDP) en este rango</td></tr>'}
           </tbody></table></div></div>`);
       this.initProductoAutocomplete('cdp-ref');
     } catch(e) { WMS.setContent('<div class="m-empty">Error cargando Recibo CDP</div>'); }
