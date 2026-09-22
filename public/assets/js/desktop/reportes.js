@@ -735,7 +735,7 @@ WMS_MODULES.reportes = {
         </div>
 
         <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-qrcode"></i> Recibo sin ODC — QR o Proveedor CDP (${rows.length})</span></div>
-        <div class="table-container"><table class="erp-table" id="cdp-table">
+        <div class="table-container-scroll"><table class="erp-table" id="cdp-table">
           <thead style="position:sticky;top:0;background:#f8fafc;z-index:10;"><tr>
             <th>Fecha</th><th># Recepción</th><th>Código</th><th>Producto</th>
             <th>Cant. Recibida (QR)</th><th>F. Vencimiento</th><th>Lote</th>
