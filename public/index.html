@@ -1769,6 +1769,8 @@
 
       // ── Detail Drawer (Master-Detail) ──────────────────
       showRightPanel(title, html, footer = '') {
+          // BUG CORREGIDO 2026-09-22: ver nota en toast() — mismo criterio.
+          document.getElementById('wms-global-spinner')?.remove();
           const container = document.getElementById('content-body');
           const panel = document.getElementById('right-panel');
           const panelTitle = document.getElementById('right-panel-title');
@@ -2487,6 +2489,8 @@
       },
 
       showModal(title, bodyHTML, footerHTML = '', sizeClass = '', id = 'generic-modal') {
+        // BUG CORREGIDO 2026-09-22: ver nota en toast() — mismo criterio.
+        document.getElementById('wms-global-spinner')?.remove();
         const isStandalone = document.body.classList.contains('standalone-mode');
         
         // Si es Standalone y es un modal secundario o de acción, usar panel lateral
@@ -2529,6 +2533,8 @@
       },
 
       openSidePanel(title, body, footer) {
+        // BUG CORREGIDO 2026-09-22: ver nota en toast() — mismo criterio.
+        document.getElementById('wms-global-spinner')?.remove();
         document.getElementById('side-panel-title').textContent = title;
         document.getElementById('side-panel-body').innerHTML = body;
         document.getElementById('side-panel-footer').innerHTML = footer || '';
@@ -2641,6 +2647,8 @@
 
       // ── Toasts ────────────────────────────────────────────
       toast(type = 'info', msg, title = '') {
+        // BUG CORREGIDO 2026-09-22: el overlay global de WMS.spinner() quedaba bloqueando la pantalla si una funcion lo mostraba y el error se manejaba solo con un toast (sin volver a llamar spinner(false)) — mismo criterio defensivo que ya usa setContent().
+        document.getElementById('wms-global-spinner')?.remove();
         const icons = { success: 'fa-circle-check', error: 'fa-circle-xmark', warning: 'fa-triangle-exclamation', info: 'fa-circle-info' };
         const titles = { success: 'Éxito', error: 'Error', warning: 'Advertencia', info: 'Información' };
         const container = document.getElementById('toast-container');

@@ -280,10 +280,17 @@ WMS_MODULES.maestro = {
         <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro.nuevaSucursal()"><i class="fa-solid fa-plus"></i> Nueva Sucursal</button>
       </div>`);
     WMS.spinner();
-    const [rs, es] = await Promise.all([API.get('/param/sucursales'), API.get('/param/empresas')]);
-    this._sucursalesData = rs.data || rs || [];
-    this._sucEmpresasData = es.data || es || [];
-    this.renderSucursales(this._sucursalesData);
+    try {
+      const [rs, es] = await Promise.all([API.get('/param/sucursales'), API.get('/param/empresas')]);
+      this._sucursalesData = rs.data || rs || [];
+      this._sucEmpresasData = es.data || es || [];
+      this.renderSucursales(this._sucursalesData);
+    } catch(e) {
+      // BUG CORREGIDO 2026-09-22: sin try/catch, un error de red aca dejaba
+      // WMS.spinner() bloqueando toda la pantalla para siempre, sin aviso.
+      WMS.toast('error', 'Error cargando sucursales');
+      WMS.spinner(false);
+    }
   },
 
   renderSucursales(items) {

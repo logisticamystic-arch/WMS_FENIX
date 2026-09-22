@@ -1178,7 +1178,15 @@ WMS_MODULES.inventario = {
       // Agregar primera fila de asignación automáticamente
       this._nuevoConteoAuxiliares = auxiliares; // usado por _importarReferenciasArchivo
       this._addAsigRow(auxiliares);
-    } catch(e) { WMS.toast('error', 'Error cargando auxiliares'); }
+    } catch(e) {
+      WMS.toast('error', 'Error cargando auxiliares');
+    } finally {
+      // BUG CORREGIDO 2026-09-22: WMS.spinner() nunca se ocultaba (ni al
+      // terminar bien ni al fallar) — el overlay de pantalla completa
+      // quedaba bloqueando todo clic sobre el modal ya armado, dando la
+      // sensación de que el sistema se congeló.
+      WMS.spinner(false);
+    }
   },
 
   // Importar referencias + auxiliar desde archivo (.csv/.txt) — a pedido

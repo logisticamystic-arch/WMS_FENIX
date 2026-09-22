@@ -4062,7 +4062,13 @@ function toggleLandscape() {
         WMS_MODULES.despacho.iniciarCertificacion(sucursal);
       }
     } catch(e) {
-      WMS.showError('Error al obtener detalles', e);
+      // BUG CORREGIDO 2026-09-22: WMS.showError no existe en ningun lado del
+      // codigo — ante cualquier error esto reventaba en silencio (TypeError
+      // dentro del catch) y ademas nunca se ocultaba WMS.spinner(), dejando el
+      // overlay global bloqueando toda la pantalla para siempre.
+      WMS.toast('error', 'Error al obtener detalles: ' + (e?.message || e));
+    } finally {
+      WMS.spinner(false);
     }
   }
 };
