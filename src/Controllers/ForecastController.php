@@ -48,6 +48,153 @@ class ForecastController extends BaseController
             ->sum('cantidad');
     }
 
+    // Aproximación numérica de la función de error (Abramowitz & Stegun 7.1.26,
+    // error máx. 1.5e-7) — PHP no trae erf() nativo. Se usa para la función de
+    // distribución normal acumulada de _normCdf().
+    private function _erf(float $x): float
+    {
+        $sign = $x < 0 ? -1 : 1;
+        $x = abs($x);
+        $a1 = 0.254829592; $a2 = -0.284496736; $a3 = 1.421413741;
+        $a4 = -1.453152027; $a5 = 1.061405429; $p = 0.3275911;
+        $t = 1.0 / (1.0 + $p * $x);
+        $y = 1.0 - ((((($a5 * $t + $a4) * $t) + $a3) * $t + $a2) * $t + $a1) * $t * exp(-$x * $x);
+        return $sign * $y;
+    }
+
+    // P(demanda acumulada <= stock) asumiendo demanda diaria ~ Normal(media, sd) —
+    // mismo criterio estadístico (z-score sobre media/desviación) que ya usaba
+    // punto_reorden_sug en el motor Holt-Winters de este mismo controller.
+    private function _normCdf(float $z): float
+    {
+        return 0.5 * (1 + $this->_erf($z / sqrt(2)));
+    }
+
+    // ── GET /api/forecast/cobertura ──────────────────────────────────────────
+    // CORREGIDO 2026-09-24 (a pedido explícito de Camilo, reemplaza el intento
+    // de usar este mismo controller para 3/7/15 días): el motor Holt-Winters de
+    // abajo (calcularInterno) proyecta en pasos MENSUALES sobre
+    // ventas_agregadas_ml — una tabla que además está vacía (su pipeline de
+    // población nunca se conectó a ningún botón), así que estructuralmente no
+    // sirve para horizontes cortos de días aunque tuviera datos.
+    //
+    // Este método es independiente: calcula la velocidad de venta diaria REAL
+    // en CAJAS (no unidades) de cada producto a partir de picking_detalles de
+    // los últimos 30 días (dato vivo, ~2.5 meses de historial disponible — más
+    // que suficiente para un promedio/desviación diarios, no para un modelo
+    // estacional mensual), y con eso calcula la probabilidad de que el stock
+    // actual alcance a cubrir la demanda de los próximos 3, 7 y 15 días
+    // (P(demanda acumulada <= stock), asumiendo demanda diaria ~ Normal).
+    public function coberturaCajas(Request $r, Response $res): Response
+    {
+        $user       = $r->getAttribute('user');
+        $params     = $r->getQueryParams();
+        $empresaId  = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $user->sucursal_id;
+        $diasHist   = max(7, min(90, (int)($params['dias_historial'] ?? 30)));
+        $desde      = date('Y-m-d', strtotime("-{$diasHist} days"));
+        $horizontes = [3, 7, 15];
+
+        // Demanda diaria real (picking certificado), agrupada por producto y día.
+        $filas = Capsule::table('picking_detalles as pd')
+            ->join('orden_pickings as o', 'o.id', '=', 'pd.orden_picking_id')
+            ->join('productos as p', 'p.id', '=', 'pd.producto_id')
+            ->where('o.empresa_id', $empresaId)
+            ->where('o.sucursal_id', $sucursalId)
+            ->where('o.fecha_movimiento', '>=', $desde)
+            ->where('pd.cantidad_pickeada', '>', 0)
+            ->when(!empty($params['referencia']), function ($q) use ($params) {
+                $v = $params['referencia'];
+                $q->where(fn($sq) => $sq->where('p.nombre', 'ILIKE', "%$v%")->orWhere('p.codigo_interno', 'ILIKE', "%$v%"));
+            })
+            ->selectRaw('pd.producto_id, o.fecha_movimiento as fecha, p.codigo_interno, p.nombre,
+                p.factor_udm, p.unidades_caja, SUM(pd.cantidad_pickeada) as unidades_dia')
+            ->groupBy('pd.producto_id', 'o.fecha_movimiento', 'p.codigo_interno', 'p.nombre', 'p.factor_udm', 'p.unidades_caja')
+            ->get();
+
+        if ($filas->isEmpty()) {
+            return $this->ok($res, ['productos' => [], 'dias_historial' => $diasHist, 'mensaje' => 'Sin actividad de picking en el rango de historial.']);
+        }
+
+        // Stock disponible actual por producto, en unidades (se convierte a cajas
+        // más abajo con el mismo factor que la demanda, por producto).
+        $stockPorProducto = Capsule::table('inventarios')
+            ->where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId)
+            ->where('estado', 'Disponible')
+            ->selectRaw('producto_id, SUM(GREATEST(cantidad - COALESCE(cantidad_reservada,0), 0)) as unidades_disp')
+            ->groupBy('producto_id')->get()->keyBy('producto_id');
+
+        // Agrupar por producto: serie diaria de cajas + metadatos.
+        $porProducto = [];
+        foreach ($filas as $f) {
+            $pid = $f->producto_id;
+            if (!isset($porProducto[$pid])) {
+                $upc = (isset($f->factor_udm) && (float)$f->factor_udm > 0)
+                    ? (float)$f->factor_udm
+                    : max(1, (float)($f->unidades_caja ?? 1));
+                $porProducto[$pid] = [
+                    'codigo' => $f->codigo_interno, 'nombre' => $f->nombre, 'upc' => $upc, 'dias' => [],
+                ];
+            }
+            $porProducto[$pid]['dias'][] = (float)$f->unidades_dia / $porProducto[$pid]['upc'];
+        }
+
+        $out = [];
+        foreach ($porProducto as $pid => $d) {
+            $n = count($d['dias']);
+            $media = array_sum($d['dias']) / $n;
+            // Desviación estándar muestral (n-1) — con 1 solo día de datos no hay
+            // varianza calculable, se trata como demanda determinística (sd=0).
+            $sd = $n > 1
+                ? sqrt(array_sum(array_map(fn($x) => ($x - $media) ** 2, $d['dias'])) / ($n - 1))
+                : 0.0;
+
+            $unidadesDisp = (float)($stockPorProducto[$pid]->unidades_disp ?? 0);
+            $stockCajas   = $unidadesDisp / $d['upc'];
+            $diasCobertura = $media > 0 ? round($stockCajas / $media, 1) : null;
+
+            $probabilidades = [];
+            foreach ($horizontes as $h) {
+                $demandaEsperada = $media * $h;
+                if ($sd <= 0) {
+                    // Sin variabilidad observada: cobertura determinística.
+                    $prob = $stockCajas >= $demandaEsperada ? 99.0 : 1.0;
+                } else {
+                    $z = ($stockCajas - $demandaEsperada) / ($sd * sqrt($h));
+                    $prob = round($this->_normCdf($z) * 100, 1);
+                }
+                $probabilidades["prob_{$h}d"] = $prob;
+            }
+
+            $nivel = $probabilidades['prob_3d'] < 50 ? 'Critico'
+                   : ($probabilidades['prob_7d'] < 50 ? 'Alerta' : 'OK');
+
+            $out[] = [
+                'producto_id'          => $pid,
+                'codigo'               => $d['codigo'],
+                'nombre'               => $d['nombre'],
+                'velocidad_diaria_cajas' => round($media, 2),
+                'dias_con_datos'       => $n,
+                'stock_actual_cajas'   => round($stockCajas, 1),
+                'dias_cobertura_estimado' => $diasCobertura,
+                'nivel'                => $nivel,
+            ] + $probabilidades;
+        }
+
+        // Más crítico primero (menor probabilidad a 7 días).
+        usort($out, fn($a, $b) => $a['prob_7d'] <=> $b['prob_7d']);
+
+        return $this->ok($res, [
+            'productos'      => $out,
+            'dias_historial' => $diasHist,
+            'totales'        => [
+                'productos_analizados' => count($out),
+                'criticos' => count(array_filter($out, fn($p) => $p['nivel'] === 'Critico')),
+                'alertas'  => count(array_filter($out, fn($p) => $p['nivel'] === 'Alerta')),
+            ],
+        ]);
+    }
+
     // ── GET /api/forecast ─────────────────────────────────────────────────────
     // Dashboard: predicciones vigentes de forecast_demanda
     // (mv_rotacion_productos no existe en esta BD)

@@ -1230,6 +1230,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // ── FORECAST / PREDICCIÓN DE DEMANDA ──────────────────────────────────
     $group->get('/forecast',                            [\App\Controllers\ForecastController::class, 'index']);
     $group->get('/forecast/alertas',                    [\App\Controllers\ForecastController::class, 'alertas']);
+    $group->get('/forecast/cobertura',                  [\App\Controllers\ForecastController::class, 'coberturaCajas']);
     $group->get('/forecast/producto/{id}',              [\App\Controllers\ForecastController::class, 'producto']);
     $group->post('/forecast/ingest',                    [\App\Controllers\ForecastController::class, 'ingest']);
     $group->post('/forecast/calcular',                  [\App\Controllers\ForecastController::class, 'calcularInterno']);

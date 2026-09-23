@@ -303,7 +303,7 @@ WMS_MODULES.reportes = {
 
   // ── DASHBOARD GERENCIAL ───────────────────────────────────────────────────
   async show_gerencial() {
-    WMS.setToolbar(`<button class="btn btn-sm btn-outline-secondary" onclick="WMS.nav('inteligencia','vencimientos')"><i class="fa-solid fa-brain"></i> Análisis ML Predictivo</button>`);
+    WMS.setToolbar(`<button class="btn btn-sm btn-outline-secondary" onclick="WMS.nav('rotacion','forecast')"><i class="fa-solid fa-brain"></i> Análisis ML Predictivo</button>`);
     WMS.spinner();
 
     const fMes  = document.getElementById('dash-filter-mes')       ? document.getElementById('dash-filter-mes').value       : new Date().getMonth() + 1;
@@ -359,9 +359,9 @@ WMS_MODULES.reportes = {
           <div class="kpi-dashboard-card blue">
             <div class="kpi-dash-icon"><i class="fa-solid fa-boxes-stacked"></i></div>
             <div class="kpi-dash-info">
-              <span class="kpi-dash-label">Unidades Separadas</span>
-              <span class="kpi-dash-value">${metrics.totalPicksMes ? Number(metrics.totalPicksMes).toLocaleString('es-CO') : 0}</span>
-              <span class="kpi-dash-sub">Volumen total en el mes</span>
+              <span class="kpi-dash-label">Cajas Separadas</span>
+              <span class="kpi-dash-value">${metrics.totalPicksMesCajas ? Number(metrics.totalPicksMesCajas).toLocaleString('es-CO') : 0} cj</span>
+              <span class="kpi-dash-sub">+ ${metrics.totalPicksMesSaldo ? Number(metrics.totalPicksMesSaldo).toLocaleString('es-CO') : 0} und saldo — volumen total en el mes</span>
             </div>
           </div>
           <div class="kpi-dashboard-card ${metrics.crecimientoPct>=0?'green':'red'}">

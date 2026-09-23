@@ -939,10 +939,16 @@ class ReportesController extends BaseController
             $qVentas->where('p.id', $producto);
         }
 
+        // Conversión a cajas por LÍNEA (no dividir la suma total): cada línea puede
+        // ser un producto con distinto factor_udm/unidades_caja, igual criterio
+        // usado en el resto del sistema (Recibo CDP, Ranking Auxiliar, etc.).
+        $upcExpr = "COALESCE(NULLIF(p.factor_udm,0), NULLIF(p.unidades_caja,0), 1)";
         $ventasMesAMes = (clone $qVentas)
             ->select(
                 Capsule::raw($this->isPg() ? "EXTRACT(MONTH FROM op.created_at) as mes" : "MONTH(op.created_at) as mes"),
-                Capsule::raw("SUM(pd.cantidad_pickeada) as total_ventas")
+                Capsule::raw("SUM(pd.cantidad_pickeada) as total_ventas"),
+                Capsule::raw("SUM(FLOOR(pd.cantidad_pickeada / {$upcExpr})) as total_cajas"),
+                Capsule::raw("SUM(pd.cantidad_pickeada - FLOOR(pd.cantidad_pickeada / {$upcExpr}) * {$upcExpr}) as total_saldo")
             )
             ->groupBy('mes')
             ->get()
@@ -986,7 +992,10 @@ class ReportesController extends BaseController
         if ($categoria) $pickMesAnterior->where('p.categoria_id', $categoria);
 
         $totalAnterior = $pickMesAnterior->sum('pd.cantidad_pickeada');
-        $totalActual   = $ventasMesAMes->get((int)$mes)->total_ventas ?? 0;
+        $mesActualRow  = $ventasMesAMes->get((int)$mes);
+        $totalActual   = $mesActualRow->total_ventas ?? 0;
+        $totalActualCajas = (int)($mesActualRow->total_cajas ?? 0);
+        $totalActualSaldo = round((float)($mesActualRow->total_saldo ?? 0), 1);
         $crecimiento = 0;
         if ($totalAnterior > 0) {
             $crecimiento = (($totalActual - $totalAnterior) / $totalAnterior) * 100;
@@ -1078,6 +1087,8 @@ class ReportesController extends BaseController
         return $this->ok($res, [
             'metrics' => [
                 'totalPicksMes'    => $totalActual,
+                'totalPicksMesCajas' => $totalActualCajas,
+                'totalPicksMesSaldo' => $totalActualSaldo,
                 'crecimientoPct'   => round($crecimiento, 2),
                 'bajaRotacionCount'=> $bajaRotacion->count(),
                 'mesFiltro'        => $mes,

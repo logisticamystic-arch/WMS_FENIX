@@ -93,49 +93,61 @@ WMS_MODULES.rotacion = {
   },
   _filterSeg(seg) { WMS.toast(`Filtro: segmento ${seg}`,'info'); },
 
-  // ── FORECAST ──────────────────────────────────────────────
+  // ── FORECAST — Cobertura de inventario en CAJAS a 3/7/15 días ──────────────
+  // REEMPLAZADO 2026-09-24 (a pedido explícito de Camilo): el motor
+  // Holt-Winters original (endpoints /forecast + /forecast/alertas) dependía
+  // de ventas_agregadas_ml, una tabla vacía cuyo pipeline de población nunca
+  // se conectó a ningún botón — el usuario nunca veía más que "Ejecute el
+  // motor de predicción" sin explicación. Además ese modelo proyecta en pasos
+  // MENSUALES, incompatible con horizontes de 3/7/15 días. Se reemplaza por
+  // /forecast/cobertura (ForecastController::coberturaCajas): calcula la
+  // velocidad de venta diaria real EN CAJAS de picking_detalles (dato vivo) y
+  // la probabilidad estadística de que el stock actual cubra la demanda de
+  // los próximos 3/7/15 días.
   async renderForecast() {
     WMS.setToolbar(`
       <button class="pro-btn-refresh" onclick="WMS_MODULES.rotacion.renderForecast()"><i class="fa-solid fa-rotate-right"></i> Actualizar</button>
-      <button class="btn btn-sm btn-primary ms-2" onclick="WMS_MODULES.rotacion.ejecutarForecast()"><i class="fa-solid fa-wand-magic-sparkles"></i> Calcular Predicción</button>
     `);
     WMS.spinner();
     try {
-      const [rf, ra] = await Promise.all([API.get('/forecast'), API.get('/forecast/alertas')]);
-      const forecasts = (rf.data||rf).data || (rf.data||rf).predicciones || [];
-      const alertas = (ra.data||ra).data || (ra.data||ra).alertas || [];
-      const rowsF = forecasts.slice(0,50).map(f => `<tr>
-        <td class="ps-3"><div style="font-weight:700">${WMS.esc(f.nombre||f.producto_id)}</div></td>
-        <td class="text-end fw-bold">${Number(f.demanda_pred||0).toFixed(1)}</td>
-        <td class="text-center"><span class="badge badge-${f.modelo_usado==='ensemble'?'purple':f.modelo_usado==='holt_winters'?'info':'gray'}">${WMS.esc(f.modelo_usado||'—')}</span></td>
-        <td class="text-center">${f.horizonte_dias||30}d</td>
-        <td class="text-end">${f.mape?Number(f.mape).toFixed(1)+'%':'—'}</td>
-        <td class="text-center">${f.alerta_quiebre?'<span class="badge badge-danger">⚠ Quiebre</span>':'<span class="badge badge-success">OK</span>'}</td>
-        <td class="text-end fw-bold ${(f.dias_hasta_quiebre||999)<14?'text-danger':''}">${f.dias_hasta_quiebre||'—'}</td>
-      </tr>`).join('');
-      const rowsA = alertas.slice(0,20).map(a => `<tr>
-        <td class="ps-3"><div style="font-weight:700;color:#dc2626">${WMS.esc(a.nombre||a.producto_id)}</div></td>
-        <td class="text-end fw-bold text-danger">${a.dias_hasta_quiebre||'—'} días</td>
-        <td class="text-end">${Number(a.stock_seguridad_sugerido||0).toFixed(0)}</td>
-        <td class="text-end">${Number(a.demanda_pred||0).toFixed(1)}</td>
-      </tr>`).join('');
+      const r = await API.get('/forecast/cobertura');
+      const data = r.data || r;
+      const productos = data.productos || [];
+      const tot = data.totales || {};
+
+      const fila = p => {
+        const pctBadge = (v) => {
+          const cls = v >= 80 ? 'success' : v >= 50 ? 'warning' : 'danger';
+          return `<span class="badge badge-${cls}">${v}%</span>`;
+        };
+        const nivelBadge = { Critico: 'danger', Alerta: 'warning', OK: 'success' }[p.nivel] || 'gray';
+        return `<tr>
+          <td class="ps-3"><div style="font-weight:700">${WMS.esc(p.nombre)}</div><div style="font-size:.7rem;color:#64748b">${WMS.esc(p.codigo)}</div></td>
+          <td class="text-end">${Number(p.velocidad_diaria_cajas).toFixed(2)} cj/día</td>
+          <td class="text-end fw-bold">${Number(p.stock_actual_cajas).toFixed(1)} cj</td>
+          <td class="text-end">${p.dias_cobertura_estimado ?? '—'} d</td>
+          <td class="text-center">${pctBadge(p.prob_3d)}</td>
+          <td class="text-center">${pctBadge(p.prob_7d)}</td>
+          <td class="text-center">${pctBadge(p.prob_15d)}</td>
+          <td class="text-center"><span class="badge badge-${nivelBadge}">${WMS.esc(p.nivel)}</span></td>
+        </tr>`;
+      };
+      const rows = productos.slice(0, 100).map(fila).join('');
+
       WMS.setContent(`<div class="pro-dashboard" style="padding:20px">
         <div class="pro-kpi-grid mb-4">
-          <div class="pro-kpi-card accent-blue"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-chart-line"></i></div></div><div class="pro-kpi-value">${forecasts.length}</div><div class="pro-kpi-label">Predicciones Activas</div></div>
-          <div class="pro-kpi-card accent-red"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></div><span class="pro-kpi-trend down">Urgente</span></div><div class="pro-kpi-value">${alertas.length}</div><div class="pro-kpi-label">Alertas de Quiebre</div></div>
-          <div class="pro-kpi-card accent-green"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-bullseye"></i></div></div><div class="pro-kpi-value">${forecasts.length?Number(forecasts.reduce((a,f)=>a+(f.score_confianza||0),0)/forecasts.length*100).toFixed(0)+'%':'—'}</div><div class="pro-kpi-label">Confianza Promedio</div></div>
+          <div class="pro-kpi-card accent-blue"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-chart-line"></i></div></div><div class="pro-kpi-value">${tot.productos_analizados||0}</div><div class="pro-kpi-label">Productos Analizados</div></div>
+          <div class="pro-kpi-card accent-red"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></div><span class="pro-kpi-trend down">Urgente</span></div><div class="pro-kpi-value">${tot.criticos||0}</div><div class="pro-kpi-label">Críticos (&lt;50% a 3 días)</div></div>
+          <div class="pro-kpi-card accent-amber"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-bell"></i></div></div><div class="pro-kpi-value">${tot.alertas||0}</div><div class="pro-kpi-label">Alertas (&lt;50% a 7 días)</div></div>
         </div>
-        ${alertas.length?`<div class="card border-0 shadow-sm mb-4" style="border-left:4px solid #ef4444!important"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-bell me-2" style="color:#ef4444"></i>Alertas de Quiebre de Stock</div></div>
-        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:#fef2f2"><th class="ps-3">PRODUCTO</th><th class="text-end">DÍAS AL QUIEBRE</th><th class="text-end">STOCK SEGURIDAD</th><th class="text-end">DEMANDA PRED.</th></tr></thead><tbody>${rowsA}</tbody></table></div></div>`:''}
-        <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-chart-line me-2" style="color:#1a56db"></i>Predicciones de Demanda</div></div>
-        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:#f8fafc"><th class="ps-3">PRODUCTO</th><th class="text-end">DEMANDA PRED.</th><th class="text-center">MODELO</th><th class="text-center">HORIZONTE</th><th class="text-end">MAPE</th><th class="text-center">ESTADO</th><th class="text-end">DÍAS A QUIEBRE</th></tr></thead>
-        <tbody>${rowsF||'<tr><td colspan="7" class="text-center py-5 text-muted">Ejecute el motor de predicción</td></tr>'}</tbody></table></div></div>
+        <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-boxes-stacked me-2" style="color:#1a56db"></i>Probabilidad de Cobertura de Inventario (en cajas) — últimos ${data.dias_historial||30} días de venta real</div></div>
+        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:#f8fafc">
+          <th class="ps-3">PRODUCTO</th><th class="text-end">VELOCIDAD</th><th class="text-end">STOCK</th><th class="text-end">COBERTURA EST.</th>
+          <th class="text-center">P. 3 DÍAS</th><th class="text-center">P. 7 DÍAS</th><th class="text-center">P. 15 DÍAS</th><th class="text-center">NIVEL</th>
+        </tr></thead>
+        <tbody>${rows || `<tr><td colspan="8" class="text-center py-5 text-muted">${WMS.esc(data.mensaje || 'Sin actividad de picking en el rango de historial.')}</td></tr>`}</tbody></table></div></div>
       </div>`);
     } catch(e) { WMS.setContent(`<div class="m-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>${e.message}</p></div>`); }
-  },
-  async ejecutarForecast() {
-    try { await API.post('/forecast/calcular'); WMS.toast('Predicciones calculadas','success'); this.renderForecast(); }
-    catch(e) { WMS.toast('Error: '+e.message,'danger'); }
   },
 
   // ── SLOTTING ──────────────────────────────────────────────
