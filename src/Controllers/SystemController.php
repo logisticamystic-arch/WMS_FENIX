@@ -23,8 +23,15 @@ class SystemController extends BaseController
         // Se prioriza SERVER_ADDR (dinámico, coincide con el acceso actual) y
         // solo se cae a gethostbyname si no está disponible.
         $localIP = $_SERVER['SERVER_ADDR'] ?? gethostbyname(gethostname());
-        if ($localIP === '127.0.0.1' || str_starts_with($localIP, '127.')) {
-            $localIP = gethostbyname(gethostname());
+        // CORREGIDO 2026-09-23: entrar por "localhost" (texto) resuelve en
+        // Windows a ::1 (loopback IPv6), no a 127.0.0.1 — el chequeo anterior
+        // solo cubría IPv4 y dejaba pasar "::1" tal cual al QR (un celular
+        // jamás puede alcanzar el loopback de otra máquina). Ahora, ante
+        // cualquier loopback (IPv4 o IPv6), se usa la IP de Tailscale
+        // configurada (respaldo pensado para esto exactamente) y, si no está
+        // seteada, se cae a gethostbyname como último recurso.
+        if ($localIP === '127.0.0.1' || str_starts_with($localIP, '127.') || $localIP === '::1') {
+            $localIP = ($_ENV['TAILSCALE_IP'] ?? getenv('TAILSCALE_IP')) ?: gethostbyname(gethostname());
         }
 
         return $this->json($response, [
