@@ -13,13 +13,18 @@ class SystemController extends BaseController
      */
     public function getConnectionInfo(Request $request, Response $response): Response
     {
-        // Intentar obtener la IP local de la interfaz de red
-        $localIP = gethostbyname(gethostname());
-        
-        // En algunos entornos de XAMPP/Windows, gethostbyname puede retornar 127.0.0.1
-        // Intentamos una alternativa si es necesario
+        // CORREGIDO 2026-09-23 (a pedido explícito de Camilo, tras habilitar
+        // acceso remoto por Tailscale): SERVER_ADDR refleja la IP real por la
+        // que llegó ESTA petición (LAN 192.168.x.x o Tailscale 100.x.x.x según
+        // desde dónde se abrió el WMS), mientras que gethostbyname(gethostname())
+        // siempre devuelve la IP de la interfaz de red principal (LAN) sin
+        // importar por cuál se accedió — por eso el QR de "Acceso Móvil" seguía
+        // mostrando la IP de LAN aunque el escritorio se abriera por Tailscale.
+        // Se prioriza SERVER_ADDR (dinámico, coincide con el acceso actual) y
+        // solo se cae a gethostbyname si no está disponible.
+        $localIP = $_SERVER['SERVER_ADDR'] ?? gethostbyname(gethostname());
         if ($localIP === '127.0.0.1' || str_starts_with($localIP, '127.')) {
-            $localIP = $_SERVER['SERVER_ADDR'] ?? $localIP;
+            $localIP = gethostbyname(gethostname());
         }
 
         return $this->json($response, [
