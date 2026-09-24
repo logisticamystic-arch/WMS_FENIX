@@ -601,18 +601,22 @@ abstract class BaseController
 
     /**
      * Bloque de "Observaciones" al pie de la remisión — a pedido explícito de
-     * Camilo (2026-09-24): un texto general de la planilla de cargue
-     * (despachos.observaciones), visible en 15pt negrilla al final del
-     * documento. Compartido por los 3 generadores de remisión (packing,
-     * certificación directa, consolidada) para no duplicar el HTML — si no
-     * hay texto, no agrega nada (no rompe ningún flujo que no lo use).
+     * Camilo (2026-09-24, ajustado el mismo día a recuadro con título y 12pt):
+     * las observaciones reales de los pedidos incluidos en la remisión,
+     * mostradas en un recuadro con encabezado "OBSERVACIONES" (mismo estilo
+     * que .agotados-section/.novedades-section de remisionCss(), para
+     * mantener el mismo lenguaje visual). Compartido por los 3 generadores de
+     * remisión (packing, certificación directa, consolidada) — si no hay
+     * texto, no agrega nada (no rompe ningún flujo que no lo use).
      */
     protected function remisionObservacionesHtml(?string $obs): string
     {
         $obs = trim((string)$obs);
         if ($obs === '') return '';
-        return "<div style='margin-top:14px;padding-top:10px;border-top:1px solid #cbd5e1;font-size:15pt;font-weight:700;color:#111;'>"
-            . nl2br(htmlspecialchars($obs)) . "</div>";
+        return "<div style='margin-top:14px;margin-bottom:10px;border:1.5px solid #1e3a5f;border-radius:3px;overflow:hidden;'>"
+            . "<div style='background:#1e3a5f;color:#fff;padding:3px 8px;font-weight:800;font-size:9.5px;letter-spacing:.2px;'>OBSERVACIONES</div>"
+            . "<div style='padding:8px 10px;font-size:12pt;font-weight:700;color:#111;'>" . nl2br(htmlspecialchars($obs)) . "</div>"
+            . "</div>";
     }
 
     /**
