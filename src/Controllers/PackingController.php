@@ -1175,7 +1175,18 @@ class PackingController extends BaseController
         }
 
         if ($planillaFiltro !== '') {
-            $ordenesObj = $ordenesObj->filter(fn($o) => trim($o->planilla_numero ?? '') === $planillaFiltro)->values();
+            // BUG CORREGIDO 2026-09-24: pedidos montados manualmente (sin CSV/
+            // planilla real) tienen planilla_numero vacío — picking.js/despacho.js
+            // los agrupan bajo la etiqueta sintética 'DOC-' + id (mismo criterio
+            // que certRemisionMultiple/certLiberacionPlanilla en PickingController).
+            // El filtro anterior solo comparaba contra planilla_numero literal, así
+            // que nunca matcheaba esa etiqueta y la remisión de esos pedidos fallaba
+            // siempre con "No hay pedidos de DOC-XXXXX en esta sesión".
+            if (preg_match('/^DOC-0*(\d+)$/', $planillaFiltro, $m)) {
+                $ordenesObj = $ordenesObj->filter(fn($o) => (int)$o->id === (int)$m[1])->values();
+            } else {
+                $ordenesObj = $ordenesObj->filter(fn($o) => trim($o->planilla_numero ?? '') === $planillaFiltro)->values();
+            }
             if ($ordenesObj->isEmpty()) {
                 return $this->error($res, "No hay pedidos de \"{$planillaFiltro}\" en esta sesión");
             }
