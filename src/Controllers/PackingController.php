@@ -1163,7 +1163,7 @@ class PackingController extends BaseController
                         });
                     }
                 })
-                ->get(['id', 'numero_orden', 'numero_factura', 'numero_pedido', 'planilla_numero', 'fecha_movimiento']);
+                ->get(['id', 'numero_orden', 'numero_factura', 'numero_pedido', 'planilla_numero', 'fecha_movimiento', 'observaciones']);
         } else {
             // Fallback: órdenes certificadas del cliente en la fecha de creación de la sesión
             $ordenesObj = OrdenPicking::where('empresa_id', $empresaId)
@@ -1171,7 +1171,7 @@ class PackingController extends BaseController
                 ->where('sucursal_entrega', $sesion->sucursal_entrega)
                 ->where('estado_certificacion', 'Certificada')
                 ->whereDate('fecha_movimiento', $sesionFecha)
-                ->get(['id', 'numero_orden', 'numero_factura', 'numero_pedido', 'planilla_numero', 'fecha_movimiento']);
+                ->get(['id', 'numero_orden', 'numero_factura', 'numero_pedido', 'planilla_numero', 'fecha_movimiento', 'observaciones']);
         }
 
         if ($planillaFiltro !== '') {
@@ -1295,7 +1295,9 @@ class PackingController extends BaseController
 {$agotadosHtml}
 {$novedadesHtml}
 <div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>"
-        . $this->remisionObservacionesHtml($r->getQueryParams()['observaciones'] ?? '');
+        . $this->remisionObservacionesHtml(
+            trim($ordenesObj->pluck('observaciones')->filter()->unique()->implode("\n") . "\n" . ($r->getQueryParams()['observaciones'] ?? ''))
+        );
 
         // La remisión se imprime en 2 copias físicas (a pedido explícito de
         // Camilo, planilla de cargue 2026-09-21): mismo criterio que

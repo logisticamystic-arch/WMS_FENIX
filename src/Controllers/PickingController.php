@@ -8517,10 +8517,21 @@ class PickingController extends BaseController
             }
         }
 
+        // Observaciones REALES de cada pedido (orden_pickings.observaciones,
+        // el campo que se edita desde "Editar Pedido" en Picking — no confundir
+        // con despachos.observaciones, que es un texto aparte de la planilla de
+        // cargue). Se combinan sin duplicar y se muestran al pie de la remisión,
+        // junto con lo que venga por ?observaciones= si el caller lo manda.
+        $obsOrdenesSet = [];
+
         foreach ($gruposPorSucursal as $suc => $ordenes) {
             if ($ordenes->isEmpty()) continue;
 
             $ordenIds = $ordenes->pluck('id')->toArray();
+            foreach ($ordenes as $ordenObs) {
+                $txt = trim((string)($ordenObs->observaciones ?? ''));
+                if ($txt !== '') $obsOrdenesSet[$txt] = true;
+            }
             $rows     = $queryItems($ordenIds);
 
             foreach ($rows as $ambNombre => $ambItems) {
@@ -8656,8 +8667,9 @@ class PickingController extends BaseController
         // Camilo, planilla de cargue 2026-09-21): el cuerpo completo (consolidado
         // + páginas individuales) se repite una segunda vez con salto de página
         // entre copias, cada una rotulada para distinguirlas al firmar/sellar.
+        $obsCombinada = trim(implode("\n", array_keys($obsOrdenesSet)) . "\n" . ($qp['observaciones'] ?? ''));
         $cuerpoRemision = ($incluirConsolidado ? $consolidadoPage : '') . $individualPages
-            . $this->remisionObservacionesHtml($qp['observaciones'] ?? '');
+            . $this->remisionObservacionesHtml($obsCombinada);
         $tagCopia = fn($n) => "<div style='text-align:right;font-size:8px;font-weight:800;color:#94a3b8;letter-spacing:.5px;margin-bottom:2px;'>COPIA {$n} DE 2</div>";
         $cuerpoDosCopias = "<div class='pg-break'>" . $tagCopia(1) . $cuerpoRemision . "</div>"
             . $tagCopia(2) . $cuerpoRemision;
@@ -8929,7 +8941,9 @@ class PickingController extends BaseController
 {$agotadosHtml}
 {$novedadesHtml}
 <div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>"
-        . $this->remisionObservacionesHtml($qpDirect['observaciones'] ?? '');
+        . $this->remisionObservacionesHtml(
+            trim($ordenes->pluck('observaciones')->filter()->unique()->implode("\n") . "\n" . ($qpDirect['observaciones'] ?? ''))
+        );
 
         // 2 copias físicas — mismo criterio que certRemisionMultiple() y
         // PackingController::getRemision().
