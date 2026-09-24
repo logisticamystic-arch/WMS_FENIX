@@ -240,6 +240,11 @@ class ParametrosController extends BaseController
              $suc = \App\Models\Sucursal::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))->find($id);
              if (!$suc) return $this->json($response, ['error' => true, 'message' => 'Sucursal no encontrada'], 404);
 
+             // BUG CORREGIDO 2026-09-24 (a pedido explícito de Camilo): faltaba
+             // leer empresa_id del body — el formulario de edición SÍ lo manda
+             // (select de Empresa), pero el backend lo ignoraba en silencio,
+             // así que "Guardar" devolvía éxito sin aplicar el cambio real.
+             if (!empty($data['empresa_id'])) $suc->empresa_id = (int)$data['empresa_id'];
              if (isset($data['codigo'])) $suc->codigo = $data['codigo'];
              if (isset($data['nombre'])) $suc->nombre = $data['nombre'];
              if (isset($data['direccion'])) $suc->direccion = $data['direccion'];
