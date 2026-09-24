@@ -8656,7 +8656,8 @@ class PickingController extends BaseController
         // Camilo, planilla de cargue 2026-09-21): el cuerpo completo (consolidado
         // + páginas individuales) se repite una segunda vez con salto de página
         // entre copias, cada una rotulada para distinguirlas al firmar/sellar.
-        $cuerpoRemision = ($incluirConsolidado ? $consolidadoPage : '') . $individualPages;
+        $cuerpoRemision = ($incluirConsolidado ? $consolidadoPage : '') . $individualPages
+            . $this->remisionObservacionesHtml($qp['observaciones'] ?? '');
         $tagCopia = fn($n) => "<div style='text-align:right;font-size:8px;font-weight:800;color:#94a3b8;letter-spacing:.5px;margin-bottom:2px;'>COPIA {$n} DE 2</div>";
         $cuerpoDosCopias = "<div class='pg-break'>" . $tagCopia(1) . $cuerpoRemision . "</div>"
             . $tagCopia(2) . $cuerpoRemision;
@@ -8927,7 +8928,8 @@ class PickingController extends BaseController
 <div class='ambientes-grid'>{$ambientesHtml}</div>
 {$agotadosHtml}
 {$novedadesHtml}
-<div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>";
+<div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>"
+        . $this->remisionObservacionesHtml($qpDirect['observaciones'] ?? '');
 
         // 2 copias físicas — mismo criterio que certRemisionMultiple() y
         // PackingController::getRemision().

@@ -2557,6 +2557,11 @@ WMS_MODULES.despacho = {
         return;
       }
 
+      // Observaciones de la planilla de cargue (despachos.observaciones) — texto
+      // libre opcional que se agrega al pie de CADA remisión de este cargue, en
+      // 15pt negrilla (a pedido explícito de Camilo). Si no hay texto, no se
+      // manda el parámetro y la remisión sale exactamente igual que siempre.
+      const obs = (d.observaciones || '').trim();
       const grupos = this._agruparPedidosCarguePorPlanilla(ordenes);
       const urls = [];
       for (const g of grupos) {
@@ -2565,10 +2570,11 @@ WMS_MODULES.despacho = {
         // (certificado directo) -> un solo remision-multiple con esos orden_ids.
         const sesionIds = [...new Set(g.pedidos.filter(o => o.packing_sesion_id).map(o => o.packing_sesion_id))];
         const ordenIdsDirectos = g.pedidos.filter(o => !o.packing_sesion_id).map(o => o.id);
-        sesionIds.forEach(id => urls.push(`${API_BASE}/packing/sesion/${id}/remision?planilla=${encodeURIComponent(g.planilla)}`));
+        sesionIds.forEach(id => urls.push(`${API_BASE}/packing/sesion/${id}/remision?planilla=${encodeURIComponent(g.planilla)}${obs ? '&observaciones=' + encodeURIComponent(obs) : ''}`));
         if (ordenIdsDirectos.length) {
           const p = new URLSearchParams();
           ordenIdsDirectos.forEach(id => p.append('orden_ids[]', id));
+          if (obs) p.append('observaciones', obs);
           urls.push(`${API_BASE}/picking/certificacion/remision-multiple?${p}`);
         }
 

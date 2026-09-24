@@ -1294,7 +1294,8 @@ class PackingController extends BaseController
 <div class='ambientes-grid'>{$ambientesHtml}</div>
 {$agotadosHtml}
 {$novedadesHtml}
-<div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>";
+<div class='totales'>TOTAL: {$totalCajas} cj &mdash; {$totalUnd} und certificadas</div>"
+        . $this->remisionObservacionesHtml($r->getQueryParams()['observaciones'] ?? '');
 
         // La remisión se imprime en 2 copias físicas (a pedido explícito de
         // Camilo, planilla de cargue 2026-09-21): mismo criterio que

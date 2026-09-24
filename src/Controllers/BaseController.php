@@ -600,6 +600,22 @@ abstract class BaseController
     }
 
     /**
+     * Bloque de "Observaciones" al pie de la remisión — a pedido explícito de
+     * Camilo (2026-09-24): un texto general de la planilla de cargue
+     * (despachos.observaciones), visible en 15pt negrilla al final del
+     * documento. Compartido por los 3 generadores de remisión (packing,
+     * certificación directa, consolidada) para no duplicar el HTML — si no
+     * hay texto, no agrega nada (no rompe ningún flujo que no lo use).
+     */
+    protected function remisionObservacionesHtml(?string $obs): string
+    {
+        $obs = trim((string)$obs);
+        if ($obs === '') return '';
+        return "<div style='margin-top:14px;padding-top:10px;border-top:1px solid #cbd5e1;font-size:15pt;font-weight:700;color:#111;'>"
+            . nl2br(htmlspecialchars($obs)) . "</div>";
+    }
+
+    /**
      * CSS compartido por las remisiones (packing, certificación directa/móvil,
      * consolidada). Altamente optimizado para ahorro de papel y legibilidad.
      */
