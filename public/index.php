@@ -642,6 +642,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
 
     // ── Corrección manual de inventario ────────────────────────────────────
     $group->post('/v2/inventario/correccion',                  [\App\Controllers\InventarioV2Controller::class, 'correccionManual']);
+    $group->post('/v2/inventario/corregir-lote-fv',            [\App\Controllers\InventarioV2Controller::class, 'corregirLoteFv']);
 
     // ── Reportes ────────────────────────────────────────────────────────────
     $group->get('/v2/inventario/ajustes',                      [\App\Controllers\InventarioV2Controller::class, 'getAjustes']);
@@ -825,6 +826,11 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // Módulo: Despachos (Outbound Certification)
     $group->get('/despachos', [\App\Controllers\DespachoController::class, 'listar']);
     $group->post('/despachos', [\App\Controllers\DespachoController::class, 'store']);
+    // Rutas estáticas de 2 segmentos ANTES de /despachos/{id}: FastRoute lanza
+    // BadRouteException ("shadowed by previously defined variable route") si
+    // una ruta estática se registra DESPUÉS de una variable con la misma forma.
+    $group->get('/despachos/canastas', [\App\Controllers\DespachoController::class, 'verCanastasPlanilla']);
+    $group->post('/despachos/canastas', [\App\Controllers\DespachoController::class, 'guardarCanastasPlanilla']);
     $group->get('/despachos/{id}', [\App\Controllers\DespachoController::class, 'ver']);
     $group->get('/despachos/{id}/reporte', [\App\Controllers\DespachoController::class, 'reporte']);
     $group->get('/despachos/{id}/planilla-cargue', [\App\Controllers\DespachoController::class, 'planillaCargue']);

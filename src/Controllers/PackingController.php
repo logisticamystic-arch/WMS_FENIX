@@ -1260,7 +1260,8 @@ class PackingController extends BaseController
         // certRemisionDirecta() (PickingController) — antes cada endpoint tenía su
         // propia versión con columnas y secciones distintas, y una misma orden podía
         // salir con formato diferente según qué camino la certificara.
-        $amb           = $this->remisionAmbientesHtml($itemsRaw);
+        $canastasAmb   = $this->remisionCanastasPorAmbiente($ordenIds, $sesion->sucursal_entrega);
+        $amb           = $this->remisionAmbientesHtml($itemsRaw, $canastasAmb);
         $ambientesHtml = $amb['html'];
         $totalCajas    = $amb['cj'];
         $totalUnd      = $amb['und'];

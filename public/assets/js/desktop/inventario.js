@@ -3305,9 +3305,9 @@ WMS_MODULES.inventario = {
                   <td style="font-weight:700;font-size:.8rem">${WMS.esc(a.producto||'-')}</td>
                   <td>
                     <span style="padding:2px 8px;border-radius:12px;font-size:.7rem;font-weight:700;
-                      background:${a.tipo_ajuste==='Entrada'?'#dcfce7':'#fee2e2'};
-                      color:${a.tipo_ajuste==='Entrada'?'#16a34a':'#dc2626'}">
-                      ${a.tipo_ajuste==='Entrada'?'▲ Entrada':'▼ Salida'}
+                      background:${a.tipo_ajuste==='Entrada'?'#dcfce7':(a.tipo_ajuste==='CambioLoteFV'?'#dbeafe':'#fee2e2')};
+                      color:${a.tipo_ajuste==='Entrada'?'#16a34a':(a.tipo_ajuste==='CambioLoteFV'?'#1d4ed8':'#dc2626')}">
+                      ${a.tipo_ajuste==='Entrada'?'▲ Entrada':(a.tipo_ajuste==='CambioLoteFV'?'✎ Lote/FV':'▼ Salida')}
                     </span>
                   </td>
                   <td class="text-center fw-700">${a.fisico}</td>
@@ -4739,6 +4739,7 @@ WMS_MODULES.inventario = {
                   <option value="">Seleccionar...</option>
                   <option value="Entrada">▲ Entrada — suma al stock</option>
                   <option value="Salida">▼ Salida — resta del stock</option>
+                  <option value="CambioLoteFV">✎ Cambiar Lote/FV — no mueve cantidad</option>
                 </select>
               </div>
               <!-- Cantidad: se reemplaza dinámicamente según UPC del producto -->
@@ -4781,8 +4782,20 @@ WMS_MODULES.inventario = {
             <!-- Preview UND/TOTAL para productos con cajas -->
             <div id="aj-preview" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:9px 14px;margin-bottom:8px;font-size:.84rem;"></div>
 
+            <!-- Cambiar Lote/FV: tabla editable con TODAS las ubicaciones donde
+                 existe la referencia seleccionada (reusa this._ajStock, ya
+                 cargado por el autocomplete de producto vía GET /inventario/stock) -->
+            <div id="aj-lotefv-wrap" style="display:none;margin-bottom:16px;">
+              <div class="table-container">
+                <table class="data-table compact" id="aj-lotefv-table">
+                  <thead><tr><th>Ubicación</th><th>Cantidad</th><th>Lote</th><th>Fecha Vencimiento</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+
             <div style="text-align:right;margin-top:16px;">
-              <button class="btn btn-primary btn-lg" onclick="WMS_MODULES.inventario.ejecutarAjuste()">
+              <button class="btn btn-primary btn-lg" id="aj-btn-submit" onclick="WMS_MODULES.inventario.ejecutarAjuste()">
                 <i class="fa-solid fa-check"></i> Aplicar Corrección
               </button>
             </div>
@@ -4891,14 +4904,39 @@ WMS_MODULES.inventario = {
   },
 
   _ajTipoChanged() {
-    const tipo      = document.getElementById('aj-tipo')?.value;
-    const wrap      = document.getElementById('aj-fv-wrap');
-    const fv        = document.getElementById('aj-fv');
-    const loteWrap  = document.getElementById('aj-lote-wrap');
-    const loteInp   = document.getElementById('aj-lote');
-    const ubiInput  = document.getElementById('aj-ubicacion-input');
-    const ubiSelect = document.getElementById('aj-ubicacion-salida');
-    const hint      = document.getElementById('aj-ubicacion-hint');
+    const tipo        = document.getElementById('aj-tipo')?.value;
+    const wrap        = document.getElementById('aj-fv-wrap');
+    const fv          = document.getElementById('aj-fv');
+    const loteWrap     = document.getElementById('aj-lote-wrap');
+    const loteInp      = document.getElementById('aj-lote');
+    const ubiInput      = document.getElementById('aj-ubicacion-input');
+    const ubiSelect     = document.getElementById('aj-ubicacion-salida');
+    const hint          = document.getElementById('aj-ubicacion-hint');
+    const cantidadWrap   = document.getElementById('aj-cantidad-wrap');
+    const lotefvWrap     = document.getElementById('aj-lotefv-wrap');
+    const btnSubmit      = document.getElementById('aj-btn-submit');
+    const esCambioLoteFv = tipo === 'CambioLoteFV';
+
+    // "Cambiar Lote/FV" no mueve cantidad: oculta cantidad/ubicación/lote/FV
+    // "globales" del formulario (Entrada/Salida) y muestra en su lugar la
+    // tabla editable por ubicación (_ajRenderLoteFvTable).
+    if (cantidadWrap) cantidadWrap.style.display = esCambioLoteFv ? 'none' : '';
+    if (ubiInput?.parentElement) ubiInput.parentElement.style.display = esCambioLoteFv ? 'none' : '';
+    if (lotefvWrap) lotefvWrap.style.display = esCambioLoteFv ? '' : 'none';
+    if (btnSubmit) {
+      btnSubmit.innerHTML = esCambioLoteFv
+        ? '<i class="fa-solid fa-check"></i> Guardar Cambios de Lote/FV'
+        : '<i class="fa-solid fa-check"></i> Aplicar Corrección';
+      btnSubmit.onclick = esCambioLoteFv
+        ? () => WMS_MODULES.inventario.guardarLoteFv()
+        : () => WMS_MODULES.inventario.ejecutarAjuste();
+    }
+    if (esCambioLoteFv) {
+      if (loteWrap) loteWrap.style.display = 'none';
+      if (wrap) wrap.style.display = 'none';
+      this._ajRenderLoteFvTable();
+      return;
+    }
 
     const reqLote = !!(this._ajProd && this._ajProd.controla_lote);
     const reqVenc = !!(this._ajProd && (this._ajProd.controla_vencimiento || this._ajProd.control_vencimientos));
@@ -4927,6 +4965,53 @@ WMS_MODULES.inventario = {
       if (hint) hint.textContent = tipo === 'Entrada'
         ? 'Escriba cualquier ubicación activa — puede no tener stock previo de esta referencia.'
         : '';
+    }
+  },
+
+  /** Tabla editable de lote/FV por ubicación — usa this._ajStock (ya cargado
+   * al elegir el producto, GET /inventario/stock?producto_id=X). */
+  _ajRenderLoteFvTable() {
+    const tbody = document.querySelector('#aj-lotefv-table tbody');
+    if (!tbody) return;
+    const stock = this._ajStock || [];
+    if (!this._ajProd) {
+      tbody.innerHTML = '<tr><td colspan="4" class="table-empty">Seleccione un producto primero</td></tr>';
+      return;
+    }
+    if (!stock.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="table-empty">Sin stock registrado en sistema para esta referencia</td></tr>';
+      return;
+    }
+    tbody.innerHTML = stock.map(s => `
+      <tr data-inventario-id="${s.id}">
+        <td>${WMS.esc(s.ubicacion_codigo || ('Ubic.' + s.ubicacion_id))}</td>
+        <td class="text-center">${WMS.formatNum(s.cantidad)}</td>
+        <td><input type="text" class="form-control form-control-sm aj-lotefv-lote" value="${WMS.esc(s.lote || '')}" placeholder="Sin lote"></td>
+        <td><input type="date" class="form-control form-control-sm aj-lotefv-fv" value="${s.fecha_vencimiento ? String(s.fecha_vencimiento).substring(0,10) : ''}"></td>
+      </tr>`).join('');
+  },
+
+  async guardarLoteFv() {
+    const motivo = document.getElementById('aj-motivo')?.value?.trim();
+    if (!motivo) { WMS.toast('warning', 'Ingrese el motivo del cambio'); return; }
+
+    const filas = [...document.querySelectorAll('#aj-lotefv-table tbody tr[data-inventario-id]')].map(tr => ({
+      inventario_id: parseInt(tr.dataset.inventarioId, 10),
+      lote: tr.querySelector('.aj-lotefv-lote')?.value?.trim() || null,
+      fecha_vencimiento: tr.querySelector('.aj-lotefv-fv')?.value || null,
+    }));
+    if (!filas.length) { WMS.toast('warning', 'No hay ubicaciones para corregir'); return; }
+
+    WMS.spinner();
+    try {
+      const r = await API.post('/v2/inventario/corregir-lote-fv', { motivo, filas });
+      WMS.spinner(false);
+      if (r.error) { WMS.toast('error', r.message || 'Error al guardar'); return; }
+      WMS.toast('success', r.message || 'Lote/fecha de vencimiento actualizados');
+      this.show_ajuste();
+    } catch(e) {
+      WMS.spinner(false);
+      WMS.toast('error', 'Error al guardar los cambios');
     }
   },
 
@@ -4968,7 +5053,7 @@ WMS_MODULES.inventario = {
             <tbody>${ays.slice(0, 15).map(a => `<tr>
               <td style="font-size:.75rem;">${(a.hora||'').substring(0,5)}</td>
               <td style="font-size:.8rem;">${WMS.esc(a.producto||'-')}</td>
-              <td><span class="badge ${a.tipo_ajuste==='Entrada'?'badge-success':'badge-danger'}">${WMS.esc(a.tipo_ajuste||'-')}</span></td>
+              <td><span class="badge ${a.tipo_ajuste==='Entrada'?'badge-success':(a.tipo_ajuste==='CambioLoteFV'?'badge-info':'badge-danger')}">${WMS.esc(a.tipo_ajuste==='CambioLoteFV'?'Lote/FV':(a.tipo_ajuste||'-'))}</span></td>
               <td class="text-center fw-600">${WMS.formatNum(Math.abs(a.dif||0))}</td>
               <td style="font-size:.78rem;">${WMS.esc(a.ubicacion||'-')}</td>
               <td style="font-size:.75rem;">${WMS.esc(a.ajustado_por||'-')}</td>

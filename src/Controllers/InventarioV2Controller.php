@@ -2697,6 +2697,118 @@ class InventarioV2Controller extends BaseController
         }
     }
 
+    // ── POST /api/v2/inventario/corregir-lote-fv ──────────────────────────────
+    // Tercera opción del módulo "Corrección Manual" (a pedido explícito de
+    // Camilo): corrige lote/fecha_vencimiento de una o varias partidas
+    // existentes SIN mover cantidad — no genera MovimientoInventario (no hay
+    // diferencia de cantidad que registrar en el Kardex, así que fabricar uno
+    // ensuciaría el reporte con movimientos de cantidad falsa). Sí queda un
+    // registro inmutable en ajustes_inventario (tipo_ajuste='CambioLoteFV',
+    // diferencia=0) para trazabilidad, visible en el mismo "Registro de
+    // Ajustes" que Entrada/Salida.
+    //
+    // Si el lote/FV destino de una fila ya coincide con OTRA partida existente
+    // del mismo producto+ubicación, se fusionan cantidades en esa partida y se
+    // borra la fila de origen — inventarios no tiene unique constraint sobre
+    // (producto_id, ubicacion_id, lote, fecha_vencimiento) pero toda la app
+    // asume esa combinación como una sola partida; dejar dos filas separadas
+    // con la misma combinación rompería esa asunción en otros módulos.
+    public function corregirLoteFv(Request $req, Response $res): Response
+    {
+        $user = $req->getAttribute('user');
+        if ($deny = $this->requireSupervisor($user, $res)) return $deny;
+
+        $data  = $req->getParsedBody() ?? [];
+        $motivo = trim($data['motivo'] ?? '');
+        $filas  = $data['filas'] ?? [];
+        if ($motivo === '') return $this->error($res, 'Se requiere el motivo del cambio');
+        if (!is_array($filas) || empty($filas)) return $this->error($res, 'Se requiere al menos una fila (inventario_id, lote, fecha_vencimiento)');
+
+        $empresaId  = $this->getEffectiveEmpresaId($user, $req);
+        $sucursalId = $user->sucursal_id;
+
+        try {
+            $ajustes = Capsule::transaction(function () use ($filas, $motivo, $user, $empresaId, $sucursalId) {
+                $creados = [];
+                foreach ($filas as $fila) {
+                    $inv = Inventario::where('empresa_id', $empresaId)
+                        ->where('sucursal_id', $sucursalId)
+                        ->find($fila['inventario_id'] ?? 0);
+                    if (!$inv) continue;
+
+                    $loteNuevo = trim((string)($fila['lote'] ?? '')) ?: null;
+                    $fvNueva   = !empty($fila['fecha_vencimiento'])
+                        ? Carbon::parse($fila['fecha_vencimiento'])->format('Y-m-d')
+                        : null;
+
+                    $loteViejo = $inv->lote;
+                    $fvVieja   = $inv->fecha_vencimiento ? Carbon::parse($inv->fecha_vencimiento)->format('Y-m-d') : null;
+                    if ($loteNuevo === $loteViejo && $fvNueva === $fvVieja) continue; // sin cambios reales
+
+                    $cantidadPartida = $inv->cantidad;
+                    $ubicacionId     = $inv->ubicacion_id;
+                    $productoId      = $inv->producto_id;
+
+                    // ¿Ya existe otra partida del mismo producto+ubicación con el
+                    // lote/FV destino? Si sí, se fusiona en vez de duplicar.
+                    $destino = Inventario::where('empresa_id', $empresaId)
+                        ->where('sucursal_id', $sucursalId)
+                        ->where('producto_id', $productoId)
+                        ->where('ubicacion_id', $ubicacionId)
+                        ->where('id', '!=', $inv->id)
+                        ->when($loteNuevo === null, fn($q) => $q->whereNull('lote'), fn($q) => $q->where('lote', $loteNuevo))
+                        ->when($fvNueva === null, fn($q) => $q->whereNull('fecha_vencimiento'), fn($q) => $q->where('fecha_vencimiento', $fvNueva))
+                        ->first();
+
+                    if ($destino) {
+                        $destino->cantidad           += $inv->cantidad;
+                        $destino->cantidad_cajas       = ($destino->cantidad_cajas ?? 0) + ($inv->cantidad_cajas ?? 0);
+                        $destino->saldos                = ($destino->saldos ?? 0) + ($inv->saldos ?? 0);
+                        $destino->cantidad_reservada    = ($destino->cantidad_reservada ?? 0) + ($inv->cantidad_reservada ?? 0);
+                        $destino->save();
+                        $inv->delete();
+                    } else {
+                        $inv->lote              = $loteNuevo;
+                        $inv->fecha_vencimiento = $fvNueva;
+                        $inv->save();
+                    }
+
+                    $creados[] = AjusteInventario::create([
+                        'empresa_id'        => $empresaId,
+                        'sucursal_id'       => $sucursalId,
+                        'origen'            => AjusteInventario::ORIGEN_CORRECCION,
+                        'movimiento_id'     => null,
+                        'producto_id'       => $productoId,
+                        'ubicacion_id'      => $ubicacionId,
+                        'lote'              => $loteNuevo,
+                        'fecha_vencimiento' => $fvNueva,
+                        'cantidad_fisica'   => $cantidadPartida,
+                        'cantidad_sistema'  => $cantidadPartida,
+                        'diferencia'        => 0,
+                        'tipo_ajuste'       => AjusteInventario::TIPO_CAMBIO_LOTE_FV,
+                        'motivo'            => "{$motivo} (lote/FV anterior: " . ($loteViejo ?: '—') . ' / ' . ($fvVieja ?: '—') . ')',
+                        'auxiliar_id'       => null,
+                        'ajustado_por'      => $user->id,
+                        'fecha'             => date('Y-m-d'),
+                        'hora'              => date('H:i:s'),
+                    ]);
+                }
+                return $creados;
+            });
+
+            if (empty($ajustes)) {
+                return $this->error($res, 'Ninguna fila tenía cambios reales de lote/fecha de vencimiento.');
+            }
+
+            $this->audit($user, 'inventario_v2', 'corregir_lote_fv', 'ajustes_inventario', $ajustes[0]->id,
+                null, $data, "Cambio de lote/FV: {$motivo}");
+
+            return $this->ok($res, $ajustes, 'Lote/fecha de vencimiento actualizados');
+        } catch (\Throwable $e) {
+            return $this->error($res, $e->getMessage(), 500);
+        }
+    }
+
     // ════════════════════════════════════════════════════════════════════════
     //  ██████  REPORTE DE AJUSTES
     // ════════════════════════════════════════════════════════════════════════
@@ -2966,6 +3078,11 @@ class InventarioV2Controller extends BaseController
                 ->join('productos',   'inventarios.producto_id',  '=', 'productos.id')
                 ->join('ubicaciones', 'inventarios.ubicacion_id', '=', 'ubicaciones.id')
                 ->leftJoin('marcas', 'productos.marca_id', '=', 'marcas.id')
+                // Productos que no controlan vencimiento (ej. desechables/misceláneos
+                // reclasificados como SECO, migración 123) pueden traer una
+                // fecha_vencimiento vieja arrastrada de antes de esa reclasificación
+                // — no deben salir en este reporte como vencidos/próximos a vencer.
+                ->where('productos.controla_vencimiento', true)
                 ->select(
                     'inventarios.id',
                     'productos.codigo_interno as referencia',

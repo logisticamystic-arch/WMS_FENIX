@@ -473,7 +473,7 @@ class DespachoController extends BaseController
         $d = Despacho::where('empresa_id', $empresaId)
             ->where('sucursal_id', $sucursalId)
             ->with([
-                'ordenes:id,cliente,sucursal_entrega,numero_orden',
+                'ordenes:id,cliente,sucursal_entrega,numero_orden,planilla_numero',
                 'rutaObj:id,nombre',
                 'conductorObj:id,nombre,documento,telefono',
                 'vehiculoObj:id,placa,tipo',
@@ -486,6 +486,21 @@ class DespachoController extends BaseController
             return $this->error($res, 'Esta planilla de cargue no tiene pedidos asociados todavía.');
         }
 
+        // Total Canastas por sucursal (módulo "Canastas por Ambiente") — 0 si
+        // nadie ha diligenciado canastas para esta planilla todavía. Se busca
+        // por "planilla" (planilla_numero real o etiqueta sintética DOC-<id>,
+        // mismo criterio que remisionCanastasPorAmbiente()), no por
+        // despacho_id: las canastas se capturan apenas termina la
+        // certificación, normalmente ANTES de que exista este despacho.
+        $planillas = $d->ordenes->map(fn($o) => trim($o->planilla_numero ?? '') !== ''
+            ? trim($o->planilla_numero)
+            : ('DOC-' . str_pad($o->id, 5, '0', STR_PAD_LEFT)))->unique();
+        $canastasPorSuc = \App\Models\CanastaPlanilla::whereIn('planilla', $planillas)
+            ->selectRaw('sucursal_entrega, SUM(cantidad) as total')
+            ->groupBy('sucursal_entrega')
+            ->pluck('total', 'sucursal_entrega');
+        $totalCanastasGeneral = $canastasPorSuc->sum();
+
         $empNombre = $this->remisionEmpresaNombre($empresaId);
         $logoHtml  = $this->remisionLogoHtml($empNombre);
         $fecha     = $d->fecha_movimiento ? date('d/m/Y', strtotime($d->fecha_movimiento)) : date('d/m/Y');
@@ -496,10 +511,16 @@ class DespachoController extends BaseController
 
         $filas = $sucursales->map(fn($suc) => "<tr>
             <td class='celda-suc'>" . htmlspecialchars($suc) . "</td>
+            <td class='celda-canastas'>" . (int)($canastasPorSuc[$suc] ?? 0) . "</td>
             <td class='celda-hora'></td>
             <td class='celda-hora'></td>
             <td class='celda-sello'></td>
         </tr>")->implode('');
+        $filas .= "<tr>
+            <td class='celda-suc' style='text-align:right'>TOTAL GENERAL</td>
+            <td class='celda-canastas'>{$totalCanastasGeneral}</td>
+            <td colspan='3'></td>
+        </tr>";
 
         // Este documento se fusiona con Remisión/Liberación en una sola pestaña
         // de impresión (_imprimirConsolidadoUnaPestana en despacho.js), que
@@ -529,8 +550,9 @@ class DespachoController extends BaseController
         .planilla-doc table{width:100%;border-collapse:collapse}
         .planilla-doc th{background:#1e3a5f;color:#fff;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.3px;padding:8px 10px;text-align:left}
         .planilla-doc td{border:1px solid #cbd5e1;padding:6px 10px;font-size:13px;vertical-align:middle}
-        .planilla-doc .celda-suc{font-weight:700;width:34%}
-        .planilla-doc .celda-hora{width:14%;height:90px}
+        .planilla-doc .celda-suc{font-weight:700;width:30%}
+        .planilla-doc .celda-canastas{width:12%;text-align:center;font-weight:800;font-size:15px;color:#1e3a5f}
+        .planilla-doc .celda-hora{width:13%;height:90px}
         .planilla-doc .celda-sello{width:210px;height:90px}
         .planilla-doc tr{page-break-inside:avoid}
         .no-print{padding:8px 0;margin-bottom:10px}
@@ -554,7 +576,7 @@ class DespachoController extends BaseController
   <span class='campo'><span class='lbl'>N&ordm; Sucursales:</span>{$sucursales->count()}</span>
 </div>
 <table>
-  <thead><tr><th>Sucursal / Cliente</th><th>Hora Llegada</th><th>Hora Salida</th><th>Sello</th></tr></thead>
+  <thead><tr><th>Sucursal / Cliente</th><th>Total Canastas</th><th>Hora Llegada</th><th>Hora Salida</th><th>Sello</th></tr></thead>
   <tbody>{$filas}</tbody>
 </table>
 </div>
@@ -563,5 +585,95 @@ class DespachoController extends BaseController
         $body = $res->getBody();
         $body->write($html);
         return $res->withHeader('Content-Type', 'text/html; charset=utf-8')->withStatus(200);
+    }
+
+    // ── GET /api/despachos/canastas?planilla=X ────────────────────────────────
+    // Módulo "Canastas por Ambiente" — a pedido explícito de Camilo (2026-09-25),
+    // extendido el mismo día para móvil: captura del total de canastas por
+    // sucursal y ambiente, identificada por "planilla" (planilla_numero real o
+    // etiqueta sintética DOC-<id>, MISMO criterio que
+    // _agruparPedidosCarguePorPlanilla()/certRemisionMultiple) en vez de por
+    // despacho_id — las canastas se cuentan apenas termina la certificación,
+    // normalmente antes de que exista una Planilla de Cargue/Despacho. Ese
+    // dato sale luego en Remisión (remisionCanastasPorAmbiente() en
+    // BaseController) y en Planilla de Cargue (columna "Total Canastas" en
+    // planillaCargue()) una vez esa planilla se convierta en un despacho.
+    public function verCanastasPlanilla(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
+        $planilla = trim($r->getQueryParams()['planilla'] ?? '');
+        if ($planilla === '') return $this->error($res, 'Se requiere el parámetro planilla');
+
+        $ordenes = $this->resolverOrdenesPorPlanilla($planilla, $empresaId, $sucursalId);
+        if ($ordenes->isEmpty()) {
+            return $this->error($res, "No se encontraron pedidos para la planilla \"{$planilla}\".");
+        }
+
+        $sucursales = $ordenes->pluck('sucursal_entrega')->filter()->unique()->sort()->values();
+        $ambientes = \App\Models\Ambiente::where('empresa_id', $empresaId)
+            ->where('activo', true)
+            ->orderBy('descripcion')
+            ->get(['id', 'codigo', 'descripcion', 'icono', 'color']);
+
+        $guardadas = \App\Models\CanastaPlanilla::where('planilla', $planilla)->get();
+        $valores = [];
+        foreach ($guardadas as $g) {
+            $valores[$g->sucursal_entrega][$g->ambiente_id] = (int)$g->cantidad;
+        }
+
+        return $this->ok($res, [
+            'planilla' => $planilla,
+            'sucursales' => $sucursales,
+            'ambientes' => $ambientes,
+            'valores' => $valores,
+        ]);
+    }
+
+    // ── POST /api/despachos/canastas ──────────────────────────────────────────
+    public function guardarCanastasPlanilla(Request $r, Response $res): Response
+    {
+        $user = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $data = $r->getParsedBody() ?? [];
+        $planilla = trim($data['planilla'] ?? '');
+        $filas = $data['filas'] ?? [];
+        if ($planilla === '' || !is_array($filas) || empty($filas)) {
+            return $this->error($res, 'Se requiere planilla y al menos una fila (sucursal_entrega, ambiente_id, cantidad)');
+        }
+
+        Capsule::transaction(function () use ($filas, $planilla, $empresaId, $user) {
+            foreach ($filas as $fila) {
+                $sucursal = trim((string)($fila['sucursal_entrega'] ?? ''));
+                $ambienteId = (int)($fila['ambiente_id'] ?? 0);
+                if ($sucursal === '' || $ambienteId <= 0) continue;
+                \App\Models\CanastaPlanilla::updateOrCreate(
+                    ['planilla' => $planilla, 'sucursal_entrega' => $sucursal, 'ambiente_id' => $ambienteId],
+                    ['cantidad' => max(0, (int)($fila['cantidad'] ?? 0)), 'empresa_id' => $empresaId, 'created_by' => $user->id]
+                );
+            }
+        });
+
+        return $this->ok($res, ['guardado' => true]);
+    }
+
+    // Resuelve las órdenes reales detrás de una "planilla" (planilla_numero,
+    // numero_orden, planilla_lote, o etiqueta sintética DOC-<id> para pedidos
+    // montados manualmente sin CSV) — mismo criterio de resolución que ya usa
+    // PickingController::certRemisionMultiple() para el parámetro ?planilla=.
+    private function resolverOrdenesPorPlanilla(string $planilla, int $empresaId, int $sucursalId)
+    {
+        $q = OrdenPicking::where('empresa_id', $empresaId)->where('sucursal_id', $sucursalId);
+        if (preg_match('/^DOC-0*(\d+)$/', $planilla, $m)) {
+            $q->where('id', (int)$m[1]);
+        } else {
+            $q->where(function ($sq) use ($planilla) {
+                $sq->where('planilla_numero', $planilla)
+                   ->orWhere('numero_orden', $planilla)
+                   ->orWhere('planilla_lote', $planilla);
+            });
+        }
+        return $q->get(['id', 'sucursal_entrega']);
     }
 }

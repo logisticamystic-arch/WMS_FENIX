@@ -69,7 +69,9 @@ class ReportesController extends BaseController
             ->join('productos', 'inventarios.producto_id', '=', 'productos.id')
             ->join('ubicaciones', 'inventarios.ubicacion_id', '=', 'ubicaciones.id')
             ->leftJoin('marcas', 'productos.marca_id', '=', 'marcas.id')
-            ->leftJoin('ambientes', 'ubicaciones.ambiente_id', '=', 'ambientes.id')
+            // El ambiente es del PRODUCTO (productos.ambiente_id), no de la
+            // ubicación física — "ubicaciones" no tiene columna ambiente_id.
+            ->leftJoin('ambientes', 'productos.ambiente_id', '=', 'ambientes.id')
             ->select(
                 'inventarios.id',
                 'inventarios.producto_id',
@@ -86,7 +88,7 @@ class ReportesController extends BaseController
                 'marcas.nombre as marca',
                 'ubicaciones.codigo as ubicacion',
                 'ubicaciones.codigo as ubicacion_codigo',
-                'ambientes.nombre as ambiente'
+                'ambientes.descripcion as ambiente'
             )
             // ── Filtro estado ──
             ->when(!empty($params['estado']), fn($q) => $q->where('inventarios.estado', $params['estado']))
@@ -107,7 +109,7 @@ class ReportesController extends BaseController
             })
             ->when($ubicacionId, fn($q) => $q->where('inventarios.ubicacion_id', $ubicacionId))
             // ── Filtro por ambiente_id ──
-            ->when(!empty($params['ambiente_id']), fn($q) => $q->where('ubicaciones.ambiente_id', $params['ambiente_id']))
+            ->when(!empty($params['ambiente_id']), fn($q) => $q->where('productos.ambiente_id', $params['ambiente_id']))
             // ── Proximos a vencer ──
             ->when(!empty($params['solo_proximos_vencer']), function ($q) {
                 $hoy      = \Carbon\Carbon::now()->format('Y-m-d');
@@ -818,9 +820,16 @@ class ReportesController extends BaseController
             ->where('inventarios.sucursal_id', $sId)
             ->join('productos', 'inventarios.producto_id', '=', 'productos.id')
             ->join('ubicaciones', 'inventarios.ubicacion_id', '=', 'ubicaciones.id')
-            ->leftJoin('ambientes', 'ubicaciones.ambiente_id', '=', 'ambientes.id')
+            // El ambiente es del PRODUCTO (productos.ambiente_id), no de la
+            // ubicación física — "ubicaciones" no tiene columna ambiente_id.
+            ->leftJoin('ambientes', 'productos.ambiente_id', '=', 'ambientes.id')
             ->whereNotNull('inventarios.fecha_vencimiento')
             ->where('inventarios.cantidad', '>', 0)   // solo stock con existencia real
+            // Productos que no controlan vencimiento (ej. desechables/misceláneos
+            // reclasificados como SECO, migración 123) pueden traer una
+            // fecha_vencimiento vieja arrastrada en inventarios de antes de esa
+            // reclasificación — el reporte no debe mostrarlos como vencidos.
+            ->where('productos.controla_vencimiento', true)
             // ── Filtro por referencia: nombre ilike o codigo_interno ilike ──
             ->when(!empty($params['referencia']), function ($q) use ($params) {
                 $v = '%' . $params['referencia'] . '%';
@@ -835,7 +844,7 @@ class ReportesController extends BaseController
             })
             ->when($ubicacionId, fn($q) => $q->where('inventarios.ubicacion_id', $ubicacionId))
             // ── Filtro por ambiente_id ──
-            ->when(!empty($params['ambiente_id']), fn($q) => $q->where('ubicaciones.ambiente_id', $params['ambiente_id']))
+            ->when(!empty($params['ambiente_id']), fn($q) => $q->where('productos.ambiente_id', $params['ambiente_id']))
             // ── Filtro fecha_desde / fecha_hasta (rango sobre fecha_vencimiento) ──
             ->when(!empty($params['fecha_desde']), fn($q) => $q->where('inventarios.fecha_vencimiento', '>=', $params['fecha_desde']))
             ->when(!empty($params['fecha_hasta']), fn($q) => $q->where('inventarios.fecha_vencimiento', '<=', $params['fecha_hasta']));
@@ -861,7 +870,7 @@ class ReportesController extends BaseController
                 'productos.codigo_interno as codigo',
                 'ubicaciones.codigo as ubicacion',
                 'ubicaciones.codigo as ubicacion_codigo',
-                'ambientes.nombre as ambiente'
+                'ambientes.descripcion as ambiente'
             )
             ->orderBy('inventarios.fecha_vencimiento')
             ->get();

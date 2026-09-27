@@ -8428,7 +8428,7 @@ class PickingController extends BaseController
         // que usa PackingController::getRemision() — antes cada endpoint tenía su
         // propia versión (columnas y secciones distintas), y una misma orden podía
         // salir con formato diferente según qué camino la certificara.
-        $buildAmbs     = fn($grouped)   => $this->remisionAmbientesHtml($grouped);
+        $buildAmbs     = fn($grouped, $canastas = [])   => $this->remisionAmbientesHtml($grouped, $canastas);
         $buildAgotados = fn($ordenIds)  => $this->remisionAgotadosHtml($ordenIds);
 
         $queryItems = function ($ordenIds) {
@@ -8558,6 +8558,7 @@ class PickingController extends BaseController
             $pages[] = [
                 'sucursal'   => $suc,
                 'rows'       => $rows,
+                'ordenIds'   => $ordenIds,
                 'certNombre' => $certNombre,
                 'fechaMov'   => $ordenes->min('fecha_movimiento'),
                 'planilla'   => $ordenes->pluck('planilla_numero')->filter()->unique()->implode(', '),
@@ -8581,7 +8582,8 @@ class PickingController extends BaseController
             uasort($prods, fn($a, $b) => strcmp($a->nombre, $b->nombre));
             $consoGrouped[$ambNombre] = array_values($prods);
         }
-        $cr      = $buildAmbs($consoGrouped);
+        $ordenIdsConso = array_merge(...array_column($pages, 'ordenIds'));
+        $cr      = $buildAmbs($consoGrouped, $this->remisionCanastasPorAmbiente($ordenIdsConso));
         $fechaHoy = date('d/m/Y');
         $nSucs   = count($pages);
         $listaClientes = implode(', ', array_column($pages, 'sucursal'));
@@ -8628,7 +8630,7 @@ class PickingController extends BaseController
         // ── Páginas individuales ──────────────────────────────────────────────
         $individualPages = '';
         foreach ($pages as $idx => $page) {
-            $pr       = $buildAmbs($page['rows']);
+            $pr       = $buildAmbs($page['rows'], $this->remisionCanastasPorAmbiente($page['ordenIds'], $page['sucursal']));
             $fechaStr = $page['fechaMov'] ? date('d/m/Y', strtotime($page['fechaMov'])) : $fechaHoy;
             $sucEsc   = htmlspecialchars($page['sucursal']);
             $isLast   = ($idx === $nSucs - 1);
@@ -8910,7 +8912,8 @@ class PickingController extends BaseController
             ->groupBy('ambiente_nombre');
 
         $logoHtml      = $this->remisionLogoHtml($empNombre);
-        $amb           = $this->remisionAmbientesHtml($rows);
+        $canastasAmb   = $this->remisionCanastasPorAmbiente($ordenIds, $sucursal);
+        $amb           = $this->remisionAmbientesHtml($rows, $canastasAmb);
         $ambientesHtml = $amb['html'];
         $totalCajas    = $amb['cj'];
         $totalUnd      = $amb['und'];

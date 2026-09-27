@@ -447,9 +447,13 @@ abstract class BaseController
      * unidades_caja. lote y fecha_vencimiento son opcionales (se muestran '-').
      *
      * @param iterable $grouped  Colección/array indexado por nombre de ambiente.
+     * @param array $canastasPorAmbiente  Opcional: [nombre_ambiente => total_canastas],
+     *   ver remisionCanastasPorAmbiente(). Si el ambiente no tiene canastas
+     *   capturadas simplemente no se agrega el dato — sin regresión para
+     *   planillas que no usan el módulo de canastas.
      * @return array{html:string, cj:float, und:float}
      */
-    protected function remisionAmbientesHtml($grouped): array
+    protected function remisionAmbientesHtml($grouped, array $canastasPorAmbiente = []): array
     {
         $totalUnd = 0; $totalCajas = 0; $html = '';
         foreach ($grouped as $ambNombre => $ambItems) {
@@ -493,8 +497,9 @@ abstract class BaseController
             }
             $totalUnd += $subUnd; $totalCajas += $subCj;
             $ambEsc = htmlspecialchars($ambNombre);
+            $canastasTxt = isset($canastasPorAmbiente[$ambNombre]) ? " / {$canastasPorAmbiente[$ambNombre]} canastas" : '';
             $html .= "<div class='ambiente-block'>"
-                . "<div class='ambiente-header'>{$ambEsc} &mdash; {$subCj} cj / {$subUnd} und</div>"
+                . "<div class='ambiente-header'>{$ambEsc} &mdash; {$subCj} cj / {$subUnd} und{$canastasTxt}</div>"
                 . "<table style='table-layout:fixed;width:100%;'><colgroup>"
                 . "<col style='width:10%;'><col style='width:33%;'><col style='width:12%;'><col style='width:8%;'><col style='width:8%;'><col style='width:12%;'><col style='width:17%;'>"
                 . "</colgroup><thead><tr>"
@@ -504,6 +509,42 @@ abstract class BaseController
                 . "</tr></thead><tbody>{$rows}</tbody></table></div>";
         }
         return ['html' => $html, 'cj' => $totalCajas, 'und' => $totalUnd];
+    }
+
+    /**
+     * Total de canastas capturadas (módulo "Canastas por Ambiente") por nombre
+     * de ambiente, para las órdenes indicadas — resuelve primero a qué
+     * "planilla" pertenece cada orden (planilla_numero real, o etiqueta
+     * sintética DOC-<id> para pedidos manuales sin CSV — MISMO criterio que
+     * _agruparPedidosCarguePorPlanilla()/certRemisionMultiple) y opcionalmente
+     * filtra por sucursal. No depende de que exista un despacho: las canastas
+     * se cuentan apenas termina la certificación. Devuelve [] si nadie ha
+     * diligenciado canastas para esa planilla todavía (caso normal mientras
+     * el módulo no se use).
+     *
+     * @param int[] $ordenIds
+     * @param string|null $sucursalFiltro
+     * @return array<string,int>  [nombre_ambiente => total_canastas]
+     */
+    protected function remisionCanastasPorAmbiente(array $ordenIds, ?string $sucursalFiltro = null): array
+    {
+        if (empty($ordenIds)) return [];
+
+        $planillas = \App\Models\OrdenPicking::whereIn('id', $ordenIds)
+            ->get(['id', 'planilla_numero'])
+            ->map(fn($o) => trim($o->planilla_numero ?? '') !== ''
+                ? trim($o->planilla_numero)
+                : ('DOC-' . str_pad($o->id, 5, '0', STR_PAD_LEFT)))
+            ->unique();
+        if ($planillas->isEmpty()) return [];
+
+        return \App\Models\CanastaPlanilla::whereIn('planilla', $planillas)
+            ->when($sucursalFiltro, fn($q) => $q->where('sucursal_entrega', $sucursalFiltro))
+            ->join('ambientes', 'ambientes.id', '=', 'canastas_planilla.ambiente_id')
+            ->selectRaw('ambientes.descripcion as amb, SUM(canastas_planilla.cantidad) as total')
+            ->groupBy('ambientes.descripcion')
+            ->pluck('total', 'amb')
+            ->toArray();
     }
 
     /**

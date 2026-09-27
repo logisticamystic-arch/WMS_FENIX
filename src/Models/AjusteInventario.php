@@ -66,6 +66,7 @@ class AjusteInventario extends BaseModel
 
     const TIPO_ENTRADA = 'Entrada';
     const TIPO_SALIDA  = 'Salida';
+    const TIPO_CAMBIO_LOTE_FV = 'CambioLoteFV';
 
     // ── Relaciones ──────────────────────────────────────────────────────────
 

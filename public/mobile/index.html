@@ -505,6 +505,7 @@ const MWMS = {
       { id:'ms', l:'Misceláneos', i:'fa-cubes-stacked',            c:'lime',   a:'viewMiscelaneos' },
       { id:'tp', l:'Traspaso',    i:'fa-arrow-right-from-bracket', c:'red',    a:'viewTraspaso' },
       { id:'pv', l:'Preoperacional', i:'fa-truck-field',           c:'orange', a:'viewPreoperacional' },
+      { id:'cn', l:'Canastas',    i:'fa-basket-shopping',          c:'amber',  a:'viewCanastas' },
     ].filter(m => this.hasPermisoMobile(m.id));
     document.getElementById('m-content').innerHTML = `
       <div class="op-view">
@@ -1068,6 +1069,114 @@ const MWMS = {
           </button>
         </div>
       </div>`;
+  },
+
+  // ── Canastas por Ambiente (móvil) ──────────────────────────────────────
+  // Contraparte móvil del módulo de escritorio en Despacho → Pedidos
+  // Pendientes (a pedido explícito de Camilo, 2026-09-25, ajustado el mismo
+  // día: debe listar las sucursales/clientes que YA TERMINARON PICKING, no
+  // planillas de cargue — todavía no existe un despacho en este punto del
+  // flujo). Mismo endpoint y misma agrupación por planilla que ya usa
+  // WMS_MODULES.despacho._renderPedidosPendientes()/_agruparPedidosCarguePorPlanilla()
+  // en escritorio (despacho.js), para no duplicar lógica de negocio distinta.
+  async viewCanastas() {
+    document.getElementById('m-title').textContent = 'Canastas por Ambiente';
+    document.getElementById('nav-home').classList.remove('active');
+    document.getElementById('nav-notif').classList.remove('active');
+    document.getElementById('m-content').innerHTML = '<div class="m-loading-small"><i class="fa-solid fa-spinner fa-spin"></i> Cargando pedidos...</div>';
+    try {
+      const r = await mApi('GET', '/picking?estado_certificacion=Certificada&sin_despacho=1&limit=500&incluir_finalizados=1');
+      const pedidos = r.data || [];
+      const grupos = {};
+      for (const p of pedidos) {
+        const key = p.planilla_numero || p.planilla_lote || ('DOC-' + String(p.id).padStart(5, '0'));
+        if (!grupos[key]) grupos[key] = { planilla: key, clientes: new Set(), n: 0 };
+        grupos[key].n++;
+        if (p.cliente || p.sucursal_entrega) grupos[key].clientes.add(p.cliente || p.sucursal_entrega);
+      }
+      const items = Object.values(grupos);
+      if (items.length === 0) {
+        document.getElementById('m-content').innerHTML = '<div class="op-view"><div class="m-empty"><i class="fa-solid fa-basket-shopping"></i><p>Sin pedidos certificados pendientes de cargue</p></div></div>';
+        return;
+      }
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <p style="font-size:.75rem;color:#64748b;margin-bottom:12px;">Seleccione la planilla/cliente que terminó picking para diligenciar sus canastas.</p>
+          ${items.map(g => `
+            <div class="op-card" style="cursor:pointer;" onclick="MWMS.viewCanastasDetalle('${this.esc(g.planilla)}')">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div><b>${this.esc(g.planilla)}</b><br><small style="color:#64748b;">${this.esc([...g.clientes].join(', ') || '-')}</small></div>
+                <i class="fa-solid fa-chevron-right" style="color:#94a3b8;"></i>
+              </div>
+            </div>`).join('')}
+        </div>`;
+    } catch(e) {
+      document.getElementById('m-content').innerHTML = '<div class="op-view"><div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando pedidos</p></div></div>';
+    }
+  },
+
+  async viewCanastasDetalle(planilla) {
+    document.getElementById('m-title').textContent = 'Canastas';
+    this.loading(true);
+    try {
+      const r = await mApi('GET', `/despachos/canastas?planilla=${encodeURIComponent(planilla)}`);
+      this.loading(false);
+      this._canastasCtx = { planilla, data: r.data || {} };
+      this.renderCanastasDetalle();
+    } catch(e) {
+      this.loading(false);
+      this.toast(e.message, 'error');
+    }
+  },
+
+  renderCanastasDetalle() {
+    const { data } = this._canastasCtx;
+    const sucursales = data.sucursales || [];
+    const ambientes = data.ambientes || [];
+    const valores = data.valores || {};
+    if (sucursales.length === 0) {
+      document.getElementById('m-content').innerHTML = `
+        <div class="op-view">
+          <div class="m-empty"><p>Esta planilla no tiene pedidos asociados todavía.</p></div>
+          <button class="m-btn secondary full" onclick="MWMS.viewCanastas()">Volver</button>
+        </div>`;
+      return;
+    }
+    document.getElementById('m-content').innerHTML = `
+      <div class="op-view">
+        ${sucursales.map(suc => `
+          <div class="op-card">
+            <div class="m-label" style="margin-bottom:8px;">${this.esc(suc)}</div>
+            ${ambientes.map(a => `
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+                <span style="font-size:.85rem;font-weight:700;color:${a.color||'#1e3a5f'};">${a.icono ? `<i class="fa-solid fa-${this.esc(a.icono)}"></i> ` : ''}${this.esc(a.descripcion)}</span>
+                <input type="number" class="m-input-full cnt-m-input" style="width:90px;" min="0" inputmode="numeric"
+                  data-sucursal="${this.esc(suc)}" data-ambiente="${a.id}"
+                  value="${(valores[suc] && valores[suc][a.id]) || 0}">
+              </div>`).join('')}
+          </div>`).join('')}
+        <button class="m-btn success full" onclick="MWMS.guardarCanastasMobile()"><i class="fa-solid fa-floppy-disk"></i> Guardar</button>
+        <button class="m-btn secondary full" onclick="MWMS.viewCanastas()">Volver</button>
+      </div>`;
+  },
+
+  async guardarCanastasMobile() {
+    const { planilla } = this._canastasCtx;
+    const filas = [...document.querySelectorAll('.cnt-m-input')].map(inp => ({
+      sucursal_entrega: inp.dataset.sucursal,
+      ambiente_id: parseInt(inp.dataset.ambiente, 10),
+      cantidad: Math.max(0, parseInt(inp.value, 10) || 0),
+    }));
+    this.loading(true);
+    try {
+      await mApi('POST', '/despachos/canastas', { planilla, filas });
+      this.loading(false);
+      this.toast('Canastas guardadas', 'success');
+      this.viewCanastas();
+    } catch(e) {
+      this.loading(false);
+      this.toast(e.message, 'error');
+    }
   },
 
   viewRecM() {

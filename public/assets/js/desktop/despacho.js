@@ -1324,6 +1324,126 @@ WMS_MODULES.despacho = {
     } catch(e) { WMS.toast('error', 'Error al iniciar sesión de packing'); }
   },
 
+  // ── Canastas por Ambiente ──────────────────────────────────────────────────
+  // Módulo pedido por Camilo (2026-09-25): total de canastas por sucursal y
+  // ambiente, capturado apenas termina la certificación (misma etapa que la
+  // pestaña "Pedidos Pendientes" de Cargue — antes de que exista una Planilla
+  // de Cargue/Despacho, que puede armarse horas después). Se identifica por
+  // "planilla" (planilla_numero real o etiqueta sintética DOC-<id>, MISMO
+  // criterio que _agruparPedidosCarguePorPlanilla()/certRemisionMultiple), no
+  // por despacho_id. Sigue el mismo estilo modal que _showPackingDialog
+  // (overlay + erp-table), sin CSS/componentes nuevos. El dato queda
+  // disponible luego en Remisión (BaseController::remisionAmbientesHtml) y en
+  // Planilla de Cargue (columna "Total Canastas"), una vez esa planilla se
+  // convierta en un despacho.
+  async abrirCanastas(planilla) {
+    WMS.spinner();
+    try {
+      const r = await API.get('/despachos/canastas', `planilla=${encodeURIComponent(planilla)}`);
+      WMS.spinner(false);
+      if (r.error) { WMS.toast('error', r.message || 'Error cargando canastas'); return; }
+      this._renderCanastasDialog(planilla, r.data);
+    } catch(e) {
+      WMS.spinner(false);
+      WMS.toast('error', 'Error cargando canastas');
+    }
+  },
+
+  _renderCanastasDialog(planilla, data) {
+    const sucursales = data.sucursales || [];
+    const ambientes  = data.ambientes || [];
+    const valores    = data.valores || {};
+
+    if (sucursales.length === 0) {
+      WMS.toast('error', 'Esta planilla no tiene pedidos asociados todavía.');
+      return;
+    }
+    if (ambientes.length === 0) {
+      WMS.toast('error', 'No hay ambientes activos configurados (Parámetros → Ambientes).');
+      return;
+    }
+
+    const headerCols = ambientes.map(a => `
+      <th style="text-align:center;background:${a.color || '#1e3a5f'};color:#fff;">
+        ${a.icono ? `<i class="fa-solid fa-${WMS.esc(a.icono)}"></i> ` : ''}${WMS.esc(a.descripcion)}
+      </th>`).join('');
+
+    const rows = sucursales.map(suc => {
+      const cells = ambientes.map(a => {
+        const val = (valores[suc] && valores[suc][a.id]) || 0;
+        return `<td style="text-align:center;"><input type="number" min="0" class="form-control form-control-sm cnt-input"
+          data-sucursal="${WMS.esc(suc)}" data-ambiente="${a.id}" value="${val}"
+          oninput="WMS_MODULES.despacho._recalcularTotalesCanastas()" style="width:80px;text-align:center;margin:0 auto;"></td>`;
+      }).join('');
+      return `<tr>
+        <td style="font-weight:700;">${WMS.esc(suc)}</td>
+        ${cells}
+        <td class="cnt-total-suc" style="text-align:center;font-weight:800;color:#1e3a5f;" data-sucursal="${WMS.esc(suc)}">0</td>
+      </tr>`;
+    }).join('');
+
+    const html = `
+      <div id="canastas-dialog-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;display:flex;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:24px 28px;min-width:480px;max-width:90vw;max-height:85vh;overflow:auto;box-shadow:0 8px 40px rgba(0,0,0,.25);">
+          <h3 style="margin:0 0 16px;color:#1e293b;font-size:17px;">
+            <i class="fa-solid fa-basket-shopping"></i> Canastas por Ambiente
+          </h3>
+          <div class="table-container">
+            <table class="erp-table" id="canastas-table">
+              <thead><tr><th>Sucursal</th>${headerCols}<th style="text-align:center;">Total Sucursal</th></tr></thead>
+              <tbody>${rows}</tbody>
+              <tfoot><tr>
+                <td style="font-weight:800;">TOTAL GENERAL</td>
+                <td colspan="${ambientes.length}"></td>
+                <td id="cnt-total-general" style="text-align:center;font-weight:800;color:#1e3a5f;">0</td>
+              </tr></tfoot>
+            </table>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('canastas-dialog-overlay').remove()">Cerrar</button>
+            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho._guardarCanastas('${WMS.esc(planilla)}')"><i class="fa-solid fa-floppy-disk"></i> Guardar</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+    this._recalcularTotalesCanastas();
+  },
+
+  _recalcularTotalesCanastas() {
+    const porSuc = {};
+    let totalGeneral = 0;
+    document.querySelectorAll('#canastas-table .cnt-input').forEach(inp => {
+      const suc = inp.dataset.sucursal;
+      const val = Math.max(0, parseInt(inp.value, 10) || 0);
+      porSuc[suc] = (porSuc[suc] || 0) + val;
+      totalGeneral += val;
+    });
+    document.querySelectorAll('#canastas-table .cnt-total-suc').forEach(td => {
+      td.textContent = porSuc[td.dataset.sucursal] || 0;
+    });
+    const tg = document.getElementById('cnt-total-general');
+    if (tg) tg.textContent = totalGeneral;
+  },
+
+  async _guardarCanastas(planilla) {
+    const filas = [...document.querySelectorAll('#canastas-table .cnt-input')].map(inp => ({
+      sucursal_entrega: inp.dataset.sucursal,
+      ambiente_id: parseInt(inp.dataset.ambiente, 10),
+      cantidad: Math.max(0, parseInt(inp.value, 10) || 0),
+    }));
+    WMS.spinner();
+    try {
+      const r = await API.post('/despachos/canastas', { planilla, filas });
+      WMS.spinner(false);
+      if (r.error) { WMS.toast('error', r.message || 'Error guardando canastas'); return; }
+      WMS.toast('success', 'Canastas guardadas');
+      document.getElementById('canastas-dialog-overlay')?.remove();
+    } catch(e) {
+      WMS.spinner(false);
+      WMS.toast('error', 'Error guardando canastas');
+    }
+  },
+
   _renderCertInterface(sucursal, lineas) {
     const totalLines = lineas.length;
     const certLines  = lineas.filter(l => l.es_certificada || (l.cantidad_certificada || 0) > 0).length;
@@ -2200,6 +2320,7 @@ WMS_MODULES.despacho = {
         <td style="white-space:nowrap;">
           <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.despacho.imprimirRemisionGrupoPlanilla('${WMS.esc(g.planilla)}')" title="Imprimir remisión consolidada de esta planilla"><i class="fa-solid fa-print"></i></button>
           <button class="btn btn-sm btn-outline-primary" onclick="WMS_MODULES.despacho.imprimirLiberacionGrupoPlanilla('${WMS.esc(g.planilla)}')" title="Imprimir liberación (pedido por pedido)"><i class="fa-solid fa-file-invoice"></i></button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.despacho.abrirCanastas('${WMS.esc(g.planilla)}')" title="Canastas por Ambiente"><i class="fa-solid fa-basket-shopping"></i></button>
         </td>
       </tr>`;
     }
