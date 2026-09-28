@@ -347,7 +347,6 @@
   "345": "check_users.php",
   "346": "test_api.php",
   "347": "AlertasController",
-  "348": ".forbidden",
   "349": "TrazabilidadController",
   "350": "TraspasoDocumentoDetalle",
   "351": "InvGeneralEvento",
@@ -391,7 +390,11 @@
   "389": "SystemController",
   "390": "155_despachos_conductor_vehiculo_fk.php",
   "391": ".logSlowRequest",
-  "392": "Zona",
-  "393": "InvGeneralAsignacion",
-  "394": "156_canastas_planilla.php"
+  "394": "156_canastas_planilla.php",
+  "395": "DataResetController.php",
+  "398": ".__invoke",
+  "403": "_miscShowOdcs",
+  "405": "157_yms_entrega_extendida.php",
+  "406": "158_entregas_ruta_novedades.php",
+  "407": "159_permiso_tms_dashboard.php"
 }

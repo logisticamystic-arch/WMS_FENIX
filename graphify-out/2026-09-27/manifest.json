@@ -670,8 +670,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/despacho.js": {
-    "mtime": 1790290768.2703588,
-    "ast_hash": "342cee9d6e31ef171252740f5d2058b1",
+    "mtime": 1790562512.1090472,
+    "ast_hash": "225a667d33502fe8a1eaa0533bfc350a",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/devoluciones.js": {
@@ -690,8 +690,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/inventario.js": {
-    "mtime": 1790090631.0547462,
-    "ast_hash": "6e9448e72ee55b94048b88dc412973db",
+    "mtime": 1790521465.7877176,
+    "ast_hash": "cc35d1be4773fed8a1259a5042aeb6c2",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/logistica-avanzada.js": {
@@ -710,8 +710,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/recepcion.js": {
-    "mtime": 1789081794.1961155,
-    "ast_hash": "065c3c0457f0b5fada331c3fd8fc62d3",
+    "mtime": 1790560097.2363725,
+    "ast_hash": "85a4b42d1af71cba353e6c23362ba124",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/reportes.js": {
@@ -735,8 +735,8 @@
     "semantic_hash": ""
   },
   "public/index.php": {
-    "mtime": 1790198780.224767,
-    "ast_hash": "def97d83e14719cfed7aba8027058218",
+    "mtime": 1790547834.6455114,
+    "ast_hash": "9e3792ee53549bf59fade55384a5117d",
     "semantic_hash": ""
   },
   "public/manifest.json": {
@@ -845,8 +845,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/BaseController.php": {
-    "mtime": 1790291576.4810486,
-    "ast_hash": "0f8fbfa2ca341098e1910eda9c76f807",
+    "mtime": 1790382078.349269,
+    "ast_hash": "5adbbeb2b955578f47f88976d279a93c",
     "semantic_hash": ""
   },
   "src/Controllers/BloqueoController.php": {
@@ -890,8 +890,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/DespachoController.php": {
-    "mtime": 1790019146.7142823,
-    "ast_hash": "0b02a2eb678c8770117e05d29ff1beb2",
+    "mtime": 1790562479.102741,
+    "ast_hash": "9a9545c6d4c5d19b135c83a6dcd6307d",
     "semantic_hash": ""
   },
   "src/Controllers/DevolucionController.php": {
@@ -925,8 +925,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/InventarioV2Controller.php": {
-    "mtime": 1789571714.556929,
-    "ast_hash": "4b7d558b16a8642ea2c86dcad0d62e38",
+    "mtime": 1790521374.8572247,
+    "ast_hash": "566dccc96f313a54f71a21b4bb58e392",
     "semantic_hash": ""
   },
   "src/Controllers/MiscelaneoController.php": {
@@ -945,8 +945,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/PackingController.php": {
-    "mtime": 1790291365.513434,
-    "ast_hash": "d6f36d6c07df8acfa91b52002747239e",
+    "mtime": 1790380047.4717023,
+    "ast_hash": "a905032180cd2b72594cd1b0d33a5495",
     "semantic_hash": ""
   },
   "src/Controllers/ParametrosController.php": {
@@ -960,8 +960,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/PickingController.php": {
-    "mtime": 1790291334.567248,
-    "ast_hash": "aa05566cc4dd3fa8e3065fc22dc22aff",
+    "mtime": 1790380107.3289893,
+    "ast_hash": "457ac5e95454eee2a8504862385f6a1a",
     "semantic_hash": ""
   },
   "src/Controllers/PlanillaController.php": {
@@ -975,8 +975,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/RecepcionController.php": {
-    "mtime": 1789582710.107359,
-    "ast_hash": "23e3e52967f78e1b2542bb44af6530b6",
+    "mtime": 1790560493.7271261,
+    "ast_hash": "d0c1067f3db5b17a81a5f976be9dba0c",
     "semantic_hash": ""
   },
   "src/Controllers/ReplenishmentController.php": {
@@ -985,8 +985,8 @@
     "semantic_hash": "9d8599cbc389c4d9554ed6cef4fa4e2a"
   },
   "src/Controllers/ReportesController.php": {
-    "mtime": 1790198905.9527044,
-    "ast_hash": "4e110369d16233248f017fc6332eb23b",
+    "mtime": 1790520639.1853285,
+    "ast_hash": "3696deea781b6a4473ff530e2328cdb8",
     "semantic_hash": ""
   },
   "src/Controllers/RotacionController.php": {
@@ -1005,8 +1005,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/TmsController.php": {
-    "mtime": 1789412017.5229018,
-    "ast_hash": "c9cedb24250b6b8b19c922b9c820174c",
+    "mtime": 1790546980.4592957,
+    "ast_hash": "eeafbfc52b1518fb9a367dcc76972509",
     "semantic_hash": ""
   },
   "src/Controllers/TraspasoController.php": {
@@ -1130,9 +1130,9 @@
     "semantic_hash": ""
   },
   "src/Models/AjusteInventario.php": {
-    "mtime": 1783095951.1865592,
-    "ast_hash": "926f800cdc340e2262e25db5ce4b90f1",
-    "semantic_hash": "926f800cdc340e2262e25db5ce4b90f1"
+    "mtime": 1790521380.9792109,
+    "ast_hash": "df35996450c0fe63a837981dbb5e674b",
+    "semantic_hash": ""
   },
   "src/Models/AjusteUbicacion.php": {
     "mtime": 1789565646.1965551,
@@ -1550,13 +1550,13 @@
     "semantic_hash": "9af6772ebae31c28558f86c610ad83e7"
   },
   "public/index.html": {
-    "mtime": 1790090793.3592243,
-    "ast_hash": "57395fbe6ff99b59f5dddbe9e0588ced",
+    "mtime": 1790547943.9219737,
+    "ast_hash": "1379b40fe7616277ad1383ae4d57c39c",
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1790008865.398288,
-    "ast_hash": "89b5277ac9d1e62e34635b1dd81fa6cb",
+    "mtime": 1790560282.5145767,
+    "ast_hash": "0e1f2d81ae6d9862a94621f8ff58b5e0",
     "semantic_hash": ""
   },
   "public/pitch.html": {
@@ -1565,8 +1565,8 @@
     "semantic_hash": "8698adc8034f3390db8dbdda7f832df0"
   },
   "public/tv-picking.html": {
-    "mtime": 1789990033.5512922,
-    "ast_hash": "caf6672e954cde651f62e5e2e0ae84c9",
+    "mtime": 1790548494.0805817,
+    "ast_hash": "979cf8ae0828669e621f6301254da7ce",
     "semantic_hash": ""
   },
   "logo.jpg": {
@@ -2109,11 +2109,6 @@
     "ast_hash": "17cc5e0f2826275aff4ea90c948f5809",
     "semantic_hash": ""
   },
-  "scripts/yms_push_pedidos.php": {
-    "mtime": 1789411126.8327734,
-    "ast_hash": "bab14de480d031a646cbf92002c4a79f",
-    "semantic_hash": ""
-  },
   "src/Models/PreoperacionalItemFoto.php": {
     "mtime": 1789579804.1589024,
     "ast_hash": "d7951bd0508cf656ef09bad394f0e88a",
@@ -2127,6 +2122,56 @@
   "database/migrations/155_despachos_conductor_vehiculo_fk.php": {
     "mtime": 1790012976.7272303,
     "ast_hash": "34456b4577ad9a201798f9f4a0dd0520",
+    "semantic_hash": ""
+  },
+  "database/migrations/156_canastas_planilla.php": {
+    "mtime": 1790382101.521011,
+    "ast_hash": "2a7eb692e3a3fb38faa4159277341e68",
+    "semantic_hash": ""
+  },
+  "src/Models/CanastaPlanilla.php": {
+    "mtime": 1790382083.3292806,
+    "ast_hash": "3fb0b0ac7eafa743b13524e9465bfb3c",
+    "semantic_hash": ""
+  },
+  "database/migrations/157_yms_entrega_extendida.php": {
+    "mtime": 1790535632.3338034,
+    "ast_hash": "3828e7de81c364c61d7f0157bf2a538d",
+    "semantic_hash": ""
+  },
+  "database/migrations/158_entregas_ruta_novedades.php": {
+    "mtime": 1790546951.3345659,
+    "ast_hash": "1e1ec9baefa7219b17ec94c269667361",
+    "semantic_hash": ""
+  },
+  "public/assets/js/desktop/tms-dashboard.js": {
+    "mtime": 1790548414.9522102,
+    "ast_hash": "e40753a56688a921c7687c11a9b539fa",
+    "semantic_hash": ""
+  },
+  "scripts/tms_push_pedidos.php": {
+    "mtime": 1790538996.154622,
+    "ast_hash": "9943b758ecd70802bc4d53cf52c1ea76",
+    "semantic_hash": ""
+  },
+  "src/Controllers/TmsDashboardController.php": {
+    "mtime": 1790548303.3145323,
+    "ast_hash": "fedef220d314a2bc8028cbaee88f2a3b",
+    "semantic_hash": ""
+  },
+  "src/Helpers/TmsClient.php": {
+    "mtime": 1790547787.2009578,
+    "ast_hash": "cf1a8488b6df9a0c6be6b3e6a5b42e42",
+    "semantic_hash": ""
+  },
+  "src/Helpers/TmsPush.php": {
+    "mtime": 1790538541.9708395,
+    "ast_hash": "f413b9eaaeec8840df7076b401c696ca",
+    "semantic_hash": ""
+  },
+  "database/migrations/159_permiso_tms_dashboard.php": {
+    "mtime": 1790561123.6051123,
+    "ast_hash": "18d4dac39ce2fc42375589812fd5a51f",
     "semantic_hash": ""
   }
 }

@@ -670,8 +670,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/despacho.js": {
-    "mtime": 1790381954.1876457,
-    "ast_hash": "511ecc8660bed612117ed02baf1e994e",
+    "mtime": 1790562512.1090472,
+    "ast_hash": "225a667d33502fe8a1eaa0533bfc350a",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/devoluciones.js": {
@@ -710,8 +710,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/recepcion.js": {
-    "mtime": 1789081794.1961155,
-    "ast_hash": "065c3c0457f0b5fada331c3fd8fc62d3",
+    "mtime": 1790560097.2363725,
+    "ast_hash": "85a4b42d1af71cba353e6c23362ba124",
     "semantic_hash": ""
   },
   "public/assets/js/desktop/reportes.js": {
@@ -735,8 +735,8 @@
     "semantic_hash": ""
   },
   "public/index.php": {
-    "mtime": 1790521388.428947,
-    "ast_hash": "df9200db37442e718ece67992d089ed2",
+    "mtime": 1790547834.6455114,
+    "ast_hash": "9e3792ee53549bf59fade55384a5117d",
     "semantic_hash": ""
   },
   "public/manifest.json": {
@@ -890,8 +890,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/DespachoController.php": {
-    "mtime": 1790382019.8705184,
-    "ast_hash": "d21b428ec44909bdb433f96a4cdf7ae3",
+    "mtime": 1790562479.102741,
+    "ast_hash": "9a9545c6d4c5d19b135c83a6dcd6307d",
     "semantic_hash": ""
   },
   "src/Controllers/DevolucionController.php": {
@@ -975,8 +975,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/RecepcionController.php": {
-    "mtime": 1789582710.107359,
-    "ast_hash": "23e3e52967f78e1b2542bb44af6530b6",
+    "mtime": 1790560493.7271261,
+    "ast_hash": "d0c1067f3db5b17a81a5f976be9dba0c",
     "semantic_hash": ""
   },
   "src/Controllers/ReplenishmentController.php": {
@@ -1005,8 +1005,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/TmsController.php": {
-    "mtime": 1789412017.5229018,
-    "ast_hash": "c9cedb24250b6b8b19c922b9c820174c",
+    "mtime": 1790546980.4592957,
+    "ast_hash": "eeafbfc52b1518fb9a367dcc76972509",
     "semantic_hash": ""
   },
   "src/Controllers/TraspasoController.php": {
@@ -1550,13 +1550,13 @@
     "semantic_hash": "9af6772ebae31c28558f86c610ad83e7"
   },
   "public/index.html": {
-    "mtime": 1790090793.3592243,
-    "ast_hash": "57395fbe6ff99b59f5dddbe9e0588ced",
+    "mtime": 1790547943.9219737,
+    "ast_hash": "1379b40fe7616277ad1383ae4d57c39c",
     "semantic_hash": ""
   },
   "public/mobile/index.html": {
-    "mtime": 1790382173.8068929,
-    "ast_hash": "859ef36755c2e02412c658a5535f5dbb",
+    "mtime": 1790560282.5145767,
+    "ast_hash": "0e1f2d81ae6d9862a94621f8ff58b5e0",
     "semantic_hash": ""
   },
   "public/pitch.html": {
@@ -1565,8 +1565,8 @@
     "semantic_hash": "8698adc8034f3390db8dbdda7f832df0"
   },
   "public/tv-picking.html": {
-    "mtime": 1789990033.5512922,
-    "ast_hash": "caf6672e954cde651f62e5e2e0ae84c9",
+    "mtime": 1790548494.0805817,
+    "ast_hash": "979cf8ae0828669e621f6301254da7ce",
     "semantic_hash": ""
   },
   "logo.jpg": {
@@ -2109,11 +2109,6 @@
     "ast_hash": "17cc5e0f2826275aff4ea90c948f5809",
     "semantic_hash": ""
   },
-  "scripts/yms_push_pedidos.php": {
-    "mtime": 1789411126.8327734,
-    "ast_hash": "bab14de480d031a646cbf92002c4a79f",
-    "semantic_hash": ""
-  },
   "src/Models/PreoperacionalItemFoto.php": {
     "mtime": 1789579804.1589024,
     "ast_hash": "d7951bd0508cf656ef09bad394f0e88a",
@@ -2137,6 +2132,46 @@
   "src/Models/CanastaPlanilla.php": {
     "mtime": 1790382083.3292806,
     "ast_hash": "3fb0b0ac7eafa743b13524e9465bfb3c",
+    "semantic_hash": ""
+  },
+  "database/migrations/157_yms_entrega_extendida.php": {
+    "mtime": 1790535632.3338034,
+    "ast_hash": "3828e7de81c364c61d7f0157bf2a538d",
+    "semantic_hash": ""
+  },
+  "database/migrations/158_entregas_ruta_novedades.php": {
+    "mtime": 1790546951.3345659,
+    "ast_hash": "1e1ec9baefa7219b17ec94c269667361",
+    "semantic_hash": ""
+  },
+  "public/assets/js/desktop/tms-dashboard.js": {
+    "mtime": 1790563262.3294265,
+    "ast_hash": "9bd95a57400663e0f2c9f0abf7df6dfd",
+    "semantic_hash": ""
+  },
+  "scripts/tms_push_pedidos.php": {
+    "mtime": 1790538996.154622,
+    "ast_hash": "9943b758ecd70802bc4d53cf52c1ea76",
+    "semantic_hash": ""
+  },
+  "src/Controllers/TmsDashboardController.php": {
+    "mtime": 1790563103.596571,
+    "ast_hash": "ec4830bee90e75433490a795f7d9b0d3",
+    "semantic_hash": ""
+  },
+  "src/Helpers/TmsClient.php": {
+    "mtime": 1790547787.2009578,
+    "ast_hash": "cf1a8488b6df9a0c6be6b3e6a5b42e42",
+    "semantic_hash": ""
+  },
+  "src/Helpers/TmsPush.php": {
+    "mtime": 1790538541.9708395,
+    "ast_hash": "f413b9eaaeec8840df7076b401c696ca",
+    "semantic_hash": ""
+  },
+  "database/migrations/159_permiso_tms_dashboard.php": {
+    "mtime": 1790561123.6051123,
+    "ast_hash": "18d4dac39ce2fc42375589812fd5a51f",
     "semantic_hash": ""
   }
 }

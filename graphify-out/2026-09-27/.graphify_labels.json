@@ -390,5 +390,20 @@
   "388": "backup_db.php",
   "389": "SystemController",
   "390": "155_despachos_conductor_vehiculo_fk.php",
-  "391": ".logSlowRequest"
+  "391": ".logSlowRequest",
+  "392": "Zona",
+  "393": "InvGeneralAsignacion",
+  "394": "156_canastas_planilla.php",
+  "395": "DataResetController.php",
+  "396": "MiscelaneoController.php",
+  "397": ".__invoke",
+  "398": ".__invoke",
+  "399": "InvGeneralEvento",
+  "400": "RecepcionDetalle",
+  "401": "AjusteUbicacionDetalle",
+  "403": "_miscShowOdcs",
+  "404": ".now",
+  "405": "157_yms_entrega_extendida.php",
+  "406": "158_entregas_ruta_novedades.php",
+  "407": "159_permiso_tms_dashboard.php"
 }
