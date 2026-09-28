@@ -95,6 +95,12 @@ class TmsPush
             'empresa_id'            => $orden->empresa_id,
             'sucursal_id'           => $orden->sucursal_id,
             'auxiliar_personal_id'  => $auxiliarPersonalId ? (int)$auxiliarPersonalId : null,
+            // Necesario para que el webhook de confirmación de entrega pueda
+            // reportarlo de vuelta — sin esto entregas_ruta.despacho_id nunca
+            // se llenaba y el mapa no podía cruzar la placa del vehículo (a
+            // pedido explícito de Camilo, 2026-09-29: "no muestra el vehículo
+            // en los filtros del mapa").
+            'despacho_id'           => $orden->despacho_id ?: null,
             'lineas'                => $lineas->values()->toArray(),
             'agotados'              => $agotados,
             'motivos_devolucion'    => $motivos,

@@ -335,12 +335,24 @@ class TmsDashboardController extends BaseController
         }
         if ($esHoy) {
             foreach ($enCurso as $v) {
-                if (empty($v['auxiliar_nombre']) || empty($v['ultimo_punto'])) continue;
+                if (empty($v['auxiliar_nombre'])) continue;
                 $rutas[$v['auxiliar_nombre']] = $rutas[$v['auxiliar_nombre']] ?? [];
-                $rutas[$v['auxiliar_nombre']][] = [
-                    'lat' => $v['ultimo_punto']['lat'], 'lng' => $v['ultimo_punto']['lng'],
-                    'hora' => $v['hora_llegada'], 'sucursal' => $v['sucursal'], 'evento' => 'en_ruta',
-                ];
+                // Recorrido completo (pings automáticos cada 5 min, ver
+                // tracking.php evento 'live') — no solo el último punto, para
+                // poder dibujar el camino recorrido en lo que va de la visita
+                // en curso, no solo dónde está ahora.
+                foreach (($v['recorrido'] ?? []) as $p) {
+                    $rutas[$v['auxiliar_nombre']][] = [
+                        'lat' => $p['lat'], 'lng' => $p['lng'],
+                        'hora' => $p['ts'] ?? $v['hora_llegada'], 'sucursal' => $v['sucursal'], 'evento' => 'en_ruta',
+                    ];
+                }
+                if (empty($v['recorrido']) && !empty($v['ultimo_punto'])) {
+                    $rutas[$v['auxiliar_nombre']][] = [
+                        'lat' => $v['ultimo_punto']['lat'], 'lng' => $v['ultimo_punto']['lng'],
+                        'hora' => $v['hora_llegada'], 'sucursal' => $v['sucursal'], 'evento' => 'en_ruta',
+                    ];
+                }
             }
         }
         foreach ($rutas as $aux => $puntos) {
