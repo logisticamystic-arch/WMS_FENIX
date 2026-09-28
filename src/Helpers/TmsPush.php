@@ -82,8 +82,11 @@ class TmsPush
         // null si la orden todavía no está en ningún despacho, o el despacho
         // no tiene auxiliar asignado.
         $auxiliarPersonalId = null;
+        $rutaNombre = null;
         if (!empty($orden->despacho_id)) {
-            $auxiliarPersonalId = Capsule::table('despachos')->where('id', $orden->despacho_id)->value('auxiliar_id');
+            $desp = Capsule::table('despachos')->where('id', $orden->despacho_id)->first();
+            $auxiliarPersonalId = $desp->auxiliar_id ?? null;
+            $rutaNombre = $desp->ruta ?? null;
         }
 
         $payload = [
@@ -101,6 +104,7 @@ class TmsPush
             // pedido explícito de Camilo, 2026-09-29: "no muestra el vehículo
             // en los filtros del mapa").
             'despacho_id'           => $orden->despacho_id ?: null,
+            'ruta_nombre'           => $rutaNombre,
             'lineas'                => $lineas->values()->toArray(),
             'agotados'              => $agotados,
             'motivos_devolucion'    => $motivos,

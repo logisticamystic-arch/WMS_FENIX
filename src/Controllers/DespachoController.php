@@ -9,6 +9,7 @@ use App\Models\Inventario;
 use App\Models\MovimientoInventario;
 use App\Models\OrdenPicking;
 use App\Helpers\TmsPush;
+use App\Helpers\TmsClient;
 use Illuminate\Database\Capsule\Manager as Capsule;
 
 /**
@@ -498,8 +499,9 @@ class DespachoController extends BaseController
             return $this->error($res, 'El despacho ya fue liquidado');
         }
 
+        $ordenIds = [];
         try {
-            Capsule::transaction(function () use ($despacho) {
+            Capsule::transaction(function () use ($despacho, &$ordenIds) {
                 $despacho->estado   = 'Entregado';
                 $despacho->hora_fin = date('H:i:s');
                 $despacho->save();
@@ -515,6 +517,16 @@ class DespachoController extends BaseController
                         ->update(['estado_despacho' => 'Entregado']);
                 }
             });
+
+            // Avisa al TMS que estos pedidos ya no deben volver a salirle al
+            // auxiliar (planilla liquidada) — a pedido explícito de Camilo,
+            // 2026-09-29. Best-effort: si el TMS no responde, el pedido
+            // simplemente sigue apareciendo allá hasta el próximo intento.
+            foreach ($ordenIds as $ordenId) {
+                try { TmsClient::sincronizarPedido($ordenId, 'liquidar'); } catch (\Throwable $e) {
+                    error_log("TmsClient::sincronizarPedido({$ordenId}, liquidar) falló: " . $e->getMessage());
+                }
+            }
 
             $this->audit($user, 'despacho', 'liquidar', 'despachos', $despacho->id,
                 ['estado' => 'Despachado'], ['estado' => 'Entregado'],

@@ -380,4 +380,46 @@ class TmsDashboardController extends BaseController
             'filtros'     => ['fecha' => $fecha, 'vehiculos' => $vehiculosOpt],
         ]]);
     }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       REABRIR PEDIDOS — a pedido explícito de Camilo (2026-09-29): sección
+       para reabrir en el TMS un pedido que el auxiliar necesita rehacer.
+       Los datos (planilla/líneas/novedades) viven en el TMS, no en el WMS —
+       se leen bajo demanda vía TmsClient, igual que el mapa en vivo.
+    ═══════════════════════════════════════════════════════════════════ */
+    public function reabrirPedidosListar(Request $request, Response $response): Response
+    {
+        $p = $request->getQueryParams();
+        $filtros = array_filter([
+            'fecha_desde' => $p['fecha_desde'] ?? null,
+            'fecha_hasta' => $p['fecha_hasta'] ?? null,
+            'ruta'        => $p['ruta'] ?? null,
+            'sucursal'    => $p['sucursal'] ?? null,
+            'auxiliar'    => $p['auxiliar'] ?? null,
+        ]);
+        $data = TmsClient::consultarPedidos($filtros);
+        return $this->json($response, ['error' => false, 'data' => $data]);
+    }
+
+    public function reabrirPedidoDetalle(Request $request, Response $response, array $args): Response
+    {
+        $ordenId = (int)($args['ordenId'] ?? 0);
+        $data = TmsClient::detallePedido($ordenId);
+        if (!$data) {
+            return $this->json($response, ['error' => true, 'message' => 'No se pudo consultar el pedido en el TMS.'], 502);
+        }
+        return $this->json($response, ['error' => false, 'data' => $data]);
+    }
+
+    public function reabrirPedidoAccion(Request $request, Response $response, array $args): Response
+    {
+        $ordenId = (int)($args['ordenId'] ?? 0);
+        if (!$ordenId) return $this->json($response, ['error' => true, 'message' => 'orden_picking_id inválido'], 400);
+
+        $ok = TmsClient::sincronizarPedido($ordenId, 'reabrir');
+        if (!$ok) {
+            return $this->json($response, ['error' => true, 'message' => 'El TMS no respondió. Intente de nuevo.'], 502);
+        }
+        return $this->json($response, ['error' => false, 'message' => 'Pedido reabierto en el TMS.']);
+    }
 }

@@ -911,6 +911,9 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // Dashboard TMS (entregas en punto de venta) — desktop + sección TV
     $group->get('/tms/dashboard/resumen', [\App\Controllers\TmsDashboardController::class, 'resumen']);
     $group->get('/tms/dashboard/mapa',    [\App\Controllers\TmsDashboardController::class, 'mapa']);
+    $group->get('/tms/dashboard/reabrir-pedidos',                  [\App\Controllers\TmsDashboardController::class, 'reabrirPedidosListar']);
+    $group->get('/tms/dashboard/reabrir-pedidos/{ordenId}',        [\App\Controllers\TmsDashboardController::class, 'reabrirPedidoDetalle']);
+    $group->post('/tms/dashboard/reabrir-pedidos/{ordenId}/reabrir', [\App\Controllers\TmsDashboardController::class, 'reabrirPedidoAccion']);
 
     // Causales de Novedad (Picking/Agotados)
     $group->get('/causales-novedad',         [\App\Controllers\CausalesController::class, 'index']);

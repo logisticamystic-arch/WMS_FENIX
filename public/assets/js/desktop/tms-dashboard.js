@@ -10,6 +10,7 @@ WMS_MODULES.tms = {
   load(sub) {
     sub = sub || 'resumen';
     if (sub === 'mapa') return this.loadMapa();
+    if (sub === 'reabrir') return this.loadReabrirPedidos();
     return this.loadResumen();
   },
 
@@ -17,6 +18,7 @@ WMS_MODULES.tms = {
     const tabs = [
       { id: 'resumen', label: 'Dashboard KPI', icon: 'fa-chart-pie' },
       { id: 'mapa',    label: 'Mapa en Vivo',  icon: 'fa-map-location-dot' },
+      { id: 'reabrir', label: 'Reabrir Pedidos', icon: 'fa-unlock' },
     ];
     return `
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -413,5 +415,183 @@ WMS_MODULES.tms = {
 
       if (bounds.length) this._map.fitBounds(bounds, { maxZoom: 13, padding: [30, 30] });
     } catch (e) { /* silencioso — se reintenta en el próximo tick */ }
+  },
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     C) REABRIR PEDIDOS
+  ═══════════════════════════════════════════════════════════════════════ */
+  async loadReabrirPedidos() {
+    this._activeTab = 'reabrir';
+    if (this._mapTimer) { clearInterval(this._mapTimer); this._mapTimer = null; }
+    WMS.setToolbar(this._navBar('reabrir'));
+
+    const hoy = WMS.getToday ? WMS.getToday() : new Date().toISOString().substring(0, 10);
+    const hace7 = new Date(Date.now() - 7 * 86400000).toISOString().substring(0, 10);
+
+    WMS.setContent(`
+      <div style="padding:4px 0 16px;">
+        <div class="card" style="margin-bottom:16px;">
+          <div style="padding:14px 18px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Desde</label>
+              <input type="date" id="tmsr-desde" class="form-control form-control-sm" value="${hace7}" onchange="WMS_MODULES.tms._aplicarFiltrosReabrir()">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Hasta</label>
+              <input type="date" id="tmsr-hasta" class="form-control form-control-sm" value="${hoy}" onchange="WMS_MODULES.tms._aplicarFiltrosReabrir()">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Ruta</label>
+              <select id="tmsr-ruta" class="form-control form-control-sm" style="min-width:140px;" onchange="WMS_MODULES.tms._aplicarFiltrosReabrir()">
+                <option value="">Todas las rutas</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Sucursal</label>
+              <select id="tmsr-sucursal" class="form-control form-control-sm" style="min-width:160px;" onchange="WMS_MODULES.tms._aplicarFiltrosReabrir()">
+                <option value="">Todas las sucursales</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Auxiliar</label>
+              <input type="text" id="tmsr-auxiliar" class="form-control form-control-sm" placeholder="Nombre" style="min-width:140px;" oninput="WMS_MODULES.tms._aplicarFiltrosReabrirDebounced()">
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.tms._aplicarFiltrosReabrir()">
+              <i class="fa-solid fa-filter"></i> Aplicar
+            </button>
+          </div>
+        </div>
+
+        <div class="card" style="padding:0;overflow:hidden;">
+          <div class="table-container" style="max-height:560px;overflow-y:auto;">
+            <table class="erp-table" style="margin:0;width:100%;font-size:12px;">
+              <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+                <tr>
+                  <th>Fecha</th><th>Planilla</th><th>Sucursal</th><th>Ruta</th><th>Auxiliar</th>
+                  <th class="text-center">Líneas</th><th>Estado</th><th class="text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="tmsr-tbody"><tr><td colspan="8" class="text-center" style="padding:20px;color:#94a3b8;">Cargando...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div id="tmsr-modal"></div>`);
+
+    await this._aplicarFiltrosReabrir();
+  },
+
+  _aplicarFiltrosReabrirDebounced() {
+    clearTimeout(this._reabrirFilterTimer);
+    this._reabrirFilterTimer = setTimeout(() => this._aplicarFiltrosReabrir(), 400);
+  },
+
+  async _aplicarFiltrosReabrir() {
+    try {
+      const params = new URLSearchParams();
+      const desde    = document.getElementById('tmsr-desde')?.value;
+      const hasta    = document.getElementById('tmsr-hasta')?.value;
+      const ruta     = document.getElementById('tmsr-ruta')?.value;
+      const sucursal = document.getElementById('tmsr-sucursal')?.value;
+      const auxiliar = document.getElementById('tmsr-auxiliar')?.value;
+      if (desde)    params.set('fecha_desde', desde);
+      if (hasta)    params.set('fecha_hasta', hasta);
+      if (ruta)     params.set('ruta', ruta);
+      if (sucursal) params.set('sucursal', sucursal);
+      if (auxiliar) params.set('auxiliar', auxiliar);
+
+      const r = await API.get('/tms/dashboard/reabrir-pedidos?' + params.toString());
+      const d = r.data || {};
+      this._renderTablaReabrir(d.pedidos || []);
+      this._renderFiltrosSelect('tmsr-ruta', d.filtros?.rutas || []);
+      this._renderFiltrosSelect('tmsr-sucursal', d.filtros?.sucursales || []);
+    } catch (e) {
+      WMS.toast('error', 'Error al cargar los pedidos');
+    }
+  },
+
+  _renderTablaReabrir(pedidos) {
+    const tbody = document.getElementById('tmsr-tbody');
+    if (!tbody) return;
+    if (!pedidos.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center" style="padding:20px;color:#94a3b8;">Sin pedidos en el período</td></tr>';
+      return;
+    }
+    const colorEstado = { 'Entregado': '#059669', 'En Ruta': '#e8a000', 'Visita Iniciada': '#0891b2', 'Pendiente': '#64748b' };
+    tbody.innerHTML = pedidos.map(p => `
+      <tr>
+        <td>${p.fecha_planilla ? WMS.formatDate(p.fecha_planilla) : '-'}</td>
+        <td>${WMS.esc(p.planilla_numero || p.numero_pedido || '-')}</td>
+        <td>${WMS.esc(p.sucursal_entrega || '-')}</td>
+        <td>${WMS.esc(p.ruta_nombre || '-')}</td>
+        <td>${WMS.esc(p.auxiliar_nombre || '-')}</td>
+        <td class="text-center">${p.total_lineas}</td>
+        <td><span style="color:${colorEstado[p.estado] || '#64748b'};font-weight:700;">${WMS.esc(p.estado)}</span></td>
+        <td class="text-center" style="white-space:nowrap;">
+          <button class="btn btn-xs btn-outline-primary" title="Ver detalle" onclick="WMS_MODULES.tms._verDetallePedido(${p.orden_picking_id})"><i class="fa-solid fa-eye"></i></button>
+          ${p.entregado || p.despacho_liquidado ? `<button class="btn btn-xs btn-warning" title="Reabrir pedido" onclick="WMS_MODULES.tms._reabrirPedido(${p.orden_picking_id})"><i class="fa-solid fa-unlock"></i></button>` : ''}
+        </td>
+      </tr>`).join('');
+  },
+
+  async _reabrirPedido(ordenId) {
+    if (!confirm('¿Reabrir este pedido? El auxiliar podrá volver a tomarlo y registrar la entrega de nuevo desde cero en el TMS.')) return;
+    try {
+      const r = await API.post(`/tms/dashboard/reabrir-pedidos/${ordenId}/reabrir`, {});
+      if (r.error) throw new Error(r.message);
+      WMS.toast('success', 'Pedido reabierto');
+      this._aplicarFiltrosReabrir();
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error al reabrir el pedido');
+    }
+  },
+
+  async _verDetallePedido(ordenId) {
+    try {
+      const r = await API.get(`/tms/dashboard/reabrir-pedidos/${ordenId}`);
+      const d = r.data || {};
+      const lineas = d.lineas || [];
+      const novedades = d.novedades || [];
+
+      const filasLineas = lineas.map(l => `
+        <tr>
+          <td>${WMS.esc(l.codigo)}</td><td>${WMS.esc(l.nombre)}</td>
+          <td class="text-center">${l.cajas}</td><td class="text-center">${l.saldo}</td>
+          <td class="text-center">${l.total_unidades}</td>
+          <td class="text-center">${parseFloat(l.cantidad_reportada) > 0 ? l.cantidad_reportada : '-'}</td>
+          <td><span class="badge">${WMS.esc(l.estado)}</span></td>
+        </tr>`).join('') || '<tr><td colspan="7" class="text-center" style="color:#94a3b8;">Sin referencias</td></tr>';
+
+      const filasNovedades = novedades.map(n => `
+        <tr>
+          <td>${WMS.esc(n.producto_codigo)}</td><td>${WMS.esc(n.producto_nombre)}</td>
+          <td>${WMS.esc(n.motivo_nombre)}</td><td class="text-center">${n.cantidad}</td>
+          <td>${n.wms_consecutivo ? '#' + n.wms_consecutivo : (n.estado_envio_wms === 'error' ? 'Error de envío' : 'Pendiente')}</td>
+        </tr>`).join('') || '<tr><td colspan="5" class="text-center" style="color:#94a3b8;">Sin novedades reportadas</td></tr>';
+
+      document.getElementById('tmsr-modal').innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;" onclick="if(event.target===this) this.remove()">
+          <div style="background:#fff;border-radius:10px;width:min(880px,100%);max-height:calc(100vh - 80px);display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.3);overflow:hidden;">
+            <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;background:#0F4C81;color:#fff;">
+              <b>Detalle del pedido — ${WMS.esc(d.pedido?.numero_pedido || '')}</b>
+              <button onclick="document.getElementById('tmsr-modal').innerHTML=''" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;">&times;</button>
+            </div>
+            <div style="padding:16px 20px;overflow-y:auto;">
+              <div class="pro-section-title" style="margin-bottom:8px;"><i class="fa-solid fa-box-open"></i> Referencias (cajas / saldos / unidades)</div>
+              <table class="erp-table" style="width:100%;font-size:12px;margin-bottom:20px;">
+                <thead><tr><th>Código</th><th>Producto</th><th class="text-center">Cajas</th><th class="text-center">Saldo</th><th class="text-center">Total und.</th><th class="text-center">Reportado</th><th>Estado</th></tr></thead>
+                <tbody>${filasLineas}</tbody>
+              </table>
+              <div class="pro-section-title" style="margin-bottom:8px;"><i class="fa-solid fa-triangle-exclamation"></i> Detalle de novedades</div>
+              <table class="erp-table" style="width:100%;font-size:12px;">
+                <thead><tr><th>Código</th><th>Producto</th><th>Causal</th><th class="text-center">Cantidad</th><th>Devolución</th></tr></thead>
+                <tbody>${filasNovedades}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>`;
+    } catch (e) {
+      WMS.toast('error', 'Error al cargar el detalle del pedido');
+    }
   },
 };
