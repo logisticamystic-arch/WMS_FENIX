@@ -418,13 +418,35 @@ class TmsDashboardController extends BaseController
 
     public function reabrirPedidoAccion(Request $request, Response $response, array $args): Response
     {
-        $ordenId = (int)($args['ordenId'] ?? 0);
+        $user      = $request->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $request);
+        $ordenId   = (int)($args['ordenId'] ?? 0);
         if (!$ordenId) return $this->json($response, ['error' => true, 'message' => 'orden_picking_id inválido'], 400);
+
+        $orden = Capsule::table('orden_pickings')->where('id', $ordenId)->where('empresa_id', $empresaId)->first();
+        if (!$orden) return $this->json($response, ['error' => true, 'message' => 'Pedido no encontrado'], 404);
 
         $ok = TmsClient::sincronizarPedido($ordenId, 'reabrir');
         if (!$ok) {
             return $this->json($response, ['error' => true, 'message' => 'El TMS no respondió. Intente de nuevo.'], 502);
         }
-        return $this->json($response, ['error' => false, 'message' => 'Pedido reabierto en el TMS.']);
+
+        // La entrega anterior se descarta: el auxiliar la va a rehacer. Sin
+        // esto quedarían DOS filas de entregas_ruta para el mismo pedido y el
+        // dashboard contaría la entrega dos veces.
+        Capsule::table('entregas_ruta')->where('orden_picking_id', $ordenId)->delete();
+
+        // Vuelve a "Despachado": deja de figurar como entregado mientras se
+        // rehace, pero estado_despacho NUNCA queda en null — es justamente lo
+        // que impide que el pedido regrese a Picking (regla de oro).
+        if ($orden->estado_despacho === 'Entregado') {
+            Capsule::table('orden_pickings')->where('id', $ordenId)->update(['estado_despacho' => 'Despachado']);
+        }
+
+        $this->audit($user, 'tms', 'reabrir_pedido', 'orden_pickings', $ordenId,
+            ['estado_despacho' => $orden->estado_despacho], ['estado_despacho' => 'Despachado'],
+            "Pedido #{$ordenId} reabierto en el TMS para rehacer la entrega");
+
+        return $this->json($response, ['error' => false, 'message' => 'Pedido reabierto. El auxiliar ya puede volver a tomarlo en el TMS.']);
     }
 }
