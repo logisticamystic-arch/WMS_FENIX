@@ -322,7 +322,7 @@ WMS_MODULES.tms = {
         <div class="card" style="padding:0;overflow:hidden;">
           <div style="padding:12px 16px;border-bottom:1px solid #e2e8f0;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;justify-content:space-between;">
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
-              <span class="pro-section-title" style="margin:0;"><i class="fa-solid fa-map-location-dot" style="margin-right:6px;color:#0F4C81;"></i> Entregas — recorrido realizado</span>
+              <span class="pro-section-title" style="margin:0;"><i class="fa-solid fa-map-location-dot" style="margin-right:6px;color:#0F4C81;"></i> Entregas — recorrido en vivo</span>
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
               <div>
@@ -335,10 +335,21 @@ WMS_MODULES.tms = {
                   <option value="">Todos</option>
                 </select>
               </div>
-              <span style="font-size:11px;color:#64748b;align-self:center;">Se actualiza cada 30s. El recorrido conecta los puntos conocidos (llegada/salida de cada parada) — no es GPS continuo.</span>
+              <span style="font-size:11px;color:#64748b;align-self:center;">Se actualiza cada 30s · el recorrido conecta los puntos conocidos (llegada/salida de cada parada) — no es GPS continuo.</span>
             </div>
           </div>
-          <div id="tmsd-map" style="height:520px;"></div>
+          <div style="display:flex;">
+            <div id="tmsd-map-panel" style="width:260px;flex-shrink:0;border-right:1px solid #e2e8f0;max-height:560px;overflow-y:auto;background:#f8fafc;"></div>
+            <div style="flex:1;position:relative;">
+              <div id="tmsd-map" style="height:560px;"></div>
+              <div id="tmsd-map-error" style="display:none;position:absolute;inset:0;background:#f8fafc;align-items:center;justify-content:center;text-align:center;padding:24px;">
+                <div>
+                  <i class="fa-solid fa-map-location-dot" style="font-size:32px;color:#cbd5e1;"></i>
+                  <p style="color:#64748b;font-size:13px;margin-top:8px;">No se pudo cargar el mapa (sin conexión al servicio de mapas).<br>Reintentando automáticamente...</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>`);
 
@@ -351,18 +362,52 @@ WMS_MODULES.tms = {
     }, 30000);
   },
 
-  async _refrescarMapa() {
-    if (!this._map) {
-      this._map = L.map('tmsd-map').setView([4.6097, -74.0817], 6);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap',
-        maxZoom: 18,
-      }).addTo(this._map);
-      this._markers = L.layerGroup().addTo(this._map);
-      this._lineas = L.layerGroup().addTo(this._map);
-    }
+  // Ícono estilo Uber/Rappi: círculo de color sólido con el vehículo adentro
+  // y un halo animado cuando está en curso (todavía en ruta).
+  _iconoVehiculo(color, { enCurso = false, size = 34 } = {}) {
+    const halo = enCurso ? `<span style="position:absolute;inset:-6px;border-radius:50%;background:${color};opacity:.35;animation:tmsPulse 1.6s ease-out infinite;"></span>` : '';
+    return L.divIcon({
+      html: `<div style="position:relative;width:${size}px;height:${size}px;">
+        ${halo}
+        <div style="position:relative;width:${size}px;height:${size}px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;">
+          <i class="fa-solid fa-truck" style="color:#fff;font-size:${size * 0.45}px;"></i>
+        </div>
+      </div>`,
+      className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+    });
+  },
 
+  _iconoParada(color) {
+    return L.divIcon({
+      html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>`,
+      className: '', iconSize: [14, 14], iconAnchor: [7, 7],
+    });
+  },
+
+  async _refrescarMapa() {
+    const errBox = document.getElementById('tmsd-map-error');
     try {
+      if (!this._map) {
+        if (typeof L === 'undefined') throw new Error('Leaflet no disponible');
+        // OSM estándar — CartoDB Positron (fondo claro estilo Uber) se probó
+        // primero pero ahora exige API key propia en su capa gratuita, así
+        // que no sirve sin cuenta; se prioriza que el mapa SIEMPRE cargue.
+        this._map = L.map('tmsd-map', { zoomControl: true }).setView([4.6097, -74.0817], 6);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap',
+          maxZoom: 19,
+        }).addTo(this._map);
+        this._markers = L.layerGroup().addTo(this._map);
+        this._lineas = L.layerGroup().addTo(this._map);
+        if (!document.getElementById('tms-map-pulse-style')) {
+          const st = document.createElement('style');
+          st.id = 'tms-map-pulse-style';
+          st.textContent = '@keyframes tmsPulse{0%{transform:scale(.6);opacity:.5;}100%{transform:scale(1.8);opacity:0;}}';
+          document.head.appendChild(st);
+        }
+      }
+      if (errBox) errBox.style.display = 'none';
+
       const fecha    = document.getElementById('tmsm-fecha')?.value || '';
       const vehiculo = document.getElementById('tmsm-vehiculo')?.value || '';
       const params = new URLSearchParams();
@@ -376,30 +421,45 @@ WMS_MODULES.tms = {
       this._renderFiltrosSelect('tmsm-vehiculo', d.filtros?.vehiculos || []);
 
       const bounds = [];
-      const icono = (color) => L.divIcon({
-        html: `<i class="fa-solid fa-truck" style="color:${color};font-size:20px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4));"></i>`,
-        className: '', iconSize: [20, 20], iconAnchor: [10, 10],
-      });
-
-      // Recorrido: una polylínea por auxiliar, conectando los puntos en el
-      // orden cronológico que ya viene armado desde el backend.
+      const panel = [];
       let ci = 0;
+      const colorPorAux = {};
+
+      // Recorrido: casing oscuro + línea de color encima (look Uber) — une
+      // los puntos en el orden cronológico que ya viene armado del backend.
       Object.entries(d.rutas || {}).forEach(([aux, puntos]) => {
         if (!puntos || !puntos.length) return;
         const color = this._paletteVivid[ci++ % this._paletteVivid.length];
+        colorPorAux[aux] = color;
         const latlngs = puntos.map(p => [p.lat, p.lng]);
-        L.polyline(latlngs, { color, weight: 3, opacity: .75, dashArray: '6,4' }).addTo(this._lineas);
+        if (latlngs.length > 1) {
+          L.polyline(latlngs, { color: '#1e293b', weight: 6, opacity: .25, lineCap: 'round', lineJoin: 'round' }).addTo(this._lineas);
+          L.polyline(latlngs, { color, weight: 4, opacity: .9, lineCap: 'round', lineJoin: 'round' }).addTo(this._lineas);
+        }
+        // Punto de inicio del recorrido (parada más antigua).
+        L.marker(latlngs[0], { icon: this._iconoParada(color) })
+          .bindPopup(`<b>${WMS.esc(aux)}</b><br>Inicio del recorrido<br>${WMS.esc(puntos[0].sucursal || '')}`)
+          .addTo(this._markers);
         puntos.forEach(p => bounds.push([p.lat, p.lng]));
       });
 
-      (d.en_curso || []).forEach(v => {
+      // Nota: si hay un vehículo específico filtrado, "en curso" se omite —
+      // el TMS no sabe qué vehículo tiene cada auxiliar en el momento
+      // (relación auxiliar→vehículo solo existe por planilla, no en vivo),
+      // así que mostrarlo igual sería mezclar camiones que no son el
+      // filtrado. A pedido explícito de Camilo (2026-09-29): "el filtro solo
+      // debe mostrar el carro seleccionado".
+      const enCursoFiltrado = vehiculo ? [] : (d.en_curso || []);
+
+      enCursoFiltrado.forEach(v => {
         const p = v.ultimo_punto;
         if (!p) return;
         const color = v.estado === 'en_ruta' ? '#e8a000' : '#64748b';
-        L.marker([p.lat, p.lng], { icon: icono(color) })
-          .bindPopup(`<b>${WMS.esc(v.sucursal)}</b><br>${WMS.esc(v.auxiliar_nombre || '')}<br>Estado: ${v.estado}${v.hora_llegada ? '<br>Llegada: ' + v.hora_llegada : ''}`)
+        L.marker([p.lat, p.lng], { icon: this._iconoVehiculo(color, { enCurso: true }) })
+          .bindPopup(`<div style="font-size:12.5px;"><b>${WMS.esc(v.auxiliar_nombre || 'Auxiliar')}</b><br>${WMS.esc(v.sucursal)}<br><span style="color:${color};font-weight:700;">${v.estado === 'en_ruta' ? 'En ruta' : 'Pendiente'}</span>${v.hora_llegada ? '<br>Llegada: ' + v.hora_llegada : ''}</div>`)
           .addTo(this._markers);
         bounds.push([p.lat, p.lng]);
+        panel.push({ nombre: v.auxiliar_nombre || 'Auxiliar', sub: v.sucursal, color, estado: 'En ruta' });
       });
 
       (d.confirmadas || []).forEach(c => {
@@ -407,14 +467,38 @@ WMS_MODULES.tms = {
         const ultimo = puntos[puntos.length - 1];
         if (!ultimo) return;
         const color = c.tiene_novedad ? '#e03030' : '#00b300';
-        L.marker([ultimo.lat, ultimo.lng], { icon: icono(color) })
-          .bindPopup(`<b>${WMS.esc(c.sucursal)}</b><br>${WMS.esc(c.auxiliar_nombre || '')}${c.placa ? ' — ' + WMS.esc(c.placa) : ''}<br>Entregado${c.tiene_novedad ? ' — con novedad' : ' — sin novedad'}`)
+        L.marker([ultimo.lat, ultimo.lng], { icon: this._iconoVehiculo(color) })
+          .bindPopup(`<div style="font-size:12.5px;"><b>${WMS.esc(c.auxiliar_nombre || 'Auxiliar')}</b>${c.placa ? ' · ' + WMS.esc(c.placa) : ''}<br>${WMS.esc(c.sucursal)}<br><span style="color:${color};font-weight:700;">Entregado${c.tiene_novedad ? ' — con novedad' : ' — sin novedad'}</span></div>`)
           .addTo(this._markers);
         bounds.push([ultimo.lat, ultimo.lng]);
+        panel.push({ nombre: c.auxiliar_nombre || 'Auxiliar', sub: `${c.sucursal}${c.placa ? ' · ' + c.placa : ''}`, color, estado: c.tiene_novedad ? 'Con novedad' : 'Entregado sin novedad' });
       });
 
-      if (bounds.length) this._map.fitBounds(bounds, { maxZoom: 13, padding: [30, 30] });
-    } catch (e) { /* silencioso — se reintenta en el próximo tick */ }
+      this._renderPanelVehiculos(panel);
+
+      if (bounds.length) this._map.flyToBounds(bounds, { maxZoom: 13, padding: [40, 40], duration: .6 });
+    } catch (e) {
+      if (errBox) errBox.style.display = 'flex';
+    }
+  },
+
+  _renderPanelVehiculos(items) {
+    const el = document.getElementById('tmsd-map-panel');
+    if (!el) return;
+    if (!items.length) {
+      el.innerHTML = '<div style="padding:16px;font-size:12px;color:#94a3b8;text-align:center;">Sin vehículos para mostrar en el rango seleccionado.</div>';
+      return;
+    }
+    el.innerHTML = `<div style="padding:10px 14px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;">Vehículos (${items.length})</div>` +
+      items.map(it => `
+        <div style="padding:10px 14px;border-bottom:1px solid #e2e8f0;display:flex;gap:10px;align-items:flex-start;">
+          <div style="width:10px;height:10px;border-radius:50%;background:${it.color};margin-top:4px;flex-shrink:0;"></div>
+          <div style="min-width:0;">
+            <div style="font-size:12.5px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${WMS.esc(it.nombre)}</div>
+            <div style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${WMS.esc(it.sub || '')}</div>
+            <div style="font-size:10.5px;font-weight:700;color:${it.color};margin-top:2px;">${WMS.esc(it.estado)}</div>
+          </div>
+        </div>`).join('');
   },
 
   /* ═══════════════════════════════════════════════════════════════════════

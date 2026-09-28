@@ -285,7 +285,12 @@ class TmsDashboardController extends BaseController
 
         $fecha    = $p['fecha'] ?? date('Y-m-d');
         $esHoy    = $fecha === date('Y-m-d');
-        $enCurso  = $esHoy ? TmsClient::visitasEnRuta() : [];
+        // "En curso" nunca se filtra por vehículo — el TMS no sabe qué
+        // vehículo tiene cada auxiliar en vivo (solo vía planilla, no en
+        // tiempo real) — mostrarlo igual mezclaría camiones distintos al
+        // filtrado. A pedido explícito de Camilo (2026-09-29): "el filtro
+        // solo debe mostrar el carro seleccionado".
+        $enCurso  = ($esHoy && empty($p['vehiculo'])) ? TmsClient::visitasEnRuta() : [];
 
         $where  = ['op.empresa_id = :emp', 'op.fecha_movimiento = :fecha', 'er.tracking_geo IS NOT NULL'];
         $params = [':emp' => $empresaId, ':fecha' => $fecha];
