@@ -2664,6 +2664,19 @@ WMS_MODULES.despacho = {
         return `<span style="color:${col[s]||'#64748b'};font-weight:700;">${WMS.esc(s)}</span>`;
       };
       const esEditable = d.estado !== 'Entregado';
+      // Info que registra el auxiliar en el TMS al confirmar la entrega — a
+      // pedido explícito de Camilo (2026-09-29): antes esta pantalla no
+      // mostraba nada de esto, no se podía ver qué pedidos faltaban por
+      // entregar sin salir a revisar otra pantalla.
+      const stEntrega = o => {
+        const e = o.entrega_tms;
+        if (!e || !e.entregado) return '<span style="color:#94a3b8;">Pendiente de entrega</span>';
+        const hora = e.hora_llegada ? new Date(e.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '-';
+        if (e.tiene_novedad) {
+          return `<span style="color:#dc2626;font-weight:700;" title="${WMS.esc(e.observaciones || '')}"><i class="fa-solid fa-triangle-exclamation"></i> Entregado c/novedad (${e.total_novedades}) — ${hora}</span>`;
+        }
+        return `<span style="color:#059669;font-weight:700;"><i class="fa-solid fa-check-circle"></i> Entregado sin novedad — ${hora}</span>`;
+      };
       WMS.showRightPanel(`Cargue: ${WMS.esc(d.numero_despacho||'#'+id)}`, `
         <div class="form-grid form-grid-2" style="margin-bottom:16px;">
           <div><label class="form-label">Placa</label><p><b>${WMS.esc(d.placa||'-')}</b></p></div>
@@ -2682,16 +2695,17 @@ WMS_MODULES.despacho = {
         <b style="display:block;margin-bottom:8px;">Pedidos asociados (${ordenes.length})</b>
         <div class="table-container">
           <table class="erp-table">
-            <thead><tr><th>Planilla</th><th>Cliente / Sucursal</th><th>Estado despacho</th><th></th></tr></thead>
+            <thead><tr><th>Planilla</th><th>Cliente / Sucursal</th><th>Estado despacho</th><th>Entrega TMS</th><th></th></tr></thead>
             <tbody>${ordenes.map(o => `<tr>
               <td><span class="badge badge-info">${WMS.esc(o.planilla_numero||'#'+o.id)}</span></td>
               <td>${WMS.esc(o.cliente||o.sucursal_entrega||'-')}</td>
               <td>${stOrd(o.estado_despacho)}</td>
+              <td>${stEntrega(o)}</td>
               <td style="white-space:nowrap;">
                 <button class="btn btn-sm btn-success" title="Reimprimir solo la remisión de este pedido" onclick="WMS_MODULES.despacho.reimprimirPedidoCargue(${o.id}, ${o.packing_sesion_id || 'null'}, '${WMS.esc(o.planilla_numero || o.numero_orden || ('#'+o.id))}')"><i class="fa-solid fa-print"></i></button>
                 ${esEditable ? `<button class="btn btn-sm btn-danger" title="Quitar pedido" onclick="WMS_MODULES.despacho.quitarPedidoCargue(${id},${o.id})"><i class="fa-solid fa-xmark"></i></button>` : ''}
               </td>
-            </tr>`).join('') || `<tr><td colspan="4" class="table-empty">Sin pedidos asociados</td></tr>`}
+            </tr>`).join('') || `<tr><td colspan="5" class="table-empty">Sin pedidos asociados</td></tr>`}
             </tbody>
           </table>
         </div>`,

@@ -109,6 +109,30 @@ class DespachoController extends BaseController
             $d->ordenes->each(function ($o) use ($sesionesPorOrden) {
                 $o->packing_sesion_id = $sesionesPorOrden->get($o->id)?->first()->sesion_id ?? null;
             });
+
+            // Información de entrega registrada por el auxiliar en el TMS — a pedido
+            // explícito de Camilo (2026-09-29): "no está mostrando la información
+            // registrada que está haciendo el auxiliar en la versión de escritorio".
+            // Antes esta pantalla no tenía NADA del TMS; solo se sabía por
+            // orden_pickings.estado_despacho='Entregado' (que ni siquiera venía
+            // acompañado de hora/novedades).
+            $entregas = Capsule::table('entregas_ruta')
+                ->whereIn('orden_picking_id', $ordenIds)
+                ->get()
+                ->keyBy('orden_picking_id');
+            $d->ordenes->each(function ($o) use ($entregas) {
+                $e = $entregas->get($o->id);
+                $o->entrega_tms = $e ? [
+                    'entregado'             => true,
+                    'hora_llegada'          => $e->hora_llegada,
+                    'hora_salida'           => $e->hora_salida,
+                    'tiempo_demora_minutos' => $e->tiempo_demora_minutos,
+                    'tiene_novedad'         => (bool)$e->tiene_novedad,
+                    'total_novedades'       => (int)$e->total_novedades,
+                    'nombre_recibe'         => $e->nombre_recibe,
+                    'observaciones'         => $e->observaciones,
+                ] : ['entregado' => false];
+            });
         }
 
         return $this->ok($res, $d);
