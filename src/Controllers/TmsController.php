@@ -325,16 +325,25 @@ class TmsController extends BaseController
 
     // ── Private event processors ──────────────────────────────────────────────
 
-    // Entrega confirmada en el punto de venta (YMS). A diferencia del despacho
-    // agregado (una ruta con varias sucursales), esto es POR PEDIDO — el
-    // auxiliar de ruta certifica y firma un pedido a la vez. despacho_id es
-    // opcional (solo si el YMS también sabe a qué ruta pertenece); orden_picking_id
-    // es lo que de verdad cierra el pedido individual en el WMS.
+    // Entrega confirmada en el punto de venta (YMS). Desde la v2 del YMS
+    // (2026-09-27, visita a sucursal) esto se dispara UNA VEZ POR VISITA, no
+    // por pedido — una parada puede cubrir varios pedidos de la misma
+    // sucursal el mismo día. El payload trae 'orden_picking_ids' (array); por
+    // compatibilidad hacia atrás también acepta el 'orden_picking_id' (singular)
+    // que mandaba la v1. Se inserta una fila de entregas_ruta POR pedido,
+    // duplicando los datos de la visita (firma/fotos/tiempos son los mismos
+    // para todos los pedidos de esa parada) — más simple que espejar una
+    // tabla de "visitas" aparte en el WMS solo para esto.
     private function _procesarEntregaConfirmada(int $empresaId, array $payload): void
     {
-        $despachoId       = (int)($payload['despacho_id'] ?? 0);
-        $ordenPickingId   = (int)($payload['orden_picking_id'] ?? 0);
-        $fecha            = $payload['fecha'] ?? date('Y-m-d H:i:s');
+        $despachoId = (int)($payload['despacho_id'] ?? 0);
+        $fecha      = $payload['fecha'] ?? date('Y-m-d H:i:s');
+
+        $ordenIds = $payload['orden_picking_ids'] ?? null;
+        if (!is_array($ordenIds) || empty($ordenIds)) {
+            $unico = (int)($payload['orden_picking_id'] ?? 0);
+            $ordenIds = $unico ? [$unico] : [];
+        }
 
         if ($despachoId) {
             DB::table('despachos')
@@ -347,33 +356,46 @@ class TmsController extends BaseController
                 ]);
         }
 
-        if (!$ordenPickingId) return;
+        $fotos = is_array($payload['fotos'] ?? null) ? json_encode(array_values($payload['fotos'])) : null;
+        $geo   = is_array($payload['tracking_geo'] ?? null) ? json_encode($payload['tracking_geo']) : null;
 
-        $orden = DB::table('orden_pickings')
-            ->where('id', $ordenPickingId)
-            ->where('empresa_id', $empresaId)
-            ->first();
-        if (!$orden) return;
+        foreach (array_map('intval', $ordenIds) as $ordenPickingId) {
+            if (!$ordenPickingId) continue;
 
-        // Mismo criterio de "pedido entregado" que usa DespachoController::liquidar()
-        // — se reusa aquí en vez de duplicar la transición de estado.
-        DB::table('orden_pickings')
-            ->where('id', $ordenPickingId)
-            ->update(['estado_despacho' => 'Entregado']);
+            $orden = DB::table('orden_pickings')
+                ->where('id', $ordenPickingId)
+                ->where('empresa_id', $empresaId)
+                ->first();
+            if (!$orden) continue;
 
-        // Tracking de tiempos + firma — no existía ningún lugar para esto antes
-        // del flujo de entrega en punto de venta (YMS).
-        DB::table('entregas_ruta')->insert([
-            'empresa_id'                => $empresaId,
-            'orden_picking_id'          => $ordenPickingId,
-            'despacho_id'               => $despachoId ?: null,
-            'hora_llegada'              => $payload['hora_llegada'] ?? null,
-            'hora_inicio_certificacion' => $payload['hora_inicio_certificacion'] ?? null,
-            'hora_fin'                  => $payload['hora_fin'] ?? $fecha,
-            'firma'                     => $payload['firma'] ?? null,
-            'auxiliar_nombre_ruta'      => $payload['auxiliar_nombre'] ?? null,
-            'created_at'                => date('Y-m-d H:i:s'),
-        ]);
+            // Mismo criterio de "pedido entregado" que usa DespachoController::liquidar()
+            // — se reusa aquí en vez de duplicar la transición de estado.
+            DB::table('orden_pickings')
+                ->where('id', $ordenPickingId)
+                ->update(['estado_despacho' => 'Entregado']);
+
+            DB::table('entregas_ruta')->insert([
+                'empresa_id'                => $empresaId,
+                'orden_picking_id'          => $ordenPickingId,
+                'despacho_id'               => $despachoId ?: null,
+                'hora_llegada'              => $payload['hora_llegada'] ?? null,
+                'hora_inicio_certificacion' => $payload['hora_inicio'] ?? $payload['hora_inicio_certificacion'] ?? null,
+                'hora_descargue'            => $payload['hora_descargue'] ?? null,
+                'hora_fin'                  => $payload['hora_fin'] ?? $fecha,
+                'hora_salida'               => $payload['hora_salida'] ?? null,
+                'tracking_geo'              => $geo,
+                'tiempo_demora_minutos'     => $payload['tiempo_demora_minutos'] ?? null,
+                'tipo_entrega'              => $payload['tipo_entrega'] ?? null,
+                'tiene_novedad'             => !empty($payload['tiene_novedad']),
+                'total_novedades'           => $payload['total_novedades'] ?? 0,
+                'observaciones'             => $payload['observaciones'] ?? null,
+                'nombre_recibe'             => $payload['nombre_recibe'] ?? null,
+                'fotos'                     => $fotos,
+                'firma'                     => $payload['firma'] ?? null,
+                'auxiliar_nombre_ruta'      => $payload['auxiliar_nombre'] ?? null,
+                'created_at'                => date('Y-m-d H:i:s'),
+            ]);
+        }
     }
 
     // Devolución registrada en el punto de venta (YMS). Crea la devolución con

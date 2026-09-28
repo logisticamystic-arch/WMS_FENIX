@@ -307,6 +307,10 @@ input.tv-fecha-input::-webkit-calendar-picker-indicator{filter:none;width:9px;cu
     <i class="fa-solid fa-chart-line tab-icon"></i> Nivel de Servicio
     <span class="tab-badge" id="tbadge-servicio" style="background:#8b5cf6;">0%</span>
   </button>
+  <button class="tab-btn" data-tab="entregas" style="--tab-color:#0F4C81;" onclick="switchTab('entregas',true)">
+    <i class="fa-solid fa-truck-fast tab-icon"></i> Entregas TMS
+    <span class="tab-badge" id="tbadge-entregas" style="background:#0F4C81;">0</span>
+  </button>
   <div class="tab-auto-label">
     <i class="fa-solid fa-rotate fa-spin" style="font-size:8px;color:var(--blue);"></i>
     <span id="tab-countdown" style="font-variant-numeric:tabular-nums;">20s</span>
@@ -682,15 +686,55 @@ input.tv-fecha-input::-webkit-calendar-picker-indicator{filter:none;width:9px;cu
     </div>
   </div>
 
+  <!-- ⑥ ENTREGAS TMS -->
+  <div class="tab-pane" id="pane-entregas">
+    <div style="padding:6px 8px;display:flex;flex-direction:column;gap:6px;height:100%;overflow:hidden;">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;flex-shrink:0;">
+        <div class="tv-card" style="padding:6px 9px;">
+          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text2);margin-bottom:1px;">TOTAL ENTREGAS (30D)</div>
+          <div id="ent-total" style="font-size:1.5rem;font-weight:900;color:#0F4C81;line-height:1.1;">—</div>
+        </div>
+        <div class="tv-card" style="padding:6px 9px;">
+          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text2);margin-bottom:1px;">NIVEL DE SERVICIO</div>
+          <div id="ent-ns" style="font-size:1.5rem;font-weight:900;color:var(--green);line-height:1.1;">—%</div>
+        </div>
+        <div class="tv-card" style="padding:6px 9px;">
+          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text2);margin-bottom:1px;">TIEMPO PROMEDIO</div>
+          <div id="ent-tiempo" style="font-size:1.5rem;font-weight:900;color:var(--orange);line-height:1.1;">— min</div>
+        </div>
+        <div class="tv-card" style="padding:6px 9px;">
+          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text2);margin-bottom:1px;">CON NOVEDAD</div>
+          <div id="ent-novedad" style="font-size:1.5rem;font-weight:900;color:var(--red);line-height:1.1;">—</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:6px;flex:1;min-height:0;">
+        <div class="tv-card" style="padding:6px 8px;display:flex;flex-direction:column;min-height:0;">
+          <div style="font-size:9px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0;">
+            <i class="fa-solid fa-map-location-dot"></i> POSICIÓN CONOCIDA DE LAS RUTAS
+          </div>
+          <div id="ent-map" style="flex:1;min-height:0;border-radius:8px;overflow:hidden;"></div>
+        </div>
+        <div class="tv-card" style="padding:6px 8px;display:flex;flex-direction:column;min-height:0;">
+          <div style="font-size:9px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0;">
+            <i class="fa-solid fa-building"></i> SUCURSALES CON MÁS NOVEDADES
+          </div>
+          <div style="position:relative;flex:1;min-height:0;"><canvas id="chart-ent-sucursales"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /tab-content -->
 
 <div id="tv-error"></div>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────
 const REFRESH_INTERVAL = 30;
 const TAB_DURATION     = 20;
-const TABS = ['ingresos','picking','agotados','alertas','servicio'];
+const TABS = ['ingresos','picking','agotados','alertas','servicio','entregas'];
 
 let token        = localStorage.getItem('wms_token') || '';
 let _initialized = false;
@@ -823,6 +867,10 @@ function switchTab(tabName,userInitiated=false){
     document.querySelector('[data-tab="'+t+'"]')?.classList.toggle('active',t===tabName);
   });
   if(userInitiated){_tabCountDown=TAB_DURATION;updateRotateBar();}
+  // El mapa se crea con su pane en display:none (tab oculto) y Leaflet fija
+  // mal su tamaño interno en 0x0 en ese momento — sin este invalidateSize()
+  // al mostrar la pestaña, el mapa queda roto (una sola tile a medias).
+  if(tabName==='entregas' && _entMap) setTimeout(()=>_entMap.invalidateSize(),50);
 }
 function updateRotateBar(){
   const bar=document.getElementById('rotate-bar');
@@ -1962,6 +2010,68 @@ async function loadAll(){
   loadPickingRanking().catch(()=>{});
   loadServicio().catch(()=>{});
   loadAgotadosHistorico().catch(()=>{});
+  loadEntregas().catch(()=>{});
+}
+
+// ── ENTREGAS TMS ──────────────────────────────────────────────────────
+let _entMap=null, _entMarkers=null, _chartEntSuc=null;
+async function loadEntregas(){
+  const desde=new Date(Date.now()-29*86400000).toISOString().substring(0,10);
+  const [resRes,mapaRes]=await Promise.allSettled([
+    api(`/tms/dashboard/resumen?fecha_desde=${desde}`),
+    api(`/tms/dashboard/mapa`),
+  ]);
+  const r=resRes.status==='fulfilled'?resRes.value:{};
+  const m=mapaRes.status==='fulfilled'?mapaRes.value:{};
+  const kpis=r.kpis||{};
+
+  setText('ent-total', fmt(kpis.total_entregas||0));
+  setText('ent-ns', kpis.ns_referencias_pct!=null?kpis.ns_referencias_pct+'%':'—%');
+  setText('ent-tiempo', kpis.tiempo_promedio_min!=null?fmt(kpis.tiempo_promedio_min)+' min':'— min');
+  setText('ent-novedad', fmt(kpis.con_novedad||0));
+
+  const badge=document.getElementById('tbadge-entregas');
+  if(badge) badge.textContent=fmt(kpis.total_entregas||0);
+
+  const suc=r.top_sucursales||[];
+  const ctx=document.getElementById('chart-ent-sucursales');
+  if(ctx){
+    if(_chartEntSuc) _chartEntSuc.destroy();
+    _chartEntSuc=new Chart(ctx,{
+      type:'bar',
+      data:{labels:suc.map(s=>s.sucursal),datasets:[{label:'Novedades',data:suc.map(s=>s.total_novedades),backgroundColor:'#0F4C81'}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}
+    });
+  }
+
+  renderEntregasMapa(m.en_curso||[], m.confirmadas||[]);
+}
+
+function renderEntregasMapa(enCurso, confirmadas){
+  const el=document.getElementById('ent-map');
+  if(!el || typeof L==='undefined') return;
+  if(!_entMap){
+    _entMap=L.map('ent-map').setView([4.6097,-74.0817],6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap',maxZoom:18}).addTo(_entMap);
+    _entMarkers=L.layerGroup().addTo(_entMap);
+  }
+  _entMarkers.clearLayers();
+  const bounds=[];
+  const icono=color=>L.divIcon({html:`<i class="fa-solid fa-truck" style="color:${color};font-size:16px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4));"></i>`,className:'',iconSize:[16,16],iconAnchor:[8,8]});
+
+  (enCurso||[]).forEach(v=>{
+    const p=v.ultimo_punto; if(!p) return;
+    L.marker([p.lat,p.lng],{icon:icono(v.estado==='en_ruta'?'#f59e0b':'#64748b')})
+      .bindPopup(`<b>${esc(v.sucursal)}</b><br>${esc(v.auxiliar_nombre||'')}<br>${v.estado}`).addTo(_entMarkers);
+    bounds.push([p.lat,p.lng]);
+  });
+  (confirmadas||[]).forEach(c=>{
+    const puntos=Object.values(c.puntos||{}); const ultimo=puntos[puntos.length-1]; if(!ultimo) return;
+    L.marker([ultimo.lat,ultimo.lng],{icon:icono(c.tiene_novedad?'#ef4444':'#10b981')})
+      .bindPopup(`<b>${esc(c.sucursal)}</b><br>${esc(c.auxiliar_nombre||'')}<br>Entregado${c.tiene_novedad?' — con novedad':' — sin novedad'}`).addTo(_entMarkers);
+    bounds.push([ultimo.lat,ultimo.lng]);
+  });
+  if(bounds.length) _entMap.fitBounds(bounds,{maxZoom:13,padding:[20,20]});
 }
 
 async function refresh(){

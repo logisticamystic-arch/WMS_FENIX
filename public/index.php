@@ -832,6 +832,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/despachos/canastas', [\App\Controllers\DespachoController::class, 'verCanastasPlanilla']);
     $group->post('/despachos/canastas', [\App\Controllers\DespachoController::class, 'guardarCanastasPlanilla']);
     $group->get('/despachos/{id}', [\App\Controllers\DespachoController::class, 'ver']);
+    $group->put('/despachos/{id}', [\App\Controllers\DespachoController::class, 'actualizar']);
     $group->get('/despachos/{id}/reporte', [\App\Controllers\DespachoController::class, 'reporte']);
     $group->get('/despachos/{id}/planilla-cargue', [\App\Controllers\DespachoController::class, 'planillaCargue']);
     $group->post('/despachos/{id}/cerrar', [\App\Controllers\DespachoController::class, 'close']);
@@ -906,6 +907,10 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
 
     // Dashboard: KPI Nivel de Servicio
     $group->get('/dashboard/nivel-servicio', [\App\Controllers\DashboardTVController::class, 'getNivelServicio']);
+
+    // Dashboard TMS (entregas en punto de venta) — desktop + sección TV
+    $group->get('/tms/dashboard/resumen', [\App\Controllers\TmsDashboardController::class, 'resumen']);
+    $group->get('/tms/dashboard/mapa',    [\App\Controllers\TmsDashboardController::class, 'mapa']);
 
     // Causales de Novedad (Picking/Agotados)
     $group->get('/causales-novedad',         [\App\Controllers\CausalesController::class, 'index']);

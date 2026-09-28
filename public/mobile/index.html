@@ -2132,6 +2132,13 @@ const MWMS = {
         numero_pallet: palletNum,
       });
 
+      // Auditoría de Calidad OBLIGATORIA por referencia (a pedido explícito de
+      // Camilo, 2026-09-29) — salvo proveedor CDP (transferencia interna). Se
+      // captura el nombre/id ANTES del reset de abajo, que limpia s.prodSel.
+      const _calDetId  = r.data?.detalle?.id;
+      const _calNombre = s.prodSel?.nombre || 'Producto';
+      const _esCdpLinea = (prov || '').toUpperCase() === 'CDP';
+
       // Reset para siguiente captura (borrar producto seleccionado y dejar listo para la siguiente referencia en el mismo pallet)
       s.prodSel      = null;
       s.prodSearch   = '';
@@ -2141,7 +2148,11 @@ const MWMS = {
       Swal.close();
       this.toast('Captura registrada ✓ Listo para la siguiente referencia del pallet #' + palletNum, 'success');
       this._renderRecSinOdc();
-      
+
+      if (_calDetId && !_esCdpLinea) {
+          this._showCalidadModalProducto(_calDetId, _calNombre);
+      }
+
       // Restaurar el proveedor seleccionado y reenfocar buscador
       setTimeout(() => {
           if (document.getElementById('rs-proveedor')) {
@@ -3168,6 +3179,10 @@ const MWMS = {
              ODC, reutilizada aquí (2026-09-18). -->
         <button class="m-btn primary full" onclick="MWMS._abrirReporteCalidadOdc()" style="font-size:.9rem;padding:12px;font-weight:700;margin-top:12px;background:#0d9488;border-color:#0f766e;">
           <i class="fa-solid fa-clipboard-check"></i> CONDICIONES DE TRANSPORTE
+        </button>
+
+        <button class="m-btn success full" onclick="MWMS._cerrarRecepcionOdc()" style="font-size:.9rem;padding:12px;font-weight:700;margin-top:8px;">
+          <i class="fa-solid fa-lock"></i> CERRAR RECEPCIÓN
         </button>
 
         <button class="m-btn secondary full" onclick="MWMS.viewRecO()" style="margin-top:8px;">Volver al listado</button>
@@ -4882,7 +4897,7 @@ const MWMS = {
       this.openCapture(p, async res => {
           this.loading(true);
           try {
-              await mApi('POST', '/recepciones/detalles-operativa', {
+              const capRes = await mApi('POST', '/recepciones/detalles-operativa', {
                   odc_id: this._op.odc.id,
                   producto_id: p.id,
                   cantidad: res.q,
@@ -4892,7 +4907,8 @@ const MWMS = {
                   fecha_vencimiento: res.fv,
                   numero_pallet: this._op.currentPallet
               });
-              
+              if (capRes.data?.recepcion?.id) this._op.recepcionId = capRes.data.recepcion.id;
+
               this.loading(false);
               const result = await Swal.fire({
                 title: `Guardado en Pallet #${this._op.currentPallet}`,
@@ -4952,7 +4968,14 @@ const MWMS = {
               this.toast("Producto capturado", "success");
               await this.refreshRecOLines();
               await this.checkODCCompletion();
-          } catch(e) { 
+
+              // Auditoría de Calidad OBLIGATORIA por referencia (a pedido explícito
+              // de Camilo, 2026-09-29) — con ODC nunca es CDP, siempre se exige al
+              // cerrar la recepción (ver RecepcionController::confirm()).
+              if (capRes.data?.detalle?.id) {
+                  this._showCalidadModalProducto(capRes.data.detalle.id, p.nombre || 'Producto');
+              }
+          } catch(e) {
               this.toast(e.message, "error"); 
           } finally {
               this.loading(false);
@@ -4985,6 +5008,32 @@ const MWMS = {
           }
       } catch(e) { console.error("Error checkODC:", e); }
       return false;
+  },
+
+  // Cierra la recepción con ODC (carga todo el lote a inventario de una vez;
+  // bloquea si falta Auditoría de Calidad en alguna referencia) — a pedido
+  // explícito de Camilo, 2026-09-29. Antes no existía este botón porque el
+  // inventario ya se cargaba de inmediato al escanear cada producto.
+  async _cerrarRecepcionOdc() {
+      const id = this._op?.recepcionId;
+      if (!id) return this.toast('No hay recepción en Borrador para esta ODC todavía', 'error');
+      if (!confirm('¿Cerrar esta recepción? Se cargará todo el lote capturado a inventario y ya no podrá agregar más líneas.')) return;
+      this.loading(true);
+      try {
+          const r = await mApi('POST', '/recepciones/' + id + '/cerrar', {});
+          if (r.error) throw new Error(r.message);
+          this.toast('Recepción cerrada ✓', 'success');
+          this._op.recepcionId = null;
+          if (confirm('¿Desea ir ahora a dar ubicación a los productos en el almacén?')) {
+              this.viewUbicar();
+          } else {
+              this.viewRecO();
+          }
+      } catch (e) {
+          this.toast(e.message || 'Error al cerrar', 'error');
+      } finally {
+          this.loading(false);
+      }
   },
 
   async refreshRecOLines() {

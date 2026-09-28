@@ -1458,8 +1458,13 @@ WMS_MODULES.recepcion = {
               numero_pallet:  this._odcPalletNum || undefined,
           };
 
+          const prodNombre = document.getElementById('op-prod')?.selectedOptions?.[0]?.text || '-';
+
           const r = await API.post('/recepciones/detalles-operativa', payload);
           if (r.error) throw new Error(r.message);
+
+          // Recepción (Borrador) de esta ODC — necesaria para poder cerrarla luego.
+          if (r.data?.recepcion?.id) window._opCurrentRecepcionId = r.data.recepcion.id;
 
           const conv = r.data?.conversion;
           const msgCajas = upc > 1
@@ -1486,11 +1491,47 @@ WMS_MODULES.recepcion = {
           document.getElementById('op-fecha-venc').value = '';
           this._actualizarPreviewUnidades();
 
+          // Auditoría de Calidad OBLIGATORIA por referencia (a pedido explícito de
+          // Camilo, 2026-09-29) — con ODC nunca es CDP, siempre se exige al cerrar.
+          const detId = r.data?.detalle?.id;
+          if (detId) this._abrirModalCalidadProducto(detId, prodNombre);
+
       } catch(e) {
           WMS.toast('error', e.message || 'Error guardando captura');
       } finally {
           btn.disabled = false;
           btn.innerHTML = originalText;
+      }
+  },
+
+  // Cierra la recepción con ODC (carga todo el lote a inventario de una vez;
+  // bloquea si falta Auditoría de Calidad en alguna referencia) — a pedido
+  // explícito de Camilo, 2026-09-29. Antes este botón no hacía nada porque el
+  // inventario ya se cargaba de inmediato por línea; ahora es el único punto
+  // donde con-ODC realmente entra a inventario.
+  async cerrarDocumentoRecepcion(odcId) {
+      let recepcionId = window._opCurrentRecepcionId;
+      if (!recepcionId) {
+          try {
+              const r = await API.get('/recepciones', `odc_id=${odcId}&estado=Borrador&limit=1`);
+              recepcionId = (r.data || r || [])[0]?.id || null;
+          } catch (_) {}
+      }
+      if (!recepcionId) return WMS.toast('warning', 'No hay una recepción en Borrador para esta ODC todavía.');
+      if (!confirm('¿Cerrar esta recepción? Se cargará todo el lote capturado a inventario y ya no podrá agregar más líneas.')) return;
+
+      try {
+          const r = await API.post('/recepciones/' + recepcionId + '/cerrar', {});
+          if (r.error) throw new Error(r.message);
+          window._opCurrentRecepcionId = null;
+          if (confirm('Recepción cerrada. ¿Ir ahora a Almacenamiento → Ubicar Mercancía para dar ubicación a los productos?')) {
+              WMS.nav('almacenamiento', 'ubicar');
+          } else {
+              WMS.toast('success', 'Recepción cerrada. Los productos están en patio listos para ubicar.');
+              this.show_operativa();
+          }
+      } catch (e) {
+          WMS.toast('error', e.message || 'Error al cerrar la recepción');
       }
   },
 
@@ -2202,6 +2243,16 @@ WMS_MODULES.recepcion = {
 
       // Agregar fila al panel de historial
       this._agregarLineaSinODC(r.data);
+
+      // Auditoría de Calidad OBLIGATORIA por referencia (a pedido explícito de
+      // Camilo, 2026-09-29) — se abre de inmediato tras capturar, salvo
+      // proveedor CDP (transferencia interna, no la exige). El cierre de la
+      // recepción la vuelve a exigir de todas formas si se cierra sin llenarla.
+      const detId = r.data?.detalle?.id;
+      const esCdpLinea = (proveedor || '').toUpperCase() === 'CDP';
+      if (detId && !esCdpLinea) {
+        this._abrirModalCalidadProducto(detId, (document.getElementById('sodc-prod-search')?.value || '-'));
+      }
 
       // Limpiar campos completamente para la siguiente referencia en el mismo pallet
       const searchInput = document.getElementById('sodc-prod-search');

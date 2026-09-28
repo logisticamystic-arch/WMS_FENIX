@@ -2489,7 +2489,7 @@ WMS_MODULES.despacho = {
   // maestros reales (/param/rutas, /param/conductores, /param/vehiculos) —
   // antes placa/conductor eran texto libre tipeado a mano.
   async _opcionesCargueForm() {
-    const [rutasOpts, conductoresOpts, vehiculosOpts] = await Promise.all([
+    const [rutasOpts, conductoresOpts, vehiculosOpts, auxiliaresOpts] = await Promise.all([
       API.get('/param/rutas').then(r => (r.data || r || [])
         .map(rt => `<option value="${rt.id}">${WMS.esc(rt.nombre)}</option>`).join(''))
         .catch(() => ''),
@@ -2501,11 +2501,22 @@ WMS_MODULES.despacho = {
         .filter(v => v.activo)
         .map(v => `<option value="${v.id}">${WMS.esc(v.placa)}${v.tipo ? ' — ' + WMS.esc(v.tipo) : ''}</option>`).join(''))
         .catch(() => ''),
+      // Auxiliar que va a hacer la entrega (a pedido explícito de Camilo,
+      // 2026-09-27): al asociarse al despacho, se empuja al TMS para que ese
+      // auxiliar vea sus sucursales al loguearse (ver agregarPedidosCargue()).
+      // Se muestra el documento junto al nombre — puede haber más de una
+      // persona con el mismo nombre (caso real: dos registros "Camilo Perez"
+      // distintos), y sin el documento no hay forma de distinguirlos al elegir.
+      API.get('/param/personal', 'rol=Auxiliar').then(r => (r.data || r || [])
+        .filter(p => p.activo)
+        .map(p => `<option value="${p.id}">${WMS.esc(p.nombre)} — doc. ${WMS.esc(p.documento || 's/n')}</option>`).join(''))
+        .catch(() => ''),
     ]);
     return {
       rutasOpts: '<option value="">Sin ruta específica</option>' + rutasOpts,
       conductoresOpts: '<option value="">— Seleccione conductor —</option>' + conductoresOpts,
       vehiculosOpts: '<option value="">— Seleccione vehículo —</option>' + vehiculosOpts,
+      auxiliaresOpts: '<option value="">— Sin auxiliar de entrega asignado —</option>' + auxiliaresOpts,
     };
   },
 
@@ -2517,6 +2528,11 @@ WMS_MODULES.despacho = {
         <div class="form-group" style="grid-column:1/-1;">
           <label class="form-label">Ruta <span class="required">*</span></label>
           <select id="car-ruta-id" class="form-control">${o.rutasOpts}</select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Auxiliar que realiza la entrega</label>
+          <select id="car-auxiliar-id" class="form-control">${o.auxiliaresOpts}</select>
+          <small style="color:#64748b;font-size:.75rem;">Al asignarlo, este auxiliar verá estas sucursales al loguearse en el TMS.</small>
         </div>
         <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Observaciones</label><textarea id="car-obs" class="form-control" rows="2" placeholder="Notas adicionales"></textarea></div>
       </div>`;
@@ -2548,6 +2564,7 @@ WMS_MODULES.despacho = {
     const vehiculoId  = document.getElementById('car-vehiculo-id')?.value || null;
     const conductorId = document.getElementById('car-conductor-id')?.value || null;
     const rutaId      = document.getElementById('car-ruta-id')?.value || null;
+    const auxiliarId  = document.getElementById('car-auxiliar-id')?.value || null;
     const ordenIds    = this._cargueSelectedIds || [];
 
     if (!vehiculoId || !conductorId) { WMS.toast('warning', 'Vehículo y Conductor son requeridos'); return; }
@@ -2558,6 +2575,7 @@ WMS_MODULES.despacho = {
         vehiculo_id: parseInt(vehiculoId),
         conductor_id: parseInt(conductorId),
         ruta_id: rutaId ? parseInt(rutaId) : null,
+        auxiliar_id: auxiliarId ? parseInt(auxiliarId) : null,
         observaciones: document.getElementById('car-obs')?.value.trim() || null,
       });
       if (r.error) { WMS.toast('error', r.message); return; }
@@ -2587,17 +2605,52 @@ WMS_MODULES.despacho = {
     const vehiculoId  = document.getElementById('car-vehiculo-id')?.value || null;
     const conductorId = document.getElementById('car-conductor-id')?.value || null;
     const rutaId      = document.getElementById('car-ruta-id')?.value || null;
+    const auxiliarId  = document.getElementById('car-auxiliar-id')?.value || null;
     if (!vehiculoId || !conductorId) { WMS.toast('warning', 'Vehículo y Conductor son requeridos'); return; }
     try {
       const r = await API.post('/despachos', {
         vehiculo_id: parseInt(vehiculoId),
         conductor_id: parseInt(conductorId),
         ruta_id: rutaId ? parseInt(rutaId) : null,
+        auxiliar_id: auxiliarId ? parseInt(auxiliarId) : null,
         observaciones: document.getElementById('car-obs')?.value.trim() || null,
       });
       if (r.error) WMS.toast('error', r.message);
       else { WMS.toast('success', 'Planilla de cargue creada'); WMS.closeRightPanel(); this._renderPlanillasCreadas(); }
     } catch(e) { WMS.toast('error', 'Error guardando'); }
+  },
+
+  // Corrige el auxiliar de entrega de un despacho ya creado (a pedido
+  // explícito de Camilo, 2026-09-27, tras un caso real de asignación
+  // equivocada — dos personas distintas con el mismo nombre). Reenvía la
+  // corrección al TMS (ver DespachoController::actualizar()).
+  async cambiarAuxiliarCargue(id) {
+    const o = await this._opcionesCargueForm();
+    const overlay = document.createElement('div');
+    overlay.id = 'cambiar-aux-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9500;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:10px;padding:22px 26px;min-width:360px;box-shadow:0 8px 40px rgba(0,0,0,.25);">
+        <h3 style="margin:0 0 14px;font-size:15px;">Cambiar auxiliar de entrega</h3>
+        <select id="cambiar-aux-select" class="form-control">${o.auxiliaresOpts}</select>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('cambiar-aux-overlay').remove()">Cancelar</button>
+          <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho._guardarCambioAuxiliar(${id})">Guardar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+  },
+
+  async _guardarCambioAuxiliar(id) {
+    const auxiliarId = document.getElementById('cambiar-aux-select')?.value || null;
+    try {
+      const r = await API.put(`/despachos/${id}`, { auxiliar_id: auxiliarId ? parseInt(auxiliarId) : null });
+      if (r.error) { WMS.toast('error', r.message); return; }
+      document.getElementById('cambiar-aux-overlay')?.remove();
+      WMS.toast('success', 'Auxiliar actualizado y reenviado al TMS');
+      WMS.closeRightPanel();
+      this.verCargue(id);
+    } catch (e) { WMS.toast('error', 'Error guardando'); }
   },
 
   async verCargue(id) {
@@ -2617,6 +2670,13 @@ WMS_MODULES.despacho = {
           <div><label class="form-label">Conductor</label><p>${WMS.esc(d.conductor||'-')}</p></div>
           <div><label class="form-label">Ruta</label><p>${WMS.esc(d.ruta_obj?.nombre||d.ruta||'-')}</p></div>
           <div><label class="form-label">Estado</label><p><b>${WMS.esc(d.estado||'')}</b></p></div>
+          <div style="grid-column:1/-1;">
+            <label class="form-label">Auxiliar de entrega (TMS)</label>
+            <p>
+              ${d.auxiliar ? `<b>${WMS.esc(d.auxiliar.nombre)}</b> — doc. ${WMS.esc(d.auxiliar.documento||'s/n')}` : '<span style="color:#94a3b8;">Sin asignar</span>'}
+              ${esEditable ? ` <button class="btn btn-xs btn-outline-primary" style="margin-left:6px;" onclick="WMS_MODULES.despacho.cambiarAuxiliarCargue(${id})">Cambiar</button>` : ''}
+            </p>
+          </div>
           ${d.observaciones ? `<div style="grid-column:1/-1;"><label class="form-label">Observaciones</label><p>${WMS.esc(d.observaciones)}</p></div>` : ''}
         </div>
         <b style="display:block;margin-bottom:8px;">Pedidos asociados (${ordenes.length})</b>

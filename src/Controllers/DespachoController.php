@@ -8,6 +8,7 @@ use App\Models\Despacho;
 use App\Models\Inventario;
 use App\Models\MovimientoInventario;
 use App\Models\OrdenPicking;
+use App\Helpers\TmsPush;
 use Illuminate\Database\Capsule\Manager as Capsule;
 
 /**
@@ -82,6 +83,7 @@ class DespachoController extends BaseController
                 'rutaObj:id,nombre',
                 'conductorObj:id,nombre,documento,telefono',
                 'vehiculoObj:id,placa,tipo',
+                'auxiliar:id,nombre,documento',
             ])
             ->find($a['id']);
         if (!$d) return $this->notFound($res);
@@ -161,6 +163,57 @@ class DespachoController extends BaseController
         } catch (\Exception $e) {
             return $this->error($res, $e->getMessage());
         }
+    }
+
+    // ── PUT /api/despachos/{id} ────────────────────────────────────────────────
+    // Editar Vehículo/Conductor/Ruta/Auxiliar/Observaciones de un despacho ya
+    // creado — antes no existía forma de corregir esto sin tocar la BD
+    // directo. Necesario en particular para el auxiliar de entrega (TMS): si
+    // se asignó el registro equivocado (ej. dos personas con el mismo
+    // nombre), esto permite corregirlo y reenvía la corrección al TMS.
+    public function actualizar(Request $r, Response $res, array $a): Response
+    {
+        $user = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $sucursalId = $this->getEffectiveSucursalId($user, $r);
+        $data = $r->getParsedBody() ?? [];
+
+        $despacho = Despacho::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $sucursalId)
+            ->find($a['id']);
+        if (!$despacho) return $this->notFound($res);
+        if ($despacho->estado === 'Entregado') {
+            return $this->error($res, 'No se puede editar un despacho ya liquidado');
+        }
+
+        $antes = $despacho->toArray();
+        $auxiliarAntes = $despacho->auxiliar_id;
+
+        foreach (['ruta_id', 'conductor_id', 'vehiculo_id', 'auxiliar_id'] as $campo) {
+            if (array_key_exists($campo, $data)) {
+                $despacho->$campo = $data[$campo] !== '' && $data[$campo] !== null ? (int)$data[$campo] : null;
+            }
+        }
+        if (array_key_exists('observaciones', $data)) {
+            $despacho->observaciones = $data['observaciones'] ?: null;
+        }
+        $despacho->save();
+
+        $this->audit($user, 'despacho', 'editar', 'despachos', $despacho->id,
+            $antes, $despacho->toArray(), "Despacho {$despacho->numero_despacho} editado");
+
+        // Si el auxiliar de entrega cambió, reenvía al TMS las órdenes de este
+        // despacho con la corrección (mismo criterio que agregarPedidos()).
+        if ((int)($auxiliarAntes ?? 0) !== (int)($despacho->auxiliar_id ?? 0)) {
+            $ordenIds = Capsule::table('orden_pickings')->where('despacho_id', $despacho->id)->pluck('id');
+            foreach ($ordenIds as $ordenId) {
+                try { TmsPush::enviarOrden((int)$ordenId); } catch (\Throwable $e) {
+                    error_log("TmsPush::enviarOrden({$ordenId}) falló desde actualizar(): " . $e->getMessage());
+                }
+            }
+        }
+
+        return $this->ok($res, $despacho, 'Despacho actualizado');
     }
 
     // NOTA: certify() (POST /despachos/{id}/certificar) fue eliminado — auditoría confirmó
@@ -347,6 +400,21 @@ class DespachoController extends BaseController
             $this->audit($user, 'despacho', 'agregar_pedidos', 'despachos', $despacho->id,
                 null, ['orden_ids' => $ordenIds],
                 "Pedidos " . implode(',', $ordenIds) . " asociados al despacho {$despacho->numero_despacho}");
+
+            // Reenvía de inmediato al TMS (si el despacho tiene auxiliar de
+            // entrega asignado) — sin esto, la asignación solo llegaría al TMS
+            // si el cron (tms_push_pedidos.php) corriera DESPUÉS de crear la
+            // planilla, y una orden ya enviada antes nunca se vuelve a tocar
+            // por ese cron. Best-effort: si el TMS no responde, no revierte
+            // la asociación (ya quedó guardada en el WMS) — el cron la
+            // reintentará más tarde si el push queda en 'error'.
+            if ($despacho->auxiliar_id) {
+                foreach ($ordenIds as $ordenId) {
+                    try { TmsPush::enviarOrden($ordenId); } catch (\Throwable $e) {
+                        error_log("TmsPush::enviarOrden({$ordenId}) falló desde agregarPedidos: " . $e->getMessage());
+                    }
+                }
+            }
 
             $despacho->load('ordenes');
             return $this->ok($res, $despacho, 'Pedidos asociados correctamente');

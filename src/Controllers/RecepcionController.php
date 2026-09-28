@@ -44,6 +44,18 @@ class RecepcionController extends BaseController
     }
 
     /**
+     * Proveedor CDP = transferencia interna entre centros de distribución
+     * propios (no un proveedor comercial real) — a pedido explícito de
+     * Camilo (2026-09-29), estas líneas quedan exentas de la Auditoría de
+     * Calidad obligatoria por referencia y del cierre por lote: siguen
+     * afectando inventario de inmediato, igual que antes de este cambio.
+     */
+    private function esProveedorCdp(?string $proveedor): bool
+    {
+        return $proveedor !== null && strtoupper(trim($proveedor)) === 'CDP';
+    }
+
+    /**
      * GET /api/recepciones
      * Listar recepciones
      */
@@ -484,62 +496,24 @@ class RecepcionController extends BaseController
 
         $detalle->ubicacion_destino_id = $ubicacionDestinoId;
         $detalle->numero_pallet = !empty($data['numero_pallet']) ? (int)$data['numero_pallet'] : null;
-        $detalle->aprobado_admin = 1; // Auto-aprobar para visibilidad inmediata en Patio
+        // A pedido explícito de Camilo (2026-09-29): la recepción con ODC ya NO
+        // afecta inventario línea por línea al capturar — solo queda en Borrador
+        // hasta que se cierre la recepción completa (ver confirm()), una vez
+        // esté garantizada la Auditoría de Calidad por referencia en cada línea.
+        $detalle->aprobado_admin = 0;
 
-        // ── INVENTARIO EN TIEMPO REAL (PALLET POR PALLET) ────────────────────
         try {
             \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
 
             $detalle->save();
 
             if ($detalleOdc) {
-                // Actualizar en UNIDADES (cantidad ya contiene unidades convertidas)
+                // Se mantiene actualizado en tiempo real (no es inventario real, es
+                // el avance vs la ODC — así el guard de tolerancia sigue bloqueando
+                // excedentes línea a línea aunque el stock no se cargue todavía).
                 $detalleOdc->cantidad_recibida = max(0, $detalleOdc->cantidad_recibida + $cantidad);
                 $detalleOdc->save();
             }
-
-            // 1. Registrar Movimiento de Entrada
-            \App\Models\MovimientoInventario::create([
-                'empresa_id'  => $this->getEffectiveEmpresaId($user, $request),
-                'sucursal_id' => $user->sucursal_id,
-                'producto_id' => $producto->id,
-                'tipo_movimiento' => 'Entrada',
-                'referencia_tipo' => 'Cap. Móvil ODC: ' . $odc->numero_odc,
-                'cantidad'    => $cantidad,
-                'fecha_movimiento' => date('Y-m-d'),
-                'hora_inicio'      => date('H:i:s'),
-                'ubicacion_destino_id' => $ubicacionDestinoId,
-                'auxiliar_id' => $user->id,
-                'numero_pallet' => $detalle->numero_pallet,
-                'lote' => $data['lote'] ?? 'N/A',
-            ]);
-
-            // 2. Afectar Tabla de Inventarios (Disponible en Patio)
-            // lockForUpdate: evita "lost update" si dos capturas concurrentes (dos móviles,
-            // o esta misma ruta llamada dos veces) suman cantidad sobre la misma fila a la vez.
-            // Mercancía con novedad (estado_mercancia != BuenEstado) va a Cuarentena en vez de
-            // Disponible — antes entraba como stock normal, disponible para picking sin control.
-            $_invKeyPatio = [
-                'empresa_id'   => $this->getEffectiveEmpresaId($user, $request),
-                'sucursal_id'  => $user->sucursal_id,
-                'producto_id'  => $producto->id,
-                'ubicacion_id' => $ubicacionDestinoId,
-                'lote'         => $data['lote'] ?? 'N/A',
-                'estado'       => ($detalle->estado_mercancia === 'BuenEstado' || empty($detalle->estado_mercancia)) ? 'Disponible' : 'Cuarentena',
-                'numero_pallet' => $detalle->numero_pallet,
-            ];
-            $inv = \App\Models\Inventario::where($_invKeyPatio)->lockForUpdate()->first();
-            if (!$inv) {
-                $inv = new \App\Models\Inventario($_invKeyPatio);
-            }
-            $inv->cantidad           = ($inv->cantidad ?? 0) + $cantidad;
-            $inv->cantidad_reservada = $inv->cantidad_reservada ?? 0;
-            $inv->fecha_vencimiento  = $detalle->fecha_vencimiento ?? $inv->fecha_vencimiento;
-            // ── Arquitectura UND/TOTAL: descomponer cantidad en cajas + saldos ──
-            $_invCajasUnd        = max(1, (int)($producto->unidades_caja ?? 1));
-            $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $_invCajasUnd);
-            $inv->saldos         = fmod((float)$inv->cantidad, (float)$_invCajasUnd);
-            $inv->save();
 
             \Illuminate\Database\Capsule\Manager::connection()->commit();
         } catch (\Exception $e) {
@@ -553,7 +527,7 @@ class RecepcionController extends BaseController
 
         return $this->json($response, [
             'error' => false,
-            'message' => 'Registro operativo de recepción guardado',
+            'message' => 'Línea registrada — quedará disponible en Patio al cerrar la recepción con la Auditoría de Calidad completa',
             'data' => [
                 'recepcion'     => $recepcion,
                 'detalle'       => $detalle,
@@ -562,11 +536,6 @@ class RecepcionController extends BaseController
                     'cajas'          => $cantidadCajas,
                     'unidades_caja'  => $cajasUnd,
                     'total_unidades' => $cantidad,
-                ],
-                'inventario'    => [
-                    'cantidad'        => $inv->cantidad,
-                    'cantidad_cajas'  => $inv->cantidad_cajas,
-                    'saldos'          => $inv->saldos,
                 ],
             ]
         ], 201);
@@ -892,10 +861,14 @@ class RecepcionController extends BaseController
         $detalle->numero_pallet      = !empty($data['numero_pallet']) ? (int)$data['numero_pallet'] : null;
         $detalle->proveedor          = trim($data['proveedor'] ?? '') ?: null;
         // 'QR' cuando la línea se identificó escaneando el código (hoy: proveedor CDP);
-        // 'Manual' cuando se buscó el producto a mano. Determina si esta recepción
-        // exige el formato de Auditoría de Calidad al confirmarla (ver confirm()).
+        // 'Manual' cuando se buscó el producto a mano.
         $detalle->origen_captura     = ($data['origen_captura'] ?? 'Manual') === 'QR' ? 'QR' : 'Manual';
-        $detalle->aprobado_admin     = 1;
+        // CDP = transferencia interna: se mantiene el comportamiento anterior
+        // (inventario inmediato, sin exigir Auditoría de Calidad). Cualquier
+        // otro proveedor real queda en Borrador hasta cerrar la recepción
+        // completa — a pedido explícito de Camilo (2026-09-29).
+        $esCdp = $this->esProveedorCdp($detalle->proveedor);
+        $detalle->aprobado_admin     = $esCdp ? 1 : 0;
         $detalle->save();
 
         // ── Guardar Auditoría de Calidad por Producto ──
@@ -912,59 +885,66 @@ class RecepcionController extends BaseController
             $cal->save();
         }
 
-        // Inventario en tiempo real
-        try {
-            \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
+        // Inventario en tiempo real — SOLO proveedor CDP (transferencia interna).
+        // El resto queda en Borrador: el stock se carga completo al cerrar la
+        // recepción (ver confirm()), no línea por línea.
+        $inv = null;
+        if ($esCdp) {
+            try {
+                \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
 
-            \App\Models\MovimientoInventario::create([
-                'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
-                'sucursal_id'          => $user->sucursal_id,
-                'producto_id'          => $producto->id,
-                'tipo_movimiento'      => 'Entrada',
-                'referencia_tipo'      => 'Recepción Sin ODC: ' . $recepcion->numero_recepcion,
-                'cantidad'             => $cantidad,
-                'fecha_movimiento'     => $hoy,
-                'hora_inicio'          => date('H:i:s'),
-                'ubicacion_destino_id' => $ubicacionDestinoId,
-                'auxiliar_id'          => $user->id,
-                'numero_pallet'        => $detalle->numero_pallet,
-                'lote'                 => $data['lote'] ?? 'N/A',
-            ]);
+                \App\Models\MovimientoInventario::create([
+                    'empresa_id'           => $this->getEffectiveEmpresaId($user, $request),
+                    'sucursal_id'          => $user->sucursal_id,
+                    'producto_id'          => $producto->id,
+                    'tipo_movimiento'      => 'Entrada',
+                    'referencia_tipo'      => 'Recepción Sin ODC: ' . $recepcion->numero_recepcion,
+                    'cantidad'             => $cantidad,
+                    'fecha_movimiento'     => $hoy,
+                    'hora_inicio'          => date('H:i:s'),
+                    'ubicacion_destino_id' => $ubicacionDestinoId,
+                    'auxiliar_id'          => $user->id,
+                    'numero_pallet'        => $detalle->numero_pallet,
+                    'lote'                 => $data['lote'] ?? 'N/A',
+                ]);
 
-            // Mercancía con novedad (estado_mercancia != BuenEstado) va a Cuarentena en vez
-            // de Disponible — antes entraba como stock normal, disponible para picking sin
-            // ningún control de calidad.
-            $_invKeySinOdc = [
-                'empresa_id'    => $this->getEffectiveEmpresaId($user, $request),
-                'sucursal_id'   => $user->sucursal_id,
-                'producto_id'   => $producto->id,
-                'ubicacion_id'  => $ubicacionDestinoId,
-                'lote'          => $data['lote'] ?? 'N/A',
-                'estado'        => ($detalle->estado_mercancia === 'BuenEstado' || empty($detalle->estado_mercancia)) ? 'Disponible' : 'Cuarentena',
-                'numero_pallet' => $detalle->numero_pallet,
-            ];
-            $inv = \App\Models\Inventario::where($_invKeySinOdc)->lockForUpdate()->first();
-            if (!$inv) {
-                $inv = new \App\Models\Inventario($_invKeySinOdc);
+                // Mercancía con novedad (estado_mercancia != BuenEstado) va a Cuarentena en vez
+                // de Disponible — antes entraba como stock normal, disponible para picking sin
+                // ningún control de calidad.
+                $_invKeySinOdc = [
+                    'empresa_id'    => $this->getEffectiveEmpresaId($user, $request),
+                    'sucursal_id'   => $user->sucursal_id,
+                    'producto_id'   => $producto->id,
+                    'ubicacion_id'  => $ubicacionDestinoId,
+                    'lote'          => $data['lote'] ?? 'N/A',
+                    'estado'        => ($detalle->estado_mercancia === 'BuenEstado' || empty($detalle->estado_mercancia)) ? 'Disponible' : 'Cuarentena',
+                    'numero_pallet' => $detalle->numero_pallet,
+                ];
+                $inv = \App\Models\Inventario::where($_invKeySinOdc)->lockForUpdate()->first();
+                if (!$inv) {
+                    $inv = new \App\Models\Inventario($_invKeySinOdc);
+                }
+                $inv->cantidad           = ($inv->cantidad ?? 0) + $cantidad;
+                $inv->cantidad_reservada = $inv->cantidad_reservada ?? 0;
+                $inv->fecha_vencimiento  = $detalle->fecha_vencimiento ?? $inv->fecha_vencimiento;
+                // ── Arquitectura UND/TOTAL: recalcular cajas/saldos del inventario acumulado ──
+                $_invUpc     = max(1, (int)($producto->factor_udm > 0 ? $producto->factor_udm : ($producto->unidades_caja ?? 1)));
+                $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $_invUpc);
+                $inv->saldos         = fmod((float)$inv->cantidad, (float)$_invUpc);
+                $inv->save();
+
+                \Illuminate\Database\Capsule\Manager::connection()->commit();
+            } catch (\Exception $e) {
+                \Illuminate\Database\Capsule\Manager::connection()->rollBack();
+                error_log('Error inventario sin-ODC: ' . $e->getMessage());
             }
-            $inv->cantidad           = ($inv->cantidad ?? 0) + $cantidad;
-            $inv->cantidad_reservada = $inv->cantidad_reservada ?? 0;
-            $inv->fecha_vencimiento  = $detalle->fecha_vencimiento ?? $inv->fecha_vencimiento;
-            // ── Arquitectura UND/TOTAL: recalcular cajas/saldos del inventario acumulado ──
-            $_invUpc     = max(1, (int)($producto->factor_udm > 0 ? $producto->factor_udm : ($producto->unidades_caja ?? 1)));
-            $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $_invUpc);
-            $inv->saldos         = fmod((float)$inv->cantidad, (float)$_invUpc);
-            $inv->save();
-
-            \Illuminate\Database\Capsule\Manager::connection()->commit();
-        } catch (\Exception $e) {
-            \Illuminate\Database\Capsule\Manager::connection()->rollBack();
-            error_log('Error inventario sin-ODC: ' . $e->getMessage());
         }
 
         return $this->json($response, [
             'error'   => false,
-            'message' => 'Captura sin ODC registrada correctamente',
+            'message' => $esCdp
+                ? 'Captura sin ODC registrada correctamente'
+                : 'Línea registrada — quedará disponible en Patio al cerrar la recepción con la Auditoría de Calidad completa',
             'data'    => [
                 'recepcion'  => $recepcion,
                 'detalle'    => $detalle,
@@ -973,11 +953,11 @@ class RecepcionController extends BaseController
                     'unidades_caja'  => $cajasUnd,
                     'total_unidades' => $cantidad,
                 ],
-                'inventario' => [
+                'inventario' => $inv ? [
                     'cantidad'       => $inv->cantidad,
                     'cantidad_cajas' => $inv->cantidad_cajas,
                     'saldos'         => $inv->saldos,
-                ],
+                ] : null,
             ],
         ], 201);
     }
@@ -1217,8 +1197,37 @@ class RecepcionController extends BaseController
             return $this->json($response, ['error' => true, 'message' => "La recepción ya se encuentra {$recepcion->estado}."], 400);
         }
 
-        // Auditoría de Calidad obligatoria en Recepción con ODC (si aplica) — en Recepciones
-        // sin ODC se permite cerrar/confirmar directamente tanto capturas manuales como por QR.
+        // Auditoría de Calidad OBLIGATORIA por referencia — a pedido explícito de
+        // Camilo (2026-09-29): aplica tanto a recepción CON ODC como SIN ODC, no se
+        // puede cerrar si falta la evaluación de calidad de alguna línea. Única
+        // excepción: proveedor CDP (transferencia interna entre bodegas propias,
+        // ver esProveedorCdp()) — esas líneas ya entraron a inventario en tiempo
+        // real (aprobado_admin=1) y por eso quedan excluidas del chequeo.
+        $referenciasSinCalidad = [];
+        foreach ($recepcion->detalles as $linea) {
+            if ($linea->aprobado_admin || $this->esProveedorCdp($linea->proveedor)) {
+                continue;
+            }
+            $cal = \App\Models\RecepcionDetalleCalidad::where('recepcion_detalle_id', $linea->id)->first();
+            $completa = $cal && $cal->olor && $cal->color && $cal->textura
+                && $cal->temperatura && $cal->empaque && $cal->rotulado;
+            if (!$completa) {
+                $referenciasSinCalidad[] = $linea->producto->codigo_interno
+                    ?? $linea->producto->nombre
+                    ?? ('Ref #' . $linea->producto_id);
+            }
+        }
+        if ($referenciasSinCalidad) {
+            return $this->json($response, [
+                'error'   => true,
+                'message' => 'Faltan evaluaciones de calidad por referencia antes de cerrar: ' . implode(', ', $referenciasSinCalidad),
+                'referencias_pendientes' => $referenciasSinCalidad,
+            ], 422);
+        }
+
+        // Auto-crear registro de calidad de TRANSPORTE básico (cabecera, sin ODC)
+        // si no existe todavía — solo para trazabilidad del reporte de Calidad,
+        // no reemplaza la Auditoría por referencia validada arriba.
         if (is_null($recepcion->odc_id)) {
             // Sin ODC: auto-crear registro de calidad básico si no existe para trazabilidad
             $tieneCalidad = \App\Models\RecepcionCalidad::where('recepcion_id', $recepcion->id)->exists();
@@ -1295,6 +1304,10 @@ class RecepcionController extends BaseController
                     'auxiliar_id'     => $user->id,
                     'observaciones'   => 'Recepción ' . $recepcion->numero_recepcion,
                     'fecha_movimiento' => date('Y-m-d'),
+                    // Bug preexistente destapado por este cambio: este bloque nunca se
+                    // ejecutaba (aprobado_admin siempre era 1 al capturar), así que la
+                    // falta de hora_inicio (NOT NULL) nunca daba error. Ahora sí corre.
+                    'hora_inicio'     => date('H:i:s'),
                     'hora_fin'        => date('H:i:s'),
                 ]);
 

@@ -15,6 +15,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
+  <!-- Leaflet — mapa del Dashboard TMS (posición de entregas/rutas) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
   <!-- Chart.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <!-- chartjs-plugin-datalabels — registrado global pero deshabilitado por defecto
@@ -244,6 +248,10 @@
 
           <button class="nm-item" data-module="aprobaciones" onclick="WMS.nav('aprobaciones')">
             <i class="fa-solid fa-stamp"></i><span>Aprobaciones</span>
+          </button>
+
+          <button class="nm-item" data-module="tms" onclick="WMS.nav('tms')">
+            <i class="fa-solid fa-truck-fast"></i><span>TMS Entregas</span>
           </button>
 
           <button class="nm-item" data-module="inventario" onclick="WMS.nav('inventario')">
@@ -1668,6 +1676,7 @@
         rotacion:       'abc-xyz',
         rotulos:        'productos',
         aprobaciones:   'todas',
+        tms:            'resumen',
       },
 
       // ── Navegación por módulos ────────────────────────────
@@ -1710,6 +1719,7 @@
           rotulos:       'assets/js/desktop/rotulos.js',
           devoluciones:  'assets/js/desktop/devoluciones.js',
           aprobaciones:  'assets/js/desktop/aprobaciones.js',
+          tms:           'assets/js/desktop/tms-dashboard.js',
           'consulta-rapida': 'assets/js/desktop/consulta-rapida.js',
           'trazabilidad':    'assets/js/desktop/trazabilidad.js',
           'chat-ia':         'assets/js/desktop/chat-ia.js',
@@ -1740,7 +1750,7 @@
         const curEl   = document.getElementById('bc-current');
         const backBtn = document.getElementById('btn-back-breadcrumb');
 
-        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', preoperacional:'Preoperacional', calidad:'Calidad', inventario:'Inventario', reportes:'Reportes', logistica:'Logística Pro', rotacion:'Rotación ML', rotulos:'Rótulos', devoluciones:'Devoluciones', aprobaciones:'Aprobaciones', 'consulta-rapida':'Consulta Rápida', trazabilidad:'Trazabilidad', 'chat-ia':'FENIX IA' };
+        const labels = { inicio:'Inicio', maestro:'Maestros', recepcion:'Recepción', almacenamiento:'Almacenamiento', picking:'Picking', despacho:'Despacho', preoperacional:'Preoperacional', calidad:'Calidad', inventario:'Inventario', reportes:'Reportes', logistica:'Logística Pro', rotacion:'Rotación ML', rotulos:'Rótulos', devoluciones:'Devoluciones', aprobaciones:'Aprobaciones', 'consulta-rapida':'Consulta Rápida', trazabilidad:'Trazabilidad', 'chat-ia':'FENIX IA', tms:'TMS Entregas' };
         modEl.textContent = labels[mod] || mod.toUpperCase();
 
         if (sub) {
