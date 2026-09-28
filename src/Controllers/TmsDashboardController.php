@@ -29,9 +29,19 @@ class TmsDashboardController extends BaseController
         }
         // Default: día actual — a pedido explícito de Camilo (2026-09-29), antes
         // arrancaba en los últimos 30 días.
+        //
+        // CORREGIDO 2026-09-28 (Camilo: "se acaba de realizar la entrega y no
+        // aparece en el TMS de escritorio"): se filtraba por
+        // orden_pickings.fecha_movimiento (cuándo se PICKEÓ el pedido), no por
+        // cuándo se ENTREGÓ realmente. Un pedido reabierto y reentregado un
+        // día distinto al que se certificó (exactamente este caso) quedaba
+        // invisible en "hoy" aunque la entrega hubiera pasado hoy. Ahora se
+        // filtra por la fecha real de la entrega (hora_salida de
+        // entregas_ruta, con hora_llegada y fecha_movimiento como respaldo
+        // para filas viejas/incompletas).
         $desde = $p['fecha_desde'] ?? date('Y-m-d');
         $hasta = $p['fecha_hasta'] ?? date('Y-m-d');
-        $where[] = 'op.fecha_movimiento BETWEEN :desde AND :hasta';
+        $where[] = 'COALESCE(er.hora_salida::date, er.hora_llegada::date, op.fecha_movimiento) BETWEEN :desde AND :hasta';
         $params[':desde'] = $desde;
         $params[':hasta'] = $hasta;
 
@@ -69,7 +79,8 @@ class TmsDashboardController extends BaseController
         $cte = "WITH filtro AS (
                     SELECT er.id, er.orden_picking_id, er.tiene_novedad, er.total_novedades,
                            er.tiempo_demora_minutos, er.auxiliar_nombre_ruta,
-                           op.sucursal_entrega, op.fecha_movimiento
+                           op.sucursal_entrega,
+                           COALESCE(er.hora_salida::date, er.hora_llegada::date, op.fecha_movimiento) AS fecha_entrega
                     FROM entregas_ruta er
                     JOIN orden_pickings op ON op.id = er.orden_picking_id
                     WHERE {$whereSql}
@@ -116,9 +127,9 @@ class TmsDashboardController extends BaseController
         // ── Tiempo de demora promedio por día ───────────────────────────
         $tiempos = $pdo->prepare("
             {$cte}
-            SELECT fecha_movimiento AS fecha, ROUND(AVG(tiempo_demora_minutos)::numeric, 1) AS promedio
+            SELECT fecha_entrega AS fecha, ROUND(AVG(tiempo_demora_minutos)::numeric, 1) AS promedio
             FROM filtro WHERE tiempo_demora_minutos IS NOT NULL
-            GROUP BY fecha_movimiento ORDER BY fecha_movimiento
+            GROUP BY fecha_entrega ORDER BY fecha_entrega
         ");
         $tiempos->execute($params);
         $tiempos = $tiempos->fetchAll(\PDO::FETCH_ASSOC);
@@ -158,7 +169,7 @@ class TmsDashboardController extends BaseController
         //    abajo). Un día suele tener pocas líneas — se resuelve con dos
         //    queries chicas por día en vez de una sola muy correlacionada,
         //    más fácil de verificar correcta.
-        $diasStmt = $pdo->prepare("{$cte} SELECT DISTINCT fecha_movimiento AS fecha FROM filtro ORDER BY fecha_movimiento");
+        $diasStmt = $pdo->prepare("{$cte} SELECT DISTINCT fecha_entrega AS fecha FROM filtro ORDER BY fecha_entrega");
         $diasStmt->execute($params);
         $dias = array_column($diasStmt->fetchAll(\PDO::FETCH_ASSOC), 'fecha');
 
@@ -171,7 +182,7 @@ class TmsDashboardController extends BaseController
                 SELECT COUNT(DISTINCT pd.producto_id)
                 FROM picking_detalles pd
                 WHERE pd.cantidad_pickeada > 0
-                  AND pd.orden_picking_id IN (SELECT orden_picking_id FROM filtro WHERE fecha_movimiento = :fecha_dia)
+                  AND pd.orden_picking_id IN (SELECT orden_picking_id FROM filtro WHERE fecha_entrega = :fecha_dia)
             ");
             $aptasDia->execute($paramsDia);
             $aptas = (int)$aptasDia->fetchColumn();
@@ -181,7 +192,7 @@ class TmsDashboardController extends BaseController
                 SELECT COUNT(DISTINCT dd.producto_id)
                 FROM devoluciones d
                 JOIN devolucion_detalles dd ON dd.devolucion_id = d.id
-                WHERE d.referencia_externa IN (SELECT orden_picking_id::text FROM filtro WHERE fecha_movimiento = :fecha_dia)
+                WHERE d.referencia_externa IN (SELECT orden_picking_id::text FROM filtro WHERE fecha_entrega = :fecha_dia)
             ");
             $conNovedadDia->execute($paramsDia);
             $conNov = (int)$conNovedadDia->fetchColumn();
@@ -224,7 +235,7 @@ class TmsDashboardController extends BaseController
         // ── Opciones de filtro (rango de fechas del filtro, sin más
         //    restricciones, para que los combos no se auto-encojan) ──────
         $filtroParams = [':emp' => $empresaId, ':desde' => $params[':desde'], ':hasta' => $params[':hasta']];
-        $filtroWhere  = 'op.empresa_id = :emp AND op.fecha_movimiento BETWEEN :desde AND :hasta';
+        $filtroWhere  = 'op.empresa_id = :emp AND COALESCE(er.hora_salida::date, er.hora_llegada::date, op.fecha_movimiento) BETWEEN :desde AND :hasta';
         if ($sucursalId) { $filtroWhere .= ' AND op.sucursal_id = :suc'; $filtroParams[':suc'] = $sucursalId; }
 
         $sucursalesOpt = $pdo->prepare("
@@ -292,7 +303,9 @@ class TmsDashboardController extends BaseController
         // solo debe mostrar el carro seleccionado".
         $enCurso  = ($esHoy && empty($p['vehiculo'])) ? TmsClient::visitasEnRuta() : [];
 
-        $where  = ['op.empresa_id = :emp', 'op.fecha_movimiento = :fecha', 'er.tracking_geo IS NOT NULL'];
+        // Filtra por la fecha REAL de la entrega (hora_salida/llegada), no por
+        // cuándo se pickeó el pedido — mismo fix que resumen() (2026-09-28).
+        $where  = ['op.empresa_id = :emp', 'COALESCE(er.hora_salida::date, er.hora_llegada::date, op.fecha_movimiento) = :fecha', 'er.tracking_geo IS NOT NULL'];
         $params = [':emp' => $empresaId, ':fecha' => $fecha];
         if ($sucursalId) { $where[] = 'op.sucursal_id = :suc'; $params[':suc'] = $sucursalId; }
         if (!empty($p['vehiculo'])) { $where[] = 'des.placa = :placa'; $params[':placa'] = $p['vehiculo']; }

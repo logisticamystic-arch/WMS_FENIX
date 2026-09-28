@@ -618,8 +618,21 @@ WMS_MODULES.tms = {
       </tr>`).join('');
   },
 
+  // El botón "Reabrir" solo aparece cuando el pedido ya está entregado o
+  // liquidado (ver _renderTablaReabrir) — nunca es un simple "refrescar". A
+  // pedido explícito de Camilo (2026-09-28, tras confundirlo con eso y
+  // borrar sin querer el registro de una entrega recién hecha): el aviso
+  // ahora dice explícitamente que la entrega ya realizada se BORRA y hay que
+  // rehacerla completa — no usar esto para "actualizar" el dashboard.
   async _reabrirPedido(ordenId) {
-    if (!confirm('¿Reabrir este pedido? El auxiliar podrá volver a tomarlo y registrar la entrega de nuevo desde cero en el TMS.')) return;
+    if (!confirm(
+      '⚠️ Este pedido YA fue entregado.\n\n' +
+      'Reabrirlo BORRA ese registro de entrega (firma, hora, novedades) y el ' +
+      'auxiliar tendrá que hacerla de nuevo completa desde el TMS.\n\n' +
+      'Úsalo solo si la entrega se hizo mal y hay que rehacerla — NO para ' +
+      '"actualizar" o "refrescar" el dashboard, eso ya se actualiza solo.\n\n' +
+      '¿Reabrir de todas formas?'
+    )) return;
     try {
       const r = await API.post(`/tms/dashboard/reabrir-pedidos/${ordenId}/reabrir`, {});
       if (r.error) throw new Error(r.message);
