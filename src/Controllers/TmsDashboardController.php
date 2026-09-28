@@ -27,7 +27,9 @@ class TmsDashboardController extends BaseController
             $where[] = 'op.sucursal_id = :suc';
             $params[':suc'] = $sucursalId;
         }
-        $desde = $p['fecha_desde'] ?? date('Y-m-d', strtotime('-30 days'));
+        // Default: día actual — a pedido explícito de Camilo (2026-09-29), antes
+        // arrancaba en los últimos 30 días.
+        $desde = $p['fecha_desde'] ?? date('Y-m-d');
         $hasta = $p['fecha_hasta'] ?? date('Y-m-d');
         $where[] = 'op.fecha_movimiento BETWEEN :desde AND :hasta';
         $params[':desde'] = $desde;
@@ -66,7 +68,8 @@ class TmsDashboardController extends BaseController
         // que desconectaría el filtro silenciosamente y contaría de más.
         $cte = "WITH filtro AS (
                     SELECT er.id, er.orden_picking_id, er.tiene_novedad, er.total_novedades,
-                           er.tiempo_demora_minutos, op.sucursal_entrega, op.fecha_movimiento
+                           er.tiempo_demora_minutos, er.auxiliar_nombre_ruta,
+                           op.sucursal_entrega, op.fecha_movimiento
                     FROM entregas_ruta er
                     JOIN orden_pickings op ON op.id = er.orden_picking_id
                     WHERE {$whereSql}
@@ -149,6 +152,75 @@ class TmsDashboardController extends BaseController
         $referencias->execute($params);
         $referencias = $referencias->fetchAll(\PDO::FETCH_ASSOC);
 
+        // ── Nivel de Servicio por día — a pedido explícito de Camilo
+        //    (2026-09-29), reemplaza el gráfico de "Referencias con más
+        //    novedades" (esa info ahora vive en el detalle de novedades más
+        //    abajo). Un día suele tener pocas líneas — se resuelve con dos
+        //    queries chicas por día en vez de una sola muy correlacionada,
+        //    más fácil de verificar correcta.
+        $diasStmt = $pdo->prepare("{$cte} SELECT DISTINCT fecha_movimiento AS fecha FROM filtro ORDER BY fecha_movimiento");
+        $diasStmt->execute($params);
+        $dias = array_column($diasStmt->fetchAll(\PDO::FETCH_ASSOC), 'fecha');
+
+        $nsPorDia = [];
+        foreach ($dias as $fecha) {
+            $paramsDia = $params + [':fecha_dia' => $fecha];
+
+            $aptasDia = $pdo->prepare("
+                {$cte}
+                SELECT COUNT(DISTINCT pd.producto_id)
+                FROM picking_detalles pd
+                WHERE pd.cantidad_pickeada > 0
+                  AND pd.orden_picking_id IN (SELECT orden_picking_id FROM filtro WHERE fecha_movimiento = :fecha_dia)
+            ");
+            $aptasDia->execute($paramsDia);
+            $aptas = (int)$aptasDia->fetchColumn();
+
+            $conNovedadDia = $pdo->prepare("
+                {$cte}
+                SELECT COUNT(DISTINCT dd.producto_id)
+                FROM devoluciones d
+                JOIN devolucion_detalles dd ON dd.devolucion_id = d.id
+                WHERE d.referencia_externa IN (SELECT orden_picking_id::text FROM filtro WHERE fecha_movimiento = :fecha_dia)
+            ");
+            $conNovedadDia->execute($paramsDia);
+            $conNov = (int)$conNovedadDia->fetchColumn();
+
+            $sinNov = max(0, $aptas - $conNov);
+            $nsPorDia[] = [
+                'fecha'   => $fecha,
+                'ns_pct'  => $aptas > 0 ? round($sinNov / $aptas * 100, 1) : null,
+            ];
+        }
+
+        // ── Matriz de tiempos de demora por sucursal ─────────────────────
+        $matrizDemora = $pdo->prepare("
+            {$cte}
+            SELECT sucursal_entrega AS sucursal, COUNT(*) AS entregas,
+                   ROUND(AVG(tiempo_demora_minutos)::numeric, 1) AS promedio,
+                   MIN(tiempo_demora_minutos) AS minimo, MAX(tiempo_demora_minutos) AS maximo
+            FROM filtro WHERE tiempo_demora_minutos IS NOT NULL
+            GROUP BY sucursal_entrega ORDER BY promedio DESC
+        ");
+        $matrizDemora->execute($params);
+        $matrizDemora = $matrizDemora->fetchAll(\PDO::FETCH_ASSOC);
+
+        // ── Detalle de novedades (una fila por referencia devuelta) ──────
+        $detalleNovedades = $pdo->prepare("
+            {$cte}
+            SELECT d.consecutivo_devolucion AS consecutivo, d.fecha_movimiento AS fecha,
+                   f.sucursal_entrega AS sucursal, f.auxiliar_nombre_ruta AS auxiliar,
+                   pr.codigo_interno AS codigo, pr.nombre, cd.causal, dd.cantidad
+            FROM devoluciones d
+            JOIN devolucion_detalles dd ON dd.devolucion_id = d.id
+            JOIN productos pr ON pr.id = dd.producto_id
+            JOIN filtro f ON f.orden_picking_id::text = d.referencia_externa
+            LEFT JOIN causales_devolucion cd ON cd.id = d.causal_devolucion_id
+            ORDER BY d.fecha_movimiento DESC, d.id DESC LIMIT 200
+        ");
+        $detalleNovedades->execute($params);
+        $detalleNovedades = $detalleNovedades->fetchAll(\PDO::FETCH_ASSOC);
+
         // ── Opciones de filtro (rango de fechas del filtro, sin más
         //    restricciones, para que los combos no se auto-encojan) ──────
         $filtroParams = [':emp' => $empresaId, ':desde' => $params[':desde'], ':hasta' => $params[':hasta']];
@@ -183,8 +255,11 @@ class TmsDashboardController extends BaseController
                 'refs_sin_novedad'     => $refsSinNovedad,
             ],
             'tiempos_por_dia'    => $tiempos,
+            'ns_por_dia'         => $nsPorDia,
+            'matriz_demora'      => $matrizDemora,
             'top_sucursales'     => $sucursales,
             'top_referencias'    => $referencias,
+            'detalle_novedades'  => $detalleNovedades,
             'filtros' => [
                 'sucursales' => $sucursalesOpt,
                 'auxiliares' => $auxiliaresOpt,
@@ -193,29 +268,38 @@ class TmsDashboardController extends BaseController
     }
 
     // Mapa "en tiempo real": visitas aún no confirmadas (en curso, leídas al
-    // vuelo del TMS) + últimas entregas YA confirmadas hoy (con su punto de
-    // llegada/salida, ya persistido en el WMS) — ver comentario en TmsClient.
+    // vuelo del TMS, siempre "hoy" — no tiene sentido filtrar por fecha algo
+    // que por definición está pasando ahora) + entregas YA confirmadas del
+    // día filtrado (con su punto de llegada/salida, ya persistido en el WMS)
+    // — ver comentario en TmsClient. A pedido explícito de Camilo
+    // (2026-09-29): filtro de fecha (default hoy) + vehículo, y el
+    // "recorrido" armado como una polylínea por auxiliar (los puntos
+    // llegada/salida de cada parada, en orden cronológico).
     public function mapa(Request $request, Response $response): Response
     {
         $user       = $request->getAttribute('user');
         $empresaId  = $this->getEffectiveEmpresaId($user, $request);
         $sucursalId = $this->getEffectiveSucursalId($user, $request);
         $pdo        = Capsule::connection()->getPdo();
+        $p          = $request->getQueryParams();
 
-        $enCurso = TmsClient::visitasEnRuta();
+        $fecha    = $p['fecha'] ?? date('Y-m-d');
+        $esHoy    = $fecha === date('Y-m-d');
+        $enCurso  = $esHoy ? TmsClient::visitasEnRuta() : [];
+
+        $where  = ['op.empresa_id = :emp', 'op.fecha_movimiento = :fecha', 'er.tracking_geo IS NOT NULL'];
+        $params = [':emp' => $empresaId, ':fecha' => $fecha];
+        if ($sucursalId) { $where[] = 'op.sucursal_id = :suc'; $params[':suc'] = $sucursalId; }
+        if (!empty($p['vehiculo'])) { $where[] = 'des.placa = :placa'; $params[':placa'] = $p['vehiculo']; }
 
         $stmt = $pdo->prepare("
             SELECT op.sucursal_entrega AS sucursal, er.auxiliar_nombre_ruta AS auxiliar_nombre,
-                   er.hora_llegada, er.hora_salida, er.tracking_geo, er.tiene_novedad
+                   er.hora_llegada, er.hora_salida, er.tracking_geo, er.tiene_novedad, des.placa
             FROM entregas_ruta er
             JOIN orden_pickings op ON op.id = er.orden_picking_id
-            WHERE op.empresa_id = :emp
-              " . ($sucursalId ? 'AND op.sucursal_id = :suc' : '') . "
-              AND op.fecha_movimiento = CURRENT_DATE
-              AND er.tracking_geo IS NOT NULL
+            LEFT JOIN despachos des ON des.id = er.despacho_id
+            WHERE " . implode(' AND ', $where) . "
         ");
-        $params = [':emp' => $empresaId];
-        if ($sucursalId) $params[':suc'] = $sucursalId;
         $stmt->execute($params);
 
         $confirmadas = [];
@@ -224,6 +308,7 @@ class TmsDashboardController extends BaseController
             $confirmadas[] = [
                 'sucursal'        => $r['sucursal'],
                 'auxiliar_nombre' => $r['auxiliar_nombre'],
+                'placa'           => $r['placa'],
                 'estado'          => 'entregado',
                 'tiene_novedad'   => (bool)$r['tiene_novedad'],
                 'hora_llegada'    => $r['hora_llegada'],
@@ -232,9 +317,55 @@ class TmsDashboardController extends BaseController
             ];
         }
 
+        // ── Recorrido: une los puntos de cada auxiliar en orden cronológico
+        //    (llegada/salida de cada parada confirmada + el último punto en
+        //    curso, si aplica) para poder dibujar la ruta recorrida hasta el
+        //    momento, no solo marcadores sueltos.
+        $rutas = [];
+        foreach ($confirmadas as $c) {
+            if (empty($c['auxiliar_nombre'])) continue;
+            $aux = $c['auxiliar_nombre'];
+            $rutas[$aux] = $rutas[$aux] ?? [];
+            foreach (['llegada', 'salida'] as $evento) {
+                $pt = $c['puntos'][$evento] ?? null;
+                if (!$pt) continue;
+                $hora = $evento === 'llegada' ? $c['hora_llegada'] : $c['hora_salida'];
+                $rutas[$aux][] = ['lat' => $pt['lat'], 'lng' => $pt['lng'], 'hora' => $hora, 'sucursal' => $c['sucursal'], 'evento' => $evento];
+            }
+        }
+        if ($esHoy) {
+            foreach ($enCurso as $v) {
+                if (empty($v['auxiliar_nombre']) || empty($v['ultimo_punto'])) continue;
+                $rutas[$v['auxiliar_nombre']] = $rutas[$v['auxiliar_nombre']] ?? [];
+                $rutas[$v['auxiliar_nombre']][] = [
+                    'lat' => $v['ultimo_punto']['lat'], 'lng' => $v['ultimo_punto']['lng'],
+                    'hora' => $v['hora_llegada'], 'sucursal' => $v['sucursal'], 'evento' => 'en_ruta',
+                ];
+            }
+        }
+        foreach ($rutas as $aux => $puntos) {
+            usort($puntos, fn($a, $b) => strcmp($a['hora'] ?? '', $b['hora'] ?? ''));
+            $rutas[$aux] = $puntos;
+        }
+
+        $vehiculosOpt = $pdo->prepare("
+            SELECT DISTINCT des.placa FROM entregas_ruta er
+            JOIN orden_pickings op ON op.id = er.orden_picking_id
+            JOIN despachos des ON des.id = er.despacho_id
+            WHERE op.empresa_id = :emp AND des.placa IS NOT NULL
+            " . ($sucursalId ? 'AND op.sucursal_id = :suc' : '') . "
+            ORDER BY 1
+        ");
+        $vehiculosParams = [':emp' => $empresaId];
+        if ($sucursalId) $vehiculosParams[':suc'] = $sucursalId;
+        $vehiculosOpt->execute($vehiculosParams);
+        $vehiculosOpt = array_column($vehiculosOpt->fetchAll(\PDO::FETCH_ASSOC), 'placa');
+
         return $this->json($response, ['error' => false, 'data' => [
             'en_curso'    => $enCurso,
             'confirmadas' => $confirmadas,
+            'rutas'       => $rutas,
+            'filtros'     => ['fecha' => $fecha, 'vehiculos' => $vehiculosOpt],
         ]]);
     }
 }
