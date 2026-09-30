@@ -220,11 +220,30 @@ class InventarioController extends BaseController
 
         // ── Guard de integridad: verificar stock en origen antes de abrir la TX ─
         $loteGuard = trim((string)($data['lote'] ?? '')) ?: null;
-        $guard = new InventoryGuard($empresaId, $sucursalId, $user->id);
-        $numeroPalletGuard = !empty($data['numero_pallet']) ? (int)$data['numero_pallet'] : null;
+        $productoGuard = \App\Models\Producto::where('empresa_id', $empresaId)->find((int)$data['producto_id']);
         // fecha_vencimiento se resuelve antes del guard: es el criterio primario para
         // acotar la suma de stock a la partida exacta (ver InventoryGuard::canTransfer).
         $fvencParsed = $this->estandarizarFecha($data['fecha_vencimiento'] ?? null);
+        $sinLote = $loteGuard === null || $loteGuard === 'N/A' || $loteGuard === '-';
+        if ($productoGuard && $productoGuard->controla_lote && $sinLote) {
+            // El lote solo se exige si la mercancía en la ubicación origen TIENE lote
+            // (a pedido de Camilo, 2026-09-30). Si se cargó sin lote (ej. inventario
+            // general digitado sin lote), se traslada esa misma partida sin lote:
+            // exigirlo dejaba la mercancía bloqueada en la ubicación.
+            $haySinLote = Inventario::where('empresa_id', $empresaId)
+                ->where('sucursal_id', $sucursalId)
+                ->where('producto_id', (int)$data['producto_id'])
+                ->where('ubicacion_id', (int)$data['ubicacion_origen_id'])
+                ->where('cantidad', '>', 0)
+                ->whereRaw("(lote IS NULL OR TRIM(lote) IN ('', '-') OR UPPER(TRIM(lote)) = 'N/A')")
+                ->when($fvencParsed, fn($q) => $q->whereDate('fecha_vencimiento', $fvencParsed))
+                ->exists();
+            if (!$haySinLote) {
+                return $this->error($res, "El lote es obligatorio para el producto {$productoGuard->nombre}: la mercancía en esta ubicación tiene lote asignado.", 422);
+            }
+        }
+        $guard = new InventoryGuard($empresaId, $sucursalId, $user->id);
+        $numeroPalletGuard = !empty($data['numero_pallet']) ? (int)$data['numero_pallet'] : null;
         $check = $guard->canTransfer(
             $data['producto_id'],
             $cantidad,
@@ -247,7 +266,7 @@ class InventarioController extends BaseController
             Capsule::transaction(function () use ($data, $user, $cantidad, $empresaId, $sucursalId) {
                 $lote  = trim((string)($data['lote'] ?? ''));
                 $fvenc = trim((string)($data['fecha_vencimiento'] ?? ''));
-                if ($lote === '') {
+                if ($lote === '' || $lote === '-' || strtoupper($lote) === 'N/A') {
                     $lote = null;
                 }
                 if ($fvenc === '') {
@@ -265,7 +284,8 @@ class InventarioController extends BaseController
                     ->whereIn('estado',       ['Disponible', 'En Patio'])
                     ->when($lote !== null, fn($q) => $q->where('lote', $lote))
                     ->when($lote === null, fn($q) => $q->where(function ($sub) {
-                        $sub->whereNull('lote')->orWhere('lote', 'N/A');
+                        // Mismo criterio de "sin lote" que la validación de arriba.
+                        $sub->whereNull('lote')->orWhereRaw("TRIM(lote) IN ('', '-') OR UPPER(TRIM(lote)) = 'N/A'");
                     }))
                     ->when($fvenc, fn($q) => $q->where('fecha_vencimiento', $fvenc))
                     ->when(!empty($data['numero_pallet']), fn($q) => $q->where('numero_pallet', $data['numero_pallet']))
@@ -421,6 +441,12 @@ class InventarioController extends BaseController
         $required = ['producto_id', 'ubicacion_id', 'cantidad_nueva', 'motivo'];
         foreach ($required as $f) {
             if (!isset($data[$f])) return $this->error($res, "Campo requerido: {$f}");
+        }
+
+        $productoAjusteGuard = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))->find((int)$data['producto_id']);
+        $loteAjusteGuard = trim((string)($data['lote'] ?? ''));
+        if ($productoAjusteGuard && $productoAjusteGuard->controla_lote && ($loteAjusteGuard === '' || $loteAjusteGuard === 'N/A' || $loteAjusteGuard === '-')) {
+            return $this->error($res, "El lote es obligatorio para el producto {$productoAjusteGuard->nombre}.", 422);
         }
 
         try {
@@ -873,9 +899,14 @@ class InventarioController extends BaseController
         ])->sum('cantidad');
 
         // Calcular descomposición del sistema para comparación en frontend
-        $productoLinea = \App\Models\Producto::select('unidades_caja')->find($productoId);
+        $productoLinea = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))->find($productoId);
         $upcLinea = max(1, (int)(($productoLinea->unidades_caja ?? null) ?: 1));
         [$cajasSistema, $saldosSistema] = $this->calcularCajasSaldos($cantSistema, $upcLinea);
+
+        $loteConteo = trim((string)($data['lote_leido'] ?? ($data['lote'] ?? '')));
+        if ($productoLinea && $productoLinea->controla_lote && ($loteConteo === '' || $loteConteo === 'N/A' || $loteConteo === '-')) {
+            return $this->error($res, "El lote es obligatorio para el producto {$productoLinea->nombre}.", 422);
+        }
 
         try {
             // Buscamos si ya existe la línea para esta ronda
@@ -1525,6 +1556,12 @@ class InventarioController extends BaseController
         $cantidad = (float)($data['cantidad'] ?? 0);
         $ciclo = (int)($data['ciclo'] ?? 1); // 1 = Primer conteo
 
+        $productoConteoGeneral = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))->find((int)$productoId);
+        $loteConteoGeneral = trim((string)($lote ?? ''));
+        if ($productoConteoGeneral && $productoConteoGeneral->controla_lote && ($loteConteoGeneral === '' || $loteConteoGeneral === 'N/A' || $loteConteoGeneral === '-')) {
+            return $this->error($res, "El lote es obligatorio para el producto {$productoConteoGeneral->nombre}.", 422);
+        }
+
         // 1. Validar si la ubicación ya fue contada por OTRO en el MISMO ciclo
         $otroConteo = InvGeneralConteo::where('evento_id', $eventoId)
             ->where('ubicacion_id', $ubicacionId)
@@ -2130,6 +2167,11 @@ class InventarioController extends BaseController
                 $producto = Producto::where('empresa_id', $empId)->find($productoId);
                 if (!$producto) {
                     return $this->error($res, "Producto ID {$productoId} no encontrado", 404);
+                }
+
+                $loteTrim = trim((string)($lote ?? ''));
+                if ($producto->controla_lote && ($loteTrim === '' || $loteTrim === 'N/A' || $loteTrim === '-')) {
+                    return $this->error($res, "Producto '{$producto->nombre}': el lote es obligatorio.", 400);
                 }
 
                 $fvencParsed = $this->estandarizarFecha($linea['fecha_vencimiento'] ?? null);

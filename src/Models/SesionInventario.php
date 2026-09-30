@@ -123,58 +123,58 @@ class SesionInventario extends BaseModel
     }
 
     /**
-     * Para General con 2 conteos: verifica si el conteo 1 y conteo 2
-     * coinciden en referencia + ubicación + cantidad (sin diferencias).
-     * Retorna array: ['ok' => bool, 'diferencias' => [...]]
+     * Comparativo entre rondas POR REFERENCIA (producto), solo sobre las
+     * referencias que se enviaron a recontar (segundo/tercer conteo).
+     *
+     * Antes comparaba toda la ronda 1 contra toda la ronda 2 por
+     * producto+ubicación+lote, asumiendo un segundo conteo COMPLETO — pero los
+     * segundos conteos del sistema son parciales (solo las referencias con
+     * diferencia, ver crearSegundosConteosBatch()), así que todo lo no
+     * recontado salía como "diferencia" y el ajuste de un General con 2
+     * conteos quedaba bloqueado siempre (auditoría 2026-09-28).
+     *
+     * Por referencia recontada:
+     *   R1 == R2            → 'Confirmado'    (vale R2)
+     *   R1 != R2, con R3    → 'Resuelto R3'   (vale R3)
+     *   R1 != R2, sin R3    → 'Sin confirmar' (vale R2; si la sesión tiene
+     *                          3 conteos configurados, bloquea el ajuste)
+     * Retorna ['ok' => bool, 'diferencias' => [...], 'referencias' => [...]]
+     * donde 'diferencias' son las 'Sin confirmar'.
      */
     public function verificarConsistenciaRondas(): array
     {
-        if ($this->num_conteos < 2) {
-            return ['ok' => true, 'diferencias' => []];
+        $porProducto = [];
+        foreach ($this->lineas()->where('estado', 'Activo')->get(['producto_id', 'ronda', 'cantidad_contada']) as $l) {
+            $porProducto[$l->producto_id][$l->ronda] = ($porProducto[$l->producto_id][$l->ronda] ?? 0) + (float)$l->cantidad_contada;
+        }
+        // Una referencia recontada sin encontrar nada no deja líneas en esa
+        // ronda: su conteo es 0, no "no recontada".
+        $recontadas = $this->asignaciones()
+            ->where('ronda', '>=', 2)->where('estado', 'Finalizado')->whereNotNull('producto_id')
+            ->get(['producto_id', 'ronda']);
+        foreach ($recontadas as $a) {
+            $porProducto[$a->producto_id][$a->ronda] = $porProducto[$a->producto_id][$a->ronda] ?? 0.0;
         }
 
-        $ronda1 = $this->lineas()
-            ->where('ronda', 1)->where('estado', 'Activo')
-            ->get()
-            ->keyBy(fn($l) => $l->producto_id . '_' . $l->ubicacion_id . '_' . ($l->lote ?? ''));
-
-        $ronda2 = $this->lineas()
-            ->where('ronda', 2)->where('estado', 'Activo')
-            ->get()
-            ->keyBy(fn($l) => $l->producto_id . '_' . $l->ubicacion_id . '_' . ($l->lote ?? ''));
-
+        $referencias = [];
         $diferencias = [];
-
-        foreach ($ronda1 as $key => $l1) {
-            $l2 = $ronda2->get($key);
-            if (!$l2 || $l2->cantidad_contada !== $l1->cantidad_contada) {
-                $diferencias[] = [
-                    'producto_id'     => $l1->producto_id,
-                    'ubicacion_id'    => $l1->ubicacion_id,
-                    'lote'            => $l1->lote,
-                    'cantidad_ronda1' => $l1->cantidad_contada,
-                    'cantidad_ronda2' => $l2 ? $l2->cantidad_contada : null,
-                ];
-            }
+        foreach ($porProducto as $prodId => $r) {
+            if (!isset($r[2])) continue;
+            $r1 = $r[1] ?? 0.0;
+            $r2 = $r[2];
+            $r3 = $r[3] ?? null;
+            $estado = abs($r1 - $r2) < 0.0001 ? 'Confirmado' : ($r3 !== null ? 'Resuelto R3' : 'Sin confirmar');
+            $fila = [
+                'producto_id'     => $prodId,
+                'cantidad_ronda1' => $r1,
+                'cantidad_ronda2' => $r2,
+                'cantidad_ronda3' => $r3,
+                'estado'          => $estado,
+            ];
+            $referencias[] = $fila;
+            if ($estado === 'Sin confirmar') $diferencias[] = $fila;
         }
 
-        // Referencias en ronda2 que no están en ronda1
-        foreach ($ronda2 as $key => $l2) {
-            if (!$ronda1->has($key)) {
-                $diferencias[] = [
-                    'producto_id'     => $l2->producto_id,
-                    'ubicacion_id'    => $l2->ubicacion_id,
-                    'lote'            => $l2->lote,
-                    'cantidad_ronda1' => null,
-                    'cantidad_ronda2' => $l2->cantidad_contada,
-                ];
-            }
-        }
-
-        return ['ok' => empty($diferencias), 'diferencias' => $diferencias];
+        return ['ok' => empty($diferencias), 'diferencias' => $diferencias, 'referencias' => $referencias];
     }
 }
-
-
-
-

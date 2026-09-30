@@ -467,6 +467,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     
     // Módulo Calidad (Recepción sin ODC)
     $group->get('/recepciones/{id}/calidad', [\App\Controllers\RecepcionController::class, 'obtenerCalidad']);
+    $group->get('/recepciones/{id}/calidad-pendiente', [\App\Controllers\RecepcionController::class, 'calidadPendiente']);
     $group->post('/recepciones/{id}/calidad', [\App\Controllers\RecepcionController::class, 'guardarCalidad']);
     $group->get('/recepciones/detalles/{detalleId}/calidad', [\App\Controllers\RecepcionController::class, 'obtenerCalidadDetalle']);
     $group->post('/recepciones/detalles/{detalleId}/calidad', [\App\Controllers\RecepcionController::class, 'guardarCalidadDetalle']);
@@ -613,8 +614,6 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     // ── Ajustes desde el dashboard ─────────────────────────────────────────
     $group->post('/v2/inventario/sesiones/{id}/ajustar-linea', [\App\Controllers\InventarioV2Controller::class, 'ajustarLinea']);
     $group->post('/v2/inventario/sesiones/{id}/ajustar-todo',  [\App\Controllers\InventarioV2Controller::class, 'ajustarTodo']);
-    // ── Análisis ML: referencias no contadas (preview, sin ejecutar ajuste) ─
-    $group->get('/v2/inventario/sesiones/{id}/ml-analisis',    [\App\Controllers\InventarioV2Controller::class, 'mlAnalisis']);
     $group->post('/v2/inventario/sesiones/{id}/conteo-manual', [\App\Controllers\InventarioV2Controller::class, 'addManualLinea']);
     $group->get('/v2/inventario/sesiones/{id}/mis-lineas',     [\App\Controllers\InventarioV2Controller::class, 'getMisLineas']);
     $group->get('/v2/inventario/productos/{id}/fechas-vencimiento', [\App\Controllers\InventarioV2Controller::class, 'getUltimasFechasVencimiento']);

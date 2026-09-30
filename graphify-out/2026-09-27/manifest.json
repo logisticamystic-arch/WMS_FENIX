@@ -735,8 +735,8 @@
     "semantic_hash": ""
   },
   "public/index.php": {
-    "mtime": 1790547834.6455114,
-    "ast_hash": "9e3792ee53549bf59fade55384a5117d",
+    "mtime": 1790564964.9326928,
+    "ast_hash": "64011ca6467638f2e438a00c557ae16b",
     "semantic_hash": ""
   },
   "public/manifest.json": {
@@ -890,8 +890,8 @@
     "semantic_hash": ""
   },
   "src/Controllers/DespachoController.php": {
-    "mtime": 1790562479.102741,
-    "ast_hash": "9a9545c6d4c5d19b135c83a6dcd6307d",
+    "mtime": 1790564912.3099792,
+    "ast_hash": "8da805d74942e9c5554b7b1e32e99923",
     "semantic_hash": ""
   },
   "src/Controllers/DevolucionController.php": {
@@ -2145,8 +2145,8 @@
     "semantic_hash": ""
   },
   "public/assets/js/desktop/tms-dashboard.js": {
-    "mtime": 1790548414.9522102,
-    "ast_hash": "e40753a56688a921c7687c11a9b539fa",
+    "mtime": 1790565042.9818468,
+    "ast_hash": "12b02d7dffd35afb59644999e17121a6",
     "semantic_hash": ""
   },
   "scripts/tms_push_pedidos.php": {
@@ -2155,18 +2155,18 @@
     "semantic_hash": ""
   },
   "src/Controllers/TmsDashboardController.php": {
-    "mtime": 1790548303.3145323,
-    "ast_hash": "fedef220d314a2bc8028cbaee88f2a3b",
+    "mtime": 1790564944.3397346,
+    "ast_hash": "bc4f82e6e400915764b5be258f2965b6",
     "semantic_hash": ""
   },
   "src/Helpers/TmsClient.php": {
-    "mtime": 1790547787.2009578,
-    "ast_hash": "cf1a8488b6df9a0c6be6b3e6a5b42e42",
+    "mtime": 1790564870.5297287,
+    "ast_hash": "cc2a8a96e37a5e5dcb49a96344fd2bf0",
     "semantic_hash": ""
   },
   "src/Helpers/TmsPush.php": {
-    "mtime": 1790538541.9708395,
-    "ast_hash": "f413b9eaaeec8840df7076b401c696ca",
+    "mtime": 1790564713.125302,
+    "ast_hash": "de43e3ea98d6ac3692f6bb53536a9087",
     "semantic_hash": ""
   },
   "database/migrations/159_permiso_tms_dashboard.php": {

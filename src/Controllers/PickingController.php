@@ -2472,27 +2472,76 @@ class PickingController extends BaseController
         $user = $r->getAttribute('user');
         $data = $r->getParsedBody() ?? [];
 
-        $fromId  = (int)($data['from_auxiliar_id'] ?? 0);
-        $toId    = (int)($data['to_auxiliar_id'] ?? 0);
-        $ordenId = (int)($data['orden_id'] ?? 0);
+        // Cambio de auxiliares desde la planilla (Picking > Pedidos): acepta
+        // cambios[{from_auxiliar_id,to_auxiliar_id}] + orden_ids[], además del
+        // formato legacy (un from/to + orden_id). Las líneas ya separadas
+        // (Completado/Faltante) conservan su auxiliar para no alterar ranking ni trazabilidad.
+        $cambios = [];
+        foreach ($data['cambios'] ?? [['from_auxiliar_id' => $data['from_auxiliar_id'] ?? 0, 'to_auxiliar_id' => $data['to_auxiliar_id'] ?? 0]] as $c) {
+            $from = (int)($c['from_auxiliar_id'] ?? 0);
+            $to   = (int)($c['to_auxiliar_id'] ?? 0);
+            if ($from && $to && $from !== $to) $cambios[$from] = $to;
+        }
+        $ordenIds = array_values(array_filter(array_map('intval', $data['orden_ids'] ?? [(int)($data['orden_id'] ?? 0)])));
 
-        if (!$fromId || !$toId) {
-            return $this->error($res, 'Auxiliares origen y destino son requeridos');
+        if (empty($cambios) || empty($ordenIds)) {
+            return $this->error($res, 'Auxiliares origen, destino y pedidos son requeridos');
         }
 
-        try {
-            $movidas = Capsule::transaction(function () use ($fromId, $toId, $ordenId) {
-                $q = PickingDetalle::where('auxiliar_id', $fromId)
-                    ->whereIn('estado', ['Pendiente', 'EnProceso', 'PendienteReabastecimiento']);
-                
-                if ($ordenId > 0) {
-                    $q->where('orden_picking_id', $ordenId);
-                }
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $ordenIds  = OrdenPicking::where('empresa_id', $empresaId)
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereIn('id', $ordenIds)
+            ->pluck('id')->toArray();
+        if (empty($ordenIds)) return $this->notFound($res);
 
-                return $q->update(['auxiliar_id' => $toId]);
+        try {
+            $now = date('Y-m-d H:i:s');
+            $movidas = Capsule::transaction(function () use ($cambios, $ordenIds, $now) {
+                // IDs primero, update después: así A→B y B→C en el mismo envío
+                // (o un intercambio A↔B) no encadenan las líneas de A hasta C.
+                $lineasPorAux = [];
+                $ordenesPorAux = [];
+                foreach ($cambios as $from => $to) {
+                    $lineasPorAux[$from] = PickingDetalle::where('auxiliar_id', $from)
+                        ->whereIn('orden_picking_id', $ordenIds)
+                        ->whereIn('estado', ['Pendiente', 'Creado', 'EnProceso', 'PendienteReabastecimiento'])
+                        ->pluck('id')->toArray();
+                    $ordenesPorAux[$from] = OrdenPicking::whereIn('id', $ordenIds)
+                        ->where('auxiliar_id', $from)->pluck('id')->toArray();
+                }
+                $movidas = [];
+                foreach ($cambios as $from => $to) {
+                    if (empty($lineasPorAux[$from])) continue;
+                    PickingDetalle::whereIn('id', $lineasPorAux[$from])
+                        ->update(['auxiliar_id' => $to, 'updated_at' => $now]);
+                    // El listado móvil también filtra por orden_pickings.auxiliar_id:
+                    // sin esto el auxiliar anterior seguiría viendo el pedido en su cola.
+                    if (!empty($ordenesPorAux[$from])) {
+                        OrdenPicking::whereIn('id', $ordenesPorAux[$from])
+                            ->update(['auxiliar_id' => $to, 'updated_at' => $now]);
+                    }
+                    $movidas[$from] = count($lineasPorAux[$from]);
+                }
+                return $movidas;
             });
 
-            return $this->ok($res, ['movidas' => $movidas], "Se transfirieron $movidas tareas exitosamente.");
+            foreach ($movidas as $from => $n) {
+                $to = $cambios[$from];
+                \App\Controllers\NotificacionesController::crear(
+                    $empresaId, $to,
+                    'Tareas de Picking Asignadas',
+                    "Se le transfirieron {$n} línea(s) de separación.",
+                    'picking', $user->id, 'Picking', null, 'viewPicking', 'Picking',
+                    true, $user->sucursal_id
+                );
+                $this->audit($user, 'picking', 'transferir_auxiliar', 'orden_pickings', null,
+                    ['auxiliar_id' => $from], ['auxiliar_id' => $to, 'orden_ids' => $ordenIds, 'lineas' => $n],
+                    "Transferidas {$n} líneas de auxiliar {$from} a {$to}");
+            }
+
+            $total = array_sum($movidas);
+            return $this->ok($res, ['movidas' => $total], "Se transfirieron $total tareas exitosamente.");
         } catch (\Exception $e) {
             return $this->error($res, 'Error en transferencia: ' . $e->getMessage());
         }
@@ -9942,6 +9991,11 @@ class PickingController extends BaseController
 
         $producto = \App\Models\Producto::find($productoId);
         if (!$producto) return $this->error($res, 'Producto no encontrado', 404);
+
+        $loteTrim = trim((string)($lote ?? ''));
+        if ($producto->controla_lote && ($loteTrim === '' || $loteTrim === 'N/A' || $loteTrim === '-')) {
+            return $this->error($res, "El lote es obligatorio para el producto {$producto->nombre}.", 422);
+        }
 
         $ambienteCodigo = $this->_clasificarAmbiente($producto);
 

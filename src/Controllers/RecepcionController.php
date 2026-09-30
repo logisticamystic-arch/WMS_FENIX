@@ -56,6 +56,62 @@ class RecepcionController extends BaseController
     }
 
     /**
+     * Referencias (productos) no-CDP de la recepción sin Auditoría de Calidad completa.
+     * Se evalúa por REFERENCIA, no por línea (Camilo, 2026-09-28): la misma
+     * referencia llega en varios pallets = varias líneas, y basta con una
+     * inspección completa de esa referencia en la recepción. Antes se exigía por
+     * línea y el mensaje solo mostraba el código, así que el auxiliar veía
+     * "falta 109011" aunque ya la había inspeccionado (rec. 236).
+     * Devuelve [{producto_id, codigo, nombre, detalle_id}] — detalle_id es la
+     * línea sobre la cual el móvil abre la inspección.
+     */
+    private function referenciasSinCalidad(Recepcion $recepcion): array
+    {
+        $porProducto = [];
+        foreach ($recepcion->detalles as $linea) {
+            if ($linea->aprobado_admin || $this->esProveedorCdp($linea->proveedor)) {
+                continue;
+            }
+            $cal = \App\Models\RecepcionDetalleCalidad::where('recepcion_detalle_id', $linea->id)->first();
+            $completa = $cal && $cal->olor && $cal->color && $cal->textura
+                && $cal->temperatura && $cal->empaque && $cal->rotulado;
+            $p = &$porProducto[$linea->producto_id];
+            $p['ok'] = ($p['ok'] ?? false) || $completa;
+            $p['linea'] = $p['linea'] ?? $linea;
+            unset($p);
+        }
+        $out = [];
+        foreach ($porProducto as $prodId => $p) {
+            if ($p['ok']) continue;
+            $prod = $p['linea']->producto;
+            $out[] = [
+                'producto_id' => $prodId,
+                'codigo'      => $prod?->codigo_interno ?? $prod?->nombre ?? ('Ref #' . $prodId),
+                'nombre'      => $prod?->nombre ?? '',
+                'detalle_id'  => $p['linea']->id,
+            ];
+        }
+        return $out;
+    }
+
+    // ── GET /api/recepciones/{id}/calidad-pendiente ──────────────────────────
+    // Pre-validación del botón "Cerrar y enviar registros" (móvil).
+    public function calidadPendiente(Request $request, Response $response, array $args): Response
+    {
+        $user = $request->getAttribute('user');
+        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $request))
+            ->with('detalles.producto')->find((int)($args['id'] ?? 0));
+        if (!$recepcion || $recepcion->sucursal_id !== $user->sucursal_id) {
+            return $this->json($response, ['error' => true, 'message' => 'Recepción no encontrada.'], 404);
+        }
+        return $this->ok($response, [
+            'estado'     => $recepcion->estado,
+            'lineas'     => $recepcion->detalles->count(),
+            'pendientes' => $this->referenciasSinCalidad($recepcion),
+        ]);
+    }
+
+    /**
      * GET /api/recepciones
      * Listar recepciones
      */
@@ -327,7 +383,11 @@ class RecepcionController extends BaseController
         $detalle->cantidad_recibida  = $cantidad_recibida;
         $detalle->cantidad_cajas     = $cantidad_cajas ?? ceil((float)$cantidad_recibida / $cajasUnd);
         $detalle->cajas_por_unidad   = $cajasUnd;
-        $detalle->lote = $data['lote'] ?? null;
+        $lote = trim((string)($data['lote'] ?? ''));
+        if ($producto->controla_lote && ($lote === '' || $lote === 'N/A' || $lote === '-')) {
+            return $this->json($response, ['error' => true, 'message' => "El lote es obligatorio para el producto {$producto->nombre}."], 422);
+        }
+        $detalle->lote = $lote !== '' ? $lote : null;
         $detalle->fecha_vencimiento = $fecha_vencimiento;
         $detalle->estado_mercancia = $data['estado_mercancia'] ?? 'BuenEstado';
         $detalle->novedad_motivo = $data['novedad_motivo'] ?? null;
@@ -459,7 +519,11 @@ class RecepcionController extends BaseController
         $detalle->cantidad_recibida  = $cantidad;           // siempre en UNIDADES
         $detalle->cantidad_cajas     = $cantidadCajas;      // snapshot de cajas físicas
         $detalle->cajas_por_unidad   = $cajasUnd;           // snapshot del factor de conversión
-        $detalle->lote = $data['lote'] ?? null;
+        $lote = trim((string)($data['lote'] ?? ''));
+        if ($producto->controla_lote && ($lote === '' || $lote === 'N/A' || $lote === '-')) {
+            return $this->json($response, ['error' => true, 'message' => "El lote es obligatorio para el producto {$producto->nombre}."], 422);
+        }
+        $detalle->lote = $lote !== '' ? $lote : null;
         $detalle->fecha_vencimiento = $this->estandarizarFecha($data['fecha_vencimiento'] ?? null);
         $detalle->estado_mercancia = $data['estado_mercancia'] ?? 'BuenEstado';
         $detalle->novedad_motivo = $data['novedad_motivo'] ?? null;
@@ -853,7 +917,11 @@ class RecepcionController extends BaseController
         $detalle->cantidad_recibida  = $cantidad;
         $detalle->cantidad_cajas     = $cantidadCajas;
         $detalle->cajas_por_unidad   = $cajasUnd;
-        $detalle->lote               = $data['lote'] ?? null;
+        $lote = trim((string)($data['lote'] ?? ''));
+        if ($producto->controla_lote && ($lote === '' || $lote === 'N/A' || $lote === '-')) {
+            return $this->json($response, ['error' => true, 'message' => "El lote es obligatorio para el producto {$producto->nombre}."], 422);
+        }
+        $detalle->lote               = $lote !== '' ? $lote : null;
         $detalle->fecha_vencimiento  = $fechaVenc;
         $detalle->estado_mercancia   = $data['estado_mercancia'] ?? 'BuenEstado';
         $detalle->novedad_motivo     = $data['novedad_motivo'] ?? null;
@@ -1203,20 +1271,9 @@ class RecepcionController extends BaseController
         // excepción: proveedor CDP (transferencia interna entre bodegas propias,
         // ver esProveedorCdp()) — esas líneas ya entraron a inventario en tiempo
         // real (aprobado_admin=1) y por eso quedan excluidas del chequeo.
-        $referenciasSinCalidad = [];
-        foreach ($recepcion->detalles as $linea) {
-            if ($linea->aprobado_admin || $this->esProveedorCdp($linea->proveedor)) {
-                continue;
-            }
-            $cal = \App\Models\RecepcionDetalleCalidad::where('recepcion_detalle_id', $linea->id)->first();
-            $completa = $cal && $cal->olor && $cal->color && $cal->textura
-                && $cal->temperatura && $cal->empaque && $cal->rotulado;
-            if (!$completa) {
-                $referenciasSinCalidad[] = $linea->producto->codigo_interno
-                    ?? $linea->producto->nombre
-                    ?? ('Ref #' . $linea->producto_id);
-            }
-        }
+        // Ver referenciasSinCalidad() — misma regla que consulta el móvil antes
+        // de "Cerrar y enviar registros".
+        $referenciasSinCalidad = array_column($this->referenciasSinCalidad($recepcion), 'codigo');
         if ($referenciasSinCalidad) {
             return $this->json($response, [
                 'error'   => true,
@@ -1540,7 +1597,11 @@ class RecepcionController extends BaseController
 
         $det->cantidad_recibida = $qty;
         if (isset($body['lote'])) {
-            $det->lote = $body['lote'] ?: null;
+            $loteNuevo = trim((string)$body['lote']);
+            if ($det->producto && $det->producto->controla_lote && ($loteNuevo === '' || $loteNuevo === 'N/A' || $loteNuevo === '-')) {
+                return $this->json($response, ['error' => true, 'message' => "El lote es obligatorio para el producto {$det->producto->nombre}."], 422);
+            }
+            $det->lote = $loteNuevo !== '' ? $loteNuevo : null;
         }
         if (isset($body['fecha_vencimiento'])) {
             $det->fecha_vencimiento = $body['fecha_vencimiento'] ?: null;

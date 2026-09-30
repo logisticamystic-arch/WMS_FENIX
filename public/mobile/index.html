@@ -1663,7 +1663,7 @@ const MWMS = {
         <!-- Botón cerrar recepción (solo Admin/Supervisor) -->
         ${s.recepcionId && ['Admin','Supervisor','SuperAdmin'].includes(_mUser?.rol) ? `
         <button class="m-btn danger full" onclick="MWMS._cerrarRecepcionSinOdc()" style="font-size:.9rem;padding:12px;font-weight:700;margin-top:6px;">
-          <i class="fa-solid fa-lock"></i> CERRAR RECEPCIÓN
+          <i class="fa-solid fa-paper-plane"></i> CERRAR Y ENVIAR REGISTROS
         </button>` : ''}
 
         <!-- Historial de capturas -->
@@ -1681,7 +1681,9 @@ const MWMS = {
                   <small style="color:#64748b;">${l.upc > 1 ? `Cajas: ${l.cajas} × ${l.upc} + ${l.saldos || 0} sueltos = ${l.cant} UND/TOTAL` : `${l.cant} UND/TOTAL`}${l.cantUe ? ` (${l.cantUe} ${l.unidCont || 'U/E'})` : ''} | Lote: ${l.lote || 'N/A'} | Venc: ${l.fv || '-'}</small>
                   ${l.detalleId ? `
                   <div style="margin-top:6px;">
-                    <button class="m-btn secondary sm" style="width:100%;border:1px solid #cbd5e1;background:#f8fafc;color:#475569;" onclick="MWMS._showCalidadModalProducto(${l.detalleId}, '${this.esc(l.nombre)}')"><i class="fa-solid fa-microscope"></i> Inspección Calidad</button>
+                    ${l.calidadOk
+                      ? `<button id="rs-cal-btn-${l.detalleId}" class="m-btn success sm" style="width:100%;" onclick="MWMS._showCalidadModalProducto(${l.detalleId}, '${this.esc(l.nombre)}')"><i class="fa-solid fa-circle-check"></i> Calidad inspeccionada</button>`
+                      : `<button id="rs-cal-btn-${l.detalleId}" class="m-btn secondary sm" style="width:100%;border:1px solid #f59e0b;background:#fffbeb;color:#92400e;" onclick="MWMS._showCalidadModalProducto(${l.detalleId}, '${this.esc(l.nombre)}')"><i class="fa-solid fa-microscope"></i> Inspección Calidad (pendiente)</button>`}
                   </div>` : ''}
                 </div>
                 ${l.detalleId && ['Admin','Supervisor','SuperAdmin'].includes(_mUser?.rol) ? `
@@ -2017,7 +2019,9 @@ const MWMS = {
       </div>
     `;
 
-    Swal.fire({ html: html, showConfirmButton: false, showCancelButton: false, width: '92%', padding: '16px' });
+    // allowOutsideClick:false — un toque fuera del modal lo cerraba sin guardar
+    // y la línea quedaba sin inspección (rec. 236, línea 1223).
+    Swal.fire({ html: html, showConfirmButton: false, showCancelButton: false, allowOutsideClick: false, width: '92%', padding: '16px' });
   },
 
   async _guardarCalidadProducto(detalleId) {
@@ -2045,6 +2049,17 @@ const MWMS = {
       if (!r.ok || data.error) throw new Error(data.message || 'Error al guardar');
       this.toast('Inspección de calidad guardada', 'success');
       Swal.close();
+      // Marcar la captura como inspeccionada sin re-renderizar (no perder lo que
+      // el auxiliar esté digitando en el formulario de la siguiente referencia).
+      // El cierre exige calidad por REFERENCIA: se marcan todas las capturas del
+      // mismo producto (varios pallets), no solo la inspeccionada.
+      const lineas = this._sinOdc?.lineas || [];
+      const prodId = lineas.find(l => l.detalleId === detalleId)?.prodId;
+      lineas.filter(l => l.detalleId === detalleId || (prodId && l.prodId === prodId)).forEach(l => {
+        l.calidadOk = true;
+        const btn = document.getElementById('rs-cal-btn-' + l.detalleId);
+        if (btn) { btn.className = 'm-btn success sm'; btn.style.cssText = 'width:100%;'; btn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Calidad inspeccionada'; }
+      });
     } catch(e) {
       Swal.fire({ icon: 'error', title: 'Error', text: e.message });
     }
@@ -2121,6 +2136,8 @@ const MWMS = {
       s.recepcionId = r.data?.recepcion?.id || s.recepcionId;
       s.lineas.push({
         detalleId:    r.data?.detalle?.id || null,
+        prodId:       prodId,
+        calidadOk:    s.lineas.some(x => x.prodId === prodId && x.calidadOk),
         nombre:       s.prodSel?.nombre || 'Producto',
         cant:         totalUnidades,
         cantUe:       hayUe ? cantUe : null,
@@ -2206,15 +2223,55 @@ const MWMS = {
     if (inp) inp.value = this._sinOdc.palletNum;
   },
 
+  // "Cerrar y enviar registros": antes de enviar consulta al servidor qué
+  // referencias no-CDP aún no tienen Auditoría de Calidad (misma regla que
+  // aplica /cerrar). Se consulta al servidor y no al estado local porque
+  // _sinOdc.lineas se pierde al salir de la pantalla y el Borrador del día se
+  // sigue reutilizando. Si falta alguna, lista cada referencia con su botón
+  // "Inspeccionar" y NO envía. Devuelve true solo si todo está completo y el
+  // usuario confirma.
+  async _precheckCalidadCierre(id) {
+    let d;
+    this.loading(true);
+    try {
+      d = (await mApi('GET', '/recepciones/' + id + '/calidad-pendiente')).data || {};
+    } catch (e) {
+      this.toast(e.message || 'No se pudo validar la calidad', 'error');
+      return false;
+    } finally {
+      this.loading(false);
+    }
+    const pend = d.pendientes || [];
+    if (pend.length) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Falta inspección de calidad',
+        html: `<p style="font-size:.82rem;text-align:left;margin-bottom:8px;">No se pueden enviar los registros: ${pend.length} referencia(s) sin inspección de calidad.</p>
+          ${pend.map(p => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e2e8f0;text-align:left;">
+            <div style="flex:1;font-size:.78rem;"><b>${this.esc(p.codigo)}</b><br><small style="color:#64748b;">${this.esc(p.nombre)}</small></div>
+            <button class="m-btn secondary sm" style="border:1px solid #f59e0b;background:#fffbeb;color:#92400e;"
+              onclick="MWMS._showCalidadModalProducto(${parseInt(p.detalle_id)||0}, '${this.esc(p.nombre || p.codigo)}')">
+              <i class="fa-solid fa-microscope"></i> Inspeccionar</button>
+          </div>`).join('')}
+          <p style="font-size:.72rem;color:#64748b;text-align:left;margin-top:8px;">Después de inspeccionar, vuelva a tocar "Cerrar y enviar registros".</p>`,
+        confirmButtonText: 'Entendido',
+        allowOutsideClick: false,
+        width: '92%',
+      });
+      return false;
+    }
+    return confirm(`Todas las referencias tienen inspección de calidad.\n\n¿Cerrar y enviar ${d.lineas || ''} registro(s)? No podrá agregar más líneas.`);
+  },
+
   async _cerrarRecepcionSinOdc() {
     const id = this._sinOdc?.recepcionId;
     if (!id) return this.toast('No hay recepción activa', 'error');
-    if (!confirm('¿Cerrar recepción? No podrá agregar más líneas.')) return;
+    if (!(await this._precheckCalidadCierre(id))) return;
     this.loading(true);
     try {
       const r = await mApi('POST', '/recepciones/' + id + '/cerrar', {});
       if (r.error) throw new Error(r.message);
-      this.toast('Recepción cerrada ✓', 'success');
+      this.toast('Recepción cerrada y registros enviados ✓', 'success');
       this._sinOdc.recepcionId = null;
       this._sinOdc.lineas = [];
       this._sinOdc.prodSel = null;
@@ -3182,7 +3239,7 @@ const MWMS = {
         </button>
 
         <button class="m-btn success full" onclick="MWMS._cerrarRecepcionOdc()" style="font-size:.9rem;padding:12px;font-weight:700;margin-top:8px;">
-          <i class="fa-solid fa-lock"></i> CERRAR RECEPCIÓN
+          <i class="fa-solid fa-paper-plane"></i> CERRAR Y ENVIAR REGISTROS
         </button>
 
         <button class="m-btn secondary full" onclick="MWMS.viewRecO()" style="margin-top:8px;">Volver al listado</button>
@@ -5017,12 +5074,12 @@ const MWMS = {
   async _cerrarRecepcionOdc() {
       const id = this._op?.recepcionId;
       if (!id) return this.toast('No hay recepción en Borrador para esta ODC todavía', 'error');
-      if (!confirm('¿Cerrar esta recepción? Se cargará todo el lote capturado a inventario y ya no podrá agregar más líneas.')) return;
+      if (!(await this._precheckCalidadCierre(id))) return;
       this.loading(true);
       try {
           const r = await mApi('POST', '/recepciones/' + id + '/cerrar', {});
           if (r.error) throw new Error(r.message);
-          this.toast('Recepción cerrada ✓', 'success');
+          this.toast('Recepción cerrada y registros enviados ✓', 'success');
           this._op.recepcionId = null;
           if (confirm('¿Desea ir ahora a dar ubicación a los productos en el almacén?')) {
               this.viewUbicar();
@@ -5970,11 +6027,35 @@ const MWMS = {
     }
   },
 
+  // Recuento asignado mientras el auxiliar hace el primer conteo: se le avisa
+  // y se lo lleva al recuento (prioridad); al terminarlo vuelve al primer conteo.
+  async _ivCheckRecuentoPrioritario() {
+    if (!this._op || this._op.tipo === 'Ciclico') return;
+    try {
+      const r = await mApi('GET', '/v2/inventario/mis-asignaciones');
+      const mias = (r.data || []).filter(a => a.sesion_id == this._op.id);
+      const rec  = mias.filter(a => a.tipo_instruccion === 'Referencia' && (a.ronda || 1) >= 2);
+      if (!rec.length) return;
+      this._op.misAsigs = mias;
+      await Swal.fire({ icon: 'info', title: 'Recuento prioritario asignado',
+        html: `Tiene <b>${rec.length}</b> referencia(s) para recontar. Termínelas primero; después continuará con el primer conteo.`,
+        confirmButtonText: 'Ir al recuento', allowOutsideClick: false });
+      this.renderIv();
+    } catch (_) {}
+  },
+
   renderIv() {
     const d = this._op;
     // Si hay asignaciones de tipo Referencia asignadas a este usuario → flujo cíclico
     const refAsigs = (d.misAsigs || []).filter(a => a.tipo_instruccion === 'Referencia');
-    if (refAsigs.length > 0) { this.renderIvReferencia(refAsigs); return; }
+    if (refAsigs.length > 0) { this._ivTeniaRecuentos = d.tipo !== 'Ciclico'; this.renderIvReferencia(refAsigs); return; }
+    // Recuentos terminados en General / Cargue Inicial → se continúa con el
+    // primer conteo (inventario general) — a pedido de Camilo, 2026-09-28.
+    if (d.tipo !== 'Ciclico' && this._ivTeniaRecuentos) {
+      this._ivTeniaRecuentos = false;
+      setTimeout(() => Swal.fire({ icon: 'success', title: 'Recuentos terminados',
+        text: 'Continúe con el inventario general (primer conteo).', confirmButtonColor: '#10b981' }), 0);
+    }
     // Si la sesión es Cíclica y mis asignaciones son todas finalizadas (no aparecen en mis-asignaciones)
     if (d.tipo === 'Ciclico') { this._ivRefDone(); return; }
 
@@ -6123,20 +6204,25 @@ const MWMS = {
 
   renderIvReferencia(asigs) {
     const d = this._op;
-    document.getElementById('m-title').textContent = 'Inventario Cíclico';
+    const esRecuentoGeneral = d.tipo !== 'Ciclico';
+    document.getElementById('m-title').textContent = esRecuentoGeneral ? 'Recuentos prioritarios' : 'Inventario Cíclico';
     document.getElementById('m-content').innerHTML = `
       <div class="op-view">
         <div style="background:#1e293b;color:#fff;border-radius:12px;padding:12px 14px;margin-bottom:10px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
             <span style="font-size:.7rem;color:#94a3b8;">Sesión #${d.id}</span>
-            <span style="font-size:.65rem;background:#4f46e530;color:#a5b4fc;padding:2px 8px;border-radius:20px;font-weight:700;">Cíclico · Referencias</span>
+            <span style="font-size:.65rem;background:#4f46e530;color:#a5b4fc;padding:2px 8px;border-radius:20px;font-weight:700;">${esRecuentoGeneral ? 'Recuento · Inventario General' : 'Cíclico · Referencias'}</span>
           </div>
           <div style="font-weight:700;font-size:.9rem;line-height:1.3;">${this.esc(d.nombre||'Inventario')}</div>
         </div>
 
         <div style="font-size:.72rem;font-weight:700;color:#64748b;letter-spacing:.5px;margin-bottom:8px;padding:0 2px;">
-          <i class="fa-solid fa-box-open"></i> REFERENCIAS ASIGNADAS
+          <i class="fa-solid fa-box-open"></i> ${esRecuentoGeneral ? 'REFERENCIAS A RECONTAR' : 'REFERENCIAS ASIGNADAS'}
         </div>
+        ${esRecuentoGeneral ? `
+        <div style="background:#fff7ed;border:1px solid #fdba74;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:.75rem;color:#9a3412;">
+          <i class="fa-solid fa-bolt"></i> <b>Prioridad:</b> termine primero estos recuentos. Al finalizarlos, el sistema lo regresa al inventario general (primer conteo).
+        </div>` : ''}
 
         <div id="iv-ref-list">
           ${asigs.map(a => {
@@ -6147,7 +6233,7 @@ const MWMS = {
               <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
                 <div style="flex:1;min-width:0;">
                   <div style="font-weight:700;font-size:.85rem;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.esc(prod.nombre||'—')}</div>
-                  <div style="font-size:.68rem;color:#64748b;">Cód: ${this.esc(prod.codigo_interno||'—')}</div>
+                  <div style="font-size:.68rem;color:#64748b;">Cód: ${this.esc(prod.codigo_interno||'—')}${(a.ronda || 1) > 1 ? ` · <b style="color:${a.ronda === 3 ? '#dc2626' : '#2563eb'};">${a.ronda === 3 ? 'Tercer' : 'Segundo'} conteo</b>` : ''}</div>
                 </div>
                 <span style="font-size:.6rem;font-weight:800;padding:2px 8px;border-radius:12px;white-space:nowrap;
                   background:${done?'#dcfce7':'#ede9fe'};color:${done?'#15803d':'#4f46e5'};">
@@ -6201,6 +6287,8 @@ const MWMS = {
     this._ivRefAsigId    = asigId;
     this._ivRefProd      = prod;
     this._ivRefSysUbic   = ubicaciones;
+    this._ivRefSinExistenciaConfirmada = false;
+    const esRecuento = ubicaciones.some(u => u.es_recuento);
 
     const html = `
       <div class="op-view" style="padding-bottom:20px;">
@@ -6215,14 +6303,14 @@ const MWMS = {
 
         <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:.75rem;color:#334155;">
           <i class="fa-solid fa-circle-info" style="color:#3b82f6;"></i>
-          <b>Regla de Conteo:</b> Debe ingresar el conteo en <b>cada una de las ubicaciones registradas</b> (o presionar <b>Poner en 0</b> si está vacía). Si la referencia está en otra ubicación física no listada, use el botón <b>+ Agregar Ubicación</b>.
+          ${esRecuento ? '<b>Recuento a ciegas:</b> cuente de nuevo la referencia en <b>cada ubicación del conteo anterior</b> sin guiarse por cantidades previas (o <b>Poner en 0</b> si ya no está). ' : ''}<b>Regla de Conteo:</b> Debe ingresar el conteo en <b>cada una de las ubicaciones registradas</b> (o presionar <b>Poner en 0</b> si está vacía). Si la referencia está en otra ubicación física no listada, use el botón <b>+ Agregar Ubicación</b>.
         </div>
 
         <div style="font-size:.75rem;font-weight:800;color:#1e293b;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
-          <span><i class="fa-solid fa-location-dot" style="color:#4f46e5;"></i> UBICACIONES REGISTRADAS (${ubicaciones.length})</span>
+          <span><i class="fa-solid fa-location-dot" style="color:#4f46e5;"></i> ${esRecuento ? 'UBICACIONES DEL CONTEO ANTERIOR' : 'UBICACIONES REGISTRADAS'} (${ubicaciones.length})</span>
         </div>
 
-        ${ubicaciones.length ? `
+        ${ubicaciones.length && !esRecuento ? `
           <button type="button" onclick="MWMS._ivRefConfirmarTodoSistema()"
             style="width:100%;background:#eff6ff;border:1.5px solid #93c5fd;color:#1d4ed8;border-radius:10px;padding:9px 12px;font-size:.78rem;font-weight:800;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 6px rgba(59,130,246,.15);">
             <i class="fa-solid fa-square-check" style="font-size:.9rem;"></i> Confirmar TODAS las ubicaciones OK (según sistema)
@@ -6231,19 +6319,19 @@ const MWMS = {
 
         <div id="iv-ref-ubic-list">
           ${ubicaciones.length ? ubicaciones.map(u => `
-            <div class="op-card ref-ubic-card" id="ref-card-loc-${u.id}" data-locid="${u.id}" data-code="${this.esc(u.codigo)}" data-lote="${this.esc(u.lote||'N/A')}" data-fv="${u.fecha_vencimiento||''}" style="border-left:4px solid #f59e0b;margin-bottom:10px;">
+            <div class="op-card ref-ubic-card" id="ref-card-loc-${u.id}" data-locid="${u.id}" data-code="${this.esc(u.codigo)}" data-lote="${this.esc(u.lote||'N/A')}" data-fv="${u.fecha_vencimiento||''}" data-recuento="${u.es_recuento ? 1 : 0}" data-anterior="${u.cantidad_anterior ?? ''}" data-agregada="${u.agregada ? 1 : 0}" style="border-left:4px solid ${u.agregada ? '#f97316' : '#f59e0b'};margin-bottom:10px;">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
                 <div>
                   <div style="font-weight:800;font-size:.9rem;color:#0F4C81;">
                     <i class="fa-solid fa-location-dot" style="font-size:.8rem;"></i> ${this.esc(u.codigo)}
                   </div>
                   <div style="font-size:.7rem;color:#64748b;margin-top:2px;">
-                    ${u.ya_contada ? 'Ya contado' : 'Sistema'}: <b>${u.cajas} cj + ${u.saldos} sald</b> (${u.cantidad} und)
+                    ${u.es_recuento && !u.ya_contada ? `Recuento · contada en R${(u.rondas_previas || []).join(', R')}` : `${u.ya_contada ? 'Ya contado' : 'Sistema'}: <b>${u.cajas} cj + ${u.saldos} sald</b> (${u.cantidad} und)`}
                   </div>
                 </div>
                 <span class="ref-loc-status-badge" id="ref-loc-status-${u.id}"
-                  style="font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:12px;${u.ya_contada ? 'background:#dcfce7;color:#15803d;' : 'background:#fef3c7;color:#d97706;'}">
-                  ${u.ya_contada ? 'YA CONTADO' : 'PENDIENTE'}
+                  style="font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:12px;${u.agregada ? 'background:#ffedd5;color:#c2410c;' : u.ya_contada ? 'background:#dcfce7;color:#15803d;' : 'background:#fef3c7;color:#d97706;'}">
+                  ${u.agregada ? 'UBICACIÓN AGREGADA' : u.ya_contada ? 'YA CONTADO' : 'PENDIENTE'}
                 </span>
               </div>
 
@@ -6256,15 +6344,16 @@ const MWMS = {
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
                 <div>
                   <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;margin-bottom:2px;">CAJAS</label>
-                  <input type="number" class="m-input-full ref-input-cajas" id="ref-cj-${u.id}" value="${u.cajas}" min="0" step="1"
+                  <input type="number" class="m-input-full ref-input-cajas" id="ref-cj-${u.id}" value="${u.cajas ?? ''}" min="0" step="1"
                     oninput="MWMS._ivRefOnLocChange(${u.id})">
                 </div>
                 <div>
                   <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;margin-bottom:2px;">SALDOS (UND)</label>
-                  <input type="number" class="m-input-full ref-input-saldos" id="ref-sd-${u.id}" value="${u.saldos}" min="0" step="0.001"
+                  <input type="number" class="m-input-full ref-input-saldos" id="ref-sd-${u.id}" value="${u.saldos ?? ''}" min="0" step="0.001"
                     oninput="MWMS._ivRefOnLocChange(${u.id})">
                 </div>
               </div>
+              <div id="ref-total-${u.id}" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:6px 10px;font-size:.78rem;font-weight:700;color:#1d4ed8;margin-bottom:8px;"></div>
 
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
                 <div>
@@ -6280,18 +6369,24 @@ const MWMS = {
               </div>
 
               <div style="display:flex;gap:6px;align-items:center;">
-                <button type="button" onclick="MWMS._ivRefConfirmarOK(${u.id}, ${u.cajas||0}, ${u.saldos||0}, '${this.esc((u.lote&&u.lote!=='N/A'?u.lote:'').replace(/'/g,"\\'"))}', '${u.fecha_vencimiento||''}')"
+                ${u.es_recuento ? '' : `<button type="button" onclick="MWMS._ivRefConfirmarOK(${u.id}, ${u.cajas||0}, ${u.saldos||0}, '${this.esc((u.lote&&u.lote!=='N/A'?u.lote:'').replace(/'/g,"\\'"))}', '${u.fecha_vencimiento||''}')"
                   style="flex:1.2;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;border-radius:6px;padding:7px;font-size:.72rem;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;">
                   <i class="fa-solid fa-circle-check"></i> Referencia OK (Sistema)
-                </button>
+                </button>`}
                 <button type="button" onclick="MWMS._ivRefPonerCero(${u.id})"
                   style="flex:1;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:6px;padding:7px;font-size:.72rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;">
                   <i class="fa-solid fa-ban"></i> Poner en 0 (Vacía)
                 </button>
               </div>
             </div>`).join('')
-          : `<div style="text-align:center;padding:16px;background:#fff;border-radius:8px;border:1px solid #e2e8f0;color:#64748b;font-size:.78rem;margin-bottom:10px;">
+          : `<div id="ref-sin-existencia-box" style="text-align:center;padding:16px;background:#fff;border-radius:8px;border:1px solid #e2e8f0;color:#64748b;font-size:.78rem;margin-bottom:10px;">
               <i class="fa-solid fa-circle-exclamation" style="color:#d97706;margin-right:4px;"></i> Sin ubicaciones con inventario registradas en sistema.
+              <div style="margin-top:10px;">
+                <button type="button" id="btn-ref-sin-existencia" onclick="MWMS._ivRefConfirmarSinExistencia()"
+                  style="width:100%;background:#fef2f2;border:1.5px solid #fecaca;color:#dc2626;border-radius:8px;padding:10px;font-size:.78rem;font-weight:800;cursor:pointer;">
+                  <i class="fa-solid fa-ban"></i> Confirmar: no encontré existencia física de esta referencia
+                </button>
+              </div>
             </div>`}
         </div>
 
@@ -6319,17 +6414,71 @@ const MWMS = {
 
     document.getElementById('m-title').textContent = 'Conteo por Referencia';
     document.getElementById('m-content').innerHTML = html;
+    ubicaciones.forEach(u => this._ivRefPintarTotal(u.id));
+    if (esRecuento) ubicaciones.filter(u => u.ya_contada).forEach(u => this._ivRefOnLocChange(u.id));
+  },
+
+  // Total de unidades = cajas × U/E + saldos (factor_udm manda, si no unidades_caja).
+  _ivRefUpc() {
+    const p = this._ivRefProd || {};
+    return parseFloat(p.factor_udm || 0) > 0 ? parseFloat(p.factor_udm) : Math.max(1, parseInt(p.unidades_caja || 1));
+  },
+
+  _ivRefFormula(cjVal, sdVal) {
+    if ((cjVal === '' || cjVal == null) && (sdVal === '' || sdVal == null)) return 'Digite cajas y saldos';
+    const upc = this._ivRefUpc();
+    const cj = parseFloat(cjVal) || 0, sd = parseFloat(sdVal) || 0;
+    const total = Math.round((cj * upc + sd) * 1000) / 1000;
+    return upc > 1
+      ? `${cj} ${cj === 1 ? 'caja' : 'cajas'} × ${upc} + ${sd} sueltos = ${total} UND/TOTAL`
+      : `${cj} und + ${sd} sueltos = ${total} UND/TOTAL`;
+  },
+
+  _ivRefPintarTotal(locId) {
+    const el = document.getElementById(`ref-total-${locId}`);
+    if (!el) return;
+    el.textContent = this._ivRefFormula(document.getElementById(`ref-cj-${locId}`)?.value ?? '', document.getElementById(`ref-sd-${locId}`)?.value ?? '');
+  },
+
+  _ivRefExtraTotal(rowId) {
+    const row = document.getElementById(rowId);
+    const el  = row?.querySelector('.ref-extra-total');
+    if (el) el.textContent = this._ivRefFormula(row.querySelector('.ref-extra-cajas')?.value ?? '', row.querySelector('.ref-extra-saldos')?.value ?? '');
   },
 
   _ivRefOnLocChange(locId) {
+    this._ivRefPintarTotal(locId);
     const badge = document.getElementById(`ref-loc-status-${locId}`);
     const card  = document.getElementById(`ref-card-loc-${locId}`);
     if (!badge || !card) return;
 
-    card.style.borderLeftColor = '#10b981';
-    badge.style.background = '#dcfce7';
-    badge.style.color = '#15803d';
-    badge.innerHTML = '<i class="fa-solid fa-check"></i> CONTADO';
+    // Recuento (R2/R3): compara lo digitado contra el conteo anterior de esa
+    // ubicación (a pedido de Camilo, 2026-09-28). Verde = igual, rojo = no
+    // igual, azul = puesta en cero, naranja = ubicación agregada.
+    const pintar = (bg, fg, borde, html) => {
+      card.style.borderLeftColor = borde; badge.style.background = bg; badge.style.color = fg; badge.innerHTML = html;
+    };
+    if (card.dataset.agregada === '1') {
+      return pintar('#ffedd5', '#c2410c', '#f97316', '<i class="fa-solid fa-plus"></i> UBICACIÓN AGREGADA');
+    }
+    if (card.dataset.recuento === '1' && card.dataset.anterior !== '') {
+      const cjVal = document.getElementById(`ref-cj-${locId}`)?.value ?? '';
+      const sdVal = document.getElementById(`ref-sd-${locId}`)?.value ?? '';
+      if (cjVal === '' && sdVal === '') {
+        return pintar('#fef3c7', '#d97706', '#f59e0b', 'PENDIENTE');
+      }
+      const p   = this._ivRefProd || {};
+      const upc = parseFloat(p.factor_udm || 0) > 0 ? parseFloat(p.factor_udm) : Math.max(1, parseInt(p.unidades_caja || 1));
+      const total    = Math.round(((parseFloat(cjVal) || 0) * upc + (parseFloat(sdVal) || 0)) * 1000) / 1000;
+      const anterior = parseFloat(card.dataset.anterior) || 0;
+      const igual    = Math.abs(total - anterior) < 0.0005;
+      const texto    = igual ? 'IGUAL AL CONTEO ANTERIOR' : 'NO IGUAL AL CONTEO ANTERIOR';
+      if (total === 0) return pintar('#dbeafe', '#1d4ed8', '#2563eb', `<i class="fa-solid fa-circle-minus"></i> ${texto}`);
+      return igual
+        ? pintar('#dcfce7', '#15803d', '#10b981', `<i class="fa-solid fa-equals"></i> ${texto}`)
+        : pintar('#fee2e2', '#b91c1c', '#dc2626', `<i class="fa-solid fa-not-equal"></i> ${texto}`);
+    }
+    pintar('#dcfce7', '#15803d', '#10b981', '<i class="fa-solid fa-check"></i> CONTADO');
   },
 
   _ivRefConfirmarOK(locId, cajas, saldos, lote, fv) {
@@ -6364,6 +6513,22 @@ const MWMS = {
     this.toast('Ubicación establecida en 0', 'info');
   },
 
+  // Solo aparece cuando el sistema no tiene NINGUNA ubicación con existencia
+  // registrada de esta referencia (ver renderIvReferencia/ivRefConteo) — deja
+  // constancia exportable de que se verificó, sin exigir inventar una ubicación
+  // (backend: InventarioV2Controller::conteoReferenciaCompleto, flag sin_existencia).
+  _ivRefConfirmarSinExistencia() {
+    this._ivRefSinExistenciaConfirmada = true;
+    const box = document.getElementById('ref-sin-existencia-box');
+    if (box) {
+      box.style.background = '#f0fdf4';
+      box.style.borderColor = '#bbf7d0';
+      box.style.color = '#15803d';
+      box.innerHTML = `<i class="fa-solid fa-circle-check"></i> Confirmado: sin existencia física. Pulse "Guardar" para registrar el conteo.`;
+    }
+    this.toast('✔ Confirmado — pulse Guardar para registrar', 'success');
+  },
+
   _ivRefAddExtraUbicRow() {
     const container = document.getElementById('iv-ref-extra-locs');
     if (!container) return;
@@ -6371,10 +6536,10 @@ const MWMS = {
     const div = document.createElement('div');
     div.className = 'op-card ref-extra-ubic-card';
     div.id = rowId;
-    div.style.cssText = 'border-left:4px solid #3b82f6;margin-bottom:8px;padding:10px;background:#f0f9ff;';
+    div.style.cssText = 'border-left:4px solid #f97316;margin-bottom:8px;padding:10px;background:#fff7ed;';
     div.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <span style="font-size:.72rem;font-weight:800;color:#1d4ed8;">NUEVA UBICACIÓN ADICIONAL</span>
+        <span style="font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:12px;background:#ffedd5;color:#c2410c;"><i class="fa-solid fa-plus"></i> UBICACIÓN AGREGADA</span>
         <button type="button" onclick="document.getElementById('${rowId}').remove()"
           style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:.85rem;">
           <i class="fa-solid fa-trash"></i>
@@ -6387,13 +6552,14 @@ const MWMS = {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
         <div>
           <label style="font-size:.65rem;font-weight:700;color:#374151;display:block;margin-bottom:2px;">CAJAS</label>
-          <input type="number" class="m-input-full ref-extra-cajas" value="0" min="0" step="1">
+          <input type="number" class="m-input-full ref-extra-cajas" value="0" min="0" step="1" oninput="MWMS._ivRefExtraTotal('${rowId}')">
         </div>
         <div>
           <label style="font-size:.65rem;font-weight:700;color:#374151;display:block;margin-bottom:2px;">SALDOS (UND)</label>
-          <input type="number" class="m-input-full ref-extra-saldos" value="0" min="0" step="0.001">
+          <input type="number" class="m-input-full ref-extra-saldos" value="0" min="0" step="0.001" oninput="MWMS._ivRefExtraTotal('${rowId}')">
         </div>
       </div>
+      <div class="ref-extra-total" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:6px 10px;font-size:.78rem;font-weight:700;color:#1d4ed8;margin-bottom:6px;"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
         <div>
           <label style="font-size:.65rem;font-weight:700;color:#374151;display:block;margin-bottom:2px;">LOTE</label>
@@ -6405,6 +6571,7 @@ const MWMS = {
         </div>
       </div>`;
     container.appendChild(div);
+    this._ivRefExtraTotal(rowId);
   },
 
   async ivRefSubmitBatch(asigId) {
@@ -6507,6 +6674,19 @@ const MWMS = {
       });
     }
 
+    if (payloadUbicaciones.length === 0) {
+      if (this._ivRefSinExistenciaConfirmada) {
+        payloadUbicaciones.push({ sin_existencia: true });
+      } else {
+        return Swal.fire({
+          title: 'Nada que guardar',
+          text: 'No hay ubicaciones contadas ni agregadas. Si de verdad no encontró existencia física, pulse primero el botón "Confirmar: no encontré existencia física" antes de Guardar.',
+          icon: 'warning',
+          confirmButtonColor: '#d97706'
+        });
+      }
+    }
+
     this.loading(true);
     try {
       await mApi('POST', `/v2/inventario/asignaciones/${asigId}/conteo-referencia`, {
@@ -6514,8 +6694,8 @@ const MWMS = {
       });
 
       await Swal.fire({
-        title: '¡Conteo Registrado y Ajustado!',
-        text: 'Se han actualizado las ubicaciones de la referencia contada y asentado el movimiento en inventario.',
+        title: '¡Conteo registrado!',
+        text: 'El conteo de la referencia quedó guardado. El inventario se actualiza cuando el administrador aprueba el ajuste.',
         icon: 'success',
         confirmButtonColor: '#10b981'
       });
@@ -6751,11 +6931,20 @@ const MWMS = {
         this._curLoc = null;
         this._setIvStep1();
         this.refreshIvLines();
+        this._ivCheckRecuentoPrioritario();
       } catch(e) { this.toast(e.message, 'error'); }
       finally { this.loading(false); }
     });
 
     /* ── Personalización del modal para inventario ── */
+    /* Inventario se cuenta en CAJAS + SALDOS (UND/TOTAL). Se oculta el campo
+       "Cantidad en <unidad de contenido>" (ej. gramos): si se diligenciaba,
+       reemplazaba cajas y saldos por gramos ÷ factor y guardaba una cantidad
+       miles de veces menor (a pedido de Camilo, 2026-09-29). */
+    const ueGroupInv = document.getElementById('m-cap-ue-group');
+    const ueInpInv   = document.getElementById('m-cap-qty-ue');
+    if (ueGroupInv) ueGroupInv.style.display = 'none';
+    if (ueInpInv)   ueInpInv.value = '';
     /* Saldos siempre visible; Lote oculto */
     const saldosGroup = document.getElementById('m-cap-saldos-group');
     const loteGroup   = document.getElementById('m-cap-lote-group');

@@ -276,13 +276,28 @@ class ParametrosController extends BaseController
         $activo = isset($params['activo']) && $params['activo'] !== ''
                   ? filter_var($params['activo'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)
                   : null;
+        $sort = $params['sort'] ?? null;
+        $dir  = strtolower($params['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
 
         try {
             // Buscamos productos que coincidan por nombre, descripción, código interno o eans asociados
-            $query = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $request));
+            // Columna calificada con la tabla: el orden por ambiente hace un join a "ambientes"
+            // (que también tiene empresa_id), y sin calificar la referencia queda ambigua.
+            $query = \App\Models\Producto::where('productos.empresa_id', $this->getEffectiveEmpresaId($user, $request));
 
-            // Si no hay búsqueda ni filtros, ordenamos por los más recientes por defecto para "Ver Todos"
-            if (empty($q) && empty($catId) && empty($marId) && empty($ambId) && empty($udm) && $activo === null) {
+            // Orden alfabético a pedido explícito (columnas clicables en el Maestro): código,
+            // descripción o ambiente (requiere join porque ambiente_nombre viene de una relación).
+            if ($sort === 'codigo') {
+                $query->orderBy('codigo_interno', $dir);
+            } elseif ($sort === 'descripcion') {
+                $query->orderByRaw('COALESCE(descripcion, nombre) ' . $dir);
+            } elseif ($sort === 'ambiente') {
+                $query->leftJoin('ambientes', 'productos.ambiente_id', '=', 'ambientes.id')
+                    ->orderByRaw('ambientes.codigo ' . $dir . ' NULLS LAST')
+                    ->select('productos.*');
+            } elseif (empty($q) && empty($catId) && empty($marId) && empty($ambId) && empty($udm) && $activo === null) {
+                // Si no hay búsqueda ni filtros ni orden explícito, mantenemos el comportamiento
+                // previo (más recientes primero) para "Ver Todos" sin ordenar.
                 $query->orderBy('created_at', 'desc');
             }
 
@@ -304,11 +319,16 @@ class ParametrosController extends BaseController
             if ($marId)       $query->where('marca_id', $marId);
             if ($ambId)       $query->where('ambiente_id', $ambId);
             if ($udm !== '')  $query->where('unidad_medida', 'ilike', $udm);
-            if ($activo !== null) $query->where('activo', $activo);
+            if ($activo !== null) $query->where('productos.activo', $activo);
 
-            $productos = $query->with(['eanPrincipal', 'categoria', 'marca', 'ambiente', 'fotos'])
-                ->limit($params['limit'] ?? 1000)
-                ->get();
+            // 'todos' (o cualquier valor no-numérico/0) = sin límite, a pedido explícito
+            // para poder ver el catálogo completo segmentado por el usuario en el frontend.
+            $limitParam = $params['limit'] ?? 1000;
+            $query->with(['eanPrincipal', 'categoria', 'marca', 'ambiente', 'fotos']);
+            if (is_numeric($limitParam) && (int)$limitParam > 0) {
+                $query->limit((int)$limitParam);
+            }
+            $productos = $query->get();
 
             $data = $productos->map(function($p) {
                 $stock = \App\Models\Inventario::where('producto_id', $p->id)->sum('cantidad');

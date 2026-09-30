@@ -7,6 +7,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Devolucion;
 use App\Models\DevolucionDetalle;
 use App\Models\CausalDevolucion;
+use App\Models\Producto;
 use App\Models\Inventario;
 use App\Models\MovimientoInventario;
 use App\Models\Ubicacion;
@@ -161,6 +162,11 @@ class DevolucionController extends BaseController
             if (empty($d['cantidad']) || (float)$d['cantidad'] <= 0) {
                 throw new \InvalidArgumentException('Línea ' . ($i + 1) . ': cantidad debe ser mayor a cero');
             }
+            $producto = Producto::where('empresa_id', $empresaId)->find((int)$d['producto_id']);
+            $lote = trim((string)($d['lote'] ?? ''));
+            if ($producto && $producto->controla_lote && ($lote === '' || $lote === 'N/A' || $lote === '-')) {
+                throw new \InvalidArgumentException("Línea " . ($i + 1) . ": el lote es obligatorio para el producto {$producto->nombre}.");
+            }
         }
         if ($causalId !== null) {
             $causalExiste = CausalDevolucion::where('empresa_id', $empresaId)
@@ -294,6 +300,11 @@ class DevolucionController extends BaseController
             }
             if (empty($d['cantidad']) || (float)$d['cantidad'] <= 0) {
                 return $this->error($response, 'Línea ' . ($i + 1) . ': cantidad debe ser mayor a cero', 422);
+            }
+            $producto = Producto::where('empresa_id', $empresaId)->find((int)$d['producto_id']);
+            $lote = trim((string)($d['lote'] ?? ''));
+            if ($producto && $producto->controla_lote && ($lote === '' || $lote === 'N/A' || $lote === '-')) {
+                return $this->error($response, 'Línea ' . ($i + 1) . ": el lote es obligatorio para el producto {$producto->nombre}.", 422);
             }
         }
 
@@ -1352,6 +1363,16 @@ class DevolucionController extends BaseController
 
         if (empty($detalles)) {
             return $this->json($response, ['error' => true, 'message' => 'Debe incluir al menos un producto a devolver.'], 400);
+        }
+
+        foreach ($detalles as $idxV => $lineaV) {
+            $productoIdV = (int)($lineaV['producto_id'] ?? 0);
+            if (!$productoIdV) continue;
+            $productoV = Producto::where('empresa_id', $empresaId)->find($productoIdV);
+            $loteV = trim((string)($lineaV['lote'] ?? ''));
+            if ($productoV && $productoV->controla_lote && ($loteV === '' || $loteV === 'N/A' || $loteV === '-')) {
+                return $this->json($response, ['error' => true, 'message' => 'Línea ' . ($idxV + 1) . ": el lote es obligatorio para el producto {$productoV->nombre}."], 422);
+            }
         }
 
         // Obtener ODC para tomar proveedor y estado

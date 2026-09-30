@@ -1229,7 +1229,7 @@ WMS_MODULES.recepcion = {
                     </div>
 
                     <div class="form-group" id="op-lote-group">
-                        <label class="form-label">Lote (Opcional)</label>
+                        <label class="form-label" id="op-lote-label">Lote</label>
                         <input type="text" id="op-lote" class="form-control" placeholder="Lote del producto">
                     </div>
 
@@ -1397,6 +1397,9 @@ WMS_MODULES.recepcion = {
 
       if (opLoteGrp)  opLoteGrp.style.display  = reqLote ? 'block' : 'none';
       if (!reqLote && opLoteInp) opLoteInp.value = '';
+      if (opLoteInp) opLoteInp.required = reqLote;
+      const opLoteLabel = document.getElementById('op-lote-label');
+      if (opLoteLabel) opLoteLabel.textContent = reqLote ? 'Lote *' : 'Lote';
 
       if (opFvencGrp) opFvencGrp.style.display = reqVenc ? 'block' : 'none';
       if (!reqVenc && opFvencInp) opFvencInp.value = '';
@@ -1430,11 +1433,13 @@ WMS_MODULES.recepcion = {
       const cantCajas = parseFloat(document.getElementById('op-cant')?.value || 0);
       const saldos = parseFloat(document.getElementById('op-saldos')?.value || 0);
       const upc = parseInt(document.getElementById('op-upc')?.value || '1') || 1;
-      const lote = document.getElementById('op-lote')?.value || '';
+      const loteInput = document.getElementById('op-lote');
+      const lote = loteInput?.value?.trim() || '';
       const venc = document.getElementById('op-fecha-venc')?.value || '';
 
       if (!prodId) return WMS.toast('warning', 'Seleccione un producto a capturar.');
       if ((cantCajas <= 0 && saldos <= 0) || isNaN(cantCajas) || isNaN(saldos)) return WMS.toast('warning', 'Cantidad debe ser mayor a cero.');
+      if (loteInput?.required && !lote) return WMS.toast('warning', 'El lote es obligatorio para este producto.');
 
       let totalUnidades = cantCajas;
       if (upc > 1) {
@@ -1779,7 +1784,7 @@ WMS_MODULES.recepcion = {
 
             <!-- Lote -->
             <div class="form-group" id="sodc-lote-group">
-              <label class="form-label">Lote (Opcional)</label>
+              <label class="form-label" id="sodc-lote-label">Lote</label>
               <input type="text" id="sodc-lote" class="form-control" placeholder="Número de lote">
             </div>
 
@@ -2108,6 +2113,9 @@ WMS_MODULES.recepcion = {
 
     if (loteGroup)  loteGroup.style.display  = reqLote ? 'block' : 'none';
     if (!reqLote && loteInput) loteInput.value = '';
+    if (loteInput) loteInput.required = reqLote;
+    const loteLabel = document.getElementById('sodc-lote-label');
+    if (loteLabel) loteLabel.textContent = reqLote ? 'Lote *' : 'Lote';
 
     if (fvencGroup) fvencGroup.style.display = reqVenc ? 'block' : 'none';
     if (!reqVenc && fvencInput) fvencInput.value = '';
@@ -2185,7 +2193,8 @@ WMS_MODULES.recepcion = {
     const cantCajas = parseFloat(document.getElementById('sodc-cant')?.value    || '0');
     const saldos    = parseFloat(document.getElementById('sodc-saldos')?.value  || '0') || 0;
     const upc       = parseInt(document.getElementById('sodc-upc')?.value        || '1') || 1;
-    const lote      = document.getElementById('sodc-lote')?.value || '';
+    const loteInput = document.getElementById('sodc-lote');
+    const lote      = loteInput?.value?.trim() || '';
     const venc      = document.getElementById('sodc-fecha-venc')?.value || '';
     const estado    = document.getElementById('sodc-estado')?.value || 'BuenEstado';
     const proveedor = document.getElementById('sodc-proveedor')?.value || '';
@@ -2197,6 +2206,7 @@ WMS_MODULES.recepcion = {
     if (!prodId) return WMS.toast('warning', 'Seleccione un producto');
     const hayUe = factorUdm > 0 && cantUe > 0;
     if (!hayUe && cantCajas <= 0 && saldos <= 0) return WMS.toast('warning', 'Cantidad debe ser mayor a cero');
+    if (loteInput?.required && !lote) return WMS.toast('warning', 'El lote es obligatorio para este producto.');
 
     // Total en unidades: prioridad U/E > cajas+saldos > unidades directas
     const totalUnidades = hayUe
@@ -3908,7 +3918,7 @@ WMS_MODULES.recepcion = {
             <input type="number" class="form-control dev-qty" style="width:80px;margin:0 auto;text-align:center;font-size:12px;" min="0" max="${d.cantidad_recibida||0}" value="0">
           </td>
           <td style="padding:6px 8px;">
-            <input class="form-control dev-lote" style="font-size:12px;" value="${WMS.esc(d.lote||'')}">
+            <input class="form-control dev-lote" style="font-size:12px;" value="${WMS.esc(d.lote||'')}" placeholder="${d.producto?.controla_lote ? 'Lote (obligatorio)' : 'Lote'}" ${d.producto?.controla_lote ? 'required' : ''}>
           </td>
           <td style="padding:6px 8px;text-align:center;">
             <select class="form-control dev-motivo" style="font-size:11px;">
@@ -4025,6 +4035,11 @@ WMS_MODULES.recepcion = {
     if (input) input.value = p.nombre || p.descripcion || '';
     if (pid)   pid.value   = p.id;
     if (drop)  drop.style.display = 'none';
+    const loteInput = document.getElementById('dev-pn-' + idx)?.closest('tr')?.querySelector('.dev-lote');
+    if (loteInput) {
+      loteInput.required = !!p.controla_lote;
+      loteInput.placeholder = p.controla_lote ? 'Lote (obligatorio)' : 'Lote';
+    }
   },
 
   async _guardarDevolucion() {
@@ -4033,14 +4048,20 @@ WMS_MODULES.recepcion = {
     const rows        = document.querySelectorAll('#dev-lines-body tr');
 
     const detalles = [];
+    let loteFaltante = null;
     rows.forEach(tr => {
       const qty = parseFloat(tr.querySelector('.dev-qty')?.value || '0');
       if (qty <= 0) return;
+      const loteInput = tr.querySelector('.dev-lote');
+      const lote = loteInput?.value?.trim() || '';
+      if (!loteFaltante && loteInput?.required && !lote) {
+        loteFaltante = tr.querySelector('.dev-prod-name')?.value || tr.querySelector('.dev-pid')?.closest('td')?.textContent?.trim() || 'producto';
+      }
       detalles.push({
         producto_id : tr.querySelector('.dev-pid')?.value || null,
         nombre      : tr.querySelector('.dev-prod-name')?.value || '',
         cantidad    : qty,
-        lote        : tr.querySelector('.dev-lote')?.value || '',
+        lote,
         motivo      : tr.querySelector('.dev-motivo')?.value || 'Otro',
         destino     : tr.querySelector('.dev-destino')?.value || 'DevolucionProveedor',
       });
@@ -4048,6 +4069,11 @@ WMS_MODULES.recepcion = {
 
     if (!detalles.length) {
       WMS.toast('warning', 'Ingresa al menos una línea con cantidad mayor a 0');
+      return;
+    }
+
+    if (loteFaltante) {
+      WMS.toast('warning', `El lote es obligatorio para: ${loteFaltante}`);
       return;
     }
 

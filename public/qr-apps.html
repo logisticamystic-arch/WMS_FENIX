@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Códigos QR — Apps móviles WMS / TMS</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; background:#f2f4f7; margin:0; padding:32px; }
+  h1 { font-size:20px; color:#0F4C81; }
+  .grid { display:flex; gap:32px; flex-wrap:wrap; }
+  .card { background:#fff; border-radius:12px; padding:24px; box-shadow:0 1px 4px rgba(0,0,0,.12); text-align:center; width:280px; }
+  .card h2 { margin:0 0 4px; font-size:16px; color:#0F4C81; }
+  .card p { font-size:12px; color:#555; word-break:break-all; margin:12px 0 0; }
+  .qr { display:flex; justify-content:center; margin-top:12px; }
+</style>
+</head>
+<body>
+<h1>Escanea con la app correspondiente ("Escanear") para conectarla al servidor actual (Tailscale HTTPS)</h1>
+<div class="grid">
+  <div class="card">
+    <h2>WMS Fenix (app-debug.apk)</h2>
+    <div class="qr" id="qr-wms"></div>
+    <p id="url-wms"></p>
+  </div>
+  <div class="card">
+    <h2>TMS Mystic (TMS_Mystic.apk)</h2>
+    <div class="qr" id="qr-tms"></div>
+    <p id="url-tms"></p>
+  </div>
+</div>
+<script>
+  const host = 'wms.tail4f973b.ts.net';
+  const urls = {
+    wms: `https://${host}/WMS_FENIX/public/mobile/`,
+    tms: `https://${host}/TMS_FENIX/public/`,
+  };
+  new QRCode(document.getElementById('qr-wms'), { text: urls.wms, width: 220, height: 220 });
+  new QRCode(document.getElementById('qr-tms'), { text: urls.tms, width: 220, height: 220 });
+  document.getElementById('url-wms').textContent = urls.wms;
+  document.getElementById('url-tms').textContent = urls.tms;
+</script>
+</body>
+</html>

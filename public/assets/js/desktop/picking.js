@@ -926,9 +926,14 @@ WMS_MODULES.picking = {
                   ${g.observaciones.size ? WMS.esc([...g.observaciones].join(' | ')) : '<em style="color:#b45309;font-weight:400;">Sin observaciones registradas</em>'}
                 </span>
               </div>
-              <button class="btn btn-xs btn-primary" style="white-space:nowrap;font-size:10.5px;font-weight:700;padding:5px 10px;" onclick="WMS_MODULES.picking.abrirModalEditarPedido('${WMS.esc(g.planilla)}')">
-                <i class="fa-solid fa-pen-to-square"></i> Editar Pedido
-              </button>
+              <div style="display:flex;gap:6px;">
+                <button class="btn btn-xs btn-secondary" style="white-space:nowrap;font-size:10.5px;font-weight:700;padding:5px 10px;" onclick="WMS_MODULES.picking._abrirCambiarAuxiliaresPlanilla('${planKey}')">
+                  <i class="fa-solid fa-user-pen"></i> Cambiar Auxiliares
+                </button>
+                <button class="btn btn-xs btn-primary" style="white-space:nowrap;font-size:10.5px;font-weight:700;padding:5px 10px;" onclick="WMS_MODULES.picking.abrirModalEditarPedido('${WMS.esc(g.planilla)}')">
+                  <i class="fa-solid fa-pen-to-square"></i> Editar Pedido
+                </button>
+              </div>
             </div>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
               <span style="font-size:10px;font-weight:700;color:#1e40af;text-transform:uppercase;">Pedidos de la planilla:</span>
@@ -1662,6 +1667,69 @@ WMS_MODULES.picking = {
       this._cargarPedidos();
     } catch(e) {
       WMS.toast('error', 'Error asignando ruta');
+    }
+  },
+
+  // Cambiar auxiliares de una planilla: por cada auxiliar con líneas aún sin
+  // separar, se elige su reemplazo. Usa POST /picking/transfer (solo mueve
+  // líneas Pendiente/EnProceso; lo ya separado conserva su auxiliar).
+  async _abrirCambiarAuxiliaresPlanilla(planKey) {
+    const g = this._planRowsCache?.[planKey];
+    if (!g) return;
+    const activos = ['Pendiente', 'Creado', 'EnProceso', 'PendienteReabastecimiento'];
+    const porAux = {};
+    (g.ordenes || []).forEach(o => (o.detalles || []).forEach(d => {
+      if (!d.auxiliar_id || !activos.includes(d.estado)) return;
+      const a = porAux[d.auxiliar_id] = porAux[d.auxiliar_id] || { nombre: d.auxiliar?.nombre || ('#' + d.auxiliar_id), lineas: 0 };
+      a.lineas++;
+    }));
+    const auxIds = Object.keys(porAux);
+    if (!auxIds.length) return WMS.toast('info', 'No hay líneas pendientes con auxiliar asignado en esta planilla');
+
+    let personal = [];
+    try {
+      const r = await API.get('/param/personal', 'rol=Auxiliar&activo=1');
+      personal = r.data || r || [];
+    } catch(e) { if (e.isSessionExpired) return; }
+    const opts = personal.map(p => `<option value="${parseInt(p.id)||0}">${WMS.esc(p.nombre)}</option>`).join('');
+
+    this._cambioAuxOrdenIds = g.ordenes.map(o => o.id);
+    WMS.showRightPanel(`Cambiar Auxiliares — Planilla ${WMS.esc(g.planilla)}`, `
+      <div style="margin-bottom:14px;padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:13px;color:#1e40af;">
+        <i class="fa-solid fa-circle-info"></i> Solo se reasignan las líneas aún no separadas. Lo ya separado conserva su auxiliar original.
+      </div>
+      ${auxIds.map(id => `
+        <div class="form-group">
+          <label class="form-label">${WMS.esc(porAux[id].nombre)} <span style="color:#64748b;font-weight:400;">(${porAux[id].lineas} línea(s) pendientes)</span></label>
+          <select class="form-control ca-plan-aux" data-from="${parseInt(id)||0}">
+            <option value="">— Sin cambio —</option>${opts}
+          </select>
+        </div>`).join('')}`,
+      `<button class="btn btn-secondary" onclick="WMS.closeRightPanel()">Cancelar</button>
+       <button class="btn btn-primary" onclick="WMS_MODULES.picking._confirmarCambiarAuxiliaresPlanilla(this)">
+         <i class="fa-solid fa-user-check"></i> Confirmar Cambio
+       </button>`);
+  },
+
+  async _confirmarCambiarAuxiliaresPlanilla(btn) {
+    const cambios = [...document.querySelectorAll('.ca-plan-aux')]
+      .map(s => ({ from: parseInt(s.dataset.from), to: parseInt(s.value) }))
+      .filter(c => c.to && c.to !== c.from);
+    if (!cambios.length) return WMS.toast('warning', 'Seleccione al menos un auxiliar nuevo');
+    btn.disabled = true;
+    try {
+      // Un solo request: el backend aplica todos los cambios atómicamente
+      // (un intercambio A↔B no encadena líneas).
+      const r = await API.post('/picking/transfer', {
+        cambios: cambios.map(c => ({ from_auxiliar_id: c.from, to_auxiliar_id: c.to })),
+        orden_ids: this._cambioAuxOrdenIds,
+      });
+      WMS.closeRightPanel();
+      WMS.toast('success', r.message || 'Auxiliares actualizados');
+      WMS.currentSubModule === 'dashboard' ? this.show_dashboard(true) : this._cargarPedidos();
+    } catch(e) {
+      btn.disabled = false;
+      WMS.toast('error', e.message || 'Error cambiando auxiliares');
     }
   },
 

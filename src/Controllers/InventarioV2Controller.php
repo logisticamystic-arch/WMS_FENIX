@@ -689,6 +689,8 @@ class InventarioV2Controller extends BaseController
                            ->whereIn('estado', [SesionInventario::ESTADO_EN_CURSO, 'PendienteAjuste', 'Borrador']);
                     });
                 })
+                // Recuentos (R3, R2) primero: tienen prioridad sobre el primer conteo.
+                ->orderByDesc('ronda')
                 ->orderByDesc('created_at')
                 ->get()
                 ->map(function ($a) {
@@ -832,6 +834,13 @@ class InventarioV2Controller extends BaseController
         if ($lineas === 0 && $asignacion->tipo_instruccion !== SesionAsignacion::INSTRUCCION_REFERENCIA) {
             return $this->error($res, 'Debe registrar al menos una línea antes de finalizar');
         }
+        // Recuento (R2/R3) de General / Cargue Inicial: finalizar sin líneas
+        // equivaldría a "la referencia no existe" y el ajuste la pondría en cero en
+        // todas sus ubicaciones con un solo toque. Debe registrarse con "Agregar
+        // Conteo", que exige cada ubicación del conteo anterior (contada o en 0).
+        if ($lineas === 0 && $this->lineasPreviasRecuento($asignacion)) {
+            return $this->error($res, 'Este recuento no tiene conteos: use "Agregar Conteo" y registre cada ubicación del conteo anterior (o póngala en 0) antes de finalizar.', 422);
+        }
 
         $asignacion->estado        = SesionAsignacion::ESTADO_FINALIZADO;
         $asignacion->finalizado_at = date('Y-m-d H:i:s');
@@ -954,7 +963,14 @@ class InventarioV2Controller extends BaseController
             if ($code) $mapContadosByCode[$code] = $item;
         }
 
-        // 2. REGLA OBLIGATORIA: Verificar que CADA ubicación registrada en sistema fue contada (o puesta en cero)
+        // Recuento (R2/R3) de General / Cargue Inicial: las ubicaciones obligatorias
+        // son las del conteo anterior de la referencia, no las del sistema.
+        $previas = $this->lineasPreviasRecuento($asignacion);
+        if ($previas) {
+            $rowsStock = $previas->unique('ubicacion_id')->values();
+        }
+
+        // 2. REGLA OBLIGATORIA: Verificar que CADA ubicación registrada (sistema, o conteo anterior en un recuento) fue contada (o puesta en cero)
         $faltantes = [];
         foreach ($rowsStock as $inv) {
             $uId = $inv->ubicacion_id;
@@ -966,7 +982,7 @@ class InventarioV2Controller extends BaseController
 
         if (!empty($faltantes)) {
             $listaFaltantes = implode(', ', array_unique($faltantes));
-            return $this->error($res, "Debe realizar el conteo de todas las ubicaciones registradas en sistema (o colocar cero 0). Faltan por contar: {$listaFaltantes}");
+            return $this->error($res, ($previas ? "Recuento: debe contar todas las ubicaciones del conteo anterior (o colocar cero 0). Faltan por contar: {$listaFaltantes}" : "Debe realizar el conteo de todas las ubicaciones registradas en sistema (o colocar cero 0). Faltan por contar: {$listaFaltantes}"));
         }
 
         // 3. Ejecutar guardado de líneas y ajuste de inventario en una transacción
@@ -984,6 +1000,49 @@ class InventarioV2Controller extends BaseController
                 foreach ($ubicacionesContadas as $item) {
                     $ubicId = !empty($item['ubicacion_id']) ? (int)$item['ubicacion_id'] : null;
                     $code   = !empty($item['codigo']) ? strtoupper(trim($item['codigo'])) : null;
+
+                    // A pedido explícito de Camilo (2026-09-30): la referencia puede no
+                    // tener existencia física en NINGUNA parte (rowsStock vacío, nada que
+                    // el auxiliar deba ubicar). Antes esto se descartaba silenciosamente
+                    // (`if (!$ubicId) continue;`) y no quedaba ningún registro de que se
+                    // verificó — el conteo simplemente no dejaba rastro exportable. Ahora
+                    // se guarda una línea sin ubicación, cantidad 0/0 (diferencia 0, nunca
+                    // dispara ajuste — ver ajustarLinea()), solo para dejar constancia.
+                    if (!$ubicId && !$code && !empty($item['sin_existencia'])) {
+                        // Igual criterio anti-duplicado que el resto del método: si se
+                        // reenvía el conteo (asignación reabierta), actualiza la misma
+                        // línea en vez de crear otra.
+                        $lineaSinExistencia = SesionLinea::where('asignacion_id', $asignacion->id)
+                            ->whereNull('ubicacion_id')
+                            ->where('estado', SesionLinea::ESTADO_ACTIVO)
+                            ->first();
+                        $datosSinExistencia = [
+                            'lote'             => 'N/A',
+                            'fecha_vencimiento'=> null,
+                            'cantidad_cajas'   => 0,
+                            'saldos'           => 0,
+                            'cantidad_contada' => 0,
+                            'cantidad_sistema' => 0,
+                            'diferencia'       => 0,
+                            'hora_conteo'      => date('Y-m-d H:i:s'),
+                        ];
+                        if ($lineaSinExistencia) {
+                            $lineaSinExistencia->fill($datosSinExistencia);
+                            $lineaSinExistencia->save();
+                        } else {
+                            SesionLinea::create(array_merge($datosSinExistencia, [
+                                'sesion_id'     => $sesionId,
+                                'asignacion_id' => $asignacion->id,
+                                'auxiliar_id'   => $user->id,
+                                'ronda'         => $asignacion->ronda ?: 1,
+                                'producto_id'   => $productoId,
+                                'ubicacion_id'  => null,
+                                'estado'        => SesionLinea::ESTADO_ACTIVO,
+                                'ajustado'      => false,
+                            ]));
+                        }
+                        continue;
+                    }
 
                     if (!$ubicId && $code) {
                         $uObj = Ubicacion::where('empresa_id', $empresaId)
@@ -1043,9 +1102,14 @@ class InventarioV2Controller extends BaseController
                     // conservar/actualizar el conteo ya guardado. Ahora actualiza la
                     // línea activa existente para esta asignación+ubicación si ya
                     // existe, y solo crea una nueva si es una ubicación agregada ahora.
+                    // Clave = ubicación + lote + vencimiento (auditoría 2026-09-28):
+                    // solo por ubicación, dos lotes de la misma ubicación en un mismo
+                    // envío terminaban en UNA línea (el segundo sobrescribía al primero).
                     $lineaExistente = SesionLinea::where('asignacion_id', $asignacion->id)
                         ->where('ubicacion_id', $ubicId)
                         ->where('estado', SesionLinea::ESTADO_ACTIVO)
+                        ->whereRaw("COALESCE(NULLIF(NULLIF(TRIM(lote), 'N/A'), 'n/a'), '') = ?", [$lote === 'N/A' ? '' : $lote])
+                        ->when($fv, fn($q) => $q->whereDate('fecha_vencimiento', substr((string)$fv, 0, 10)), fn($q) => $q->whereNull('fecha_vencimiento'))
                         ->first();
 
                     $datosLinea = [
@@ -1145,7 +1209,10 @@ class InventarioV2Controller extends BaseController
                 ->where('sesion_lineas.estado', SesionLinea::ESTADO_ACTIVO)
                 ->when($rondaFiltro > 0, fn($q) => $q->where('sesion_lineas.ronda', $rondaFiltro))
                 ->join('productos',   'sesion_lineas.producto_id',  '=', 'productos.id')
-                ->join('ubicaciones', 'sesion_lineas.ubicacion_id', '=', 'ubicaciones.id')
+                // LEFT JOIN (2026-09-30, a pedido explícito de Camilo): una línea "sin
+                // existencia física" (ver conteoReferenciaCompleto()) se guarda con
+                // ubicacion_id NULL — con INNER JOIN desaparecía de la matriz/export.
+                ->leftJoin('ubicaciones', 'sesion_lineas.ubicacion_id', '=', 'ubicaciones.id')
                 ->join('personal',    'sesion_lineas.auxiliar_id',  '=', 'personal.id')
                 ->select(
                     'sesion_lineas.id',
@@ -1170,7 +1237,7 @@ class InventarioV2Controller extends BaseController
                     // guardada correctamente) no coincidía visualmente con Cajas × U/E + Saldos.
                     Capsule::raw('CASE WHEN productos.factor_udm > 0 THEN productos.factor_udm ELSE productos.unidades_caja END as unidades_caja'),
                     'ubicaciones.id as ubicacion_id',
-                    'ubicaciones.codigo as ubicacion',
+                    Capsule::raw("COALESCE(ubicaciones.codigo, 'Sin existencia física') as ubicacion"),
                     'personal.nombre as auxiliar',
                     'sesion_lineas.ajustado',
                     Capsule::raw("CASE
@@ -1214,7 +1281,7 @@ class InventarioV2Controller extends BaseController
                 ->where('sesion_lineas.estado', SesionLinea::ESTADO_ACTIVO)
                 ->when($rondaFiltro > 0, fn($q) => $q->where('sesion_lineas.ronda', $rondaFiltro))
                 ->join('productos',   'sesion_lineas.producto_id',  '=', 'productos.id')
-                ->join('ubicaciones', 'sesion_lineas.ubicacion_id', '=', 'ubicaciones.id')
+                ->leftJoin('ubicaciones', 'sesion_lineas.ubicacion_id', '=', 'ubicaciones.id')
                 ->leftJoin('inventarios', function ($j) use ($sesion) {
                     $j->on('inventarios.producto_id',  '=', 'sesion_lineas.producto_id')
                       ->on('inventarios.ubicacion_id', '=', 'sesion_lineas.ubicacion_id')
@@ -1225,7 +1292,7 @@ class InventarioV2Controller extends BaseController
                     'sesion_lineas.id',
                     'productos.codigo_interno as codigo',
                     'productos.nombre as producto',
-                    'ubicaciones.codigo as ubicacion',
+                    Capsule::raw("COALESCE(ubicaciones.codigo, 'Sin existencia física') as ubicacion"),
                     'sesion_lineas.lote',
                     'sesion_lineas.fecha_vencimiento',
                     'sesion_lineas.cantidad_contada',
@@ -1281,38 +1348,53 @@ class InventarioV2Controller extends BaseController
                 ->orderBy('sesion_lineas.hora_conteo', 'desc')
                 ->get();
 
-            // Consistencia entre rondas (solo para General con 2+ rondas)
+            // Consistencia entre rondas por referencia recontada (General y Cargue
+            // Inicial: ambos reciben segundos/terceros conteos). Ver
+            // SesionInventario::verificarConsistenciaRondas().
             $consistencia = null;
             $necesitaTercerConteo = false;
-            if ($sesion->tipo === 'General' && $sesion->num_conteos >= 2) {
+            if ($sesion->tipo !== SesionInventario::TIPO_CICLICO && $sesion->num_conteos >= 2) {
                 $result = $sesion->verificarConsistenciaRondas();
                 $consistencia = $result;
-                // El tercer conteo se activa automáticamente si hay diferencias entre ronda 1 y 2
-                if ($sesion->num_conteos === 3 && !$result['ok']) {
-                    $necesitaTercerConteo = true;
-                }
+                // R2 distinto de R1 sin R3: solo BLOQUEA el ajuste si la sesión se
+                // configuró con 3 conteos; si no, vale el R2 (ver ajustarTodoGeneral()).
+                $necesitaTercerConteo = !$result['ok'];
             }
 
-            // ── Matriz Consolidada (Agrupada por Referencia + Ubicación + Lote) ──
+            // ── Matriz Consolidada (Agrupada por Referencia + Lote) ──
             $todasLasLineas = SesionLinea::where('sesion_id', $sesion->id)
                 ->where('estado', SesionLinea::ESTADO_ACTIVO)
                 ->with(['producto.eanPrincipal', 'ubicacion:id,codigo', 'auxiliar:id,nombre'])
                 ->get();
 
-            $consolidado = $todasLasLineas->groupBy(function($l) {
-                return $l->producto_id . '_' . ($l->lote ?? 'N/A');
-            })->map(function($group) {
+            // Stock ACTUAL del sistema por referencia+lote (todas las ubicaciones).
+            // Antes "Sistema" era el snapshot de UNA sola línea del grupo: una
+            // referencia contada en 3 ubicaciones salía con diferencia falsa, y esa
+            // diferencia es la que se usa para elegir los segundos conteos.
+            $normLote = fn($l) => (($t = trim((string)$l)) === '' || strtoupper($t) === 'N/A') ? 'N/A' : $t;
+            $stockActualMap = [];
+            $prodIdsSesion = $todasLasLineas->pluck('producto_id')->unique()->values()->all();
+            if ($prodIdsSesion) {
+                foreach (Capsule::table('inventarios')
+                            ->where('empresa_id', $sesion->empresa_id)->where('sucursal_id', $sesion->sucursal_id)
+                            ->whereIn('producto_id', $prodIdsSesion)
+                            ->get(['producto_id', 'lote', 'cantidad']) as $inv) {
+                    $k = $inv->producto_id . '_' . $normLote($inv->lote);
+                    $stockActualMap[$k] = ($stockActualMap[$k] ?? 0) + (float)$inv->cantidad;
+                }
+            }
+
+            $consolidado = $todasLasLineas->groupBy(function($l) use ($normLote) {
+                return $l->producto_id . '_' . $normLote($l->lote);
+            })->map(function($group, $grpKey) use ($stockActualMap) {
                 $first = $group->first();
                 $r1 = $group->where('ronda', 1)->sum('cantidad_contada');
                 $r2 = $group->where('ronda', 2)->sum('cantidad_contada');
                 $r3 = $group->where('ronda', 3)->sum('cantidad_contada');
-                
-                $ultimoConteo   = $group->sortByDesc('created_at')->first();
-                $conteoMax      = (float)$group->where('ronda', $group->max('ronda'))->sum('cantidad_contada');
-                $todosAjustados = $group->every(fn($l) => !empty($l->ajustado));
 
-                $stockSistema = $todosAjustados ? $conteoMax : (float)($ultimoConteo->cantidad_sistema ?? 0);
-                $difSistema   = $todosAjustados ? 0.0 : round($conteoMax - (float)($ultimoConteo->cantidad_sistema ?? 0), 3);
+                $conteoMax    = (float)$group->where('ronda', $group->max('ronda'))->sum('cantidad_contada');
+                $stockSistema = round((float)($stockActualMap[$grpKey] ?? 0), 3);
+                $difSistema   = round($conteoMax - $stockSistema, 3);
 
                 return [
                     'producto_id'  => $first->producto_id,
@@ -1321,9 +1403,9 @@ class InventarioV2Controller extends BaseController
                     'ean'          => $first->producto->eanPrincipal->codigo_ean ?? null,
                     'lote'         => $first->lote ?? 'N/A',
                     'f_venc'       => $first->fecha_vencimiento,
-                    'ronda_1'      => (int)$r1,
-                    'ronda_2'      => (int)$r2,
-                    'ronda_3'      => (int)$r3,
+                    'ronda_1'      => round((float)$r1, 3),
+                    'ronda_2'      => round((float)$r2, 3),
+                    'ronda_3'      => round((float)$r3, 3),
                     'sistema'      => $stockSistema,
                     'diferencia'   => $difSistema,
                     // Sub-agrupación por Ubicación y Vencimiento para el detalle
@@ -1453,6 +1535,99 @@ class InventarioV2Controller extends BaseController
                 ];
             })->sortByDesc('total_unidades')->values();
 
+            // ── Conteo definitivo (mismo criterio que el ajuste) ───────────
+            // Por referencia: última ronda contada. Una referencia recontada y
+            // finalizada sin líneas cuenta como contada en 0.
+            $definitivasDash  = $this->lineasDefinitivas($sesion);
+            $conteoDefPorProd = [];
+            foreach ($definitivasDash as $def) {
+                $pid = $def['linea']->producto_id;
+                $conteoDefPorProd[$pid] = ($conteoDefPorProd[$pid] ?? 0) + (float)$def['linea']->cantidad_contada;
+            }
+            foreach (SesionAsignacion::where('sesion_id', $sesion->id)->where('ronda', '>=', 2)
+                        ->where('estado', SesionAsignacion::ESTADO_FINALIZADO)->whereNotNull('producto_id')
+                        ->pluck('producto_id') as $pid) {
+                $conteoDefPorProd[$pid] = $conteoDefPorProd[$pid] ?? 0.0;
+            }
+
+            // ── Stock en sistema NO contado (General / Cargue Inicial) ─────
+            // Es exactamente lo que ajustarTodoGeneral() pondrá en cero. Reemplaza
+            // la pestaña "Análisis ML", que mostraba lo mismo con otro criterio
+            // (ronda más alta de la sesión) y etiquetas de "impacto" sin sustento.
+            $noContadoSistema = null;
+            if ($sesion->tipo !== SesionInventario::TIPO_CICLICO) {
+                $nc = $this->noContadasGeneral($sesion, $definitivasDash);
+                $prodsNc = Producto::whereIn('id', array_unique(array_map(fn($l) => $l->producto_id, $nc)) ?: [0])
+                    ->get(['id', 'nombre', 'codigo_interno'])->keyBy('id');
+                $ubicsNc = Ubicacion::whereIn('id', array_unique(array_map(fn($l) => $l->ubicacion_id, $nc)) ?: [0])
+                    ->get(['id', 'codigo'])->keyBy('id');
+                $filasNc = array_map(fn($l) => [
+                    'producto_id'       => $l->producto_id,
+                    'codigo'            => $prodsNc[$l->producto_id]->codigo_interno ?? '—',
+                    'producto'          => $prodsNc[$l->producto_id]->nombre ?? "Producto #{$l->producto_id}",
+                    'ubicacion'         => $ubicsNc[$l->ubicacion_id]->codigo ?? "Ubic#{$l->ubicacion_id}",
+                    'lote'              => $l->lote,
+                    'fecha_vencimiento' => $l->fecha_vencimiento ? substr((string)$l->fecha_vencimiento, 0, 10) : null,
+                    'cantidad_sistema'  => (float)$l->cantidad_sistema,
+                ], $nc);
+                usort($filasNc, fn($a, $b) => $b['cantidad_sistema'] <=> $a['cantidad_sistema']);
+                $noContadoSistema = [
+                    'total_filas'       => count($filasNc),
+                    'total_referencias' => count(array_unique(array_column($filasNc, 'producto_id'))),
+                    'total_unidades'    => array_sum(array_column($filasNc, 'cantidad_sistema')),
+                    'filas'             => array_slice($filasNc, 0, 3000),
+                ];
+            }
+
+            // ── Diferencias DEFINITIVAS (General / Cargue Inicial) ─────────
+            // Por ubicación+lote+vencimiento: el conteo que vale (R1, R2 o R3 de
+            // la referencia) contra el stock actual — exactamente lo que aplicará
+            // el ajuste. Marca las referencias con un recuento programado aún sin
+            // terminar: mientras exista, el ajuste está bloqueado.
+            $diferenciasDef = null;
+            if ($sesion->tipo !== SesionInventario::TIPO_CICLICO) {
+                $stockClave = $this->stockPorClave($sesion);
+                $recuentoPend = [];
+                foreach (SesionAsignacion::where('sesion_id', $sesion->id)->where('ronda', '>=', 2)
+                            ->where('estado', '!=', SesionAsignacion::ESTADO_FINALIZADO)->whereNotNull('producto_id')
+                            ->get(['producto_id', 'ronda']) as $a) {
+                    $recuentoPend[$a->producto_id] = max($recuentoPend[$a->producto_id] ?? 0, (int)$a->ronda);
+                }
+                $lineasPorId = $todasLasLineas->keyBy('id');
+                $diferenciasDef = [];
+                foreach ($definitivasDash as $k => $def) {
+                    $l = $def['linea'];
+                    $primera = $lineasPorId[$def['ids'][0]] ?? null;
+                    $sistema = round((float)($stockClave[$k] ?? 0), 3);
+                    $conteo  = round((float)$l->cantidad_contada, 3);
+                    $diferenciasDef[] = [
+                        'linea_id'           => $def['ids'][0],
+                        'lineas'             => count($def['ids']),
+                        'producto_id'        => $l->producto_id,
+                        'codigo'             => $primera->producto->codigo_interno ?? '—',
+                        'producto'           => $primera->producto->nombre ?? '—',
+                        'ubicacion'          => $primera->ubicacion->codigo ?? '—',
+                        'lote'               => $l->lote,
+                        'fecha_vencimiento'  => $l->fecha_vencimiento ? $l->fecha_vencimiento->format('Y-m-d') : null,
+                        'ronda'              => (int)$l->ronda,
+                        'cantidad_contada'   => $conteo,
+                        'cantidad_sistema'   => $sistema,
+                        'diferencia'         => round($conteo - $sistema, 3),
+                        'ajustado'           => collect($def['ids'])->every(fn($id) => !empty($lineasPorId[$id]->ajustado)),
+                        'recuento_pendiente' => $recuentoPend[$l->producto_id] ?? null,
+                    ];
+                }
+                usort($diferenciasDef, fn($a, $b) => $a['diferencia'] <=> $b['diferencia']);
+
+                // KPIs de diferencias sobre el conteo definitivo (no sobre la ronda
+                // en pantalla): son las cifras que usa la confirmación del ajuste.
+                $conDif     = array_filter($diferenciasDef, fn($x) => abs($x['diferencia']) > 0.0001);
+                $conDiferencia = count($conDif);
+                $sobrantes  = array_sum(array_map(fn($x) => max(0, $x['diferencia']), $conDif));
+                $faltantes  = array_sum(array_map(fn($x) => min(0, $x['diferencia']), $conDif));
+                $totalLineas = count($diferenciasDef);
+            }
+
             // ── Analítica & Comparativo ICG ─────────────────────────────────
             $icgLineas = SesionIcgLinea::where('sesion_id', $sesion->id)
                 ->with(['producto.ambiente'])
@@ -1483,9 +1658,16 @@ class InventarioV2Controller extends BaseController
                 $icgAnalysis['total_referencias_icg'] = $icgLineas->count();
                 $icgAnalysis['total_unidades_icg'] = (float)$icgLineas->sum('cantidad_icg');
 
-                // Mapear conteo WMS por producto_id o código
-                $conteoPorProd = $todasLasLineas->where('ronda', $rondaFiltro > 0 ? $rondaFiltro : 1)->groupBy('producto_id')->map(fn($g) => $g->sum('cantidad_contada'));
-                $conteoPorCod  = $todasLasLineas->where('ronda', $rondaFiltro > 0 ? $rondaFiltro : 1)->groupBy(fn($l) => strtoupper(trim($l->producto->codigo_interno ?? '')))->map(fn($g) => $g->sum('cantidad_contada'));
+                // Conteo WMS = conteo DEFINITIVO por referencia (el mismo que usa el
+                // ajuste). Antes se tomaba solo la ronda del filtro (R1 por defecto):
+                // lo recontado en R2/R3 no se reflejaba, y con el filtro en R2 todo
+                // lo demás salía como "no contado".
+                $conteoPorProd = $conteoDefPorProd;
+                $codPorProd = $todasLasLineas->mapWithKeys(fn($l) => [$l->producto_id => strtoupper(trim($l->producto->codigo_interno ?? ''))]);
+                $conteoPorCod = [];
+                foreach ($conteoDefPorProd as $pid => $cant) {
+                    $conteoPorCod[$codPorProd[$pid] ?? ''] = $cant;
+                }
 
                 $icgMapByProd = $icgLineas->groupBy('producto_id')->map(fn($g) => $g->sum('cantidad_icg'));
 
@@ -1497,6 +1679,7 @@ class InventarioV2Controller extends BaseController
                 $sobrantesRef = 0;
                 $faltantesRef = 0;
                 $coincidentesRef = 0;
+                $noContadasRef = 0;
 
                 $icgCodigosSet = [];
                 $icgAmbientes = [];
@@ -1509,6 +1692,7 @@ class InventarioV2Controller extends BaseController
                     }
 
                     $cantIcg  = (float)$icg->cantidad_icg;
+                    $contada  = $icg->producto_id ? array_key_exists($icg->producto_id, $conteoPorProd) : array_key_exists($cod, $conteoPorCod);
                     $cantWms  = $icg->producto_id ? ($conteoPorProd[$icg->producto_id] ?? 0) : ($conteoPorCod[$cod] ?? 0);
                     $diff     = $cantWms - $cantIcg;
 
@@ -1520,13 +1704,19 @@ class InventarioV2Controller extends BaseController
                     $icgAmbientes[$amb]['tot_icg'] += $cantIcg;
                     $icgAmbientes[$amb]['tot_wms'] += $cantWms;
 
-                    if ($cantWms > 0) {
+                    // Contada = tiene conteo (aunque sea 0 confirmado), no "cantidad > 0".
+                    if ($contada) {
                         $refContadasCount++;
                         $icgAmbientes[$amb]['cont_ref']++;
                     }
 
                     $estadoStr = 'Coincidente';
-                    if ($cantWms > $cantIcg) {
+                    if (!$contada) {
+                        // Pendiente por contar: no se suma a faltantes (aún no hay conteo).
+                        $estadoStr = 'No contada';
+                        $noContadasRef++;
+                        if ($cantIcg != 0) $lineasConDif++;
+                    } elseif ($cantWms > $cantIcg) {
                         $estadoStr = 'Sobrante';
                         $lineasConDif++;
                         $sobrantesRef++;
@@ -1567,7 +1757,7 @@ class InventarioV2Controller extends BaseController
                 }
 
                 // Discrepancia 1: En ICG no contados en WMS
-                $icgNoContados = array_filter($lineasComp, fn($item) => $item['cantidad_contada'] == 0);
+                $icgNoContados = array_filter($lineasComp, fn($item) => $item['estado'] === 'No contada');
 
                 // Discrepancia 2: Contados en WMS no en ICG
                 $wmsNoEnIcg = [];
@@ -1582,7 +1772,8 @@ class InventarioV2Controller extends BaseController
                             'producto'         => $pFirst->producto->nombre ?? '-',
                             'unidades_caja'    => $pFirst->producto->unidades_caja ?? 1,
                             'ambiente'         => $ambW,
-                            'cantidad_contada' => $gLineas->sum('cantidad_contada'),
+                            // Conteo definitivo (antes sumaba R1+R2+R3 = doble conteo)
+                            'cantidad_contada' => (float)($conteoDefPorProd[$pId] ?? 0),
                             'auxiliares'       => $gLineas->pluck('auxiliar.nombre')->filter()->unique()->values()->all()
                         ];
                     }
@@ -1592,6 +1783,7 @@ class InventarioV2Controller extends BaseController
                 $icgAnalysis['referencias_sobrantes_icg'] = $sobrantesRef;
                 $icgAnalysis['referencias_faltantes_icg'] = $faltantesRef;
                 $icgAnalysis['referencias_coincidentes_icg'] = $coincidentesRef;
+                $icgAnalysis['referencias_no_contadas_icg'] = $noContadasRef;
                 $icgAnalysis['sobrantes_unidades_icg'] = (float)$sobrantesUds;
                 $icgAnalysis['faltantes_unidades_icg'] = (float)$faltantesUds;
                 $icgAnalysis['exactitud_ira_icg'] = $icgLineas->count() > 0 ? round((100 - ($lineasConDif / $icgLineas->count() * 100)), 1) : 100;
@@ -1602,20 +1794,24 @@ class InventarioV2Controller extends BaseController
                 $icgAnalysis['discrepancias']['conteo_no_en_icg'] = array_values($wmsNoEnIcg);
 
                 // Enriquecer consolidado con columna ICG
-                foreach ($consolidado as &$item) {
+                $consolidado = $consolidado->map(function ($item) use ($icgMapByProd) {
                     $item['cantidad_icg'] = (float)($icgMapByProd[$item['producto_id']] ?? 0);
-                }
+                    return $item;
+                });
             }
 
-            // ── Programación de Segundos Conteos (Ronda 2) ────────────────
+            // ── Programación de Segundos y Terceros Conteos (Ronda 2 y 3) ──
             $segundosConteosData = SesionAsignacion::where('sesion_id', $sesion->id)
-                ->where('ronda', 2)
+                ->where('ronda', '>=', 2)
                 ->with(['auxiliar:id,nombre', 'producto:id,codigo_interno,nombre'])
                 ->get()
                 ->map(function ($asig) use ($todasLasLineas) {
                     $r1 = $todasLasLineas->where('producto_id', $asig->producto_id)->where('ronda', 1)->sum('cantidad_contada');
                     $r2 = $todasLasLineas->where('producto_id', $asig->producto_id)->where('ronda', 2)->sum('cantidad_contada');
+                    $r3 = $todasLasLineas->where('producto_id', $asig->producto_id)->where('ronda', 3)->sum('cantidad_contada');
                     return [
+                        'ronda'            => (int)$asig->ronda,
+                        'r3'               => round((float)$r3, 3),
                         'id'               => $asig->id,
                         'auxiliar_id'      => $asig->auxiliar_id,
                         'auxiliar'         => $asig->auxiliar->nombre ?? 'Sin Asignar',
@@ -1654,6 +1850,10 @@ class InventarioV2Controller extends BaseController
                 'analisis_ambientes'   => $ambientesData,
                 'analisis_auxiliares'  => $auxiliaresData,
                 'analisis_icg'         => $icgAnalysis,
+                'no_contado_sistema'   => $noContadoSistema,
+                'diferencias_definitivas' => $diferenciasDef,
+                'recuentos_pendientes' => SesionAsignacion::where('sesion_id', $sesion->id)->where('ronda', '>=', 2)
+                                            ->where('estado', '!=', SesionAsignacion::ESTADO_FINALIZADO)->count(),
                 'segundos_conteos'     => $segundosConteosData,
             ]);
         } catch (\Throwable $e) {
@@ -1835,7 +2035,23 @@ class InventarioV2Controller extends BaseController
             ->find($data['linea_id']);
 
         if (!$linea) return $this->notFound($res, 'Línea no encontrada o ya eliminada');
-        if ($linea->diferencia === 0) {
+
+        // General / Cargue Inicial: se ajusta con el conteo DEFINITIVO de la
+        // referencia (última ronda contada, sumando todas las líneas de la misma
+        // ubicación+lote+vencimiento) — ver lineasDefinitivas(). Antes se ajustaba
+        // la línea suelta: con dos líneas de la misma clave el stock quedaba con la
+        // cantidad de UNA sola, y una línea de R1 podía pisar un R2/R3 posterior.
+        $esGeneral = $sesion->tipo !== SesionInventario::TIPO_CICLICO;
+        $lineaAjuste = $linea;
+        $lineaIds = null;
+        if ($esGeneral) {
+            $def = $this->lineasDefinitivas($sesion)[$this->claveInv($linea->producto_id, $linea->ubicacion_id, $linea->lote, $linea->fecha_vencimiento)] ?? null;
+            if (!$def || !in_array($linea->id, $def['ids'], true)) {
+                return $this->error($res, 'Esta referencia tiene un conteo posterior (segundo/tercer conteo): el ajuste se hace con ese conteo, no con esta línea.', 409);
+            }
+            $lineaAjuste = $def['linea'];
+            $lineaIds    = $def['ids'];
+        } elseif (abs((float)$linea->diferencia) < 0.0001) {
             return $this->ok($res, null, 'Sin diferencia — no se requiere ajuste');
         }
 
@@ -1843,8 +2059,8 @@ class InventarioV2Controller extends BaseController
             // Envuelto en transacción: si la limpieza de otras ubicaciones (abajo)
             // fallara a mitad de camino, no debe quedar el ajuste principal aplicado
             // sin la reconciliación, ni viceversa.
-            [$ajuste, $ajustesCero] = Capsule::transaction(function () use ($sesion, $linea, $user) {
-                $ajuste = $this->ejecutarAjuste($sesion, $linea, $user, AjusteInventario::ORIGEN_CONTEO_LINEA);
+            [$ajuste, $ajustesCero] = Capsule::transaction(function () use ($sesion, $linea, $lineaAjuste, $lineaIds, $user) {
+                $ajuste = $this->ejecutarAjuste($sesion, $lineaAjuste, $user, AjusteInventario::ORIGEN_CONTEO_LINEA, false, null, $lineaIds);
 
                 // BUG CORREGIDO 2026-08-20 (a pedido explícito): esta reconciliación
                 // ("dejar en 0 el stock de esta MISMA referencia en cualquier otra
@@ -1862,10 +2078,11 @@ class InventarioV2Controller extends BaseController
                     if ($asignacion && $asignacion->tipo_instruccion === SesionAsignacion::INSTRUCCION_REFERENCIA) {
                         $sinExistencia = $this->detectarReferenciasSinExistencia($sesion, $linea->ronda, [], $asignacion->id);
                         foreach ($sinExistencia as $lineaVirtual) {
-                            $ajustesCero[] = $this->ejecutarAjuste(
+                            $az = $this->ejecutarAjuste(
                                 $sesion, $lineaVirtual, $user, AjusteInventario::ORIGEN_CONTEO_LINEA,
                                 true, 'Referencia confirmada sin existencia física en otra ubicación'
                             );
+                            if ($az) $ajustesCero[] = $az;
                         }
                     }
                 }
@@ -1873,8 +2090,12 @@ class InventarioV2Controller extends BaseController
                 return [$ajuste, $ajustesCero];
             });
 
+            if (!$ajuste && !$ajustesCero) {
+                return $this->ok($res, null, 'Sin diferencia — el stock del sistema ya coincide con el conteo');
+            }
+
             // Regla de Oro #3 (modo alerta, no bloquea) — mismo patrón que en PickingController.
-            $productosMovidos = [$ajuste->producto_id => true];
+            $productosMovidos = [$linea->producto_id => true];
             foreach ($ajustesCero as $az) { $productosMovidos[$az->producto_id] = true; }
             $guardInv = new InventoryGuard($sesion->empresa_id, $sesion->sucursal_id, $user->id);
             foreach (array_keys($productosMovidos) as $productoId) {
@@ -1895,8 +2116,8 @@ class InventarioV2Controller extends BaseController
                 'stock_nuevo'    => (float)$stockActual,
                 'producto_id'    => $linea->producto_id,
                 'ubicacion_id'   => $linea->ubicacion_id,
-                'cantidad_contada' => (float)$linea->cantidad_contada,
-                'diferencia_real'  => $ajuste->diferencia,
+                'cantidad_contada' => (float)$lineaAjuste->cantidad_contada,
+                'diferencia_real'  => $ajuste->diferencia ?? 0,
             ], 'Ajuste de línea realizado correctamente');
         } catch (\Throwable $e) {
             return $this->error($res, $e->getMessage(), 500);
@@ -1924,16 +2145,10 @@ class InventarioV2Controller extends BaseController
             return $this->error($res, 'Se requiere confirm: true para ejecutar el ajuste masivo');
         }
 
-        // Para General con 2 rondas: verificar consistencia antes de ajustar
-        if ($sesion->tipo === 'General' && $sesion->num_conteos === 2
-            && !filter_var($data['omitir_verificacion'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
-            $check = $sesion->verificarConsistenciaRondas();
-            if (!$check['ok']) {
-                return $this->error($res,
-                    'Existen ' . count($check['diferencias']) . ' diferencia(s) entre ronda 1 y ronda 2. ' .
-                    'Resuelva las diferencias o use el tercer conteo antes de ajustar.'
-                );
-            }
+        // General / Cargue Inicial: flujo propio (ver ajustarTodoGeneral()). Lo de
+        // abajo queda SOLO para Cíclico, sin cambios de comportamiento.
+        if ($sesion->tipo !== SesionInventario::TIPO_CICLICO) {
+            return $this->ajustarTodoGeneral($sesion, $user, $res);
         }
 
         // Determinar las líneas definitivas a ajustar:
@@ -2077,6 +2292,271 @@ class InventarioV2Controller extends BaseController
     }
 
     /**
+     * Ajuste masivo de Inventario General / Cargue Inicial (auditoría 2026-09-28).
+     *
+     * Regla del negocio:
+     *  - Todo lo contado queda en inventario con su ubicación, lote y fecha de
+     *    vencimiento (conteo definitivo = última ronda de CADA referencia).
+     *  - Todo lo que el sistema tenga con stock en la sucursal y NO se haya
+     *    contado queda en cero en cada ubicación (kardex: Ajuste de Inventario General).
+     *
+     * Corrige, respecto del flujo anterior (compartido con Cíclico):
+     *  1. Si ninguna línea contada tenía diferencia, retornaba ANTES de poner en
+     *     cero lo no contado (p. ej. tras ajustar todo línea por línea).
+     *  2. "No contado" se calculaba contra la ronda MÁS ALTA de toda la sesión:
+     *     con un segundo conteo parcial, todo lo contado solo en R1 se ponía en 0.
+     *  3. Tomaba UNA línea por producto+ubicación+lote (sin vencimiento): se
+     *     perdían líneas repetidas y lotes con otra fecha (sesión 51: 5 líneas,
+     *     590.766 uds nunca cargadas).
+     */
+    private function ajustarTodoGeneral(SesionInventario $sesion, $user, Response $res): Response
+    {
+        if (in_array($sesion->estado, [SesionInventario::ESTADO_AJUSTADO, SesionInventario::ESTADO_CERRADO], true)) {
+            // Re-ajustar pondría en cero todo lo que entró a la bodega DESPUÉS del inventario.
+            return $this->error($res, "La sesión ya está {$sesion->estado}: no se puede volver a ajustar.", 409);
+        }
+
+        $recuentosPendientes = SesionAsignacion::where('sesion_id', $sesion->id)
+            ->where('ronda', '>=', 2)
+            ->where('estado', '!=', SesionAsignacion::ESTADO_FINALIZADO)
+            ->count();
+        if ($recuentosPendientes > 0) {
+            return $this->error($res, "Hay {$recuentosPendientes} segundo(s)/tercer(os) conteo(s) sin finalizar. Deben terminarse (o eliminarse) antes de ajustar: el ajuste usa el último conteo de cada referencia.", 422);
+        }
+
+        if ($sesion->num_conteos >= 3) {
+            $check = $sesion->verificarConsistenciaRondas();
+            if (!$check['ok']) {
+                return $this->error($res, count($check['diferencias']) . ' referencia(s) tienen el segundo conteo distinto al primero y la sesión está configurada con 3 conteos: envíelas a Tercer Conteo antes de ajustar.', 422);
+            }
+        }
+
+        $definitivas = $this->lineasDefinitivas($sesion);
+        if (empty($definitivas)) {
+            return $this->error($res, 'La sesión no tiene conteos registrados: ajustar pondría en cero todo el inventario de la sucursal.', 422);
+        }
+        $noContadas = $this->noContadasGeneral($sesion, $definitivas);
+
+        try {
+            $resultado = Capsule::transaction(function () use ($sesion, $definitivas, $noContadas, $user) {
+                $ajustes = []; $ajustesCero = []; $stockResumen = [];
+
+                foreach ($definitivas as $def) {
+                    $aj = $this->ejecutarAjuste($sesion, $def['linea'], $user, AjusteInventario::ORIGEN_CONTEO_TOTAL, false, null, $def['ids']);
+                    if (!$aj) continue; // sin diferencia: stock ya correcto
+                    $ajustes[] = $aj;
+                    $stockResumen[] = [
+                        'producto_id'    => $aj->producto_id,
+                        'ubicacion_id'   => $aj->ubicacion_id,
+                        'lote'           => $aj->lote,
+                        'cantidad_nueva' => (float)$aj->cantidad_fisica,
+                        'diferencia'     => $aj->diferencia,
+                        'tipo'           => 'conteo',
+                    ];
+                }
+
+                foreach ($noContadas as $lineaVirtual) {
+                    $aj = $this->ejecutarAjuste($sesion, $lineaVirtual, $user, AjusteInventario::ORIGEN_CONTEO_TOTAL, true);
+                    if (!$aj) continue;
+                    $ajustesCero[] = $aj;
+                    $stockResumen[] = [
+                        'producto_id'    => $aj->producto_id,
+                        'ubicacion_id'   => $aj->ubicacion_id,
+                        'lote'           => $aj->lote,
+                        'cantidad_nueva' => 0,
+                        'diferencia'     => $aj->diferencia,
+                        'tipo'           => 'no_contada',
+                    ];
+                }
+
+                // Filas residuales en cero (sin stock ni reserva): se eliminan para
+                // que la sucursal quede solo con lo contado.
+                Capsule::table('inventarios')
+                    ->where('empresa_id', $sesion->empresa_id)->where('sucursal_id', $sesion->sucursal_id)
+                    ->where('cantidad', 0)->where('cantidad_reservada', 0)
+                    ->delete();
+
+                // Verificación final: si el inventario resultante no es EXACTAMENTE
+                // el conteo definitivo, se revierte TODO el ajuste (nada queda a medias).
+                $malas = $this->verificarInventarioIgualAlConteo($sesion, $definitivas);
+                if ($malas) {
+                    throw new \RuntimeException('Ajuste revertido: la verificación final encontró ' . count($malas)
+                        . ' ubicación(es) donde el inventario no quedó igual al conteo. Ningún cambio fue aplicado. Detalle: '
+                        . implode('; ', array_slice($malas, 0, 10)));
+                }
+
+                $sesion->estado       = SesionInventario::ESTADO_AJUSTADO;
+                $sesion->ajustado_por = $user->id;
+                $sesion->fecha_cierre = date('Y-m-d');
+                $sesion->save();
+
+                return compact('ajustes', 'ajustesCero', 'stockResumen');
+            });
+
+            $total = count($resultado['ajustes']) + count($resultado['ajustesCero']);
+            $this->audit($user, 'inventario_v2', 'ajustar_todo', 'sesiones_inventario', $sesion->id, null, [
+                'ajustes_conteo'      => count($resultado['ajustes']),
+                'ajustes_no_contadas' => count($resultado['ajustesCero']),
+                'total'               => $total,
+            ]);
+
+            $guardInv = new InventoryGuard($sesion->empresa_id, $sesion->sucursal_id, $user->id);
+            foreach (array_unique(array_column($resultado['stockResumen'], 'producto_id')) as $productoId) {
+                $guardInv->assertLedgerMatchesStock((int)$productoId);
+            }
+
+            return $this->ok($res, [
+                'ajustes_realizados'  => $total,
+                'ajustes_conteo'      => count($resultado['ajustes']),
+                'ajustes_no_contadas' => count($resultado['ajustesCero']),
+                'sesion_id'           => $sesion->id,
+                'estado'              => $sesion->estado,
+                'stock_resumen'       => $resultado['stockResumen'],
+            ], 'Ajuste de inventario general completado');
+        } catch (\Throwable $e) {
+            return $this->error($res, $e->getMessage(), 500);
+        }
+    }
+
+    /** Clave de inventario: producto|ubicación|lote normalizado|vencimiento (Y-m-d). */
+    private function claveInv($productoId, $ubicacionId, $lote, $fv): string
+    {
+        $l = trim((string)$lote);
+        if (strtoupper($l) === 'N/A') $l = '';
+        $f = '';
+        if ($fv) $f = substr($fv instanceof \DateTimeInterface ? $fv->format('Y-m-d') : (string)$fv, 0, 10);
+        return "{$productoId}|{$ubicacionId}|{$l}|{$f}";
+    }
+
+    /**
+     * Conteo definitivo de la sesión (General / Cargue Inicial).
+     * Por referencia vale la ronda más alta en la que se contó (o se recontó y
+     * finalizó sin encontrar nada = 0): el recuento reemplaza COMPLETO a los
+     * conteos anteriores de esa referencia en todas sus ubicaciones. Dentro de
+     * esa ronda se SUMAN las líneas de la misma ubicación+lote+vencimiento.
+     *
+     * @return array clave => ['linea' => SesionLinea virtual (no persiste), 'ids' => int[]]
+     */
+    private function lineasDefinitivas(SesionInventario $sesion): array
+    {
+        $lineas = SesionLinea::where('sesion_id', $sesion->id)
+            ->where('estado', SesionLinea::ESTADO_ACTIVO)
+            ->orderBy('id')
+            ->get();
+
+        $rondaDef = [];
+        foreach ($lineas as $l) {
+            $rondaDef[$l->producto_id] = max($rondaDef[$l->producto_id] ?? 1, (int)$l->ronda);
+        }
+        $recontadas = SesionAsignacion::where('sesion_id', $sesion->id)
+            ->where('ronda', '>=', 2)
+            ->where('estado', SesionAsignacion::ESTADO_FINALIZADO)
+            ->whereNotNull('producto_id')
+            ->get(['producto_id', 'ronda']);
+        foreach ($recontadas as $a) {
+            $rondaDef[$a->producto_id] = max($rondaDef[$a->producto_id] ?? 1, (int)$a->ronda);
+        }
+
+        $out = [];
+        foreach ($lineas as $l) {
+            if ((int)$l->ronda !== $rondaDef[$l->producto_id]) continue;
+            $k = $this->claveInv($l->producto_id, $l->ubicacion_id, $l->lote, $l->fecha_vencimiento);
+            if (!isset($out[$k])) {
+                $v = new SesionLinea();
+                $v->sesion_id         = $sesion->id;
+                $v->producto_id       = $l->producto_id;
+                $v->ubicacion_id      = $l->ubicacion_id;
+                $v->lote              = $l->lote;
+                $v->fecha_vencimiento = $l->fecha_vencimiento;
+                $v->ronda             = $l->ronda;
+                $v->auxiliar_id       = $l->auxiliar_id;
+                $v->cantidad_contada  = 0;
+                $v->estado            = SesionLinea::ESTADO_ACTIVO;
+                $out[$k] = ['linea' => $v, 'ids' => []];
+            }
+            $out[$k]['linea']->cantidad_contada = (float)$out[$k]['linea']->cantidad_contada + (float)$l->cantidad_contada;
+            $out[$k]['ids'][] = $l->id;
+        }
+        return $out;
+    }
+
+    /**
+     * Stock de la sucursal (cantidad > 0) cuya clave producto+ubicación+lote+
+     * vencimiento no aparece en el conteo definitivo → se pondrá en cero.
+     *
+     * @return SesionLinea[] virtuales con cantidad_contada = 0
+     */
+    private function noContadasGeneral(SesionInventario $sesion, array $definitivas): array
+    {
+        // cantidad <> 0 (no solo > 0): un saldo negativo tampoco es algo contado
+        // y también debe quedar en cero.
+        $rows = Capsule::table('inventarios')
+            ->where('empresa_id', $sesion->empresa_id)
+            ->where('sucursal_id', $sesion->sucursal_id)
+            ->where('cantidad', '<>', 0)
+            ->get(['producto_id', 'ubicacion_id', 'lote', 'fecha_vencimiento', 'cantidad']);
+
+        $out = [];
+        foreach ($rows as $inv) {
+            $k = $this->claveInv($inv->producto_id, $inv->ubicacion_id, $inv->lote, $inv->fecha_vencimiento);
+            if (isset($definitivas[$k])) continue;
+            if (isset($out[$k])) { // filas duplicadas de la misma clave: un solo ajuste las cubre
+                $out[$k]->cantidad_sistema += (float)$inv->cantidad;
+                continue;
+            }
+            $v = new SesionLinea();
+            $v->sesion_id         = $sesion->id;
+            $v->producto_id       = $inv->producto_id;
+            $v->ubicacion_id      = $inv->ubicacion_id;
+            $v->lote              = $inv->lote;
+            $v->fecha_vencimiento = $inv->fecha_vencimiento;
+            $v->cantidad_contada  = 0;
+            $v->cantidad_sistema  = (float)$inv->cantidad;
+            $v->ronda             = 1;
+            $v->estado            = SesionLinea::ESTADO_ACTIVO;
+            $out[$k] = $v;
+        }
+        return array_values($out);
+    }
+
+    /** Stock actual de la sucursal por clave (solo filas con cantidad <> 0). */
+    private function stockPorClave(SesionInventario $sesion): array
+    {
+        $out = [];
+        foreach (Capsule::table('inventarios')
+                    ->where('empresa_id', $sesion->empresa_id)
+                    ->where('sucursal_id', $sesion->sucursal_id)
+                    ->where('cantidad', '<>', 0)
+                    ->get(['producto_id', 'ubicacion_id', 'lote', 'fecha_vencimiento', 'cantidad']) as $inv) {
+            $k = $this->claveInv($inv->producto_id, $inv->ubicacion_id, $inv->lote, $inv->fecha_vencimiento);
+            $out[$k] = ($out[$k] ?? 0) + (float)$inv->cantidad;
+        }
+        return $out;
+    }
+
+    /**
+     * Verificación final del ajuste general: el inventario de la sucursal debe
+     * ser EXACTAMENTE el conteo definitivo (como si se borrara todo y se cargara
+     * solo lo contado). Devuelve las claves que no cuadran (vacío = OK).
+     */
+    private function verificarInventarioIgualAlConteo(SesionInventario $sesion, array $definitivas): array
+    {
+        $esperado = [];
+        foreach ($definitivas as $k => $def) {
+            $c = (float)$def['linea']->cantidad_contada;
+            if (abs($c) > 0.0001) $esperado[$k] = $c;
+        }
+        $real = $this->stockPorClave($sesion);
+        $malas = [];
+        foreach (array_unique(array_merge(array_keys($esperado), array_keys($real))) as $k) {
+            $e = $esperado[$k] ?? 0.0;
+            $r = $real[$k] ?? 0.0;
+            if (abs($e - $r) > 0.0001) $malas[] = "{$k} (contado {$e}, quedó {$r})";
+        }
+        return $malas;
+    }
+
+    /**
      * Lógica central de ajuste: actualiza inventarios, crea AjusteInventario y MovimientoInventario.
      *
      * PRINCIPIO FUNDAMENTAL DE INVENTARIO FÍSICO:
@@ -2095,9 +2575,17 @@ class InventarioV2Controller extends BaseController
         SesionLinea $linea,
         $user,
         string $origen,
-        bool $esCeroForzado = false,   // true cuando se detecta ausencia física ML
-        ?string $motivoExtra = null    // texto adicional para el motivo del ajuste (auditoría)
-    ): AjusteInventario {
+        bool $esCeroForzado = false,   // true: referencia no contada / sin existencia → se lleva a 0
+        ?string $motivoExtra = null,   // texto adicional para el motivo del ajuste (auditoría)
+        ?array $lineaIds = null        // General: líneas reales sumadas en $linea (virtual) → se marcan ajustadas
+    ): ?AjusteInventario {
+
+        // General / Cargue Inicial (auditoría 2026-09-28): la clave incluye el
+        // vencimiento también cuando viene vacío (antes, sin FV tomaba cualquier
+        // fila de ese lote), se suman y consolidan filas duplicadas de la misma
+        // clave (antes solo se ajustaba first() y la otra quedaba con stock), y
+        // un ajuste sin diferencia no genera movimiento (retorna null).
+        $esGeneral = $sesion->tipo !== SesionInventario::TIPO_CICLICO;
 
         // ── 1. Obtener stock REAL y ACTUAL del sistema (puede diferir del snapshot) ──
         $invQuery = Inventario::where('empresa_id',  $sesion->empresa_id)
@@ -2105,26 +2593,46 @@ class InventarioV2Controller extends BaseController
             ->where('producto_id',  $linea->producto_id)
             ->where('ubicacion_id', $linea->ubicacion_id);
 
+        // Misma normalización que claveInv(): vacío / N/A (cualquier mayúscula) = sin lote.
         $loteNorm = trim((string)$linea->lote);
-        if ($loteNorm !== '' && strtoupper($loteNorm) !== 'N/A') {
-            $invQuery->whereRaw("COALESCE(NULLIF(NULLIF(TRIM(lote), 'N/A'), 'n/a'), '') = ?", [$loteNorm]);
-        } else {
-            $invQuery->whereRaw("COALESCE(NULLIF(NULLIF(TRIM(lote), 'N/A'), 'n/a'), '') = ''");
-        }
+        if (strtoupper($loteNorm) === 'N/A') $loteNorm = '';
+        $invQuery->whereRaw("CASE WHEN UPPER(TRIM(COALESCE(lote, ''))) = 'N/A' THEN '' ELSE TRIM(COALESCE(lote, '')) END = ?", [$loteNorm]);
 
         if (!empty($linea->fecha_vencimiento)) {
-            $invQuery->where('fecha_vencimiento', $linea->fecha_vencimiento);
+            $invQuery->whereDate('fecha_vencimiento', substr($linea->fecha_vencimiento instanceof \DateTimeInterface
+                ? $linea->fecha_vencimiento->format('Y-m-d') : (string)$linea->fecha_vencimiento, 0, 10));
+        } elseif ($esGeneral) {
+            $invQuery->whereNull('fecha_vencimiento');
         }
 
-        $inv = $invQuery->first();
-
-        $cantidadSistemaActual = $inv ? (float)$inv->cantidad : 0.0;
+        $duplicadas = collect();
+        if ($esGeneral) {
+            $filas = $invQuery->orderBy('id')->get();
+            $inv = $filas->first();
+            $duplicadas = $filas->slice(1);
+            $cantidadSistemaActual = (float)$filas->sum('cantidad');
+        } else {
+            $inv = $invQuery->first();
+            $cantidadSistemaActual = $inv ? (float)$inv->cantidad : 0.0;
+        }
 
         // ── 2. VERDAD ABSOLUTA: lo que se contó físicamente ──
         $cantidadNueva = $esCeroForzado ? 0.0 : (float)$linea->cantidad_contada;
 
         // ── 3. Diferencia REAL entre conteo y stock actual ──
         $diferenciaReal = $cantidadNueva - $cantidadSistemaActual;
+
+        if ($esGeneral && abs($diferenciaReal) < 0.0001 && $duplicadas->isEmpty()) {
+            if ($lineaIds) SesionLinea::whereIn('id', $lineaIds)->update(['ajustado' => true]);
+            return null;
+        }
+
+        // Filas duplicadas de la misma clave: se consolidan en la primera
+        // (conservando su reserva) antes de fijar la cantidad contada.
+        foreach ($duplicadas as $dup) {
+            $inv->cantidad_reservada = (float)$inv->cantidad_reservada + (float)$dup->cantidad_reservada;
+            $dup->delete();
+        }
 
         // Si no hay diferencia real (stock ya correcto), registrar igualmente para trazabilidad
         $tipoAjuste = $diferenciaReal >= 0
@@ -2181,9 +2689,10 @@ class InventarioV2Controller extends BaseController
             ? MovimientoInventario::TIPO_AJUSTE_POSITIVO
             : MovimientoInventario::TIPO_AJUSTE_NEGATIVO;
 
+        $prefijo = $esGeneral ? 'Ajuste de Inventario General' : 'Ajuste de inventario';
         $motivoMov = $esCeroForzado
-            ? ($motivoExtra ?? "Ajuste ML — referencia no contada (ausencia física detectada)") . " — Sesión #{$sesion->id}: {$sesion->nombre}"
-            : "Ajuste de inventario — Sesión #{$sesion->id}: {$sesion->nombre} (Ronda {$linea->ronda})";
+            ? ($motivoExtra ? "{$prefijo} — {$motivoExtra}" : "{$prefijo} — referencia no contada, se lleva a cero") . " — Sesión #{$sesion->id}: {$sesion->nombre}"
+            : "{$prefijo} — Sesión #{$sesion->id}: {$sesion->nombre} (Conteo R{$linea->ronda})";
 
         $mov = MovimientoInventario::create([
             'empresa_id'           => $sesion->empresa_id,
@@ -2205,15 +2714,15 @@ class InventarioV2Controller extends BaseController
 
         // ── 6. Registro inmutable en ajustes_inventario (trazabilidad completa) ──
         $motivoAjuste = $esCeroForzado
-            ? ($motivoExtra ?? "ML-Ausencia física: referencia presente en sistema pero no contada") . " — sesión: {$sesion->nombre}"
-            : "Ajuste por conteo físico — sesión: {$sesion->nombre} (Ronda {$linea->ronda})";
+            ? ($motivoExtra ?? "{$prefijo}: referencia con stock en sistema no contada — se lleva a cero") . " — sesión: {$sesion->nombre}"
+            : "{$prefijo}: ajuste por conteo físico — sesión: {$sesion->nombre} (Conteo R{$linea->ronda})";
 
         $ajuste = AjusteInventario::create([
             'empresa_id'        => $sesion->empresa_id,
             'sucursal_id'       => $sesion->sucursal_id,
             'origen'            => $origen,
             'sesion_id'         => $sesion->id,
-            'linea_id'          => $esCeroForzado ? null : $linea->id, // No line ID for virtual lines
+            'linea_id'          => $esCeroForzado ? null : ($lineaIds[0] ?? $linea->id), // No line ID for virtual lines
             'movimiento_id'     => $mov->id,
             'producto_id'       => $linea->producto_id,
             'ubicacion_id'      => $linea->ubicacion_id,
@@ -2230,7 +2739,9 @@ class InventarioV2Controller extends BaseController
             'hora'              => date('H:i:s'),
         ]);
 
-        if (!$esCeroForzado) {
+        if ($lineaIds) {
+            SesionLinea::whereIn('id', $lineaIds)->update(['ajustado' => true]);
+        } elseif (!$esCeroForzado) {
             $linea->ajustado = true;
             $linea->save();
         }
@@ -2424,79 +2935,6 @@ class InventarioV2Controller extends BaseController
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    //  ██████  ANÁLISIS ML — REFERENCIAS NO CONTADAS
-    // ════════════════════════════════════════════════════════════════════════
-
-    /**
-     * GET /api/v2/inventario/sesiones/{id}/ml-analisis
-     * Devuelve las referencias que el sistema muestra en las ubicaciones asignadas
-     * pero que NO han sido contadas en la ronda actual.
-     * Es un preview — no ejecuta ningún ajuste.
-     */
-    public function mlAnalisis(Request $req, Response $res, array $args): Response
-    {
-        $user = $req->getAttribute('user');
-
-        $sesion = $this->_findSesion((int)$args['id'], $user, $req);
-
-        if (!$sesion) return $this->notFound($res, 'Sesión no encontrada');
-
-        $params     = $req->getQueryParams();
-        $rondaFinal = (int)($params['ronda'] ?? $sesion->num_conteos ?? 1);
-
-        try {
-            $noContadas = $this->detectarReferenciasNoContadas($sesion, $rondaFinal);
-
-            // Enriquecer con nombres de producto y ubicación para el frontend
-            $productoIds = array_unique(array_column(
-                array_map(fn($l) => ['producto_id' => $l->producto_id], $noContadas), 'producto_id'
-            ));
-            $ubicacionIds = array_unique(array_column(
-                array_map(fn($l) => ['ubicacion_id' => $l->ubicacion_id], $noContadas), 'ubicacion_id'
-            ));
-
-            $productos  = empty($productoIds)  ? collect() :
-                Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                    ->whereIn('id', $productoIds)->get(['id','nombre','codigo_interno'])->keyBy('id');
-            $ubicaciones = empty($ubicacionIds) ? collect() :
-                Ubicacion::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))
-                    ->whereIn('id', $ubicacionIds)->get(['id','codigo'])->keyBy('id');
-
-            $data = array_map(function($l) use ($productos, $ubicaciones) {
-                return [
-                    'producto_id'       => $l->producto_id,
-                    'producto_nombre'   => $productos[$l->producto_id]->nombre ?? "Producto #{$l->producto_id}",
-                    'codigo_interno'    => $productos[$l->producto_id]->codigo_interno ?? '—',
-                    'ubicacion_id'      => $l->ubicacion_id,
-                    'ubicacion_codigo'  => $ubicaciones[$l->ubicacion_id]->codigo ?? "Ubic#{$l->ubicacion_id}",
-                    'lote'              => $l->lote,
-                    'fecha_vencimiento' => $l->fecha_vencimiento,
-                    'cantidad_sistema'  => $l->cantidad_sistema,
-                    'cantidad_contada'  => 0,
-                    'impacto'           => $l->cantidad_sistema <= 5 ? 'bajo' :
-                                         ($l->cantidad_sistema <= 20 ? 'medio' : 'alto'),
-                ];
-            }, $noContadas);
-
-            // Ordenar por impacto (alto primero) para priorizar en el frontend
-            usort($data, fn($a, $b) => ['alto' => 0, 'medio' => 1, 'bajo' => 2][$a['impacto']]
-                                     - ['alto' => 0, 'medio' => 1, 'bajo' => 2][$b['impacto']]);
-
-            return $this->ok($res, [
-                'total'            => count($data),
-                'referencias'      => $data,
-                'sesion_id'        => $sesion->id,
-                'ronda_analizada'  => $rondaFinal,
-                'alerta'           => count($data) > 0
-                    ? count($data) . ' referencia(s) en sistema no fueron contadas. Si finalizas el inventario ahora, el sistema las eliminará automáticamente (ausencia física confirmada).'
-                    : null,
-            ]);
-        } catch (\Throwable $e) {
-            return $this->error($res, $e->getMessage(), 500);
-        }
-    }
-
-    // ════════════════════════════════════════════════════════════════════════
     //  ██████  CORRECCIÓN MANUAL DE INVENTARIO
     // ════════════════════════════════════════════════════════════════════════
 
@@ -2531,6 +2969,14 @@ class InventarioV2Controller extends BaseController
         }
         if ($cantidadIncremental !== null && $cantidadIncremental <= 0) {
             return $this->error($res, "La cantidad debe ser mayor a 0");
+        }
+
+        if ($data['tipo_ajuste'] === 'Entrada') {
+            $productoCorreccion = \App\Models\Producto::where('empresa_id', $this->getEffectiveEmpresaId($user, $req))->find((int)$data['producto_id']);
+            $loteCorreccion = trim((string)($data['lote'] ?? ''));
+            if ($productoCorreccion && $productoCorreccion->controla_lote && ($loteCorreccion === '' || $loteCorreccion === 'N/A' || $loteCorreccion === '-')) {
+                return $this->error($res, "El lote es obligatorio para el producto {$productoCorreccion->nombre}.", 422);
+            }
         }
 
         try {
@@ -3184,7 +3630,9 @@ class InventarioV2Controller extends BaseController
             $lineas = SesionLinea::where('sesion_lineas.sesion_id', $sesion->id)
                 ->where('sesion_lineas.estado', SesionLinea::ESTADO_ACTIVO)
                 ->join('productos',   'sesion_lineas.producto_id',  '=', 'productos.id')
-                ->join('ubicaciones', 'sesion_lineas.ubicacion_id', '=', 'ubicaciones.id')
+                // LEFT JOIN (2026-09-30): línea "sin existencia física" tiene
+                // ubicacion_id NULL — con INNER JOIN desaparecía del informe impreso.
+                ->leftJoin('ubicaciones', 'sesion_lineas.ubicacion_id', '=', 'ubicaciones.id')
                 ->join('personal',    'sesion_lineas.auxiliar_id',  '=', 'personal.id')
                 ->select(
                     'sesion_lineas.ronda',
@@ -3192,7 +3640,7 @@ class InventarioV2Controller extends BaseController
                     'personal.nombre as auxiliar',
                     'productos.codigo_interno as referencia',
                     'productos.nombre as producto',
-                    'ubicaciones.codigo as ubicacion',
+                    Capsule::raw("COALESCE(ubicaciones.codigo, 'Sin existencia física') as ubicacion"),
                     'sesion_lineas.lote',
                     'sesion_lineas.fecha_vencimiento',
                     'sesion_lineas.cantidad_contada',
@@ -3329,6 +3777,12 @@ class InventarioV2Controller extends BaseController
                 if ($asigCheck && $asigCheck->estado === SesionAsignacion::ESTADO_FINALIZADO) {
                     return $this->error($res, 'Esta asignación ya fue cerrada. Un administrador debe reabrirla para poder agregar más líneas.', 409);
                 }
+                // La ronda la define la asignación, no el móvil (que manda
+                // ronda_actual || 1): sin esto una línea de un recuento R2/R3 quedaba
+                // guardada como R1 y el ajuste no la tomaba como recuento.
+                if ($asigCheck && (int)$asigCheck->sesion_id === (int)$sesion->id) {
+                    $ronda = (int)$asigCheck->ronda;
+                }
             }
 
             // Obtener stock SNAPSHOT actual (al momento de este ingreso)
@@ -3425,7 +3879,9 @@ class InventarioV2Controller extends BaseController
                 ->where('sesion_lineas.estado', SesionLinea::ESTADO_ACTIVO)
                 ->when($asignacionId, fn($q) => $q->where('sesion_lineas.asignacion_id', (int)$asignacionId))
                 ->join('productos',   'sesion_lineas.producto_id',  '=', 'productos.id')
-                ->join('ubicaciones', 'sesion_lineas.ubicacion_id', '=', 'ubicaciones.id')
+                // LEFT JOIN (2026-09-30): línea "sin existencia física" (ubicacion_id
+                // NULL) debe seguir viéndola el auxiliar como confirmación de su envío.
+                ->leftJoin('ubicaciones', 'sesion_lineas.ubicacion_id', '=', 'ubicaciones.id')
                 ->select(
                     'sesion_lineas.id',
                     'sesion_lineas.asignacion_id',
@@ -3436,7 +3892,7 @@ class InventarioV2Controller extends BaseController
                     'sesion_lineas.hora_conteo',
                     'productos.nombre as producto_nombre',
                     'productos.codigo_interno as producto_codigo',
-                    'ubicaciones.codigo as ubicacion_codigo'
+                    Capsule::raw("COALESCE(ubicaciones.codigo, 'Sin existencia física') as ubicacion_codigo")
                 )
                 ->orderBy('sesion_lineas.hora_conteo', 'desc')
                 ->limit(50)
@@ -3509,8 +3965,34 @@ class InventarioV2Controller extends BaseController
     }
 
     /**
+     * Recuento (R2/R3) de Inventario General / Cargue Inicial: ubicaciones donde
+     * esta referencia se contó en las rondas ANTERIORES de la sesión (a pedido
+     * explícito de Camilo, 2026-09-28 — antes se mandaba a recontar donde el
+     * SISTEMA decía tener stock, no donde físicamente se había contado).
+     * Retorna null si no aplica (no es recuento, es Cíclico, o la referencia no
+     * tiene conteo previo) → se usan las ubicaciones del sistema como antes.
+     *
+     * @return \Illuminate\Support\Collection|null SesionLinea de rondas previas
+     */
+    private function lineasPreviasRecuento(?SesionAsignacion $asig)
+    {
+        if (!$asig || (int)$asig->ronda < 2 || !$asig->producto_id) return null;
+        $sesion = $asig->sesion ?? SesionInventario::find($asig->sesion_id);
+        if (!$sesion || $sesion->tipo === SesionInventario::TIPO_CICLICO) return null;
+        $previas = SesionLinea::where('sesion_id', $sesion->id)
+            ->where('producto_id', $asig->producto_id)
+            ->where('ronda', '<', (int)$asig->ronda)
+            ->where('estado', SesionLinea::ESTADO_ACTIVO)
+            ->with('ubicacion:id,codigo')
+            ->get();
+        return $previas->isEmpty() ? null : $previas;
+    }
+
+    /**
      * GET /api/v2/inventario/productos/{id}/ubicaciones
      * Ubicaciones con stock > 0 de un producto. Uso móvil en inventario cíclico por referencia.
+     * En un recuento (R2/R3) de General / Cargue Inicial: ubicaciones del conteo
+     * anterior, sin cantidades precargadas (recuento a ciegas) — ver lineasPreviasRecuento().
      */
     public function getProductoUbicaciones(Request $req, Response $res, array $args): Response
     {
@@ -3555,7 +4037,41 @@ class InventarioV2Controller extends BaseController
 
             $rows = $rowsQuery->with('ubicacion:id,codigo')->get();
 
-            $ubicaciones = $rows->groupBy('ubicacion_id')->map(function ($items) use ($upc) {
+            $asigObj = $asigId ? SesionAsignacion::with('sesion')->find($asigId) : null;
+            $previas = $this->lineasPreviasRecuento($asigObj);
+            if ($previas) {
+                // Recuento: se cuenta a ciegas en las ubicaciones del conteo anterior.
+                // Lote/vencimiento solo se sugieren si en esa ubicación hubo uno solo.
+                // cantidad_anterior = lo contado en la ronda inmediatamente anterior de
+                // la referencia (0 si esa ubicación no apareció en ella). El móvil NO la
+                // muestra: solo la usa para etiquetar "igual / no igual al conteo
+                // anterior" cuando el auxiliar digita (a pedido de Camilo, 2026-09-28).
+                $rondaAnt = (int)$previas->max('ronda');
+                $ubicaciones = $previas->groupBy('ubicacion_id')->map(function ($items) use ($upc, $rondaAnt) {
+                    $u = $items->first()->ubicacion;
+                    $lotes = $items->pluck('lote')->filter(fn($l) => $l && strtoupper(trim($l)) !== 'N/A')->unique();
+                    $fvs   = $items->pluck('fecha_vencimiento')->filter()->map(fn($f) => $f->format('Y-m-d'))->unique();
+                    return [
+                        'id'                => $u?->id,
+                        'ubicacion_id'      => $u?->id,
+                        'codigo'            => $u?->codigo ?? '—',
+                        'nombre'            => $u?->nombre ?? '',
+                        'cantidad'          => null,
+                        'cajas'             => null,
+                        'saldos'            => null,
+                        'unidades_caja'     => $upc,
+                        'lote'              => $lotes->count() === 1 ? $lotes->first() : 'N/A',
+                        'fecha_vencimiento' => $fvs->count() === 1 ? $fvs->first() : null,
+                        'es_recuento'       => true,
+                        'rondas_previas'    => $items->pluck('ronda')->unique()->sort()->values()->all(),
+                        'ronda_anterior'    => $rondaAnt,
+                        'cantidad_anterior' => round((float)$items->where('ronda', $rondaAnt)->sum('cantidad_contada'), 3),
+                    ];
+                })->values();
+                $rows = collect(); // no mezclar con el stock del sistema
+            }
+
+            $ubicaciones = $previas ? $ubicaciones : $rows->groupBy('ubicacion_id')->map(function ($items) use ($upc) {
                 $u = $items->first()->ubicacion;
                 $tot = round((float)$items->sum('cantidad'), 3);
                 $cj  = $upc > 1 ? floor($tot / $upc) : round($tot);
@@ -3628,6 +4144,9 @@ class InventarioV2Controller extends BaseController
                         'lote'              => $c->lote ?: 'N/A',
                         'fecha_vencimiento' => $c->fecha_vencimiento?->format('Y-m-d'),
                         'ya_contada'        => true,
+                        // Recuento: contada ahora pero sin estar en el conteo anterior
+                        // = ubicación agregada por el auxiliar.
+                        'agregada'          => (bool)$previas,
                     ]);
                 }
             }
@@ -3885,29 +4404,41 @@ class InventarioV2Controller extends BaseController
         $data = $req->getParsedBody() ?? [];
         $auxiliarId  = (int)($data['auxiliar_id'] ?? 0);
         $productoIds = $data['producto_ids'] ?? [];
-        $etiqueta    = trim($data['etiqueta'] ?? 'Segundo Conteo (Ronda 2)');
+        // Ronda 2 = segundo conteo, ronda 3 = tercer conteo (desempate R1≠R2).
+        // Antes solo existía ronda 2: en Cargue Inicial no había forma de mandar
+        // un tercer conteo (crearAsignacion() rechaza ronda > num_conteos).
+        $ronda       = (int)($data['ronda'] ?? 2) === 3 ? 3 : 2;
+        $nombreRonda = $ronda === 3 ? 'tercer conteo' : 'segundo conteo';
+        $etiqueta    = trim($data['etiqueta'] ?? ($ronda === 3 ? 'Tercer Conteo (Ronda 3)' : 'Segundo Conteo (Ronda 2)'));
 
         if (!$auxiliarId) {
-            return $this->error($res, 'Debe seleccionar un auxiliar para asignar el segundo conteo');
+            return $this->error($res, "Debe seleccionar un auxiliar para asignar el {$nombreRonda}");
         }
         if (empty($productoIds) || !is_array($productoIds)) {
-            return $this->error($res, 'Debe seleccionar al menos una referencia para el segundo conteo');
+            return $this->error($res, "Debe seleccionar al menos una referencia para el {$nombreRonda}");
+        }
+        if (in_array($sesion->estado, [SesionInventario::ESTADO_AJUSTADO, SesionInventario::ESTADO_CERRADO], true)) {
+            return $this->error($res, "La sesión ya está {$sesion->estado}: no admite más conteos.");
         }
 
-        // Elevar número de conteos de la sesión a mínimo 2 rondas
-        if ($sesion->num_conteos < 2) {
-            $sesion->num_conteos = 2;
-            $sesion->save();
+        // Elevar número de conteos de la sesión a la ronda enviada
+        if ($sesion->num_conteos < $ronda) {
+            $sesion->num_conteos = $ronda;
         }
+        // Un recuento reabre el conteo: la sesión vuelve a EnCurso hasta terminarlo.
+        if ($sesion->estado === SesionInventario::ESTADO_PENDIENTE_AJUSTE) {
+            $sesion->estado = SesionInventario::ESTADO_EN_CURSO;
+        }
+        $sesion->save();
 
         $creados = 0;
         foreach ($productoIds as $prodId) {
             $prodId = (int)$prodId;
             if (!$prodId) continue;
 
+            // Una referencia solo se recuenta una vez por ronda (sin importar el auxiliar)
             $exists = SesionAsignacion::where('sesion_id', $sesion->id)
-                ->where('auxiliar_id', $auxiliarId)
-                ->where('ronda', 2)
+                ->where('ronda', $ronda)
                 ->where('producto_id', $prodId)
                 ->exists();
 
@@ -3915,7 +4446,7 @@ class InventarioV2Controller extends BaseController
                 $asig = SesionAsignacion::create([
                     'sesion_id'         => $sesion->id,
                     'auxiliar_id'       => $auxiliarId,
-                    'ronda'             => 2,
+                    'ronda'             => $ronda,
                     'tipo_instruccion'  => 'Referencia',
                     'producto_id'       => $prodId,
                     'instruccion_libre' => $etiqueta,
@@ -3935,7 +4466,7 @@ class InventarioV2Controller extends BaseController
         return $this->ok($res, [
             'creados' => $creados,
             'sesion'  => $sesion->fresh()
-        ], "Se asignaron {$creados} referencia(s) a Segundo Conteo (R2)");
+        ], "Se asignaron {$creados} referencia(s) a " . ($ronda === 3 ? 'Tercer Conteo (R3)' : 'Segundo Conteo (R2)'));
     }
 
     /**

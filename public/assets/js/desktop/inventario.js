@@ -1808,9 +1808,6 @@ WMS_MODULES.inventario = {
                 <button class="inv2-tab" id="t2-dif" onclick="WMS_MODULES.inventario._tab2('dif')">
                   <i class="fa-solid fa-not-equal"></i> Diferencias
                 </button>
-                <button class="inv2-tab" id="t2-ml" onclick="WMS_MODULES.inventario._tab2('ml')">
-                  <i class="fa-solid fa-robot"></i> Análisis ML
-                </button>
                 <button class="inv2-tab" id="t2-segundos" onclick="WMS_MODULES.inventario._tab2('segundos')">
                   <i class="fa-solid fa-repeat"></i> Segundos Conteos
                 </button>
@@ -2062,18 +2059,8 @@ WMS_MODULES.inventario = {
         </div>`;
     }
 
-    else if (tab === 'ml') {
-      // Análisis ML: referencias en sistema no contadas — async via delegación
-      content.innerHTML = `
-        <div style="text-align:center;padding:30px">
-          <div class="spinner"></div>
-          <p style="color:#64748b;margin-top:10px;font-size:.85rem">Analizando referencias no contadas...</p>
-        </div>`;
-      // Delegar a función async para poder usar await
-      this._loadMLTab(id, d).catch(e => {
-        const c = document.getElementById('inv2-content');
-        if (c) c.innerHTML = `<div class="text-danger" style="padding:20px;">Error cargando análisis ML: ${e.message}</div>`;
-      });
+    else if (tab === 'dif' && d.diferencias_definitivas) {
+      return this._renderDiferenciasDefinitivas();
     }
 
     else if (tab === 'dif') {
@@ -2124,7 +2111,8 @@ WMS_MODULES.inventario = {
             </tbody>
           </table>
         </div>
-        ${difs.length > 0 ? `
+        ${this._htmlNoContadoSistema(d)}
+        ${(difs.length > 0 || (d.no_contado_sistema?.total_filas || 0) > 0) && !['Ajustado', 'Cerrado'].includes(d.sesion.estado) ? `
         <div style="margin-top:14px;text-align:right">
           <button class="btn btn-danger" onclick="WMS_MODULES.inventario._ajustarTodo(${id})">
             <i class="fa-solid fa-sliders"></i> Ajustar Todas las Diferencias
@@ -2285,81 +2273,6 @@ WMS_MODULES.inventario = {
     }
   },
 
-
-  async _loadMLTab(id, d) {
-    const content = document.getElementById('inv2-content');
-    if (!content) return;
-    const rondaParam = d.sesion?.ronda_actual ? `ronda=${d.sesion.ronda_actual}` : '';
-    const ml     = await API.get(`/v2/inventario/sesiones/${id}/ml-analisis`, rondaParam);
-    const mlData = ml.data || {};
-    const refs   = mlData.referencias || [];
-
-    content.innerHTML = `
-      <div style="margin-bottom:16px;">
-        ${mlData.alerta ? `
-        <div style="background:#fff7ed;border:2px solid #fdba74;border-radius:4px;padding:16px;display:flex;gap:12px;align-items:flex-start;margin-bottom:16px;">
-          <i class="fa-solid fa-triangle-exclamation fa-2x" style="color:#ea580c;flex-shrink:0;margin-top:2px"></i>
-          <div>
-            <div style="font-weight:700;color:#9a3412;font-size:.9rem;margin-bottom:4px">ALERTA DE AUSENCIA FÍSICA</div>
-            <div style="font-size:.83rem;color:#7c2d12;">${WMS.esc(mlData.alerta)}</div>
-          </div>
-        </div>` : `
-        <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:4px;padding:16px;display:flex;gap:12px;align-items:center;margin-bottom:16px;">
-          <i class="fa-solid fa-circle-check fa-2x" style="color:#16a34a;"></i>
-          <div style="font-weight:700;color:#166534;font-size:.9rem;">Todas las referencias han sido contadas. ✓</div>
-        </div>`}
-
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:12px;text-align:center;">
-            <div style="font-size:1.6rem;font-weight:900;color:${refs.length > 0 ? '#dc2626' : '#10b981'}">${refs.length}</div>
-            <div style="font-size:.72rem;color:#64748b;font-weight:600;text-transform:uppercase;">NO CONTADAS</div>
-          </div>
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:12px;text-align:center;">
-            <div style="font-size:1.6rem;font-weight:900;color:#dc2626;">${refs.filter(r => r.impacto === 'alto').length}</div>
-            <div style="font-size:.72rem;color:#64748b;font-weight:600;text-transform:uppercase;">IMPACTO ALTO</div>
-          </div>
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:12px;text-align:center;">
-            <div style="font-size:1.6rem;font-weight:900;color:#2563eb;">${refs.reduce((s,r) => s + (r.cantidad_sistema||0), 0)}</div>
-            <div style="font-size:.72rem;color:#64748b;font-weight:600;text-transform:uppercase;">UNIDADES EN RIESGO</div>
-          </div>
-        </div>
-      </div>
-
-      ${refs.length > 0 ? `
-      <div class="table-container" style="max-height:340px;overflow-y:auto;">
-        <table class="data-table compact">
-          <thead style="position:sticky;top:0;z-index:10;background:#f8fafc;">
-            <tr>
-              <th>Código</th><th>Referencia</th><th>Ubicación</th>
-              <th>Lote</th><th>F. Venc.</th>
-              <th class="text-center">Uds. Sistema</th>
-              <th class="text-center">Impacto</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${refs.map(r => {
-              const col   = r.impacto === 'alto' ? '#dc2626' : r.impacto === 'medio' ? '#f59e0b' : '#10b981';
-              const label = r.impacto === 'alto' ? 'ALTO' : r.impacto === 'medio' ? 'MEDIO' : 'BAJO';
-              return `<tr style="background:${r.impacto==='alto'?'#fef2f2':r.impacto==='medio'?'#fffbeb':'#f0fdf4'}">
-                <td style="font-family:monospace;font-size:.75rem;">${WMS.esc(r.codigo_interno||'-')}</td>
-                <td style="font-size:.8rem;font-weight:600;">${WMS.esc(r.producto_nombre)}</td>
-                <td><span class="badge badge-light-blue">${WMS.esc(r.ubicacion_codigo)}</span></td>
-                <td style="font-size:.75rem;font-family:monospace;">${WMS.esc(r.lote||'—')}</td>
-                <td style="font-size:.75rem;">${WMS.formatDate(r.fecha_vencimiento)||'—'}</td>
-                <td class="text-center" style="font-weight:700;color:#1e40af;">${WMS.formatNum(r.cantidad_sistema)}</td>
-                <td class="text-center"><span style="font-weight:800;font-size:.75rem;color:${col};">${label}</span></td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-      <div style="margin-top:12px;padding:12px;background:#fef3c7;border:1px solid #fde68a;border-radius:4px;font-size:.8rem;color:#92400e;">
-        <strong><i class="fa-solid fa-robot"></i> Acción automática al ajustar:</strong>
-        Al ejecutar "Ajustar Todas las Diferencias", el sistema pondrá en 0 estas <strong>${refs.length}</strong> referencia(s)
-        automáticamente (ausencia física confirmada por conteo completo de la ubicación).
-      </div>` : ''}
-    `;
-  },
 
   _filterMat(q, tableId) {
     const term = q.toLowerCase();
@@ -2788,7 +2701,24 @@ WMS_MODULES.inventario = {
         <h3 style="font-weight:900;font-size:1.3rem;color:#0f172a;margin-bottom:14px;text-transform:uppercase">¿Confirmar Ajuste y Cierre?</h3>
         <p style="font-size:.9rem;color:#475569;margin-bottom:24px;line-height:1.5">
           Esta acción autorizará la conciliación afectando <strong style="color:#dc2626;font-size:1.1rem">${d.kpis.lineas_con_diferencia} líneas</strong> discrepantes.<br><br>
-          Se registrarán en la tabla de operaciones y Kardex. <strong>No podrá deshacerse de forma masiva.</strong>
+          ${d.no_contado_sistema ? `Además, <strong style="color:#ea580c">${WMS.formatNum(d.no_contado_sistema.total_referencias)} referencia(s) en ${WMS.formatNum(d.no_contado_sistema.total_filas)} ubicación(es) (${WMS.formatNum(d.no_contado_sistema.total_unidades)} uds)</strong> que tienen stock en el sistema y NO se contaron quedarán en <strong>cero</strong>.<br><br>` : ''}
+          ${(() => {
+            // Aviso (no bloquea): referencias cuyo conteo definitivo no cuadra con
+            // ICG. El ajuste deja lo contado físicamente; ICG solo es referencia.
+            const icg = d.analisis_icg || {};
+            if (!icg.cargado) return '';
+            const sob = icg.referencias_sobrantes_icg || 0, fal = icg.referencias_faltantes_icg || 0, nc = icg.referencias_no_contadas_icg || 0;
+            if (!sob && !fal && !nc) {
+              return `<span style="display:block;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 10px;color:#166534;font-size:.82rem;margin-bottom:14px;"><i class="fa-solid fa-circle-check"></i> Todas las referencias del archivo ICG cuadran con el conteo.</span>`;
+            }
+            return `<span style="display:block;background:#fefce8;border:1px solid #fde047;border-radius:6px;padding:8px 10px;color:#854d0e;font-size:.82rem;margin-bottom:14px;text-align:left;">
+              <i class="fa-solid fa-file-invoice"></i> <b>Diferencias con ICG (no bloquean el ajuste):</b><br>
+              ${sob ? `· <b>${sob}</b> referencia(s) con sobrante (+${WMS.formatNum(icg.sobrantes_unidades_icg || 0)} uds)<br>` : ''}
+              ${fal ? `· <b>${fal}</b> referencia(s) con faltante (-${WMS.formatNum(icg.faltantes_unidades_icg || 0)} uds)<br>` : ''}
+              ${nc ? `· <b>${nc}</b> referencia(s) de ICG sin contar (quedarán en cero si tienen stock)<br>` : ''}
+              El inventario quedará con lo contado físicamente; revise el detalle en Control ICG.</span>`;
+          })()}
+          Se registrarán en la tabla de operaciones y Kardex como <strong>Ajuste de Inventario${d.no_contado_sistema ? ' General' : ''}</strong>. <strong>No podrá deshacerse de forma masiva.</strong>
         </p>
         <button class="btn btn-secondary btn-lg" onclick="WMS.closeModal('generic-modal-2')" style="width:140px;margin-right:10px">Cancelar</button>
         <button class="btn btn-success btn-lg" onclick="WMS_MODULES.inventario.__execAjustarTodo(${sesionId})" style="width:200px">
@@ -2805,7 +2735,7 @@ WMS_MODULES.inventario = {
       const d = r.data || {};
       const resumen   = d.stock_resumen || [];
       const nConteo   = d.ajustes_conteo || 0;
-      const nML       = d.ajustes_ml_ausencia || 0;
+      const nML       = d.ajustes_no_contadas ?? d.ajustes_ml_ausencia ?? 0; // General: no contadas → 0; Cíclico: sin existencia
       const total     = d.ajustes_realizados || 0;
 
       WMS.closeModal('generic-modal');
@@ -2823,7 +2753,7 @@ WMS_MODULES.inventario = {
         </tr>`;
       }).join('');
 
-      const rowsML = resumen.filter(x => x.tipo === 'ml_ausencia').map(x => {
+      const rowsML = resumen.filter(x => (x.tipo === 'no_contada' || x.tipo === 'ml_ausencia' || x.tipo === 'referencia_sin_existencia')).map(x => {
         return `<tr style="background:#fff7ed;">
           <td style="font-size:.8rem;font-family:monospace;">P-${x.producto_id}</td>
           <td style="font-size:.8rem;">Ubic-${x.ubicacion_id}${x.lote ? ' · ' + WMS.esc(x.lote) : ''}</td>
@@ -2845,7 +2775,7 @@ WMS_MODULES.inventario = {
             </div>
             ${nML > 0 ? `<div style="flex:1;min-width:120px;background:#fff7ed;border:1px solid #fdba74;border-radius:4px;padding:14px;text-align:center;">
               <div style="font-size:1.8rem;font-weight:900;color:#ea580c;">${nML}</div>
-              <div style="font-size:.75rem;color:#9a3412;font-weight:600;">ML AUSENCIAS</div>
+              <div style="font-size:.75rem;color:#9a3412;font-weight:600;">LLEVADAS A CERO</div>
             </div>` : ''}
           </div>
           ${rowsConteo || rowsML ? `
@@ -2858,7 +2788,7 @@ WMS_MODULES.inventario = {
               </tr></thead>
               <tbody>
                 ${rowsConteo}
-                ${nML > 0 && rowsML ? `<tr><td colspan="4" style="background:#fff7ed;font-weight:700;font-size:.75rem;color:#9a3412;padding:8px 12px;"><i class="fa-solid fa-robot"></i> Referencias eliminadas por ausencia física (ML)</td></tr>${rowsML}` : ''}
+                ${nML > 0 && rowsML ? `<tr><td colspan="4" style="background:#fff7ed;font-weight:700;font-size:.75rem;color:#9a3412;padding:8px 12px;"><i class="fa-solid fa-circle-minus"></i> Referencias no contadas llevadas a cero (Ajuste de Inventario General)</td></tr>${rowsML}` : ''}
               </tbody>
             </table>
           </div>` : '<p style="text-align:center;color:#94a3b8;font-style:italic;margin:20px 0;">Sin diferencias detectadas</p>'}
@@ -2869,7 +2799,7 @@ WMS_MODULES.inventario = {
           </div>
         </div>`, '', 'lg');
 
-      WMS.toast('success', `Inventario cerrado: ${total} ajuste(s) aplicados${nML > 0 ? `, ${nML} ausencias ML` : ''}`);
+      WMS.toast('success', `Inventario cerrado: ${total} ajuste(s) aplicados${nML > 0 ? `, ${nML} referencias no contadas llevadas a cero` : ''}`);
     } catch(e) {
       WMS.toast('error', e.message || 'Error ejecutando ajuste masivo');
       this.verDashboardV2(sesionId);
@@ -5507,6 +5437,129 @@ WMS_MODULES.inventario = {
     } catch(e) { await Swal.fire('Error', e.message || 'Error al rechazar', 'error'); }
   },
 
+  // Diferencias de Inventario General / Cargue Inicial sobre el conteo
+  // DEFINITIVO: por ubicación+lote+vencimiento vale el último conteo de la
+  // referencia (R3 > R2 > R1). Es exactamente lo que aplicará el ajuste.
+  _renderDiferenciasDefinitivas() {
+    const d = this._dashV2;
+    const id = this._dashV2Id;
+    const content = document.getElementById('inv2-content');
+    const todas = d.diferencias_definitivas || [];
+    this._difFiltro = this._difFiltro || 'dif';
+    const filtros = {
+      dif:  { label: 'Con diferencia', test: x => Math.abs(x.diferencia) > 0.0001 },
+      ok:   { label: 'Cuadran',        test: x => Math.abs(x.diferencia) <= 0.0001 },
+      rec:  { label: 'Con recuento',   test: x => x.ronda > 1 || x.recuento_pendiente },
+      all:  { label: 'Todas',          test: () => true },
+    };
+    const filas = todas.filter(filtros[this._difFiltro].test);
+    const pend = d.recuentos_pendientes || 0;
+    const bloqueado = pend > 0 || (d.sesion.num_conteos >= 3 && (d.consistencia_rondas?.diferencias || []).length > 0);
+    const rondaBadge = r => `<span class="badge ${r === 3 ? 'badge-danger' : r === 2 ? 'badge-info' : 'badge-secondary'}">R${r}</span>`;
+    const hayAlgo = todas.some(x => Math.abs(x.diferencia) > 0.0001) || (d.no_contado_sistema?.total_filas || 0) > 0;
+
+    content.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        ${pend > 0 ? `
+        <div class="inv2-alert" style="border-left-color:#f59e0b;background:#fffbeb;color:#92400e;">
+          <i class="fa-solid fa-hourglass-half fa-lg"></i>
+          <div><b>${pend} recuento(s) programado(s) sin terminar.</b> El ajuste está bloqueado hasta que se finalicen o se eliminen en Segundos Conteos. Las filas marcadas "Recuento pendiente" aún muestran el conteo anterior.</div>
+        </div>` : ''}
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <small style="font-weight:800;color:#64748b;">VER:</small>
+          ${Object.entries(filtros).map(([k, f]) => `
+            <button class="btn btn-xs ${this._difFiltro === k ? 'btn-primary' : 'btn-outline-secondary'}"
+              onclick="WMS_MODULES.inventario._difFiltro='${k}';WMS_MODULES.inventario._renderDiferenciasDefinitivas()">
+              ${f.label} (${todas.filter(f.test).length})</button>`).join('')}
+          <span style="margin-left:auto;font-size:.75rem;color:#64748b;">Conteo que vale: último de cada referencia (R3 &gt; R2 &gt; R1)</span>
+        </div>
+        <div class="table-container" style="max-height:420px;overflow-y:auto;">
+          <table class="data-table compact">
+            <thead style="position:sticky;top:0;z-index:10;background:#f8fafc">
+              <tr>
+                <th>Referencia</th><th>Ubicación</th><th>Lote</th><th>F.Venc.</th>
+                <th class="text-center">Conteo vale</th>
+                <th class="text-center">Cant. contada</th>
+                <th class="text-center">Stock sistema</th>
+                <th class="text-center">Diferencia</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filas.map(m => {
+                const dif = m.diferencia;
+                const estado = m.recuento_pendiente
+                  ? `<span class="badge badge-warning">Recuento R${m.recuento_pendiente} pendiente</span>`
+                  : m.ajustado || Math.abs(dif) <= 0.0001
+                    ? '<span class="badge badge-success">Cuadra</span>'
+                    : `<span class="badge ${dif > 0 ? 'badge-info' : 'badge-danger'}">${dif > 0 ? 'Sobrante' : 'Faltante'}</span>`;
+                return `<tr>
+                  <td><div style="font-weight:700;font-size:.8rem">${WMS.esc(m.codigo)}</div><div style="font-size:.7rem;color:#64748b">${WMS.esc(m.producto)}</div></td>
+                  <td><span class="badge badge-light-blue">${WMS.esc(m.ubicacion)}</span></td>
+                  <td style="font-size:.75rem">${WMS.esc(m.lote || '—')}</td>
+                  <td style="font-size:.75rem">${WMS.formatDate(m.fecha_vencimiento) || '—'}</td>
+                  <td class="text-center">${rondaBadge(m.ronda)}${m.lineas > 1 ? ` <small title="Suma de ${m.lineas} registros">×${m.lineas}</small>` : ''}</td>
+                  <td class="text-center fw-700">${WMS.formatNum(m.cantidad_contada)}</td>
+                  <td class="text-center">${WMS.formatNum(m.cantidad_sistema)}</td>
+                  <td class="text-center ${dif > 0 ? 'dif-plus' : dif < 0 ? 'dif-minus' : ''}">${dif > 0 ? '+' : ''}${WMS.formatNum(dif)}</td>
+                  <td>${estado}</td>
+                  <td>${Math.abs(dif) > 0.0001 && !m.recuento_pendiente && !['Ajustado', 'Cerrado'].includes(d.sesion.estado) ? `
+                    <button class="btn btn-xs btn-warning" onclick="WMS_MODULES.inventario._ajustarLinea(${m.linea_id},${id})">
+                      <i class="fa-solid fa-sliders"></i> Ajustar</button>` : ''}</td>
+                </tr>`;
+              }).join('') || '<tr><td colspan="10" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981"></i> Sin filas en este filtro</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+        ${this._htmlNoContadoSistema(d)}
+        ${hayAlgo && !['Ajustado', 'Cerrado'].includes(d.sesion.estado) ? `
+        <div style="text-align:right">
+          <button class="btn btn-danger" ${bloqueado ? 'disabled title="Hay recuentos pendientes o terceros conteos requeridos"' : ''}
+            onclick="WMS_MODULES.inventario._ajustarTodo(${id})">
+            <i class="fa-solid fa-sliders"></i> Ajustar Inventario General
+          </button>
+        </div>` : ''}
+      </div>`;
+  },
+
+  // Stock del sistema (WMS) sin conteo en la sesión: es exactamente lo que
+  // "Ajustar" pondrá en cero en Inventario General / Cargue Inicial. Reemplaza
+  // la antigua pestaña "Análisis ML" (auditoría 2026-09-28).
+  _htmlNoContadoSistema(d) {
+    const nc = d.no_contado_sistema;
+    if (!nc) return '';
+    const filas = nc.filas || [];
+    if (!nc.total_filas) {
+      return `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 16px;font-size:.82rem;color:#166534;font-weight:700;">
+        <i class="fa-solid fa-circle-check"></i> Todo el stock del sistema tiene conteo en esta sesión: el ajuste no pondrá nada en cero.</div>`;
+    }
+    return `
+      <details style="background:#fff7ed;border:1px solid #fdba74;border-left:5px solid #ea580c;border-radius:10px;padding:12px 16px;">
+        <summary style="cursor:pointer;font-size:.85rem;font-weight:800;color:#9a3412;">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          Stock en sistema NO contado: ${WMS.formatNum(nc.total_referencias)} referencia(s) en ${WMS.formatNum(nc.total_filas)} ubicación(es) · ${WMS.formatNum(nc.total_unidades)} uds
+          <span style="font-weight:600;color:#7c2d12;"> — al ajustar se llevarán a cero (kardex: Ajuste de Inventario General)</span>
+        </summary>
+        <div style="max-height:320px;overflow-y:auto;margin-top:10px;">
+          <table class="data-table compact">
+            <thead style="position:sticky;top:0;background:#fff7ed;"><tr>
+              <th>Código</th><th>Referencia</th><th>Ubicación</th><th>Lote</th><th>F. Venc.</th><th class="text-center">Uds. Sistema</th>
+            </tr></thead>
+            <tbody>${filas.map(f => `<tr>
+              <td style="font-family:monospace;font-size:.75rem;">${WMS.esc(f.codigo)}</td>
+              <td style="font-size:.78rem;">${WMS.esc(f.producto)}</td>
+              <td><span class="badge badge-light-blue">${WMS.esc(f.ubicacion)}</span></td>
+              <td style="font-size:.75rem;">${WMS.esc(f.lote || '—')}</td>
+              <td style="font-size:.75rem;">${WMS.formatDate(f.fecha_vencimiento) || '—'}</td>
+              <td class="text-center fw-700">${WMS.formatNum(f.cantidad_sistema)}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+          ${nc.total_filas > filas.length ? `<div style="font-size:.72rem;color:#9a3412;padding:6px;">Mostrando ${filas.length} de ${nc.total_filas} (las de mayor cantidad).</div>` : ''}
+        </div>
+      </details>`;
+  },
+
   _renderTabIcg() {
     const d = this._dashV2;
     const id = this._dashV2Id;
@@ -5534,10 +5587,20 @@ WMS_MODULES.inventario = {
       { key: 'estado',           label: 'ESTADO',              type: 'text'  },
     ];
 
+    // Filtro por estado del comparativo (auditoría 2026-09-28): qué cuadra con
+    // el físico, qué tiene diferencia y qué falta por contar.
+    this._icgEstado = this._icgEstado || 'todas';
+    const ICG_ESTADOS = {
+      todas:      { label: 'Todas',          test: () => true },
+      cuadran:    { label: 'Cuadran',        test: l => l.estado === 'Coincidente' },
+      diferencia: { label: 'Con diferencia', test: l => l.estado === 'Sobrante' || l.estado === 'Faltante' },
+      nocontada:  { label: 'Por contar',     test: l => l.estado === 'No contada' },
+    };
     let lineasIcg = (icg.lineas_icg_comparativo || []).slice();
     if (this._icgSoloContados) {
-      lineasIcg = lineasIcg.filter(l => (l.cantidad_contada || 0) > 0);
+      lineasIcg = lineasIcg.filter(l => l.estado !== 'No contada');
     }
+    lineasIcg = lineasIcg.filter(ICG_ESTADOS[this._icgEstado].test);
     if (this._icgSort.col) {
       const colDef = ICG_COLS.find(c => c.key === this._icgSort.col);
       const dir = this._icgSort.dir === 'desc' ? -1 : 1;
@@ -5580,6 +5643,7 @@ WMS_MODULES.inventario = {
           </div>
         </div>
 
+        ${this._htmlNoContadoSistema(d)}
         ${!cargado ? `
         <div style="text-align:center;padding:50px 20px;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:12px;color:#64748b;">
           <i class="fa-solid fa-file-excel" style="font-size:3rem;color:#94a3b8;margin-bottom:12px;display:block;"></i>
@@ -5610,7 +5674,7 @@ WMS_MODULES.inventario = {
           <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:12px 14px;">
             <div style="font-size:.68rem;font-weight:800;color:#6b21a8;text-transform:uppercase;">Avance Cobertura ICG</div>
             <div style="font-size:1.5rem;font-weight:900;color:#7e22ce;margin-top:2px;">${icg.pct_avance_icg}%</div>
-            <div style="font-size:.65rem;color:#6b21a8;margin-top:2px;">${icg.referencias_contadas_icg} de ${icg.total_referencias_icg} ref. contadas</div>
+            <div style="font-size:.65rem;color:#6b21a8;margin-top:2px;">${icg.referencias_contadas_icg} de ${icg.total_referencias_icg} ref. contadas · ${icg.referencias_no_contadas_icg || 0} por contar</div>
           </div>
           <div style="background:#fffbeb;border:1px solid #fef3c7;border-radius:10px;padding:12px 14px;">
             <div style="font-size:.68rem;font-weight:800;color:#92400e;text-transform:uppercase;">Total ICG Teórico</div>
@@ -5655,6 +5719,11 @@ WMS_MODULES.inventario = {
               onclick="WMS_MODULES.inventario._toggleIcgSoloContados()" title="Mostrar solo las referencias que ya tienen un conteo físico registrado en WMS">
               <i class="fa-solid ${this._icgSoloContados ? 'fa-check-square' : 'fa-square'}"></i> Solo contadas físicamente
             </button>
+            <span style="width:1px;height:18px;background:#cbd5e1;margin:0 4px;"></span>
+            <small style="font-weight:800;color:#64748b;">ESTADO:</small>
+            ${Object.entries(ICG_ESTADOS).map(([k, e]) => `
+              <button class="btn btn-xs ${this._icgEstado === k ? 'btn-primary' : 'btn-outline-secondary'}"
+                onclick="WMS_MODULES.inventario._icgEstado='${k}';WMS_MODULES.inventario._renderTabIcg()">${e.label}</button>`).join('')}
           </div>
           <div style="flex:1;max-width:320px;">
             <input class="form-control form-control-sm" placeholder="Buscar por referencia o código..." oninput="WMS_MODULES.inventario._filterIcgSearch(this.value)">
@@ -5684,8 +5753,9 @@ WMS_MODULES.inventario = {
                   const difColor = dif === 0 ? '#10b981' : (dif > 0 ? '#0284c7' : '#ef4444');
                   const difTxt   = dif === 0 ? '0' : (dif > 0 ? '+' + WMS.formatNum(dif) : WMS.formatNum(dif));
                   const stBadge  = l.estado === 'Coincidente' ? '<span class="badge badge-success">Coincidente</span>'
-                    : (l.estado === 'Sobrante' ? '<span class="badge badge-info">+ Sobrante WMS</span>'
-                    : '<span class="badge badge-danger">- Faltante WMS</span>');
+                    : l.estado === 'Sobrante' ? '<span class="badge badge-info">+ Sobrante WMS</span>'
+                    : l.estado === 'No contada' ? '<span class="badge badge-secondary">Por contar</span>'
+                    : '<span class="badge badge-danger">- Faltante WMS</span>';
                   return `
                     <tr class="icg-row" data-amb="${WMS.esc(l.ambiente)}" data-txt="${WMS.esc((l.codigo+' '+l.producto).toLowerCase())}">
                       <td><b style="font-size:.8rem;color:#1e293b;">${WMS.esc(l.codigo)}</b></td>
@@ -6056,27 +6126,64 @@ WMS_MODULES.inventario = {
     if (!content || !d) return;
 
     const listRef = d.matriz_consolidada || [];
-    const auxList = d.analisis_auxiliares || [];
+    // Auxiliares: primero TODOS los asignados a la sesión (antes solo salían los
+    // que ya tenían líneas contadas — en una sesión recién iniciada, uno solo),
+    // luego el resto del personal activo de la sucursal.
+    const asignados = new Map();
+    (d.sesion.asignaciones || []).forEach(a => {
+      if (a.auxiliar_id && !asignados.has(a.auxiliar_id)) asignados.set(a.auxiliar_id, a.auxiliar?.nombre || ('#' + a.auxiliar_id));
+    });
+    (d.analisis_auxiliares || []).forEach(a => { if (!asignados.has(a.auxiliar_id)) asignados.set(a.auxiliar_id, a.auxiliar); });
+    const otros = (this._personalCache || [])
+      .filter(p => !asignados.has(p.id) && (p.activo === true || p.activo === 1 || p.activo === '1')
+        && (!p.sucursal_id || p.sucursal_id == d.sesion.sucursal_id))
+      .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+    const auxList = [...[...asignados].map(([id, nombre]) => ({ auxiliar_id: id, auxiliar: nombre, asignado: true })),
+                     ...otros.map(p => ({ auxiliar_id: p.id, auxiliar: p.nombre, asignado: false }))];
+    const auxOptions = (selId) => {
+      const opt = a => `<option value="${a.auxiliar_id}" ${a.auxiliar_id == selId ? 'selected' : ''}>${WMS.esc(a.auxiliar)}</option>`;
+      const asg = auxList.filter(a => a.asignado), otr = auxList.filter(a => !a.asignado);
+      return (asg.length ? `<optgroup label="Asignados a esta sesión (${asg.length})">${asg.map(opt).join('')}</optgroup>` : '')
+           + (otr.length ? `<optgroup label="Otro personal de la sucursal">${otr.map(opt).join('')}</optgroup>` : '');
+    };
     const segList = d.segundos_conteos || [];
+    const pendientes = segList.filter(s => s.estado !== 'Finalizado').length;
+    const sinConfirmar = (d.consistencia_rondas?.diferencias || []).length;
+    this._segRonda = this._segRonda || 2;
 
     content.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:20px;">
 
-        <!-- Encabezado y Formulario de Programación de Segundo Conteo -->
+        ${pendientes > 0 ? `
+        <div class="inv2-alert" style="border-left-color:#f59e0b;background:#fffbeb;color:#92400e;">
+          <i class="fa-solid fa-hourglass-half fa-lg"></i>
+          <div><b>${pendientes} recuento(s) sin finalizar.</b> El ajuste queda bloqueado hasta que se terminen (o se eliminen): el ajuste usa el último conteo de cada referencia.</div>
+        </div>` : ''}
+        ${sinConfirmar > 0 ? `
+        <div class="inv2-alert">
+          <i class="fa-solid fa-scale-unbalanced fa-lg"></i>
+          <div><b>${sinConfirmar} referencia(s) con R2 distinto de R1.</b> ${d.sesion.num_conteos >= 3
+            ? 'La sesión tiene 3 conteos configurados: deben pasar a Tercer Conteo antes de ajustar.'
+            : 'Si no se envían a Tercer Conteo, el ajuste toma el valor del R2.'}
+            <button class="btn btn-xs btn-danger" style="margin-left:8px;" onclick="WMS_MODULES.inventario._autoSelectTercerConteo()"><i class="fa-solid fa-bolt"></i> Seleccionar para 3er conteo</button>
+          </div>
+        </div>` : ''}
+
+        <!-- Formulario de Programación de Segundo / Tercer Conteo -->
         <div style="background:#fff;border:1px solid #cbd5e1;border-left:5px solid #3b82f6;border-radius:14px;padding:20px;box-shadow:0 3px 6px rgba(0,0,0,.04);">
           <div style="font-size:1.05rem;font-weight:900;color:#0f172a;margin-bottom:6px;display:flex;align-items:center;gap:8px;">
-            <i class="fa-solid fa-repeat" style="color:#2563eb;"></i> Programación de Segundos Conteos (Ronda 2)
+            <i class="fa-solid fa-repeat" style="color:#2563eb;"></i> Programación de Segundos y Terceros Conteos
           </div>
           <p style="font-size:.82rem;color:#475569;margin-bottom:16px;">
-            Seleccione las referencias que requieren un <b>Segundo Conteo (R2)</b> en todas las ubicaciones y asígnelas a un auxiliar como nueva tarea.
+            Cada referencia enviada se recuenta en <b>todas sus ubicaciones</b>. Al ajustar, el <b>último conteo</b> de la referencia (R3 &gt; R2 &gt; R1) reemplaza por completo a los anteriores.
           </p>
 
-          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;align-items:end;">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:14px;align-items:end;">
             <div>
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                <label style="font-size:.75rem;font-weight:800;color:#334155;margin:0;">1. Referencias a Re-contar (Ronda 2)</label>
+                <label style="font-size:.75rem;font-weight:800;color:#334155;margin:0;">1. Referencias a recontar</label>
                 <button class="btn btn-xs btn-outline-warning" onclick="WMS_MODULES.inventario._autoSelectSegundosDiff()" style="font-weight:800;font-size:.7rem;">
-                  <i class="fa-solid fa-bolt"></i> Seleccionar Dif. (R1 vs Sistema / ICG)
+                  <i class="fa-solid fa-bolt"></i> Seleccionar Dif. (Conteo vs Sistema / ICG)
                 </button>
               </div>
               <div style="position:relative;">
@@ -6084,8 +6191,9 @@ WMS_MODULES.inventario = {
                        oninput="WMS_MODULES.inventario._filterSegRefList(this.value)" style="margin-bottom:6px;">
                 <div id="seg-ref-list-box" style="max-height:160px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:8px;padding:6px;background:#f8fafc;">
                   ${listRef.map(r => {
+                    const conteoFisico = (r.ronda_3 > 0) ? r.ronda_3 : ((r.ronda_2 > 0) ? r.ronda_2 : (r.ronda_1 || 0));
                     const difWms = r.diferencia !== 0;
-                    const difIcg = r.cantidad_icg !== undefined && r.cantidad_icg !== null && ((r.ronda_1||0) - r.cantidad_icg !== 0);
+                    const difIcg = r.cantidad_icg !== undefined && r.cantidad_icg !== null && (conteoFisico - r.cantidad_icg !== 0);
                     const isDiff = difWms || difIcg;
                     return `
                       <label class="seg-ref-item" data-diff="${isDiff?'1':'0'}" data-txt="${WMS.esc((r.codigo+' '+r.producto).toLowerCase())}"
@@ -6100,27 +6208,35 @@ WMS_MODULES.inventario = {
             </div>
 
             <div>
-              <label style="font-size:.75rem;font-weight:800;color:#334155;margin-bottom:4px;">2. Auxiliar Asignado</label>
-              <select class="form-control form-control-sm" id="seg-aux-id" style="font-weight:700;">
-                <option value="">-- Seleccionar Auxiliar --</option>
-                ${auxList.map(a => `<option value="${a.auxiliar_id}">${WMS.esc(a.auxiliar)}</option>`).join('')}
+              <label style="font-size:.75rem;font-weight:800;color:#334155;margin-bottom:4px;">2. Conteo</label>
+              <select class="form-control form-control-sm" id="seg-ronda" style="font-weight:700;" onchange="WMS_MODULES.inventario._segRonda=parseInt(this.value)">
+                <option value="2" ${this._segRonda === 2 ? 'selected' : ''}>Segundo conteo (R2)</option>
+                <option value="3" ${this._segRonda === 3 ? 'selected' : ''}>Tercer conteo (R3)</option>
               </select>
             </div>
 
             <div>
-              <label style="font-size:.75rem;font-weight:800;color:#334155;margin-bottom:4px;">3. Acciones</label>
+              <label style="font-size:.75rem;font-weight:800;color:#334155;margin-bottom:4px;">3. Auxiliar Asignado</label>
+              <select class="form-control form-control-sm" id="seg-aux-id" style="font-weight:700;">
+                <option value="">-- Seleccionar Auxiliar --</option>
+                ${auxOptions(null)}
+              </select>
+            </div>
+
+            <div>
+              <label style="font-size:.75rem;font-weight:800;color:#334155;margin-bottom:4px;">4. Acciones</label>
               <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._asignarSegundosConteosBatch(${d.sesion.id})"
-                      style="width:100%;font-weight:900;">
-                <i class="fa-solid fa-plus-circle"></i> Asignar R2
+                      style="width:100%;font-weight:900;" ${['Cerrado', 'Ajustado'].includes(d.sesion.estado) ? 'disabled' : ''}>
+                <i class="fa-solid fa-plus-circle"></i> Asignar recuento
               </button>
             </div>
           </div>
         </div>
 
-        <!-- Tabla de Tareas de Segundo Conteo (Ronda 2) Programadas -->
+        <!-- Tabla de Tareas de Recuento (R2 / R3) -->
         <div style="border:1px solid #cbd5e1;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.04);">
           <div style="background:#1e293b;color:#fff;padding:12px 18px;font-size:.88rem;font-weight:800;display:flex;justify-content:space-between;align-items:center;">
-            <span><i class="fa-solid fa-list"></i> Tareas de Segundo Conteo (Ronda 2) Registradas</span>
+            <span><i class="fa-solid fa-list"></i> Tareas de Segundo y Tercer Conteo</span>
             <span class="badge" style="background:#3b82f6;color:#fff;font-weight:800;">${segList.length} tareas</span>
           </div>
 
@@ -6129,20 +6245,26 @@ WMS_MODULES.inventario = {
               <thead>
                 <tr style="background:#f1f5f9;">
                   <th>#</th>
+                  <th class="text-center">RONDA</th>
                   <th>CÓDIGO</th>
                   <th>REFERENCIA / PRODUCTO</th>
                   <th>AUXILIAR ASIGNADO</th>
-                  <th>ETIQUETA TAREA</th>
                   <th class="text-center">CANT. R1</th>
-                  <th class="text-center" style="background:#eff6ff;color:#1e40af;">CANT. R2 (CONTEO)</th>
+                  <th class="text-center" style="background:#eff6ff;color:#1e40af;">CANT. R2</th>
+                  <th class="text-center" style="background:#f5f3ff;color:#6d28d9;">CANT. R3</th>
                   <th class="text-center">ESTADO</th>
                   <th class="text-center">ACCIONES</th>
                 </tr>
               </thead>
               <tbody>
-                ${segList.map((s, idx) => `
+                ${segList.map((s, idx) => {
+                  const celda = (ronda, val) => s.ronda === ronda && s.estado !== 'Finalizado'
+                    ? '<span style="color:#94a3b8;font-weight:400;">Pendiente</span>'
+                    : (s.ronda >= ronda ? WMS.formatNum(val) : '—');
+                  return `
                   <tr>
                     <td class="text-center"><b>${idx + 1}</b></td>
+                    <td class="text-center"><span class="badge ${s.ronda === 3 ? 'badge-danger' : 'badge-info'}">R${s.ronda}</span></td>
                     <td><b>${WMS.esc(s.codigo)}</b></td>
                     <td><div style="font-weight:700;font-size:.8rem;color:#0f172a;">${WMS.esc(s.producto)}</div></td>
                     <td>
@@ -6150,24 +6272,26 @@ WMS_MODULES.inventario = {
                         style="font-size:.78rem;font-weight:700;padding:2px 6px;min-width:150px;"
                         onchange="WMS_MODULES.inventario._cambiarAuxiliarAsignacion(${s.id}, this.value, ${d.sesion.id})"
                         ${s.estado === 'Finalizado' || ['Cerrado', 'Ajustado'].includes(d.sesion.estado) ? 'disabled' : ''}>
-                        ${(this._personalCache || auxList).map(a => `<option value="${a.id || a.auxiliar_id}" ${(a.id || a.auxiliar_id) == s.auxiliar_id ? 'selected' : ''}>${WMS.esc(a.nombre || a.auxiliar)}</option>`).join('')}
+                        ${auxOptions(s.auxiliar_id)}
                       </select>
                     </td>
-                    <td><span class="badge badge-secondary" style="font-weight:700;">🏷️ ${WMS.esc(s.etiqueta)}</span></td>
                     <td class="text-center fw-700" style="font-size:.95rem;">${WMS.formatNum(s.r1)}</td>
-                    <td class="text-center fw-900" style="background:#eff6ff;color:#1d4ed8;font-size:1.05rem;">${s.r2 > 0 ? WMS.formatNum(s.r2) : '<span style="color:#94a3b8;font-weight:400;">Pendiente</span>'}</td>
+                    <td class="text-center fw-900" style="background:#eff6ff;color:#1d4ed8;font-size:1.05rem;">${celda(2, s.r2)}</td>
+                    <td class="text-center fw-900" style="background:#f5f3ff;color:#6d28d9;font-size:1.05rem;">${celda(3, s.r3)}</td>
                     <td class="text-center">
                       <span class="badge ${s.estado==='Finalizado'?'badge-success':(s.estado==='EnConteo'?'badge-warning':'badge-info')}">
                         ${s.estado}
                       </span>
                     </td>
                     <td class="text-center">
-                      <button class="btn btn-xs btn-outline-danger" title="Eliminar Asignación R2"
+                      ${s.estado !== 'Finalizado' ? `
+                      <button class="btn btn-xs btn-outline-danger" title="Eliminar tarea de recuento"
                               onclick="WMS_MODULES.inventario._eliminarAsignacionR2(${s.id}, ${d.sesion.id})">
                         <i class="fa-solid fa-trash"></i>
-                      </button>
+                      </button>` : ''}
                     </td>
-                  </tr>`).join('') || '<tr><td colspan="9" class="text-center" style="padding:24px;color:#64748b;">No hay tareas de Segundo Conteo (R2) programadas todavía.</td></tr>'}
+                  </tr>`;
+                }).join('') || '<tr><td colspan="10" class="text-center" style="padding:24px;color:#64748b;">No hay tareas de Segundo o Tercer Conteo programadas todavía.</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -6175,6 +6299,15 @@ WMS_MODULES.inventario = {
 
       </div>
     `;
+  },
+
+  // Referencias con R2 ≠ R1 sin tercer conteo → preselecciona y cambia a R3.
+  _autoSelectTercerConteo() {
+    const ids = (this._dashV2?.consistencia_rondas?.diferencias || []).map(x => parseInt(x.producto_id));
+    this._segRonda = 3;
+    this._renderTabSegundosConteos();
+    document.querySelectorAll('#seg-ref-list-box .seg-ref-chk').forEach(chk => { chk.checked = ids.includes(parseInt(chk.value)); });
+    WMS.toast('info', `${ids.length} referencia(s) seleccionadas para Tercer Conteo`);
   },
 
   _autoSelectIcgNoContados() {
@@ -6221,14 +6354,14 @@ WMS_MODULES.inventario = {
     const productoIds = Array.from(chks).map(c => parseInt(c.value)).filter(v => !!v);
 
     if (productoIds.length === 0) {
-      return WMS.toast('error', 'Debe seleccionar al menos una referencia para el Segundo Conteo');
+      return WMS.toast('error', 'Debe seleccionar al menos una referencia para recontar');
     }
 
     try {
       const res = await API.post(`/v2/inventario/sesiones/${sesionId}/segundos-conteos`, {
         auxiliar_id: parseInt(auxId),
         producto_ids: productoIds,
-        etiqueta: 'Segundo Conteo (Ronda 2)'
+        ronda: parseInt(document.getElementById('seg-ronda')?.value) === 3 ? 3 : 2
       });
       if (res.error) throw new Error(res.message);
       WMS.toast('success', res.message || 'Segundo Conteo asignado correctamente');

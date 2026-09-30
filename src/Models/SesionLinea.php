@@ -33,12 +33,15 @@ class SesionLinea extends BaseModel
 
     protected $casts = [
         'ronda'              => 'integer',
-        'cantidad_contada'   => 'integer',
+        // float, no integer: las columnas son NUMERIC(…,2) y el cast a integer
+        // truncaba conteos fraccionarios (ej. 12,5 → 12) antes de ajustar el stock
+        // (auditoría inventario general 2026-09-28: 15 líneas en 9 sesiones).
+        'cantidad_contada'   => 'float',
         'cantidad_cajas'     => 'integer',
         'saldos'             => 'float',
-        'cantidad_sistema'   => 'integer',
-        'diferencia'         => 'integer',
-        'cantidad_original'  => 'integer',
+        'cantidad_sistema'   => 'float',
+        'diferencia'         => 'float',
+        'cantidad_original'  => 'float',
         'fecha_vencimiento'  => 'date',
         'hora_conteo'        => 'datetime',
         'editado_at'         => 'datetime',

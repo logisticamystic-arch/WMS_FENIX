@@ -1135,6 +1135,12 @@ WMS_MODULES.maestro = {
             <option value="">-- Ambiente --</option>
             ${ambientes.map(a => `<option value="${a.id}">${WMS.esc(a.codigo)}</option>`).join('')}
         </select>
+        <select id="filt-pagesize" class="form-control sm" style="width:110px; font-size:11px;" onchange="WMS_MODULES.maestro._timerBuscar()">
+            <option value="50">50 por página</option>
+            <option value="100">100 por página</option>
+            <option value="200">200 por página</option>
+            <option value="todos">Ver todos</option>
+        </select>
       </div>
       <div class="actions" style="display:flex; gap:8px; align-items:center;">
         <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.maestro._cargarTodo()" title="Ver catálogo completo">
@@ -1326,6 +1332,7 @@ WMS_MODULES.maestro = {
     const cat = document.getElementById('filt-cat')?.value;
     const mar = document.getElementById('filt-mar')?.value;
     const amb = document.getElementById('filt-amb')?.value;
+    const pageSize = document.getElementById('filt-pagesize')?.value || '50';
 
     const resCont = document.getElementById('prod-results-container');
     if (!resCont) return;
@@ -1345,11 +1352,33 @@ WMS_MODULES.maestro = {
       if (cat) params.append('categoria_id', cat);
       if (mar) params.append('marca_id', mar);
       if (amb) params.append('ambiente_id', amb);
-      params.append('limit', 50);
+      params.append('limit', pageSize === 'todos' ? 'todos' : pageSize);
+      if (this._prodSort) {
+        params.append('sort', this._prodSort);
+        params.append('dir', this._prodDir || 'asc');
+      }
 
       const r = await API.get('/param/productos/buscar', params.toString());
       this.renderProductos(r.data || r || []);
     } catch (e) { resCont.innerHTML = '<div class="alert alert-danger">Error en la búsqueda</div>'; }
+  },
+
+  // ── Ordenar por columna (clic en encabezado) ──────────────────────────────
+  _ordenarProductos(campo) {
+    if (this._prodSort === campo) {
+      this._prodDir = this._prodDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      this._prodSort = campo;
+      this._prodDir = 'asc';
+    }
+    this.buscarProductos(true);
+  },
+
+  _iconoOrden(campo) {
+    if (this._prodSort !== campo) return '<i class="fa-solid fa-sort" style="opacity:.35;font-size:10px;"></i>';
+    return this._prodDir === 'asc'
+      ? '<i class="fa-solid fa-sort-up" style="font-size:10px;"></i>'
+      : '<i class="fa-solid fa-sort-down" style="font-size:10px;"></i>';
   },
 
   renderProductos(items) {
@@ -1366,7 +1395,16 @@ WMS_MODULES.maestro = {
         <div class="table-container" style="max-height:600px; overflow-y:auto;">
           <table class="erp-table">
             <thead style="position:sticky; top:0; z-index:10; background:#f8fafc;">
-               <tr><th>Referencia/EAN</th><th>Descripción</th><th>Categoría/Marca</th><th>Ambiente</th><th>Estado</th><th>Acciones</th></tr>
+               <tr>
+                 <th style="cursor:pointer;user-select:none;" onclick="WMS_MODULES.maestro._ordenarProductos('codigo')" title="Ordenar alfabéticamente">Referencia/EAN ${this._iconoOrden('codigo')}</th>
+                 <th style="cursor:pointer;user-select:none;" onclick="WMS_MODULES.maestro._ordenarProductos('descripcion')" title="Ordenar alfabéticamente">Descripción ${this._iconoOrden('descripcion')}</th>
+                 <th>Categoría/Marca</th>
+                 <th style="cursor:pointer;user-select:none;" onclick="WMS_MODULES.maestro._ordenarProductos('ambiente')" title="Ordenar alfabéticamente">Ambiente ${this._iconoOrden('ambiente')}</th>
+                 <th style="text-align:center;">U/E</th>
+                 <th style="text-align:center;">Requiere Lote</th>
+                 <th style="text-align:center;">Requiere FV</th>
+                 <th>Estado</th><th>Acciones</th>
+               </tr>
             </thead>
             <tbody>${items.map(p => `<tr>
               <td>
@@ -1384,6 +1422,13 @@ WMS_MODULES.maestro = {
               <td>${p.ambiente_nombre && p.ambiente_nombre !== '-'
                 ? `<span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:.72rem;font-weight:700;color:${WMS.esc(p.ambiente_color||'#475569')};background:${WMS.esc(p.ambiente_color||'#475569')}15;border:1px solid ${WMS.esc(p.ambiente_color||'#475569')}40;">${WMS.esc(p.ambiente_nombre)}</span>`
                 : '<span style="color:#94a3b8;font-size:.72rem;">Sin asignar</span>'}</td>
+              <td style="text-align:center;font-size:11px;color:#475569;">${p.factor_udm ? `${p.factor_udm} ${WMS.esc(p.unidad_contenido || '')}` : '-'}</td>
+              <td style="text-align:center;">${p.controla_lote
+                ? '<span class="status-chip status-cerrada">Sí</span>'
+                : '<span class="status-chip status-cancelada">No</span>'}</td>
+              <td style="text-align:center;">${p.controla_vencimiento
+                ? '<span class="status-chip status-cerrada">Sí</span>'
+                : '<span class="status-chip status-cancelada">No</span>'}</td>
               <td><span class="status-chip ${p.activo ? 'status-cerrada' : 'status-cancelada'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>
               <td><div class="actions">
                 <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.maestro.editProducto(${p.id})" title="Editar"><i class="fa-solid fa-pen"></i></button>
@@ -1397,7 +1442,7 @@ WMS_MODULES.maestro = {
                 </button>
                 <button class="btn btn-sm btn-danger" onclick="WMS_MODULES.maestro.deleteProducto(${p.id},'${WMS.esc(p.descripcion || '')}')" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
               </div></td>
-            </tr>`).join('') || '<tr><td colspan="6" class="table-empty">Sin productos que coincidan</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="9" class="table-empty">Sin productos que coincidan</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -1574,7 +1619,18 @@ WMS_MODULES.maestro = {
     try {
       const r = id ? await API.put('/param/productos/' + id, data) : await API.post('/param/productos', data);
       if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Producto guardado'); WMS.closeModal('generic-modal'); this.show_productos(); }
+      else {
+        WMS.toast('success', 'Producto guardado');
+        WMS.closeModal('generic-modal');
+        // Editar viene siempre desde el listado (el modal se abre sobre esa pantalla) —
+        // debe quedar ahí mismo, refrescado, y no saltar al formulario de "Registrar Nuevo".
+        // Crear sí sigue en el formulario, para permitir registrar varios seguidos.
+        if (id && document.getElementById('prod-results-container')) {
+          this.buscarProductos(true);
+        } else {
+          this.show_productos();
+        }
+      }
     } catch (e) { WMS.toast('error', 'Error de conexión'); }
   },
 
