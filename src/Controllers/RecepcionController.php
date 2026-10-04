@@ -1757,7 +1757,7 @@ class RecepcionController extends BaseController
         $citasHoy = Capsule::table('citas')
             ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
             ->where('sucursal_id', $user->sucursal_id)
-            ->whereDate('fecha_cita', $hoy)
+            ->where('fecha', $hoy) // la tabla citas usa 'fecha' (date); 'fecha_cita' no existe → 500
             ->count();
 
         $palletsPatio = Capsule::table('lotes')

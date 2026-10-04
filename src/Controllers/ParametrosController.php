@@ -1703,7 +1703,7 @@ class ParametrosController extends BaseController
             ->select(
                 Capsule::raw('DATE(created_at) as fecha'),
                 Capsule::raw('COUNT(*) as total_citas'),
-                Capsule::raw('SUM(CASE WHEN estado = "Completada" THEN 1 ELSE 0 END) as citas_completadas'),
+                Capsule::raw("SUM(CASE WHEN estado = 'Completada' THEN 1 ELSE 0 END) as citas_completadas"),
                 Capsule::raw('AVG(evaluacion_proveedor) as eval_promedio')
             )
             ->where('empresa_id', $this->getEffectiveEmpresaId($user, $request))

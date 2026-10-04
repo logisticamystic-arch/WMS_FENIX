@@ -1353,6 +1353,7 @@ WMS_MODULES.picking = {
       const r = await API.get('/picking?' + params.toString());
       const ordenes = r.data || r || [];
       this._renderPedidosTabla(ordenes);
+      this._onTogglePlanillaCheckbox(); // botones de selección acordes al nuevo render
     } catch(e) {
       WMS.toast('error', 'Error cargando pedidos');
     }
@@ -1401,6 +1402,12 @@ WMS_MODULES.picking = {
         <div class="card-header">
           <h5 class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Pedidos de Picking</h5>
           <div class="card-actions">
+            <button class="btn btn-secondary btn-sm" id="btn-toggle-sel-planillas" onclick="WMS_MODULES.picking._toggleSeleccionTodas()" title="Seleccionar o quitar la selección de todos los pedidos visibles">
+              <i class="fa-regular fa-square-check"></i> <span id="lbl-toggle-sel-planillas">Seleccionar todo</span>
+            </button>
+            <button class="btn btn-success btn-sm" id="btn-autocert-planillas-sel" style="display:none;" onclick="WMS_MODULES.picking._autoCertificarSeleccionadas()" title="Certifica los pedidos completados de las planillas seleccionadas">
+              <i class="fa-solid fa-stamp"></i> Auto-Certificar Seleccionadas (<span id="count-planillas-sel-cert">0</span>)
+            </button>
             <button class="btn btn-outline-danger btn-sm" id="btn-eliminar-planillas-sel" style="display:none;" onclick="WMS_MODULES.picking._eliminarPlanillasSeleccionadas()">
               <i class="fa-solid fa-trash-can"></i> Eliminar Seleccionadas (<span id="count-planillas-sel">0</span>)
             </button>
@@ -2638,7 +2645,7 @@ WMS_MODULES.picking = {
     const fechaMov = g?.ordenes?.[0]?.fecha_movimiento;
     // Mismo criterio que despacho.js::_esFechaHoy() — se repite aquí porque ese
     // helper vive en el módulo de despacho, no en el de picking.
-    const esHoy = !!fechaMov && fechaMov === WMS.getToday();
+    const esHoy = !!fechaMov && String(fechaMov).slice(0, 10) === WMS.getToday(); // fecha_movimiento trae hora ('YYYY-MM-DD 00:00:00')
     const totalPedidos = sucursales.reduce((a, s) => a + porSucursal[s].length, 0);
 
     const ok = await Swal.fire({
@@ -3245,6 +3252,99 @@ WMS_MODULES.picking = {
     const chkAll = document.getElementById('chk-sel-all-planillas');
     const total = document.querySelectorAll('.chk-sel-planilla').length;
     if (chkAll) chkAll.checked = total > 0 && checked.length === total;
+    // Seleccionar todo / Quitar selección + Auto-Certificar seleccionadas
+    const lblSel = document.getElementById('lbl-toggle-sel-planillas');
+    if (lblSel) lblSel.textContent = (total > 0 && checked.length === total) ? 'Quitar selección' : 'Seleccionar todo';
+    const elegibles = Array.from(checked).filter(c => Object.keys((this._certElegiblesPorPlanilla || {})[c.dataset.planilla] || {}).length > 0).length;
+    const btnCert = document.getElementById('btn-autocert-planillas-sel');
+    const countCert = document.getElementById('count-planillas-sel-cert');
+    if (countCert) countCert.textContent = elegibles;
+    if (btnCert) btnCert.style.display = elegibles > 0 ? '' : 'none';
+  },
+
+  /** Botón "Seleccionar todo / Quitar selección" (2026-10-04, pedido de Camilo). */
+  _toggleSeleccionTodas() {
+    const total = document.querySelectorAll('.chk-sel-planilla').length;
+    const marcadas = document.querySelectorAll('.chk-sel-planilla:checked').length;
+    this._toggleSelectAllPlanillas(!(total > 0 && marcadas === total));
+  },
+
+  /**
+   * Auto-Certificar las planillas seleccionadas (2026-10-04, pedido de Camilo).
+   * Hace EXACTAMENTE las mismas llamadas que autoCertificarPlanilla() — una por
+   * cada (planilla, sucursal_entrega) con sus orden_ids exactos — para no
+   * mezclar pedidos de planillas distintas en una misma remisión. Las planillas
+   * seleccionadas sin pedidos Completados pendientes de certificar se omiten.
+   */
+  async _autoCertificarSeleccionadas() {
+    const keys = Array.from(document.querySelectorAll('.chk-sel-planilla:checked')).map(c => c.dataset.planilla);
+    const elegibles = keys.filter(k => Object.keys((this._certElegiblesPorPlanilla || {})[k] || {}).length > 0);
+    const omitidas = keys.filter(k => !elegibles.includes(k));
+    if (!elegibles.length) {
+      WMS.toast('warning', 'Ninguna planilla seleccionada tiene pedidos completados pendientes de certificar.');
+      return;
+    }
+    const hoy = WMS.getToday();
+    const info = elegibles.map(k => {
+      const porSuc = this._certElegiblesPorPlanilla[k];
+      const pedidos = Object.values(porSuc).reduce((a, ids) => a + ids.length, 0);
+      const fecha = this._gruposCache?.[k]?.ordenes?.[0]?.fecha_movimiento || '';
+      return { k, porSuc, pedidos, fecha: String(fecha).slice(0, 10), esHoy: !!fecha && String(fecha).slice(0, 10) === hoy };
+    });
+    const totalPedidos = info.reduce((a, x) => a + x.pedidos, 0);
+    const noHoy = info.filter(x => !x.esHoy);
+
+    const ok = await Swal.fire({
+      title: `¿Auto-Certificar ${elegibles.length} planilla(s)?`,
+      html: `<div style="text-align:left;font-size:.85rem;">
+               <p>Se empacarán y certificarán exactamente <b>${totalPedidos} pedido(s)</b> ya completados:</p>
+               <ul style="max-height:170px;overflow-y:auto;padding-left:18px;margin:8px 0;">
+                 ${info.map(x => `<li>#${WMS.esc(x.k)} — ${x.pedidos} pedido(s)${x.esHoy ? '' : ` <b style="color:var(--danger);">· fecha ${WMS.esc(x.fecha || 'desconocida')}, no es de hoy</b>`}</li>`).join('')}
+               </ul>
+               ${omitidas.length ? `<p class="form-error" style="margin-top:6px;">Se omiten ${omitidas.length} planilla(s) seleccionada(s) sin pedidos completados pendientes de certificar.</p>` : ''}
+               ${noHoy.length ? `<p style="color:var(--danger);font-weight:700;margin-top:6px;">${noHoy.length} planilla(s) no son de hoy.</p>` : ''}
+               <p style="margin-top:6px;">Después podrá imprimir las remisiones desde Despachos.</p>
+             </div>`,
+      icon: noHoy.length ? 'error' : 'warning',
+      showCancelButton: true,
+      confirmButtonText: noHoy.length ? 'Sí, certificar de todas formas' : 'Sí, Auto-Certificar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: noHoy.length ? '#dc2626' : '#16a34a',
+    });
+    if (!ok.isConfirmed) return;
+
+    WMS.spinner();
+    let okPl = 0, errPl = 0;
+    const errores = [];
+    try {
+      for (const x of info) {
+        let okSuc = 0, errSuc = 0, lastError = '';
+        for (const sucursal of Object.keys(x.porSuc)) {
+          try {
+            const r = await API.post('/packing/autopack', {
+              sucursal_entrega: sucursal,
+              tipo_empaque: 'canasta',
+              orden_ids: x.porSuc[sucursal],
+            });
+            if (r && !r.error) okSuc++; else { errSuc++; lastError = r?.message || lastError; }
+          } catch (e) { errSuc++; lastError = e.message || lastError; }
+        }
+        if (okSuc > 0 && !errSuc) okPl++;
+        else { errPl++; errores.push(`#${x.k}: ${lastError || 'error'}${okSuc ? ' (parcial)' : ''}`); }
+      }
+    } finally {
+      WMS.spinner(false);
+    }
+    if (errPl) {
+      Swal.fire({
+        icon: okPl ? 'warning' : 'error',
+        title: okPl ? `Certificadas ${okPl} de ${info.length} planilla(s)` : 'No se pudo certificar',
+        html: `<ul style="text-align:left;font-size:.82rem;max-height:200px;overflow-y:auto;">${errores.map(e => `<li>${WMS.esc(e)}</li>`).join('')}</ul>`,
+      });
+    } else {
+      WMS.toast('success', `Certificación automática completada en ${okPl} planilla(s). Ya puede imprimir las remisiones.`);
+    }
+    if (okPl) this._cargarPedidos();
   },
 
   // A pedido explícito (2026-08-18): permite elegir FIFO o LIFO para las

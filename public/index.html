@@ -35,6 +35,16 @@
   </script>
   <!-- Colores corporativos (bee) para TODOS los gráficos Chart.js -->
   <script src="assets/js/chart-corporativo.js?v=3"></script>
+  <!-- Acciones de fila agrupadas en un botón ⋮ + cajón de menú en pantallas angostas -->
+  <script src="assets/js/acciones-agrupadas.js?v=3"></script>
+  <script>
+    document.addEventListener('click', function (e) {
+      if (!document.body.classList.contains('menu-abierto')) return;
+      if (e.target.closest('#btn-menu-movil')) return;
+      // cerrar al tocar fuera del menú o al elegir un submódulo (el módulo solo despliega su acordeón)
+      if (!e.target.closest('.app-sidebar') || e.target.closest('.sidebar-item')) document.body.classList.remove('menu-abierto');
+    });
+  </script>
   <!-- JsBarcode — generación CODE128 para rótulos -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
@@ -138,6 +148,10 @@
 
     <!-- TOP HEADER -->
     <header class="app-header">
+      <button class="notif-btn" id="btn-menu-movil" title="Menú" aria-label="Abrir menú"
+        onclick="event.stopPropagation();document.body.classList.toggle('menu-abierto')">
+        <i class="fa-solid fa-bars"></i>
+      </button>
       <div class="header-brand">
         <div style="background:var(--primary);border-radius:8px;padding:4px 8px;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.1);">
           <img src="assets/images/logo.png" alt="Logo" style="height:32px;width:auto;object-fit:contain;">
@@ -909,7 +923,7 @@
     }
   </style>
   <!-- Tema bee (compras.mistico.co) — capa visual; quitar esta línea revierte el diseño -->
-  <link rel="stylesheet" href="assets/css/bee-theme.css?v=7">
+  <link rel="stylesheet" href="assets/css/bee-theme.css?v=10">
 
   <!-- ======================= SCRIPTS ======================= -->
   <!-- API client -->
