@@ -148,10 +148,13 @@ class TmsClient
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 5,
         ]);
-        curl_exec($ch);
+        $body = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
-        return $code >= 200 && $code < 300;
+        $json = json_decode((string)$body, true);
+        $ok = $code >= 200 && $code < 300 && is_array($json) && empty($json['error']);
+        if (!$ok) error_log("TmsClient::sincronizarPedido({$ordenPickingId}, {$accion}) falló: HTTP {$code} " . substr((string)$body, 0, 200));
+        return $ok;
     }
 }

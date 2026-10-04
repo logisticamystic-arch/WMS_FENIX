@@ -2353,11 +2353,16 @@ WMS_MODULES.despacho = {
     try {
       const rs = await API.get('/param/sucursales');
       const sucursales = rs.data || rs || [];
-      sucursalOpts += sucursales.map(s => `<option value="${s.id}">${WMS.esc(s.nombre)}</option>`).join('');
+      const fSuc = String((this._cargueFiltros || {}).sucursal_id || '');
+      sucursalOpts += sucursales.map(s => `<option value="${s.id}" ${String(s.id) === fSuc ? 'selected' : ''}>${WMS.esc(s.nombre)}</option>`).join('');
     } catch(e) {}
 
     const hoy = WMS.getToday();
-    this._cargueFiltros = { desde: hoy, hasta: hoy, sucursal_id: '', estado: 'activas' };
+    // Conserva los filtros elegidos (2026-10-04): antes se reiniciaban a "hoy /
+    // activas" cada vez que la pestaña se volvía a pintar tras una acción.
+    if (!this._cargueFiltros) this._cargueFiltros = { desde: hoy, hasta: hoy, sucursal_id: '', estado: 'activas' };
+    const f = this._cargueFiltros;
+    const selEst = v => (f.estado === v ? 'selected' : '');
 
     const wrap = document.getElementById('cargue-content-wrap');
     if(!wrap) return;
@@ -2366,11 +2371,11 @@ WMS_MODULES.despacho = {
       <div class="filter-bar" style="flex-wrap:wrap;gap:8px;align-items:flex-end;">
         <div class="form-group" style="margin:0;">
           <label class="form-label" style="font-size:.7rem;">Desde</label>
-          <input type="date" id="cargue-f-desde" class="form-control form-control-sm" value="${hoy}" style="width:150px">
+          <input type="date" id="cargue-f-desde" class="form-control form-control-sm" value="${WMS.esc(f.desde || '')}" style="width:150px">
         </div>
         <div class="form-group" style="margin:0;">
           <label class="form-label" style="font-size:.7rem;">Hasta</label>
-          <input type="date" id="cargue-f-hasta" class="form-control form-control-sm" value="${hoy}" style="width:150px">
+          <input type="date" id="cargue-f-hasta" class="form-control form-control-sm" value="${WMS.esc(f.hasta || '')}" style="width:150px">
         </div>
         <div class="form-group" style="margin:0;">
           <label class="form-label" style="font-size:.7rem;">Sucursal</label>
@@ -2379,13 +2384,13 @@ WMS_MODULES.despacho = {
         <div class="form-group" style="margin:0;">
           <label class="form-label" style="font-size:.7rem;">Estado</label>
           <select id="cargue-f-estado" class="form-control form-control-sm" style="width:150px">
-            <option value="activas" selected>Activas (no entregadas)</option>
-            <option value="">Todos</option>
-            <option value="Preparando">Preparando</option>
-            <option value="Certificado">Certificado</option>
-            <option value="Despachado">Despachado</option>
-            <option value="Entregado">Entregado</option>
-            <option value="Cancelado">Cancelado</option>
+            <option value="activas" ${selEst('activas')}>Activas (no entregadas)</option>
+            <option value="" ${selEst('')}>Todos</option>
+            <option value="Preparando" ${selEst('Preparando')}>Preparando</option>
+            <option value="Certificado" ${selEst('Certificado')}>Certificado</option>
+            <option value="Despachado" ${selEst('Despachado')}>Despachado</option>
+            <option value="Entregado" ${selEst('Entregado')}>Entregado</option>
+            <option value="Cancelado" ${selEst('Cancelado')}>Cancelado</option>
           </select>
         </div>
         <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho._aplicarFiltrosCargue()"><i class="fa-solid fa-filter"></i> Filtrar</button>
@@ -2595,7 +2600,7 @@ WMS_MODULES.despacho = {
       }
       WMS.closeRightPanel(); 
 
-      this.show_cargue(); 
+      this._refrescarCargueEnSitio(); 
     } catch(e) { 
       WMS.toast('error', 'Error guardando'); 
 
@@ -2668,7 +2673,7 @@ WMS_MODULES.despacho = {
       WMS.toast('success', 'Planilla actualizada y reenviada al TMS');
       WMS.closeRightPanel();
       this.verCargue(id);
-      if (document.getElementById('tab-cargue-planillas')?.classList.contains('btn-primary')) this._renderPlanillasCreadas();
+      this._refrescarCargueEnSitio();
     } catch (e) { WMS.toast('error', 'Error guardando'); }
   },
 
@@ -2921,8 +2926,36 @@ WMS_MODULES.despacho = {
     try {
       const r = await API.post('/despachos/' + id + '/cerrar', {});
       if (r.error) WMS.toast('error', r.message);
-      else { WMS.toast('success', 'Despacho confirmado'); this.show_cargue(); }
-    } catch(e) { WMS.toast('error', 'Error'); }
+      else { WMS.toast('success', 'Despacho confirmado'); this._refrescarCargueEnSitio(); }
+    } catch(e) { WMS.toast('error', e.message || 'Error al despachar'); if (e.isWriteTimeout) this._refrescarCargueEnSitio(); }
+  },
+
+  /**
+   * Refresca Despacho › Cargue SIN volver al inicio del módulo (2026-10-04, pedido
+   * de Camilo): conserva la pestaña activa, los filtros, el texto de búsqueda y
+   * la posición del scroll. Úsese tras liquidar / despachar / editar una planilla.
+   */
+  // Usado por los buscadores de Cargue (#cargue-table, #add-ord-table) — no
+  // existía en este módulo, así que esa búsqueda nunca funcionaba (2026-10-04).
+  filterTable(q, tableId) {
+    const f = String(q || '').toLowerCase();
+    document.querySelectorAll('#' + tableId + ' tbody tr').forEach(r => {
+      r.style.display = r.textContent.toLowerCase().includes(f) ? '' : 'none';
+    });
+  },
+
+  async _refrescarCargueEnSitio() {
+    if (!document.getElementById('cargue-content-wrap')) return this.show_cargue();
+    const sc = document.getElementById('content-body');
+    const top = sc ? sc.scrollTop : 0;
+    const busqueda = document.querySelector('#cargue-content-wrap .search-bar input')?.value || '';
+    const enPlanillas = document.getElementById('tab-cargue-planillas')?.classList.contains('btn-primary');
+    if (enPlanillas && document.getElementById('cargue-table-wrap')) await this._loadCargueTabla();
+    else if (enPlanillas) await this._renderPlanillasCreadas();
+    else await this._renderPedidosPendientes();
+    const inp = document.querySelector('#cargue-content-wrap .search-bar input');
+    if (busqueda && inp) { inp.value = busqueda; inp.dispatchEvent(new Event('input')); }
+    if (sc) requestAnimationFrame(() => { sc.scrollTop = top; });
   },
 
   async liquidarCargue(id) {
@@ -2940,8 +2973,8 @@ WMS_MODULES.despacho = {
       const r = await API.post('/despachos/' + id + '/liquidar', {});
       if (r.error) { await Swal.fire('Error', r.message, 'error'); return; }
       WMS.toast('success', 'Planilla liquidada — pedidos marcados como Entregados');
-      this.show_cargue();
-    } catch(e) { WMS.toast('error', 'Error al liquidar'); }
+      this._refrescarCargueEnSitio();
+    } catch(e) { WMS.toast('error', e.message || 'Error al liquidar'); if (e.isWriteTimeout) this._refrescarCargueEnSitio(); }
   },
 
   generarCargue(planillaId) {

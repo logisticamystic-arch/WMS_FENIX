@@ -133,7 +133,10 @@ class TmsPush
         $curlErr  = curl_error($ch);
         curl_close($ch);
 
-        $ok = $httpCode >= 200 && $httpCode < 300;
+        // 2xx Y cuerpo JSON sin error: un fatal de PHP en el TMS (MySQL caído)
+        // llegaba como texto con 200 y se marcaba 'enviado' sin estarlo.
+        $json = json_decode((string)$respBody, true);
+        $ok = $httpCode >= 200 && $httpCode < 300 && is_array($json) && empty($json['error']);
         Capsule::table('orden_pickings')->where('id', $ordenId)->update([
             'yms_sync_status' => $ok ? 'enviado' : 'error',
             'yms_sync_at'     => date('Y-m-d H:i:s'),
