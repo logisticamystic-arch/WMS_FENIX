@@ -488,7 +488,7 @@ a { color: var(--accent); }
    fijos; aquí se reescriben los más comunes para que el modo oscuro
    no deje bloques blancos. Si aparece uno suelto, se agrega aquí o
    se cambia ese inline por var(--surface)/var(--text). */
-html.dark :is(#main-content, #right-panel, .modal, .notif-panel, #user-menu) :is(
+html.dark :is(#main-content, #right-panel, .modal, .notif-panel, #user-menu, .content-toolbar) :is(
   [style*="background:#fff;"], [style*="background: #fff;"], [style*="background:#fff\""], [style*="background:#ffffff"], [style*="background: #ffffff"],
   [style*="background:white"], [style*="background: white"], [style*="background-color:#fff"], [style*="background-color: #fff"],
   [style*="background:#fafbfd"], [style*="background:#fafafa"]) { background: var(--surface) !important; }
@@ -503,7 +503,7 @@ html.dark :is(#main-content, #right-panel, .modal, .notif-panel) :is(
   [style*="background:#fef2f2"], [style*="background: #fef2f2"], [style*="background:#fee2e2"]) { background: var(--danger-bg) !important; }
 html.dark :is(#main-content, #right-panel, .modal, .notif-panel) :is(
   [style*="background:#fffbeb"], [style*="background: #fffbeb"], [style*="background:#fef3c7"], [style*="background:#fefce8"], [style*="background:#fff7ed"]) { background: var(--warn-bg) !important; }
-html.dark :is(#main-content, #right-panel, .modal, .notif-panel) :is(
+html.dark :is(#main-content, #right-panel, .modal, .notif-panel, .content-toolbar) :is(
   [style*="color:#1e293b"], [style*="color: #1e293b"], [style*="color:#0f172a"], [style*="color: #0f172a"],
   [style*="color:#334155"], [style*="color:#374151"], [style*="color:#111827"]) { color: var(--text) !important; }
 html.dark :is(#main-content, #right-panel, .modal, .notif-panel) :is(
@@ -705,3 +705,6 @@ body, .app-content, .content-body { background: var(--bg); }
 .pro-kpi-trend.up   { background: var(--ok-bg); color: var(--ok); }
 .pro-kpi-trend.down { background: var(--danger-bg); color: var(--danger); }
 .pro-kpi-trend.neu  { background: var(--btn-neutral); color: var(--muted); }
+html.dark .spinner-overlay { background: #0f172ab3 !important; }
+.pro-btn-refresh { background: var(--surface); color: var(--text2); border-color: var(--border); border-radius: var(--radius-sm); }
+.pro-btn-refresh:hover { background: var(--btn-neutral); border-color: var(--accent); color: var(--accent); }

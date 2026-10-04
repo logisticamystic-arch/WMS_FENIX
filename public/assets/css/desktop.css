@@ -111,7 +111,7 @@
   gap: 14px;
 }
 .pro-kpi-card {
-  background: #fff;
+  background: var(--surface, #fff);
   border-radius: 12px;
   border: 1px solid var(--border);
   padding: 16px 18px;
@@ -264,7 +264,7 @@
   display: grid;
   gap: 3px;
   padding: 16px;
-  background: #f8fafc;
+  background: var(--table-header-bg, #f8fafc);
   border-radius: 12px;
   border: 1px solid var(--border);
 }
@@ -312,7 +312,7 @@
   align-items: center;
   gap: 10px;
   padding: 12px 18px;
-  background: #fff;
+  background: var(--surface, #fff);
   border-radius: 10px;
   box-shadow: 0 8px 30px rgba(0,0,0,.15);
   border-left: 4px solid;
@@ -333,7 +333,7 @@
 
 /* ── Forecast Chart Container ──────────────────────────── */
 .forecast-chart-wrap {
-  background: #fff;
+  background: var(--surface, #fff);
   border-radius: 12px;
   border: 1px solid var(--border);
   padding: 20px;
@@ -773,7 +773,7 @@ button { cursor: pointer; font-family: var(--font); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #fafbfd;
+  background: var(--table-header-bg, #f8fafc);
 }
 .card-title {
   font-size: .88rem;
@@ -788,7 +788,7 @@ button { cursor: pointer; font-family: var(--font); }
 .card-footer {
   padding: 12px 18px;
   border-top: 1px solid var(--border);
-  background: #fafbfd;
+  background: var(--table-header-bg, #f8fafc);
 }
 
 /* ── KPI CARDS ───────────────────────────────────────── */
@@ -860,7 +860,7 @@ button { cursor: pointer; font-family: var(--font); }
   font-size: .8rem;
 }
 .data-table thead th {
-  background: #f8fafc;
+  background: var(--table-header-bg, #f8fafc);
   padding: 10px 12px;
   text-align: left;
   font-weight: 600;
@@ -888,7 +888,7 @@ button { cursor: pointer; font-family: var(--font); }
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #f8fafc;
+  background: var(--table-header-bg, #f8fafc);
 }
 .data-table thead th.sortable:hover { background: var(--primary-light); color: var(--primary); }
 .data-table tbody tr {
@@ -949,7 +949,7 @@ button { cursor: pointer; font-family: var(--font); }
   font-size: .84rem;
   font-family: var(--font);
   color: var(--text-primary);
-  background: #fff;
+  background: var(--surface, #fff);
   transition: border-color 0.15s, box-shadow 0.15s;
   width: 100%;
 }
@@ -959,7 +959,7 @@ button { cursor: pointer; font-family: var(--font); }
   box-shadow: 0 0 0 3px rgba(59,130,246,.12);
 }
 .form-control::placeholder { color: var(--text-muted); }
-.form-control[disabled], .form-control[readonly] { background: #f8fafc; color: var(--text-secondary); }
+.form-control[disabled], .form-control[readonly] { background: var(--table-header-bg, #f8fafc); color: var(--text-secondary); }
 .form-hint { font-size: .72rem; color: var(--text-muted); margin-top: 2px; }
 .form-error { font-size: .72rem; color: var(--danger); margin-top: 2px; }
 
@@ -1000,7 +1000,7 @@ button { cursor: pointer; font-family: var(--font); }
   width: 14px;
   left: 3px;
   top: 3px;
-  background-color: #fff;
+  background-color: var(--surface, #fff);
   border-radius: 50%;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 1px 2px rgba(0,0,0,.1);
@@ -1022,7 +1022,7 @@ button { cursor: pointer; font-family: var(--font); }
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  background: #fff;
+  background: var(--surface, #fff);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: var(--shadow-lg);
@@ -1078,7 +1078,7 @@ button { cursor: pointer; font-family: var(--font); }
 }
 .modal-overlay.open { opacity: 1; pointer-events: all; }
 .modal {
-  background: #fff;
+  background: var(--surface, #fff);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
   width: 90%;
@@ -1160,7 +1160,7 @@ button { cursor: pointer; font-family: var(--font); }
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
-.capture-list { background: #f8f9fa; border-radius: 8px; margin-top: 8px; padding: 12px; border-left: 4px solid #3b82f6; }
+.capture-list { background: var(--table-header-bg, #f8fafc); border-radius: 8px; margin-top: 8px; padding: 12px; border-left: 4px solid #3b82f6; }
 .capture-item { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid #e2e8f0; font-size: 0.8rem; }
 .capture-item:last-child { border-bottom: none; }
 .capture-label { color: #64748b; font-weight: 600; font-size: 0.7rem; text-transform: uppercase; }
@@ -1207,7 +1207,7 @@ button { cursor: pointer; font-family: var(--font); }
   right: 0;
   width: 380px;
   height: calc(100vh - var(--header-h));
-  background: #fff;
+  background: var(--surface, #fff);
   border-left: 1px solid var(--border);
   box-shadow: var(--shadow-lg);
   z-index: 200;
@@ -1223,7 +1223,7 @@ button { cursor: pointer; font-family: var(--font); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #fafbfd;
+  background: var(--table-header-bg, #f8fafc);
 }
 .notif-panel-title { font-weight: 700; font-size: .9rem; }
 .notif-list { flex: 1; overflow-y: auto; }
@@ -1236,7 +1236,7 @@ button { cursor: pointer; font-family: var(--font); }
   gap: 10px;
   align-items: flex-start;
 }
-.notif-item:hover { background: #f8fafc; }
+.notif-item:hover { background: var(--table-header-bg, #f8fafc); }
 .notif-item.unread { background: #eff6ff; border-left: 3px solid var(--primary); }
 .notif-item-icon {
   width: 34px;
@@ -1278,7 +1278,7 @@ button { cursor: pointer; font-family: var(--font); }
   display: flex;
   align-items: center;
   gap: 6px;
-  background: #fff;
+  background: var(--surface, #fff);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0 10px;
@@ -1406,7 +1406,7 @@ button { cursor: pointer; font-family: var(--font); }
 .warehouse-map-container {
   position: relative;
   overflow: auto;
-  background: #f8fafc;
+  background: var(--table-header-bg, #f8fafc);
   border: 1px solid var(--border);
   border-radius: 8px;
   min-height: 400px;
@@ -1457,7 +1457,7 @@ button { cursor: pointer; font-family: var(--font); }
   gap: 12px;
   align-items: center;
   padding: 12px;
-  background: #fff;
+  background: var(--surface, #fff);
   border: 1px solid var(--border);
   border-radius: 8px;
   margin-bottom: 8px;
@@ -1499,7 +1499,7 @@ button { cursor: pointer; font-family: var(--font); }
 .picking-col-header.progress { background: #eff6ff; color: #0F4C81; border-color: #3b82f6; }
 .picking-col-header.done     { background: #f0fdf4; color: #15803d; border-color: #22c55e; }
 .picking-item {
-  background: #fff;
+  background: var(--surface, #fff);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px 12px;
@@ -1517,7 +1517,7 @@ button { cursor: pointer; font-family: var(--font); }
   margin-bottom: 18px;
 }
 .aging-col {
-  background: #fff;
+  background: var(--surface, #fff);
   border-radius: 8px;
   border: 1px solid var(--border);
   padding: 12px;
@@ -1639,7 +1639,7 @@ canvas {
 }
 
 .kpi-dashboard-card {
-  background: #fff;
+  background: var(--surface, #fff);
   border-radius: 12px;
   padding: 12px 16px;
   display: flex;
@@ -1700,7 +1700,7 @@ canvas {
 
 /* Big Data Inventory Styles */
 .analytics-card {
-    background: #fff;
+    background: var(--surface, #fff);
     border-radius: 20px;
     padding: 24px;
     border: 1px solid #e2e8f0;
@@ -1726,7 +1726,7 @@ canvas {
 }
 
 .dynamic-table tr.row-main {
-    background: #f8fafc;
+    background: var(--table-header-bg, #f8fafc);
     cursor: pointer;
     transition: all 0.2s;
 }
@@ -1750,7 +1750,7 @@ canvas {
     font-size: 0.7rem;
     font-weight: 900;
     text-transform: uppercase;
-    background: #fff;
+    background: var(--surface, #fff);
     border: 1px solid #e2e8f0;
 }
 
@@ -1779,7 +1779,7 @@ canvas {
 
 .row-detail {
     display: none;
-    background: #fff;
+    background: var(--surface, #fff);
 }
 
 .row-detail.active {
@@ -1825,7 +1825,7 @@ canvas {
   align-items: center;
   gap: 12px;
   padding: 16px;
-  background: #fff;
+  background: var(--surface, #fff);
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   cursor: pointer;
@@ -1849,7 +1849,7 @@ canvas {
 
 .admin-grid-pro { display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
 .scroll-select-list {
-  background: #f8fafc;
+  background: var(--table-header-bg, #f8fafc);
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 10px;
@@ -1871,7 +1871,7 @@ canvas {
    RECEPTION MATRIX & ANALYTIC DASHBOARD (PRO)
    ============================================================ */
 .excel-matrix-view {
-  background: #fff;
+  background: var(--surface, #fff);
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
@@ -1883,7 +1883,7 @@ canvas {
 }
 
 .grid-table thead th {
-  background: #f8fafc;
+  background: var(--table-header-bg, #f8fafc);
   color: #475569;
   font-weight: 800;
   text-transform: uppercase;
@@ -1963,7 +1963,7 @@ canvas {
 
 .sub-data-table {
   width: 100%;
-  background: #fff;
+  background: var(--surface, #fff);
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid #e2e8f0;
@@ -1992,7 +1992,7 @@ canvas {
 }
 
 .kpi-item {
-  background: #fff;
+  background: var(--surface, #fff);
   border-radius: 12px;
   padding: 24px;
   display: flex;
@@ -2027,7 +2027,7 @@ canvas {
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  background: #f8fafc;
+  background: var(--table-header-bg, #f8fafc);
   border-top: 1px solid #e2e8f0;
   width: 100%;
 }
@@ -2043,7 +2043,7 @@ canvas {
 .dot-warning { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
 
 .mini-card {
-  background: #fff;
+  background: var(--surface, #fff);
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 12px 16px;
@@ -2149,7 +2149,7 @@ canvas {
     top: 100%;
     left: 0;
     min-width: 200px;
-    background: #fff;
+    background: var(--surface, #fff);
     border: 1px solid var(--sap-border);
     box-shadow: 0 4px 12px rgba(0,0,0,.15);
     z-index: 1000;
@@ -2836,7 +2836,7 @@ canvas {
   width: 28px; height: 28px;
   border: 1px solid var(--pro-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface, #fff);
   font-size: .75rem;
   cursor: pointer;
   transition: background .15s, border-color .15s;
@@ -3075,7 +3075,7 @@ canvas {
   padding: 6px 16px;
   border: 1px solid var(--pro-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface, #fff);
   font-size: .78rem;
   font-weight: 600;
   color: var(--pro-text);
@@ -3168,7 +3168,7 @@ canvas {
   border: 1px solid #e2e8f0;
   border-radius: 4px;
   font-size: .85rem;
-  background: #fff;
+  background: var(--surface, #fff);
   transition: border-color .15s, box-shadow .15s;
 }
 .drawer-form-group .form-control:focus {
@@ -3213,7 +3213,7 @@ canvas {
 
 /* ── ERP card container ──────────────────────────────────── */
 .erp-card {
-  background: #fff;
+  background: var(--surface, #fff);
   border: 1px solid #e2e8f0;
   border-radius: 4px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
@@ -3230,7 +3230,7 @@ canvas {
   font-family: 'Inter', sans-serif;
 }
 .erp-table th {
-  background: #f8f9fa;
+  background: var(--table-header-bg, #f8fafc);
   color: #475569;
   font-weight: 600;
   padding: 12px;
@@ -3254,7 +3254,7 @@ canvas {
    por lo que el texto quedaba casi invisible sobre el fondo navy. */
 .erp-table tr.pallet-group-header td { color: #fff; }
 .erp-table tbody tr:last-child td { border-bottom: none; }
-.erp-table tbody tr:hover { background: #f8fafc; }
+.erp-table tbody tr:hover { background: var(--table-header-bg, #f8fafc); }
 .erp-table tbody tr.main-row:hover,
 .erp-table tbody tr.clickable:hover { background: #eff6ff !important; cursor: pointer; }
 .erp-table tbody tr.selected { background: #dbeafe !important; }
@@ -3265,7 +3265,7 @@ canvas {
   position: relative;
   height: calc(100vh - 160px);
   overflow: hidden;
-  background: #f8f9fa;
+  background: var(--table-header-bg, #f8fafc);
 }
 .md-master {
   flex: 1;
@@ -3280,7 +3280,7 @@ canvas {
   top: 0;
   bottom: 0;
   width: 40%;
-  background: #fff;
+  background: var(--surface, #fff);
   border-left: 1px solid #cbd5e1;
   box-shadow: -4px 0 15px rgba(0,0,0,0.05);
   transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -3302,7 +3302,7 @@ canvas {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #f8f9fa;
+  background: var(--table-header-bg, #f8fafc);
   flex-shrink: 0;
 }
 .drawer-title {
@@ -3330,7 +3330,7 @@ canvas {
 .drawer-footer {
   padding: 16px 20px;
   border-top: 1px solid #e2e8f0;
-  background: #f8f9fa;
+  background: var(--table-header-bg, #f8fafc);
   display: flex;
   gap: 12px;
   justify-content: flex-end;
@@ -3342,13 +3342,13 @@ canvas {
 .drawer-body .form-control {
   border-radius: 4px;
   border: 1px solid #cbd5e1;
-  background: #f8fafc;
+  background: var(--table-header-bg, #f8fafc);
   transition: border-color .15s, box-shadow .15s;
 }
 .md-drawer .form-control:focus,
 .drawer-body .form-control:focus {
   border-color: #0F4C81;
-  background: #fff;
+  background: var(--surface, #fff);
   outline: none;
   box-shadow: 0 0 0 3px rgba(15,76,129,.12);
 }
