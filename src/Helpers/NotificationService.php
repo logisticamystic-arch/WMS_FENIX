@@ -50,7 +50,11 @@ class NotificationService
         $query = Capsule::table('personal')
             ->where('empresa_id', $empresaId)
             ->where('activo', 1)
-            ->whereIn('rol', self::ROLES_SUPERVISOR)
+            // BUG CORREGIDO 2026-10-01: personal.rol se guarda 'Admin'/'Supervisor'
+            // y la comparación en Postgres distingue mayúsculas — con whereIn()
+            // contra 'admin'/'supervisor' nunca encontraba destinatarios y
+            // ninguna alerta "a supervisores" llegaba a nadie.
+            ->whereRaw('LOWER(rol) IN (' . implode(',', array_fill(0, count(self::ROLES_SUPERVISOR), '?')) . ')', self::ROLES_SUPERVISOR)
             ->select('id');
 
         if ($sucursalId) {
@@ -89,7 +93,7 @@ class NotificationService
         $query = Capsule::table('personal')
             ->where('empresa_id', $empresaId)
             ->where('activo', 1)
-            ->where('rol', $rol)
+            ->whereRaw('LOWER(rol) = LOWER(?)', [$rol])
             ->select('id');
 
         if ($sucursalId) {

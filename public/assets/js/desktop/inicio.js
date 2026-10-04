@@ -107,52 +107,52 @@ WMS_MODULES.inicio = {
   <div class="pro-kpi-grid">
     <div class="pro-kpi-card accent-blue" title="Ver catálogo de productos" onclick="WMS.nav('maestro','productos')">
       <div class="pro-kpi-header">
-        <div class="pro-kpi-icon"><i class="fa-solid fa-boxes-stacked"></i></div>
+        <div class="pro-kpi-icon kpi-icon blue"><i class="fa-solid fa-boxes-stacked"></i></div>
         <span class="pro-kpi-trend neu">Catálogo</span>
       </div>
-      <div class="pro-kpi-value" id="kpi-productos">0</div>
-      <div class="pro-kpi-label">Productos activos</div>
-      <div class="pro-kpi-sub"><i class="fa-solid fa-circle-dot" style="color:#0070f2;margin-right:4px"></i>En maestro de artículos</div>
+      <div class="pro-kpi-value kpi-value" id="kpi-productos">0</div>
+      <div class="pro-kpi-label kpi-label">Productos activos</div>
+      <div class="pro-kpi-sub"><i class="fa-solid fa-circle-dot" style="color:var(--accent);margin-right:4px"></i>En maestro de artículos</div>
     </div>
 
     <div class="pro-kpi-card accent-green" title="Ver recepciones" onclick="WMS.nav('recepcion','landing')">
       <div class="pro-kpi-header">
-        <div class="pro-kpi-icon"><i class="fa-solid fa-truck-ramp-box"></i></div>
+        <div class="pro-kpi-icon kpi-icon green"><i class="fa-solid fa-truck-ramp-box"></i></div>
         <span class="pro-kpi-trend up">Hoy</span>
       </div>
-      <div class="pro-kpi-value" id="kpi-recepciones">0</div>
-      <div class="pro-kpi-label">Recepciones del día</div>
-      <div class="pro-kpi-sub"><i class="fa-solid fa-arrow-trend-up" style="color:#00b300;margin-right:4px"></i>Entradas procesadas</div>
+      <div class="pro-kpi-value kpi-value" id="kpi-recepciones">0</div>
+      <div class="pro-kpi-label kpi-label">Recepciones del día</div>
+      <div class="pro-kpi-sub"><i class="fa-solid fa-arrow-trend-up" style="color:var(--ok);margin-right:4px"></i>Entradas procesadas</div>
     </div>
 
     <div class="pro-kpi-card accent-purple" title="Ver tareas de picking" onclick="WMS.nav('picking','dashboard')">
       <div class="pro-kpi-header">
-        <div class="pro-kpi-icon"><i class="fa-solid fa-dolly"></i></div>
+        <div class="pro-kpi-icon kpi-icon" style="background:color-mix(in srgb,#7c3aed 14%,transparent);color:#7c3aed"><i class="fa-solid fa-dolly"></i></div>
         <span class="pro-kpi-trend neu">Hoy</span>
       </div>
-      <div class="pro-kpi-value" id="kpi-pickings">0</div>
-      <div class="pro-kpi-label">Tareas de picking</div>
+      <div class="pro-kpi-value kpi-value" id="kpi-pickings">0</div>
+      <div class="pro-kpi-label kpi-label">Tareas de picking</div>
       <div class="pro-kpi-sub"><i class="fa-solid fa-list-check" style="color:#7c3aed;margin-right:4px"></i>Órdenes asignadas</div>
     </div>
 
     <div class="pro-kpi-card accent-amber" title="Ver mapa de ubicaciones" onclick="WMS.nav('almacenamiento','mapa')">
       <div class="pro-kpi-header">
-        <div class="pro-kpi-icon"><i class="fa-solid fa-location-dot"></i></div>
+        <div class="pro-kpi-icon kpi-icon orange"><i class="fa-solid fa-location-dot"></i></div>
         <span class="pro-kpi-trend neu">Total</span>
       </div>
-      <div class="pro-kpi-value" id="kpi-ubicaciones">0</div>
-      <div class="pro-kpi-label">Ubicaciones de almacén</div>
-      <div class="pro-kpi-sub"><i class="fa-solid fa-warehouse" style="color:#e8a000;margin-right:4px"></i>Slots disponibles</div>
+      <div class="pro-kpi-value kpi-value" id="kpi-ubicaciones">0</div>
+      <div class="pro-kpi-label kpi-label">Ubicaciones de almacén</div>
+      <div class="pro-kpi-sub"><i class="fa-solid fa-warehouse" style="color:var(--warn);margin-right:4px"></i>Slots disponibles</div>
     </div>
 
     <div class="pro-kpi-card accent-red" title="Ver referencias en alerta de stock bajo" onclick="WMS_MODULES.inicio._verAlertasStock()">
       <div class="pro-kpi-header">
-        <div class="pro-kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <div class="pro-kpi-icon kpi-icon red"><i class="fa-solid fa-triangle-exclamation"></i></div>
         <span class="pro-kpi-trend ${alertas > 0 ? 'down' : 'up'}">${alertas > 0 ? 'Alerta' : 'OK'}</span>
       </div>
-      <div class="pro-kpi-value" id="kpi-alertas">0</div>
-      <div class="pro-kpi-label">Alertas de stock bajo</div>
-      <div class="pro-kpi-sub"><i class="fa-solid fa-bell" style="color:#e03030;margin-right:4px"></i>Requieren reposición</div>
+      <div class="pro-kpi-value kpi-value" id="kpi-alertas">0</div>
+      <div class="pro-kpi-label kpi-label">Alertas de stock bajo</div>
+      <div class="pro-kpi-sub"><i class="fa-solid fa-bell" style="color:var(--danger);margin-right:4px"></i>Requieren reposición</div>
     </div>
   </div>
 
@@ -162,7 +162,7 @@ WMS_MODULES.inicio = {
     <!-- Línea: nivel de servicio -->
     <div class="pro-chart-card">
       <div class="pro-chart-title">
-        <span><i class="fa-solid fa-chart-line" style="color:#0070f2;margin-right:8px"></i>Nivel de Servicio – Últimos 7 días</span>
+        <span><i class="fa-solid fa-chart-line" style="color:var(--accent);margin-right:8px"></i>Nivel de Servicio – Últimos 7 días</span>
         <span class="pro-chart-badge">% cumplimiento</span>
       </div>
       <div class="pro-chart-container" style="height:220px">
@@ -180,7 +180,7 @@ WMS_MODULES.inicio = {
 
         <!-- Columna 1: Disponibilidad -->
         <div>
-          <div style="font-size:12px;font-weight:600;color:#6b7a99;margin-bottom:12px;text-align:center;text-transform:uppercase;letter-spacing:0.5px">Disponibilidad de Productos</div>
+          <div style="font-size:10px;font-weight:600;color:var(--muted);margin-bottom:12px;text-align:center;text-transform:uppercase;letter-spacing:0.5px">Disponibilidad de Productos</div>
           <div style="display:flex;align-items:center;gap:16px">
             <div class="pro-donut-wrap" style="position:relative;width:120px;height:120px;flex-shrink:0">
               <canvas id="chart-inv-avail" width="120" height="120"></canvas>
@@ -195,7 +195,7 @@ WMS_MODULES.inicio = {
 
         <!-- Columna 2: Ocupación -->
         <div>
-          <div style="font-size:12px;font-weight:600;color:#6b7a99;margin-bottom:12px;text-align:center;text-transform:uppercase;letter-spacing:0.5px">Ocupación de Bodega</div>
+          <div style="font-size:10px;font-weight:600;color:var(--muted);margin-bottom:12px;text-align:center;text-transform:uppercase;letter-spacing:0.5px">Ocupación de Bodega</div>
           <div style="display:flex;align-items:center;gap:16px">
             <div class="pro-donut-wrap" style="position:relative;width:120px;height:120px;flex-shrink:0">
               <canvas id="chart-inv-occu" width="120" height="120"></canvas>
@@ -216,11 +216,11 @@ WMS_MODULES.inicio = {
   <!-- Accesos directos -->
   <div class="pro-activity-card" style="max-height:none;margin-bottom:24px">
     <div class="pro-section-title">
-      <span style="margin-left:12px"><i class="fa-solid fa-bolt" style="margin-right:8px;color:#e8a000"></i>Accesos Directos</span>
+      <span style="margin-left:12px"><i class="fa-solid fa-bolt" style="margin-right:8px;color:var(--warn)"></i>Accesos Directos</span>
     </div>
     <div class="pro-quick-grid" style="margin-top:16px">
       <div class="pro-quick-card" onclick="WMS.nav('recepcion','landing')">
-        <div class="pro-quick-icon" style="background:rgba(0,179,0,.1);color:#00b300"><i class="fa-solid fa-truck-ramp-box"></i></div>
+        <div class="pro-quick-icon" style="background:var(--ok-bg);color:var(--ok)"><i class="fa-solid fa-truck-ramp-box"></i></div>
         <div><div class="pro-quick-label">Recepción</div><div class="pro-quick-sub">Citas & recepciones</div></div>
       </div>
       <div class="pro-quick-card" onclick="WMS.nav('picking','dashboard')">
@@ -232,15 +232,15 @@ WMS_MODULES.inicio = {
         <div><div class="pro-quick-label">Inventario</div><div class="pro-quick-sub">Stock & ubicaciones</div></div>
       </div>
       <div class="pro-quick-card" onclick="WMS.nav('almacenamiento','dashboard')">
-        <div class="pro-quick-icon" style="background:rgba(232,160,0,.1);color:#e8a000"><i class="fa-solid fa-warehouse"></i></div>
+        <div class="pro-quick-icon" style="background:var(--warn-bg);color:var(--warn)"><i class="fa-solid fa-warehouse"></i></div>
         <div><div class="pro-quick-label">Almacenamiento</div><div class="pro-quick-sub">Traslados & celdas</div></div>
       </div>
       <div class="pro-quick-card" onclick="WMS.nav('maestro','productos')">
-        <div class="pro-quick-icon" style="background:rgba(0,112,242,.1);color:#0070f2"><i class="fa-solid fa-box"></i></div>
+        <div class="pro-quick-icon" style="background:var(--info-bg);color:var(--accent)"><i class="fa-solid fa-box"></i></div>
         <div><div class="pro-quick-label">Maestros</div><div class="pro-quick-sub">Productos & proveed.</div></div>
       </div>
       <div class="pro-quick-card" onclick="WMS.nav('despacho','dashboard')">
-        <div class="pro-quick-icon" style="background:rgba(224,48,48,.1);color:#e03030"><i class="fa-solid fa-truck-fast"></i></div>
+        <div class="pro-quick-icon" style="background:var(--danger-bg);color:var(--danger)"><i class="fa-solid fa-truck-fast"></i></div>
         <div><div class="pro-quick-label">Despacho</div><div class="pro-quick-sub">Salidas & remisiones</div></div>
       </div>
     </div>
@@ -248,8 +248,8 @@ WMS_MODULES.inicio = {
 
   <!-- Matrices operativas: cada una separada, en su propia tarjeta -->
   <div style="display:flex;flex-direction:column;gap:16px">
-    ${this._matrizCard('mz-sin-inv',  'fa-solid fa-triangle-exclamation', '#e03030', 'Sin Inventario (movimiento últimos 15 días)')}
-    ${this._matrizCard('mz-patio',    'fa-solid fa-warehouse',            '#e8a000', 'En Patio sin ubicar')}
+    ${this._matrizCard('mz-sin-inv',  'fa-solid fa-triangle-exclamation', 'var(--danger)', 'Sin Inventario (movimiento últimos 15 días)')}
+    ${this._matrizCard('mz-patio',    'fa-solid fa-warehouse',            'var(--warn)', 'En Patio sin ubicar')}
     ${this._matrizCard('mz-ajustes',  'fa-solid fa-pen-to-square',        '#7c3aed', 'Top 50 referencias con más ajustes')}
   </div>
 
@@ -404,11 +404,11 @@ WMS_MODULES.inicio = {
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-bottom:2px">
             <span style="display:flex;align-items:center;gap:6px">
               <span class="pro-legend-dot" style="background:${i.color};width:8px;height:8px"></span>
-              <span style="color:#6b7a99">${i.label}</span>
+              <span style="color:var(--muted)">${i.label}</span>
             </span>
-            <span style="font-weight:700;color:#1a2340">${p}%</span>
+            <span style="font-weight:700;color:var(--text)">${p}%</span>
           </div>
-          <div class="pro-progress-bar-bg" style="height:4px;background:#f0f2f8;border-radius:4px;overflow:hidden">
+          <div class="pro-progress-bar-bg" style="height:4px;background:var(--border-light);border-radius:4px;overflow:hidden">
             <div class="pro-progress-bar-fill" style="background:${i.color};width:${p}%;height:100%"></div>
           </div>
         </div>`;
@@ -562,8 +562,8 @@ WMS_MODULES.inicio = {
       { key: 'codigo',         label: 'Código',        align: 'left'  },
       { key: 'nombre',         label: 'Producto',      align: 'left'  },
       { key: 'total_ajustes',  label: '# Ajustes',     align: 'right', numeric: true, render: v => `<strong>${v}</strong>` },
-      { key: 'total_positivo', label: 'Total (+)',     align: 'right', numeric: true, render: v => `<span style="color:#00800e">+${v}</span>` },
-      { key: 'total_negativo', label: 'Total (-)',     align: 'right', numeric: true, render: v => `<span style="color:#c00">-${v}</span>` },
+      { key: 'total_positivo', label: 'Total (+)',     align: 'right', numeric: true, render: v => `<span style="color:var(--ok)">+${v}</span>` },
+      { key: 'total_negativo', label: 'Total (-)',     align: 'right', numeric: true, render: v => `<span style="color:var(--danger)">-${v}</span>` },
       { key: 'ultimo_ajuste',  label: 'Último ajuste', align: 'left',  render: v => v ? new Date(v).toLocaleDateString('es-CO') : '-' },
     ];
     try {
@@ -587,7 +587,7 @@ WMS_MODULES.inicio = {
   _matrizError(wrapId, countId, msg) {
     this._pintarConteo(countId, 0, 'error');
     const wrap = document.getElementById(wrapId);
-    if (wrap) wrap.innerHTML = `<div class="pro-empty-state"><div class="icon">⚠️</div><p>No se pudo cargar</p><small style="color:#94a3b8">${WMS.esc(msg || '')}</small></div>`;
+    if (wrap) wrap.innerHTML = `<div class="pro-empty-state"><div class="icon">⚠️</div><p>No se pudo cargar</p><small style="color:var(--text-muted)">${WMS.esc(msg || '')}</small></div>`;
   },
 
   /* ── Modal: detalle de alertas de stock bajo (tarjeta KPI roja) ─ */
@@ -601,7 +601,7 @@ WMS_MODULES.inicio = {
             <tbody>${rows.map(x => `<tr>
               <td>${WMS.esc(x.codigo || '')}</td>
               <td>${WMS.esc(x.nombre || '')}</td>
-              <td style="text-align:right;color:${x.total_stock <= 0 ? '#c00' : '#e8a000'}"><strong>${x.total_stock}</strong></td>
+              <td style="text-align:right;color:${x.total_stock <= 0 ? 'var(--danger)' : 'var(--warn)'}"><strong>${x.total_stock}</strong></td>
               <td style="text-align:right">${x.stock_minimo}</td>
             </tr>`).join('')}</tbody>
           </table>

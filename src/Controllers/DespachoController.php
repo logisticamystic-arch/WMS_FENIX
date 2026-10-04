@@ -222,6 +222,19 @@ class DespachoController extends BaseController
         if (array_key_exists('observaciones', $data)) {
             $despacho->observaciones = $data['observaciones'] ?: null;
         }
+        // Las columnas de texto (conductor/placa/ruta) son las que leen la
+        // vista, la impresión de la planilla y el TMS — se resincronizan igual
+        // que en store(); antes quedaban con el valor original al editar.
+        if ($despacho->isDirty('conductor_id')) {
+            $despacho->conductor = $despacho->conductor_id ? (\App\Models\Conductor::find($despacho->conductor_id)?->nombre) : null;
+        }
+        if ($despacho->isDirty('vehiculo_id')) {
+            $despacho->placa = $despacho->vehiculo_id ? (\App\Models\Vehiculo::find($despacho->vehiculo_id)?->placa) : null;
+        }
+        $rutaCambio = $despacho->isDirty('ruta_id');
+        if ($rutaCambio) {
+            $despacho->ruta = $despacho->ruta_id ? (\App\Models\Ruta::find($despacho->ruta_id)?->nombre) : null;
+        }
         $despacho->save();
 
         $this->audit($user, 'despacho', 'editar', 'despachos', $despacho->id,
@@ -229,12 +242,16 @@ class DespachoController extends BaseController
 
         // Si el auxiliar de entrega cambió, reenvía al TMS las órdenes de este
         // despacho con la corrección (mismo criterio que agregarPedidos()).
-        if ((int)($auxiliarAntes ?? 0) !== (int)($despacho->auxiliar_id ?? 0)) {
+        if ($rutaCambio || (int)($auxiliarAntes ?? 0) !== (int)($despacho->auxiliar_id ?? 0)) {
             $ordenIds = Capsule::table('orden_pickings')->where('despacho_id', $despacho->id)->pluck('id');
             foreach ($ordenIds as $ordenId) {
                 try { TmsPush::enviarOrden((int)$ordenId); } catch (\Throwable $e) {
                     error_log("TmsPush::enviarOrden({$ordenId}) falló desde actualizar(): " . $e->getMessage());
                 }
+            }
+            // Planilla ya en ruta: el auxiliar nuevo también debe registrar GPS.
+            if ($despacho->estado === 'Despachado') {
+                try { TmsClient::rutaDespacho((int)$despacho->id, 'iniciar'); } catch (\Throwable $e) {}
             }
         }
 
@@ -273,6 +290,12 @@ class DespachoController extends BaseController
         $this->audit($user, 'despacho', 'cerrar', 'despachos', $despacho->id,
             ['estado' => 'Certificado'], ['estado' => 'Despachado'],
             "Despacho {$despacho->numero_despacho} cerrado");
+
+        // Abre la ventana de GPS del TMS (cada 5 min hasta que el vehículo
+        // vuelva a la bodega) — 2026-10-01.
+        try { TmsClient::rutaDespacho((int)$despacho->id, 'iniciar'); } catch (\Throwable $e) {
+            error_log("TmsClient::rutaDespacho({$despacho->id}, iniciar) falló: " . $e->getMessage());
+        }
 
         return $this->ok($res, $despacho, 'Despacho cerrado exitosamente');
     }
@@ -527,6 +550,8 @@ class DespachoController extends BaseController
                     error_log("TmsClient::sincronizarPedido({$ordenId}, liquidar) falló: " . $e->getMessage());
                 }
             }
+            // Cierra el GPS si el vehículo nunca reportó la llegada a la bodega.
+            try { TmsClient::rutaDespacho((int)$despacho->id, 'finalizar'); } catch (\Throwable $e) {}
 
             $this->audit($user, 'despacho', 'liquidar', 'despachos', $despacho->id,
                 ['estado' => 'Despachado'], ['estado' => 'Entregado'],

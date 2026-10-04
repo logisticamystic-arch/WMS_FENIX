@@ -1602,6 +1602,81 @@ class ReportesController extends BaseController
         return $this->ok($res, ['rows' => $rows, 'resumen' => $resumen]);
     }
 
+    // ── Traspasos realizados (traspaso_documentos) ────────────────────────────
+    // "Sucursal" = destino del traspaso (cliente_nombre, ej. CDP MEDELLIN); la
+    // bodega de origen ya la fija la sucursal efectiva del usuario.
+    // Cajas/saldo se derivan con unidades_caja, igual que TraspasoController::create.
+    public function traspasos(Request $r, Response $res): Response
+    {
+        $user   = $r->getAttribute('user');
+        $params = $r->getQueryParams();
+        $eId    = $this->getEffectiveEmpresaId($user, $r);
+        $sucId  = $this->getEffectiveSucursalId($user, $r);
+
+        $desde = $params['fecha_desde'] ?? date('Y-m-d', strtotime('-30 days'));
+        $hasta = $params['fecha_hasta'] ?? date('Y-m-d');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde)) $desde = date('Y-m-d', strtotime('-30 days'));
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta)) $hasta = date('Y-m-d');
+
+        $base = Capsule::table('traspaso_documentos as td')
+            ->where('td.empresa_id', $eId)
+            ->where('td.sucursal_id', $sucId);
+
+        // Lista dinámica de destinos para el filtro (todos los que han recibido traspasos)
+        $destinos = (clone $base)->whereNotNull('td.cliente_nombre')
+            ->distinct()->orderBy('td.cliente_nombre')->pluck('td.cliente_nombre');
+
+        $raw = $base
+            ->join('traspaso_documento_detalles as d', 'd.traspaso_documento_id', '=', 'td.id')
+            ->join('productos as p', 'p.id', '=', 'd.producto_id')
+            ->leftJoin('personal as pe', 'pe.id', '=', 'td.auxiliar_id')
+            ->whereBetween(Capsule::raw('td.created_at::date'), [$desde, $hasta])
+            ->when(!empty($params['destino']), fn($q) => $q->where('td.cliente_nombre', $params['destino']))
+            ->select([
+                'td.created_at', 'td.numero_documento', 'td.cliente_nombre', 'td.motivo',
+                'td.quien_recibe', 'td.firma_path', 'pe.nombre as entrego',
+                'p.codigo_interno', 'p.nombre', 'p.unidades_caja',
+                'd.cantidad', 'd.lote', 'd.fecha_vencimiento',
+            ])
+            ->orderBy('td.created_at', 'desc')->orderBy('p.nombre')
+            ->get();
+
+        $rows = $raw->map(function ($row) {
+            $upc   = max(1, (int)($row->unidades_caja ?? 1));
+            $cant  = (float)$row->cantidad;
+            $cajas = floor($cant / $upc);
+            return [
+                'fecha'             => substr($row->created_at, 0, 16),
+                'documento'         => $row->numero_documento,
+                'destino'           => $row->cliente_nombre ?: '—',
+                'codigo'            => $row->codigo_interno,
+                'descripcion'       => $row->nombre,
+                'cantidad'          => $cant,
+                'fecha_vencimiento' => $row->fecha_vencimiento,
+                'cajas'             => $cajas,
+                'saldo'             => round($cant - $cajas * $upc, 2),
+                'total_unidades'    => $cant,
+                'lote'              => $row->lote,
+                'entrego'           => $row->entrego ?: '—',
+                'recibio'           => $row->quien_recibe ?: '—',
+                'firma_url'         => $row->firma_path ? '/' . ltrim($row->firma_path, '/') : null,
+            ];
+        });
+
+        if (($params['export'] ?? '') === 'excel') {
+            $headers = ['Fecha', 'Documento', 'Sucursal Destino', 'Código', 'Descripción', 'Cantidad',
+                        'Fecha Vencimiento', 'Cajas', 'Saldo', 'Total Unidades', 'Lote', 'Entregó', 'Recibió'];
+            $csvRows = $rows->map(fn($x) => [
+                $x['fecha'], $x['documento'], $x['destino'], $x['codigo'], $x['descripcion'], $x['cantidad'],
+                $x['fecha_vencimiento'] ?? '', $x['cajas'], $x['saldo'], $x['total_unidades'], $x['lote'] ?? '',
+                $x['entrego'], $x['recibio'],
+            ])->toArray();
+            return $this->exportCsv($res, $headers, $csvRows, 'traspasos_' . date('Y-m-d'));
+        }
+
+        return $this->ok($res, ['rows' => $rows, 'destinos' => $destinos]);
+    }
+
     public function contingenciaSeparacion(Request $r, Response $res): Response
     {
         $user   = $r->getAttribute('user');

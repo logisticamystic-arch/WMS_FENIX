@@ -32,13 +32,13 @@ WMS_MODULES.rotulos = {
       <div class="card animate-fade-in">
         <div class="card-header">
           <h5 class="card-title"><i class="fa-solid fa-barcode"></i> Rótulos de Producto</h5>
-          <span style="font-size:.78rem;color:#64748b;">Seleccione el producto y configure el tamaño del rótulo</span>
+          <span style="font-size:.78rem;color:var(--muted);">Seleccione el producto y configure el tamaño del rótulo</span>
         </div>
         <div class="card-body" style="display:flex;flex-direction:column;gap:20px;">
 
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
-              <i class="fa-solid fa-ruler-combined" style="color:#0F4C81;"></i> Dimensiones del Rótulo
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;">
+            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">
+              <i class="fa-solid fa-ruler-combined" style="color:var(--accent);"></i> Dimensiones del Rótulo
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;max-width:500px;">
               <div class="form-group" style="margin:0;">
@@ -59,41 +59,41 @@ WMS_MODULES.rotulos = {
           </div>
 
           <!-- Formato -->
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
-              <i class="fa-solid fa-rotate" style="color:#0F4C81;"></i> Formato del Rótulo
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;">
+            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">
+              <i class="fa-solid fa-rotate" style="color:var(--accent);"></i> Formato del Rótulo
             </div>
             <div style="display:flex;gap:24px;flex-wrap:wrap;">
-              <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid #0F4C81;border-radius:4px;background:#fff;transition:border-color .2s;">
+              <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid var(--accent);border-radius:4px;background:var(--surface);transition:border-color .2s;">
                 <input type="radio" name="rot-prod-formato" value="horizontal" checked
                        onchange="WMS_MODULES.rotulos._onFormatoProdChange(this)">
                 <div>
-                  <div style="font-weight:700;font-size:.82rem;color:#1e293b;">
-                    <i class="fa-solid fa-arrows-left-right" style="color:#0F4C81;margin-right:5px;"></i> Horizontal
+                  <div style="font-weight:700;font-size:.82rem;color:var(--text);">
+                    <i class="fa-solid fa-arrows-left-right" style="color:var(--accent);margin-right:5px;"></i> Horizontal
                   </div>
-                  <div style="font-size:.72rem;color:#64748b;">Código de barras apaisado (ancho &gt; alto)</div>
+                  <div style="font-size:.72rem;color:var(--muted);">Código de barras apaisado (ancho &gt; alto)</div>
                 </div>
               </label>
-              <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid #e2e8f0;border-radius:4px;background:#fff;transition:border-color .2s;">
+              <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid var(--border);border-radius:4px;background:var(--surface);transition:border-color .2s;">
                 <input type="radio" name="rot-prod-formato" value="vertical"
                        onchange="WMS_MODULES.rotulos._onFormatoProdChange(this)">
                 <div>
-                  <div style="font-weight:700;font-size:.82rem;color:#1e293b;">
-                    <i class="fa-solid fa-arrows-up-down" style="color:#0F4C81;margin-right:5px;"></i> Vertical
+                  <div style="font-weight:700;font-size:.82rem;color:var(--text);">
+                    <i class="fa-solid fa-arrows-up-down" style="color:var(--accent);margin-right:5px;"></i> Vertical
                   </div>
-                  <div style="font-size:.72rem;color:#64748b;">Código de barras rotado 90° (para etiquetas de estante)</div>
+                  <div style="font-size:.72rem;color:var(--muted);">Código de barras rotado 90° (para etiquetas de estante)</div>
                 </div>
               </label>
             </div>
-            <div id="rot-prod-formato-hint" style="margin-top:10px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:.78rem;color:#1e40af;display:none;">
+            <div id="rot-prod-formato-hint" style="margin-top:10px;padding:8px 12px;background:var(--info-bg);border:1px solid var(--info-bg);border-radius:4px;font-size:.78rem;color:var(--accent2);display:none;">
               <i class="fa-solid fa-circle-info"></i>
               En formato vertical el código de barras se imprime girado 90°. Recomendado: Ancho 30-50 mm, Alto 80-120 mm.
             </div>
           </div>
 
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
-              <i class="fa-solid fa-search" style="color:#0F4C81;"></i> Buscar Producto
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;">
+            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">
+              <i class="fa-solid fa-search" style="color:var(--accent);"></i> Buscar Producto
             </div>
             <div style="display:flex;gap:8px;max-width:500px;">
               <input id="rot-busqueda" type="text" class="form-control" placeholder="EAN, código o descripción..."
@@ -104,16 +104,16 @@ WMS_MODULES.rotulos = {
             </div>
             <div id="rot-resultados" style="display:none;position:relative;max-width:500px;">
               <div id="rot-resultados-list" style="
-                border:1px solid #e2e8f0;border-radius:4px;max-height:220px;overflow-y:auto;
-                background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.1);
+                border:1px solid var(--border);border-radius:4px;max-height:220px;overflow-y:auto;
+                background:var(--surface);box-shadow:0 8px 24px rgba(0,0,0,.1);
                 position:absolute;width:100%;z-index:100;top:2px;">
               </div>
             </div>
 
             <div id="rot-prod-panel" style="display:none;margin-top:14px;">
-              <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:12px 16px;margin-bottom:12px;">
-                <div style="font-weight:700;color:#1d4ed8;" id="rot-prod-nombre">—</div>
-                <div style="font-size:.8rem;color:#64748b;" id="rot-prod-codigo">—</div>
+              <div style="background:var(--info-bg);border:1px solid var(--info-bg);border-radius:4px;padding:12px 16px;margin-bottom:12px;">
+                <div style="font-weight:700;color:var(--info);" id="rot-prod-nombre">—</div>
+                <div style="font-size:.8rem;color:var(--muted);" id="rot-prod-codigo">—</div>
               </div>
               <div class="form-group" style="max-width:400px;">
                 <label class="form-label">EAN / Código a imprimir <span class="required">*</span></label>
@@ -137,10 +137,10 @@ WMS_MODULES.rotulos = {
           </div>
 
           <div id="rot-preview-area" style="display:none;">
-            <div style="font-weight:700;font-size:.75rem;text-transform:uppercase;color:#64748b;margin-bottom:8px;letter-spacing:1px;">
+            <div style="font-weight:700;font-size:.75rem;text-transform:uppercase;color:var(--muted);margin-bottom:8px;letter-spacing:1px;">
               <i class="fa-solid fa-eye"></i> Vista Previa
             </div>
-            <div id="rot-preview-container" style="background:#f1f5f9;padding:20px;border-radius:4px;display:inline-block;border:2px dashed #cbd5e1;"></div>
+            <div id="rot-preview-container" style="background:var(--btn-neutral);padding:20px;border-radius:4px;display:inline-block;border:2px dashed var(--border);"></div>
           </div>
 
         </div>
@@ -169,14 +169,14 @@ WMS_MODULES.rotulos = {
       const items = r.data || r || [];
       this._productosCache = items;
       if (!items.length) {
-        listDiv.innerHTML = '<div style="padding:12px 16px;color:#94a3b8;font-style:italic;">Sin resultados</div>';
+        listDiv.innerHTML = '<div style="padding:12px 16px;color:var(--text-muted);font-style:italic;">Sin resultados</div>';
       } else {
         listDiv.innerHTML = items.map((p, idx) => `
-          <div style="padding:10px 16px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
-               onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background=''"
+          <div style="padding:10px 16px;cursor:pointer;border-bottom:1px solid var(--border-light);"
+               onmouseover="this.style.background='var(--info-bg)'" onmouseout="this.style.background=''"
                onclick="WMS_MODULES.rotulos._seleccionarProducto(${idx})">
-            <div style="font-weight:600;color:#1e293b;">${WMS.esc(p.nombre||p.descripcion||'')}</div>
-            <div style="font-size:.75rem;color:#64748b;">Cod: ${WMS.esc(p.codigo_interno||'')}${p.ean_principal?' · EAN: '+WMS.esc(p.ean_principal):''}</div>
+            <div style="font-weight:600;color:var(--text);">${WMS.esc(p.nombre||p.descripcion||'')}</div>
+            <div style="font-size:.75rem;color:var(--muted);">Cod: ${WMS.esc(p.codigo_interno||'')}${p.ean_principal?' · EAN: '+WMS.esc(p.ean_principal):''}</div>
           </div>`).join('');
       }
       resDiv.style.display = 'block';
@@ -226,7 +226,7 @@ WMS_MODULES.rotulos = {
     if (hint) hint.style.display = radio.value === 'vertical' ? 'block' : 'none';
     document.querySelectorAll('input[name="rot-prod-formato"]').forEach(r => {
       const card = r.closest('label');
-      if (card) card.style.borderColor = r.checked ? '#0F4C81' : '#e2e8f0';
+      if (card) card.style.borderColor = r.checked ? 'var(--accent)' : 'var(--border)';
     });
     this._actualizarPreviewProd();
   },
@@ -373,22 +373,22 @@ WMS_MODULES.rotulos = {
         <div class="card animate-fade-in" style="margin-bottom:20px;">
           <div class="card-header">
             <h5 class="card-title"><i class="fa-solid fa-location-dot"></i> Rótulo de Ubicación Individual</h5>
-            <span style="font-size:.78rem;color:#64748b;">Código de barras con la dirección de la ubicación</span>
+            <span style="font-size:.78rem;color:var(--muted);">Código de barras con la dirección de la ubicación</span>
           </div>
           <div class="card-body" style="display:flex;flex-direction:column;gap:18px;">
 
             <!-- Configuración TSC TE200 -->
-            <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:4px;padding:12px 16px;margin-bottom:4px;">
-              <div style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:#065f46;">
-                <i class="fa-solid fa-print" style="color:#059669;"></i>
+            <div style="background:var(--ok-bg);border:1px solid var(--ok-bg);border-radius:4px;padding:12px 16px;margin-bottom:4px;">
+              <div style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--ok);">
+                <i class="fa-solid fa-print" style="color:var(--ok);"></i>
                 <strong>TSC TE200</strong> — Rollo de 2 etiquetas: 60 mm × 30 mm c/u
               </div>
             </div>
 
             <!-- Dimensiones y copias -->
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
-                <i class="fa-solid fa-ruler-combined" style="color:#0F4C81;"></i> Dimensiones del Rótulo
+            <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;">
+              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">
+                <i class="fa-solid fa-ruler-combined" style="color:var(--accent);"></i> Dimensiones del Rótulo
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;max-width:500px;">
                 <div class="form-group" style="margin:0;">
@@ -409,44 +409,44 @@ WMS_MODULES.rotulos = {
             </div>
 
             <!-- Formato -->
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
-                <i class="fa-solid fa-rotate" style="color:#0F4C81;"></i> Formato del Rótulo
+            <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;">
+              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">
+                <i class="fa-solid fa-rotate" style="color:var(--accent);"></i> Formato del Rótulo
               </div>
               <div style="display:flex;gap:24px;flex-wrap:wrap;">
-                <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid #e2e8f0;border-radius:4px;background:#fff;transition:border-color .2s;"
-                       onmouseover="this.style.borderColor='#0F4C81'" onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='#e2e8f0'">
+                <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid var(--border);border-radius:4px;background:var(--surface);transition:border-color .2s;"
+                       onmouseover="this.style.borderColor='var(--accent)'" onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='var(--border)'">
                   <input type="radio" name="rotub-formato" value="horizontal" checked
                          onchange="WMS_MODULES.rotulos._onFormatoChange(this)">
                   <div>
-                    <div style="font-weight:700;font-size:.82rem;color:#1e293b;">
-                      <i class="fa-solid fa-arrows-left-right" style="color:#0F4C81;margin-right:5px;"></i> Horizontal
+                    <div style="font-weight:700;font-size:.82rem;color:var(--text);">
+                      <i class="fa-solid fa-arrows-left-right" style="color:var(--accent);margin-right:5px;"></i> Horizontal
                     </div>
-                    <div style="font-size:.72rem;color:#64748b;">Código de barras apaisado (ancho &gt; alto)</div>
+                    <div style="font-size:.72rem;color:var(--muted);">Código de barras apaisado (ancho &gt; alto)</div>
                   </div>
                 </label>
-                <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid #e2e8f0;border-radius:4px;background:#fff;transition:border-color .2s;"
-                       onmouseover="this.style.borderColor='#0F4C81'" onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='#e2e8f0'">
+                <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid var(--border);border-radius:4px;background:var(--surface);transition:border-color .2s;"
+                       onmouseover="this.style.borderColor='var(--accent)'" onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='var(--border)'">
                   <input type="radio" name="rotub-formato" value="vertical"
                          onchange="WMS_MODULES.rotulos._onFormatoChange(this)">
                   <div>
-                    <div style="font-weight:700;font-size:.82rem;color:#1e293b;">
-                      <i class="fa-solid fa-arrows-up-down" style="color:#0F4C81;margin-right:5px;"></i> Vertical
+                    <div style="font-weight:700;font-size:.82rem;color:var(--text);">
+                      <i class="fa-solid fa-arrows-up-down" style="color:var(--accent);margin-right:5px;"></i> Vertical
                     </div>
-                    <div style="font-size:.72rem;color:#64748b;">Código de barras rotado 90° (para etiquetas de estante)</div>
+                    <div style="font-size:.72rem;color:var(--muted);">Código de barras rotado 90° (para etiquetas de estante)</div>
                   </div>
                 </label>
               </div>
-              <div id="rotub-formato-hint" style="margin-top:10px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:.78rem;color:#1e40af;display:none;">
+              <div id="rotub-formato-hint" style="margin-top:10px;padding:8px 12px;background:var(--info-bg);border:1px solid var(--info-bg);border-radius:4px;font-size:.78rem;color:var(--accent2);display:none;">
                 <i class="fa-solid fa-circle-info"></i>
                 En formato vertical el código de barras se imprime girado 90°. Recomendado: Ancho 30-50 mm, Alto 80-120 mm.
               </div>
             </div>
 
             <!-- Selección ubicación -->
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
-                <i class="fa-solid fa-map-pin" style="color:#0F4C81;"></i> Seleccionar Ubicación
+            <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;">
+              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">
+                <i class="fa-solid fa-map-pin" style="color:var(--accent);"></i> Seleccionar Ubicación
               </div>
               <div style="max-width:500px;">
                 <select id="rotub-sel" class="form-control" onchange="WMS_MODULES.rotulos._actualizarPreviewUbi()">
@@ -471,10 +471,10 @@ WMS_MODULES.rotulos = {
 
             <!-- Preview -->
             <div id="rotub-preview-area" style="display:none;">
-              <div style="font-weight:700;font-size:.75rem;text-transform:uppercase;color:#64748b;margin-bottom:8px;letter-spacing:1px;">
+              <div style="font-weight:700;font-size:.75rem;text-transform:uppercase;color:var(--muted);margin-bottom:8px;letter-spacing:1px;">
                 <i class="fa-solid fa-eye"></i> Vista Previa
               </div>
-              <div id="rotub-preview-container" style="background:#f1f5f9;padding:20px;border-radius:4px;display:inline-block;border:2px dashed #cbd5e1;"></div>
+              <div id="rotub-preview-container" style="background:var(--btn-neutral);padding:20px;border-radius:4px;display:inline-block;border:2px dashed var(--border);"></div>
             </div>
 
           </div>
@@ -484,12 +484,12 @@ WMS_MODULES.rotulos = {
         <div class="card animate-fade-in">
           <div class="card-header">
             <h5 class="card-title"><i class="fa-solid fa-layer-group"></i> Impresión Masiva de Ubicaciones</h5>
-            <span style="font-size:.78rem;color:#64748b;">Imprima todas las etiquetas de un pasillo, módulo, nivel o ambiente</span>
+            <span style="font-size:.78rem;color:var(--muted);">Imprima todas las etiquetas de un pasillo, módulo, nivel o ambiente</span>
           </div>
           <div class="card-body" style="display:flex;flex-direction:column;gap:16px;">
 
-            <div style="background:#fff8ed;border:1px solid #fde68a;border-radius:4px;padding:10px 14px;font-size:.78rem;color:#92400e;">
-              <i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;margin-right:6px;"></i>
+            <div style="background:var(--warn-bg);border:1px solid var(--warn-bg);border-radius:4px;padding:10px 14px;font-size:.78rem;color:var(--warn);">
+              <i class="fa-solid fa-triangle-exclamation" style="color:var(--warn);margin-right:6px;"></i>
               La impresión masiva usa las dimensiones y formato configurados arriba en la sección individual.
             </div>
 
@@ -519,13 +519,13 @@ WMS_MODULES.rotulos = {
                 </div>
               </div>
               <div id="rot-mas-checks" style="display:flex;flex-wrap:wrap;gap:6px;max-height:180px;overflow-y:auto;
-                background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:10px;"></div>
+                background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:10px;"></div>
             </div>
 
-            <div id="rot-mas-info" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;">
-              <i class="fa-solid fa-location-dot" style="color:#0F4C81;font-size:1.1rem;"></i>
-              <span style="font-weight:700;color:#1e293b;" id="rot-mas-count">${ubis.length}</span>
-              <span style="color:#64748b;">ubicaciones seleccionadas</span>
+            <div id="rot-mas-info" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;">
+              <i class="fa-solid fa-location-dot" style="color:var(--accent);font-size:1.1rem;"></i>
+              <span style="font-weight:700;color:var(--text);" id="rot-mas-count">${ubis.length}</span>
+              <span style="color:var(--muted);">ubicaciones seleccionadas</span>
             </div>
 
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -556,7 +556,7 @@ WMS_MODULES.rotulos = {
     // Highlight selected card
     document.querySelectorAll('input[name="rotub-formato"]').forEach(r => {
       const card = r.closest('label');
-      if (card) card.style.borderColor = r.checked ? '#0F4C81' : '#e2e8f0';
+      if (card) card.style.borderColor = r.checked ? 'var(--accent)' : 'var(--border)';
     });
     this._actualizarPreviewUbi();
   },
@@ -619,10 +619,10 @@ WMS_MODULES.rotulos = {
     if (checks) {
       checks.innerHTML = values.map(v => `
         <label style="cursor:pointer;display:flex;align-items:center;gap:5px;padding:4px 10px;
-          background:#fff;border:1px solid #e2e8f0;border-radius:4px;font-size:.8rem;
-          font-family:'Courier New',monospace;font-weight:600;color:#1e293b;
+          background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:.8rem;
+          font-family:'Courier New',monospace;font-weight:600;color:var(--text);
           user-select:none;transition:all .15s;"
-          onmouseover="this.style.borderColor='#0F4C81'" onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='#e2e8f0'">
+          onmouseover="this.style.borderColor='var(--accent)'" onmouseout="if(!this.querySelector('input').checked)this.style.borderColor='var(--border)'">
           <input type="checkbox" class="rot-mas-check" value="${WMS.esc(v)}"
                  onchange="WMS_MODULES.rotulos._onCheckMasivo(this)">
           ${WMS.esc(v)}
@@ -634,8 +634,8 @@ WMS_MODULES.rotulos = {
   _onCheckMasivo(cb) {
     const label = cb.closest('label');
     if (label) {
-      label.style.borderColor = cb.checked ? '#0F4C81' : '#e2e8f0';
-      label.style.background = cb.checked ? '#eff6ff' : '#fff';
+      label.style.borderColor = cb.checked ? 'var(--accent)' : 'var(--border)';
+      label.style.background = cb.checked ? 'var(--info-bg)' : 'var(--surface)';
     }
     this._actualizarConteoMasivo();
   },
@@ -1135,22 +1135,22 @@ WMS_MODULES.rotulos = {
       <div class="card animate-fade-in">
         <div class="card-header">
           <h5 class="card-title"><i class="fa-solid fa-store"></i> Rótulo PDV</h5>
-          <span style="font-size:.78rem;color:#64748b;">Rótulo para Punto de Venta (N/ PRODUCTO, F. E, F. V, F. D)</span>
+          <span style="font-size:.78rem;color:var(--muted);">Rótulo para Punto de Venta (N/ PRODUCTO, F. E, F. V, F. D)</span>
         </div>
         <div class="card-body" style="display:flex;flex-direction:column;gap:18px;">
 
           <!-- Configuración TSC TE200 / Térmica -->
-          <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:4px;padding:12px 16px;margin-bottom:4px;">
-            <div style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:#065f46;">
-              <i class="fa-solid fa-print" style="color:#059669;"></i>
+          <div style="background:var(--ok-bg);border:1px solid var(--ok-bg);border-radius:4px;padding:12px 16px;margin-bottom:4px;">
+            <div style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--ok);">
+              <i class="fa-solid fa-print" style="color:var(--ok);"></i>
               <strong>TSC TE200</strong> — Rollo de 2 etiquetas: 60 mm × 30 mm c/u
             </div>
           </div>
 
           <!-- Dimensiones y copias -->
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
-              <i class="fa-solid fa-ruler-combined" style="color:#0F4C81;"></i> Dimensiones del Rótulo
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;">
+            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">
+              <i class="fa-solid fa-ruler-combined" style="color:var(--accent);"></i> Dimensiones del Rótulo
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;max-width:500px;">
               <div class="form-group" style="margin:0;">
@@ -1171,28 +1171,28 @@ WMS_MODULES.rotulos = {
           </div>
 
           <!-- Formato -->
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
-              <i class="fa-solid fa-rotate" style="color:#0F4C81;"></i> Formato del Rótulo
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;">
+            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">
+              <i class="fa-solid fa-rotate" style="color:var(--accent);"></i> Formato del Rótulo
             </div>
             <div style="display:flex;gap:24px;flex-wrap:wrap;">
-              <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid #0F4C81;border-radius:4px;background:#fff;transition:border-color .2s;">
+              <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid var(--accent);border-radius:4px;background:var(--surface);transition:border-color .2s;">
                 <input type="radio" name="rotpdv-formato" value="horizontal" checked
                        onchange="WMS_MODULES.rotulos._onFormatoPDVChange(this)">
                 <div>
-                  <div style="font-weight:700;font-size:.82rem;color:#1e293b;">
-                    <i class="fa-solid fa-arrows-left-right" style="color:#0F4C81;margin-right:5px;"></i> Horizontal
+                  <div style="font-weight:700;font-size:.82rem;color:var(--text);">
+                    <i class="fa-solid fa-arrows-left-right" style="color:var(--accent);margin-right:5px;"></i> Horizontal
                   </div>
-                  <div style="font-size:.72rem;color:#64748b;">Formato estándar apaisado (60mm x 30mm)</div>
+                  <div style="font-size:.72rem;color:var(--muted);">Formato estándar apaisado (60mm x 30mm)</div>
                 </div>
               </label>
             </div>
           </div>
 
           <!-- Información Rótulo PDV -->
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
-              <i class="fa-solid fa-pen-to-square" style="color:#0F4C81;"></i> Datos del Rótulo PDV
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;">
+            <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">
+              <i class="fa-solid fa-pen-to-square" style="color:var(--accent);"></i> Datos del Rótulo PDV
             </div>
 
             <!-- Buscar o ingresar producto -->
@@ -1207,8 +1207,8 @@ WMS_MODULES.rotulos = {
               </div>
               <div id="rotpdv-resultados" style="display:none;position:relative;max-width:500px;">
                 <div id="rotpdv-resultados-list" style="
-                  border:1px solid #e2e8f0;border-radius:4px;max-height:200px;overflow-y:auto;
-                  background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.1);
+                  border:1px solid var(--border);border-radius:4px;max-height:200px;overflow-y:auto;
+                  background:var(--surface);box-shadow:0 8px 24px rgba(0,0,0,.1);
                   position:absolute;width:100%;z-index:100;top:2px;">
                 </div>
               </div>
@@ -1231,7 +1231,7 @@ WMS_MODULES.rotulos = {
                        oninput="WMS_MODULES.rotulos._actualizarPreviewPDV()">
               </div>
             </div>
-            <div style="font-size:.75rem;color:#64748b;margin-top:8px;">
+            <div style="font-size:.75rem;color:var(--muted);margin-top:8px;">
               <i class="fa-solid fa-circle-info"></i> Si deja los campos en blanco, se imprimirá la plantilla vacía con los encabezados tal cual la imagen.
             </div>
           </div>
@@ -1251,10 +1251,10 @@ WMS_MODULES.rotulos = {
 
           <!-- Preview -->
           <div id="rotpdv-preview-area" style="display:none;">
-            <div style="font-weight:700;font-size:.75rem;text-transform:uppercase;color:#64748b;margin-bottom:8px;letter-spacing:1px;">
+            <div style="font-weight:700;font-size:.75rem;text-transform:uppercase;color:var(--muted);margin-bottom:8px;letter-spacing:1px;">
               <i class="fa-solid fa-eye"></i> Vista Previa
             </div>
-            <div id="rotpdv-preview-container" style="background:#f1f5f9;padding:20px;border-radius:4px;display:inline-block;border:2px dashed #cbd5e1;"></div>
+            <div id="rotpdv-preview-container" style="background:var(--btn-neutral);padding:20px;border-radius:4px;display:inline-block;border:2px dashed var(--border);"></div>
           </div>
 
         </div>
@@ -1273,14 +1273,14 @@ WMS_MODULES.rotulos = {
       const r = await API.get('/param/productos/buscar?q=' + encodeURIComponent(q) + '&limit=10');
       const items = r.data || r || [];
       if (!items.length) {
-        listDiv.innerHTML = '<div style="padding:10px 14px;color:#94a3b8;font-style:italic;">Sin resultados</div>';
+        listDiv.innerHTML = '<div style="padding:10px 14px;color:var(--text-muted);font-style:italic;">Sin resultados</div>';
       } else {
         listDiv.innerHTML = items.map((p) => `
-          <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
-               onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background=''"
+          <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border-light);"
+               onmouseover="this.style.background='var(--info-bg)'" onmouseout="this.style.background=''"
                onclick="WMS_MODULES.rotulos._seleccionarProductoPDV('${WMS.esc(p.nombre||p.descripcion||'').replace(/'/g, "\\'")}')">
-            <div style="font-weight:600;color:#1e293b;font-size:.85rem;">${WMS.esc(p.nombre||p.descripcion||'')}</div>
-            <div style="font-size:.75rem;color:#64748b;">Cod: ${WMS.esc(p.codigo_interno||'')}</div>
+            <div style="font-weight:600;color:var(--text);font-size:.85rem;">${WMS.esc(p.nombre||p.descripcion||'')}</div>
+            <div style="font-size:.75rem;color:var(--muted);">Cod: ${WMS.esc(p.codigo_interno||'')}</div>
           </div>`).join('');
       }
       resDiv.style.display = 'block';
@@ -1421,22 +1421,22 @@ WMS_MODULES.rotulos = {
         <div class="card animate-fade-in">
           <div class="card-header">
             <h5 class="card-title"><i class="fa-solid fa-code-branch"></i> Rótulo Sucursal</h5>
-            <span style="font-size:.78rem;color:#64748b;">Rótulo de identificación de Sucursal / Cliente destino</span>
+            <span style="font-size:.78rem;color:var(--muted);">Rótulo de identificación de Sucursal / Cliente destino</span>
           </div>
           <div class="card-body" style="display:flex;flex-direction:column;gap:18px;">
 
             <!-- Configuración TSC TE200 / Térmica -->
-            <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:4px;padding:12px 16px;margin-bottom:4px;">
-              <div style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:#065f46;">
-                <i class="fa-solid fa-print" style="color:#059669;"></i>
+            <div style="background:var(--ok-bg);border:1px solid var(--ok-bg);border-radius:4px;padding:12px 16px;margin-bottom:4px;">
+              <div style="display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--ok);">
+                <i class="fa-solid fa-print" style="color:var(--ok);"></i>
                 <strong>TSC TE200</strong> — Rollo de 2 etiquetas: 60 mm × 30 mm c/u
               </div>
             </div>
 
             <!-- Dimensiones y copias -->
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
-                <i class="fa-solid fa-ruler-combined" style="color:#0F4C81;"></i> Dimensiones del Rótulo
+            <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;">
+              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">
+                <i class="fa-solid fa-ruler-combined" style="color:var(--accent);"></i> Dimensiones del Rótulo
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;max-width:500px;">
                 <div class="form-group" style="margin:0;">
@@ -1457,28 +1457,28 @@ WMS_MODULES.rotulos = {
             </div>
 
             <!-- Formato -->
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
-                <i class="fa-solid fa-rotate" style="color:#0F4C81;"></i> Formato del Rótulo
+            <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;">
+              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">
+                <i class="fa-solid fa-rotate" style="color:var(--accent);"></i> Formato del Rótulo
               </div>
               <div style="display:flex;gap:24px;flex-wrap:wrap;">
-                <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid #0F4C81;border-radius:4px;background:#fff;transition:border-color .2s;">
+                <label style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid var(--accent);border-radius:4px;background:var(--surface);transition:border-color .2s;">
                   <input type="radio" name="rotsuc-formato" value="horizontal" checked
                          onchange="WMS_MODULES.rotulos._actualizarPreviewSucursal()">
                   <div>
-                    <div style="font-weight:700;font-size:.82rem;color:#1e293b;">
-                      <i class="fa-solid fa-arrows-left-right" style="color:#0F4C81;margin-right:5px;"></i> Horizontal
+                    <div style="font-weight:700;font-size:.82rem;color:var(--text);">
+                      <i class="fa-solid fa-arrows-left-right" style="color:var(--accent);margin-right:5px;"></i> Horizontal
                     </div>
-                    <div style="font-size:.72rem;color:#64748b;">Formato estándar apaisado (60mm x 30mm)</div>
+                    <div style="font-size:.72rem;color:var(--muted);">Formato estándar apaisado (60mm x 30mm)</div>
                   </div>
                 </label>
               </div>
             </div>
 
             <!-- Selección sucursal/cliente -->
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
-                <i class="fa-solid fa-code-branch" style="color:#0F4C81;"></i> Sucursal / Cliente
+            <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;">
+              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">
+                <i class="fa-solid fa-code-branch" style="color:var(--accent);"></i> Sucursal / Cliente
               </div>
               <div style="max-width:500px;">
                 <select id="rotsuc-sel" class="form-control" onchange="WMS_MODULES.rotulos._actualizarPreviewSucursal()">
@@ -1486,27 +1486,27 @@ WMS_MODULES.rotulos = {
                   ${opts}
                 </select>
               </div>
-              <div style="font-size:.75rem;color:#64748b;margin-top:8px;">
+              <div style="font-size:.75rem;color:var(--muted);margin-top:8px;">
                 <i class="fa-solid fa-circle-info"></i> Si el nombre es muy largo, el rótulo lo distribuye automáticamente en dos líneas.
               </div>
             </div>
 
             <!-- Texto personalizado (opcional) -->
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;">
-              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:#475569;margin-bottom:12px;">
-                <i class="fa-solid fa-font" style="color:#0F4C81;"></i> Texto Personalizado (opcional)
+            <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;">
+              <div style="font-weight:700;font-size:.82rem;text-transform:uppercase;color:var(--text2);margin-bottom:12px;">
+                <i class="fa-solid fa-font" style="color:var(--accent);"></i> Texto Personalizado (opcional)
               </div>
               <div style="max-width:500px;">
                 <input id="rotsuc-texto-libre" type="text" class="form-control" maxlength="80"
                        placeholder="Escriba un texto libre para el rótulo…"
                        oninput="WMS_MODULES.rotulos._actualizarPreviewSucursal()">
               </div>
-              <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;font-size:.82rem;color:#334155;">
+              <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;font-size:.82rem;color:var(--text);">
                 <input type="checkbox" id="rotsuc-texto-qr"
                        onchange="WMS_MODULES.rotulos._actualizarPreviewSucursal()">
                 Convertir el texto en código QR
               </label>
-              <div style="font-size:.75rem;color:#64748b;margin-top:8px;">
+              <div style="font-size:.75rem;color:var(--muted);margin-top:8px;">
                 <i class="fa-solid fa-circle-info"></i> Si escribe un texto aquí, reemplaza a la sucursal/cliente seleccionada arriba
                 y se ajusta automáticamente a las dimensiones actuales del rótulo. Con el check activado, en vez de texto se
                 imprime un código QR con lo digitado (solo en "Imprimir (Navegador)" — la impresión térmica IP aún no genera QR).
@@ -1528,10 +1528,10 @@ WMS_MODULES.rotulos = {
 
             <!-- Preview -->
             <div id="rotsuc-preview-area" style="display:none;">
-              <div style="font-weight:700;font-size:.75rem;text-transform:uppercase;color:#64748b;margin-bottom:8px;letter-spacing:1px;">
+              <div style="font-weight:700;font-size:.75rem;text-transform:uppercase;color:var(--muted);margin-bottom:8px;letter-spacing:1px;">
                 <i class="fa-solid fa-eye"></i> Vista Previa
               </div>
-              <div id="rotsuc-preview-container" style="background:#f1f5f9;padding:20px;border-radius:4px;display:inline-block;border:2px dashed #cbd5e1;"></div>
+              <div id="rotsuc-preview-container" style="background:var(--btn-neutral);padding:20px;border-radius:4px;display:inline-block;border:2px dashed var(--border);"></div>
             </div>
 
           </div>

@@ -434,6 +434,7 @@ $app->get('/', function (Request $request, Response $response) {
 // ── Auth (public) ─────────────────────────────────────────────────────────────
 $app->post('/api/auth/login', [\App\Controllers\AuthController::class, 'login']);
 $app->get('/api/auth/empresas', [\App\Controllers\ParametrosController::class, 'getEmpresas']);
+$app->get('/api/auth/personal', [\App\Controllers\AuthController::class, 'listarPersonalLogin']);
 
 // ── Authenticated API routes ──────────────────────────────────────────────────
 $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
@@ -460,7 +461,8 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/recepciones/sin-odc', [\App\Controllers\RecepcionController::class, 'detallesOperativaSinOdc']);
     $group->get('/recepciones/{id}', [\App\Controllers\RecepcionController::class, 'ver']);
     $group->post('/recepciones/{id}/detalle', [\App\Controllers\RecepcionController::class, 'addDetail']);
-    $group->patch('/recepciones/{id}/detalle/{detalleId}', [\App\Controllers\RecepcionController::class, 'actualizarDetalleSinOdc']);
+    $group->patch('/recepciones/{id}/detalle/{detalleId}', [\App\Controllers\RecepcionController::class, 'editarCaptura']);
+    $group->patch('/recepciones/detalle/{detalleId}/editar', [\App\Controllers\RecepcionController::class, 'editarCaptura']);
     $group->delete('/recepciones/{id}/detalle/{detalleId}', [\App\Controllers\RecepcionController::class, 'eliminarDetalleSinOdc']);
     $group->post('/recepciones/{id}/cerrar', [\App\Controllers\RecepcionController::class, 'confirm']);
     $group->delete('/recepciones/detalle/{id}', [\App\Controllers\RecepcionController::class, 'eliminarDetalle']);
@@ -509,6 +511,14 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->post('/certificaciones/{id}/end', [\App\Controllers\OutboundController::class, 'endCertificacion']);
 
     // Módulo: Devoluciones
+    // ── Recogidas de devolución desde PDV (2026-09-30) — antes de /devoluciones/{id} ──
+    $group->get('/devoluciones/recogidas/causales',      [\App\Controllers\DevolucionRecogidaController::class, 'causales']);
+    $group->get('/devoluciones/recogidas/puntos-venta',  [\App\Controllers\DevolucionRecogidaController::class, 'puntosVenta']);
+    $group->get('/devoluciones/recogidas',               [\App\Controllers\DevolucionRecogidaController::class, 'index']);
+    $group->post('/devoluciones/recogidas',              [\App\Controllers\DevolucionRecogidaController::class, 'store']);
+    $group->get('/devoluciones/recogidas/{id}',          [\App\Controllers\DevolucionRecogidaController::class, 'ver']);
+    $group->get('/devoluciones/recogidas/{id}/imprimir', [\App\Controllers\DevolucionRecogidaController::class, 'imprimir']);
+    $group->post('/devoluciones/recogidas/{id}/anular',  [\App\Controllers\DevolucionRecogidaController::class, 'anular']);
     $group->get('/devoluciones/causales',         [\App\Controllers\DevolucionController::class, 'getCausales']);
     $group->post('/devoluciones/causales',        [\App\Controllers\DevolucionController::class, 'createCausal']);
     $group->put('/devoluciones/causales/{id}',    [\App\Controllers\DevolucionController::class, 'updateCausal']);
@@ -876,6 +886,7 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
 
     // ── Reportes de Contingencia (imprimibles sin internet) ───────────────────
     $group->get('/reportes/conciliacion-trazabilidad', [\App\Controllers\ReportesController::class, 'conciliacionTrazabilidad']);
+    $group->get('/reportes/traspasos', [\App\Controllers\ReportesController::class, 'traspasos']);
     $group->get('/reportes/contingencia/separacion', [\App\Controllers\ReportesController::class, 'contingenciaSeparacion']);
     $group->get('/reportes/contingencia/certificacion', [\App\Controllers\ReportesController::class, 'contingenciaCertificacion']);
     $group->get('/reportes/dashboard-gerencial', [\App\Controllers\ReportesController::class, 'dashboardGerencial']);
@@ -913,6 +924,12 @@ $app->group('/api', function (\Slim\Routing\RouteCollectorProxy $group) {
     $group->get('/tms/dashboard/reabrir-pedidos',                  [\App\Controllers\TmsDashboardController::class, 'reabrirPedidosListar']);
     $group->get('/tms/dashboard/reabrir-pedidos/{ordenId}',        [\App\Controllers\TmsDashboardController::class, 'reabrirPedidoDetalle']);
     $group->post('/tms/dashboard/reabrir-pedidos/{ordenId}/reabrir', [\App\Controllers\TmsDashboardController::class, 'reabrirPedidoAccion']);
+    $group->get('/tms/dashboard/gestion-pedidos',          [\App\Controllers\TmsDashboardController::class, 'gestionPedidosListar']);
+    $group->post('/tms/dashboard/gestion-pedidos/accion',  [\App\Controllers\TmsDashboardController::class, 'gestionPedidosAccion']);
+    $group->get('/tms/dashboard/paradas',                  [\App\Controllers\TmsDashboardController::class, 'paradas']);
+    $group->post('/tms/dashboard/paradas/ubicar-cliente',  [\App\Controllers\TmsDashboardController::class, 'paradaUbicarCliente']);
+    $group->get('/tms/dashboard/tracking-mantenimiento',   [\App\Controllers\TmsDashboardController::class, 'trackingMantenimiento']);
+    $group->post('/tms/dashboard/tracking-mantenimiento',  [\App\Controllers\TmsDashboardController::class, 'trackingMantenimientoAccion']);
 
     // Causales de Novedad (Picking/Agotados)
     $group->get('/causales-novedad',         [\App\Controllers\CausalesController::class, 'index']);

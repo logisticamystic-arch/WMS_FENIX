@@ -1734,11 +1734,9 @@ class PickingController extends BaseController
             $linea->save();
         }
 
-        // Validar que la línea tenga ubicación asignada (FEFO debe haberse generado antes)
-        if (empty($linea->ubicacion_id)) {
-            return ['status' => 'error', 'code' => 422, 'message' =>
-                'La línea de picking no tiene ubicación asignada. Genere la ruta FEFO primero.'];
-        }
+        // 2026-10-01: una línea sin ubicación (típico cuando no había stock al
+        // asignar la planilla) ya no bloquea — se separa igual y el descuento
+        // busca en toda la sucursal; si no hay, queda como "sin inventario".
         // Ubicación que quedó indicada en la línea (asignada por FEFO, o la que
         // Picking Manual acaba de sobrescribir con lo que el auxiliar anotó en
         // papel) — se compara después contra de dónde salió el descuento REAL,
@@ -1755,6 +1753,11 @@ class PickingController extends BaseController
             $linea->lote,
             $linea->ubicacion_id
         );
+        // 2026-10-01: falta de stock (R01) ya NO bloquea — se separa y se alerta
+        // al auxiliar en el mismo picking (móvil). Bloqueos de producto/lote,
+        // vencimiento y aprobaciones siguen igual.
+        $sinStockGuard = !$check['ok'] && ($check['regla'] ?? '') === 'R01' && isset($check['context']['stock_disponible']);
+        if ($sinStockGuard) $check = ['ok' => true];
         if (!$check['ok']) {
             if (!empty($check['pending_approval'])) {
                 return [
@@ -1772,7 +1775,9 @@ class PickingController extends BaseController
         }
 
         try {
-            Capsule::transaction(function () use ($linea, $orden, $user, $cantidadTomada, $r, $fechaVencManualLinea, &$ubicacionRealUsada) {
+            $sinInventarioUnd = 0.0;
+            $stockAntes = 0.0;
+            Capsule::transaction(function () use ($linea, $orden, $user, $cantidadTomada, $r, $fechaVencManualLinea, &$ubicacionRealUsada, &$sinInventarioUnd, &$stockAntes) {
                 // ── Fase 1: Liberar reserva (cantidad_reservada) ─────────────
                 // La reserva se creó en asignarMultiple; ahora la liberamos
                 // porque vamos a descontar el stock real.
@@ -1836,12 +1841,11 @@ class PickingController extends BaseController
                         ->get();
                 }
 
-                $stockTotal = $invRegistros->sum('cantidad');
-                if ($invRegistros->isEmpty() || $stockTotal < $cantidadTomada) {
-                    throw new \Exception(
-                        "Stock insuficiente para confirmar el picking. Disponible: {$stockTotal}, requerido: {$cantidadTomada}"
-                    );
-                }
+                // 2026-10-01: sin stock suficiente ya no se rechaza — se descuenta lo
+                // que exista (nunca deja inventario negativo) y la diferencia queda
+                // registrada y alertada. cantidad_pickeada sigue siendo lo físico.
+                $stockTotal = (float)$invRegistros->sum('cantidad');
+                $stockAntes = $stockTotal;
 
                 // Descontar en orden FEFO (la colección ya viene ordenada)
                 $porDescontar       = $cantidadTomada;
@@ -1936,6 +1940,29 @@ class PickingController extends BaseController
                     ? 'Completado' : 'Faltante';
                 $linea->save();
 
+                // Lo que se separó físicamente pero no existía en inventario:
+                // mismo registro que confirmarConsolidado() (causal propio, no es
+                // faltante para el cliente, no afecta nivel de servicio).
+                $sinInventarioUnd = max(0, $porDescontar);
+                if ($sinInventarioUnd > 0.01) {
+                    $causalSinInv = Capsule::table('causales_novedad')
+                        ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                        ->where('nombre', 'SEPARADO SIN UBICACION/INVENTARIO')->value('id');
+                    Capsule::table('picking_faltantes')->insert([
+                        'empresa_id'          => $this->getEffectiveEmpresaId($user, $r),
+                        'sucursal_id'         => $user->sucursal_id,
+                        'orden_picking_id'    => $linea->orden_picking_id,
+                        'producto_id'         => $linea->producto_id,
+                        'planilla_lote'       => $orden->planilla_lote ?? $orden->planilla_numero,
+                        'cantidad_solicitada' => $linea->cantidad_solicitada,
+                        'cantidad_faltante'   => $upc > 0 ? $sinInventarioUnd / $upc : $sinInventarioUnd,
+                        'causa'               => 'Separado sin Ubicación/Inventario',
+                        'causal_id'           => $causalSinInv,
+                        'created_at'          => date('Y-m-d H:i:s'),
+                        'updated_at'          => date('Y-m-d H:i:s'),
+                    ]);
+                }
+
                 // Si la línea quedó Completado, eliminar el faltante correspondiente
                 // (puede existir si este producto pasó por backorder o fue marcado agotado antes)
                 if ($linea->estado === 'Completado') {
@@ -1943,6 +1970,7 @@ class PickingController extends BaseController
                         ->where('orden_picking_id', $linea->orden_picking_id)
                         ->where('producto_id', $linea->producto_id)
                         ->where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+                        ->where('causa', '<>', 'Separado sin Ubicación/Inventario')
                         ->delete();
                 }
 
@@ -1979,12 +2007,16 @@ class PickingController extends BaseController
             // el stock — el fallback FEFO ya se encargó de tomarlo de donde SÍ
             // había, pero se avisa aquí para que quede trazable, no silencioso.
             $mensaje = 'Línea confirmada';
-            if ($ubicacionRealUsada !== null && (int)$ubicacionRealUsada !== $ubicacionIndicada) {
+            if ($sinInventarioUnd > 0.01) {
+                $mensaje = 'Línea confirmada SIN INVENTARIO suficiente en el sistema: ' . round($sinInventarioUnd, 2)
+                    . ' und no existían en inventario. Quedó registrado como novedad "Separado sin ubicación/inventario".';
+            } elseif ($ubicacionRealUsada !== null && (int)$ubicacionRealUsada !== $ubicacionIndicada) {
                 $codReal = \App\Models\Ubicacion::find($ubicacionRealUsada)->codigo ?? "#{$ubicacionRealUsada}";
                 $mensaje = "Línea confirmada — la ubicación indicada no tenía stock suficiente; se tomó de {$codReal} (fallback FEFO).";
             }
 
-            return ['status' => 'ok', 'linea' => $linea, 'message' => $mensaje, 'ubicacion_fallback' => $ubicacionRealUsada !== null && (int)$ubicacionRealUsada !== $ubicacionIndicada];
+            return ['status' => 'ok', 'linea' => $linea, 'message' => $mensaje, 'sin_inventario' => $sinInventarioUnd > 0.01,
+                    'ubicacion_fallback' => $ubicacionRealUsada !== null && (int)$ubicacionRealUsada !== $ubicacionIndicada];
         } catch (\Exception $e) {
             return ['status' => 'error', 'code' => 400, 'message' => $e->getMessage()];
         }
@@ -4094,6 +4126,31 @@ class PickingController extends BaseController
                     }
 
                     $unidTotal = $cleanNumber($fila['unid_pedido_total'] ?? '0');
+
+                    // Blindaje 2026-09-30 (caso real Planilla 1762, ACEITE OLIVA 102002 x 4600):
+                    // para algunas referencias por peso el ERP manda la cantidad en GRAMOS
+                    // (5.000, empaque 1) y otras veces en cajas (2, empaque 1). El WMS la
+                    // guardaba siempre como cajas → 5.000 "cajas" de 4.600 g, que al asignar
+                    // generó una línea de 4.998 cajas y un pickeado de 22,9 millones.
+                    // Si el empaque del ERP es 1, la caja WMS es grande (≥100) y la cantidad
+                    // alcanza al menos una caja completa en unidades, se interpreta como
+                    // unidades y se convierte a cajas. Queda reportado en el resumen.
+                    $upcWms = ((float)($prod->factor_udm ?? 0) > 0) ? (float)$prod->factor_udm : (float)($prod->unidades_caja ?? 1);
+                    $empErp = $cleanNumber($fila['unid_pedido_empaque'] ?? '0');
+                    if ($empErp <= 1 && $upcWms >= 100 && $cantidad >= $upcWms) {
+                        $cajasConv = round($cantidad / $upcWms, 2);
+                        $summary['cantidades_convertidas'][] = [
+                            'numero_factura' => $nfRefClean ?: '(sin número)',
+                            'sucursal'       => $sucursal,
+                            'referencia'     => $prod->codigo_interno,
+                            'archivo'        => $cantidad,
+                            'cajas'          => $cajasConv,
+                            'unidades_caja'  => $upcWms,
+                        ];
+                        if ($unidTotal <= 0) $unidTotal = $cantidad;
+                        $cantidad = $cajasConv;
+                    }
+
                     if (!isset($detalleTmp[$prod->id])) {
                         $detalleTmp[$prod->id] = [
                             'pedido'            => $nfRefClean ?: '(sin número)',
@@ -5603,6 +5660,24 @@ class PickingController extends BaseController
             ? (($cajasTomadas ?? 0) * $upcGlobal + ($saldosTomados ?? 0))
             : $cantidadTomada;
 
+        // Blindaje 2026-09-30 (caso real Planilla 1762, ACEITE OLIVA 102002): una línea
+        // quedó pidiendo 4.998 "cajas" (el ERP mandó 5.000 GRAMOS como cantidad) y el
+        // móvil confirmó 22.990.800 unidades con solo 110.400 en toda la bodega. La
+        // línea quedó con ese pickeado fantasma y al "liberarla" el reverso lo sumó al
+        // inventario (+22,9 millones). Se permite seguir separando "sin inventario"
+        // (causal existente) pero nunca más de TODO el stock del producto + 1 caja.
+        $stockTotalProducto = (float)Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
+            ->where('sucursal_id', $user->sucursal_id)
+            ->whereIn('producto_id', $detalles->pluck('producto_id')->unique()->all())
+            ->sum('cantidad');
+        // 2026-10-01 (a pedido de Camilo, urgente): ya NO bloquea — se permite
+        // separar aunque no haya inventario; la alerta la ve el auxiliar en el
+        // mismo picking (móvil) y queda la novedad en Faltantes. El descuento
+        // real nunca deja inventario negativo y el reverso solo devuelve lo
+        // realmente descontado (movimientos con "lin:"), así que ya no se repite
+        // el inventario fantasma del caso ACEITE OLIVA.
+        $alertaSinStock = $cantidadTomadaUnd > $stockTotalProducto + 0.0001;
+
         // Blindaje 2026-09-07 (a pedido explícito, caso real: Planilla Olivia Arkadia,
         // Salmón Fresco — el auxiliar solo separó 1 de 3 cajas para seguir buscando el
         // resto, y el sistema cerró la línea sola marcando las 2 cajas restantes como
@@ -5766,7 +5841,7 @@ class PickingController extends BaseController
                                 'auxiliar_id'         => $user->id,
                                 'referencia_tipo'     => 'OrdenPicking',
                                 'referencia_id'       => $det->orden_picking_id,
-                                'observaciones'       => 'Picking FEFO ubi:' . ($inv->ubicacion_id ?? 'N/A'),
+                                'observaciones'       => 'Picking FEFO ubi:' . ($inv->ubicacion_id ?? 'N/A') . ' lin:' . $det->id, // lin: permite al reverso devolver solo lo realmente descontado
                                 'fecha_movimiento'    => date('Y-m-d'),
                                 'hora_inicio'         => date('H:i:s'),
                             ]);
@@ -5913,6 +5988,10 @@ class PickingController extends BaseController
             (new InventoryGuard($this->getEffectiveEmpresaId($user, $r), $user->sucursal_id, $user->id))
                 ->assertLedgerMatchesStock($detalles->first()->producto_id);
 
+            if ($alertaSinStock) {
+                return $this->ok($res, ['confirmados' => count($detalles), 'sin_inventario' => true],
+                    'Picking confirmado SIN INVENTARIO suficiente en el sistema (' . round($stockTotalProducto, 2) . ' und disponibles). Quedó registrado como novedad.');
+            }
             return $this->ok($res, ['confirmados' => count($detalles)], 'Picking confirmado');
 
         } catch (\Exception $e) {
@@ -9788,8 +9867,35 @@ class PickingController extends BaseController
                     ->where('producto_id', $l->producto_id)
                     ->delete();
 
+                // BUG CORREGIDO 2026-09-30 (caso real Planilla 1762, ACEITE OLIVA 102002):
+                // se devolvía al inventario cantidad_pickeada completa (22.990.800), pero
+                // confirmarConsolidado() solo había podido descontar 110.400 del stock —
+                // cantidad_pickeada registra lo que el auxiliar dijo separar, no lo que
+                // salió del inventario. Se devuelve solo lo REALMENTE descontado para esta
+                // línea según el kardex (movimientos Picking marcados " lin:{id}", menos
+                // reversos previos de la misma línea). Líneas anteriores a la marca: tope
+                // = total descontado de ese producto para esa orden.
+                $devolver = 0.0;
                 if ($cantidadPickeada > 0) {
-                    $cantidadDevuelta += $cantidadPickeada;
+                    $descTag = (float)\App\Models\MovimientoInventario::where('producto_id', $l->producto_id)
+                        ->where('tipo_movimiento', 'Picking')->where('referencia_tipo', 'OrdenPicking')
+                        ->where('referencia_id', $l->orden_picking_id)
+                        ->where('observaciones', 'like', '% lin:' . $l->id)->sum('cantidad');
+                    if ($descTag > 0) {
+                        $revTag = (float)\App\Models\MovimientoInventario::where('producto_id', $l->producto_id)
+                            ->where('referencia_tipo', 'PlanillaPicking')
+                            ->where('observaciones', 'like', '% lin:' . $l->id)->sum('cantidad');
+                        $respaldo = max(0, $descTag - $revTag);
+                    } else {
+                        $respaldo = (float)\App\Models\MovimientoInventario::where('producto_id', $l->producto_id)
+                            ->where('tipo_movimiento', 'Picking')->where('referencia_tipo', 'OrdenPicking')
+                            ->where('referencia_id', $l->orden_picking_id)->sum('cantidad');
+                    }
+                    $devolver = min($cantidadPickeada, $respaldo);
+                }
+
+                if ($cantidadPickeada > 0) {
+                    $cantidadDevuelta += $devolver;
 
                     $ubicacionId = $l->ubicacion_id;
                     if (!$ubicacionId) {
@@ -9856,7 +9962,7 @@ class PickingController extends BaseController
                         ]);
                     }
                     
-                    $inv->cantidad += $cantidadPickeada;
+                    $inv->cantidad += $devolver;
                     // BUG CORREGIDO (auditoría 2026-09-07): ya no se suma cantidad_reservada
                     // a mano aquí — se recalcula desde cero más abajo
                     // (_resincronizarReservaInventario), después de resetear la línea a
@@ -9878,9 +9984,9 @@ class PickingController extends BaseController
                         // — debe contar en la invariante SUM(kardex)==existencias (ver
                         // InventoryGuard::KARDEX_SIGNOS).
                         'tipo_movimiento'      => 'AjustePositivo',
-                        'cantidad'             => $cantidadPickeada,
-                        'cantidad_cajas'       => (int)floor($cantidadPickeada / $upcProd),
-                        'saldos'               => round(fmod($cantidadPickeada, $upcProd), 2),
+                        'cantidad'             => $devolver,
+                        'cantidad_cajas'       => (int)floor($devolver / $upcProd),
+                        'saldos'               => round(fmod($devolver, $upcProd), 2),
                         'ubicacion_origen_id'  => $ubicacionId,
                         'ubicacion_destino_id' => $ubicacionId,
                         'lote'                 => $l->lote,
@@ -9888,7 +9994,7 @@ class PickingController extends BaseController
                         'auxiliar_id'          => $user->id,
                         'referencia_tipo'      => 'PlanillaPicking',
                         'referencia_id'        => 0, // Using 0 because $numero is string
-                        'observaciones'        => 'Reverso línea planilla ' . $numero,
+                        'observaciones'        => 'Reverso línea planilla ' . $numero . ' lin:' . $l->id,
                         'fecha_movimiento'     => date('Y-m-d'),
                         'hora_inicio'          => date('H:i:s'),
                     ]);

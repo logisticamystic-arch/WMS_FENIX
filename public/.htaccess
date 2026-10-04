@@ -3,6 +3,9 @@
 #  Performance: gzip, cache de assets, routing Slim 4
 # ════════════════════════════════════════════════════════════════
 
+# ── Sin listado de carpetas (uploads/, assets/…) — agregado 2026-10-04 ──────
+Options -Indexes
+
 # ── Compresión gzip para texto (JS, CSS, JSON, HTML, fonts) ──────────────────
 <IfModule mod_deflate.c>
   AddOutputFilterByType DEFLATE text/html text/plain text/css text/javascript

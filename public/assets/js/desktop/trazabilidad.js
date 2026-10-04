@@ -4,35 +4,35 @@ WMS_MODULES['trazabilidad'] = (function () {
   let _state = { tab: 'producto', productoId: null, ubicacionId: null };
 
   const TIPO_CFG = {
-    'Entrada':          { icon: 'fa-arrow-down',    color: '#22c55e', bg: '#f0fdf4', label: 'Entrada' },
-    'Salida':           { icon: 'fa-arrow-up',      color: '#ef4444', bg: '#fef2f2', label: 'Salida' },
-    'Picking':          { icon: 'fa-boxes-stacked', color: '#3b82f6', bg: '#eff6ff', label: 'Picking' },
-    'Traslado':         { icon: 'fa-right-left',    color: '#f59e0b', bg: '#fffbeb', label: 'Traslado' },
+    'Entrada':          { icon: 'fa-arrow-down',    color: 'var(--ok)', bg: 'var(--ok-bg)', label: 'Entrada' },
+    'Salida':           { icon: 'fa-arrow-up',      color: 'var(--danger)', bg: 'var(--danger-bg)', label: 'Salida' },
+    'Picking':          { icon: 'fa-boxes-stacked', color: 'var(--info)', bg: 'var(--info-bg)', label: 'Picking' },
+    'Traslado':         { icon: 'fa-right-left',    color: 'var(--warn)', bg: 'var(--warn-bg)', label: 'Traslado' },
     'Devolucion':       { icon: 'fa-rotate-left',   color: '#8b5cf6', bg: '#f5f3ff', label: 'Devolución' },
-    'AjustePositivo':   { icon: 'fa-circle-plus',   color: '#0ea5e9', bg: '#f0f9ff', label: 'Ajuste +' },
-    'AjusteNegativo':   { icon: 'fa-circle-minus',  color: '#f97316', bg: '#fff7ed', label: 'Ajuste -' },
+    'AjustePositivo':   { icon: 'fa-circle-plus',   color: '#0ea5e9', bg: 'var(--info-bg)', label: 'Ajuste +' },
+    'AjusteNegativo':   { icon: 'fa-circle-minus',  color: '#f97316', bg: 'var(--warn-bg)', label: 'Ajuste -' },
     'Reabastecimiento': { icon: 'fa-rotate-right',  color: '#06b6d4', bg: '#ecfeff', label: 'Reabast.' },
-    'CorreccionAdmin':  { icon: 'fa-user-shield',   color: '#6b7280', bg: '#f9fafb', label: 'Corrección' },
-    'InvInicial':       { icon: 'fa-database',      color: '#1d4ed8', bg: '#eff6ff', label: 'Inv. Inicial' },
+    'CorreccionAdmin':  { icon: 'fa-user-shield',   color: 'var(--muted)', bg: 'var(--table-header-bg)', label: 'Corrección' },
+    'InvInicial':       { icon: 'fa-database',      color: 'var(--info)', bg: 'var(--info-bg)', label: 'Inv. Inicial' },
   };
 
   function tipoHtml(tipo) {
-    const c = TIPO_CFG[tipo] || { icon: 'fa-circle', color: '#64748b', bg: '#f8fafc', label: tipo || '—' };
+    const c = TIPO_CFG[tipo] || { icon: 'fa-circle', color: 'var(--muted)', bg: 'var(--table-header-bg)', label: tipo || '—' };
     return `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;background:${c.bg};color:${c.color};font-size:11px;font-weight:700;white-space:nowrap;">
       <i class="fa-solid ${c.icon}" style="font-size:10px;"></i>${c.label}
     </span>`;
   }
 
   function docHtml(doc) {
-    if (!doc) return '<span style="color:#94a3b8;font-size:11px;">—</span>';
+    if (!doc) return '<span style="color:var(--text-muted);font-size:11px;">—</span>';
     if (doc.tipo === 'Despacho')
-      return `<div style="font-size:11px;"><b style="color:#1d4ed8;">${WMS.esc(doc.numero || '')}</b><br>
-              <span style="color:#64748b;">${WMS.esc(doc.cliente || '')}${doc.ruta ? ' · Ruta ' + WMS.esc(doc.ruta) : ''}</span></div>`;
+      return `<div style="font-size:11px;"><b style="color:var(--info);">${WMS.esc(doc.numero || '')}</b><br>
+              <span style="color:var(--muted);">${WMS.esc(doc.cliente || '')}${doc.ruta ? ' · Ruta ' + WMS.esc(doc.ruta) : ''}</span></div>`;
     if (doc.tipo === 'Devolución')
       return `<div style="font-size:11px;"><b style="color:#8b5cf6;">${WMS.esc(doc.numero || '')}</b><br>
-              <span style="color:#64748b;">${WMS.esc(doc.subtipo || '')} · ${WMS.esc(doc.motivo || '')}</span></div>`;
+              <span style="color:var(--muted);">${WMS.esc(doc.subtipo || '')} · ${WMS.esc(doc.motivo || '')}</span></div>`;
     if (doc.tipo === 'Recepción')
-      return `<div style="font-size:11px;"><b style="color:#22c55e;">${WMS.esc(doc.numero || '')}</b>${doc.odc_id ? ` <span style="color:#64748b;">ODC#${doc.odc_id}</span>` : ''}</div>`;
+      return `<div style="font-size:11px;"><b style="color:var(--ok);">${WMS.esc(doc.numero || '')}</b>${doc.odc_id ? ` <span style="color:var(--muted);">ODC#${doc.odc_id}</span>` : ''}</div>`;
     if (doc.tipo === 'Picking') {
       if (doc.punto_despacho || doc.cliente || doc.numero) {
         const dest  = doc.punto_despacho || doc.cliente || '—';
@@ -41,14 +41,14 @@ WMS_MODULES['trazabilidad'] = (function () {
         if (doc.planilla) extra.push(`Planilla: ${doc.planilla}`);
         if (doc.despacho_numero) extra.push(`Despacho: ${doc.despacho_numero}`);
         if (doc.ruta) extra.push(`Ruta: ${doc.ruta}`);
-        const extraStr = extra.length ? `<div style="color:#64748b;font-size:10px;margin-top:1px;">${WMS.esc(extra.join(' · '))}</div>` : '';
+        const extraStr = extra.length ? `<div style="color:var(--muted);font-size:10px;margin-top:1px;">${WMS.esc(extra.join(' · '))}</div>` : '';
 
         return `<div style="font-size:11px;">
-          <div style="font-weight:800;color:#2563eb;display:flex;align-items:center;gap:4px;">
+          <div style="font-weight:800;color:var(--info);display:flex;align-items:center;gap:4px;">
             <i class="fa-solid fa-boxes-stacked" style="font-size:10px;"></i> ${WMS.esc(num)}
           </div>
-          <div style="font-weight:700;color:#0f172a;margin-top:1px;display:flex;align-items:center;gap:3px;">
-            <i class="fa-solid fa-location-dot" style="color:#dc2626;font-size:10px;"></i> ${WMS.esc(dest)}
+          <div style="font-weight:700;color:var(--text);margin-top:1px;display:flex;align-items:center;gap:3px;">
+            <i class="fa-solid fa-location-dot" style="color:var(--danger);font-size:10px;"></i> ${WMS.esc(dest)}
           </div>
           ${extraStr}
         </div>`;
@@ -56,20 +56,20 @@ WMS_MODULES['trazabilidad'] = (function () {
       if (doc.pedidos && doc.pedidos.length) {
         return `<div style="font-size:11px;">${doc.pedidos.slice(0, 3).map(p => {
           const pDest = p.sucursal_entrega || p.cliente || '—';
-          return `<div><b style="color:#2563eb;">${WMS.esc(p.numero_orden || '')}</b> → <b style="color:#0f172a;">${WMS.esc(pDest)}</b></div>`;
-        }).join('')}${doc.pedidos.length > 3 ? `<div style="color:#94a3b8;font-size:10px;">+${doc.pedidos.length - 3} más</div>` : ''}</div>`;
+          return `<div><b style="color:var(--info);">${WMS.esc(p.numero_orden || '')}</b> → <b style="color:var(--text);">${WMS.esc(pDest)}</b></div>`;
+        }).join('')}${doc.pedidos.length > 3 ? `<div style="color:var(--text-muted);font-size:10px;">+${doc.pedidos.length - 3} más</div>` : ''}</div>`;
       }
     }
-    return `<span style="font-size:11px;color:#64748b;">${WMS.esc(doc.tipo || '')}</span>`;
+    return `<span style="font-size:11px;color:var(--muted);">${WMS.esc(doc.tipo || '')}</span>`;
   }
 
   function ubicRow(origen, destino, tipo) {
-    if (!origen && !destino) return '<span style="color:#94a3b8;">—</span>';
+    if (!origen && !destino) return '<span style="color:var(--text-muted);">—</span>';
     if (tipo === 'Traslado')
-      return `<span style="font-size:11px;"><b>${WMS.esc(origen || '?')}</b> <i class="fa-solid fa-arrow-right" style="color:#f59e0b;font-size:9px;margin:0 3px;"></i> <b style="color:#f59e0b;">${WMS.esc(destino || '?')}</b></span>`;
+      return `<span style="font-size:11px;"><b>${WMS.esc(origen || '?')}</b> <i class="fa-solid fa-arrow-right" style="color:var(--warn);font-size:9px;margin:0 3px;"></i> <b style="color:var(--warn);">${WMS.esc(destino || '?')}</b></span>`;
     if (['Entrada', 'InvInicial', 'Reabastecimiento', 'AjustePositivo'].includes(tipo))
-      return `<span style="font-size:11px;color:#22c55e;"><i class="fa-solid fa-arrow-right" style="font-size:9px;margin-right:3px;"></i>${WMS.esc(destino || origen || '—')}</span>`;
-    return `<span style="font-size:11px;color:#ef4444;"><i class="fa-solid fa-arrow-right" style="font-size:9px;margin-right:3px;"></i>${WMS.esc(origen || destino || '—')}</span>`;
+      return `<span style="font-size:11px;color:var(--ok);"><i class="fa-solid fa-arrow-right" style="font-size:9px;margin-right:3px;"></i>${WMS.esc(destino || origen || '—')}</span>`;
+    return `<span style="font-size:11px;color:var(--danger);"><i class="fa-solid fa-arrow-right" style="font-size:9px;margin-right:3px;"></i>${WMS.esc(origen || destino || '—')}</span>`;
   }
 
   function renderMovTable(movimientos, showProducto) {
@@ -82,18 +82,18 @@ WMS_MODULES['trazabilidad'] = (function () {
       const cj       = m.cantidad_cajas != null ? WMS.formatNum(m.cantidad_cajas) : null;
       const und      = WMS.formatNum(m.cantidad || 0);
       const cantHtml = cj != null
-        ? `<b>${cj} cj</b>${upc > 1 ? `<div style="font-size:10px;color:#64748b;">${und} und</div>` : ''}`
+        ? `<b>${cj} cj</b>${upc > 1 ? `<div style="font-size:10px;color:var(--muted);">${und} und</div>` : ''}`
         : `<b>${und}</b>`;
 
       const prodTd = showProducto
         ? `<td><div style="font-weight:700;font-size:12px;">${WMS.esc(m.producto_nombre || '')}</div>
-               <div style="font-size:10px;color:#64748b;">${WMS.esc(m.producto_codigo || '')}</div></td>`
+               <div style="font-size:10px;color:var(--muted);">${WMS.esc(m.producto_codigo || '')}</div></td>`
         : '';
 
       return `<tr>
         <td style="white-space:nowrap;font-size:11px;">
           <b>${WMS.formatDate(m.fecha_movimiento)}</b>
-          <div style="color:#64748b;font-size:10px;">${m.hora_inicio || m.hora_fin || ''}</div>
+          <div style="color:var(--muted);font-size:10px;">${m.hora_inicio || m.hora_fin || ''}</div>
         </td>
         <td>${tipoHtml(m.tipo_movimiento)}</td>
         ${prodTd}
@@ -101,9 +101,9 @@ WMS_MODULES['trazabilidad'] = (function () {
         <td style="font-size:11px;">${WMS.esc(m.lote || '—')}</td>
         <td style="font-size:11px;">${m.fecha_vencimiento ? WMS.formatDate(m.fecha_vencimiento) : '—'}</td>
         <td>${ubicRow(m.ubicacion_origen, m.ubicacion_destino, m.tipo_movimiento)}</td>
-        <td style="font-size:11px;"><b>${WMS.esc(m.responsable || '—')}</b><div style="color:#64748b;font-size:10px;">${WMS.esc(m.responsable_doc || '')}</div></td>
+        <td style="font-size:11px;"><b>${WMS.esc(m.responsable || '—')}</b><div style="color:var(--muted);font-size:10px;">${WMS.esc(m.responsable_doc || '')}</div></td>
         <td>${docHtml(m.documento)}</td>
-        <td style="font-size:11px;color:#94a3b8;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${WMS.esc(m.observaciones || '')}">${WMS.esc(m.observaciones || '')}</td>
+        <td style="font-size:11px;color:var(--text-muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${WMS.esc(m.observaciones || '')}">${WMS.esc(m.observaciones || '')}</td>
       </tr>`;
     }).join('');
 
@@ -132,17 +132,17 @@ WMS_MODULES['trazabilidad'] = (function () {
       const upc = s.unidades_caja || 1;
       const cj  = upc > 1 ? (s.cantidad / upc).toFixed(2) : null;
       const res = s.cantidad_reservada > 0
-        ? `<div style="font-size:10px;color:#f59e0b;">Res: ${WMS.formatNum(s.cantidad_reservada)}</div>` : '';
+        ? `<div style="font-size:10px;color:var(--warn);">Res: ${WMS.formatNum(s.cantidad_reservada)}</div>` : '';
       const badge = s.estado === 'Disponible'
         ? `<span class="badge badge-success" style="font-size:10px;">${s.estado}</span>`
         : `<span class="badge badge-warning" style="font-size:10px;">${WMS.esc(s.estado || '')}</span>`;
       return `<tr>
         <td><b style="font-size:12px;">${WMS.esc(s.ubicacion || '—')}</b>
-            ${s.ubicacion_nombre ? `<div style="font-size:10px;color:#64748b;">${WMS.esc(s.ubicacion_nombre)}</div>` : ''}</td>
+            ${s.ubicacion_nombre ? `<div style="font-size:10px;color:var(--muted);">${WMS.esc(s.ubicacion_nombre)}</div>` : ''}</td>
         <td style="font-size:11px;">${WMS.esc(s.lote || '—')}</td>
         <td style="font-size:11px;">${s.fecha_vencimiento ? WMS.formatDate(s.fecha_vencimiento) : '—'}</td>
         <td style="text-align:center;">
-          ${cj ? `<b>${cj} cj</b><div style="font-size:10px;color:#64748b;">${WMS.formatNum(s.cantidad)} und</div>` : `<b>${WMS.formatNum(s.cantidad)}</b>`}
+          ${cj ? `<b>${cj} cj</b><div style="font-size:10px;color:var(--muted);">${WMS.formatNum(s.cantidad)} und</div>` : `<b>${WMS.formatNum(s.cantidad)}</b>`}
           ${res}
         </td>
         <td>${badge}</td>
@@ -150,11 +150,44 @@ WMS_MODULES['trazabilidad'] = (function () {
       </tr>`;
     }).join('');
     return `<div class="card" style="margin-top:20px;">
-      <div class="card-header"><span class="card-title"><i class="fa-solid fa-cubes" style="color:#10b981;margin-right:6px;"></i>${titulo || 'Stock Actual'}</span></div>
+      <div class="card-header"><span class="card-title"><i class="fa-solid fa-cubes" style="color:var(--ok);margin-right:6px;"></i>${titulo || 'Stock Actual'}</span></div>
       <div class="table-container"><table class="erp-table" style="font-size:12px;">
         <thead><tr><th>Ubicación</th><th>Lote</th><th>F. Vencimiento</th><th style="text-align:center;">Stock</th><th>Estado</th><th>Pallet</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
+    </div>`;
+  }
+
+  // U/E: factor_udm manda, si no unidades_caja (mismo criterio del resto del sistema).
+  function _upc(o) {
+    return (+(o && o.factor_udm) > 0) ? +o.factor_udm : Math.max(1, +(o && o.unidades_caja) || 1);
+  }
+
+  // Total en cajas completas + saldos sueltos. Por referencia: sobre el stock
+  // total. Por ubicación (varias referencias): suma de cajas y de saldos de cada fila.
+  function _totalCajasSaldos(filas, upcDe) {
+    let cajas = 0, saldos = 0, und = 0;
+    (filas || []).forEach(x => {
+      const upc = upcDe(x), cant = +x.cantidad || 0;
+      const cj  = upc > 1 ? Math.floor(cant / upc) : 0;
+      cajas  += cj;
+      saldos += Math.round((cant - cj * upc) * 1000) / 1000;
+      und    += cant;
+    });
+    return { cajas, saldos: Math.round(saldos * 1000) / 1000, und };
+  }
+
+  function _cardCajasSaldos(t, subtitulo) {
+    return `<div class="pro-kpi-card" style="padding:14px 16px;border:1px solid var(--info-bg);background:var(--info-bg);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;border-radius:50%;background:#1d4ed822;display:flex;align-items:center;justify-content:center;">
+          <i class="fa-solid fa-box" style="color:var(--info);font-size:15px;"></i>
+        </div>
+        <div>
+          <div style="font-size:18px;font-weight:800;color:var(--text);">${WMS.formatNum(t.cajas)} cj + ${WMS.formatNum(t.saldos)} sueltos</div>
+          <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Total cajas + saldos${subtitulo ? ' · ' + subtitulo : ''}</div>
+        </div>
+      </div>
     </div>`;
   }
 
@@ -165,8 +198,8 @@ WMS_MODULES['trazabilidad'] = (function () {
           <i class="fa-solid ${icon}" style="color:${color};font-size:15px;"></i>
         </div>
         <div>
-          <div style="font-size:18px;font-weight:800;color:#0f172a;">${value}</div>
-          <div style="font-size:10px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">${label}</div>
+          <div style="font-size:18px;font-weight:800;color:var(--text);">${value}</div>
+          <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;">${label}</div>
         </div>
       </div>
     </div>`;
@@ -177,10 +210,10 @@ WMS_MODULES['trazabilidad'] = (function () {
     const fFin = fi.fFin || fi.f_fin || '';
     const lote = fi.lote || '';
     const fn   = showLote ? '_buscarProducto' : '_buscarUbicacion';
-    return `<div class="filter-bar" style="background:#fff;padding:14px 18px;border-radius:4px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,.04);display:flex;flex-wrap:wrap;gap:12px;align-items:center;border:1px solid #f1f5f9;">
-      <label style="font-size:11px;font-weight:700;color:#64748b;">DESDE</label>
+    return `<div class="filter-bar" style="background:var(--surface);padding:14px 18px;border-radius:4px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,.04);display:flex;flex-wrap:wrap;gap:12px;align-items:center;border:1px solid var(--border-light);">
+      <label class="form-label">Desde</label>
       <input type="date" id="trz-f-ini" class="form-control" style="width:130px;" value="${WMS.esc(fIni)}">
-      <label style="font-size:11px;font-weight:700;color:#64748b;">HASTA</label>
+      <label class="form-label">Hasta</label>
       <input type="date" id="trz-f-fin" class="form-control" style="width:130px;" value="${WMS.esc(fFin)}">
       ${showLote ? `<input id="trz-lote" class="form-control" style="width:120px;" placeholder="Lote (opc.)" value="${WMS.esc(lote)}">` : ''}
       <button class="btn btn-primary btn-sm" style="height:34px;" onclick="WMS_MODULES['trazabilidad'].${fn}()">
@@ -194,7 +227,7 @@ WMS_MODULES['trazabilidad'] = (function () {
 
   function _tabBtn(tab, label, icon, activeTab) {
     const active = tab === activeTab;
-    return `<button class="trz-tab-btn" data-tab="${tab}" style="padding:10px 22px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:3px solid ${active ? '#1d4ed8' : 'transparent'};color:${active ? '#1d4ed8' : '#64748b'};transition:all .2s;">
+    return `<button class="trz-tab-btn" data-tab="${tab}" style="padding:10px 22px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:3px solid ${active ? 'var(--info)' : 'transparent'};color:${active ? 'var(--info)' : 'var(--muted)'};transition:all .2s;">
       <i class="fa-solid ${icon}" style="margin-right:6px;"></i>${label}
     </button>`;
   }
@@ -206,8 +239,8 @@ WMS_MODULES['trazabilidad'] = (function () {
   }
 
   function _loadingHtml(msg) {
-    return `<div style="display:flex;align-items:center;justify-content:center;height:220px;color:#64748b;gap:12px;">
-      <i class="fa-solid fa-spinner fa-spin" style="font-size:24px;color:#1d4ed8;"></i>
+    return `<div style="display:flex;align-items:center;justify-content:center;height:220px;color:var(--muted);gap:12px;">
+      <i class="fa-solid fa-spinner fa-spin" style="font-size:24px;color:var(--info);"></i>
       <span style="font-size:14px;">${msg}</span>
     </div>`;
   }
@@ -222,8 +255,8 @@ WMS_MODULES['trazabilidad'] = (function () {
     Object.assign(result.style, {
       position:  'fixed',
       zIndex:    '99999',
-      background:'#fff',
-      border:    '1px solid #e2e8f0',
+      background:'var(--surface)',
+      border:    '1px solid var(--border)',
       borderRadius:'6px',
       boxShadow: '0 8px 24px rgba(0,0,0,.15)',
       maxHeight: '320px',
@@ -241,7 +274,7 @@ WMS_MODULES['trazabilidad'] = (function () {
 
     result.addEventListener('mouseover', e => {
       const row = e.target.closest('[data-trz-item]');
-      if (row) row.style.background = '#eff6ff';
+      if (row) row.style.background = 'var(--info-bg)';
     });
     result.addEventListener('mouseout', e => {
       const row = e.target.closest('[data-trz-item]');
@@ -267,17 +300,17 @@ WMS_MODULES['trazabilidad'] = (function () {
                 const encoded = WMS.esc(JSON.stringify(item));
                 const label   = item.codigo_interno || item.codigo || String(item.id);
                 return `<div data-trz-item="${encoded}"
-                   style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:13px;">
-                  <b style="color:#1e293b;">${WMS.esc(label)}</b>
-                  ${item.nombre ? ` <span style="color:#64748b;">— ${WMS.esc(item.nombre)}</span>` : ''}
-                  ${item.tipo   ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px;">${WMS.esc(item.tipo)}${item.zona ? ' · ' + WMS.esc(item.zona) : ''}</div>` : ''}
+                   style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border-light);font-size:13px;">
+                  <b style="color:var(--text);">${WMS.esc(label)}</b>
+                  ${item.nombre ? ` <span style="color:var(--muted);">— ${WMS.esc(item.nombre)}</span>` : ''}
+                  ${item.tipo   ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${WMS.esc(item.tipo)}${item.zona ? ' · ' + WMS.esc(item.zona) : ''}</div>` : ''}
                 </div>`;
               }).join('')
-            : '<div style="padding:12px 14px;color:#94a3b8;font-size:13px;"><i class="fa-solid fa-circle-info" style="margin-right:6px;"></i>Sin resultados</div>';
+            : '<div style="padding:12px 14px;color:var(--text-muted);font-size:13px;"><i class="fa-solid fa-circle-info" style="margin-right:6px;"></i>Sin resultados</div>';
           _reposition();
           result.style.display = 'block';
         } catch(e) {
-          result.innerHTML = `<div style="padding:12px 14px;color:#ef4444;font-size:12px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>Error: ${e.message || 'intente de nuevo'}</div>`;
+          result.innerHTML = `<div style="padding:12px 14px;color:var(--danger);font-size:12px;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>Error: ${e.message || 'intente de nuevo'}</div>`;
           _reposition();
           result.style.display = 'block';
         }
@@ -374,24 +407,27 @@ WMS_MODULES['trazabilidad'] = (function () {
       const totalDev = mov.filter(m => m.tipo_movimiento === 'Devolucion')
                           .reduce((s, m) => s + (m.cantidad_cajas != null ? +m.cantidad_cajas : +m.cantidad || 0), 0);
       const totalStk = st.reduce((s, x) => s + (+x.cantidad || 0), 0);
+      const upcProd  = _upc(p);
+      const totCS    = _totalCajasSaldos([{ cantidad: totalStk }], () => upcProd);
 
       WMS.setContent(`<div style="padding:0 4px;">
         ${_filtersHtml(fi, true)}
-        <div class="pro-kpi-grid" style="grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">
+        <div class="pro-kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px;">
           ${_kpi('Movimientos', mov.length, 'fa-list', '#3b82f6')}
           ${_kpi('Entradas (cj)', totalEnt.toFixed(2), 'fa-arrow-down', '#22c55e')}
           ${_kpi('Salidas (cj)', totalSal.toFixed(2), 'fa-arrow-up', '#ef4444')}
           ${_kpi('Devoluciones (cj)', totalDev.toFixed(2), 'fa-rotate-left', '#8b5cf6')}
           ${_kpi('Stock actual (und)', WMS.formatNum(totalStk), 'fa-cubes', '#0ea5e9')}
+          ${_cardCajasSaldos(totCS, upcProd > 1 ? `U/E ${WMS.formatNum(upcProd)}` : 'por unidad')}
         </div>
         <div class="card" style="margin-bottom:16px;">
           <div style="padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-            <div style="width:48px;height:48px;border-radius:50%;background:#eff6ff;display:flex;align-items:center;justify-content:center;">
-              <i class="fa-solid fa-barcode" style="font-size:22px;color:#1d4ed8;"></i>
+            <div style="width:48px;height:48px;border-radius:50%;background:var(--info-bg);display:flex;align-items:center;justify-content:center;">
+              <i class="fa-solid fa-barcode" style="font-size:22px;color:var(--info);"></i>
             </div>
             <div>
-              <div style="font-size:18px;font-weight:800;color:#0f172a;">${WMS.esc(p.nombre || '')}</div>
-              <div style="font-size:12px;color:#64748b;">Cód: <b>${WMS.esc(p.codigo_interno || '')}</b>${upc > 1 ? ` · <b>${upc}</b> und/caja` : ''}</div>
+              <div style="font-size:18px;font-weight:800;color:var(--text);">${WMS.esc(p.nombre || '')}</div>
+              <div style="font-size:12px;color:var(--muted);">Cód: <b>${WMS.esc(p.codigo_interno || '')}</b>${upc > 1 ? ` · <b>${upc}</b> und/caja` : ''}</div>
             </div>
             <div style="margin-left:auto;display:flex;gap:8px;">
               <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES['trazabilidad'].load()"><i class="fa-solid fa-arrow-left"></i> Volver</button>
@@ -402,9 +438,9 @@ WMS_MODULES['trazabilidad'] = (function () {
         </div>
         <div class="card" style="margin-bottom:16px;">
           <div class="card-header"><span class="card-title">
-            <i class="fa-solid fa-timeline" style="color:#3b82f6;margin-right:6px;"></i>
+            <i class="fa-solid fa-timeline" style="color:var(--info);margin-right:6px;"></i>
             Historial de Movimientos
-            <span style="font-weight:400;color:#64748b;font-size:12px;margin-left:6px;">(${mov.length} registros)</span>
+            <span style="font-weight:400;color:var(--muted);font-size:12px;margin-left:6px;">(${mov.length} registros)</span>
           </span></div>
           ${renderMovTable(mov, false)}
         </div>
@@ -428,20 +464,21 @@ WMS_MODULES['trazabilidad'] = (function () {
 
       WMS.setContent(`<div style="padding:0 4px;">
         ${_filtersHtml(fi, false)}
-        <div class="pro-kpi-grid" style="grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+        <div class="pro-kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px;">
           ${_kpi('Movimientos', mov.length, 'fa-list', '#3b82f6')}
           ${_kpi('Refs. distintas', prods, 'fa-barcode', '#f59e0b')}
           ${_kpi('Traslados', traslados, 'fa-right-left', '#8b5cf6')}
           ${_kpi('Items en stock', inv.length, 'fa-cubes', '#10b981')}
+          ${_cardCajasSaldos(_totalCajasSaldos(inv, _upc), 'en la ubicación')}
         </div>
         <div class="card" style="margin-bottom:16px;">
           <div style="padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-            <div style="width:48px;height:48px;border-radius:50%;background:#fffbeb;display:flex;align-items:center;justify-content:center;">
-              <i class="fa-solid fa-location-dot" style="font-size:22px;color:#f59e0b;"></i>
+            <div style="width:48px;height:48px;border-radius:50%;background:var(--warn-bg);display:flex;align-items:center;justify-content:center;">
+              <i class="fa-solid fa-location-dot" style="font-size:22px;color:var(--warn);"></i>
             </div>
             <div>
-              <div style="font-size:18px;font-weight:800;color:#0f172a;">${WMS.esc(ub.codigo || '')}</div>
-              <div style="font-size:12px;color:#64748b;">
+              <div style="font-size:18px;font-weight:800;color:var(--text);">${WMS.esc(ub.codigo || '')}</div>
+              <div style="font-size:12px;color:var(--muted);">
                 ${ub.tipo ? `Tipo: <b>${WMS.esc(ub.tipo)}</b>` : ''}${ub.zona ? ` · Zona: <b>${WMS.esc(ub.zona)}</b>` : ''}
               </div>
             </div>
@@ -453,18 +490,18 @@ WMS_MODULES['trazabilidad'] = (function () {
           </div>
         </div>
         ${inv.length ? `<div class="card" style="margin-bottom:16px;">
-          <div class="card-header"><span class="card-title"><i class="fa-solid fa-cubes" style="color:#10b981;margin-right:6px;"></i>Inventario Actual en Ubicación</span></div>
+          <div class="card-header"><span class="card-title"><i class="fa-solid fa-cubes" style="color:var(--ok);margin-right:6px;"></i>Inventario Actual en Ubicación</span></div>
           <div class="table-container"><table class="erp-table" style="font-size:12px;">
             <thead><tr><th>Referencia</th><th>Lote</th><th>F. Vencimiento</th><th style="text-align:center;">Cant.</th><th style="text-align:center;">Reservado</th><th>Estado</th><th>Pallet</th></tr></thead>
             <tbody>${inv.map(s => {
               const upc2 = s.unidades_caja || 1;
               const cj2  = upc2 > 1 ? (s.cantidad / upc2).toFixed(2) + ' cj' : '';
               return `<tr>
-                <td><b style="font-size:12px;">${WMS.esc(s.codigo_interno || '')}</b><div style="font-size:10px;color:#64748b;">${WMS.esc(s.producto_nombre || '')}</div></td>
+                <td><b style="font-size:12px;">${WMS.esc(s.codigo_interno || '')}</b><div style="font-size:10px;color:var(--muted);">${WMS.esc(s.producto_nombre || '')}</div></td>
                 <td style="font-size:11px;">${WMS.esc(s.lote || '—')}</td>
                 <td style="font-size:11px;">${s.fecha_vencimiento ? WMS.formatDate(s.fecha_vencimiento) : '—'}</td>
-                <td style="text-align:center;">${cj2 ? `<b>${cj2}</b><div style="font-size:10px;color:#64748b;">${WMS.formatNum(s.cantidad)} und</div>` : `<b>${WMS.formatNum(s.cantidad)}</b>`}</td>
-                <td style="text-align:center;font-size:11px;color:${s.cantidad_reservada > 0 ? '#f59e0b' : '#94a3b8'};">${WMS.formatNum(s.cantidad_reservada || 0)}</td>
+                <td style="text-align:center;">${cj2 ? `<b>${cj2}</b><div style="font-size:10px;color:var(--muted);">${WMS.formatNum(s.cantidad)} und</div>` : `<b>${WMS.formatNum(s.cantidad)}</b>`}</td>
+                <td style="text-align:center;font-size:11px;color:${s.cantidad_reservada > 0 ? 'var(--warn)' : 'var(--text-muted)'};">${WMS.formatNum(s.cantidad_reservada || 0)}</td>
                 <td><span class="badge ${s.estado === 'Disponible' ? 'badge-success' : 'badge-warning'}" style="font-size:10px;">${WMS.esc(s.estado || '')}</span></td>
                 <td style="font-size:11px;">${WMS.esc(s.numero_pallet || '—')}</td>
               </tr>`;
@@ -473,9 +510,9 @@ WMS_MODULES['trazabilidad'] = (function () {
         </div>` : ''}
         <div class="card">
           <div class="card-header"><span class="card-title">
-            <i class="fa-solid fa-timeline" style="color:#3b82f6;margin-right:6px;"></i>
+            <i class="fa-solid fa-timeline" style="color:var(--info);margin-right:6px;"></i>
             Movimientos en Ubicación
-            <span style="font-weight:400;color:#64748b;font-size:12px;margin-left:6px;">(${mov.length} registros)</span>
+            <span style="font-weight:400;color:var(--muted);font-size:12px;margin-left:6px;">(${mov.length} registros)</span>
           </span></div>
           ${renderMovTable(mov, true)}
         </div>
@@ -493,30 +530,30 @@ WMS_MODULES['trazabilidad'] = (function () {
       const fFin = _toDate(0);
 
       WMS.setContent(`<div style="padding:0 4px;">
-        <div style="display:flex;gap:0;border-bottom:2px solid #e2e8f0;margin-bottom:24px;">
+        <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:24px;">
           ${_tabBtn('producto',  'Trazabilidad de Referencia', 'fa-barcode',      _state.tab)}
           ${_tabBtn('ubicacion', 'Trazabilidad de Ubicación',  'fa-location-dot', _state.tab)}
         </div>
 
         <div id="trz-panel-producto" style="display:${_state.tab === 'producto' ? 'block' : 'none'};">
           <div class="card" style="margin-bottom:20px;">
-            <div class="card-header"><span class="card-title"><i class="fa-solid fa-barcode" style="color:#1d4ed8;margin-right:6px;"></i>Buscar Referencia</span></div>
+            <div class="card-header"><span class="card-title"><i class="fa-solid fa-barcode" style="color:var(--info);margin-right:6px;"></i>Buscar Referencia</span></div>
             <div style="padding:18px;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;">
               <div style="flex:2;min-width:220px;position:relative;">
-                <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px;color:#64748b;">REFERENCIA / PRODUCTO</label>
+                <label class="form-label" style="display:block;margin-bottom:4px;">Referencia / producto</label>
                 <input id="trz-prod-input" class="form-control" placeholder="Código o nombre del producto..." autocomplete="off">
                 <div id="trz-prod-res"></div>
               </div>
               <div style="min-width:130px;">
-                <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px;color:#64748b;">DESDE</label>
+                <label class="form-label" style="display:block;margin-bottom:4px;">Desde</label>
                 <input type="date" id="trz-f-ini" class="form-control" value="${fIni}">
               </div>
               <div style="min-width:130px;">
-                <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px;color:#64748b;">HASTA</label>
+                <label class="form-label" style="display:block;margin-bottom:4px;">Hasta</label>
                 <input type="date" id="trz-f-fin" class="form-control" value="${fFin}">
               </div>
               <div style="min-width:120px;">
-                <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px;color:#64748b;">LOTE (opc.)</label>
+                <label class="form-label" style="display:block;margin-bottom:4px;">Lote (opc.)</label>
                 <input id="trz-lote" class="form-control" placeholder="Lote...">
               </div>
               <button class="btn btn-primary" style="height:38px;padding:0 22px;" onclick="WMS_MODULES['trazabilidad']._buscarProducto()">
@@ -528,19 +565,19 @@ WMS_MODULES['trazabilidad'] = (function () {
 
         <div id="trz-panel-ubicacion" style="display:${_state.tab === 'ubicacion' ? 'block' : 'none'};">
           <div class="card" style="margin-bottom:20px;">
-            <div class="card-header"><span class="card-title"><i class="fa-solid fa-location-dot" style="color:#f59e0b;margin-right:6px;"></i>Buscar Ubicación</span></div>
+            <div class="card-header"><span class="card-title"><i class="fa-solid fa-location-dot" style="color:var(--warn);margin-right:6px;"></i>Buscar Ubicación</span></div>
             <div style="padding:18px;display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;">
               <div style="flex:2;min-width:220px;position:relative;">
-                <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px;color:#64748b;">CÓDIGO / NOMBRE UBICACIÓN</label>
+                <label class="form-label" style="display:block;margin-bottom:4px;">Código / nombre ubicación</label>
                 <input id="trz-ub-input" class="form-control" placeholder="Ej: A-01-01 o Recibo..." autocomplete="off">
                 <div id="trz-ub-res"></div>
               </div>
               <div style="min-width:130px;">
-                <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px;color:#64748b;">DESDE</label>
+                <label class="form-label" style="display:block;margin-bottom:4px;">Desde</label>
                 <input type="date" id="trz-ub-f-ini" class="form-control" value="${fIni}">
               </div>
               <div style="min-width:130px;">
-                <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px;color:#64748b;">HASTA</label>
+                <label class="form-label" style="display:block;margin-bottom:4px;">Hasta</label>
                 <input type="date" id="trz-ub-f-fin" class="form-control" value="${fFin}">
               </div>
               <button class="btn btn-primary" style="height:38px;padding:0 22px;" onclick="WMS_MODULES['trazabilidad']._buscarUbicacion()">
@@ -556,8 +593,8 @@ WMS_MODULES['trazabilidad'] = (function () {
           const t = btn.dataset.tab;
           _state.tab = t;
           document.querySelectorAll('.trz-tab-btn').forEach(b => {
-            b.style.borderBottom = b.dataset.tab === t ? '3px solid #1d4ed8' : '3px solid transparent';
-            b.style.color        = b.dataset.tab === t ? '#1d4ed8' : '#64748b';
+            b.style.borderBottom = b.dataset.tab === t ? '3px solid var(--info)' : '3px solid transparent';
+            b.style.color        = b.dataset.tab === t ? 'var(--info)' : 'var(--muted)';
           });
           document.getElementById('trz-panel-producto').style.display  = t === 'producto'  ? 'block' : 'none';
           document.getElementById('trz-panel-ubicacion').style.display = t === 'ubicacion' ? 'block' : 'none';

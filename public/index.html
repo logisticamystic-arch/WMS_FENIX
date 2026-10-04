@@ -8,11 +8,11 @@
 
   <!-- PWA -->
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#f5f1ea">
 
   <!-- Icons & Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
   <!-- Leaflet — mapa del Dashboard TMS (posición de entregas/rutas) -->
@@ -32,6 +32,23 @@
       Chart.register(ChartDataLabels);
       Chart.defaults.set('plugins.datalabels', { display: false });
     }
+    // Gráficos con el lenguaje visual bee (fuente, ejes, tooltip blanco con borde)
+    if (window.Chart) {
+      Chart.defaults.font.family = "'DM Sans', system-ui, sans-serif";
+      Chart.defaults.font.size = 11;
+      Chart.defaults.color = '#94a3b8';
+      Chart.defaults.borderColor = '#e2e8f0';
+      Chart.defaults.plugins.legend.labels.usePointStyle = true;
+      Chart.defaults.plugins.legend.labels.boxWidth = 8;
+      Object.assign(Chart.defaults.plugins.tooltip, {
+        backgroundColor: '#fff', titleColor: '#1e293b', bodyColor: '#475569',
+        borderColor: '#e2e8f0', borderWidth: 1, cornerRadius: 8, padding: 10,
+        titleFont: { weight: '600', size: 11 }, bodyFont: { size: 11 }, boxPadding: 4, usePointStyle: true
+      });
+      Chart.defaults.elements.bar.borderRadius = 4;
+      Chart.defaults.elements.line.tension = 0.3;
+      Chart.defaults.elements.point.radius = 2;
+    }
   </script>
   <!-- JsBarcode — generación CODE128 para rótulos -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
@@ -43,6 +60,7 @@
 
   <!-- App CSS -->
   <link rel="stylesheet" href="assets/css/desktop.css">
+  <script>try{if(localStorage.getItem('wms-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}</script>
 </head>
 
 <body>
@@ -164,6 +182,10 @@
         </a>
 
         <!-- Notificaciones -->
+        <button class="notif-btn" id="btn-theme" title="Modo oscuro" onclick="(function(b){var d=document.documentElement.classList.toggle('dark');try{localStorage.setItem('wms-theme',d?'dark':'light')}catch(e){}b.firstElementChild.className=d?'fa-regular fa-sun':'fa-regular fa-moon';b.title=d?'Modo claro':'Modo oscuro'})(this)">
+          <i class="fa-regular fa-moon"></i>
+        </button>
+
         <button class="notif-btn" id="btn-refresh-global" onclick="WMS.refreshCurrentView()" title="Actualizar vista actual">
           <i class="fa-solid fa-rotate"></i>
         </button>
@@ -358,7 +380,7 @@
       <div class="notif-panel-header">
         <div>
           <div class="notif-panel-title"><i class="fa-solid fa-bell"
-              style="color:#1a56db;margin-right:6px;"></i>Notificaciones</div>
+              style="color:#2b5fc7;margin-right:6px;"></i>Notificaciones</div>
           <div style="font-size:.72rem;color:#64748b;" id="notif-panel-count">Cargando...</div>
         </div>
         <div style="display:flex;gap:6px;">
@@ -585,7 +607,7 @@
     }
 
     .num-btn-d:active {
-      background: #1a56db;
+      background: #2b5fc7;
       color: #fff;
       transform: scale(.95);
     }
@@ -603,7 +625,7 @@
 
     /* Dashboard inicio */
     .dash-welcome {
-      background: linear-gradient(135deg, #1a56db, #1e40af);
+      background: linear-gradient(135deg, #2b5fc7, #1e4da8);
       border-radius: 12px;
       padding: 24px;
       color: #fff;
@@ -657,13 +679,13 @@
 
     /* ── SIDEBAR ACTIVE ITEM ──────────────────────────────── */
     .sidebar-item.active {
-      background: rgba(0,112,242,.13) !important;
-      color: #0070f2 !important;
-      font-weight: 700 !important;
-      border-left: 3px solid #0070f2 !important;
+      background: var(--info-bg) !important;
+      color: var(--accent) !important;
+      font-weight: 600 !important;
+      border-left: 3px solid var(--accent) !important;
       padding-left: calc(14px - 3px) !important;
     }
-    .sidebar-item.active i { color: #0070f2 !important; opacity: 1 !important; }
+    .sidebar-item.active i { color: var(--accent) !important; opacity: 1 !important; }
     .sidebar-item { transition: background .15s, color .15s, border-left .15s; }
 
     /* ── SIDEBAR MODULE TITLE improved ───────────────────── */
@@ -672,7 +694,7 @@
       font-weight: 800 !important;
       letter-spacing: .6px !important;
       text-transform: uppercase !important;
-      color: rgba(255,255,255,.55) !important;
+      color: var(--muted) !important;
       display: flex;
       align-items: center;
     }
@@ -683,7 +705,7 @@
       font-weight: 800 !important;
       letter-spacing: .8px !important;
       text-transform: uppercase !important;
-      color: rgba(255,255,255,.3) !important;
+      color: var(--muted) !important;
       padding: 12px 16px 4px !important;
     }
 
@@ -697,23 +719,23 @@
       position: absolute;
       bottom: 0; left: 20%; right: 20%;
       height: 2px;
-      background: #fff;
+      background: var(--surface);
       border-radius: 2px 2px 0 0;
     }
 
     /* ── PICKING ASSIGNMENT TABLE ─────────────────────────── */
-    .asig-row-selected { background: #eef5ff !important; }
+    .asig-row-selected { background: var(--info-bg) !important; }
     .asig-row-selected td { border-color: #c3d9ff !important; }
     .asig-action-bar {
       display: flex; align-items: center; gap: 8px;
       padding: 10px 16px;
-      background: #f8faff;
-      border-bottom: 1px solid #e2e8f0;
+      background: var(--table-header-bg);
+      border-bottom: 1px solid var(--border);
       flex-wrap: wrap;
     }
     .asig-aux-card {
-      background: #fff;
-      border: 1px solid #e2e8f0;
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 10px;
       padding: 12px 14px;
       display: flex;
@@ -723,13 +745,13 @@
       transition: box-shadow .2s, border-color .2s, transform .15s;
     }
     .asig-aux-card:hover {
-      border-color: #0070f2;
+      border-color: #2b5fc7;
       box-shadow: 0 4px 16px rgba(0,112,242,.15);
       transform: translateY(-1px);
     }
     .asig-aux-card.selected-aux {
-      border-color: #0070f2;
-      background: #eef5ff;
+      border-color: #2b5fc7;
+      background: var(--info-bg);
     }
     .asig-aux-avatar {
       width: 38px; height: 38px; border-radius: 50%;
@@ -739,11 +761,11 @@
       font-size: .72rem; font-weight: 800;
       flex-shrink: 0;
     }
-    .asig-aux-name  { font-size: .82rem; font-weight: 700; color: #1a2340; }
-    .asig-aux-role  { font-size: .7rem; color: #6b7a99; }
+    .asig-aux-name  { font-size: .82rem; font-weight: 700; color: var(--text); }
+    .asig-aux-role  { font-size: .7rem; color: var(--muted); }
     .asig-aux-load  {
       font-size: .68rem; font-weight: 700;
-      background: rgba(0,112,242,.1); color: #0070f2;
+      background: rgba(0,112,242,.1); color: #2b5fc7;
       padding: 2px 7px; border-radius: 12px;
       margin-top: 2px; display: inline-block;
     }
@@ -778,8 +800,8 @@
     
     #standalone-side-panel {
       grid-column: 2;
-      background: #fff;
-      border-left: 1px solid #e2e8f0;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
       overflow-y: auto;
       display: flex;
       flex-direction: column;
@@ -800,8 +822,8 @@
     /* ── Detail Drawer ──────────────────────────────────── */
     .detail-drawer {
       position: relative;
-      background: #fff;
-      border-left: 1px solid #e2e8f0;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
       display: flex;
       flex-direction: column;
       height: 100%;
@@ -815,8 +837,8 @@
     }
     .detail-drawer-header {
       padding: 14px 16px;
-      background: #f8fafc;
-      border-bottom: 2px solid #e2e8f0;
+      background: var(--table-header-bg);
+      border-bottom: 1px solid var(--border);
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -824,21 +846,21 @@
     }
     .detail-drawer-accent {
       width: 4px; height: 20px;
-      background: #0F4C81;
+      background: #2b5fc7;
       border-radius: 2px;
     }
     .detail-drawer-title {
       font-weight: 700;
       font-size: .88rem;
-      color: #0f172a;
+      color: var(--text);
       text-transform: uppercase;
       letter-spacing: .4px;
     }
     .detail-drawer-close {
       width: 28px; height: 28px;
-      border: 1px solid #e2e8f0;
+      border: 1px solid var(--border);
       border-radius: 4px;
-      background: #fff;
+      background: var(--surface);
       cursor: pointer;
       display: flex; align-items: center; justify-content: center;
       font-size: .8rem;
@@ -853,8 +875,8 @@
     }
     .detail-drawer-footer {
       padding: 12px 16px;
-      border-top: 1px solid #e2e8f0;
-      background: #f8fafc;
+      border-top: 1px solid var(--border);
+      background: var(--table-header-bg);
       display: flex;
       gap: 8px;
       flex-shrink: 0;
@@ -863,27 +885,27 @@
 
     /* ── Table row hover micro-interaction ──────────────── */
     .data-table tbody tr { cursor: pointer; transition: background .12s; }
-    .data-table tbody tr:hover { background: #eff6ff !important; }
-    .data-table tbody tr.selected { background: #dbeafe !important; }
+    .data-table tbody tr:hover { background: var(--btn-neutral) !important; }
+    .data-table tbody tr.selected { background: var(--info-bg) !important; }
 
     /* Keep edit-panel for backward compat */
-    .edit-panel { display: flex; flex-direction: column; background: #fff; border-left: 1px solid #e2e8f0; }
-    .edit-panel-header { padding: 16px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
-    .edit-panel-title { font-weight: 700; color: #1e293b; font-size: .95rem; }
+    .edit-panel { display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--border); }
+    .edit-panel-header { padding: 16px; background: var(--table-header-bg); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .edit-panel-title { font-weight: 700; color: var(--text); font-size: .95rem; }
     .edit-panel-body { padding: 16px; flex: 1; overflow-y: auto; }
 
     .hidden { display: none !important; }
     .side-panel-header {
       padding: 14px 20px;
-      border-bottom: 1px solid #f1f5f9;
-      background: #f8fafc;
+      border-bottom: 1px solid var(--border-light);
+      background: var(--table-header-bg);
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-    .side-panel-title { font-weight: 800; font-size: .9rem; color: #1e293b; text-transform: uppercase; }
+    .side-panel-title { font-weight: 800; font-size: .9rem; color: var(--text); text-transform: uppercase; }
     .side-panel-body { padding: 20px; flex: 1; }
-    .side-panel-footer { padding: 14px 20px; border-top: 1px solid #f1f5f9; background: #f8fafc; display: flex; gap: 8px; }
+    .side-panel-footer { padding: 14px 20px; border-top: 1px solid var(--border-light); background: var(--table-header-bg); display: flex; gap: 8px; }
 
     /* Mobile: drawer becomes full-width overlay */
     @media (max-width: 768px) {
@@ -901,6 +923,8 @@
       }
     }
   </style>
+  <!-- Tema bee (compras.mistico.co) — capa visual; quitar esta línea revierte el diseño -->
+  <link rel="stylesheet" href="assets/css/bee-theme.css?v=4">
 
   <!-- ======================= SCRIPTS ======================= -->
   <!-- API client -->
@@ -1428,8 +1452,8 @@
         // Update dots
         for (let i = 0; i < 4; i++) {
           const d = document.getElementById('pd' + i);
-          d.style.background = i < this._pin.length ? '#1a56db' : 'transparent';
-          d.style.borderColor = i < this._pin.length ? '#1a56db' : '#cbd5e1';
+          d.style.background = i < this._pin.length ? '#2b5fc7' : 'transparent';
+          d.style.borderColor = i < this._pin.length ? '#2b5fc7' : '#cbd5e1';
         }
         // Auto-login when 4 digits entered and document field has value
         if (this._pin.length === 4) {
@@ -1514,7 +1538,7 @@
               <div style="background:#fff;border-radius:14px;padding:36px 32px;min-width:340px;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.25);">
                 <div style="text-align:center;margin-bottom:24px;">
                   <img src="assets/images/logo.png" style="height:48px;margin-bottom:12px;" alt="Logo">
-                  <h2 style="color:#0F4C81;font-size:1.2rem;font-weight:700;margin:0 0 4px;">SuperAdmin — Seleccionar Empresa y Sucursal</h2>
+                  <h2 style="color:#2b5fc7;font-size:1.2rem;font-weight:700;margin:0 0 4px;">SuperAdmin — Seleccionar Empresa y Sucursal</h2>
                   <p style="color:#64748b;font-size:.85rem;margin:0;">Todos los movimientos quedarán registrados bajo la empresa y sucursal seleccionadas.</p>
                 </div>
                 <select id="empresa-select" style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem;color:#1e293b;margin-bottom:16px;outline:none;">
@@ -1524,7 +1548,7 @@
                   <option value="">Seleccione primero una empresa</option>
                 </select>
                 <p id="empresa-sel-error" style="color:#dc2626;font-size:.8rem;display:none;margin-bottom:8px;"></p>
-                <button id="btn-empresa-confirmar" style="width:100%;padding:11px;background:#0F4C81;color:#fff;border:none;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;">
+                <button id="btn-empresa-confirmar" style="width:100%;padding:11px;background:#2b5fc7;color:#fff;border:none;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;">
                   <i class="fa-solid fa-check"></i> Ingresar
                 </button>
               </div>
@@ -1635,7 +1659,7 @@
         // Mostrar botón para cambiar empresa en el menú de usuario
         const umRol = document.getElementById('um-rol');
         if (umRol) {
-          umRol.innerHTML = `SuperAdmin<br><a href="#" style="font-size:.75rem;color:#0F4C81;text-decoration:none;" onclick="WMS.cambiarEmpresaSA();return false;"><i class='fa-solid fa-building'></i> Cambiar empresa: <b>${_wmsEmpresaFiltro.nombre}</b></a>`;
+          umRol.innerHTML = `SuperAdmin<br><a href="#" style="font-size:.75rem;color:#2b5fc7;text-decoration:none;" onclick="WMS.cambiarEmpresaSA();return false;"><i class='fa-solid fa-building'></i> Cambiar empresa: <b>${_wmsEmpresaFiltro.nombre}</b></a>`;
         }
       },
 
@@ -2058,6 +2082,8 @@
               section: 'DEVOLUCIONES', items: [
                 { icon: 'fa-rotate-left',   label: 'Listado',          action: "WMS.nav('devoluciones','lista')"  },
                 { icon: 'fa-plus-circle',   label: 'Nueva Devolución', action: "WMS.nav('devoluciones','nueva')"  },
+                { icon: 'fa-truck-arrow-right', label: 'Recogidas PDV', action: "WMS.nav('devoluciones','recogidas')" },
+                { icon: 'fa-file-circle-plus', label: 'Nueva Recogida', action: "WMS.nav('devoluciones','recogida-nueva')" },
                 { icon: 'fa-stamp',         label: 'Pendientes Aprobación', action: "WMS.nav('aprobaciones','devoluciones')" },
               ]
             },
@@ -2100,6 +2126,7 @@
                 { icon: 'fa-file-excel', label: 'Evaluación Prov.', action: "WMS.nav('reportes','proveedores')" },
                 { icon: 'fa-file-excel', label: 'Log de Auditoría', action: "WMS.nav('reportes','audit')" },
                 { icon: 'fa-shield-halved', label: 'Conciliación Trazabilidad', action: "WMS.nav('reportes','conciliacion')" },
+                { icon: 'fa-file-signature', label: 'Traspasos', action: "WMS.nav('reportes','traspasos')" },
               ]
             },
             {
@@ -2156,6 +2183,16 @@
         const modLabels = { inicio:'INICIO', maestro:'MAESTROS', recepcion:'RECEPCIÓN & YMS', almacenamiento:'ALMACENAMIENTO', picking:'PICKING', despacho:'DESPACHO & TMS', preoperacional:'PREOPERACIONAL DE VEHÍCULOS', calidad:'CALIDAD', inventario:'INVENTARIOS', reportes:'REPORTES', inteligencia:'INTELIGENCIA ML', logistica:'LOGÍSTICA PRO', rotulos:'RÓTULOS', devoluciones:'DEVOLUCIONES', aprobaciones:'CENTRO DE APROBACIONES', 'consulta-rapida':'CONSULTA RÁPIDA', trazabilidad:'TRAZABILIDAD', 'chat-ia':'FENIX IA' };
         if (sidebarContentEl) sidebarContentEl.innerHTML = html;
         if (sidebarTitleEl) sidebarTitleEl.innerHTML = `<i class="fa-solid ${modIcons[module]||'fa-circle'}" style="margin-right:8px;opacity:.7"></i>${modLabels[module]||module.toUpperCase()}`;
+        // Acordeón bee: el submenú se despliega justo debajo del módulo activo
+        const subEl = document.getElementById('sidebar-sub');
+        const modBtn = document.querySelector(`.nm-item[data-module="${module}"]`);
+        if (subEl && modBtn) {
+          modBtn.after(subEl);
+          subEl.classList.toggle('is-empty', menu.length === 0);
+          document.querySelectorAll('.nm-item[data-module]').forEach(b => b.classList.toggle('has-open-sub', b === modBtn && menu.length > 0));
+          subEl.classList.remove('bee-open'); void subEl.offsetWidth; subEl.classList.add('bee-open');
+          modBtn.scrollIntoView({ block: 'nearest' });
+        }
       },
 
       // ── Notificaciones ────────────────────────────────────

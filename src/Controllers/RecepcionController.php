@@ -1030,126 +1030,178 @@ class RecepcionController extends BaseController
         ], 201);
     }
 
-    // ── PATCH /api/recepciones/{id}/detalle/{detalleId} ──────────────────────
-    // Edita la cantidad de una línea de recepción sin ODC y ajusta el inventario.
-    public function actualizarDetalleSinOdc(Request $r, Response $res, array $a): Response
+    // ── PATCH /api/recepciones/detalle/{detalleId}/editar ─────────────────────
+    // (también PATCH /api/recepciones/{id}/detalle/{detalleId}, que usa el móvil)
+    //
+    // Edición de una captura de recepción — con y sin ODC — a pedido de Camilo
+    // (2026-10-01): cajas, saldos, lote, fecha de vencimiento, estado de la
+    // mercancía y número de pallet. Reemplaza a actualizarDetalleSinOdc() y a
+    // actualizarDetalle() (este último nunca tuvo ruta; el escritorio llamaba a
+    // un /recepcion-detalle/{id} que no existía).
+    //
+    // BUG CORREGIDO de paso: la versión anterior ajustaba el inventario SIEMPRE
+    // que cambiaba la cantidad, pero desde 2026-09-29 la captura NO entra a
+    // inventario hasta cerrar la recepción (aprobado_admin = 0) — corregir una
+    // captura pendiente sumaba/restaba stock REAL de ese lote. Reglas ahora:
+    //  - Solo con la recepción abierta (Borrador).
+    //  - Captura aún no cargada (aprobado_admin = 0): solo se corrige el registro.
+    //  - Captura ya cargada (capturas antiguas): se mueve el stock con kardex,
+    //    solo si sigue completa en su ubicación de recibo; si ya se ubicó o
+    //    despachó, se bloquea (se corrige con un ajuste de inventario).
+    //  - Con ODC: valida la tolerancia del aumento y actualiza el avance de la ODC.
+    public function editarCaptura(Request $r, Response $res, array $a): Response
     {
-        $user        = $r->getAttribute('user');
-        $recepcionId = (int)($a['id']        ?? 0);
-        $detalleId   = (int)($a['detalleId'] ?? 0);
-        $body        = (array)($r->getParsedBody() ?? []);
+        $user      = $r->getAttribute('user');
+        $empresaId = $this->getEffectiveEmpresaId($user, $r);
+        $detId     = (int)($a['detalleId'] ?? $a['id'] ?? 0);
+        $b         = (array)($r->getParsedBody() ?? []);
 
-        $recepcion = Recepcion::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
-            ->where('sucursal_id', $user->sucursal_id)
-            ->whereNull('odc_id')
-            ->where('estado', 'Borrador')
-            ->find($recepcionId);
-        if (!$recepcion) {
-            return $this->json($res, ['error'=>true,'message'=>'Recepción sin ODC no encontrada o ya cerrada'], 404);
+        $det = RecepcionDetalle::with(['producto', 'recepcion'])->find($detId);
+        $rec = $det?->recepcion;
+        if (!$det || !$rec || (int)$rec->empresa_id !== (int)$empresaId || (int)$rec->sucursal_id !== (int)$user->sucursal_id
+            || (isset($a['detalleId'], $a['id']) && (int)$a['id'] !== (int)$rec->id)) {
+            return $this->json($res, ['error' => true, 'message' => 'Captura no encontrada'], 404);
         }
-
+        if ($rec->estado !== 'Borrador') {
+            return $this->json($res, ['error' => true, 'message' => "La recepción {$rec->numero_recepcion} ya está {$rec->estado}; corrija con un ajuste de inventario."], 409);
+        }
         $rol = strtolower($user->rol ?? '');
-        if ($recepcion->auxiliar_id !== $user->id && !in_array($rol, ['admin','supervisor','superadmin'])) {
-            return $this->json($res, ['error'=>true,'message'=>'No tiene permiso para modificar esta recepción'], 403);
+        if ((int)$rec->auxiliar_id !== (int)$user->id && !in_array($rol, ['admin', 'supervisor', 'superadmin'], true)) {
+            return $this->json($res, ['error' => true, 'message' => 'Solo quien hizo la recepción o un Supervisor/Admin puede modificarla'], 403);
         }
 
-        $detalle = RecepcionDetalle::where('recepcion_id', $recepcionId)->find($detalleId);
-        if (!$detalle) {
-            return $this->json($res, ['error'=>true,'message'=>'Línea no encontrada'], 404);
-        }
+        $prod = $det->producto;
+        $upc  = max(1, (int)($det->cajas_por_unidad ?: ($prod->unidades_caja ?? 1)));
+        $oldQty = (float)$det->cantidad_recibida;
+        $antes  = $det->only(['cantidad_recibida', 'cantidad_cajas', 'lote', 'fecha_vencimiento', 'estado_mercancia', 'numero_pallet']);
 
-        $nuevaCantidad = (float)($body['cantidad_recibida'] ?? $body['cantidad'] ?? 0);
-        if ($nuevaCantidad <= 0) {
-            return $this->json($res, ['error'=>true,'message'=>'La cantidad debe ser mayor a cero'], 400);
+        // Cantidad: cajas + saldos (escritorio/móvil) o total directo.
+        if (array_key_exists('cantidad_cajas', $b) || array_key_exists('saldos', $b)) {
+            $cajas  = max(0, (int)($b['cantidad_cajas'] ?? 0));
+            $saldos = max(0, (float)($b['saldos'] ?? 0));
+            if ($upc > 1 && $saldos >= $upc) {
+                return $this->json($res, ['error' => true, 'message' => "Los saldos deben ser menores a las unidades por caja ({$upc})."], 422);
+            }
+            $total = $upc > 1 ? $cajas * $upc + $saldos : $cajas + $saldos;
+        } elseif (isset($b['cantidad_recibida']) || isset($b['cantidad'])) {
+            $total = (float)($b['cantidad_recibida'] ?? $b['cantidad']);
+            $cajas = (int)floor($total / $upc);
+        } else {
+            $total = $oldQty;
+            $cajas = (int)($det->cantidad_cajas ?? floor($total / $upc));
         }
+        if ($total <= 0) return $this->json($res, ['error' => true, 'message' => 'La cantidad debe ser mayor a cero'], 422);
 
-        if (array_key_exists('fecha_vencimiento', $body) && !empty($body['fecha_vencimiento'])) {
-            $venceError = $this->validarVencimientoVsBodega($user, $r, $detalle->producto_id, $this->estandarizarFecha($body['fecha_vencimiento']), $body);
-            if ($venceError) {
-                $status = $venceError['_status'];
-                unset($venceError['_status']);
-                return $this->json($res, $venceError, $status);
+        $lote = $det->lote;
+        if (array_key_exists('lote', $b)) {
+            $lote = trim((string)$b['lote']);
+            if ($prod && $prod->controla_lote && ($lote === '' || $lote === 'N/A' || $lote === '-')) {
+                return $this->json($res, ['error' => true, 'message' => "El lote es obligatorio para el producto {$prod->nombre}."], 422);
+            }
+            $lote = $lote !== '' ? $lote : null;
+        }
+        $fvOld = $det->fecha_vencimiento ? substr((string)$det->fecha_vencimiento, 0, 10) : null;
+        $fv = $fvOld;
+        if (array_key_exists('fecha_vencimiento', $b)) {
+            $fv = $this->estandarizarFecha($b['fecha_vencimiento'] ?: null);
+            if ($fv !== $fvOld) {
+                $guard = new InventoryGuard($empresaId, $user->sucursal_id, $user->id);
+                $chk = $guard->checkExpirationMandatory($det->producto_id, $fv);
+                if (!$chk['ok']) return $this->json($res, ['error' => true, 'message' => $chk['message']], 422);
+                if ($fv) {
+                    $venceError = $this->validarVencimientoVsBodega($user, $r, $det->producto_id, $fv, $b);
+                    if ($venceError) { $st = $venceError['_status']; unset($venceError['_status']); return $this->json($res, $venceError, $st); }
+                }
             }
         }
+        $estadoMerc = array_key_exists('estado_mercancia', $b) && $b['estado_mercancia'] !== '' ? (string)$b['estado_mercancia'] : $det->estado_mercancia;
+        $pallet = array_key_exists('numero_pallet', $b) ? ((int)$b['numero_pallet'] ?: null) : $det->numero_pallet;
+        $delta  = round($total - $oldQty, 3);
 
-        $upc         = max(1, (int)($detalle->cajas_por_unidad ?? 1));
-        $nuevasCajas = isset($body['cantidad_cajas']) ? (int)$body['cantidad_cajas'] : ceil((float)$nuevaCantidad / $upc);
-        $delta       = $nuevaCantidad - (float)$detalle->cantidad_recibida;
+        // Tolerancia vs ODC (solo si aumenta lo recibido).
+        $detOdc = $rec->odc_id ? OrdenCompraDetalle::where('orden_compra_id', $rec->odc_id)->where('producto_id', $det->producto_id)->first() : null;
+        if ($detOdc && $delta > 0) {
+            $chk = (new InventoryGuard($empresaId, $user->sucursal_id, $user->id))->canReceive($detOdc->id, $delta);
+            if (!$chk['ok']) return $this->json($res, ['error' => true, 'message' => 'EXCEDENTE BLOQUEADO: ' . $chk['message']], 422);
+        }
 
         try {
             Capsule::connection()->beginTransaction();
 
-            if (abs($delta) > 0.001) {
-                $loteKey = $detalle->lote ?? 'N/A';
-
-                $inv = \App\Models\Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
-                    ->where('sucursal_id', $user->sucursal_id)
-                    ->where('producto_id', $detalle->producto_id)
-                    ->where('ubicacion_id', $detalle->ubicacion_destino_id)
-                    ->where('lote', $loteKey)
-                    ->where('estado', 'Disponible')
-                    ->lockForUpdate()
-                    ->first();
-
-                if ($inv) {
-                    $inv->cantidad = max(0, ($inv->cantidad ?? 0) + $delta);
-                    // Recalcular descomposición UND/TOTAL tras el ajuste
-                    $_ajusteUpc      = max(1, (int)($detalle->cajas_por_unidad ?? 1));
-                    $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $_ajusteUpc);
-                    $inv->saldos         = fmod((float)$inv->cantidad, (float)$_ajusteUpc);
-                    $inv->save();
-                } elseif ($delta > 0) {
-                    $_ajusteUpc  = max(1, (int)($detalle->cajas_por_unidad ?? 1));
-                    $_ajusteCajas  = (int)floor((float)$delta / $_ajusteUpc);
-                    $_ajusteSaldos = fmod((float)$delta, (float)$_ajusteUpc);
-                    $inv = new \App\Models\Inventario([
-                        'empresa_id'         => $this->getEffectiveEmpresaId($user, $r),
-                        'sucursal_id'        => $user->sucursal_id,
-                        'producto_id'        => $detalle->producto_id,
-                        'ubicacion_id'       => $detalle->ubicacion_destino_id,
-                        'lote'               => $loteKey,
-                        'estado'             => 'Disponible',
-                        'cantidad'           => $delta,
-                        'cantidad_cajas'     => $_ajusteCajas,
-                        'saldos'             => $_ajusteSaldos,
-                        'cantidad_reservada' => 0,
-                        'fecha_vencimiento'  => $detalle->fecha_vencimiento,
-                    ]);
-                    $inv->save();
+            $cambiaStock = $det->aprobado_admin
+                && (abs($delta) > 0.0001 || $lote !== $det->lote || $fv !== $fvOld || $estadoMerc !== $det->estado_mercancia);
+            if ($cambiaStock) {
+                // Fila de inventario donde quedó esta captura (las antiguas sin
+                // lote se guardaron como 'N/A').
+                $estadoOld = ($det->estado_mercancia === 'BuenEstado' || empty($det->estado_mercancia)) ? 'Disponible' : 'Cuarentena';
+                $inv = \App\Models\Inventario::where('empresa_id', $rec->empresa_id)->where('sucursal_id', $rec->sucursal_id)
+                    ->where('producto_id', $det->producto_id)->where('ubicacion_id', $det->ubicacion_destino_id)
+                    ->whereIn('estado', [$estadoOld, 'Disponible'])
+                    ->where(fn($q) => $det->lote ? $q->where('lote', $det->lote) : $q->whereNull('lote')->orWhere('lote', 'N/A'))
+                    ->orderByRaw('CASE WHEN fecha_vencimiento::date IS NOT DISTINCT FROM ?::date THEN 0 ELSE 1 END', [$fvOld])
+                    ->lockForUpdate()->first();
+                if (!$inv || (float)$inv->cantidad - (float)($inv->cantidad_reservada ?? 0) + 0.0001 < $oldQty) {
+                    Capsule::connection()->rollBack();
+                    return $this->json($res, ['error' => true, 'message' => 'Esta captura ya está en inventario y fue ubicada o reservada (no está completa en el Patio): corríjala con un ajuste de inventario.'], 409);
                 }
-
-                \App\Models\MovimientoInventario::create([
-                    'empresa_id'           => $this->getEffectiveEmpresaId($user, $r),
-                    'sucursal_id'          => $user->sucursal_id,
-                    'producto_id'          => $detalle->producto_id,
-                    'tipo_movimiento'      => $delta >= 0 ? 'AjustePositivo' : 'AjusteNegativo',
-                    'referencia_tipo'      => 'SinODC',
-                    'referencia_id'        => $recepcion->id,
-                    'cantidad'             => (int)round(abs($delta)),
-                    'fecha_movimiento'     => date('Y-m-d'),
-                    'hora_inicio'          => date('H:i:s'),
-                    'ubicacion_destino_id' => $detalle->ubicacion_destino_id,
-                    'auxiliar_id'          => $user->id,
-                    'lote'                 => $loteKey,
-                    'observaciones'        => 'Corrección línea recepción ' . $recepcion->numero_recepcion,
+                $mov = fn($tipo, $cant, $loteM, $fvM) => \App\Models\MovimientoInventario::create([
+                    'empresa_id' => $rec->empresa_id, 'sucursal_id' => $rec->sucursal_id, 'producto_id' => $det->producto_id,
+                    'tipo_movimiento' => $tipo, 'cantidad' => $cant, 'lote' => $loteM, 'fecha_vencimiento' => $fvM,
+                    'ubicacion_destino_id' => $det->ubicacion_destino_id, 'auxiliar_id' => $user->id,
+                    'referencia_tipo' => 'recepciones', 'referencia_id' => $rec->id,
+                    'observaciones' => "Corrección de captura — Recepción {$rec->numero_recepcion}",
+                    'fecha_movimiento' => date('Y-m-d'), 'hora_inicio' => date('H:i:s'),
                 ]);
+                $recalc = function ($i) use ($upc) {
+                    $i->cantidad_cajas = (int)floor((float)$i->cantidad / $upc);
+                    $i->saldos = fmod((float)$i->cantidad, (float)$upc);
+                };
+                // Sale la cantidad anterior de su fila...
+                $inv->cantidad = (float)$inv->cantidad - $oldQty;
+                if ($inv->cantidad <= 0.0001 && (float)($inv->cantidad_reservada ?? 0) <= 0) $inv->delete(); else { $recalc($inv); $inv->save(); }
+                // ...y entra la nueva con su lote/vencimiento/estado.
+                $key = ['empresa_id' => $rec->empresa_id, 'sucursal_id' => $rec->sucursal_id, 'producto_id' => $det->producto_id,
+                        'ubicacion_id' => $det->ubicacion_destino_id, 'lote' => $lote,
+                        'estado' => ($estadoMerc === 'BuenEstado' || empty($estadoMerc)) ? 'Disponible' : 'Cuarentena'];
+                if ($fv) $key['fecha_vencimiento'] = $fv;
+                $nuevo = \App\Models\Inventario::where($key)->lockForUpdate()->first() ?? new \App\Models\Inventario($key + ['cantidad' => 0, 'cantidad_reservada' => 0]);
+                $nuevo->cantidad = (float)($nuevo->cantidad ?? 0) + $total;
+                $nuevo->fecha_vencimiento = $fv;
+                $recalc($nuevo);
+                $nuevo->save();
+                if ($lote === $det->lote && $fv === $fvOld && $estadoMerc === $det->estado_mercancia) {
+                    $mov($delta >= 0 ? 'AjustePositivo' : 'AjusteNegativo', abs($delta), $lote, $fv);
+                } else {
+                    $mov('AjusteNegativo', $oldQty, $det->lote, $fvOld);
+                    $mov('AjustePositivo', $total, $lote, $fv);
+                }
             }
 
-            $detalle->cantidad_recibida = $nuevaCantidad;
-            $detalle->cantidad_cajas    = $nuevasCajas;
-            if (array_key_exists('lote', $body))              $detalle->lote              = $body['lote'] ?: null;
-            if (array_key_exists('fecha_vencimiento', $body)) $detalle->fecha_vencimiento = $body['fecha_vencimiento'] ?: null;
-            if (array_key_exists('estado_mercancia', $body))  $detalle->estado_mercancia  = $body['estado_mercancia'];
-            $detalle->save();
+            $det->cantidad_recibida = $total;
+            $det->cantidad_cajas    = $cajas;
+            $det->lote              = $lote;
+            $det->fecha_vencimiento = $fv;
+            $det->estado_mercancia  = $estadoMerc;
+            $det->numero_pallet     = $pallet;
+            $det->save();
+
+            if ($detOdc && abs($delta) > 0.0001) {
+                $detOdc->cantidad_recibida = max(0, (float)$detOdc->cantidad_recibida + $delta);
+                $detOdc->save();
+            }
 
             Capsule::connection()->commit();
         } catch (\Exception $e) {
             Capsule::connection()->rollBack();
-            return $this->json($res, ['error'=>true,'message'=>'Error actualizando línea: ' . $e->getMessage()], 500);
+            return $this->json($res, ['error' => true, 'message' => 'Error actualizando la captura: ' . $e->getMessage()], 500);
         }
 
-        $detalle->load('producto');
-        return $this->json($res, ['error'=>false,'message'=>'Línea actualizada correctamente','data'=>['detalle'=>$detalle->toArray()]]);
+        $this->audit($user, 'recepcion', 'editar_captura', 'recepcion_detalles', (int)$det->id, $antes,
+            $det->only(['cantidad_recibida', 'cantidad_cajas', 'lote', 'fecha_vencimiento', 'estado_mercancia', 'numero_pallet']),
+            "Captura #{$det->id} de {$rec->numero_recepcion} editada");
+
+        $det->load('producto');
+        return $this->json($res, ['error' => false, 'message' => 'Captura actualizada', 'data' => ['detalle' => $det->toArray()]]);
     }
 
     // ── DELETE /api/recepciones/{id}/detalle/{detalleId} ─────────────────────
@@ -1184,6 +1236,21 @@ class RecepcionController extends BaseController
 
             $loteKey = $detalle->lote ?? 'N/A';
 
+            // BUG CORREGIDO 2026-10-01: desde 2026-09-29 la captura no entra a
+            // inventario hasta cerrar la recepción (aprobado_admin = 0); antes se
+            // "revertía" igual y se descontaba stock REAL del mismo lote. Solo se
+            // revierte si esta captura ya estaba cargada y sigue completa en su
+            // ubicación de recibo (si ya se ubicó, se bloquea).
+            if (!$detalle->aprobado_admin) {
+                $detalle->delete();
+                $restantes = RecepcionDetalle::where('recepcion_id', $recepcionId)->count();
+                if ($restantes === 0) $recepcion->delete();
+                Capsule::connection()->commit();
+                return $this->json($res, ['error' => false,
+                    'message' => 'Línea eliminada' . ($restantes === 0 ? '. Recepción vacía eliminada.' : '.'),
+                    'data' => ['recepcion_eliminada' => $restantes === 0]]);
+            }
+
             // Revertir inventario
             $inv = \App\Models\Inventario::where('empresa_id', $this->getEffectiveEmpresaId($user, $r))
                 ->where('sucursal_id', $user->sucursal_id)
@@ -1194,6 +1261,10 @@ class RecepcionController extends BaseController
                 ->lockForUpdate()
                 ->first();
 
+            if (!$inv || (float)$inv->cantidad - (float)($inv->cantidad_reservada ?? 0) + 0.0001 < (float)$detalle->cantidad_recibida) {
+                Capsule::connection()->rollBack();
+                return $this->json($res, ['error' => true, 'message' => 'Esta captura ya está en inventario y fue ubicada o reservada: no se puede eliminar, corríjala con un ajuste de inventario.'], 409);
+            }
             if ($inv) {
                 $newQty = max(0, ($inv->cantidad ?? 0) - (float)$detalle->cantidad_recibida);
                 if ($newQty == 0) {
@@ -1384,6 +1455,10 @@ class RecepcionController extends BaseController
                         'ubicacion_id' => $ubicacionInventario,
                         'lote'         => $linea->lote,
                         'estado'       => ($linea->estado_mercancia === 'BuenEstado' || empty($linea->estado_mercancia)) ? 'Disponible' : 'Cuarentena',
+                        // 2026-10-02: se conserva el pallet de la captura (como hacía la
+                        // carga por captura antes del 29-sep) — sin él, "Ubicar" no podía
+                        // mover el pallet completo y la mercancía quedaba sin agrupar.
+                        'numero_pallet' => $linea->numero_pallet ?: null,
                     ];
                     if ($linea->fecha_vencimiento) {
                         $_invKeyConfirm['fecha_vencimiento'] = $linea->fecha_vencimiento;
@@ -1563,114 +1638,6 @@ class RecepcionController extends BaseController
     // ── Redundant json() removed (now inherited from BaseController)
 
     // ─────────────────────────────────────────────────────────────────────────
-    // PUT /recepcion-detalle/{id}  — Actualizar cantidad de un pallet capturado
-    // ─────────────────────────────────────────────────────────────────────────
-    public function actualizarDetalle(Request $request, Response $response, array $args): Response
-    {
-        $user  = $request->getAttribute('user');
-        $detId = (int)($args['id'] ?? 0);
-
-        $empresaId = $this->getEffectiveEmpresaId($user, $request);
-
-        // Buscar el detalle y su recepcion filtrando por empresa
-        $det = RecepcionDetalle::whereHas('recepcion', function($q) use ($empresaId) {
-            $q->where('empresa_id', $empresaId);
-        })->find($detId);
-        if (!$det) {
-            return $this->json($response, ['error' => true, 'message' => 'Pallet no encontrado'], 404);
-        }
-
-        $recepcion = $det->recepcion;
-        if (!$recepcion) {
-            return $this->json($response, ['error' => true, 'message' => 'No autorizado'], 403);
-        }
-
-        $body = (array)($request->getParsedBody() ?? []);
-        $qty  = isset($body['cantidad_recibida']) ? (float)$body['cantidad_recibida'] : null;
-
-        if ($qty === null || $qty < 0) {
-            return $this->json($response, ['error' => true, 'message' => 'Cantidad inválida'], 422);
-        }
-
-        $oldQty     = (float)$det->cantidad_recibida;
-        $oldUbicId  = $det->ubicacion_destino_id;
-
-        $det->cantidad_recibida = $qty;
-        if (isset($body['lote'])) {
-            $loteNuevo = trim((string)$body['lote']);
-            if ($det->producto && $det->producto->controla_lote && ($loteNuevo === '' || $loteNuevo === 'N/A' || $loteNuevo === '-')) {
-                return $this->json($response, ['error' => true, 'message' => "El lote es obligatorio para el producto {$det->producto->nombre}."], 422);
-            }
-            $det->lote = $loteNuevo !== '' ? $loteNuevo : null;
-        }
-        if (isset($body['fecha_vencimiento'])) {
-            $det->fecha_vencimiento = $body['fecha_vencimiento'] ?: null;
-        }
-        if (isset($body['ubicacion_destino_id'])) {
-            $det->ubicacion_destino_id = (int)$body['ubicacion_destino_id'] ?: null;
-        }
-
-        try {
-            \Illuminate\Database\Capsule\Manager::connection()->beginTransaction();
-
-            $det->save();
-
-            // Keep inventory in sync when the pallet was already approved
-            if ($det->aprobado_admin && $qty != $oldQty && $det->producto_id) {
-                $diff    = $qty - $oldQty;
-                $ubicId  = $det->ubicacion_destino_id ?? $oldUbicId;
-                $inv = \App\Models\Inventario::where('empresa_id',  $recepcion->empresa_id)
-                    ->where('sucursal_id',  $recepcion->sucursal_id)
-                    ->where('producto_id', $det->producto_id)
-                    ->where('ubicacion_id', $ubicId)
-                    ->lockForUpdate()
-                    ->first();
-                if ($inv) {
-                    $inv->cantidad = max(0, (float)$inv->cantidad + $diff);
-                    if ($inv->cantidad <= 0) {
-                        $inv->delete();
-                    } else {
-                        // Recalcular descomposición UND/TOTAL
-                        $_actDetUpc      = max(1, (int)($det->cajas_por_unidad ?? 1));
-                        $inv->cantidad_cajas = (int)floor((float)$inv->cantidad / $_actDetUpc);
-                        $inv->saldos         = fmod((float)$inv->cantidad, (float)$_actDetUpc);
-                        $inv->save();
-                    }
-
-                    // Trazabilidad: la corrección de cantidad sobre un pallet ya aprobado
-                    // mueve stock real; debe quedar en el kardex igual que cualquier otro ajuste.
-                    \App\Models\MovimientoInventario::create([
-                        'empresa_id'       => $recepcion->empresa_id,
-                        'sucursal_id'      => $recepcion->sucursal_id,
-                        'producto_id'      => $det->producto_id,
-                        'tipo_movimiento'  => $diff >= 0 ? 'AjustePositivo' : 'AjusteNegativo',
-                        'cantidad'         => abs($diff),
-                        'lote'             => $det->lote,
-                        'ubicacion_destino_id' => $ubicId,
-                        'auxiliar_id'      => $user->id,
-                        'referencia_tipo'  => 'recepciones',
-                        'referencia_id'    => $recepcion->id,
-                        'observaciones'    => "Corrección administrativa de cantidad — Recepción {$recepcion->numero_recepcion}",
-                        'fecha_movimiento' => date('Y-m-d'),
-                        'hora_inicio'      => date('H:i:s'),
-                    ]);
-                }
-            }
-
-            \Illuminate\Database\Capsule\Manager::connection()->commit();
-        } catch (\Exception $e) {
-            \Illuminate\Database\Capsule\Manager::connection()->rollBack();
-            return $this->json($response, ['error' => true, 'message' => 'Error al actualizar: ' . $e->getMessage()], 500);
-        }
-
-        return $this->json($response, [
-            'error'   => false,
-            'message' => 'Cantidad actualizada',
-            'detalle' => ['id' => $det->id, 'cantidad_recibida' => $det->cantidad_recibida],
-        ]);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
     // DELETE /recepciones/detalle/{id}  — Eliminar un pallet capturado
     // ─────────────────────────────────────────────────────────────────────────
     public function eliminarDetalle(Request $request, Response $response, array $args): Response
@@ -1696,7 +1663,21 @@ class RecepcionController extends BaseController
         if (!empty($det->aprobado_admin)) {
             return $this->json($response, ['error' => true, 'message' => 'No se puede eliminar un pallet ya aprobado'], 422);
         }
+        $rec = $det->recepcion;
+        if ($rec && $rec->estado !== 'Borrador') {
+            return $this->json($response, ['error' => true, 'message' => "La recepción ya está {$rec->estado}."], 409);
+        }
 
+        // BUG CORREGIDO 2026-10-01: la captura suma al avance de la ODC al
+        // registrarse (detallesOperativa) pero al eliminarla no se restaba — la
+        // ODC quedaba mostrando más recibido del real.
+        if ($rec && $rec->odc_id) {
+            $detOdc = OrdenCompraDetalle::where('orden_compra_id', $rec->odc_id)->where('producto_id', $det->producto_id)->first();
+            if ($detOdc) {
+                $detOdc->cantidad_recibida = max(0, (float)$detOdc->cantidad_recibida - (float)$det->cantidad_recibida);
+                $detOdc->save();
+            }
+        }
         $det->delete();
 
         return $this->json($response, ['error' => false, 'message' => 'Pallet eliminado']);

@@ -41,12 +41,12 @@ WMS_MODULES.inventario = {
     const tabBtn = (id, label, icon) => {
       const active = tab === id;
       return `<button class="stk-tab-btn" data-tab="${id}" onclick="WMS_MODULES.inventario._stockSetTab('${id}')"
-        style="padding:10px 22px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:3px solid ${active ? '#1d4ed8' : 'transparent'};color:${active ? '#1d4ed8' : '#64748b'};transition:all .2s;">
+        style="padding:10px 22px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;border-bottom:3px solid ${active ? 'var(--info)' : 'transparent'};color:${active ? 'var(--info)' : 'var(--muted)'};transition:all .2s;">
         <i class="fa-solid ${icon}"></i> ${label}
       </button>`;
     };
     WMS.setContent(`
-      <div style="display:flex;border-bottom:1px solid #e2e8f0;margin-bottom:16px;">
+      <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:16px;">
         ${tabBtn('referencia', 'Por Referencia', 'fa-barcode')}
         ${tabBtn('general', 'Resumen General', 'fa-table-list')}
       </div>
@@ -74,16 +74,16 @@ WMS_MODULES.inventario = {
     body.innerHTML = `
       <div class="filter-bar" style="flex-wrap:wrap;gap:8px;align-items:flex-end;">
         <div class="form-group" style="margin:0;min-width:260px;">
-          <label class="form-label" style="font-size:.7rem;">Referencia <span class="required">*</span></label>
+          <label class="form-label">Referencia <span class="required">*</span></label>
           <input type="text" id="sr-prod-ac" class="form-control" placeholder="Escriba EAN, código o nombre..." autocomplete="off" value="${WMS.esc(prodNom)}">
           <input type="hidden" id="sr-prod-id" value="${prodId}">
         </div>
         <div class="form-group" style="margin:0;">
-          <label class="form-label" style="font-size:.7rem;">Desde</label>
+          <label class="form-label">Desde</label>
           <input type="date" id="sr-desde" class="form-control form-control-sm" value="${desde}" style="width:150px">
         </div>
         <div class="form-group" style="margin:0;">
-          <label class="form-label" style="font-size:.7rem;">Hasta</label>
+          <label class="form-label">Hasta</label>
           <input type="date" id="sr-hasta" class="form-control form-control-sm" value="${hasta}" style="width:150px">
         </div>
         <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._srBuscar()"><i class="fa-solid fa-search"></i> Buscar</button>
@@ -101,6 +101,8 @@ WMS_MODULES.inventario = {
           document.getElementById('sr-prod-id').value = p.id;
           this._srProdId = p.id;
           this._srProdNombre = p.descripcion || p.nombre;
+          // U/E de respaldo si la referencia no tiene stock (el gráfico igual va en cajas)
+          this._srUpc = (+p.factor_udm > 0) ? +p.factor_udm : Math.max(1, +p.unidades_caja || 1);
           const btn = document.getElementById('sr-btn-export');
           if (btn) btn.disabled = false;
           this._srBuscar();
@@ -131,6 +133,13 @@ WMS_MODULES.inventario = {
       const totalEntradas = movs.reduce((s,m) => s + (+m.entradas || 0), 0);
       const totalSalidas   = movs.reduce((s,m) => s + (+m.salidas || 0), 0);
       const stockActual    = stockItems.reduce((s,i) => s + (+i.cantidad || 0), 0);
+      // U/E: factor_udm manda, si no unidades_caja (mismo criterio del resto del sistema).
+      const it0 = stockItems[0] || {};
+      const upc = (+it0.factor_udm > 0) ? +it0.factor_udm
+                : (+it0.unidades_caja > 0 ? +it0.unidades_caja : (this._srUpc || 1));
+      this._srUpcActual = upc;
+      const stkCajas  = upc > 1 ? Math.floor(stockActual / upc) : 0;
+      const stkSaldos = Math.round((stockActual - stkCajas * upc) * 1000) / 1000;
       const numUbicaciones = new Set(stockItems.map(i => i.ubicacion_codigo || i.ubicacion).filter(Boolean)).size;
       const conVencer      = stockItems.filter(i => {
         if (!i.fecha_vencimiento) return false;
@@ -138,24 +147,19 @@ WMS_MODULES.inventario = {
         return dias !== null && dias < 30;
       }).length;
 
+      // Orden a pedido de Camilo (2026-09-30): tarjetas → ubicaciones con detalle →
+      // gráfico en CAJAS (ingresos vs despachos) → detalle de ingresos y despachos.
       wrap.innerHTML = `
-        <div class="pro-kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;">
+        <div class="pro-kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:20px;">
           <div class="pro-kpi-card accent-green"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-arrow-down"></i></div></div><div class="pro-kpi-value">${WMS.formatNum(totalEntradas)}</div><div class="pro-kpi-label">Entradas (período)</div></div>
           <div class="pro-kpi-card accent-red"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-arrow-up"></i></div></div><div class="pro-kpi-value">${WMS.formatNum(totalSalidas)}</div><div class="pro-kpi-label">Salidas (período)</div></div>
           <div class="pro-kpi-card accent-blue"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-cubes"></i></div></div><div class="pro-kpi-value">${WMS.formatNum(stockActual)}</div><div class="pro-kpi-label">Stock actual (und)</div></div>
+          <div class="pro-kpi-card accent-blue" style="border:1px solid var(--info-bg);"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-box"></i></div></div><div class="pro-kpi-value">${WMS.formatNum(stkCajas)} cj + ${WMS.formatNum(stkSaldos)}</div><div class="pro-kpi-label">Stock en cajas + saldos${upc > 1 ? ` (U/E ${WMS.formatNum(upc)})` : ''}</div></div>
           <div class="pro-kpi-card accent-teal"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-location-dot"></i></div></div><div class="pro-kpi-value">${numUbicaciones}</div><div class="pro-kpi-label">Ubicaciones con stock</div></div>
           <div class="pro-kpi-card ${conVencer>0?'accent-amber':'accent-green'}"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></div></div><div class="pro-kpi-value">${conVencer}</div><div class="pro-kpi-label">Lotes próx. a vencer (&lt;30d)</div></div>
         </div>
-        <div class="pro-chart-card" style="margin-bottom:20px;">
-          <div class="pro-chart-title">
-            <span><i class="fa-solid fa-chart-bar" style="color:#0070f2;margin-right:8px"></i>Movimientos: Entradas vs Salidas por día</span>
-          </div>
-          <div class="pro-chart-container" style="height:260px">
-            <canvas id="sr-mov-chart"></canvas>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-header"><span class="card-title"><i class="fa-solid fa-warehouse" style="margin-right:6px;color:#0070f2"></i>Ubicaciones con Stock</span></div>
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-header"><span class="card-title"><i class="fa-solid fa-warehouse" style="margin-right:6px;color:var(--accent)"></i>Ubicaciones con Stock</span></div>
           <div class="table-container">
             <table class="erp-table">
               <thead><tr><th>Ubicación</th><th>Lote</th><th style="text-align:center">Cajas</th><th style="text-align:center">Sueltos</th><th style="text-align:center">UND/TOTAL</th><th>F.Vencimiento</th><th>Estado</th></tr></thead>
@@ -163,7 +167,7 @@ WMS_MODULES.inventario = {
                 <tr>
                   <td><span class="pro-badge info">${WMS.esc(i.ubicacion_codigo || i.ubicacion || '—')}</span></td>
                   <td class="muted">${WMS.esc(i.lote || '—')}</td>
-                  <td style="text-align:center;color:#0070f2">${i.cantidad_cajas ?? '—'}</td>
+                  <td style="text-align:center;color:var(--accent)">${i.cantidad_cajas ?? '—'}</td>
                   <td style="text-align:center;color:#6d28d9">${i.saldos ?? '—'}</td>
                   <td style="text-align:center;font-weight:700">${WMS.formatNum(i.cantidad)}</td>
                   <td class="muted">${i.fecha_vencimiento ? WMS.formatDate(i.fecha_vencimiento) : 'N/A'}</td>
@@ -173,26 +177,111 @@ WMS_MODULES.inventario = {
             </table>
           </div>
         </div>
+        <div class="pro-chart-card" style="margin-bottom:20px;">
+          <div class="pro-chart-title">
+            <span><i class="fa-solid fa-chart-bar" style="color:var(--accent);margin-right:8px"></i>Ingresos vs Despachos por día (${upc > 1 ? 'cajas' : 'unidades'})</span>
+          </div>
+          <div class="pro-chart-container" style="height:260px">
+            <canvas id="sr-mov-chart"></canvas>
+          </div>
+        </div>
+        ${this._htmlDetalleIngresosDespachos(movs, upc)}
       `;
 
-      this._renderMovBarChart(movs);
+      this._renderMovBarChart(movs, upc);
     } catch(e) {
       wrap.innerHTML = '<div class="m-empty"><i class="fa-solid fa-wifi"></i><p>Error cargando datos de la referencia</p></div>';
       console.error(e);
     }
   },
 
-  _renderMovBarChart(movs) {
+  // Clasifica un movimiento del kardex: ingreso (recepción), despacho (picking/
+  // salida), devolución o ajuste. Traslados no cambian el stock total.
+  _clasificarMov(m) {
+    const t = m.tipo || '';
+    if (t === 'Entrada') return 'ingreso';
+    if (t === 'Picking' || t === 'Salida') return 'despacho';
+    if (t === 'Devolucion') return 'devolucion';
+    if (t === 'AjustePositivo' || t === 'AjusteNegativo') return 'ajuste';
+    return null;
+  },
+
+  _fmtCajasSaldos(und, upc) {
+    und = +und || 0;
+    if (upc <= 1) return `${WMS.formatNum(und)} und`;
+    const cj = Math.floor(und / upc);
+    const sl = Math.round((und - cj * upc) * 1000) / 1000;
+    return `${WMS.formatNum(cj)} cj${sl ? ` + ${WMS.formatNum(sl)}` : ''}`;
+  },
+
+  // Detalle de ingresos y despachos del período (a pedido de Camilo, 2026-09-30).
+  _htmlDetalleIngresosDespachos(movs, upc) {
+    const filas = movs.filter(m => ['ingreso', 'despacho'].includes(this._clasificarMov(m)));
+    const totIng = filas.filter(m => this._clasificarMov(m) === 'ingreso').reduce((s, m) => s + (+m.entradas || 0), 0);
+    const totDes = filas.filter(m => this._clasificarMov(m) === 'despacho').reduce((s, m) => s + (+m.salidas || 0), 0);
+    const doc = m => {
+      if (m.referencia_tipo === 'OrdenPicking') return `${m.sucursal_pedido ? WMS.esc(m.sucursal_pedido) + ' · ' : ''}Pedido #${m.referencia_id}`;
+      return WMS.esc(m.observaciones || m.referencia_tipo || '—');
+    };
+    return `
+      <div class="card">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <span class="card-title"><i class="fa-solid fa-right-left" style="margin-right:6px;color:var(--accent)"></i>Detalle de Ingresos y Despachos</span>
+          <span style="font-size:.78rem;color:var(--muted);">
+            <b style="color:var(--ok);">Ingresos: ${this._fmtCajasSaldos(totIng, upc)}</b> ·
+            <b style="color:var(--danger);">Despachos: ${this._fmtCajasSaldos(totDes, upc)}</b>
+          </span>
+        </div>
+        <div class="table-container" style="max-height:360px;overflow-y:auto;">
+          <table class="erp-table">
+            <thead style="position:sticky;top:0;background:var(--surface);"><tr>
+              <th>Fecha</th><th>Tipo</th><th>Documento / Destino</th><th>Ubicación</th><th>Lote</th>
+              <th style="text-align:center">Cajas + saldos</th><th style="text-align:center">UND/TOTAL</th><th>Usuario</th>
+            </tr></thead>
+            <tbody>${filas.length ? filas.slice().reverse().map(m => {
+              const esIng = this._clasificarMov(m) === 'ingreso';
+              const und = esIng ? +m.entradas : +m.salidas;
+              return `<tr>
+                <td class="muted" style="white-space:nowrap;">${WMS.formatDate(m.fecha)} ${WMS.esc((m.hora || '').slice(0, 5))}</td>
+                <td><span class="pro-badge ${esIng ? 'ok' : 'warn'}">${esIng ? 'Ingreso' : 'Despacho'}</span></td>
+                <td style="font-size:.78rem;">${doc(m)}</td>
+                <td><span class="pro-badge info">${WMS.esc((esIng ? m.ubicacion_destino : m.ubicacion_origen) || '—')}</span></td>
+                <td class="muted">${WMS.esc(m.lote || '—')}</td>
+                <td style="text-align:center;font-weight:700;color:${esIng ? 'var(--ok)' : 'var(--danger)'};">${this._fmtCajasSaldos(und, upc)}</td>
+                <td style="text-align:center;">${WMS.formatNum(und)}</td>
+                <td class="muted">${WMS.esc(m.usuario || '—')}</td>
+              </tr>`;
+            }).join('') : '<tr><td colspan="8" class="muted" style="text-align:center;padding:20px">Sin ingresos ni despachos en el período</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  },
+
+  // Gráfico por día en CAJAS (a pedido de Camilo, 2026-09-30): ingresos vs
+  // despachos; devoluciones y ajustes solo aparecen si hubo en el período. El
+  // tooltip detalla los destinos despachados ese día.
+  _renderMovBarChart(movs, upc = 1) {
     const ctx = document.getElementById('sr-mov-chart');
     if (!ctx) return;
     if (this._invMovChart) { try{this._invMovChart.destroy();}catch(_){} }
 
+    const aCaja = und => upc > 1 ? Math.round(und / upc * 100) / 100 : und;
     const porDia = {};
     movs.forEach(m => {
+      const cat = this._clasificarMov(m);
+      if (!cat) return;
       const f = m.fecha;
-      if (!porDia[f]) porDia[f] = { entradas:0, salidas:0 };
-      porDia[f].entradas += (+m.entradas || 0);
-      porDia[f].salidas  += (+m.salidas || 0);
+      if (!porDia[f]) porDia[f] = { ingreso: 0, despacho: 0, devolucion: 0, ajusteMas: 0, ajusteMenos: 0, destinos: {} };
+      const d = porDia[f];
+      if (cat === 'ingreso')    d.ingreso    += +m.entradas || 0;
+      if (cat === 'devolucion') d.devolucion += +m.entradas || 0;
+      if (cat === 'ajuste')     { d.ajusteMas += +m.entradas || 0; d.ajusteMenos += +m.salidas || 0; }
+      if (cat === 'despacho') {
+        d.despacho += +m.salidas || 0;
+        const dest = m.sucursal_pedido || (m.referencia_tipo === 'OrdenPicking' ? `Pedido #${m.referencia_id}` : 'Salida');
+        d.destinos[dest] = (d.destinos[dest] || 0) + (+m.salidas || 0);
+      }
     });
     const fechas = Object.keys(porDia).sort();
 
@@ -201,23 +290,37 @@ WMS_MODULES.inventario = {
       return;
     }
 
+    const serie = campo => fechas.map(f => aCaja(porDia[f][campo]));
+    const hay   = campo => fechas.some(f => porDia[f][campo] > 0);
+    const datasets = [
+      { label: 'Ingresos',  data: serie('ingreso'),  backgroundColor: '#22c55e', borderRadius: 4 },
+      { label: 'Despachos', data: serie('despacho'), backgroundColor: '#ef4444', borderRadius: 4 },
+    ];
+    if (hay('devolucion'))  datasets.push({ label: 'Devoluciones', data: serie('devolucion'),  backgroundColor: '#8b5cf6', borderRadius: 4 });
+    if (hay('ajusteMas'))   datasets.push({ label: 'Ajuste +',     data: serie('ajusteMas'),   backgroundColor: '#86efac', borderRadius: 4 });
+    if (hay('ajusteMenos')) datasets.push({ label: 'Ajuste −',     data: serie('ajusteMenos'), backgroundColor: '#fca5a5', borderRadius: 4 });
+    const unidad = upc > 1 ? 'cj' : 'und';
+
     this._invMovChart = new Chart(ctx, {
       type: 'bar',
-      data: {
-        labels: fechas.map(f => WMS.formatDate(f)),
-        datasets: [
-          { label:'Entradas', data: fechas.map(f=>porDia[f].entradas), backgroundColor:'#22c55e', borderRadius:4 },
-          { label:'Salidas',  data: fechas.map(f=>porDia[f].salidas),  backgroundColor:'#ef4444', borderRadius:4 },
-        ]
-      },
+      data: { labels: fechas.map(f => WMS.formatDate(f)), datasets },
       options: {
         responsive:true, maintainAspectRatio:false,
         plugins:{ legend:{position:'top'}, tooltip:{
-          backgroundColor:'#1a2340', titleColor:'#fff', bodyColor:'rgba(255,255,255,.8)', padding:10, cornerRadius:8
+          backgroundColor:'#1a2340', titleColor:'#fff', bodyColor:'rgba(255,255,255,.8)', padding:10, cornerRadius:8,
+          callbacks: {
+            label: c => `${c.dataset.label}: ${WMS.formatNum(c.parsed.y)} ${unidad}`,
+            afterBody: items => {
+              const d = porDia[fechas[items[0].dataIndex]];
+              const dest = Object.entries(d.destinos).sort((a, b) => b[1] - a[1]).slice(0, 6);
+              return dest.length ? ['', 'Despachado a:', ...dest.map(([n, u]) => `  ${n}: ${WMS.formatNum(aCaja(u))} ${unidad}`)] : [];
+            },
+          },
         }},
         scales:{
           x:{ grid:{display:false}, ticks:{font:{size:10},color:'#6b7a99'} },
-          y:{ beginAtZero:true, grid:{color:'#f0f2f8'}, ticks:{font:{size:10},color:'#6b7a99'} }
+          y:{ beginAtZero:true, grid:{color:'#f0f2f8'}, ticks:{font:{size:10},color:'#6b7a99'},
+              title:{ display:true, text: upc > 1 ? 'Cajas' : 'Unidades', font:{size:10}, color:'#6b7a99' } }
         }
       }
     });
@@ -320,14 +423,14 @@ WMS_MODULES.inventario = {
         detail.style.display = expanded ? 'none' : 'table-row';
         btn.innerHTML = expanded
           ? '<i class="fa-solid fa-chevron-right"></i>'
-          : '<i class="fa-solid fa-chevron-down" style="color:#0070f2"></i>';
+          : '<i class="fa-solid fa-chevron-down" style="color:var(--accent)"></i>';
       };
 
       body.innerHTML = `
 <div class="pro-dashboard">
 
   <!-- KPIs -->
-  <div class="pro-kpi-grid" style="grid-template-columns:repeat(5,1fr)">
+  <div class="pro-kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
     <div class="pro-kpi-card accent-blue">
       <div class="pro-kpi-header">
         <div class="pro-kpi-icon"><i class="fa-solid fa-boxes-stacked"></i></div>
@@ -343,6 +446,14 @@ WMS_MODULES.inventario = {
       </div>
       <div class="pro-kpi-value">${WMS.formatNum(totalUnits)}</div>
       <div class="pro-kpi-label">UND/TOTAL disponible</div>
+    </div>
+    <div class="pro-kpi-card accent-blue" style="border:1px solid var(--info-bg);">
+      <div class="pro-kpi-header">
+        <div class="pro-kpi-icon"><i class="fa-solid fa-box"></i></div>
+        <span class="pro-kpi-trend neu">Cajas</span>
+      </div>
+      <div class="pro-kpi-value">${WMS.formatNum(consolidado.reduce((a,p) => a + p.total_cajas, 0))} cj + ${WMS.formatNum(Math.round(consolidado.reduce((a,p) => a + p.total_sueltos, 0) * 1000) / 1000)}</div>
+      <div class="pro-kpi-label">Total cajas + saldos</div>
     </div>
     <div class="pro-kpi-card accent-green">
       <div class="pro-kpi-header">
@@ -391,7 +502,7 @@ WMS_MODULES.inventario = {
 
     <div class="pro-chart-card">
       <div class="pro-chart-title">
-        <span><i class="fa-solid fa-chart-bar" style="color:#0070f2;margin-right:8px"></i>Top 10 referencias por cantidad</span>
+        <span><i class="fa-solid fa-chart-bar" style="color:var(--accent);margin-right:8px"></i>Top 10 referencias por cantidad</span>
         <span class="pro-chart-badge">Ranking</span>
       </div>
       <div class="pro-chart-container" style="height:200px">
@@ -404,7 +515,7 @@ WMS_MODULES.inventario = {
   <div class="pro-table-card" id="stock-table-card">
     <div class="pro-table-header" onclick="WMS_MODULES.inventario._toggleStockTable()">
       <div class="pro-table-header-left">
-        <span class="pro-table-title"><i class="fa-solid fa-layer-group" style="margin-right:8px;color:#0070f2"></i>Stock General Pivot</span>
+        <span class="pro-table-title"><i class="fa-solid fa-layer-group" style="margin-right:8px;color:var(--accent)"></i>Stock General Pivot</span>
         <span class="pro-table-count">${consolidado.length} referencias</span>
       </div>
       <span class="pro-table-toggle"><i class="fa-solid fa-chevron-down"></i></span>
@@ -452,7 +563,7 @@ WMS_MODULES.inventario = {
                   onclick="window._togglePivot(this.querySelector('.pivot-tog'),'${detId}',event)"
                   style="cursor:pointer">
                 <td style="text-align:center">
-                  <span class="pivot-tog" style="color:#6b7a99;display:inline-block;transition:transform .2s">
+                  <span class="pivot-tog" style="color:var(--muted);display:inline-block;transition:transform .2s">
                     <i class="fa-solid fa-chevron-right"></i>
                   </span>
                 </td>
@@ -463,13 +574,13 @@ WMS_MODULES.inventario = {
                         title="UND/TOTAL">${WMS.formatNum(p.total)}</span>
                 </td>
                 <td style="text-align:center" class="muted">${promVenta>0?WMS.formatNum(promVenta):'–'}</td>
-                <td style="text-align:center;font-weight:700;color:#0070f2">${diasInv}</td>
+                <td style="text-align:center;font-weight:700;color:var(--accent)">${diasInv}</td>
                 <td style="text-align:center" class="muted">${promFv}</td>
                 <td style="text-align:center"><span class="pro-badge ${stCls}">${stLbl}</span></td>
               </tr>
               <tr id="${detId}" style="display:none">
                 <td colspan="8" style="padding:0 24px 16px 48px;background:#f8faff">
-                  <div style="border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;margin-top:8px">
+                  <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-top:8px">
                     <table class="erp-table" style="font-size:.77rem">
                       <thead><tr style="background:#f0f4ff">
                         <th>Ubicación</th><th style="text-align:center">UND/TOTAL</th>
@@ -496,10 +607,10 @@ WMS_MODULES.inventario = {
                             <td style="text-align:center;font-weight:700">
                               ${hasCajas
                                 ? `<span title="${desgloseTitle}" style="cursor:help">${WMS.formatNum(l.cantidad)}</span>
-                                   <div style="font-size:10px;color:#64748b">${l.cantidad_cajas}×${lUpc}+${l.saldos}</div>`
+                                   <div style="font-size:10px;color:var(--muted)">${l.cantidad_cajas}×${lUpc}+${l.saldos}</div>`
                                 : WMS.formatNum(l.cantidad)}
                             </td>
-                            <td style="text-align:center;color:#0070f2">${hasCajas ? l.cantidad_cajas : '—'}</td>
+                            <td style="text-align:center;color:var(--accent)">${hasCajas ? l.cantidad_cajas : '—'}</td>
                             <td style="text-align:center;color:#6d28d9">${hasCajas ? l.saldos : '—'}</td>
                             <td class="muted">${WMS.esc(l.lote)}</td>
                             <td class="muted">${l.fecha_vencimiento!=='-'?WMS.formatDate(l.fecha_vencimiento):'N/A'}</td>
@@ -699,38 +810,38 @@ WMS_MODULES.inventario = {
         return datos.map((u, i) => {
           const detId = 'pivot-ubi-' + i;
           const pctBar = Math.min(100, u.ocupacion_pct || 0);
-          const pctColor = pctBar >= 90 ? '#ef4444' : pctBar >= 70 ? '#f97316' : '#10b981';
+          const pctColor = pctBar >= 90 ? 'var(--danger)' : pctBar >= 70 ? '#f97316' : 'var(--ok)';
           const refText = u.referencias_text || '';
           return `<tr class="pivot-row" data-ubi="${WMS.esc(u.ubicacion||u.posicion||'')}" data-refs="${WMS.esc(refText)}" data-total="${u.und_total||0}"
                       onclick="window._toggleUbiPivot(this.querySelector('button'),'${detId}',event)">
             <td class="text-center">
-              <button class="btn btn-sm btn-outline-secondary" style="padding:2px 8px;border-radius:6px;border-color:#cbd5e1;">
+              <button class="btn btn-sm btn-outline-secondary" style="padding:2px 8px;border-radius:6px;border-color:var(--border);">
                 <i class="fa-solid fa-chevron-down"></i>
               </button>
             </td>
             <td>
               <span class="badge badge-info" style="font-size:.9rem;padding:6px 12px;">${WMS.esc(u.ubicacion||u.posicion||'-')}</span>
-              <span style="font-size:.72rem;color:#64748b;margin-left:6px;display:inline-block;">${WMS.esc(refText ? 'Refs: ' + refText : (u.tipo||''))}</span>
+              <span style="font-size:.72rem;color:var(--muted);margin-left:6px;display:inline-block;">${WMS.esc(refText ? 'Refs: ' + refText : (u.tipo||''))}</span>
             </td>
             <td class="text-center">
               <div style="display:flex;align-items:center;gap:8px;justify-content:center;">
-                <div style="width:60px;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden">
+                <div style="width:60px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
                   <div style="width:${pctBar}%;height:100%;background:${pctColor};border-radius:3px"></div>
                 </div>
                 <span style="font-size:.8rem;color:${pctColor};font-weight:700">${pctBar.toFixed(0)}%</span>
               </div>
             </td>
             <td class="text-center">
-              <span style="font-weight:700;font-size:.9rem;color:#0f172a">${WMS.formatNum(u.und_total||0)}</span>
+              <span style="font-weight:700;font-size:.9rem;color:var(--text)">${WMS.formatNum(u.und_total||0)}</span>
               ${u.proximo_vencimiento ? `<div style="font-size:.7rem;color:#f97316;margin-top:2px">Vence: ${WMS.formatDate(u.proximo_vencimiento)}</div>` : ''}
             </td>
             <td class="text-center">
-              <span style="font-size:.8rem;color:#64748b">${u.dias_sin_mov === 'N/A' ? 'N/A' : u.dias_sin_mov + 'd sin mov.'}</span>
+              <span style="font-size:.8rem;color:var(--muted)">${u.dias_sin_mov === 'N/A' ? 'N/A' : u.dias_sin_mov + 'd sin mov.'}</span>
             </td>
           </tr>
           <tr class="pivot-detail-row" id="${detId}" style="display:none;" data-ubi-id="${u.id}" data-loaded="0">
             <td colspan="5" style="padding:8px 32px 16px 64px;">
-              <div style="font-size:.75rem;color:#64748b;padding:6px 0 10px;">
+              <div style="font-size:.75rem;color:var(--muted);padding:6px 0 10px;">
                 <strong>Total UND/TOTAL: ${WMS.formatNum(u.und_total||0)}</strong> &nbsp;|&nbsp;
                 Cajas: ${WMS.formatNum(u.total_cajas||0)} &nbsp;|&nbsp;
                 Sueltos: ${WMS.formatNum(u.total_sueltos||0)} &nbsp;|&nbsp;
@@ -803,9 +914,9 @@ WMS_MODULES.inventario = {
 
       WMS.setContent(`
         <style>
-          .pivot-row td { background:#fff; cursor:pointer; transition:background .15s; border-bottom:1px solid #f1f5f9; }
-          .pivot-row:hover td { background:#f8fafc; }
-          .pivot-detail-row { background:#f8fafc; border-bottom:2px solid #e2e8f0; }
+          .pivot-row td { background:var(--surface); cursor:pointer; transition:background .15s; border-bottom:1px solid var(--border-light); }
+          .pivot-row:hover td { background:var(--table-header-bg); }
+          .pivot-detail-row { background:var(--table-header-bg); border-bottom:2px solid var(--border); }
           .sort-th { cursor:pointer; user-select:none; white-space:nowrap; }
           .sort-th:hover { background:#f0f4ff; }
         </style>
@@ -815,14 +926,14 @@ WMS_MODULES.inventario = {
             <input id="ubi-search-input" placeholder="Buscar por código de ubicación o referencia de producto..."
                    oninput="window._ubiSearchDebounce(this.value)">
           </div>
-          <span style="font-size:.78rem;color:#94a3b8;align-self:center">
+          <span style="font-size:.78rem;color:var(--text-muted);align-self:center">
             ${lista.length} ubicaciones con stock — datos reales desde inventarios
           </span>
         </div>
         <div class="card">
           <div class="card-header">
             <span class="card-title"><i class="fa-solid fa-map-location"></i> Stock por Ubicación</span>
-            <span style="font-size:.75rem;color:#64748b">Haga clic en el encabezado de columna para ordenar</span>
+            <span style="font-size:.75rem;color:var(--muted)">Haga clic en el encabezado de columna para ordenar</span>
           </div>
           <div class="table-container">
             <table class="erp-table" id="stock-ubi-table">
@@ -860,7 +971,7 @@ WMS_MODULES.inventario = {
         return;
       }
       target.innerHTML = `
-        <table class="erp-table" style="font-size:.78rem;background:#fff;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
+        <table class="erp-table" style="font-size:.78rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;">
           <thead><tr style="background:#f0f4ff">
             <th>Referencia</th><th>Lote</th>
             <th style="text-align:center">Cajas</th><th style="text-align:center">Sueltos</th><th style="text-align:center">UND/TOTAL</th>
@@ -878,9 +989,9 @@ WMS_MODULES.inventario = {
               }
               return `
               <tr>
-                <td><b>${WMS.esc(i.codigo_interno || i.ean || '—')}</b><div style="font-size:10px;color:#64748b">${WMS.esc(i.descripcion || i.producto_nombre || '')}</div></td>
+                <td><b>${WMS.esc(i.codigo_interno || i.ean || '—')}</b><div style="font-size:10px;color:var(--muted)">${WMS.esc(i.descripcion || i.producto_nombre || '')}</div></td>
                 <td class="muted">${WMS.esc(i.lote || '—')}</td>
-                <td style="text-align:center;color:#0070f2;font-weight:700">${cj}</td>
+                <td style="text-align:center;color:var(--accent);font-weight:700">${cj}</td>
                 <td style="text-align:center;color:#6d28d9;font-weight:700">${Number(sl.toFixed(4))}</td>
                 <td style="text-align:center;font-weight:700">${WMS.formatNum(cant)}</td>
                 <td class="muted">${i.fecha_vencimiento ? WMS.formatDate(i.fecha_vencimiento) : 'N/A'}</td>
@@ -896,7 +1007,7 @@ WMS_MODULES.inventario = {
           </tbody>
         </table>`;
     } catch(e) {
-      target.innerHTML = '<div class="muted" style="padding:8px 0;font-size:.78rem;color:#ef4444;">Error cargando desglose</div>';
+      target.innerHTML = '<div class="muted" style="padding:8px 0;font-size:.78rem;color:var(--danger);">Error cargando desglose</div>';
       console.error(e);
     }
   },
@@ -908,11 +1019,11 @@ WMS_MODULES.inventario = {
     WMS.showModal(`Historial: ${nombreProducto}`, `
       <div class="filter-bar" style="gap:8px;margin-bottom:12px;">
         <div class="form-group" style="margin:0;">
-          <label class="form-label" style="font-size:.7rem;">Desde</label>
+          <label class="form-label">Desde</label>
           <input type="date" id="uhp-desde" class="form-control form-control-sm" value="${hace90}" style="width:150px">
         </div>
         <div class="form-group" style="margin:0;">
-          <label class="form-label" style="font-size:.7rem;">Hasta</label>
+          <label class="form-label">Hasta</label>
           <input type="date" id="uhp-hasta" class="form-control form-control-sm" value="${hoy}" style="width:150px">
         </div>
         <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._buscarHistorialUbiProducto(${ubicacionId},${productoId})"><i class="fa-solid fa-search"></i> Filtrar</button>
@@ -984,7 +1095,7 @@ WMS_MODULES.inventario = {
       const items = d.items || [];
       const res   = d.resumen || {};
       const sColor = { VENCIDO:'#ef4444', CRITICO:'#f97316', ALERTA:'#eab308', PROXIMO:'#3b82f6', OK:'#10b981' };
-      const sBg    = { VENCIDO:'#fef2f2', CRITICO:'#fff7ed', ALERTA:'#fefce8', PROXIMO:'#eff6ff', OK:'#f0fdf4' };
+      const sBg    = { VENCIDO:'var(--danger-bg)', CRITICO:'var(--warn-bg)', ALERTA:'var(--warn-bg)', PROXIMO:'var(--info-bg)', OK:'var(--ok-bg)' };
 
       WMS.setContent(`
       <style>
@@ -993,9 +1104,9 @@ WMS_MODULES.inventario = {
         .sem-card:hover { transform:translateY(-2px); }
         .sem-card .sem-num { font-size:1.8rem; font-weight:800; }
         .sem-card .sem-lbl { font-size:.72rem; font-weight:700; text-transform:uppercase; opacity:.7; }
-        .venc-row-VENCIDO { background:#fef2f2 !important; }
-        .venc-row-CRITICO  { background:#fff7ed !important; }
-        .venc-row-ALERTA   { background:#fefce8 !important; }
+        .venc-row-VENCIDO { background:var(--danger-bg) !important; }
+        .venc-row-CRITICO  { background:var(--warn-bg) !important; }
+        .venc-row-ALERTA   { background:var(--warn-bg) !important; }
       </style>
 
       <div class="sem-cards">
@@ -1045,7 +1156,7 @@ WMS_MODULES.inventario = {
                   <td>${WMS.formatDate(v.fecha_vencimiento)||'-'}</td>
                   <td class="text-center">
                     ${v.dias_restantes < 0
-                      ? `<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:.72rem;font-weight:800;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;">
+                      ? `<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:.72rem;font-weight:800;background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-bg);">
                            <i class="fa-solid fa-skull-crossbones" style="font-size:.65rem"></i>
                            VENCIDO ${Math.abs(v.dias_restantes)}d
                          </span>`
@@ -1127,15 +1238,15 @@ WMS_MODULES.inventario = {
               <option value="0">Solo comparar entre conteos (sin sistema)</option>
             </select>
           </div>
-          <div id="cnt-cargue-note" style="display:none;grid-column:1/-1;padding:12px 16px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font-size:.85rem;color:#92400e;">
+          <div id="cnt-cargue-note" style="display:none;grid-column:1/-1;padding:12px 16px;background:var(--warn-bg);border:1px solid #fcd34d;border-radius:6px;font-size:.85rem;color:var(--warn);">
             <i class="fa-solid fa-box-archive" style="margin-right:6px;"></i>
             <strong>Cargue Inicial:</strong> La fecha de vencimiento es siempre obligatoria en este modo.
           </div>` : ''}
-          <div class="form-group" id="cnt-fv-config-group" style="grid-column:1/-1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;">
+          <div class="form-group" id="cnt-fv-config-group" style="grid-column:1/-1;background:var(--ok-bg);border:1px solid var(--ok-bg);border-radius:8px;padding:12px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div>
-                <div style="font-weight:700;font-size:.85rem;color:#15803d;"><i class="fa-solid fa-calendar-check"></i> Fecha de vencimiento obligatoria</div>
-                <div style="font-size:.75rem;color:#64748b;margin-top:2px;">
+                <div style="font-weight:700;font-size:.85rem;color:var(--ok);"><i class="fa-solid fa-calendar-check"></i> Fecha de vencimiento obligatoria</div>
+                <div style="font-size:.75rem;color:var(--muted);margin-top:2px;">
                   <span id="cnt-fv-mode-desc">Los auxiliares DEBEN digitar la fecha de vencimiento para cada producto que la controle.</span>
                 </div>
               </div>
@@ -1147,9 +1258,9 @@ WMS_MODULES.inventario = {
           </div>
         </div>
 
-        <div style="margin-top:16px;padding:12px;background:#f8fafc;border-radius:4px;border:1px solid #e2e8f0;">
-          <p style="font-weight:700;font-size:.85rem;color:#1e293b;margin-bottom:8px;">
-            <i class="fa-solid fa-user-plus" style="color:#1a56db"></i>
+        <div style="margin-top:16px;padding:12px;background:var(--table-header-bg);border-radius:4px;border:1px solid var(--border);">
+          <p style="font-weight:700;font-size:.85rem;color:var(--text);margin-bottom:8px;">
+            <i class="fa-solid fa-user-plus" style="color:var(--accent)"></i>
             Asignaciones de conteo (puede agregar más después de iniciar)
           </p>
           <div id="asig-list" style="display:flex;flex-direction:column;gap:10px;max-height:260px;overflow-y:auto;">
@@ -1305,17 +1416,17 @@ WMS_MODULES.inventario = {
     const idx = cont.children.length;
     const div = document.createElement('div');
     div.className = 'asig-row';
-    div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:start;background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:8px;';
+    div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:start;background:var(--surface);padding:10px;border-radius:6px;border:1px solid var(--border);margin-bottom:8px;';
     div.innerHTML = `
       <div>
-        <label style="font-size:.75rem;font-weight:600;color:#64748b;">Auxiliar</label>
+        <label class="form-label">Auxiliar</label>
         <select class="form-control asig-aux" style="font-size:.8rem">
           <option value="">Seleccionar...</option>
           ${auxiliares.map(a => `<option value="${a.id}">${WMS.esc(a.nombre)}</option>`).join('')}
         </select>
       </div>
       <div>
-        <label style="font-size:.75rem;font-weight:600;color:#64748b;">Tipo instrucción</label>
+        <label class="form-label">Tipo instrucción</label>
         <select class="form-control asig-tipo" style="font-size:.8rem" onchange="WMS_MODULES.inventario._toggleAsigDetalle(this)">
           <option value="Libre">Libre (sin restricción)</option>
           <option value="Pasillo">Por Pasillo</option>
@@ -1324,7 +1435,7 @@ WMS_MODULES.inventario = {
         </select>
       </div>
       <div class="asig-detalle-container">
-        <label style="font-size:.75rem;font-weight:600;color:#64748b;">Detalle / Referencia</label>
+        <label class="form-label">Detalle / Referencia</label>
         <input class="form-control asig-detalle" placeholder="Pasillo A, Módulo 3..." style="font-size:.8rem">
         <input class="asig-prod-id" type="hidden">
         <input class="asig-prod-list" type="hidden">
@@ -1335,8 +1446,8 @@ WMS_MODULES.inventario = {
             </button>
             <span class="asig-ref-counter badge badge-info" style="display:none;">0 ref. listas</span>
           </div>
-          <div class="asig-masivo-box" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;padding:8px;border-radius:6px;margin-top:4px;">
-            <label style="font-size:.7rem;font-weight:700;color:#0369a1;display:block;margin-bottom:4px;">
+          <div class="asig-masivo-box" style="display:none;background:var(--info-bg);border:1px solid #bae6fd;padding:8px;border-radius:6px;margin-top:4px;">
+            <label class="form-label" style="display:block;margin-bottom:4px;">
               Pegue los códigos de referencias (separados por comas, espacios o líneas):
             </label>
             <textarea class="form-control asig-masivo-input" rows="3" style="font-size:.78rem;font-family:monospace;" placeholder="Ej: 101037, 112027, 106003, 1100121..."></textarea>
@@ -1344,7 +1455,7 @@ WMS_MODULES.inventario = {
               <button type="button" class="btn btn-xs btn-success" onclick="WMS_MODULES.inventario._validarMasivoRow(this)">
                 <i class="fa-solid fa-check-double"></i> Validar y Cargar
               </button>
-              <small class="asig-masivo-status" style="font-size:.7rem;color:#64748b;"></small>
+              <small class="asig-masivo-status" style="font-size:.7rem;color:var(--muted);"></small>
             </div>
           </div>
           <div class="asig-ref-badges" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;max-height:80px;overflow-y:auto;"></div>
@@ -1374,7 +1485,7 @@ WMS_MODULES.inventario = {
 
     const text = (txtArea?.value || '').trim();
     if (!text) {
-      if (status) status.innerHTML = '<span class="text-danger">Pegue al menos un código</span>';
+      if (status) status.innerHTML = '<span class="form-error">Pegue al menos un código</span>';
       return;
     }
 
@@ -1390,7 +1501,7 @@ WMS_MODULES.inventario = {
       const noEncontrados = res.data.no_encontrados || [];
 
       if (encontrados.length === 0) {
-        if (status) status.innerHTML = '<span class="text-danger">No se encontraron productos coincidentes</span>';
+        if (status) status.innerHTML = '<span class="form-error">No se encontraron productos coincidentes</span>';
         return;
       }
 
@@ -1605,39 +1716,39 @@ WMS_MODULES.inventario = {
 
       const htmlContent = `
         <style>
-          .inv2-wrapper  { width: 100%; padding: 20px; box-sizing: border-box; background: #fff; display: flex; flex-direction: column; gap: 20px; }
+          .inv2-wrapper  { width: 100%; padding: 20px; box-sizing: border-box; background: var(--surface); display: flex; flex-direction: column; gap: 20px; }
           
           /* KPIs compactos */
           .inv2-kpi-row  { display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; width: 100%; }
-          .inv2-kpi      { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; display: flex; gap: 12px; align-items: center; }
+          .inv2-kpi      { background: var(--table-header-bg); border: 1px solid var(--border); border-radius: 12px; padding: 15px; display: flex; gap: 12px; align-items: center; }
           .inv2-kpi-ic   { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0; }
-          .inv2-kpi-v    { font-size: 1.6rem; font-weight: 900; line-height: 1; color: #1e293b; }
-          .inv2-kpi-lbl  { font-size: .68rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
-          .inv2-kpi-sub  { font-size: .65rem; color: #94a3b8; margin-top: 2px; }
+          .inv2-kpi-v    { font-size: 1.6rem; font-weight: 900; line-height: 1; color: var(--text); }
+          .inv2-kpi-lbl  { font-size: .68rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+          .inv2-kpi-sub  { font-size: .65rem; color: var(--text-muted); margin-top: 2px; }
 
           /* Cabecera sesión mejorada */
-          .inv2-header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; }
+          .inv2-header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border-light); padding-bottom: 15px; }
           .inv2-title-area { display: flex; flex-direction: column; gap: 4px; }
-          .inv2-session-name { font-size: 1.3rem; font-weight: 900; color: #0f172a; }
+          .inv2-session-name { font-size: 1.3rem; font-weight: 900; color: var(--text); }
           .inv2-badges     { display: flex; gap: 6px; align-items: center; }
           .inv2-btn-group  { display: flex; gap: 8px; }
 
           /* Barra de herramientas unificada */
-          .inv2-toolbar    { display: flex; align-items: center; justify-content: space-between; background: #f8fafc; border-radius: 10px; padding: 8px 16px; border: 1px solid #e2e8f0; }
-          .inv2-rounds-box { display: flex; gap: 8px; align-items: center; border-right: 2px solid #e2e8f0; padding-right: 16px; margin-right: 16px; }
+          .inv2-toolbar    { display: flex; align-items: center; justify-content: space-between; background: var(--table-header-bg); border-radius: 10px; padding: 8px 16px; border: 1px solid var(--border); }
+          .inv2-rounds-box { display: flex; gap: 8px; align-items: center; border-right: 2px solid var(--border); padding-right: 16px; margin-right: 16px; }
           
           .inv2-tabs       { display: flex !important; gap: 4px; flex: 1; }
-          .inv2-tab        { padding: 8px 16px; font-size: .85rem; font-weight: 700; color: #64748b; border: none; background: none; cursor: pointer; border-radius: 6px; transition: 0.2s; display: flex; align-items: center; gap: 6px; }
+          .inv2-tab        { padding: 8px 16px; font-size: .85rem; font-weight: 700; color: var(--muted); border: none; background: none; cursor: pointer; border-radius: 6px; transition: 0.2s; display: flex; align-items: center; gap: 6px; }
           .inv2-tab i      { font-size: .9rem; opacity: .7; }
           .inv2-tab.on     { background: #1e293b; color: #fff; }
           .inv2-tab.on i   { opacity: 1; }
-          .inv2-tab:hover:not(.on) { background: #f1f5f9; color: #1e293b; }
+          .inv2-tab:hover:not(.on) { background: var(--btn-neutral); color: var(--text); }
 
           .inv2-content    { width: 100%; min-height: 500px; }
           
           /* Tablas y alertas */
-          .inv-mat-scroll  { width: 100%; overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
-          .inv2-alert      { padding: 12px 16px; border-radius: 10px; border-left: 5px solid #ef4444; background: #fef2f2; color: #991b1b; display: flex; align-items: center; gap: 12px; font-size: .88rem; }
+          .inv-mat-scroll  { width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+          .inv2-alert      { padding: 12px 16px; border-radius: 10px; border-left: 5px solid var(--danger); background: var(--danger-bg); color: var(--danger); display: flex; align-items: center; gap: 12px; font-size: .88rem; }
           
           #standalone-side-panel { z-index: 100 !important; }
         </style>
@@ -1646,51 +1757,51 @@ WMS_MODULES.inventario = {
           <!-- Nivel 1: KPIs Principales (Físico vs Sistema WMS) -->
           <div class="inv2-kpi-row">
             <div class="inv2-kpi">
-              <div class="inv2-kpi-ic" style="background:${iraVal>=98?'#dcfce7':'#fee2e2'}">
-                <i class="fa-solid fa-bullseye" style="color:${iraVal>=98?'#15803d':'#b91c1c'}"></i>
+              <div class="inv2-kpi-ic" style="background:${iraVal>=98?'var(--ok-bg)':'var(--danger-bg)'}">
+                <i class="fa-solid fa-bullseye" style="color:${iraVal>=98?'var(--ok)':'var(--danger)'}"></i>
               </div>
               <div>
-                <div class="inv2-kpi-v" style="color:${iraVal>=98?'#15803d':'#b91c1c'}">${iraVal}%</div>
+                <div class="inv2-kpi-v" style="color:${iraVal>=98?'var(--ok)':'var(--danger)'}">${iraVal}%</div>
                 <div class="inv2-kpi-lbl">Exactitud (IRA)</div>
               </div>
             </div>
 
             <div class="inv2-kpi">
-              <div class="inv2-kpi-ic" style="background:#fee2e2">
-                <i class="fa-solid fa-arrow-trend-down" style="color:#b91c1c"></i>
+              <div class="inv2-kpi-ic" style="background:var(--danger-bg)">
+                <i class="fa-solid fa-arrow-trend-down" style="color:var(--danger)"></i>
               </div>
               <div>
-                <div class="inv2-kpi-v" style="color:#b91c1c">${Math.abs(kpis.faltantes_unidades||0)}</div>
+                <div class="inv2-kpi-v" style="color:var(--danger)">${Math.abs(kpis.faltantes_unidades||0)}</div>
                 <div class="inv2-kpi-lbl">Faltantes (uds)</div>
               </div>
             </div>
 
             <div class="inv2-kpi">
-              <div class="inv2-kpi-ic" style="background:#dcfce7">
-                <i class="fa-solid fa-arrow-trend-up" style="color:#15803d"></i>
+              <div class="inv2-kpi-ic" style="background:var(--ok-bg)">
+                <i class="fa-solid fa-arrow-trend-up" style="color:var(--ok)"></i>
               </div>
               <div>
-                <div class="inv2-kpi-v" style="color:#15803d">${kpis.sobrantes_unidades||0}</div>
+                <div class="inv2-kpi-v" style="color:var(--ok)">${kpis.sobrantes_unidades||0}</div>
                 <div class="inv2-kpi-lbl">Sobrantes (uds)</div>
               </div>
             </div>
 
             <div class="inv2-kpi">
-              <div class="inv2-kpi-ic" style="background:#dbeafe">
-                <i class="fa-solid fa-chart-line" style="color:#1d4ed8"></i>
+              <div class="inv2-kpi-ic" style="background:var(--info-bg)">
+                <i class="fa-solid fa-chart-line" style="color:var(--info)"></i>
               </div>
               <div>
-                <div class="inv2-kpi-v" style="color:#1d4ed8">${kpis.pct_avance||0}%</div>
+                <div class="inv2-kpi-v" style="color:var(--info)">${kpis.pct_avance||0}%</div>
                 <div class="inv2-kpi-lbl">Avance R${ronda||1}</div>
               </div>
             </div>
 
-            <div class="inv2-kpi" style="${(kpis.ubicaciones_vaciadas||0)>0?'background:#fef3c7;border-color:#fbbf24':''}">
-              <div class="inv2-kpi-ic" style="background:${(kpis.ubicaciones_vaciadas||0)>0?'#fde68a':'#f1f5f9'}">
-                <i class="fa-solid fa-triangle-exclamation" style="color:${(kpis.ubicaciones_vaciadas||0)>0?'#d97706':'#94a3b8'}"></i>
+            <div class="inv2-kpi" style="${(kpis.ubicaciones_vaciadas||0)>0?'background:var(--warn-bg);border-color:#fbbf24':''}">
+              <div class="inv2-kpi-ic" style="background:${(kpis.ubicaciones_vaciadas||0)>0?'var(--warn-bg)':'var(--btn-neutral)'}">
+                <i class="fa-solid fa-triangle-exclamation" style="color:${(kpis.ubicaciones_vaciadas||0)>0?'var(--warn)':'var(--text-muted)'}"></i>
               </div>
               <div>
-                <div class="inv2-kpi-v" style="color:${(kpis.ubicaciones_vaciadas||0)>0?'#d97706':'#64748b'}">${kpis.ubicaciones_vaciadas||0}</div>
+                <div class="inv2-kpi-v" style="color:${(kpis.ubicaciones_vaciadas||0)>0?'var(--warn)':'var(--muted)'}">${kpis.ubicaciones_vaciadas||0}</div>
                 <div class="inv2-kpi-lbl">Ubic. Vaciadas</div>
               </div>
             </div>
@@ -1736,43 +1847,43 @@ WMS_MODULES.inventario = {
 
           <!-- Panel: Ubicaciones Vaciadas por Auxiliares -->
           ${(ubicaciones_en_cero && ubicaciones_en_cero.length > 0) ? `
-          <div style="background:#fef3c7;border:1px solid #d97706;border-left:5px solid #d97706;border-radius:10px;padding:16px 20px">
+          <div style="background:var(--warn-bg);border:1px solid var(--warn);border-left:5px solid var(--warn);border-radius:10px;padding:16px 20px">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-              <i class="fa-solid fa-triangle-exclamation" style="color:#d97706;font-size:1.2rem"></i>
+              <i class="fa-solid fa-triangle-exclamation" style="color:var(--warn);font-size:1.2rem"></i>
               <div>
-                <span style="font-size:.9rem;font-weight:800;color:#92400e">Ubicaciones Vaciadas por Auxiliares</span>
-                <span style="margin-left:10px;background:#d97706;color:#fff;font-size:.7rem;font-weight:800;padding:2px 10px;border-radius:12px">${ubicaciones_en_cero.length} ubicación${ubicaciones_en_cero.length!==1?'es':''}</span>
+                <span style="font-size:.9rem;font-weight:800;color:var(--warn)">Ubicaciones Vaciadas por Auxiliares</span>
+                <span style="margin-left:10px;background:var(--warn);color:#fff;font-size:.7rem;font-weight:800;padding:2px 10px;border-radius:12px">${ubicaciones_en_cero.length} ubicación${ubicaciones_en_cero.length!==1?'es':''}</span>
               </div>
-              <span style="margin-left:auto;font-size:.75rem;color:#92400e;font-style:italic">El auxiliar contó 0 unidades donde el sistema reporta stock. Revise antes de aprobar el ajuste.</span>
+              <span style="margin-left:auto;font-size:.75rem;color:var(--warn);font-style:italic">El auxiliar contó 0 unidades donde el sistema reporta stock. Revise antes de aprobar el ajuste.</span>
             </div>
             <div style="overflow-x:auto;border-radius:6px;border:1px solid #fbbf24">
-              <table class="erp-table" style="background:#fff;margin:0">
+              <table class="erp-table" style="background:var(--surface);margin:0">
                 <thead>
-                  <tr style="background:#fef9c3">
-                    <th style="font-size:.72rem;color:#92400e">AUXILIAR</th>
-                    <th style="font-size:.72rem;color:#92400e">UBICACIÓN</th>
-                    <th style="font-size:.72rem;color:#92400e">PRODUCTO</th>
-                    <th style="font-size:.72rem;color:#92400e;text-align:center">STOCK SISTEMA</th>
-                    <th style="font-size:.72rem;color:#92400e">HORA CONTEO</th>
-                    <th style="font-size:.72rem;color:#92400e;text-align:center">ESTADO AJUSTE</th>
+                  <tr style="background:var(--warn-bg)">
+                    <th style="font-size:.72rem;color:var(--warn)">AUXILIAR</th>
+                    <th style="font-size:.72rem;color:var(--warn)">UBICACIÓN</th>
+                    <th style="font-size:.72rem;color:var(--warn)">PRODUCTO</th>
+                    <th style="font-size:.72rem;color:var(--warn);text-align:center">STOCK SISTEMA</th>
+                    <th style="font-size:.72rem;color:var(--warn)">HORA CONTEO</th>
+                    <th style="font-size:.72rem;color:var(--warn);text-align:center">ESTADO AJUSTE</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${ubicaciones_en_cero.map(u => `
-                  <tr style="background:#fffbeb">
+                  <tr style="background:var(--warn-bg)">
                     <td style="font-weight:700;font-size:.8rem">${WMS.esc(u.auxiliar||'-')}</td>
-                    <td><span class="badge" style="background:#fde68a;color:#92400e;font-weight:800">${WMS.esc(u.ubicacion||'-')}</span></td>
+                    <td><span class="badge" style="background:var(--warn-bg);color:var(--warn);font-weight:800">${WMS.esc(u.ubicacion||'-')}</span></td>
                     <td>
-                      <div style="font-weight:700;font-size:.78rem;color:#1e293b">${WMS.esc(u.codigo||'-')}</div>
-                      <div style="font-size:.7rem;color:#64748b">${WMS.esc(u.producto||'-')}</div>
-                      ${u.lote ? `<div style="font-size:.68rem;color:#94a3b8">Lote: ${WMS.esc(u.lote)}</div>` : ''}
+                      <div style="font-weight:700;font-size:.78rem;color:var(--text)">${WMS.esc(u.codigo||'-')}</div>
+                      <div style="font-size:.7rem;color:var(--muted)">${WMS.esc(u.producto||'-')}</div>
+                      ${u.lote ? `<div style="font-size:.68rem;color:var(--text-muted)">Lote: ${WMS.esc(u.lote)}</div>` : ''}
                     </td>
-                    <td style="text-align:center;font-weight:800;font-size:.9rem;color:#b91c1c">${u.stock_sistema}</td>
-                    <td style="font-size:.75rem;color:#64748b">${u.hora_conteo ? u.hora_conteo.substring(0,16).replace('T',' ') : '-'}</td>
+                    <td style="text-align:center;font-weight:800;font-size:.9rem;color:var(--danger)">${u.stock_sistema}</td>
+                    <td style="font-size:.75rem;color:var(--muted)">${u.hora_conteo ? u.hora_conteo.substring(0,16).replace('T',' ') : '-'}</td>
                     <td style="text-align:center">
                       ${u.ajustado
-                        ? `<span class="badge" style="background:#dcfce7;color:#15803d;font-weight:800;font-size:.72rem">Ajustado</span>`
-                        : `<span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:800;font-size:.72rem">Pendiente Ajuste</span>`
+                        ? `<span class="badge" style="background:var(--ok-bg);color:var(--ok);font-weight:800;font-size:.72rem">Ajustado</span>`
+                        : `<span class="badge" style="background:var(--danger-bg);color:var(--danger);font-weight:800;font-size:.72rem">Pendiente Ajuste</span>`
                       }
                     </td>
                   </tr>`).join('')}
@@ -1785,7 +1896,7 @@ WMS_MODULES.inventario = {
           <div class="inv2-toolbar">
              ${sesion.num_conteos > 1 ? `
              <div class="inv2-rounds-box">
-                <small style="font-weight:800; color:#64748b; text-transform:uppercase; font-size:.65rem">Ronda:</small>
+                <small style="font-weight:800; color:var(--muted); text-transform:uppercase; font-size:.65rem">Ronda:</small>
                 ${Array.from({length:sesion.num_conteos},(_,i)=>`
                   <button class="btn btn-xs ${(ronda||1)===(i+1)?'btn-primary':'btn-outline-secondary'}"
                           onclick="WMS_MODULES.inventario.verDashboardV2(${id},${i+1})" 
@@ -1799,8 +1910,8 @@ WMS_MODULES.inventario = {
                 <button class="inv2-tab" id="t2-general" onclick="WMS_MODULES.inventario._tab2('general')">
                   <i class="fa-solid fa-layer-group"></i> Resumen
                 </button>
-                <button class="inv2-tab" id="t2-icg" onclick="WMS_MODULES.inventario._tab2('icg')" style="background:${d.analisis_icg?.cargado?'#f0fdf4':'#fffbeb'};color:${d.analisis_icg?.cargado?'#15803d':'#d97706'};border:1px solid ${d.analisis_icg?.cargado?'#bbf7d0':'#fef3c7'}; font-weight:800;">
-                  <i class="fa-solid fa-file-invoice"></i> Control ICG ${d.analisis_icg?.cargado?'<span class="badge" style="background:#16a34a;color:#fff;font-size:9px;padding:1px 5px;margin-left:4px;">CARGADO</span>':''}
+                <button class="inv2-tab" id="t2-icg" onclick="WMS_MODULES.inventario._tab2('icg')" style="background:${d.analisis_icg?.cargado?'var(--ok-bg)':'var(--warn-bg)'};color:${d.analisis_icg?.cargado?'var(--ok)':'var(--warn)'};border:1px solid ${d.analisis_icg?.cargado?'var(--ok-bg)':'var(--warn-bg)'}; font-weight:800;">
+                  <i class="fa-solid fa-file-invoice"></i> Control ICG ${d.analisis_icg?.cargado?'<span class="badge" style="background:var(--ok);color:#fff;font-size:9px;padding:1px 5px;margin-left:4px;">CARGADO</span>':''}
                 </button>
                 <button class="inv2-tab" id="t2-amb" onclick="WMS_MODULES.inventario._tab2('amb')">
                   <i class="fa-solid fa-temperature-three-quarters"></i> Ambientes & Auxiliares
@@ -1817,7 +1928,7 @@ WMS_MODULES.inventario = {
                 <button class="inv2-tab" id="t2-acc" onclick="WMS_MODULES.inventario._tab2('acc')">
                   <i class="fa-solid fa-shield-halved"></i> Seguridad
                 </button>
-                <button class="inv2-tab" style="color:#f59e0b" onclick="WMS_MODULES.inventario._resetServerCache()">
+                <button class="inv2-tab" style="color:var(--warn)" onclick="WMS_MODULES.inventario._resetServerCache()">
                   <i class="fa-solid fa-cloud-arrow-down"></i> Sincronizar Servidor
                 </button>
              </div>
@@ -1894,11 +2005,11 @@ WMS_MODULES.inventario = {
       const lineas = d.matriz_conteo || [];
       content.innerHTML = `
         <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center">
-          <div class="search-bar" style="flex:1;background:#fff;border:1px solid #e2e8f0;padding:4px 10px;border-radius:4px;"><i class="fa-solid fa-search"></i>
-            <input placeholder="Filtrar por producto, ubicación, SKU..." oninput="WMS_MODULES.inventario._filterMat(this.value,'inv2-mat-table')" style="border:none;outline:none;margin-left:8px;font-size:.85rem;width:90%">
+          <div class="search-bar" style="flex:1;"><i class="fa-solid fa-search"></i>
+            <input placeholder="Filtrar por producto, ubicación, SKU..." oninput="WMS_MODULES.inventario._filterMat(this.value,'inv2-mat-table')">
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
-             <small style="font-weight:700;color:#64748b;margin-right:8px;">VER:</small>
+             <small style="font-weight:700;color:var(--muted);margin-right:8px;">VER:</small>
              <button class="btn btn-xs btn-outline-secondary" onclick="WMS_MODULES.inventario._filterMatDiff('all')">Todo</button>
              <button class="btn btn-xs btn-outline-danger" onclick="WMS_MODULES.inventario._filterMatDiff('diff')">Diferencias</button>
              <button class="btn btn-xs btn-outline-success" onclick="WMS_MODULES.inventario._filterMatDiff('ok')">Sin dif.</button>
@@ -1907,7 +2018,7 @@ WMS_MODULES.inventario = {
         <div class="inv-mat-scroll">
           <table class="erp-table" id="inv2-mat-table">
             <thead>
-              <tr style="background:#f1f5f9">
+              <tr style="background:var(--btn-neutral)">
                 <th>AUXILIAR</th>
                 <th>FECHA / HORA</th>
                 <th>PRODUCTO / REFERENCIA</th>
@@ -1929,31 +2040,31 @@ WMS_MODULES.inventario = {
             </thead>
             <tbody>
               ${lineas.map(l => {
-                const color_vu = l.dias_vida_util <= 15 ? '#ef4444' : l.dias_vida_util <= 30 ? '#f59e0b' : '#10b981';
+                const color_vu = l.dias_vida_util <= 15 ? 'var(--danger)' : l.dias_vida_util <= 30 ? 'var(--warn)' : 'var(--ok)';
                 const has_diff = (l.diferencia !== 0);
                 const dif = parseFloat(l.diferencia || 0);
-                const difColor = dif === 0 ? '#10b981' : (dif > 0 ? '#0284c7' : '#ef4444');
+                const difColor = dif === 0 ? 'var(--ok)' : (dif > 0 ? 'var(--info)' : 'var(--danger)');
                 const difTxt   = dif === 0 ? '0' : (dif > 0 ? '+' + dif : dif);
                 return `
                   <tr data-diff="${has_diff?'1':'0'}" id="linea-row-${l.id}">
                     <td><small>${WMS.esc(l.auxiliar||'-')}</small></td>
                     <td><small>${l.hora_conteo ? WMS.formatDate(l.hora_conteo.substring(0,10)) + ' ' + l.hora_conteo.substring(11,16) : '-'}</small></td>
                     <td>
-                      <div style="font-weight:700;font-size:12px;color:#1e293b">${WMS.esc(l.codigo||'-')}</div>
-                      <div style="font-size:10px;color:#64748b;line-height:1.2;margin-top:2px">${WMS.esc(l.producto||'-')}</div>
+                      <div style="font-weight:700;font-size:12px;color:var(--text)">${WMS.esc(l.codigo||'-')}</div>
+                      <div style="font-size:10px;color:var(--muted);line-height:1.2;margin-top:2px">${WMS.esc(l.producto||'-')}</div>
                     </td>
-                    <td><b style="font-size:.8rem;color:#1e293b">${WMS.esc(l.ubicacion||'-')}</b></td>
+                    <td><b style="font-size:.8rem;color:var(--text)">${WMS.esc(l.ubicacion||'-')}</b></td>
                     <td><small>${WMS.esc(l.lote)}<br>${WMS.formatDate(l.fecha_vencimiento)}</small></td>
                     <td class="text-center"><b style="color:${color_vu}">${l.dias_vida_util}d</b></td>
                     <td class="text-center">${l.cantidad_cajas ?? '—'}</td>
-                    <td class="text-center" style="color:#64748b">${l.unidades_caja != null ? parseFloat(l.unidades_caja) : '—'}</td>
+                    <td class="text-center" style="color:var(--muted)">${l.unidades_caja != null ? parseFloat(l.unidades_caja) : '—'}</td>
                     <td class="text-center">${l.saldos != null ? parseFloat(l.saldos) : '—'}</td>
-                    <td class="text-center"><b style="font-size:1.1rem;color:#1d4ed8" title="UND/TOTAL">${parseFloat(l.cantidad_contada)}</b></td>
-                    <td class="text-center" style="color:#64748b">${parseFloat(l.cantidad_sistema)}</td>
+                    <td class="text-center"><b style="font-size:1.1rem;color:var(--info)" title="UND/TOTAL">${parseFloat(l.cantidad_contada)}</b></td>
+                    <td class="text-center" style="color:var(--muted)">${parseFloat(l.cantidad_sistema)}</td>
                     <td class="text-center"><b style="color:${difColor}">${difTxt}</b></td>
                     ${d.sesion.num_conteos > 1 ? `
-                      <td class="text-center" style="background:#f8fafc;font-weight:600">${l.ronda===1?l.cantidad_contada:'-'}</td>
-                      <td class="text-center" style="background:#f8fafc;font-weight:600">${l.ronda===2?l.cantidad_contada:'-'}</td>
+                      <td class="text-center" style="background:var(--table-header-bg);font-weight:600">${l.ronda===1?l.cantidad_contada:'-'}</td>
+                      <td class="text-center" style="background:var(--table-header-bg);font-weight:600">${l.ronda===2?l.cantidad_contada:'-'}</td>
                     ` : ''}
                     <td>
                       <div class="action-btns">
@@ -1971,7 +2082,7 @@ WMS_MODULES.inventario = {
                     </td>
                   </tr>
                 `;
-              }).join('') || `<tr><td colspan="${d.sesion.num_conteos > 1 ? 14 : 12}" style="padding:40px;text-align:center;color:#94a3b8">No hay líneas registradas</td></tr>`}
+              }).join('') || `<tr><td colspan="${d.sesion.num_conteos > 1 ? 14 : 12}" style="padding:40px;text-align:center;color:var(--text-muted)">No hay líneas registradas</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -1984,17 +2095,17 @@ WMS_MODULES.inventario = {
         <div style="margin-bottom:10px;"><h3 style="font-size:.85rem;font-weight:700;"><i class="fa-solid fa-list-check"></i> Resumen de Conteo Por Referencia</h3></div>
         <div class="table-container" style="max-height:480px;overflow-y:auto;">
           <table class="data-table compact" id="inv2-gen-table">
-            <thead style="position:sticky;top:0;z-index:20;background:#f8fafc">
+            <thead style="position:sticky;top:0;z-index:20;background:var(--table-header-bg)">
               <tr>
                 <th width="30"></th>
                 <th>Referencia</th>
                 <th class="text-center">R1</th>
                 <th class="text-center">R2</th>
                 <th class="text-center">R3</th>
-                <th class="text-center" style="background:#f0fdf4;color:#166534;">ICG</th>
-                <th class="text-center" style="background:#fefce8;color:#854d0e;">DIF. ICG</th>
-                <th class="text-center" style="background:#eff6ff">Sistema</th>
-                <th class="text-center" style="background:#fff7ed">DIF. SISTEMA</th>
+                <th class="text-center" style="background:var(--ok-bg);color:var(--ok);">ICG</th>
+                <th class="text-center" style="background:var(--warn-bg);color:var(--warn);">DIF. ICG</th>
+                <th class="text-center" style="background:var(--info-bg)">Sistema</th>
+                <th class="text-center" style="background:var(--warn-bg)">DIF. SISTEMA</th>
               </tr>
             </thead>
             <tbody>
@@ -2007,7 +2118,7 @@ WMS_MODULES.inventario = {
                 const difIcgColor = (difIcg !== null && difIcg !== 0) ? 'text-danger' : (hasIcg ? 'text-success' : '');
 
                 return `
-                <tr style="background:${!isCons&&m.ronda_2>0?'#fff1f2':'#fff'}">
+                <tr style="background:${!isCons&&m.ronda_2>0?'#fff1f2':'var(--surface)'}">
                   <td class="text-center">
                     <button class="btn btn-xs btn-light" onclick="this.closest('tr').nextElementSibling.toggleAttribute('hidden')">
                        <i class="fa-solid fa-plus"></i>
@@ -2015,24 +2126,24 @@ WMS_MODULES.inventario = {
                   </td>
                   <td>
                     <div style="font-weight:700;font-size:.82rem">${m.codigo} — ${WMS.esc(m.producto)}</div>
-                    <div style="font-size:.72rem;color:#475569;margin-top:2px;">${m.ean||'Sin Código de Barras'}</div>
+                    <div style="font-size:.72rem;color:var(--text2);margin-top:2px;">${m.ean||'Sin Código de Barras'}</div>
                   </td>
                   <td class="text-center fw-700" style="font-size:.95rem">${m.ronda_1}</td>
                   <td class="text-center fw-700 ${!isCons&&m.ronda_2>0?'text-danger':''}" style="font-size:.95rem">${m.ronda_2||'-'}</td>
                   <td class="text-center fw-700" style="font-size:.95rem">${m.ronda_3||'-'}</td>
-                  <td class="text-center fw-700" style="background:#f0fdf4;color:#15803d;font-size:.9rem">${hasIcg ? WMS.formatNum(m.cantidad_icg) : '—'}</td>
-                  <td class="text-center fw-800 ${difIcgColor}" style="background:#fefce8;font-size:.9rem">${difIcgTxt}</td>
-                  <td class="text-center fw-700" style="background:#f9fafb;font-size:.9rem">${m.sistema}</td>
+                  <td class="text-center fw-700" style="background:var(--ok-bg);color:var(--ok);font-size:.9rem">${hasIcg ? WMS.formatNum(m.cantidad_icg) : '—'}</td>
+                  <td class="text-center fw-800 ${difIcgColor}" style="background:var(--warn-bg);font-size:.9rem">${difIcgTxt}</td>
+                  <td class="text-center fw-700" style="background:var(--table-header-bg);font-size:.9rem">${m.sistema}</td>
                   <td class="text-center fw-800 ${m.diferencia!==0?'text-danger':'text-success'}" style="background:#fffaf5;font-size:.95rem">
                     ${m.diferencia>0?'+':''}${m.diferencia}
                   </td>
                 </tr>
-                <tr hidden style="background:#f8fafc">
+                <tr hidden style="background:var(--table-header-bg)">
                   <td colspan="9" style="padding:0">
-                    <div style="padding:12px 20px; border-left:4px solid #3b82f6">
+                    <div style="padding:12px 20px; border-left:4px solid var(--info)">
                       <table style="width:100%;font-size:.75rem" class="detail-subtable">
                         <thead>
-                          <tr style="border-bottom:1px solid #cbd5e1;color:#64748b;text-transform:uppercase;font-size:.65rem">
+                          <tr style="border-bottom:1px solid var(--border);color:var(--muted);text-transform:uppercase;font-size:.65rem">
                             <th>Auxiliares</th><th>Ubicación</th><th class="text-center">R1</th><th class="text-center">R2</th><th class="text-center">R3</th><th>F.Venc</th><th>Vencimiento</th><th>Último Registro</th>
                           </tr>
                         </thead>
@@ -2045,8 +2156,8 @@ WMS_MODULES.inventario = {
                               <td class="text-center fw-700" style="font-size:.85rem">${det.r2||'-'}</td>
                               <td class="text-center fw-700" style="font-size:.85rem">${det.r3||'-'}</td>
                               <td>${WMS.formatDate(det.f_venc)}</td>
-                              <td>${det.dias_v_u!==null ? `<b style="color:${det.dias_v_u<30?'#dc2626':'#16a34a'}">${det.dias_v_u}d</b>` : '-'}</td>
-                              <td style="color:#64748b;font-style:italic">${WMS_MODULES.inventario._formatFullDate(det.ultimo_c)}</td>
+                              <td>${det.dias_v_u!==null ? `<b style="color:${det.dias_v_u<30?'var(--danger)':'var(--ok)'}">${det.dias_v_u}d</b>` : '-'}</td>
+                              <td style="color:var(--muted);font-style:italic">${WMS_MODULES.inventario._formatFullDate(det.ultimo_c)}</td>
                             </tr>`).join('')}
                         </tbody>
                       </table>
@@ -2068,7 +2179,7 @@ WMS_MODULES.inventario = {
       content.innerHTML = `
         <div class="table-container" style="max-height:420px;overflow-y:auto;">
           <table class="data-table compact">
-            <thead style="position:sticky;top:0;z-index:10;background:#f8fafc">
+            <thead style="position:sticky;top:0;z-index:10;background:var(--table-header-bg)">
               <tr>
                 <th>Referencia</th><th>Ubicación</th><th>Lote</th><th>F.Venc.</th>
                 <th class="text-center">Cont. Contada</th>
@@ -2084,7 +2195,7 @@ WMS_MODULES.inventario = {
                 <tr>
                   <td>
                     <div style="font-weight:700;font-size:.8rem">${WMS.esc(m.codigo||'-')}</div>
-                    <div style="font-size:.7rem;color:#64748b">${WMS.esc(m.producto||'-')}</div>
+                    <div style="font-size:.7rem;color:var(--muted)">${WMS.esc(m.producto||'-')}</div>
                   </td>
                   <td><span class="badge badge-light-blue">${WMS.esc(m.ubicacion||'-')}</span></td>
                   <td style="font-size:.75rem">${WMS.esc(m.lote||'-')}</td>
@@ -2097,8 +2208,8 @@ WMS_MODULES.inventario = {
                   </td>
                   <td>
                     <span style="font-size:.7rem;padding:2px 8px;border-radius:12px;font-weight:700;
-                      background:${m.diferencia>0?'#dcfce7':'#fee2e2'};
-                      color:${m.diferencia>0?'#16a34a':'#dc2626'}">
+                      background:${m.diferencia>0?'var(--ok-bg)':'var(--danger-bg)'};
+                      color:${m.diferencia>0?'var(--ok)':'var(--danger)'}">
                       ${m.tipo_diferencia}
                     </span>
                   </td>
@@ -2107,7 +2218,7 @@ WMS_MODULES.inventario = {
                       <i class="fa-solid fa-sliders"></i> Ajustar
                     </button>
                   </td>
-                </tr>`).join('') || '<tr><td colspan="10" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981"></i> Sin diferencias</td></tr>'}
+                </tr>`).join('') || '<tr><td colspan="10" class="table-empty"><i class="fa-solid fa-circle-check" style="color:var(--ok)"></i> Sin diferencias</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -2139,7 +2250,7 @@ WMS_MODULES.inventario = {
                 <tr>
                   <td>
                     <select class="form-control form-control-sm asig-aux-select"
-                      style="font-size:.78rem;font-weight:700;padding:2px 6px;min-width:150px;border-color:#cbd5e1;"
+                      style="font-size:.78rem;font-weight:700;padding:2px 6px;min-width:150px;border-color:var(--border);"
                       onchange="WMS_MODULES.inventario._cambiarAuxiliarAsignacion(${a.id}, this.value, ${id})"
                       ${a.estado === 'Finalizado' || ['Cerrado', 'Ajustado'].includes(sesion.estado) ? 'disabled' : ''}>
                       <option value="">-- Seleccionar --</option>
@@ -2149,7 +2260,7 @@ WMS_MODULES.inventario = {
                   <td class="text-center"><span class="badge badge-info">R${a.ronda}</span></td>
                   <td style="font-size:.78rem">${WMS.esc(a.tipo_instruccion)}
                     ${a.pasillo?'— '+WMS.esc(a.pasillo):''}${a.modulo?'— '+WMS.esc(a.modulo):''}
-                    ${a.tipo_instruccion === 'Referencia' && a.producto ? `<br><span style="font-weight:700;color:#1e293b;">${WMS.esc(a.producto.codigo_interno||'')} — ${WMS.esc(a.producto.nombre||'')}</span>` : ''}
+                    ${a.tipo_instruccion === 'Referencia' && a.producto ? `<br><span style="font-weight:700;color:var(--text);">${WMS.esc(a.producto.codigo_interno||'')} — ${WMS.esc(a.producto.nombre||'')}</span>` : ''}
                   </td>
                   <td>${a.estado}</td>
                   <td style="font-size:.75rem">${a.notificado_at ? WMS.formatDate(a.notificado_at.substring(0,10)) : '-'}</td>
@@ -2178,42 +2289,42 @@ WMS_MODULES.inventario = {
       content.innerHTML = `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:8px 0">
           ${enCurso ? `
-          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:16px">
-            <h4 style="font-size:.85rem;font-weight:800;color:#1e40af;margin:0 0 8px">
+          <div style="background:var(--info-bg);border:1px solid var(--info-bg);border-radius:4px;padding:16px">
+            <h4 style="font-size:.85rem;font-weight:800;color:var(--accent2);margin:0 0 8px">
               <i class="fa-solid fa-list-check"></i> Estado del conteo
             </h4>
-            <p style="font-size:.8rem;color:#1e40af;margin:0">${d.kpis.asignaciones_terminadas} de ${d.kpis.asignaciones_total} auxiliares han finalizado su conteo.</p>
-            <div style="margin-top:8px;background:#dbeafe;border-radius:6px;height:8px">
-              <div style="width:${d.kpis.pct_avance}%;background:#1a56db;height:8px;border-radius:6px"></div>
+            <p style="font-size:.8rem;color:var(--accent2);margin:0">${d.kpis.asignaciones_terminadas} de ${d.kpis.asignaciones_total} auxiliares han finalizado su conteo.</p>
+            <div style="margin-top:8px;background:var(--info-bg);border-radius:6px;height:8px">
+              <div style="width:${d.kpis.pct_avance}%;background:var(--accent);height:8px;border-radius:6px"></div>
             </div>
-            <p style="font-size:.75rem;margin:4px 0 0;color:#1e40af">${d.kpis.pct_avance}% completado</p>
+            <p style="font-size:.75rem;margin:4px 0 0;color:var(--accent2)">${d.kpis.pct_avance}% completado</p>
           </div>` : ''}
           ${pendiente ? `
-          <div style="background:#fff;border:1px solid #e2e8f0;border-left:5px solid #16a34a;border-radius:4px;padding:24px;grid-column:1/-1;box-shadow:0 10px 15px -3px rgba(0,0,0,.05)">
-            <h4 style="font-size:1.1rem;font-weight:900;color:#0f172a;margin:0 0 4px">
+          <div style="background:var(--surface);border:1px solid var(--border);border-left:5px solid var(--ok);border-radius:4px;padding:24px;grid-column:1/-1;box-shadow:0 10px 15px -3px rgba(0,0,0,.05)">
+            <h4 style="font-size:1.1rem;font-weight:900;color:var(--text);margin:0 0 4px">
               <i class="fa-solid fa-shield-halved"></i> Proceso de Ajuste y Conciliación
             </h4>
-            <p style="font-size:.85rem;color:#64748b;margin:0 0 20px">
+            <p style="font-size:.85rem;color:var(--muted);margin:0 0 20px">
               Analice el impacto en Kardex. Esta auditoría actualizará directamente los saldos del inventario.
             </p>
             
             <div style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap">
-              <div style="flex:1;background:#f8fafc;padding:16px;border-radius:4px;border:1px solid #e2e8f0;text-align:center;min-width:140px">
-                 <div style="font-size:1.8rem;font-weight:900;color:#dc2626">${Math.abs(d.kpis.faltantes_unidades)}</div>
-                 <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px">Faltantes (Uds)</div>
+              <div style="flex:1;background:var(--table-header-bg);padding:16px;border-radius:4px;border:1px solid var(--border);text-align:center;min-width:140px">
+                 <div style="font-size:1.8rem;font-weight:900;color:var(--danger)">${Math.abs(d.kpis.faltantes_unidades)}</div>
+                 <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:var(--muted);margin-top:4px">Faltantes (Uds)</div>
               </div>
-              <div style="flex:1;background:#f8fafc;padding:16px;border-radius:4px;border:1px solid #e2e8f0;text-align:center;min-width:140px">
-                 <div style="font-size:1.8rem;font-weight:900;color:#16a34a">${d.kpis.sobrantes_unidades}</div>
-                 <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px">Sobrantes (Uds)</div>
+              <div style="flex:1;background:var(--table-header-bg);padding:16px;border-radius:4px;border:1px solid var(--border);text-align:center;min-width:140px">
+                 <div style="font-size:1.8rem;font-weight:900;color:var(--ok)">${d.kpis.sobrantes_unidades}</div>
+                 <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:var(--muted);margin-top:4px">Sobrantes (Uds)</div>
               </div>
-              <div style="flex:1;background:#f8fafc;padding:16px;border-radius:4px;border:1px solid #e2e8f0;text-align:center;min-width:140px">
-                 <div style="font-size:1.8rem;font-weight:900;color:#f59e0b">${d.kpis.lineas_con_diferencia}</div>
-                 <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px">Líneas Afectadas</div>
+              <div style="flex:1;background:var(--table-header-bg);padding:16px;border-radius:4px;border:1px solid var(--border);text-align:center;min-width:140px">
+                 <div style="font-size:1.8rem;font-weight:900;color:var(--warn)">${d.kpis.lineas_con_diferencia}</div>
+                 <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:var(--muted);margin-top:4px">Líneas Afectadas</div>
               </div>
             </div>
 
-            <div style="padding:12px 14px;background:#fffbeb;border:1px solid #fef3c7;border-radius:4px;margin-bottom:20px;">
-              <p style="margin:0;font-size:.75rem;color:#92400e;line-height:1.4">
+            <div style="padding:12px 14px;background:var(--warn-bg);border:1px solid var(--warn-bg);border-radius:4px;margin-bottom:20px;">
+              <p style="margin:0;font-size:.75rem;color:var(--warn);line-height:1.4">
                  <i class="fa-solid fa-triangle-exclamation"></i> <strong>Aviso Legal y Operativo:</strong> Al proceder con el ajuste masivo, el sistema aplicará automáticamente los movimientos de saldo a las cajas/unidades afectadas en todo el recinto. Esta acción es inmutable y registrará su firma electrónica.
               </p>
             </div>
@@ -2225,11 +2336,11 @@ WMS_MODULES.inventario = {
             </div>
           </div>` : ''}
           ${['Ajustado', 'EnCurso', 'PendienteAjuste'].includes(sesion.estado) ? `
-          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-left:5px solid #16a34a;border-radius:4px;padding:24px;grid-column:1/-1;box-shadow:0 10px 15px -3px rgba(0,0,0,.05)">
-            <h4 style="font-size:1.1rem;font-weight:900;color:#166534;margin:0 0 4px">
+          <div style="background:var(--ok-bg);border:1px solid var(--ok-bg);border-left:5px solid var(--ok);border-radius:4px;padding:24px;grid-column:1/-1;box-shadow:0 10px 15px -3px rgba(0,0,0,.05)">
+            <h4 style="font-size:1.1rem;font-weight:900;color:var(--ok);margin:0 0 4px">
               <i class="fa-solid fa-flag-checkered"></i> Concluir Operación
             </h4>
-            <p style="font-size:.85rem;color:#166534;margin:0 0 20px">
+            <p style="font-size:.85rem;color:var(--ok);margin:0 0 20px">
               ${sesion.estado === 'Ajustado' 
                 ? 'Los saldos han sido actualizados. Ahora debe cerrar formalmente el conteo para <strong>liberar las posiciones</strong>.' 
                 : '<strong>Aviso:</strong> El inventario no se ha ajustado. Si concluye ahora, las diferencias NO se aplicarán al stock, pero las ubicaciones se liberarán.'}
@@ -2240,16 +2351,16 @@ WMS_MODULES.inventario = {
               </button>
             </div>
           </div>` : ''}
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px">
-            <h4 style="font-size:.85rem;font-weight:800;color:#1e293b;margin:0 0 8px">
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px">
+            <h4 style="font-size:.85rem;font-weight:800;color:var(--text);margin:0 0 8px">
               <i class="fa-solid fa-print"></i> Impresión
             </h4>
             <button class="btn btn-outline-primary full" onclick="WMS_MODULES.inventario._imprimirReporte(${id})">
               <i class="fa-solid fa-file-pdf"></i> Generar Informe del Conteo
             </button>
           </div>
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px">
-            <h4 style="font-size:.85rem;font-weight:800;color:#1e293b;margin:0 0 8px">
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px">
+            <h4 style="font-size:.85rem;font-weight:800;color:var(--text);margin:0 0 8px">
               <i class="fa-solid fa-table-list"></i> Reporte de Ajustes
             </h4>
             <button class="btn btn-outline-warning full" onclick="WMS_MODULES.inventario.showAjustesReport(${id})">
@@ -2291,8 +2402,8 @@ WMS_MODULES.inventario = {
 
   _showConteoManualModal(id) {
     const html = `
-      <div style="background:#f8fafc;padding:12px;border-radius:4px;border:1px solid #e2e8f0;margin-bottom:16px;">
-        <p style="font-size:.75rem;color:#64748b;margin:0">
+      <div style="background:var(--table-header-bg);padding:12px;border-radius:4px;border:1px solid var(--border);margin-bottom:16px;">
+        <p style="font-size:.75rem;color:var(--muted);margin:0">
           <i class="fa-solid fa-info-circle"></i> Registre productos o ubicaciones que no fueron contemplados originalmente en esta sesión.
         </p>
       </div>
@@ -2334,18 +2445,18 @@ WMS_MODULES.inventario = {
           </select>
         </div>
       </div>
-      <div id="m-conteo-preview" style="display:none;font-size:.78rem;color:#475569;margin:-6px 0 14px;"></div>
+      <div id="m-conteo-preview" style="display:none;font-size:.78rem;color:var(--text2);margin:-6px 0 14px;"></div>
 
-      <div id="m-conteo-prod-info" class="hidden" style="margin-bottom:16px;padding:12px;background:#f1f5f9;border-radius:4px;font-size:.78rem;border-left:4px solid #3b82f6;">
-         <div style="font-weight:700;color:#1e293b;" id="m-conteo-p-name"></div>
-         <div id="m-conteo-p-stock" style="color:#64748b;margin-top:2px;font-family:monospace;"></div>
+      <div id="m-conteo-prod-info" class="hidden" style="margin-bottom:16px;padding:12px;background:var(--btn-neutral);border-radius:4px;font-size:.78rem;border-left:4px solid var(--info);">
+         <div style="font-weight:700;color:var(--text);" id="m-conteo-p-name"></div>
+         <div id="m-conteo-p-stock" style="color:var(--muted);margin-top:2px;font-family:monospace;"></div>
       </div>
 
       <button id="btn-save-manual" class="btn btn-primary w-full" style="padding:14px;font-weight:800;font-size:.95rem;" onclick="WMS_MODULES.inventario._saveConteoManual(${id})">
         <i class="fa-solid fa-save"></i> REGISTRAR CONTEO
       </button>
 
-      <button class="btn btn-light w-full" style="margin-top:8px;font-size:11px;color:#94a3b8;" onclick="WMS.closeModal()">
+      <button class="btn btn-light w-full" style="margin-top:8px;font-size:11px;color:var(--text-muted);" onclick="WMS.closeModal()">
         Cerrar
       </button>`;
 
@@ -2393,12 +2504,12 @@ WMS_MODULES.inventario = {
         <label class="form-label">Cantidad Contada *</label>
         <div style="display:flex;gap:8px;">
           <div style="flex:1;">
-            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">Cajas</label>
+            <label class="form-label" style="margin-bottom:2px;display:block;">Cajas</label>
             <input id="m-conteo-cajas" type="number" class="form-control" min="0" step="1" value="0"
               oninput="WMS_MODULES.inventario._conteoCalcPreview()" placeholder="0">
           </div>
           <div style="flex:1;">
-            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">Saldos</label>
+            <label class="form-label" style="margin-bottom:2px;display:block;">Saldos</label>
             <input id="m-conteo-saldos" type="number" class="form-control" min="0" step="1" value="0"
               oninput="WMS_MODULES.inventario._conteoCalcPreview()" placeholder="0">
           </div>
@@ -2427,7 +2538,7 @@ WMS_MODULES.inventario = {
       if (cantEl) cantEl.value = total;
       preview.style.display = 'block';
       preview.innerHTML = `<b>UND/TOTAL:</b> ${cajas} cajas × ${upc} u/caja + ${saldos} saldos = `
-        + `<b style="color:#1e40af;font-size:1.05em;">${total.toFixed(2)}</b>`;
+        + `<b style="color:var(--accent2);font-size:1.05em;">${total.toFixed(2)}</b>`;
     } else {
       preview.style.display = 'none';
     }
@@ -2520,7 +2631,7 @@ WMS_MODULES.inventario = {
           </div>
         </div>
       </div>
-      <div id="edit-preview" style="display:none;font-size:.78rem;color:#475569;margin:-6px 0 14px;"></div>
+      <div id="edit-preview" style="display:none;font-size:.78rem;color:var(--text2);margin:-6px 0 14px;"></div>
       <div class="form-group">
         <label class="form-label">Motivo de la corrección <span class="required">*</span></label>
         <input id="edit-motivo" class="form-control" placeholder="Ej: Error de digitación, reconteo físico...">
@@ -2548,12 +2659,12 @@ WMS_MODULES.inventario = {
         <label class="form-label">Cantidad Contada <span class="required">*</span></label>
         <div style="display:flex;gap:8px;">
           <div style="flex:1;">
-            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">Cajas</label>
+            <label class="form-label" style="margin-bottom:2px;display:block;">Cajas</label>
             <input id="edit-cajas" type="number" class="form-control" min="0" step="1" value="${cajasIni}"
               oninput="WMS_MODULES.inventario._editCalcPreview()" placeholder="0">
           </div>
           <div style="flex:1;">
-            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">Saldos</label>
+            <label class="form-label" style="margin-bottom:2px;display:block;">Saldos</label>
             <input id="edit-saldos" type="number" class="form-control" min="0" step="1" value="${saldosIni}"
               oninput="WMS_MODULES.inventario._editCalcPreview()" placeholder="0">
           </div>
@@ -2583,7 +2694,7 @@ WMS_MODULES.inventario = {
       if (qtyEl) qtyEl.value = total;
       preview.style.display = 'block';
       preview.innerHTML = `<b>UND/TOTAL:</b> ${cajas} cajas × ${upc} u/caja + ${saldos} saldos = `
-        + `<b style="color:#1e40af;font-size:1.05em;">${total.toFixed(2)}</b>`;
+        + `<b style="color:var(--accent2);font-size:1.05em;">${total.toFixed(2)}</b>`;
     } else {
       preview.style.display = 'none';
     }
@@ -2646,9 +2757,9 @@ WMS_MODULES.inventario = {
     if (!lineaId || !sesionId) return WMS.toast('error', 'IDs de operación faltantes');
     WMS.showModal('Validación de Ajuste Individual', `
       <div style="text-align:center;padding:25px">
-        <i class="fa-solid fa-sliders fa-3x" style="color:#f59e0b;margin-bottom:16px"></i>
-        <h3 style="font-weight:800;font-size:1.2rem;color:#0f172a;margin-bottom:10px">Ajuste de Línea</h3>
-        <p style="font-size:.85rem;color:#475569;margin-bottom:20px">Se ejecutará el movimiento de Kardex únicamente para esta referencia. ¿Autoriza corregir esta discrepancia?</p>
+        <i class="fa-solid fa-sliders fa-3x" style="color:var(--warn);margin-bottom:16px"></i>
+        <h3 style="font-weight:800;font-size:1.2rem;color:var(--text);margin-bottom:10px">Ajuste de Línea</h3>
+        <p style="font-size:.85rem;color:var(--text2);margin-bottom:20px">Se ejecutará el movimiento de Kardex únicamente para esta referencia. ¿Autoriza corregir esta discrepancia?</p>
         <button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal-2')" style="margin-right:8px;font-weight:600">Cancelar</button>
         <button class="btn btn-warning" onclick="WMS_MODULES.inventario.__execAjustarLinea(${lineaId}, ${sesionId})" style="font-weight:800">
            Autorizar Línea
@@ -2664,25 +2775,25 @@ WMS_MODULES.inventario = {
       const d = r.data || {};
       // Mostrar nuevo stock actualizado
       const dif = d.diferencia_real ?? 0;
-      const difStr = dif > 0 ? `<span style="color:#10b981;font-weight:700;">+${WMS.formatNum(dif)}</span>`
-                             : `<span style="color:#ef4444;font-weight:700;">${WMS.formatNum(dif)}</span>`;
+      const difStr = dif > 0 ? `<span style="color:var(--ok);font-weight:700;">+${WMS.formatNum(dif)}</span>`
+                             : `<span style="color:var(--danger);font-weight:700;">${WMS.formatNum(dif)}</span>`;
       WMS.toast('success', r.message || 'Ajuste aplicado');
       WMS.showModal('Ajuste Aplicado — Nuevo Stock', `
         <div style="text-align:center;padding:20px">
-          <i class="fa-solid fa-circle-check fa-3x" style="color:#10b981;margin-bottom:16px"></i>
+          <i class="fa-solid fa-circle-check fa-3x" style="color:var(--ok);margin-bottom:16px"></i>
           <h3 style="font-weight:800;font-size:1.1rem;margin-bottom:12px">Stock actualizado correctamente</h3>
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:16px;text-align:left;max-width:320px;margin:0 auto;">
-            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0;">
-              <span style="color:#64748b;font-size:.85rem;">Contado físicamente:</span>
-              <strong style="color:#0f172a;">${WMS.formatNum(d.cantidad_contada ?? 0)}</strong>
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:4px;padding:16px;text-align:left;max-width:320px;margin:0 auto;">
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);">
+              <span style="color:var(--muted);font-size:.85rem;">Contado físicamente:</span>
+              <strong style="color:var(--text);">${WMS.formatNum(d.cantidad_contada ?? 0)}</strong>
             </div>
-            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0;">
-              <span style="color:#64748b;font-size:.85rem;">Diferencia aplicada:</span>
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);">
+              <span style="color:var(--muted);font-size:.85rem;">Diferencia aplicada:</span>
               <strong>${difStr}</strong>
             </div>
             <div style="display:flex;justify-content:space-between;padding:8px 0;background:#ecfdf5;margin:-0px -4px;border-radius:6px;padding:8px 10px;margin-top:6px;">
-              <span style="color:#065f46;font-size:.9rem;font-weight:600;">Nuevo stock sistema:</span>
-              <strong style="color:#059669;font-size:1.1rem;">${WMS.formatNum(d.stock_nuevo ?? 0)}</strong>
+              <span style="color:var(--ok);font-size:.9rem;font-weight:600;">Nuevo stock sistema:</span>
+              <strong style="color:var(--ok);font-size:1.1rem;">${WMS.formatNum(d.stock_nuevo ?? 0)}</strong>
             </div>
           </div>
           <button class="btn btn-primary" style="margin-top:20px;min-width:140px;" onclick="WMS.closeModal('generic-modal');WMS_MODULES.inventario.verDashboardV2(${sesionId})">
@@ -2697,10 +2808,10 @@ WMS_MODULES.inventario = {
     if (!d || !d.kpis) return WMS.toast('error', 'Faltan KPIs para autorizar cierre');
     WMS.showModal('Auditoría de Cierre y Ajuste Masivo', `
       <div style="text-align:center;padding:25px">
-        <i class="fa-solid fa-triangle-exclamation fa-4x" style="color:#ef4444;margin-bottom:20px"></i>
-        <h3 style="font-weight:900;font-size:1.3rem;color:#0f172a;margin-bottom:14px;text-transform:uppercase">¿Confirmar Ajuste y Cierre?</h3>
-        <p style="font-size:.9rem;color:#475569;margin-bottom:24px;line-height:1.5">
-          Esta acción autorizará la conciliación afectando <strong style="color:#dc2626;font-size:1.1rem">${d.kpis.lineas_con_diferencia} líneas</strong> discrepantes.<br><br>
+        <i class="fa-solid fa-triangle-exclamation fa-4x" style="color:var(--danger);margin-bottom:20px"></i>
+        <h3 style="font-weight:900;font-size:1.3rem;color:var(--text);margin-bottom:14px;text-transform:uppercase">¿Confirmar Ajuste y Cierre?</h3>
+        <p style="font-size:.9rem;color:var(--text2);margin-bottom:24px;line-height:1.5">
+          Esta acción autorizará la conciliación afectando <strong style="color:var(--danger);font-size:1.1rem">${d.kpis.lineas_con_diferencia} líneas</strong> discrepantes.<br><br>
           ${d.no_contado_sistema ? `Además, <strong style="color:#ea580c">${WMS.formatNum(d.no_contado_sistema.total_referencias)} referencia(s) en ${WMS.formatNum(d.no_contado_sistema.total_filas)} ubicación(es) (${WMS.formatNum(d.no_contado_sistema.total_unidades)} uds)</strong> que tienen stock en el sistema y NO se contaron quedarán en <strong>cero</strong>.<br><br>` : ''}
           ${(() => {
             // Aviso (no bloquea): referencias cuyo conteo definitivo no cuadra con
@@ -2709,9 +2820,9 @@ WMS_MODULES.inventario = {
             if (!icg.cargado) return '';
             const sob = icg.referencias_sobrantes_icg || 0, fal = icg.referencias_faltantes_icg || 0, nc = icg.referencias_no_contadas_icg || 0;
             if (!sob && !fal && !nc) {
-              return `<span style="display:block;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 10px;color:#166534;font-size:.82rem;margin-bottom:14px;"><i class="fa-solid fa-circle-check"></i> Todas las referencias del archivo ICG cuadran con el conteo.</span>`;
+              return `<span style="display:block;background:var(--ok-bg);border:1px solid #86efac;border-radius:6px;padding:8px 10px;color:var(--ok);font-size:.82rem;margin-bottom:14px;"><i class="fa-solid fa-circle-check"></i> Todas las referencias del archivo ICG cuadran con el conteo.</span>`;
             }
-            return `<span style="display:block;background:#fefce8;border:1px solid #fde047;border-radius:6px;padding:8px 10px;color:#854d0e;font-size:.82rem;margin-bottom:14px;text-align:left;">
+            return `<span style="display:block;background:var(--warn-bg);border:1px solid #fde047;border-radius:6px;padding:8px 10px;color:var(--warn);font-size:.82rem;margin-bottom:14px;text-align:left;">
               <i class="fa-solid fa-file-invoice"></i> <b>Diferencias con ICG (no bloquean el ajuste):</b><br>
               ${sob ? `· <b>${sob}</b> referencia(s) con sobrante (+${WMS.formatNum(icg.sobrantes_unidades_icg || 0)} uds)<br>` : ''}
               ${fal ? `· <b>${fal}</b> referencia(s) con faltante (-${WMS.formatNum(icg.faltantes_unidades_icg || 0)} uds)<br>` : ''}
@@ -2743,22 +2854,22 @@ WMS_MODULES.inventario = {
       // Mostrar resumen detallado de todos los ajustes aplicados
       const rowsConteo = resumen.filter(x => x.tipo === 'conteo').map(x => {
         const dif = x.diferencia ?? 0;
-        const col = dif > 0 ? '#10b981' : (dif < 0 ? '#ef4444' : '#94a3b8');
+        const col = dif > 0 ? 'var(--ok)' : (dif < 0 ? 'var(--danger)' : 'var(--text-muted)');
         const sign = dif > 0 ? '+' : '';
         return `<tr>
           <td style="font-size:.8rem;font-family:monospace;">P-${x.producto_id}</td>
           <td style="font-size:.8rem;">Ubic-${x.ubicacion_id}${x.lote ? ' · ' + WMS.esc(x.lote) : ''}</td>
-          <td class="text-center" style="font-weight:700;color:#1e40af;">${WMS.formatNum(x.cantidad_nueva)}</td>
+          <td class="text-center" style="font-weight:700;color:var(--accent2);">${WMS.formatNum(x.cantidad_nueva)}</td>
           <td class="text-center" style="font-weight:700;color:${col};">${sign}${WMS.formatNum(dif)}</td>
         </tr>`;
       }).join('');
 
       const rowsML = resumen.filter(x => (x.tipo === 'no_contada' || x.tipo === 'ml_ausencia' || x.tipo === 'referencia_sin_existencia')).map(x => {
-        return `<tr style="background:#fff7ed;">
+        return `<tr style="background:var(--warn-bg);">
           <td style="font-size:.8rem;font-family:monospace;">P-${x.producto_id}</td>
           <td style="font-size:.8rem;">Ubic-${x.ubicacion_id}${x.lote ? ' · ' + WMS.esc(x.lote) : ''}</td>
-          <td class="text-center" style="font-weight:700;color:#dc2626;">0</td>
-          <td class="text-center" style="font-weight:700;color:#ef4444;">${WMS.formatNum(x.diferencia)}</td>
+          <td class="text-center" style="font-weight:700;color:var(--danger);">0</td>
+          <td class="text-center" style="font-weight:700;color:var(--danger);">${WMS.formatNum(x.diferencia)}</td>
         </tr>`;
       }).join('');
 
@@ -2766,32 +2877,32 @@ WMS_MODULES.inventario = {
         <div style="padding:10px 0">
           <div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
             <div style="flex:1;min-width:120px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:4px;padding:14px;text-align:center;">
-              <div style="font-size:1.8rem;font-weight:900;color:#059669;">${total}</div>
-              <div style="font-size:.75rem;color:#065f46;font-weight:600;">AJUSTES TOTALES</div>
+              <div style="font-size:1.8rem;font-weight:900;color:var(--ok);">${total}</div>
+              <div style="font-size:.75rem;color:var(--ok);font-weight:600;">AJUSTES TOTALES</div>
             </div>
-            <div style="flex:1;min-width:120px;background:#eff6ff;border:1px solid #93c5fd;border-radius:4px;padding:14px;text-align:center;">
-              <div style="font-size:1.8rem;font-weight:900;color:#2563eb;">${nConteo}</div>
-              <div style="font-size:.75rem;color:#1e40af;font-weight:600;">POR CONTEO</div>
+            <div style="flex:1;min-width:120px;background:var(--info-bg);border:1px solid #93c5fd;border-radius:4px;padding:14px;text-align:center;">
+              <div style="font-size:1.8rem;font-weight:900;color:var(--info);">${nConteo}</div>
+              <div style="font-size:.75rem;color:var(--accent2);font-weight:600;">POR CONTEO</div>
             </div>
-            ${nML > 0 ? `<div style="flex:1;min-width:120px;background:#fff7ed;border:1px solid #fdba74;border-radius:4px;padding:14px;text-align:center;">
+            ${nML > 0 ? `<div style="flex:1;min-width:120px;background:var(--warn-bg);border:1px solid #fdba74;border-radius:4px;padding:14px;text-align:center;">
               <div style="font-size:1.8rem;font-weight:900;color:#ea580c;">${nML}</div>
               <div style="font-size:.75rem;color:#9a3412;font-weight:600;">LLEVADAS A CERO</div>
             </div>` : ''}
           </div>
           ${rowsConteo || rowsML ? `
-          <div style="max-height:300px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:4px;">
+          <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;">
             <table class="erp-table" style="font-size:.8rem;">
-              <thead><tr style="background:#f1f5f9;position:sticky;top:0;">
+              <thead><tr style="background:var(--btn-neutral);position:sticky;top:0;">
                 <th>Producto</th><th>Ubicación</th>
                 <th class="text-center">Nuevo Stock</th>
                 <th class="text-center">Diferencia</th>
               </tr></thead>
               <tbody>
                 ${rowsConteo}
-                ${nML > 0 && rowsML ? `<tr><td colspan="4" style="background:#fff7ed;font-weight:700;font-size:.75rem;color:#9a3412;padding:8px 12px;"><i class="fa-solid fa-circle-minus"></i> Referencias no contadas llevadas a cero (Ajuste de Inventario General)</td></tr>${rowsML}` : ''}
+                ${nML > 0 && rowsML ? `<tr><td colspan="4" style="background:var(--warn-bg);font-weight:700;font-size:.75rem;color:#9a3412;padding:8px 12px;"><i class="fa-solid fa-circle-minus"></i> Referencias no contadas llevadas a cero (Ajuste de Inventario General)</td></tr>${rowsML}` : ''}
               </tbody>
             </table>
-          </div>` : '<p style="text-align:center;color:#94a3b8;font-style:italic;margin:20px 0;">Sin diferencias detectadas</p>'}
+          </div>` : '<p style="text-align:center;color:var(--text-muted);font-style:italic;margin:20px 0;">Sin diferencias detectadas</p>'}
           <div style="text-align:center;margin-top:16px;">
             <button class="btn btn-primary" onclick="WMS.closeModal('generic-modal');WMS_MODULES.inventario.show_sesiones()">
               <i class="fa-solid fa-check"></i> Finalizar y Ver Sesiones
@@ -2952,24 +3063,24 @@ WMS_MODULES.inventario = {
 
       WMS.showModal(`Referencias Cíclico: ${WMS.esc(sesion.nombre || '#' + sesionId)}`, `
         <div style="margin-bottom:14px;">
-          <div style="font-size:.72rem;font-weight:700;color:#64748b;margin-bottom:8px;letter-spacing:.5px;">
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:8px;letter-spacing:.5px;">
             <i class="fa-solid fa-box-open"></i> REFERENCIAS ASIGNADAS (${asigs.length})
           </div>
           <div id="ciclic-refs-list" style="max-height:220px;overflow-y:auto;">
             ${asigs.length ? asigs.map(a => `
               <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;
-                background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:5px;">
+                background:var(--table-header-bg);border:1px solid var(--border);border-radius:8px;margin-bottom:5px;">
                 <div>
-                  <div style="font-weight:700;font-size:.82rem;color:#1e293b;">
+                  <div style="font-weight:700;font-size:.82rem;color:var(--text);">
                     ${WMS.esc(a.producto?.nombre || '—')}
                   </div>
-                  <div style="font-size:.7rem;color:#64748b;display:flex;align-items:center;gap:6px;margin-top:2px;">
-                    <i class="fa-solid fa-user" style="color:#94a3b8;"></i>
+                  <div style="font-size:.7rem;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:2px;">
+                    <i class="fa-solid fa-user" style="color:var(--text-muted);"></i>
                     <select class="form-control form-control-sm" style="font-size:.72rem;padding:1px 4px;height:24px;width:auto;"
                       onchange="WMS_MODULES.inventario._cambiarAuxiliarAsignacion(${a.id}, this.value, ${sesionId})">
                       ${auxiliares.map(aux => `<option value="${aux.id}" ${aux.id == a.auxiliar_id ? 'selected' : ''}>${WMS.esc(aux.nombre)}</option>`).join('')}
                     </select>
-                    <span style="margin-left:6px;font-family:monospace;color:#94a3b8;">${WMS.esc(a.producto?.codigo_interno || '')}</span>
+                    <span style="margin-left:6px;font-family:monospace;color:var(--text-muted);">${WMS.esc(a.producto?.codigo_interno || '')}</span>
                   </div>
                 </div>
                 <button class="btn btn-xs btn-outline-danger"
@@ -2977,13 +3088,13 @@ WMS_MODULES.inventario = {
                   <i class="fa-solid fa-trash"></i>
                 </button>
               </div>`).join('')
-            : '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:.8rem;"><i class="fa-solid fa-box-open" style="display:block;font-size:1.5rem;margin-bottom:8px;opacity:.4;"></i>Sin referencias agregadas aún</div>'}
+            : '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:.8rem;"><i class="fa-solid fa-box-open" style="display:block;font-size:1.5rem;margin-bottom:8px;opacity:.4;"></i>Sin referencias agregadas aún</div>'}
           </div>
         </div>
 
-        <div style="border-top:1px solid #e2e8f0;padding-top:14px;">
-          <div style="font-size:.72rem;font-weight:700;color:#64748b;margin-bottom:10px;letter-spacing:.5px;">
-            <i class="fa-solid fa-plus" style="color:#1a56db;"></i> AGREGAR REFERENCIAS
+        <div style="border-top:1px solid var(--border);padding-top:14px;">
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:10px;letter-spacing:.5px;">
+            <i class="fa-solid fa-plus" style="color:var(--accent);"></i> AGREGAR REFERENCIAS
           </div>
           <div id="ciclic-ref-rows" style="display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto;"></div>
           <button class="btn btn-sm btn-outline-primary mt-8" onclick="WMS_MODULES.inventario._addCiclicRefRow()">
@@ -3006,15 +3117,15 @@ WMS_MODULES.inventario = {
     const auxiliares = this._ciclicAuxCache || [];
     const div = document.createElement('div');
     div.className = 'ciclic-ref-row';
-    div.style.cssText = 'display:grid;grid-template-columns:2fr 1fr auto;gap:8px;align-items:end;background:#f8fafc;padding:8px;border-radius:6px;border:1px solid #e2e8f0';
+    div.style.cssText = 'display:grid;grid-template-columns:2fr 1fr auto;gap:8px;align-items:end;background:var(--table-header-bg);padding:8px;border-radius:6px;border:1px solid var(--border)';
     div.innerHTML = `
       <div>
-        <label style="font-size:.72rem;font-weight:600;color:#64748b;">Producto</label>
+        <label class="form-label">Producto</label>
         <input class="form-control ciclic-ref-prod-ac" placeholder="Buscar por nombre o código...">
         <input class="ciclic-ref-prod-id" type="hidden">
       </div>
       <div>
-        <label style="font-size:.72rem;font-weight:600;color:#64748b;">Auxiliar</label>
+        <label class="form-label">Auxiliar</label>
         <select class="form-control ciclic-ref-aux">
           <option value="">Seleccionar...</option>
           ${auxiliares.map(a => `<option value="${a.id}">${WMS.esc(a.nombre)}</option>`).join('')}
@@ -3109,7 +3220,7 @@ WMS_MODULES.inventario = {
         <html><head><title>Informe Conteo #${sesionId}</title>
         <style>
           body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b}
-          h1{font-size:16px;margin:0 0 4px}h2{font-size:13px;margin:16px 0 6px;color:#1a56db}
+          h1{font-size:16px;margin:0 0 4px}h2{font-size:13px;margin:16px 0 6px;color:#2b5fc7}
           table{width:100%;border-collapse:collapse;margin-bottom:16px}
           th{background:#1e293b;color:#fff;padding:5px 8px;font-size:10px;text-align:left}
           td{padding:4px 8px;border-bottom:1px solid #e2e8f0;font-size:10px}
@@ -3200,7 +3311,7 @@ WMS_MODULES.inventario = {
       WMS.setContent(`
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
           <h3 style="margin:0;font-size:1rem;font-weight:800">
-            <i class="fa-solid fa-receipt" style="color:#f59e0b"></i>
+            <i class="fa-solid fa-receipt" style="color:var(--warn)"></i>
             Registro de Ajustes (${items.length})
           </h3>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -3218,7 +3329,7 @@ WMS_MODULES.inventario = {
         <div class="card">
           <div class="table-container" style="max-height:calc(100vh - 220px);overflow-y:auto;">
             <table class="data-table compact" id="ajustes-tbl">
-              <thead style="position:sticky;top:0;background:#f8fafc;z-index:10">
+              <thead style="position:sticky;top:0;background:var(--table-header-bg);z-index:10">
                 <tr>
                   <th>Fecha</th><th>Hora</th><th>Referencia</th><th>Producto</th>
                   <th>Tipo</th><th class="text-center">Físico</th><th class="text-center">Sistema</th>
@@ -3235,8 +3346,8 @@ WMS_MODULES.inventario = {
                   <td style="font-weight:700;font-size:.8rem">${WMS.esc(a.producto||'-')}</td>
                   <td>
                     <span style="padding:2px 8px;border-radius:12px;font-size:.7rem;font-weight:700;
-                      background:${a.tipo_ajuste==='Entrada'?'#dcfce7':(a.tipo_ajuste==='CambioLoteFV'?'#dbeafe':'#fee2e2')};
-                      color:${a.tipo_ajuste==='Entrada'?'#16a34a':(a.tipo_ajuste==='CambioLoteFV'?'#1d4ed8':'#dc2626')}">
+                      background:${a.tipo_ajuste==='Entrada'?'var(--ok-bg)':(a.tipo_ajuste==='CambioLoteFV'?'var(--info-bg)':'var(--danger-bg)')};
+                      color:${a.tipo_ajuste==='Entrada'?'var(--ok)':(a.tipo_ajuste==='CambioLoteFV'?'var(--info)':'var(--danger)')}">
                       ${a.tipo_ajuste==='Entrada'?'▲ Entrada':(a.tipo_ajuste==='CambioLoteFV'?'✎ Lote/FV':'▼ Salida')}
                     </span>
                   </td>
@@ -3299,8 +3410,8 @@ WMS_MODULES.inventario = {
     try {
       const r = await API.get('/inv-general/eventos');
       const eventos = r.data || r || [];
-      const estadoColor = e => ({ Abierto: '#1e40af', Validando: '#92400e', Cerrado: '#166534', Anulado: '#991b1b' }[e] || '#334155');
-      const estadoBg    = e => ({ Abierto: '#dbeafe', Validando: '#fef9c3', Cerrado: '#dcfce7', Anulado: '#fee2e2' }[e] || '#f1f5f9');
+      const estadoColor = e => ({ Abierto: 'var(--accent2)', Validando: 'var(--warn)', Cerrado: 'var(--ok)', Anulado: 'var(--danger)' }[e] || 'var(--text)');
+      const estadoBg    = e => ({ Abierto: 'var(--info-bg)', Validando: 'var(--warn-bg)', Cerrado: 'var(--ok-bg)', Anulado: 'var(--danger-bg)' }[e] || 'var(--btn-neutral)');
       WMS.setContent(`
         <div class="px-20 py-16">
           <div class="card shadow-soft">
@@ -3406,9 +3517,9 @@ WMS_MODULES.inventario = {
         </button>` : ''}`);
 
       const estadoDif = d => ({
-        Pendiente: ['#92400e', '#fef9c3'], RequiereRecorteo: ['#991b1b', '#fee2e2'],
-        Aprobada: ['#166534', '#dcfce7'], Descartada: ['#475569', '#f1f5f9'],
-      }[d] || ['#334155', '#f1f5f9']);
+        Pendiente: ['var(--warn)', 'var(--warn-bg)'], RequiereRecorteo: ['var(--danger)', 'var(--danger-bg)'],
+        Aprobada: ['var(--ok)', 'var(--ok-bg)'], Descartada: ['var(--text2)', 'var(--btn-neutral)'],
+      }[d] || ['var(--text)', 'var(--btn-neutral)']);
 
       WMS.setContent(`
         <div class="px-20 py-16" style="display:flex;flex-direction:column;gap:16px;">
@@ -3567,7 +3678,7 @@ WMS_MODULES.inventario = {
         .tipo-chip { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:6px; font-size:.65rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; }
         .tipo-ciclico { background:#eef2ff; color:#4f46e5; border:1px solid #c7d2fe; }
         .tipo-general { background:#f5f3ff; color:#7c3aed; border:1px solid #ddd6fe; }
-        .tipo-cargue  { background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
+        .tipo-cargue  { background:var(--warn-bg); color:var(--warn); border:1px solid #fcd34d; }
       </style>
       <div class="filter-bar">
         <div class="search-bar"><i class="fa-solid fa-search"></i>
@@ -3625,8 +3736,8 @@ WMS_MODULES.inventario = {
                   <td><span class="badge badge-secondary">#${s.id}</span></td>
                   <td>${tipoBadge}</td>
                   <td>
-                    <div style="font-weight:700;color:#0f172a">${WMS.esc(s.nombre||'Sin nombre')}</div>
-                    ${s.descripcion ? `<div style="font-size:.70rem;color:#64748b">${WMS.esc(s.descripcion)}</div>` : ''}
+                    <div style="font-weight:700;color:var(--text)">${WMS.esc(s.nombre||'Sin nombre')}</div>
+                    ${s.descripcion ? `<div style="font-size:.70rem;color:var(--muted)">${WMS.esc(s.descripcion)}</div>` : ''}
                   </td>
                   <td class="text-center">
                     <span class="gen-estado-chip" style="background:${color}20;color:${color}">
@@ -3634,7 +3745,7 @@ WMS_MODULES.inventario = {
                     </span>
                   </td>
                   <td class="text-center">
-                    <span style="font-size:.9rem;font-weight:800;color:#0f172a">${s.num_conteos||1}</span>
+                    <span style="font-size:.9rem;font-weight:800;color:var(--text)">${s.num_conteos||1}</span>
                   </td>
                   <td class="text-center">${s.asignaciones_count||0}</td>
                   <td class="text-center">${s.lineas_count || 0}</td>
@@ -3749,17 +3860,17 @@ WMS_MODULES.inventario = {
       const sinId = !l.ubicacion_id;
       const fv    = l.fecha_vencimiento ? WMS.formatDate(l.fecha_vencimiento.split('T')[0]) : '—';
       return `<tr class="${sinId ? 'row-warning' : ''}">
-        <td><strong>${WMS.esc(l.producto||'')}</strong><br><small style="color:#6b7280;">${WMS.esc(l.codigo||'')}</small></td>
+        <td><strong>${WMS.esc(l.producto||'')}</strong><br><small style="color:var(--muted);">${WMS.esc(l.codigo||'')}</small></td>
         <td>
           <span class="badge ${sinId?'badge-warning':'badge-gray'}" title="${sinId?'Código no encontrado en el sistema':''}">${WMS.esc(l.ubicacion_codigo||'')}</span>
-          ${sinId ? '<br><small style="color:#b45309;"><i class="fa-solid fa-triangle-exclamation"></i> Sin ID</small>' : ''}
+          ${sinId ? '<br><small style="color:var(--warn);"><i class="fa-solid fa-triangle-exclamation"></i> Sin ID</small>' : ''}
         </td>
         <td style="font-size:.8rem;">${l.lote||'—'}</td>
         <td style="font-size:.8rem;">${fv}</td>
         <td style="text-align:right;">${l.cantidad_cajas}</td>
         <td style="text-align:right;">${l.saldos}</td>
-        <td style="text-align:right;font-weight:700;color:${parseFloat(l.und_total)<=0?'#dc2626':'#1e40af'};">
-          ${parseFloat(l.und_total)<=0 ? '<span class="badge" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;">VACIAR</span>' : parseFloat(l.und_total).toFixed(2)}
+        <td style="text-align:right;font-weight:700;color:${parseFloat(l.und_total)<=0?'var(--danger)':'var(--accent2)'};">
+          ${parseFloat(l.und_total)<=0 ? '<span class="badge" style="background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-bg);">VACIAR</span>' : parseFloat(l.und_total).toFixed(2)}
         </td>
         <td><div style="display:flex;gap:4px;">
           ${esAdmin && !sinId ? `<button class="btn btn-sm btn-success" onclick="WMS_MODULES.inventario._ciAprobarLinea(${l.id})" title="${parseFloat(l.und_total)<=0?'Aprobar vaciado':'Aprobar'}"><i class="fa-solid fa-check"></i></button>` : ''}
@@ -3773,33 +3884,33 @@ WMS_MODULES.inventario = {
 
         <!-- Formulario izquierdo -->
         <div class="card" style="position:sticky;top:70px;">
-          <div class="card-header" style="background:linear-gradient(135deg,#1e40af,#3b82f6);color:#fff;">
+          <div class="card-header" style="background:linear-gradient(135deg,var(--accent2),var(--info));color:#fff;">
             <span class="card-title"><i class="fa-solid fa-box-archive"></i> Agregar Producto</span>
           </div>
           <div class="card-body" style="padding:14px;">
 
             <!-- Producto -->
             <div class="form-group" style="margin-bottom:10px;">
-              <label class="form-label" style="font-weight:600;">Producto <span style="color:#dc2626;">*</span></label>
+              <label class="form-label">Producto <span style="color:var(--danger);">*</span></label>
               <div style="position:relative;">
                 <input id="ci-prod-input" class="form-control" placeholder="Buscar nombre, código o EAN..."
                   autocomplete="off" oninput="WMS_MODULES.inventario._ciSearchProd(this.value)">
-                <div id="ci-prod-dd" style="display:none;position:absolute;z-index:999;width:100%;background:#fff;
+                <div id="ci-prod-dd" style="display:none;position:absolute;z-index:999;width:100%;background:var(--surface);
                   border:1px solid #d1d5db;border-radius:4px;max-height:240px;overflow-y:auto;
                   box-shadow:0 4px 12px rgba(0,0,0,.15);top:100%;left:0;"></div>
               </div>
-              <div id="ci-prod-info" style="display:none;margin-top:6px;background:#f0fdf4;
-                border:1px solid #bbf7d0;border-radius:4px;padding:7px 10px;font-size:.8rem;"></div>
+              <div id="ci-prod-info" style="display:none;margin-top:6px;background:var(--ok-bg);
+                border:1px solid var(--ok-bg);border-radius:4px;padding:7px 10px;font-size:.8rem;"></div>
             </div>
 
             <!-- Ubicación (texto + autocompletado) -->
             <div class="form-group" style="margin-bottom:10px;">
-              <label class="form-label" style="font-weight:600;">Código de Ubicación <span style="color:#dc2626;">*</span></label>
+              <label class="form-label">Código de Ubicación <span style="color:var(--danger);">*</span></label>
               <div style="position:relative;">
                 <input id="ci-ubic-input" class="form-control" placeholder="Ej: A-01-01 o CONG/01-01-01..."
                   autocomplete="off" oninput="WMS_MODULES.inventario._ciSearchUbic(this.value)"
                   style="text-transform:uppercase;">
-                <div id="ci-ubic-dd" style="display:none;position:absolute;z-index:998;width:100%;background:#fff;
+                <div id="ci-ubic-dd" style="display:none;position:absolute;z-index:998;width:100%;background:var(--surface);
                   border:1px solid #d1d5db;border-radius:4px;max-height:180px;overflow-y:auto;
                   box-shadow:0 4px 8px rgba(0,0,0,.1);top:100%;left:0;"></div>
               </div>
@@ -3808,7 +3919,7 @@ WMS_MODULES.inventario = {
 
             <!-- Lote -->
             <div class="form-group" id="ci-lote-group" style="margin-bottom:10px;">
-              <label class="form-label">Lote <span style="color:#9ca3af;font-size:.75rem;">(opcional)</span></label>
+              <label class="form-label">Lote <span style="color:var(--text-muted);font-size:.75rem;">(opcional)</span></label>
               <input id="ci-lote" class="form-control" placeholder="Número de lote...">
             </div>
 
@@ -3818,27 +3929,27 @@ WMS_MODULES.inventario = {
                 <i class="fa-solid fa-calendar-days"></i> Fecha de Vencimiento
               </label>
               <input id="ci-fvenc" type="date" class="form-control">
-              <span id="ci-fvenc-hint" style="font-size:.73rem;color:#6b7280;display:none;">
-                <i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;"></i> Requerida para este producto
+              <span id="ci-fvenc-hint" style="font-size:.73rem;color:var(--muted);display:none;">
+                <i class="fa-solid fa-triangle-exclamation" style="color:var(--danger);"></i> Requerida para este producto
               </span>
             </div>
 
             <!-- Cajas + Saldos -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
               <div class="form-group">
-                <label class="form-label" style="font-weight:600;">Cajas</label>
+                <label class="form-label">Cajas</label>
                 <input id="ci-cajas" type="number" class="form-control" value="0" min="0" step="1"
                   oninput="WMS_MODULES.inventario._ciCalcPreview()">
               </div>
               <div class="form-group">
-                <label class="form-label" style="font-weight:600;">Sueltos</label>
+                <label class="form-label">Sueltos</label>
                 <input id="ci-saldos" type="number" class="form-control" value="0" min="0" step="0.001"
                   oninput="WMS_MODULES.inventario._ciCalcPreview()">
               </div>
             </div>
 
             <!-- Preview UND/TOTAL -->
-            <div id="ci-preview" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;
+            <div id="ci-preview" style="background:var(--info-bg);border:1px solid var(--info-bg);border-radius:6px;
               padding:9px 12px;margin-bottom:12px;font-size:.84rem;display:none;"></div>
 
             <button class="btn btn-primary" style="width:100%;" onclick="WMS_MODULES.inventario._ciEnviar()">
@@ -3846,8 +3957,8 @@ WMS_MODULES.inventario = {
             </button>
 
             ${(WMS.user?.rol === 'Admin' || WMS.user?.rol === 'SuperAdmin') ? `
-            <hr style="margin:14px 0 10px;border-color:#e2e8f0;">
-            <div style="font-size:.75rem;font-weight:600;color:#64748b;margin-bottom:6px;">
+            <hr style="margin:14px 0 10px;border-color:var(--border);">
+            <div style="font-size:.75rem;font-weight:600;color:var(--muted);margin-bottom:6px;">
               <i class="fa-solid fa-box-open"></i> VACIAR UBICACIÓN
             </div>
             <div style="display:flex;gap:6px;">
@@ -3856,7 +3967,7 @@ WMS_MODULES.inventario = {
                 <i class="fa-solid fa-eraser"></i>
               </button>
             </div>
-            <div style="font-size:.72rem;color:#94a3b8;margin-top:4px;">
+            <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px;">
               Ajusta a 0 todo el inventario de esa ubicación y registra el movimiento. Exclusivo Administrador.
             </div>` : ''}
 
@@ -3887,7 +3998,7 @@ WMS_MODULES.inventario = {
                   <th>Acción</th>
                 </tr></thead>
                 <tbody id="ci-mio-tbody">
-                  <tr><td colspan="6" class="table-empty" style="text-align:center;padding:20px;color:#94a3b8;">
+                  <tr><td colspan="6" class="table-empty" style="text-align:center;padding:20px;color:var(--text-muted);">
                     <i class="fa-solid fa-inbox"></i> Sin conteos registrados</td></tr>
                 </tbody>
               </table>
@@ -3900,13 +4011,13 @@ WMS_MODULES.inventario = {
           <div class="card">
             <div class="card-header">
               <span class="card-title">
-                <i class="fa-solid fa-hourglass-half" style="color:#f59e0b;"></i>
+                <i class="fa-solid fa-hourglass-half" style="color:var(--warn);"></i>
                 Pendientes de Aprobación
                 <span id="ci-pend-badge" class="badge badge-warning" style="margin-left:6px;">${pendientes.length}</span>
               </span>
               ${pendientes.length > 0 ? `<button id="btn-aprobar-todo" class="btn btn-sm btn-success" style="margin-left:auto;" onclick="WMS_MODULES.inventario._cargueAprobarTodo()"><i class="fa-solid fa-check-double"></i> Aprobar Todo</button>` : ''}
             </div>
-            <div style="background:#fef9c3;border-bottom:1px solid #fde047;padding:7px 14px;font-size:.78rem;color:#854d0e;">
+            <div style="background:var(--warn-bg);border-bottom:1px solid #fde047;padding:7px 14px;font-size:.78rem;color:var(--warn);">
               <i class="fa-solid fa-shield-halved"></i> <b>Admin:</b> Revise y apruebe para registrar en inventario como <b>Inv Inicial</b>.
             </div>
             <div style="overflow-x:auto;">
@@ -3917,13 +4028,13 @@ WMS_MODULES.inventario = {
                   <th style="text-align:right;">UND/TOTAL</th><th>Acción</th>
                 </tr></thead>
                 <tbody id="ci-pend-tbody">
-                  ${pRows || `<tr><td colspan="8" class="table-empty" style="text-align:center;padding:20px;color:#94a3b8;">
+                  ${pRows || `<tr><td colspan="8" class="table-empty" style="text-align:center;padding:20px;color:var(--text-muted);">
                     <i class="fa-solid fa-inbox"></i> No hay líneas pendientes</td></tr>`}
                 </tbody>
               </table>
             </div>
-            <div id="ci-pend-resumen" style="padding:8px 14px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:.82rem;${pendientes.length?'':'display:none;'}">
-              ${pendientes.length} línea(s) · UND/TOTAL: <b style="color:#1e40af;">${pendientes.reduce((s,l)=>s+parseFloat(l.und_total||0),0).toFixed(2)}</b>
+            <div id="ci-pend-resumen" style="padding:8px 14px;background:var(--table-header-bg);border-top:1px solid var(--border);font-size:.82rem;${pendientes.length?'':'display:none;'}">
+              ${pendientes.length} línea(s) · UND/TOTAL: <b style="color:var(--accent2);">${pendientes.reduce((s,l)=>s+parseFloat(l.und_total||0),0).toFixed(2)}</b>
             </div>
           </div>` : ''}
 
@@ -3944,16 +4055,16 @@ WMS_MODULES.inventario = {
         (p.codigo_interno||'').toLowerCase().includes(ql) ||
         (p.ean||'').toLowerCase().includes(ql)
       ).slice(0, 30);
-      if (!matches.length) { dd.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:.82rem;">Sin resultados</div>'; dd.style.display='block'; return; }
-      dd.innerHTML = `<div style="padding:5px 10px;font-size:.72rem;color:#9ca3af;border-bottom:1px solid #f0f0f0;">${matches.length} resultado(s)</div>` +
+      if (!matches.length) { dd.innerHTML='<div style="padding:10px;color:var(--text-muted);font-size:.82rem;">Sin resultados</div>'; dd.style.display='block'; return; }
+      dd.innerHTML = `<div style="padding:5px 10px;font-size:.72rem;color:var(--text-muted);border-bottom:1px solid #f0f0f0;">${matches.length} resultado(s)</div>` +
         matches.map(p => {
           const upc = p.unidades_caja > 1 ? ` · ${p.unidades_caja} u/caja` : '';
-          const cv  = p.control_vencimientos ? ' <span style="color:#dc2626;font-size:.68rem;">📅 venc.</span>' : '';
+          const cv  = p.control_vencimientos ? ' <span style="color:var(--danger);font-size:.68rem;">📅 venc.</span>' : '';
           return `<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f5f5f5;font-size:.83rem;"
-            onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background=''"
+            onmouseover="this.style.background='var(--info-bg)'" onmouseout="this.style.background=''"
             onclick="WMS_MODULES.inventario._ciSelProd(${p.id})">
             <div style="font-weight:600;">${WMS.esc(p.nombre)}${cv}</div>
-            <div style="color:#6b7280;font-size:.75rem;">${WMS.esc(p.codigo_interno||'')}${upc}</div>
+            <div style="color:var(--muted);font-size:.75rem;">${WMS.esc(p.codigo_interno||'')}${upc}</div>
           </div>`;
         }).join('');
       dd.style.display = 'block';
@@ -3976,7 +4087,7 @@ WMS_MODULES.inventario = {
     if (info) {
       info.style.display = 'block';
       info.innerHTML = `<b>${WMS.esc(p.nombre)}</b> · ${upc} u/caja · ${WMS.esc(p.unidad_medida||'UN')}` +
-        (p.control_vencimientos ? ' · <span style="color:#dc2626;font-weight:700;">📅 Requiere fecha vencimiento</span>' : '');
+        (p.control_vencimientos ? ' · <span style="color:var(--danger);font-weight:700;">📅 Requiere fecha vencimiento</span>' : '');
     }
     // Visibilidad según configuración del producto
     const reqLote = !!(p && p.controla_lote);
@@ -3994,14 +4105,14 @@ WMS_MODULES.inventario = {
     if (!reqVenc && ciFvencInp) ciFvencInp.value = '';
 
     if (lbl) {
-      lbl.style.color = reqVenc ? '#dc2626' : '';
+      lbl.style.color = reqVenc ? 'var(--danger)' : '';
       lbl.style.fontWeight = reqVenc ? '700' : '';
       lbl.innerHTML = reqVenc
-        ? '<i class="fa-solid fa-calendar-xmark"></i> Fecha de Vencimiento <span style="color:#dc2626;">*</span>'
+        ? '<i class="fa-solid fa-calendar-xmark"></i> Fecha de Vencimiento <span style="color:var(--danger);">*</span>'
         : '<i class="fa-solid fa-calendar-days"></i> Fecha de Vencimiento';
     }
     if (hint) hint.style.display = reqVenc ? 'block' : 'none';
-    if (fv)   fv.style.borderColor = reqVenc ? '#dc2626' : '';
+    if (fv)   fv.style.borderColor = reqVenc ? 'var(--danger)' : '';
     this._ciCalcPreview();
   },
 
@@ -4032,19 +4143,19 @@ WMS_MODULES.inventario = {
       if (exactos.length === 1) { this._ciSelUbic(exactos[0].u.id, exactos[0].u.codigo); dd.style.display='none'; return; }
 
       if (!scored.length) {
-        dd.innerHTML = `<div style="padding:8px 12px;font-size:.8rem;color:#9ca3af;"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;margin-right:4px;"></i>Sin coincidencias — se enviará el código tal cual</div>`;
+        dd.innerHTML = `<div style="padding:8px 12px;font-size:.8rem;color:var(--text-muted);"><i class="fa-solid fa-triangle-exclamation" style="color:var(--warn);margin-right:4px;"></i>Sin coincidencias — se enviará el código tal cual</div>`;
         dd.style.display = 'block'; return;
       }
       dd.innerHTML = scored.slice(0, 20).map(({ u, score }) =>
         `<div style="padding:8px 12px;cursor:pointer;font-size:.83rem;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;"
-          onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background=''"
+          onmouseover="this.style.background='var(--ok-bg)'" onmouseout="this.style.background=''"
           onclick="WMS_MODULES.inventario._ciSelUbic(${u.id},'${WMS.esc(u.codigo||'')}')">
           <span>
             <b>${WMS.esc(u.codigo||'')}</b>
-            <span style="color:#6b7280;font-size:.73rem;margin-left:6px;">${WMS.esc(u.zona||'')} · ${WMS.esc(u.tipo_ubicacion||'')}</span>
+            <span style="color:var(--muted);font-size:.73rem;margin-left:6px;">${WMS.esc(u.zona||'')} · ${WMS.esc(u.tipo_ubicacion||'')}</span>
           </span>
-          ${score===2 ? '<span style="font-size:.65rem;background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:4px;">sin ambiente</span>'
-          : score===1 ? '<span style="font-size:.65rem;background:#f1f5f9;color:#64748b;padding:1px 5px;border-radius:4px;">parcial</span>' : ''}
+          ${score===2 ? '<span style="font-size:.65rem;background:var(--warn-bg);color:var(--warn);padding:1px 5px;border-radius:4px;">sin ambiente</span>'
+          : score===1 ? '<span style="font-size:.65rem;background:var(--btn-neutral);color:var(--muted);padding:1px 5px;border-radius:4px;">parcial</span>' : ''}
         </div>`
       ).join('');
       dd.style.display = 'block';
@@ -4058,7 +4169,7 @@ WMS_MODULES.inventario = {
     const info = document.getElementById('ci-ubic-info');
     if (inp)  inp.value = codigo;
     if (dd)   dd.style.display = 'none';
-    if (info) info.innerHTML = `<span style="color:#16a34a;"><i class="fa-solid fa-circle-check"></i> Ubicación validada</span>`;
+    if (info) info.innerHTML = `<span style="color:var(--ok);"><i class="fa-solid fa-circle-check"></i> Ubicación validada</span>`;
   },
 
   _ciCalcPreview() {
@@ -4071,8 +4182,8 @@ WMS_MODULES.inventario = {
     const total  = cajas * upc + saldos;
     preview.style.display = 'block';
     preview.innerHTML = upc > 1
-      ? `<b>UND/TOTAL:</b> ${cajas} cajas × ${upc} u/caja + ${saldos} sueltos = <b style="color:#1e40af;font-size:1.05em;">${total.toFixed(3)}</b>`
-      : `<b>UND/TOTAL:</b> ${cajas} + ${saldos} sueltos = <b style="color:#1e40af;font-size:1.05em;">${total.toFixed(3)}</b>`;
+      ? `<b>UND/TOTAL:</b> ${cajas} cajas × ${upc} u/caja + ${saldos} sueltos = <b style="color:var(--accent2);font-size:1.05em;">${total.toFixed(3)}</b>`
+      : `<b>UND/TOTAL:</b> ${cajas} + ${saldos} sueltos = <b style="color:var(--accent2);font-size:1.05em;">${total.toFixed(3)}</b>`;
   },
 
   async _ciEnviar() {
@@ -4130,7 +4241,7 @@ WMS_MODULES.inventario = {
       if (bdMio) bdMio.textContent = mios.length;
       if (tbMio) {
         if (!mios.length) {
-          tbMio.innerHTML = `<tr><td colspan="6" class="table-empty" style="text-align:center;padding:20px;color:#94a3b8;">
+          tbMio.innerHTML = `<tr><td colspan="6" class="table-empty" style="text-align:center;padding:20px;color:var(--text-muted);">
             <i class="fa-solid fa-inbox"></i> Aún no has registrado conteos</td></tr>`;
           if (resMio) resMio.style.display = 'none';
         } else {
@@ -4139,16 +4250,16 @@ WMS_MODULES.inventario = {
             const esVac   = parseFloat(l.und_total) <= 0;
             const ubic    = WMS.esc(l.ubicacion_codigo || '—');
             const ubicBadge = sinId
-              ? `<span class="badge badge-warning" title="Ubicación no encontrada">${ubic}</span> <i class="fa-solid fa-triangle-exclamation" style="color:#b45309;font-size:.7rem;"></i>`
+              ? `<span class="badge badge-warning" title="Ubicación no encontrada">${ubic}</span> <i class="fa-solid fa-triangle-exclamation" style="color:var(--warn);font-size:.7rem;"></i>`
               : `<span class="badge badge-gray">${ubic}</span>`;
             const cantCell = esVac
-              ? `<span class="badge" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-size:.75rem;">VACIAR</span>`
-              : `<b style="color:#1e40af;">${parseFloat(l.und_total).toFixed(2)}</b>`;
+              ? `<span class="badge" style="background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-bg);font-size:.75rem;">VACIAR</span>`
+              : `<b style="color:var(--accent2);">${parseFloat(l.und_total).toFixed(2)}</b>`;
             return `<tr>
               <td>
                 <strong style="font-size:.85rem;">${WMS.esc(l.producto||'')}</strong>
-                <br><small style="color:#6b7280;font-family:monospace;">${WMS.esc(l.codigo||'')}</small>
-                ${l.lote ? `<br><small style="color:#9ca3af;">Lote: ${WMS.esc(l.lote)}</small>` : ''}
+                <br><small style="color:var(--muted);font-family:monospace;">${WMS.esc(l.codigo||'')}</small>
+                ${l.lote ? `<br><small style="color:var(--text-muted);">Lote: ${WMS.esc(l.lote)}</small>` : ''}
               </td>
               <td>${ubicBadge}</td>
               <td style="text-align:right;font-size:.85rem;">${l.cantidad_cajas}</td>
@@ -4184,7 +4295,7 @@ WMS_MODULES.inventario = {
       if (btnTodo) btnTodo.style.display = pends.length > 0 ? '' : 'none';
       if (!tbody) return;
       if (!pends.length) {
-        tbody.innerHTML = `<tr><td colspan="8" class="table-empty" style="text-align:center;padding:20px;color:#94a3b8;">
+        tbody.innerHTML = `<tr><td colspan="8" class="table-empty" style="text-align:center;padding:20px;color:var(--text-muted);">
           <i class="fa-solid fa-inbox"></i> No hay líneas pendientes</td></tr>`;
         if (resumen) resumen.style.display = 'none';
         return;
@@ -4196,19 +4307,19 @@ WMS_MODULES.inventario = {
         return `<tr>
           <td>
             <strong>${WMS.esc(l.producto||'')}</strong>
-            <br><small style="color:#6b7280;">${WMS.esc(l.codigo||'')}</small>
-            <br><small style="color:#94a3b8;font-size:.7rem;"><i class="fa-solid fa-user"></i> ${WMS.esc(l.nombre_usuario||'')}</small>
+            <br><small style="color:var(--muted);">${WMS.esc(l.codigo||'')}</small>
+            <br><small style="color:var(--text-muted);font-size:.7rem;"><i class="fa-solid fa-user"></i> ${WMS.esc(l.nombre_usuario||'')}</small>
           </td>
           <td>
             <span class="badge ${sinId?'badge-warning':'badge-gray'}">${WMS.esc(l.ubicacion_codigo||'')}</span>
-            ${sinId?'<br><small style="color:#b45309;font-size:.7rem;"><i class="fa-solid fa-triangle-exclamation"></i> Sin ID</small>':''}
+            ${sinId?'<br><small style="color:var(--warn);font-size:.7rem;"><i class="fa-solid fa-triangle-exclamation"></i> Sin ID</small>':''}
           </td>
           <td style="font-size:.8rem;">${l.lote||'—'}</td>
           <td style="font-size:.8rem;">${fv}</td>
           <td style="text-align:right;">${l.cantidad_cajas}</td>
           <td style="text-align:right;">${l.saldos}</td>
-          <td style="text-align:right;font-weight:700;color:${esVac?'#dc2626':'#1e40af'};">
-            ${esVac ? '<span class="badge" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;">VACIAR</span>' : parseFloat(l.und_total).toFixed(2)}
+          <td style="text-align:right;font-weight:700;color:${esVac?'var(--danger)':'var(--accent2)'};">
+            ${esVac ? '<span class="badge" style="background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-bg);">VACIAR</span>' : parseFloat(l.und_total).toFixed(2)}
           </td>
           <td><div style="display:flex;gap:4px;">
             ${!sinId?`<button class="btn btn-sm btn-success" onclick="WMS_MODULES.inventario._ciAprobarLinea(${l.id})" title="${esVac?'Aprobar vaciado':'Aprobar'}"><i class="fa-solid fa-check"></i></button>`:''}
@@ -4219,7 +4330,7 @@ WMS_MODULES.inventario = {
       const tot = pends.reduce((s,l) => s + parseFloat(l.und_total||0), 0);
       if (resumen) {
         resumen.style.display = '';
-        resumen.innerHTML = `${pends.length} línea(s) · UND/TOTAL total: <b style="color:#1e40af;">${tot.toFixed(2)}</b>`;
+        resumen.innerHTML = `${pends.length} línea(s) · UND/TOTAL total: <b style="color:var(--accent2);">${tot.toFixed(2)}</b>`;
       }
     } catch(e) { WMS.toast('error','Error actualizando pendientes'); }
   },
@@ -4305,12 +4416,12 @@ WMS_MODULES.inventario = {
       WMS.setContent(`
       <style>
         .dash-kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:20px; }
-        .dash-kpi { background:#fff; border-radius:10px; padding:16px 20px; border:1px solid #e2e8f0; border-left:5px solid var(--kc); }
+        .dash-kpi { background:var(--surface); border-radius:10px; padding:16px 20px; border:1px solid var(--border); border-left:5px solid var(--kc); }
         .dash-kpi .val { font-size:2rem; font-weight:800; color:var(--kc); line-height:1; }
-        .dash-kpi .lbl { font-size:.72rem; font-weight:700; text-transform:uppercase; color:#64748b; margin-top:4px; }
-        .dash-kpi .sub { font-size:.7rem; color:#94a3b8; margin-top:2px; }
+        .dash-kpi .lbl { font-size:.72rem; font-weight:700; text-transform:uppercase; color:var(--muted); margin-top:4px; }
+        .dash-kpi .sub { font-size:.7rem; color:var(--text-muted); margin-top:2px; }
         .dash-sess-list { list-style:none; margin:0; padding:0; }
-        .dash-sess-list li { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f1f5f9; }
+        .dash-sess-list li { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border-light); }
         .dash-sess-list li:last-child { border:none; }
       </style>
 
@@ -4357,28 +4468,28 @@ WMS_MODULES.inventario = {
 
         <div class="card" style="margin:0">
           <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-rotate" style="color:#3b82f6"></i> Sesiones en Curso</span>
+            <span class="card-title"><i class="fa-solid fa-rotate" style="color:var(--info)"></i> Sesiones en Curso</span>
             <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.inventario.show_ciclico()" style="font-size:.75rem">Ver todas</button>
           </div>
           <div style="padding:12px 16px;">
             ${sesActivas.length ? `<ul class="dash-sess-list">
               ${sesActivas.slice(0,6).map(s => `<li>
                 <div>
-                  <span style="font-weight:700;color:#0f172a;font-size:.85rem">${WMS.esc(s.nombre||'Sin nombre')}</span>
-                  <span class="badge" style="margin-left:6px;font-size:.65rem;background:${s.tipo==='Ciclico'?'#eff6ff':'#f0fdf4'};color:${s.tipo==='Ciclico'?'#1e40af':'#166534'}">${s.tipo}</span>
-                  <div style="font-size:.72rem;color:#64748b">${s.total_lineas||0} líneas · ${s.total_ajustes||0} ajustes</div>
+                  <span style="font-weight:700;color:var(--text);font-size:.85rem">${WMS.esc(s.nombre||'Sin nombre')}</span>
+                  <span class="badge" style="margin-left:6px;font-size:.65rem;background:${s.tipo==='Ciclico'?'var(--info-bg)':'var(--ok-bg)'};color:${s.tipo==='Ciclico'?'var(--accent2)':'var(--ok)'}">${s.tipo}</span>
+                  <div style="font-size:.72rem;color:var(--muted)">${s.total_lineas||0} líneas · ${s.total_ajustes||0} ajustes</div>
                 </div>
                 <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._openDashboardInTab(${s.id},1)">
                   <i class="fa-solid fa-chart-bar"></i>
                 </button>
               </li>`).join('')}
-            </ul>` : '<div style="text-align:center;padding:24px;color:#94a3b8"><i class="fa-solid fa-circle-check" style="font-size:1.5rem"></i><br>Sin sesiones activas</div>'}
+            </ul>` : '<div style="text-align:center;padding:24px;color:var(--text-muted)"><i class="fa-solid fa-circle-check" style="font-size:1.5rem"></i><br>Sin sesiones activas</div>'}
           </div>
         </div>
 
         <div class="card" style="margin:0">
           <div class="card-header">
-            <span class="card-title"><i class="fa-solid fa-arrow-down" style="color:#ef4444"></i> Bajo Nivel Mínimo (${bajos.length})</span>
+            <span class="card-title"><i class="fa-solid fa-arrow-down" style="color:var(--danger)"></i> Bajo Nivel Mínimo (${bajos.length})</span>
           </div>
           <div class="table-container" style="max-height:260px;overflow-y:auto;">
             <table class="erp-table">
@@ -4388,7 +4499,7 @@ WMS_MODULES.inventario = {
                 <td class="text-center"><span class="badge badge-danger">${WMS.formatNum(n.stock_actual||0)}</span></td>
                 <td class="text-center" style="font-size:.8rem">${WMS.formatNum(n.nivel_minimo||0)}</td>
                 <td class="text-center"><span class="badge badge-warning">${WMS.formatNum((n.nivel_minimo||0)-(n.stock_actual||0))}</span></td>
-              </tr>`).join('') || '<tr><td colspan="4" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin referencias críticas</td></tr>'}
+              </tr>`).join('') || '<tr><td colspan="4" class="table-empty"><i class="fa-solid fa-circle-check" style="color:var(--ok);"></i> Sin referencias críticas</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -4414,15 +4525,15 @@ WMS_MODULES.inventario = {
 
       <!-- Fila 4: Ubicaciones contadas en cero en sesiones activas -->
       <div class="card" style="margin:0 0 16px 0;" id="dash-cero-panel">
-        <div class="card-header" style="cursor:pointer;background:#fef2f2;border-bottom:1px solid #fecaca;"
+        <div class="card-header" style="cursor:pointer;background:var(--danger-bg);border-bottom:1px solid var(--danger-bg);"
              onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
-          <span class="card-title" style="color:#dc2626;">
+          <span class="card-title" style="color:var(--danger);">
             <i class="fa-solid fa-circle-minus"></i> Ubicaciones Contadas en Cero
           </span>
-          <span id="dash-cero-badge" class="badge" style="background:#fee2e2;color:#dc2626;margin-left:8px;">cargando…</span>
+          <span id="dash-cero-badge" class="badge" style="background:var(--danger-bg);color:var(--danger);margin-left:8px;">cargando…</span>
         </div>
         <div id="dash-cero-body">
-          <div style="display:flex;gap:10px;flex-wrap:wrap;padding:10px 16px;background:#fafafa;border-bottom:1px solid #e2e8f0;align-items:center;">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;padding:10px 16px;background:#fafafa;border-bottom:1px solid var(--border);align-items:center;">
             <input id="dash-cero-f-aux"  class="form-control" style="max-width:180px;font-size:.82rem;" placeholder="🔍 Auxiliar…"   oninput="WMS_MODULES.inventario._dashFiltrarCero()">
             <input id="dash-cero-f-ubic" class="form-control" style="max-width:160px;font-size:.82rem;" placeholder="🔍 Ubicación…"  oninput="WMS_MODULES.inventario._dashFiltrarCero()">
             <input id="dash-cero-f-ref"  class="form-control" style="max-width:220px;font-size:.82rem;" placeholder="🔍 Referencia…" oninput="WMS_MODULES.inventario._dashFiltrarCero()">
@@ -4430,7 +4541,7 @@ WMS_MODULES.inventario = {
               onclick="['dash-cero-f-aux','dash-cero-f-ubic','dash-cero-f-ref'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});WMS_MODULES.inventario._dashFiltrarCero()">
               <i class="fa-solid fa-xmark"></i> Limpiar
             </button>
-            <span style="font-size:.75rem;color:#94a3b8;margin-left:auto;">
+            <span style="font-size:.75rem;color:var(--text-muted);margin-left:auto;">
               <i class="fa-solid fa-info-circle"></i> Al aprobar el ajuste de sesión, la ubicación quedará vacía en inventario y kardex.
             </span>
           </div>
@@ -4457,7 +4568,7 @@ WMS_MODULES.inventario = {
         </div>
         <div id="dash-conteo-panel" style="display:block">
           <!-- Filtros -->
-          <div style="display:flex;gap:10px;flex-wrap:wrap;padding:12px 16px;background:#fafafa;border-bottom:1px solid #e2e8f0;">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;padding:12px 16px;background:#fafafa;border-bottom:1px solid var(--border);">
             <input id="dash-f-auxiliar"   class="form-control" style="max-width:200px;font-size:.82rem;" placeholder="🔍 Auxiliar…"   oninput="WMS_MODULES.inventario._dashFiltrarConteos()">
             <input id="dash-f-ambiente"   class="form-control" style="max-width:160px;font-size:.82rem;" placeholder="🔍 Ambiente…"   oninput="WMS_MODULES.inventario._dashFiltrarConteos()">
             <input id="dash-f-referencia" class="form-control" style="max-width:220px;font-size:.82rem;" placeholder="🔍 Referencia…" oninput="WMS_MODULES.inventario._dashFiltrarConteos()">
@@ -4531,10 +4642,10 @@ WMS_MODULES.inventario = {
         <td><span class="badge badge-light-blue" style="text-transform:uppercase;">${WMS.esc(amb)}</span></td>
         <td style="font-size:.82rem;font-weight:600;">${WMS.esc(l.producto || '—')}</td>
         <td><span class="badge badge-gray">${WMS.esc(l.ubicacion_codigo || '—')}</span></td>
-        <td class="text-center" style="font-weight:700;color:${esVac?'#dc2626':'#1e40af'};">
-          ${esVac ? '<span class="badge" style="background:#fef2f2;color:#dc2626;">VACIAR</span>' : WMS.formatNum(l.und_total)}
+        <td class="text-center" style="font-weight:700;color:${esVac?'var(--danger)':'var(--accent2)'};">
+          ${esVac ? '<span class="badge" style="background:var(--danger-bg);color:var(--danger);">VACIAR</span>' : WMS.formatNum(l.und_total)}
         </td>
-        <td style="font-size:.78rem;color:#64748b;">${fecha}</td>
+        <td style="font-size:.78rem;color:var(--muted);">${fecha}</td>
       </tr>`;
     }).join('');
   },
@@ -4555,46 +4666,46 @@ WMS_MODULES.inventario = {
 
     if (badge) {
       badge.textContent = filtradas.length + ' líneas';
-      badge.style.background = filtradas.length > 0 ? '#fee2e2' : '#f0fdf4';
-      badge.style.color = filtradas.length > 0 ? '#dc2626' : '#166534';
+      badge.style.background = filtradas.length > 0 ? 'var(--danger-bg)' : 'var(--ok-bg)';
+      badge.style.color = filtradas.length > 0 ? 'var(--danger)' : 'var(--ok)';
     }
     if (!tbody) return;
     if (!filtradas.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin ubicaciones contadas en cero</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="table-empty"><i class="fa-solid fa-circle-check" style="color:var(--ok);"></i> Sin ubicaciones contadas en cero</td></tr>';
       return;
     }
     tbody.innerHTML = filtradas.map(l => {
       const tieneSistema = parseFloat(l.cantidad_sistema || 0) > 0;
-      return `<tr id="dash-cero-row-${l.linea_id}" style="${tieneSistema ? 'background:#fff7ed;' : ''}">
+      return `<tr id="dash-cero-row-${l.linea_id}" style="${tieneSistema ? 'background:var(--warn-bg);' : ''}">
         <td style="font-size:.8rem;">
-          <span class="badge" style="background:${l.sesion_tipo==='Ciclico'?'#eff6ff':'#f0fdf4'};color:${l.sesion_tipo==='Ciclico'?'#1e40af':'#166534'};font-size:.7rem;">
+          <span class="badge" style="background:${l.sesion_tipo==='Ciclico'?'var(--info-bg)':'var(--ok-bg)'};color:${l.sesion_tipo==='Ciclico'?'var(--accent2)':'var(--ok)'};font-size:.7rem;">
             ${WMS.esc(l.sesion_tipo||'?')}
           </span>
-          <div style="font-size:.75rem;color:#64748b;margin-top:2px;">${WMS.esc(l.sesion_nombre||'-')}</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:2px;">${WMS.esc(l.sesion_nombre||'-')}</div>
         </td>
         <td style="font-size:.8rem;">${WMS.esc(l.auxiliar_nombre||'—')}</td>
         <td><span class="badge badge-gray">${WMS.esc(l.ubicacion_codigo||'—')}</span>
-          ${l.ubicacion_zona ? `<span style="font-size:.7rem;color:#94a3b8;margin-left:4px;">${WMS.esc(l.ubicacion_zona)}</span>` : ''}
+          ${l.ubicacion_zona ? `<span style="font-size:.7rem;color:var(--text-muted);margin-left:4px;">${WMS.esc(l.ubicacion_zona)}</span>` : ''}
         </td>
         <td style="font-size:.8rem;">
           <div style="font-weight:600;">${WMS.esc(l.producto_nombre||'—')}</div>
-          <div style="font-size:.72rem;color:#64748b;">${WMS.esc(l.producto_codigo||'')}</div>
+          <div style="font-size:.72rem;color:var(--muted);">${WMS.esc(l.producto_codigo||'')}</div>
         </td>
         <td class="text-center">
           ${tieneSistema
             ? `<span class="badge badge-warning" title="Tiene inventario en sistema">${WMS.formatNum(l.cantidad_sistema)}</span>`
-            : `<span style="color:#94a3b8;font-size:.8rem;">0</span>`}
+            : `<span style="color:var(--text-muted);font-size:.8rem;">0</span>`}
         </td>
-        <td class="text-center"><span class="badge" style="background:#fee2e2;color:#dc2626;">0</span></td>
-        <td style="font-size:.75rem;color:#64748b;">${l.hora_conteo ? l.hora_conteo.slice(0,16).replace('T',' ') : '—'}</td>
+        <td class="text-center"><span class="badge" style="background:var(--danger-bg);color:var(--danger);">0</span></td>
+        <td style="font-size:.75rem;color:var(--muted);">${l.hora_conteo ? l.hora_conteo.slice(0,16).replace('T',' ') : '—'}</td>
         <td class="text-center" style="font-size:.8rem;">${l.ronda||1}</td>
         <td class="text-center">
           ${tieneSistema
-            ? `<button class="btn btn-sm" style="background:#dc2626;color:#fff;font-size:.72rem;padding:3px 8px;"
+            ? `<button class="btn btn-danger btn-sm" style="font-size:.72rem;padding:3px 8px;"
                  onclick="WMS_MODULES.inventario._aprobarAjusteCero(${l.linea_id}, ${l.sesion_id}, this)">
                  <i class="fa-solid fa-check"></i> Aprobar Ajuste
                </button>`
-            : `<span style="color:#94a3b8;font-size:.75rem;">Sin stock</span>`}
+            : `<span style="color:var(--text-muted);font-size:.75rem;">Sin stock</span>`}
         </td>
       </tr>`;
     }).join('');
@@ -4614,12 +4725,12 @@ WMS_MODULES.inventario = {
       if (badge) {
         const n = (window._dashCeroLineas || []).length;
         badge.textContent = n + ' líneas';
-        badge.style.background = n > 0 ? '#fee2e2' : '#f0fdf4';
-        badge.style.color = n > 0 ? '#dc2626' : '#166534';
+        badge.style.background = n > 0 ? 'var(--danger-bg)' : 'var(--ok-bg)';
+        badge.style.color = n > 0 ? 'var(--danger)' : 'var(--ok)';
       }
       const tbody = document.getElementById('dash-cero-tbody');
       if (tbody && !tbody.children.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin ubicaciones contadas en cero</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="table-empty"><i class="fa-solid fa-circle-check" style="color:var(--ok);"></i> Sin ubicaciones contadas en cero</td></tr>';
       }
     } catch(e) {
       WMS.toast(e?.data?.error || 'Error al aprobar ajuste — verifique su rol', 'error');
@@ -4640,13 +4751,13 @@ WMS_MODULES.inventario = {
         <div class="card">
           <div class="card-header">
             <span class="card-title"><i class="fa-solid fa-sliders"></i> Corrección Manual de Inventario</span>
-            <span style="font-size:.78rem;color:#64748b">Registrada en el Kardex — inmutable</span>
+            <span style="font-size:.78rem;color:var(--muted)">Registrada en el Kardex — inmutable</span>
           </div>
           <div class="card-body">
 
-            <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:4px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;">
-              <i class="fa-solid fa-triangle-exclamation" style="color:#92400e;font-size:1.1rem;"></i>
-              <span style="font-size:.85rem;color:#92400e;font-weight:600;">
+            <div style="background:var(--warn-bg);border:1px solid var(--warn-bg);border-radius:4px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;">
+              <i class="fa-solid fa-triangle-exclamation" style="color:var(--warn);font-size:1.1rem;"></i>
+              <span style="font-size:.85rem;color:var(--warn);font-weight:600;">
                 Cada corrección genera un movimiento en el Kardex y un registro <strong>inmutable</strong> en la tabla de ajustes.
                 Para corregir un error previo, registre un ajuste compensatorio.
               </span>
@@ -4658,7 +4769,7 @@ WMS_MODULES.inventario = {
               <input id="aj-prod-ac" class="form-control" placeholder="Escriba nombre o escanee EAN...">
               <input type="hidden" id="aj-prod-id">
               <input type="hidden" id="aj-prod-upc" value="1">
-              <div id="aj-stock-preview" style="margin-top:6px;font-size:.8rem;color:#475569;display:none;background:#f8fafc;border-radius:6px;padding:8px 12px;border:1px solid #e2e8f0;"></div>
+              <div id="aj-stock-preview" style="margin-top:6px;font-size:.8rem;color:var(--text2);display:none;background:var(--table-header-bg);border-radius:6px;padding:8px 12px;border:1px solid var(--border);"></div>
             </div>
 
             <div class="form-grid form-grid-2">
@@ -4689,7 +4800,7 @@ WMS_MODULES.inventario = {
                 <select id="aj-ubicacion-salida" class="form-control" style="display:none;">
                   <option value="">— Seleccione un producto primero —</option>
                 </select>
-                <small id="aj-ubicacion-hint" style="color:#64748b;font-size:.75rem;display:block;margin-top:4px;"></small>
+                <small id="aj-ubicacion-hint" style="color:var(--muted);font-size:.75rem;display:block;margin-top:4px;"></small>
               </div>
               <!-- Lote -->
               <div class="form-group" id="aj-lote-wrap">
@@ -4700,7 +4811,7 @@ WMS_MODULES.inventario = {
               <div class="form-group" id="aj-fv-wrap" style="display:none;">
                 <label class="form-label">Fecha Vencimiento <span class="required">*</span></label>
                 <input id="aj-fv" type="date" class="form-control">
-                <small style="font-size:.75rem;color:#64748b;">Obligatoria para ajuste de Entrada</small>
+                <small style="font-size:.75rem;color:var(--muted);">Obligatoria para ajuste de Entrada</small>
               </div>
               <!-- Motivo -->
               <div class="form-group" style="grid-column:1/-1;">
@@ -4710,7 +4821,7 @@ WMS_MODULES.inventario = {
             </div>
 
             <!-- Preview UND/TOTAL para productos con cajas -->
-            <div id="aj-preview" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:9px 14px;margin-bottom:8px;font-size:.84rem;"></div>
+            <div id="aj-preview" style="display:none;background:var(--info-bg);border:1px solid var(--info-bg);border-radius:6px;padding:9px 14px;margin-bottom:8px;font-size:.84rem;"></div>
 
             <!-- Cambiar Lote/FV: tabla editable con TODAS las ubicaciones donde
                  existe la referencia seleccionada (reusa this._ajStock, ya
@@ -4778,7 +4889,7 @@ WMS_MODULES.inventario = {
           const top3 = stock.slice(0, 3);
           prev.innerHTML = top3.length
             ? top3.map(s => `<span style="margin-right:8px;"><i class="fa-solid fa-box"></i> <strong>${WMS.formatNum(s.cantidad)}</strong> en ${WMS.esc(s.ubicacion_codigo || '-')}${s.lote ? ' · Lote ' + WMS.esc(s.lote) : ''}</span>`).join('')
-            : '<span style="color:#94a3b8;">Sin stock registrado en sistema</span>';
+            : '<span style="color:var(--text-muted);">Sin stock registrado en sistema</span>';
         }
         // Selector de Salida: solo ubicaciones con stock real de este producto —
         // de ahí es de donde el sistema puede físicamente descontar.
@@ -4791,7 +4902,7 @@ WMS_MODULES.inventario = {
           }
         }
       } catch(e) {
-        if (prev) prev.innerHTML = '<span style="color:#94a3b8;">No se pudo cargar el stock</span>';
+        if (prev) prev.innerHTML = '<span style="color:var(--text-muted);">No se pudo cargar el stock</span>';
         if (selSalida) selSalida.innerHTML = '<option value="">Error cargando ubicaciones</option>';
       }
       this._ajTipoChanged();
@@ -4811,12 +4922,12 @@ WMS_MODULES.inventario = {
         <label class="form-label">Cantidad <span class="required">*</span></label>
         <div style="display:flex;gap:8px;">
           <div style="flex:1;">
-            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">${labelPrincipal}</label>
+            <label class="form-label" style="margin-bottom:2px;display:block;">${labelPrincipal}</label>
             <input id="aj-cajas" type="number" class="form-control" min="0" step="1" value="0"
               oninput="WMS_MODULES.inventario._ajCalcPreview()" placeholder="0">
           </div>
           <div style="flex:1;">
-            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">Sueltos</label>
+            <label class="form-label" style="margin-bottom:2px;display:block;">Sueltos</label>
             <input id="aj-saldos" type="number" class="form-control" min="0" step="1" value="0"
               oninput="WMS_MODULES.inventario._ajCalcPreview()" placeholder="0">
           </div>
@@ -4959,7 +5070,7 @@ WMS_MODULES.inventario = {
       preview.style.display = 'block';
       const etiqueta = esUdm ? `${cajas} und × ${upc} u/e` : `${cajas} cajas × ${upc} u/caja`;
       preview.innerHTML = `<b>UND/TOTAL:</b> ${etiqueta} + ${saldos} sueltos = `
-        + `<b style="color:#1e40af;font-size:1.05em;">${total.toFixed(2)}</b>`;
+        + `<b style="color:var(--accent2);font-size:1.05em;">${total.toFixed(2)}</b>`;
     } else {
       preview.style.display = 'none';
     }
@@ -4973,7 +5084,7 @@ WMS_MODULES.inventario = {
       const ra  = await API.get('/v2/inventario/ajustes', `desde=${hoy}&hasta=${hoy}&origen=CorreccionAdmin`);
       const ays = ra.data || ra || [];
       if (!ays.length) {
-        el.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:16px;font-style:italic;">Sin correcciones realizadas hoy.</p>';
+        el.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:16px;font-style:italic;">Sin correcciones realizadas hoy.</p>';
         return;
       }
       el.innerHTML = `
@@ -5116,10 +5227,10 @@ WMS_MODULES.inventario = {
 
       <!-- Modal de detalle/aprobación -->
       <div id="ajubi-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;align-items:center;justify-content:center;">
-        <div style="background:#fff;border-radius:10px;max-width:720px;width:96%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);">
-          <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+        <div style="background:var(--surface);border-radius:10px;max-width:720px;width:96%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+          <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
             <b style="font-size:1rem;"><i class="fa-solid fa-location-crosshairs" style="color:#0891b2;"></i> Detalle del Ajuste</b>
-            <button onclick="document.getElementById('ajubi-modal').style.display='none'" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#64748b;">&times;</button>
+            <button onclick="document.getElementById('ajubi-modal').style.display='none'" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--muted);">&times;</button>
           </div>
           <div id="ajubi-modal-body" style="padding:20px;"></div>
         </div>
@@ -5143,14 +5254,14 @@ WMS_MODULES.inventario = {
       const r = await API.get('/inventario/ajuste-ubicacion', 'estado=Pendiente');
       const rows = r.data || r || [];
       if (!rows.length) {
-        wrap.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:24px;font-style:italic;">No hay ajustes pendientes de aprobación.</p>';
+        wrap.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:24px;font-style:italic;">No hay ajustes pendientes de aprobación.</p>';
         return;
       }
       const tipoBadge = (tipo) => {
-        if (tipo === 'AgregarInventario') return '<span style="background:#dcfce7;color:#065f46;border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-plus"></i> Agregar</span>';
-        if (tipo === 'AjustarCantidad')   return '<span style="background:#dbeafe;color:#1e3a8a;border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-pen-to-square"></i> Ajustar Cantidad</span>';
-        if (tipo === 'AjusteCero')        return '<span style="background:#fee2e2;color:#991b1b;border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-ban"></i> Ajustar a Cero</span>';
-        return '<span style="background:#fef3c7;color:#92400e;border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-rotate-left"></i> Ajuste Completo</span>';
+        if (tipo === 'AgregarInventario') return '<span style="background:var(--ok-bg);color:var(--ok);border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-plus"></i> Agregar</span>';
+        if (tipo === 'AjustarCantidad')   return '<span style="background:var(--info-bg);color:#1e3a8a;border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-pen-to-square"></i> Ajustar Cantidad</span>';
+        if (tipo === 'AjusteCero')        return '<span style="background:var(--danger-bg);color:var(--danger);border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-ban"></i> Ajustar a Cero</span>';
+        return '<span style="background:var(--warn-bg);color:var(--warn);border-radius:99px;font-size:.7rem;font-weight:700;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-rotate-left"></i> Ajuste Completo</span>';
       };
       wrap.innerHTML = `
         <div class="table-container">
@@ -5162,7 +5273,7 @@ WMS_MODULES.inventario = {
               ${rows.map(a => `
               <tr>
                 <td>${a.id}</td>
-                <td><b>${WMS.esc(a.ubicacion?.codigo || '-')}</b><br><small style="color:#64748b;">${WMS.esc(a.ubicacion?.nombre || '')}</small></td>
+                <td><b>${WMS.esc(a.ubicacion?.codigo || '-')}</b><br><small style="color:var(--muted);">${WMS.esc(a.ubicacion?.nombre || '')}</small></td>
                 <td>${tipoBadge(a.tipo)}</td>
                 <td>${WMS.esc((a.auxiliar?.nombre || '') + ' ' + (a.auxiliar?.apellido || ''))}</td>
                 <td>${a.detalles_count ?? '—'} ref.</td>
@@ -5187,10 +5298,10 @@ WMS_MODULES.inventario = {
       const r = await API.get('/inventario/ajuste-ubicacion', '');
       const rows = (r.data || r || []).filter(a => a.estado !== 'Pendiente').slice(0, 50);
       if (!rows.length) {
-        wrap.innerHTML = '<p style="text-align:center;color:#94a3b8;padding:20px;font-style:italic;">Sin historial aún.</p>';
+        wrap.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;font-style:italic;">Sin historial aún.</p>';
         return;
       }
-      const estadoColor = { Aprobado: '#059669', Rechazado: '#dc2626' };
+      const estadoColor = { Aprobado: 'var(--ok)', Rechazado: 'var(--danger)' };
       wrap.innerHTML = `
         <div class="table-container">
           <table class="data-table compact">
@@ -5203,7 +5314,7 @@ WMS_MODULES.inventario = {
                 <td>${a.id}</td>
                 <td>${WMS.esc(a.ubicacion?.codigo || '-')}</td>
                 <td>${WMS.esc((a.auxiliar?.nombre || '') + ' ' + (a.auxiliar?.apellido || ''))}</td>
-                <td><span style="color:${estadoColor[a.estado]||'#64748b'};font-weight:700;">${a.estado}</span></td>
+                <td><span style="color:${estadoColor[a.estado]||'var(--muted)'};font-weight:700;">${a.estado}</span></td>
                 <td>${WMS.esc((a.aprobador?.nombre || '-') + ' ' + (a.aprobador?.apellido || ''))}</td>
                 <td>${a.fecha_aprobacion ? new Date(a.fecha_aprobacion).toLocaleString('es-CO', {dateStyle:'short',timeStyle:'short'}) : '-'}</td>
                 <td><button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.inventario._ajusteUbiDetalle(${a.id})"><i class="fa-solid fa-eye"></i></button></td>
@@ -5244,7 +5355,7 @@ WMS_MODULES.inventario = {
               </tr>`).join('')}
             </tbody>
           </table>`
-        : '<p style="color:#94a3b8;font-style:italic;font-size:.85rem;">Sin inventario actual en esta ubicación.</p>';
+        : '<p style="color:var(--text-muted);font-style:italic;font-size:.85rem;">Sin inventario actual en esta ubicación.</p>';
 
       // Tabla conteo auxiliar (editable si Pendiente)
       const detHtml = `<table class="data-table compact" style="margin-top:6px;">
@@ -5273,13 +5384,13 @@ WMS_MODULES.inventario = {
           </tbody>
         </table>`;
       const detHtmlFinal = (ajuste.tipo === 'AjusteCero')
-        ? '<p style="color:#94a3b8;font-style:italic;font-size:.85rem;">Sin referencias que agregar — este modo solo pone en cero lo que ya está en la ubicación (columna izquierda).</p>'
+        ? '<p style="color:var(--text-muted);font-style:italic;font-size:.85rem;">Sin referencias que agregar — este modo solo pone en cero lo que ya está en la ubicación (columna izquierda).</p>'
         : detHtml;
 
       const estadoBadge = {
-        Pendiente: '<span style="background:#fef3c7;color:#92400e;padding:2px 10px;border-radius:99px;font-weight:700;">Pendiente</span>',
-        Aprobado:  '<span style="background:#d1fae5;color:#065f46;padding:2px 10px;border-radius:99px;font-weight:700;">Aprobado</span>',
-        Rechazado: '<span style="background:#fee2e2;color:#991b1b;padding:2px 10px;border-radius:99px;font-weight:700;">Rechazado</span>',
+        Pendiente: '<span style="background:var(--warn-bg);color:var(--warn);padding:2px 10px;border-radius:99px;font-weight:700;">Pendiente</span>',
+        Aprobado:  '<span style="background:#d1fae5;color:var(--ok);padding:2px 10px;border-radius:99px;font-weight:700;">Aprobado</span>',
+        Rechazado: '<span style="background:var(--danger-bg);color:var(--danger);padding:2px 10px;border-radius:99px;font-weight:700;">Rechazado</span>',
       }[ajuste.estado] || ajuste.estado;
 
       const esAgregar         = ajuste.tipo === 'AgregarInventario';
@@ -5287,41 +5398,41 @@ WMS_MODULES.inventario = {
       const esCero             = ajuste.tipo === 'AjusteCero';
       let tipoLabel, invLabel, detLabel, warningHtml, btnAprobarLabel, btnColor;
       if (esCero) {
-        tipoLabel   = '<span style="background:#fee2e2;color:#991b1b;border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-ban"></i> Ajustar a Cero</span>';
+        tipoLabel   = '<span style="background:var(--danger-bg);color:var(--danger);border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-ban"></i> Ajustar a Cero</span>';
         invLabel    = '<i class="fa-solid fa-database"></i> Inventario Actual (se pondrá en cero)';
         detLabel    = '<i class="fa-solid fa-ban"></i> Sin Referencias a Agregar';
-        warningHtml = `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:#991b1b;">
+        warningHtml = `<div style="background:var(--danger-bg);border:1px solid #fca5a5;border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:var(--danger);">
              <i class="fa-solid fa-triangle-exclamation"></i> <b>Al aprobar:</b> todo el inventario actual de esta ubicación se eliminará (AjusteNegativo en Kardex). No se crea nada nuevo. Las demás ubicaciones con estas referencias <b>no se afectan</b>. Esta acción es <b>irreversible</b>.
            </div>`;
         btnAprobarLabel = 'Aprobar Ajuste a Cero';
-        btnColor    = '#dc2626';
+        btnColor    = 'var(--danger)';
       } else if (esAgregar) {
-        tipoLabel   = '<span style="background:#dcfce7;color:#065f46;border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-plus"></i> Agregar Inventario</span>';
+        tipoLabel   = '<span style="background:var(--ok-bg);color:var(--ok);border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-plus"></i> Agregar Inventario</span>';
         invLabel    = '<i class="fa-solid fa-database"></i> Inventario Actual (se conservará + se sumará)';
         detLabel    = '<i class="fa-solid fa-plus"></i> Stock a Agregar';
-        warningHtml = `<div style="background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:#065f46;">
+        warningHtml = `<div style="background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:var(--ok);">
              <i class="fa-solid fa-circle-info"></i> <b>Al aprobar:</b> las referencias indicadas se <b>SUMARÁN</b> al inventario existente en la ubicación. El stock previo <b>no se elimina</b>. Se registra AjustePositivo en Kardex.
            </div>`;
         btnAprobarLabel = 'Aprobar y Agregar';
-        btnColor    = '#059669';
+        btnColor    = 'var(--ok)';
       } else if (esAjustarCantidad) {
-        tipoLabel   = '<span style="background:#dbeafe;color:#1e3a8a;border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-pen-to-square"></i> Ajustar Cantidad</span>';
+        tipoLabel   = '<span style="background:var(--info-bg);color:#1e3a8a;border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-pen-to-square"></i> Ajustar Cantidad</span>';
         invLabel    = '<i class="fa-solid fa-database"></i> Inventario Actual (referencia)';
         detLabel    = '<i class="fa-solid fa-clipboard-check"></i> Cantidad Corregida por el Auxiliar';
-        warningHtml = `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:#1e3a8a;">
+        warningHtml = `<div style="background:var(--info-bg);border:1px solid var(--info-bg);border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:#1e3a8a;">
              <i class="fa-solid fa-circle-info"></i> <b>Al aprobar:</b> se corrige la cantidad de cada partida al valor indicado (sin borrar ni agregar referencias). La diferencia se registra en Kardex como <b>AjustePositivo</b> (si sube) o <b>AjusteNegativo</b> (si baja).
            </div>`;
         btnAprobarLabel = 'Aprobar Corrección';
-        btnColor    = '#2563eb';
+        btnColor    = 'var(--info)';
       } else {
-        tipoLabel   = '<span style="background:#fef3c7;color:#92400e;border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-rotate-left"></i> Ajuste Completo</span>';
+        tipoLabel   = '<span style="background:var(--warn-bg);color:var(--warn);border-radius:99px;font-size:.75rem;font-weight:700;padding:3px 12px;"><i class="fa-solid fa-rotate-left"></i> Ajuste Completo</span>';
         invLabel    = '<i class="fa-solid fa-database"></i> Inventario Actual (será eliminado al aprobar)';
         detLabel    = '<i class="fa-solid fa-clipboard-check"></i> Conteo del Auxiliar';
-        warningHtml = `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:#92400e;">
+        warningHtml = `<div style="background:var(--warn-bg);border:1px solid var(--warn-bg);border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.8rem;color:var(--warn);">
              <i class="fa-solid fa-triangle-exclamation"></i> <b>Al aprobar:</b> el inventario actual de la ubicación se eliminará (AjusteSalida en Kardex) y se creará el inventario contado (AjusteEntrada en Kardex). Esta acción es <b>irreversible</b>.
            </div>`;
         btnAprobarLabel = 'Aprobar Ajuste';
-        btnColor    = '#0F4C81';
+        btnColor    = 'var(--accent)';
       }
 
       body.innerHTML = `
@@ -5336,7 +5447,7 @@ WMS_MODULES.inventario = {
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
           <div>
-            <div style="font-weight:700;color:#64748b;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">
+            <div style="font-weight:700;color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">
               ${invLabel}
             </div>
             ${invHtml}
@@ -5350,9 +5461,9 @@ WMS_MODULES.inventario = {
         </div>
 
         ${esPendiente && esAdminAjuste ? `
-        <div style="border-top:1px solid #e2e8f0;margin-top:20px;padding-top:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div style="border-top:1px solid var(--border);margin-top:20px;padding-top:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
           <div style="flex:1;min-width:220px;">
-            <label style="font-size:.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Motivo de rechazo (opcional)</label>
+            <label class="form-label" style="display:block;margin-bottom:4px;">Motivo de rechazo (opcional)</label>
             <input id="ajubi-motivo-rechazo" class="form-control" placeholder="Ej: Diferencias inconsistentes..." style="font-size:.85rem;">
           </div>
           <button class="btn btn-danger" onclick="WMS_MODULES.inventario._ajusteUbiRechazar(${id})">
@@ -5363,7 +5474,7 @@ WMS_MODULES.inventario = {
           </button>
         </div>
         ${warningHtml}` : (esPendiente ? `
-        <div style="border-top:1px solid #e2e8f0;margin-top:20px;padding-top:16px;font-size:.8rem;color:#92400e;background:#fef3c7;border-radius:6px;padding:10px 14px;">
+        <div style="border-top:1px solid var(--border);margin-top:20px;padding-top:16px;font-size:.8rem;color:var(--warn);background:var(--warn-bg);border-radius:6px;padding:10px 14px;">
           <i class="fa-solid fa-lock"></i> Este ajuste está pendiente de aprobación — solo el Administrador puede aprobarlo o rechazarlo.
         </div>
         ${warningHtml}` : '')}
@@ -5461,21 +5572,21 @@ WMS_MODULES.inventario = {
     content.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:14px;">
         ${pend > 0 ? `
-        <div class="inv2-alert" style="border-left-color:#f59e0b;background:#fffbeb;color:#92400e;">
+        <div class="inv2-alert" style="border-left-color:var(--warn);background:var(--warn-bg);color:var(--warn);">
           <i class="fa-solid fa-hourglass-half fa-lg"></i>
           <div><b>${pend} recuento(s) programado(s) sin terminar.</b> El ajuste está bloqueado hasta que se finalicen o se eliminen en Segundos Conteos. Las filas marcadas "Recuento pendiente" aún muestran el conteo anterior.</div>
         </div>` : ''}
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-          <small style="font-weight:800;color:#64748b;">VER:</small>
+          <small style="font-weight:800;color:var(--muted);">VER:</small>
           ${Object.entries(filtros).map(([k, f]) => `
             <button class="btn btn-xs ${this._difFiltro === k ? 'btn-primary' : 'btn-outline-secondary'}"
               onclick="WMS_MODULES.inventario._difFiltro='${k}';WMS_MODULES.inventario._renderDiferenciasDefinitivas()">
               ${f.label} (${todas.filter(f.test).length})</button>`).join('')}
-          <span style="margin-left:auto;font-size:.75rem;color:#64748b;">Conteo que vale: último de cada referencia (R3 &gt; R2 &gt; R1)</span>
+          <span style="margin-left:auto;font-size:.75rem;color:var(--muted);">Conteo que vale: último de cada referencia (R3 &gt; R2 &gt; R1)</span>
         </div>
         <div class="table-container" style="max-height:420px;overflow-y:auto;">
           <table class="data-table compact">
-            <thead style="position:sticky;top:0;z-index:10;background:#f8fafc">
+            <thead style="position:sticky;top:0;z-index:10;background:var(--table-header-bg)">
               <tr>
                 <th>Referencia</th><th>Ubicación</th><th>Lote</th><th>F.Venc.</th>
                 <th class="text-center">Conteo vale</th>
@@ -5495,7 +5606,7 @@ WMS_MODULES.inventario = {
                     ? '<span class="badge badge-success">Cuadra</span>'
                     : `<span class="badge ${dif > 0 ? 'badge-info' : 'badge-danger'}">${dif > 0 ? 'Sobrante' : 'Faltante'}</span>`;
                 return `<tr>
-                  <td><div style="font-weight:700;font-size:.8rem">${WMS.esc(m.codigo)}</div><div style="font-size:.7rem;color:#64748b">${WMS.esc(m.producto)}</div></td>
+                  <td><div style="font-weight:700;font-size:.8rem">${WMS.esc(m.codigo)}</div><div style="font-size:.7rem;color:var(--muted)">${WMS.esc(m.producto)}</div></td>
                   <td><span class="badge badge-light-blue">${WMS.esc(m.ubicacion)}</span></td>
                   <td style="font-size:.75rem">${WMS.esc(m.lote || '—')}</td>
                   <td style="font-size:.75rem">${WMS.formatDate(m.fecha_vencimiento) || '—'}</td>
@@ -5508,7 +5619,7 @@ WMS_MODULES.inventario = {
                     <button class="btn btn-xs btn-warning" onclick="WMS_MODULES.inventario._ajustarLinea(${m.linea_id},${id})">
                       <i class="fa-solid fa-sliders"></i> Ajustar</button>` : ''}</td>
                 </tr>`;
-              }).join('') || '<tr><td colspan="10" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981"></i> Sin filas en este filtro</td></tr>'}
+              }).join('') || '<tr><td colspan="10" class="table-empty"><i class="fa-solid fa-circle-check" style="color:var(--ok)"></i> Sin filas en este filtro</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -5531,11 +5642,11 @@ WMS_MODULES.inventario = {
     if (!nc) return '';
     const filas = nc.filas || [];
     if (!nc.total_filas) {
-      return `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 16px;font-size:.82rem;color:#166534;font-weight:700;">
+      return `<div style="background:var(--ok-bg);border:1px solid #86efac;border-radius:10px;padding:12px 16px;font-size:.82rem;color:var(--ok);font-weight:700;">
         <i class="fa-solid fa-circle-check"></i> Todo el stock del sistema tiene conteo en esta sesión: el ajuste no pondrá nada en cero.</div>`;
     }
     return `
-      <details style="background:#fff7ed;border:1px solid #fdba74;border-left:5px solid #ea580c;border-radius:10px;padding:12px 16px;">
+      <details style="background:var(--warn-bg);border:1px solid #fdba74;border-left:5px solid #ea580c;border-radius:10px;padding:12px 16px;">
         <summary style="cursor:pointer;font-size:.85rem;font-weight:800;color:#9a3412;">
           <i class="fa-solid fa-triangle-exclamation"></i>
           Stock en sistema NO contado: ${WMS.formatNum(nc.total_referencias)} referencia(s) en ${WMS.formatNum(nc.total_filas)} ubicación(es) · ${WMS.formatNum(nc.total_unidades)} uds
@@ -5543,7 +5654,7 @@ WMS_MODULES.inventario = {
         </summary>
         <div style="max-height:320px;overflow-y:auto;margin-top:10px;">
           <table class="data-table compact">
-            <thead style="position:sticky;top:0;background:#fff7ed;"><tr>
+            <thead style="position:sticky;top:0;background:var(--warn-bg);"><tr>
               <th>Código</th><th>Referencia</th><th>Ubicación</th><th>Lote</th><th>F. Venc.</th><th class="text-center">Uds. Sistema</th>
             </tr></thead>
             <tbody>${filas.map(f => `<tr>
@@ -5619,15 +5730,15 @@ WMS_MODULES.inventario = {
       <div style="display:flex;flex-direction:column;gap:16px;">
 
         <!-- Header / Banner Ingesta -->
-        <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
           <div>
-            <div style="font-size:1.05rem;font-weight:900;color:#0f172a;display:flex;align-items:center;gap:8px;">
-              <i class="fa-solid fa-file-invoice" style="color:#0284c7;"></i> Control Comparativo ICG (Inventario Teórico)
+            <div style="font-size:1.05rem;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px;">
+              <i class="fa-solid fa-file-invoice" style="color:var(--info);"></i> Control Comparativo ICG (Inventario Teórico)
             </div>
-            <div style="font-size:.78rem;color:#64748b;margin-top:4px;">
+            <div style="font-size:.78rem;color:var(--muted);margin-top:4px;">
               ${cargado 
-                ? `<span style="color:#059669;font-weight:700;"><i class="fa-solid fa-circle-check"></i> Archivo ICG Cargado</span> · <b>${icg.total_referencias_icg}</b> referencias · <b>${WMS.formatNum(icg.total_unidades_icg)}</b> unidades teóricas`
-                : '<span style="color:#d97706;font-weight:700;"><i class="fa-solid fa-triangle-exclamation"></i> Sin archivo ICG subido</span> · Suba un archivo plano para comparar el conteo WMS contra ICG en caliente.'}
+                ? `<span style="color:var(--ok);font-weight:700;"><i class="fa-solid fa-circle-check"></i> Archivo ICG Cargado</span> · <b>${icg.total_referencias_icg}</b> referencias · <b>${WMS.formatNum(icg.total_unidades_icg)}</b> unidades teóricas`
+                : '<span style="color:var(--warn);font-weight:700;"><i class="fa-solid fa-triangle-exclamation"></i> Sin archivo ICG subido</span> · Suba un archivo plano para comparar el conteo WMS contra ICG en caliente.'}
             </div>
           </div>
 
@@ -5645,9 +5756,9 @@ WMS_MODULES.inventario = {
 
         ${this._htmlNoContadoSistema(d)}
         ${!cargado ? `
-        <div style="text-align:center;padding:50px 20px;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:12px;color:#64748b;">
-          <i class="fa-solid fa-file-excel" style="font-size:3rem;color:#94a3b8;margin-bottom:12px;display:block;"></i>
-          <h4 style="font-size:1.1rem;font-weight:800;color:#1e293b;margin:0 0 6px;">Cargar Inventario Teórico desde Archivo Plano ICG</h4>
+        <div style="text-align:center;padding:50px 20px;background:var(--table-header-bg);border:2px dashed var(--border);border-radius:12px;color:var(--muted);">
+          <i class="fa-solid fa-file-excel" style="font-size:3rem;color:var(--text-muted);margin-bottom:12px;display:block;"></i>
+          <h4 style="font-size:1.1rem;font-weight:800;color:var(--text);margin:0 0 6px;">Cargar Inventario Teórico desde Archivo Plano ICG</h4>
           <p style="font-size:.82rem;max-width:550px;margin:0 auto 16px;">Suba un archivo plano CSV, TXT o Excel con dos columnas: <b>Código</b> (o SKU/Referencia) y <b>Cantidad</b>. El sistema resolverá automáticamente la descripción, empaque UxC y ambiente de cada referencia.</p>
           <button class="btn btn-primary btn-lg" onclick="document.getElementById('icg-file-input').click()">
             <i class="fa-solid fa-folder-open"></i> Seleccionar Archivo
@@ -5656,50 +5767,50 @@ WMS_MODULES.inventario = {
 
         <!-- KPIs Tablero ICG -->
         <div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:12px;">
-          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 14px;">
-            <div style="font-size:.68rem;font-weight:800;color:#166534;text-transform:uppercase;">Exactitud ICG (IRA)</div>
-            <div style="font-size:1.5rem;font-weight:900;color:${icg.exactitud_ira_icg>=98?'#15803d':'#dc2626'};margin-top:2px;">${icg.exactitud_ira_icg}%</div>
-            <div style="font-size:.65rem;color:#15803d;margin-top:2px;">${icg.referencias_coincidentes_icg} ref. exactas</div>
+          <div style="background:var(--ok-bg);border:1px solid var(--ok-bg);border-radius:10px;padding:12px 14px;">
+            <div style="font-size:.68rem;font-weight:800;color:var(--ok);text-transform:uppercase;">Exactitud ICG (IRA)</div>
+            <div style="font-size:1.5rem;font-weight:900;color:${icg.exactitud_ira_icg>=98?'var(--ok)':'var(--danger)'};margin-top:2px;">${icg.exactitud_ira_icg}%</div>
+            <div style="font-size:.65rem;color:var(--ok);margin-top:2px;">${icg.referencias_coincidentes_icg} ref. exactas</div>
           </div>
-          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;">
-            <div style="font-size:.68rem;font-weight:800;color:#991b1b;text-transform:uppercase;">Faltantes ICG</div>
-            <div style="font-size:1.5rem;font-weight:900;color:#dc2626;margin-top:2px;">-${WMS.formatNum(icg.faltantes_unidades_icg)} <span style="font-size:.8rem;font-weight:700;">uds</span></div>
-            <div style="font-size:.65rem;color:#991b1b;margin-top:2px;">${icg.referencias_faltantes_icg} referencias con faltante</div>
+          <div style="background:var(--danger-bg);border:1px solid var(--danger-bg);border-radius:10px;padding:12px 14px;">
+            <div style="font-size:.68rem;font-weight:800;color:var(--danger);text-transform:uppercase;">Faltantes ICG</div>
+            <div style="font-size:1.5rem;font-weight:900;color:var(--danger);margin-top:2px;">-${WMS.formatNum(icg.faltantes_unidades_icg)} <span style="font-size:.8rem;font-weight:700;">uds</span></div>
+            <div style="font-size:.65rem;color:var(--danger);margin-top:2px;">${icg.referencias_faltantes_icg} referencias con faltante</div>
           </div>
-          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;">
-            <div style="font-size:.68rem;font-weight:800;color:#1e40af;text-transform:uppercase;">Sobrantes ICG</div>
-            <div style="font-size:1.5rem;font-weight:900;color:#2563eb;margin-top:2px;">+${WMS.formatNum(icg.sobrantes_unidades_icg)} <span style="font-size:.8rem;font-weight:700;">uds</span></div>
-            <div style="font-size:.65rem;color:#1e40af;margin-top:2px;">${icg.referencias_sobrantes_icg} referencias con sobrante</div>
+          <div style="background:var(--info-bg);border:1px solid var(--info-bg);border-radius:10px;padding:12px 14px;">
+            <div style="font-size:.68rem;font-weight:800;color:var(--accent2);text-transform:uppercase;">Sobrantes ICG</div>
+            <div style="font-size:1.5rem;font-weight:900;color:var(--info);margin-top:2px;">+${WMS.formatNum(icg.sobrantes_unidades_icg)} <span style="font-size:.8rem;font-weight:700;">uds</span></div>
+            <div style="font-size:.65rem;color:var(--accent2);margin-top:2px;">${icg.referencias_sobrantes_icg} referencias con sobrante</div>
           </div>
           <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:12px 14px;">
             <div style="font-size:.68rem;font-weight:800;color:#6b21a8;text-transform:uppercase;">Avance Cobertura ICG</div>
             <div style="font-size:1.5rem;font-weight:900;color:#7e22ce;margin-top:2px;">${icg.pct_avance_icg}%</div>
             <div style="font-size:.65rem;color:#6b21a8;margin-top:2px;">${icg.referencias_contadas_icg} de ${icg.total_referencias_icg} ref. contadas · ${icg.referencias_no_contadas_icg || 0} por contar</div>
           </div>
-          <div style="background:#fffbeb;border:1px solid #fef3c7;border-radius:10px;padding:12px 14px;">
-            <div style="font-size:.68rem;font-weight:800;color:#92400e;text-transform:uppercase;">Total ICG Teórico</div>
-            <div style="font-size:1.5rem;font-weight:900;color:#d97706;margin-top:2px;">${WMS.formatNum(icg.total_unidades_icg)} <span style="font-size:.8rem;font-weight:700;">uds</span></div>
-            <div style="font-size:.65rem;color:#92400e;margin-top:2px;">En ${icg.total_referencias_icg} referencias</div>
+          <div style="background:var(--warn-bg);border:1px solid var(--warn-bg);border-radius:10px;padding:12px 14px;">
+            <div style="font-size:.68rem;font-weight:800;color:var(--warn);text-transform:uppercase;">Total ICG Teórico</div>
+            <div style="font-size:1.5rem;font-weight:900;color:var(--warn);margin-top:2px;">${WMS.formatNum(icg.total_unidades_icg)} <span style="font-size:.8rem;font-weight:700;">uds</span></div>
+            <div style="font-size:.65rem;color:var(--warn);margin-top:2px;">En ${icg.total_referencias_icg} referencias</div>
           </div>
         </div>
 
         <!-- Avance por Ambientes -->
         ${(icg.avance_por_ambiente || []).length > 0 ? `
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;">
-          <div style="font-size:.8rem;font-weight:800;color:#1e293b;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
-            <i class="fa-solid fa-chart-simple" style="color:#2563eb;"></i> Avance de Cobertura ICG por Ambiente
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
+          <div style="font-size:.8rem;font-weight:800;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+            <i class="fa-solid fa-chart-simple" style="color:var(--info);"></i> Avance de Cobertura ICG por Ambiente
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;">
             ${(icg.avance_por_ambiente || []).map(a => `
-              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;">
+              <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                  <span style="font-size:.78rem;font-weight:800;color:#0f172a;">${WMS.esc(a.ambiente)}</span>
-                  <span style="font-size:.75rem;font-weight:900;color:#2563eb;">${a.pct_avance}%</span>
+                  <span style="font-size:.78rem;font-weight:800;color:var(--text);">${WMS.esc(a.ambiente)}</span>
+                  <span style="font-size:.75rem;font-weight:900;color:var(--info);">${a.pct_avance}%</span>
                 </div>
-                <div style="width:100%;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-bottom:6px;">
-                  <div style="width:${a.pct_avance}%;height:100%;background:linear-gradient(90deg, #3b82f6, #1d4ed8);"></div>
+                <div style="width:100%;height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:6px;">
+                  <div style="width:${a.pct_avance}%;height:100%;background:linear-gradient(90deg, var(--info), var(--info));"></div>
                 </div>
-                <div style="font-size:.68rem;color:#64748b;display:flex;justify-content:space-between;">
+                <div style="font-size:.68rem;color:var(--muted);display:flex;justify-content:space-between;">
                   <span>Ref: <b>${a.contadas} / ${a.referencias}</b></span>
                   <span>Uds WMS: <b>${WMS.formatNum(a.unidades_wms)}</b> / ICG: <b>${WMS.formatNum(a.unidades_icg)}</b></span>
                 </div>
@@ -5708,19 +5819,19 @@ WMS_MODULES.inventario = {
         </div>` : ''}
 
         <!-- Filtro Dinámico por Ambiente & Búsqueda -->
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#f8fafc;padding:10px 14px;border-radius:8px;border:1px solid #e2e8f0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:var(--table-header-bg);padding:10px 14px;border-radius:8px;border:1px solid var(--border);">
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-            <small style="font-weight:800;color:#64748b;">AMBIENTE:</small>
+            <small style="font-weight:800;color:var(--muted);">AMBIENTE:</small>
             <button class="btn btn-xs btn-primary icg-amb-btn" onclick="WMS_MODULES.inventario._filterIcgAmb('ALL', this)">TODOS</button>
             ${ambientes.map(amb => `
               <button class="btn btn-xs btn-outline-secondary icg-amb-btn" onclick="WMS_MODULES.inventario._filterIcgAmb('${WMS.esc(amb)}', this)">${WMS.esc(amb)}</button>`).join('')}
-            <span style="width:1px;height:18px;background:#cbd5e1;margin:0 4px;"></span>
+            <span style="width:1px;height:18px;background:var(--border);margin:0 4px;"></span>
             <button class="btn btn-xs ${this._icgSoloContados ? 'btn-success' : 'btn-outline-secondary'}"
               onclick="WMS_MODULES.inventario._toggleIcgSoloContados()" title="Mostrar solo las referencias que ya tienen un conteo físico registrado en WMS">
               <i class="fa-solid ${this._icgSoloContados ? 'fa-check-square' : 'fa-square'}"></i> Solo contadas físicamente
             </button>
-            <span style="width:1px;height:18px;background:#cbd5e1;margin:0 4px;"></span>
-            <small style="font-weight:800;color:#64748b;">ESTADO:</small>
+            <span style="width:1px;height:18px;background:var(--border);margin:0 4px;"></span>
+            <small style="font-weight:800;color:var(--muted);">ESTADO:</small>
             ${Object.entries(ICG_ESTADOS).map(([k, e]) => `
               <button class="btn btn-xs ${this._icgEstado === k ? 'btn-primary' : 'btn-outline-secondary'}"
                 onclick="WMS_MODULES.inventario._icgEstado='${k}';WMS_MODULES.inventario._renderTabIcg()">${e.label}</button>`).join('')}
@@ -5731,26 +5842,26 @@ WMS_MODULES.inventario = {
         </div>
 
         <!-- Tabla Comparativa ICG vs WMS -->
-        <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.05);">
+        <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.05);">
           <div style="background:#1e293b;color:#fff;padding:10px 16px;font-size:.82rem;font-weight:800;display:flex;justify-content:space-between;align-items:center;">
             <span><i class="fa-solid fa-code-compare"></i> Comparativo Detallado ICG vs Conteo WMS</span>
-            <span style="font-size:.72rem;color:#94a3b8;">${lineasIcg.length} de ${(icg.lineas_icg_comparativo||[]).length} referencias ICG</span>
+            <span style="font-size:.72rem;color:var(--text-muted);">${lineasIcg.length} de ${(icg.lineas_icg_comparativo||[]).length} referencias ICG</span>
           </div>
           <div style="max-height:420px;overflow-y:auto;">
             <table class="erp-table" id="icg-comp-table">
               <thead>
-                <tr style="background:#f1f5f9;position:sticky;top:0;z-index:10;">
+                <tr style="background:var(--btn-neutral);position:sticky;top:0;z-index:10;">
                   ${ICG_COLS.map(c => {
                     const activo = this._icgSort.col === c.key;
                     const arrow = activo ? (this._icgSort.dir === 'desc' ? ' <i class="fa-solid fa-arrow-down-short-wide"></i>' : ' <i class="fa-solid fa-arrow-up-short-wide"></i>') : '';
-                    return `<th class="${c.type === 'num' ? 'text-center' : ''}" style="cursor:pointer;user-select:none;${activo ? 'color:#0F4C81;' : ''}" onclick="WMS_MODULES.inventario._sortIcgBy('${c.key}')" title="Ordenar por ${c.label}">${c.label}${arrow}</th>`;
+                    return `<th class="${c.type === 'num' ? 'text-center' : ''}" style="cursor:pointer;user-select:none;${activo ? 'color:var(--accent);' : ''}" onclick="WMS_MODULES.inventario._sortIcgBy('${c.key}')" title="Ordenar por ${c.label}">${c.label}${arrow}</th>`;
                   }).join('')}
                 </tr>
               </thead>
               <tbody>
                 ${lineasIcg.map(l => {
                   const dif = l.diferencia_icg;
-                  const difColor = dif === 0 ? '#10b981' : (dif > 0 ? '#0284c7' : '#ef4444');
+                  const difColor = dif === 0 ? 'var(--ok)' : (dif > 0 ? 'var(--info)' : 'var(--danger)');
                   const difTxt   = dif === 0 ? '0' : (dif > 0 ? '+' + WMS.formatNum(dif) : WMS.formatNum(dif));
                   const stBadge  = l.estado === 'Coincidente' ? '<span class="badge badge-success">Coincidente</span>'
                     : l.estado === 'Sobrante' ? '<span class="badge badge-info">+ Sobrante WMS</span>'
@@ -5758,12 +5869,12 @@ WMS_MODULES.inventario = {
                     : '<span class="badge badge-danger">- Faltante WMS</span>';
                   return `
                     <tr class="icg-row" data-amb="${WMS.esc(l.ambiente)}" data-txt="${WMS.esc((l.codigo+' '+l.producto).toLowerCase())}">
-                      <td><b style="font-size:.8rem;color:#1e293b;">${WMS.esc(l.codigo)}</b></td>
-                      <td><div style="font-size:.8rem;font-weight:600;color:#1e293b;">${WMS.esc(l.producto)}</div></td>
+                      <td><b style="font-size:.8rem;color:var(--text);">${WMS.esc(l.codigo)}</b></td>
+                      <td><div style="font-size:.8rem;font-weight:600;color:var(--text);">${WMS.esc(l.producto)}</div></td>
                       <td class="text-center"><span class="badge badge-secondary" style="font-size:.65rem;">${WMS.esc(l.ambiente)}</span></td>
-                      <td class="text-center" style="color:#64748b;">${l.unidades_caja || 1}</td>
-                      <td class="text-center fw-800" style="background:#fffbeb;color:#d97706;font-size:.9rem;">${WMS.formatNum(l.cantidad_icg)}</td>
-                      <td class="text-center fw-800" style="background:#eff6ff;color:#1d4ed8;font-size:.95rem;">${WMS.formatNum(l.cantidad_contada)}</td>
+                      <td class="text-center" style="color:var(--muted);">${l.unidades_caja || 1}</td>
+                      <td class="text-center fw-800" style="background:var(--warn-bg);color:var(--warn);font-size:.9rem;">${WMS.formatNum(l.cantidad_icg)}</td>
+                      <td class="text-center fw-800" style="background:var(--info-bg);color:var(--info);font-size:.95rem;">${WMS.formatNum(l.cantidad_contada)}</td>
                       <td class="text-center fw-900" style="font-size:1rem;color:${difColor};">${difTxt}</td>
                       <td class="text-center">${stBadge}</td>
                     </tr>`;
@@ -5777,12 +5888,12 @@ WMS_MODULES.inventario = {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:10px;">
           
           <!-- Discrepancia 1: Referencias ICG NO contadas en WMS -->
-          <div style="border:2px solid #fecaca;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.04);">
-            <div style="background:#fef2f2;border-bottom:1px solid #fecaca;padding:12px 18px;font-size:.88rem;font-weight:900;color:#991b1b;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-              <span><i class="fa-solid fa-eye-slash" style="color:#dc2626;"></i> 1. Referencias en Archivo ICG NO Contadas en WMS</span>
+          <div style="border:2px solid var(--danger-bg);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:0 3px 6px rgba(0,0,0,.04);">
+            <div style="background:var(--danger-bg);border-bottom:1px solid var(--danger-bg);padding:12px 18px;font-size:.88rem;font-weight:900;color:var(--danger);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+              <span><i class="fa-solid fa-eye-slash" style="color:var(--danger);"></i> 1. Referencias en Archivo ICG NO Contadas en WMS</span>
               <span class="badge badge-danger" style="font-weight:800;font-size:.78rem;">${(icg.discrepancias?.icg_no_contados || []).length} ref. pendientes</span>
             </div>
-            <div style="padding:10px 14px;background:#fff5f5;border-bottom:1px solid #fee2e2;font-size:.75rem;color:#7f1d1d;display:flex;justify-content:space-between;align-items:center;">
+            <div style="padding:10px 14px;background:#fff5f5;border-bottom:1px solid var(--danger-bg);font-size:.75rem;color:#7f1d1d;display:flex;justify-content:space-between;align-items:center;">
               <span>Estas referencias existen en el archivo plano de ICG pero <b>NO se han registrado conteos</b> en la bodega.</span>
               <button class="btn btn-xs btn-outline-danger" onclick="WMS_MODULES.inventario._autoSelectIcgNoContados()" style="font-weight:800;font-size:.7rem;">
                 <i class="fa-solid fa-repeat"></i> Asignar R2
@@ -5791,53 +5902,53 @@ WMS_MODULES.inventario = {
             <div style="max-height:300px;overflow-y:auto;padding:0;">
               <table class="erp-table compact" style="margin:0;">
                 <thead>
-                  <tr style="background:#f1f5f9;position:sticky;top:0;">
+                  <tr style="background:var(--btn-neutral);position:sticky;top:0;">
                     <th>CÓDIGO</th>
                     <th>PRODUCTO / REFERENCIA</th>
                     <th class="text-center">AMBIENTE</th>
-                    <th class="text-center" style="background:#fef2f2;color:#991b1b;">STOCK ICG TEÓRICO</th>
+                    <th class="text-center" style="background:var(--danger-bg);color:var(--danger);">STOCK ICG TEÓRICO</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${(icg.discrepancias?.icg_no_contados || []).map(u => `
                     <tr>
-                      <td><b style="font-size:.8rem;color:#0f172a;">${WMS.esc(u.codigo)}</b></td>
-                      <td><div style="font-weight:700;font-size:.78rem;color:#1e293b;">${WMS.esc(u.nombre_referencia || u.producto)}</div></td>
+                      <td><b style="font-size:.8rem;color:var(--text);">${WMS.esc(u.codigo)}</b></td>
+                      <td><div style="font-weight:700;font-size:.78rem;color:var(--text);">${WMS.esc(u.nombre_referencia || u.producto)}</div></td>
                       <td class="text-center"><span class="badge badge-secondary" style="font-size:.65rem;">${WMS.esc(u.ambiente || 'SECO')}</span></td>
-                      <td class="text-center fw-900" style="background:#fef2f2;color:#dc2626;font-size:.95rem;">${WMS.formatNum(u.cantidad_icg)}</td>
-                    </tr>`).join('') || '<tr><td colspan="4" class="text-center" style="padding:20px;color:#059669;font-weight:700;"><i class="fa-solid fa-circle-check"></i> 🎉 Todas las referencias del archivo ICG fueron contadas.</td></tr>'}
+                      <td class="text-center fw-900" style="background:var(--danger-bg);color:var(--danger);font-size:.95rem;">${WMS.formatNum(u.cantidad_icg)}</td>
+                    </tr>`).join('') || '<tr><td colspan="4" class="text-center" style="padding:20px;color:var(--ok);font-weight:700;"><i class="fa-solid fa-circle-check"></i> 🎉 Todas las referencias del archivo ICG fueron contadas.</td></tr>'}
                 </tbody>
               </table>
             </div>
           </div>
 
           <!-- Discrepancia 2: Referencias WMS NO en archivo ICG -->
-          <div style="border:2px solid #fed7aa;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.04);">
-            <div style="background:#fff7ed;border-bottom:1px solid #fed7aa;padding:12px 18px;font-size:.88rem;font-weight:900;color:#9a3412;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-              <span><i class="fa-solid fa-triangle-exclamation" style="color:#d97706;"></i> 2. Conteos WMS NO Presentes en Archivo ICG</span>
+          <div style="border:2px solid #fed7aa;border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:0 3px 6px rgba(0,0,0,.04);">
+            <div style="background:var(--warn-bg);border-bottom:1px solid #fed7aa;padding:12px 18px;font-size:.88rem;font-weight:900;color:#9a3412;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+              <span><i class="fa-solid fa-triangle-exclamation" style="color:var(--warn);"></i> 2. Conteos WMS NO Presentes en Archivo ICG</span>
               <span class="badge badge-warning" style="font-weight:800;font-size:.78rem;">${(icg.discrepancias?.conteo_no_en_icg || []).length} ref. fuera de archivo</span>
             </div>
-            <div style="padding:10px 14px;background:#fffbeb;border-bottom:1px solid #fef3c7;font-size:.75rem;color:#78350f;">
+            <div style="padding:10px 14px;background:var(--warn-bg);border-bottom:1px solid var(--warn-bg);font-size:.75rem;color:#78350f;">
               Estas referencias fueron contadas físicamente en la bodega pero <b>NO figuran en el archivo plano ICG</b> cargado.
             </div>
             <div style="max-height:300px;overflow-y:auto;padding:0;">
               <table class="erp-table compact" style="margin:0;">
                 <thead>
-                  <tr style="background:#f1f5f9;position:sticky;top:0;">
+                  <tr style="background:var(--btn-neutral);position:sticky;top:0;">
                     <th>CÓDIGO</th>
                     <th>PRODUCTO / REFERENCIA</th>
                     <th class="text-center">AMBIENTE</th>
-                    <th class="text-center" style="background:#fff7ed;color:#9a3412;">CONTEO FÍSICO WMS</th>
+                    <th class="text-center" style="background:var(--warn-bg);color:#9a3412;">CONTEO FÍSICO WMS</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${(icg.discrepancias?.conteo_no_en_icg || []).map(u => `
                     <tr>
-                      <td><b style="font-size:.8rem;color:#0f172a;">${WMS.esc(u.codigo)}</b></td>
-                      <td><div style="font-weight:700;font-size:.78rem;color:#1e293b;">${WMS.esc(u.producto)}</div></td>
+                      <td><b style="font-size:.8rem;color:var(--text);">${WMS.esc(u.codigo)}</b></td>
+                      <td><div style="font-weight:700;font-size:.78rem;color:var(--text);">${WMS.esc(u.producto)}</div></td>
                       <td class="text-center"><span class="badge badge-secondary" style="font-size:.65rem;">${WMS.esc(u.ambiente || 'SECO')}</span></td>
-                      <td class="text-center fw-900" style="background:#fff7ed;color:#d97706;font-size:.95rem;">${WMS.formatNum(u.cantidad_contada)}</td>
-                    </tr>`).join('') || '<tr><td colspan="4" class="text-center" style="padding:20px;color:#059669;font-weight:700;"><i class="fa-solid fa-circle-check"></i> Todos los conteos WMS figuran en el archivo ICG.</td></tr>'}
+                      <td class="text-center fw-900" style="background:var(--warn-bg);color:var(--warn);font-size:.95rem;">${WMS.formatNum(u.cantidad_contada)}</td>
+                    </tr>`).join('') || '<tr><td colspan="4" class="text-center" style="padding:20px;color:var(--ok);font-weight:700;"><i class="fa-solid fa-circle-check"></i> Todos los conteos WMS figuran en el archivo ICG.</td></tr>'}
                 </tbody>
               </table>
             </div>
@@ -5863,10 +5974,10 @@ WMS_MODULES.inventario = {
         <!-- Sección 1: Conteos Totalizados por Ambiente (Interactivo) -->
         <div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-            <div style="font-size:1.05rem;font-weight:900;color:#0f172a;display:flex;align-items:center;gap:8px;">
-              <i class="fa-solid fa-temperature-three-quarters" style="color:#2563eb;"></i> Ambientes de Almacenamiento
+            <div style="font-size:1.05rem;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px;">
+              <i class="fa-solid fa-temperature-three-quarters" style="color:var(--info);"></i> Ambientes de Almacenamiento
             </div>
-            <span style="font-size:.78rem;color:#64748b;font-style:italic;">💡 Haga clic en cualquier tarjeta para ver las referencias contadas en ese ambiente.</span>
+            <span style="font-size:.78rem;color:var(--muted);font-style:italic;">💡 Haga clic en cualquier tarjeta para ver las referencias contadas en ese ambiente.</span>
           </div>
 
           <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:14px;">
@@ -5878,60 +5989,60 @@ WMS_MODULES.inventario = {
               const safeAmb = WMS.esc(a.ambiente).replace(/'/g, "\\'");
               return `
                 <div class="amb-card-btn" onclick="WMS_MODULES.inventario._toggleAmbienteDetail('${safeAmb}', this)"
-                     style="background:#fff;border:2px solid #e2e8f0;border-left:6px solid ${ambColor};border-radius:14px;padding:16px;box-shadow:0 3px 6px rgba(0,0,0,.04);cursor:pointer;transition:all .2s;"
+                     style="background:var(--surface);border:2px solid var(--border);border-left:6px solid ${ambColor};border-radius:14px;padding:16px;box-shadow:0 3px 6px rgba(0,0,0,.04);cursor:pointer;transition:all .2s;"
                      onmouseover="this.style.borderColor='${ambColor}';this.style.transform='translateY(-2px)'"
-                     onmouseout="this.style.borderColor='#e2e8f0';this.style.transform='none'">
+                     onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'">
                   
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                    <span style="font-weight:900;font-size:1.05rem;color:#0f172a;display:flex;align-items:center;gap:8px;">
+                    <span style="font-weight:900;font-size:1.05rem;color:var(--text);display:flex;align-items:center;gap:8px;">
                       <i class="fa-solid ${ambIcon}" style="color:${ambColor}"></i> ${WMS.esc(a.ambiente)}
                     </span>
                     <span class="badge" style="background:${ambColor}20;color:${ambColor};font-weight:800;font-size:.75rem;">${a.total_referencias} ref.</span>
                   </div>
                   
-                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;background:#f8fafc;padding:10px 12px;border-radius:10px;">
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;background:var(--table-header-bg);padding:10px 12px;border-radius:10px;">
                     <div>
-                      <div style="font-size:.65rem;color:#64748b;font-weight:800;text-transform:uppercase;">Total Unidades</div>
-                      <div style="font-size:1.35rem;font-weight:900;color:#1e293b;">${WMS.formatNum(a.total_unidades)}</div>
+                      <div style="font-size:.65rem;color:var(--muted);font-weight:800;text-transform:uppercase;">Total Unidades</div>
+                      <div style="font-size:1.35rem;font-weight:900;color:var(--text);">${WMS.formatNum(a.total_unidades)}</div>
                     </div>
                     <div>
-                      <div style="font-size:.65rem;color:#64748b;font-weight:800;text-transform:uppercase;">Ubicaciones</div>
-                      <div style="font-size:1.35rem;font-weight:900;color:#1e293b;">${a.ubicaciones_contadas}</div>
+                      <div style="font-size:.65rem;color:var(--muted);font-weight:800;text-transform:uppercase;">Ubicaciones</div>
+                      <div style="font-size:1.35rem;font-weight:900;color:var(--text);">${a.ubicaciones_contadas}</div>
                     </div>
                   </div>
 
-                  <div style="font-size:.73rem;color:#475569;display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
+                  <div style="font-size:.73rem;color:var(--text2);display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
                     <div>📅 <b>Próximo Vencimiento:</b> ${a.proximo_vencimiento ? WMS.formatDate(a.proximo_vencimiento) : 'N/A'}</div>
-                    <div>⏳ <b>Promedio Vida Útil:</b> ${diasVu !== null ? `<b style="color:${diasVu<30?'#dc2626':'#16a34a'}">${diasVu} días</b>` : 'N/A'}</div>
+                    <div>⏳ <b>Promedio Vida Útil:</b> ${diasVu !== null ? `<b style="color:${diasVu<30?'var(--danger)':'var(--ok)'}">${diasVu} días</b>` : 'N/A'}</div>
                   </div>
 
                   <button class="btn btn-xs btn-outline-primary" style="width:100%;font-weight:800;border-radius:8px;">
                     <i class="fa-solid fa-list-check"></i> Ver ${a.total_referencias} Referencias <i class="fa-solid fa-chevron-down" style="margin-left:4px;"></i>
                   </button>
                 </div>`;
-            }).join('') || '<div style="padding:20px;color:#64748b;">Sin conteos registrados por ambiente.</div>'}
+            }).join('') || '<div style="padding:20px;color:var(--muted);">Sin conteos registrados por ambiente.</div>'}
           </div>
 
           <!-- Detalle Dinámico Desplegable del Ambiente Seleccionado -->
-          <div id="ambiente-detail-container" style="display:none;margin-top:16px;background:#fff;border:1px solid #cbd5e1;border-radius:14px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.06);"></div>
+          <div id="ambiente-detail-container" style="display:none;margin-top:16px;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.06);"></div>
         </div>
 
         <!-- Sección 2: Ranking de Desempeño por Auxiliar (Interactivo) -->
-        <div style="border:1px solid #cbd5e1;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.04);">
+        <div style="border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:0 3px 6px rgba(0,0,0,.04);">
           <div style="background:#1e293b;color:#fff;padding:14px 20px;font-size:.9rem;font-weight:800;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
             <span><i class="fa-solid fa-user-check"></i> Desempeño y Referencias por Auxiliar</span>
-            <span style="font-size:.75rem;color:#94a3b8;">Haga clic en una fila para ver las referencias contadas por el auxiliar</span>
+            <span style="font-size:.75rem;color:var(--text-muted);">Haga clic en una fila para ver las referencias contadas por el auxiliar</span>
           </div>
           <div style="overflow-x:auto;">
             <table class="erp-table" style="margin:0;">
               <thead>
-                <tr style="background:#f1f5f9;">
+                <tr style="background:var(--btn-neutral);">
                   <th width="30"></th>
                   <th>#</th>
                   <th>AUXILIAR</th>
                   <th class="text-center">REGISTROS / LÍNEAS</th>
                   <th class="text-center">REFERENCIAS ÚNICAS</th>
-                  <th class="text-center" style="background:#eff6ff;color:#1e40af;">TOTAL UNIDADES CONTADAS</th>
+                  <th class="text-center" style="background:var(--info-bg);color:var(--accent2);">TOTAL UNIDADES CONTADAS</th>
                   <th class="text-center">ÚLTIMA ACTIVIDAD</th>
                   <th class="text-center">ACCIONES</th>
                 </tr>
@@ -5939,14 +6050,14 @@ WMS_MODULES.inventario = {
               <tbody>
                 ${auxData.map((ax, idx) => `
                   <tr style="cursor:pointer;" onclick="WMS_MODULES.inventario._toggleAuxiliarDetail(${ax.auxiliar_id})"
-                      onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-                    <td class="text-center"><i class="fa-solid fa-chevron-right" id="aux-icon-${ax.auxiliar_id}" style="color:#64748b;transition:transform .2s;"></i></td>
+                      onmouseover="this.style.background='var(--table-header-bg)'" onmouseout="this.style.background=''">
+                    <td class="text-center"><i class="fa-solid fa-chevron-right" id="aux-icon-${ax.auxiliar_id}" style="color:var(--muted);transition:transform .2s;"></i></td>
                     <td class="text-center"><b>${idx + 1}</b></td>
-                    <td><b style="font-size:.88rem;color:#0f172a;">${WMS.esc(ax.auxiliar)}</b></td>
+                    <td><b style="font-size:.88rem;color:var(--text);">${WMS.esc(ax.auxiliar)}</b></td>
                     <td class="text-center"><span class="badge badge-light-blue">${ax.total_registros}</span></td>
                     <td class="text-center"><span class="badge badge-secondary" style="font-weight:800;">${ax.referencias_contadas} ref.</span></td>
-                    <td class="text-center fw-900" style="background:#eff6ff;color:#1d4ed8;font-size:1.1rem;">${WMS.formatNum(ax.total_unidades)}</td>
-                    <td class="text-center" style="font-size:.75rem;color:#64748b;">${ax.ultima_actividad ? ax.ultima_actividad.substring(0,16).replace('T',' ') : '-'}</td>
+                    <td class="text-center fw-900" style="background:var(--info-bg);color:var(--info);font-size:1.1rem;">${WMS.formatNum(ax.total_unidades)}</td>
+                    <td class="text-center" style="font-size:.75rem;color:var(--muted);">${ax.ultima_actividad ? ax.ultima_actividad.substring(0,16).replace('T',' ') : '-'}</td>
                     <td class="text-center">
                       <button class="btn btn-xs btn-outline-primary" style="font-weight:800;font-size:.7rem;">
                         <i class="fa-solid fa-eye"></i> Detalle
@@ -5955,12 +6066,12 @@ WMS_MODULES.inventario = {
                   </tr>
 
                   <!-- Fila Desplegable con Referencias Contadas por el Auxiliar -->
-                  <tr id="aux-detail-row-${ax.auxiliar_id}" style="display:none;background:#f8fafc;">
+                  <tr id="aux-detail-row-${ax.auxiliar_id}" style="display:none;background:var(--table-header-bg);">
                     <td colspan="8" style="padding:16px 24px;">
-                      <div style="border:1px solid #cbd5e1;border-left:4px solid #3b82f6;border-radius:10px;background:#fff;padding:14px 16px;">
+                      <div style="border:1px solid var(--border);border-left:4px solid var(--info);border-radius:10px;background:var(--surface);padding:14px 16px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-                          <div style="font-size:.85rem;font-weight:800;color:#1e293b;">
-                            <i class="fa-solid fa-boxes-stacked" style="color:#2563eb;"></i> Referencias Contadas por <b>${WMS.esc(ax.auxiliar)}</b> (${ax.referencias_contadas} ítems)
+                          <div style="font-size:.85rem;font-weight:800;color:var(--text);">
+                            <i class="fa-solid fa-boxes-stacked" style="color:var(--info);"></i> Referencias Contadas por <b>${WMS.esc(ax.auxiliar)}</b> (${ax.referencias_contadas} ítems)
                           </div>
                           <div style="max-width:280px;flex:1;">
                             <input class="form-control form-control-sm" placeholder="Filtrar por código o nombre..."
@@ -5968,14 +6079,14 @@ WMS_MODULES.inventario = {
                           </div>
                         </div>
 
-                        <div style="max-height:280px;overflow-y:auto;border-radius:6px;border:1px solid #e2e8f0;">
+                        <div style="max-height:280px;overflow-y:auto;border-radius:6px;border:1px solid var(--border);">
                           <table class="erp-table compact" id="aux-ref-table-${ax.auxiliar_id}" style="margin:0;">
                             <thead>
-                              <tr style="background:#f1f5f9;position:sticky;top:0;">
+                              <tr style="background:var(--btn-neutral);position:sticky;top:0;">
                                 <th>CÓDIGO</th>
                                 <th>PRODUCTO / REFERENCIA</th>
                                 <th class="text-center">LÍNEAS</th>
-                                <th class="text-center" style="background:#eff6ff;">UNIDADES CONTADAS</th>
+                                <th class="text-center" style="background:var(--info-bg);">UNIDADES CONTADAS</th>
                                 <th class="text-center">UBICACIONES VISITADAS</th>
                                 <th class="text-center">ÚLTIMO REGISTRO</th>
                               </tr>
@@ -5984,11 +6095,11 @@ WMS_MODULES.inventario = {
                               ${(ax.referencias || []).map(r => `
                                 <tr class="aux-ref-item" data-txt="${WMS.esc((r.codigo+' '+r.producto).toLowerCase())}">
                                   <td><b>${WMS.esc(r.codigo)}</b></td>
-                                  <td><div style="font-weight:600;font-size:.78rem;color:#1e293b;">${WMS.esc(r.producto)}</div></td>
+                                  <td><div style="font-weight:600;font-size:.78rem;color:var(--text);">${WMS.esc(r.producto)}</div></td>
                                   <td class="text-center"><span class="badge badge-light-blue">${r.total_registros}</span></td>
-                                  <td class="text-center fw-800" style="background:#eff6ff;color:#1d4ed8;font-size:.9rem;">${WMS.formatNum(r.total_unidades)}</td>
+                                  <td class="text-center fw-800" style="background:var(--info-bg);color:var(--info);font-size:.9rem;">${WMS.formatNum(r.total_unidades)}</td>
                                   <td class="text-center">${(r.ubicaciones||[]).map(u=>`<span class="badge badge-secondary" style="margin:1px;font-size:.65rem;">${WMS.esc(u)}</span>`).join('')}</td>
-                                  <td class="text-center" style="font-size:.72rem;color:#64748b;">${r.ultima_actividad ? r.ultima_actividad.substring(0,16).replace('T',' ') : '-'}</td>
+                                  <td class="text-center" style="font-size:.72rem;color:var(--muted);">${r.ultima_actividad ? r.ultima_actividad.substring(0,16).replace('T',' ') : '-'}</td>
                                 </tr>`).join('') || '<tr><td colspan="6" class="text-center" style="padding:12px;">Sin referencias asociadas</td></tr>'}
                             </tbody>
                           </table>
@@ -6048,11 +6159,11 @@ WMS_MODULES.inventario = {
       <div style="max-height:360px;overflow-y:auto;">
         <table class="erp-table" id="amb-detail-table">
           <thead>
-            <tr style="background:#f1f5f9;position:sticky;top:0;z-index:5;">
+            <tr style="background:var(--btn-neutral);position:sticky;top:0;z-index:5;">
               <th>CÓDIGO</th>
               <th>PRODUCTO / REFERENCIA</th>
               <th class="text-center">U/E</th>
-              <th class="text-center" style="background:#eff6ff;color:#1e40af;">UNIDADES CONTADAS</th>
+              <th class="text-center" style="background:var(--info-bg);color:var(--accent2);">UNIDADES CONTADAS</th>
               <th class="text-center">UBICACIONES</th>
               <th class="text-center">PRÓXIMO VENCIMIENTO</th>
               <th class="text-center">DÍAS VIDA ÚTIL</th>
@@ -6060,13 +6171,13 @@ WMS_MODULES.inventario = {
           </thead>
           <tbody>
             ${refs.map(r => {
-              const color_vu = r.dias_v_u !== null ? (r.dias_v_u <= 15 ? '#ef4444' : r.dias_v_u <= 30 ? '#f59e0b' : '#10b981') : '#64748b';
+              const color_vu = r.dias_v_u !== null ? (r.dias_v_u <= 15 ? 'var(--danger)' : r.dias_v_u <= 30 ? 'var(--warn)' : 'var(--ok)') : 'var(--muted)';
               return `
                 <tr class="amb-detail-row" data-txt="${WMS.esc((r.codigo+' '+r.producto).toLowerCase())}">
-                  <td><b style="font-size:.82rem;color:#0f172a;">${WMS.esc(r.codigo)}</b></td>
-                  <td><div style="font-weight:700;font-size:.8rem;color:#1e293b;">${WMS.esc(r.producto)}</div></td>
-                  <td class="text-center" style="color:#64748b;">${r.unidades_caja || 1}</td>
-                  <td class="text-center fw-900" style="background:#eff6ff;color:#1d4ed8;font-size:1rem;">${WMS.formatNum(r.total_unidades)}</td>
+                  <td><b style="font-size:.82rem;color:var(--text);">${WMS.esc(r.codigo)}</b></td>
+                  <td><div style="font-weight:700;font-size:.8rem;color:var(--text);">${WMS.esc(r.producto)}</div></td>
+                  <td class="text-center" style="color:var(--muted);">${r.unidades_caja || 1}</td>
+                  <td class="text-center fw-900" style="background:var(--info-bg);color:var(--info);font-size:1rem;">${WMS.formatNum(r.total_unidades)}</td>
                   <td class="text-center"><span class="badge badge-light-blue" style="font-weight:800;">${r.ubicaciones_contadas}</span></td>
                   <td class="text-center" style="font-size:.78rem;">${r.proximo_vencimiento ? WMS.formatDate(r.proximo_vencimiento) : 'N/A'}</td>
                   <td class="text-center"><b style="color:${color_vu}">${r.dias_v_u !== null ? r.dias_v_u + 'd' : 'N/A'}</b></td>
@@ -6155,7 +6266,7 @@ WMS_MODULES.inventario = {
       <div style="display:flex;flex-direction:column;gap:20px;">
 
         ${pendientes > 0 ? `
-        <div class="inv2-alert" style="border-left-color:#f59e0b;background:#fffbeb;color:#92400e;">
+        <div class="inv2-alert" style="border-left-color:var(--warn);background:var(--warn-bg);color:var(--warn);">
           <i class="fa-solid fa-hourglass-half fa-lg"></i>
           <div><b>${pendientes} recuento(s) sin finalizar.</b> El ajuste queda bloqueado hasta que se terminen (o se eliminen): el ajuste usa el último conteo de cada referencia.</div>
         </div>` : ''}
@@ -6170,18 +6281,18 @@ WMS_MODULES.inventario = {
         </div>` : ''}
 
         <!-- Formulario de Programación de Segundo / Tercer Conteo -->
-        <div style="background:#fff;border:1px solid #cbd5e1;border-left:5px solid #3b82f6;border-radius:14px;padding:20px;box-shadow:0 3px 6px rgba(0,0,0,.04);">
-          <div style="font-size:1.05rem;font-weight:900;color:#0f172a;margin-bottom:6px;display:flex;align-items:center;gap:8px;">
-            <i class="fa-solid fa-repeat" style="color:#2563eb;"></i> Programación de Segundos y Terceros Conteos
+        <div style="background:var(--surface);border:1px solid var(--border);border-left:5px solid var(--info);border-radius:14px;padding:20px;box-shadow:0 3px 6px rgba(0,0,0,.04);">
+          <div style="font-size:1.05rem;font-weight:900;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:8px;">
+            <i class="fa-solid fa-repeat" style="color:var(--info);"></i> Programación de Segundos y Terceros Conteos
           </div>
-          <p style="font-size:.82rem;color:#475569;margin-bottom:16px;">
+          <p style="font-size:.82rem;color:var(--text2);margin-bottom:16px;">
             Cada referencia enviada se recuenta en <b>todas sus ubicaciones</b>. Al ajustar, el <b>último conteo</b> de la referencia (R3 &gt; R2 &gt; R1) reemplaza por completo a los anteriores.
           </p>
 
           <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:14px;align-items:end;">
             <div>
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                <label style="font-size:.75rem;font-weight:800;color:#334155;margin:0;">1. Referencias a recontar</label>
+                <label class="form-label" style="margin:0;">1. Referencias a recontar</label>
                 <button class="btn btn-xs btn-outline-warning" onclick="WMS_MODULES.inventario._autoSelectSegundosDiff()" style="font-weight:800;font-size:.7rem;">
                   <i class="fa-solid fa-bolt"></i> Seleccionar Dif. (Conteo vs Sistema / ICG)
                 </button>
@@ -6189,7 +6300,7 @@ WMS_MODULES.inventario = {
               <div style="position:relative;">
                 <input class="form-control form-control-sm" id="seg-ref-search" placeholder="Buscar por código o nombre..."
                        oninput="WMS_MODULES.inventario._filterSegRefList(this.value)" style="margin-bottom:6px;">
-                <div id="seg-ref-list-box" style="max-height:160px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:8px;padding:6px;background:#f8fafc;">
+                <div id="seg-ref-list-box" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px;background:var(--table-header-bg);">
                   ${listRef.map(r => {
                     const conteoFisico = (r.ronda_3 > 0) ? r.ronda_3 : ((r.ronda_2 > 0) ? r.ronda_2 : (r.ronda_1 || 0));
                     const difWms = r.diferencia !== 0;
@@ -6197,18 +6308,18 @@ WMS_MODULES.inventario = {
                     const isDiff = difWms || difIcg;
                     return `
                       <label class="seg-ref-item" data-diff="${isDiff?'1':'0'}" data-txt="${WMS.esc((r.codigo+' '+r.producto).toLowerCase())}"
-                             style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-bottom:1px solid #e2e8f0;cursor:pointer;font-size:.78rem;margin:0;">
+                             style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-bottom:1px solid var(--border);cursor:pointer;font-size:.78rem;margin:0;">
                         <input type="checkbox" class="seg-ref-chk" value="${r.producto_id}">
                         <span style="font-weight:700;">${r.codigo}</span> — ${WMS.esc(r.producto)}
                         ${isDiff ? `<span class="badge badge-light-red" style="font-size:.65rem;margin-left:auto;">Diferencia</span>` : ''}
                       </label>`;
-                  }).join('') || '<div style="font-size:.75rem;color:#64748b;padding:6px;">Sin referencias disponibles</div>'}
+                  }).join('') || '<div style="font-size:.75rem;color:var(--muted);padding:6px;">Sin referencias disponibles</div>'}
                 </div>
               </div>
             </div>
 
             <div>
-              <label style="font-size:.75rem;font-weight:800;color:#334155;margin-bottom:4px;">2. Conteo</label>
+              <label class="form-label" style="margin-bottom:4px;">2. Conteo</label>
               <select class="form-control form-control-sm" id="seg-ronda" style="font-weight:700;" onchange="WMS_MODULES.inventario._segRonda=parseInt(this.value)">
                 <option value="2" ${this._segRonda === 2 ? 'selected' : ''}>Segundo conteo (R2)</option>
                 <option value="3" ${this._segRonda === 3 ? 'selected' : ''}>Tercer conteo (R3)</option>
@@ -6216,7 +6327,7 @@ WMS_MODULES.inventario = {
             </div>
 
             <div>
-              <label style="font-size:.75rem;font-weight:800;color:#334155;margin-bottom:4px;">3. Auxiliar Asignado</label>
+              <label class="form-label" style="margin-bottom:4px;">3. Auxiliar Asignado</label>
               <select class="form-control form-control-sm" id="seg-aux-id" style="font-weight:700;">
                 <option value="">-- Seleccionar Auxiliar --</option>
                 ${auxOptions(null)}
@@ -6224,7 +6335,7 @@ WMS_MODULES.inventario = {
             </div>
 
             <div>
-              <label style="font-size:.75rem;font-weight:800;color:#334155;margin-bottom:4px;">4. Acciones</label>
+              <label class="form-label" style="margin-bottom:4px;">4. Acciones</label>
               <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.inventario._asignarSegundosConteosBatch(${d.sesion.id})"
                       style="width:100%;font-weight:900;" ${['Cerrado', 'Ajustado'].includes(d.sesion.estado) ? 'disabled' : ''}>
                 <i class="fa-solid fa-plus-circle"></i> Asignar recuento
@@ -6234,23 +6345,23 @@ WMS_MODULES.inventario = {
         </div>
 
         <!-- Tabla de Tareas de Recuento (R2 / R3) -->
-        <div style="border:1px solid #cbd5e1;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.04);">
+        <div style="border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:0 3px 6px rgba(0,0,0,.04);">
           <div style="background:#1e293b;color:#fff;padding:12px 18px;font-size:.88rem;font-weight:800;display:flex;justify-content:space-between;align-items:center;">
             <span><i class="fa-solid fa-list"></i> Tareas de Segundo y Tercer Conteo</span>
-            <span class="badge" style="background:#3b82f6;color:#fff;font-weight:800;">${segList.length} tareas</span>
+            <span class="badge" style="background:var(--info);color:#fff;font-weight:800;">${segList.length} tareas</span>
           </div>
 
           <div style="overflow-x:auto;">
             <table class="erp-table compact" style="margin:0;">
               <thead>
-                <tr style="background:#f1f5f9;">
+                <tr style="background:var(--btn-neutral);">
                   <th>#</th>
                   <th class="text-center">RONDA</th>
                   <th>CÓDIGO</th>
                   <th>REFERENCIA / PRODUCTO</th>
                   <th>AUXILIAR ASIGNADO</th>
                   <th class="text-center">CANT. R1</th>
-                  <th class="text-center" style="background:#eff6ff;color:#1e40af;">CANT. R2</th>
+                  <th class="text-center" style="background:var(--info-bg);color:var(--accent2);">CANT. R2</th>
                   <th class="text-center" style="background:#f5f3ff;color:#6d28d9;">CANT. R3</th>
                   <th class="text-center">ESTADO</th>
                   <th class="text-center">ACCIONES</th>
@@ -6259,14 +6370,14 @@ WMS_MODULES.inventario = {
               <tbody>
                 ${segList.map((s, idx) => {
                   const celda = (ronda, val) => s.ronda === ronda && s.estado !== 'Finalizado'
-                    ? '<span style="color:#94a3b8;font-weight:400;">Pendiente</span>'
+                    ? '<span style="color:var(--text-muted);font-weight:400;">Pendiente</span>'
                     : (s.ronda >= ronda ? WMS.formatNum(val) : '—');
                   return `
                   <tr>
                     <td class="text-center"><b>${idx + 1}</b></td>
                     <td class="text-center"><span class="badge ${s.ronda === 3 ? 'badge-danger' : 'badge-info'}">R${s.ronda}</span></td>
                     <td><b>${WMS.esc(s.codigo)}</b></td>
-                    <td><div style="font-weight:700;font-size:.8rem;color:#0f172a;">${WMS.esc(s.producto)}</div></td>
+                    <td><div style="font-weight:700;font-size:.8rem;color:var(--text);">${WMS.esc(s.producto)}</div></td>
                     <td>
                       <select class="form-control form-control-sm"
                         style="font-size:.78rem;font-weight:700;padding:2px 6px;min-width:150px;"
@@ -6276,7 +6387,7 @@ WMS_MODULES.inventario = {
                       </select>
                     </td>
                     <td class="text-center fw-700" style="font-size:.95rem;">${WMS.formatNum(s.r1)}</td>
-                    <td class="text-center fw-900" style="background:#eff6ff;color:#1d4ed8;font-size:1.05rem;">${celda(2, s.r2)}</td>
+                    <td class="text-center fw-900" style="background:var(--info-bg);color:var(--info);font-size:1.05rem;">${celda(2, s.r2)}</td>
                     <td class="text-center fw-900" style="background:#f5f3ff;color:#6d28d9;font-size:1.05rem;">${celda(3, s.r3)}</td>
                     <td class="text-center">
                       <span class="badge ${s.estado==='Finalizado'?'badge-success':(s.estado==='EnConteo'?'badge-warning':'badge-info')}">
@@ -6291,7 +6402,7 @@ WMS_MODULES.inventario = {
                       </button>` : ''}
                     </td>
                   </tr>`;
-                }).join('') || '<tr><td colspan="10" class="text-center" style="padding:24px;color:#64748b;">No hay tareas de Segundo o Tercer Conteo programadas todavía.</td></tr>'}
+                }).join('') || '<tr><td colspan="10" class="text-center" style="padding:24px;color:var(--muted);">No hay tareas de Segundo o Tercer Conteo programadas todavía.</td></tr>'}
               </tbody>
             </table>
           </div>

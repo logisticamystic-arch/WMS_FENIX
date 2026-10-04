@@ -85,11 +85,31 @@ class CalidadController extends BaseController
             ->groupBy(Capsule::raw('rc.created_at::date'))
             ->get()->keyBy('dia');
 
+        // Preoperacionales por día: realizados y NO conformes (con al menos un ítem NC).
         $seriePreop = Capsule::table('preoperacionales')
             ->where('empresa_id', $empresaId)->where('sucursal_id', $sucId)
             ->whereBetween('fecha', [$fIni, $fFin])
-            ->selectRaw('fecha as dia, count(*) as total')
+            ->selectRaw("fecha as dia, count(*) as total, count(*) filter (where exists (
+                select 1 from preoperacional_items pi where pi.preoperacional_id = preoperacionales.id and pi.calificacion = 'NC'
+            )) as no_conformes")
             ->groupBy('fecha')
+            ->get()->keyBy('dia');
+
+        // Recepción por día (a pedido de Camilo, 2026-09-30): referencias distintas
+        // recibidas y proveedores distintos recibidos, según las líneas capturadas.
+        // El proveedor es texto libre por línea (sin ODC) → se normaliza (mayúsculas,
+        // sin tildes ni espacios sobrantes) para no contar "FÉLIX" y "FELIX" como dos;
+        // con ODC y sin proveedor en la línea se toma la razón social de la orden.
+        $provNorm = "translate(upper(trim(coalesce(nullif(trim(rd.proveedor), ''), pv.razon_social, ''))), 'ÁÉÍÓÚÜÑ', 'AEIOUUN')";
+        $serieRefs = Capsule::table('recepcion_detalles as rd')
+            ->join('recepciones as r', 'r.id', '=', 'rd.recepcion_id')
+            ->leftJoin('ordenes_compra as oc', 'oc.id', '=', 'r.odc_id')
+            ->leftJoin('proveedores as pv', 'pv.id', '=', 'oc.proveedor_id')
+            ->where('r.empresa_id', $empresaId)->where('r.sucursal_id', $sucId)
+            ->whereBetween(Capsule::raw('rd.created_at::date'), [$fIni, $fFin])
+            ->selectRaw("rd.created_at::date as dia, count(distinct rd.producto_id) as referencias,
+                         count(distinct nullif({$provNorm}, '')) as proveedores")
+            ->groupBy(Capsule::raw('rd.created_at::date'))
             ->get()->keyBy('dia');
 
         return $this->ok($res, [
@@ -114,6 +134,7 @@ class CalidadController extends BaseController
             ],
             'serie_recepcion'      => $serieRecep,
             'serie_preoperacional' => $seriePreop,
+            'serie_referencias'    => $serieRefs,
         ]);
     }
 

@@ -21,6 +21,7 @@ WMS_MODULES.reportes = {
       contingencia: this.show_contingencia,
       agotados:     this.show_agotados,
       conciliacion: this.show_conciliacion,
+      traspasos:    this.show_traspasos,
     };
     (fn[s]?.bind(this) || fn.gerencial.bind(this))();
   },
@@ -33,6 +34,7 @@ WMS_MODULES.reportes = {
       proveedores:'Evaluación Proveedores', audit:'Log de Auditoría',
       odc:'Recibo Detallado (ODC)', contingencia:'Plan de Contingencia',
       agotados:'Agotados por Demanda', conciliacion:'Conciliación de Trazabilidad',
+      traspasos:'Traspasos Realizados',
     };
     return m[s] || s || 'Panel';
   },
@@ -64,7 +66,7 @@ WMS_MODULES.reportes = {
     if (!dd) {
       dd = document.createElement('div');
       dd.id = inputId + '-dd';
-      dd.style.cssText = 'position:absolute;z-index:9999;background:#fff;border:1px solid #cbd5e1;border-radius:4px;max-height:180px;overflow-y:auto;width:100%;box-shadow:0 4px 12px rgba(0,0,0,.12);display:none;';
+      dd.style.cssText = 'position:absolute;z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:4px;max-height:180px;overflow-y:auto;width:100%;box-shadow:0 4px 12px rgba(0,0,0,.12);display:none;';
       input.parentElement.style.position = 'relative';
       input.parentElement.appendChild(dd);
     }
@@ -78,11 +80,11 @@ WMS_MODULES.reportes = {
         try {
           const res  = await API.get('/param/ubicaciones', `codigo=${encodeURIComponent(val)}&limit=10`);
           const list = res.data || res || [];
-          if (!list.length) { dd.innerHTML = '<div style="padding:8px 12px;color:#94a3b8;font-size:.82rem;">Sin resultados</div>'; dd.style.display = 'block'; return; }
+          if (!list.length) { dd.innerHTML = '<div style="padding:8px 12px;color:var(--text-muted);font-size:.82rem;">Sin resultados</div>'; dd.style.display = 'block'; return; }
           dd.innerHTML = list.map(u =>
             `<div data-id="${u.id}" data-codigo="${WMS.esc(u.codigo)}"
-                  style="padding:8px 12px;cursor:pointer;font-size:.83rem;border-bottom:1px solid #f1f5f9;"
-                  onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''"
+                  style="padding:8px 12px;cursor:pointer;font-size:.83rem;border-bottom:1px solid var(--border-light);"
+                  onmouseover="this.style.background='var(--btn-neutral)'" onmouseout="this.style.background=''"
                   onclick="WMS_MODULES.reportes._selectUbicacion('${inputId}','${hiddenIdField}','${hiddenCodigoField}',${u.id},'${WMS.esc(u.codigo)}')">
               <b>${WMS.esc(u.codigo)}</b>${u.nombre ? ' — ' + WMS.esc(u.nombre) : ''}
             </div>`
@@ -117,12 +119,12 @@ WMS_MODULES.reportes = {
     if (!dd) {
       dd = document.createElement('div');
       dd.id = inputId + '-dd';
-      dd.style.cssText = 'position:absolute;z-index:9999;background:#fff;border:1px solid #cbd5e1;border-radius:4px;max-height:180px;overflow-y:auto;width:100%;box-shadow:0 4px 12px rgba(0,0,0,.12);display:none;';
+      dd.style.cssText = 'position:absolute;z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:4px;max-height:180px;overflow-y:auto;width:100%;box-shadow:0 4px 12px rgba(0,0,0,.12);display:none;';
       input.parentElement.style.position = 'relative';
       input.parentElement.appendChild(dd);
     }
     if (!items.length) {
-      dd.innerHTML = '<div style="padding:8px 12px;color:#94a3b8;font-size:.82rem;">Sin resultados</div>';
+      dd.innerHTML = '<div style="padding:8px 12px;color:var(--text-muted);font-size:.82rem;">Sin resultados</div>';
     } else {
       dd.innerHTML = items.map(renderItem).join('');
     }
@@ -164,8 +166,8 @@ WMS_MODULES.reportes = {
       ).slice(0, 15);
 
       this._mostrarDropdown(inputId, list, c => `
-        <div style="padding:8px 12px;cursor:pointer;font-size:.83rem;border-bottom:1px solid #f1f5f9;"
-             onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''"
+        <div style="padding:8px 12px;cursor:pointer;font-size:.83rem;border-bottom:1px solid var(--border-light);"
+             onmouseover="this.style.background='var(--btn-neutral)'" onmouseout="this.style.background=''"
              onclick="WMS_MODULES.reportes._selectTexto('${inputId}','${WMS.esc(c.razon_social).replace(/'/g,"\\'")}')">
           <b>${WMS.esc(c.razon_social)}</b>${c.nit ? ' — ' + WMS.esc(c.nit) : ''}
         </div>`);
@@ -205,8 +207,8 @@ WMS_MODULES.reportes = {
       ).slice(0, 15);
 
       this._mostrarDropdown(inputId, list, p => `
-        <div style="padding:8px 12px;cursor:pointer;font-size:.83rem;border-bottom:1px solid #f1f5f9;"
-             onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''"
+        <div style="padding:8px 12px;cursor:pointer;font-size:.83rem;border-bottom:1px solid var(--border-light);"
+             onmouseover="this.style.background='var(--btn-neutral)'" onmouseout="this.style.background=''"
              onclick="WMS_MODULES.reportes._selectTexto('${inputId}','${WMS.esc(p.nombre).replace(/'/g,"\\'")}')">
           <b>${WMS.esc(p.nombre)}</b>${p.rol ? ' — ' + WMS.esc(p.rol) : ''}
         </div>`);
@@ -235,8 +237,8 @@ WMS_MODULES.reportes = {
           const res  = await API.get('/param/productos/buscar', `q=${encodeURIComponent(val)}&limit=12`);
           const list = res.data || res || [];
           this._mostrarDropdown(inputId, list, p => `
-            <div style="padding:8px 12px;cursor:pointer;font-size:.83rem;border-bottom:1px solid #f1f5f9;"
-                 onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''"
+            <div style="padding:8px 12px;cursor:pointer;font-size:.83rem;border-bottom:1px solid var(--border-light);"
+                 onmouseover="this.style.background='var(--btn-neutral)'" onmouseout="this.style.background=''"
                  onclick="WMS_MODULES.reportes._selectTexto('${inputId}','${WMS.esc(p.codigo_interno || p.nombre).replace(/'/g,"\\'")}')">
               <b>${WMS.esc(p.codigo_interno || '-')}</b> — ${WMS.esc(p.nombre)}
             </div>`);
@@ -330,26 +332,26 @@ WMS_MODULES.reportes = {
     const catOpts  = `<option value="">Todos</option>` + (filtros?.categorias||[]).map(c => `<option value="${c.id}" ${fCat==c.id?'selected':''}>${WMS.esc(c.nombre)}</option>`).join('');
     const prodOpts = `<option value="">Todos</option>` + (filtros?.productos||[]).map(p => `<option value="${p.id}" ${fProd==p.id?'selected':''}>${WMS.esc(p.codigo_interno)} - ${WMS.esc(p.nombre)}</option>`).join('');
 
-    const primaryColors = ['#1a56db','#0891b2','#4f46e5','#2563eb','#0284c7','#475569'];
+    const primaryColors = ['#2b5fc7','#0891b2','#4f46e5','#2563eb','#0284c7','#475569'];
 
     WMS.setContent(`
-      <div class="inv-commander-root animate-fade-in" style="padding:20px;background:#f8fafc;min-height:calc(100vh - 120px);overflow:auto;">
+      <div class="inv-commander-root animate-fade-in" style="padding:20px;background:var(--table-header-bg);min-height:calc(100vh - 120px);overflow:auto;">
 
-        <div style="background:#fff;border-radius:4px;padding:20px;border:1px solid #e2e8f0;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,.05);">
-          <div style="font-weight:900;color:#0f172a;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:.9rem;text-transform:uppercase;letter-spacing:.5px;">
-            <i class="fa-solid fa-sliders" style="color:var(--cmd-blue,#2563eb);"></i> Control de Filtros
+        <div style="background:var(--surface);border-radius:4px;padding:20px;border:1px solid var(--border);margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,.05);">
+          <div style="font-weight:900;color:var(--text);margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:.9rem;text-transform:uppercase;letter-spacing:.5px;">
+            <i class="fa-solid fa-sliders" style="color:var(--cmd-blue,var(--info));"></i> Control de Filtros
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;">
             <div>
-              <label style="display:block;margin-bottom:6px;font-size:.75rem;font-weight:600;color:#475569;">Mes</label>
+              <label class="form-label" style="display:block;margin-bottom:6px;">Mes</label>
               <select id="dash-filter-mes" class="form-control" onchange="WMS_MODULES.reportes.show_gerencial()">${mesOpts}</select>
             </div>
             <div>
-              <label style="display:block;margin-bottom:6px;font-size:.75rem;font-weight:600;color:#475569;">Categoría</label>
+              <label class="form-label" style="display:block;margin-bottom:6px;">Categoría</label>
               <select id="dash-filter-categoria" class="form-control" onchange="WMS_MODULES.reportes.show_gerencial()">${catOpts}</select>
             </div>
             <div>
-              <label style="display:block;margin-bottom:6px;font-size:.75rem;font-weight:600;color:#475569;">Producto</label>
+              <label class="form-label" style="display:block;margin-bottom:6px;">Producto</label>
               <select id="dash-filter-producto" class="form-control select2-bi">${prodOpts}</select>
             </div>
           </div>
@@ -383,14 +385,14 @@ WMS_MODULES.reportes = {
         </div>
 
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:20px;margin-bottom:24px;">
-          <div style="background:#fff;border-radius:4px;padding:24px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.05);min-height:350px;">
-            <div style="font-weight:900;color:#0f172a;margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:.9rem;text-transform:uppercase;letter-spacing:.5px;">
-              <i class="fa-regular fa-calendar-check" style="color:var(--cmd-blue,#2563eb);"></i> Total Unidades Separadas Por Mes
+          <div style="background:var(--surface);border-radius:4px;padding:24px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.05);min-height:350px;">
+            <div style="font-weight:900;color:var(--text);margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:.9rem;text-transform:uppercase;letter-spacing:.5px;">
+              <i class="fa-regular fa-calendar-check" style="color:var(--cmd-blue,var(--info));"></i> Total Unidades Separadas Por Mes
             </div>
             <div style="position:relative;height:280px;"><canvas id="chartGeneralPicks"></canvas></div>
           </div>
-          <div style="background:#fff;border-radius:4px;padding:24px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.05);min-height:350px;">
-            <div style="font-weight:900;color:#0f172a;margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:.9rem;text-transform:uppercase;letter-spacing:.5px;">
+          <div style="background:var(--surface);border-radius:4px;padding:24px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.05);min-height:350px;">
+            <div style="font-weight:900;color:var(--text);margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:.9rem;text-transform:uppercase;letter-spacing:.5px;">
               <i class="fa-solid fa-layer-group" style="color:#0891b2;"></i> Picking Volumétrico por Categoría
             </div>
             <div style="position:relative;height:280px;"><canvas id="chartBiCategoriasBars"></canvas></div>
@@ -398,39 +400,39 @@ WMS_MODULES.reportes = {
         </div>
 
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:20px;margin-bottom:24px;">
-          <div style="background:#fff;border-radius:4px;padding:24px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.05);min-height:350px;">
-            <div style="font-weight:900;color:#0f172a;margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:.9rem;text-transform:uppercase;letter-spacing:.5px;">
-              <i class="fa-solid fa-chart-area" style="color:#475569;"></i> Tendencia Mensual Picking Por Categoría
+          <div style="background:var(--surface);border-radius:4px;padding:24px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.05);min-height:350px;">
+            <div style="font-weight:900;color:var(--text);margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:.9rem;text-transform:uppercase;letter-spacing:.5px;">
+              <i class="fa-solid fa-chart-area" style="color:var(--text2);"></i> Tendencia Mensual Picking Por Categoría
             </div>
             <div style="position:relative;height:280px;"><canvas id="chartTendenciaCat"></canvas></div>
           </div>
-          <div style="background:#fff;border-radius:4px;padding:24px;border:1px solid #e2e8f0;border-top:4px solid #059669;box-shadow:0 1px 3px rgba(0,0,0,.05);min-height:350px;">
-            <div style="font-weight:900;color:#0f172a;margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:.9rem;text-transform:uppercase;letter-spacing:.5px;">
-              <i class="fa-solid fa-brain" style="color:#059669;"></i> Forecast ML: Cierre de Año
+          <div style="background:var(--surface);border-radius:4px;padding:24px;border:1px solid var(--border);border-top:4px solid var(--ok);box-shadow:0 1px 3px rgba(0,0,0,.05);min-height:350px;">
+            <div style="font-weight:900;color:var(--text);margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:.9rem;text-transform:uppercase;letter-spacing:.5px;">
+              <i class="fa-solid fa-brain" style="color:var(--ok);"></i> Forecast ML: Cierre de Año
             </div>
             <div style="position:relative;height:280px;"><canvas id="chartBiForecast"></canvas></div>
           </div>
         </div>
 
-        <div style="background:#fff;border-radius:4px;padding:20px;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.06);">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #e2e8f0;">
-            <div style="font-weight:800;color:#1e3a5f;"><i class="fa-solid fa-battery-quarter" style="color:#f59e0b;margin-right:6px;"></i>Alerta: Stock Inmovilizado y Baja Rotación</div>
+        <div style="background:var(--surface);border-radius:4px;padding:20px;border:1px solid var(--border);box-shadow:0 1px 4px rgba(0,0,0,.06);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid var(--border);">
+            <div style="font-weight:800;color:var(--text);"><i class="fa-solid fa-battery-quarter" style="color:var(--warn);margin-right:6px;"></i>Alerta: Stock Inmovilizado y Baja Rotación</div>
           </div>
           <div style="overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;font-size:12px;">
-              <thead><tr style="background:#f8fafc;">
-                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">Cód</th>
-                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">Producto</th>
-                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">Categoría</th>
-                <th style="padding:8px 12px;text-align:right;color:#64748b;font-weight:700;">Stock Inmovilizado</th>
+              <thead><tr style="background:var(--table-header-bg);">
+                <th style="padding:8px 12px;text-align:left;color:var(--muted);font-weight:700;">Cód</th>
+                <th style="padding:8px 12px;text-align:left;color:var(--muted);font-weight:700;">Producto</th>
+                <th style="padding:8px 12px;text-align:left;color:var(--muted);font-weight:700;">Categoría</th>
+                <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:700;">Stock Inmovilizado</th>
               </tr></thead>
               <tbody>
-                ${(bajaRotacion||[]).map((b,i) => `<tr style="border-bottom:1px solid #f1f5f9;background:${i%2?'#f8fafc':'#fff'};">
-                  <td style="padding:8px 12px;font-family:monospace;font-size:11px;color:#64748b;font-weight:bold;">${WMS.esc(b.codigo_interno)}</td>
-                  <td style="padding:8px 12px;font-weight:600;color:#1e3a5f;">${WMS.esc(b.producto)}</td>
+                ${(bajaRotacion||[]).map((b,i) => `<tr style="border-bottom:1px solid var(--border-light);background:${i%2?'var(--table-header-bg)':'var(--surface)'};">
+                  <td style="padding:8px 12px;font-family:monospace;font-size:11px;color:var(--muted);font-weight:bold;">${WMS.esc(b.codigo_interno)}</td>
+                  <td style="padding:8px 12px;font-weight:600;color:var(--text);">${WMS.esc(b.producto)}</td>
                   <td style="padding:8px 12px;">${WMS.esc(b.categoria||'Sin Cat')}</td>
-                  <td style="padding:8px 12px;text-align:right;font-weight:700;color:#dc2626;">${Number(b.stock_inmovilizado||0).toLocaleString('es-CO')}</td>
-                </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:24px;color:#94a3b8;">Inventario Saludable - Sin inmovilizados</td></tr>'}
+                  <td style="padding:8px 12px;text-align:right;font-weight:700;color:var(--danger);">${Number(b.stock_inmovilizado||0).toLocaleString('es-CO')}</td>
+                </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-muted);">Inventario Saludable - Sin inmovilizados</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -453,7 +455,7 @@ WMS_MODULES.reportes = {
       if (ctxGen && window.Chart) {
         new Chart(ctxGen, {
           type:'bar',
-          data:{ labels:labelsMeses, datasets:[{ label:'Unidades', data:mlForecast.reales, backgroundColor:'#1a56db', borderRadius:4 }] },
+          data:{ labels:labelsMeses, datasets:[{ label:'Unidades', data:mlForecast.reales, backgroundColor:'#2b5fc7', borderRadius:4 }] },
           options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,grid:{borderDash:[2,4]}},x:{grid:{display:false}}} }
         });
       }
@@ -604,12 +606,12 @@ WMS_MODULES.reportes = {
             <td><small>${(m.hora||'').substring(0,5)}</small></td>
             <td>${tipoBadge(m.tipo)}</td>
             <td>${WMS.esc(m.sucursal_pedido || '—')}</td>
-            <td class="text-center" style="color:#10b981;font-weight:700">${m.entradas ? WMS.formatNum(m.entradas) : '—'}</td>
-            <td class="text-center" style="color:#ef4444;font-weight:700">${m.salidas ? WMS.formatNum(m.salidas) : '—'}</td>
+            <td class="text-center" style="color:var(--ok);font-weight:700">${m.entradas ? WMS.formatNum(m.entradas) : '—'}</td>
+            <td class="text-center" style="color:var(--danger);font-weight:700">${m.salidas ? WMS.formatNum(m.salidas) : '—'}</td>
             <td class="text-center">${m.cantidad_cajas ?? '—'}</td>
             <td class="text-center">${m.saldos ?? '—'}</td>
             <td class="text-center"><b>${WMS.formatNum(m.cantidad)}</b></td>
-            <td class="text-center" style="color:#64748b">${WMS.formatNum(m.saldo_anterior ?? 0)}</td>
+            <td class="text-center" style="color:var(--muted)">${WMS.formatNum(m.saldo_anterior ?? 0)}</td>
             <td class="text-center" style="font-weight:700">${WMS.formatNum(m.saldo)}</td>
             <td><small>${WMS.esc(m.lote||'-')}${m.fecha_vencimiento?' · '+WMS.formatDate(m.fecha_vencimiento):''}</small></td>
             <td><small>${WMS.esc(m.ubicacion_origen||'-')}</small></td>
@@ -692,13 +694,13 @@ WMS_MODULES.reportes = {
   _panelFiltrosReciboCdp({desde='', hasta='', referencia='', responsable=''} = {}) {
     const campo = (label, inputHtml) => `
       <div>
-        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.02em;margin-bottom:5px;">${label}</label>
+        <label class="form-label" style="display:block;margin-bottom:5px;">${label}</label>
         ${inputHtml}
       </div>`;
     // Sin clase .card: su overflow:hidden recortaría la lista del combobox de referencia.
     return `
-      <div style="margin-bottom:16px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
-        <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+      <div style="margin-bottom:16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
           <span class="card-title"><i class="fa-solid fa-filter"></i> Filtros de búsqueda</span>
           <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.reportes._limpiarFiltrosReciboCdp()">
             <i class="fa-solid fa-eraser"></i> Limpiar
@@ -711,13 +713,13 @@ WMS_MODULES.reportes = {
             <div style="position:relative;">
               <input type="text" class="form-control" id="cdp-ref" placeholder="Todas las referencias" autocomplete="off"
                      style="padding-right:28px;" value="${WMS.esc(referencia)}">
-              <i class="fa-solid fa-chevron-down" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:11px;pointer-events:none;"></i>
+              <i class="fa-solid fa-chevron-down" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px;pointer-events:none;"></i>
             </div>`)}
           ${campo('Recibido Por', `
             <div style="position:relative;">
               <input type="text" class="form-control" id="cdp-responsable" placeholder="Todos los empleados" autocomplete="off"
                      style="padding-right:28px;" value="${WMS.esc(responsable)}">
-              <i class="fa-solid fa-chevron-down" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:11px;pointer-events:none;"></i>
+              <i class="fa-solid fa-chevron-down" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px;pointer-events:none;"></i>
             </div>`)}
           <div>
             <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.reportes._buscar('cdp','show_recibo_cdp')">
@@ -742,7 +744,7 @@ WMS_MODULES.reportes = {
     if (!this._buscadoMap.cdp) {
       WMS.setToolbar('');
       WMS.setContent(`
-        <div style="position:sticky;top:0;z-index:15;background:#fff;padding-bottom:8px;">
+        <div style="position:sticky;top:0;z-index:15;background:var(--surface);padding-bottom:8px;">
           ${this._panelFiltrosReciboCdp({desde:p.desde, hasta:p.hasta, referencia:p.ref, responsable})}
         </div>
         ${this._estadoInicialReporte()}`);
@@ -765,32 +767,32 @@ WMS_MODULES.reportes = {
       // que fijarlos juntos como una sola unidad para que ninguno de los dos
       // quede tapado ni se oculte al bajar en la lista.
       WMS.setContent(`
-        <div style="position:sticky;top:0;z-index:15;background:#fff;padding-bottom:8px;">
+        <div style="position:sticky;top:0;z-index:15;background:var(--surface);padding-bottom:8px;">
           ${this._panelFiltrosReciboCdp({desde:p.desde, hasta:p.hasta, referencia:p.ref, responsable})}
 
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
-            <div style="padding:12px;background:#eff6ff;border-radius:8px;text-align:center;border:1px solid #bfdbfe;">
-              <div style="font-size:20px;font-weight:800;color:#1e40af;">${tot.total_lineas || 0}</div>
-              <div style="font-size:10px;color:#1e40af;font-weight:700;text-transform:uppercase;">Líneas Recibidas</div>
+            <div style="padding:12px;background:var(--info-bg);border-radius:8px;text-align:center;border:1px solid var(--info-bg);">
+              <div style="font-size:20px;font-weight:800;color:var(--accent2);">${tot.total_lineas || 0}</div>
+              <div style="font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;">Líneas Recibidas</div>
             </div>
-            <div style="padding:12px;background:#f0fdf4;border-radius:8px;text-align:center;border:1px solid #bbf7d0;">
-              <div style="font-size:20px;font-weight:800;color:#16a34a;">${WMS.formatNum(tot.total_cajas || 0)}</div>
-              <div style="font-size:10px;color:#16a34a;font-weight:700;text-transform:uppercase;">Total Cajas</div>
+            <div style="padding:12px;background:var(--ok-bg);border-radius:8px;text-align:center;border:1px solid var(--ok-bg);">
+              <div style="font-size:20px;font-weight:800;color:var(--ok);">${WMS.formatNum(tot.total_cajas || 0)}</div>
+              <div style="font-size:10px;color:var(--ok);font-weight:700;text-transform:uppercase;">Total Cajas</div>
             </div>
-            <div style="padding:12px;background:#fefce8;border-radius:8px;text-align:center;border:1px solid #fde68a;">
-              <div style="font-size:20px;font-weight:800;color:#d97706;">${WMS.formatNum(tot.total_saldo || 0)}</div>
-              <div style="font-size:10px;color:#d97706;font-weight:700;text-transform:uppercase;">Total Saldo</div>
+            <div style="padding:12px;background:var(--warn-bg);border-radius:8px;text-align:center;border:1px solid var(--warn-bg);">
+              <div style="font-size:20px;font-weight:800;color:var(--warn);">${WMS.formatNum(tot.total_saldo || 0)}</div>
+              <div style="font-size:10px;color:var(--warn);font-weight:700;text-transform:uppercase;">Total Saldo</div>
             </div>
-            <div style="padding:12px;background:#f8fafc;border-radius:8px;text-align:center;border:1px solid #e2e8f0;">
-              <div style="font-size:20px;font-weight:800;color:#334155;">${WMS.formatNum(tot.total_recibido || 0)}</div>
-              <div style="font-size:10px;color:#334155;font-weight:700;text-transform:uppercase;">Total Recibido (UND)</div>
+            <div style="padding:12px;background:var(--table-header-bg);border-radius:8px;text-align:center;border:1px solid var(--border);">
+              <div style="font-size:20px;font-weight:800;color:var(--text);">${WMS.formatNum(tot.total_recibido || 0)}</div>
+              <div style="font-size:10px;color:var(--text);font-weight:700;text-transform:uppercase;">Total Recibido (UND)</div>
             </div>
           </div>
         </div>
 
         <div class="card"><div class="card-header"><span class="card-title"><i class="fa-solid fa-qrcode"></i> Recibo sin ODC — QR o Proveedor CDP (${rows.length})</span></div>
         <div class="table-container-scroll"><table class="erp-table" id="cdp-table">
-          <thead style="position:sticky;top:0;background:#f8fafc;z-index:10;"><tr>
+          <thead style="position:sticky;top:0;background:var(--table-header-bg);z-index:10;"><tr>
             <th>Fecha</th><th># Recepción</th><th>Código</th><th>Producto</th>
             <th>Cant. Recibida (QR)</th><th>F. Vencimiento</th><th>Lote</th>
             <th>Cajas</th><th>Saldo</th><th>Recibido Por</th><th>Ubicación</th>
@@ -828,12 +830,12 @@ WMS_MODULES.reportes = {
   _panelFiltrosConciliacion({desde='', hasta='', cliente='', referencia='', soloDif=true} = {}) {
     const campo = (label, inputHtml) => `
       <div>
-        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.02em;margin-bottom:5px;">${label}</label>
+        <label class="form-label" style="display:block;margin-bottom:5px;">${label}</label>
         ${inputHtml}
       </div>`;
     return `
-      <div style="margin-bottom:16px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
-        <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+      <div style="margin-bottom:16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
           <span class="card-title"><i class="fa-solid fa-filter"></i> Filtros de búsqueda</span>
           <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.reportes._limpiarFiltrosConciliacion()">
             <i class="fa-solid fa-eraser"></i> Limpiar
@@ -853,7 +855,7 @@ WMS_MODULES.reportes = {
                      style="padding-right:28px;" value="${WMS.esc(referencia)}">
             </div>`)}
           <div>
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#334155;margin-bottom:9px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text);margin-bottom:9px;">
               <input type="checkbox" id="conc-solo-dif" ${soloDif ? 'checked' : ''} style="width:16px;height:16px;">
               Solo mostrar diferencias
             </label>
@@ -884,9 +886,9 @@ WMS_MODULES.reportes = {
       WMS.setToolbar('');
       WMS.setContent(`
         ${this._panelFiltrosConciliacion({desde:p.desde || WMS.getPastDate(7), hasta:p.hasta, cliente, referencia:p.ref, soloDif:true})}
-        <div class="m-empty" style="padding:24px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;margin-bottom:16px;">
-          <i class="fa-solid fa-shield-halved" style="color:#1e40af;"></i>
-          <p style="margin:6px 0 0;color:#1e3a5f;">Compara, línea por línea, lo <b>importado/solicitado</b> vs. lo <b>separado</b> por el auxiliar vs. lo que efectivamente queda en la <b>remisión</b> certificada. Aplique los filtros y presione "Filtrar".</p>
+        <div class="m-empty" style="padding:24px;background:var(--info-bg);border:1px solid var(--info-bg);border-radius:8px;margin-bottom:16px;">
+          <i class="fa-solid fa-shield-halved" style="color:var(--accent2);"></i>
+          <p style="margin:6px 0 0;color:var(--text);">Compara, línea por línea, lo <b>importado/solicitado</b> vs. lo <b>separado</b> por el auxiliar vs. lo que efectivamente queda en la <b>remisión</b> certificada. Aplique los filtros y presione "Filtrar".</p>
         </div>`);
       this.initClienteAutocomplete('conc-cliente');
       this.initProductoAutocomplete('conc-ref');
@@ -904,11 +906,11 @@ WMS_MODULES.reportes = {
 
       const badge = (estado) => {
         const map = {
-          OK:                       {bg:'#f0fdf4', color:'#16a34a', label:'OK'},
-          PENDIENTE:                {bg:'#f8fafc', color:'#64748b', label:'Pendiente'},
-          DIFERENCIA_SEPARACION:    {bg:'#fefce8', color:'#d97706', label:'Diferencia separación'},
-          DIFERENCIA_CERTIFICACION:{bg:'#fff7ed', color:'#c2410c', label:'Diferencia certificación'},
-          RIESGO_IMPRESION:        {bg:'#fef2f2', color:'#dc2626', label:'Riesgo de impresión'},
+          OK:                       {bg:'var(--ok-bg)', color:'var(--ok)', label:'OK'},
+          PENDIENTE:                {bg:'var(--table-header-bg)', color:'var(--muted)', label:'Pendiente'},
+          DIFERENCIA_SEPARACION:    {bg:'var(--warn-bg)', color:'var(--warn)', label:'Diferencia separación'},
+          DIFERENCIA_CERTIFICACION:{bg:'var(--warn-bg)', color:'#c2410c', label:'Diferencia certificación'},
+          RIESGO_IMPRESION:        {bg:'var(--danger-bg)', color:'var(--danger)', label:'Riesgo de impresión'},
         };
         const s = map[estado] || map.OK;
         return `<span style="background:${s.bg};color:${s.color};border-radius:5px;padding:3px 8px;font-size:11px;font-weight:800;white-space:nowrap;">${s.label}</span>`;
@@ -918,25 +920,25 @@ WMS_MODULES.reportes = {
         ${this._panelFiltrosConciliacion({desde:p.desde, hasta:p.hasta, cliente, referencia:p.ref, soloDif})}
 
         <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;">
-          <div style="padding:12px;background:#f8fafc;border-radius:8px;text-align:center;border:1px solid #e2e8f0;">
-            <div style="font-size:20px;font-weight:800;color:#334155;">${tot.total || 0}</div>
-            <div style="font-size:10px;color:#334155;font-weight:700;text-transform:uppercase;">Líneas Revisadas</div>
+          <div style="padding:12px;background:var(--table-header-bg);border-radius:8px;text-align:center;border:1px solid var(--border);">
+            <div style="font-size:20px;font-weight:800;color:var(--text);">${tot.total || 0}</div>
+            <div style="font-size:10px;color:var(--text);font-weight:700;text-transform:uppercase;">Líneas Revisadas</div>
           </div>
-          <div style="padding:12px;background:#f0fdf4;border-radius:8px;text-align:center;border:1px solid #bbf7d0;">
-            <div style="font-size:20px;font-weight:800;color:#16a34a;">${tot.ok || 0}</div>
-            <div style="font-size:10px;color:#16a34a;font-weight:700;text-transform:uppercase;">OK</div>
+          <div style="padding:12px;background:var(--ok-bg);border-radius:8px;text-align:center;border:1px solid var(--ok-bg);">
+            <div style="font-size:20px;font-weight:800;color:var(--ok);">${tot.ok || 0}</div>
+            <div style="font-size:10px;color:var(--ok);font-weight:700;text-transform:uppercase;">OK</div>
           </div>
-          <div style="padding:12px;background:#fefce8;border-radius:8px;text-align:center;border:1px solid #fde68a;">
-            <div style="font-size:20px;font-weight:800;color:#d97706;">${tot.diferencia_separacion || 0}</div>
-            <div style="font-size:10px;color:#d97706;font-weight:700;text-transform:uppercase;">Dif. Separación</div>
+          <div style="padding:12px;background:var(--warn-bg);border-radius:8px;text-align:center;border:1px solid var(--warn-bg);">
+            <div style="font-size:20px;font-weight:800;color:var(--warn);">${tot.diferencia_separacion || 0}</div>
+            <div style="font-size:10px;color:var(--warn);font-weight:700;text-transform:uppercase;">Dif. Separación</div>
           </div>
-          <div style="padding:12px;background:#fff7ed;border-radius:8px;text-align:center;border:1px solid #fed7aa;">
+          <div style="padding:12px;background:var(--warn-bg);border-radius:8px;text-align:center;border:1px solid #fed7aa;">
             <div style="font-size:20px;font-weight:800;color:#c2410c;">${tot.diferencia_certificacion || 0}</div>
             <div style="font-size:10px;color:#c2410c;font-weight:700;text-transform:uppercase;">Dif. Certificación</div>
           </div>
-          <div style="padding:12px;background:#fef2f2;border-radius:8px;text-align:center;border:1px solid #fecaca;">
-            <div style="font-size:20px;font-weight:800;color:#dc2626;">${tot.riesgo_impresion || 0}</div>
-            <div style="font-size:10px;color:#dc2626;font-weight:700;text-transform:uppercase;">Riesgo Impresión</div>
+          <div style="padding:12px;background:var(--danger-bg);border-radius:8px;text-align:center;border:1px solid var(--danger-bg);">
+            <div style="font-size:20px;font-weight:800;color:var(--danger);">${tot.riesgo_impresion || 0}</div>
+            <div style="font-size:10px;color:var(--danger);font-weight:700;text-transform:uppercase;">Riesgo Impresión</div>
           </div>
         </div>
 
@@ -945,15 +947,15 @@ WMS_MODULES.reportes = {
           <thead><tr>
             <th>Fecha</th><th>Planilla</th><th>Cliente</th><th>Código</th><th>Producto</th>
             <th>Importado (cj)</th><th>Separado (cj)</th><th>Certificado (cj)</th>
-            <th style="background:#eff6ff;">¿Sale en Remisión?</th><th>Estado</th><th>Detalle</th>
+            <th style="background:var(--info-bg);">¿Sale en Remisión?</th><th>Estado</th><th>Detalle</th>
           </tr></thead>
           <tbody>${rows.map(row => {
             const rem = row.sale_remision || '';
             const remStyle = rem.startsWith('Sí')
-              ? 'background:#f0fdf4;color:#16a34a;'
+              ? 'background:var(--ok-bg);color:var(--ok);'
               : rem.startsWith('NO')
-                ? 'background:#fef2f2;color:#dc2626;'
-                : 'background:#f8fafc;color:#64748b;';
+                ? 'background:var(--danger-bg);color:var(--danger);'
+                : 'background:var(--table-header-bg);color:var(--muted);';
             return `<tr>
             <td>${WMS.formatDate(row.fecha)}</td>
             <td>${WMS.esc(row.planilla)}</td>
@@ -965,7 +967,7 @@ WMS_MODULES.reportes = {
             <td style="text-align:right;">${WMS.formatNum(row.certificado_cajas)}</td>
             <td><span style="${remStyle}border-radius:5px;padding:3px 8px;font-size:11px;font-weight:800;white-space:nowrap;">${WMS.esc(rem)}</span></td>
             <td>${badge(row.estado)}</td>
-            <td style="font-size:11px;color:#64748b;">${WMS.esc(row.detalle || '')}</td>
+            <td style="font-size:11px;color:var(--muted);">${WMS.esc(row.detalle || '')}</td>
           </tr>`;
           }).join('')||'<tr><td colspan="11" class="table-empty">Sin diferencias en este rango — todo lo separado coincide con lo importado y lo certificado</td></tr>'}
           </tbody></table></div></div>`);
@@ -983,27 +985,125 @@ WMS_MODULES.reportes = {
     window.open(url, '_blank');
   },
 
+  // ── TRASPASOS REALIZADOS ─────────────────────────────────────────────────
+  // Filtros dinámicos: cualquier cambio de fecha o sucursal recarga la tabla.
+  _trpQs() {
+    const desde   = document.getElementById('trp-desde')?.value || WMS.getPastDate(30);
+    const hasta   = document.getElementById('trp-hasta')?.value || WMS.getToday();
+    const destino = document.getElementById('trp-destino')?.value || '';
+    return `fecha_desde=${desde}&fecha_hasta=${hasta}&destino=${encodeURIComponent(destino)}`;
+  },
+
+  show_traspasos() {
+    WMS.setToolbar(`<button class="btn btn-success btn-sm" onclick="WMS_MODULES.reportes.exportarTraspasos()"><i class="fa-solid fa-file-excel"></i> Exportar Excel</button>`);
+    const recargar = 'WMS_MODULES.reportes._cargarTraspasos()';
+    WMS.setContent(`
+      <div class="filter-bar" style="flex-wrap:wrap;gap:8px;">
+        <div class="search-bar">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input placeholder="Buscar en tabla..." oninput="WMS_MODULES.reportes.filterTable(this.value,'trp-table')">
+        </div>
+        <input type="date" class="form-control" id="trp-desde" style="max-width:148px;" value="${WMS.getPastDate(30)}" title="Fecha desde" onchange="${recargar}">
+        <input type="date" class="form-control" id="trp-hasta" style="max-width:148px;" value="${WMS.getToday()}" title="Fecha hasta" onchange="${recargar}">
+        <select class="form-control" id="trp-destino" style="max-width:220px;" title="Sucursal destino" onchange="${recargar}">
+          <option value="">Todas las sucursales</option>
+        </select>
+      </div>
+      <div id="trp-resultado"></div>`);
+    this._cargarTraspasos();
+  },
+
+  async _cargarTraspasos() {
+    const cont = document.getElementById('trp-resultado');
+    if (!cont) return;
+    cont.innerHTML = '<div style="padding:30px;text-align:center;"><i class="fa-solid fa-spinner fa-spin"></i></div>';
+    try {
+      const r = await API.get('/reportes/traspasos', this._trpQs());
+      const { rows = [], destinos = [] } = r.data || {};
+
+      const sel = document.getElementById('trp-destino');
+      if (sel) {
+        const actual = sel.value;
+        sel.innerHTML = '<option value="">Todas las sucursales</option>' +
+          destinos.map(d => `<option value="${WMS.esc(d)}" ${d === actual ? 'selected' : ''}>${WMS.esc(d)}</option>`).join('');
+      }
+
+      this._trpRows = rows;
+      const fmt = n => Number(n || 0).toLocaleString('es-CO');
+      const tr = rows.map((x, i) => `
+        <tr>
+          <td style="white-space:nowrap;">${WMS.esc(x.fecha)}<div style="font-size:.72rem;color:var(--muted);">${WMS.esc(x.documento)} · ${WMS.esc(x.destino)}</div></td>
+          <td><strong>${WMS.esc(x.codigo || '')}</strong></td>
+          <td>${WMS.esc(x.descripcion || '')}</td>
+          <td style="text-align:right;">${fmt(x.cantidad)}</td>
+          <td>${WMS.esc(x.fecha_vencimiento || '—')}</td>
+          <td style="text-align:right;">${fmt(x.cajas)}</td>
+          <td style="text-align:right;">${fmt(x.saldo)}</td>
+          <td style="text-align:right;font-weight:700;">${fmt(x.total_unidades)}</td>
+          <td>${WMS.esc(x.lote || '—')}</td>
+          <td>${WMS.esc(x.entrego)}</td>
+          <td>${WMS.esc(x.recibio)}</td>
+          <td style="text-align:center;">${x.firma_url
+            ? `<button class="btn btn-sm btn-outline-primary" title="Ver firma" onclick="WMS_MODULES.reportes._verFirmaTraspaso(${i})"><i class="fa-solid fa-signature"></i></button>`
+            : '<span style="color:var(--text-muted);">—</span>'}</td>
+        </tr>`).join('');
+
+      cont.innerHTML = `
+        <div class="card">
+          <div class="card-header"><span class="card-title"><i class="fa-solid fa-file-signature"></i> Traspasos Realizados (${rows.length} líneas)</span></div>
+          <div class="table-container">
+            <table class="erp-table" id="trp-table">
+              <thead><tr>
+                <th>Fecha</th><th>Código</th><th>Descripción</th><th>Cantidad</th><th>F. Vencimiento</th>
+                <th>Cajas</th><th>Saldo</th><th>Total Und</th><th>Lote</th><th>Entregó</th><th>Recibió</th><th>Firma</th>
+              </tr></thead>
+              <tbody>${tr || '<tr><td colspan="12" class="table-empty">No hay traspasos en el rango seleccionado</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>`;
+    } catch (e) {
+      cont.innerHTML = '';
+      WMS.toast('error', 'Error cargando Traspasos');
+    }
+  },
+
+  _verFirmaTraspaso(i) {
+    const x = (this._trpRows || [])[i];
+    if (!x?.firma_url) return;
+    const src = API_BASE.replace(/\/api$/, '') + x.firma_url;
+    WMS.showModal(`Firma — ${WMS.esc(x.documento)}`, `
+      <div style="text-align:center;">
+        <div style="margin-bottom:8px;color:var(--text2);">Recibió: <b>${WMS.esc(x.recibio)}</b> · Entregó: <b>${WMS.esc(x.entrego)}</b></div>
+        <img src="${WMS.esc(src)}" style="max-width:100%;border:1px solid var(--border);border-radius:8px;background:var(--surface);">
+      </div>`, '', '');
+  },
+
+  exportarTraspasos() {
+    const token = localStorage.getItem('wms_token');
+    window.open(`${API_BASE}/reportes/traspasos?export=excel&${this._trpQs()}&token=${encodeURIComponent(token)}`, '_blank');
+  },
+
   // ── Panel de filtros de Despacho — grilla etiquetada, campos Cliente y
   // Referencia como combobox (lista visible al hacer foco, no solo al escribir) ─
   _panelFiltrosDespacho({desde='', hasta='', cliente='', referencia=''} = {}) {
     const campo = (label, inputHtml) => `
       <div>
-        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.02em;margin-bottom:5px;">${label}</label>
+        <label class="form-label" style="display:block;margin-bottom:5px;">${label}</label>
         ${inputHtml}
       </div>`;
     const comboInput = (id, placeholder, value) => `
       <div style="position:relative;">
         <input type="text" class="form-control" id="${id}" placeholder="${placeholder}" autocomplete="off"
                style="padding-right:28px;" value="${WMS.esc(value)}">
-        <i class="fa-solid fa-chevron-down" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:11px;pointer-events:none;"></i>
+        <i class="fa-solid fa-chevron-down" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px;pointer-events:none;"></i>
       </div>`;
 
     // Nota: NO se usa la clase .card aquí — su CSS trae overflow:hidden (para
     // recortar esquinas redondeadas), lo que recortaba el dropdown del combobox
     // justo en el borde inferior de la tarjeta. Mismo look, sin ese recorte.
     return `
-      <div style="margin-bottom:16px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
-        <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+      <div style="margin-bottom:16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
           <span class="card-title"><i class="fa-solid fa-filter"></i> Filtros de búsqueda</span>
           <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.reportes._limpiarFiltrosDespacho()">
             <i class="fa-solid fa-eraser"></i> Limpiar
@@ -1027,7 +1127,7 @@ WMS_MODULES.reportes = {
   // para que quede claro qué se está viendo, sin tener que mirar los inputs.
   _chipsFiltrosDespacho({desde, hasta, cliente, referencia}) {
     const chip = (label, valor) => valor
-      ? `<span style="display:inline-flex;align-items:center;gap:5px;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;border-radius:20px;padding:4px 12px;font-size:11.5px;font-weight:600;">${label}: ${WMS.esc(valor)}</span>`
+      ? `<span style="display:inline-flex;align-items:center;gap:5px;background:var(--info-bg);color:var(--accent2);border:1px solid var(--info-bg);border-radius:20px;padding:4px 12px;font-size:11.5px;font-weight:600;">${label}: ${WMS.esc(valor)}</span>`
       : '';
     const chips = [
       chip('Cliente', cliente),
@@ -1037,7 +1137,7 @@ WMS_MODULES.reportes = {
     ].filter(Boolean);
     if (!chips.length) return '';
     return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
-      <span style="font-size:11px;color:#64748b;font-weight:700;align-self:center;">FILTROS APLICADOS:</span>
+      <span style="font-size:11px;color:var(--muted);font-weight:700;align-self:center;">FILTROS APLICADOS:</span>
       ${chips.join('')}
     </div>`;
   },
@@ -1121,7 +1221,7 @@ WMS_MODULES.reportes = {
     const body = lineas.length ? `
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
-          <thead><tr style="background:#f1f5f9;">
+          <thead><tr style="background:var(--btn-neutral);">
             <th style="padding:6px 8px;text-align:left;">Pedido</th>
             <th style="padding:6px 8px;text-align:left;">Producto</th>
             <th style="padding:6px 8px;text-align:left;">Lote</th>
@@ -1132,9 +1232,9 @@ WMS_MODULES.reportes = {
             <th style="padding:6px 8px;text-align:left;">Hora</th>
           </tr></thead>
           <tbody>
-            ${lineas.map(l => `<tr style="border-bottom:1px solid #f1f5f9;">
+            ${lineas.map(l => `<tr style="border-bottom:1px solid var(--border-light);">
               <td style="padding:5px 8px;">${WMS.esc(l.numero_pedido || '-')}</td>
-              <td style="padding:5px 8px;">${WMS.esc(l.producto_nombre)} <span style="color:#94a3b8;font-family:monospace;">(${WMS.esc(l.producto_codigo)})</span></td>
+              <td style="padding:5px 8px;">${WMS.esc(l.producto_nombre)} <span style="color:var(--text-muted);font-family:monospace;">(${WMS.esc(l.producto_codigo)})</span></td>
               <td style="padding:5px 8px;font-family:monospace;">${WMS.esc(l.lote)}</td>
               <td style="padding:5px 8px;text-align:right;">${l.cantidad_solicitada}</td>
               <td style="padding:5px 8px;text-align:right;">${l.cantidad_pickeada}</td>
@@ -1269,7 +1369,7 @@ WMS_MODULES.reportes = {
           <td>${WMS.formatDateTime(d.created_at)}</td>
           <td><span class="badge badge-info">${WMS.esc(d.estado)}</span></td>
           <td>
-            <ul class="mb-0 ps-3" style="font-size:.75rem;color:#475569;">
+            <ul class="mb-0 ps-3" style="font-size:.75rem;color:var(--text2);">
               ${(d.detalles||[]).map(det => `<li>${WMS.esc(det.producto?.nombre||'Prod')} (${det.cantidad})</li>`).join('')}
             </ul>
           </td>
@@ -1331,8 +1431,8 @@ WMS_MODULES.reportes = {
           <td class="text-center fw-bold" style="color:#0ea5e9;">${p.avg_tiempo_operacion !== null ? p.avg_tiempo_operacion + ' m' : '—'}</td>
           <td class="text-center">
             <div style="display:flex;align-items:center;gap:8px;justify-content:center;">
-              <div style="flex:1;max-width:60px;height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;">
-                <div style="width:${p.pct_cumplimiento_citas||0}%;height:100%;background:#22c55e;"></div>
+              <div style="flex:1;max-width:60px;height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+                <div style="width:${p.pct_cumplimiento_citas||0}%;height:100%;background:var(--ok);"></div>
               </div>
               <span style="font-size:.75rem;font-weight:600;">${p.pct_cumplimiento_citas||0}%</span>
             </div>
@@ -1498,16 +1598,16 @@ WMS_MODULES.reportes = {
 
       const rows = items.map(i => {
         const esTotal   = i.tipo_agotado === 'agotado_total';
-        const rowBg     = esTotal ? 'background:#fef2f2;' : 'background:#fffbeb;';
+        const rowBg     = esTotal ? 'background:var(--danger-bg);' : 'background:var(--warn-bg);';
         const badgeHtml = esTotal
-          ? '<span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600;">Agotado Total</span>'
-          : '<span style="background:#f59e0b;color:#fff;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600;">Agotado Parcial</span>';
+          ? '<span style="background:var(--danger);color:#fff;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600;">Agotado Total</span>'
+          : '<span style="background:var(--warn);color:#fff;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600;">Agotado Parcial</span>';
         return `<tr style="${rowBg}">
           <td><code style="font-size:.75rem;">${WMS.esc(i.codigo_interno)}</code></td>
           <td>${WMS.esc(i.nombre)}</td>
           <td class="text-center">${i.cantidad_solicitada}</td>
-          <td class="text-center" style="font-weight:600;color:${esTotal?'#dc2626':'#d97706'};">${i.cantidad_disponible}</td>
-          <td class="text-center" style="font-weight:700;color:#dc2626;">-${i.deficit}</td>
+          <td class="text-center" style="font-weight:600;color:${esTotal?'var(--danger)':'var(--warn)'};">${i.cantidad_disponible}</td>
+          <td class="text-center" style="font-weight:700;color:var(--danger);">-${i.deficit}</td>
           <td>${badgeHtml}</td>
         </tr>`;
       }).join('');
@@ -1527,25 +1627,25 @@ WMS_MODULES.reportes = {
 
         <!-- KPIs rápidos -->
         <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-          <div style="background:#fef2f2;border:1px solid #fecaca;border-left:4px solid #dc2626;border-radius:6px;padding:12px 20px;min-width:150px;">
-            <div style="font-size:.72rem;font-weight:700;color:#991b1b;text-transform:uppercase;">Agotado Total</div>
-            <div style="font-size:1.6rem;font-weight:900;color:#dc2626;">${totalCount}</div>
-            <div style="font-size:.72rem;color:#64748b;">Stock = 0</div>
+          <div style="background:var(--danger-bg);border:1px solid var(--danger-bg);border-left:4px solid var(--danger);border-radius:6px;padding:12px 20px;min-width:150px;">
+            <div style="font-size:.72rem;font-weight:700;color:var(--danger);text-transform:uppercase;">Agotado Total</div>
+            <div style="font-size:1.6rem;font-weight:900;color:var(--danger);">${totalCount}</div>
+            <div style="font-size:.72rem;color:var(--muted);">Stock = 0</div>
           </div>
-          <div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;border-radius:6px;padding:12px 20px;min-width:150px;">
-            <div style="font-size:.72rem;font-weight:700;color:#92400e;text-transform:uppercase;">Agotado Parcial</div>
-            <div style="font-size:1.6rem;font-weight:900;color:#f59e0b;">${parcialCount}</div>
-            <div style="font-size:.72rem;color:#64748b;">Stock insuficiente</div>
+          <div style="background:var(--warn-bg);border:1px solid var(--warn-bg);border-left:4px solid var(--warn);border-radius:6px;padding:12px 20px;min-width:150px;">
+            <div style="font-size:.72rem;font-weight:700;color:var(--warn);text-transform:uppercase;">Agotado Parcial</div>
+            <div style="font-size:1.6rem;font-weight:900;color:var(--warn);">${parcialCount}</div>
+            <div style="font-size:.72rem;color:var(--muted);">Stock insuficiente</div>
           </div>
-          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-left:4px solid #22c55e;border-radius:6px;padding:12px 20px;min-width:150px;">
-            <div style="font-size:.72rem;font-weight:700;color:#14532d;text-transform:uppercase;">Total Productos</div>
-            <div style="font-size:1.6rem;font-weight:900;color:#16a34a;">${items.length}</div>
-            <div style="font-size:.72rem;color:#64748b;">Con déficit activo</div>
+          <div style="background:var(--ok-bg);border:1px solid var(--ok-bg);border-left:4px solid var(--ok);border-radius:6px;padding:12px 20px;min-width:150px;">
+            <div style="font-size:.72rem;font-weight:700;color:var(--ok);text-transform:uppercase;">Total Productos</div>
+            <div style="font-size:1.6rem;font-weight:900;color:var(--ok);">${items.length}</div>
+            <div style="font-size:.72rem;color:var(--muted);">Con déficit activo</div>
           </div>
         </div>
 
         <div class="card">
-          <div class="card-header"><span class="card-title"><i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;"></i> Productos Agotados por Demanda (${items.length})</span></div>
+          <div class="card-header"><span class="card-title"><i class="fa-solid fa-triangle-exclamation" style="color:var(--danger);"></i> Productos Agotados por Demanda (${items.length})</span></div>
           <div class="table-container">
             <table class="erp-table" id="agot-table">
               <thead><tr>
@@ -1555,7 +1655,7 @@ WMS_MODULES.reportes = {
                 <th class="text-center">Déficit</th>
                 <th>Estado</th>
               </tr></thead>
-              <tbody>${rows||'<tr><td colspan="6" class="table-empty" style="color:#22c55e;"><i class="fa-solid fa-circle-check"></i> Sin productos agotados en el período</td></tr>'}</tbody>
+              <tbody>${rows||'<tr><td colspan="6" class="table-empty" style="color:var(--ok);"><i class="fa-solid fa-circle-check"></i> Sin productos agotados en el período</td></tr>'}</tbody>
             </table>
           </div>
         </div>`);
@@ -1580,21 +1680,21 @@ WMS_MODULES.reportes = {
       <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.reportes.exportarCertCSV()"><i class="fa-solid fa-file-csv"></i> CSV Certificación</button>`);
     WMS.setContent(`
       <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:20px">
-        <div class="card" style="border-left:4px solid #f59e0b;padding:16px">
-          <div style="font-size:1.2rem;font-weight:700;color:#92400e"><i class="fa-solid fa-triangle-exclamation"></i> Plan de Contingencia Sin Internet</div>
-          <p style="color:#555;font-size:.9rem;margin:8px 0 0">Cuando no haya conectividad, imprima las planillas antes de iniciar operaciones. El sistema funciona localmente desde XAMPP.</p>
+        <div class="card" style="border-left:4px solid var(--warn);padding:16px">
+          <div style="font-size:1.2rem;font-weight:700;color:var(--warn)"><i class="fa-solid fa-triangle-exclamation"></i> Plan de Contingencia Sin Internet</div>
+          <p style="color:var(--muted);font-size:.9rem;margin:8px 0 0">Cuando no haya conectividad, imprima las planillas antes de iniciar operaciones. El sistema funciona localmente desde XAMPP.</p>
         </div>
-        <div class="card" style="border-left:4px solid #10b981;padding:16px;display:flex;align-items:center;gap:16px;position:relative;">
-          <div style="background:#f1f5f9;padding:4px;border-radius:8px;flex-shrink:0;" id="contingencia-qr">
-            <div style="width:80px;height:80px;background:#e2e8f0;"></div>
+        <div class="card" style="border-left:4px solid var(--ok);padding:16px;display:flex;align-items:center;gap:16px;position:relative;">
+          <div style="background:var(--btn-neutral);padding:4px;border-radius:8px;flex-shrink:0;" id="contingencia-qr">
+            <div style="width:80px;height:80px;background:var(--border);"></div>
           </div>
           <div style="flex:1;padding-right:30px;">
-            <button class="btn btn-sm btn-icon" onclick="WMS.updateConnectionInfo()" style="position:absolute;top:12px;right:12px;background:rgba(16,185,129,.1);color:#065f46;border:none;" title="Refrescar IP">
+            <button class="btn btn-sm btn-icon" onclick="WMS.updateConnectionInfo()" style="position:absolute;top:12px;right:12px;background:rgba(16,185,129,.1);color:var(--ok);border:none;" title="Refrescar IP">
               <i class="fa-solid fa-sync"></i>
             </button>
-            <div style="font-weight:700;color:#065f46;margin-bottom:4px;"><i class="fa-solid fa-network-wired"></i> Acceso Local XAMPP</div>
-            <div style="font-family:monospace;font-size:.85rem;background:#f1f5f9;padding:4px 8px;border-radius:4px;word-break:break-all;" id="contingencia-url">Cargando...</div>
-            <div style="font-size:.8rem;color:#64748b;margin-top:4px;" id="contingencia-ip"><i class="fa-solid fa-circle-info"></i> IP: ---</div>
+            <div style="font-weight:700;color:var(--ok);margin-bottom:4px;"><i class="fa-solid fa-network-wired"></i> Acceso Local XAMPP</div>
+            <div style="font-family:monospace;font-size:.85rem;background:var(--btn-neutral);padding:4px 8px;border-radius:4px;word-break:break-all;" id="contingencia-url">Cargando...</div>
+            <div style="font-size:.8rem;color:var(--muted);margin-top:4px;" id="contingencia-ip"><i class="fa-solid fa-circle-info"></i> IP: ---</div>
           </div>
         </div>
       </div>
@@ -1603,7 +1703,7 @@ WMS_MODULES.reportes = {
         <div style="padding:16px;font-size:.9rem">
           <div style="display:flex;gap:24px;flex-wrap:wrap">
             <div style="flex:1;min-width:280px">
-              <h4 style="color:#1e3a5f;margin:0 0 8px">1. Antes del turno</h4>
+              <h4 style="color:var(--text);margin:0 0 8px">1. Antes del turno</h4>
               <ol style="padding-left:20px;line-height:1.9">
                 <li>Admin/Supervisor imprime planilla de separación del día</li>
                 <li>Se verifica el stock físico contra lo impreso</li>
@@ -1611,7 +1711,7 @@ WMS_MODULES.reportes = {
               </ol>
             </div>
             <div style="flex:1;min-width:280px">
-              <h4 style="color:#1e3a5f;margin:0 0 8px">2. Durante la operación</h4>
+              <h4 style="color:var(--text);margin:0 0 8px">2. Durante la operación</h4>
               <ol style="padding-left:20px;line-height:1.9">
                 <li>Picker anota la cantidad alistada en «Cant. Alistada»</li>
                 <li>Si hay faltante: anota en «Observación» y avisa al supervisor</li>
@@ -1619,7 +1719,7 @@ WMS_MODULES.reportes = {
               </ol>
             </div>
             <div style="flex:1;min-width:280px">
-              <h4 style="color:#1e3a5f;margin:0 0 8px">3. Al recuperar internet</h4>
+              <h4 style="color:var(--text);margin:0 0 8px">3. Al recuperar internet</h4>
               <ol style="padding-left:20px;line-height:1.9">
                 <li>Ingresar al sistema con la planilla impresa como guía</li>
                 <li>Confirmar cada línea de picking en el módulo</li>
@@ -1630,8 +1730,8 @@ WMS_MODULES.reportes = {
         </div>
       </div>
       <div style="margin-top:16px">
-        <label style="font-weight:600;font-size:.9rem">Fecha para planillas:</label>
-        <input type="date" id="cont-fecha" value="${today}" style="margin-left:8px;padding:4px 8px;border:1px solid #ccc;border-radius:4px">
+        <label class="form-label">Fecha para planillas:</label>
+        <input type="date" id="cont-fecha" class="form-control" value="${today}" style="margin-left:8px;display:inline-block;width:auto;">
       </div>`);
     WMS.updateConnectionInfo();
   },
@@ -1699,13 +1799,13 @@ WMS_MODULES.reportes = {
     };
 
     WMS.setContent(`
-      <div style="background:#fff;padding:20px;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:20px;">
+      <div style="background:var(--surface);padding:20px;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:20px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
           <div>
-            <h2 style="font-size:1.25rem;font-weight:900;color:#0f172a;margin:0 0 4px;display:flex;align-items:center;gap:8px;">
-              <i class="fa-solid fa-file-excel" style="color:#10b981;"></i> Reporte Multimodal de Inventarios
+            <h2 style="font-size:1.25rem;font-weight:900;color:var(--text);margin:0 0 4px;display:flex;align-items:center;gap:8px;">
+              <i class="fa-solid fa-file-excel" style="color:var(--ok);"></i> Reporte Multimodal de Inventarios
             </h2>
-            <p style="font-size:.8rem;color:#64748b;margin:0;">
+            <p style="font-size:.8rem;color:var(--muted);margin:0;">
               Opciones de visualización y exportación directa a Excel con desglose en cajas, U/E y unidades reales.
             </p>
           </div>
@@ -1717,7 +1817,7 @@ WMS_MODULES.reportes = {
         </div>
 
         <!-- Selector de Modalidad -->
-        <div style="display:flex;gap:8px;margin-bottom:16px;background:#f8fafc;padding:6px;border-radius:8px;border:1px solid #e2e8f0;flex-wrap:wrap;">
+        <div style="display:flex;gap:8px;margin-bottom:16px;background:var(--table-header-bg);padding:6px;border-radius:8px;border:1px solid var(--border);flex-wrap:wrap;">
           ${pillBtn('consolidado_referencia', 'Consolidado por Referencias', 'fa-barcode')}
           ${pillBtn('consolidado_vencimiento', 'Consolidado por Lote y Vencimiento', 'fa-calendar-days')}
           ${pillBtn('por_ubicacion', 'Por Ubicación', 'fa-map-location-dot')}
@@ -1726,7 +1826,7 @@ WMS_MODULES.reportes = {
         <!-- Barra de Búsqueda y Filtro -->
         <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
           <div style="position:relative;flex:1;max-width:400px;">
-            <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.85rem;"></i>
+            <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:.85rem;"></i>
             <input id="rpt-inv-search" class="form-control" style="padding-left:34px;font-size:.85rem;"
               placeholder="Buscar por código, referencia, lote o ubicación..."
               onkeyup="if(event.key==='Enter') WMS_MODULES.reportes._loadInvMultimodal()">
@@ -1741,26 +1841,26 @@ WMS_MODULES.reportes = {
 
         <!-- KPIs Resumen -->
         <div id="rpt-inv-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:10px 14px;border-radius:8px;">
-            <div style="font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;">Total Registros</div>
-            <div id="kpi-tot-reg" style="font-size:1.3rem;font-weight:900;color:#1e293b;">-</div>
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);padding:10px 14px;border-radius:8px;">
+            <div style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;">Total Registros</div>
+            <div id="kpi-tot-reg" style="font-size:1.3rem;font-weight:900;color:var(--text);">-</div>
           </div>
-          <div style="background:#eff6ff;border:1px solid #bfdbfe;padding:10px 14px;border-radius:8px;">
-            <div style="font-size:.68rem;font-weight:700;color:#1e40af;text-transform:uppercase;">Total Cajas</div>
-            <div id="kpi-tot-cajas" style="font-size:1.3rem;font-weight:900;color:#1d4ed8;">-</div>
+          <div style="background:var(--info-bg);border:1px solid var(--info-bg);padding:10px 14px;border-radius:8px;">
+            <div style="font-size:.68rem;font-weight:700;color:var(--accent2);text-transform:uppercase;">Total Cajas</div>
+            <div id="kpi-tot-cajas" style="font-size:1.3rem;font-weight:900;color:var(--info);">-</div>
           </div>
-          <div style="background:#fefce8;border:1px solid #fef08a;padding:10px 14px;border-radius:8px;">
-            <div style="font-size:.68rem;font-weight:700;color:#854d0e;text-transform:uppercase;">Total Sueltos (Saldos)</div>
-            <div id="kpi-tot-sueltos" style="font-size:1.3rem;font-weight:900;color:#a16207;">-</div>
+          <div style="background:var(--warn-bg);border:1px solid #fef08a;padding:10px 14px;border-radius:8px;">
+            <div style="font-size:.68rem;font-weight:700;color:var(--warn);text-transform:uppercase;">Total Sueltos (Saldos)</div>
+            <div id="kpi-tot-sueltos" style="font-size:1.3rem;font-weight:900;color:var(--warn);">-</div>
           </div>
-          <div style="background:#f0fdf4;border:1px solid #bbf7d0;padding:10px 14px;border-radius:8px;">
-            <div style="font-size:.68rem;font-weight:700;color:#166534;text-transform:uppercase;">Total Unidades</div>
-            <div id="kpi-tot-unidades" style="font-size:1.3rem;font-weight:900;color:#15803d;">-</div>
+          <div style="background:var(--ok-bg);border:1px solid var(--ok-bg);padding:10px 14px;border-radius:8px;">
+            <div style="font-size:.68rem;font-weight:700;color:var(--ok);text-transform:uppercase;">Total Unidades</div>
+            <div id="kpi-tot-unidades" style="font-size:1.3rem;font-weight:900;color:var(--ok);">-</div>
           </div>
         </div>
 
         <!-- Contenedor Tabla -->
-        <div id="rpt-inv-table-cont" class="table-container" style="max-height:540px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;">
+        <div id="rpt-inv-table-cont" class="table-container" style="max-height:540px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
           <div style="text-align:center;padding:40px;"><div class="spinner"></div></div>
         </div>
       </div>
@@ -1794,7 +1894,7 @@ WMS_MODULES.reportes = {
       document.getElementById('kpi-tot-unidades').textContent = WMS.formatNum(kpis.total_unidades || 0);
 
       if (!list.length) {
-        cont.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fa-solid fa-box-open fa-2x" style="margin-bottom:8px;opacity:.5;"></i><br>No se encontraron registros de inventario.</div>';
+        cont.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);"><i class="fa-solid fa-box-open fa-2x" style="margin-bottom:8px;opacity:.5;"></i><br>No se encontraron registros de inventario.</div>';
         return;
       }
 
@@ -1806,19 +1906,19 @@ WMS_MODULES.reportes = {
           <tr>
             <th>CÓDIGO</th>
             <th>REFERENCIA</th>
-            <th class="text-center" style="background:#eff6ff;color:#1e40af;">CANTIDAD CAJAS</th>
+            <th class="text-center" style="background:var(--info-bg);color:var(--accent2);">CANTIDAD CAJAS</th>
             <th class="text-center">U/E</th>
-            <th class="text-center" style="background:#fefce8;color:#854d0e;">SUELTOS (SALDOS)</th>
-            <th class="text-center" style="background:#f0fdf4;color:#166534;">TOTAL UNIDADES</th>
+            <th class="text-center" style="background:var(--warn-bg);color:var(--warn);">SUELTOS (SALDOS)</th>
+            <th class="text-center" style="background:var(--ok-bg);color:var(--ok);">TOTAL UNIDADES</th>
           </tr>`;
         rowsHtml = list.map(r => `
           <tr>
             <td><b>${WMS.esc(r.codigo)}</b></td>
-            <td style="font-weight:600;color:#1e293b;">${WMS.esc(r.referencia)}</td>
-            <td class="text-center fw-800" style="background:#eff6ff;color:#1d4ed8;font-size:.95rem;">${WMS.formatNum(r.cantidad_cajas)}</td>
+            <td style="font-weight:600;color:var(--text);">${WMS.esc(r.referencia)}</td>
+            <td class="text-center fw-800" style="background:var(--info-bg);color:var(--info);font-size:.95rem;">${WMS.formatNum(r.cantidad_cajas)}</td>
             <td class="text-center fw-600">${WMS.formatNum(r.u_e)}</td>
-            <td class="text-center fw-700" style="background:#fefce8;color:#a16207;">${WMS.formatNum(r.sueltos)}</td>
-            <td class="text-center fw-900" style="background:#f0fdf4;color:#15803d;font-size:1rem;">${WMS.formatNum(r.total_unidades)}</td>
+            <td class="text-center fw-700" style="background:var(--warn-bg);color:var(--warn);">${WMS.formatNum(r.sueltos)}</td>
+            <td class="text-center fw-900" style="background:var(--ok-bg);color:var(--ok);font-size:1rem;">${WMS.formatNum(r.total_unidades)}</td>
           </tr>`).join('');
       } else if (modo === 'consolidado_vencimiento') {
         headerHtml = `
@@ -1828,10 +1928,10 @@ WMS_MODULES.reportes = {
             <th>LOTE</th>
             <th>F. VENCIMIENTO</th>
             <th class="text-center">DÍAS ÚTILES</th>
-            <th class="text-center" style="background:#eff6ff;color:#1e40af;">CANTIDAD CAJAS</th>
+            <th class="text-center" style="background:var(--info-bg);color:var(--accent2);">CANTIDAD CAJAS</th>
             <th class="text-center">U/E</th>
-            <th class="text-center" style="background:#fefce8;color:#854d0e;">SUELTOS (SALDOS)</th>
-            <th class="text-center" style="background:#f0fdf4;color:#166534;">TOTAL UNIDADES</th>
+            <th class="text-center" style="background:var(--warn-bg);color:var(--warn);">SUELTOS (SALDOS)</th>
+            <th class="text-center" style="background:var(--ok-bg);color:var(--ok);">TOTAL UNIDADES</th>
           </tr>`;
         rowsHtml = list.map(r => {
           const dias = r.dias_vida_util;
@@ -1839,14 +1939,14 @@ WMS_MODULES.reportes = {
           return `
             <tr>
               <td><b>${WMS.esc(r.codigo)}</b></td>
-              <td style="font-weight:600;color:#1e293b;">${WMS.esc(r.referencia)}</td>
+              <td style="font-weight:600;color:var(--text);">${WMS.esc(r.referencia)}</td>
               <td><span class="badge badge-light" style="font-weight:700;">${WMS.esc(r.lote)}</span></td>
               <td>${WMS.formatDate(r.fecha_vencimiento)}</td>
               <td class="text-center"><span class="badge ${badgeColor}" style="font-weight:700;">${dias !== '—' ? dias + 'd' : '—'}</span></td>
-              <td class="text-center fw-800" style="background:#eff6ff;color:#1d4ed8;font-size:.95rem;">${WMS.formatNum(r.cantidad_cajas)}</td>
+              <td class="text-center fw-800" style="background:var(--info-bg);color:var(--info);font-size:.95rem;">${WMS.formatNum(r.cantidad_cajas)}</td>
               <td class="text-center fw-600">${WMS.formatNum(r.u_e)}</td>
-              <td class="text-center fw-700" style="background:#fefce8;color:#a16207;">${WMS.formatNum(r.sueltos)}</td>
-              <td class="text-center fw-900" style="background:#f0fdf4;color:#15803d;font-size:1rem;">${WMS.formatNum(r.total_unidades)}</td>
+              <td class="text-center fw-700" style="background:var(--warn-bg);color:var(--warn);">${WMS.formatNum(r.sueltos)}</td>
+              <td class="text-center fw-900" style="background:var(--ok-bg);color:var(--ok);font-size:1rem;">${WMS.formatNum(r.total_unidades)}</td>
             </tr>`;
         }).join('');
       } else { // por_ubicacion
@@ -1858,29 +1958,29 @@ WMS_MODULES.reportes = {
             <th>REFERENCIA</th>
             <th>LOTE</th>
             <th>F. VENCIMIENTO</th>
-            <th class="text-center" style="background:#eff6ff;color:#1e40af;">CANTIDAD CAJAS</th>
+            <th class="text-center" style="background:var(--info-bg);color:var(--accent2);">CANTIDAD CAJAS</th>
             <th class="text-center">U/E</th>
-            <th class="text-center" style="background:#fefce8;color:#854d0e;">SUELTOS (SALDOS)</th>
-            <th class="text-center" style="background:#f0fdf4;color:#166534;">TOTAL UNIDADES</th>
+            <th class="text-center" style="background:var(--warn-bg);color:var(--warn);">SUELTOS (SALDOS)</th>
+            <th class="text-center" style="background:var(--ok-bg);color:var(--ok);">TOTAL UNIDADES</th>
           </tr>`;
         rowsHtml = list.map(r => `
           <tr>
             <td><span class="badge badge-light-blue" style="font-weight:800;font-size:.82rem;">${WMS.esc(r.ubicacion)}</span></td>
             <td><span class="badge badge-secondary" style="font-weight:700;">${WMS.esc(r.pasillo)}</span></td>
             <td><b>${WMS.esc(r.codigo)}</b></td>
-            <td style="font-weight:600;color:#1e293b;">${WMS.esc(r.referencia)}</td>
+            <td style="font-weight:600;color:var(--text);">${WMS.esc(r.referencia)}</td>
             <td><span class="badge badge-light" style="font-weight:700;">${WMS.esc(r.lote)}</span></td>
             <td>${WMS.formatDate(r.fecha_vencimiento)}</td>
-            <td class="text-center fw-800" style="background:#eff6ff;color:#1d4ed8;font-size:.95rem;">${WMS.formatNum(r.cantidad_cajas)}</td>
+            <td class="text-center fw-800" style="background:var(--info-bg);color:var(--info);font-size:.95rem;">${WMS.formatNum(r.cantidad_cajas)}</td>
             <td class="text-center fw-600">${WMS.formatNum(r.u_e)}</td>
-            <td class="text-center fw-700" style="background:#fefce8;color:#a16207;">${WMS.formatNum(r.sueltos)}</td>
-            <td class="text-center fw-900" style="background:#f0fdf4;color:#15803d;font-size:1rem;">${WMS.formatNum(r.total_unidades)}</td>
+            <td class="text-center fw-700" style="background:var(--warn-bg);color:var(--warn);">${WMS.formatNum(r.sueltos)}</td>
+            <td class="text-center fw-900" style="background:var(--ok-bg);color:var(--ok);font-size:1rem;">${WMS.formatNum(r.total_unidades)}</td>
           </tr>`).join('');
       }
 
       cont.innerHTML = `
         <table class="data-table compact" style="margin:0;">
-          <thead style="position:sticky;top:0;z-index:10;background:#f8fafc;">
+          <thead style="position:sticky;top:0;z-index:10;background:var(--table-header-bg);">
             ${headerHtml}
           </thead>
           <tbody>

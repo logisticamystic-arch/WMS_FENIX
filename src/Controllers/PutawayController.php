@@ -444,9 +444,11 @@ class PutawayController extends BaseController
             if ($numPallet !== '') {
                 $origenQuery->where('numero_pallet', $numPallet);
             } else {
-                $origenQuery->where(function($q) {
-                    $q->whereNull('numero_pallet')->orWhere('numero_pallet', '');
-                });
+                // BUG CORREGIDO 2026-10-02 ("no deja ubicar lo que está en patio"):
+                // numero_pallet es INTEGER — comparar contra '' hacía fallar SIEMPRE
+                // la consulta en Postgres (22P02) cuando la mercancía no tiene pallet,
+                // que es el caso de todo lo que entra al cerrar una recepción.
+                $origenQuery->whereNull('numero_pallet');
             }
 
             if ($ubicacionOrigId) {

@@ -46,8 +46,8 @@ WMS_MODULES.rotacion = {
         const seg = (p.segmento || 'CZ').toUpperCase();
         const zona = p.zona_recomendada || p.zona || (seg[0]==='A'?'oro':seg[0]==='B'?'plata':'bronce');
 
-        return `<tr style="background:${i%2?'#f8fafc':'#fff'}">
-          <td class="ps-3"><div style="font-weight:700">${WMS.esc(nombre)}</div><div style="font-size:.7rem;color:#64748b">${WMS.esc(codigo)}</div></td>
+        return `<tr style="background:${i%2?'var(--table-header-bg)':'var(--surface)'}">
+          <td class="ps-3"><div style="font-weight:700">${WMS.esc(nombre)}</div><div style="font-size:.7rem;color:var(--muted)">${WMS.esc(codigo)}</div></td>
           <td class="text-center"><span class="abc-matrix-cell abc-${seg.toLowerCase()}" style="display:inline-flex;min-height:auto;padding:3px 10px;border-radius:6px"><span class="cell-label" style="margin:0;font-size:.72rem">${WMS.esc(seg)}</span></span></td>
           <td class="text-center fw-bold">${p.clase_abc||seg[0]||'—'}</td>
           <td class="text-center fw-bold">${p.clase_xyz||seg[1]||'—'}</td>
@@ -74,8 +74,8 @@ WMS_MODULES.rotacion = {
             <div class="pro-kpi-card accent-green"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-box"></i></div></div><div class="pro-kpi-value">${matrix.CX+matrix.CY+matrix.CZ}</div><div class="pro-kpi-label">Clase C (5% valor)</div></div>
           </div>
         </div></div>
-        <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-table me-2" style="color:#1a56db"></i>Detalle de Clasificación</div></div>
-        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+        <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-table me-2" style="color:var(--accent)"></i>Detalle de Clasificación</div></div>
+        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:var(--table-header-bg);border-bottom:2px solid var(--border)">
           <th class="ps-3">PRODUCTO</th><th class="text-center">SEGMENTO</th><th class="text-center">ABC</th><th class="text-center">XYZ</th><th class="text-end">VALOR TOTAL</th><th class="text-end">DEMANDA/MES</th><th class="text-end">CV</th><th class="text-center">ZONA</th>
         </tr></thead><tbody>${rows||'<tr><td colspan="8" class="text-center py-5 text-muted">Ejecute la clasificación ABC-XYZ para generar datos</td></tr>'}</tbody></table></div></div>
       </div>`);
@@ -122,7 +122,7 @@ WMS_MODULES.rotacion = {
         };
         const nivelBadge = { Critico: 'danger', Alerta: 'warning', OK: 'success' }[p.nivel] || 'gray';
         return `<tr>
-          <td class="ps-3"><div style="font-weight:700">${WMS.esc(p.nombre)}</div><div style="font-size:.7rem;color:#64748b">${WMS.esc(p.codigo)}</div></td>
+          <td class="ps-3"><div style="font-weight:700">${WMS.esc(p.nombre)}</div><div style="font-size:.7rem;color:var(--muted)">${WMS.esc(p.codigo)}</div></td>
           <td class="text-end">${Number(p.velocidad_diaria_cajas).toFixed(2)} cj/día</td>
           <td class="text-end fw-bold">${Number(p.stock_actual_cajas).toFixed(1)} cj</td>
           <td class="text-end">${p.dias_cobertura_estimado ?? '—'} d</td>
@@ -140,8 +140,8 @@ WMS_MODULES.rotacion = {
           <div class="pro-kpi-card accent-red"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></div><span class="pro-kpi-trend down">Urgente</span></div><div class="pro-kpi-value">${tot.criticos||0}</div><div class="pro-kpi-label">Críticos (&lt;50% a 3 días)</div></div>
           <div class="pro-kpi-card accent-amber"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-bell"></i></div></div><div class="pro-kpi-value">${tot.alertas||0}</div><div class="pro-kpi-label">Alertas (&lt;50% a 7 días)</div></div>
         </div>
-        <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-boxes-stacked me-2" style="color:#1a56db"></i>Probabilidad de Cobertura de Inventario (en cajas) — últimos ${data.dias_historial||30} días de venta real</div></div>
-        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:#f8fafc">
+        <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-boxes-stacked me-2" style="color:var(--accent)"></i>Probabilidad de Cobertura de Inventario (en cajas) — últimos ${data.dias_historial||30} días de venta real</div></div>
+        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:var(--table-header-bg)">
           <th class="ps-3">PRODUCTO</th><th class="text-end">VELOCIDAD</th><th class="text-end">STOCK</th><th class="text-end">COBERTURA EST.</th>
           <th class="text-center">P. 3 DÍAS</th><th class="text-center">P. 7 DÍAS</th><th class="text-center">P. 15 DÍAS</th><th class="text-center">NIVEL</th>
         </tr></thead>
@@ -174,7 +174,7 @@ WMS_MODULES.rotacion = {
           <div class="pro-kpi-card accent-amber"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-gauge-high"></i></div></div><div class="pro-kpi-value">${data.length?Number(data.reduce((a,s)=>a+(s.score_asignacion||0),0)/data.length).toFixed(1):'—'}</div><div class="pro-kpi-label">Score Promedio</div></div>
         </div>
         <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-location-dot me-2" style="color:#7c3aed"></i>Asignaciones de Slotting Óptimo</div></div>
-        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:#f8fafc"><th class="ps-3">PRODUCTO</th><th class="text-center">SEGMENTO</th><th>UBICACIÓN</th><th class="text-center">ZONA</th><th class="text-end">SCORE</th><th class="text-center">ESTADO</th></tr></thead>
+        <div class="table-responsive"><table class="erp-table"><thead><tr style="background:var(--table-header-bg)"><th class="ps-3">PRODUCTO</th><th class="text-center">SEGMENTO</th><th>UBICACIÓN</th><th class="text-center">ZONA</th><th class="text-end">SCORE</th><th class="text-center">ESTADO</th></tr></thead>
         <tbody>${rows||'<tr><td colspan="6" class="text-center py-5 text-muted">Ejecute la optimización de slotting</td></tr>'}</tbody></table></div></div>
       </div>`);
     } catch(e) { WMS.setContent(`<div class="m-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>${e.message}</p></div>`); }
@@ -197,7 +197,7 @@ WMS_MODULES.rotacion = {
       let gridHtml = '';
       pasillos.forEach(p => {
         const ubsP = data.filter(u => u.pasillo === p);
-        gridHtml += `<div style="margin-bottom:16px"><div style="font-weight:700;font-size:.78rem;color:#475569;margin-bottom:6px">Pasillo ${WMS.esc(p)}</div>`;
+        gridHtml += `<div style="margin-bottom:16px"><div style="font-weight:700;font-size:.78rem;color:var(--text2);margin-bottom:6px">Pasillo ${WMS.esc(p)}</div>`;
         gridHtml += `<div class="wh-heatmap" style="grid-template-columns:repeat(${Math.min(ubsP.length,12)},1fr)">`;
         ubsP.forEach(u => {
           const zone = u.zona || 'bronce';
@@ -214,7 +214,7 @@ WMS_MODULES.rotacion = {
           <div class="pro-kpi-card accent-red"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-box-archive"></i></div></div><div class="pro-kpi-value">${pctOcup}%</div><div class="pro-kpi-label">Ocupación</div></div>
           <div class="pro-kpi-card accent-green"><div class="pro-kpi-header"><div class="pro-kpi-icon"><i class="fa-solid fa-check"></i></div></div><div class="pro-kpi-value">${stats.disponibles}</div><div class="pro-kpi-label">Disponibles</div></div>
         </div>
-        <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-fire me-2" style="color:#ef4444"></i>Mapa de Calor del Almacén</div>
+        <div class="card border-0 shadow-sm"><div class="card-header bg-white py-3"><div class="pro-section-title"><i class="fa-solid fa-fire me-2" style="color:var(--danger)"></i>Mapa de Calor del Almacén</div>
           <div style="display:flex;gap:12px;font-size:.68rem">
             <span><span class="wh-cell zone-oro" style="display:inline-block;width:14px;height:14px;min-height:14px;vertical-align:middle"></span> Oro</span>
             <span><span class="wh-cell zone-plata" style="display:inline-block;width:14px;height:14px;min-height:14px;vertical-align:middle"></span> Plata</span>

@@ -30,6 +30,8 @@ WMS_MODULES.devoluciones = {
     if (sub === 'estados')     return this.showEstadosCRM();
     if (sub === 'auxiliares')  return this.showAuxiliaresCalidad();
     if (sub === 'nueva')       return this.showFormDevolucion();
+    if (sub === 'recogidas')   return this.showRecogidas();
+    if (sub === 'recogida-nueva') return this.showRecogidaForm();
     return this.loadDevoluciones();
   },
 
@@ -44,6 +46,8 @@ WMS_MODULES.devoluciones = {
       { id: 'estados',    label: 'Estados CRM',       icon: 'fa-list-check' },
       { id: 'auxiliares', label: 'Auxiliares Calidad',icon: 'fa-user-shield' },
       { id: 'nueva',      label: 'Nueva Devolución',  icon: 'fa-plus-circle' },
+      { id: 'recogidas',  label: 'Recogidas PDV',     icon: 'fa-truck-arrow-right' },
+      { id: 'recogida-nueva', label: 'Nueva Recogida', icon: 'fa-file-circle-plus' },
     ];
     return `
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;width:100%;">
@@ -103,31 +107,31 @@ WMS_MODULES.devoluciones = {
         <div class="card" style="margin-bottom:16px;">
           <div style="padding:14px 18px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
             <div>
-              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Desde</label>
+              <label class="form-label" style="display:block;margin-bottom:3px;">Desde</label>
               <input type="date" id="dvd-desde" class="form-control form-control-sm" value="${desde}" onchange="WMS_MODULES.devoluciones._aplicarDashboard()">
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Hasta</label>
+              <label class="form-label" style="display:block;margin-bottom:3px;">Hasta</label>
               <input type="date" id="dvd-hasta" class="form-control form-control-sm" value="${hasta}" onchange="WMS_MODULES.devoluciones._aplicarDashboard()">
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Causal</label>
+              <label class="form-label" style="display:block;margin-bottom:3px;">Causal</label>
               <select id="dvd-causal" class="form-control form-control-sm" style="min-width:160px;" onchange="WMS_MODULES.devoluciones._aplicarDashboard()">
                 <option value="">Todas las causales</option>
               </select>
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Responsable</label>
+              <label class="form-label" style="display:block;margin-bottom:3px;">Responsable</label>
               <select id="dvd-responsable" class="form-control form-control-sm" style="min-width:160px;" onchange="WMS_MODULES.devoluciones._aplicarDashboard()">
                 <option value="">Todos los responsables</option>
               </select>
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Consecutivo</label>
+              <label class="form-label" style="display:block;margin-bottom:3px;">Consecutivo</label>
               <input type="number" id="dvd-consecutivo" class="form-control form-control-sm" placeholder="# Consecutivo" style="width:120px;" oninput="WMS_MODULES.devoluciones._aplicarDashboardDebounced()">
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;color:#64748b;">Referencia</label>
+              <label class="form-label" style="display:block;margin-bottom:3px;">Referencia</label>
               <input type="text" id="dvd-referencia" class="form-control form-control-sm" placeholder="N° referencia ERP" style="min-width:140px;" oninput="WMS_MODULES.devoluciones._aplicarDashboardDebounced()">
             </div>
             <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.devoluciones._aplicarDashboard()">
@@ -140,7 +144,7 @@ WMS_MODULES.devoluciones = {
         <div id="dvd-kpis" class="pro-kpi-grid" style="margin-bottom:16px;">
           ${[0,1,2,3].map(() => `
             <div class="pro-kpi-card" style="min-height:90px;">
-              <div style="background:#f1f5f9;border-radius:8px;height:60px;animation:pulse 1.5s ease-in-out infinite;"></div>
+              <div style="background:var(--btn-neutral);border-radius:8px;height:60px;animation:pulse 1.5s ease-in-out infinite;"></div>
             </div>`).join('')}
         </div>
 
@@ -148,7 +152,7 @@ WMS_MODULES.devoluciones = {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
           <div class="card" style="padding:16px;">
             <div class="pro-section-title" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
-              <span><i class="fa-solid fa-chart-line" style="margin-right:6px;color:#0070f2;"></i> Devoluciones por fecha</span>
+              <span><i class="fa-solid fa-chart-line" style="margin-right:6px;color:var(--accent);"></i> Devoluciones por fecha</span>
               <span style="display:flex;gap:4px;">
                 <button class="btn btn-xs btn-primary" id="dvd-hist-btn-referencias" onclick="WMS_MODULES.devoluciones._toggleHistoricoMetric('referencias')">Referencias</button>
                 <button class="btn btn-xs btn-outline-secondary" id="dvd-hist-btn-unidades" onclick="WMS_MODULES.devoluciones._toggleHistoricoMetric('unidades')">Unidades</button>
@@ -180,12 +184,12 @@ WMS_MODULES.devoluciones = {
           </div>
           <div class="card" style="padding:16px;">
             <div class="pro-section-title" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
-              <span><i class="fa-solid fa-table-cells" style="margin-right:6px;color:#e8a000;"></i> Matriz de Productos Devueltos</span>
-              <span class="badge" style="background:#fef3c7;color:#d97706;" id="dvd-matriz-count">0 Refs</span>
+              <span><i class="fa-solid fa-table-cells" style="margin-right:6px;color:var(--warn);"></i> Matriz de Productos Devueltos</span>
+              <span class="badge" style="background:var(--warn-bg);color:var(--warn);" id="dvd-matriz-count">0 Refs</span>
             </div>
-            <div style="height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;">
+            <div style="height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
               <table class="erp-table" style="margin:0;width:100%;font-size:11px;">
-                <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+                <thead style="position:sticky;top:0;background:var(--table-header-bg);z-index:1;">
                   <tr>
                     <th>Referencia / Producto</th>
                     <th class="text-center">Veces</th>
@@ -194,7 +198,7 @@ WMS_MODULES.devoluciones = {
                   </tr>
                 </thead>
                 <tbody id="dvd-matriz-productos">
-                  <tr><td colspan="4" class="text-center" style="padding:20px;color:#94a3b8;">Cargando...</td></tr>
+                  <tr><td colspan="4" class="text-center" style="padding:20px;color:var(--text-muted);">Cargando...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -317,7 +321,7 @@ WMS_MODULES.devoluciones = {
   },
 
   _chartInstances: {},
-  _paletteVivid: ['#0070f2','#e03030','#e8a000','#00b300','#7c3aed','#0891b2','#c026d3','#64748b'],
+  _paletteVivid: ['#2b5fc7','#e03030','#e8a000','#00b300','#7c3aed','#0891b2','#c026d3','#64748b'],
   _renderChartsStats(stats) {
     this._lastStats = stats; // para poder re-dibujar el histórico al alternar Referencias/Unidades
     const destroyChart = (id) => {
@@ -390,20 +394,20 @@ WMS_MODULES.devoluciones = {
       if (elCount) elCount.textContent = matriz.length + ' Refs';
       
       if (!matriz.length) {
-        tbMatriz.innerHTML = '<tr><td colspan="4" class="text-center" style="padding:20px;color:#94a3b8;">Sin datos en el período</td></tr>';
+        tbMatriz.innerHTML = '<tr><td colspan="4" class="text-center" style="padding:20px;color:var(--text-muted);">Sin datos en el período</td></tr>';
       } else {
         tbMatriz.innerHTML = matriz.map(m => `
           <tr>
             <td>
-              <strong style="color:#0f172a;">${WMS.esc(m.codigo_interno)}</strong><br>
-              <span style="color:#64748b;font-size:10px;">${WMS.esc(m.nombre)}</span>
+              <strong style="color:var(--text);">${WMS.esc(m.codigo_interno)}</strong><br>
+              <span style="color:var(--muted);font-size:10px;">${WMS.esc(m.nombre)}</span>
             </td>
-            <td class="text-center"><span class="badge" style="background:#e0f2fe;color:#0369a1;">${m.veces_devuelto}</span></td>
+            <td class="text-center"><span class="badge" style="background:var(--info-bg);color:var(--info);">${m.veces_devuelto}</span></td>
             <td class="text-center"><b>${m.total_unidades}</b></td>
             <td class="text-center">
               <div style="display:flex;align-items:center;gap:6px;">
-                <div style="flex:1;height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden;">
-                  <div style="height:100%;background:#e8a000;width:${m.porcentaje_participacion}%;"></div>
+                <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+                  <div style="height:100%;background:var(--warn);width:${m.porcentaje_participacion}%;"></div>
                 </div>
                 <span style="font-weight:600;min-width:35px;text-align:right;">${m.porcentaje_participacion}%</span>
               </div>
@@ -429,7 +433,7 @@ WMS_MODULES.devoluciones = {
         datasets: [{
           label: esUnidades ? 'Unidades devueltas' : 'Referencias devueltas',
           data: historico.map(d => esUnidades ? d.unidades : d.referencias),
-          borderColor: '#0070f2',
+          borderColor: '#2b5fc7',
           backgroundColor: 'rgba(0,112,242,0.1)',
           fill: true,
           tension: 0.3
@@ -440,7 +444,7 @@ WMS_MODULES.devoluciones = {
         layout: { padding: { top: 18 } },
         plugins: {
           legend: { display: false },
-          datalabels: { display: true, color: '#0070f2', align: 'top', font: { weight: '700', size: 11 }, formatter: v => v, clamp: true }
+          datalabels: { display: true, color: '#2b5fc7', align: 'top', font: { weight: '700', size: 11 }, formatter: v => v, clamp: true }
         }
       }
     });
@@ -463,7 +467,7 @@ WMS_MODULES.devoluciones = {
       Rechazada:'#ef4444', Anulada:'#94a3b8', Borrador:'#64748b',
     };
     if (!rows.length) {
-      el.innerHTML = '<p style="padding:20px;text-align:center;color:#94a3b8;font-size:13px;">Sin registros en el período seleccionado.</p>';
+      el.innerHTML = '<p style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">Sin registros en el período seleccionado.</p>';
       return;
     }
     el.innerHTML = `
@@ -478,7 +482,7 @@ WMS_MODULES.devoluciones = {
             const color = badgeColor[d.estado] || '#94a3b8';
             const cons  = d.consecutivo_devolucion ? ('#' + d.consecutivo_devolucion) : '-';
             return `<tr style="cursor:pointer;" onclick="WMS_MODULES.devoluciones.showDetalle(${d.id})">
-              <td><span class="badge" style="background:#0F4C81;color:#fff;font-weight:700;font-size:12px;">${WMS.esc(cons)}</span></td>
+              <td><span class="badge" style="background:var(--accent);color:#fff;font-weight:700;font-size:12px;">${WMS.esc(cons)}</span></td>
               <td><strong>${WMS.esc(d.numero_devolucion || ('#' + d.id))}</strong></td>
               <td style="font-size:11px;">${(d.created_at||'').substring(0,10) || '-'}</td>
               <td>${WMS.esc(d.tercero_nombre || d.tercero || d.cliente || d.proveedor || '-')}</td>
@@ -615,14 +619,14 @@ WMS_MODULES.devoluciones = {
                 const fotosCount = Array.isArray(d.fotos_json) ? d.fotos_json.length : (typeof d.fotos_json === 'string' ? JSON.parse(d.fotos_json || '[]').length : 0);
                 return `
                 <tr>
-                  <td><span class="badge" style="background:#0F4C81;color:#fff;font-weight:700;font-size:12px;">${WMS.esc(cons)}</span></td>
+                  <td><span class="badge" style="background:var(--accent);color:#fff;font-weight:700;font-size:12px;">${WMS.esc(cons)}</span></td>
                   <td><strong>${WMS.esc(d.numero_devolucion)}</strong></td>
-                  <td><span class="badge" style="background:#e0f2fe;color:#0369a1;">${WMS.esc(tipoLabel[d.tipo]||d.tipo)}</span></td>
+                  <td><span class="badge" style="background:var(--info-bg);color:var(--info);">${WMS.esc(tipoLabel[d.tipo]||d.tipo)}</span></td>
                   <td><span class="badge" style="background:${badgeColor[d.estado]||'#94a3b8'}20;color:${badgeColor[d.estado]||'#94a3b8'};border:1px solid ${badgeColor[d.estado]||'#94a3b8'};">${WMS.esc(d.estado)}</span></td>
                   <td style="font-size:11px;">${WMS.esc(d.sucursal_origen?.nombre || '-')}</td>
                   <td>${WMS.esc(d.referencia_externa||'-')}</td>
                   <td class="text-center">${(d.detalles||[]).length}</td>
-                  <td class="text-center">${fotosCount > 0 ? `<span class="badge" style="background:#fdf4ff;color:#c026d3;border:1px solid #f5d0fe;"><i class="fa-solid fa-camera"></i> ${fotosCount}</span>` : '<span style="color:#cbd5e1;">0</span>'}</td>
+                  <td class="text-center">${fotosCount > 0 ? `<span class="badge" style="background:#fdf4ff;color:#c026d3;border:1px solid #f5d0fe;"><i class="fa-solid fa-camera"></i> ${fotosCount}</span>` : '<span style="color:var(--text-muted);">0</span>'}</td>
                   <td style="font-size:11px;">${d.created_at ? d.created_at.substring(0,10) : '-'}</td>
                   <td style="font-size:11px;">${WMS.esc(d.solicitado_por_nombre||'-')}</td>
                   <td>
@@ -717,13 +721,13 @@ WMS_MODULES.devoluciones = {
 
       WMS.setContent(`
         <div class="card" style="border:none;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1),0 2px 4px -1px rgba(0,0,0,0.06);overflow:hidden;">
-          <div class="card-header" style="background:linear-gradient(135deg, #0F4C81 0%, #17365C 100%);padding:12px 24px;border:none;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+          <div class="card-header" style="background:linear-gradient(135deg, var(--accent) 0%, #17365C 100%);padding:12px 24px;border:none;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
             <div style="display:flex;flex-direction:column;gap:8px;">
               <div style="display:flex;align-items:center;gap:10px;">
                 <span style="background:#f97316;color:#fff;font-size:1.4rem;font-weight:900;padding:4px 16px;border-radius:8px;box-shadow:0 4px 6px rgba(249, 115, 22, 0.3);">
                   <i class="fa-solid fa-hashtag"></i> ${WMS.esc(consecutivoTxt)}
                 </span>
-                <span style="color:#cbd5e1;font-size:13px;font-weight:600;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:6px;">(${WMS.esc(d.numero_devolucion)})</span>
+                <span style="color:var(--text-muted);font-size:13px;font-weight:600;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:6px;">(${WMS.esc(d.numero_devolucion)})</span>
               </div>
               <div style="display:flex;gap:10px;margin-top:4px;">
                 <span class="badge" style="background:${badgeColor[estado]||'#94a3b8'};color:#fff;font-size:14px;padding:6px 12px;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,0.2);">${WMS.esc(estado)}</span>
@@ -732,7 +736,7 @@ WMS_MODULES.devoluciones = {
             </div>
             
             ${fotosList.length > 0 ? `
-              <div style="background:#fff;padding:4px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.4);transform:rotate(2deg);transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05) rotate(0deg)'" onmouseout="this.style.transform='scale(1) rotate(2deg)'">
+              <div style="background:var(--surface);padding:4px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.4);transform:rotate(2deg);transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05) rotate(0deg)'" onmouseout="this.style.transform='scale(1) rotate(2deg)'">
                 <img src="${fotosList[0]}" style="width:120px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="window.open('${fotosList[0]}', '_blank')" title="Ver evidencia inicial">
               </div>
             ` : `
@@ -742,21 +746,21 @@ WMS_MODULES.devoluciones = {
             `}
           </div>
           
-          <div style="background:#fff;padding:20px;border-bottom:1px dashed #cbd5e1;">
-            <div style="color:#0F4C81;font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin-bottom:8px;"><i class="fa-solid fa-quote-left"></i> Motivo General</div>
-            <div style="font-size:15px;color:#334155;line-height:1.6;font-weight:500;padding:12px;background:#f8fafc;border-left:4px solid #f97316;border-radius:0 8px 8px 0;">
+          <div style="background:var(--surface);padding:20px;border-bottom:1px dashed var(--border);">
+            <div style="color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin-bottom:8px;"><i class="fa-solid fa-quote-left"></i> Motivo General</div>
+            <div style="font-size:15px;color:var(--text);line-height:1.6;font-weight:500;padding:12px;background:var(--table-header-bg);border-left:4px solid #f97316;border-radius:0 8px 8px 0;">
               ${WMS.esc(d.motivo_general)}
             </div>
           </div>
           
-          <div class="card-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:20px;padding:24px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
-            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Referencia ERP</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.referencia_externa||'-')}</div></div>
-            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Cliente / Origen</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.clienteOrigen?.razon_social||d.cliente_origen?.razon_social||'-')}</div></div>
-            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Sucursal Origen</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.sucursalOrigen?.nombre||d.sucursal_origen?.nombre||'-')}</div></div>
-            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Solicitado por</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.solicitante?.nombre||d.solicitado_por||'-')}</div></div>
-            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Aprobado por</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.aprobador?.nombre||'-')}</div></div>
-            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Procesado por</div><div style="font-weight:600;color:#0f172a;">${WMS.esc(d.procesador?.nombre||'-')}</div></div>
-            <div style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Fecha Registro</div><div style="font-weight:600;color:#0f172a;">${d.created_at?d.created_at.substring(0,10):'-'}</div></div>
+          <div class="card-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:20px;padding:24px;background:var(--table-header-bg);border-bottom:1px solid var(--border);">
+            <div style="background:var(--surface);padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Referencia ERP</div><div style="font-weight:600;color:var(--text);">${WMS.esc(d.referencia_externa||'-')}</div></div>
+            <div style="background:var(--surface);padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Cliente / Origen</div><div style="font-weight:600;color:var(--text);">${WMS.esc(d.clienteOrigen?.razon_social||d.cliente_origen?.razon_social||'-')}</div></div>
+            <div style="background:var(--surface);padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Sucursal Origen</div><div style="font-weight:600;color:var(--text);">${WMS.esc(d.sucursalOrigen?.nombre||d.sucursal_origen?.nombre||'-')}</div></div>
+            <div style="background:var(--surface);padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Solicitado por</div><div style="font-weight:600;color:var(--text);">${WMS.esc(d.solicitante?.nombre||d.solicitado_por||'-')}</div></div>
+            <div style="background:var(--surface);padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Aprobado por</div><div style="font-weight:600;color:var(--text);">${WMS.esc(d.aprobador?.nombre||'-')}</div></div>
+            <div style="background:var(--surface);padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Procesado por</div><div style="font-weight:600;color:var(--text);">${WMS.esc(d.procesador?.nombre||'-')}</div></div>
+            <div style="background:var(--surface);padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);"><div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:4px;">Fecha Registro</div><div style="font-weight:600;color:var(--text);">${d.created_at?d.created_at.substring(0,10):'-'}</div></div>
           </div>
           <div class="table-container">
             <table class="erp-table" style="font-size:12px;">
@@ -768,8 +772,8 @@ WMS_MODULES.devoluciones = {
                   <td style="font-size:11px;">${det.fecha_vencimiento ? WMS.formatDate(det.fecha_vencimiento) : '-'}</td>
                   <td class="text-center fw-700">${WMS.formatNum(det.cantidad)}</td>
                   <td>${WMS.esc(det.condicion||'-')}</td>
-                  <td>${det.destino ? `<span class="badge" style="background:#f0fdf4;color:#16a34a;">${WMS.esc(det.destino)}</span>` : '<span style="color:#94a3b8;">—</span>'}</td>
-                  <td style="font-size:11px;color:#64748b;">${WMS.esc(det.detalle_motivo||det.motivo_item||'-')}</td>
+                  <td>${det.destino ? `<span class="badge" style="background:var(--ok-bg);color:var(--ok);">${WMS.esc(det.destino)}</span>` : '<span style="color:var(--text-muted);">—</span>'}</td>
+                  <td style="font-size:11px;color:var(--muted);">${WMS.esc(det.detalle_motivo||det.motivo_item||'-')}</td>
                 </tr>`).join('')}
               </tbody>
             </table>
@@ -780,31 +784,31 @@ WMS_MODULES.devoluciones = {
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:20px;margin-top:20px;">
           <!-- Timeline -->
           <div class="card" style="padding:20px;">
-            <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:16px;">
+            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:16px;">
               <i class="fa-solid fa-timeline" style="color:#6366f1;"></i> Historial y Seguimiento (CRM)
             </div>
             <div id="dv-crm-timeline">
-              <div style="color:#94a3b8;font-size:12px;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando historial...</div>
+              <div style="color:var(--text-muted);font-size:12px;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando historial...</div>
             </div>
           </div>
           
           <!-- Galeria -->
           <div class="card" style="padding:20px;display:flex;flex-direction:column;">
-            <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:16px;">
+            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:16px;">
               <i class="fa-solid fa-images" style="color:#0ea5e9;"></i> Evidencias Registradas
             </div>
             <div style="flex:1;position:relative;min-height:220px;display:flex;flex-wrap:wrap;gap:12px;align-content:flex-start;" id="dv-crm-galeria">
-              ${fotosList.length > 0 ? fotosList.map(f => `<a href="${f}" target="_blank" style="display:block;width:100px;height:100px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 2px 4px rgba(0,0,0,0.05);transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'"><img src="${f}" style="width:100%;height:100%;object-fit:cover;"></a>`).join('') : '<div style="color:#94a3b8;font-size:12px;width:100%;text-align:center;padding:20px;">Sin fotos iniciales</div>'}
+              ${fotosList.length > 0 ? fotosList.map(f => `<a href="${f}" target="_blank" style="display:block;width:100px;height:100px;border-radius:8px;overflow:hidden;border:1px solid var(--border);box-shadow:0 2px 4px rgba(0,0,0,0.05);transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'"><img src="${f}" style="width:100%;height:100%;object-fit:cover;"></a>`).join('') : '<div style="color:var(--text-muted);font-size:12px;width:100%;text-align:center;padding:20px;">Sin fotos iniciales</div>'}
             </div>
           </div>
           
           <!-- Nuevo Registro Tracking -->
-          <div class="card" style="padding:20px;background:#f8fafc;border:1px dashed #cbd5e1;">
-            <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:16px;">
-              <i class="fa-solid fa-comment-medical" style="color:#10b981;"></i> Registrar Seguimiento / Novedad
+          <div class="card" style="padding:20px;background:var(--table-header-bg);border:1px dashed var(--border);">
+            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:16px;">
+              <i class="fa-solid fa-comment-medical" style="color:var(--ok);"></i> Registrar Seguimiento / Novedad
             </div>
             ${estado === 'Finalizada' ? `
-              <div style="padding:20px;text-align:center;color:#dc2626;font-weight:700;background:#fef2f2;border-radius:8px;">
+              <div style="padding:20px;text-align:center;color:var(--danger);font-weight:700;background:var(--danger-bg);border-radius:8px;">
                 <i class="fa-solid fa-lock"></i> La devolución se encuentra Finalizada. No admite más cambios.
               </div>
             ` : `
@@ -814,7 +818,7 @@ WMS_MODULES.devoluciones = {
                 <option value="">Mantener estado actual (${WMS.esc(estado)})</option>
               </select>
               
-              <label class="form-label">Responsable del movimiento <span style="color:#ef4444;">*</span></label>
+              <label class="form-label">Responsable del movimiento <span style="color:var(--danger);">*</span></label>
               <select id="dv-crm-responsable" class="form-control" style="margin-bottom:12px;">
                 <option value="">Cargando auxiliares de calidad...</option>
               </select>
@@ -882,7 +886,7 @@ WMS_MODULES.devoluciones = {
       const tl = document.getElementById('dv-crm-timeline');
       if (tl) {
         if (!trackings.length) {
-          tl.innerHTML = '<div style="padding:10px;color:#94a3b8;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;text-align:center;">No hay registros de seguimiento.</div>';
+          tl.innerHTML = '<div style="padding:10px;color:var(--text-muted);font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--table-header-bg);text-align:center;">No hay registros de seguimiento.</div>';
           return;
         }
         
@@ -891,7 +895,7 @@ WMS_MODULES.devoluciones = {
             const url = e.ruta_archivo.startsWith('/uploads/') ? '/WMS_FENIX/public' + e.ruta_archivo : e.ruta_archivo;
             return `
             <a href="${url}" target="_blank" style="display:inline-block;margin-right:8px;margin-top:8px;">
-              <img src="${url}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0;">
+              <img src="${url}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;border:1px solid var(--border);">
             </a>
           `}).join('');
           
@@ -901,7 +905,7 @@ WMS_MODULES.devoluciones = {
               if (gal.innerHTML.includes('Sin fotos iniciales')) gal.innerHTML = '';
               gal.innerHTML += (t.evidencias).map(e => {
                 const url = e.ruta_archivo.startsWith('/uploads/') ? '/WMS_FENIX/public' + e.ruta_archivo : e.ruta_archivo;
-                return `<a href="${url}" target="_blank" style="display:block;width:100px;height:100px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 2px 4px rgba(0,0,0,0.05);transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'"><img src="${url}" style="width:100%;height:100%;object-fit:cover;"></a>`;
+                return `<a href="${url}" target="_blank" style="display:block;width:100px;height:100px;border-radius:8px;overflow:hidden;border:1px solid var(--border);box-shadow:0 2px 4px rgba(0,0,0,0.05);transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'"><img src="${url}" style="width:100%;height:100%;object-fit:cover;"></a>`;
               }).join('');
             }
           }
@@ -909,17 +913,17 @@ WMS_MODULES.devoluciones = {
           return `
             <div style="display:flex;gap:12px;margin-bottom:16px;">
               <div style="display:flex;flex-direction:column;align-items:center;">
-                <div style="width:10px;height:10px;border-radius:50%;background:#3b82f6;margin-top:4px;"></div>
-                <div style="flex:1;width:2px;background:#e2e8f0;margin-top:4px;"></div>
+                <div style="width:10px;height:10px;border-radius:50%;background:var(--info);margin-top:4px;"></div>
+                <div style="flex:1;width:2px;background:var(--border);margin-top:4px;"></div>
               </div>
-              <div style="flex:1;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;font-size:12px;">
+              <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;">
                 <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-                  <strong style="color:#0f172a;">${WMS.esc(t.usuario_nombre || 'Usuario')}</strong>
-                  <span style="color:#64748b;">${t.created_at}</span>
+                  <strong style="color:var(--text);">${WMS.esc(t.usuario_nombre || 'Usuario')}</strong>
+                  <span style="color:var(--muted);">${t.created_at}</span>
                 </div>
                 ${t.responsable ? `<div style="font-size:11px;color:#0ea5e9;font-weight:700;margin-bottom:6px;"><i class="fa-solid fa-user-tag"></i> Responsable: ${WMS.esc(t.responsable)}</div>` : ''}
                 ${t.estado_anterior !== t.estado_nuevo ? `<div style="margin-bottom:6px;color:#6366f1;font-weight:600;"><i class="fa-solid fa-arrow-right-arrow-left"></i> ${WMS.esc(t.estado_anterior)} → ${WMS.esc(t.estado_nuevo)}</div>` : ''}
-                <div style="color:#334155;white-space:pre-wrap;">${WMS.esc(t.observacion||'')}</div>
+                <div style="color:var(--text);white-space:pre-wrap;">${WMS.esc(t.observacion||'')}</div>
                 ${evHtml ? `<div>${evHtml}</div>` : ''}
               </div>
             </div>
@@ -1027,9 +1031,9 @@ WMS_MODULES.devoluciones = {
       </tr>`).join('');
     const html = `
       <div id="proc-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;display:flex;align-items:center;justify-content:center;">
-        <div style="background:#fff;border-radius:12px;padding:24px 28px;min-width:600px;max-width:800px;max-height:80vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.3);">
+        <div style="background:var(--surface);border-radius:12px;padding:24px 28px;min-width:600px;max-width:800px;max-height:80vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.3);">
           <h3 style="margin:0 0 16px;font-size:16px;"><i class="fa-solid fa-gears"></i> Procesar Devolución — ${WMS.esc(d.numero_devolucion)}</h3>
-          <p style="font-size:12px;color:#64748b;margin-bottom:12px;">Asigna el destino de cada ítem antes de confirmar.</p>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">Asigna el destino de cada ítem antes de confirmar.</p>
           <table class="erp-table" style="font-size:12px;">
             <thead><tr><th>Producto</th><th>Lote</th><th class="text-center">Cant.</th><th>Condición</th><th>Destino</th></tr></thead>
             <tbody>${rows}</tbody>
@@ -1050,7 +1054,7 @@ WMS_MODULES.devoluciones = {
     const items = [];
     let valid = true;
     selects.forEach(s => {
-      if (!s.value) { valid = false; s.style.borderColor = '#dc2626'; }
+      if (!s.value) { valid = false; s.style.borderColor = 'var(--danger)'; }
       else { s.style.borderColor = ''; }
       items.push({ id: parseInt(s.dataset.id), destino: s.value });
     });
@@ -1105,13 +1109,13 @@ WMS_MODULES.devoluciones = {
                       ${WMS.esc(c.responsable||'-')}
                     </span>
                   </td>
-                  <td style="font-size:12px;color:#64748b;">${WMS.esc(c.descripcion||'-')}</td>
+                  <td style="font-size:12px;color:var(--muted);">${WMS.esc(c.descripcion||'-')}</td>
                   <td class="text-center">
                     <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:12px;">
                       <input type="checkbox" ${c.activo ? 'checked' : ''}
                         onchange="WMS_MODULES.devoluciones._toggleCausal(${c.id}, this.checked)"
                         style="width:15px;height:15px;accent-color:#3b82f6;">
-                      <span style="color:${c.activo ? '#16a34a' : '#94a3b8'};">
+                      <span style="color:${c.activo ? 'var(--ok)' : 'var(--text-muted)'};">
                         ${c.activo ? 'Sí' : 'No'}
                       </span>
                     </label>
@@ -1133,12 +1137,12 @@ WMS_MODULES.devoluciones = {
 
   _responsableBadge(responsable) {
     const map = {
-      Proveedor:  'background:#eff6ff;color:#0F4C81;',
-      Operacion:  'background:#fffbeb;color:#d97706;',
-      Transporte: 'background:#f0fdf4;color:#16a34a;',
+      Proveedor:  'background:var(--info-bg);color:var(--accent);',
+      Operacion:  'background:var(--warn-bg);color:var(--warn);',
+      Transporte: 'background:var(--ok-bg);color:var(--ok);',
       Cliente:    'background:#fdf2f8;color:#9d174d;',
     };
-    return map[responsable] || 'background:#f1f5f9;color:#64748b;';
+    return map[responsable] || 'background:var(--btn-neutral);color:var(--muted);';
   },
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -1172,13 +1176,13 @@ WMS_MODULES.devoluciones = {
               ${rows.length ? rows.map(a => `
                 <tr>
                   <td><strong>${WMS.esc(a.nombre)}</strong></td>
-                  <td style="font-size:12px;color:#64748b;">${WMS.esc(a.cargo||'-')}</td>
+                  <td style="font-size:12px;color:var(--muted);">${WMS.esc(a.cargo||'-')}</td>
                   <td class="text-center">
                     <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:12px;">
                       <input type="checkbox" ${a.activo ? 'checked' : ''}
                         onchange="WMS_MODULES.devoluciones._toggleAuxiliarCalidad(${a.id}, this.checked)"
-                        style="width:15px;height:15px;accent-color:#0070f2;">
-                      <span style="color:${a.activo ? '#00b300' : '#94a3b8'};">${a.activo ? 'Sí' : 'No'}</span>
+                        style="width:15px;height:15px;accent-color:#2b5fc7;">
+                      <span style="color:${a.activo ? '#00b300' : 'var(--text-muted)'};">${a.activo ? 'Sí' : 'No'}</span>
                     </label>
                   </td>
                   <td>
@@ -1198,11 +1202,11 @@ WMS_MODULES.devoluciones = {
     const titulo = a ? 'Editar Auxiliar de Calidad' : 'Nuevo Auxiliar de Calidad';
     const html = `
       <div id="aux-cal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;display:flex;align-items:center;justify-content:center;">
-        <div style="background:#fff;border-radius:12px;padding:24px 28px;width:420px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.3);">
-          <h3 style="margin:0 0 18px;font-size:16px;color:#1e293b;"><i class="fa-solid fa-user-shield"></i> ${titulo}</h3>
+        <div style="background:var(--surface);border-radius:12px;padding:24px 28px;width:420px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.3);">
+          <h3 style="margin:0 0 18px;font-size:16px;color:var(--text);"><i class="fa-solid fa-user-shield"></i> ${titulo}</h3>
           <div style="display:grid;gap:14px;">
             <div>
-              <label class="form-label">Nombre <span style="color:#ef4444;">*</span></label>
+              <label class="form-label">Nombre <span style="color:var(--danger);">*</span></label>
               <input type="text" id="aux-cal-nombre" class="form-control" placeholder="Nombre completo" value="${WMS.esc(a?.nombre||'')}">
             </div>
             <div>
@@ -1284,13 +1288,13 @@ WMS_MODULES.devoluciones = {
                   <td><strong>${WMS.esc(e.nombre)}</strong></td>
                   <td class="text-center"><span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:${WMS.esc(e.color||'#94a3b8')};"></span></td>
                   <td class="text-center">${e.orden}</td>
-                  <td class="text-center">${e.activo ? '<span class="badge" style="background:#dcfce7;color:#166534;">SÍ</span>' : '<span class="badge" style="background:#fee2e2;color:#991b1b;">NO</span>'}</td>
+                  <td class="text-center">${e.activo ? '<span class="badge" style="background:var(--ok-bg);color:var(--ok);">SÍ</span>' : '<span class="badge" style="background:var(--danger-bg);color:var(--danger);">NO</span>'}</td>
                   <td>
                     <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.devoluciones._modalEstadoCRM(${e.id})"><i class="fa-solid fa-pen"></i></button>
                     <button class="btn btn-sm btn-outline-danger" onclick="WMS_MODULES.devoluciones._eliminarEstadoCRM(${e.id})"><i class="fa-solid fa-trash"></i></button>
                   </td>
                 </tr>
-              `).join('') || '<tr><td colspan="5" class="text-center" style="padding:20px;color:#94a3b8;">Sin estados registrados</td></tr>'}
+              `).join('') || '<tr><td colspan="5" class="text-center" style="padding:20px;color:var(--text-muted);">Sin estados registrados</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -1304,7 +1308,7 @@ WMS_MODULES.devoluciones = {
     
     const html = `
       <div id="est-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;display:flex;align-items:center;justify-content:center;">
-        <div style="background:#fff;border-radius:12px;padding:24px 28px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,.3);">
+        <div style="background:var(--surface);border-radius:12px;padding:24px 28px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,.3);">
           <h3 style="margin:0 0 16px;font-size:16px;">${id ? 'Editar Estado' : 'Nuevo Estado'}</h3>
           
           <label class="form-label">Nombre del Estado</label>
@@ -1380,18 +1384,18 @@ WMS_MODULES.devoluciones = {
     const titulo = c ? 'Editar Causal' : 'Nueva Causal';
     const html = `
       <div id="causal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;display:flex;align-items:center;justify-content:center;">
-        <div style="background:#fff;border-radius:12px;padding:24px 28px;width:480px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.3);">
-          <h3 style="margin:0 0 18px;font-size:16px;color:#1e293b;">
+        <div style="background:var(--surface);border-radius:12px;padding:24px 28px;width:480px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.3);">
+          <h3 style="margin:0 0 18px;font-size:16px;color:var(--text);">
             <i class="fa-solid fa-tag"></i> ${titulo}
           </h3>
           <div style="display:grid;gap:14px;">
             <div>
-              <label class="form-label">Causal <span style="color:#ef4444;">*</span></label>
+              <label class="form-label">Causal <span style="color:var(--danger);">*</span></label>
               <input type="text" id="mc-causal" class="form-control" placeholder="Ej: Producto dañado en tránsito"
                 value="${WMS.esc(c?.causal||'')}">
             </div>
             <div>
-              <label class="form-label">Responsable <span style="color:#ef4444;">*</span></label>
+              <label class="form-label">Responsable <span style="color:var(--danger);">*</span></label>
               <select id="mc-responsable" class="form-control">
                 <option value="">-- Seleccionar --</option>
                 ${['Proveedor','Operacion','Transporte','Cliente'].map(op =>
@@ -1515,20 +1519,20 @@ WMS_MODULES.devoluciones = {
         </div>
 
         <!-- SECCIÓN 1: Datos generales -->
-        <div style="padding:20px;border-bottom:1px solid #e2e8f0;">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:12px;">
+        <div style="padding:20px;border-bottom:1px solid var(--border);">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:12px;">
             Datos generales
           </div>
           <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:14px;">
             <div>
-              <label class="form-label">Tipo de Devolución <span style="color:#ef4444;">*</span></label>
+              <label class="form-label">Tipo de Devolución <span style="color:var(--danger);">*</span></label>
               <select id="dv-new-tipo" class="form-control" onchange="WMS_MODULES.devoluciones._onTipoDevolucionChange()">
                 <option value="BuenEstado">Buen Estado</option>
                 <option value="MalEstado">Mal Estado</option>
               </select>
             </div>
             <div style="position:relative;">
-              <label class="form-label">Cliente / Sucursal que Devuelve (Origen) <span style="color:#ef4444;">*</span></label>
+              <label class="form-label">Cliente / Sucursal que Devuelve (Origen) <span style="color:var(--danger);">*</span></label>
               <input type="text" id="dv-new-cliente-q" class="form-control"
                 placeholder="Escriba para buscar cliente por nombre, NIT o código..."
                 oninput="WMS_MODULES.devoluciones._buscarClienteOrigen(this.value)"
@@ -1536,13 +1540,13 @@ WMS_MODULES.devoluciones = {
                 onclick="WMS_MODULES.devoluciones._buscarClienteOrigen(this.value)"
                 autocomplete="off">
               <div id="dv-cliente-origen-drop" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:300;
-                background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.15);
+                background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.15);
                 max-height:220px;overflow-y:auto;font-size:13px;"></div>
               <input type="hidden" id="dv-new-cliente-origen">
               <div id="dv-cliente-origen-selected" style="display:none;margin-top:4px;"></div>
             </div>
             <div>
-              <label class="form-label">Causal <span style="color:#ef4444;">*</span></label>
+              <label class="form-label">Causal <span style="color:var(--danger);">*</span></label>
               <select id="dv-new-causal" class="form-control">
                 <option value="">-- Seleccionar causal --</option>
                 ${causalesOpts}
@@ -1552,8 +1556,8 @@ WMS_MODULES.devoluciones = {
         </div>
 
         <!-- SECCIÓN 2: Cliente / Proveedor & Referencia ERP -->
-        <div style="padding:20px;border-bottom:1px solid #e2e8f0;">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:12px;">
+        <div style="padding:20px;border-bottom:1px solid var(--border);">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:12px;">
             Tercero ERP & Referencia
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
@@ -1566,7 +1570,7 @@ WMS_MODULES.devoluciones = {
                 onclick="WMS_MODULES.devoluciones._buscarTercero(this.value)"
                 autocomplete="off">
               <div id="dv-tercero-drop" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:200;
-                background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.15);
+                background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.15);
                 max-height:200px;overflow-y:auto;font-size:13px;"></div>
               <input type="hidden" id="dv-new-tercero-id">
             </div>
@@ -1578,8 +1582,8 @@ WMS_MODULES.devoluciones = {
         </div>
 
         <!-- SECCIÓN 3: Ubicación patio -->
-        <div style="padding:20px;border-bottom:1px solid #e2e8f0;">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:12px;">
+        <div style="padding:20px;border-bottom:1px solid var(--border);">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:12px;">
             Ubicación en patio & Motivo
           </div>
           <div style="display:grid;grid-template-columns:1fr 2fr;gap:14px;align-items:start;">
@@ -1590,12 +1594,12 @@ WMS_MODULES.devoluciones = {
                 oninput="WMS_MODULES.devoluciones._buscarUbicacion(this.value)"
                 autocomplete="off">
               <div id="dv-ubic-drop" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:200;
-                background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);
+                background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);
                 max-height:180px;overflow-y:auto;font-size:13px;"></div>
               <input type="hidden" id="dv-new-ubic-id">
             </div>
             <div>
-              <label class="form-label">Motivo general <span style="color:#ef4444;">*</span></label>
+              <label class="form-label">Motivo general <span style="color:var(--danger);">*</span></label>
               <input type="text" id="dv-new-motivo" class="form-control"
                 placeholder="Descripción general de la devolución">
             </div>
@@ -1603,7 +1607,7 @@ WMS_MODULES.devoluciones = {
         </div>
 
         <!-- SECCIÓN 4: Registro Fotográfico -->
-        <div style="padding:20px;border-bottom:1px solid #e2e8f0;background:#faf5ff;">
+        <div style="padding:20px;border-bottom:1px solid var(--border);background:#faf5ff;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#7e22ce;margin-bottom:12px;display:flex;align-items:center;gap:6px;">
             <i class="fa-solid fa-camera"></i> Registro Fotográfico del Producto (Fotos de evidencia)
           </div>
@@ -1612,22 +1616,22 @@ WMS_MODULES.devoluciones = {
               <i class="fa-solid fa-cloud-arrow-up"></i> Seleccionar Fotos del Producto...
               <input type="file" id="dv-fotos-input" multiple accept="image/*" style="display:none;" onchange="WMS_MODULES.devoluciones._onFotosSelected(this)">
             </label>
-            <span style="font-size:11px;color:#64748b;margin-left:10px;">Puedes subir múltiples fotos del estado físico del producto</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:10px;">Puedes subir múltiples fotos del estado físico del producto</span>
           </div>
           <div id="dv-fotos-preview" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;"></div>
         </div>
 
         <!-- SECCIÓN 5: Productos -->
         <div style="padding:20px;">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:12px;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:12px;">
             Productos a devolver
           </div>
 
           <!-- Buscador producto -->
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:14px;">
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;">
             <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
               <div style="flex:1;min-width:220px;position:relative;">
-                <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">
+                <label class="form-label" style="display:block;margin-bottom:4px;">
                   <i class="fa-solid fa-qrcode"></i> Escanear QR / EAN / Código
                 </label>
                 <input type="text" id="dv-qr-input" class="form-control"
@@ -1635,7 +1639,7 @@ WMS_MODULES.devoluciones = {
                   onkeydown="if(event.key==='Enter'){WMS_MODULES.devoluciones.buscarQr();event.preventDefault();}">
               </div>
               <div style="flex:1;min-width:200px;position:relative;">
-                <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">
+                <label class="form-label" style="display:block;margin-bottom:4px;">
                   <i class="fa-solid fa-magnifying-glass"></i> Buscar por nombre o referencia
                 </label>
                 <input type="text" id="dv-prod-nombre" class="form-control"
@@ -1643,7 +1647,7 @@ WMS_MODULES.devoluciones = {
                   oninput="WMS_MODULES.devoluciones._buscarProducto(this.value)"
                   autocomplete="off">
                 <div id="dv-prod-drop" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:200;
-                  background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);
+                  background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);
                   max-height:180px;overflow-y:auto;font-size:13px;"></div>
               </div>
               <button class="btn btn-outline-primary btn-sm" onclick="WMS_MODULES.devoluciones.buscarQr()">
@@ -1652,33 +1656,33 @@ WMS_MODULES.devoluciones = {
             </div>
 
             <!-- Producto encontrado -->
-            <div id="dv-qr-found" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-top:10px;margin-bottom:10px;font-size:12px;">
-              <i class="fa-solid fa-circle-check" style="color:#16a34a;"></i>
+            <div id="dv-qr-found" style="display:none;background:var(--ok-bg);border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin-top:10px;margin-bottom:10px;font-size:12px;">
+              <i class="fa-solid fa-circle-check" style="color:var(--ok);"></i>
               <strong id="dv-qr-nombre"></strong> — Lote: <span id="dv-qr-lote">-</span> / Vence: <span id="dv-qr-fv">-</span>
             </div>
 
             <!-- Campos adicionales ítem -->
             <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;align-items:end;margin-top:8px;">
               <div>
-                <label id="dv-item-lote-label" style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Lote</label>
+                <label id="dv-item-lote-label" class="form-label" style="display:block;margin-bottom:3px;">Lote</label>
                 <input type="text" id="dv-item-lote" class="form-control form-control-sm" placeholder="Lote">
               </div>
               <div>
-                <label id="dv-item-fv-label" style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Fecha Venc.</label>
+                <label id="dv-item-fv-label" class="form-label" style="display:block;margin-bottom:3px;">Fecha Venc.</label>
                 <input type="date" id="dv-item-fv" class="form-control form-control-sm">
               </div>
               <div>
-                <label id="dv-cant-label" style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Cantidad</label>
+                <label id="dv-cant-label" class="form-label" style="display:block;margin-bottom:3px;">Cantidad</label>
                 <div style="display:flex;gap:4px;">
                   <input type="number" id="dv-item-cant" class="form-control form-control-sm" min="0.001" step="0.001" placeholder="0" oninput="WMS_MODULES.devoluciones._updDvTotal()">
                   <input type="number" id="dv-item-saldo" class="form-control form-control-sm" min="0" step="0.001" placeholder="Saldo" style="display:none;" oninput="WMS_MODULES.devoluciones._updDvTotal()">
                 </div>
-                <div id="dv-cant-total" style="font-size:10px;color:#64748b;display:none;"></div>
+                <div id="dv-cant-total" style="font-size:10px;color:var(--muted);display:none;"></div>
               </div>
             </div>
             <!-- Ubicación origen (solo si no está en Patio) -->
-            <div id="dv-item-ubic-wrap" style="display:none;margin-top:8px;background:#fffbeb;border:1px solid #fbbf24;border-radius:6px;padding:8px 12px;">
-              <div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:6px;">
+            <div id="dv-item-ubic-wrap" style="display:none;margin-top:8px;background:var(--warn-bg);border:1px solid #fbbf24;border-radius:6px;padding:8px 12px;">
+              <div style="font-size:11px;font-weight:700;color:var(--warn);margin-bottom:6px;">
                 <i class="fa-solid fa-triangle-exclamation"></i> Mercancía ubicada — indique la ubicación origen
               </div>
               <div style="display:flex;gap:8px;align-items:flex-end;">
@@ -1688,7 +1692,7 @@ WMS_MODULES.devoluciones = {
                     oninput="WMS_MODULES.devoluciones._buscarUbicItemOrigen(this.value)"
                     autocomplete="off">
                   <div id="dv-item-ubic-drop" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:300;
-                    background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);
+                    background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);
                     max-height:180px;overflow-y:auto;font-size:13px;"></div>
                   <input type="hidden" id="dv-item-ubic-id">
                 </div>
@@ -1738,16 +1742,16 @@ WMS_MODULES.devoluciones = {
         const r = await API.get(url);
         this._state.clientesSearchData = r.data || r || [];
         if (!this._state.clientesSearchData.length) {
-          drop.innerHTML = '<div style="padding:10px;color:#94a3b8;font-size:12px;">Sin clientes que coincidan</div>';
+          drop.innerHTML = '<div style="padding:10px;color:var(--text-muted);font-size:12px;">Sin clientes que coincidan</div>';
           drop.style.display = 'block';
           return;
         }
         drop.innerHTML = this._state.clientesSearchData.map((c, idx) => `
           <div onclick="WMS_MODULES.devoluciones._selClienteOrigenIdx(${idx})"
-            style="padding:10px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
-            onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-            <strong style="font-size:13px;color:#0f172a;">${WMS.esc(c.nombre_comercial || c.razon_social)}</strong>
-            <span style="color:#64748b;font-size:11px;display:block;">NIT: ${WMS.esc(c.nit||'S/N')} | Código: ${WMS.esc(c.codigo||'-')} ${c.ruta ? ' | Ruta: ' + WMS.esc(c.ruta.nombre||'') : ''}</span>
+            style="padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--border-light);"
+            onmouseover="this.style.background='var(--table-header-bg)'" onmouseout="this.style.background=''">
+            <strong style="font-size:13px;color:var(--text);">${WMS.esc(c.nombre_comercial || c.razon_social)}</strong>
+            <span style="color:var(--muted);font-size:11px;display:block;">NIT: ${WMS.esc(c.nit||'S/N')} | Código: ${WMS.esc(c.codigo||'-')} ${c.ruta ? ' | Ruta: ' + WMS.esc(c.ruta.nombre||'') : ''}</span>
           </div>`).join('');
         drop.style.display = 'block';
       } catch(e) { /* sin resultados */ }
@@ -1763,8 +1767,8 @@ WMS_MODULES.devoluciones = {
     if (drop) drop.style.display = 'none';
     const sel = document.getElementById('dv-cliente-origen-selected');
     if (sel) {
-      sel.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;background:#dcfce7;border:1px solid #86efac;border-radius:6px;padding:6px 10px;margin-top:6px;font-size:12px;color:#166534;">
-        <span><i class="fa-solid fa-circle-check" style="color:#16a34a;"></i> <strong>${WMS.esc(c.nombre_comercial || c.razon_social)}</strong> (NIT: ${WMS.esc(c.nit || 'S/N')}) ${c.codigo ? ' · Cód: ' + WMS.esc(c.codigo) : ''}</span>
+      sel.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;background:var(--ok-bg);border:1px solid #86efac;border-radius:6px;padding:6px 10px;margin-top:6px;font-size:12px;color:var(--ok);">
+        <span><i class="fa-solid fa-circle-check" style="color:var(--ok);"></i> <strong>${WMS.esc(c.nombre_comercial || c.razon_social)}</strong> (NIT: ${WMS.esc(c.nit || 'S/N')}) ${c.codigo ? ' · Cód: ' + WMS.esc(c.codigo) : ''}</span>
         <button type="button" class="btn btn-xs btn-outline-secondary" onclick="WMS_MODULES.devoluciones._limpiarClienteOrigen()"><i class="fa-solid fa-xmark"></i> Cambiar</button>
       </div>`;
       sel.style.display = 'block';
@@ -1857,7 +1861,7 @@ WMS_MODULES.devoluciones = {
     el.innerHTML = this._state.fotos.map((file, i) => {
       const url = URL.createObjectURL(file);
       return `
-        <div style="position:relative;width:90px;height:90px;border-radius:8px;overflow:hidden;border:1px solid #cbd5e1;box-shadow:0 2px 6px rgba(0,0,0,0.1);">
+        <div style="position:relative;width:90px;height:90px;border-radius:8px;overflow:hidden;border:1px solid var(--border);box-shadow:0 2px 6px rgba(0,0,0,0.1);">
           <img src="${url}" style="width:100%;height:100%;object-fit:cover;">
           <button type="button" onclick="WMS_MODULES.devoluciones._removeFoto(${i})"
             style="position:absolute;top:3px;right:3px;background:rgba(220,38,38,0.85);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;">
@@ -1940,17 +1944,17 @@ WMS_MODULES.devoluciones = {
       // Modal de éxito con consecutivo prominente para marcado
       const modalHtml = `
         <div id="modal-consecutivo-success" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;">
-          <div style="background:#fff;border-radius:16px;padding:28px;width:480px;max-width:92vw;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.3);animation:popIn 0.3s ease;">
-            <div style="width:64px;height:64px;background:#dcfce7;color:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:28px;">
+          <div style="background:var(--surface);border-radius:16px;padding:28px;width:480px;max-width:92vw;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.3);animation:popIn 0.3s ease;">
+            <div style="width:64px;height:64px;background:var(--ok-bg);color:var(--ok);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:28px;">
               <i class="fa-solid fa-check"></i>
             </div>
-            <h3 style="margin:0 0 8px;font-size:20px;color:#1e293b;">¡Devolución Registrada!</h3>
-            <p style="margin:0 0 16px;color:#64748b;font-size:13px;">Consecutivo asignado para el marcado físico del producto:</p>
+            <h3 style="margin:0 0 8px;font-size:20px;color:var(--text);">¡Devolución Registrada!</h3>
+            <p style="margin:0 0 16px;color:var(--muted);font-size:13px;">Consecutivo asignado para el marcado físico del producto:</p>
 
-            <div style="background:#f0f9ff;border:2px dashed #0284c7;border-radius:12px;padding:16px;margin-bottom:20px;">
-              <div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Consecutivo de Marcado</div>
-              <div style="font-size:2.4rem;font-weight:900;color:#0F4C81;letter-spacing:1px;" id="val-consecutivo">${WMS.esc(consecTxt)}</div>
-              <div style="font-size:11px;color:#64748b;margin-top:4px;">N° Registro Interno: ${WMS.esc(r.data?.numero || '-')}</div>
+            <div style="background:var(--info-bg);border:2px dashed var(--info);border-radius:12px;padding:16px;margin-bottom:20px;">
+              <div style="font-size:11px;font-weight:700;color:var(--info);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Consecutivo de Marcado</div>
+              <div style="font-size:2.4rem;font-weight:900;color:var(--accent);letter-spacing:1px;" id="val-consecutivo">${WMS.esc(consecTxt)}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px;">N° Registro Interno: ${WMS.esc(r.data?.numero || '-')}</div>
             </div>
 
             <div style="display:flex;gap:10px;justify-content:center;">
@@ -1985,13 +1989,13 @@ WMS_MODULES.devoluciones = {
           : '/terceros?limit=10';
         const r = await API.get(url);
         const data = r.data || r || [];
-        if (!data.length) { drop.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:12px;">Sin resultados</div>'; drop.style.display='block'; return; }
+        if (!data.length) { drop.innerHTML='<div style="padding:10px;color:var(--text-muted);font-size:12px;">Sin resultados</div>'; drop.style.display='block'; return; }
         drop.innerHTML = data.map(t => `
           <div onclick="WMS_MODULES.devoluciones._selTercero(${t.id},'${WMS.esc(t.nombre||t.razon_social||'').replace(/'/g,"\\'")}')"
-            style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
-            onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-            <strong style="font-size:13px;color:#0f172a;">${WMS.esc(t.nombre||t.razon_social||t.codigo)}</strong>
-            <span style="color:#94a3b8;font-size:11px;"> ${WMS.esc(t.nit||t.codigo||'')}</span>
+            style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border-light);"
+            onmouseover="this.style.background='var(--table-header-bg)'" onmouseout="this.style.background=''">
+            <strong style="font-size:13px;color:var(--text);">${WMS.esc(t.nombre||t.razon_social||t.codigo)}</strong>
+            <span style="color:var(--text-muted);font-size:11px;"> ${WMS.esc(t.nit||t.codigo||'')}</span>
           </div>`).join('');
         drop.style.display = 'block';
       } catch(e) { /* sin resultados */ }
@@ -2014,13 +2018,13 @@ WMS_MODULES.devoluciones = {
         const r = await API.get('/param/ubicaciones?codigo=' + encodeURIComponent(q));
         const data = r.data || [];
         if (!drop) return;
-        if (!data.length) { drop.innerHTML='<div style="padding:10px;color:#94a3b8;">Sin resultados</div>'; drop.style.display='block'; return; }
+        if (!data.length) { drop.innerHTML='<div style="padding:10px;color:var(--text-muted);">Sin resultados</div>'; drop.style.display='block'; return; }
         drop.innerHTML = data.map(u => `
           <div onmousedown="WMS_MODULES.devoluciones._selUbicacion(${u.id},'${WMS.esc(u.codigo||u.nombre||'').replace(/'/g,"\\'")}' )"
-            style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
-            onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border-light);"
+            onmouseover="this.style.background='var(--table-header-bg)'" onmouseout="this.style.background=''">
             <code>${WMS.esc(u.codigo)}</code>
-            <span style="color:#64748b;font-size:11px;"> ${WMS.esc(u.nombre||u.descripcion||'')}</span>
+            <span style="color:var(--muted);font-size:11px;"> ${WMS.esc(u.nombre||u.descripcion||'')}</span>
           </div>`).join('');
         drop.style.display = 'block';
       } catch(e) { /* sin resultados */ }
@@ -2043,13 +2047,13 @@ WMS_MODULES.devoluciones = {
         const r = await API.get('/param/productos/buscar?q=' + encodeURIComponent(q));
         const data = r.data || [];
         if (!drop) return;
-        if (!data.length) { drop.innerHTML='<div style="padding:10px;color:#94a3b8;">Sin resultados</div>'; drop.style.display='block'; return; }
+        if (!data.length) { drop.innerHTML='<div style="padding:10px;color:var(--text-muted);">Sin resultados</div>'; drop.style.display='block'; return; }
         drop.innerHTML = data.slice(0, 10).map(p => `
           <div onmousedown="WMS_MODULES.devoluciones._selProducto(${p.id},'${WMS.esc(p.nombre||'').replace(/'/g,"\\'")}','${WMS.esc(p.codigo_interno||'').replace(/'/g,"\\'")}')"
-            style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
-            onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border-light);"
+            onmouseover="this.style.background='var(--table-header-bg)'" onmouseout="this.style.background=''">
             <strong style="font-size:12px;">${WMS.esc(p.nombre)}</strong>
-            <span style="color:#94a3b8;font-size:11px;"> [${WMS.esc(p.codigo_interno||'')}] UxC: ${parseInt(p.unidades_caja||1)}</span>
+            <span style="color:var(--text-muted);font-size:11px;"> [${WMS.esc(p.codigo_interno||'')}] UxC: ${parseInt(p.unidades_caja||1)}</span>
           </div>`).join('');
         drop.style.display = 'block';
       } catch(e) { /* sin resultados */ }
@@ -2131,8 +2135,8 @@ WMS_MODULES.devoluciones = {
     const reqFv   = !!p.controla_vencimiento;
     if (loteWrap) loteWrap.style.display = reqLote ? '' : 'none';
     if (fvWrap)   fvWrap.style.display   = reqFv   ? '' : 'none';
-    if (loteLabel) loteLabel.innerHTML = reqLote ? 'Lote <span style="color:#ef4444;">*</span>' : 'Lote';
-    if (fvLabel)   fvLabel.innerHTML   = reqFv   ? 'Fecha Venc. <span style="color:#ef4444;">*</span>' : 'Fecha Venc.';
+    if (loteLabel) loteLabel.innerHTML = reqLote ? 'Lote <span style="color:var(--danger);">*</span>' : 'Lote';
+    if (fvLabel)   fvLabel.innerHTML   = reqFv   ? 'Fecha Venc. <span style="color:var(--danger);">*</span>' : 'Fecha Venc.';
   },
 
   // Filtra las causales disponibles según el tipo de devolución. Buen Estado
@@ -2261,13 +2265,13 @@ WMS_MODULES.devoluciones = {
         const r = await API.get('/param/ubicaciones?codigo=' + encodeURIComponent(q) + '&limit=8');
         const data = r.data || [];
         if (!drop) return;
-        if (!data.length) { drop.innerHTML='<div style="padding:10px;color:#94a3b8;">Sin resultados</div>'; drop.style.display='block'; return; }
+        if (!data.length) { drop.innerHTML='<div style="padding:10px;color:var(--text-muted);">Sin resultados</div>'; drop.style.display='block'; return; }
         drop.innerHTML = data.map(u => `
           <div onclick="WMS_MODULES.devoluciones._selUbicItemOrigen(${u.id},'${WMS.esc(u.codigo||'').replace(/'/g,"\\'")}' )"
-            style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;"
-            onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border-light);"
+            onmouseover="this.style.background='var(--table-header-bg)'" onmouseout="this.style.background=''">
             <code>${WMS.esc(u.codigo)}</code>
-            <span style="color:#64748b;font-size:11px;"> ${WMS.esc(u.nombre||u.descripcion||'')}</span>
+            <span style="color:var(--muted);font-size:11px;"> ${WMS.esc(u.nombre||u.descripcion||'')}</span>
           </div>`).join('');
         drop.style.display = 'block';
       } catch(e) { /* sin resultados */ }
@@ -2290,7 +2294,7 @@ WMS_MODULES.devoluciones = {
     const el = document.getElementById('dv-items-table');
     if (!el) return;
     if (!this._state.items.length) {
-      el.innerHTML = '<p style="color:#94a3b8;font-size:12px;text-align:center;padding:12px 0;">Sin ítems. Busque un producto arriba.</p>';
+      el.innerHTML = '<p style="color:var(--text-muted);font-size:12px;text-align:center;padding:12px 0;">Sin ítems. Busque un producto arriba.</p>';
       return;
     }
     el.innerHTML = `
@@ -2307,8 +2311,8 @@ WMS_MODULES.devoluciones = {
             <td class="text-center fw-700">${WMS.formatNum(it.cantidad)}</td>
             <td style="font-size:11px;">
               ${it.ubicacion_origen_cod
-                ? `<code style="background:#fffbeb;color:#92400e;">${WMS.esc(it.ubicacion_origen_cod)}</code>`
-                : '<span style="color:#94a3b8;">Patio/auto</span>'}
+                ? `<code style="background:var(--warn-bg);color:var(--warn);">${WMS.esc(it.ubicacion_origen_cod)}</code>`
+                : '<span style="color:var(--text-muted);">Patio/auto</span>'}
             </td>
             <td>
               <button class="btn btn-danger" style="padding:2px 6px;font-size:10px;"
@@ -2319,7 +2323,7 @@ WMS_MODULES.devoluciones = {
           </tr>`).join('')}
         </tbody>
       </table>
-      <p style="font-size:11px;color:#64748b;margin-top:4px;">
+      <p style="font-size:11px;color:var(--muted);margin-top:4px;">
         Total: <strong>${this._state.items.length} SKU(s)</strong>  —
         <strong>${WMS.formatNum(this._state.items.reduce((s,x)=>s+x.cantidad,0))}</strong> unidades
       </p>`;
@@ -2328,6 +2332,323 @@ WMS_MODULES.devoluciones = {
   _quitarItem(i) {
     this._state.items.splice(i, 1);
     this._renderItemsTable();
+  },
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     RECOGIDAS DESDE PUNTO DE VENTA (a pedido de Camilo, 2026-09-30)
+     Política Interna de Gestión de Logística Inversa y Devoluciones:
+     el PDV monta la solicitud en BEE → aquí se registra la recogida con su
+     consecutivo BEE, causal por referencia y se imprime la Remisión de Recogida
+     (media carta, firmas de quien entrega / quien recibe y sello).
+  ═══════════════════════════════════════════════════════════════════════ */
+  _rg: { causales: [], lineas: [], pdv: null, seq: 0, filtros: {} },
+
+  async _rgCausales() {
+    if (this._rg.causales.length) return this._rg.causales;
+    try { this._rg.causales = (await API.get('/devoluciones/recogidas/causales')).data || []; } catch (_) {}
+    return this._rg.causales;
+  },
+
+  _rgImprimir(id) {
+    const token = localStorage.getItem('wms_token') || '';
+    window.open(`${API_BASE}/devoluciones/recogidas/${id}/imprimir?token=${encodeURIComponent(token)}`, '_blank');
+  },
+
+  async showRecogidas(filtros = null) {
+    this._state.vista = 'recogidas';
+    if (filtros) Object.assign(this._rg.filtros, filtros);
+    const f = this._rg.filtros;
+    f.ini = f.ini || WMS.getPastDate(30);
+    f.fin = f.fin || WMS.getToday();
+    WMS.setToolbar(this._navBar('recogidas'));
+    WMS.spinner();
+    try {
+      const r = await API.get('/devoluciones/recogidas', `fecha_inicio=${f.ini}&fecha_fin=${f.fin}&q=${encodeURIComponent(f.q || '')}`);
+      const rows = r.data || [];
+      WMS.setContent(`
+        <div class="card" style="padding:12px 16px;margin-bottom:14px;">
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+            <div><label class="form-label" style="font-size:.7rem;">Desde</label><input type="date" id="rg-f-ini" class="form-control form-control-sm" value="${f.ini}"></div>
+            <div><label class="form-label" style="font-size:.7rem;">Hasta</label><input type="date" id="rg-f-fin" class="form-control form-control-sm" value="${f.fin}"></div>
+            <div style="flex:1;min-width:220px;"><label class="form-label" style="font-size:.7rem;">Buscar</label>
+              <input id="rg-f-q" class="form-control form-control-sm" placeholder="Punto de venta, consecutivo BEE o RG-..." value="${WMS.esc(f.q || '')}"
+                onkeydown="if(event.key==='Enter')WMS_MODULES.devoluciones._rgFiltrar()"></div>
+            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.devoluciones._rgFiltrar()"><i class="fa-solid fa-filter"></i> Filtrar</button>
+            <button class="btn btn-success btn-sm" onclick="WMS_MODULES.devoluciones.load('recogida-nueva')"><i class="fa-solid fa-plus"></i> Nueva Recogida</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title"><i class="fa-solid fa-truck-arrow-right" style="margin-right:6px;color:var(--accent)"></i>Recogidas desde Punto de Venta <span style="font-weight:400;color:var(--muted);font-size:12px;">(${rows.length})</span></span></div>
+          <div class="table-container">
+            <table class="erp-table">
+              <thead><tr><th>N.º</th><th>Consecutivo BEE</th><th>Punto de venta</th><th>Solicitud</th><th>Recogida</th><th style="text-align:center">Refs.</th><th>Causales</th><th>Estado</th><th>Elaboró</th><th></th></tr></thead>
+              <tbody>${rows.length ? rows.map(x => `
+                <tr style="${x.estado === 'Anulada' ? 'opacity:.55;' : ''}">
+                  <td><b>${WMS.esc(x.numero)}</b></td>
+                  <td><span class="badge" style="background:var(--danger-bg);color:var(--danger);font-weight:800;">${WMS.esc(x.consecutivo_bee)}</span></td>
+                  <td>${WMS.esc(x.punto_venta)}</td>
+                  <td class="muted">${WMS.formatDate(x.fecha_solicitud)}</td>
+                  <td class="muted">${x.fecha_recogida ? WMS.formatDate(x.fecha_recogida) : '—'}</td>
+                  <td style="text-align:center;">${x.referencias}</td>
+                  <td style="font-size:.75rem;">${WMS.esc(x.causales || '')}</td>
+                  <td><span class="badge ${x.estado === 'Anulada' ? 'badge-danger' : 'badge-info'}">${WMS.esc(x.estado)}</span></td>
+                  <td class="muted">${WMS.esc(x.creado_por_nombre || '—')}</td>
+                  <td style="white-space:nowrap;">
+                    <button class="btn btn-xs btn-primary" title="Imprimir remisión de recogida" onclick="WMS_MODULES.devoluciones._rgImprimir(${x.id})"><i class="fa-solid fa-print"></i></button>
+                    ${x.estado !== 'Anulada' ? `<button class="btn btn-xs btn-outline-danger" title="Anular" onclick="WMS_MODULES.devoluciones._rgAnular(${x.id})"><i class="fa-solid fa-ban"></i></button>` : ''}
+                  </td>
+                </tr>`).join('') : '<tr><td colspan="10" class="muted" style="text-align:center;padding:24px;">Sin recogidas en el período</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>`);
+    } catch (e) {
+      WMS.toast('error', e.message || 'Error cargando recogidas');
+    } finally { WMS.spinnerHide(); }
+  },
+
+  _rgFiltrar() {
+    this.showRecogidas({
+      ini: document.getElementById('rg-f-ini')?.value, fin: document.getElementById('rg-f-fin')?.value,
+      q: document.getElementById('rg-f-q')?.value?.trim() || '',
+    });
+  },
+
+  async _rgAnular(id) {
+    const r = await Swal.fire({ title: 'Anular recogida', input: 'text', inputLabel: 'Motivo de la anulación',
+      inputValidator: v => !v?.trim() && 'Indique el motivo', showCancelButton: true, confirmButtonText: 'Anular', confirmButtonColor: '#dc2626' });
+    if (!r.isConfirmed) return;
+    try {
+      await API.post(`/devoluciones/recogidas/${id}/anular`, { motivo: r.value.trim() });
+      WMS.toast('success', 'Recogida anulada');
+      this.showRecogidas();
+    } catch (e) { WMS.toast('error', e.message || 'No se pudo anular'); }
+  },
+
+  // ── Formulario dinámico ──────────────────────────────────────────────
+  async showRecogidaForm() {
+    this._state.vista = 'recogida-nueva';
+    WMS.setToolbar(this._navBar('recogida-nueva'));
+    const causales = await this._rgCausales();
+    this._rg.lineas = []; this._rg.pdv = null; this._rg.seq = 0;
+    const manana = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+
+    WMS.setContent(`
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-header"><span class="card-title"><i class="fa-solid fa-truck-arrow-right" style="margin-right:6px;color:var(--accent)"></i>Nueva Recogida desde Punto de Venta</span></div>
+        <div style="padding:14px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;">
+          <div class="form-group" style="margin:0;position:relative;">
+            <label class="form-label">Punto de venta / Sucursal <span class="required">*</span></label>
+            <input id="rg-pdv" class="form-control" placeholder="Escriba para buscar..." autocomplete="off"
+              oninput="WMS_MODULES.devoluciones._rgBuscarPdv(this.value)">
+            <div id="rg-pdv-res" style="display:none;position:absolute;z-index:50;left:0;right:0;top:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.12);max-height:240px;overflow-y:auto;"></div>
+            <div id="rg-pdv-info" style="font-size:.72rem;color:var(--muted);margin-top:3px;"></div>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">Consecutivo BEE <span class="required">*</span></label>
+            <input id="rg-bee" class="form-control" placeholder="N.º de la solicitud en BEE" style="font-weight:800;color:var(--danger);">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">Fecha de recogida</label>
+            <input type="date" id="rg-fecha" class="form-control" value="${manana}">
+            <div style="font-size:.7rem;color:var(--muted);margin-top:3px;">La solicitud debe registrarse mínimo 24 h antes de la ruta del PDV.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <span class="card-title"><i class="fa-solid fa-boxes-stacked" style="margin-right:6px;color:var(--accent)"></i>Referencias a recoger</span>
+          <button class="btn btn-sm btn-success" onclick="WMS_MODULES.devoluciones._rgAgregarLinea()"><i class="fa-solid fa-plus"></i> Agregar referencia</button>
+        </div>
+        <div id="rg-lineas" style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div style="padding:14px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;">
+          <div class="form-group" style="margin:0;" id="rg-aut-wrap">
+            <label class="form-label">Autorizado por <span id="rg-aut-req" class="required" style="display:none;">*</span></label>
+            <input id="rg-autorizado" class="form-control" placeholder="Calidad / Líder del CDP (nombre)">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">Observaciones <span id="rg-obs-req" class="required" style="display:none;">*</span></label>
+            <textarea id="rg-obs" class="form-control" rows="2" placeholder="Describa la autorización y novedades de la recogida"></textarea>
+          </div>
+        </div>
+        <div id="rg-aviso" style="display:none;margin:0 16px 12px;padding:8px 12px;border-radius:6px;background:var(--warn-bg);border:1px solid var(--warn-bg);color:var(--warn);font-size:.78rem;"></div>
+        <div style="padding:0 16px 14px;display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-secondary" onclick="WMS_MODULES.devoluciones.load('recogidas')">Cancelar</button>
+          <button class="btn btn-primary" id="rg-guardar" onclick="WMS_MODULES.devoluciones._rgGuardar()"><i class="fa-solid fa-save"></i> Guardar e imprimir</button>
+        </div>
+      </div>`);
+    this._rgAgregarLinea();
+  },
+
+  _rgBuscarPdv(q) {
+    clearTimeout(this._debounceCliente);
+    this._rg.pdv = null;
+    document.getElementById('rg-pdv-info').textContent = '';
+    const box = document.getElementById('rg-pdv-res');
+    if ((q || '').trim().length < 2) { box.style.display = 'none'; return; }
+    this._debounceCliente = setTimeout(async () => {
+      try {
+        const r = await API.get('/devoluciones/recogidas/puntos-venta', 'q=' + encodeURIComponent(q.trim()));
+        const lst = r.data || [];
+        this._rgPdvLista = lst;
+        box.innerHTML = lst.length ? lst.map((p, i) => `
+          <div onclick="WMS_MODULES.devoluciones._rgElegirPdv(${i})" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border-light);"
+            onmouseover="this.style.background='var(--info-bg)'" onmouseout="this.style.background=''">
+            <div style="font-weight:700;font-size:.82rem;">${WMS.esc(p.nombre)}</div>
+            <div style="font-size:.7rem;color:var(--muted);">${WMS.esc(p.detalle || '')}</div>
+          </div>`).join('')
+          : '<div style="padding:10px;font-size:.78rem;color:var(--text-muted);">Sin coincidencias</div>';
+        box.style.display = 'block';
+      } catch (_) {}
+    }, 300);
+  },
+
+  _rgElegirPdv(i) {
+    const p = (this._rgPdvLista || [])[i];
+    if (!p) return;
+    this._rg.pdv = p;
+    document.getElementById('rg-pdv').value = p.nombre;
+    document.getElementById('rg-pdv-res').style.display = 'none';
+    document.getElementById('rg-pdv-info').innerHTML = p.frecuencia
+      ? `<i class="fa-solid fa-route"></i> Frecuencia de ruta: <b>${WMS.esc(p.frecuencia)}</b>` : WMS.esc(p.detalle || '');
+  },
+
+  _rgAgregarLinea() {
+    const id = ++this._rg.seq;
+    this._rg.lineas.push({ id, prod: null });
+    const causales = this._rg.causales;
+    const div = document.createElement('div');
+    div.id = `rg-l-${id}`;
+    div.style.cssText = 'border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:8px;padding:10px 12px;background:var(--surface);';
+    div.innerHTML = `
+      <div style="display:grid;grid-template-columns:minmax(240px,2.2fr) repeat(2,minmax(90px,.6fr)) minmax(120px,.9fr) minmax(130px,.9fr) minmax(190px,1.4fr) 34px;gap:8px;align-items:end;">
+        <div><label class="form-label" style="font-size:.68rem;">Referencia <span class="required">*</span></label>
+          <input id="rg-prod-${id}" class="form-control form-control-sm" placeholder="EAN, código o nombre..." autocomplete="off"></div>
+        <div><label class="form-label" style="font-size:.68rem;">Cajas</label>
+          <input type="number" id="rg-cj-${id}" class="form-control form-control-sm" min="0" step="1" value="0" oninput="WMS_MODULES.devoluciones._rgTotal(${id})"></div>
+        <div><label class="form-label" style="font-size:.68rem;">Saldos</label>
+          <input type="number" id="rg-sd-${id}" class="form-control form-control-sm" min="0" step="0.001" value="0" oninput="WMS_MODULES.devoluciones._rgTotal(${id})"></div>
+        <div><label class="form-label" style="font-size:.68rem;">Lote</label>
+          <input id="rg-lote-${id}" class="form-control form-control-sm" placeholder="Opcional"></div>
+        <div><label class="form-label" style="font-size:.68rem;">F. Vencimiento</label>
+          <input type="date" id="rg-fv-${id}" class="form-control form-control-sm"></div>
+        <div><label class="form-label" style="font-size:.68rem;">Causal <span class="required">*</span></label>
+          <select id="rg-causal-${id}" class="form-control form-control-sm" onchange="WMS_MODULES.devoluciones._rgCausalCambio(${id})">
+            <option value="">Seleccione...</option>
+            ${[...new Set(causales.map(c => c.grupo))].map(g => `<optgroup label="${WMS.esc(g)}">${causales.filter(c => c.grupo === g).map(c => `<option value="${c.codigo}">${WMS.esc(c.nombre)}</option>`).join('')}</optgroup>`).join('')}
+          </select></div>
+        <button class="btn btn-sm btn-outline-danger" title="Quitar" onclick="WMS_MODULES.devoluciones._rgQuitarLinea(${id})"><i class="fa-solid fa-trash"></i></button>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px;">
+        <span id="rg-total-${id}" style="font-size:.75rem;font-weight:700;color:var(--info);background:var(--info-bg);border:1px solid var(--info-bg);border-radius:5px;padding:3px 8px;">Seleccione la referencia</span>
+        <span id="rg-disp-wrap-${id}" style="display:none;font-size:.75rem;">
+          <label style="margin:0;font-weight:700;"><input type="checkbox" id="rg-destruir-${id}"> Autorizado destruir en PDV (numeral 5 — requiere registro fotográfico)</label>
+        </span>
+        <input id="rg-lobs-${id}" class="form-control form-control-sm" style="flex:1;min-width:200px;" placeholder="Observación de la línea (opcional)">
+      </div>
+      <div id="rg-req-${id}" style="display:none;font-size:.72rem;color:var(--warn);margin-top:5px;"></div>`;
+    document.getElementById('rg-lineas').appendChild(div);
+    setTimeout(() => WMS.initProductAutocomplete(document.getElementById(`rg-prod-${id}`), p => {
+      const l = this._rg.lineas.find(x => x.id === id);
+      if (l) l.prod = p;
+      document.getElementById(`rg-prod-${id}`).value = `${p.codigo_interno || ''} — ${p.descripcion || p.nombre || ''}`;
+      this._rgTotal(id);
+    }), 50);
+  },
+
+  _rgQuitarLinea(id) {
+    this._rg.lineas = this._rg.lineas.filter(l => l.id !== id);
+    document.getElementById(`rg-l-${id}`)?.remove();
+    this._rgAvisoAutorizacion();
+  },
+
+  _rgUpc(p) { return (+p?.factor_udm > 0) ? +p.factor_udm : Math.max(1, +p?.unidades_caja || 1); },
+
+  // Total dinámico: cajas × U/E + saldos = UND/TOTAL (mismo formato del resto del sistema)
+  _rgTotal(id) {
+    const el = document.getElementById(`rg-total-${id}`);
+    const l = this._rg.lineas.find(x => x.id === id);
+    if (!el || !l) return;
+    if (!l.prod) { el.textContent = 'Seleccione la referencia'; return; }
+    const upc = this._rgUpc(l.prod);
+    const cj = parseFloat(document.getElementById(`rg-cj-${id}`)?.value) || 0;
+    const sd = parseFloat(document.getElementById(`rg-sd-${id}`)?.value) || 0;
+    const total = Math.round((cj * upc + sd) * 1000) / 1000;
+    el.textContent = upc > 1 ? `${cj} ${cj === 1 ? 'caja' : 'cajas'} × ${upc} + ${sd} sueltos = ${total} UND/TOTAL` : `${total} UND/TOTAL`;
+  },
+
+  _rgCausalCambio(id) {
+    const cod = document.getElementById(`rg-causal-${id}`)?.value;
+    const c = this._rg.causales.find(x => x.codigo === cod);
+    const req = document.getElementById(`rg-req-${id}`);
+    if (req) { req.style.display = c ? 'block' : 'none'; req.innerHTML = c ? `<i class="fa-solid fa-circle-info"></i> ${WMS.esc(c.requisito)}` : ''; }
+    const disp = document.getElementById(`rg-disp-wrap-${id}`);
+    if (disp) disp.style.display = c?.permite_destruccion ? 'inline' : 'none';
+    if (!c?.permite_destruccion) { const chk = document.getElementById(`rg-destruir-${id}`); if (chk) chk.checked = false; }
+    this._rgAvisoAutorizacion();
+  },
+
+  // Política 4.2: Calidad / Mal Estado / Caducado exigen autorización previa
+  // (Calidad o Líder CDP) descrita en Observaciones.
+  _rgAvisoAutorizacion() {
+    const requiere = this._rg.lineas.some(l => {
+      const c = this._rg.causales.find(x => x.codigo === document.getElementById(`rg-causal-${l.id}`)?.value);
+      return c?.requiere_autorizacion;
+    });
+    ['rg-aut-req', 'rg-obs-req'].forEach(i => { const el = document.getElementById(i); if (el) el.style.display = requiere ? 'inline' : 'none'; });
+    const av = document.getElementById('rg-aviso');
+    if (av) {
+      av.style.display = requiere ? 'block' : 'none';
+      av.innerHTML = requiere ? '<i class="fa-solid fa-triangle-exclamation"></i> Hay referencias con causal de <b>Calidad, Mal Estado o Caducado</b>: según la política requieren <b>autorización previa de Calidad o del Líder del CDP</b>. Indique quién autorizó y descríbalo en Observaciones.' : '';
+    }
+  },
+
+  async _rgGuardar() {
+    const bee = document.getElementById('rg-bee')?.value.trim();
+    const pdvTxt = document.getElementById('rg-pdv')?.value.trim();
+    if (!pdvTxt) return WMS.toast('warning', 'Seleccione el punto de venta');
+    if (!bee) return WMS.toast('warning', 'Digite el consecutivo BEE');
+    const lineas = [];
+    for (const l of this._rg.lineas) {
+      const g = s => document.getElementById(`rg-${s}-${l.id}`);
+      if (!l.prod) return WMS.toast('warning', 'Hay una línea sin referencia seleccionada');
+      if (!g('causal')?.value) return WMS.toast('warning', `Seleccione la causal de ${l.prod.descripcion || l.prod.codigo_interno}`);
+      lineas.push({
+        producto_id: l.prod.id,
+        cantidad_cajas: parseFloat(g('cj')?.value) || 0,
+        saldos: parseFloat(g('sd')?.value) || 0,
+        lote: g('lote')?.value.trim() || null,
+        fecha_vencimiento: g('fv')?.value || null,
+        causal: g('causal').value,
+        disposicion: g('destruir')?.checked ? 'Destruir en PDV' : 'Recoger',
+        observacion: g('lobs')?.value.trim() || null,
+      });
+    }
+    if (!lineas.length) return WMS.toast('warning', 'Agregue al menos una referencia');
+    const btn = document.getElementById('rg-guardar');
+    if (btn) btn.disabled = true;
+    try {
+      const r = await API.post('/devoluciones/recogidas', {
+        punto_venta: this._rg.pdv?.nombre || pdvTxt,
+        cliente_id: this._rg.pdv?.cliente_id || null,
+        consecutivo_bee: bee,
+        fecha_recogida: document.getElementById('rg-fecha')?.value || null,
+        autorizado_por: document.getElementById('rg-autorizado')?.value.trim() || null,
+        observaciones: document.getElementById('rg-obs')?.value.trim() || null,
+        lineas,
+      });
+      const id = r.data?.recogida?.id;
+      WMS.toast('success', `Recogida ${r.data?.recogida?.numero || ''} registrada`);
+      if (id) this._rgImprimir(id);
+      this.showRecogidas();
+    } catch (e) {
+      WMS.toast('error', e.message || 'No se pudo guardar la recogida');
+      if (btn) btn.disabled = false;
+    }
   },
 
 }; // end WMS_MODULES.devoluciones

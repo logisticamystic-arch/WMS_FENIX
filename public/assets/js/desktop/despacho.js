@@ -98,12 +98,12 @@ WMS_MODULES.despacho = {
         <i class="fa-solid fa-mobile-screen"></i> Imprimir Consolidado
       </button>
       <span style="display:flex;align-items:center;gap:6px;margin-left:8px;">
-        <i class="fa-solid fa-calendar-days" style="color:#6b7280;font-size:12px;"></i>
-        <input type="date" id="cert-fi" value="${WMS.esc(fi)}"
+        <i class="fa-solid fa-calendar-days" style="color:var(--muted);font-size:12px;"></i>
+        <input class="form-control" type="date" id="cert-fi" value="${WMS.esc(fi)}"
           style="font-size:11px;padding:2px 6px;border:1px solid #d1d5db;border-radius:5px;"
           onchange="WMS_MODULES.despacho._certFechaInicio=this.value">
-        <span style="color:#9ca3af;font-size:11px;">—</span>
-        <input type="date" id="cert-ff" value="${WMS.esc(ff)}"
+        <span style="color:var(--text-muted);font-size:11px;">—</span>
+        <input class="form-control" type="date" id="cert-ff" value="${WMS.esc(ff)}"
           style="font-size:11px;padding:2px 6px;border:1px solid #d1d5db;border-radius:5px;"
           onchange="WMS_MODULES.despacho._certFechaFin=this.value">
         <button class="btn btn-sm btn-primary" style="font-size:10px;padding:2px 9px;"
@@ -122,7 +122,7 @@ WMS_MODULES.despacho = {
     // (evita traer todo el histórico de pendientes en cada apertura del módulo).
     if (!this._certSearched) {
       WMS.setContent(`
-        <div style="text-align:center;padding:60px 20px;color:#94a3b8;">
+        <div style="text-align:center;padding:60px 20px;color:var(--text-muted);">
           <i class="fa-solid fa-filter" style="font-size:32px;margin-bottom:12px;display:block;"></i>
           Seleccione un rango de fechas (o "Todo") y presione <strong>Buscar</strong> para cargar las certificaciones pendientes.
         </div>`);
@@ -205,25 +205,25 @@ WMS_MODULES.despacho = {
         <!-- ── Buscador global dinámico + selector de sucursal ── -->
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
           <div style="flex:1;min-width:220px;position:relative;">
-            <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:13px;"></i>
-            <input id="cert-search" type="text" placeholder="Buscar cliente, sucursal o producto..."
-              style="width:100%;padding:8px 12px 8px 34px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;outline:none;transition:border .15s;"
+            <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:13px;"></i>
+            <input class="form-control" id="cert-search" type="text" placeholder="Buscar cliente, sucursal o producto..."
+              style="width:100%;padding:8px 12px 8px 34px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;transition:border .15s;"
               oninput="WMS_MODULES.despacho._certFiltrarGlobal(this.value)"
-              onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e5e7eb'">
+              onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='var(--border)'">
           </div>
-          <select id="cert-sucursal-select"
-            style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;min-width:220px;background:#fff;"
+          <select class="form-control" id="cert-sucursal-select"
+            style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;min-width:220px;background:var(--surface);"
             onchange="WMS_MODULES.despacho._certFiltrarPorSucursal(this.value)">
             <option value="">— Todas las sucursales (${sucursalesDisponibles.length}) —</option>
             ${sucursalesDisponibles.map(s => `<option value="${WMS.esc(s)}">${WMS.esc(s)}</option>`).join('')}
           </select>
-          <span id="cert-search-count" style="font-size:12px;color:#6b7280;white-space:nowrap;"></span>
+          <span id="cert-search-count" style="font-size:12px;color:var(--muted);white-space:nowrap;"></span>
         </div>
 
         ${activas.length ? `
-        <div class="card" style="margin-bottom:14px;border-left:4px solid #f59e0b;">
-          <div class="card-header" style="background:#fefce8;padding:10px 14px;">
-            <span class="card-title" style="color:#92400e;font-size:13px;">
+        <div class="card" style="margin-bottom:14px;border-left:4px solid var(--warn);">
+          <div class="card-header" style="background:var(--warn-bg);padding:10px 14px;">
+            <span class="card-title" style="color:var(--warn);font-size:13px;">
               <i class="fa-solid fa-spinner fa-spin"></i>&nbsp; En Proceso — ${activas.length} sesión(es) activa(s)
             </span>
           </div>
@@ -269,12 +269,12 @@ WMS_MODULES.despacho = {
                 <th class="text-center">Líneas              <tbody>${sinSesion.map(s => `<tr>
                 <td>
                   <strong style="font-size:13px;">${WMS.esc(s.sucursal_entrega || 'Sin Cliente')}</strong>
-                  ${s.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc(s.observaciones)}"></i>` : ''}
+                  ${s.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:var(--warn);margin-left:5px;cursor:help;" title="${WMS.esc(s.observaciones)}"></i>` : ''}
                   ${s.planilla_numero ? `<br><span style="display:inline-block;background:#1e3a8a;color:#fff;border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;font-weight:700;margin-top:2px;">${WMS.esc(s.planilla_numero)}</span>` : ''}
-                  ${s.planillas && s.planillas.length ? `<br><span style="font-size:10px;color:#64748b;">${s.planillas.map(p => WMS.esc(p)).join(' · ')}</span>` : ''}
+                  ${s.planillas && s.planillas.length ? `<br><span style="font-size:10px;color:var(--muted);">${s.planillas.map(p => WMS.esc(p)).join(' · ')}</span>` : ''}
                   <div style="margin-top:4px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
                     ${s.vrs && s.vrs.length ? s.vrs.map(v => `
-                      <span style="background:#0284c7;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+                      <span style="background:var(--info);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
                         VR: ${WMS.esc(v.vr)}
                         <i class="fa-solid fa-xmark" style="cursor:pointer;opacity:0.8;" onclick="WMS_MODULES.despacho.eliminarVR(${v.id})" title="Eliminar VR"></i>
                       </span>
@@ -287,16 +287,16 @@ WMS_MODULES.despacho = {
                 <td class="text-center">
                   ${s.ambientes_detalles && s.ambientes_detalles.length ? s.ambientes_detalles.map(a => {
                     if (a.es_certificada) {
-                      return `<span style="display:inline-block;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;font-weight:700;" title="Certificado desde móvil/sistema"><i class="fa-solid fa-circle-check"></i> ${WMS.esc(a.nombre)}</span>`;
+                      return `<span style="display:inline-block;background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-bg);border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;font-weight:700;" title="Certificado desde móvil/sistema"><i class="fa-solid fa-circle-check"></i> ${WMS.esc(a.nombre)}</span>`;
                     } else if (a.certificadas > 0) {
-                      return `<span style="display:inline-block;background:#fef3c7;color:#b45309;border:1px solid #fde68a;border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;font-weight:700;" title="${a.certificadas} de ${a.total} líneas certificadas"><i class="fa-solid fa-clock"></i> ${WMS.esc(a.nombre)} (${a.certificadas}/${a.total})</span>`;
+                      return `<span style="display:inline-block;background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-bg);border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;font-weight:700;" title="${a.certificadas} de ${a.total} líneas certificadas"><i class="fa-solid fa-clock"></i> ${WMS.esc(a.nombre)} (${a.certificadas}/${a.total})</span>`;
                     } else if (a.estado === 'EnPicking') {
-                      return `<span style="display:inline-block;background:#f3f4f6;color:#4b5563;border:1px solid #e5e7eb;border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;" title="En proceso de picking"><i class="fa-solid fa-hand-holding-hand"></i> ${WMS.esc(a.nombre)}</span>`;
+                      return `<span style="display:inline-block;background:var(--btn-neutral);color:#4b5563;border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;" title="En proceso de picking"><i class="fa-solid fa-hand-holding-hand"></i> ${WMS.esc(a.nombre)}</span>`;
                     } else {
-                      return `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe;border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;font-weight:600;"><i class="fa-solid fa-box"></i> ${WMS.esc(a.nombre)}</span>`;
+                      return `<span style="display:inline-block;background:var(--info-bg);color:var(--accent2);border:1px solid var(--info-bg);border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;font-weight:600;"><i class="fa-solid fa-box"></i> ${WMS.esc(a.nombre)}</span>`;
                     }
                   }).join('') : (s.ambientes || 'Desconocido').split(',').map(a =>
-                    `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;">${a.trim()}</span>`
+                    `<span style="display:inline-block;background:var(--info-bg);color:var(--accent2);border-radius:4px;padding:2px 7px;font-size:10px;margin:1px;">${a.trim()}</span>`
                   ).join('')}
                 </td>
                 <td class="text-center">
@@ -304,19 +304,19 @@ WMS_MODULES.despacho = {
                   ${s.pedidos_detalles && s.pedidos_detalles.length ? `
                     <div style="margin-top:2px;max-width:220px;margin-left:auto;margin-right:auto;display:flex;gap:3px;flex-wrap:wrap;justify-content:center;">
                       ${s.pedidos_detalles.map(pd => `
-                        <span style="display:inline-flex;align-items:center;gap:3px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:10px;" title="${pd.observaciones ? WMS.esc(pd.observaciones) : 'Sin observaciones — Haz clic en 📝 para editar'}">
+                        <span style="display:inline-flex;align-items:center;gap:3px;background:var(--btn-neutral);color:var(--text);border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:10px;" title="${pd.observaciones ? WMS.esc(pd.observaciones) : 'Sin observaciones — Haz clic en 📝 para editar'}">
                           ${WMS.esc(pd.pedido)}
                           ${pd.observaciones ? `<i class="fa-solid fa-comment-dots" style="color:#6366f1;font-size:9px;" title="${WMS.esc(pd.observaciones)}"></i>` : ''}
-                          <i class="fa-solid fa-pen" style="font-size:8px;color:#9ca3af;cursor:pointer;" onclick="WMS_MODULES.despacho.promptEditarObservacion('${WMS.esc(pd.pedido)}','${WMS.esc(pd.observaciones || '')}')" title="Editar observación del pedido"></i>
+                          <i class="fa-solid fa-pen" style="font-size:8px;color:var(--text-muted);cursor:pointer;" onclick="WMS_MODULES.despacho.promptEditarObservacion('${WMS.esc(pd.pedido)}','${WMS.esc(pd.observaciones || '')}')" title="Editar observación del pedido"></i>
                         </span>
                       `).join('')}
                     </div>
                   ` : (s.pedidos_list && s.pedidos_list.length ? `
                     <div style="margin-top:2px;max-width:220px;margin-left:auto;margin-right:auto;display:flex;gap:3px;flex-wrap:wrap;justify-content:center;">
                       ${s.pedidos_list.map(p => `
-                        <span style="display:inline-flex;align-items:center;gap:3px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:10px;">
+                        <span style="display:inline-flex;align-items:center;gap:3px;background:var(--btn-neutral);color:var(--text);border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:10px;">
                           ${WMS.esc(p)}
-                          <i class="fa-solid fa-pen" style="font-size:8px;color:#9ca3af;cursor:pointer;" onclick="WMS_MODULES.despacho.promptEditarObservacion('${WMS.esc(p)}','')" title="Editar observación del pedido"></i>
+                          <i class="fa-solid fa-pen" style="font-size:8px;color:var(--text-muted);cursor:pointer;" onclick="WMS_MODULES.despacho.promptEditarObservacion('${WMS.esc(p)}','')" title="Editar observación del pedido"></i>
                         </span>
                       `).join('')}
                     </div>
@@ -341,9 +341,9 @@ WMS_MODULES.despacho = {
         </div>
 
         ${huerfanas.length ? `
-        <div class="card" style="margin-bottom:14px;border:2px solid #f59e0b;">
-          <div class="card-header" style="background:#fffbeb;padding:10px 14px;">
-            <span class="card-title" style="color:#92400e;font-size:13px;">
+        <div class="card" style="margin-bottom:14px;border:2px solid var(--warn);">
+          <div class="card-header" style="background:var(--warn-bg);padding:10px 14px;">
+            <span class="card-title" style="color:var(--warn);font-size:13px;">
               <i class="fa-solid fa-triangle-exclamation"></i>&nbsp; Packing finalizado sin certificar (${huerfanas.length})
             </span>
             <span style="font-size:11px;color:#78350f;margin-left:8px;">La sesión terminó pero la certificación no se completó</span>
@@ -366,13 +366,13 @@ WMS_MODULES.despacho = {
         </div>` : ''}
 
         ${totalCert ? `
-        <div class="card" style="margin-bottom:14px;border-left:4px solid #22c55e;">
-          <div class="card-header" style="background:#f0fdf4;padding:10px 14px;display:flex;align-items:center;gap:10px;">
-            <span class="card-title" style="color:#065f46;font-size:13px;">
+        <div class="card" style="margin-bottom:14px;border-left:4px solid var(--ok);">
+          <div class="card-header" style="background:var(--ok-bg);padding:10px 14px;display:flex;align-items:center;gap:10px;">
+            <span class="card-title" style="color:var(--ok);font-size:13px;">
               <i class="fa-solid fa-check-double"></i>&nbsp; Certificaciones Completadas
             </span>
-            <span style="background:#dcfce7;color:#15803d;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;">${totalCert}</span>
-            ${esAdmin ? `<span style="margin-left:auto;font-size:11px;color:#6b7280;">
+            <span style="background:var(--ok-bg);color:var(--ok);border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;">${totalCert}</span>
+            ${esAdmin ? `<span style="margin-left:auto;font-size:11px;color:var(--muted);">
               <i class="fa-solid fa-circle-info"></i> Haz clic en <strong>Editar Cert.</strong> para modificar cantidades certificadas
             </span>` : ''}
           </div>
@@ -399,17 +399,17 @@ WMS_MODULES.despacho = {
                   </td>
                   <td>
                     <strong style="font-size:13px;">${WMS.esc(s.sucursal_entrega)}</strong>
-                    ${s.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc(s.observaciones)}"></i>` : ''}
-                    <div style="font-size:10px;color:#6b7280;margin-top:1px;">${s.total_empacado || 0} uds empacadas</div>
-                    ${s.planillas && s.planillas.length > 1 ? `<div style="font-size:10px;color:#b45309;margin-top:2px;"><i class="fa-solid fa-triangle-exclamation"></i> ${s.planillas.length} planillas mezcladas: ${s.planillas.map(p => WMS.esc(p)).join(' · ')}</div>` : ''}
+                    ${s.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:var(--warn);margin-left:5px;cursor:help;" title="${WMS.esc(s.observaciones)}"></i>` : ''}
+                    <div style="font-size:10px;color:var(--muted);margin-top:1px;">${s.total_empacado || 0} uds empacadas</div>
+                    ${s.planillas && s.planillas.length > 1 ? `<div style="font-size:10px;color:var(--warn);margin-top:2px;"><i class="fa-solid fa-triangle-exclamation"></i> ${s.planillas.length} planillas mezcladas: ${s.planillas.map(p => WMS.esc(p)).join(' · ')}</div>` : ''}
                     ${s.pedidos_detalles && s.pedidos_detalles.length ? `
                       <div style="margin-top:4px;font-size:10px;color:#4b5563;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
                         <strong>Pedidos:</strong>
                         ${s.pedidos_detalles.map(pd => `
-                          <span style="display:inline-flex;align-items:center;gap:3px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:10px;" title="${pd.observaciones ? WMS.esc(pd.observaciones) : 'Sin observaciones — Haz clic en 📝 para editar'}">
+                          <span style="display:inline-flex;align-items:center;gap:3px;background:var(--btn-neutral);color:var(--text);border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:10px;" title="${pd.observaciones ? WMS.esc(pd.observaciones) : 'Sin observaciones — Haz clic en 📝 para editar'}">
                             ${WMS.esc(pd.pedido)}
                             ${pd.observaciones ? `<i class="fa-solid fa-comment-dots" style="color:#6366f1;font-size:9px;" title="${WMS.esc(pd.observaciones)}"></i>` : ''}
-                            <i class="fa-solid fa-pen" style="font-size:8px;color:#9ca3af;cursor:pointer;" onclick="WMS_MODULES.despacho.promptEditarObservacion('${WMS.esc(pd.pedido)}','${WMS.esc(pd.observaciones || '')}')" title="Editar observación"></i>
+                            <i class="fa-solid fa-pen" style="font-size:8px;color:var(--text-muted);cursor:pointer;" onclick="WMS_MODULES.despacho.promptEditarObservacion('${WMS.esc(pd.pedido)}','${WMS.esc(pd.observaciones || '')}')" title="Editar observación"></i>
                           </span>
                         `).join('')}
                       </div>
@@ -417,16 +417,16 @@ WMS_MODULES.despacho = {
                       <div style="margin-top:4px;font-size:10px;color:#4b5563;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
                         <strong>Pedidos:</strong>
                         ${s.pedidos_list.map(p => `
-                          <span style="display:inline-flex;align-items:center;gap:3px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:10px;">
+                          <span style="display:inline-flex;align-items:center;gap:3px;background:var(--btn-neutral);color:var(--text);border:1px solid #d1d5db;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:10px;">
                             ${WMS.esc(p)}
-                            <i class="fa-solid fa-pen" style="font-size:8px;color:#9ca3af;cursor:pointer;" onclick="WMS_MODULES.despacho.promptEditarObservacion('${WMS.esc(p)}','')" title="Editar observación"></i>
+                            <i class="fa-solid fa-pen" style="font-size:8px;color:var(--text-muted);cursor:pointer;" onclick="WMS_MODULES.despacho.promptEditarObservacion('${WMS.esc(p)}','')" title="Editar observación"></i>
                           </span>
                         `).join('')}
                       </div>
                     ` : '')}
                     <div style="margin-top:4px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
                       ${s.vrs && s.vrs.length ? s.vrs.map(v => `
-                        <span style="background:#0284c7;color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+                        <span style="background:var(--info);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
                           VR: ${WMS.esc(v.vr)}
                           <i class="fa-solid fa-xmark" style="cursor:pointer;opacity:0.8;" onclick="WMS_MODULES.despacho.eliminarVR(${v.id})" title="Eliminar VR"></i>
                         </span>
@@ -439,12 +439,12 @@ WMS_MODULES.despacho = {
                     </div>
                   </td>
                   <td class="text-center">
-                    <span style="background:#dcfce7;color:#15803d;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">
+                    <span style="background:var(--ok-bg);color:var(--ok);border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">
                       <i class="fa-solid fa-box"></i> Packing
                     </span>
                   </td>
                   <td class="text-center"><strong>${s.total_refs || 0}</strong></td>
-                  <td class="text-center" style="font-size:12px;color:#6b7280;">${fechaStr}</td>
+                  <td class="text-center" style="font-size:12px;color:var(--muted);">${fechaStr}</td>
                   <td>
                     <div style="display:flex;gap:4px;flex-wrap:wrap;">
                       ${s.planillas && s.planillas.length > 1 ? s.planillas.map(p => `
@@ -477,16 +477,16 @@ WMS_MODULES.despacho = {
                   </td>
                   <td>
                     <strong style="font-size:13px;">${WMS.esc(s.sucursal_entrega || 'Sin Sucursal')}</strong>
-                    ${s.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc(s.observaciones)}"></i>` : ''}
+                    ${s.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:var(--warn);margin-left:5px;cursor:help;" title="${WMS.esc(s.observaciones)}"></i>` : ''}
                     ${sinPlanilla
-                      ? `<span style="display:inline-block;margin-left:5px;background:#f1f5f9;color:#64748b;border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;">Sin planilla</span>`
+                      ? `<span style="display:inline-block;margin-left:5px;background:var(--btn-neutral);color:var(--muted);border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;">Sin planilla</span>`
                       : `<span style="display:inline-block;margin-left:5px;background:#1e3a8a;color:#fff;border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;font-weight:700;">${WMS.esc(s.planilla_numero)}</span>`}
-                    ${s.total_pedidos > 1 ? `<span style="display:inline-block;margin-left:5px;background:#fef9c3;color:#854d0e;border:1px solid #fde047;border-radius:10px;font-size:10px;font-weight:700;padding:1px 7px;">Re-cert.</span>` : ''}
-                    <div style="font-size:10px;color:#6b7280;margin-top:1px;">
+                    ${s.total_pedidos > 1 ? `<span style="display:inline-block;margin-left:5px;background:var(--warn-bg);color:var(--warn);border:1px solid #fde047;border-radius:10px;font-size:10px;font-weight:700;padding:1px 7px;">Re-cert.</span>` : ''}
+                    <div style="font-size:10px;color:var(--muted);margin-top:1px;">
                       ${(s.ambientes || '').split(',').map(a => a.trim()).filter(Boolean).join(' · ') || 'Sin ambiente'}
                       ${s.pedidos_numeros?.length ? ` · Pedidos: ${s.pedidos_numeros.map(n=>WMS.esc(n)).join(', ')}` : ''}
                     </div>
-                    ${s.observaciones ? `<div style="font-size:10px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:2px 6px;margin-top:3px;">${WMS.esc(s.observaciones)}</div>` : ''}
+                    ${s.observaciones ? `<div style="font-size:10px;color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-bg);border-radius:4px;padding:2px 6px;margin-top:3px;">${WMS.esc(s.observaciones)}</div>` : ''}
                   </td>
                   <td class="text-center">
                     <span style="background:#e0e7ff;color:#4338ca;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">
@@ -494,7 +494,7 @@ WMS_MODULES.despacho = {
                     </span>
                   </td>
                   <td class="text-center"><strong>${s.total_lineas || 0}</strong></td>
-                  <td class="text-center" style="font-size:12px;color:#6b7280;">${fechaStr}</td>
+                  <td class="text-center" style="font-size:12px;color:var(--muted);">${fechaStr}</td>
                   <td>
                     <div style="display:flex;gap:4px;flex-wrap:wrap;">
                       <button class="btn btn-sm btn-success" onclick='WMS_MODULES.despacho.imprimirRemisionPorOrdenes(${ordenIdsAttr}, ${s.total_pedidos} > 1 ? "${s.total_pedidos} pedidos" : "1 pedido")' title="Imprimir remisión de esta planilla">
@@ -516,12 +516,12 @@ WMS_MODULES.despacho = {
         </div>` : ''}
 
         ${despachadosDirecto.length ? `
-        <div class="card" style="margin-bottom:14px;border-left:4px solid #dc2626;">
-          <div class="card-header" style="background:#fef2f2;padding:10px 14px;">
-            <span class="card-title" style="color:#991b1b;font-size:13px;">
+        <div class="card" style="margin-bottom:14px;border-left:4px solid var(--danger);">
+          <div class="card-header" style="background:var(--danger-bg);padding:10px 14px;">
+            <span class="card-title" style="color:var(--danger);font-size:13px;">
               <i class="fa-solid fa-hand"></i>&nbsp; Retiro Directo — No incluidos en remisión
             </span>
-            <span style="background:#fee2e2;color:#991b1b;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px;">${despachadosDirecto.length}</span>
+            <span style="background:var(--danger-bg);color:var(--danger);border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px;">${despachadosDirecto.length}</span>
           </div>
           <div class="table-container">
             <table class="erp-table cert-searchable">
@@ -536,13 +536,13 @@ WMS_MODULES.despacho = {
               <tbody>${despachadosDirecto.map(d => `<tr>
                 <td>
                   <strong style="font-size:13px;">${WMS.esc(d.sucursal_entrega || '-')}</strong>
-                  ${d.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-left:5px;cursor:help;" title="${WMS.esc(d.observaciones)}"></i>` : ''}
+                  ${d.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:var(--warn);margin-left:5px;cursor:help;" title="${WMS.esc(d.observaciones)}"></i>` : ''}
                   ${d.planilla_numero ? `<br><span style="background:#1e3a8a;color:#fff;border-radius:4px;padding:1px 7px;font-size:10px;font-family:monospace;">${WMS.esc(d.planilla_numero)}</span>` : ''}
                 </td>
                 <td style="font-size:12px;">${WMS.esc(d.numero_factura || d.numero_orden || '-')}</td>
-                <td style="font-size:11px;color:#92400e;">${WMS.esc(d.observaciones || '—')}</td>
-                <td class="text-center" style="font-size:11px;color:#6b7280;">${(d.despachado_directo_at||'').slice(0,16).replace('T',' ') || '-'}</td>
-                <td class="text-center" style="font-size:11px;color:#6b7280;">${WMS.esc(d.marcado_por || '-')}</td>
+                <td style="font-size:11px;color:var(--warn);">${WMS.esc(d.observaciones || '—')}</td>
+                <td class="text-center" style="font-size:11px;color:var(--muted);">${(d.despachado_directo_at||'').slice(0,16).replace('T',' ') || '-'}</td>
+                <td class="text-center" style="font-size:11px;color:var(--muted);">${WMS.esc(d.marcado_por || '-')}</td>
                 <td class="text-center">
                   <button class="btn btn-sm btn-outline-secondary" title="Desmarcar (incluir de nuevo en remisión)"
                     onclick="WMS_MODULES.despacho._desmarcarDespachadoDirecto(${d.id})">
@@ -577,28 +577,28 @@ WMS_MODULES.despacho = {
                 <th class="text-center"># Órdenes</th>
               </tr></thead>
               <tbody>${vistaHoy.map(v => {
-                const colorGlobal = v.estado_global === 'Certificado' ? '#059669'
-                  : v.estado_global === 'ListoCert' ? '#2563eb'
-                  : v.estado_global === 'EnPicking' ? '#d97706'
+                const colorGlobal = v.estado_global === 'Certificado' ? 'var(--ok)'
+                  : v.estado_global === 'ListoCert' ? 'var(--info)'
+                  : v.estado_global === 'EnPicking' ? 'var(--warn)'
                   : '#6b7280';
                 const iconGlobal = v.estado_global === 'Certificado'
-                  ? '<i class="fa-solid fa-circle-check" style="color:#059669;"></i>'
+                  ? '<i class="fa-solid fa-circle-check" style="color:var(--ok);"></i>'
                   : v.estado_global === 'ListoCert'
-                  ? '<i class="fa-solid fa-circle-dot" style="color:#2563eb;"></i>'
+                  ? '<i class="fa-solid fa-circle-dot" style="color:var(--info);"></i>'
                   : v.estado_global === 'EnPicking'
-                  ? '<i class="fa-solid fa-spinner fa-spin" style="color:#d97706;"></i>'
-                  : '<i class="fa-solid fa-circle" style="color:#9ca3af;"></i>';
+                  ? '<i class="fa-solid fa-spinner fa-spin" style="color:var(--warn);"></i>'
+                  : '<i class="fa-solid fa-circle" style="color:var(--text-muted);"></i>';
                 return `<tr style="border-left:3px solid ${colorGlobal};">
                   <td>
                     <strong>${WMS.esc(v.sucursal_entrega)}</strong>
                     ${v.planilla_numero ? `<br><span style="font-size:10px;font-family:monospace;background:#e0e7ff;color:#3730a3;border-radius:3px;padding:1px 5px;">${WMS.esc(v.planilla_numero)}</span>` : ''}
                   </td>
-                  <td style="font-size:11px;color:#64748b;max-width:200px;">${WMS.esc(v.ambientes || '—')}</td>
+                  <td style="font-size:11px;color:var(--muted);max-width:200px;">${WMS.esc(v.ambientes || '—')}</td>
                   <td class="text-center">
-                    ${v.estados.map(e => `<span style="display:inline-block;font-size:10px;border-radius:10px;padding:1px 7px;margin:1px;background:${e.picking==='Completada'?'#dcfce7':e.picking==='EnProceso'?'#fef9c3':'#f1f5f9'};color:${e.picking==='Completada'?'#065f46':e.picking==='EnProceso'?'#92400e':'#475569'};">${WMS.esc(e.picking)} (${e.cantidad})</span>`).join('')}
+                    ${v.estados.map(e => `<span style="display:inline-block;font-size:10px;border-radius:10px;padding:1px 7px;margin:1px;background:${e.picking==='Completada'?'var(--ok-bg)':e.picking==='EnProceso'?'var(--warn-bg)':'var(--btn-neutral)'};color:${e.picking==='Completada'?'var(--ok)':e.picking==='EnProceso'?'var(--warn)':'var(--text2)'};">${WMS.esc(e.picking)} (${e.cantidad})</span>`).join('')}
                   </td>
                   <td class="text-center">
-                    ${v.estados.map(e => `<span style="display:inline-block;font-size:10px;border-radius:10px;padding:1px 7px;margin:1px;background:${e.cert==='Certificada'?'#dcfce7':'#fef9c3'};color:${e.cert==='Certificada'?'#065f46':'#92400e'};">${WMS.esc(e.cert)} (${e.cantidad})</span>`).join('')}
+                    ${v.estados.map(e => `<span style="display:inline-block;font-size:10px;border-radius:10px;padding:1px 7px;margin:1px;background:${e.cert==='Certificada'?'var(--ok-bg)':'var(--warn-bg)'};color:${e.cert==='Certificada'?'var(--ok)':'var(--warn)'};">${WMS.esc(e.cert)} (${e.cantidad})</span>`).join('')}
                   </td>
                   <td class="text-center"><strong>${v.total_ordenes}</strong></td>
                 </tr>`;
@@ -836,7 +836,7 @@ WMS_MODULES.despacho = {
         <style>${Array.from(styles).join('\n')}</style></head>
         <body>
           <div class="no-print" style="margin-bottom:15px;text-align:right;">
-            <button onclick="window.print()" style="padding:8px 18px;background:#0F4C81;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px;">
+            <button onclick="window.print()" style="padding:8px 18px;background:#2b5fc7;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px;">
               🖨️ Imprimir todas (${bodies.length})
             </button>
           </div>
@@ -1006,11 +1006,11 @@ WMS_MODULES.despacho = {
         <div class="card-header"><span class="card-title"><i class="fa-solid fa-print"></i> Reimprimir Rótulos</span></div>
         <div style="padding:18px;">
           <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
-            <div><label class="fw-700">Desde</label><input type="date" id="pk-filter-desde" class="form-control"></div>
-            <div><label class="fw-700">Hasta</label><input type="date" id="pk-filter-hasta" class="form-control"></div>
-            <div style="min-width:220px;"><label class="fw-700">Sucursal entrega</label><input type="text" id="pk-filter-sucursal" class="form-control" placeholder="Nombre sucursal"></div>
-            <div><label class="fw-700">Pedido</label><input type="text" id="pk-filter-pedido" class="form-control" placeholder="N° pedido"></div>
-            <div><label class="fw-700">N° Packing (ID)</label><input type="text" id="pk-filter-sesion" class="form-control" placeholder="ID sesión"></div>
+            <div><label class="fw-700 form-label">Desde</label><input type="date" id="pk-filter-desde" class="form-control"></div>
+            <div><label class="fw-700 form-label">Hasta</label><input type="date" id="pk-filter-hasta" class="form-control"></div>
+            <div style="min-width:220px;"><label class="fw-700 form-label">Sucursal entrega</label><input type="text" id="pk-filter-sucursal" class="form-control" placeholder="Nombre sucursal"></div>
+            <div><label class="fw-700 form-label">Pedido</label><input type="text" id="pk-filter-pedido" class="form-control" placeholder="N° pedido"></div>
+            <div><label class="fw-700 form-label">N° Packing (ID)</label><input type="text" id="pk-filter-sesion" class="form-control" placeholder="ID sesión"></div>
             <div style="display:flex;align-items:flex-end;"><button class="btn btn-primary" onclick="WMS_MODULES.despacho._searchPackingSessions()">Buscar</button></div>
           </div>
           <div id="pk-search-results"></div>
@@ -1222,12 +1222,12 @@ WMS_MODULES.despacho = {
     const totalPedidos = [...porClave.keys()].reduce((acc, k) => acc + (this._certOrdenIdsPorSucursal?.[k]?.length || 0), 0);
     const sucursalesUnicas = new Set([...porClave.values()]).size;
     const avisoViejas = viejas.length
-      ? `<br><br><span style="color:#b45309;"><i class="fa-solid fa-triangle-exclamation"></i> Se excluyeron <b>${viejas.length} planilla(s)</b> de días anteriores (no de hoy) — no se tocarán. Certifíquelas manualmente una por una si corresponde.</span>`
+      ? `<br><br><span style="color:var(--warn);"><i class="fa-solid fa-triangle-exclamation"></i> Se excluyeron <b>${viejas.length} planilla(s)</b> de días anteriores (no de hoy) — no se tocarán. Certifíquelas manualmente una por una si corresponde.</span>`
       : '';
 
     const res = await Swal.fire({
       title: '⚡ Auto-Certificar Todos los Pedidos de HOY',
-      html: `¿Desea auto-certificar exactamente los <b>${totalPedidos} pedido(s)</b> de HOY visibles en pantalla, de las <b>${porClave.size} planilla(s)</b> (${sucursalesUnicas} sucursal(es))?<br><small style="color:#64748b;">No se tocará ningún pedido suelto de otras fechas.</small>${avisoViejas}`,
+      html: `¿Desea auto-certificar exactamente los <b>${totalPedidos} pedido(s)</b> de HOY visibles en pantalla, de las <b>${porClave.size} planilla(s)</b> (${sucursalesUnicas} sucursal(es))?<br><small style="color:var(--muted);">No se tocará ningún pedido suelto de otras fechas.</small>${avisoViejas}`,
       icon: 'question',
       showCancelButton: true,
       confirmButtonText: 'Sí, Auto-Certificar Todo',
@@ -1268,12 +1268,12 @@ WMS_MODULES.despacho = {
 
     const html = `
       <div id="packing-dialog-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;display:flex;align-items:center;justify-content:center;">
-        <div style="background:#fff;border-radius:12px;padding:28px 32px;min-width:420px;max-width:500px;box-shadow:0 8px 40px rgba(0,0,0,.25);">
-          <h3 style="margin:0 0 20px;color:#1e293b;font-size:17px;">
-            <i class="fa-solid fa-boxes-packing"></i> Iniciar Packing — <span style="color:#1e40af;">${WMS.esc(sucursal)}</span>
+        <div style="background:var(--surface);border-radius:12px;padding:28px 32px;min-width:420px;max-width:500px;box-shadow:0 8px 40px rgba(0,0,0,.25);">
+          <h3 style="margin:0 0 20px;color:var(--text);font-size:17px;">
+            <i class="fa-solid fa-boxes-packing"></i> Iniciar Packing — <span style="color:var(--accent2);">${WMS.esc(sucursal)}</span>
           </h3>
           <div style="margin-bottom:16px;">
-            <label style="font-weight:600;font-size:13px;display:block;margin-bottom:8px;">Tipo de empaque</label>
+            <label class="form-label" style="display:block;margin-bottom:8px;">Tipo de empaque</label>
             <div style="display:flex;gap:16px;">
               ${['canasta','caja','paquete'].map((t,i) => `
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
@@ -1282,14 +1282,14 @@ WMS_MODULES.despacho = {
             </div>
           </div>
           <div style="margin-bottom:12px;">
-            <label style="font-weight:600;font-size:13px;display:block;margin-bottom:5px;">Impresora stickers</label>
+            <label class="form-label" style="display:block;margin-bottom:5px;">Impresora stickers</label>
             <select id="pd-imp-sticker" class="form-control" style="width:100%;">
               <option value="">— Sin impresora —</option>
               ${mkOpts('sticker_packing')}
             </select>
           </div>
           <div style="margin-bottom:22px;">
-            <label style="font-weight:600;font-size:13px;display:block;margin-bottom:5px;">Impresora documento</label>
+            <label class="form-label" style="display:block;margin-bottom:5px;">Impresora documento</label>
             <select id="pd-imp-doc" class="form-control" style="width:100%;">
               <option value="">— Sin impresora —</option>
               ${mkOpts('documento_packing')}
@@ -1364,7 +1364,7 @@ WMS_MODULES.despacho = {
     }
 
     const headerCols = ambientes.map(a => `
-      <th style="text-align:center;background:${a.color || '#1e3a5f'};color:#fff;">
+      <th style="text-align:center;background:${a.color || '#1e293b'};color:#fff;">
         ${a.icono ? `<i class="fa-solid fa-${WMS.esc(a.icono)}"></i> ` : ''}${WMS.esc(a.descripcion)}
       </th>`).join('');
 
@@ -1378,14 +1378,14 @@ WMS_MODULES.despacho = {
       return `<tr>
         <td style="font-weight:700;">${WMS.esc(suc)}</td>
         ${cells}
-        <td class="cnt-total-suc" style="text-align:center;font-weight:800;color:#1e3a5f;" data-sucursal="${WMS.esc(suc)}">0</td>
+        <td class="cnt-total-suc" style="text-align:center;font-weight:800;color:var(--text);" data-sucursal="${WMS.esc(suc)}">0</td>
       </tr>`;
     }).join('');
 
     const html = `
       <div id="canastas-dialog-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;display:flex;align-items:center;justify-content:center;">
-        <div style="background:#fff;border-radius:12px;padding:24px 28px;min-width:480px;max-width:90vw;max-height:85vh;overflow:auto;box-shadow:0 8px 40px rgba(0,0,0,.25);">
-          <h3 style="margin:0 0 16px;color:#1e293b;font-size:17px;">
+        <div style="background:var(--surface);border-radius:12px;padding:24px 28px;min-width:480px;max-width:90vw;max-height:85vh;overflow:auto;box-shadow:0 8px 40px rgba(0,0,0,.25);">
+          <h3 style="margin:0 0 16px;color:var(--text);font-size:17px;">
             <i class="fa-solid fa-basket-shopping"></i> Canastas por Ambiente
           </h3>
           <div class="table-container">
@@ -1395,7 +1395,7 @@ WMS_MODULES.despacho = {
               <tfoot><tr>
                 <td style="font-weight:800;">TOTAL GENERAL</td>
                 <td colspan="${ambientes.length}"></td>
-                <td id="cnt-total-general" style="text-align:center;font-weight:800;color:#1e3a5f;">0</td>
+                <td id="cnt-total-general" style="text-align:center;font-weight:800;color:var(--text);">0</td>
               </tr></tfoot>
             </table>
           </div>
@@ -1459,12 +1459,12 @@ WMS_MODULES.despacho = {
 
     WMS.setContent(`
       <div class="cert-workflow-container">
-        <div class="cert-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+        <div class="cert-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:var(--table-header-bg);border-bottom:1px solid var(--border);">
           <div class="cert-header-left" style="display:flex;align-items:center;gap:12px;">
             <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.despacho.show_certificacion()">
               <i class="fa-solid fa-arrow-left"></i> Volver
             </button>
-            <h2 class="cert-title" style="margin:0;font-size:1.2rem;color:#1e293b;">Certificando: <strong style="color:#0f4c81;">${WMS.esc(sucursal)}</strong></h2>
+            <h2 class="cert-title" style="margin:0;font-size:1.2rem;color:var(--text);">Certificando: <strong style="color:var(--accent);">${WMS.esc(sucursal)}</strong></h2>
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
              <button class="btn btn-sm btn-success" onclick="WMS_MODULES.despacho.certificarTodoVisual('${WMS.esc(sucursal)}')">
@@ -1475,17 +1475,17 @@ WMS_MODULES.despacho = {
                  <span>Progreso: <strong>${certLines} / ${totalLines}</strong> líneas</span>
                  <span>${progress}%</span>
                </div>
-               <div class="pro-progress-bar-bg" style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;">
-                 <div class="pro-progress-bar-fill ${progress>=100?'green':''}" style="width:${progress}%;height:100%;background:${progress>=100?'#16a34a':'#0f4c81'};"></div>
+               <div class="pro-progress-bar-bg" style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
+                 <div class="pro-progress-bar-fill ${progress>=100?'green':''}" style="width:${progress}%;height:100%;background:${progress>=100?'var(--ok)':'var(--accent)'};"></div>
                </div>
              </div>
           </div>
         </div>
 
         <div class="cert-body" style="padding:15px;">
-          <div class="cert-scanner-box" style="background:#fff;padding:12px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:12px;">
+          <div class="cert-scanner-box" style="background:var(--surface);padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:12px;">
             <div class="scanner-input-wrap" style="display:flex;gap:10px;align-items:center;">
-              <i class="fa-solid fa-barcode" style="font-size:1.3rem;color:#0f4c81;"></i>
+              <i class="fa-solid fa-barcode" style="font-size:1.3rem;color:var(--accent);"></i>
               <input type="text" id="cert-scanner" class="form-control" style="font-size:1rem;" placeholder="Escanee producto o ingrese código..." 
                      onkeyup="if(event.key==='Enter') WMS_MODULES.despacho.procesarEscaneo('${WMS.esc(sucursal)}')">
               <button class="btn btn-primary" onclick="WMS_MODULES.despacho.procesarEscaneo('${WMS.esc(sucursal)}')">Validar</button>
@@ -1545,17 +1545,17 @@ WMS_MODULES.despacho = {
                         data-ean="${WMS.esc(l.ean)}" data-codigo="${WMS.esc(l.codigo)}" data-ambiente="${WMS.esc(l.ambiente_nombre || 'Sin ambiente')}">
                       <td>
                         <div class="fw-700">${WMS.esc(l.nombre)}</div>
-                        <div style="font-size:11px;color:#64748b;">Código: <code>${WMS.esc(l.codigo)}</code> | EAN: <code>${WMS.esc(l.ean || '—')}</code></div>
+                        <div style="font-size:11px;color:var(--muted);">Código: <code>${WMS.esc(l.codigo)}</code> | EAN: <code>${WMS.esc(l.ean || '—')}</code></div>
                       </td>
                       <td class="text-center">
                         <div><span class="badge" style="background:#475569;color:#fff;font-size:11px;">Lote: ${WMS.esc(l.lote || 'N/A')}</span></div>
-                        <div style="font-size:11px;color:${l.fecha_vencimiento ? '#b91c1c' : '#64748b'};font-weight:600;margin-top:2px;">
+                        <div style="font-size:11px;color:${l.fecha_vencimiento ? 'var(--danger)' : 'var(--muted)'};font-weight:600;margin-top:2px;">
                           ${l.fecha_vencimiento ? WMS.formatDate(l.fecha_vencimiento) : 's/v'}
                         </div>
                       </td>
                       <td class="text-center">
-                        <div class="fw-700" style="font-size:1.05rem;color:#0f4c81;">${WMS.formatNum(pick)} und</div>
-                        <div style="font-size:11px;color:#475569;">${pickCajas} cj + ${pickSaldos} sald (${upc} U/E)</div>
+                        <div class="fw-700" style="font-size:1.05rem;color:var(--accent);">${WMS.formatNum(pick)} und</div>
+                        <div style="font-size:11px;color:var(--text2);">${pickCajas} cj + ${pickSaldos} sald (${upc} U/E)</div>
                       </td>
                       <td class="text-center">
                         <input type="number" step="1" min="0" id="cert-cj-${l.producto_id}" class="form-control form-control-sm text-center fw-700"
@@ -1565,7 +1565,7 @@ WMS_MODULES.despacho = {
                         <input type="number" step="0.001" min="0" id="cert-sd-${l.producto_id}" class="form-control form-control-sm text-center fw-700"
                                value="${certSaldos}" oninput="WMS_MODULES.despacho.recalcCertRow(${l.producto_id}, ${upc}, ${pick})">
                       </td>
-                      <td class="text-center fw-700" id="cert-tot-${l.producto_id}" style="font-size:1.05rem;color:#15803d;">
+                      <td class="text-center fw-700" id="cert-tot-${l.producto_id}" style="font-size:1.05rem;color:var(--ok);">
                         ${WMS.formatNum(totCert)} und
                       </td>
                       <td class="text-center" id="cert-diff-${l.producto_id}">
@@ -1589,7 +1589,7 @@ WMS_MODULES.despacho = {
           </div>
         </div>
 
-        <div class="cert-footer" style="display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:#f8fafc;border-top:1px solid #e2e8f0;">
+        <div class="cert-footer" style="display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:var(--table-header-bg);border-top:1px solid var(--border);">
           <div class="cert-footer-left">
             <span class="text-muted" style="font-size:12px;">Sucursal: <strong>${WMS.esc(sucursal)}</strong></span>
           </div>
@@ -1761,10 +1761,10 @@ WMS_MODULES.despacho = {
         // Mostrar modal de faltantes si los hay
         if (totalFalt > 0) {
             WMS.showModal(
-                '<i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;margin-right:8px;"></i>Faltantes Detectados en Certificación',
-                `<div style="padding:14px 18px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;margin-bottom:14px;">
-                  <div style="font-size:16px;font-weight:800;color:#92400e;margin-bottom:6px;">
-                    <i class="fa-solid fa-box-open" style="color:#f59e0b;margin-right:8px;"></i>
+                '<i class="fa-solid fa-triangle-exclamation" style="color:var(--warn);margin-right:8px;"></i>Faltantes Detectados en Certificación',
+                `<div style="padding:14px 18px;background:var(--warn-bg);border:1px solid #fed7aa;border-radius:8px;margin-bottom:14px;">
+                  <div style="font-size:16px;font-weight:800;color:var(--warn);margin-bottom:6px;">
+                    <i class="fa-solid fa-box-open" style="color:var(--warn);margin-right:8px;"></i>
                     ${totalFalt} referencia(s) con faltante en este despacho
                   </div>
                   <div style="font-size:13px;color:#78350f;line-height:1.6;">
@@ -1773,7 +1773,7 @@ WMS_MODULES.despacho = {
                     Cuando llegue inventario puede liberarlos mediante el proceso de <strong>backorder</strong>.
                   </div>
                 </div>
-                <div style="padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:12px;color:#1e40af;">
+                <div style="padding:10px 14px;background:var(--info-bg);border:1px solid var(--info-bg);border-radius:6px;font-size:12px;color:var(--accent2);">
                   <i class="fa-solid fa-lightbulb" style="margin-right:6px;"></i>
                   <strong>Próximo paso:</strong> Revise el módulo <strong>Agotados</strong> en Picking para gestionar backorders o el módulo <strong>Faltantes</strong> para reprocesar.
                 </div>`,
@@ -1827,9 +1827,9 @@ WMS_MODULES.despacho = {
             </div>
           </div>
 
-          <div class="table-container" style="max-height:400px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:4px;">
+          <div class="table-container" style="max-height:400px; overflow-y:auto; border:1px solid var(--border); border-radius:4px;">
             <table class="erp-table">
-              <thead style="position:sticky; top:0; background:#f8fafc; z-index:10;">
+              <thead style="position:sticky; top:0; background:var(--table-header-bg); z-index:10;">
                 <tr>
                   <th>Producto / SKU</th>
                   <th class="text-center">Sist.</th>
@@ -1848,7 +1848,7 @@ WMS_MODULES.despacho = {
                     <div class="text-muted text-sm" style="font-family:monospace;">${WMS.esc(l.producto_codigo)}</div>
                   </td>
                   <td class="text-center fw-700">${WMS.formatNum(l.cantidad_esperada)}</td>
-                  <td class="text-center fw-700" style="color:#1a56db;">${WMS.formatNum(l.cantidad_certificada)}</td>
+                  <td class="text-center fw-700" style="color:var(--accent);">${WMS.formatNum(l.cantidad_certificada)}</td>
                   <td class="text-center">
                     ${diff === 0 ? '<span class="status-badge success"><i class="fa-solid fa-check"></i></span>' : `<span class="badge badge-danger">${diff > 0 ? '-' : '+'}${WMS.formatNum(Math.abs(diff))}</span>`}
                   </td>
@@ -1904,20 +1904,20 @@ WMS_MODULES.despacho = {
       const totalUds    = rows.reduce((s, r) => s + r.certificado, 0);
 
       const bodyHTML = `
-        <div style="display:flex;align-items:center;gap:12px;padding:0 0 14px;border-bottom:1px solid #e5e7eb;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:12px;padding:0 0 14px;border-bottom:1px solid var(--border);margin-bottom:16px;">
           <div style="flex:1;">
-            <div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Sucursal</div>
-            <div style="font-size:15px;font-weight:700;color:#111827;">${WMS.esc(sucursal)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">Sucursal</div>
+            <div style="font-size:15px;font-weight:700;color:var(--text);">${WMS.esc(sucursal)}</div>
           </div>
-          <div style="text-align:center;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 16px;">
-            <div style="font-size:11px;color:#6b7280;">Líneas</div>
-            <div style="font-size:18px;font-weight:800;color:#15803d;">${totalLineas}</div>
+          <div style="text-align:center;background:var(--ok-bg);border:1px solid var(--ok-bg);border-radius:8px;padding:8px 16px;">
+            <div style="font-size:11px;color:var(--muted);">Líneas</div>
+            <div style="font-size:18px;font-weight:800;color:var(--ok);">${totalLineas}</div>
           </div>
-          <div style="text-align:center;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 16px;">
-            <div style="font-size:11px;color:#6b7280;">Uds. Certif.</div>
-            <div style="font-size:18px;font-weight:800;color:#1d4ed8;">${WMS.formatNum(totalUds)}</div>
+          <div style="text-align:center;background:var(--info-bg);border:1px solid var(--info-bg);border-radius:8px;padding:8px 16px;">
+            <div style="font-size:11px;color:var(--muted);">Uds. Certif.</div>
+            <div style="font-size:18px;font-weight:800;color:var(--info);">${WMS.formatNum(totalUds)}</div>
           </div>
-          <span id="cert-edit-badge" style="background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;border-radius:20px;font-size:11px;font-weight:700;padding:4px 12px;">
+          <span id="cert-edit-badge" style="background:var(--btn-neutral);color:var(--muted);border:1px solid var(--border);border-radius:20px;font-size:11px;font-weight:700;padding:4px 12px;">
             Sin cambios
           </span>
         </div>
@@ -1925,32 +1925,32 @@ WMS_MODULES.despacho = {
         <div style="overflow-x:auto;max-height:55vh;overflow-y:auto;">
           <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
             <thead style="position:sticky;top:0;z-index:2;">
-              <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
-                <th style="padding:10px 8px;text-align:left;color:#475569;font-weight:600;white-space:nowrap;">Pedido</th>
-                <th style="padding:10px 8px;text-align:left;color:#475569;font-weight:600;">Código</th>
-                <th style="padding:10px 8px;text-align:left;color:#475569;font-weight:600;">Producto</th>
-                <th style="padding:10px 8px;text-align:center;color:#475569;font-weight:600;">Pickeado</th>
-                <th style="padding:10px 8px;text-align:center;color:#475569;font-weight:600;">Certificado</th>
-                <th style="padding:10px 8px;text-align:center;color:#475569;font-weight:600;min-width:120px;">Nueva Cant.</th>
-                <th style="padding:10px 8px;text-align:center;color:#475569;font-weight:600;">Diferencia</th>
+              <tr style="background:var(--table-header-bg);border-bottom:2px solid var(--border);">
+                <th style="padding:10px 8px;text-align:left;color:var(--text2);font-weight:600;white-space:nowrap;">Pedido</th>
+                <th style="padding:10px 8px;text-align:left;color:var(--text2);font-weight:600;">Código</th>
+                <th style="padding:10px 8px;text-align:left;color:var(--text2);font-weight:600;">Producto</th>
+                <th style="padding:10px 8px;text-align:center;color:var(--text2);font-weight:600;">Pickeado</th>
+                <th style="padding:10px 8px;text-align:center;color:var(--text2);font-weight:600;">Certificado</th>
+                <th style="padding:10px 8px;text-align:center;color:var(--text2);font-weight:600;min-width:120px;">Nueva Cant.</th>
+                <th style="padding:10px 8px;text-align:center;color:var(--text2);font-weight:600;">Diferencia</th>
               </tr>
             </thead>
             <tbody id="cert-edit-tbody">
               ${rows.map((row, i) => `
-              <tr id="cert-row-${i}" style="border-bottom:1px solid #f1f5f9;transition:background .15s,border-left .15s;border-left:3px solid transparent;">
-                <td style="padding:8px;font-size:11px;color:#6b7280;white-space:nowrap;">${WMS.esc(row.numero)}</td>
-                <td style="padding:8px;font-family:monospace;font-size:11px;color:#64748b;">${WMS.esc(row.codigo)}</td>
-                <td style="padding:8px;color:#1e293b;font-weight:500;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${WMS.esc(row.nombre)}">${WMS.esc(row.nombre)}</td>
-                <td style="padding:8px;text-align:center;font-weight:700;color:#2563eb;">${WMS.formatNum(row.pickeado)}</td>
-                <td style="padding:8px;text-align:center;color:${row.certificado>0?'#15803d':'#dc2626'};">${WMS.formatNum(row.certificado)}</td>
+              <tr id="cert-row-${i}" style="border-bottom:1px solid var(--border-light);transition:background .15s,border-left .15s;border-left:3px solid transparent;">
+                <td style="padding:8px;font-size:11px;color:var(--muted);white-space:nowrap;">${WMS.esc(row.numero)}</td>
+                <td style="padding:8px;font-family:monospace;font-size:11px;color:var(--muted);">${WMS.esc(row.codigo)}</td>
+                <td style="padding:8px;color:var(--text);font-weight:500;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${WMS.esc(row.nombre)}">${WMS.esc(row.nombre)}</td>
+                <td style="padding:8px;text-align:center;font-weight:700;color:var(--info);">${WMS.formatNum(row.pickeado)}</td>
+                <td style="padding:8px;text-align:center;color:${row.certificado>0?'var(--ok)':'var(--danger)'};">${WMS.formatNum(row.certificado)}</td>
                 <td style="padding:8px;text-align:center;">
-                  <input id="ceq-${i}" type="number" min="0" step="0.001"
+                  <input class="form-control" id="ceq-${i}" type="number" min="0" step="0.001"
                     value="${row.certificado}" data-orig="${row.certificado}" data-saved="0"
-                    style="width:100px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;text-align:center;font-size:12px;outline:none;transition:border .15s;"
+                    style="width:100px;padding:5px 8px;border:1.5px solid var(--border);border-radius:6px;text-align:center;font-size:12px;outline:none;transition:border .15s;"
                     oninput="WMS_MODULES.despacho._certEditOnInput(${i})"
-                    onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'">
+                    onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='var(--border)'">
                 </td>
-                <td id="cert-diff-${i}" style="padding:8px;text-align:center;font-size:11px;color:#9ca3af;">—</td>
+                <td id="cert-diff-${i}" style="padding:8px;text-align:center;font-size:11px;color:var(--text-muted);">—</td>
               </tr>`).join('')}
             </tbody>
           </table>
@@ -1982,15 +1982,15 @@ WMS_MODULES.despacho = {
 
     const row = document.getElementById(`cert-row-${idx}`);
     if (row) {
-      row.style.background  = changed ? '#fffbeb' : '';
-      row.style.borderLeft  = changed ? '3px solid #f59e0b' : '3px solid transparent';
+      row.style.background  = changed ? 'var(--warn-bg)' : '';
+      row.style.borderLeft  = changed ? '3px solid var(--warn)' : '3px solid transparent';
     }
     const diffEl = document.getElementById(`cert-diff-${idx}`);
     if (diffEl) {
-      if (!changed) { diffEl.textContent = '—'; diffEl.style.color = '#9ca3af'; }
+      if (!changed) { diffEl.textContent = '—'; diffEl.style.color = 'var(--text-muted)'; }
       else {
         diffEl.textContent = (diff > 0 ? '+' : '') + WMS.formatNum(diff);
-        diffEl.style.color  = diff > 0 ? '#dc2626' : '#15803d';
+        diffEl.style.color  = diff > 0 ? 'var(--danger)' : 'var(--ok)';
         diffEl.style.fontWeight = '700';
       }
     }
@@ -2004,9 +2004,9 @@ WMS_MODULES.despacho = {
     const badge = document.getElementById('cert-edit-badge');
     if (badge) {
       badge.textContent  = total ? `${total} cambio(s) pendiente(s)` : 'Sin cambios';
-      badge.style.background  = total ? '#fef3c7' : '#f3f4f6';
-      badge.style.color       = total ? '#92400e' : '#6b7280';
-      badge.style.borderColor = total ? '#fcd34d' : '#e5e7eb';
+      badge.style.background  = total ? 'var(--warn-bg)' : 'var(--btn-neutral)';
+      badge.style.color       = total ? 'var(--warn)' : 'var(--muted)';
+      badge.style.borderColor = total ? '#fcd34d' : 'var(--border)';
     }
     const saveBtn = document.getElementById('cert-edit-save-btn');
     if (saveBtn) {
@@ -2053,16 +2053,16 @@ WMS_MODULES.despacho = {
         inp.dataset.orig  = nueva;
         row.certificado   = nueva;
         const tr = document.getElementById(`cert-row-${i}`);
-        if (tr) { tr.style.background = '#f0fdf4'; tr.style.borderLeft = '3px solid #22c55e'; }
+        if (tr) { tr.style.background = 'var(--ok-bg)'; tr.style.borderLeft = '3px solid var(--ok)'; }
         const diffEl = document.getElementById(`cert-diff-${i}`);
-        if (diffEl) { diffEl.textContent = '✓'; diffEl.style.color = '#22c55e'; }
+        if (diffEl) { diffEl.textContent = '✓'; diffEl.style.color = 'var(--ok)'; }
         // Actualizar celda Certificado
         const cells = tr ? tr.querySelectorAll('td') : [];
-        if (cells[4]) { cells[4].textContent = WMS.formatNum(nueva); cells[4].style.color = nueva > 0 ? '#15803d' : '#dc2626'; }
+        if (cells[4]) { cells[4].textContent = WMS.formatNum(nueva); cells[4].style.color = nueva > 0 ? 'var(--ok)' : 'var(--danger)'; }
       });
 
       const badge = document.getElementById('cert-edit-badge');
-      if (badge) { badge.textContent = 'Guardado ✓'; badge.style.background = '#dcfce7'; badge.style.color = '#15803d'; badge.style.borderColor = '#86efac'; }
+      if (badge) { badge.textContent = 'Guardado ✓'; badge.style.background = 'var(--ok-bg)'; badge.style.color = 'var(--ok)'; badge.style.borderColor = '#86efac'; }
       if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Guardado'; saveBtn.style.opacity = '0.6'; }
 
       // Resumen de auditoría
@@ -2072,7 +2072,7 @@ WMS_MODULES.despacho = {
           <td style="padding:4px 8px;">${WMS.esc(l._nombre)}</td>
           <td style="padding:4px 8px;text-align:center;">${WMS.formatNum(l._prev)}</td>
           <td style="padding:4px 8px;text-align:center;font-weight:700;">${WMS.formatNum(l.cantidad_certificada)}</td>
-          <td style="padding:4px 8px;text-align:center;color:${diff>0?'#dc2626':'#15803d'};font-weight:700;">${diff>0?'+':''}${WMS.formatNum(diff)}</td>
+          <td style="padding:4px 8px;text-align:center;color:${diff>0?'var(--danger)':'var(--ok)'};font-weight:700;">${diff>0?'+':''}${WMS.formatNum(diff)}</td>
         </tr>`;
       }).join('');
 
@@ -2211,29 +2211,29 @@ WMS_MODULES.despacho = {
       if(!target) return;
       
       target.innerHTML = '\n' +
-        '<div class="filter-bar" style="flex-wrap:wrap;gap:12px;background:#f8fafc;padding:12px;border-radius:6px;margin-bottom:12px;border:1px solid #e2e8f0;">\n' +
+        '<div class="filter-bar" style="flex-wrap:wrap;gap:12px;background:var(--table-header-bg);padding:12px;border-radius:6px;margin-bottom:12px;border:1px solid var(--border);">\n' +
         '  <div style="flex:1;min-width:150px;">\n' +
-        '    <label style="font-size:0.75rem;font-weight:600;color:#64748b;margin-bottom:4px;display:block;">Fecha Desde</label>\n' +
+        '    <label class="form-label" style="margin-bottom:4px;display:block;">Fecha Desde</label>\n' +
         '    <input type="date" id="cp-f-desde" class="form-control form-control-sm" onchange="WMS_MODULES.despacho._filtrarPedidosCargue()">\n' +
         '  </div>\n' +
         '  <div style="flex:1;min-width:150px;">\n' +
-        '    <label style="font-size:0.75rem;font-weight:600;color:#64748b;margin-bottom:4px;display:block;">Fecha Hasta</label>\n' +
+        '    <label class="form-label" style="margin-bottom:4px;display:block;">Fecha Hasta</label>\n' +
         '    <input type="date" id="cp-f-hasta" class="form-control form-control-sm" onchange="WMS_MODULES.despacho._filtrarPedidosCargue()">\n' +
         '  </div>\n' +
         '  <div style="flex:2;min-width:200px;">\n' +
-        '    <label style="font-size:0.75rem;font-weight:600;color:#64748b;margin-bottom:4px;display:block;">Buscador (Pedido, Cliente o Sucursal)</label>\n' +
+        '    <label class="form-label" style="margin-bottom:4px;display:block;">Buscador (Pedido, Cliente o Sucursal)</label>\n' +
         '    <div class="search-bar" style="margin:0;"><i class="fa-solid fa-search"></i>\n' +
-        '      <input type="text" id="cp-f-texto" placeholder="Escriba para filtrar en tiempo real..." oninput="WMS_MODULES.despacho._filtrarPedidosCargue()">\n' +
+        '      <input class="form-control" type="text" id="cp-f-texto" placeholder="Escriba para filtrar en tiempo real..." oninput="WMS_MODULES.despacho._filtrarPedidosCargue()">\n' +
         '    </div>\n' +
         '  </div>\n' +
         '  <div style="flex:1;min-width:150px;">\n' +
-        '    <label style="font-size:0.75rem;font-weight:600;color:#64748b;margin-bottom:4px;display:block;">Planilla Picking</label>\n' +
+        '    <label class="form-label" style="margin-bottom:4px;display:block;">Planilla Picking</label>\n' +
         '    <input type="text" id="cp-f-planilla" class="form-control form-control-sm" placeholder="# Planilla" oninput="WMS_MODULES.despacho._filtrarPedidosCargue()">\n' +
         '  </div>\n' +
         '</div>\n' +
         '\n' +
         '<div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">\n' +
-        '  <span style="font-weight:bold;color:#334155;"><i class="fa-solid fa-cubes"></i> <span id="cp-counter">0</span> pedidos listos</span>\n' +
+        '  <span style="font-weight:bold;color:var(--text);"><i class="fa-solid fa-cubes"></i> <span id="cp-counter">0</span> pedidos listos</span>\n' +
         '  <button class="btn btn-success" onclick="WMS_MODULES.despacho.nuevoPlanillaCargueMasivo()"><i class="fa-solid fa-truck"></i> Crear Planilla con Seleccionados</button>\n' +
         '</div>\n' +
         '\n' +
@@ -2259,7 +2259,7 @@ WMS_MODULES.despacho = {
       this._filtrarPedidosCargue();
     } catch(e) {
       const errTarget = document.getElementById('cargue-content-wrap') || document.getElementById('main-content');
-      if (errTarget) errTarget.innerHTML = '<div class="m-empty" style="padding:40px;text-align:center;color:#ef4444;"><i class="fa-solid fa-exclamation-triangle"></i> Error cargando pedidos pendientes</div>';
+      if (errTarget) errTarget.innerHTML = '<div class="m-empty" style="padding:40px;text-align:center;color:var(--danger);"><i class="fa-solid fa-exclamation-triangle"></i> Error cargando pedidos pendientes</div>';
       WMS.toast('error', 'Error cargando pedidos pendientes');
     }
   },
@@ -2307,14 +2307,14 @@ WMS_MODULES.despacho = {
     for (const g of grupos) {
       const ids = g.pedidos.map(p => p.id);
       const pedidosChips = g.pedidos.map(p =>
-        `<span style="font-size:9.5px;color:#475569;background:#f1f5f9;border-radius:3px;padding:1px 5px;margin:1px;display:inline-block;">${WMS.esc(p.numero_orden || p.numero_factura || ('#'+p.id))}</span>`
+        `<span style="font-size:9.5px;color:var(--text2);background:var(--btn-neutral);border-radius:3px;padding:1px 5px;margin:1px;display:inline-block;">${WMS.esc(p.numero_orden || p.numero_factura || ('#'+p.id))}</span>`
       ).join('');
       const fecha = g.pedidos[0]?.fecha_movimiento;
 
       html += `<tr>
         <td><input type="checkbox" class="cp-chk" data-ids='${JSON.stringify(ids)}'></td>
         <td><span class="badge badge-info">${WMS.esc(g.planilla)}</span></td>
-        <td>${pedidosChips}<div style="font-size:9px;color:#94a3b8;margin-top:2px;">${g.pedidos.length} pedido${g.pedidos.length!==1?'s':''}</div></td>
+        <td>${pedidosChips}<div style="font-size:9px;color:var(--text-muted);margin-top:2px;">${g.pedidos.length} pedido${g.pedidos.length!==1?'s':''}</div></td>
         <td>${WMS.esc([...g.clientes].join(', ') || '-')}</td>
         <td>${WMS.formatDate(fecha)}</td>
         <td style="white-space:nowrap;">
@@ -2391,7 +2391,7 @@ WMS_MODULES.despacho = {
         <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho._aplicarFiltrosCargue()"><i class="fa-solid fa-filter"></i> Filtrar</button>
         <button class="btn btn-outline-secondary btn-sm" onclick="WMS_MODULES.despacho._hoyFiltrosCargue()"><i class="fa-solid fa-calendar-day"></i> Hoy</button>
         <div class="search-bar" style="flex:1;min-width:200px;"><i class="fa-solid fa-search"></i>
-          <input placeholder="Buscar placa, conductor, ruta..." oninput="WMS_MODULES.despacho.filterTable(this.value,'cargue-table')">
+          <input class="form-control" placeholder="Buscar placa, conductor, ruta..." oninput="WMS_MODULES.despacho.filterTable(this.value,'cargue-table')">
         </div>
         <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.nuevoPlanillaCargue()"><i class="fa-solid fa-plus"></i> Nuevo Cargue Vacío</button>
       </div>
@@ -2466,6 +2466,7 @@ WMS_MODULES.despacho = {
                 <td>${WMS.formatDate(d.fecha_movimiento)||'-'}</td>
                 <td><div class="actions">
                   <button class="btn btn-sm btn-secondary" title="Ver detalle" onclick="WMS_MODULES.despacho.verCargue(${d.id})"><i class="fa-solid fa-eye"></i></button>
+                  ${d.estado !== 'Entregado' ? `<button class="btn btn-sm btn-outline-primary" title="Editar vehículo / conductor / auxiliar" onclick="WMS_MODULES.despacho.cambiarAuxiliarCargue(${d.id})"><i class="fa-solid fa-pen-to-square"></i> Editar</button>` : ''}
                   ${d.estado !== 'Entregado' ? `<button class="btn btn-sm btn-info" title="Agregar pedidos" onclick="WMS_MODULES.despacho.agregarPedidosCargue(${d.id})"><i class="fa-solid fa-box-open"></i> Pedidos</button>` : ''}
                   ${d.estado === 'Preparando' || d.estado === 'Certificado' ? `<button class="btn btn-sm btn-success" title="Despachar" onclick="WMS_MODULES.despacho.despacharCargue(${d.id})"><i class="fa-solid fa-truck"></i> Despachar</button>` : ''}
                   ${d.estado === 'Despachado' ? `<button class="btn btn-sm btn-warning" title="Liquidar - marcar como Entregado" onclick="WMS_MODULES.despacho.liquidarCargue(${d.id})"><i class="fa-solid fa-clipboard-check"></i> Liquidar</button>` : ''}
@@ -2532,7 +2533,7 @@ WMS_MODULES.despacho = {
         <div class="form-group" style="grid-column:1/-1;">
           <label class="form-label">Auxiliar que realiza la entrega</label>
           <select id="car-auxiliar-id" class="form-control">${o.auxiliaresOpts}</select>
-          <small style="color:#64748b;font-size:.75rem;">Al asignarlo, este auxiliar verá estas sucursales al loguearse en el TMS.</small>
+          <small style="color:var(--muted);font-size:.75rem;">Al asignarlo, este auxiliar verá estas sucursales al loguearse en el TMS.</small>
         </div>
         <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Observaciones</label><textarea id="car-obs" class="form-control" rows="2" placeholder="Notas adicionales"></textarea></div>
       </div>`;
@@ -2624,32 +2625,50 @@ WMS_MODULES.despacho = {
   // explícito de Camilo, 2026-09-27, tras un caso real de asignación
   // equivocada — dos personas distintas con el mismo nombre). Reenvía la
   // corrección al TMS (ver DespachoController::actualizar()).
+  // 2026-10-01: ampliado a editar toda la planilla (vehículo, conductor, ruta,
+  // auxiliar) — mismo PUT; si cambia auxiliar o ruta se reenvía al TMS.
   async cambiarAuxiliarCargue(id) {
-    const o = await this._opcionesCargueForm();
+    const [o, rd] = await Promise.all([this._opcionesCargueForm(), API.get('/despachos/' + id)]);
+    const d = rd.data || rd || {};
     const overlay = document.createElement('div');
     overlay.id = 'cambiar-aux-overlay';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9500;display:flex;align-items:center;justify-content:center;';
     overlay.innerHTML = `
-      <div style="background:#fff;border-radius:10px;padding:22px 26px;min-width:360px;box-shadow:0 8px 40px rgba(0,0,0,.25);">
-        <h3 style="margin:0 0 14px;font-size:15px;">Cambiar auxiliar de entrega</h3>
-        <select id="cambiar-aux-select" class="form-control">${o.auxiliaresOpts}</select>
+      <div style="background:var(--surface);border-radius:10px;padding:22px 26px;width:520px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,.25);">
+        <h3 style="margin:0 0 14px;font-size:15px;">Editar planilla ${WMS.esc(d.numero_despacho || '#' + id)}</h3>
+        ${this._cargueFormFields(o)}
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
           <button class="btn btn-secondary btn-sm" onclick="document.getElementById('cambiar-aux-overlay').remove()">Cancelar</button>
-          <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho._guardarCambioAuxiliar(${id})">Guardar</button>
+          <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho._guardarCambioAuxiliar(${id})"><i class="fa-solid fa-save"></i> Guardar</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
+    const set = (elId, v) => { const el = document.getElementById(elId); if (el) el.value = v ?? ''; };
+    set('car-vehiculo-id', d.vehiculo_id);
+    set('car-conductor-id', d.conductor_id);
+    set('car-ruta-id', d.ruta_id);
+    set('car-auxiliar-id', d.auxiliar_id);
+    set('car-obs', d.observaciones);
   },
 
   async _guardarCambioAuxiliar(id) {
-    const auxiliarId = document.getElementById('cambiar-aux-select')?.value || null;
+    const val = elId => document.getElementById(elId)?.value || null;
+    const num = v => v ? parseInt(v) : null;
+    if (!val('car-vehiculo-id') || !val('car-conductor-id')) { WMS.toast('warning', 'Vehículo y Conductor son requeridos'); return; }
     try {
-      const r = await API.put(`/despachos/${id}`, { auxiliar_id: auxiliarId ? parseInt(auxiliarId) : null });
+      const r = await API.put(`/despachos/${id}`, {
+        vehiculo_id:  num(val('car-vehiculo-id')),
+        conductor_id: num(val('car-conductor-id')),
+        ruta_id:      num(val('car-ruta-id')),
+        auxiliar_id:  num(val('car-auxiliar-id')),
+        observaciones: (val('car-obs') || '').trim() || null,
+      });
       if (r.error) { WMS.toast('error', r.message); return; }
       document.getElementById('cambiar-aux-overlay')?.remove();
-      WMS.toast('success', 'Auxiliar actualizado y reenviado al TMS');
+      WMS.toast('success', 'Planilla actualizada y reenviada al TMS');
       WMS.closeRightPanel();
       this.verCargue(id);
+      if (document.getElementById('tab-cargue-planillas')?.classList.contains('btn-primary')) this._renderPlanillasCreadas();
     } catch (e) { WMS.toast('error', 'Error guardando'); }
   },
 
@@ -2660,8 +2679,8 @@ WMS_MODULES.despacho = {
       const ordenes = d.ordenes || [];
       const stOrd = s => {
         if (!s) return '-';
-        const col = { Despachado: '#3b82f6', Entregado: '#059669' };
-        return `<span style="color:${col[s]||'#64748b'};font-weight:700;">${WMS.esc(s)}</span>`;
+        const col = { Despachado: 'var(--info)', Entregado: 'var(--ok)' };
+        return `<span style="color:${col[s]||'var(--muted)'};font-weight:700;">${WMS.esc(s)}</span>`;
       };
       const esEditable = d.estado !== 'Entregado';
       // Info que registra el auxiliar en el TMS al confirmar la entrega — a
@@ -2670,12 +2689,12 @@ WMS_MODULES.despacho = {
       // entregar sin salir a revisar otra pantalla.
       const stEntrega = o => {
         const e = o.entrega_tms;
-        if (!e || !e.entregado) return '<span style="color:#94a3b8;">Pendiente de entrega</span>';
+        if (!e || !e.entregado) return '<span style="color:var(--text-muted);">Pendiente de entrega</span>';
         const hora = e.hora_llegada ? new Date(e.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '-';
         if (e.tiene_novedad) {
-          return `<span style="color:#dc2626;font-weight:700;" title="${WMS.esc(e.observaciones || '')}"><i class="fa-solid fa-triangle-exclamation"></i> Entregado c/novedad (${e.total_novedades}) — ${hora}</span>`;
+          return `<span style="color:var(--danger);font-weight:700;" title="${WMS.esc(e.observaciones || '')}"><i class="fa-solid fa-triangle-exclamation"></i> Entregado c/novedad (${e.total_novedades}) — ${hora}</span>`;
         }
-        return `<span style="color:#059669;font-weight:700;"><i class="fa-solid fa-check-circle"></i> Entregado sin novedad — ${hora}</span>`;
+        return `<span style="color:var(--ok);font-weight:700;"><i class="fa-solid fa-check-circle"></i> Entregado sin novedad — ${hora}</span>`;
       };
       WMS.showRightPanel(`Cargue: ${WMS.esc(d.numero_despacho||'#'+id)}`, `
         <div class="form-grid form-grid-2" style="margin-bottom:16px;">
@@ -2686,8 +2705,8 @@ WMS_MODULES.despacho = {
           <div style="grid-column:1/-1;">
             <label class="form-label">Auxiliar de entrega (TMS)</label>
             <p>
-              ${d.auxiliar ? `<b>${WMS.esc(d.auxiliar.nombre)}</b> — doc. ${WMS.esc(d.auxiliar.documento||'s/n')}` : '<span style="color:#94a3b8;">Sin asignar</span>'}
-              ${esEditable ? ` <button class="btn btn-xs btn-outline-primary" style="margin-left:6px;" onclick="WMS_MODULES.despacho.cambiarAuxiliarCargue(${id})">Cambiar</button>` : ''}
+              ${d.auxiliar ? `<b>${WMS.esc(d.auxiliar.nombre)}</b> — doc. ${WMS.esc(d.auxiliar.documento||'s/n')}` : '<span style="color:var(--text-muted);">Sin asignar</span>'}
+              ${esEditable ? ` <button class="btn btn-xs btn-outline-primary" style="margin-left:6px;" onclick="WMS_MODULES.despacho.cambiarAuxiliarCargue(${id})"><i class="fa-solid fa-pen-to-square"></i> Editar planilla</button>` : ''}
             </p>
           </div>
           ${d.observaciones ? `<div style="grid-column:1/-1;"><label class="form-label">Observaciones</label><p>${WMS.esc(d.observaciones)}</p></div>` : ''}
@@ -2827,10 +2846,10 @@ WMS_MODULES.despacho = {
             <span class="card-title"><i class="fa-solid fa-box-open"></i> Agregar Pedidos a Cargue: ${WMS.esc(despacho.numero_despacho)}</span>
           </div>
           <div class="card-body">
-            <p style="color:#64748b;margin-bottom:12px;">Selecciona los pedidos certificados para asociar a esta planilla. El estado de los pedidos quedará como <b>Despachado</b>.</p>
+            <p style="color:var(--muted);margin-bottom:12px;">Selecciona los pedidos certificados para asociar a esta planilla. El estado de los pedidos quedará como <b>Despachado</b>.</p>
             <div class="filter-bar" style="margin-bottom:12px;">
               <div class="search-bar"><i class="fa-solid fa-search"></i>
-                <input placeholder="Filtrar pedidos..." oninput="WMS_MODULES.despacho.filterTable(this.value,'add-ord-table')">
+                <input class="form-control" placeholder="Filtrar pedidos..." oninput="WMS_MODULES.despacho.filterTable(this.value,'add-ord-table')">
               </div>
             </div>
             <div class="table-container">
@@ -2963,7 +2982,7 @@ WMS_MODULES.despacho = {
       </div>
       <div class="pro-kpi-value">${WMS.formatNum(totalP)}</div>
       <div class="pro-kpi-label">Planillas en ciclo</div>
-      <div class="pro-kpi-sub"><i class="fa-solid fa-file-lines" style="color:#0070f2;margin-right:4px"></i>Documentos activos</div>
+      <div class="pro-kpi-sub"><i class="fa-solid fa-file-lines" style="color:var(--accent);margin-right:4px"></i>Documentos activos</div>
     </div>
 
     <div class="pro-kpi-card accent-amber">
@@ -2973,7 +2992,7 @@ WMS_MODULES.despacho = {
       </div>
       <div class="pro-kpi-value">${WMS.formatNum(d.en_proceso||0)}</div>
       <div class="pro-kpi-label">En certificación</div>
-      <div class="pro-kpi-sub"><i class="fa-solid fa-bolt" style="color:#e8a000;margin-right:4px"></i>Operación activa</div>
+      <div class="pro-kpi-sub"><i class="fa-solid fa-bolt" style="color:var(--warn);margin-right:4px"></i>Operación activa</div>
     </div>
 
     <div class="pro-kpi-card ${iraColor}">
@@ -3117,69 +3136,69 @@ WMS_MODULES.despacho = {
       WMS.setContent(`
         <!-- KPIs -->
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;">
-          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:16px;display:flex;align-items:center;gap:12px;">
-            <div style="width:40px;height:40px;border-radius:4px;background:#dcfce7;display:flex;align-items:center;justify-content:center;color:#16a34a;font-size:18px;"><i class="fa-solid fa-satellite-dish"></i></div>
+          <div style="background:var(--ok-bg);border:1px solid var(--ok-bg);border-radius:4px;padding:16px;display:flex;align-items:center;gap:12px;">
+            <div style="width:40px;height:40px;border-radius:4px;background:var(--ok-bg);display:flex;align-items:center;justify-content:center;color:var(--ok);font-size:18px;"><i class="fa-solid fa-satellite-dish"></i></div>
             <div>
-              <div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.5px;">Estado API</div>
-              <div style="font-size:16px;font-weight:800;color:#166534;">Endpoints activos</div>
+              <div style="font-size:11px;font-weight:700;color:var(--ok);text-transform:uppercase;letter-spacing:.5px;">Estado API</div>
+              <div style="font-size:16px;font-weight:800;color:var(--ok);">Endpoints activos</div>
             </div>
           </div>
-          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:16px;display:flex;align-items:center;gap:12px;">
-            <div style="width:40px;height:40px;border-radius:4px;background:#dbeafe;display:flex;align-items:center;justify-content:center;color:#1d4ed8;font-size:18px;"><i class="fa-solid fa-boxes-stacked"></i></div>
+          <div style="background:var(--info-bg);border:1px solid var(--info-bg);border-radius:4px;padding:16px;display:flex;align-items:center;gap:12px;">
+            <div style="width:40px;height:40px;border-radius:4px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;color:var(--info);font-size:18px;"><i class="fa-solid fa-boxes-stacked"></i></div>
             <div>
-              <div style="font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:.5px;">Ítems en stock</div>
-              <div style="font-size:22px;font-weight:900;color:#1e3a5f;">${WMS.formatNum(stk)}</div>
+              <div style="font-size:11px;font-weight:700;color:var(--info);text-transform:uppercase;letter-spacing:.5px;">Ítems en stock</div>
+              <div style="font-size:22px;font-weight:900;color:var(--text);">${WMS.formatNum(stk)}</div>
             </div>
           </div>
-          <div style="background:#fefce8;border:1px solid #fde68a;border-radius:4px;padding:16px;display:flex;align-items:center;gap:12px;">
-            <div style="width:40px;height:40px;border-radius:4px;background:#fef08a;display:flex;align-items:center;justify-content:center;color:#d97706;font-size:18px;"><i class="fa-solid fa-truck-fast"></i></div>
+          <div style="background:var(--warn-bg);border:1px solid var(--warn-bg);border-radius:4px;padding:16px;display:flex;align-items:center;gap:12px;">
+            <div style="width:40px;height:40px;border-radius:4px;background:#fef08a;display:flex;align-items:center;justify-content:center;color:var(--warn);font-size:18px;"><i class="fa-solid fa-truck-fast"></i></div>
             <div>
-              <div style="font-size:11px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:.5px;">Despachos hoy</div>
-              <div style="font-size:22px;font-weight:900;color:#1e3a5f;">${WMS.formatNum(desp.length)}</div>
+              <div style="font-size:11px;font-weight:700;color:var(--warn);text-transform:uppercase;letter-spacing:.5px;">Despachos hoy</div>
+              <div style="font-size:22px;font-weight:900;color:var(--text);">${WMS.formatNum(desp.length)}</div>
             </div>
           </div>
         </div>
 
         <!-- Despachos -->
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.06);">
-          <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;font-weight:800;color:#1e3a5f;font-size:13px;">
-            <i class="fa-solid fa-truck-fast" style="color:#d97706;margin-right:6px;"></i>Despachos del día
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+          <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-weight:800;color:var(--text);font-size:13px;">
+            <i class="fa-solid fa-truck-fast" style="color:var(--warn);margin-right:6px;"></i>Despachos del día
           </div>
           <div style="overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;font-size:12px;">
-              <thead><tr style="background:#f8fafc;">
-                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">N° Despacho</th>
-                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">Cliente</th>
-                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">Operador</th>
-                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">Estado</th>
-                <th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:700;">Tracking</th>
-                <th style="padding:8px 12px;text-align:center;color:#64748b;font-weight:700;">Acción</th>
+              <thead><tr style="background:var(--table-header-bg);">
+                <th style="padding:8px 12px;text-align:left;color:var(--muted);font-weight:700;">N° Despacho</th>
+                <th style="padding:8px 12px;text-align:left;color:var(--muted);font-weight:700;">Cliente</th>
+                <th style="padding:8px 12px;text-align:left;color:var(--muted);font-weight:700;">Operador</th>
+                <th style="padding:8px 12px;text-align:left;color:var(--muted);font-weight:700;">Estado</th>
+                <th style="padding:8px 12px;text-align:left;color:var(--muted);font-weight:700;">Tracking</th>
+                <th style="padding:8px 12px;text-align:center;color:var(--muted);font-weight:700;">Acción</th>
               </tr></thead>
               <tbody>
                 ${desp.length ? desp.slice(0,30).map(d => {
                   const enTransito = d.tms_estado === 'EnTransito' || d.estado === 'En Tránsito';
                   const entregado  = d.tms_estado === 'Entregado'  || d.estado === 'Entregado';
                   const badge = entregado
-                    ? 'background:#dcfce7;color:#166534'
+                    ? 'background:var(--ok-bg);color:var(--ok)'
                     : enTransito
-                      ? 'background:#dbeafe;color:#1e40af'
-                      : 'background:#fef9c3;color:#854d0e';
+                      ? 'background:var(--info-bg);color:var(--accent2)'
+                      : 'background:var(--warn-bg);color:var(--warn)';
                   const label = entregado ? 'Entregado' : enTransito ? 'En Tránsito' : (d.estado||'Pendiente');
-                  return `<tr style="border-bottom:1px solid #f1f5f9;">
-                    <td style="padding:8px 12px;font-weight:700;color:#0F4C81;">${WMS.esc(d.numero_despacho||'-')}</td>
+                  return `<tr style="border-bottom:1px solid var(--border-light);">
+                    <td style="padding:8px 12px;font-weight:700;color:var(--accent);">${WMS.esc(d.numero_despacho||'-')}</td>
                     <td style="padding:8px 12px;">${WMS.esc(d.cliente_nombre||d.cliente||'-')}</td>
                     <td style="padding:8px 12px;">${WMS.esc(d.operador||'-')}</td>
                     <td style="padding:8px 12px;"><span style="${badge};padding:2px 8px;border-radius:3px;font-size:.72rem;font-weight:600;">${WMS.esc(label)}</span></td>
-                    <td style="padding:8px 12px;font-family:monospace;font-size:11px;color:#64748b;">${WMS.esc(d.tms_tracking_code||'—')}</td>
+                    <td style="padding:8px 12px;font-family:monospace;font-size:11px;color:var(--muted);">${WMS.esc(d.tms_tracking_code||'—')}</td>
                     <td style="padding:8px 12px;text-align:center;">
                       ${d.estado === 'Cerrado' && !enTransito && !entregado
                         ? `<button class="btn btn-sm btn-primary" style="font-size:.7rem;" onclick="WMS_MODULES.despacho.marcarEnTransito(${d.id})">
                              <i class="fa-solid fa-truck-moving"></i> En Tránsito
                            </button>`
-                        : `<span style="color:#94a3b8;font-size:11px;">—</span>`}
+                        : `<span style="color:var(--text-muted);font-size:11px;">—</span>`}
                     </td>
                   </tr>`;
-                }).join('') : '<tr><td colspan="6" style="text-align:center;padding:20px;color:#94a3b8;font-style:italic;">Sin despachos registrados hoy</td></tr>'}
+                }).join('') : '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted);font-style:italic;">Sin despachos registrados hoy</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -3226,35 +3245,35 @@ WMS_MODULES.despacho = {
       const r    = await API.get('/tms/keys');
       const keys = Array.isArray(r.data) ? r.data : [];
       WMS.showModal(
-        '<i class="fa-solid fa-key" style="margin-right:6px;color:#1d4ed8;"></i>API Keys TMS',
+        '<i class="fa-solid fa-key" style="margin-right:6px;color:var(--info);"></i>API Keys TMS',
         `<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
-           <p style="margin:0;font-size:12px;color:#64748b;">Cada key autoriza al TMS externo a consultar los endpoints del WMS.</p>
+           <p style="margin:0;font-size:12px;color:var(--muted);">Cada key autoriza al TMS externo a consultar los endpoints del WMS.</p>
            <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.despacho.crearApiKey()">
              <i class="fa-solid fa-plus"></i> Nueva Key
            </button>
          </div>
          <div style="overflow-x:auto;">
            <table style="width:100%;border-collapse:collapse;font-size:12px;">
-             <thead><tr style="background:#f8fafc;">
-               <th style="padding:7px 10px;text-align:left;color:#64748b;font-weight:700;">Nombre</th>
-               <th style="padding:7px 10px;text-align:left;color:#64748b;font-weight:700;">Key (hash parcial)</th>
-               <th style="padding:7px 10px;text-align:left;color:#64748b;font-weight:700;">Último uso</th>
-               <th style="padding:7px 10px;text-align:center;color:#64748b;font-weight:700;width:80px;"></th>
+             <thead><tr style="background:var(--table-header-bg);">
+               <th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:700;">Nombre</th>
+               <th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:700;">Key (hash parcial)</th>
+               <th style="padding:7px 10px;text-align:left;color:var(--muted);font-weight:700;">Último uso</th>
+               <th style="padding:7px 10px;text-align:center;color:var(--muted);font-weight:700;width:80px;"></th>
              </tr></thead>
              <tbody id="tms-keys-tbody">
                ${keys.length ? keys.map(k => `
-                 <tr style="border-bottom:1px solid #f1f5f9;" id="tms-key-row-${k.id}">
+                 <tr style="border-bottom:1px solid var(--border-light);" id="tms-key-row-${k.id}">
                    <td style="padding:8px 10px;font-weight:600;">${WMS.esc(k.nombre||'-')}</td>
-                   <td style="padding:8px 10px;font-family:monospace;font-size:11px;color:#64748b;">${(k.key_hash||'').substring(0,12)}…</td>
-                   <td style="padding:8px 10px;color:#64748b;">${k.ultimo_uso ? WMS.formatDate(k.ultimo_uso) : '<span style="color:#94a3b8">Nunca</span>'}</td>
+                   <td style="padding:8px 10px;font-family:monospace;font-size:11px;color:var(--muted);">${(k.key_hash||'').substring(0,12)}…</td>
+                   <td style="padding:8px 10px;color:var(--muted);">${k.ultimo_uso ? WMS.formatDate(k.ultimo_uso) : '<span style="color:var(--text-muted)">Nunca</span>'}</td>
                    <td style="padding:8px 10px;text-align:center;">
-                     <button class="btn btn-xs" style="background:#fee2e2;color:#991b1b;border:none;border-radius:3px;padding:3px 8px;cursor:pointer;"
+                     <button class="btn btn-xs" style="background:var(--danger-bg);color:var(--danger);border:none;border-radius:3px;padding:3px 8px;cursor:pointer;"
                              onclick="WMS_MODULES.despacho.revocarKey(${k.id})">
                        <i class="fa-solid fa-ban"></i> Revocar
                      </button>
                    </td>
                  </tr>`).join('')
-               : '<tr><td colspan="4" style="text-align:center;padding:20px;color:#94a3b8;font-style:italic;">Sin API Keys activas</td></tr>'}
+               : '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-muted);font-style:italic;">Sin API Keys activas</td></tr>'}
              </tbody>
            </table>
          </div>`,
@@ -3267,27 +3286,27 @@ WMS_MODULES.despacho = {
 
   async crearApiKey() {
     WMS.showModal(
-      '<i class="fa-solid fa-plus" style="margin-right:6px;color:#16a34a;"></i>Nueva API Key TMS',
-      `<p style="font-size:12px;color:#64748b;margin-bottom:14px;">
+      '<i class="fa-solid fa-plus" style="margin-right:6px;color:var(--ok);"></i>Nueva API Key TMS',
+      `<p style="font-size:12px;color:var(--muted);margin-bottom:14px;">
          La clave se mostrará <strong>una sola vez</strong>. Cópiala al servidor TMS antes de cerrar este cuadro.
        </p>
        <div class="form-group">
-         <label class="form-label">Nombre identificador <span style="color:#dc2626;">*</span></label>
+         <label class="form-label">Nombre identificador <span style="color:var(--danger);">*</span></label>
          <input id="tms-key-nombre" class="form-control" placeholder="Ej: TMS-Hostinger-Prod" autofocus>
        </div>
        <div id="tms-key-result" style="display:none;margin-top:14px;">
-         <label class="form-label" style="color:#16a34a;font-weight:700;">
+         <label class="form-label" style="color:var(--ok);font-weight:700;">
            <i class="fa-solid fa-circle-check"></i> Key generada — cópiala ahora
          </label>
          <div style="display:flex;gap:8px;align-items:center;">
            <input id="tms-key-value" class="form-control" readonly
-                  style="font-family:monospace;font-size:12px;background:#f0fdf4;border-color:#86efac;">
+                  style="font-family:monospace;font-size:12px;background:var(--ok-bg);border-color:#86efac;">
            <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.despacho._copiarKey()"
                    style="white-space:nowrap;flex-shrink:0;">
              <i class="fa-solid fa-copy"></i> Copiar
            </button>
          </div>
-         <p style="font-size:11px;color:#dc2626;margin-top:6px;">
+         <p style="font-size:11px;color:var(--danger);margin-top:6px;">
            <i class="fa-solid fa-triangle-exclamation"></i> No se almacena en texto plano. Si la pierdes deberás crear una nueva.
          </p>
        </div>`,
@@ -3348,7 +3367,7 @@ WMS_MODULES.despacho = {
       { method:'POST', path:'/despacho/{id}/transportar',desc:'Marcar despacho en tránsito',             params:'Body: {"tracking_code":"T001","transportista":"TransCo"}' },
       { method:'POST', path:'/webhook',                  desc:'Receptor de eventos del TMS',             params:'Body: {"evento":"ENTREGA_CONFIRMADA","payload":{...}}' },
     ];
-    const methodColor = { GET:'#16a34a', POST:'#1d4ed8', DELETE:'#dc2626' };
+    const methodColor = { GET:'var(--ok)', POST:'var(--info)', DELETE:'var(--danger)' };
     WMS.showModal(
       '<i class="fa-solid fa-book" style="margin-right:6px;color:#7c3aed;"></i>Guía de Conexión — TMS',
       `<!-- URL base -->
@@ -3364,7 +3383,7 @@ WMS_MODULES.despacho = {
        </div>
 
        <!-- Auth -->
-       <div style="background:#fefce8;border:1px solid #fde68a;border-radius:4px;padding:12px 14px;margin-bottom:18px;font-size:12px;">
+       <div style="background:var(--warn-bg);border:1px solid var(--warn-bg);border-radius:4px;padding:12px 14px;margin-bottom:18px;font-size:12px;">
          <div style="font-weight:700;color:#78350f;margin-bottom:6px;"><i class="fa-solid fa-shield-halved"></i> Autenticación</div>
          <p style="margin:0 0 6px;color:#713f12;">Incluye el header en cada request:</p>
          <code style="display:block;background:#fef08a;padding:6px 10px;border-radius:3px;font-size:11px;">X-API-Key: wms_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</code>
@@ -3372,27 +3391,27 @@ WMS_MODULES.despacho = {
        </div>
 
        <!-- Endpoints -->
-       <div style="font-weight:700;color:#1e3a5f;font-size:13px;margin-bottom:10px;">Endpoints disponibles</div>
+       <div style="font-weight:700;color:var(--text);font-size:13px;margin-bottom:10px;">Endpoints disponibles</div>
        <div style="display:flex;flex-direction:column;gap:8px;">
          ${endpoints.map(ep => `
-           <div style="border:1px solid #e2e8f0;border-radius:4px;padding:10px 12px;background:#f8fafc;">
+           <div style="border:1px solid var(--border);border-radius:4px;padding:10px 12px;background:var(--table-header-bg);">
              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
                <span style="background:${methodColor[ep.method]||'#64748b'};color:#fff;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:800;font-family:monospace;">${ep.method}</span>
-               <code style="font-size:12px;color:#1e293b;font-weight:600;">${ep.path}</code>
+               <code style="font-size:12px;color:var(--text);font-weight:600;">${ep.path}</code>
              </div>
-             <div style="font-size:11px;color:#64748b;margin-bottom:3px;">${ep.desc}</div>
-             <code style="font-size:10px;color:#94a3b8;word-break:break-all;">${ep.params}</code>
+             <div style="font-size:11px;color:var(--muted);margin-bottom:3px;">${ep.desc}</div>
+             <code style="font-size:10px;color:var(--text-muted);word-break:break-all;">${ep.params}</code>
            </div>`).join('')}
        </div>
 
        <!-- Ejemplo cURL -->
        <div style="margin-top:18px;">
-         <div style="font-weight:700;color:#1e3a5f;font-size:12px;margin-bottom:6px;">Ejemplo PHP/cURL (servidor TMS)</div>
+         <div style="font-weight:700;color:var(--text);font-size:12px;margin-bottom:6px;">Ejemplo PHP/cURL (servidor TMS)</div>
          <pre style="background:#1e293b;color:#e2e8f0;padding:12px;border-radius:4px;font-size:11px;overflow-x:auto;line-height:1.6;">\$ch = curl_init('${base}/stock');\ncurl_setopt_array(\$ch, [\n  CURLOPT_RETURNTRANSFER =&gt; true,\n  CURLOPT_HTTPHEADER =&gt; ['X-API-Key: wms_TU_KEY_AQUI']\n]);\n\$json = json_decode(curl_exec(\$ch));\n// \$json-&gt;ok === true\n// \$json-&gt;data = [...items de inventario]</pre>
        </div>
 
        <!-- Conexión Hostinger → Local -->
-       <div style="margin-top:18px;background:#fff7ed;border:1px solid #fed7aa;border-radius:4px;padding:14px;">
+       <div style="margin-top:18px;background:var(--warn-bg);border:1px solid #fed7aa;border-radius:4px;padding:14px;">
          <div style="font-weight:700;color:#c2410c;margin-bottom:8px;font-size:12px;">
            <i class="fa-solid fa-cloud-arrow-up"></i> Conectar servidor Hostinger → WMS local (XAMPP)
          </div>
@@ -3402,14 +3421,14 @@ WMS_MODULES.despacho = {
          </p>
          <div style="font-weight:600;color:#9a3412;font-size:12px;margin-bottom:6px;">Pasos con ngrok (gratis):</div>
          <ol style="font-size:12px;color:#7c2d12;margin:0 0 10px;padding-left:18px;line-height:1.9;">
-           <li>Descarga ngrok: <code style="background:#fef3c7;padding:1px 5px;border-radius:2px;">ngrok.com/download</code></li>
-           <li>Inicia el túnel en tu máquina: <code style="background:#fef3c7;padding:1px 5px;border-radius:2px;">ngrok http 80</code></li>
-           <li>Ngrok genera una URL pública como <code style="background:#fef3c7;padding:1px 5px;border-radius:2px;">https://abc123.ngrok-free.app</code></li>
+           <li>Descarga ngrok: <code style="background:var(--warn-bg);padding:1px 5px;border-radius:2px;">ngrok.com/download</code></li>
+           <li>Inicia el túnel en tu máquina: <code style="background:var(--warn-bg);padding:1px 5px;border-radius:2px;">ngrok http 80</code></li>
+           <li>Ngrok genera una URL pública como <code style="background:var(--warn-bg);padding:1px 5px;border-radius:2px;">https://abc123.ngrok-free.app</code></li>
            <li>Desde Hostinger usa esa URL como base:
-             <code style="display:block;background:#fef9c3;padding:4px 8px;border-radius:3px;margin-top:4px;word-break:break-all;">https://abc123.ngrok-free.app/WMS_FENIX/public/api/tms/stock</code>
+             <code style="display:block;background:var(--warn-bg);padding:4px 8px;border-radius:3px;margin-top:4px;word-break:break-all;">https://abc123.ngrok-free.app/WMS_FENIX/public/api/tms/stock</code>
            </li>
          </ol>
-         <div style="font-size:11px;color:#9a3412;background:#fef3c7;padding:8px;border-radius:3px;">
+         <div style="font-size:11px;color:#9a3412;background:var(--warn-bg);padding:8px;border-radius:3px;">
            <i class="fa-solid fa-circle-info"></i>
            <strong>Para producción</strong>: el WMS debe estar en un servidor público (Hostinger, VPS, etc.) con dominio propio.
            ngrok es solo para desarrollo y pruebas — la URL cambia en cada reinicio (plan gratuito).
@@ -3454,9 +3473,9 @@ WMS_MODULES.despacho = {
     WMS.setContent(`
       <div id="packing-wrap">
         <!-- TOP BAR -->
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
           <div style="flex:1;display:flex;gap:16px;font-size:13px;align-items:center;flex-wrap:wrap;">
-            <span>Pendiente: <strong id="pk-stat-pend" style="color:${pendiente>0?'#dc2626':'#16a34a'};">${WMS.formatNum(pendiente)}</strong></span>
+            <span>Pendiente: <strong id="pk-stat-pend" style="color:${pendiente>0?'var(--danger)':'var(--ok)'};">${WMS.formatNum(pendiente)}</strong></span>
             <span>Empacado: <strong id="pk-stat-emp">${WMS.formatNum(totales.total_empacado)}</strong></span>
             <span>Total pick: <strong>${WMS.formatNum(totales.total_pickeado)}</strong></span>
             ${totales.num_unidades > 0 ? `
@@ -3482,10 +3501,10 @@ WMS_MODULES.despacho = {
           });
           const cards = Object.values(ambs).map(amb => {
             const pct = amb.pickeado > 0 ? Math.min(100, Math.round((amb.empacado / amb.pickeado) * 100)) : 0;
-            return `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;min-width:160px;">
+            return `<div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;min-width:160px;">
               <div style="font-size:11px;font-weight:700;color:${amb.color};margin-bottom:4px;">${WMS.esc(amb.nombre)}</div>
               <div style="font-size:12px;">Pick: ${WMS.formatNum(amb.pickeado)} | Pack: ${WMS.formatNum(amb.empacado)}</div>
-              <div style="height:4px;background:#e2e8f0;border-radius:2px;margin-top:6px;">
+              <div style="height:4px;background:var(--border);border-radius:2px;margin-top:6px;">
                 <div style="height:100%;width:${pct}%;background:${amb.color};border-radius:2px;"></div>
               </div>
             </div>`;
@@ -3499,12 +3518,12 @@ WMS_MODULES.despacho = {
           <div class="card" style="min-height:400px;">
             <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
               <span class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Productos Pendientes</span>
-              <span style="font-size:12px;color:#64748b;">${tipoUp} actual: <strong>#${consec}</strong></span>
+              <span style="font-size:12px;color:var(--muted);">${tipoUp} actual: <strong>#${consec}</strong></span>
             </div>
-            <div style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">
+            <div style="padding:8px 10px;border-bottom:1px solid var(--border);">
               <div class="search-bar" style="margin:0;">
                 <i class="fa-solid fa-search"></i>
-                <input id="pk-search" placeholder="Buscar producto o código..."
+                <input class="form-control" id="pk-search" placeholder="Buscar producto o código..."
                   oninput="WMS_MODULES.despacho._pkFiltrar(this.value)">
               </div>
             </div>
@@ -3522,7 +3541,7 @@ WMS_MODULES.despacho = {
             <div id="pk-right-content" style="padding:0 8px;">
               ${this._buildItemsTable(unitAb?.items || [])}
             </div>
-            <div style="padding:10px 12px;border-top:1px solid #e2e8f0;">
+            <div style="padding:10px 12px;border-top:1px solid var(--border);">
               ${(unitAb?.items?.length || 0) > 0
                 ? `<button class="btn btn-warning btn-sm" style="width:100%;"
                     onclick="WMS_MODULES.despacho.cerrarUnidadPacking(${unidad_abierta})">
@@ -3555,36 +3574,36 @@ WMS_MODULES.despacho = {
     let html = '';
 
     if (pendientes.length === 0) {
-      html += '<div style="padding:12px;text-align:center;color:#16a34a;font-weight:700;font-size:13px;"><i class="fa-solid fa-check-double"></i> Todos los productos empacados</div>';
+      html += '<div style="padding:12px;text-align:center;color:var(--ok);font-weight:700;font-size:13px;"><i class="fa-solid fa-check-double"></i> Todos los productos empacados</div>';
     }
 
     for (const [ambNombre, grupo] of Object.entries(grupos)) {
       html += `
-        <div class="pk-amb-header" style="padding:5px 10px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;border-top:1px solid #e2e8f0;display:flex;align-items:center;gap:8px;">
+        <div class="pk-amb-header" style="padding:5px 10px;background:var(--btn-neutral);border-bottom:1px solid var(--border);border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;">
           <span style="width:10px;height:10px;border-radius:50%;background:${grupo.color};display:inline-block;flex-shrink:0;"></span>
-          <span style="font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.5px;">${WMS.esc(ambNombre)}</span>
-          <span style="font-size:10px;color:#94a3b8;margin-left:auto;">${grupo.items.length} ref(s)</span>
+          <span style="font-size:11px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">${WMS.esc(ambNombre)}</span>
+          <span style="font-size:10px;color:var(--text-muted);margin-left:auto;">${grupo.items.length} ref(s)</span>
         </div>`;
       grupo.items.forEach(p => {
         html += `
           <div class="pk-prod-row" id="pk-prod-${p.producto_id}"
             data-nombre="${WMS.esc((p.nombre||'').toLowerCase())}" data-codigo="${WMS.esc((p.codigo||'').toLowerCase())}"
             data-amb="${WMS.esc(ambNombre)}"
-            style="padding:8px 10px 8px 18px;border-bottom:1px solid #f1f5f9;">
+            style="padding:8px 10px 8px 18px;border-bottom:1px solid var(--border-light);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
               <div style="flex:1;min-width:0;">
                 <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${WMS.esc(p.nombre)}</div>
-                <div style="font-size:11px;color:#64748b;">${WMS.esc(p.codigo||'-')}</div>
+                <div style="font-size:11px;color:var(--muted);">${WMS.esc(p.codigo||'-')}</div>
               </div>
               <div style="text-align:right;font-size:12px;flex-shrink:0;margin-left:8px;">
                 <div>Pick: <strong>${WMS.formatNum(p.total_pickeado)}</strong></div>
-                <div style="color:#64748b;">Emp: ${WMS.formatNum(p.total_empacado)}</div>
-                <div style="color:#dc2626;font-weight:700;">Pend: ${WMS.formatNum(p.pendiente)}</div>
+                <div style="color:var(--muted);">Emp: ${WMS.formatNum(p.total_empacado)}</div>
+                <div style="color:var(--danger);font-weight:700;">Pend: ${WMS.formatNum(p.pendiente)}</div>
               </div>
             </div>
             <div style="display:flex;gap:6px;align-items:center;">
-              <input type="number" id="pk-qty-${p.producto_id}" min="0.001" max="${p.pendiente}" step="0.001"
-                value="${p.pendiente}" style="width:88px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;">
+              <input class="form-control" type="number" id="pk-qty-${p.producto_id}" min="0.001" max="${p.pendiente}" step="0.001"
+                value="${p.pendiente}" style="width:88px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;">
               <button class="btn btn-primary btn-sm" style="font-size:11px;"
                 data-sesion="${sesionId}" data-producto="${p.producto_id}" data-upc="${p.unidades_caja || 1}"
                 onclick="WMS_MODULES.despacho.agregarItemPacking(+this.dataset.sesion, +this.dataset.producto, +this.dataset.upc)">
@@ -3596,8 +3615,8 @@ WMS_MODULES.despacho = {
     }
 
     if (completos.length) {
-      html += `<div style="padding:6px 10px;background:#f0fdf4;border-top:2px solid #bbf7d0;margin-top:4px;">
-        <span style="font-size:11px;color:#16a34a;font-weight:700;">
+      html += `<div style="padding:6px 10px;background:var(--ok-bg);border-top:2px solid var(--ok-bg);margin-top:4px;">
+        <span style="font-size:11px;color:var(--ok);font-weight:700;">
           <i class="fa-solid fa-check-double"></i> ${completos.length} producto(s) ya completados
         </span>
       </div>`;
@@ -3625,7 +3644,7 @@ WMS_MODULES.despacho = {
   },
 
   _buildItemsTable(items) {
-    if (!items.length) return '<p style="padding:12px;color:#94a3b8;font-size:12px;text-align:center;">Unidad vacía</p>';
+    if (!items.length) return '<p style="padding:12px;color:var(--text-muted);font-size:12px;text-align:center;">Unidad vacía</p>';
     return `<table class="erp-table" style="font-size:11px;">
       <thead><tr><th>Ref.</th><th>Producto</th><th class="text-center">Cant.</th><th>Lote</th><th></th></tr></thead>
       <tbody>${items.map(i => `<tr>
@@ -3668,7 +3687,7 @@ WMS_MODULES.despacho = {
               </tr>
               <tr id="pk-closed-items-${u.id}" style="display:none;">
                 <td colspan="5" style="padding:0;border:none;">
-                  <div style="padding:10px 12px;background:#f8fafc;border-top:1px solid #e2e8f0;">
+                  <div style="padding:10px 12px;background:var(--table-header-bg);border-top:1px solid var(--border);">
                     ${items.length ? `
                       <table class="erp-table" style="width:100%;font-size:11px;margin:0;">
                         <thead><tr><th>Ref.</th><th>Producto</th><th class="text-center">Cant.</th><th>Lote</th><th>Vence</th></tr></thead>
@@ -3679,7 +3698,7 @@ WMS_MODULES.despacho = {
                             <td>${WMS.esc(i.lote||'-')}</td>
                             <td>${i.fecha_vencimiento ? new Date(i.fecha_vencimiento+'T00:00').toLocaleDateString('es-CO',{month:'short',year:'2-digit'}) : '-'}</td>
                           </tr>`).join('')}</tbody>
-                      </table>` : '<div style="font-size:12px;color:#475569;">Esta unidad no tiene ítems registrados.</div>'}
+                      </table>` : '<div style="font-size:12px;color:var(--text2);">Esta unidad no tiene ítems registrados.</div>'}
                   </div>
                 </td>
               </tr>`;
@@ -3716,20 +3735,20 @@ WMS_MODULES.despacho = {
               <td><code style="font-size:11px;">${WMS.esc(i.codigo || '-')}</code></td>
               <td style="font-size:12px;">${WMS.esc(i.producto_nombre || i.nombre || '-')}</td>
               <td class="text-center fw-700" style="font-size:12px;">${fmtDesglose(i)}</td>
-              <td style="font-size:11px;color:#64748b;">${WMS.esc(i.lote || '-')}</td>
+              <td style="font-size:11px;color:var(--muted);">${WMS.esc(i.lote || '-')}</td>
             </tr>`).join('')
-          : `<tr><td colspan="4" style="text-align:center;color:#94a3b8;font-size:12px;">Sin ítems</td></tr>`;
+          : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);font-size:12px;">Sin ítems</td></tr>`;
 
         return `
-          <div style="border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;overflow:hidden;">
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:#f0fdf4;border-bottom:1px solid #bbf7d0;">
+          <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden;">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:var(--ok-bg);border-bottom:1px solid var(--ok-bg);">
               <div style="display:flex;align-items:center;gap:10px;">
-                <strong style="font-size:13px;color:#065f46;">${tipoUp} #${String(u.consecutivo).padStart(3,'0')}</strong>
-                <span style="font-size:11px;color:#6b7280;">${horaC}</span>
-                <span style="font-size:11px;background:#dcfce7;color:#15803d;border-radius:4px;padding:1px 6px;">${items.length} ítem(s)</span>
+                <strong style="font-size:13px;color:var(--ok);">${tipoUp} #${String(u.consecutivo).padStart(3,'0')}</strong>
+                <span style="font-size:11px;color:var(--muted);">${horaC}</span>
+                <span style="font-size:11px;background:var(--ok-bg);color:var(--ok);border-radius:4px;padding:1px 6px;">${items.length} ítem(s)</span>
               </div>
               <div style="display:flex;gap:6px;align-items:center;">
-                <span style="font-size:13px;font-weight:800;color:#059669;">${WMS.formatNum(totalUds)} uds</span>
+                <span style="font-size:13px;font-weight:800;color:var(--ok);">${WMS.formatNum(totalUds)} uds</span>
                 <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.despacho._imprimirStickerUnidad(${u.id},'letter')">
                   <i class="fa-solid fa-print"></i> Sticker
                 </button>
@@ -3745,12 +3764,12 @@ WMS_MODULES.despacho = {
       }).join('');
 
       const abHtml = abierta ? `
-        <div style="border:1.5px dashed #d97706;border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+        <div style="border:1.5px dashed var(--warn);border-radius:8px;padding:10px 14px;margin-bottom:12px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <strong style="font-size:13px;color:#d97706;">${tipoUp} #${String(abierta.consecutivo).padStart(3,'0')} — Abierta</strong>
-            <span style="font-size:12px;color:#64748b;">${(abierta.items||[]).length} ítem(s) · ${pendientes.length} ref(s) pendiente(s)</span>
+            <strong style="font-size:13px;color:var(--warn);">${tipoUp} #${String(abierta.consecutivo).padStart(3,'0')} — Abierta</strong>
+            <span style="font-size:12px;color:var(--muted);">${(abierta.items||[]).length} ítem(s) · ${pendientes.length} ref(s) pendiente(s)</span>
           </div>
-          ${(abierta.items||[]).length ? this._buildItemsTable(abierta.items) : '<p style="font-size:12px;color:#94a3b8;margin:0;">Unidad vacía</p>'}
+          ${(abierta.items||[]).length ? this._buildItemsTable(abierta.items) : '<p style="font-size:12px;color:var(--text-muted);margin:0;">Unidad vacía</p>'}
         </div>` : '';
 
       await Swal.fire({
@@ -3758,8 +3777,8 @@ WMS_MODULES.despacho = {
         width: 820,
         html: `<div style="text-align:left;max-height:60vh;overflow-y:auto;padding-right:4px;">
           ${abHtml}
-          ${cerradas.length ? `<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">${cerradas.length} unidad${cerradas.length!==1?'es':''} cerrada${cerradas.length!==1?'s':''}</div>` : ''}
-          ${rowsHtml || '<p style="text-align:center;color:#94a3b8;">No hay unidades cerradas</p>'}
+          ${cerradas.length ? `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">${cerradas.length} unidad${cerradas.length!==1?'es':''} cerrada${cerradas.length!==1?'s':''}</div>` : ''}
+          ${rowsHtml || '<p style="text-align:center;color:var(--text-muted);">No hay unidades cerradas</p>'}
         </div>`,
         showConfirmButton: false,
         showCloseButton: true,
@@ -3785,17 +3804,17 @@ WMS_MODULES.despacho = {
       const sugSaldos = qtyInput - (sugCajas * factor);
       const { value, isConfirmed } = await Swal.fire({
         title: 'Cantidad a empacar',
-        html: `<label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">Cajas (${factor} und/caja):</label>
+        html: `<label class="form-label" style="display:block;margin-bottom:4px;">Cajas (${factor} und/caja):</label>
                <input id="pk-item-cajas" type="number" min="0" step="1" value="${sugCajas}"
-                 class="swal2-input" style="margin:0 0 8px 0;width:100%;box-sizing:border-box;" oninput="WMS_MODULES.despacho._updPkItemTotal(${factor})">
-               <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;color:#d97706;">Saldo (unidades sueltas):</label>
+                 class="swal2-input form-control" style="margin:0 0 8px 0;width:100%;box-sizing:border-box;" oninput="WMS_MODULES.despacho._updPkItemTotal(${factor})">
+               <label class="form-label" style="display:block;margin-bottom:4px;">Saldo (unidades sueltas):</label>
                <input id="pk-item-saldo" type="number" min="0" step="0.01" value="${sugSaldos}"
-                 class="swal2-input" style="margin:0;width:100%;box-sizing:border-box;" oninput="WMS_MODULES.despacho._updPkItemTotal(${factor})">
+                 class="swal2-input form-control" style="margin:0;width:100%;box-sizing:border-box;" oninput="WMS_MODULES.despacho._updPkItemTotal(${factor})">
                <p style="font-size:12px;margin-top:8px;">Total: <b id="pk-item-total">${WMS.formatNum(qtyInput)}</b> und</p>`,
         showCancelButton: true,
         confirmButtonText: '<i class="fa-solid fa-check"></i> Agregar',
         cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#0F4C81',
+        confirmButtonColor: '#2b5fc7',
         preConfirm: () => {
           const cj = parseFloat(document.getElementById('pk-item-cajas')?.value);
           const sl = parseFloat(document.getElementById('pk-item-saldo')?.value);
@@ -3941,19 +3960,19 @@ WMS_MODULES.despacho = {
 @media print { .no-print { display:none!important; } body { margin:0; } }
 body { font-family: Arial, sans-serif; font-size: 11px; margin: 0; color: #1e293b; }
 .sticker { border: 2px solid #1e293b; border-radius: 4px; padding: 10px 12px; margin-bottom: 10px; page-break-inside: avoid; }
-.st-header { display:flex; justify-content:space-between; align-items:baseline; font-weight:bold; font-size:14px; border-bottom:2px solid #1e3a5f; padding-bottom:6px; margin-bottom:6px; }
-.st-tipo { font-size:18px; font-weight:900; color:#1e40af; }
+.st-header { display:flex; justify-content:space-between; align-items:baseline; font-weight:bold; font-size:14px; border-bottom:2px solid #1e293b; padding-bottom:6px; margin-bottom:6px; }
+.st-tipo { font-size:18px; font-weight:900; color:#1e4da8; }
 .st-emp  { font-size:12px; color:#334155; }
 .st-suc  { font-size:12px; color:#475569; margin-bottom:6px; }
 .st-suc strong { color:#1e293b; font-size:13px; }
 table { width:100%; border-collapse:collapse; margin:6px 0; }
-th { background:#1e3a5f; color:#fff; font-size:10px; padding:4px 5px; text-align:left; }
+th { background:#1e293b; color:#fff; font-size:10px; padding:4px 5px; text-align:left; }
 td { padding:3px 5px; border-bottom:1px solid #e2e8f0; font-size:10px; }
 tr:nth-child(even) td { background:#f8fafc; }
-.st-footer { border-top:2px solid #1e3a5f; padding-top:5px; margin-top:6px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px; font-size:10px; color:#475569; }
+.st-footer { border-top:2px solid #1e293b; padding-top:5px; margin-top:6px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px; font-size:10px; color:#475569; }
 .st-total { font-size:14px; font-weight:900; color:#1e293b; }
 .no-print { padding:10px; text-align:center; background:#f1f5f9; }
-.no-print button { padding:8px 20px; font-size:14px; cursor:pointer; background:#1e3a5f; color:#fff; border:none; border-radius:6px; }
+.no-print button { padding:8px 20px; font-size:14px; cursor:pointer; background:#1e293b; color:#fff; border:none; border-radius:6px; }
 </style>${script}
 </head><body>${content}
 <div class="no-print"><button onclick="window.print()">&#128424; Imprimir / Guardar PDF</button></div>
@@ -3985,15 +4004,15 @@ tr:nth-child(even) td { background:#f8fafc; }
       const el = document.getElementById('pk-agotados-panel');
       if (!el) return;
       if (!agotados.length) {
-        el.innerHTML = '<p style="color:#16a34a;font-size:12px;text-align:center;padding:8px;"><i class="fa-solid fa-check-circle"></i> Sin productos agotados</p>';
+        el.innerHTML = '<p style="color:var(--ok);font-size:12px;text-align:center;padding:8px;"><i class="fa-solid fa-check-circle"></i> Sin productos agotados</p>';
         return;
       }
       const rows = agotados.map(a => `<tr>
         <td><code style="font-size:11px;">${WMS.esc(a.codigo || '-')}</code></td>
         <td>${WMS.esc(a.producto_nombre || '-')}</td>
         <td class="text-center fw-700">${WMS.formatNum(a.cantidad_solicitada)}</td>
-        <td class="text-center fw-700" style="color:#dc2626;">${WMS.formatNum(a.cantidad_faltante)}</td>
-        <td style="font-size:11px;color:#64748b;">${WMS.esc(a.causa || 'Sin stock')}</td>
+        <td class="text-center fw-700" style="color:var(--danger);">${WMS.formatNum(a.cantidad_faltante)}</td>
+        <td style="font-size:11px;color:var(--muted);">${WMS.esc(a.causa || 'Sin stock')}</td>
       </tr>`).join('');
       el.innerHTML = `
         <div class="table-container" style="max-height:260px;overflow-y:auto;">
@@ -4019,13 +4038,13 @@ tr:nth-child(even) td { background:#f8fafc; }
     WMS.setContent(`
       <div style="max-width:700px;margin:0 auto;display:flex;flex-direction:column;gap:14px;">
         <div class="card">
-          <div class="card-header" style="background:#16a34a;color:#fff;">
+          <div class="card-header" style="background:var(--ok);color:#fff;">
             <span class="card-title"><i class="fa-solid fa-circle-check"></i> Packing Completado</span>
           </div>
           <div style="padding:24px;text-align:center;">
-            <div style="font-size:48px;color:#16a34a;margin-bottom:12px;">✓</div>
+            <div style="font-size:48px;color:var(--ok);margin-bottom:12px;">✓</div>
             <h3 style="margin:0 0 6px;">Certificación Finalizada</h3>
-            <p style="color:#475569;margin:0 0 20px;">
+            <p style="color:var(--text2);margin:0 0 20px;">
               <strong>${WMS.esc(sesion.sucursal_entrega)}</strong> — ${totales.num_unidades} ${tipoUp}(s)
             </p>
             <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
@@ -4045,13 +4064,13 @@ tr:nth-child(even) td { background:#f8fafc; }
           </div>
         </div>
         <div class="card">
-          <div class="card-header" style="background:#fef2f2;border-bottom:2px solid #fecaca;">
-            <span class="card-title" style="color:#991b1b;">
+          <div class="card-header" style="background:var(--danger-bg);border-bottom:2px solid var(--danger-bg);">
+            <span class="card-title" style="color:var(--danger);">
               <i class="fa-solid fa-circle-exclamation"></i> Productos Agotados en este Despacho
             </span>
           </div>
           <div id="pk-agotados-panel" style="padding:8px 12px;">
-            <p style="color:#94a3b8;font-size:12px;text-align:center;padding:8px;">
+            <p style="color:var(--text-muted);font-size:12px;text-align:center;padding:8px;">
               <i class="fa-solid fa-spinner fa-spin"></i> Cargando agotados...
             </p>
           </div>
@@ -4109,15 +4128,15 @@ tr:nth-child(even) td { background:#f8fafc; }
 @page { size: letter; margin: 12mm; }
 @media print { .no-print { display:none; } }
 body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; }
-.doc-header { border-bottom: 2px solid #1e40af; padding-bottom: 8px; margin-bottom: 12px; display:flex; justify-content:space-between; align-items:flex-start; }
-.doc-title { font-size:16px; font-weight:bold; color:#1e40af; margin:0 0 4px; }
+.doc-header { border-bottom: 2px solid #1e4da8; padding-bottom: 8px; margin-bottom: 12px; display:flex; justify-content:space-between; align-items:flex-start; }
+.doc-title { font-size:16px; font-weight:bold; color:#1e4da8; margin:0 0 4px; }
 .doc-meta { font-size:10px; color:#475569; margin-top:3px; }
 .doc-meta span { display:inline-block; margin-right:12px; }
 table { width:100%; border-collapse:collapse; margin:10px 0; }
-th { background:#1e40af; color:#fff; font-size:10px; padding:4px 6px; text-align:left; }
+th { background:#1e4da8; color:#fff; font-size:10px; padding:4px 6px; text-align:left; }
 td { padding:3px 6px; font-size:10px; border-bottom:1px solid #e2e8f0; }
 tr.even td { background:#f8faff; } tr.odd td { background:#fff; }
-.doc-footer { border-top:2px solid #1e40af; margin-top:12px; padding-top:8px; display:flex; gap:16px; flex-wrap:wrap; }
+.doc-footer { border-top:2px solid #1e4da8; margin-top:12px; padding-top:8px; display:flex; gap:16px; flex-wrap:wrap; }
 .foot-box .label { font-size:9px; color:#64748b; }
 .foot-box .val   { font-weight:bold; font-size:13px; }
 .no-print { margin:12px 0; text-align:center; }
@@ -4168,12 +4187,11 @@ function toggleLandscape() {
     document.body.insertAdjacentHTML('beforeend', `
       <div id="${modalId}" style="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);
         display:flex;align-items:center;justify-content:center;">
-        <div style="background:#fff;border-radius:12px;padding:28px;max-width:360px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+        <div style="background:var(--surface);border-radius:12px;padding:28px;max-width:360px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3);">
           <div style="font-size:2.5rem;margin-bottom:12px;">⏳</div>
           <div style="font-weight:700;font-size:1rem;margin-bottom:8px;">Esperando aprobación del supervisor</div>
-          <div style="font-size:.85rem;color:#64748b;margin-bottom:20px;">${WMS.esc(message)}</div>
-          <button onclick="WMS_MODULES.despacho._cancelarExpiryWait()" style="background:#ef4444;color:#fff;
-            border:none;border-radius:6px;padding:8px 20px;cursor:pointer;font-size:.85rem;">
+          <div style="font-size:.85rem;color:var(--muted);margin-bottom:20px;">${WMS.esc(message)}</div>
+          <button class="btn btn-danger" onclick="WMS_MODULES.despacho._cancelarExpiryWait()">
             Cancelar solicitud
           </button>
         </div>
@@ -4230,15 +4248,15 @@ function toggleLandscape() {
 
       let html = `<div style="max-height:60vh;overflow-y:auto;padding-right:10px;">`;
       for(const [amb, prods] of Object.entries(porAmbiente)) {
-        html += `<h4 style="background:#e2e8f0;padding:6px;border-radius:4px;color:#1e293b;margin-top:10px;">${WMS.esc(amb)} <span class="badge" style="float:right;background:#0f4c81;">${prods.length} Refs</span></h4>
+        html += `<h4 style="background:var(--border);padding:6px;border-radius:4px;color:var(--text);margin-top:10px;">${WMS.esc(amb)} <span class="badge" style="float:right;background:var(--accent);">${prods.length} Refs</span></h4>
         <table class="erp-table table-sm" style="margin-bottom:10px;">
           <thead><tr><th>Producto</th><th class="text-center">Cant. Solicitada</th><th class="text-center">Cant. Pickeada</th></tr></thead>
           <tbody>`;
         prods.forEach(p => {
           html += `<tr>
-            <td><div style="font-weight:700;">${WMS.esc(p.nombre)}</div><div style="font-size:11px;color:#64748b;">${WMS.esc(p.codigo)}</div></td>
+            <td><div style="font-weight:700;">${WMS.esc(p.nombre)}</div><div style="font-size:11px;color:var(--muted);">${WMS.esc(p.codigo)}</div></td>
             <td class="text-center">${p.cantidad_esperada || 0}</td>
-            <td class="text-center" style="font-weight:700;color:#059669;">${p.cantidad_pickeada || 0}</td>
+            <td class="text-center" style="font-weight:700;color:var(--ok);">${p.cantidad_pickeada || 0}</td>
           </tr>`;
         });
         html += `</tbody></table>`;
@@ -4255,7 +4273,7 @@ function toggleLandscape() {
         denyButtonText: '<i class="fa-solid fa-box-open"></i> Iniciar Packing',
         cancelButtonText: 'Cerrar',
         confirmButtonColor: '#059669',
-        denyButtonColor: '#0F4C81',
+        denyButtonColor: '#2b5fc7',
       });
       if (result.isConfirmed) {
         WMS_MODULES.despacho.autoCertificar(sucursal);

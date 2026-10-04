@@ -2096,7 +2096,7 @@ canvas {
   }
 
   /* Override background with SAP grays */
-  body { background: var(--sap-gray-light) !important; }
+  body { background: var(--sap-gray-light); }
   .app-content { background: var(--sap-gray-light); }
   .content-body { background: var(--sap-gray-light); padding: 12px 16px; }
 
@@ -2262,93 +2262,8 @@ canvas {
     box-shadow: none !important;
   }
 
-  /* ── TABLAS ALTA DENSIDAD (Excel-like) ────────────────── */
-  .data-table thead th {
-    background: var(--sap-header-bg) !important;
-    border: 1px solid var(--sap-border) !important;
-    border-bottom: 2px solid var(--sap-gray-dark) !important;
-    padding: 5px 8px !important;
-    font-size: .68rem !important;
-    text-transform: uppercase;
-    letter-spacing: .3px;
-    color: #333 !important;
-  }
-  .data-table tbody tr { border-bottom: 1px solid #E8E8E8 !important; }
-  .data-table tbody tr:nth-child(even) { background: var(--sap-row-even) !important; }
-  .data-table tbody tr:hover { background: var(--sap-row-hover) !important; }
-  .data-table td {
-    padding: 5px 8px !important;
-    font-size: .78rem !important;
-    border-right: 1px solid #EBEBEB;
-    vertical-align: middle;
-  }
-  .data-table td:last-child { border-right: none; }
-  .table-container {
-    border: 1px solid var(--sap-border) !important;
-    border-radius: 2px !important;
-  }
-
-  /* ── FORMULARIOS ALTA DENSIDAD ────────────────────────── */
-  .form-control {
-    padding: 5px 8px !important;
-    font-size: .80rem !important;
-    border-radius: 3px !important;
-    border-color: var(--sap-border) !important;
-  }
-  .form-control:focus {
-    border-color: var(--sap-blue) !important;
-    box-shadow: 0 0 0 2px rgba(0,112,242,.15) !important;
-  }
-  .form-label {
-    font-size: .7rem !important;
-    color: var(--sap-gray-dark) !important;
-    margin-bottom: 2px !important;
-  }
-  .form-grid { gap: 10px !important; }
-  .form-group { gap: 2px !important; }
-
-  /* ── CARDS SAP-STYLE ──────────────────────────────────── */
-  .card {
-    border-radius: 2px !important;
-    border: 1px solid var(--sap-border) !important;
-    box-shadow: none !important;
-  }
-  .card-header {
-    background: var(--sap-header-bg) !important;
-    border-bottom: 1px solid var(--sap-border) !important;
-    padding: 8px 12px !important;
-  }
-  .card-title {
-    font-size: .78rem !important;
-    font-weight: 700 !important;
-    color: #1a1a1a !important;
-  }
-  .card-body { padding: 12px !important; }
-
-  /* KPI cards SAP style */
-  .kpi-card {
-    border-radius: 2px !important;
-    border: 1px solid var(--sap-border) !important;
-    box-shadow: none !important;
-    padding: 10px 12px !important;
-  }
-  .kpi-card:hover { box-shadow: 0 2px 6px rgba(0,112,242,.12) !important; transform: none !important; }
-  .kpi-value { font-size: 1.3rem !important; }
-  .kpi-label { font-size: .65rem !important; color: var(--sap-gray-dark) !important; }
-
-  /* ── BOTONES SAP OVERRIDE ─────────────────────────────── */
-  .btn {
-    border-radius: 3px !important;
-    font-size: .75rem !important;
-    padding: 5px 12px !important;
-  }
-  .btn-primary {
-    background: var(--sap-blue) !important;
-    border-color: var(--sap-blue-dark) !important;
-  }
-  .btn-primary:hover { background: var(--sap-blue-dark) !important; }
-  .btn-sm { padding: 3px 8px !important; font-size: .7rem !important; }
-  .btn-xs { padding: 2px 6px !important; font-size: .65rem !important; }
+  /* Tablas/formularios/tarjetas/botones de alta densidad SAP retirados el 2026-10-04:
+     ahora los define assets/css/bee-theme.css (diseño bee de compras.mistico.co). */
 } /* end @media (min-width: 1024px) */
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -3212,19 +3127,7 @@ canvas {
 }
 @keyframes btnSpin { to { transform: rotate(360deg); } }
 
-/* ── ERP square-corner override ─────────────────────── */
-.card, .wms-card       { border-radius: 4px !important; }
-.form-control          { border-radius: 4px !important; }
-.btn                   { border-radius: 4px !important; }
-.badge                 { border-radius: 2px !important; }
-.landing-card          { border-radius: 4px !important; }
-.wms-toast-item        { border-radius: 4px !important; }
-.modal                 { border-radius: 4px !important; }
-.pro-kpi-card          { border-radius: 4px !important; }
-.pro-kpi-icon          { border-radius: 4px !important; }
-.abc-matrix-cell       { border-radius: 2px !important; }
-.wh-heatmap            { border-radius: 4px !important; }
-.forecast-chart-wrap   { border-radius: 4px !important; }
+/* ERP square-corner override retirado el 2026-10-04 (bee usa radios 6/10/12px). */
 
 /* ── ERP table header style ──────────────────────────── */
 .data-table thead th {

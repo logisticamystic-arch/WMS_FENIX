@@ -21,10 +21,10 @@ WMS_MODULES['chat-ia'] = (function () {
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
       .replace(/\*(.+?)\*/g, '<i>$1</i>')
-      .replace(/`(.+?)`/g, '<code style="background:#f1f5f9;padding:1px 4px;border-radius:3px;font-size:11px;font-family:monospace;">$1</code>')
-      .replace(/^### (.+)$/gm, '<div style="font-weight:800;font-size:13px;margin-top:10px;color:#0f172a;">$1</div>')
-      .replace(/^## (.+)$/gm,  '<div style="font-weight:800;font-size:14px;margin-top:12px;color:#0f172a;">$1</div>')
-      .replace(/^# (.+)$/gm,   '<div style="font-weight:800;font-size:15px;margin-top:14px;color:#0f172a;">$1</div>')
+      .replace(/`(.+?)`/g, '<code style="background:var(--btn-neutral);padding:1px 4px;border-radius:3px;font-size:11px;font-family:monospace;">$1</code>')
+      .replace(/^### (.+)$/gm, '<div style="font-weight:800;font-size:13px;margin-top:10px;color:var(--text);">$1</div>')
+      .replace(/^## (.+)$/gm,  '<div style="font-weight:800;font-size:14px;margin-top:12px;color:var(--text);">$1</div>')
+      .replace(/^# (.+)$/gm,   '<div style="font-weight:800;font-size:15px;margin-top:14px;color:var(--text);">$1</div>')
       .replace(/^[-*] (.+)$/gm,'<div style="margin-left:14px;margin-top:3px;">• $1</div>')
       .replace(/^(\d+)\. (.+)$/gm,'<div style="margin-left:14px;margin-top:3px;"><b>$1.</b> $2</div>')
       .replace(/\n\n/g, '<div style="height:8px;"></div>')
@@ -45,17 +45,17 @@ WMS_MODULES['chat-ia'] = (function () {
     el.insertAdjacentHTML('beforeend', `
       <div id="${id}" style="display:flex;gap:10px;margin-bottom:16px;align-items:flex-start;${isUser ? 'flex-direction:row-reverse' : ''}">
         <div style="width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
-          background:${isUser ? '#1d4ed8' : 'linear-gradient(135deg,#7c3aed,#1d4ed8)'};color:#fff;font-size:14px;">
+          background:${isUser ? 'var(--accent)' : 'linear-gradient(135deg,#7c3aed,var(--accent))'};color:#fff;font-size:14px;">
           <i class="fa-solid ${isUser ? 'fa-user' : 'fa-robot'}"></i>
         </div>
         <div style="max-width:78%;min-width:60px;">
-          <div style="font-size:10px;color:#94a3b8;margin-bottom:4px;${isUser ? 'text-align:right' : ''}">
+          <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;${isUser ? 'text-align:right' : ''}">
             ${isUser ? 'Tú' : 'FENIX IA'} · ${hora}
           </div>
-          <div class="cia-bubble" style="background:${isUser ? '#1d4ed8' : '#fff'};color:${isUser ? '#fff' : '#1e293b'};
+          <div class="cia-bubble" style="background:${isUser ? 'var(--accent)' : 'var(--surface)'};color:${isUser ? '#fff' : 'var(--text)'};
             padding:12px 15px;border-radius:${isUser ? '16px 4px 16px 16px' : '4px 16px 16px 16px'};
             font-size:13px;line-height:1.6;box-shadow:0 2px 8px rgba(0,0,0,.08);
-            border:${isUser ? 'none' : '1px solid #f1f5f9'};">
+            border:${isUser ? 'none' : '1px solid var(--border)'};">
             ${typing
               ? '<span class="cia-typing-dots"><span class="cia-dot"></span><span class="cia-dot"></span><span class="cia-dot"></span></span>'
               : (isUser ? WMS.esc(content) : _md(content))}
@@ -103,8 +103,8 @@ WMS_MODULES['chat-ia'] = (function () {
         const bubble = msgEl.querySelector('.cia-bubble');
         if (bubble) {
           if (isErr) {
-            bubble.style.background = '#fef2f2';
-            bubble.style.color      = '#dc2626';
+            bubble.style.background = 'var(--danger-bg)';
+            bubble.style.color      = 'var(--danger)';
             bubble.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> ' + WMS.esc(respuesta);
           } else {
             bubble.innerHTML = _md(respuesta);
@@ -117,8 +117,8 @@ WMS_MODULES['chat-ia'] = (function () {
       if (msgEl) {
         const bubble = msgEl.querySelector('.cia-bubble');
         if (bubble) {
-          bubble.style.background = '#fef2f2';
-          bubble.style.color      = '#dc2626';
+          bubble.style.background = 'var(--danger-bg)';
+          bubble.style.color      = 'var(--danger)';
           bubble.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> ' + WMS.esc(e.message || 'Error de conexión con la IA');
         }
       }
@@ -136,22 +136,22 @@ WMS_MODULES['chat-ia'] = (function () {
 
       WMS.setContent(`
         <style>
-          .cia-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#94a3b8;margin:0 2px;
+          .cia-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--text-muted);margin:0 2px;
             animation:cia-bounce .9s infinite ease-in-out}
           .cia-dot:nth-child(2){animation-delay:.15s}
           .cia-dot:nth-child(3){animation-delay:.30s}
           @keyframes cia-bounce{0%,80%,100%{transform:scale(.6)}40%{transform:scale(1)}}
           #cia-input{outline:none}
-          #cia-input:focus{box-shadow:0 0 0 2px #1d4ed830}
-          .cia-sug{cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:6px 13px;
-            font-size:11px;color:#475569;transition:all .2s;white-space:nowrap}
-          .cia-sug:hover{background:#eff6ff;border-color:#93c5fd;color:#1d4ed8}
+          #cia-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--focus-ring)}
+          .cia-sug{cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:6px 13px;
+            font-size:11px;color:var(--text2);font-family:inherit;transition:all .2s;white-space:nowrap}
+          .cia-sug:hover{background:var(--info-bg);border-color:var(--accent);color:var(--accent)}
           .cia-ctx-chip{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;cursor:pointer;
             color:#fff;text-transform:uppercase;transition:all .2s;user-select:none}
         </style>
-        <div style="display:flex;flex-direction:column;height:calc(100vh - 118px);background:#f8fafc;border-radius:8px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.06);">
+        <div style="display:flex;flex-direction:column;height:calc(100vh - 118px);background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-card);overflow:hidden;box-shadow:var(--shadow);">
           <!-- Header -->
-          <div style="background:linear-gradient(135deg,#1d4ed8,#7c3aed);padding:16px 20px;color:#fff;flex-shrink:0;">
+          <div style="background:linear-gradient(135deg,var(--accent),#7c3aed);padding:16px 20px;color:#fff;flex-shrink:0;">
             <div style="display:flex;align-items:center;gap:12px;">
               <div style="width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;">
                 <i class="fa-solid fa-robot" style="font-size:20px;"></i>
@@ -179,13 +179,13 @@ WMS_MODULES['chat-ia'] = (function () {
           </div>
 
           <!-- Messages -->
-          <div id="cia-messages" style="flex:1;overflow-y:auto;padding:20px;background:#f8fafc;">
+          <div id="cia-messages" style="flex:1;overflow-y:auto;padding:20px;background:var(--bg2);">
             <div style="text-align:center;margin:20px 0 28px;">
-              <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#1d4ed8);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+              <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,var(--accent));display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
                 <i class="fa-solid fa-robot" style="font-size:28px;color:#fff;"></i>
               </div>
-              <div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:6px;">¡Hola! Soy FENIX IA</div>
-              <div style="font-size:12px;color:#64748b;max-width:400px;margin:0 auto;">
+              <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">¡Hola! Soy FENIX IA</div>
+              <div style="font-size:12px;color:var(--muted);max-width:400px;margin:0 auto;">
                 Puedo ayudarte a consultar inventarios, picking, despachos, devoluciones, trazabilidad y toda la operación logística en tiempo real.
               </div>
             </div>
@@ -195,22 +195,20 @@ WMS_MODULES['chat-ia'] = (function () {
           </div>
 
           <!-- Input -->
-          <div style="border-top:1px solid #e2e8f0;background:#fff;padding:12px 16px;flex-shrink:0;">
+          <div style="border-top:1px solid var(--border);background:var(--surface);padding:12px 16px;flex-shrink:0;">
             <div style="display:flex;gap:10px;align-items:flex-end;">
-              <textarea id="cia-input" placeholder="Escribe tu consulta sobre la operación..."
-                style="flex:1;border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px;font-size:13px;
+              <textarea id="cia-input" class="form-control" placeholder="Escribe tu consulta sobre la operación..."
+                style="flex:1;border:1px solid var(--border);border-radius:12px;padding:10px 14px;font-size:13px;
                   font-family:inherit;resize:none;height:40px;max-height:120px;overflow-y:auto;
-                  line-height:1.5;color:#0f172a;background:#f8fafc;transition:box-shadow .2s;"
+                  line-height:1.5;color:var(--text);background:var(--bg2);transition:box-shadow .2s;"
                 onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();WMS_MODULES['chat-ia']._enviar();}"
                 oninput="this.style.height='40px';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
-              <button id="cia-send" onclick="WMS_MODULES['chat-ia']._enviar()"
-                style="width:42px;height:42px;border-radius:50%;background:#1d4ed8;border:none;color:#fff;
-                  cursor:pointer;flex-shrink:0;font-size:16px;display:flex;align-items:center;justify-content:center;transition:background .2s;"
-                onmouseover="this.style.background='#1e40af'" onmouseout="this.style.background='#1d4ed8'">
+              <button id="cia-send" class="btn btn-primary" onclick="WMS_MODULES['chat-ia']._enviar()"
+                style="width:42px;height:42px;padding:0;border-radius:50%;flex-shrink:0;font-size:16px;display:flex;align-items:center;justify-content:center;">
                 <i class="fa-solid fa-paper-plane"></i>
               </button>
             </div>
-            <div style="font-size:10px;color:#94a3b8;margin-top:5px;text-align:center;">
+            <div style="font-size:10px;color:var(--text-muted);margin-top:5px;text-align:center;">
               Enter para enviar &nbsp;·&nbsp; Shift+Enter para nueva línea
             </div>
           </div>

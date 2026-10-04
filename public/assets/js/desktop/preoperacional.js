@@ -44,7 +44,7 @@ WMS_MODULES.preoperacional = {
     WMS.setContent(`
       <div class="op-view" style="max-width:820px;margin:0 auto;">
 
-        <div style="background:linear-gradient(135deg,#0F4C81,#1a6bb0);color:#fff;border-radius:12px;padding:16px 20px;margin-bottom:18px;">
+        <div style="background:linear-gradient(135deg,var(--accent),#1a6bb0);color:#fff;border-radius:12px;padding:16px 20px;margin-bottom:18px;">
           <div style="font-weight:800;font-size:.95rem;margin-bottom:4px;"><i class="fa-solid fa-truck-field"></i> Preoperacional del vehículo</div>
           <div style="font-size:.8rem;opacity:.92;">Este chequeo está enfocado en la <b>limpieza y el orden del vehículo</b> antes de salir a ruta. Califique cada punto como Cumple o No Cumple con base en lo que observa físicamente — no complete de memoria.</div>
         </div>
@@ -53,15 +53,15 @@ WMS_MODULES.preoperacional = {
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-clipboard-list"></i> Datos del vehículo</span></div>
           <div class="card-body" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px;">
             <div class="form-group">
-              <label class="form-label" style="font-weight:600;">Fecha <span style="color:#dc2626;">*</span></label>
+              <label class="form-label" style="font-weight:600;">Fecha <span style="color:var(--danger);">*</span></label>
               <input type="date" id="pv-fecha" class="form-control" value="${hoy}">
             </div>
             <div class="form-group">
-              <label class="form-label" style="font-weight:600;">Vehículo (placa) <span style="color:#dc2626;">*</span></label>
+              <label class="form-label" style="font-weight:600;">Vehículo (placa) <span style="color:var(--danger);">*</span></label>
               <input id="pv-vehiculo" class="form-control" placeholder="Ej: ABC-123" style="text-transform:uppercase;">
             </div>
             <div class="form-group">
-              <label class="form-label" style="font-weight:600;">Conductor <span style="color:#dc2626;">*</span></label>
+              <label class="form-label" style="font-weight:600;">Conductor <span style="color:var(--danger);">*</span></label>
               <input id="pv-conductor" class="form-control" placeholder="Nombre del conductor">
             </div>
             <div class="form-group">
@@ -96,7 +96,7 @@ WMS_MODULES.preoperacional = {
         <div class="card" style="margin-bottom:18px;">
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-camera"></i> Fotos de la inspección</span></div>
           <div class="card-body" style="padding:14px;">
-            <p style="font-size:.78rem;color:#64748b;margin:0 0 10px;">Puede adjuntar varias fotos de evidencia de la inspección (además de la foto puntual de Temperatura).</p>
+            <p style="font-size:.78rem;color:var(--muted);margin:0 0 10px;">Puede adjuntar varias fotos de evidencia de la inspección (además de la foto puntual de Temperatura).</p>
             <input type="file" id="pv-fotos-input" accept="image/*" multiple style="display:none;" onchange="WMS_MODULES.preoperacional._onFotosInspeccion(this)">
             <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('pv-fotos-input').click()">
               <i class="fa-solid fa-plus"></i> Agregar fotos
@@ -108,8 +108,8 @@ WMS_MODULES.preoperacional = {
         <div class="card" style="margin-bottom:18px;">
           <div class="card-header"><span class="card-title"><i class="fa-solid fa-signature"></i> Firma del Conductor</span></div>
           <div class="card-body" style="padding:14px;">
-            <p style="font-size:.78rem;color:#64748b;margin:0 0 10px;">Firme dentro del recuadro con el mouse o la pantalla táctil. <span style="color:#dc2626;">*</span></p>
-            <canvas id="pv-firma-canvas" style="width:100%;max-width:100%;height:180px;border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;touch-action:none;display:block;"></canvas>
+            <p style="font-size:.78rem;color:var(--muted);margin:0 0 10px;">Firme dentro del recuadro con el mouse o la pantalla táctil. <span style="color:var(--danger);">*</span></p>
+            <canvas id="pv-firma-canvas" style="width:100%;max-width:100%;height:180px;border:1px dashed var(--border);border-radius:8px;background:var(--table-header-bg);touch-action:none;display:block;"></canvas>
             <button type="button" class="btn btn-sm btn-outline-secondary" style="margin-top:10px;" onclick="WMS_MODULES.preoperacional._limpiarFirma()">
               <i class="fa-solid fa-eraser"></i> Limpiar firma
             </button>
@@ -177,18 +177,18 @@ WMS_MODULES.preoperacional = {
     const cont = document.getElementById('pv-fotos-preview');
     if (!cont) return;
     cont.innerHTML = (this._fotosInspeccion || []).map((file, idx) => `
-      <div style="position:relative;width:84px;height:84px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;">
+      <div style="position:relative;width:84px;height:84px;border-radius:8px;overflow:hidden;border:1px solid var(--border);">
         <img src="${URL.createObjectURL(file)}" style="width:100%;height:100%;object-fit:cover;">
         <button type="button" onclick="WMS_MODULES.preoperacional._quitarFotoInspeccion(${idx})"
-          style="position:absolute;top:2px;right:2px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;line-height:1;">✕</button>
-      </div>`).join('') || '<span style="font-size:.75rem;color:#94a3b8;">Sin fotos adjuntas todavía</span>';
+          style="position:absolute;top:2px;right:2px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;line-height:1;">✕</button>
+      </div>`).join('') || '<span style="font-size:.75rem;color:var(--text-muted);">Sin fotos adjuntas todavía</span>';
   },
 
   _renderItemRow(it) {
     const esTemp = it.clave === 'temperatura';
     const esDesinfeccion = it.clave === 'desinfeccion_vehiculo';
     return `
-      <tr id="pv-row-${it.clave}" style="border-bottom:1px solid #e2e8f0;">
+      <tr id="pv-row-${it.clave}" style="border-bottom:1px solid var(--border);">
         <td style="padding:10px 14px;font-weight:600;">
           ${WMS.esc(it.nombre)}
           ${esTemp ? `
@@ -197,7 +197,7 @@ WMS_MODULES.preoperacional = {
             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('pv-foto-temperatura').click()">
               <i class="fa-solid fa-camera"></i> Foto del termómetro
             </button>
-            <span id="pv-foto-temperatura-nombre" style="font-size:.72rem;color:#64748b;"></span>
+            <span id="pv-foto-temperatura-nombre" style="font-size:.72rem;color:var(--muted);"></span>
           </div>` : ''}
           ${esDesinfeccion ? `
           <div id="pv-producto-${it.clave}" style="margin-top:6px;display:none;">
@@ -210,8 +210,8 @@ WMS_MODULES.preoperacional = {
         </td>
         <td style="text-align:center;">
           <div style="display:inline-flex;gap:6px;">
-            <button type="button" id="pv-btn-${it.clave}-C" class="btn btn-sm" style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;font-weight:700;min-width:64px;" onclick="WMS_MODULES.preoperacional._calificar('${it.clave}','C')">Cumple</button>
-            <button type="button" id="pv-btn-${it.clave}-NC" class="btn btn-sm" style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;font-weight:700;min-width:64px;" onclick="WMS_MODULES.preoperacional._calificar('${it.clave}','NC')">No Cumple</button>
+            <button type="button" id="pv-btn-${it.clave}-C" class="btn btn-sm" style="background:var(--btn-neutral);color:var(--muted);border:1px solid var(--border);font-weight:700;min-width:64px;" onclick="WMS_MODULES.preoperacional._calificar('${it.clave}','C')">Cumple</button>
+            <button type="button" id="pv-btn-${it.clave}-NC" class="btn btn-sm" style="background:var(--btn-neutral);color:var(--muted);border:1px solid var(--border);font-weight:700;min-width:64px;" onclick="WMS_MODULES.preoperacional._calificar('${it.clave}','NC')">No Cumple</button>
           </div>
         </td>
       </tr>`;
@@ -221,8 +221,8 @@ WMS_MODULES.preoperacional = {
     this._calificaciones[clave] = valor;
     const btnC  = document.getElementById(`pv-btn-${clave}-C`);
     const btnNc = document.getElementById(`pv-btn-${clave}-NC`);
-    if (btnC)  { btnC.style.background  = (valor === 'C')  ? '#059669' : '#f1f5f9'; btnC.style.color  = (valor === 'C')  ? '#fff' : '#64748b'; }
-    if (btnNc) { btnNc.style.background = (valor === 'NC') ? '#dc2626' : '#f1f5f9'; btnNc.style.color = (valor === 'NC') ? '#fff' : '#64748b'; }
+    if (btnC)  { btnC.style.background  = (valor === 'C')  ? 'var(--ok)' : 'var(--btn-neutral)'; btnC.style.color  = (valor === 'C')  ? 'var(--surface)' : 'var(--muted)'; }
+    if (btnNc) { btnNc.style.background = (valor === 'NC') ? 'var(--danger)' : 'var(--btn-neutral)'; btnNc.style.color = (valor === 'NC') ? 'var(--surface)' : 'var(--muted)'; }
     if (clave === 'desinfeccion_vehiculo') {
       const cont = document.getElementById(`pv-producto-${clave}`);
       if (cont) cont.style.display = (valor === 'C') ? 'block' : 'none';
@@ -323,16 +323,16 @@ WMS_MODULES.preoperacional = {
         <div class="op-view">
           <div class="card" style="padding:14px 18px;margin-bottom:14px;">
             <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
-              <div><label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">DESDE</label>
+              <div><label class="form-label" style="display:block;margin-bottom:3px;">DESDE</label>
                 <input type="date" id="pv-h-ini" class="form-control form-control-sm" value="${f.ini}"></div>
-              <div><label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">HASTA</label>
+              <div><label class="form-label" style="display:block;margin-bottom:3px;">HASTA</label>
                 <input type="date" id="pv-h-fin" class="form-control form-control-sm" value="${f.fin}"></div>
-              <div><label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">VEHÍCULO</label>
+              <div><label class="form-label" style="display:block;margin-bottom:3px;">VEHÍCULO</label>
                 <input id="pv-h-veh" class="form-control form-control-sm" value="${WMS.esc(f.vehiculo||'')}"></div>
-              <div><label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">CONDUCTOR</label>
+              <div><label class="form-label" style="display:block;margin-bottom:3px;">CONDUCTOR</label>
                 <input id="pv-h-cond" class="form-control form-control-sm" value="${WMS.esc(f.conductor||'')}"></div>
               <div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;">
-                <input type="checkbox" id="pv-h-nc" ${f.soloNc?'checked':''}> <label for="pv-h-nc" style="font-size:11px;font-weight:700;color:#64748b;margin:0;">Solo con No Cumple</label>
+                <input type="checkbox" id="pv-h-nc" ${f.soloNc?'checked':''}> <label for="pv-h-nc" style="font-size:11px;font-weight:700;color:var(--muted);margin:0;">Solo con No Cumple</label>
               </div>
               <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.preoperacional._aplicarFiltrosHist()"><i class="fa-solid fa-filter"></i> Filtrar</button>
             </div>
@@ -350,13 +350,13 @@ WMS_MODULES.preoperacional = {
                   <td style="font-weight:700;">${WMS.esc(p.vehiculo)}</td>
                   <td>${WMS.esc(p.conductor)}</td>
                   <td>${WMS.esc(p.ruta || '-')}</td>
-                  <td style="font-size:.75rem;color:#64748b;">${WMS.esc(p.creador?.nombre || '-')}</td>
+                  <td style="font-size:.75rem;color:var(--muted);">${WMS.esc(p.creador?.nombre || '-')}</td>
                   <td style="text-align:center;">
                     ${p.nc_count > 0
-                      ? `<span class="badge" style="background:#fee2e2;color:#dc2626;">${p.nc_count}</span>`
-                      : `<span class="badge" style="background:#dcfce7;color:#16a34a;">0</span>`}
+                      ? `<span class="badge" style="background:var(--danger-bg);color:var(--danger);">${p.nc_count}</span>`
+                      : `<span class="badge" style="background:var(--ok-bg);color:var(--ok);">0</span>`}
                   </td>
-                  <td><i class="fa-solid fa-chevron-right" style="color:#94a3b8;"></i></td>
+                  <td><i class="fa-solid fa-chevron-right" style="color:var(--text-muted);"></i></td>
                 </tr>`).join('')
               : `<tr><td colspan="7" class="table-empty">Sin registros en el rango seleccionado</td></tr>`}
             </tbody>
@@ -406,7 +406,7 @@ WMS_MODULES.preoperacional = {
               <tr>
                 <td>${WMS.esc(it.item_nombre)}</td>
                 <td style="text-align:center;">
-                  <span class="badge" style="background:${it.calificacion==='C'?'#dcfce7':'#fee2e2'};color:${it.calificacion==='C'?'#16a34a':'#dc2626'};">
+                  <span class="badge" style="background:${it.calificacion==='C'?'var(--ok-bg)':'var(--danger-bg)'};color:${it.calificacion==='C'?'var(--ok)':'var(--danger)'};">
                     ${it.calificacion === 'C' ? 'Cumple' : 'No Cumple'}
                   </span>
                 </td>
@@ -414,33 +414,33 @@ WMS_MODULES.preoperacional = {
               </tr>
               ${(it.calificacion === 'C' && it.producto_desinfeccion) ? `
               <tr>
-                <td colspan="3" style="background:#f0fdf4;font-size:.8rem;color:#166534;"><b>Producto usado:</b> ${WMS.esc(it.producto_desinfeccion === 'Acido Peracetico' ? 'Ácido Peracético' : it.producto_desinfeccion)}</td>
+                <td colspan="3" style="background:var(--ok-bg);font-size:.8rem;color:var(--ok);"><b>Producto usado:</b> ${WMS.esc(it.producto_desinfeccion === 'Acido Peracetico' ? 'Ácido Peracético' : it.producto_desinfeccion)}</td>
               </tr>` : ''}
               ${it.calificacion === 'NC' ? `
               <tr>
-                <td colspan="3" style="background:#fef2f2;">
-                  <div style="font-size:.8rem;color:#991b1b;"><b>Detalle:</b> ${WMS.esc(it.detalle_no_conformidad || '-')}</div>
-                  <div style="font-size:.8rem;color:#991b1b;margin-top:2px;"><b>Acción correctiva:</b> ${WMS.esc(it.accion_correctiva || '-')}</div>
+                <td colspan="3" style="background:var(--danger-bg);">
+                  <div style="font-size:.8rem;color:var(--danger);"><b>Detalle:</b> ${WMS.esc(it.detalle_no_conformidad || '-')}</div>
+                  <div style="font-size:.8rem;color:var(--danger);margin-top:2px;"><b>Acción correctiva:</b> ${WMS.esc(it.accion_correctiva || '-')}</div>
                   ${(it.fotos && it.fotos.length) ? `
                   <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
-                    ${it.fotos.map(f => `<a href="${WMS.esc(up(f.url))}" target="_blank"><img src="${WMS.esc(up(f.url))}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;border:1px solid #fecaca;"></a>`).join('')}
+                    ${it.fotos.map(f => `<a href="${WMS.esc(up(f.url))}" target="_blank"><img src="${WMS.esc(up(f.url))}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;border:1px solid var(--danger-bg);"></a>`).join('')}
                   </div>` : ''}
                 </td>
               </tr>` : ''}`).join('')}
           </tbody>
         </table>
-        ${p.observaciones ? `<div style="margin-bottom:12px;"><b>Observaciones:</b><p style="margin-top:4px;color:#475569;">${WMS.esc(p.observaciones)}</p></div>` : ''}
+        ${p.observaciones ? `<div style="margin-bottom:12px;"><b>Observaciones:</b><p style="margin-top:4px;color:var(--text2);">${WMS.esc(p.observaciones)}</p></div>` : ''}
         ${(p.fotos && p.fotos.length) ? `
         <div style="margin-bottom:12px;">
           <b>Fotos de la inspección:</b>
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
-            ${p.fotos.map(f => `<a href="${WMS.esc(up(f.url))}" target="_blank"><img src="${WMS.esc(up(f.url))}" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;"></a>`).join('')}
+            ${p.fotos.map(f => `<a href="${WMS.esc(up(f.url))}" target="_blank"><img src="${WMS.esc(up(f.url))}" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--border);"></a>`).join('')}
           </div>
         </div>` : ''}
         ${p.firma_url ? `
         <div>
           <b>Firma del conductor:</b>
-          <div style="margin-top:8px;"><img src="${WMS.esc(up(p.firma_url))}" style="max-width:220px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;"></div>
+          <div style="margin-top:8px;"><img src="${WMS.esc(up(p.firma_url))}" style="max-width:220px;border:1px solid var(--border);border-radius:8px;background:var(--surface);"></div>
         </div>` : ''}
       `;
 
@@ -481,16 +481,16 @@ WMS_MODULES.preoperacional = {
         <div class="op-view">
           <div class="card" style="padding:14px 18px;margin-bottom:16px;">
             <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
-              <div><label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">DESDE</label>
+              <div><label class="form-label" style="display:block;margin-bottom:3px;">DESDE</label>
                 <input type="date" id="pvd-ini" class="form-control form-control-sm" value="${f.ini}"></div>
-              <div><label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">HASTA</label>
+              <div><label class="form-label" style="display:block;margin-bottom:3px;">HASTA</label>
                 <input type="date" id="pvd-fin" class="form-control form-control-sm" value="${f.fin}"></div>
               <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.preoperacional._aplicarFiltrosDashPreop()"><i class="fa-solid fa-filter"></i> Filtrar</button>
             </div>
           </div>
 
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:16px;">
-            ${this._kpiCard('fa-clipboard-list', '#0F4C81', 'Inspecciones', kpi.total_inspecciones ?? 0, `${kpi.vehiculos_inspeccionados ?? 0} vehículos inspeccionados`)}
+            ${this._kpiCard('fa-clipboard-list', '#2b5fc7', 'Inspecciones', kpi.total_inspecciones ?? 0, `${kpi.vehiculos_inspeccionados ?? 0} vehículos inspeccionados`)}
             ${this._kpiCard('fa-triangle-exclamation', '#dc2626', 'No Conformidades', kpi.total_nc ?? 0, `de ${kpi.total_items ?? 0} ítems evaluados`)}
             ${this._kpiCard('fa-gauge-high', kpi.pct_cumplimiento >= 90 ? '#16a34a' : '#dc2626', '% Cumplimiento', `${kpi.pct_cumplimiento ?? 100}%`, 'ítems Cumple sobre el total evaluado')}
           </div>
@@ -506,7 +506,7 @@ WMS_MODULES.preoperacional = {
               <div class="card-header"><span class="card-title"><i class="fa-solid fa-ranking-star"></i> Ítems con más No Cumple</span></div>
               <div class="card-body" style="padding:10px 16px;">
                 ${topItems.length ? `<table class="data-table compact"><tbody>
-                  ${topItems.map(it => `<tr><td>${WMS.esc(it.item_nombre)}</td><td style="text-align:right;font-weight:700;color:#dc2626;">${it.veces_nc}</td></tr>`).join('')}
+                  ${topItems.map(it => `<tr><td>${WMS.esc(it.item_nombre)}</td><td style="text-align:right;font-weight:700;color:var(--danger);">${it.veces_nc}</td></tr>`).join('')}
                 </tbody></table>` : '<p class="table-empty">Sin novedades en el rango seleccionado</p>'}
               </div>
             </div>
@@ -518,7 +518,7 @@ WMS_MODULES.preoperacional = {
               ${topVeh.length ? `<table class="data-table compact">
                 <thead><tr><th>Vehículo</th><th style="text-align:right;">No Cumple</th></tr></thead>
                 <tbody>
-                  ${topVeh.map(v => `<tr style="cursor:pointer;" onclick="WMS.nav('preoperacional','matriz')"><td>${WMS.esc(v.vehiculo)}</td><td style="text-align:right;font-weight:700;color:#dc2626;">${v.total_nc}</td></tr>`).join('')}
+                  ${topVeh.map(v => `<tr style="cursor:pointer;" onclick="WMS.nav('preoperacional','matriz')"><td>${WMS.esc(v.vehiculo)}</td><td style="text-align:right;font-weight:700;color:var(--danger);">${v.total_nc}</td></tr>`).join('')}
                 </tbody>
               </table>` : '<p class="table-empty">Sin novedades en el rango seleccionado</p>'}
             </div>
@@ -542,11 +542,11 @@ WMS_MODULES.preoperacional = {
             <i class="fa-solid ${icon}"></i>
           </div>
           <div>
-            <div style="font-size:1.4rem;font-weight:800;color:#1e293b;line-height:1.1;">${value}</div>
-            <div style="font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.03em;">${WMS.esc(label)}</div>
+            <div style="font-size:1.4rem;font-weight:800;color:var(--text);line-height:1.1;">${value}</div>
+            <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;">${WMS.esc(label)}</div>
           </div>
         </div>
-        <div style="font-size:.72rem;color:#94a3b8;margin-top:8px;">${WMS.esc(sub)}</div>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:8px;">${WMS.esc(sub)}</div>
       </div>`;
   },
 
@@ -569,7 +569,7 @@ WMS_MODULES.preoperacional = {
       data: {
         labels,
         datasets: [
-          { label: 'Inspecciones', data: inspecciones, borderColor: '#0F4C81', backgroundColor: '#0F4C8120', borderWidth: 2, tension: 0.25, fill: false },
+          { label: 'Inspecciones', data: inspecciones, borderColor: '#2b5fc7', backgroundColor: '#0F4C8120', borderWidth: 2, tension: 0.25, fill: false },
           { label: 'No Cumple', data: noCumple, borderColor: '#dc2626', backgroundColor: '#dc262620', borderWidth: 2, tension: 0.25, fill: false },
         ],
       },
@@ -611,9 +611,9 @@ WMS_MODULES.preoperacional = {
         <div class="op-view">
           <div class="card" style="padding:14px 18px;margin-bottom:14px;">
             <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
-              <div><label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">DESDE</label>
+              <div><label class="form-label" style="display:block;margin-bottom:3px;">DESDE</label>
                 <input type="date" id="pvm-ini" class="form-control form-control-sm" value="${f.ini}"></div>
-              <div><label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:3px;">HASTA</label>
+              <div><label class="form-label" style="display:block;margin-bottom:3px;">HASTA</label>
                 <input type="date" id="pvm-fin" class="form-control form-control-sm" value="${f.fin}"></div>
               <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.preoperacional._aplicarFiltrosMatriz()"><i class="fa-solid fa-filter"></i> Filtrar</button>
             </div>
@@ -632,11 +632,11 @@ WMS_MODULES.preoperacional = {
                   <td style="text-align:center;">${v.total_inspecciones}</td>
                   <td style="text-align:center;">
                     ${v.total_nc > 0
-                      ? `<span class="badge" style="background:#fee2e2;color:#dc2626;">${v.total_nc}</span>`
-                      : `<span class="badge" style="background:#dcfce7;color:#16a34a;">0</span>`}
+                      ? `<span class="badge" style="background:var(--danger-bg);color:var(--danger);">${v.total_nc}</span>`
+                      : `<span class="badge" style="background:var(--ok-bg);color:var(--ok);">0</span>`}
                   </td>
                   <td>${WMS.formatDate(v.ultima_inspeccion)}</td>
-                  <td><i class="fa-solid fa-chevron-right" style="color:#94a3b8;"></i></td>
+                  <td><i class="fa-solid fa-chevron-right" style="color:var(--text-muted);"></i></td>
                 </tr>`).join('')
               : `<tr><td colspan="6" class="table-empty">Sin registros en el rango seleccionado</td></tr>`}
             </tbody>
@@ -665,13 +665,13 @@ WMS_MODULES.preoperacional = {
           <div class="card" style="padding:12px 14px;margin-bottom:10px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
               <b style="font-size:.85rem;">${WMS.esc(nc.item_nombre)}</b>
-              <span style="font-size:.72rem;color:#64748b;">${WMS.formatDate(nc.fecha)} · ${WMS.esc(nc.conductor)}</span>
+              <span style="font-size:.72rem;color:var(--muted);">${WMS.formatDate(nc.fecha)} · ${WMS.esc(nc.conductor)}</span>
             </div>
-            <div style="font-size:.8rem;color:#991b1b;"><b>Detalle:</b> ${WMS.esc(nc.detalle_no_conformidad || '-')}</div>
-            <div style="font-size:.8rem;color:#991b1b;margin-top:2px;"><b>Acción correctiva:</b> ${WMS.esc(nc.accion_correctiva || '-')}</div>
+            <div style="font-size:.8rem;color:var(--danger);"><b>Detalle:</b> ${WMS.esc(nc.detalle_no_conformidad || '-')}</div>
+            <div style="font-size:.8rem;color:var(--danger);margin-top:2px;"><b>Acción correctiva:</b> ${WMS.esc(nc.accion_correctiva || '-')}</div>
             ${(nc.fotos && nc.fotos.length) ? `
             <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
-              ${nc.fotos.map(url => `<a href="${WMS.esc(up(url))}" target="_blank"><img src="${WMS.esc(up(url))}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;border:1px solid #fecaca;"></a>`).join('')}
+              ${nc.fotos.map(url => `<a href="${WMS.esc(up(url))}" target="_blank"><img src="${WMS.esc(up(url))}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;border:1px solid var(--danger-bg);"></a>`).join('')}
             </div>` : ''}
           </div>`).join('') : '<p class="table-empty">Sin no conformidades registradas</p>'}
       </div>`;

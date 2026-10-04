@@ -4,8 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>WMS Fénix · Móvil</title>
-  <meta name="theme-color" content="#0F4C81">
+  <meta name="theme-color" content="#2b5fc7">
   <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="../assets/css/mobile.css">
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -26,14 +29,23 @@
       </div>
       <div style="background:#fff;border-radius:12px;padding:16px 18px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3);">
         <div style="margin-bottom:8px;">
-          <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;margin-bottom:3px;">DOCUMENTO</label>
-          <input type="text" id="m-doc" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;">
-        </div>
-        <div style="margin-bottom:8px;">
           <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;margin-bottom:3px;">EMPRESA</label>
-          <select id="m-empresa" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;">
+          <select id="m-empresa" onchange="MWMS.loadLoginPersonal()" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;">
             <option value="">— Seleccione una empresa —</option>
           </select>
+        </div>
+        <!-- 2026-10-01: buscar y seleccionar el nombre, luego solo el PIN -->
+        <div style="margin-bottom:8px;">
+          <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;margin-bottom:3px;">USUARIO</label>
+          <input type="hidden" id="m-user-id">
+          <div id="m-user-sel" style="display:none;align-items:center;justify-content:space-between;gap:6px;padding:8px;border:1px solid #2b5fc7;background:#eff6ff;border-radius:8px;font-size:.85rem;">
+            <b id="m-user-nombre" style="color:#2b5fc7;"></b>
+            <button type="button" onclick="MWMS.loginCambiarUsuario()" style="border:none;background:none;color:#2b5fc7;font-size:.7rem;font-weight:700;cursor:pointer;">Cambiar</button>
+          </div>
+          <div id="m-user-buscar">
+            <input type="text" id="m-user-q" placeholder="Buscar nombre..." autocomplete="off" oninput="MWMS.renderLoginPersonal()" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;">
+            <div id="m-user-list" style="max-height:150px;overflow-y:auto;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;display:none;"></div>
+          </div>
         </div>
         <div style="margin-bottom:6px;">
           <label style="font-size:.65rem;font-weight:700;color:#475569;display:block;text-align:center;">PIN</label>
@@ -145,7 +157,7 @@
         <div style="margin-bottom:12px;">
            <label class="m-label">UND/TOTAL</label>
            <input type="text" id="m-cap-total" class="m-input-full" readonly style="background:#e0f2fe; color:#0369a1; font-weight:bold;">
-           <div id="m-cap-formula-preview" style="display:none;font-size:.72rem;font-weight:700;color:#1e40af;background:#eff6ff;padding:6px 10px;border-radius:6px;margin-top:4px;text-align:center;"></div>
+           <div id="m-cap-formula-preview" style="display:none;font-size:.72rem;font-weight:700;color:#1e4da8;background:#eff6ff;padding:6px 10px;border-radius:6px;margin-top:4px;text-align:center;"></div>
         </div>
 
         <div id="m-cap-lote-group" style="margin-bottom:12px;">
@@ -425,12 +437,60 @@ const MWMS = {
     this.toast(`✓ ${success} enviadas${failed ? ', ' + failed + ' pendientes' : ''}`, success > 0 ? 'success' : 'error');
   },
   showLogin() { document.getElementById('login-screen').style.display='flex'; document.getElementById('main-screen').style.display='none'; this._pin=''; this.updPin(); this.loadLoginEmpresas(); },
+
+  // ── Login por "seleccionar nombre + PIN" (2026-10-01, a pedido de Camilo).
+  // La lista viene de /auth/personal (público, solo id+nombre+rol); el PIN
+  // queda protegido por el bloqueo de 5 intentos del backend. Se recuerda el
+  // último usuario en este teléfono para no tener que buscarlo cada vez.
+  _loginPersonal: [],
+  async loadLoginPersonal() {
+    const empresaId = document.getElementById('m-empresa').value;
+    this._loginPersonal = [];
+    this.loginCambiarUsuario(true);
+    if (!empresaId) { document.getElementById('m-user-list').style.display = 'none'; return; }
+    try {
+      const r = await mApi('GET', '/auth/personal?empresa_id=' + encodeURIComponent(empresaId));
+      this._loginPersonal = r.data || [];
+    } catch (e) { this._loginPersonal = []; }
+    let ultimo = null;
+    try { ultimo = JSON.parse(localStorage.getItem('wms_ultimo_usuario') || 'null'); } catch (e) {}
+    const previo = ultimo && String(ultimo.empresa_id) === String(empresaId) && this._loginPersonal.find(p => p.id === ultimo.id);
+    if (previo) this.loginSeleccionarUsuario(previo.id); else this.renderLoginPersonal();
+  },
+  renderLoginPersonal() {
+    const list = document.getElementById('m-user-list');
+    const norm = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const q = norm((document.getElementById('m-user-q').value || '').trim());
+    const items = this._loginPersonal.filter(p => !q || norm(p.nombre).includes(q)).slice(0, 40);
+    list.style.display = 'block';
+    list.innerHTML = items.length ? items.map(p => `
+      <div onclick="MWMS.loginSeleccionarUsuario(${p.id})" style="padding:8px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:.82rem;">
+        <b>${this.esc(p.nombre)}</b> <span style="color:#94a3b8;font-size:.7rem;">${this.esc(p.rol || '')}${p.ref ? ' · doc. …' + this.esc(p.ref) : ''}</span>
+      </div>`).join('') : `<div style="padding:8px 10px;color:#94a3b8;font-size:.78rem;">${this._loginPersonal.length ? 'Sin coincidencias' : 'Seleccione la empresa'}</div>`;
+  },
+  loginSeleccionarUsuario(id) {
+    const p = this._loginPersonal.find(x => x.id === id);
+    if (!p) return;
+    document.getElementById('m-user-id').value = p.id;
+    document.getElementById('m-user-nombre').textContent = p.nombre + (p.ref ? ' (doc. …' + p.ref + ')' : '');
+    document.getElementById('m-user-sel').style.display = 'flex';
+    document.getElementById('m-user-buscar').style.display = 'none';
+    document.getElementById('m-login-err').style.display = 'none';
+    this._pin = ''; this.updPin();
+  },
+  loginCambiarUsuario(sinRender) {
+    document.getElementById('m-user-id').value = '';
+    document.getElementById('m-user-sel').style.display = 'none';
+    document.getElementById('m-user-buscar').style.display = 'block';
+    document.getElementById('m-user-q').value = '';
+    if (!sinRender) { this.renderLoginPersonal(); document.getElementById('m-user-q').focus(); }
+  },
   showApp() {
     document.getElementById('login-screen').style.display='none'; document.getElementById('main-screen').style.display='flex';
     document.getElementById('m-subtitle').textContent = _mUser.rol + ' · ' + (_mUser.empresa_nombre || 'Global') + ' / ' + (_mUser.sucursal_nombre || 'Todas');
     this.showHome(); this.startNotif(); this._loadCausalesNovedad(); this._dvLoadCausales(); this._dvLoadSucursales(); this._dvLoadClientes();
   },
-  updPin() { for(let i=0;i<4;i++){ const d=document.getElementById('mpd'+i); d.style.background=i<this._pin.length?'#0F4C81':'#fff'; d.style.borderColor=i<this._pin.length?'#0F4C81':'#cbd5e1';} },
+  updPin() { for(let i=0;i<4;i++){ const d=document.getElementById('mpd'+i); d.style.background=i<this._pin.length?'#2b5fc7':'#fff'; d.style.borderColor=i<this._pin.length?'#2b5fc7':'#cbd5e1';} },
   pinPress(v) { if(v==='del') this._pin=this._pin.slice(0,-1); else if(this._pin.length<4) this._pin+=v; this.updPin(); if(this._pin.length===4) setTimeout(()=>this.doLogin(),200); },
   async loadLoginEmpresas() {
     const empresaSel = document.getElementById('m-empresa');
@@ -442,24 +502,32 @@ const MWMS = {
       empresaSel.innerHTML = '<option value="">— Seleccione una empresa —</option>' + empresas.map(e =>
         `<option value="${e.id}">${e.razon_social} ${e.nit ? '(' + e.nit + ')' : ''}</option>`
       ).join('');
+      // Preselecciona la empresa del último usuario (o la única que exista)
+      // y carga de una vez la lista de nombres.
+      let ultimo = null;
+      try { ultimo = JSON.parse(localStorage.getItem('wms_ultimo_usuario') || 'null'); } catch (e) {}
+      const pre = (ultimo && empresas.find(e => String(e.id) === String(ultimo.empresa_id))) || (empresas.length === 1 ? empresas[0] : null);
+      if (pre) { empresaSel.value = pre.id; this.loadLoginPersonal(); }
     } catch (error) {
       empresaSel.innerHTML = '<option value="">Error cargando empresas</option>';
     }
   },
 
   async doLogin() {
-    const doc = document.getElementById('m-doc').value.trim();
+    const personalId = parseInt(document.getElementById('m-user-id').value || '0');
     const empresaId = document.getElementById('m-empresa').value;
-    if (!doc || !empresaId || !this._pin) {
-      if (!empresaId) {
-        document.getElementById('m-login-err').textContent='Seleccione la empresa antes de ingresar.';
+    if (!personalId || !empresaId || !this._pin) {
+      if (!empresaId || !personalId) {
+        document.getElementById('m-login-err').textContent = !empresaId ? 'Seleccione la empresa antes de ingresar.' : 'Busque y seleccione su nombre.';
         document.getElementById('m-login-err').style.display='block';
+        this._pin=''; this.updPin();
       }
       return;
     }
     this.loading(true);
     try {
-      const r = await mApi('POST','/auth/login',{documento:doc,pin:this._pin,empresa_id:empresaId});
+      const r = await mApi('POST','/auth/login',{personal_id:personalId,pin:this._pin,empresa_id:empresaId});
+      try { localStorage.setItem('wms_ultimo_usuario', JSON.stringify({ id: personalId, empresa_id: empresaId })); } catch (e) {}
       _mToken=r.token; _mUser=r.user; _mPermisos=r.permisos||[];
       localStorage.setItem('wms_token',_mToken); localStorage.setItem('wms_user',JSON.stringify(_mUser));
       localStorage.setItem('wms_permisos',JSON.stringify(_mPermisos));
@@ -473,7 +541,13 @@ const MWMS = {
         this.loading(false);
     }
   },
-  logout() { localStorage.clear(); location.reload(); },
+  logout() {
+    // Conserva solo el último usuario (preselección del login por nombre).
+    const ultimo = localStorage.getItem('wms_ultimo_usuario');
+    localStorage.clear();
+    if (ultimo) localStorage.setItem('wms_ultimo_usuario', ultimo);
+    location.reload();
+  },
 
   // A pedido explícito (2026-08-23): control de acceso por PANTALLA del menú
   // móvil — mismo criterio que hasPermiso() de escritorio (Admin siempre ve
@@ -553,7 +627,7 @@ const MWMS = {
     document.getElementById('m-content').innerHTML = `
       <div class="op-view" style="padding-bottom:90px;">
 
-        <div style="background:linear-gradient(135deg,#0F4C81,#1a6bb0);border-radius:12px;padding:14px 16px;color:#fff;margin-bottom:12px;">
+        <div style="background:linear-gradient(135deg,#2b5fc7,#1a6bb0);border-radius:12px;padding:14px 16px;color:#fff;margin-bottom:12px;">
           <div style="font-weight:800;font-size:.9rem;margin-bottom:4px;"><i class="fa-solid fa-truck-field"></i> Preoperacional del vehículo</div>
           <div style="font-size:.76rem;opacity:.92;">Enfocado en la <b>limpieza y el orden</b> del vehículo antes de salir a ruta. Califique según lo que observe físicamente.</div>
         </div>
@@ -1149,7 +1223,7 @@ const MWMS = {
             <div class="m-label" style="margin-bottom:8px;">${this.esc(suc)}</div>
             ${ambientes.map(a => `
               <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
-                <span style="font-size:.85rem;font-weight:700;color:${a.color||'#1e3a5f'};">${a.icono ? `<i class="fa-solid fa-${this.esc(a.icono)}"></i> ` : ''}${this.esc(a.descripcion)}</span>
+                <span style="font-size:.85rem;font-weight:700;color:${a.color||'#1e293b'};">${a.icono ? `<i class="fa-solid fa-${this.esc(a.icono)}"></i> ` : ''}${this.esc(a.descripcion)}</span>
                 <input type="number" class="m-input-full cnt-m-input" style="width:90px;" min="0" inputmode="numeric"
                   data-sucursal="${this.esc(suc)}" data-ambiente="${a.id}"
                   value="${(valores[suc] && valores[suc][a.id]) || 0}">
@@ -1522,6 +1596,7 @@ const MWMS = {
     document.getElementById('m-title').textContent = 'Rec. Sin ODC';
     this._sinOdc = { recepcionId: null, lineas: [], prods: [], palletNum: null };
     this._renderRecSinOdc();
+    this._rsRetomarBorrador();
     // Auto-fetch pallet consecutivo
     mApi('GET', '/recepciones/proximo-pallet').then(r => {
       this._sinOdc.palletNum = r.proximo || 1;
@@ -1595,7 +1670,7 @@ const MWMS = {
           <div class="m-label" id="rs-cant-label">${(s.prodSel?.unidades_caja || 1) > 1 ? 'Cajas' : 'Cantidad (unidades)'} *</div>
           <input type="number" id="rs-cant" class="m-input-full" value="${(parseFloat(s.prodSel?.factor_udm || 0) > 0) ? '0' : '1'}" min="0.001" step="0.001"
             oninput="MWMS._actualizarPreviewRs()">
-          <div id="rs-conv-preview" style="display:${(s.prodSel?.unidades_caja || 1) > 1 ? 'block' : 'none'};margin-top:6px;padding:8px;background:#eff6ff;border-radius:6px;font-size:.78rem;color:#1e40af;font-weight:600;">
+          <div id="rs-conv-preview" style="display:${(s.prodSel?.unidades_caja || 1) > 1 ? 'block' : 'none'};margin-top:6px;padding:8px;background:#eff6ff;border-radius:6px;font-size:.78rem;color:#1e4da8;font-weight:600;">
             <i class="fa-solid fa-calculator"></i> <span id="rs-conv-text"></span>
           </div>
         </div>
@@ -1660,11 +1735,14 @@ const MWMS = {
           <i class="fa-solid fa-clipboard-check"></i> CONDICIONES DE TRANSPORTE
         </button>
 
-        <!-- Botón cerrar recepción (solo Admin/Supervisor) -->
-        ${s.recepcionId && ['Admin','Supervisor','SuperAdmin'].includes(_mUser?.rol) ? `
-        <button class="m-btn danger full" onclick="MWMS._cerrarRecepcionSinOdc()" style="font-size:.9rem;padding:12px;font-weight:700;margin-top:6px;">
-          <i class="fa-solid fa-paper-plane"></i> CERRAR Y ENVIAR REGISTROS
-        </button>` : ''}
+        <!-- Enviar y cerrar recibo — CORREGIDO 2026-10-01 (Camilo: "debe haber el
+             botón de enviar y cerrar recibo"): antes solo lo veían Admin/Supervisor,
+             así que el auxiliar que hace la recepción nunca podía cerrarla. Mismo
+             criterio que Recepción con ODC (sin restricción de rol): el acceso se
+             controla en el menú (permiso mobile.rs), y el cierre exige que TODAS
+             las referencias tengan inspección de calidad (_precheckCalidadCierre +
+             validación del servidor). -->
+        ${s.recepcionId && s.lineas.length ? `<div id="rs-cierre-box">${this._rsCierreHtml()}</div>` : ''}
 
         <!-- Historial de capturas -->
         ${s.lineas.length > 0 ? `
@@ -1831,7 +1909,7 @@ const MWMS = {
           return;
         }
         dd.innerHTML =
-          `<div style="padding:5px 10px;font-size:.68rem;font-weight:700;color:#0F4C81;background:#eff6ff;border-bottom:1px solid #bfdbfe;position:sticky;top:0;">
+          `<div style="padding:5px 10px;font-size:.68rem;font-weight:700;color:#2b5fc7;background:#eff6ff;border-bottom:1px solid #bfdbfe;position:sticky;top:0;">
             ${prods.length} resultado${prods.length !== 1 ? 's' : ''} encontrado${prods.length !== 1 ? 's' : ''}
           </div>` +
           prods.map(p => `
@@ -2060,6 +2138,8 @@ const MWMS = {
         const btn = document.getElementById('rs-cal-btn-' + l.detalleId);
         if (btn) { btn.className = 'm-btn success sm'; btn.style.cssText = 'width:100%;'; btn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Calidad inspeccionada'; }
       });
+      const box = document.getElementById('rs-cierre-box');
+      if (box) box.innerHTML = this._rsCierreHtml();
     } catch(e) {
       Swal.fire({ icon: 'error', title: 'Error', text: e.message });
     }
@@ -2253,7 +2333,7 @@ const MWMS = {
               onclick="MWMS._showCalidadModalProducto(${parseInt(p.detalle_id)||0}, '${this.esc(p.nombre || p.codigo)}')">
               <i class="fa-solid fa-microscope"></i> Inspeccionar</button>
           </div>`).join('')}
-          <p style="font-size:.72rem;color:#64748b;text-align:left;margin-top:8px;">Después de inspeccionar, vuelva a tocar "Cerrar y enviar registros".</p>`,
+          <p style="font-size:.72rem;color:#64748b;text-align:left;margin-top:8px;">Después de inspeccionar, vuelva a tocar "Enviar y cerrar recibo".</p>`,
         confirmButtonText: 'Entendido',
         allowOutsideClick: false,
         width: '92%',
@@ -2261,6 +2341,63 @@ const MWMS = {
       return false;
     }
     return confirm(`Todas las referencias tienen inspección de calidad.\n\n¿Cerrar y enviar ${d.lineas || ''} registro(s)? No podrá agregar más líneas.`);
+  },
+
+  // Retoma el recibo sin ODC que este auxiliar dejó abierto HOY (2026-10-01).
+  // Las capturas se guardan en el servidor una por una, pero la lista de la
+  // pantalla vivía solo en memoria: al recargar la app (deslizar hacia abajo,
+  // cierre de sesión por inactividad) la pantalla quedaba vacía, sin el botón
+  // "Enviar y cerrar recibo", aunque el servidor siguiera usando ese mismo
+  // borrador del día para las capturas nuevas.
+  async _rsRetomarBorrador() {
+    try {
+      const hoy = new Date().toLocaleDateString('en-CA');
+      const lista = (await mApi('GET', `/recepciones?estado=Borrador&odc_id=null&fecha_desde=${hoy}&fecha_hasta=${hoy}`)).data || [];
+      const mio = lista.find(r => r.auxiliar_id === _mUser?.id && (r.detalles_count || 0) > 0);
+      if (!mio || this._sinOdc.recepcionId) return;
+      const [rec, cal] = await Promise.all([
+        mApi('GET', '/recepciones/' + mio.id).then(r => r.data || {}),
+        mApi('GET', '/recepciones/' + mio.id + '/calidad-pendiente').then(r => r.data || {}),
+      ]);
+      const pendientes = new Set((cal.pendientes || []).map(p => p.producto_id));
+      if (this._sinOdc.recepcionId) return; // ya empezó una captura nueva mientras cargaba
+      this._sinOdc.recepcionId = mio.id;
+      this._sinOdc.lineas = (rec.detalles || []).map(d => {
+        const upc = parseInt(d.cajas_por_unidad || d.producto?.unidades_caja || 1) || 1;
+        const cant = parseFloat(d.cantidad_recibida || 0);
+        const cajas = d.cantidad_cajas != null ? parseFloat(d.cantidad_cajas) : Math.floor(cant / upc);
+        return {
+          detalleId: d.id, prodId: String(d.producto_id), calidadOk: !pendientes.has(d.producto_id),
+          nombre: d.producto?.nombre || 'Producto', cant, cajas, upc, saldos: Math.max(0, cant - cajas * upc),
+          lote: d.lote, fv: d.fecha_vencimiento ? String(d.fecha_vencimiento).substring(0, 10) : null,
+          numero_pallet: d.numero_pallet,
+        };
+      });
+      this.toast(`Se retomó el recibo ${mio.numero_recepcion || '#' + mio.id} (${this._sinOdc.lineas.length} captura(s))`, 'info');
+      this._renderRecSinOdc();
+    } catch (e) { /* sin borrador o sin red: la pantalla sigue como recibo nuevo */ }
+  },
+
+  // Resumen de inspección + botón "Enviar y cerrar recibo" (Rec. sin ODC).
+  // Cuenta REFERENCIAS (no capturas): varios pallets del mismo producto son
+  // una sola inspección, igual que la validación del servidor.
+  _rsCierreHtml() {
+    const refs = {};
+    (this._sinOdc?.lineas || []).filter(l => l.detalleId).forEach(l => {
+      const k = l.prodId || ('d' + l.detalleId);
+      refs[k] = refs[k] || !!l.calidadOk;
+    });
+    const total = Object.keys(refs).length;
+    const ok = Object.values(refs).filter(Boolean).length;
+    const completo = total > 0 && ok === total;
+    return `
+        <div style="margin-top:10px;padding:8px 10px;border-radius:8px;font-size:.75rem;font-weight:700;text-align:center;${completo ? 'background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;' : 'background:#fffbeb;color:#92400e;border:1px solid #fde68a;'}">
+          <i class="fa-solid ${completo ? 'fa-circle-check' : 'fa-microscope'}"></i>
+          Inspección de calidad: ${ok} de ${total} referencia(s)${completo ? ' — lista para enviar' : ' — complete las pendientes para poder cerrar'}
+        </div>
+        <button class="m-btn ${completo ? 'success' : 'secondary'} full" onclick="MWMS._cerrarRecepcionSinOdc()" style="font-size:.95rem;padding:13px;font-weight:800;margin-top:6px;">
+          <i class="fa-solid fa-paper-plane"></i> ENVIAR Y CERRAR RECIBO
+        </button>`;
   },
 
   async _cerrarRecepcionSinOdc() {
@@ -2298,16 +2435,16 @@ const MWMS = {
     const saldosAct  = linea.saldos ?? 0;
 
     const { value: vals, isConfirmed } = await Swal.fire({
-      title: '<i class="fa-solid fa-pencil" style="color:#0F4C81;"></i> Editar Cantidad',
+      title: '<i class="fa-solid fa-pencil" style="color:#2b5fc7;"></i> Editar Cantidad',
       html: `
         <div style="font-size:.8rem;font-weight:700;color:#1e293b;margin-bottom:10px;text-align:left;">${this.esc(linea.nombre)}</div>
         <div style="display:grid;grid-template-columns:${usaCajas ? '1fr 1fr' : '1fr'};gap:10px;text-align:left;">
           <div>
-            <label style="font-size:.7rem;font-weight:700;color:#0F4C81;display:block;margin-bottom:4px;">
+            <label style="font-size:.7rem;font-weight:700;color:#2b5fc7;display:block;margin-bottom:4px;">
               <i class="fa-solid fa-box-archive"></i> ${usaCajas ? `Cajas (UxC: ${upc})` : 'Cantidad (und)'}
             </label>
             <input type="number" id="edit-sinOdc-cajas" value="${cajasAct}" min="0" inputmode="numeric"
-              style="width:100%;border:2px solid #0F4C81;border-radius:8px;padding:10px;font-size:1.6rem;font-weight:900;text-align:center;box-sizing:border-box;">
+              style="width:100%;border:2px solid #2b5fc7;border-radius:8px;padding:10px;font-size:1.6rem;font-weight:900;text-align:center;box-sizing:border-box;">
           </div>
           ${usaCajas ? `
           <div>
@@ -2338,7 +2475,7 @@ const MWMS = {
       showCancelButton: true,
       confirmButtonText: '<i class="fa-solid fa-check"></i> Guardar',
       cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#0F4C81',
+      confirmButtonColor: '#2b5fc7',
       preConfirm: () => {
         const c  = parseInt(document.getElementById('edit-sinOdc-cajas')?.value  || 0);
         const sl = usaCajas ? (parseInt(document.getElementById('edit-sinOdc-saldos')?.value || 0) || 0) : 0;
@@ -2822,7 +2959,7 @@ const MWMS = {
     this.loading(false);
   },
 
-  loading(s){ let l=document.getElementById('m-loading'); if(s&&!l)document.body.insertAdjacentHTML('beforeend','<div id="m-loading" style="position:fixed;inset:0;background:rgba(255,255,255,.7);z-index:90000;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#0F4C81;"><i class="fa-solid fa-spinner fa-spin"></i></div>'); else if(!s&&l)l.remove(); },
+  loading(s){ let l=document.getElementById('m-loading'); if(s&&!l)document.body.insertAdjacentHTML('beforeend','<div id="m-loading" style="position:fixed;inset:0;background:rgba(255,255,255,.7);z-index:90000;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#2b5fc7;"><i class="fa-solid fa-spinner fa-spin"></i></div>'); else if(!s&&l)l.remove(); },
   toast(m,t='info'){ const c=document.getElementById('m-toast'), e=document.createElement('div'); e.className='m-toast-item '+t; e.innerHTML=m; c.appendChild(e); setTimeout(()=>{e.style.opacity='0';setTimeout(()=>e.remove(),500);},3000); },
   esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); },
 
@@ -2929,8 +3066,9 @@ const MWMS = {
               pColor = diasPatio > 7 ? '#dc2626' : (diasPatio > 3 ? '#d97706' : '#16a34a');
           }
 
+          const buscable = [it.producto_nombre, it.codigo_interno, it.producto_codigo, lote, it.numero_pallet].filter(Boolean).join(' ').toLowerCase();
           return `
-          <div style="display:flex;align-items:stretch;gap:0;border-bottom:1px solid #f1f5f9;background:#fff;">
+          <div class="ub-item" data-buscar="${this.esc(buscable)}" style="display:flex;align-items:stretch;gap:0;border-bottom:1px solid #f1f5f9;background:#fff;">
             <!-- Franja lateral de color por urgencia -->
             <div style="width:4px;background:${vence ? vColor : '#e2e8f0'};flex-shrink:0;border-radius:0;"></div>
             <!-- Contenido -->
@@ -2948,7 +3086,7 @@ const MWMS = {
                 <span style="font-size:.68rem;color:${pColor};font-weight:700;"><i class="fa-solid fa-clock"></i> ${diasPatio}d en patio</span>
                 ${lote ? `<span style="font-size:.68rem;color:#64748b;background:#f1f5f9;padding:1px 5px;border-radius:4px;">Lote: ${this.esc(lote)}</span>` : ''}
                 ${vence ? `<span style="font-size:.68rem;color:${vColor};font-weight:600;"><i class="fa-regular fa-calendar-xmark" style="font-size:.63rem;"></i> ${vence}</span>` : ''}
-                ${it.producto_codigo ? `<span style="font-size:.65rem;color:#94a3b8;">${this.esc(it.producto_codigo)}</span>` : ''}
+                ${(it.codigo_interno || it.producto_codigo) ? `<span style="font-size:.65rem;color:#94a3b8;">${this.esc(it.codigo_interno || it.producto_codigo)}</span>` : ''}
               </div>
             </div>
             <!-- Botón ubicar -->
@@ -2963,7 +3101,7 @@ const MWMS = {
         }).join('');
 
         return `
-        <div style="border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:12px;">
+        <div class="ub-pallet" data-pallet="${this.esc(label.toLowerCase())}" style="border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:12px;">
           <!-- Cabecera del pallet (acordeón) -->
           <div onclick="MWMS.togglePallet('pal-${p.id}')"
                style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:linear-gradient(135deg,#1e293b,#334155);cursor:pointer;user-select:none;">
@@ -3001,10 +3139,42 @@ const MWMS = {
               <i class="fa-solid fa-arrows-rotate"></i> Actualizar
             </button>
           </div>
+          <!-- Búsqueda dinámica de lo que está en patio sin ubicar (2026-10-02) -->
+          <div style="position:relative;margin-bottom:10px;">
+            <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.8rem;"></i>
+            <input id="ub-buscar" type="search" autocomplete="off" placeholder="Buscar producto, código, lote o pallet..."
+              oninput="MWMS._ubFiltrar(this.value)"
+              style="width:100%;padding:10px 12px 10px 34px;border:1.5px solid #cbd5e1;border-radius:10px;font-size:.85rem;box-sizing:border-box;">
+            <div id="ub-buscar-res" style="font-size:.66rem;color:#64748b;margin-top:4px;display:none;"></div>
+          </div>
           ${palletsHtml}
+          <div id="ub-sin-res" class="m-empty" style="display:none;"><i class="fa-solid fa-magnifying-glass"></i><p>Sin coincidencias en el patio</p></div>
         </div>`;
     } catch(e) { this.toast(e.message || 'Error al cargar', 'error'); }
     this.loading(false);
+  },
+
+  // Filtra los artículos del patio mientras se escribe; oculta los pallets que
+  // quedan sin coincidencias (busca también por el nombre del pallet).
+  _ubFiltrar(q) {
+    const f = (q || '').trim().toLowerCase();
+    let visibles = 0;
+    document.querySelectorAll('.ub-pallet').forEach(pal => {
+      const palletCoincide = f && (pal.dataset.pallet || '').includes(f);
+      let n = 0;
+      pal.querySelectorAll('.ub-item').forEach(it => {
+        const ok = !f || palletCoincide || (it.dataset.buscar || '').includes(f);
+        it.style.display = ok ? 'flex' : 'none';
+        if (ok) n++;
+      });
+      pal.style.display = n ? '' : 'none';
+      if (n && f) { const body = pal.querySelector('[id^="pal-"]'); if (body) body.style.display = 'block'; }
+      visibles += n;
+    });
+    const res = document.getElementById('ub-buscar-res');
+    if (res) { res.style.display = f ? 'block' : 'none'; res.textContent = `${visibles} artículo(s) encontrado(s)`; }
+    const vacio = document.getElementById('ub-sin-res');
+    if (vacio) vacio.style.display = f && !visibles ? '' : 'none';
   },
 
   togglePallet(elId) {
@@ -3475,7 +3645,7 @@ const MWMS = {
         </div>
         <!-- Búsqueda dinámica por nombre -->
         <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-bottom:12px;position:relative;">
-          <div class="m-label" style="color:#1e40af;margin-bottom:6px;"><i class="fa-solid fa-font"></i> Buscar por nombre o referencia</div>
+          <div class="m-label" style="color:#1e4da8;margin-bottom:6px;"><i class="fa-solid fa-font"></i> Buscar por nombre o referencia</div>
           <input type="text" id="dv-m-nombre" class="m-input-full" placeholder="Escriba para buscar en catálogo..."
             oninput="MWMS._dvBuscarNombre(this.value)" autocomplete="off">
           <div id="dv-m-nombre-drop" style="display:none;position:absolute;left:12px;right:12px;z-index:300;
@@ -3506,7 +3676,7 @@ const MWMS = {
         <div style="margin-bottom:12px;">
            <label class="m-label">UND/TOTAL</label>
            <input type="text" id="dv-m-total-readonly" class="m-input-full" readonly style="background:#e0f2fe; color:#0369a1; font-weight:bold; font-size:1.1rem; text-align:center;" placeholder="0">
-           <div id="dv-m-total-preview" style="display:none;font-size:.72rem;font-weight:700;color:#1e40af;background:#eff6ff;padding:6px 10px;border-radius:6px;margin-top:4px;text-align:center;"></div>
+           <div id="dv-m-total-preview" style="display:none;font-size:.72rem;font-weight:700;color:#1e4da8;background:#eff6ff;padding:6px 10px;border-radius:6px;margin-top:4px;text-align:center;"></div>
         </div>
         <div style="margin-bottom:10px;">
           <div class="m-label">Condición</div>
@@ -3639,7 +3809,7 @@ const MWMS = {
           <div class="op-card" style="margin-bottom:10px;padding:12px;cursor:pointer;" onclick="MWMS.viewDevolucionCRM(${d.id})">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
               <div>
-                <span style="font-size:1.1rem;font-weight:900;color:#0F4C81;">${this.esc(consec)}</span>
+                <span style="font-size:1.1rem;font-weight:900;color:#2b5fc7;">${this.esc(consec)}</span>
                 <span style="font-size:.7rem;color:#64748b;margin-left:6px;">(${this.esc(d.numero_devolucion || '')})</span>
               </div>
               <span style="border-radius:99px;padding:2px 8px;font-size:.68rem;font-weight:800;${badgeStyle(d.estado)}">
@@ -3751,7 +3921,7 @@ const MWMS = {
           <button class="m-btn outline full" style="margin-bottom:12px;" onclick="MWMS.viewDevolucionHistorial()"><i class="fa-solid fa-arrow-left"></i> Volver al historial</button>
           
           <div class="op-card" style="margin-bottom:16px;padding:16px;">
-            <div style="font-size:1.2rem;font-weight:900;color:#0F4C81;">${this.esc(consec)}</div>
+            <div style="font-size:1.2rem;font-weight:900;color:#2b5fc7;">${this.esc(consec)}</div>
             <div style="color:#64748b;font-size:.8rem;margin-bottom:8px;">Estado Actual: <strong style="color:#1e293b;">${this.esc(d.estado)}</strong></div>
             <hr style="border:none;border-top:1px solid #e2e8f0;margin:12px 0;">
             <div style="font-weight:700;margin-bottom:12px;"><i class="fa-solid fa-timeline" style="color:#6366f1;"></i> Línea de Tiempo</div>
@@ -4077,7 +4247,7 @@ const MWMS = {
 
             <div style="background:#f0f9ff;border:2px dashed #0284c7;border-radius:10px;padding:12px;margin-bottom:16px;">
               <div style="font-size:.65rem;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:2px;">Consecutivo de Marcado</div>
-              <div style="font-size:2.2rem;font-weight:900;color:#0F4C81;">${this.esc(consecTxt)}</div>
+              <div style="font-size:2.2rem;font-weight:900;color:#2b5fc7;">${this.esc(consecTxt)}</div>
               <div style="font-size:.65rem;color:#64748b;margin-top:2px;">N° Registro Interno: ${this.esc(json.data?.numero || '-')}</div>
             </div>
 
@@ -4368,7 +4538,7 @@ const MWMS = {
   // ── AGREGAR EAN: usa SweetAlert2 (funciona sin modal propio) ─────────────
   promptAddEan(id) {
     Swal.fire({
-      title: '<i class="fa-solid fa-barcode" style="color:#0F4C81;margin-right:6px;"></i>Agregar Código EAN',
+      title: '<i class="fa-solid fa-barcode" style="color:#2b5fc7;margin-right:6px;"></i>Agregar Código EAN',
       html: `
         <p style="font-size:.78rem;color:#475569;margin-bottom:12px;text-align:left;">
           Use el escáner Bluetooth/USB o la cámara del dispositivo.
@@ -4379,14 +4549,14 @@ const MWMS = {
             style="flex:1;margin:0;font-size:1rem;letter-spacing:.04em;">
           <button type="button"
             onclick="MWMS.scanBarcode(c => { document.getElementById('swal-ean-input').value=c; MWMS.toast('Código: '+c,'success'); })"
-            style="height:42px;min-width:44px;background:#0F4C81;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;">
+            style="height:42px;min-width:44px;background:#2b5fc7;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;">
             <i class="fa-solid fa-camera"></i>
           </button>
         </div>`,
       showCancelButton: true,
       confirmButtonText: '<i class="fa-solid fa-save"></i> Guardar',
       cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#0F4C81',
+      confirmButtonColor: '#2b5fc7',
       width: '340px',
       didOpen: () => setTimeout(() => document.getElementById('swal-ean-input')?.focus(), 80),
       preConfirm: () => {
@@ -4531,7 +4701,7 @@ const MWMS = {
       showCancelButton: true,
       confirmButtonText: 'Usar',
       cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#0F4C81',
+      confirmButtonColor: '#2b5fc7',
       didOpen: () => setTimeout(() => document.getElementById('swal-scan-manual')?.focus(), 80),
       preConfirm: () => {
         const v = document.getElementById('swal-scan-manual')?.value.trim();
@@ -4875,7 +5045,7 @@ const MWMS = {
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px;">
           <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px;text-align:center;">
             <div style="font-size:.65rem;font-weight:700;color:#1d4ed8;"><i class="fa-solid fa-boxes-stacked"></i> CAJAS</div>
-            <div style="font-size:1.15rem;font-weight:900;color:#1e40af;">${cajas}</div>
+            <div style="font-size:1.15rem;font-weight:900;color:#1e4da8;">${cajas}</div>
             <div style="font-size:.58rem;color:#3b82f6;">${upc} U/E</div>
           </div>
           <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px;text-align:center;">
@@ -4973,7 +5143,7 @@ const MWMS = {
                   <p style="margin-bottom:12px;font-size:.85rem;color:#374151;">¿Pallet para el <b>siguiente</b> producto?</p>
                   <label style="display:flex;align-items:center;gap:8px;padding:10px;border:2px solid #3b82f6;border-radius:8px;margin-bottom:8px;cursor:pointer;background:#eff6ff;">
                     <input type="radio" name="odc-pal-mode" value="mismo" checked style="width:16px;height:16px;accent-color:#3b82f6;">
-                    <span style="font-size:.85rem;font-weight:600;color:#1e40af;">Mismo pallet <b>#${this._op.currentPallet}</b></span>
+                    <span style="font-size:.85rem;font-weight:600;color:#1e4da8;">Mismo pallet <b>#${this._op.currentPallet}</b></span>
                   </label>
                   <label style="display:flex;align-items:center;gap:8px;padding:10px;border:1px solid #d1fae5;border-radius:8px;margin-bottom:8px;cursor:pointer;background:#f0fdf4;">
                     <input type="radio" name="odc-pal-mode" value="nuevo" style="width:16px;height:16px;accent-color:#10b981;">
@@ -5585,7 +5755,7 @@ const MWMS = {
     document.getElementById('m-content').innerHTML = `
       <div class="op-view">
 
-        <div class="op-card" style="background:#1e40af;color:#fff;">
+        <div class="op-card" style="background:#1e4da8;color:#fff;">
           <b><i class="fa-solid fa-box-archive"></i> Cargue Inicial de Inventario</b>
           <small style="display:block;opacity:.8;margin-top:2px;">Las líneas quedan Pendientes hasta que un Admin las apruebe</small>
         </div>
@@ -5643,7 +5813,7 @@ const MWMS = {
         </div>
 
         <div id="mci-preview" class="op-card" style="display:none;background:#eff6ff;border-left:3px solid #3b82f6;">
-          <div id="mci-preview-txt" style="font-size:.85rem;font-weight:600;color:#1e40af;"></div>
+          <div id="mci-preview-txt" style="font-size:.85rem;font-weight:600;color:#1e4da8;"></div>
         </div>
 
         <button class="m-btn primary full" onclick="MWMS._mciEnviar()">
@@ -6322,7 +6492,7 @@ const MWMS = {
             <div class="op-card ref-ubic-card" id="ref-card-loc-${u.id}" data-locid="${u.id}" data-code="${this.esc(u.codigo)}" data-lote="${this.esc(u.lote||'N/A')}" data-fv="${u.fecha_vencimiento||''}" data-recuento="${u.es_recuento ? 1 : 0}" data-anterior="${u.cantidad_anterior ?? ''}" data-agregada="${u.agregada ? 1 : 0}" style="border-left:4px solid ${u.agregada ? '#f97316' : '#f59e0b'};margin-bottom:10px;">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
                 <div>
-                  <div style="font-weight:800;font-size:.9rem;color:#0F4C81;">
+                  <div style="font-weight:800;font-size:.9rem;color:#2b5fc7;">
                     <i class="fa-solid fa-location-dot" style="font-size:.8rem;"></i> ${this.esc(u.codigo)}
                   </div>
                   <div style="font-size:.7rem;color:#64748b;margin-top:2px;">
@@ -7437,13 +7607,13 @@ const MWMS = {
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <input id="swal-tolerancia" type="number" value="${actual}" min="0" max="100" step="1"
-            style="flex:1;border:2px solid #0F4C81;border-radius:8px;padding:10px;font-size:1.5rem;font-weight:900;text-align:center;">
+            style="flex:1;border:2px solid #2b5fc7;border-radius:8px;padding:10px;font-size:1.5rem;font-weight:900;text-align:center;">
           <span style="font-size:1.5rem;font-weight:700;color:#64748b;">%</span>
         </div>`,
       showCancelButton: true,
       confirmButtonText: 'Guardar',
       cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#0F4C81',
+      confirmButtonColor: '#2b5fc7',
       preConfirm: () => {
         const v = parseFloat(document.getElementById('swal-tolerancia').value);
         if (isNaN(v) || v < 0 || v > 100) {
@@ -7498,7 +7668,7 @@ const MWMS = {
             ${items.filter(p => p.planilla_numero && p.planilla_numero !== 'null').map(p => {
               const pct = p.total_lineas > 0 ? Math.round((p.lineas_completadas || 0) / p.total_lineas * 100) : 0;
               const barColor = pct >= 100 ? '#10b981' : pct > 0 ? '#f59e0b' : '#cbd5e1';
-              const borderColor = p.empezada ? '#10b981' : '#0F4C81';
+              const borderColor = p.empezada ? '#10b981' : '#2b5fc7';
               const estadoBadge = p.empezada
                 ? '<span style="font-size:.6rem;font-weight:800;color:#059669;background:#dcfce7;border-radius:99px;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-play"></i> EN PROCESO</span>'
                 : '<span style="font-size:.6rem;font-weight:800;color:#6366f1;background:#eef2ff;border-radius:99px;padding:2px 8px;white-space:nowrap;"><i class="fa-solid fa-hand-pointer"></i> TAP P/INICIAR</span>';
@@ -7518,7 +7688,7 @@ const MWMS = {
                   </div>
                   <div style="text-align:right;flex-shrink:0;">
                     <div style="font-size:.52rem;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Ruta</div>
-                    <div style="font-size:.82rem;font-weight:800;color:#0F4C81;">${p.ruta || '—'}</div>
+                    <div style="font-size:.82rem;font-weight:800;color:#2b5fc7;">${p.ruta || '—'}</div>
                     <div style="margin-top:6px;">${estadoBadge}</div>
                   </div>
                 </div>
@@ -7529,7 +7699,7 @@ const MWMS = {
                     <span style="font-size:.65rem;font-weight:800;color:#92400e;text-transform:uppercase;">
                       <i class="fa-solid fa-note-sticky" style="color:#f59e0b;margin-right:4px;"></i> Observaciones Pedido:
                     </span>
-                    <button type="button" style="background:#0F4C81;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;font-weight:700;" title="Editar pedido completo" onclick="event.stopPropagation(); MWMS.abrirModalEditarPedidoMobile('${p.planilla_numero}', '${this.esc(p.sucursal_entrega || '')}', '${this.esc(p.observaciones || '')}')">
+                    <button type="button" style="background:#2b5fc7;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;font-weight:700;" title="Editar pedido completo" onclick="event.stopPropagation(); MWMS.abrirModalEditarPedidoMobile('${p.planilla_numero}', '${this.esc(p.sucursal_entrega || '')}', '${this.esc(p.observaciones || '')}')">
                       <i class="fa-solid fa-pen-to-square"></i> <span style="font-size:.7rem;">Editar Pedido</span>
                     </button>
                   </div>
@@ -7546,7 +7716,7 @@ const MWMS = {
                   </div>
                   <div style="text-align:center;border-left:1px solid #e2e8f0;">
                     <div style="font-size:.48rem;color:#64748b;font-weight:700;text-transform:uppercase;">CAJAS</div>
-                    <div style="font-size:.95rem;font-weight:800;color:#0F4C81;">${p.total_cajas}</div>
+                    <div style="font-size:.95rem;font-weight:800;color:#2b5fc7;">${p.total_cajas}</div>
                   </div>
                   <div style="text-align:center;border-left:1px solid #e2e8f0;">
                     <div style="font-size:.48rem;color:#64748b;font-weight:700;text-transform:uppercase;">UNIDADES</div>
@@ -7586,7 +7756,7 @@ const MWMS = {
       showCancelButton: true,
       confirmButtonText: 'Guardar',
       cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#0F4C81',
+      confirmButtonColor: '#2b5fc7',
       preConfirm: () => {
         return document.getElementById('swal-obs-input').value.trim();
       }
@@ -7635,7 +7805,7 @@ const MWMS = {
     window._tempMKeys = [];
 
     const { value: formValues, isConfirmed } = await Swal.fire({
-      title: `<i class="fa-solid fa-pen-to-square" style="color:#0F4C81;"></i> Editar Pedido #${this.esc(numero)}`,
+      title: `<i class="fa-solid fa-pen-to-square" style="color:#2b5fc7;"></i> Editar Pedido #${this.esc(numero)}`,
       html: `
         <div style="text-align:left;font-size:12px;display:flex;flex-direction:column;gap:10px;">
           <!-- Selector de Cliente / Sucursal -->
@@ -7724,7 +7894,7 @@ const MWMS = {
       showCancelButton: true,
       confirmButtonText: '<i class="fa-solid fa-check"></i> Guardar Cambios',
       cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#0F4C81',
+      confirmButtonColor: '#2b5fc7',
       preConfirm: () => {
         const suc = document.getElementById('swal-m-sucursal')?.value.trim();
         const obs = document.getElementById('swal-m-obs')?.value.trim();
@@ -7779,7 +7949,7 @@ const MWMS = {
       showCancelButton: true,
       confirmButtonText: 'Guardar',
       cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#0F4C81',
+      confirmButtonColor: '#2b5fc7',
       preConfirm: () => {
         const val = document.getElementById('swal-suc-input').value.trim();
         if (!val) { Swal.showValidationMessage('Ingrese un nombre de sucursal válido'); return false; }
@@ -7812,8 +7982,8 @@ const MWMS = {
       if (plan && !plan.empezada) {
         document.getElementById('m-content').innerHTML = `
           <div class="op-view" style="text-align:center;padding-top:40px;">
-            <div class="op-card" style="padding:30px;border-top:6px solid #0F4C81;">
-               <i class="fa-solid fa-truck-fast" style="font-size:3rem;color:#0F4C81;margin-bottom:20px;"></i>
+            <div class="op-card" style="padding:30px;border-top:6px solid #2b5fc7;">
+               <i class="fa-solid fa-truck-fast" style="font-size:3rem;color:#2b5fc7;margin-bottom:20px;"></i>
                <h2 style="font-weight:900;color:#1e293b;margin-bottom:5px;">¡LISTO PARA INICIAR!</h2>
                <p style="font-size:.8rem;color:#64748b;margin-bottom:25px;">Se registrará el tiempo de inicio para esta planilla.</p>
                
@@ -7824,7 +7994,7 @@ const MWMS = {
                   </div>
                   <div style="border-left:1px solid #cbd5e1;">
                     <small style="font-weight:700;color:#475569;display:block;font-size:.55rem;">CAJAS</small>
-                    <b style="font-size:1.2rem;color:#0F4C81;">${plan.total_cajas}</b>
+                    <b style="font-size:1.2rem;color:#2b5fc7;">${plan.total_cajas}</b>
                   </div>
                   <div style="border-left:1px solid #cbd5e1;">
                     <small style="font-weight:700;color:#475569;display:block;font-size:.55rem;">UNIDADES</small>
@@ -7932,7 +8102,7 @@ const MWMS = {
                 </div>
                 <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
                   <div onclick="MWMS.initPKConsolidado(${idx}, '${numero}')" style="text-align:right;">
-                    <b style="font-size:1.15rem;color:#0F4C81;line-height:1;">${it.cantidad_total}</b>
+                    <b style="font-size:1.15rem;color:#2b5fc7;line-height:1;">${it.cantidad_total}</b>
                     <div style="font-size:.55rem;font-weight:700;color:#64748b;">UND</div>
                   </div>
                   ${tienesFotos ? `<button onclick="MWMS.viewProductoDetail(${it.producto_id},'MWMS.viewPlanilla(\\'${numero}\\')')" style="background:#e0f2fe;border:1px solid #bae6fd;color:#0284c7;border-radius:6px;padding:3px 8px;font-size:.65rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:3px;"><i class="fa-solid fa-camera"></i> ${it.fotos.length}</button>` : ''}
@@ -7941,7 +8111,7 @@ const MWMS = {
 
               <!-- Fila 2: ubicación + cajas + vencimiento -->
               <div onclick="MWMS.initPKConsolidado(${idx}, '${numero}')" style="display:flex;gap:6px;flex-wrap:wrap;font-size:.7rem;background:#f8fafc;padding:5px 8px;border-radius:6px;align-items:center;margin-bottom:6px;">
-                <span style="font-weight:800;color:${sinUbic ? '#dc2626' : '#0F4C81'};font-family:monospace;white-space:nowrap;" title="${sinUbic ? 'SIN UBICACIÓN' : it.ubicacion_codigo}">
+                <span style="font-weight:800;color:${sinUbic ? '#dc2626' : '#2b5fc7'};font-family:monospace;white-space:nowrap;" title="${sinUbic ? 'SIN UBICACIÓN' : it.ubicacion_codigo}">
                   <i class="fa-solid fa-location-dot" style="font-size:.65rem;"></i>
                   ${sinUbic ? 'SIN UBIC.' : this._shortUbic(it.ubicacion_codigo)}
                 </span>
@@ -7956,7 +8126,7 @@ const MWMS = {
               <!-- Botón AGOTADO rápido en la lista -->
               <div style="display:grid;grid-template-columns:3fr 1fr;gap:6px;">
                 <button onclick="MWMS.initPKConsolidado(${idx}, '${numero}')"
-                  style="background:#0F4C81;color:#fff;border:none;border-radius:7px;padding:7px 10px;font-size:.72rem;font-weight:800;cursor:pointer;text-align:center;">
+                  style="background:#2b5fc7;color:#fff;border:none;border-radius:7px;padding:7px 10px;font-size:.72rem;font-weight:800;cursor:pointer;text-align:center;">
                   <i class="fa-solid fa-boxes-stacked"></i> SEPARAR
                 </button>
                 <button onclick="MWMS._pkMarcarAgotado('${numero}','${it.ids}')"
@@ -8010,7 +8180,7 @@ const MWMS = {
       showCancelButton: true,
       confirmButtonText: 'Sí, cerrar',
       cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#0F4C81',
+      confirmButtonColor: '#2b5fc7',
     });
     if (!ok.isConfirmed) return;
     this.loading(true);
@@ -8023,7 +8193,7 @@ const MWMS = {
           html: `Tus referencias están separadas.<br><b>La planilla permanece abierta</b> hasta que los otros ambientes terminen.`,
           icon: 'info',
           confirmButtonText: 'Entendido',
-          confirmButtonColor: '#0F4C81',
+          confirmButtonColor: '#2b5fc7',
           timer: 2500,
           timerProgressBar: true,
         });
@@ -8032,7 +8202,7 @@ const MWMS = {
         // Auto-close: elimina espera innecesaria + delay artificial removido
         Swal.fire({
           title: '¡Picking cerrado!',
-          html: `La planilla <b>${numero}</b> fue cerrada.<br><span style="color:#0F4C81;font-weight:700;">Pasa al módulo de <i class="fa-solid fa-clipboard-check"></i> Certificar.</span>`,
+          html: `La planilla <b>${numero}</b> fue cerrada.<br><span style="color:#2b5fc7;font-weight:700;">Pasa al módulo de <i class="fa-solid fa-clipboard-check"></i> Certificar.</span>`,
           icon: 'success',
           confirmButtonText: 'Entendido',
           timer: 2000,
@@ -8078,7 +8248,7 @@ const MWMS = {
           showCancelButton: puedeForz,
           confirmButtonText: puedeForz ? 'Liberar para separar' : 'Entendido',
           cancelButtonText: 'Cancelar',
-          confirmButtonColor: '#0F4C81',
+          confirmButtonColor: '#2b5fc7',
         });
 
         if (result.isConfirmed && puedeForz) {
@@ -8217,7 +8387,7 @@ const MWMS = {
               <div style="flex:1;min-width:0;">
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
                   ${it.ubicacion_codigo
-                    ? `<div id="pk-ubi-txt" style="font-size:1.15rem;font-weight:900;font-family:monospace;color:#0F4C81;letter-spacing:.5px;line-height:1.1;">${this._shortUbic(it.ubicacion_codigo)}</div>`
+                    ? `<div id="pk-ubi-txt" style="font-size:1.15rem;font-weight:900;font-family:monospace;color:#2b5fc7;letter-spacing:.5px;line-height:1.1;">${this._shortUbic(it.ubicacion_codigo)}</div>`
                     : `<div style="font-size:.8rem;color:#dc2626;font-weight:800;white-space:nowrap;"><i class="fa-solid fa-triangle-exclamation"></i> SIN UBICACIÓN</div>`
                   }
                   <span style="background:${vence ? '#fef2f2' : '#f1f5f9'};color:${vence ? '#dc2626' : '#64748b'};border-radius:5px;padding:2px 6px;font-weight:700;font-size:.6rem;white-space:nowrap;">
@@ -8229,7 +8399,7 @@ const MWMS = {
                   <span style="font-family:monospace;font-weight:700;">${it.producto_codigo}</span>
                   ${it.lote ? `<span>· Lote <b>${it.lote}</b></span>` : ''}
                 </div>
-                <div style="font-weight:700;color:#0F4C81;font-size:.68rem;margin-top:3px;white-space:nowrap;">
+                <div style="font-weight:700;color:#2b5fc7;font-size:.68rem;margin-top:3px;white-space:nowrap;">
                   Pedido: ${it.cantidad_total}${usaCajas ? ` cj (${it.cantidad_total * factor} und${factor > 1 ? `, UxC ${factor}` : ''})` : ' und'}
                 </div>
               </div>
@@ -8258,11 +8428,11 @@ const MWMS = {
               <div style="flex:1.15;display:flex;flex-direction:column;gap:7px;min-width:0;">
                 <div>
                   <label style="font-size:.62rem;font-weight:700;color:#1e293b;display:block;margin-bottom:2px;">
-                    <i class="fa-solid fa-box-archive" style="color:#0F4C81;"></i>
+                    <i class="fa-solid fa-box-archive" style="color:#2b5fc7;"></i>
                     ${factor > 1 ? 'Cajas' : 'Cantidad (cj/und)'}
                   </label>
                   <input type="number" id="pk-inline-cajas" value="${sugCajas}" min="0" max="${sugCajas}" inputmode="numeric"
-                    style="width:100%;border:2px solid #0F4C81;border-radius:8px;padding:6px;font-size:1.45rem;font-weight:900;text-align:center;box-sizing:border-box;"
+                    style="width:100%;border:2px solid #2b5fc7;border-radius:8px;padding:6px;font-size:1.45rem;font-weight:900;text-align:center;box-sizing:border-box;"
                     oninput="if(parseFloat(this.value||0)>${sugCajas}){this.value='${sugCajas}';MWMS.toast('Máximo ${sugCajas} — el excedente va en Saldos','info');}MWMS._updPKInlineTotal(${factor})">
                 </div>
                 <div>
@@ -8314,6 +8484,15 @@ const MWMS = {
             <span style="font-size:.62rem;font-weight:800;color:#dc2626;white-space:nowrap;">FECHA VENC. OBLIGATORIA</span>
           </div>` : ''}
 
+          <!-- Alerta para el auxiliar: separar SIN ubicación / SIN inventario en el
+               sistema (2026-10-01, a pedido de Camilo — se permite separar, el aviso es
+               aquí mismo en el picking). -->
+          ${this._pkAlertaSinInventario(it) ? `
+          <div style="background:#fef2f2;border:2px solid #dc2626;border-radius:9px;padding:8px 10px;margin-bottom:8px;color:#991b1b;">
+            <div style="font-size:.74rem;font-weight:900;"><i class="fa-solid fa-triangle-exclamation"></i> ${this.esc(this._pkAlertaSinInventario(it))}</div>
+            <div style="font-size:.64rem;font-weight:600;margin-top:3px;color:#7f1d1d;">Puede separarlo igual. Quedará registrado como novedad "Separado sin ubicación/inventario".</div>
+          </div>` : ''}
+
           <!-- ── Agotado + Confirmar: misma orientación de siempre (lado a lado) ── -->
           <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:8px;margin-bottom:8px;">
             <button onclick="MWMS._pkMarcarAgotado('${planillaNumero}','${it.ids}')"
@@ -8356,7 +8535,7 @@ const MWMS = {
               const cajasLabel = factor > 1
                 ? ` (${Math.floor(loc.tomar/factor)} cj${loc.tomar%factor>0?' +'+Math.round(loc.tomar%factor)+' u':''})` : '';
               const btnAccion = esAsig
-                ? `<span style="font-size:.6rem;font-weight:800;color:#1e40af;background:#dbeafe;border-radius:5px;padding:5px 8px;white-space:nowrap;">AQUÍ ESTÁS</span>`
+                ? `<span style="font-size:.6rem;font-weight:800;color:#1e4da8;background:#dbeafe;border-radius:5px;padding:5px 8px;white-space:nowrap;">AQUÍ ESTÁS</span>`
                 : puedeUsar
                   ? `<button onclick="MWMS._pkUsarFifoLoc(${i},'${planillaNumero}')"
                        style="flex-shrink:0;background:#059669;color:#fff;border:none;border-radius:7px;padding:8px 12px;font-size:.72rem;font-weight:800;cursor:pointer;white-space:nowrap;">
@@ -8369,11 +8548,11 @@ const MWMS = {
                        </button>`
                     : '';
               return `
-              <div style="background:#fff;border-radius:8px;border:2px solid ${esAsig?'#0F4C81':'#e2e8f0'};padding:10px 12px;margin-bottom:5px;display:flex;align-items:center;gap:8px;">
-                <div style="width:22px;height:22px;border-radius:50%;background:${esAsig?'#0F4C81':'#e2e8f0'};color:${esAsig?'#fff':'#64748b'};display:flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:900;flex-shrink:0;">${i+1}</div>
+              <div style="background:#fff;border-radius:8px;border:2px solid ${esAsig?'#2b5fc7':'#e2e8f0'};padding:10px 12px;margin-bottom:5px;display:flex;align-items:center;gap:8px;">
+                <div style="width:22px;height:22px;border-radius:50%;background:${esAsig?'#2b5fc7':'#e2e8f0'};color:${esAsig?'#fff':'#64748b'};display:flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:900;flex-shrink:0;">${i+1}</div>
                 <div style="flex:1;min-width:0;">
                   <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:2px;">
-                    <span style="font-family:monospace;font-size:.95rem;font-weight:900;color:#0F4C81;">${this.esc(loc.ubicacion_codigo)}</span>
+                    <span style="font-family:monospace;font-size:.95rem;font-weight:900;color:#2b5fc7;">${this.esc(loc.ubicacion_codigo)}</span>
                     ${fefoLabel}${vencLabel}
                   </div>
                   <div style="font-size:.68rem;color:#64748b;">
@@ -8606,7 +8785,7 @@ const MWMS = {
           html: `<div style="font-size:0.9rem;">Separando ${separadoTxt} (pedido: ${maxCajas} cajas). ¿Confirmar excedente?</div>${selectNovedadHtml}`,
           icon: 'info', showCancelButton: true,
           confirmButtonText: 'Sí, confirmar', cancelButtonText: 'Corregir',
-          confirmButtonColor: '#0F4C81',
+          confirmButtonColor: '#2b5fc7',
           preConfirm: () => {
             const novEl = document.getElementById('swal-pk-novedad-id');
             if (!novEl.value) {
@@ -8646,8 +8825,40 @@ const MWMS = {
     return isConfirmed ? fecha : null;
   },
 
+  // Texto de alerta si la línea se va a separar sin ubicación asignada o sin
+  // inventario suficiente en el sistema; null si está todo en orden.
+  _pkAlertaSinInventario(it) {
+    if (!it) return null;
+    const sinUbic = !it.ubicacion_codigo;
+    const sinStock = (parseFloat(it.fifo_pendiente) || 0) > 0;
+    if (sinUbic && sinStock) return 'VA A SACAR PRODUCTO SIN UBICACIÓN Y SIN INVENTARIO EN EL SISTEMA';
+    if (sinUbic) return 'VA A SACAR PRODUCTO SIN UBICACIÓN ASIGNADA';
+    if (sinStock) return `VA A SACAR PRODUCTO SIN INVENTARIO SUFICIENTE EN EL SISTEMA (faltan ${it.fifo_pendiente} und)`;
+    return null;
+  },
+
   async confirmarPKActual(planillaNumero, qtyTomada = null, cajasTomadas = null, saldosTomados = null, novedadId = null, fechaVencManual = null) {
     const it = this._itemsPlanilla[this._idxActual];
+    // Confirmación explícita del auxiliar antes de separar sin ubicación/inventario
+    // (no se repite en los reintentos internos, p.ej. al pedir fecha de vencimiento).
+    const alertaSinInv = this._pkAlertaSinInventario(it);
+    if (alertaSinInv && !fechaVencManual) {
+      const ok = await Swal.fire({
+        icon: 'warning',
+        title: 'Producto sin ubicación / inventario',
+        html: `<div style="font-size:.85rem;text-align:left;">
+                 <b style="color:#991b1b;">${this.esc(alertaSinInv)}</b>
+                 <p style="margin:8px 0 0;">${this.esc(it.producto_nombre || '')}</p>
+                 <p style="margin:6px 0 0;font-size:.78rem;color:#475569;">Se permite separar. El sistema solo descuenta lo que tenga registrado y el resto queda como novedad "Separado sin ubicación/inventario".</p>
+               </div>`,
+        showCancelButton: true,
+        confirmButtonText: 'Sí, separar igual',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#dc2626',
+        width: '340px',
+      });
+      if (!ok.isConfirmed) return;
+    }
     // it.cantidad_total viene en CAJAS (ver renderPKConsolidado: sugCajas = it.cantidad_total).
     // Cuando se acepta todo sin pasar por el modal (qtyTomada === null), hay que enviar
     // cajas_tomadas explícito — antes se mandaba it.cantidad_total como "cantidad_tomada"
@@ -8700,10 +8911,16 @@ const MWMS = {
 
       // El auxiliar DEBE verificar la info y dar click para continuar.
       // Mientras tanto, la siguiente tarea se pre-carga en paralelo (nextDataPromise).
+      const sinInvResp = !!confirmResp?.data?.sin_inventario;
       await Swal.fire({
-        title: '<i class="fa-solid fa-circle-check" style="color:#059669;"></i> Separación Confirmada',
+        title: sinInvResp
+          ? '<i class="fa-solid fa-triangle-exclamation" style="color:#dc2626;"></i> Separado SIN inventario'
+          : '<i class="fa-solid fa-circle-check" style="color:#059669;"></i> Separación Confirmada',
         html: `
           <div style="text-align:left;font-size:.85rem;">
+            ${sinInvResp ? `<div style="background:#fef2f2;border:2px solid #dc2626;color:#991b1b;padding:8px 10px;border-radius:8px;margin-bottom:10px;font-size:.78rem;font-weight:800;">
+              <i class="fa-solid fa-triangle-exclamation"></i> Se sacó producto sin ubicación / sin inventario en el sistema. Quedó registrado como novedad.
+            </div>` : ''}
             <div style="background:#0f172a;padding:10px;border-radius:8px;margin-bottom:10px;color:#fff;">
               <div style="font-size:.6rem;opacity:.7;font-weight:700;text-transform:uppercase;">Sucursal / Entrega</div>
               <div style="font-size:.9rem;font-weight:800;">${this.esc(it.sucursal_entrega || 'Sin sucursal')}</div>
@@ -8711,7 +8928,7 @@ const MWMS = {
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
               <div style="background:#f1f5f9;padding:8px;border-radius:8px;text-align:center;">
                 <div style="font-size:.58rem;font-weight:700;color:#64748b;">SOLICITADO (UND/TOTAL)</div>
-                <div style="font-size:1.15rem;font-weight:900;color:#0F4C81;">${solicitadoUnd}</div>
+                <div style="font-size:1.15rem;font-weight:900;color:#2b5fc7;">${solicitadoUnd}</div>
               </div>
               <div style="background:#dcfce7;padding:8px;border-radius:8px;text-align:center;">
                 <div style="font-size:.58rem;font-weight:700;color:#166534;">SEPARADO (UND/TOTAL)</div>
@@ -8816,7 +9033,7 @@ const MWMS = {
                   <b style="font-size:.86rem;line-height:1.25;display:block;">${this.esc(it.producto_nombre)}</b>
                   <span style="color:#64748b;font-size:.68rem;font-weight:600;font-family:monospace;">${it.producto_codigo}</span>
                   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.66rem;color:#64748b;margin-top:4px;">
-                    ${it.ubicacion_codigo ? `<span style="font-family:monospace;font-weight:700;color:#0F4C81;">${this._shortUbic(it.ubicacion_codigo)}</span>` : ''}
+                    ${it.ubicacion_codigo ? `<span style="font-family:monospace;font-weight:700;color:#2b5fc7;">${this._shortUbic(it.ubicacion_codigo)}</span>` : ''}
                     ${it.lote ? `<span>· Lote <b>${it.lote}</b></span>` : ''}
                     ${vence ? `<span>· Vence ${vence}</span>` : ''}
                   </div>
@@ -8861,7 +9078,7 @@ const MWMS = {
             <div style="background:#fff;border-radius:8px;border:2px solid ${i===0?'#3b82f6':'#e2e8f0'};padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px;">
               <div style="flex:1;min-width:0;">
                 <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:3px;">
-                  <span style="font-family:monospace;font-size:1rem;font-weight:900;color:#0F4C81;">${this.esc(x.ubicacion_codigo||'-')}</span>
+                  <span style="font-family:monospace;font-size:1rem;font-weight:900;color:#2b5fc7;">${this.esc(x.ubicacion_codigo||'-')}</span>
                   ${fefoLabel}
                   ${fvLabel}
                 </div>
@@ -9144,11 +9361,11 @@ const MWMS = {
           <div style="font-size:.8rem;font-weight:700;color:#1e293b;margin-bottom:10px;text-align:left;">${MWMS.esc(prod.nombre)}</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:left;">
             <div>
-              <label style="font-size:.68rem;font-weight:700;color:#0F4C81;display:block;margin-bottom:4px;">
+              <label style="font-size:.68rem;font-weight:700;color:#2b5fc7;display:block;margin-bottom:4px;">
                 <i class="fa-solid fa-box-archive"></i> ${factor > 1 ? `Cajas (UxC: ${factor})` : 'Cajas'}
               </label>
               <input type="number" id="pk-qty-cajas" value="1" min="0" inputmode="numeric"
-                style="width:100%;border:2px solid #0F4C81;border-radius:8px;padding:10px;font-size:1.8rem;font-weight:900;text-align:center;box-sizing:border-box;">
+                style="width:100%;border:2px solid #2b5fc7;border-radius:8px;padding:10px;font-size:1.8rem;font-weight:900;text-align:center;box-sizing:border-box;">
             </div>
             <div>
               <label style="font-size:.68rem;font-weight:700;color:#d97706;display:block;margin-bottom:4px;">
@@ -9275,7 +9492,7 @@ const MWMS = {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
           <div style="background:#f1f5f9;padding:10px;border-radius:8px;text-align:center;">
             <div style="color:#64748b;font-size:.65rem;font-weight:700;">SOLICITADO</div>
-            <div style="font-size:1.3rem;font-weight:900;color:#0F4C81;">${maxCant}</div>
+            <div style="font-size:1.3rem;font-weight:900;color:#2b5fc7;">${maxCant}</div>
             <div style="font-size:.6rem;color:#64748b;">UND/TOTAL</div>
           </div>
           <div style="background:#f1f5f9;padding:10px;border-radius:8px;text-align:center;">
@@ -9287,7 +9504,7 @@ const MWMS = {
 
         <div style="margin-bottom: 10px;">
            <label style="font-size: 0.8rem; font-weight: 700; color: #1e293b; display: block; margin-bottom: 4px;">
-             <i class="fa-solid fa-box-archive" style="color:#0F4C81;"></i> ${factor > 1 ? 'Cajas completas' : 'Cantidad (unidades)'}
+             <i class="fa-solid fa-box-archive" style="color:#2b5fc7;"></i> ${factor > 1 ? 'Cajas completas' : 'Cantidad (unidades)'}
            </label>
            <input type="number" id="pk-swal-qty" class="swal2-input" value="${sugCajas}" min="0" style="margin: 0; width: 100%; box-sizing: border-box; font-size:1.3rem; font-weight:900; text-align:center;" oninput="MWMS._updPKSwalTotal(${factor})">
         </div>
@@ -9314,7 +9531,7 @@ const MWMS = {
     `;
 
     const result = await Swal.fire({
-      title: '<i class="fa-solid fa-boxes-stacked" style="color:#0F4C81;margin-right:8px;"></i>Confirmar Separación',
+      title: '<i class="fa-solid fa-boxes-stacked" style="color:#2b5fc7;margin-right:8px;"></i>Confirmar Separación',
       html: html,
       showCancelButton: true,
       confirmButtonText: '<i class="fa-solid fa-check-double"></i> Confirmar',
@@ -9356,7 +9573,7 @@ const MWMS = {
           showCancelButton: true,
           confirmButtonText: 'Sí, confirmar',
           cancelButtonText: 'No, corregir',
-          confirmButtonColor: '#0F4C81',
+          confirmButtonColor: '#2b5fc7',
         });
         if (!ok.isConfirmed) return;
       }
@@ -9424,7 +9641,7 @@ const MWMS = {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
           <div style="background:#f1f5f9;padding:8px;border-radius:8px;text-align:center;">
             <div style="font-size:.6rem;font-weight:700;color:#64748b;">SOLICITADO</div>
-            <div style="font-size:1.3rem;font-weight:900;color:#0F4C81;">${maxCant}</div>
+            <div style="font-size:1.3rem;font-weight:900;color:#2b5fc7;">${maxCant}</div>
           </div>
           <div style="background:#f1f5f9;padding:8px;border-radius:8px;text-align:center;">
             <div style="font-size:.6rem;font-weight:700;color:#64748b;">UxC</div>
@@ -9432,7 +9649,7 @@ const MWMS = {
           </div>
         </div>
         <div style="margin-bottom:10px;">
-          <label style="font-size:.8rem;font-weight:700;color:#1e293b;display:block;margin-bottom:4px;"><i class="fa-solid fa-box-archive" style="color:#0F4C81;"></i> ${factor > 1 ? 'Cajas completas' : 'Cantidad'}</label>
+          <label style="font-size:.8rem;font-weight:700;color:#1e293b;display:block;margin-bottom:4px;"><i class="fa-solid fa-box-archive" style="color:#2b5fc7;"></i> ${factor > 1 ? 'Cajas completas' : 'Cantidad'}</label>
           <input type="number" id="pk-swal-qty" class="swal2-input" value="${sugCajas}" min="0" max="${sugCajas}" style="margin:0;width:100%;box-sizing:border-box;font-size:1.3rem;font-weight:900;text-align:center;" oninput="if(parseFloat(this.value||0)>${sugCajas}){this.value='${sugCajas}';}MWMS._updPKSwalTotal(${factor})">
         </div>
         ${sugSalHtml}
@@ -9442,7 +9659,7 @@ const MWMS = {
         </div>
       </div>`;
     const pkRes = await Swal.fire({
-      title: '<i class="fa-solid fa-boxes-stacked" style="color:#0F4C81;margin-right:6px;"></i>Confirmar Separación',
+      title: '<i class="fa-solid fa-boxes-stacked" style="color:#2b5fc7;margin-right:6px;"></i>Confirmar Separación',
       html: lineaHtml,
       showCancelButton: true,
       confirmButtonText: '<i class="fa-solid fa-check-double"></i> Confirmar',
@@ -9596,17 +9813,17 @@ const MWMS = {
           </div>`).join('')}` : ''}
 
         ${sinSesion.length ? `
-        <div style="font-size:.65rem;font-weight:800;color:#0F4C81;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px;">
+        <div style="font-size:.65rem;font-weight:800;color:#2b5fc7;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px;">
           PENDIENTES DE PACKING
         </div>
         ${sinSesion.map(p => `
           <div class="op-card" onclick="MWMS._packingIniciar('${this.esc(p.sucursal_entrega)}')"
-            style="cursor:pointer;border-left:4px solid #0F4C81;margin-bottom:10px;">
+            style="cursor:pointer;border-left:4px solid #2b5fc7;margin-bottom:10px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div>
                 <div style="font-size:.52rem;font-weight:700;color:#64748b;text-transform:uppercase;">ENTREGA</div>
                 <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-                  <div style="font-weight:900;font-size:.95rem;color:#0F4C81;">${this.esc(p.sucursal_entrega)}</div>
+                  <div style="font-weight:900;font-size:.95rem;color:#2b5fc7;">${this.esc(p.sucursal_entrega)}</div>
                   ${p.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#b45309;font-size:.75rem;" title="${this.esc(p.observaciones)}"></i>` : ''}
                 </div>
                 <div style="font-size:.65rem;color:#64748b;margin-top:2px;">
@@ -9671,7 +9888,7 @@ const MWMS = {
       showCancelButton: true,
       confirmButtonText: 'Iniciar',
       cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#0F4C81',
+      confirmButtonColor: '#2b5fc7',
     });
     if (!tipoEmp) return;
     this.loading(true);
@@ -9712,7 +9929,7 @@ const MWMS = {
       const canatasCerradas = unidades.filter(u => u.estado === 'Cerrada').length;
 
       cont.innerHTML = `<div class="op-view" style="padding-bottom:80px;">
-        <div style="background:#1e3a5f;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:14px;">
+        <div style="background:#1e293b;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:14px;">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
             <div>
               <div style="font-size:.65rem;opacity:.7;text-transform:uppercase;">Cliente</div>
@@ -9794,7 +10011,7 @@ const MWMS = {
           }).join('');
 
           return `
-            <div style="font-size:.63rem;font-weight:800;color:#0F4C81;text-transform:uppercase;margin:10px 0 6px;">
+            <div style="font-size:.63rem;font-weight:800;color:#2b5fc7;text-transform:uppercase;margin:10px 0 6px;">
               PRODUCTOS PENDIENTES — ${tipoLabel} #${numActual} (${pendientes.length})
             </div>
             ${searchBar}
@@ -9816,7 +10033,7 @@ const MWMS = {
         </button>
         ${canatasCerradas > 0 ? `
         <button onclick="MWMS._packingVerCanastas(${sesionId})"
-          style="flex-shrink:0;padding:0 10px;background:#f1f5f9;color:#0F4C81;border:1.5px solid #cbd5e1;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;">
+          style="flex-shrink:0;padding:0 10px;background:#f1f5f9;color:#2b5fc7;border:1.5px solid #cbd5e1;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;">
           <i class="fa-solid fa-boxes-stacked"></i> ${canatasCerradas}
         </button>` : ''}
         ${unidad_abierta ? `
@@ -9877,7 +10094,7 @@ const MWMS = {
             const itemsHtml = (u.items || []).map(it => `
               <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f1f5f9;">
                 <span style="font-size:.72rem;color:#374151;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.esc(it.producto_nombre)}</span>
-                <span style="font-size:.72rem;font-weight:800;color:#0F4C81;flex-shrink:0;margin-left:8px;">${fmtDesglose(it)}</span>
+                <span style="font-size:.72rem;font-weight:800;color:#2b5fc7;flex-shrink:0;margin-left:8px;">${fmtDesglose(it)}</span>
               </div>`).join('') || '<div style="font-size:.7rem;color:#94a3b8;padding:5px 0;">Sin ítems</div>';
             return `
             <div style="border:1px solid #e2e8f0;border-radius:10px;margin-bottom:10px;overflow:hidden;">
@@ -9930,7 +10147,7 @@ const MWMS = {
     const { value, isConfirmed } = await Swal.fire({
       title: 'Agregar a canasta',
       html: `
-        <div style="font-weight:800;font-size:.9rem;margin-bottom:8px;color:#1e3a5f;">${nombre}</div>
+        <div style="font-weight:800;font-size:.9rem;margin-bottom:8px;color:#1e293b;">${nombre}</div>
 
         <!-- Resumen pendiente discriminado -->
         <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:8px 10px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
@@ -9985,7 +10202,7 @@ const MWMS = {
       showCancelButton: true,
       confirmButtonText: 'Agregar a canasta',
       cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#0F4C81',
+      confirmButtonColor: '#2b5fc7',
       didOpen: () => {
         const c = parseInt(document.getElementById('pk-cajas').value) || 0;
         const s = parseFloat(document.getElementById('pk-saldo').value) || 0;
@@ -10291,13 +10508,13 @@ const MWMS = {
           </div>
 
           ${ordenesDirectas.map(s => `
-            <div class="op-card" style="border-left:4px solid #0F4C81;margin-bottom:12px;padding:14px;">
+            <div class="op-card" style="border-left:4px solid #2b5fc7;margin-bottom:12px;padding:14px;">
               <!-- Header: cliente + planilla badge -->
               <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:8px;">
                 <div style="flex:1;min-width:0;">
                   <div style="font-size:.5rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;">CLIENTE</div>
                   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                    <div style="font-weight:900;font-size:1.05rem;color:#0F4C81;line-height:1.2;word-break:break-word;">${this.esc(s.sucursal_entrega || 'SIN CLIENTE')}</div>
+                    <div style="font-weight:900;font-size:1.05rem;color:#2b5fc7;line-height:1.2;word-break:break-word;">${this.esc(s.sucursal_entrega || 'SIN CLIENTE')}</div>
                     ${s.observaciones ? `<i class="fa-solid fa-note-sticky" style="color:#b45309;font-size:.85rem;cursor:help;" title="${this.esc(s.observaciones)}"></i>` : ''}
                   </div>
                   ${s.auxiliares ? `<div style="font-size:.68rem;color:#059669;margin-top:3px;font-weight:700;"><i class="fa-solid fa-user-check"></i> ${this.esc(s.auxiliares)}</div>` : ''}
@@ -10315,7 +10532,7 @@ const MWMS = {
                 </div>
                 <div style="text-align:center;border-left:1px solid #e2e8f0;">
                   <div style="font-size:.48rem;font-weight:700;color:#64748b;text-transform:uppercase;">LÍNEAS CERT.</div>
-                  <div style="font-size:.95rem;font-weight:900;color:#0F4C81;">${s.total_lineas_cert || s.total_lineas || '—'}</div>
+                  <div style="font-size:.95rem;font-weight:900;color:#2b5fc7;">${s.total_lineas_cert || s.total_lineas || '—'}</div>
                 </div>
                 <div style="text-align:center;border-left:1px solid #e2e8f0;">
                   <div style="font-size:.48rem;font-weight:700;color:#64748b;text-transform:uppercase;">UND SEPARADAS</div>
@@ -10406,7 +10623,7 @@ const MWMS = {
 
         <!-- Breadcrumb de navegación -->
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:8px 12px;background:#f1f5f9;border-radius:8px;flex-wrap:wrap;">
-          <button onclick="MWMS.viewCert()" style="background:none;border:none;color:#0F4C81;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;display:flex;align-items:center;gap:4px;">
+          <button onclick="MWMS.viewCert()" style="background:none;border:none;color:#2b5fc7;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;display:flex;align-items:center;gap:4px;">
             <i class="fa-solid fa-house" style="font-size:.6rem;"></i> Inicio
           </button>
           <i class="fa-solid fa-chevron-right" style="font-size:.45rem;color:#94a3b8;"></i>
@@ -10495,7 +10712,7 @@ const MWMS = {
 
     if (!ambItems.length) { this._certRenderAmbientes(); return; }
 
-    const ambColor  = ambItems[0].ambiente_color || '#0F4C81';
+    const ambColor  = ambItems[0].ambiente_color || '#2b5fc7';
     const certCount = ambItems.filter(it => (it.cantidad_certificada || 0) >= (it.cantidad_pickeada || 0)).length;
     const total     = ambItems.length;
     const pct       = Math.round(certCount / total * 100);
@@ -10519,11 +10736,11 @@ const MWMS = {
 
         <!-- Breadcrumb de navegación -->
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:8px 12px;background:#f1f5f9;border-radius:8px;flex-wrap:wrap;">
-          <button onclick="MWMS.viewCert()" style="background:none;border:none;color:#0F4C81;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;display:flex;align-items:center;gap:4px;">
+          <button onclick="MWMS.viewCert()" style="background:none;border:none;color:#2b5fc7;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;display:flex;align-items:center;gap:4px;">
             <i class="fa-solid fa-house" style="font-size:.6rem;"></i> Inicio
           </button>
           <i class="fa-solid fa-chevron-right" style="font-size:.45rem;color:#94a3b8;"></i>
-          <button onclick="MWMS._certRenderAmbientes()" style="background:none;border:none;color:#0F4C81;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;">
+          <button onclick="MWMS._certRenderAmbientes()" style="background:none;border:none;color:#2b5fc7;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;">
             ${this.esc(sucursal)}
           </button>
           <i class="fa-solid fa-chevron-right" style="font-size:.45rem;color:#94a3b8;"></i>
@@ -10534,7 +10751,7 @@ const MWMS = {
         </div>
 
         <!-- Encabezado ambiente -->
-        <div style="background:#1e3a5f;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:10px;">
+        <div style="background:#1e293b;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:10px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
             <div>
               <div style="font-size:.43rem;opacity:.55;text-transform:uppercase;letter-spacing:.5px;">AMBIENTE</div>
@@ -10601,7 +10818,7 @@ const MWMS = {
                 <div style="text-align:right;flex-shrink:0;min-width:54px;">
                   <div style="font-size:.42rem;font-weight:700;color:#94a3b8;text-transform:uppercase;margin-bottom:1px;">Pick / Cert</div>
                   <div style="font-size:.88rem;font-weight:900;">
-                    <span style="color:#0F4C81;">${pick}</span>
+                    <span style="color:#2b5fc7;">${pick}</span>
                     <span style="color:#cbd5e1;font-size:.6rem;"> / </span>
                     <span style="color:${done?'#059669':isCert?'#d97706':'#94a3b8'};">${isCert ? cert : '—'}</span>
                   </div>
@@ -10643,7 +10860,7 @@ const MWMS = {
             </div>
             ${todosOk && nextAmb ? `
             <button onclick="MWMS._certVerificarAmbiente('${this.esc(nextAmb)}')"
-              style="width:42px;min-height:46px;background:#0F4C81;color:#fff;border:none;
+              style="width:42px;min-height:46px;background:#2b5fc7;color:#fff;border:none;
                      border-radius:8px;cursor:pointer;font-size:.9rem;" title="${this.esc(nextAmb)}">
               <i class="fa-solid fa-arrow-right"></i>
             </button>` : ''}
@@ -10736,7 +10953,7 @@ const MWMS = {
             showCancelButton: true,
             confirmButtonText: 'Iniciar Packing',
             cancelButtonText: 'Cancelar',
-            confirmButtonColor: '#0F4C81',
+            confirmButtonColor: '#2b5fc7',
           });
           if (!isConfirmed || !tipoEmp) return;
           this.loading(true);
@@ -10772,7 +10989,7 @@ const MWMS = {
     const canatasCerradas= (unidades || []).filter(u => u.estado === 'Cerrada').length;
     const prodsAmb       = (productos || []).filter(p => (p.ambiente_nombre || 'Sin ambiente') === ambiente);
     const pendAmb        = prodsAmb.filter(p => (p.pendiente || 0) > 0.001);
-    const ambColor       = prodsAmb[0]?.ambiente_color || '#0F4C81';
+    const ambColor       = prodsAmb[0]?.ambiente_color || '#2b5fc7';
     const todosPacked    = pendAmb.length === 0 && prodsAmb.length > 0;
     const canCerrar      = todosPacked && openUnitItems === 0;
 
@@ -10782,11 +10999,11 @@ const MWMS = {
 
         <!-- Breadcrumb de navegación -->
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:8px 12px;background:#f1f5f9;border-radius:8px;flex-wrap:wrap;">
-          <button onclick="MWMS.viewCert()" style="background:none;border:none;color:#0F4C81;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;display:flex;align-items:center;gap:4px;">
+          <button onclick="MWMS.viewCert()" style="background:none;border:none;color:#2b5fc7;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;display:flex;align-items:center;gap:4px;">
             <i class="fa-solid fa-house" style="font-size:.6rem;"></i> Inicio
           </button>
           <i class="fa-solid fa-chevron-right" style="font-size:.45rem;color:#94a3b8;"></i>
-          <button onclick="MWMS._certRefreshAndRenderAmbientes()" style="background:none;border:none;color:#0F4C81;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;">
+          <button onclick="MWMS._certRefreshAndRenderAmbientes()" style="background:none;border:none;color:#2b5fc7;font-size:.72rem;font-weight:800;cursor:pointer;padding:2px 4px;">
             ${this.esc(sucursal)}
           </button>
           <i class="fa-solid fa-chevron-right" style="font-size:.45rem;color:#94a3b8;"></i>
@@ -10796,7 +11013,7 @@ const MWMS = {
           </span>
         </div>
 
-        <div style="background:#1e3a5f;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:12px;">
+        <div style="background:#1e293b;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:12px;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <div>
               <div style="font-size:.44rem;opacity:.65;text-transform:uppercase;letter-spacing:.5px;">AMBIENTE</div>
@@ -10875,7 +11092,7 @@ const MWMS = {
             </button>
 
             <button onclick="MWMS._certAgregarCanasta(${unidad_abierta || 0},${sesionId})"
-              style="flex:1;min-height:48px;background:${unidad_abierta && openUnitItems > 0 ? '#0F4C81' : '#e2e8f0'};color:${unidad_abierta && openUnitItems > 0 ? '#fff' : '#94a3b8'};border:none;border-radius:8px;font-size:.62rem;font-weight:800;cursor:${unidad_abierta && openUnitItems > 0 ? 'pointer' : 'not-allowed'};line-height:1.3;"
+              style="flex:1;min-height:48px;background:${unidad_abierta && openUnitItems > 0 ? '#2b5fc7' : '#e2e8f0'};color:${unidad_abierta && openUnitItems > 0 ? '#fff' : '#94a3b8'};border:none;border-radius:8px;font-size:.62rem;font-weight:800;cursor:${unidad_abierta && openUnitItems > 0 ? 'pointer' : 'not-allowed'};line-height:1.3;"
               ${unidad_abierta && openUnitItems > 0 ? '' : 'disabled'}>
               <i class="fa-solid fa-plus"></i><br>Agregar<br>${tipoLabel}
             </button>
@@ -10913,7 +11130,7 @@ const MWMS = {
       title: '¿Agregar nueva canasta?',
       text: 'Se sellará la actual y se abrirá una nueva para continuar empacando.',
       icon: 'question', showCancelButton: true,
-      confirmButtonText: 'Sí, agregar', cancelButtonText: 'Cancelar', confirmButtonColor: '#0F4C81',
+      confirmButtonText: 'Sí, agregar', cancelButtonText: 'Cancelar', confirmButtonColor: '#2b5fc7',
     });
     if (!ok.isConfirmed) return;
     this.loading(true);
@@ -11029,7 +11246,7 @@ const MWMS = {
       title: 'Certificar producto',
       html: `
         <div style="text-align:left;font-size:.82rem;margin-bottom:8px;">
-          <b style="color:#0F4C81;font-size:.9rem;display:block;">${this.esc(it.nombre)}</b>
+          <b style="color:#2b5fc7;font-size:.9rem;display:block;">${this.esc(it.nombre)}</b>
           <div style="color:#64748b;font-size:.72rem;">Código: <b>${this.esc(it.codigo)}</b> | EAN: <b>${this.esc(it.ean || '—')}</b></div>
           <div style="margin-top:4px;font-size:.72rem;display:flex;gap:6px;align-items:center;">
             <span style="background:#e2e8f0;padding:1px 6px;border-radius:4px;">Lote: <b>${this.esc(it.lote || 'N/A')}</b></span>
@@ -11040,8 +11257,8 @@ const MWMS = {
         </div>
 
         <div style="background:#eff6ff;padding:8px;border-radius:8px;text-align:center;margin-bottom:10px;border:1px solid #bfdbfe;">
-          <div style="font-size:.6rem;font-weight:700;color:#1e40af;text-transform:uppercase;">CANTIDAD PICKEADA (SEPARADA)</div>
-          <div style="font-size:1.3rem;font-weight:900;color:#0F4C81;">${pick} und</div>
+          <div style="font-size:.6rem;font-weight:700;color:#1e4da8;text-transform:uppercase;">CANTIDAD PICKEADA (SEPARADA)</div>
+          <div style="font-size:1.3rem;font-weight:900;color:#2b5fc7;">${pick} und</div>
           <div style="font-size:.7rem;color:#3b82f6;font-weight:700;">${pickCajas} cj + ${pickSaldos} saldos sueltos (${upc} U/E)</div>
         </div>
 
@@ -11337,7 +11554,7 @@ const MWMS = {
       if(s){
           if(!l) {
               document.body.insertAdjacentHTML('beforeend',`
-                <div id="m-loading" style="position:fixed;inset:0;background:rgba(255,255,255,.7);z-index:90000;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:2rem;color:#0F4C81;">
+                <div id="m-loading" style="position:fixed;inset:0;background:rgba(255,255,255,.7);z-index:90000;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:2rem;color:#2b5fc7;">
                   <i class="fa-solid fa-spinner fa-spin"></i>
                   <p style="font-size:.8rem;color:#64748b;margin-top:10px;font-weight:700;">PROCESANDO...</p>
                   <button id="m-loading-close" onclick="MWMS.loading(false)" 
@@ -11707,7 +11924,7 @@ const MWMS = {
       html += `
         <div style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:10px;margin-bottom:10px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <span style="font-size:.8rem;font-weight:700;color:#1e40af;">#${idx+1}</span>
+            <span style="font-size:.8rem;font-weight:700;color:#1e4da8;">#${idx+1}</span>
             ${this._odcItems.length>1 ? `<button class="m-btn danger sm" onclick="MWMS._odcItems.splice(${idx},1);MWMS._miscRenderOdcForm()"><i class="fa-solid fa-trash"></i></button>` : ''}
           </div>
           <div style="margin-bottom:8px;">
@@ -12631,7 +12848,7 @@ const MWMS = {
                 <input id="trp-saldos" type="number" min="0" step="1" value="0" class="m-input-full" style="font-weight:bold;font-size:1.1rem;text-align:center;" oninput="MWMS._trpCalcularTotal()">
               </div>
             </div>
-            <div style="background:#eff6ff;color:#1e40af;padding:8px;border-radius:6px;text-align:center;font-weight:700;margin-bottom:10px;font-size:.9rem;">
+            <div style="background:#eff6ff;color:#1e4da8;padding:8px;border-radius:6px;text-align:center;font-weight:700;margin-bottom:10px;font-size:.9rem;">
               Total a extraer: <span id="trp-total-und">0</span> und
             </div>
             
@@ -12781,7 +12998,7 @@ const MWMS = {
               </div>
             </div>
             <div style="text-align:right;flex-shrink:0;margin-left:8px;">
-              <span style="background:#dbeafe;color:#1e40af;font-size:.72rem;font-weight:800;padding:4px 8px;border-radius:20px;display:inline-block;">
+              <span style="background:#dbeafe;color:#1e4da8;font-size:.72rem;font-weight:800;padding:4px 8px;border-radius:20px;display:inline-block;">
                 ${p.total_disponible} und (${p.ubicaciones_count} ubi)
               </span>
             </div>
@@ -12914,7 +13131,7 @@ const MWMS = {
           <!-- Formulario de Extracción Inline -->
           ${esEditando ? `
             <div style="margin-top:10px;padding:10px;background:#fff;border:1px solid #93c5fd;border-radius:8px;box-shadow:inset 0 1px 3px rgba(0,0,0,.05);">
-              <div style="font-weight:700;font-size:.78rem;color:#1e40af;margin-bottom:6px;">
+              <div style="font-weight:700;font-size:.78rem;color:#1e4da8;margin-bottom:6px;">
                 <i class="fa-solid fa-cart-plus"></i> Extracción de ${this.esc(s.ubicacion_codigo)}:
               </div>
               <div style="display:flex;gap:8px;margin-bottom:8px;">
@@ -12927,7 +13144,7 @@ const MWMS = {
                   <input id="trp-inline-saldos" type="number" min="0" step="1" value="0" class="m-input-full" style="font-weight:bold;font-size:1.05rem;text-align:center;padding:6px;" oninput="MWMS._trpCalcularInlineTotal(${uxc})">
                 </div>
               </div>
-              <div style="background:#eff6ff;color:#1e40af;padding:6px;border-radius:6px;text-align:center;font-weight:800;font-size:.82rem;margin-bottom:8px;">
+              <div style="background:#eff6ff;color:#1e4da8;padding:6px;border-radius:6px;text-align:center;font-weight:800;font-size:.82rem;margin-bottom:8px;">
                 Total a agregar: <span id="trp-inline-total-und">0</span> und
               </div>
               <div style="display:flex;gap:8px;">
@@ -13115,5 +13332,38 @@ if ('serviceWorker' in navigator) {
     </button>
   </div>
 </div>
+<!-- Deslizar hacia abajo para actualizar (2026-10-01). El WebView del APK no
+     trae pull-to-refresh nativo. Solo se activa si el gesto empieza con todo
+     arriba (sin scroll en ningún contenedor) y nunca sobre firmas (canvas),
+     campos de texto o [data-no-ptr] — dibujar una firma hacia abajo no debe
+     recargar y perder lo capturado. -->
+<div id="ptr-ind" style="position:fixed;top:-50px;left:50%;transform:translateX(-50%);width:40px;height:40px;border-radius:50%;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;z-index:10000;color:#2b5fc7;pointer-events:none;"><i class="fa-solid fa-arrow-down"></i></div>
+<script>
+(function () {
+  const UMBRAL = 70, ind = document.getElementById('ptr-ind');
+  let y0 = null, dy = 0;
+  const enTope = el => { for (; el && el !== document; el = el.parentElement) if (el.scrollTop > 0) return false; return window.scrollY <= 0; };
+  document.addEventListener('touchstart', e => {
+    const t = e.target;
+    y0 = (e.touches.length === 1 && !t.closest('canvas,input,textarea,select,[data-no-ptr]') && enTope(t)) ? e.touches[0].clientY : null;
+    dy = 0;
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (y0 === null) return;
+    dy = e.touches[0].clientY - y0;
+    if (dy <= 0) { ind.style.top = '-50px'; return; }
+    const d = Math.min(dy, UMBRAL * 1.6);
+    ind.style.top = (d - 50) + 'px';
+    ind.firstElementChild.style.transform = 'rotate(' + (dy >= UMBRAL ? 180 : 0) + 'deg)';
+  }, { passive: true });
+  document.addEventListener('touchend', () => {
+    if (y0 !== null && dy >= UMBRAL) {
+      ind.innerHTML = '<i class="fa-solid fa-rotate fa-spin"></i>';
+      location.reload();
+    } else ind.style.top = '-50px';
+    y0 = null; dy = 0;
+  });
+})();
+</script>
 </body>
 </html>

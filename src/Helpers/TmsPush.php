@@ -83,17 +83,27 @@ class TmsPush
         // no tiene auxiliar asignado.
         $auxiliarPersonalId = null;
         $rutaNombre = null;
+        // BUG CORREGIDO 2026-10-01: el TMS lista solo pedidos con
+        // fecha_planilla = hoy, y se le mandaba la fecha del PICKING. Lo normal
+        // es separar un día y despachar al siguiente (despacho 58: pedidos del
+        // 30-sep, cargue del 01-oct), así que el auxiliar asignado no veía nada.
+        // Con despacho, la fecha que manda es la del día de cargue/entrega.
+        $fechaPlanilla = $orden->fecha_movimiento;
         if (!empty($orden->despacho_id)) {
             $desp = Capsule::table('despachos')->where('id', $orden->despacho_id)->first();
             $auxiliarPersonalId = $desp->auxiliar_id ?? null;
             $rutaNombre = $desp->ruta ?? null;
+            $fechaPlanilla = $desp->fecha_movimiento ?? $fechaPlanilla;
         }
+        // Transferencia por pedido (Gestión de Pedidos TMS, 2026-10-01): gana
+        // sobre el auxiliar de la planilla en cualquier reenvío.
+        if (!empty($orden->tms_auxiliar_id)) $auxiliarPersonalId = $orden->tms_auxiliar_id;
 
         $payload = [
             'orden_picking_id'      => $orden->id,
             'numero_pedido'         => trim($orden->numero_factura ?: $orden->numero_orden ?: ('#' . $orden->id)),
             'planilla_numero'       => $orden->planilla_numero,
-            'fecha_planilla'        => $orden->fecha_movimiento,
+            'fecha_planilla'        => $fechaPlanilla,
             'sucursal_entrega'      => $orden->sucursal_entrega,
             'empresa_id'            => $orden->empresa_id,
             'sucursal_id'           => $orden->sucursal_id,

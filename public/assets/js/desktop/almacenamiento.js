@@ -61,8 +61,8 @@ WMS_MODULES.almacenamiento = {
             <td>${WMS.esc(item.unidad_medida || '-')}</td>
             <td>${WMS.esc(item.lote || 'N/A')}</td>
             <td>${item.created_at ? WMS.formatDate(item.created_at.split(' ')[0]) : '-'}</td>
-            <td style="font-size:.8rem;font-weight:600;color:${days>7?'#dc2626':(days>3?'#d97706':'#16a34a')}">${days} d</td>
-            <td style="font-size:.72rem;color:#64748b;">${WMS.esc(item.ubicacion_codigo || 'Patio')}</td>
+            <td style="font-size:.8rem;font-weight:600;color:${days>7?'var(--danger)':(days>3?'var(--warn)':'var(--ok)')}">${days} d</td>
+            <td style="font-size:.72rem;color:var(--muted);">${WMS.esc(item.ubicacion_codigo || 'Patio')}</td>
             <td style="white-space:nowrap;">
               <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.almacenamiento.asignarUbicacion(${idx})">
                 <i class="fa-solid fa-map-pin"></i> Ubicar
@@ -76,7 +76,7 @@ WMS_MODULES.almacenamiento = {
         }).join('');
 
         return `
-          <tr class="pallet-group-header" style="background:#1e3a5f;color:#fff;cursor:pointer;" onclick="WMS_MODULES.almacenamiento.togglePalletGroup('${key}')">
+          <tr class="pallet-group-header" style="background:#1e293b;color:#fff;cursor:pointer;" onclick="WMS_MODULES.almacenamiento.togglePalletGroup('${key}')">
             <td colspan="6" style="padding:10px 12px;font-weight:700;font-size:.85rem;">
               <i class="fa-solid fa-box-archive" style="margin-right:6px;"></i>
               ${WMS.esc(palletLabel)}
@@ -84,11 +84,11 @@ WMS_MODULES.almacenamiento = {
             </td>
             <td colspan="3" style="text-align:right;padding:8px 12px;">
               ${key !== '__sin_pallet__' && ['Admin','Supervisor','SuperAdmin'].includes(WMS.user?.rol) ? `
-              <button class="btn btn-sm" style="background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;font-weight:700;font-size:.75rem;padding:4px 12px;margin-right:4px;"
+              <button class="btn btn-sm" style="background:var(--danger-bg);color:var(--danger);border:1px solid #fca5a5;font-weight:700;font-size:.75rem;padding:4px 12px;margin-right:4px;"
                 onclick="event.stopPropagation();WMS_MODULES.almacenamiento._eliminarPallet('${key}')" title="Eliminar todo el pallet del patio">
                 <i class="fa-solid fa-trash"></i> Eliminar
               </button>` : ''}
-              <button class="btn btn-sm" style="background:#fff;color:#1e3a5f;font-weight:700;font-size:.75rem;padding:4px 12px;"
+              <button class="btn btn-sm" style="background:var(--surface);color:var(--text);font-weight:700;font-size:.75rem;padding:4px 12px;"
                 onclick="event.stopPropagation();WMS_MODULES.almacenamiento.ubicarTodoPallet('${key}')">
                 <i class="fa-solid fa-layer-group"></i> Ubicar Todo el Pallet
               </button>
@@ -113,7 +113,7 @@ WMS_MODULES.almacenamiento = {
             <table class="erp-table" id="ub-table">
               <thead><tr><th>Código</th><th>Producto</th><th>Cantidad</th><th>Unidad</th><th>Lote</th><th>F. Recibo</th><th>Días</th><th>Patio</th><th>Acción</th></tr></thead>
               <tbody>
-                ${groupHtml || '<tr><td colspan="8" class="table-empty"><i class="fa-solid fa-circle-check" style="color:#10b981;"></i> Sin mercancía pendiente de ubicar</td></tr>'}
+                ${groupHtml || '<tr><td colspan="8" class="table-empty"><i class="fa-solid fa-circle-check" style="color:var(--ok);"></i> Sin mercancía pendiente de ubicar</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -199,23 +199,23 @@ WMS_MODULES.almacenamiento = {
     const itemsHtml = items.map(i =>
       `<tr><td style="padding:4px 8px;font-size:.78rem;font-weight:600;">${WMS.esc(i.producto_nombre)}</td>
        <td style="padding:4px 8px;font-size:.78rem;text-align:center;">${WMS.formatNum(i.cantidad)} ${WMS.esc(i.unidad_medida||'')}</td>
-       <td style="padding:4px 8px;font-size:.78rem;color:#64748b;">${WMS.esc(i.lote||'N/A')}</td></tr>`
+       <td style="padding:4px 8px;font-size:.78rem;color:var(--muted);">${WMS.esc(i.lote||'N/A')}</td></tr>`
     ).join('');
 
     this._palletMoveItems = items;
 
     WMS.showModal(`Ubicar ${label}`, `
-      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:16px;">
-        <div style="font-weight:700;color:#1e40af;margin-bottom:8px;"><i class="fa-solid fa-box-archive"></i> Referencias en este pallet</div>
+      <div style="background:var(--info-bg);border:1px solid var(--info-bg);border-radius:6px;padding:12px;margin-bottom:16px;">
+        <div style="font-weight:700;color:var(--accent2);margin-bottom:8px;"><i class="fa-solid fa-box-archive"></i> Referencias en este pallet</div>
         <table style="width:100%;border-collapse:collapse;">
-          <thead><tr style="background:#dbeafe;"><th style="padding:4px 8px;font-size:.72rem;text-align:left;">Producto</th><th style="padding:4px 8px;font-size:.72rem;">Cantidad</th><th style="padding:4px 8px;font-size:.72rem;text-align:left;">Lote</th></tr></thead>
+          <thead><tr style="background:var(--info-bg);"><th style="padding:4px 8px;font-size:.72rem;text-align:left;">Producto</th><th style="padding:4px 8px;font-size:.72rem;">Cantidad</th><th style="padding:4px 8px;font-size:.72rem;text-align:left;">Lote</th></tr></thead>
           <tbody>${itemsHtml}</tbody>
         </table>
       </div>
       <div class="form-group">
         <label class="form-label">Ubicación Destino <span class="required">*</span></label>
         ${this._buildUbicDestino('ubp-ubicacion', ubis)}
-        <div style="font-size:.7rem;color:#64748b;margin-top:4px;"><i class="fa-solid fa-barcode"></i> Escanee el código o escriba para filtrar · Enter confirma coincidencia única</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:4px;"><i class="fa-solid fa-barcode"></i> Escanee el código o escriba para filtrar · Enter confirma coincidencia única</div>
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.almacenamiento.confirmarUbicacionPallet()">
@@ -259,7 +259,7 @@ WMS_MODULES.almacenamiento = {
   escanearUbicar() {
     WMS.showModal('Escanear Producto para Ubicar', `
       <div style="text-align:center;padding:20px 0;">
-        <i class="fa-solid fa-barcode" style="font-size:3rem;color:#3b82f6;opacity:.6;margin-bottom:16px;display:block;"></i>
+        <i class="fa-solid fa-barcode" style="font-size:3rem;color:var(--info);opacity:.6;margin-bottom:16px;display:block;"></i>
         <p class="text-muted" style="margin-bottom:16px;">Ingrese o escanee el código EAN del producto</p>
         <input id="scan-ean-ub" class="form-control" style="max-width:300px;margin:0 auto;text-align:center;font-size:1.2rem;letter-spacing:4px;" placeholder="0000000000000" autofocus>
       </div>`,
@@ -293,7 +293,7 @@ WMS_MODULES.almacenamiento = {
     return `
       <div style="position:relative;" id="${inputId}-wrap">
         <div style="position:relative;">
-          <i class="fa-solid fa-barcode" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#3b82f6;z-index:1;pointer-events:none;font-size:.9rem;"></i>
+          <i class="fa-solid fa-barcode" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--info);z-index:1;pointer-events:none;font-size:.9rem;"></i>
           <input id="${inputId}" type="text" class="form-control" style="padding-left:34px;"
             placeholder="Escanee código o escriba para buscar..." autocomplete="off"
             oninput="WMS_MODULES.almacenamiento._filterUbicSuggestions('${inputId}','${hidId}')"
@@ -301,11 +301,11 @@ WMS_MODULES.almacenamiento = {
             onfocus="WMS_MODULES.almacenamiento._filterUbicSuggestions('${inputId}','${hidId}')">
           <input type="hidden" id="${hidId}">
         </div>
-        <div id="${inputId}-drop" style="display:none;position:absolute;z-index:9999;width:100%;background:#fff;border:1px solid #cbd5e1;border-top:none;border-radius:0 0 6px 6px;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12);"></div>
-        <div id="${inputId}-sel" style="display:none;margin-top:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:8px 12px;font-size:.85rem;justify-content:space-between;align-items:center;">
-          <span><i class="fa-solid fa-map-pin" style="color:#3b82f6;margin-right:6px;"></i><strong id="${inputId}-lbl"></strong></span>
+        <div id="${inputId}-drop" style="display:none;position:absolute;z-index:9999;width:100%;background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12);"></div>
+        <div id="${inputId}-sel" style="display:none;margin-top:6px;background:var(--info-bg);border:1px solid var(--info-bg);border-radius:6px;padding:8px 12px;font-size:.85rem;justify-content:space-between;align-items:center;">
+          <span><i class="fa-solid fa-map-pin" style="color:var(--info);margin-right:6px;"></i><strong id="${inputId}-lbl"></strong></span>
           <button type="button" onclick="WMS_MODULES.almacenamiento._clearUbic('${inputId}','${hidId}')"
-            style="background:none;border:none;color:#64748b;cursor:pointer;font-size:.75rem;padding:0 4px;">
+            style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.75rem;padding:0 4px;">
             <i class="fa-solid fa-times"></i> Cambiar
           </button>
         </div>
@@ -322,19 +322,19 @@ WMS_MODULES.almacenamiento = {
       ? ubis.filter(u => (`${u.codigo||''} ${u.zona||''} ${u.tipo_ubicacion||''}`).toLowerCase().includes(q)).slice(0, 25)
       : ubis.slice(0, 25);
     if (!matches.length) {
-      drop.innerHTML = `<div style="padding:10px 14px;color:#94a3b8;font-size:.82rem;"><i class="fa-solid fa-magnifying-glass"></i> Sin resultados</div>`;
+      drop.innerHTML = `<div style="padding:10px 14px;color:var(--text-muted);font-size:.82rem;"><i class="fa-solid fa-magnifying-glass"></i> Sin resultados</div>`;
       drop.style.display = 'block';
       return;
     }
     drop.innerHTML = matches.map(u => {
       const lbl = `${u.codigo||''} — ${u.zona||''} (${u.tipo_ubicacion||''})`;
-      return `<div style="padding:9px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:.83rem;"
+      return `<div style="padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border-light);font-size:.83rem;"
         data-ub-id="${u.id}" data-ub-cod="${WMS.esc(u.codigo||'')}" data-ub-lbl="${WMS.esc(lbl)}"
         onmousedown="WMS_MODULES.almacenamiento._selectUbicEl(this,'${inputId}','${hidId}')"
-        onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background=''">
-        <i class="fa-solid fa-map-pin" style="color:#3b82f6;margin-right:6px;font-size:.72rem;"></i>
+        onmouseover="this.style.background='var(--info-bg)'" onmouseout="this.style.background=''">
+        <i class="fa-solid fa-map-pin" style="color:var(--info);margin-right:6px;font-size:.72rem;"></i>
         <strong>${WMS.esc(u.codigo||'')}</strong>
-        <span style="color:#64748b;margin-left:6px;">${WMS.esc(u.zona||'')} · ${WMS.esc(u.tipo_ubicacion||'')}</span>
+        <span style="color:var(--muted);margin-left:6px;">${WMS.esc(u.zona||'')} · ${WMS.esc(u.tipo_ubicacion||'')}</span>
       </div>`;
     }).join('');
     drop.style.display = 'block';
@@ -423,11 +423,11 @@ WMS_MODULES.almacenamiento = {
 
     this._currentPutawayItem = { ...item, _disponible: disponible, _factor: factor, _usaCajas: usaCajas, _cajasDisp: cajasDisp, _saldosDisp: saldosDisp };
     WMS.showModal(`Ubicar: ${WMS.esc(item.producto_nombre || '-')}`, `
-      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:16px;font-size:13px;">
-        <div style="font-weight:700;color:#1e40af;margin-bottom:4px;">${palletInfo}${WMS.esc(item.codigo_interno || '')} — ${WMS.esc(item.producto_nombre)}</div>
-        <div style="display:flex;gap:20px;color:#1d4ed8;flex-wrap:wrap;">
+      <div style="background:var(--info-bg);border:1px solid var(--info-bg);border-radius:6px;padding:12px;margin-bottom:16px;font-size:13px;">
+        <div style="font-weight:700;color:var(--accent2);margin-bottom:4px;">${palletInfo}${WMS.esc(item.codigo_interno || '')} — ${WMS.esc(item.producto_nombre)}</div>
+        <div style="display:flex;gap:20px;color:var(--info);flex-wrap:wrap;">
           <span><i class="fa-solid fa-layer-group"></i> Disponible: <strong>${WMS.formatNum(disponible)}</strong> ${WMS.esc(item.unidad_medida||'und')}</span>
-          ${reservada > 0 ? `<span style="color:#d97706;"><i class="fa-solid fa-lock"></i> Reservado: <strong>${WMS.formatNum(reservada)}</strong></span>` : ''}
+          ${reservada > 0 ? `<span style="color:var(--warn);"><i class="fa-solid fa-lock"></i> Reservado: <strong>${WMS.formatNum(reservada)}</strong></span>` : ''}
           <span><i class="fa-solid fa-tag"></i> Lote: <strong>${WMS.esc(item.lote||'N/A')}</strong></span>
           <span><i class="fa-solid fa-location-dot"></i> Origen: <strong>${WMS.esc(item.ubicacion_codigo||'Patio')}</strong></span>
         </div>
@@ -436,7 +436,7 @@ WMS_MODULES.almacenamiento = {
         <div class="form-group" style="grid-column:1/-1;">
           <label class="form-label">Ubicación Destino <span class="required">*</span></label>
           ${this._buildUbicDestino('ub-ubicacion', ubis)}
-          <div style="font-size:.7rem;color:#64748b;margin-top:4px;"><i class="fa-solid fa-barcode"></i> Escanee el código o escriba para filtrar · Enter confirma coincidencia única</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:4px;"><i class="fa-solid fa-barcode"></i> Escanee el código o escriba para filtrar · Enter confirma coincidencia única</div>
         </div>
         ${usaCajas ? `
         <div class="form-group">
@@ -444,24 +444,24 @@ WMS_MODULES.almacenamiento = {
           <input id="ub-cajas" type="number" class="form-control" min="0" max="${cajasDisp}" value="${cajasDisp}" placeholder="0" oninput="WMS_MODULES.almacenamiento._ubCalcPreview()" ${disponible<=0?'disabled':''}>
         </div>
         <div class="form-group">
-          <label class="form-label" style="color:#d97706;">Saldos (sueltos)</label>
+          <label class="form-label" style="color:var(--warn);">Saldos (sueltos)</label>
           <input id="ub-saldos" type="number" class="form-control" min="0" max="${saldosDisp}" value="${saldosDisp}" step="0.001" placeholder="0" oninput="WMS_MODULES.almacenamiento._ubCalcPreview()" ${disponible<=0?'disabled':''}>
         </div>
-        <div id="ub-preview" style="grid-column:1/-1;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;font-size:12px;color:#1e40af;font-weight:600;">
+        <div id="ub-preview" style="grid-column:1/-1;padding:8px 12px;background:var(--info-bg);border:1px solid var(--info-bg);border-radius:4px;font-size:12px;color:var(--accent2);font-weight:600;">
           <i class="fa-solid fa-calculator"></i> <span id="ub-preview-text"></span>
         </div>
         <input type="hidden" id="ub-cantidad" value="${disponible}">` : `
         <div class="form-group">
           <label class="form-label">Cantidad a Ubicar <span class="required">*</span></label>
           <input id="ub-cantidad" type="number" class="form-control" min="1" max="${disponible}" value="${disponible}" placeholder="0" ${disponible<=0?'disabled':''}>
-          <div style="font-size:.7rem;color:#64748b;margin-top:3px;">Máximo: ${WMS.formatNum(disponible)} ${WMS.esc(item.unidad_medida||'und')}</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:3px;">Máximo: ${WMS.formatNum(disponible)} ${WMS.esc(item.unidad_medida||'und')}</div>
         </div>`}
         <div class="form-group">
           <label class="form-label">Fecha Vencimiento</label>
           <input id="ub-fv" type="date" class="form-control" value="${item.fecha_vencimiento||''}">
         </div>
       </div>
-      ${disponible<=0 ? `<div style="margin-top:10px;padding:10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;color:#991b1b;font-size:.8rem;"><i class="fa-solid fa-triangle-exclamation"></i> Todo el stock de esta partida está reservado — no hay cantidad disponible para trasladar.</div>` : ''}`,
+      ${disponible<=0 ? `<div style="margin-top:10px;padding:10px;background:var(--danger-bg);border:1px solid #fca5a5;border-radius:6px;color:var(--danger);font-size:.8rem;"><i class="fa-solid fa-triangle-exclamation"></i> Todo el stock de esta partida está reservado — no hay cantidad disponible para trasladar.</div>` : ''}`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
        <button class="btn btn-primary" onclick="WMS_MODULES.almacenamiento.confirmarUbicacion()" ${disponible<=0?'disabled':''}><i class="fa-solid fa-map-pin"></i> Confirmar Ubicación</button>`);
     if (usaCajas) this._ubCalcPreview();
@@ -543,7 +543,7 @@ WMS_MODULES.almacenamiento = {
     this._patioBajaItem = item;
 
     WMS.showModal(`Dar de baja de Patio: ${WMS.esc(item.producto_nombre || '-')}`, `
-      <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:12px;margin-bottom:16px;font-size:13px;color:#991b1b;">
+      <div style="background:var(--danger-bg);border:1px solid #fca5a5;border-radius:6px;padding:12px;margin-bottom:16px;font-size:13px;color:var(--danger);">
         <i class="fa-solid fa-triangle-exclamation"></i> Esto da de baja <strong>${WMS.formatNum(item.cantidad)} ${WMS.esc(item.unidad_medida||'und')}</strong> registradas en <strong>${WMS.esc(item.ubicacion_codigo||'Patio')}</strong>.
         Úselo solo cuando esta mercancía ya se ubicó en otro lado y el registro de Patio quedó como residuo — no borra stock real.
       </div>
@@ -635,7 +635,7 @@ WMS_MODULES.almacenamiento = {
               </div>
             </div>
             <!-- Preview UND/TOTAL — visible solo cuando hay producto con UPC > 1 -->
-            <div id="tr-preview" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:9px 14px;margin-bottom:12px;font-size:.84rem;"></div>
+            <div id="tr-preview" style="display:none;background:var(--info-bg);border:1px solid var(--info-bg);border-radius:6px;padding:9px 14px;margin-bottom:12px;font-size:.84rem;"></div>
             <div style="text-align:right;margin-top:16px;">
               <button class="btn btn-primary" onclick="WMS_MODULES.almacenamiento.ejecutarTraslado()">
                 <i class="fa-solid fa-arrow-right-arrow-left"></i> Ejecutar Traslado
@@ -707,12 +707,12 @@ WMS_MODULES.almacenamiento = {
         <label class="form-label">Cantidad <span class="required">*</span></label>
         <div style="display:flex;gap:8px;">
           <div style="flex:1;">
-            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">Cajas</label>
+            <label class="form-label" style="margin-bottom:2px;display:block;">Cajas</label>
             <input id="tr-cajas" type="number" class="form-control" min="0" step="1" value="0"
               oninput="WMS_MODULES.almacenamiento._trCalcPreview()" placeholder="0">
           </div>
           <div style="flex:1;">
-            <label style="font-size:.75rem;color:#64748b;margin-bottom:2px;display:block;">Sueltos</label>
+            <label class="form-label" style="margin-bottom:2px;display:block;">Sueltos</label>
             <input id="tr-saldos" type="number" class="form-control" min="0" step="1" value="0"
               oninput="WMS_MODULES.almacenamiento._trCalcPreview()" placeholder="0">
           </div>
@@ -745,21 +745,21 @@ WMS_MODULES.almacenamiento = {
 
       if (preview) {
         const maxInfo = this._trStockOrigen > 0
-          ? ` · <span style="color:#64748b;">Disponibles: <b>${WMS.formatNum(this._trStockOrigen)}</b> und en origen</span>`
+          ? ` · <span style="color:var(--muted);">Disponibles: <b>${WMS.formatNum(this._trStockOrigen)}</b> und en origen</span>`
           : '';
         preview.style.display = 'block';
         preview.innerHTML = `<b>UND/TOTAL:</b> ${cajas} cajas × ${upc} u/caja + ${saldos} sueltos = `
-          + `<b style="color:#1e40af;font-size:1.05em;">${total.toFixed(2)}</b>${maxInfo}`;
-        preview.style.borderColor = (this._trStockOrigen > 0 && total > this._trStockOrigen) ? '#fca5a5' : '#bfdbfe';
-        preview.style.background  = (this._trStockOrigen > 0 && total > this._trStockOrigen) ? '#fef2f2' : '#eff6ff';
+          + `<b style="color:var(--accent2);font-size:1.05em;">${total.toFixed(2)}</b>${maxInfo}`;
+        preview.style.borderColor = (this._trStockOrigen > 0 && total > this._trStockOrigen) ? '#fca5a5' : 'var(--info-bg)';
+        preview.style.background  = (this._trStockOrigen > 0 && total > this._trStockOrigen) ? 'var(--danger-bg)' : 'var(--info-bg)';
       }
     } else {
       const total = parseFloat(document.getElementById('tr-cantidad')?.value || '0') || 0;
       if (preview && this._trStockOrigen > 0) {
         preview.style.display = 'block';
-        preview.innerHTML = `<span style="color:#64748b;">Disponibles en origen: <b>${WMS.formatNum(this._trStockOrigen)}</b> und</span>`;
-        preview.style.borderColor = total > this._trStockOrigen ? '#fca5a5' : '#bfdbfe';
-        preview.style.background  = total > this._trStockOrigen ? '#fef2f2' : '#eff6ff';
+        preview.innerHTML = `<span style="color:var(--muted);">Disponibles en origen: <b>${WMS.formatNum(this._trStockOrigen)}</b> und</span>`;
+        preview.style.borderColor = total > this._trStockOrigen ? '#fca5a5' : 'var(--info-bg)';
+        preview.style.background  = total > this._trStockOrigen ? 'var(--danger-bg)' : 'var(--info-bg)';
       } else if (preview) {
         preview.style.display = 'none';
       }
@@ -874,7 +874,7 @@ WMS_MODULES.almacenamiento = {
     WMS.setToolbar(`
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <div style="position:relative;flex:1;min-width:180px;">
-          <i class="fa-solid fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none;font-size:.85rem;"></i>
+          <i class="fa-solid fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none;font-size:.85rem;"></i>
           <input id="mapa-prod-ac" class="form-control" style="padding-left:32px;" placeholder="Buscar ubicación, zona o producto..." oninput="WMS_MODULES.almacenamiento.filterMapaTable(this.value)">
         </div>
         <select id="mapa-zona-f" class="form-control" style="max-width:130px;" onchange="WMS_MODULES.almacenamiento.renderMapa()">
@@ -947,7 +947,7 @@ WMS_MODULES.almacenamiento = {
           <!-- Side Panel / Drawer View -->
           <div id="ubicacion-drawer" class="md-drawer">
             <div class="drawer-header">
-              <h3 class="drawer-title"><i class="fa-solid fa-map-pin" style="color:#3b82f6; margin-right:8px;"></i> <span id="drawer-ubi-code">Detalle de Ubicación</span></h3>
+              <h3 class="drawer-title"><i class="fa-solid fa-map-pin" style="color:var(--info); margin-right:8px;"></i> <span id="drawer-ubi-code">Detalle de Ubicación</span></h3>
               <button class="drawer-close" onclick="WMS_MODULES.almacenamiento.closeDrawer()"><i class="fa-solid fa-times"></i></button>
             </div>
             <div class="drawer-body" id="drawer-content">
@@ -1006,61 +1006,61 @@ WMS_MODULES.almacenamiento = {
 
     const _estadoBadge = (e) => {
       const map = {
-        'Libre'  : ['#dcfce7','#16a34a','Libre'],
-        'Parcial': ['#fef9c3','#ca8a04','Parcial'],
-        'Ocupada': ['#dbeafe','#1d4ed8','Ocupada'],
-        'Locked' : ['#fee2e2','#dc2626','Bloqueada'],
+        'Libre'  : ['var(--ok-bg)','var(--ok)','Libre'],
+        'Parcial': ['var(--warn-bg)','var(--warn)','Parcial'],
+        'Ocupada': ['var(--info-bg)','var(--info)','Ocupada'],
+        'Locked' : ['var(--danger-bg)','var(--danger)','Bloqueada'],
       };
-      const [bg, fg, label] = map[e] || ['#f1f5f9','#64748b', e || 'Libre'];
+      const [bg, fg, label] = map[e] || ['var(--btn-neutral)','var(--muted)', e || 'Libre'];
       return `<span style="display:inline-block;background:${bg};color:${fg};font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:99px;letter-spacing:.03em;">${label}</span>`;
     };
 
     const _vencBadge = (fv) => {
       if (!fv) return '—';
       const dias = Math.ceil((new Date(fv) - new Date()) / 86400000);
-      const bg   = dias <= 30 ? '#fee2e2' : dias <= 90 ? '#fef9c3' : '#dbeafe';
-      const fg   = dias <= 30 ? '#dc2626' : dias <= 90 ? '#b45309' : '#1d4ed8';
+      const bg   = dias <= 30 ? 'var(--danger-bg)' : dias <= 90 ? 'var(--warn-bg)' : 'var(--info-bg)';
+      const fg   = dias <= 30 ? 'var(--danger)' : dias <= 90 ? 'var(--warn)' : 'var(--info)';
       const icon = dias <= 30 ? '⚠ ' : '';
       return `<span style="background:${bg};color:${fg};font-size:.72rem;font-weight:700;padding:2px 7px;border-radius:4px;white-space:nowrap;">${icon}${WMS.formatDate(fv)}</span>`;
     };
 
     const _diasLabel = (d) => {
-      if (d === 'N/A' || d === null || d === undefined) return '<span style="color:#94a3b8;font-size:.75rem;">Sin historial</span>';
+      if (d === 'N/A' || d === null || d === undefined) return '<span style="color:var(--text-muted);font-size:.75rem;">Sin historial</span>';
       const n = parseInt(d);
-      if (n === 0) return '<span style="color:#16a34a;font-weight:600;font-size:.8rem;">Hoy</span>';
-      const color = n > 90 ? '#dc2626' : n > 30 ? '#b45309' : '#1e293b';
+      if (n === 0) return '<span style="color:var(--ok);font-weight:600;font-size:.8rem;">Hoy</span>';
+      const color = n > 90 ? 'var(--danger)' : n > 30 ? 'var(--warn)' : 'var(--text)';
       return `<span style="color:${color};font-weight:${n > 30 ? 700 : 400};font-size:.8rem;">${n}d</span>`;
     };
 
     tbody.innerHTML = items.map(i => {
       const pct   = Math.min(parseFloat(i.ocupacion_pct) || 0, 100);
-      const color = pct >= 100 ? '#ef4444' : pct >= 75 ? '#f59e0b' : pct > 0 ? '#3b82f6' : '#e2e8f0';
-      const barFg = pct >= 100 ? '#ef4444' : pct >= 75 ? '#f59e0b' : pct > 0 ? '#3b82f6' : '#10b981';
+      const color = pct >= 100 ? 'var(--danger)' : pct >= 75 ? 'var(--warn)' : pct > 0 ? 'var(--info)' : 'var(--border)';
+      const barFg = pct >= 100 ? 'var(--danger)' : pct >= 75 ? 'var(--warn)' : pct > 0 ? 'var(--info)' : 'var(--ok)';
       const res   = parseFloat(i.total_reservado || 0);
       const refs  = parseInt(i.total_refs || 0);
 
       return `
         <tr class="main-row" id="row-${i.id}" onclick="WMS_MODULES.almacenamiento.openDrawer(${i.id}, '${WMS.esc(i.ubicacion)}')" style="cursor:pointer;">
-          <td style="font-weight:700;color:#1e40af;font-family:monospace;">${WMS.esc(i.ubicacion)}</td>
-          <td style="font-size:.8rem;color:#64748b;font-weight:600;">${WMS.esc(i.zona || '—')}</td>
+          <td style="font-weight:700;color:var(--accent2);font-family:monospace;">${WMS.esc(i.ubicacion)}</td>
+          <td style="font-size:.8rem;color:var(--muted);font-weight:600;">${WMS.esc(i.zona || '—')}</td>
           <td><span class="badge ${i.tipo === 'Picking' ? 'badge-success' : 'badge-info'}">${WMS.esc(i.tipo)}</span></td>
           <td>${_estadoBadge(i.estado_ubi)}</td>
           <td style="text-align:center;">
             ${refs > 0
-              ? `<span style="font-weight:700;color:#0f172a;">${refs}</span><span style="font-size:.7rem;color:#94a3b8;margin-left:2px;">ref${refs !== 1 ? 's' : ''}</span>`
-              : '<span style="color:#cbd5e1;font-size:.8rem;">—</span>'}
+              ? `<span style="font-weight:700;color:var(--text);">${refs}</span><span style="font-size:.7rem;color:var(--text-muted);margin-left:2px;">ref${refs !== 1 ? 's' : ''}</span>`
+              : '<span style="color:var(--text-muted);font-size:.8rem;">—</span>'}
           </td>
           <td>
             <div style="display:flex;align-items:center;gap:6px;">
-              <div style="flex:1;height:7px;background:#e2e8f0;border-radius:4px;overflow:hidden;">
+              <div style="flex:1;height:7px;background:var(--border);border-radius:4px;overflow:hidden;">
                 <div style="width:${pct}%;height:100%;background:${barFg};transition:width .3s;"></div>
               </div>
               <span style="min-width:38px;text-align:right;font-size:.78rem;font-weight:700;color:${barFg};">${i.ocupacion_pct}%</span>
             </div>
           </td>
           <td style="text-align:center;">
-            <div style="font-weight:700;color:#1e40af;font-size:.9rem;">${WMS.formatNum(i.total_productos)}</div>
-            ${res > 0 ? `<div style="font-size:.7rem;color:#dc2626;font-weight:600;"><i class="fa-solid fa-lock" style="font-size:.6rem;"></i> ${WMS.formatNum(res)} res.</div>` : ''}
+            <div style="font-weight:700;color:var(--accent2);font-size:.9rem;">${WMS.formatNum(i.total_productos)}</div>
+            ${res > 0 ? `<div style="font-size:.7rem;color:var(--danger);font-weight:600;"><i class="fa-solid fa-lock" style="font-size:.6rem;"></i> ${WMS.formatNum(res)} res.</div>` : ''}
           </td>
           <td>${_vencBadge(i.proximo_vencimiento)}</td>
           <td style="text-align:center;">${_diasLabel(i.dias_sin_mov)}</td>
@@ -1090,12 +1090,12 @@ WMS_MODULES.almacenamiento = {
     // Highlight row
     document.querySelectorAll('#mapa-tbody tr').forEach(r => r.style.background = '');
     const row = document.getElementById(`row-${id}`);
-    if (row) row.style.background = '#e0f2fe';
+    if (row) row.style.background = 'var(--info-bg)';
 
     // Show Drawer
     title.textContent = codigo;
     drawer.classList.add('open');
-    content.innerHTML = `<div style="padding:40px; text-align:center;"><div class="spinner"></div><p style="margin-top:10px; color:#64748b;">Cargando inventario...</p></div>`;
+    content.innerHTML = `<div style="padding:40px; text-align:center;"><div class="spinner"></div><p style="margin-top:10px; color:var(--muted);">Cargando inventario...</p></div>`;
     actions.style.display = 'none';
 
     try {
@@ -1103,7 +1103,7 @@ WMS_MODULES.almacenamiento = {
       const stockItems = r.data || r || [];
       
       if (stockItems.length === 0) {
-        content.innerHTML = `<div style="padding:30px; text-align:center; color:#64748b; background:#f1f5f9; border-radius:4px;"><i class="fa-solid fa-box-open" style="font-size:2rem; margin-bottom:10px;"></i><br>Ubicación vacía.</div>`;
+        content.innerHTML = `<div style="padding:30px; text-align:center; color:var(--muted); background:var(--btn-neutral); border-radius:4px;"><i class="fa-solid fa-box-open" style="font-size:2rem; margin-bottom:10px;"></i><br>Ubicación vacía.</div>`;
         return;
       }
 
@@ -1114,23 +1114,23 @@ WMS_MODULES.almacenamiento = {
 
       content.innerHTML = `
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px;">
-          <div style="background:#eff6ff;border-radius:6px;padding:10px;text-align:center;">
-            <div style="font-size:.68rem;color:#1d4ed8;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Total</div>
-            <div style="font-size:1.25rem;font-weight:800;color:#1e40af;">${WMS.formatNum(totalUnd)}</div>
-            <div style="font-size:.68rem;color:#64748b;">und.</div>
+          <div style="background:var(--info-bg);border-radius:6px;padding:10px;text-align:center;">
+            <div style="font-size:.68rem;color:var(--info);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Total</div>
+            <div style="font-size:1.25rem;font-weight:800;color:var(--accent2);">${WMS.formatNum(totalUnd)}</div>
+            <div style="font-size:.68rem;color:var(--muted);">und.</div>
           </div>
-          <div style="background:${totalRes > 0 ? '#fef2f2' : '#f0fdf4'};border-radius:6px;padding:10px;text-align:center;">
-            <div style="font-size:.68rem;color:${totalRes > 0 ? '#dc2626' : '#16a34a'};font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Reservado</div>
-            <div style="font-size:1.25rem;font-weight:800;color:${totalRes > 0 ? '#dc2626' : '#16a34a'};">${WMS.formatNum(totalRes)}</div>
-            <div style="font-size:.68rem;color:#64748b;">und.</div>
+          <div style="background:${totalRes > 0 ? 'var(--danger-bg)' : 'var(--ok-bg)'};border-radius:6px;padding:10px;text-align:center;">
+            <div style="font-size:.68rem;color:${totalRes > 0 ? 'var(--danger)' : 'var(--ok)'};font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Reservado</div>
+            <div style="font-size:1.25rem;font-weight:800;color:${totalRes > 0 ? 'var(--danger)' : 'var(--ok)'};">${WMS.formatNum(totalRes)}</div>
+            <div style="font-size:.68rem;color:var(--muted);">und.</div>
           </div>
-          <div style="background:#f0fdf4;border-radius:6px;padding:10px;text-align:center;">
-            <div style="font-size:.68rem;color:#16a34a;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Disponible</div>
-            <div style="font-size:1.25rem;font-weight:800;color:#15803d;">${WMS.formatNum(totalDisp)}</div>
-            <div style="font-size:.68rem;color:#64748b;">und.</div>
+          <div style="background:var(--ok-bg);border-radius:6px;padding:10px;text-align:center;">
+            <div style="font-size:.68rem;color:var(--ok);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">Disponible</div>
+            <div style="font-size:1.25rem;font-weight:800;color:var(--ok);">${WMS.formatNum(totalDisp)}</div>
+            <div style="font-size:.68rem;color:var(--muted);">und.</div>
           </div>
         </div>
-        <div style="font-size:.75rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">${stockItems.length} referencia${stockItems.length !== 1 ? 's' : ''} en esta ubicación</div>
+        <div style="font-size:.75rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">${stockItems.length} referencia${stockItems.length !== 1 ? 's' : ''} en esta ubicación</div>
         <div style="display:flex;flex-direction:column;gap:10px;">
           ${stockItems.map(s => {
             const units  = parseFloat(s.cantidad || 0);
@@ -1142,26 +1142,26 @@ WMS_MODULES.almacenamiento = {
             const diasEnLoc  = fechaRef ? Math.floor((Date.now() - new Date(fechaRef).getTime()) / 86400000) : null;
             const fv = s.fecha_vencimiento;
             const diasVenc   = fv ? Math.ceil((new Date(fv) - new Date()) / 86400000) : null;
-            const vencColor  = diasVenc !== null ? (diasVenc <= 30 ? '#dc2626' : diasVenc <= 90 ? '#b45309' : '#1e293b') : '#94a3b8';
+            const vencColor  = diasVenc !== null ? (diasVenc <= 30 ? 'var(--danger)' : diasVenc <= 90 ? 'var(--warn)' : 'var(--text)') : 'var(--text-muted)';
             const vencIcon   = diasVenc !== null && diasVenc <= 30 ? '⚠ ' : '';
             return `
-              <div style="border:1px solid ${resv > 0 ? '#fecaca' : '#e2e8f0'};border-radius:6px;padding:12px;background:${resv > 0 ? '#fff8f8' : '#fff'};">
+              <div style="border:1px solid ${resv > 0 ? 'var(--danger-bg)' : 'var(--border)'};border-radius:6px;padding:12px;background:${resv > 0 ? 'var(--danger-bg)' : 'var(--surface)'};">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                   <div style="flex:1;min-width:0;">
-                    <div style="font-weight:600;color:#0f172a;font-size:.88rem;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${WMS.esc(s.producto_nombre || '—')}</div>
-                    <div style="font-family:monospace;font-size:.75rem;color:#64748b;margin-top:1px;">${WMS.esc(s.codigo_interno || '')}</div>
+                    <div style="font-weight:600;color:var(--text);font-size:.88rem;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${WMS.esc(s.producto_nombre || '—')}</div>
+                    <div style="font-family:monospace;font-size:.75rem;color:var(--muted);margin-top:1px;">${WMS.esc(s.codigo_interno || '')}</div>
                   </div>
                   <div style="text-align:right;flex-shrink:0;">
-                    <div style="font-weight:800;color:#1e40af;font-size:1rem;">${WMS.formatNum(units)}<span style="font-size:.65rem;color:#94a3b8;font-weight:400;margin-left:2px;">und</span></div>
-                    ${factor > 1 ? `<div style="font-size:.75rem;color:#059669;font-weight:600;">${cajas % 1 === 0 ? cajas : cajas.toFixed(1)} cx</div>` : ''}
-                    ${resv > 0 ? `<div style="font-size:.7rem;color:#dc2626;font-weight:700;"><i class="fa-solid fa-lock" style="font-size:.6rem;"></i> ${WMS.formatNum(resv)} res.</div>` : ''}
+                    <div style="font-weight:800;color:var(--accent2);font-size:1rem;">${WMS.formatNum(units)}<span style="font-size:.65rem;color:var(--text-muted);font-weight:400;margin-left:2px;">und</span></div>
+                    ${factor > 1 ? `<div style="font-size:.75rem;color:var(--ok);font-weight:600;">${cajas % 1 === 0 ? cajas : cajas.toFixed(1)} cx</div>` : ''}
+                    ${resv > 0 ? `<div style="font-size:.7rem;color:var(--danger);font-weight:700;"><i class="fa-solid fa-lock" style="font-size:.6rem;"></i> ${WMS.formatNum(resv)} res.</div>` : ''}
                   </div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px;background:#f8fafc;border-radius:4px;padding:8px;font-size:.8rem;">
-                  <div><span style="color:#94a3b8;">Lote</span><br><span style="font-family:monospace;font-weight:600;color:#1e293b;">${WMS.esc(s.lote || 'N/A')}</span></div>
-                  <div><span style="color:#94a3b8;">Vencimiento</span><br><span style="color:${vencColor};font-weight:700;">${fv ? vencIcon + WMS.formatDate(fv) : '—'}</span></div>
-                  <div><span style="color:#94a3b8;">Disponible</span><br><span style="font-weight:700;color:#15803d;">${WMS.formatNum(disp)} und</span></div>
-                  <div><span style="color:#94a3b8;">Días en loc.</span><br><span style="font-weight:600;color:${diasEnLoc > 90 ? '#dc2626' : '#1e293b'};">${diasEnLoc !== null ? diasEnLoc + 'd' : '—'}</span></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px;background:var(--table-header-bg);border-radius:4px;padding:8px;font-size:.8rem;">
+                  <div><span style="color:var(--text-muted);">Lote</span><br><span style="font-family:monospace;font-weight:600;color:var(--text);">${WMS.esc(s.lote || 'N/A')}</span></div>
+                  <div><span style="color:var(--text-muted);">Vencimiento</span><br><span style="color:${vencColor};font-weight:700;">${fv ? vencIcon + WMS.formatDate(fv) : '—'}</span></div>
+                  <div><span style="color:var(--text-muted);">Disponible</span><br><span style="font-weight:700;color:var(--ok);">${WMS.formatNum(disp)} und</span></div>
+                  <div><span style="color:var(--text-muted);">Días en loc.</span><br><span style="font-weight:600;color:${diasEnLoc > 90 ? 'var(--danger)' : 'var(--text)'};">${diasEnLoc !== null ? diasEnLoc + 'd' : '—'}</span></div>
                 </div>
               </div>
             `;
@@ -1220,8 +1220,8 @@ WMS_MODULES.almacenamiento = {
                 <td class="text-center fw-600">${WMS.formatNum(m.cantidad || 0)}</td>
                 <td style="font-family:monospace;font-size:.78rem;">${WMS.esc(m.ubicacion_origen || '—')}</td>
                 <td style="font-family:monospace;font-size:.78rem;">${WMS.esc(m.ubicacion || m.ubicacion_destino || '—')}</td>
-                <td style="font-family:monospace;font-size:.78rem;color:#475569;">${WMS.esc(m.lote || '—')}</td>
-                <td style="font-size:.78rem;color:#64748b;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${WMS.esc(m.observaciones || '—')}</td>
+                <td style="font-family:monospace;font-size:.78rem;color:var(--text2);">${WMS.esc(m.lote || '—')}</td>
+                <td style="font-size:.78rem;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${WMS.esc(m.observaciones || '—')}</td>
                 <td style="font-size:.78rem;">${WMS.esc(m.usuario || '-')}</td>
               </tr>`).join('') || '<tr><td colspan="9" class="table-empty">Sin traslados registrados</td></tr>'}
               </tbody>
@@ -1247,8 +1247,8 @@ WMS_MODULES.almacenamiento = {
           <td class="text-center fw-600">${WMS.formatNum(m.cantidad || 0)}</td>
           <td style="font-family:monospace;font-size:.78rem;">${WMS.esc(m.ubicacion_origen || '—')}</td>
           <td style="font-family:monospace;font-size:.78rem;">${WMS.esc(m.ubicacion || m.ubicacion_destino || '—')}</td>
-          <td style="font-family:monospace;font-size:.78rem;color:#475569;">${WMS.esc(m.lote || '—')}</td>
-          <td style="font-size:.78rem;color:#64748b;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${WMS.esc(m.observaciones || '—')}</td>
+          <td style="font-family:monospace;font-size:.78rem;color:var(--text2);">${WMS.esc(m.lote || '—')}</td>
+          <td style="font-size:.78rem;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${WMS.esc(m.observaciones || '—')}</td>
           <td style="font-size:.78rem;">${WMS.esc(m.usuario || '-')}</td>
         </tr>`).join('') || '<tr><td colspan="9" class="table-empty">Sin traslados registrados</td></tr>';
       }
@@ -1298,13 +1298,13 @@ WMS_MODULES.almacenamiento = {
     WMS.setContent(`
       <div class="card animate-fade-in">
         <div class="card-header">
-          <h5 class="card-title"><i class="fa-solid fa-file-signature" style="color:#ef4444;"></i> Documento de Traspaso</h5>
+          <h5 class="card-title"><i class="fa-solid fa-file-signature" style="color:var(--danger);"></i> Documento de Traspaso</h5>
         </div>
         <div class="card-body" style="display:flex;flex-direction:column;gap:16px;">
 
           <!-- Encabezado -->
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
-            <h6 style="margin:0 0 12px;color:#1e293b;font-weight:700;"><i class="fa-solid fa-1"></i> Encabezado</h6>
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:8px;padding:16px;">
+            <h6 style="margin:0 0 12px;color:var(--text);font-weight:700;"><i class="fa-solid fa-1"></i> Encabezado</h6>
             <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(250px, 1fr));gap:14px;">
               <div>
                 <label class="form-label">Cliente *</label>
@@ -1326,8 +1326,8 @@ WMS_MODULES.almacenamiento = {
           </div>
 
           <!-- Productos -->
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
-            <h6 style="margin:0 0 12px;color:#1e293b;font-weight:700;"><i class="fa-solid fa-2"></i> Agregar Productos</h6>
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:8px;padding:16px;">
+            <h6 style="margin:0 0 12px;color:var(--text);font-weight:700;"><i class="fa-solid fa-2"></i> Agregar Productos</h6>
             
             <div style="display:flex;gap:10px;margin-bottom:10px;">
               <input id="trp-d-buscar" class="form-control" placeholder="Buscar por código, nombre o ubicación..."
@@ -1336,28 +1336,28 @@ WMS_MODULES.almacenamiento = {
             </div>
             <div id="trp-d-resultados" style="max-height:200px;overflow-y:auto;margin-bottom:10px;"></div>
 
-            <div id="trp-d-seleccion" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;margin-bottom:10px;">
+            <div id="trp-d-seleccion" style="display:none;background:var(--info-bg);border:1px solid var(--info-bg);border-radius:6px;padding:12px;margin-bottom:10px;">
               <div id="trp-d-sel-info" style="font-size:.85rem;margin-bottom:8px;"></div>
               <div id="trp-d-cant-wrap" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                <label id="trp-d-cant-label" style="margin:0;font-weight:700;">Cantidad *</label>
+                <label id="trp-d-cant-label" class="form-label" style="margin:0;">Cantidad *</label>
                 <input id="trp-d-cant" type="number" class="form-control" min="0.01" step="0.01" style="width:120px;" oninput="WMS_MODULES.almacenamiento._trpDUpdTotal()">
-                <label id="trp-d-saldo-label" style="margin:0;font-weight:700;color:#d97706;display:none;">Saldo</label>
+                <label id="trp-d-saldo-label" class="form-label" style="margin:0;color:var(--warn);display:none;">Saldo</label>
                 <input id="trp-d-saldo" type="number" class="form-control" min="0" step="0.01" style="width:100px;display:none;" oninput="WMS_MODULES.almacenamiento._trpDUpdTotal()">
-                <span id="trp-d-total-preview" style="font-size:.8rem;color:#475569;display:none;"></span>
+                <span id="trp-d-total-preview" style="font-size:.8rem;color:var(--text2);display:none;"></span>
                 <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.almacenamiento._trpDCancelarItem()">Cancelar</button>
                 <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.almacenamiento._trpDAgregarItem()"><i class="fa-solid fa-plus"></i> Agregar</button>
               </div>
             </div>
 
-            <h6 style="font-size:.85rem;color:#64748b;margin-bottom:6px;">Items Agregados:</h6>
-            <div id="trp-d-items-agregados" style="min-height:50px;border:1px dashed #cbd5e1;border-radius:6px;padding:10px;">
-              <div style="text-align:center;color:#94a3b8;font-size:.85rem;">No hay productos agregados</div>
+            <h6 style="font-size:.85rem;color:var(--muted);margin-bottom:6px;">Items Agregados:</h6>
+            <div id="trp-d-items-agregados" style="min-height:50px;border:1px dashed var(--border);border-radius:6px;padding:10px;">
+              <div style="text-align:center;color:var(--text-muted);font-size:.85rem;">No hay productos agregados</div>
             </div>
           </div>
 
           <!-- Firma y Cierre -->
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
-            <h6 style="margin:0 0 12px;color:#1e293b;font-weight:700;"><i class="fa-solid fa-3"></i> Confirmación y Firma</h6>
+          <div style="background:var(--table-header-bg);border:1px solid var(--border);border-radius:8px;padding:16px;">
+            <h6 style="margin:0 0 12px;color:var(--text);font-weight:700;"><i class="fa-solid fa-3"></i> Confirmación y Firma</h6>
             
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
               <div>
@@ -1366,10 +1366,10 @@ WMS_MODULES.almacenamiento = {
               </div>
               <div>
                 <label class="form-label">Firma de Conformidad *</label>
-                <div style="border:1px solid #cbd5e1;border-radius:8px;background:#fff;overflow:hidden;margin-bottom:8px;">
+                <div style="border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden;margin-bottom:8px;">
                   <canvas id="trp-d-firma-canvas" width="400" height="120" style="width:100%;display:block;cursor:crosshair;"></canvas>
                 </div>
-                <button class="btn btn-light btn-sm" style="width:100%;border:1px solid #e2e8f0;" onclick="WMS_MODULES.almacenamiento._trpDLimpiarFirma()">
+                <button class="btn btn-light btn-sm" style="width:100%;border:1px solid var(--border);" onclick="WMS_MODULES.almacenamiento._trpDLimpiarFirma()">
                   <i class="fa-solid fa-eraser"></i> Limpiar Firma
                 </button>
               </div>
@@ -1380,7 +1380,7 @@ WMS_MODULES.almacenamiento = {
             </button>
           </div>
 
-          <div style="margin-top:20px;"><h6 style="font-size:.9rem;color:#64748b;font-weight:700;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">Últimos Documentos Generados</h6>
+          <div style="margin-top:20px;"><h6 style="font-size:.9rem;color:var(--muted);font-weight:700;border-bottom:1px solid var(--border);padding-bottom:6px;">Últimos Documentos Generados</h6>
             <div id="trp-d-historial"></div>
           </div>
         </div>
@@ -1460,16 +1460,16 @@ WMS_MODULES.almacenamiento = {
       const r = await API.get('/traspasos/buscar-stock', 'q=' + encodeURIComponent(q));
       this._trpResults = r.data || [];
       div.innerHTML = this._trpResults.length ? this._trpResults.map((s, i) => `
-        <div style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:4px;cursor:pointer;
-          ${s.bloqueado ? 'background:#fef2f2;opacity:.7;' : 'background:#fff;'}
+        <div style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;cursor:pointer;
+          ${s.bloqueado ? 'background:var(--danger-bg);opacity:.7;' : 'background:var(--surface);'}
           display:flex;justify-content:space-between;align-items:center;"
           onclick="${s.bloqueado ? "WMS.toast('error','Producto bloqueado')" : 'WMS_MODULES.almacenamiento._trpDSeleccionar('+i+')'}">
           <div>
-            <div style="font-weight:700;font-size:.85rem;">${WMS.esc(s.nombre)} ${s.bloqueado ? '<span style="color:#dc2626;font-size:.7rem;font-weight:600;">BLOQUEADO</span>' : ''}</div>
-            <div style="font-size:.75rem;color:#64748b;">Cod: ${WMS.esc(s.codigo_interno)} | Ubic: <strong>${WMS.esc(s.ubicacion_codigo)}</strong> | Lote: <strong>${WMS.esc(s.lote||'S/L')}</strong>${s.fecha_vencimiento ? ' | Venc: '+WMS.formatDate(s.fecha_vencimiento) : ''}</div>
+            <div style="font-weight:700;font-size:.85rem;">${WMS.esc(s.nombre)} ${s.bloqueado ? '<span style="color:var(--danger);font-size:.7rem;font-weight:600;">BLOQUEADO</span>' : ''}</div>
+            <div style="font-size:.75rem;color:var(--muted);">Cod: ${WMS.esc(s.codigo_interno)} | Ubic: <strong>${WMS.esc(s.ubicacion_codigo)}</strong> | Lote: <strong>${WMS.esc(s.lote||'S/L')}</strong>${s.fecha_vencimiento ? ' | Venc: '+WMS.formatDate(s.fecha_vencimiento) : ''}</div>
           </div>
-          <div style="font-weight:900;font-size:1.1rem;color:#059669;">${s.cantidad_disponible}</div>
-        </div>`).join('') : '<div style="text-align:center;color:#94a3b8;padding:12px;">Sin resultados</div>';
+          <div style="font-weight:900;font-size:1.1rem;color:var(--ok);">${s.cantidad_disponible}</div>
+        </div>`).join('') : '<div style="text-align:center;color:var(--text-muted);padding:12px;">Sin resultados</div>';
     } catch(e) { div.innerHTML = ''; }
   },
 
@@ -1483,11 +1483,11 @@ WMS_MODULES.almacenamiento = {
     const sel = document.getElementById('trp-d-seleccion');
     sel.style.display = 'block';
     sel.querySelector('#trp-d-sel-info').innerHTML = `
-      <div style="font-weight:700;color:#1d4ed8;">${WMS.esc(s.nombre)} — ${WMS.esc(s.codigo_interno)}</div>
-      <div style="font-size:.82rem;color:#475569;margin-top:4px;">
+      <div style="font-weight:700;color:var(--info);">${WMS.esc(s.nombre)} — ${WMS.esc(s.codigo_interno)}</div>
+      <div style="font-size:.82rem;color:var(--text2);margin-top:4px;">
         Ubicación: <strong>${WMS.esc(s.ubicacion_codigo)}</strong> |
         Lote: <strong>${WMS.esc(s.lote||'Sin lote')}</strong> |
-        Disponible: <strong style="color:#059669;">${s.cantidad_disponible}</strong>
+        Disponible: <strong style="color:var(--ok);">${s.cantidad_disponible}</strong>
       </div>`;
     const factor = parseInt(s.unidades_caja) || 1;
     const cantEl   = document.getElementById('trp-d-cant');
@@ -1556,23 +1556,23 @@ WMS_MODULES.almacenamiento = {
   _trpDRenderItems() {
     const el = document.getElementById('trp-d-items-agregados');
     if (!this._trpDItems.length) {
-      el.innerHTML = `<div style="text-align:center;color:#94a3b8;font-size:.85rem;padding:10px;">No hay productos agregados</div>`;
+      el.innerHTML = `<div style="text-align:center;color:var(--text-muted);font-size:.85rem;padding:10px;">No hay productos agregados</div>`;
       return;
     }
     el.innerHTML = `
       <table class="table table-sm" style="font-size:.85rem;margin:0;">
-        <thead style="background:#f1f5f9;">
+        <thead style="background:var(--btn-neutral);">
           <tr><th>Producto</th><th>Ubicación</th><th>Lote</th><th style="text-align:right;">Cant.</th><th style="width:40px;"></th></tr>
         </thead>
         <tbody>
           ${this._trpDItems.map((it, i) => `
             <tr>
-              <td><strong>${WMS.esc(it.nombre)}</strong><br><span style="color:#64748b;font-size:.75rem;">${WMS.esc(it.codigo_interno)}</span></td>
+              <td><strong>${WMS.esc(it.nombre)}</strong><br><span style="color:var(--muted);font-size:.75rem;">${WMS.esc(it.codigo_interno)}</span></td>
               <td>${WMS.esc(it.ubicacion_codigo)}</td>
               <td>${WMS.esc(it.lote||'S/L')}</td>
               <td style="text-align:right;font-weight:700;">${it.cantidad}</td>
               <td style="text-align:center;">
-                <button class="btn btn-sm" style="color:#ef4444;padding:2px 6px;" onclick="WMS_MODULES.almacenamiento._trpDItems.splice(${i},1);WMS_MODULES.almacenamiento._trpDRenderItems()">
+                <button class="btn btn-sm" style="color:var(--danger);padding:2px 6px;" onclick="WMS_MODULES.almacenamiento._trpDItems.splice(${i},1);WMS_MODULES.almacenamiento._trpDRenderItems()">
                   <i class="fa-solid fa-trash"></i>
                 </button>
               </td>
@@ -1635,20 +1635,20 @@ WMS_MODULES.almacenamiento = {
       const div = document.getElementById('trp-d-historial');
       if (!div) return;
       div.innerHTML = items.length ? `<table class="table" style="font-size:.82rem;">
-        <thead style="background:#f8fafc;">
+        <thead style="background:var(--table-header-bg);">
           <tr><th>N° Doc</th><th>Cliente</th><th>Motivo</th><th>Recibió</th><th>Items</th><th>Fecha</th></tr>
         </thead>
         <tbody>${items.map(t => {
           const c = (t.detalles || []).length;
           return `<tr>
-            <td style="font-weight:700;color:#0F4C81;">${WMS.esc(t.numero_documento||'')}</td>
+            <td style="font-weight:700;color:var(--accent);">${WMS.esc(t.numero_documento||'')}</td>
             <td>${WMS.esc(t.cliente_nombre||'-')}</td>
             <td>${WMS.esc(t.motivo||'')}</td>
             <td>${WMS.esc(t.quien_recibe||'')}</td>
             <td style="font-weight:600;">${c} refs</td>
-            <td style="color:#64748b;">${t.created_at ? new Date(t.created_at).toLocaleDateString('es-CO') : ''}</td>
+            <td style="color:var(--muted);">${t.created_at ? new Date(t.created_at).toLocaleDateString('es-CO') : ''}</td>
           </tr>`;
-        }).join('')}</tbody></table>` : '<div style="text-align:center;color:#94a3b8;padding:20px;background:#f8fafc;border-radius:8px;">Sin documentos registrados</div>';
+        }).join('')}</tbody></table>` : '<div style="text-align:center;color:var(--text-muted);padding:20px;background:var(--table-header-bg);border-radius:8px;">Sin documentos registrados</div>';
     } catch(e) {}
   },
 
@@ -1672,12 +1672,12 @@ WMS_MODULES.almacenamiento = {
       WMS.setContent(`
         <div class="card animate-fade-in" style="margin-bottom:16px;">
           <div class="card-header">
-            <h5 class="card-title"><i class="fa-solid fa-ban" style="color:#dc2626;"></i> Bloquear Producto / Lote</h5>
+            <h5 class="card-title"><i class="fa-solid fa-ban" style="color:var(--danger);"></i> Bloquear Producto / Lote</h5>
           </div>
           <div class="card-body">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-              <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:14px;">
-                <h6 style="font-size:.85rem;font-weight:700;color:#dc2626;margin-bottom:10px;"><i class="fa-solid fa-box"></i> Bloquear Referencia Completa</h6>
+              <div style="background:var(--danger-bg);border:1px solid var(--danger-bg);border-radius:4px;padding:14px;">
+                <h6 style="font-size:.85rem;font-weight:700;color:var(--danger);margin-bottom:10px;"><i class="fa-solid fa-box"></i> Bloquear Referencia Completa</h6>
                 <div class="form-group"><label class="form-label">Buscar producto</label>
                   <input id="blq-prod-buscar" class="form-control" placeholder="Código o nombre..."
                          oninput="clearTimeout(WMS_MODULES.almacenamiento._blqTimer);WMS_MODULES.almacenamiento._blqTimer=setTimeout(()=>WMS_MODULES.almacenamiento._blqBuscarProd(),400)">
@@ -1690,7 +1690,7 @@ WMS_MODULES.almacenamiento = {
                   <i class="fa-solid fa-ban"></i> Bloquear Producto</button>
               </div>
 
-              <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:4px;padding:14px;">
+              <div style="background:var(--warn-bg);border:1px solid #fed7aa;border-radius:4px;padding:14px;">
                 <h6 style="font-size:.85rem;font-weight:700;color:#ea580c;margin-bottom:10px;"><i class="fa-solid fa-tag"></i> Bloquear Lote Específico</h6>
                 <div class="form-group"><label class="form-label">Buscar producto</label>
                   <input id="blq-lote-prod-buscar" class="form-control" placeholder="Código o nombre..."
@@ -1717,7 +1717,7 @@ WMS_MODULES.almacenamiento = {
               <tbody>${prods.map(p => `<tr>
                 <td style="font-weight:600;">${WMS.esc(p.codigo_interno||'')}</td>
                 <td>${WMS.esc(p.nombre||'')}</td>
-                <td style="color:#dc2626;">${WMS.esc(p.bloqueo_motivo||'')}</td>
+                <td style="color:var(--danger);">${WMS.esc(p.bloqueo_motivo||'')}</td>
                 <td><button class="btn btn-sm btn-outline-success" onclick="WMS_MODULES.almacenamiento._blqDesbloquearProd(${p.id})"><i class="fa-solid fa-unlock"></i> Desbloquear</button></td>
               </tr>`).join('') || '<tr><td colspan="4" class="table-empty">Sin productos bloqueados</td></tr>'}</tbody>
             </table>
@@ -1744,14 +1744,14 @@ WMS_MODULES.almacenamiento = {
           <div class="card-body">
             <table class="table" style="font-size:.82rem;">
               <thead><tr><th>Producto</th><th>Ubicación</th><th>Zona</th><th>Lote</th><th>Vencimiento</th><th>Cantidad</th><th>Estado</th></tr></thead>
-              <tbody>${inv.map(i => `<tr style="background:#fef2f2;">
+              <tbody>${inv.map(i => `<tr style="background:var(--danger-bg);">
                 <td style="font-weight:600;">${WMS.esc(i.producto?.nombre||'')}</td>
                 <td>${WMS.esc(i.ubicacion?.codigo||'')}</td>
                 <td>${WMS.esc(i.ubicacion?.zona||'')}</td>
                 <td>${WMS.esc(i.lote||'S/L')}</td>
                 <td>${i.fecha_vencimiento ? WMS.formatDate(i.fecha_vencimiento) : '-'}</td>
                 <td style="text-align:right;font-weight:700;">${i.cantidad}</td>
-                <td><span style="background:#fecaca;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:600;">BLOQUEADO</span></td>
+                <td><span style="background:var(--danger-bg);color:var(--danger);padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:600;">BLOQUEADO</span></td>
               </tr>`).join('') || '<tr><td colspan="7" class="table-empty">Sin inventario bloqueado</td></tr>'}</tbody>
             </table>
           </div>
@@ -1770,7 +1770,7 @@ WMS_MODULES.almacenamiento = {
       const r = await API.get('/param/productos/buscar', 'q=' + encodeURIComponent(q) + '&limit=8');
       const items = r.data || r || [];
       div.innerHTML = items.map(p => `
-        <div style="padding:6px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:.82rem;"
+        <div style="padding:6px 10px;border-bottom:1px solid var(--border-light);cursor:pointer;font-size:.82rem;"
              onclick="document.getElementById('blq-prod-id').value='${p.id}';document.getElementById('blq-prod-buscar').value='${WMS.esc(p.nombre||'')}';document.getElementById('blq-prod-res').innerHTML='';">
           ${WMS.esc(p.codigo_interno||'')} — ${WMS.esc(p.nombre||'')}
         </div>`).join('');
@@ -1785,7 +1785,7 @@ WMS_MODULES.almacenamiento = {
       const r = await API.get('/param/productos/buscar', 'q=' + encodeURIComponent(q) + '&limit=8');
       const items = r.data || r || [];
       div.innerHTML = items.map(p => `
-        <div style="padding:6px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:.82rem;"
+        <div style="padding:6px 10px;border-bottom:1px solid var(--border-light);cursor:pointer;font-size:.82rem;"
              onclick="document.getElementById('blq-lote-prod-id').value='${p.id}';document.getElementById('blq-lote-prod-buscar').value='${WMS.esc(p.nombre||'')}';document.getElementById('blq-lote-prod-res').innerHTML='';">
           ${WMS.esc(p.codigo_interno||'')} — ${WMS.esc(p.nombre||'')}
         </div>`).join('');

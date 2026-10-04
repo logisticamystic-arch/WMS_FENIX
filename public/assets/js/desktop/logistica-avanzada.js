@@ -59,9 +59,9 @@ WMS_MODULES.logistica = {
     const today = WMS.getToday();
     const d7    = WMS.getPastDate(7);
     return `<div class="d-flex gap-2 align-items-center flex-wrap mb-3">
-      <label class="text-muted small mb-0">Desde</label>
+      <label class="form-label mb-0">Desde</label>
       <input type="date" id="${id}_ini" class="form-control form-control-sm" style="width:145px" value="${d7}">
-      <label class="text-muted small mb-0">Hasta</label>
+      <label class="form-label mb-0">Hasta</label>
       <input type="date" id="${id}_fin" class="form-control form-control-sm" style="width:145px" value="${today}">
       <button class="btn btn-sm btn-outline-secondary" onclick="WMS_MODULES.logistica.${onRefresh}()">
         <i class="fa-solid fa-filter"></i> Filtrar
@@ -134,17 +134,17 @@ WMS_MODULES.logistica = {
         return `<tr>
           <td class="ps-3">
             <div style="font-weight:700">#${o.id}</div>
-            <div style="font-size:.7rem;color:#64748b">${this._esc(o.numero||'')}</div>
+            <div style="font-size:.7rem;color:var(--muted)">${this._esc(o.numero||'')}</div>
           </td>
           <td class="text-center">${this._estadoBadge(o.estado, badgeMapa)}</td>
           <td>${this._esc(o.muelle_entrada||'—')}</td>
           <td>${this._esc(o.muelle_salida||'—')}</td>
           <td class="text-end">${o.total_lineas||0}</td>
           <td class="text-end">
-            <span style="color:#16a34a;font-weight:600">${o.total_recibido||0}</span>
-            <span style="color:#94a3b8"> / ${o.total_esperado||0}</span>
+            <span style="color:var(--ok);font-weight:600">${o.total_recibido||0}</span>
+            <span style="color:var(--text-muted)"> / ${o.total_esperado||0}</span>
           </td>
-          <td style="font-size:.78rem;color:#64748b">${this._fmtDate(o.created_at)}</td>
+          <td style="font-size:.78rem;color:var(--muted)">${this._fmtDate(o.created_at)}</td>
           <td class="text-center">${acciones||'<span class="text-muted">—</span>'}</td>
         </tr>`;
       }).join('') : `<tr><td colspan="8" class="text-center py-5">
@@ -155,7 +155,7 @@ WMS_MODULES.logistica = {
       WMS.setContent(`<div class="pro-dashboard" style="padding:20px">
         <div class="d-flex align-items-center gap-3 mb-3">
           <div>
-            <h5 class="mb-0 fw-bold" style="color:#0f172a"><i class="fa-solid fa-right-left me-2" style="color:#0277BD"></i>Cross-Docking</h5>
+            <h5 class="mb-0 fw-bold" style="color:var(--text)"><i class="fa-solid fa-right-left me-2" style="color:#0277BD"></i>Cross-Docking</h5>
             <small class="text-muted">Transferencia directa entre muelles sin almacenamiento intermedio</small>
           </div>
         </div>
@@ -179,7 +179,7 @@ WMS_MODULES.logistica = {
           <div class="table-responsive">
             <table class="erp-table">
               <thead>
-                <tr style="background:#f8fafc">
+                <tr style="background:var(--table-header-bg)">
                   <th class="ps-3">ORDEN</th>
                   <th class="text-center">ESTADO</th>
                   <th>MUELLE ENTRADA</th>
@@ -270,13 +270,13 @@ WMS_MODULES.logistica = {
         const citasMuelle = muellesActivos[key] || [];
         const citaActiva  = citasMuelle[0];
         const ocupado     = citaActiva && ['En Patio','Operando'].includes(citaActiva.estado);
-        const bg     = ocupado ? '#fef2f2' : '#f0fdf4';
+        const bg     = ocupado ? 'var(--danger-bg)' : 'var(--ok-bg)';
         const border = ocupado ? '#fca5a5' : '#86efac';
         const label  = ocupado
-          ? `<div style="font-size:.72rem;font-weight:600;margin-top:4px;color:#dc2626">
+          ? `<div style="font-size:.72rem;font-weight:600;margin-top:4px;color:var(--danger)">
                <i class="fa-solid fa-truck me-1"></i>${this._esc(citaActiva.transportista||citaActiva.placa_vehiculo||'Ocupado')}
              </div>`
-          : `<div style="font-size:.72rem;color:#16a34a;margin-top:4px">Disponible</div>`;
+          : `<div style="font-size:.72rem;color:var(--ok);margin-top:4px">Disponible</div>`;
         return `<div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:12px;text-align:center">
           <div style="font-weight:800;font-size:.85rem">${this._esc(key)}</div>
           ${label}
@@ -334,7 +334,7 @@ WMS_MODULES.logistica = {
       WMS.setContent(`<div class="pro-dashboard" style="padding:20px">
         <div class="d-flex align-items-center gap-3 mb-3">
           <div>
-            <h5 class="mb-0 fw-bold" style="color:#0f172a"><i class="fa-solid fa-warehouse me-2" style="color:#7c3aed"></i>Yard Management</h5>
+            <h5 class="mb-0 fw-bold" style="color:var(--text)"><i class="fa-solid fa-warehouse me-2" style="color:#7c3aed"></i>Yard Management</h5>
             <small class="text-muted">Control de patio, muelles y tiempos de turnaround de camiones</small>
           </div>
         </div>
@@ -378,13 +378,13 @@ WMS_MODULES.logistica = {
 
         <div class="card border-0 shadow-sm">
           <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between">
-            <div class="pro-section-title"><i class="fa-solid fa-calendar-check me-2" style="color:#1a56db"></i>Citas de Camiones</div>
+            <div class="pro-section-title"><i class="fa-solid fa-calendar-check me-2" style="color:var(--accent)"></i>Citas de Camiones</div>
             <span class="badge bg-light text-dark border">${citas.length} registros</span>
           </div>
           <div class="table-responsive">
             <table class="erp-table">
               <thead>
-                <tr style="background:#f8fafc">
+                <tr style="background:var(--table-header-bg)">
                   <th class="ps-3">N° CITA</th>
                   <th class="text-center">ESTADO</th>
                   <th>TRANSPORTISTA</th>
@@ -488,7 +488,7 @@ WMS_MODULES.logistica = {
         return `<tr>
           <td class="ps-3">
             <div style="font-weight:700">${this._esc(w.numero||'Wave #'+w.id)}</div>
-            <div style="font-size:.68rem;color:#64748b">${this._esc(w.nombre||w.criterio||'—')}</div>
+            <div style="font-size:.68rem;color:var(--muted)">${this._esc(w.nombre||w.criterio||'—')}</div>
           </td>
           <td class="text-center">${this._estadoBadge(w.estado, badgeMapa)}</td>
           <td class="text-center">
@@ -503,7 +503,7 @@ WMS_MODULES.logistica = {
               <span class="wave-progress-pct">${pct}%</span>
             </div>
           </td>
-          <td style="font-size:.78rem;color:#64748b">${this._fmtDT(w.created_at)}</td>
+          <td style="font-size:.78rem;color:var(--muted)">${this._fmtDT(w.created_at)}</td>
           <td class="text-center" style="white-space:nowrap">${acciones||'<span class="text-muted">—</span>'}</td>
         </tr>`;
       }).join('') : `<tr><td colspan="7" class="text-center py-5">
@@ -516,7 +516,7 @@ WMS_MODULES.logistica = {
       WMS.setContent(`<div class="pro-dashboard" style="padding:20px">
         <div class="d-flex align-items-center gap-3 mb-3">
           <div>
-            <h5 class="mb-0 fw-bold" style="color:#0f172a"><i class="fa-solid fa-layer-group me-2" style="color:#1a56db"></i>Wave Picking</h5>
+            <h5 class="mb-0 fw-bold" style="color:var(--text)"><i class="fa-solid fa-layer-group me-2" style="color:var(--accent)"></i>Wave Picking</h5>
             <small class="text-muted">Agrupación de planillas por zona o criterio para optimizar rutas de picking</small>
           </div>
         </div>
@@ -532,7 +532,7 @@ WMS_MODULES.logistica = {
 
         <div class="card border-0 shadow-sm">
           <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between">
-            <div class="pro-section-title"><i class="fa-solid fa-layer-group me-2" style="color:#1a56db"></i>Waves de Picking</div>
+            <div class="pro-section-title"><i class="fa-solid fa-layer-group me-2" style="color:var(--accent)"></i>Waves de Picking</div>
             <div class="d-flex align-items-center gap-2">
               ${avgDur !== '—' ? `<span class="badge bg-light text-dark border"><i class="fa-solid fa-stopwatch me-1 text-muted"></i>Dur. prom: ${avgDur}</span>` : ''}
               <span class="badge bg-light text-dark border">${waves.length} waves</span>
@@ -541,7 +541,7 @@ WMS_MODULES.logistica = {
           <div class="table-responsive">
             <table class="erp-table">
               <thead>
-                <tr style="background:#f8fafc">
+                <tr style="background:var(--table-header-bg)">
                   <th class="ps-3">WAVE</th>
                   <th class="text-center">ESTADO</th>
                   <th class="text-center">PLANILLAS</th>
@@ -610,8 +610,8 @@ WMS_MODULES.logistica = {
     WMS.setContent(`<div class="pro-dashboard" style="padding:20px">
       <div class="d-flex align-items-center gap-3 mb-4">
         <div>
-          <h5 class="mb-0 fw-bold" style="color:#0f172a">
-            <i class="fa-solid fa-arrows-rotate me-2" style="color:#16a34a"></i>Reabastecimiento Automático
+          <h5 class="mb-0 fw-bold" style="color:var(--text)">
+            <i class="fa-solid fa-arrows-rotate me-2" style="color:var(--ok)"></i>Reabastecimiento Automático
           </h5>
           <small class="text-muted">Motor de auto-replenishment que genera tareas para montacarguistas</small>
         </div>

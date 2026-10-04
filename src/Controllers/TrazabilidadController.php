@@ -22,7 +22,7 @@ class TrazabilidadController extends BaseController
         $producto = Capsule::table('productos')
             ->where('empresa_id', $empresaId)
             ->where('id', $productoId)
-            ->select('id', 'codigo_interno', 'nombre', 'unidades_caja')
+            ->select('id', 'codigo_interno', 'nombre', 'unidades_caja', 'factor_udm')
             ->first();
         if (!$producto) return $this->notFound($res);
 
@@ -143,7 +143,7 @@ class TrazabilidadController extends BaseController
                 'mi.ubicacion_origen_id', 'mi.ubicacion_destino_id',
                 'uo.codigo as ubicacion_origen', 'ud.codigo as ubicacion_destino',
                 'pr.id as producto_id', 'pr.codigo_interno as producto_codigo',
-                'pr.nombre as producto_nombre', 'pr.unidades_caja',
+                'pr.nombre as producto_nombre', 'pr.unidades_caja', 'pr.factor_udm',
                 'p.nombre as responsable', 'p.documento as responsable_doc'
             )
             ->orderBy('mi.fecha_movimiento', 'desc')
@@ -161,7 +161,7 @@ class TrazabilidadController extends BaseController
             ->where('i.cantidad', '>', 0)
             ->when($productoId, fn($q) => $q->where('i.producto_id', $productoId))
             ->select(
-                'pr.codigo_interno', 'pr.nombre as producto_nombre', 'pr.unidades_caja',
+                'pr.codigo_interno', 'pr.nombre as producto_nombre', 'pr.unidades_caja', 'pr.factor_udm',
                 'i.lote', 'i.fecha_vencimiento', 'i.cantidad', 'i.cantidad_reservada',
                 'i.estado', 'i.numero_pallet'
             )
@@ -222,7 +222,7 @@ class TrazabilidadController extends BaseController
                 $query->where('nombre', $like, $term)
                       ->orWhere('codigo_interno', $like, $term);
             })
-            ->select('id', 'codigo_interno', 'nombre', 'unidades_caja')
+            ->select('id', 'codigo_interno', 'nombre', 'unidades_caja', 'factor_udm')
             ->orderBy('nombre')
             ->limit(20)
             ->get();

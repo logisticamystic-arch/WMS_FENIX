@@ -50,18 +50,21 @@ class AuthController extends BaseController
     {
         $data = $request->getParsedBody();
         $documento = trim($data['documento'] ?? '');
+        // 2026-10-01: el login móvil selecciona el nombre de una lista y manda
+        // personal_id en vez del documento (ver listarPersonalLogin()).
+        $personalId = (int)($data['personal_id'] ?? 0);
         $pin = trim($data['pin'] ?? '');
         $empresaId = trim($data['empresa_id'] ?? '');
         $nit = trim($data['nit'] ?? '');
 
-        if (empty($documento) || empty($pin)) {
-            return $this->json($response, ['error' => true, 'message' => 'Documento y PIN son requeridos.'], 400);
+        if ((empty($documento) && !$personalId) || empty($pin)) {
+            return $this->json($response, ['error' => true, 'message' => 'Usuario y PIN son requeridos.'], 400);
         }
 
         // Buscar usuario sin el scope de tenant para diagnóstico detallado
         $user = Personal::withoutTenantScope()
             ->with(['sucursal', 'empresa'])
-            ->where('documento', $documento)
+            ->when($personalId, fn($q) => $q->where('id', $personalId), fn($q) => $q->where('documento', $documento))
             ->first();
 
         if (!$user) {
@@ -94,8 +97,9 @@ class AuthController extends BaseController
             }
         }
 
-        if (!$user->verifyPin($pin)) {
-            return $this->json($response, ['error' => true, 'message' => "PIN incorrecto para el usuario '{$user->nombre}'. Intente nuevamente."], 401);
+        // Con bloqueo temporal tras 5 fallos (Personal::intentarPin, migración 163).
+        if ($errPin = $user->intentarPin($pin)) {
+            return $this->json($response, ['error' => true, 'message' => $errPin], 401);
         }
 
         // Determinar ID de empresa para el contexto (JWT)
@@ -169,6 +173,20 @@ class AuthController extends BaseController
      * GET /api/auth/me
      * Retorna datos del usuario basándose en el JWT
      */
+    /**
+     * GET /api/auth/personal?empresa_id=N — público (pantalla de login móvil):
+     * nombres del personal activo de la empresa para buscar y seleccionar,
+     * y luego ingresar solo el PIN (2026-10-01). Solo id + nombre + rol; el
+     * documento NO se expone. El PIN queda protegido por el bloqueo de
+     * intentos (Personal::intentarPin).
+     */
+    public function listarPersonalLogin(Request $request, Response $response): Response
+    {
+        $empresaId = (int)($request->getQueryParams()['empresa_id'] ?? 0);
+        if (!$empresaId) return $this->json($response, ['error' => false, 'data' => []]);
+        return $this->json($response, ['error' => false, 'data' => Personal::listaLogin($empresaId)]);
+    }
+
     public function me(Request $request, Response $response): Response
     {
         $userJwt = $request->getAttribute('user'); 

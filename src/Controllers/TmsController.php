@@ -206,6 +206,29 @@ class TmsController extends BaseController
             return $this->error($response, 'Campo "evento" inválido.');
         }
 
+        // Login del TMS con las mismas credenciales del WMS (documento + PIN de
+        // `personal`, 2026-10-01). Va antes del log de tms_webhooks a propósito:
+        // el payload trae el PIN en claro y no debe quedar guardado.
+        // 2026-10-01: también por personal_id (login "seleccionar nombre + PIN"),
+        // con el mismo bloqueo de intentos que el login del WMS.
+        if ($evento === 'AUTH_PERSONAL') {
+            $pid = (int)($payload['personal_id'] ?? 0);
+            $p = \App\Models\Personal::withoutTenantScope()
+                ->where('empresa_id', $empresaId)
+                ->when($pid, fn($q) => $q->where('id', $pid), fn($q) => $q->where('documento', trim((string)($payload['documento'] ?? ''))))
+                ->where('activo', true)
+                ->first();
+            if (!$p) return $this->error($response, 'Usuario o PIN incorrectos', 422);
+            if ($err = $p->intentarPin((string)($payload['pin'] ?? ''))) {
+                return $this->error($response, $err, 422);
+            }
+            return $this->tmsOk($response, ['personal_id' => $p->id, 'nombre' => $p->nombre, 'documento' => $p->documento]);
+        }
+        // Nombres para el selector del login del TMS (sin documento).
+        if ($evento === 'LISTA_PERSONAL') {
+            return $this->tmsOk($response, \App\Models\Personal::listaLogin((int)$empresaId));
+        }
+
         try {
             // Log every incoming webhook
             DB::table('tms_webhooks')->insert([
@@ -395,6 +418,22 @@ class TmsController extends BaseController
                 'auxiliar_nombre_ruta'      => $payload['auxiliar_nombre'] ?? null,
                 'created_at'                => date('Y-m-d H:i:s'),
             ]);
+
+            // 2026-10-02 (Camilo: "capturando las coordenadas de las diferentes
+            // entregas"): el maestro de clientes no tiene coordenadas de ninguna
+            // sucursal. La primera entrega confirmada con GPS de LLEGADA se guarda
+            // como ubicación del cliente — solo si está vacía; nunca sobrescribe
+            // una ya cargada. Con eso las paradas allí se reconocen "En cliente"
+            // en el reporte de Tiempos de Paro. Solo la llegada (ya automática al
+            // entrar a la visita): la "salida" es donde confirmó, que puede ser
+            // lejos del sitio (caso real 01-oct: confirmada ya de vuelta en bodega).
+            $pt = $payload['tracking_geo']['llegada'] ?? null;
+            if ($pt && isset($pt['lat'], $pt['lng']) && $orden->sucursal_entrega) {
+                DB::table('clientes')->where('empresa_id', $empresaId)
+                    ->whereRaw('UPPER(TRIM(razon_social)) = UPPER(TRIM(?))', [$orden->sucursal_entrega])
+                    ->whereNull('latitud')
+                    ->update(['latitud' => (float)$pt['lat'], 'longitud' => (float)$pt['lng'], 'updated_at' => date('Y-m-d H:i:s')]);
+            }
         }
     }
 
