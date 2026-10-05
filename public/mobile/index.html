@@ -253,13 +253,27 @@
 
 <script>
 const M_API = '/WMS_FENIX/public/api';
-let _mToken    = localStorage.getItem('wms_token') || '';
-let _mUser     = JSON.parse(localStorage.getItem('wms_user') || 'null');
+// Sesión PROPIA del móvil (2026-10-05): escritorio y móvil comparten origen y
+// antes usaban las mismas claves; el logout del móvil (localStorage.clear())
+// borraba la sesión del escritorio y sus impresiones daban 401. Migración única:
+// si aún no hay sesión móvil, se toma la que exista para no desloguear las Zebra.
+// La marca 'wms_m_migrado' hace que ocurra UNA sola vez por navegador (el logout no la
+// borra); si no, tras cerrar sesión el móvil volvía a entrar con el token del escritorio.
+if (!localStorage.getItem('wms_m_migrado')) {
+  if (!localStorage.getItem('wms_m_token') && localStorage.getItem('wms_token')) {
+    localStorage.setItem('wms_m_token', localStorage.getItem('wms_token'));
+    if (localStorage.getItem('wms_user'))     localStorage.setItem('wms_m_user', localStorage.getItem('wms_user'));
+    if (localStorage.getItem('wms_permisos')) localStorage.setItem('wms_m_permisos', localStorage.getItem('wms_permisos'));
+  }
+  localStorage.setItem('wms_m_migrado', '1');
+}
+let _mToken    = localStorage.getItem('wms_m_token') || '';
+let _mUser     = JSON.parse(localStorage.getItem('wms_m_user') || 'null');
 // A pedido explícito (2026-08-23): permisos del usuario (rol + overrides
 // individuales) para filtrar qué pantallas ve en el menú "home". Mismo
 // mecanismo que ya existe en escritorio (_wmsPermisos/hasPermiso), el móvil
 // nunca lo leía hasta ahora — el login siempre lo devuelve, solo faltaba usarlo.
-let _mPermisos = JSON.parse(localStorage.getItem('wms_permisos') || '[]');
+let _mPermisos = JSON.parse(localStorage.getItem('wms_m_permisos') || '[]');
 
 // Retry queue para operaciones offline
 const _offlineQueue = {
@@ -529,8 +543,8 @@ const MWMS = {
       const r = await mApi('POST','/auth/login',{personal_id:personalId,pin:this._pin,empresa_id:empresaId});
       try { localStorage.setItem('wms_ultimo_usuario', JSON.stringify({ id: personalId, empresa_id: empresaId })); } catch (e) {}
       _mToken=r.token; _mUser=r.user; _mPermisos=r.permisos||[];
-      localStorage.setItem('wms_token',_mToken); localStorage.setItem('wms_user',JSON.stringify(_mUser));
-      localStorage.setItem('wms_permisos',JSON.stringify(_mPermisos));
+      localStorage.setItem('wms_m_token',_mToken); localStorage.setItem('wms_m_user',JSON.stringify(_mUser));
+      localStorage.setItem('wms_m_permisos',JSON.stringify(_mPermisos));
       this.showApp();
     } catch(e) {
         document.getElementById('m-login-err').textContent=e.message;
@@ -543,9 +557,9 @@ const MWMS = {
   },
   logout() {
     // Conserva solo el último usuario (preselección del login por nombre).
-    const ultimo = localStorage.getItem('wms_ultimo_usuario');
-    localStorage.clear();
-    if (ultimo) localStorage.setItem('wms_ultimo_usuario', ultimo);
+    // Solo la sesión del móvil (y su cola offline, como antes): ya NO localStorage.clear(),
+    // que borraba también la sesión del escritorio abierta en el mismo navegador.
+    ['wms_m_token', 'wms_m_user', 'wms_m_permisos', '_api_queue'].forEach(k => localStorage.removeItem(k));
     location.reload();
   },
 
@@ -1000,7 +1014,7 @@ const MWMS = {
 
     this.loading(true);
     try {
-      const token = localStorage.getItem('wms_token');
+      const token = (_mToken || localStorage.getItem('wms_m_token') || '');
       const res = await fetch(`${M_API}/preoperacional`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
@@ -2120,7 +2134,7 @@ const MWMS = {
     try {
       const r = await fetch(M_API + '/recepciones/detalles/' + detalleId + '/calidad', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') },
+        headers: { 'Authorization': 'Bearer ' + (_mToken || localStorage.getItem('wms_m_token') || '') },
         body: payload
       });
       const data = await r.json();
@@ -4518,7 +4532,7 @@ const MWMS = {
 
     this.loading(true);
     try {
-      const token = localStorage.getItem('wms_token');
+      const token = (_mToken || localStorage.getItem('wms_m_token') || '');
       const res = await fetch(`${M_API}/param/productos/${id}/fotos`, {
          method: 'POST',
          headers: { 'Authorization': `Bearer ${token}` },
@@ -4640,7 +4654,7 @@ const MWMS = {
       const formData = new FormData();
       const nombre   = 'foto_prod_' + id + '_' + Date.now() + '.jpg';
       formData.append('fotos[]', fileOrBlob instanceof File ? fileOrBlob : new File([fileOrBlob], nombre, { type: 'image/jpeg' }));
-      const token = localStorage.getItem('wms_token');
+      const token = (_mToken || localStorage.getItem('wms_m_token') || '');
       const res   = await fetch(`${M_API}/param/productos/${id}/fotos`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
@@ -11777,7 +11791,7 @@ const MWMS = {
         const fd = new FormData();
         for (const f of files) fd.append('fotos[]', f);
         await fetch(M_API + '/miscelaneos/' + miscId + '/fotos', {
-          method: 'POST', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') }, body: fd
+          method: 'POST', headers: { 'Authorization': 'Bearer ' + (_mToken || localStorage.getItem('wms_m_token') || '') }, body: fd
         });
       }
       
