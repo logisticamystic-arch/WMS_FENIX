@@ -185,6 +185,23 @@ class PickingController extends BaseController
             }
         }
 
+        // Hora real en que el auxiliar EMPEZÓ a separar (2026-10-04, pedido de
+        // Camilo): primer movimiento de picking en el kardex (inmutable) de cada
+        // orden. orden_pickings.hora_inicio es la hora de creación/importación.
+        $ids = $ordenes->pluck('id')->all();
+        if ($ids) {
+            $inicios = Capsule::table('movimiento_inventarios')
+                ->where('referencia_tipo', 'OrdenPicking')
+                ->where('tipo_movimiento', 'Picking')
+                ->whereIn('referencia_id', $ids)
+                ->groupBy('referencia_id')
+                ->selectRaw('referencia_id, MIN(created_at) as inicio')
+                ->pluck('inicio', 'referencia_id');
+            foreach ($ordenes as $orden) {
+                $orden->inicio_separacion = $inicios[$orden->id] ?? null;
+            }
+        }
+
         if (($params['export'] ?? '') === 'excel') {
             $headers = ['# Orden', 'Cliente', 'Estado', 'Prioridad', 'Auxiliar', 'F.Requerida', 'Planilla'];
             $rows = $ordenes->map(fn($o) => [

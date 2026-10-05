@@ -804,6 +804,30 @@ WMS_MODULES.picking = {
       porSucursal: certPorSucursal,
     };
 
+    // Vista compacta de Pedidos (2026-10-04): hora real de inicio de separación =
+    // primer movimiento de picking en kardex (backend: inicio_separacion). El
+    // detalle de la planilla (_buildProdRows) NO cambia: sigue mostrando la hora
+    // de separación de cada referencia.
+    const iniSep = (g.ordenes || []).map(o => o.inicio_separacion).filter(Boolean).sort()[0] || null;
+    const iniSepHora = iniSep ? String(iniSep).replace('T', ' ').slice(11, 16) : '';
+    const resumenPedidos = `${pedidosInfo.length} pedido${pedidosInfo.length!==1?'s':''} · ${totalRefsPedidos} ref. total` +
+      pedidosInfo.map(p => ` | Pedido ${p.numero} · ${p.refs} ref`).join('');
+    // Condicionales (Ubicación / F. Vence) como acciones del grupo ⋮
+    const condBtns = (() => {
+      let h = '';
+      if (WMS.user?.rol === 'Admin' || WMS.user?.rol === 'Supervisor') {
+        const reqEsc = g.ordenes?.[0]?.requiere_escaneo_ubicacion;
+        h += `<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();WMS_MODULES.picking._configurarEscaneoUbicacionPlanilla('${WMS.esc(g.planilla)}', ${reqEsc === true ? 'true' : reqEsc === false ? 'false' : 'null'})" title="Configurar exigencia de escaneo de ubicación para toda la planilla">
+          <i class="fa-solid fa-map-location-dot" style="color:${reqEsc === true ? 'var(--ok)' : 'var(--text-muted)'};"></i> Escaneo de ubicación: ${reqEsc === true ? 'exigido' : 'no exigido'}</button>`;
+      }
+      if (WMS.user?.rol === 'Admin' || WMS.user?.rol === 'SuperAdmin') {
+        const reqFv = g.ordenes?.[0]?.requiere_fecha_vencimiento;
+        h += `<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();WMS_MODULES.picking._configurarFechaVencimientoPlanilla('${WMS.esc(g.planilla)}', ${reqFv === true ? 'true' : reqFv === false ? 'false' : 'null'})" title="Configurar exigencia de fecha de vencimiento para toda la planilla">
+          <i class="fa-solid ${reqFv === true ? 'fa-calendar-check' : 'fa-calendar-xmark'}" style="color:${reqFv === true ? 'var(--danger)' : 'var(--text-muted)'};"></i> Fecha de vencimiento: ${reqFv === true ? 'exigida' : 'no exigida'}</button>`;
+      }
+      return h;
+    })();
+
     return `
     <tr data-estado="${g.estado}" data-planilla="${WMS.esc(g.planilla)}">
       <td style="text-align:center;">
@@ -817,7 +841,10 @@ WMS_MODULES.picking = {
           <span class="badge badge-info" style="font-size:11.5px;font-weight:700;">#${WMS.esc(g.planilla)}</span>
         </div>
       </td>
-      <td style="white-space:nowrap;font-size:12px;font-weight:600;color:var(--info);text-align:center;">
+      ${!isDash ? `<td style="white-space:nowrap;font-size:12px;font-weight:600;color:var(--info);text-align:center;" title="${WMS.esc(resumenPedidos)}">
+        ${g.ordenes?.[0]?.fecha_requerida ? WMS.formatDate(g.ordenes[0].fecha_requerida) : '—'}
+        <div style="font-size:9.5px;color:var(--muted);font-weight:600;">${pedidosInfo.length} pedido${pedidosInfo.length!==1?'s':''} · ${totalRefsPedidos} ref</div>
+      </td>` : `<td style="white-space:nowrap;font-size:12px;font-weight:600;color:var(--info);text-align:center;">
         ${g.ordenes?.[0]?.fecha_requerida ? WMS.formatDate(g.ordenes[0].fecha_requerida) : '—'}
         <div style="margin-top:4px;display:flex;flex-direction:column;align-items:center;gap:2px;font-weight:600;">
           <span style="font-size:9.5px;color:var(--muted);">${pedidosInfo.length} pedido${pedidosInfo.length!==1?'s':''} · ${totalRefsPedidos} ref. total</span>
@@ -828,12 +855,12 @@ WMS_MODULES.picking = {
             </span>`;
           }).join('')}
         </div>
-      </td>
+      </td>`}
       <td style="font-size:11px;font-weight:600;text-align:center;">
         <span>${WMS.esc([...g.clientes].join(', ') || '-')}</span>
         ${g.observaciones.size ? `<i class="fa-solid fa-note-sticky" style="color:var(--warn);margin-left:5px;cursor:help;" title="${WMS.esc([...g.observaciones].join(' | '))}"></i>` : ''}
       </td>
-      <td style="text-align:center;"><span style="font-size:11px;font-weight:600;color:var(--muted);">${WMS.esc(g.ruta)}</span></td>
+      ${isDash ? `<td style="text-align:center;"><span style="font-size:11px;font-weight:600;color:var(--muted);">${WMS.esc(g.ruta)}</span></td>` : ''}
       <td class="text-center"><b>${g.total_lineas - g.lineas_pendientes}</b> / ${g.total_lineas}</td>
       <td>
         <div style="display:flex;align-items:center;gap:6px;">
@@ -844,14 +871,17 @@ WMS_MODULES.picking = {
         </div>
       </td>
       <td style="text-align:center;">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+        <div style="display:flex;flex-direction:${isDash ? 'column' : 'row'};flex-wrap:wrap;justify-content:center;align-items:center;gap:4px;">
           ${this._stChip(g.estado)}
           ${todasCertificadas ? `<span style="display:inline-flex;align-items:center;gap:3px;background:#fce7f3;color:#be185d;border:1px solid #fbcfe8;padding:2px 8px;border-radius:99px;font-size:9.5px;font-weight:700;white-space:nowrap;"><i class="fa-solid fa-stamp"></i> Certificado</span>` : ''}
         </div>
       </td>
-      <td style="font-size:11px;text-align:center;">${auxList}</td>
-      <td class="text-center"><span style="font-family:monospace;font-size:11px;">${inicioOp || '-'}</span></td>
-      <td style="text-align:center;">
+      ${isDash ? `<td style="font-size:11px;text-align:center;">${auxList}</td>
+      <td class="text-center"><span style="font-family:monospace;font-size:11px;">${inicioOp || '-'}</span></td>` : `
+      <td class="text-center" title="${iniSep ? 'Primer producto separado: ' + WMS.esc(String(iniSep).replace('T', ' ').slice(0, 19)) : 'El auxiliar aún no ha separado ningún producto'}">
+        ${iniSepHora ? `<span style="font-family:monospace;font-size:12px;font-weight:700;">${iniSepHora}</span>` : '<span style="font-size:11px;color:var(--text-muted);">Sin iniciar</span>'}
+      </td>`}
+      ${isDash ? `<td style="text-align:center;">
         <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
           ${(() => {
             if (!(WMS.user?.rol === 'Admin' || WMS.user?.rol === 'Supervisor')) return '';
@@ -876,7 +906,7 @@ WMS_MODULES.picking = {
             </span>`;
           })()}
         </div>
-      </td>
+      </td>` : ''}
       <td>
         ${!isDash ? `
           <div class="actions" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;align-items:center;">
@@ -887,6 +917,7 @@ WMS_MODULES.picking = {
               ${g.estado === 'EnProceso' ? `<button class="btn btn-sm btn-success" onclick="WMS_MODULES.picking._cerrarPlanilla('${WMS.esc(g.planilla)}')"><i class="fa-solid fa-check-double"></i> Cerrar</button>` : ''}
               ${g.estado === 'Completado' ? `<button class="btn btn-sm btn-warning" onclick="WMS_MODULES.picking._reabrirPlanilla(${ordenIdsJson})"><i class="fa-solid fa-rotate-left"></i> Reabrir</button>` : ''}
               ${hayCertElegibles ? `<button class="btn btn-sm btn-success" onclick="WMS_MODULES.picking.autoCertificarPlanilla('${WMS.esc(g.planilla)}')" title="Certifica esta planilla para poder imprimir la remisión desde Despachos"><i class="fa-solid fa-stamp"></i> Auto-Certificar</button>` : ''}
+              ${condBtns}
             ` : `
               <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.picking.imprimirRemisionPlanilla('${WMS.esc(g.planilla)}')" title="Imprimir la remisión de esta planilla">
                 <i class="fa-solid fa-print"></i> Imprimir Remisión
@@ -899,6 +930,7 @@ WMS_MODULES.picking = {
                   <i class="fa-solid fa-rotate-left"></i> Anular Certificación
                 </button>
               ` : ''}
+              ${condBtns}
             `}
           </div>
         ` : `
@@ -909,7 +941,7 @@ WMS_MODULES.picking = {
       </td>
     </tr>
     <tr id="sub-plan-${WMS.esc(g.planilla)}" style="display:none;background:var(--table-header-bg);" data-estado="${g.estado}">
-      <td colspan="12" style="padding:0 8px 10px 42px;">
+      <td colspan="${isDash ? 12 : 9}" style="padding:0 8px 10px 42px;">
         <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;background:var(--surface);box-shadow:inset 0 2px 4px rgba(0,0,0,.02)">
           ${g.ordenes && g.ordenes.length > 0 ? (() => {
             const asignados = g.ordenes.filter(o => o.auxiliar?.nombre).length;
@@ -1397,11 +1429,9 @@ WMS_MODULES.picking = {
     const rutasUnicas     = [...new Set(ordenes.map(o=>o.ruta).filter(Boolean))];
     const sucursalesUnicas = [...new Set(ordenes.map(o=>o.sucursal_entrega||o.cliente).filter(Boolean))];
 
-    WMS.setContent(`
-      <div class="card animate-fade-in">
-        <div class="card-header">
-          <h5 class="card-title"><i class="fa-solid fa-boxes-stacked"></i> Pedidos de Picking</h5>
-          <div class="card-actions">
+    // Botones en la barra del módulo (junto a "Picking > Pedidos") para ganar
+    // espacio vertical — 2026-10-04. Conservan sus ids (selección/autocertificar).
+    WMS.setToolbar(`
             <button class="btn btn-secondary btn-sm" id="btn-toggle-sel-planillas" onclick="WMS_MODULES.picking._toggleSeleccionTodas()" title="Seleccionar o quitar la selección de todos los pedidos visibles">
               <i class="fa-regular fa-square-check"></i> <span id="lbl-toggle-sel-planillas">Seleccionar todo</span>
             </button>
@@ -1420,14 +1450,13 @@ WMS_MODULES.picking = {
             <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.picking.importarPedidos()">
               <i class="fa-solid fa-file-arrow-up"></i> Importar CSV
             </button>
-          </div>
-        </div>
+`);
+
+    WMS.setContent(`
+      <div class="card animate-fade-in">
         <div class="card-body" style="padding:0;">
           <div style="padding:12px 16px;background:var(--table-header-bg);border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
             <div style="flex:1;min-width:240px;position:relative;">
-              <label class="form-label" style="display:block;margin-bottom:2px;">
-                <i class="fa-solid fa-magnifying-glass" style="color:var(--info);"></i> Buscar Referencia / Pedido / Ruta / Cliente:
-              </label>
               <div style="position:relative;display:flex;align-items:center;">
                 <input id="pick-q" type="text" class="form-control form-control-sm" placeholder="🔍 Escriba para autocompletar referencia (ej: Yog, Pechuga, 109011)..."
                        value="${WMS.esc(f.q||'')}" autocomplete="off"
@@ -1463,9 +1492,6 @@ WMS_MODULES.picking = {
               <input id="pick-hasta" type="date" class="form-control" style="width:140px;" value="${f.fecha_hasta||''}"
                      onchange="WMS_MODULES.picking._pedidosFiltros.fecha_hasta=this.value;WMS_MODULES.picking._pedidosFiltros.solo_hoy=0;WMS_MODULES.picking._cargarPedidos()">
             </div>
-            <button class="btn btn-outline-primary btn-sm" onclick="WMS_MODULES.picking._pedidosFiltros={solo_hoy:1,q:'',estado:'',ruta:'',sucursal_entrega:'',fecha_desde:'',fecha_hasta:''};WMS_MODULES.picking._cargarPedidos()">
-              <i class="fa-solid fa-rotate-left"></i> Hoy
-            </button>
           </div>
           <div style="overflow-x:auto;">
             <table class="erp-table">
@@ -1477,18 +1503,15 @@ WMS_MODULES.picking = {
                   <th style="padding:10px 12px;text-align:center;">Planilla</th>
                   <th style="padding:10px 12px;text-align:center;">Fecha</th>
                   <th style="padding:10px 12px;text-align:center;">Cliente</th>
-                  <th style="padding:10px 12px;text-align:center;">Ruta</th>
                   <th style="padding:10px 12px;text-align:center;">Progreso</th>
                   <th style="padding:10px 12px;text-align:center;">%</th>
                   <th style="padding:10px 12px;text-align:center;">Estado</th>
-                  <th style="padding:10px 12px;text-align:center;">Auxiliar</th>
-                  <th style="padding:10px 12px;text-align:center;">Hr. Inicio</th>
-                  <th style="padding:10px 12px;text-align:center;">Condicional</th>
+                  <th style="padding:10px 12px;text-align:center;" title="Hora en que el auxiliar separó el primer producto">Hora de inicio</th>
                   <th style="padding:10px 12px;text-align:center;">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                ${rows || `<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--text-muted);">Sin pedidos activos hoy. Use los filtros para buscar.</td></tr>`}
+                ${rows || `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted);">Sin pedidos activos hoy. Use los filtros para buscar.</td></tr>`}
               </tbody>
             </table>
           </div>
