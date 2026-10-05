@@ -13,6 +13,8 @@ logs/*.log
 backups/backup*.log
 backups/db/
 backups/files/
+backups/tms/
+backups/pre_*/
 
 # ── Herramientas de desarrollo Claude AI ─────────────────────
 .claude/settings.local.json
