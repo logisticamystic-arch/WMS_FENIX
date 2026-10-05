@@ -1233,6 +1233,35 @@ WMS_MODULES.picking = {
             <label class="form-label" style="display:block;margin-bottom:4px;">
               <i class="fa-solid fa-boxes-stacked" style="color:var(--ok);"></i> Referencias y Cantidades del Pedido:
             </label>
+          <!-- Agregar Nueva Referencia (arriba de la lista, 2026-10-04) -->
+          <div style="background:var(--info-bg);border:1px solid var(--info-bg);border-radius:6px;padding:10px;margin-bottom:8px;">
+            <div style="font-weight:700;font-size:11px;color:var(--info);margin-bottom:6px;text-transform:uppercase;">
+              <i class="fa-solid fa-plus-circle"></i> Agregar Nueva Referencia al Pedido
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <div style="flex:1;position:relative;">
+                <input id="swal-add-prod-buscar" class="form-control" style="font-size:11px;padding:5px 8px;" placeholder="Buscar producto por código o nombre..."
+                       oninput="WMS_MODULES.picking._swalBuscarProductoEdit(this)">
+                <div id="swal-add-prod-res" style="display:none;position:absolute;left:0;right:0;top:100%;background:var(--surface);border:1px solid var(--border);border-radius:4px;max-height:130px;overflow-y:auto;z-index:9999;box-shadow:0 4px 6px rgba(0,0,0,.1);"></div>
+                <input type="hidden" id="swal-add-prod-id">
+              </div>
+              <input class="form-control" id="swal-add-prod-cant" type="number" min="1" step="1" placeholder="Cant" style="width:65px;padding:5px 6px;text-align:center;font-size:11px;font-weight:700;border:1px solid var(--border);border-radius:4px;" value="1">
+              <button type="button" class="btn btn-xs btn-success" style="font-weight:700;white-space:nowrap;padding:5px 10px;" onclick="
+                const pId = document.getElementById('swal-add-prod-id').value;
+                const pNom = document.getElementById('swal-add-prod-buscar').value;
+                const cVal = parseFloat(document.getElementById('swal-add-prod-cant').value) || 0;
+                if(!pId || cVal<=0) { WMS.toast('warning', 'Seleccione un producto y cantidad válida'); return; }
+                window._tempNuevasLineas.push({ producto_id: parseInt(pId), cantidad_solicitada: cVal });
+                const wrap = document.getElementById('swal-edit-lineas-wrap');
+                wrap.insertAdjacentHTML('afterbegin', \`<div style='display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;background:var(--ok-bg);border:1px solid var(--ok-bg);border-radius:4px;margin-bottom:4px;'>
+                  <div style='font-weight:700;font-size:11px;color:var(--ok);'>\${WMS.esc(pNom)} <span style='font-size:9px;background:var(--ok-bg);padding:1px 5px;border-radius:3px;'>NUEVO</span></div>
+                  <div style='font-weight:800;font-size:11px;color:var(--ok);'>\${cVal} und</div>
+                </div>\`);
+                document.getElementById('swal-add-prod-id').value=''; document.getElementById('swal-add-prod-buscar').value=''; document.getElementById('swal-add-prod-cant').value='1';
+                WMS.toast('info', 'Referencia agregada a la lista');
+              ">+ Agregar</button>
+            </div>
+          </div>
             <div id="swal-edit-lineas-wrap" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px;background:var(--table-header-bg);">
               ${lineasDetalles.length ? lineasDetalles.map(d => `
                 <div class="swal-item-row" data-det-id="${d.id}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;margin-bottom:4px;">
@@ -1254,35 +1283,6 @@ WMS_MODULES.picking = {
             </div>
           </div>
 
-          <!-- Agregar Nueva Referencia -->
-          <div style="background:var(--info-bg);border:1px solid var(--info-bg);border-radius:6px;padding:10px;">
-            <div style="font-weight:700;font-size:11px;color:var(--info);margin-bottom:6px;text-transform:uppercase;">
-              <i class="fa-solid fa-plus-circle"></i> Agregar Nueva Referencia al Pedido
-            </div>
-            <div style="display:flex;gap:6px;align-items:center;">
-              <div style="flex:1;position:relative;">
-                <input id="swal-add-prod-buscar" class="form-control" style="font-size:11px;padding:5px 8px;" placeholder="Buscar producto por código o nombre..."
-                       oninput="WMS_MODULES.picking._swalBuscarProductoEdit(this)">
-                <div id="swal-add-prod-res" style="display:none;position:absolute;left:0;right:0;top:100%;background:var(--surface);border:1px solid var(--border);border-radius:4px;max-height:130px;overflow-y:auto;z-index:9999;box-shadow:0 4px 6px rgba(0,0,0,.1);"></div>
-                <input type="hidden" id="swal-add-prod-id">
-              </div>
-              <input class="form-control" id="swal-add-prod-cant" type="number" min="1" step="1" placeholder="Cant" style="width:65px;padding:5px 6px;text-align:center;font-size:11px;font-weight:700;border:1px solid var(--border);border-radius:4px;" value="1">
-              <button type="button" class="btn btn-xs btn-success" style="font-weight:700;white-space:nowrap;padding:5px 10px;" onclick="
-                const pId = document.getElementById('swal-add-prod-id').value;
-                const pNom = document.getElementById('swal-add-prod-buscar').value;
-                const cVal = parseFloat(document.getElementById('swal-add-prod-cant').value) || 0;
-                if(!pId || cVal<=0) { WMS.toast('warning', 'Seleccione un producto y cantidad válida'); return; }
-                window._tempNuevasLineas.push({ producto_id: parseInt(pId), cantidad_solicitada: cVal });
-                const wrap = document.getElementById('swal-edit-lineas-wrap');
-                wrap.innerHTML += \`<div style='display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;background:var(--ok-bg);border:1px solid var(--ok-bg);border-radius:4px;margin-bottom:4px;'>
-                  <div style='font-weight:700;font-size:11px;color:var(--ok);'>\${WMS.esc(pNom)} <span style='font-size:9px;background:var(--ok-bg);padding:1px 5px;border-radius:3px;'>NUEVO</span></div>
-                  <div style='font-weight:800;font-size:11px;color:var(--ok);'>\${cVal} und</div>
-                </div>\`;
-                document.getElementById('swal-add-prod-id').value=''; document.getElementById('swal-add-prod-buscar').value=''; document.getElementById('swal-add-prod-cant').value='1';
-                WMS.toast('info', 'Referencia agregada a la lista');
-              ">+ Agregar</button>
-            </div>
-          </div>
         </div>`,
       showCancelButton: true,
       confirmButtonText: '<i class="fa-solid fa-check"></i> Guardar Cambios',
@@ -1641,6 +1641,10 @@ WMS_MODULES.picking = {
           · Asesor: ${WMS.esc(o.asesor_comercial||'—')}
           · Área: ${WMS.esc(o.area_comercial||'—')}</span>
           ${editable ? '<span style="background:var(--ok-bg);color:var(--ok);padding:2px 8px;border-radius:3px;font-size:.68rem;font-weight:600;">Editable</span>' : ''}
+          ${editable ? `<button class="btn btn-sm btn-success" style="margin-left:auto;padding:5px 14px;font-size:.78rem;"
+            onclick="WMS_MODULES.picking._dlgAgregarRef(${parseInt(o.id)||0}, true)">
+            <i class="fa-solid fa-plus"></i> Agregar referencia
+          </button>` : ''}
         </div>
         <table class="erp-table" style="margin:0;">
           <thead><tr>
@@ -1653,13 +1657,7 @@ WMS_MODULES.picking = {
             ${editable ? '<th style="padding:5px 10px;font-size:.7rem;text-align:center;">Acciones</th>' : ''}
           </tr></thead>
           <tbody>${lineas||`<tr><td colspan="${editable?7:6}" style="text-align:center;color:var(--text-muted);padding:12px;">Sin líneas</td></tr>`}</tbody>
-        </table>
-        ${editable ? `<div style="margin-top:8px;text-align:right;">
-          <button class="btn btn-sm btn-success" onclick="WMS_MODULES.picking._dlgAgregarRef(${parseInt(o.id)||0}, true)"
-            style="padding:5px 14px;font-size:.78rem;">
-            <i class="fa-solid fa-plus"></i> Agregar referencia
-          </button>
-        </div>` : ''}`;
+        </table>`;
     } catch(e) {
       content.innerHTML = '<div style="color:var(--danger);font-size:.78rem;padding:8px;">Error cargando detalle</div>';
     }
@@ -2418,10 +2416,16 @@ WMS_MODULES.picking = {
           <i class="fa-solid fa-list-check"></i> ${WMS.esc(o.numero_orden||'')} — ${WMS.esc(o.sucursal_entrega||o.cliente||'')}
           ${esEditable ? `<span style="font-size:.68rem;background:var(--ok-bg);color:var(--ok);padding:1px 6px;border-radius:3px;margin-left:6px;">Editable</span>` : ''}
         </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+        ${esEditable ? `<button class="btn btn-sm btn-success" onclick="WMS_MODULES.picking._dlgAgregarRef(${id},false)"
+          style="padding:5px 14px;font-size:.78rem;">
+          <i class="fa-solid fa-plus"></i> Agregar referencia
+        </button>` : ''}
         <button onclick="document.getElementById('ied-${planKey}').style.display='none';WMS_MODULES.picking._inlineEditorOrdenId=null;"
           style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:.9rem;" title="Cerrar">
           <i class="fa-solid fa-xmark"></i>
         </button>
+        </div>
       </div>
       <div style="overflow-x:auto;border:1px solid var(--border);border-radius:4px;background:var(--surface);">
         <table style="width:100%;border-collapse:collapse;">
@@ -2438,13 +2442,7 @@ WMS_MODULES.picking = {
           </thead>
           <tbody>${filas}</tbody>
         </table>
-      </div>
-      ${esEditable ? `<div style="margin-top:8px;text-align:right;">
-        <button class="btn btn-sm btn-success" onclick="WMS_MODULES.picking._dlgAgregarRef(${id},false)"
-          style="padding:5px 14px;font-size:.78rem;">
-          <i class="fa-solid fa-plus"></i> Agregar referencia
-        </button>
-      </div>` : ''}`;
+      </div>`;
   },
 
   async _guardarLineaInline(ordenId, lineaId, planKey) {
