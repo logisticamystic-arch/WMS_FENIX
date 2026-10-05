@@ -376,7 +376,7 @@ WMS_MODULES['trazabilidad'] = (function () {
       const fIni   = document.getElementById('trz-f-ini')?.value || '';
       const fFin   = document.getElementById('trz-f-fin')?.value || '';
       const lote   = document.getElementById('trz-lote')?.value  || '';
-      const token  = WMS_TOKEN() || '';
+      const token  = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || '';
       const params = new URLSearchParams({ f_ini: fIni, f_fin: fFin, export: 'excel', token });
       if (lote) params.set('lote', lote);
       WMS.toast('info', 'Generando reporte...');
@@ -387,7 +387,7 @@ WMS_MODULES['trazabilidad'] = (function () {
       if (!_state.ubicacionId) { WMS.toast('warning', 'Selecciona una ubicación del listado'); return; }
       const fIni   = document.getElementById('trz-ub-f-ini')?.value || document.getElementById('trz-f-ini')?.value || '';
       const fFin   = document.getElementById('trz-ub-f-fin')?.value || document.getElementById('trz-f-fin')?.value || '';
-      const token  = WMS_TOKEN() || '';
+      const token  = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || '';
       const params = new URLSearchParams({ f_ini: fIni, f_fin: fFin, export: 'excel', token });
       WMS.toast('info', 'Generando reporte...');
       window.open(`${API_BASE}/trazabilidad/ubicacion/${_state.ubicacionId}?${params.toString()}`, '_blank');

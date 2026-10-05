@@ -89,7 +89,7 @@ WMS_MODULES['chat-ia'] = (function () {
         method:  'POST',
         headers: {
           'Content-Type':  'application/json',
-          'Authorization': 'Bearer ' + (WMS_TOKEN() || ''),
+          'Authorization': 'Bearer ' + ((window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || ''),
         },
         body:   JSON.stringify({ mensaje: texto, historial: _historial.slice(-12), modulo: _moduloCtx }),
         signal: AbortSignal.timeout(50000),

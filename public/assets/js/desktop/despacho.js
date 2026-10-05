@@ -702,7 +702,7 @@ WMS_MODULES.despacho = {
   },
 
   _openPrint(url, titulo, autoPrint = false) {
-    const token = WMS_TOKEN() || localStorage.getItem('token') || '';
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || localStorage.getItem('token') || '';
     const win = window.open('', '_blank');
     if (!win) { WMS.toast('warning', 'Permite ventanas emergentes para imprimir'); return null; }
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}...</title></head>
@@ -800,7 +800,7 @@ WMS_MODULES.despacho = {
   // único botón/atajo de impresión para todas.
   async _imprimirConsolidadoUnaPestana(urls) {
     if (!urls.length) { WMS.toast('warning', 'Nada para imprimir'); return; }
-    const token = WMS_TOKEN() || localStorage.getItem('token') || '';
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || localStorage.getItem('token') || '';
     const win = window.open('', '_blank');
     if (!win) { WMS.toast('warning', 'Permite ventanas emergentes para imprimir'); return; }
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Remisiones Consolidadas</title></head>
@@ -859,7 +859,7 @@ WMS_MODULES.despacho = {
   // el navegador bloquee los popups subsiguientes. Usado por
   // imprimirRemisionesSeleccionadas() (el botón "print selected" no-consolidado).
   _imprimirSesionSecuencial(sesionId, index, total) {
-    const token = WMS_TOKEN() || localStorage.getItem('token') || '';
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || localStorage.getItem('token') || '';
     return new Promise(resolve => {
       const url = `${API_BASE}/packing/sesion/${sesionId}/remision`;
       const win = window.open('', '_blank');
@@ -2173,7 +2173,7 @@ WMS_MODULES.despacho = {
     const fd = new FormData(); fd.append('file', file);
     try {
       const r = await fetch('/WMS_FENIX/public/api/planillas/importar', {
-        method: 'POST', headers: { Authorization: 'Bearer ' + WMS_TOKEN() }, body: fd
+        method: 'POST', headers: { Authorization: 'Bearer ' + (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) }, body: fd
       });
       const j = await r.json();
       if (j.error) WMS.toast('error', j.message);
@@ -2486,7 +2486,7 @@ WMS_MODULES.despacho = {
   },
 
   exportCargueExcel() {
-    const token = WMS_TOKEN() || '';
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || '';
     const qs = this._cargueQueryString();
     window.open(`${API_BASE}/despachos?export=excel${qs ? '&' + qs : ''}&token=${encodeURIComponent(token)}`, '_blank');
   },
@@ -2812,7 +2812,7 @@ WMS_MODULES.despacho = {
       await this._imprimirConsolidadoUnaPestana(urls);
     } catch(e) {
       if (e.isSessionExpired) return;
-      WMS.toast('error', 'Error al generar los documentos del cargue');
+      WMS.toast('error', (e && e.message) ? 'Error al generar los documentos del cargue: ' + e.message : 'Error al generar los documentos del cargue');
     } finally {
       WMS.spinner(false);
     }

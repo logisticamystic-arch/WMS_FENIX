@@ -2718,7 +2718,7 @@ WMS_MODULES.picking = {
    *  (mismo patrón que despacho.js::_openPrint — se replica local para que
    *  Picking no dependa de que el módulo de Despacho ya esté cargado). */
   _openPrint(url, titulo) {
-    const token = WMS_TOKEN() || localStorage.getItem('token') || '';
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || localStorage.getItem('token') || '';
     const win = window.open('', '_blank');
     if (!win) { WMS.toast('warning', 'Permite ventanas emergentes para imprimir'); return null; }
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}...</title></head>
@@ -3943,7 +3943,7 @@ WMS_MODULES.picking = {
         <div id="pick-preview-summary" style="margin-top:10px;padding:10px 14px;background:var(--info-bg);border:1px solid var(--info-bg);border-radius:4px;font-size:12px;color:var(--accent2);"></div>
       </div>`,
       `<button class="btn btn-secondary" onclick="WMS.closeModal('generic-modal')">Cancelar</button>
-       <a href="/WMS_FENIX/public/api/picking/template?token=${encodeURIComponent(WMS_TOKEN())}" target="_blank" class="btn btn-secondary" style="gap:6px;"><i class="fa-solid fa-download"></i> Plantilla</a>
+       <a href="/WMS_FENIX/public/api/picking/template?token=${encodeURIComponent((window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')))}" target="_blank" class="btn btn-secondary" style="gap:6px;"><i class="fa-solid fa-download"></i> Plantilla</a>
        <button class="btn btn-primary" id="btn-importar-pick" onclick="WMS_MODULES.picking.uploadCsv()" disabled><i class="fa-solid fa-eye"></i> Ver Vista Previa</button>`,
       { width: '680px' }
     );
@@ -4103,7 +4103,7 @@ WMS_MODULES.picking = {
     fd.append('modo', modo);
 
     try {
-      const token = WMS_TOKEN() || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+      const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
       const baseUrl = typeof API_BASE !== 'undefined' ? API_BASE : (API.BASE_URL || '/WMS_FENIX/public/api');
       const r = await fetch(`${baseUrl}/picking/importar`, {
         method: 'POST',
@@ -5577,7 +5577,7 @@ WMS_MODULES.picking = {
     const f = this._faltFilters;
     const ini = f.ini || WMS.getToday();
     const fin = f.fin || WMS.getToday();
-    const token = WMS_TOKEN() || '';
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || '';
     const base = (window.API_BASE || '/WMS_FENIX/public/api');
     const url = `${base}/picking/novedades-stock?fecha_inicio=${ini}&fecha_fin=${fin}&numero_planilla=${encodeURIComponent(f.planilla||'')}&producto=${encodeURIComponent(f.producto||'')}&sucursal_entrega=${encodeURIComponent(f.sucursal_entrega||'')}&export=excel`;
     const a = document.createElement('a');
@@ -6282,7 +6282,7 @@ WMS_MODULES.picking = {
     const f   = this._agotFilters;
     const ini = f.ini || WMS.getPastDate(30);
     const fin = f.fin || WMS.getToday();
-    const token = WMS_TOKEN() || '';
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || '';
     const base  = window.API_BASE || '/WMS_FENIX/public/api';
     const url   = `${base}/picking/agotados?fecha_inicio=${ini}&fecha_fin=${fin}&sucursal_entrega=${encodeURIComponent(f.sucursal||'')}&referencia=${encodeURIComponent(f.referencia||'')}&incluir_conciliacion=${f.incluirConciliacion ? '1' : '0'}&export=csv&_token=${encodeURIComponent(token)}`;
     const a = document.createElement('a');
@@ -8544,7 +8544,7 @@ WMS_MODULES.picking = {
 
   // ── TV DASHBOARD ─────────────────────────────────────────────────────────
   _openTVDashboard() {
-    const token = WMS_TOKEN() || '';
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || '';
     const base  = window.location.pathname.replace(/\/public\/.*/, '/public');
     const url   = base + '/tv-picking.html';
     const win   = window.open(url, 'wms_tv_picking', 'width=1920,height=1080,menubar=no,toolbar=no');

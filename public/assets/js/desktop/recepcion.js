@@ -746,7 +746,7 @@ WMS_MODULES.recepcion = {
 
   // ── PDF / Imprimir ────────────────────────────────────────────────────────
   abrirPDF(id) {
-    const token = WMS_TOKEN() || '';
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || '';
     const url   = `${API.BASE_URL}/odc/${id}/imprimir?token=${token}`;
     window.open(url, '_blank', 'width=1100,height=820');
   },
@@ -1052,7 +1052,7 @@ WMS_MODULES.recepcion = {
       if (f_prod) params.push('producto=' + encodeURIComponent(f_prod));
       if (f_desde) params.push('fecha_inicio=' + encodeURIComponent(f_desde));
       if (f_hasta) params.push('fecha_fin=' + encodeURIComponent(f_hasta));
-      const token = WMS_TOKEN()||'';
+      const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''))||'';
       const url = `${API_BASE}/reportes/recepciones?export=excel${params.length?'&'+params.join('&'):''}&token=${encodeURIComponent(token)}`;
       window.open(url, '_blank');
     } catch(e) { WMS.toast('error','Error exportando'); }
@@ -3875,7 +3875,7 @@ WMS_MODULES.recepcion = {
   },
 
   async imprimirDevolucion(id) {
-    const token = WMS_TOKEN()||'';
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''))||'';
     WMS.spinner();
     try {
       const r = await API.get('/devoluciones/'+id);
@@ -4525,7 +4525,7 @@ WMS_MODULES.recepcion = {
         const fd = new FormData();
         Array.from(fInput.files).forEach(f => fd.append('fotos[]', f));
         await fetch(window.location.origin + '/WMS_FENIX/public/api/miscelaneos/' + miscId + '/fotos', {
-          method: 'POST', headers: { 'Authorization': 'Bearer ' + WMS_TOKEN() }, body: fd
+          method: 'POST', headers: { 'Authorization': 'Bearer ' + (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) }, body: fd
         });
       }
 
@@ -4664,7 +4664,7 @@ WMS_MODULES.recepcion = {
         for (const f of filesInput.files) formData.append('fotos[]', f);
         await fetch(API_BASE + '/miscelaneos/' + id + '/fotos', {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + WMS_TOKEN() },
+          headers: { 'Authorization': 'Bearer ' + (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) },
           body: formData
         });
       }

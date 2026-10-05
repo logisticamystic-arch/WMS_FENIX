@@ -1087,7 +1087,7 @@ WMS_MODULES.tms = {
   },
 
   _parExportar() {
-    const token = WMS_TOKEN();
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''));
     window.open(`${API_BASE}/tms/dashboard/paradas?export=excel&${this._parQs()}&token=${encodeURIComponent(token)}`, '_blank');
   },
 

@@ -48,7 +48,7 @@ WMS_MODULES.reportes = {
     WMS.toast('info', 'Generando exportación...');
     try {
       const sep   = endpoint.includes('?') ? '&' : '?';
-      const token = WMS_TOKEN() || '';
+      const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || '';
       const url   = `${API_BASE}${endpoint}${sep}export=excel&token=${encodeURIComponent(token)}`;
       window.open(url, '_blank');
     } catch(e) { WMS.toast('error', 'Error generando reporte'); }
@@ -630,7 +630,7 @@ WMS_MODULES.reportes = {
     if (!prodId) return WMS.toast('warning', 'Seleccione un producto primero');
     const desde = document.getElementById('k-desde')?.value;
     const hasta = document.getElementById('k-hasta')?.value;
-    const token = WMS_TOKEN() || '';
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || '';
     const url = `${API_BASE}/v2/inventario/kardex?export=excel&producto_id=${prodId}&fecha_inicio=${desde}&fecha_fin=${hasta}&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
   },
@@ -685,7 +685,7 @@ WMS_MODULES.reportes = {
     const p    = this._getParams('rec');
     const odc  = document.getElementById('rec-odc')?.value.trim() || '';
     const prov = document.getElementById('rec-prov')?.value.trim() || '';
-    const token = WMS_TOKEN();
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''));
     const url = `${API_BASE}/reportes/recepciones?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&ubicacion_codigo=${encodeURIComponent(p.ubicCodigo)}&numero_odc=${encodeURIComponent(odc)}&proveedor=${encodeURIComponent(prov)}&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
   },
@@ -819,7 +819,7 @@ WMS_MODULES.reportes = {
   exportarReciboCdp() {
     const p = this._getParams('cdp');
     const responsable = document.getElementById('cdp-responsable')?.value.trim() || '';
-    const token = WMS_TOKEN();
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''));
     const url = `${API_BASE}/reportes/recibo-cdp?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&responsable=${encodeURIComponent(responsable)}&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
   },
@@ -980,7 +980,7 @@ WMS_MODULES.reportes = {
     const p = this._getParams('conc');
     const cliente = document.getElementById('conc-cliente')?.value.trim() || '';
     const soloDif = document.getElementById('conc-solo-dif')?.checked ?? true;
-    const token = WMS_TOKEN();
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''));
     const url = `${API_BASE}/reportes/conciliacion-trazabilidad?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&cliente=${encodeURIComponent(cliente)}&referencia=${encodeURIComponent(p.ref)}&solo_diferencias=${soloDif ? '1' : '0'}&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
   },
@@ -1079,7 +1079,7 @@ WMS_MODULES.reportes = {
   },
 
   exportarTraspasos() {
-    const token = WMS_TOKEN();
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''));
     window.open(`${API_BASE}/reportes/traspasos?export=excel&${this._trpQs()}&token=${encodeURIComponent(token)}`, '_blank');
   },
 
@@ -1207,7 +1207,7 @@ WMS_MODULES.reportes = {
   exportarDespachos() {
     const p = this._getParams('des');
     const cliente = document.getElementById('des-cliente')?.value.trim() || '';
-    const token = WMS_TOKEN();
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''));
     const url = `${API_BASE}/reportes/despachos?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&cliente=${encodeURIComponent(cliente)}&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
   },
@@ -1260,7 +1260,7 @@ WMS_MODULES.reportes = {
       WMS.toast('warning', 'Este despacho no tiene pedidos asociados para generar remisión');
       return;
     }
-    const token = WMS_TOKEN() || localStorage.getItem('token') || '';
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || localStorage.getItem('token') || '';
     const params = new URLSearchParams();
     ordenIds.forEach(id => params.append('orden_ids[]', id));
     const url = `${API_BASE}/picking/certificacion/remision-multiple?${params}`;
@@ -1338,7 +1338,7 @@ WMS_MODULES.reportes = {
     const p    = this._getParams('pick');
     const plan = document.getElementById('pick-planilla')?.value.trim() || '';
     const ruta = document.getElementById('pick-ruta')?.value.trim() || '';
-    const token = WMS_TOKEN();
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''));
     const url = `${API_BASE}/reportes/picking?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&ubicacion_codigo=${encodeURIComponent(p.ubicCodigo)}&planilla_numero=${encodeURIComponent(plan)}&ruta=${encodeURIComponent(ruta)}&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
   },
@@ -1391,7 +1391,7 @@ WMS_MODULES.reportes = {
 
   exportarDevoluciones() {
     const p = this._getParams('dev');
-    const token = WMS_TOKEN();
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''));
     const url = `${API_BASE}/reportes/devoluciones?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
   },
@@ -1466,7 +1466,7 @@ WMS_MODULES.reportes = {
     const desde  = document.getElementById('prov-desde')?.value || '';
     const hasta  = document.getElementById('prov-hasta')?.value || '';
     const nombre = document.getElementById('prov-nombre')?.value.trim() || '';
-    const token  = WMS_TOKEN();
+    const token  = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''));
     const url = `${API_BASE}/reportes/evaluacion-proveedores?export=excel&fecha_desde=${desde}&fecha_hasta=${hasta}&proveedor=${encodeURIComponent(nombre)}&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
   },
@@ -1507,7 +1507,7 @@ WMS_MODULES.reportes = {
 
   exportarAudit() {
     const p = this._getParams('aud');
-    const token = WMS_TOKEN();
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''));
     const url = `${API_BASE}/reportes/audit-log?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
   },
@@ -1558,7 +1558,7 @@ WMS_MODULES.reportes = {
   exportarODC(group) {
     const p   = this._getParams('odc');
     const num = document.getElementById('odc-num')?.value.trim() || '';
-    const token = WMS_TOKEN();
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''));
     const url = `${API_BASE}/reportes/odc?export=excel&group=${group}&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&numero_odc=${encodeURIComponent(num)}&referencia=${encodeURIComponent(p.ref)}&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
   },
@@ -1665,7 +1665,7 @@ WMS_MODULES.reportes = {
   exportarAgotados() {
     const p    = this._getParams('agot');
     const tipo = document.getElementById('agot-tipo')?.value || 'todos';
-    const token = WMS_TOKEN();
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || ''));
     const url = `${API_BASE}/reportes/agotados-demanda?export=excel&fecha_desde=${p.desde}&fecha_hasta=${p.hasta}&referencia=${encodeURIComponent(p.ref)}&tipo=${tipo}&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
   },
@@ -1758,7 +1758,7 @@ WMS_MODULES.reportes = {
 
   async _abrirReporteHtml(apiUrl, title) {
     try {
-      const token = WMS_TOKEN() || '';
+      const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || '';
       const sep   = apiUrl.includes('?') ? '&' : '?';
       const urlWithToken = `${apiUrl}${sep}token=${encodeURIComponent(token)}`;
       const resp  = await fetch(urlWithToken, { headers: { Authorization: 'Bearer ' + token } });

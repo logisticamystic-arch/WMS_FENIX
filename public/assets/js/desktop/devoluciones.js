@@ -2350,7 +2350,7 @@ WMS_MODULES.devoluciones = {
   },
 
   _rgImprimir(id) {
-    const token = WMS_TOKEN() || '';
+    const token = (window.WMS_TOKEN ? WMS_TOKEN() : (localStorage.getItem('wms_token') || '')) || '';
     window.open(`${API_BASE}/devoluciones/recogidas/${id}/imprimir?token=${encodeURIComponent(token)}`, '_blank');
   },
 
