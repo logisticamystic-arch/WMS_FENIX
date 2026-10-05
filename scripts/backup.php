@@ -69,6 +69,7 @@ if (file_exists($logFile) && filesize($logFile) > 5 * 1024 * 1024) {
 bkpLog('INFO', '=== Inicio backup WMS Fénix ===', $logFile);
 
 $fallo = false;
+$db = $files = $tms = [];
 
 // 1) WMS: PostgreSQL + archivos (uploads/, docs/)
 try {
@@ -91,6 +92,39 @@ try {
 } catch (\Throwable $e) {
     $fallo = true;
     bkpLog('ERROR', 'TMS: ' . $e->getMessage(), $logFile);
+}
+
+// 3) Copia externa (OneDrive) — 2026-10-04. Los backups locales viven en el
+//    mismo disco que el sistema; esta copia protege ante daño del disco/equipo.
+//    BD del WMS y del TMS: misma rotación de 30 días (dia_XX).
+//    Archivos del WMS (~220 MB): solo el ÚLTIMO, para no llenar OneDrive.
+//    ponytail: un solo snapshot de archivos; agregar semanales si se necesita historial.
+$copiaDir = trim((string)($_ENV['BACKUP_COPIA_DIR'] ?? ''));
+if ($copiaDir !== '') {
+    $copias = [];
+    if (!empty($db['ruta']))    $copias[] = [$db['ruta'],    'wms_db'       . DIRECTORY_SEPARATOR . basename($db['ruta'])];
+    if (!empty($tms['ruta']))   $copias[] = [$tms['ruta'],   'tms_db'       . DIRECTORY_SEPARATOR . basename($tms['ruta'])];
+    if (!empty($files['ruta'])) $copias[] = [$files['ruta'], 'wms_archivos' . DIRECTORY_SEPARATOR . 'ultimo_archivos.tar.gz'];
+    try {
+        if (!is_dir($copiaDir)) throw new \RuntimeException("La carpeta de copia no existe: {$copiaDir}");
+        $okCopias = [];
+        foreach ($copias as [$origen, $rel]) {
+            if (!is_file($origen)) continue;
+            $destino = $copiaDir . DIRECTORY_SEPARATOR . $rel;
+            if (!is_dir(dirname($destino))) mkdir(dirname($destino), 0755, true);
+            // Copiar a .part y renombrar: OneDrive nunca sube un archivo a medias
+            $tmp = $destino . '.part';
+            if (!copy($origen, $tmp)) throw new \RuntimeException("No se pudo copiar {$origen}");
+            if (filesize($tmp) !== filesize($origen)) { @unlink($tmp); throw new \RuntimeException("Copia incompleta de {$origen}"); }
+            if (is_file($destino)) unlink($destino);
+            rename($tmp, $destino);
+            $okCopias[] = $rel;
+        }
+        bkpLog('OK', 'Copia externa → ' . $copiaDir . ' (' . implode(', ', $okCopias) . ')', $logFile);
+    } catch (\Throwable $e) {
+        $fallo = true;
+        bkpLog('ERROR', 'Copia externa: ' . $e->getMessage(), $logFile);
+    }
 }
 
 bkpLog($fallo ? 'ERROR' : 'INFO', $fallo ? '=== Backup con ERRORES (revisar arriba) ===' : '=== Backup completado con éxito ===', $logFile);
