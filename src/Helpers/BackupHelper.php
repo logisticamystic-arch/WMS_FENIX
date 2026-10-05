@@ -146,6 +146,87 @@ class BackupHelper
 
     // ── Privados ─────────────────────────────────────────────────────────────
 
+    /**
+     * Backup de la base del TMS (MySQL/MariaDB de XAMPP, BD tms_fenix) — 2026-10-04.
+     * Las fotos y firmas del TMS viven dentro de la BD, así que el volcado lo
+     * cubre todo. Rolling igual que el WMS: backups/tms/dia_01..30.sql.gz.
+     * Credenciales: TMS_FENIX/.env (TMS_DB_*); ruta configurable con TMS_ROOT.
+     * Comprime con zlib de PHP (sin depender de un gzip externo).
+     */
+    public static function runTms(): array
+    {
+        $env = fn(string $k, string $d = ''): string
+            => $_ENV[$k] ?? $_SERVER[$k] ?? (getenv($k) ?: $d);
+
+        $tmsRoot = $env('TMS_ROOT', dirname(self::projectRoot()) . DIRECTORY_SEPARATOR . 'TMS_FENIX');
+        $tmsEnv  = [];
+        if (is_file($tmsRoot . '/.env')) {
+            foreach (file($tmsRoot . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+                $line = trim($line);
+                if ($line === '' || $line[0] === '#' || !str_contains($line, '=')) continue;
+                [$k, $v] = explode('=', $line, 2);
+                $tmsEnv[trim($k)] = trim($v, " \t\"'");
+            }
+        }
+        $host = $tmsEnv['TMS_DB_HOST'] ?? '127.0.0.1';
+        $port = $tmsEnv['TMS_DB_PORT'] ?? '3306';
+        $name = $tmsEnv['TMS_DB_NAME'] ?? 'tms_fenix';
+        $user = $tmsEnv['TMS_DB_USER'] ?? 'root';
+        $pass = $tmsEnv['TMS_DB_PASS'] ?? '';
+
+        $xampp = dirname(self::projectRoot(), 2); // ...\xampp
+        $bin = self::findBin(['mysqldump'], [
+            $xampp . DIRECTORY_SEPARATOR . 'mysql' . DIRECTORY_SEPARATOR . 'bin' . DIRECTORY_SEPARATOR . 'mysqldump.exe',
+            '/usr/bin/mysqldump', '/usr/local/bin/mysqldump',
+        ]);
+
+        $dir      = self::backupSubdir('tms');
+        $slot     = self::daySlot($env('BACKUP_RETENTION_DAYS', '30'));
+        $filename = \sprintf('dia_%02d.sql.gz', $slot);
+        $final    = $dir . DIRECTORY_SEPARATOR . $filename;
+        $tmpSql   = $dir . DIRECTORY_SEPARATOR . 'tmp_' . getmypid() . '.sql';
+
+        // Credenciales en archivo temporal (no quedan en la lista de procesos)
+        $cnf = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'tms_bkp_' . getmypid() . '.cnf';
+        file_put_contents($cnf, "[client]\nhost={$host}\nport={$port}\nuser={$user}\npassword=\"{$pass}\"\n");
+
+        try {
+            $cmd = \sprintf(
+                '"%s" --defaults-extra-file=%s --single-transaction --quick --routines --triggers --default-character-set=utf8mb4 --result-file=%s %s 2>&1',
+                $bin, escapeshellarg($cnf), escapeshellarg($tmpSql), escapeshellarg($name)
+            );
+            exec($cmd, $output, $code);
+            if ($code !== 0 || !is_file($tmpSql) || filesize($tmpSql) < 200) {
+                throw new \RuntimeException("mysqldump TMS falló (código {$code}): " . implode(' ', $output));
+            }
+            // Verificación: un volcado completo termina con la marca de mysqldump
+            $tail = file_get_contents($tmpSql, false, null, max(0, filesize($tmpSql) - 300));
+            if (!str_contains((string)$tail, 'Dump completed')) {
+                throw new \RuntimeException('Volcado TMS incompleto (sin "Dump completed").');
+            }
+            // Comprimir en streaming y reemplazar el slot del día solo si todo salió bien
+            $in = fopen($tmpSql, 'rb');
+            $gz = gzopen($final . '.part', 'wb6');
+            while (!feof($in)) gzwrite($gz, fread($in, 1 << 20));
+            fclose($in);
+            gzclose($gz);
+            if (is_file($final)) unlink($final);
+            rename($final . '.part', $final);
+        } finally {
+            @unlink($cnf);
+            @unlink($tmpSql);
+            @unlink($final . '.part');
+        }
+
+        return [
+            'archivo'   => $filename,
+            'ruta'      => $final,
+            'slot'      => $slot,
+            'tamaño_kb' => round(filesize($final) / 1024, 1),
+            'fecha'     => date('Y-m-d H:i:s'),
+        ];
+    }
+
     private static function config(): array
     {
         $env = fn(string $k, string $d = ''): string

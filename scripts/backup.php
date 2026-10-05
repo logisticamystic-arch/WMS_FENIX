@@ -24,6 +24,9 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+// Hora de Colombia: el php.ini de XAMPP trae Europe/Berlin (slots dia_XX y log corridos)
+date_default_timezone_set('America/Bogota');
+
 $rootDir = dirname(__DIR__);
 chdir($rootDir);
 
@@ -65,6 +68,9 @@ if (file_exists($logFile) && filesize($logFile) > 5 * 1024 * 1024) {
 // ── Ejecutar backup ───────────────────────────────────────────────────────────
 bkpLog('INFO', '=== Inicio backup WMS Fénix ===', $logFile);
 
+$fallo = false;
+
+// 1) WMS: PostgreSQL + archivos (uploads/, docs/)
 try {
     $result = \App\Helpers\BackupHelper::run();
 
@@ -72,12 +78,20 @@ try {
     $files = $result['files'];
 
     bkpLog('OK', "BD → {$db['archivo']} ({$db['tamaño_kb']} KB) | Archivos → {$files['archivo']} ({$files['tamaño_kb']} KB) | Total: {$result['total_kb']} KB", $logFile);
-    bkpLog('INFO', '=== Backup completado con éxito ===', $logFile);
-
-    exit(0);
-
 } catch (\Throwable $e) {
-    bkpLog('ERROR', $e->getMessage(), $logFile);
-    bkpLog('ERROR', '=== Backup FALLÓ ===', $logFile);
-    exit(1);
+    $fallo = true;
+    bkpLog('ERROR', 'WMS: ' . $e->getMessage(), $logFile);
 }
+
+// 2) TMS: MySQL tms_fenix (incluye fotos y firmas) — 2026-10-04. Aislado: si
+//    falla no impide el backup del WMS, pero marca la corrida como fallida.
+try {
+    $tms = \App\Helpers\BackupHelper::runTms();
+    bkpLog('OK', "TMS → tms/{$tms['archivo']} ({$tms['tamaño_kb']} KB)", $logFile);
+} catch (\Throwable $e) {
+    $fallo = true;
+    bkpLog('ERROR', 'TMS: ' . $e->getMessage(), $logFile);
+}
+
+bkpLog($fallo ? 'ERROR' : 'INFO', $fallo ? '=== Backup con ERRORES (revisar arriba) ===' : '=== Backup completado con éxito ===', $logFile);
+exit($fallo ? 1 : 0);
