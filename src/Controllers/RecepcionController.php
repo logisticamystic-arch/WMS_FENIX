@@ -1760,12 +1760,17 @@ class RecepcionController extends BaseController
             ->where('fecha', $hoy) // la tabla citas usa 'fecha' (date); 'fecha_cita' no existe → 500
             ->count();
 
-        $palletsPatio = Capsule::table('lotes')
-            ->join('ubicaciones', 'ubicaciones.id', '=', 'lotes.ubicacion_id')
-            ->where('lotes.empresa_id', $this->getEffectiveEmpresaId($user, $r))
-            ->where('lotes.sucursal_id', $user->sucursal_id)
-            ->where('ubicaciones.tipo_ubicacion', 'patio')
-            ->where('lotes.cantidad_actual', '>', 0)
+        // La tabla 'lotes' no existe (500 en /recepcion/kpis). Mismo criterio que
+        // PutawayController (pendiente por ubicar): stock en ubicación tipo
+        // 'Patio' o sin ubicación — 2026-10-05.
+        $palletsPatio = Capsule::table('inventarios as i')
+            ->leftJoin('ubicaciones as u', 'u.id', '=', 'i.ubicacion_id')
+            ->where('i.empresa_id', $this->getEffectiveEmpresaId($user, $r))
+            ->where('i.sucursal_id', $user->sucursal_id)
+            ->where('i.cantidad', '>', 0)
+            ->where(function ($q) {
+                $q->where('u.tipo_ubicacion', 'Patio')->orWhereNull('i.ubicacion_id');
+            })
             ->count();
 
         return $this->ok($res, [

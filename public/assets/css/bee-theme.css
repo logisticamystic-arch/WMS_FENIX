@@ -767,8 +767,9 @@ tr.ra-row-open { background: var(--info-bg) !important; }
 #main-content [style*="max-width"] { box-sizing: border-box; }
 /* tablas: scroll horizontal dentro de su tarjeta, nunca de la página */
 .card, .erp-card, .pro-table-card { max-width: 100%; }
-.card-body, .table-container, .pro-table-wrap, .erp-card { overflow-x: auto; }
-.card:has(> table), .card:has(> div > table) { overflow-x: auto; }
+/* (2026-10-05) .card-body y .card:has(table) ya NO llevan overflow: recortaban
+   las listas desplegables de búsqueda de referencias dentro de formularios. */
+.table-container, .pro-table-wrap { overflow-x: auto; }
 #main-content table { max-width: none; }
 /* barra superior y cabeceras de tarjeta: envolver en vez de desbordar */
 .content-toolbar { flex-wrap: wrap; row-gap: 8px; }
@@ -828,3 +829,11 @@ tr.ra-row-open { background: var(--info-bg) !important; }
   box-shadow: inset 0 -2px 0 var(--border);      /* el borde inferior no se va con el scroll */
 }
 .tbl-fija > table > tbody > tr > td { border-bottom: 1px solid var(--border-light); }
+
+/* ── 26. Listas de búsqueda de referencias nunca recortadas (2026-10-05) ──
+   Varios formularios envuelven sus líneas en contenedores con overflow:hidden
+   (solo para redondear esquinas) y la lista desplegable de resultados quedaba
+   cortada/invisible (p.ej. Recepción › Devolución a proveedor). Si el
+   contenedor tiene un campo de búsqueda, no recorta. */
+#main-content :is([style*="overflow:hidden"], [style*="overflow: hidden"]):has(input[oninput]),
+#main-content .card:has(input[oninput]) { overflow: visible !important; }
