@@ -544,7 +544,10 @@ WMS_MODULES.picking = {
         // Registrar estado en el grupo para calcular progreso global
         grupos[key].estados.add(d.estado);
         
-        // Tiempos: inicio de la orden, fin de la línea (updated_at)
+        // Tiempos: inicio de la orden, fin de la línea = hora REAL de separación
+        // (kardex, backend: hora_separacion). updated_at se reescribe al
+        // certificar/empacar — solo queda de respaldo para líneas sin movimiento
+        // de kardex (p.ej. Faltante sin nada separado). 2026-10-04.
         const parseTime = ts => {
           if (!ts) return null;
           if (ts.includes('T')) return ts.split('T')[1].split('.')[0]; // ISO
@@ -552,7 +555,7 @@ WMS_MODULES.picking = {
           return ts;
         };
 
-        const lineaFinRaw = d.updated_at || d.hora_fin || null;
+        const lineaFinRaw = d.hora_separacion || d.updated_at || d.hora_fin || null;
         const lineaFin = parseTime(lineaFinRaw);
         
         if (p.hora_inicio && (!pr.hora_inicio || p.hora_inicio < pr.hora_inicio)) pr.hora_inicio = p.hora_inicio;

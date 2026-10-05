@@ -200,6 +200,25 @@ class PickingController extends BaseController
             foreach ($ordenes as $orden) {
                 $orden->inicio_separacion = $inicios[$orden->id] ?? null;
             }
+
+            // Hora real de separación de CADA referencia (2026-10-04): último
+            // movimiento de picking en kardex por (orden, producto). Antes el
+            // detalle usaba picking_detalles.updated_at, que se reescribe al
+            // certificar/empacar (99% de líneas con hora errada).
+            $porLinea = Capsule::table('movimiento_inventarios')
+                ->where('referencia_tipo', 'OrdenPicking')
+                ->where('tipo_movimiento', 'Picking')
+                ->whereIn('referencia_id', $ids)
+                ->groupBy('referencia_id', 'producto_id')
+                ->selectRaw('referencia_id, producto_id, MAX(created_at) as hora')
+                ->get();
+            $horaLinea = [];
+            foreach ($porLinea as $m) $horaLinea[$m->referencia_id . '-' . $m->producto_id] = $m->hora;
+            foreach ($ordenes as $orden) {
+                foreach ($orden->detalles as $d) {
+                    $d->hora_separacion = $horaLinea[$orden->id . '-' . $d->producto_id] ?? null;
+                }
+            }
         }
 
         if (($params['export'] ?? '') === 'excel') {
