@@ -281,7 +281,7 @@ WMS_MODULES.preoperacional = {
 
     WMS.spinner();
     try {
-      const token   = localStorage.getItem('wms_token') || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+      const token   = WMS_TOKEN() || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
       const baseUrl = (typeof API_BASE !== 'undefined' ? API_BASE : (API.BASE_URL || '/WMS_FENIX/public/api'));
       const res  = await fetch(`${baseUrl}/preoperacional`, {
         method: 'POST',

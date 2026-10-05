@@ -331,7 +331,7 @@ WMS_MODULES.inventario = {
     if (!prodId) { WMS.toast('warning', 'Seleccione una referencia'); return; }
     const desde = document.getElementById('sr-desde')?.value || '';
     const hasta = document.getElementById('sr-hasta')?.value || '';
-    const token = localStorage.getItem('wms_token') || '';
+    const token = WMS_TOKEN() || '';
     WMS.toast('info', 'Generando reporte...');
     const url = `${API_BASE}/v2/inventario/kardex?producto_id=${prodId}&fecha_inicio=${desde}&fecha_fin=${hasta}&export=excel&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
@@ -777,7 +777,7 @@ WMS_MODULES.inventario = {
   async exportarStock() {
     WMS.toast('info', 'Generando reporte...');
     try {
-      const token = localStorage.getItem('wms_token') || '';
+      const token = WMS_TOKEN() || '';
       const url = `${API_BASE}/inventario/stock?export=excel&token=${encodeURIComponent(token)}`;
       window.open(url, '_blank');
     } catch(e) { WMS.toast('error', 'Error exportando'); }
@@ -1073,7 +1073,7 @@ WMS_MODULES.inventario = {
   _exportarHistorialUbiProducto(ubicacionId, productoId) {
     const desde = document.getElementById('uhp-desde')?.value || '';
     const hasta = document.getElementById('uhp-hasta')?.value || '';
-    const token = localStorage.getItem('wms_token') || '';
+    const token = WMS_TOKEN() || '';
     WMS.toast('info', 'Generando reporte...');
     const url = `${API_BASE}/trazabilidad/ubicacion/${ubicacionId}?producto_id=${productoId}&f_ini=${desde}&f_fin=${hasta}&export=excel&token=${encodeURIComponent(token)}`;
     window.open(url, '_blank');
@@ -1191,12 +1191,12 @@ WMS_MODULES.inventario = {
   },
 
   async exportVencV2() {
-    const token = localStorage.getItem('wms_token') || '';
+    const token = WMS_TOKEN() || '';
     window.open(`${API_BASE}/v2/inventario/vencimientos?export=excel&token=${encodeURIComponent(token)}`, '_blank');
   },
 
   async exportConteoV2(id, ronda) {
-    const token = localStorage.getItem('wms_token') || '';
+    const token = WMS_TOKEN() || '';
     const rondaParam = ronda ? `&ronda=${ronda}` : '';
     window.open(`${API_BASE}/v2/inventario/sesiones/${id}/dashboard?export=excel${rondaParam}&token=${encodeURIComponent(token)}`, '_blank');
   },
@@ -1315,7 +1315,7 @@ WMS_MODULES.inventario = {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const token = localStorage.getItem('wms_token') || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+      const token = WMS_TOKEN() || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
       const baseUrl = (typeof API_BASE !== 'undefined' ? API_BASE : (API.BASE_URL || '/WMS_FENIX/public/api'));
       const resp = await fetch(`${baseUrl}/v2/inventario/importar-referencias-archivo`, {
         method: 'POST',
@@ -1382,7 +1382,7 @@ WMS_MODULES.inventario = {
     // Se cambia a servir la plantilla desde el backend (mismo patrón ya
     // probado que usa "Exportar Excel" del dashboard, que sí descarga con el
     // nombre correcto) — así el nombre de archivo llega intacto.
-    const token = localStorage.getItem('wms_token') || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+    const token = WMS_TOKEN() || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
     const baseUrl = (typeof API_BASE !== 'undefined' ? API_BASE : (API.BASE_URL || '/WMS_FENIX/public/api'));
     window.open(`${baseUrl}/v2/inventario/plantilla-referencias?token=${encodeURIComponent(token)}`, '_blank');
   },
@@ -3371,7 +3371,7 @@ WMS_MODULES.inventario = {
   },
 
   _exportAjustes(extraQ) {
-    const token = localStorage.getItem('wms_token') || '';
+    const token = WMS_TOKEN() || '';
     const base = extraQ ? `${extraQ}&export=excel` : 'export=excel';
     window.open(`${API_BASE}/v2/inventario/ajustes?${base}&token=${encodeURIComponent(token)}`, '_blank');
   },
@@ -4382,7 +4382,7 @@ WMS_MODULES.inventario = {
   },
 
   async descargarPlantilla() {
-    const token = encodeURIComponent(localStorage.getItem('wms_token') || '');
+    const token = encodeURIComponent(WMS_TOKEN() || '');
     const baseUrl = typeof API_BASE !== 'undefined' ? API_BASE : '/api';
     window.open(`${baseUrl}/param/import-export/template/saldo_inicial?token=${token}`, '_blank');
   },
@@ -6502,7 +6502,7 @@ WMS_MODULES.inventario = {
 
     WMS.toast('info', 'Procesando y cargando archivo ICG...');
     try {
-      const token = localStorage.getItem('wms_token') || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
+      const token = WMS_TOKEN() || sessionStorage.getItem('wms_token') || localStorage.getItem('token') || '';
       const baseUrl = (typeof API_BASE !== 'undefined' ? API_BASE : (API.BASE_URL || '/WMS_FENIX/public/api'));
       const res = await fetch(`${baseUrl}/v2/inventario/sesiones/${sesionId}/icg-upload`, {
         method: 'POST',

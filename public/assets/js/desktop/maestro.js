@@ -1464,7 +1464,7 @@ WMS_MODULES.maestro = {
 
   exportarExcel() {
     const baseUrl = (typeof API_BASE !== 'undefined' ? API_BASE : '/api');
-    const url = baseUrl + '/param/import-export/export/productos?token=' + encodeURIComponent(localStorage.getItem('wms_token'));
+    const url = baseUrl + '/param/import-export/export/productos?token=' + encodeURIComponent(WMS_TOKEN());
     window.open(url, '_blank');
   },
 
@@ -2190,7 +2190,7 @@ WMS_MODULES.maestro = {
     try {
       const r = await fetch(API_BASE + '/param/import-export/preview/ubicaciones', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') },
+        headers: { 'Authorization': 'Bearer ' + WMS_TOKEN() },
         body: formData
       });
       const res = await r.json();
@@ -2294,7 +2294,7 @@ WMS_MODULES.maestro = {
     try {
       const r = await fetch(API_BASE + '/param/import-export/upload/ubicaciones', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') },
+        headers: { 'Authorization': 'Bearer ' + WMS_TOKEN() },
         body: formData
       });
       const res = await r.json();
@@ -3901,7 +3901,7 @@ WMS_MODULES.maestro = {
 
     const formData = new FormData();
     formData.append('file', file);
-    const token = localStorage.getItem('wms_token') || '';
+    const token = WMS_TOKEN() || '';
 
     try {
       const url = '/WMS_FENIX/public/api/param/import-export/upload/' + tipo;

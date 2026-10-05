@@ -946,6 +946,11 @@
   <script>
     const API_BASE = '/WMS_FENIX/public/api';
     let _wmsToken = localStorage.getItem('wms_token') || '';
+    // Token de la SESIÓN ACTIVA (2026-10-04). Impresiones/exportaciones/descargas
+    // deben usar esto, no localStorage: la app móvil comparte el mismo origen y
+    // su "Cerrar sesión" hace localStorage.clear() (o su login lo reemplaza por
+    // el de otro usuario), y las impresiones salían con 401 "Token no proporcionado".
+    window.WMS_TOKEN = () => _wmsToken || localStorage.getItem('wms_token') || '';
     let _wmsUser = JSON.parse(localStorage.getItem('wms_user') || 'null');
     let _wmsPermisos = JSON.parse(localStorage.getItem('wms_permisos') || '[]');
     // SuperAdmin: empresa seleccionada para operar (null = sin filtro)
@@ -1368,7 +1373,7 @@
       async updateConnectionInfo() {
         try {
           const r = await fetch(API_BASE + '/system/connection-info', {
-            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('wms_token') }
+            headers: { 'Authorization': 'Bearer ' + WMS_TOKEN() }
           });
           const json = await r.json();
           if (json && json.local_ip) {

@@ -87,7 +87,7 @@ WMS_MODULES.rotacion = {
     catch(e) { WMS.toast('Error: '+e.message,'danger'); }
   },
   exportAbcXyz() {
-    const token = localStorage.getItem('wms_token') || '';
+    const token = WMS_TOKEN() || '';
     const baseUrl = typeof API_BASE !== 'undefined' ? API_BASE : '/api';
     window.open(`${baseUrl}/rotacion/export?token=${encodeURIComponent(token)}`, '_blank');
   },
