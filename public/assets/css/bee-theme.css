@@ -818,3 +818,13 @@ tr.ra-row-open { background: var(--info-bg) !important; }
   .md-drawer { width: 100%; right: -100%; }
   .modal-body { padding: 16px; }
 }
+
+/* ── 25. Encabezados fijos en consultas (assets/js/encabezados-fijos.js) ── */
+.tbl-fija { overflow: auto !important; overscroll-behavior: contain; }
+.tbl-fija > table { border-collapse: separate; border-spacing: 0; }
+.tbl-fija > table > thead > tr > th {
+  position: sticky; top: 0; z-index: 4;
+  background: var(--table-header-bg) !important;
+  box-shadow: inset 0 -2px 0 var(--border);      /* el borde inferior no se va con el scroll */
+}
+.tbl-fija > table > tbody > tr > td { border-bottom: 1px solid var(--border-light); }
