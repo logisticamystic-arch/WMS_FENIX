@@ -3969,7 +3969,7 @@ class InventarioV2Controller extends BaseController
      * esta referencia se contó en las rondas ANTERIORES de la sesión (a pedido
      * explícito de Camilo, 2026-09-28 — antes se mandaba a recontar donde el
      * SISTEMA decía tener stock, no donde físicamente se había contado).
-     * Retorna null si no aplica (no es recuento, es Cíclico, o la referencia no
+     * Retorna null si no aplica (no es recuento, o la referencia no
      * tiene conteo previo) → se usan las ubicaciones del sistema como antes.
      *
      * @return \Illuminate\Support\Collection|null SesionLinea de rondas previas
@@ -3978,7 +3978,9 @@ class InventarioV2Controller extends BaseController
     {
         if (!$asig || (int)$asig->ronda < 2 || !$asig->producto_id) return null;
         $sesion = $asig->sesion ?? SesionInventario::find($asig->sesion_id);
-        if (!$sesion || $sesion->tipo === SesionInventario::TIPO_CICLICO) return null;
+        // 2026-10-06: también Cíclico (sesión 95, I POLLO PECHUGA: R1 en 12 ubicaciones,
+        // el R2 salía solo en las 2 con stock en sistema).
+        if (!$sesion) return null;
         $previas = SesionLinea::where('sesion_id', $sesion->id)
             ->where('producto_id', $asig->producto_id)
             ->where('ronda', '<', (int)$asig->ronda)
