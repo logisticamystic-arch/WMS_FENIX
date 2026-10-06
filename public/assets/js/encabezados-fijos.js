@@ -51,7 +51,10 @@
       const top = box.getBoundingClientRect().top;
       const scTop = sc ? sc.getBoundingClientRect().top : 0;
       const desde = Math.max(top, scTop);                       // si la página ya bajó, medir desde el área visible
-      const alto = Math.max(MIN_ALTO, Math.floor(window.innerHeight - desde - MARGEN_INF));
+      // Fondo = borde inferior del ÁREA VISIBLE (content-body), no de la ventana: si
+      // algo ocupa el pie (vista standalone), la última fila quedaba tapada (2026-10-06).
+      const fondo = sc ? Math.min(window.innerHeight, sc.getBoundingClientRect().bottom) : window.innerHeight;
+      const alto = Math.max(MIN_ALTO, Math.floor(fondo - desde - MARGEN_INF));
       box.style.maxHeight = alto + 'px';
       // Encabezados de varias filas: cada fila se fija debajo de la anterior
       let acum = 0;
