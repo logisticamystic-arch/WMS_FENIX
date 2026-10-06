@@ -1202,7 +1202,10 @@ class InventarioV2Controller extends BaseController
 
             if (!$sesion) return $this->notFound($res);
 
-            $rondaFiltro = (int)($params['ronda'] ?? 1);
+            // Sin ronda pedida: la última ronda con conteos (2026-10-06 — abría siempre
+            // en R1 y el segundo conteo ya hecho no se veía).
+            $rondaFiltro = isset($params['ronda']) ? (int)$params['ronda']
+                : max(1, (int)SesionLinea::where('sesion_id', $sesion->id)->where('estado', SesionLinea::ESTADO_ACTIVO)->max('ronda'));
 
             // ── Matriz de conteo (todas las líneas activas de la ronda) ────
             $lineas = SesionLinea::where('sesion_lineas.sesion_id', $sesion->id)
@@ -1247,6 +1250,20 @@ class InventarioV2Controller extends BaseController
                 )
                 ->orderBy('sesion_lineas.hora_conteo')
                 ->get();
+
+            // Columnas R1/R2/R3 de la Matriz: lo contado en CADA ronda en la misma
+            // referencia + ubicación (antes solo la ronda filtrada → las demás en "-").
+            if ((int)$sesion->num_conteos > 1) {
+                $porRonda = [];
+                SesionLinea::where('sesion_id', $sesion->id)
+                    ->where('estado', SesionLinea::ESTADO_ACTIVO)
+                    ->get(['producto_id', 'ubicacion_id', 'ronda', 'cantidad_contada'])
+                    ->each(function ($x) use (&$porRonda) {
+                        $k = $x->producto_id . '|' . $x->ubicacion_id;
+                        $porRonda[$k][$x->ronda] = ($porRonda[$k][$x->ronda] ?? 0) + (float)$x->cantidad_contada;
+                    });
+                foreach ($lineas as $l) $l->por_ronda = $porRonda[$l->producto_id . '|' . $l->ubicacion_id] ?? (object)[];
+            }
 
             // ── Exportar el conteo (ajustado o no) a Excel ─────────────────
             if (($params['export'] ?? '') === 'excel') {

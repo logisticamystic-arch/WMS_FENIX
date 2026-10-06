@@ -1708,6 +1708,7 @@ WMS_MODULES.inventario = {
 
       const { sesion, kpis, consistencia_rondas, necesita_tercer_conteo, ubicaciones_en_cero } = d;
       if (!sesion || !kpis) throw new Error('Respuesta incompleta del servidor');
+      ronda = d.ronda_filtro || ronda || 1; // sin ronda pedida, el servidor abre la última con conteos
       const stColor = { Borrador:'#64748b', EnCurso:'#f59e0b', PendienteAjuste:'#ef4444', Ajustado:'#10b981', Cerrado:'#64748b' };
 
       const iraVal = kpis.total_lineas > 0
@@ -1751,8 +1752,81 @@ WMS_MODULES.inventario = {
           .inv2-alert      { padding: 12px 16px; border-radius: 10px; border-left: 5px solid var(--danger); background: var(--danger-bg); color: var(--danger); display: flex; align-items: center; gap: 12px; font-size: .88rem; }
           
           #standalone-side-panel { z-index: 100 !important; }
+
+          /* ── Layout 2026-10-06: menú lateral de secciones + contenido ── */
+          .inv2-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 0; align-items: start; background: var(--surface); }
+          .inv2-side   { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto;
+                         border-right: 1px solid var(--border); background: var(--surface); padding: 16px 10px; }
+          .inv2-side-title { font-size: 10px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); padding: 4px 10px 8px; }
+          .inv2-side .inv2-toolbar { flex-direction: column; align-items: stretch; background: transparent; border: none; padding: 0; gap: 8px; }
+          .inv2-side .inv2-rounds-box { border-right: none; margin: 0; padding: 0 6px 10px; border-bottom: 1px solid var(--border-light); flex-wrap: wrap; }
+          .inv2-side .inv2-tabs { flex-direction: column !important; gap: 2px; }
+          .inv2-side .inv2-tab { width: 100%; justify-content: flex-start; padding: 9px 10px; border-radius: 0 8px 8px 0; border-left: 3px solid transparent !important; font-size: .82rem; font-weight: 600; }
+          .inv2-side .inv2-tab.on { background: var(--info-bg) !important; color: var(--accent) !important; border-left-color: var(--accent) !important; }
+          .inv2-side .inv2-tab.on i { color: var(--accent); }
+          .inv2-wrapper { min-width: 0; }
+          .inv2-vac-head { cursor: pointer; user-select: none; }
+          .inv2-vac-head .inv2-chev { transition: transform .2s; color: var(--warn); }
+          .inv2-vac.cerrado .inv2-chev { transform: rotate(-90deg); }
+          .inv2-vac.cerrado .inv2-vac-body { display: none; }
+          .inv2-vac.cerrado .inv2-vac-head { margin-bottom: 0 !important; }
+          .inv2-actionbar { position: sticky; top: 0; z-index: 6; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+                            background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; box-shadow: var(--shadow); }
+          .inv2-actionbar-title { font-weight: 700; font-size: .9rem; color: var(--text); display: flex; align-items: center; gap: 8px; }
+          @media (max-width: 900px) {
+            .inv2-layout { grid-template-columns: 1fr; }
+            .inv2-side { position: static; max-height: none; border-right: none; border-bottom: 1px solid var(--border); padding: 8px; }
+            .inv2-side .inv2-tabs { flex-direction: row !important; overflow-x: auto; }
+            .inv2-side .inv2-tab { width: auto; white-space: nowrap; border-left: none !important; border-radius: 8px; }
+          }
         </style>
 
+        <div class="inv2-layout">
+        <aside class="inv2-side">
+          <div class="inv2-side-title">Secciones del inventario</div>
+          <!-- Nivel 3: Barra de Herramientas Unificada -->
+          <div class="inv2-toolbar">
+             ${sesion.num_conteos > 1 ? `
+             <div class="inv2-rounds-box">
+                <small style="font-weight:800; color:var(--muted); text-transform:uppercase; font-size:.65rem">Ronda:</small>
+                ${Array.from({length:sesion.num_conteos},(_,i)=>`
+                  <button class="btn btn-xs ${(ronda||1)===(i+1)?'btn-primary':'btn-outline-secondary'}"
+                          onclick="WMS_MODULES.inventario.verDashboardV2(${id},${i+1})" 
+                          style="min-width:30px; font-weight:800">R${i+1}</button>`).join('')}
+             </div>` : ''}
+
+             <div class="inv2-tabs">
+                <button class="inv2-tab on" id="t2-mat" onclick="WMS_MODULES.inventario._tab2('mat')">
+                  <i class="fa-solid fa-table-cells"></i> Matriz
+                </button>
+                <button class="inv2-tab" id="t2-general" onclick="WMS_MODULES.inventario._tab2('general')">
+                  <i class="fa-solid fa-layer-group"></i> Resumen
+                </button>
+                <button class="inv2-tab" id="t2-icg" onclick="WMS_MODULES.inventario._tab2('icg')" style="background:${d.analisis_icg?.cargado?'var(--ok-bg)':'var(--warn-bg)'};color:${d.analisis_icg?.cargado?'var(--ok)':'var(--warn)'};border:1px solid ${d.analisis_icg?.cargado?'var(--ok-bg)':'var(--warn-bg)'}; font-weight:800;">
+                  <i class="fa-solid fa-file-invoice"></i> Control ICG ${d.analisis_icg?.cargado?'<span class="badge" style="background:var(--ok);color:#fff;font-size:9px;padding:1px 5px;margin-left:4px;">CARGADO</span>':''}
+                </button>
+                <button class="inv2-tab" id="t2-amb" onclick="WMS_MODULES.inventario._tab2('amb')">
+                  <i class="fa-solid fa-temperature-three-quarters"></i> Ambientes & Auxiliares
+                </button>
+                <button class="inv2-tab" id="t2-dif" onclick="WMS_MODULES.inventario._tab2('dif')">
+                  <i class="fa-solid fa-not-equal"></i> Diferencias
+                </button>
+                <button class="inv2-tab" id="t2-segundos" onclick="WMS_MODULES.inventario._tab2('segundos')">
+                  <i class="fa-solid fa-repeat"></i> Segundos Conteos
+                </button>
+                <button class="inv2-tab" id="t2-asig" onclick="WMS_MODULES.inventario._tab2('asig')">
+                  <i class="fa-solid fa-users"></i> Asig.
+                </button>
+                <button class="inv2-tab" id="t2-acc" onclick="WMS_MODULES.inventario._tab2('acc')">
+                  <i class="fa-solid fa-shield-halved"></i> Seguridad
+                </button>
+                <button class="inv2-tab" style="color:var(--warn)" onclick="WMS_MODULES.inventario._resetServerCache()">
+                  <i class="fa-solid fa-cloud-arrow-down"></i> Sincronizar Servidor
+                </button>
+             </div>
+          </div>
+
+        </aside>
         <div class="inv2-wrapper">
           <!-- Nivel 1: KPIs Principales (Físico vs Sistema WMS) -->
           <div class="inv2-kpi-row">
@@ -1847,8 +1921,11 @@ WMS_MODULES.inventario = {
 
           <!-- Panel: Ubicaciones Vaciadas por Auxiliares -->
           ${(ubicaciones_en_cero && ubicaciones_en_cero.length > 0) ? `
-          <div style="background:var(--warn-bg);border:1px solid var(--warn);border-left:5px solid var(--warn);border-radius:10px;padding:16px 20px">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <div class="inv2-vac ${(() => { try { return localStorage.getItem('inv2-vac-abierto') === '1' ? '' : 'cerrado'; } catch (e) { return 'cerrado'; } })()}" id="inv2-vac"
+               style="background:var(--warn-bg);border:1px solid var(--warn);border-left:5px solid var(--warn);border-radius:10px;padding:12px 20px">
+            <div class="inv2-vac-head" style="display:flex;align-items:center;gap:10px;margin-bottom:12px" role="button" tabindex="0"
+                 title="Contraer / expandir" onclick="WMS_MODULES.inventario._inv2ToggleVaciadas()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();WMS_MODULES.inventario._inv2ToggleVaciadas();}">
+              <i class="fa-solid fa-chevron-down inv2-chev"></i>
               <i class="fa-solid fa-triangle-exclamation" style="color:var(--warn);font-size:1.2rem"></i>
               <div>
                 <span style="font-size:.9rem;font-weight:800;color:var(--warn)">Ubicaciones Vaciadas por Auxiliares</span>
@@ -1856,7 +1933,7 @@ WMS_MODULES.inventario = {
               </div>
               <span style="margin-left:auto;font-size:.75rem;color:var(--warn);font-style:italic">El auxiliar contó 0 unidades donde el sistema reporta stock. Revise antes de aprobar el ajuste.</span>
             </div>
-            <div style="overflow-x:auto;border-radius:6px;border:1px solid #fbbf24">
+            <div class="inv2-vac-body" style="overflow-x:auto;border-radius:6px;border:1px solid #fbbf24;max-height:320px;overflow-y:auto">
               <table class="erp-table" style="background:var(--surface);margin:0">
                 <thead>
                   <tr style="background:var(--warn-bg)">
@@ -1892,50 +1969,9 @@ WMS_MODULES.inventario = {
             </div>
           </div>` : ''}
 
-          <!-- Nivel 3: Barra de Herramientas Unificada -->
-          <div class="inv2-toolbar">
-             ${sesion.num_conteos > 1 ? `
-             <div class="inv2-rounds-box">
-                <small style="font-weight:800; color:var(--muted); text-transform:uppercase; font-size:.65rem">Ronda:</small>
-                ${Array.from({length:sesion.num_conteos},(_,i)=>`
-                  <button class="btn btn-xs ${(ronda||1)===(i+1)?'btn-primary':'btn-outline-secondary'}"
-                          onclick="WMS_MODULES.inventario.verDashboardV2(${id},${i+1})" 
-                          style="min-width:30px; font-weight:800">R${i+1}</button>`).join('')}
-             </div>` : ''}
-
-             <div class="inv2-tabs">
-                <button class="inv2-tab on" id="t2-mat" onclick="WMS_MODULES.inventario._tab2('mat')">
-                  <i class="fa-solid fa-table-cells"></i> Matriz
-                </button>
-                <button class="inv2-tab" id="t2-general" onclick="WMS_MODULES.inventario._tab2('general')">
-                  <i class="fa-solid fa-layer-group"></i> Resumen
-                </button>
-                <button class="inv2-tab" id="t2-icg" onclick="WMS_MODULES.inventario._tab2('icg')" style="background:${d.analisis_icg?.cargado?'var(--ok-bg)':'var(--warn-bg)'};color:${d.analisis_icg?.cargado?'var(--ok)':'var(--warn)'};border:1px solid ${d.analisis_icg?.cargado?'var(--ok-bg)':'var(--warn-bg)'}; font-weight:800;">
-                  <i class="fa-solid fa-file-invoice"></i> Control ICG ${d.analisis_icg?.cargado?'<span class="badge" style="background:var(--ok);color:#fff;font-size:9px;padding:1px 5px;margin-left:4px;">CARGADO</span>':''}
-                </button>
-                <button class="inv2-tab" id="t2-amb" onclick="WMS_MODULES.inventario._tab2('amb')">
-                  <i class="fa-solid fa-temperature-three-quarters"></i> Ambientes & Auxiliares
-                </button>
-                <button class="inv2-tab" id="t2-dif" onclick="WMS_MODULES.inventario._tab2('dif')">
-                  <i class="fa-solid fa-not-equal"></i> Diferencias
-                </button>
-                <button class="inv2-tab" id="t2-segundos" onclick="WMS_MODULES.inventario._tab2('segundos')">
-                  <i class="fa-solid fa-repeat"></i> Segundos Conteos
-                </button>
-                <button class="inv2-tab" id="t2-asig" onclick="WMS_MODULES.inventario._tab2('asig')">
-                  <i class="fa-solid fa-users"></i> Asig.
-                </button>
-                <button class="inv2-tab" id="t2-acc" onclick="WMS_MODULES.inventario._tab2('acc')">
-                  <i class="fa-solid fa-shield-halved"></i> Seguridad
-                </button>
-                <button class="inv2-tab" style="color:var(--warn)" onclick="WMS_MODULES.inventario._resetServerCache()">
-                  <i class="fa-solid fa-cloud-arrow-down"></i> Sincronizar Servidor
-                </button>
-             </div>
-          </div>
-
           <!-- Nivel 4: Contenedor Dinámico -->
           <div id="inv2-content" class="inv2-content"></div>
+        </div>
         </div>
       `;
 
@@ -1957,8 +1993,41 @@ WMS_MODULES.inventario = {
         WMS.showModal(title, htmlContent, footerContent, 'full');
       }
 
-      this._tab2('mat');
+      const cont = document.getElementById('inv2-content');
+      if (cont) {
+        this._inv2Obs?.disconnect();
+        this._inv2Obs = new MutationObserver(() => this._inv2PromoverAjuste());
+        this._inv2Obs.observe(cont, { childList: true });
+      }
+      this._tab2(this._inv2TabSesion === id && this._inv2TabActual ? this._inv2TabActual : 'mat');
+      this._inv2TabSesion = id;
     } catch(e) { WMS.toast('error', 'Error cargando dashboard: ' + e.message); }
+  },
+
+  _inv2ToggleVaciadas() {
+    const el = document.getElementById('inv2-vac');
+    if (!el) return;
+    el.classList.toggle('cerrado');
+    try { localStorage.setItem('inv2-vac-abierto', el.classList.contains('cerrado') ? '0' : '1'); } catch (e) {}
+  },
+
+  /** Botón de ajuste en la CABECERA de la sección (2026-10-06): si la sección pintada
+   *  trae "Ajustar…" / "Aprobar ajuste" al final, se pone una copia del mismo botón
+   *  (misma acción, mismo estado deshabilitado) en una barra fija arriba. */
+  _inv2PromoverAjuste() {
+    const cont = document.getElementById('inv2-content');
+    if (!cont || cont.querySelector(':scope > .inv2-actionbar')) return;
+    const btn = cont.querySelector('button[onclick*="_ajustarTodo"]');
+    if (!btn) return;
+    const tab = document.querySelector('.inv2-tab.on');
+    const titulo = tab ? tab.innerText.replace(/\s+/g, ' ').trim() : 'Sección';
+    const bar = document.createElement('div');
+    bar.className = 'inv2-actionbar';
+    bar.innerHTML = `<span class="inv2-actionbar-title">${tab ? tab.querySelector('i')?.outerHTML || '' : ''} ${WMS.esc(titulo)}</span>`;
+    const copia = btn.cloneNode(true);
+    copia.classList.remove('btn-lg'); copia.style.flex = 'none'; copia.style.padding = ''; copia.style.fontSize = '';
+    bar.appendChild(copia);
+    cont.insertBefore(bar, cont.firstChild);
   },
 
   _openDashboardInTab(id, ronda = 1) {
@@ -1983,6 +2052,8 @@ WMS_MODULES.inventario = {
     } catch(e) { return iso; }
   },
   _tab2(tab) {
+    this._inv2TabActual = tab;
+    document.querySelector('.inv2-wrapper')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
     document.querySelectorAll('.inv2-tab').forEach(b => b.classList.remove('on'));
     const btn = document.getElementById('t2-' + tab);
     if (btn) btn.classList.add('on');
@@ -2003,11 +2074,16 @@ WMS_MODULES.inventario = {
 
     if (tab === 'mat') {
       const lineas = d.matriz_conteo || [];
+      this._matQ = ''; this._matModo = 'all';
       content.innerHTML = `
         <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center">
           <div class="search-bar" style="flex:1;"><i class="fa-solid fa-search"></i>
-            <input placeholder="Filtrar por producto, ubicación, SKU..." oninput="WMS_MODULES.inventario._filterMat(this.value,'inv2-mat-table')">
+            <input id="inv2-mat-q" list="inv2-mat-refs" autocomplete="off" placeholder="Buscar referencia: código o nombre (ej. pollo pechuga), ubicación, auxiliar..."
+                   oninput="WMS_MODULES.inventario._filterMat(this.value,'inv2-mat-table')">
+            <datalist id="inv2-mat-refs">${[...new Map(lineas.filter(l => l.codigo || l.producto).map(l => [l.codigo + '|' + l.producto, l])).values()]
+              .map(l => `<option value="${WMS.esc(l.codigo || '')}">${WMS.esc(l.producto || '')}</option>`).join('')}</datalist>
           </div>
+          <small id="inv2-mat-count" style="color:var(--muted);white-space:nowrap;"></small>
           <div style="display:flex;gap:4px;align-items:center;">
              <small style="font-weight:700;color:var(--muted);margin-right:8px;">VER:</small>
              <button class="btn btn-xs btn-outline-secondary" onclick="WMS_MODULES.inventario._filterMatDiff('all')">Todo</button>
@@ -2032,8 +2108,7 @@ WMS_MODULES.inventario = {
                 <th class="text-center">SISTEMA</th>
                 <th class="text-center">DIFERENCIA</th>
                 ${d.sesion.num_conteos > 1 ? `
-                  <th class="text-center">R1</th>
-                  <th class="text-center">R2</th>
+                  ${Array.from({length: d.sesion.num_conteos}, (_, i) => `<th class="text-center">R${i + 1}</th>`).join('')}
                 ` : ''}
                 <th>ACCIONES</th>
               </tr>
@@ -2063,8 +2138,10 @@ WMS_MODULES.inventario = {
                     <td class="text-center" style="color:var(--muted)">${parseFloat(l.cantidad_sistema)}</td>
                     <td class="text-center"><b style="color:${difColor}">${difTxt}</b></td>
                     ${d.sesion.num_conteos > 1 ? `
-                      <td class="text-center" style="background:var(--table-header-bg);font-weight:600">${l.ronda===1?l.cantidad_contada:'-'}</td>
-                      <td class="text-center" style="background:var(--table-header-bg);font-weight:600">${l.ronda===2?l.cantidad_contada:'-'}</td>
+                      ${Array.from({length: d.sesion.num_conteos}, (_, i) => {
+                        const v = (l.por_ronda || {})[i + 1];
+                        return `<td class="text-center" style="background:var(--table-header-bg);font-weight:600;${l.ronda === i + 1 ? 'color:var(--accent)' : ''}">${v != null ? parseFloat(v) : '-'}</td>`;
+                      }).join('')}
                     ` : ''}
                     <td>
                       <div class="action-btns">
@@ -2385,19 +2462,27 @@ WMS_MODULES.inventario = {
   },
 
 
+  /** Búsqueda dinámica 2026-10-06: todas las palabras, en cualquier orden, sin tildes
+   *  ("pechuga pollo", "112152", "02-19"), y se combina con el filtro Todo/Diferencias. */
   _filterMat(q, tableId) {
-    const term = q.toLowerCase();
+    const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (tableId === 'inv2-mat-table') this._matQ = q;
+    const words = norm(q).split(/\s+/).filter(Boolean);
+    const modo = tableId === 'inv2-mat-table' ? (this._matModo || 'all') : 'all';
+    let n = 0;
     document.querySelectorAll(`#${tableId} tbody tr`).forEach(r => {
-      r.style.display = r.textContent.toLowerCase().includes(term) ? '' : 'none';
+      const txt = norm(r.textContent);
+      const ok = words.every(w => txt.includes(w)) && (modo === 'all' || r.dataset.diff === (modo === 'diff' ? '1' : '0'));
+      r.style.display = ok ? '' : 'none';
+      if (ok) n++;
     });
+    const c = tableId === 'inv2-mat-table' && document.getElementById('inv2-mat-count');
+    if (c) c.textContent = `${n} línea(s)`;
   },
 
   _filterMatDiff(mode) {
-    document.querySelectorAll('#inv2-mat-table tbody tr').forEach(r => {
-      if (mode === 'all') r.style.display = '';
-      else if (mode === 'diff') r.style.display = r.dataset.diff === '1' ? '' : 'none';
-      else r.style.display = r.dataset.diff === '0' ? '' : 'none';
-    });
+    this._matModo = mode;
+    this._filterMat(this._matQ || '', 'inv2-mat-table');
   },
 
   _showConteoManualModal(id) {
