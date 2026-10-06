@@ -261,7 +261,7 @@ WMS_MODULES.picking = {
       this._pkmData = Array.isArray(r.data) ? r.data : (r.data?.data || []);
       this._pkmItems = {};
       this._pkmRenderPlanillas();
-      if (this._pkmFoco) (this._pkmGrupos || []).forEach(g => this._pkmToggle(g.key, true));
+      if (this._pkmFoco) (this._pkmGrupos || []).forEach(g => this._pkmCargarItems(g.key));
       this._pkmPintarSucursales();
       const dlp = document.getElementById('pkm-plan-list');
       if (dlp) dlp.innerHTML = [...new Set(this._pkmData.map(d => d.planilla_numero).filter(Boolean))].sort()
@@ -307,6 +307,21 @@ WMS_MODULES.picking = {
     if (!grupos.length) { tbody.innerHTML = '<tr><td colspan="8" class="table-empty">No hay líneas pendientes para estos filtros</td></tr>'; return; }
 
     const icoAmb = { Seco: 'fa-sun', Refrigerado: 'fa-snowflake', Congelado: 'fa-icicles' };
+    if (this._pkmFoco) {
+      // Hoja CONSOLIDADA única: resumen arriba y una sección por ambiente, ya desplegada
+      const tabla = document.getElementById('pkm-tabla');
+      if (tabla?.tHead) tabla.tHead.style.display = 'none';
+      const pedidos = new Set((this._pkmData || []).map(d => d.pedido));
+      const sucs = [...new Set((this._pkmData || []).map(d => d.sucursal_entrega).filter(Boolean))];
+      if (resumen) resumen.innerHTML = `<span style="font-size:.95rem;color:var(--text);"><b>${WMS.esc(this._pkmFoco)}</b> · consolidado de <b>${pedidos.size}</b> pedido(s) · ${WMS.esc(sucs.join(', '))} · ${grupos.length} ambiente(s)</span>`;
+      tbody.innerHTML = grupos.map(g => `
+        <tr><td colspan="8" style="padding:14px 0 4px;background:transparent;border:none;">
+          <div style="font-weight:700;font-size:.95rem;"><i class="fa-solid ${icoAmb[g.ambiente] || 'fa-box'}" style="color:var(--accent);margin-right:6px;"></i>AMBIENTE ${WMS.esc(g.ambiente.toUpperCase())}
+            <span style="font-weight:500;color:var(--muted);font-size:.8rem;"> · ${g.productos.size} referencia(s) · Auxiliar: ${WMS.esc([...g.auxiliares].join(', ') || 'Sin asignar')}</span></div>
+        </td></tr>
+        <tr id="pkm-sub-${g.key}"><td colspan="8" style="padding:0 0 10px;background:transparent;" id="pkm-cont-${g.key}"></td></tr>`).join('');
+      return;
+    }
     tbody.innerHTML = grupos.map(g => `
       <tr data-pkm-key="${g.key}">
         <td style="text-align:center;">
@@ -359,10 +374,16 @@ WMS_MODULES.picking = {
 
   /** Carga las líneas CONSOLIDADAS de la planilla (mismo endpoint que la terminal,
    *  ya en orden de ruta física) y deja solo las del ambiente de la fila. */
-  async _pkmCargarItems(key) {
+  async _pkmCargarItems(key, conservar = false) {
     const g = (this._pkmGrupos || []).find(x => x.key === key);
     const cont = document.getElementById('pkm-cont-' + key);
     if (!g || !cont) return;
+    // Conservar lo ya digitado (cajas/saldo/causal) al recargar, p.ej. tras cambiar una ubicación
+    const previo = {};
+    if (conservar) (this._pkmItems[key] || []).forEach((it, i) => {
+      const tr = document.getElementById(`pkm-it-${key}-${i}`);
+      if (tr) previo[it.ids] = { c: tr.querySelector('.pkm-cajas').value, s: tr.querySelector('.pkm-saldo').value, k: tr.querySelector('.pkm-causal').value };
+    });
     cont.innerHTML = '<div style="color:var(--muted);font-size:.8rem;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando líneas consolidadas…</div>';
     try {
       const [r] = await Promise.all([
@@ -372,7 +393,11 @@ WMS_MODULES.picking = {
       const items = (Array.isArray(r.data) ? r.data : (r.data?.data || [])).filter(it => this._pkmNormAmb(it.ambiente) === g.ambiente);
       this._pkmItems[key] = items;
       cont.innerHTML = this._pkmRenderItems(g, items);
-      items.forEach((_, i) => this._pkmRecalc(key, i));
+      items.forEach((it, i) => {
+        const v = previo[it.ids]; const tr = document.getElementById(`pkm-it-${key}-${i}`);
+        if (v && tr) { tr.querySelector('.pkm-cajas').value = v.c; tr.querySelector('.pkm-saldo').value = v.s; tr.querySelector('.pkm-causal').value = v.k; }
+        this._pkmRecalc(key, i);
+      });
     } catch (e) {
       cont.innerHTML = `<div style="color:var(--danger);font-size:.8rem;">Error cargando la planilla: ${WMS.esc(e.message)}</div>`;
     }
@@ -388,11 +413,19 @@ WMS_MODULES.picking = {
       const upc = this._pkmUpc(it);
       const sol = parseFloat(it.cantidad_total) || 0;
       return `<tr id="pkm-it-${g.key}-${i}">
-        <td style="font-family:monospace;font-weight:700;white-space:nowrap;">${WMS.esc(it.ubicacion_codigo || 'Sin ubicación')}</td>
+        <td style="white-space:nowrap;">
+          <input type="text" class="form-control form-control-sm pkm-ubic" value="${WMS.esc(it.ubicacion_codigo || '')}"
+                 placeholder="${it.ubicacion_codigo ? '' : 'Sin ubicación'}" autocomplete="off"
+                 style="width:150px;font-family:monospace;font-weight:700;"
+                 title="Escriba o elija la ubicación de donde se separa (solo ubicaciones con stock de esta referencia)"
+                 onfocus="WMS_MODULES.picking._pkmUbicBuscar('${g.key}',${i},this)"
+                 oninput="WMS_MODULES.picking._pkmUbicBuscar('${g.key}',${i},this)">
+        </td>
         <td style="white-space:nowrap;">${WMS.esc(it.producto_codigo || '')}</td>
         <td style="min-width:200px;">${WMS.esc(it.producto_nombre || '')}${upc > 1 ? `<div style="font-size:.68rem;color:var(--muted);">${upc} und/caja</div>` : ''}</td>
         <td style="white-space:nowrap;">${WMS.esc(it.lote || '—')}</td>
         <td style="white-space:nowrap;">${fv}</td>
+        <td class="text-center" title="Líneas de pedido consolidadas en esta referencia">${String(it.ids || '').split(',').filter(Boolean).length}</td>
         <td class="text-center"><b>${WMS.formatNum(sol)}</b> cj</td>
         <td class="text-center"><input type="number" class="form-control form-control-sm pkm-cajas" value="${sol}" min="0" step="1" style="width:72px;margin:auto;" oninput="WMS_MODULES.picking._pkmRecalc('${g.key}',${i})"></td>
         <td class="text-center"><input type="number" class="form-control form-control-sm pkm-saldo" value="0" min="0" step="1" style="width:72px;margin:auto;" oninput="WMS_MODULES.picking._pkmRecalc('${g.key}',${i})" title="Unidades sueltas"></td>
@@ -410,7 +443,7 @@ WMS_MODULES.picking = {
         <table class="erp-table" style="margin:0;">
           <thead><tr>
             <th>Ubicación</th><th>Código</th><th>Producto</th><th>Lote</th><th>F. Venc.</th>
-            <th class="text-center">Solicitado</th><th class="text-center">Cajas tomadas</th><th class="text-center">Saldo (und)</th>
+            <th class="text-center" title="Líneas de pedido sumadas">Pedidos</th><th class="text-center">Solicitado</th><th class="text-center">Cajas tomadas</th><th class="text-center">Saldo (und)</th>
             <th class="text-center">Diferencia</th><th>Causal</th><th>Resultado</th>
           </tr></thead>
           <tbody>${filas}</tbody>
@@ -451,6 +484,80 @@ WMS_MODULES.picking = {
       celda.innerHTML = `<span style="color:var(--info);">Excedente +${fmt(dif)}</span>`;
       causal.style.display = '';
     }
+  },
+
+  /** Lista dinámica de ubicaciones con stock de la referencia (GET /picking/stock-alternativo,
+   *  la misma fuente de "alternativas" de la terminal). Lista flotante (position:fixed)
+   *  para que ninguna tabla con scroll la recorte. */
+  async _pkmUbicBuscar(key, i, input) {
+    const it = (this._pkmItems[key] || [])[i];
+    if (!it) return;
+    this._pkmUbicCache = this._pkmUbicCache || {};
+    if (!this._pkmUbicCache[it.producto_id]) {
+      try {
+        const r = await API.get('/picking/stock-alternativo?producto_id=' + it.producto_id);
+        this._pkmUbicCache[it.producto_id] = Array.isArray(r.data) ? r.data : (Array.isArray(r) ? r : []);
+      } catch (e) { this._pkmUbicCache[it.producto_id] = []; }
+    }
+    const q = (input.value || '').trim().toUpperCase();
+    const actual = (it.ubicacion_codigo || '').toUpperCase();
+    const opciones = this._pkmUbicCache[it.producto_id].filter(o => !q || q === actual || String(o.ubicacion_codigo || '').toUpperCase().includes(q));
+    let dd = document.getElementById('pkm-ubic-dd');
+    if (!dd) {
+      dd = document.createElement('div'); dd.id = 'pkm-ubic-dd';
+      dd.style.cssText = 'position:fixed;z-index:1600;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-lg);max-height:260px;overflow-y:auto;min-width:320px;';
+      document.body.appendChild(dd);
+      document.addEventListener('mousedown', e => { if (!e.target.closest('#pkm-ubic-dd') && !e.target.classList.contains('pkm-ubic')) dd.style.display = 'none'; });
+    }
+    dd.innerHTML = opciones.length ? opciones.map((o, k) => `
+      <div data-k="${k}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border-light);font-size:12px;${String(o.ubicacion_codigo).toUpperCase() === actual ? 'background:var(--info-bg);' : ''}"
+           onmouseover="this.style.background='var(--btn-neutral)'" onmouseout="this.style.background='${String(o.ubicacion_codigo).toUpperCase() === actual ? 'var(--info-bg)' : ''}'">
+        <div style="font-family:monospace;font-weight:700;">${WMS.esc(o.ubicacion_codigo || '-')} ${String(o.ubicacion_codigo).toUpperCase() === actual ? '<span style="font-family:inherit;font-weight:600;color:var(--accent);font-size:10px;">ACTUAL</span>' : ''}</div>
+        <div style="color:var(--muted);font-size:11px;">Disponible: <b>${WMS.formatNum(o.disponible)}</b> und · Lote: ${WMS.esc(o.lote || '—')} · Vence: ${o.fecha_vencimiento ? WMS.formatDate(o.fecha_vencimiento) : '—'}</div>
+      </div>`).join('')
+      : '<div style="padding:10px 12px;color:var(--muted);font-size:12px;">No hay otras ubicaciones con stock de esta referencia.</div>';
+    dd.querySelectorAll('[data-k]').forEach(el => el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      dd.style.display = 'none';
+      const o = opciones[parseInt(el.dataset.k)];
+      if (o && String(o.ubicacion_codigo).toUpperCase() !== actual) this._pkmUbicCambiar(key, i, o);
+      else input.value = it.ubicacion_codigo || '';
+    }));
+    const r = input.getBoundingClientRect();
+    dd.style.display = 'block';
+    dd.style.left = Math.min(r.left, innerWidth - 340) + 'px';
+    dd.style.top = (r.bottom + 260 > innerHeight ? Math.max(8, r.top - Math.min(260, dd.scrollHeight) - 4) : r.bottom + 2) + 'px';
+  },
+
+  /** Cambia la ubicación de la referencia con POST /picking/reasignar-ubicacion
+   *  (igual que la terminal). Si no es la ubicación FEFO, el servidor exige causal FIFO. */
+  async _pkmUbicCambiar(key, i, o) {
+    const it = (this._pkmItems[key] || [])[i];
+    if (!it) return;
+    const body = {
+      linea_ids: String(it.ids).split(',').map(Number).filter(Boolean),
+      ubicacion_id: o.ubicacion_id, lote: o.lote || null, fecha_vencimiento: o.fecha_vencimiento || null,
+    };
+    try {
+      let r = await API.post('/picking/reasignar-ubicacion', body);
+      if (r && r.status === 'needs_causal_fifo') {
+        const opts = (r.causales || []).map(c => `<option value="${c.id}">${WMS.esc(c.nombre)}</option>`).join('');
+        const { value: causal, isConfirmed } = await Swal.fire({
+          title: 'Causal FIFO requerida',
+          html: `<p style="font-size:.85rem;">${WMS.esc(r.message || 'La ubicación elegida no es la primera por vencimiento (FEFO).')}</p>
+                 <select id="pkm-causal-fifo" class="swal2-select form-control" style="width:100%;margin:8px 0 0;"><option value="">Causal *</option>${opts}</select>`,
+          icon: 'warning', showCancelButton: true, confirmButtonText: 'Cambiar ubicación', cancelButtonText: 'Cancelar',
+          preConfirm: () => { const v = document.getElementById('pkm-causal-fifo')?.value; if (!v) { Swal.showValidationMessage('Elija una causal'); return false; } return v; },
+        });
+        if (!isConfirmed) { this._pkmCargarItems(key, true); return; }
+        r = await API.post('/picking/reasignar-ubicacion', { ...body, causal_fifo_id: causal });
+      }
+      WMS.toast('success', `Ubicación cambiada a ${o.ubicacion_codigo}`);
+    } catch (e) {
+      WMS.toast('error', e.message || 'No se pudo cambiar la ubicación');
+    }
+    this._pkmUbicCache = {};
+    await this._pkmCargarItems(key, true);
   },
 
   _pkmImprimir() {

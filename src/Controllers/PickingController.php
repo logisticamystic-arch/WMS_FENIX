@@ -5273,15 +5273,23 @@ class PickingController extends BaseController
                     ->whereIn('producto_id', $sinUbic)
                     ->where('estado', 'Disponible')
                     ->where('cantidad', '>', 0)
-                    ->with('ubicacion:id,codigo');
+                    ->with('ubicacion:id,codigo,pasillo,modulo,nivel,posicion');
                 $stockMap = FefoEngine::ordenVencimiento($stockMapQ, 'fecha_vencimiento', $modoRotacionPlanilla)
                     ->get()
                     ->groupBy('producto_id')
-                    ->map(fn($g) => $g->first()->ubicacion?->codigo);
+                    ->map(fn($g) => $g->first()->ubicacion);
 
+                // 2026-10-05: además del código se copian pasillo/módulo/nivel/posición;
+                // sin ellos la línea de respaldo quedaba al FINAL de la ruta física
+                // (p.ej. SECO/01-03-06 después de SECO/03-03-03) en móvil y picking manual.
                 $detalles->transform(function ($it) use ($stockMap) {
                     if (!$it->ubicacion_id) {
-                        $it->ubicacion_codigo = $stockMap->get($it->producto_id);
+                        $u = $stockMap->get($it->producto_id);
+                        $it->ubicacion_codigo   = $u?->codigo;
+                        $it->ubicacion_pasillo  = $u?->pasillo;
+                        $it->ubicacion_modulo   = $u?->modulo;
+                        $it->ubicacion_nivel    = $u?->nivel;
+                        $it->ubicacion_posicion = $u?->posicion;
                     }
                     return $it;
                 });
