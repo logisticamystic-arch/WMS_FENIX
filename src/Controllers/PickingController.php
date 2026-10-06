@@ -2089,11 +2089,14 @@ class PickingController extends BaseController
             ->when($qp['ambiente'] ?? null, fn($q, $v) => $q->whereRaw('LOWER(pd.ambiente) = LOWER(?)', [$v]))
             ->when($qp['sucursal_entrega'] ?? null, fn($q, $v) => $q->where('o.sucursal_entrega', 'ILIKE', "%{$v}%"))
             ->when($qp['orden_picking_id'] ?? null, fn($q, $v) => $q->where('o.id', (int)$v))
+            // Picking Manual por PLANILLA consolidada (2026-10-05)
+            ->when($qp['planilla_numero'] ?? null, fn($q, $v) => $q->where('o.planilla_numero', $v))
             ->select([
                 'pd.id', 'pd.orden_picking_id', 'pd.producto_id', 'pd.ubicacion_id',
                 'pd.cantidad_solicitada', 'pd.lote', 'pd.fecha_vencimiento', 'pd.ambiente', 'pd.auxiliar_id',
                 'p.codigo_interno', 'p.nombre', 'p.unidades_caja', 'p.factor_udm',
                 'u.codigo as ubicacion_codigo',
+                'u.pasillo as ubic_pasillo', 'u.modulo as ubic_modulo', 'u.nivel as ubic_nivel', 'u.posicion as ubic_posicion',
                 'aux.nombre as auxiliar_nombre',
                 'o.numero_orden', 'o.numero_factura', 'o.planilla_numero', 'o.sucursal_entrega',
             ])
@@ -2214,29 +2217,54 @@ class PickingController extends BaseController
         $productosSinUbicacion = $rows->whereNull('ubicacion_id')->pluck('producto_id')->unique()->values()->toArray();
         $sugerencias = $this->_sugerirUbicacionesFefo($empresaId, $user->sucursal_id, $productosSinUbicacion);
 
-        // Una sección por auxiliar dentro del mismo documento (igual patrón que
-        // remisionAmbientesHtml, pero agrupando por auxiliar en vez de ambiente).
-        $porAuxiliar = [];
+        // 2026-10-05 (pedido de Camilo): la hoja sale CONSOLIDADA (producto +
+        // ubicación + lote + vencimiento, sumando todos los pedidos de la planilla),
+        // una sección por AMBIENTE (solo los del filtro) y cada sección en el orden
+        // de RUTA FÍSICA (pasillo → módulo → nivel de abajo hacia arriba → posición),
+        // igual que la terminal. Antes: una sección por auxiliar, por nombre.
+        $auxNombres = $rows->pluck('auxiliar_nombre')->filter()->unique()->sort()->implode(', ') ?: 'Sin asignar';
+        $consol = [];
         foreach ($rows as $d) {
-            $aux = $d->auxiliar_nombre ?: 'Sin asignar';
-            $porAuxiliar[$aux][] = $d;
+            $ubicId = $d->ubicacion_id;
+            $ubicCod = $d->ubicacion_codigo;
+            if (!$ubicId && isset($sugerencias[$d->producto_id])) { $ubicCod = $sugerencias[$d->producto_id]['ubicacion_codigo']; }
+            $amb = ucfirst(strtolower($d->ambiente ?: 'Seco'));
+            $k = $amb . '|' . $d->producto_id . '|' . ($ubicId ?: 's' . $ubicCod) . '|' . ($d->lote ?? '') . '|' . ($d->fecha_vencimiento ?? '');
+            if (!isset($consol[$k])) {
+                $c = clone $d;
+                $c->cantidad_solicitada = 0;
+                $c->_amb = $amb;
+                $c->_sugerida = !$ubicId && $ubicCod;
+                $c->ubicacion_codigo = $ubicCod;
+                $c->_pedidos = [];
+                $consol[$k] = $c;
+            }
+            $consol[$k]->cantidad_solicitada += (float)$d->cantidad_solicitada;
+            $consol[$k]->_pedidos[trim($d->numero_factura ?: $d->numero_orden)] = true;
         }
-        ksort($porAuxiliar, SORT_NATURAL);
-        $auxNombres = implode(', ', array_keys($porAuxiliar));
+        $porAmbiente = [];
+        foreach ($consol as $c) $porAmbiente[$c->_amb][] = $c;
+        $ordenAmb = ['Seco' => 1, 'Refrigerado' => 2, 'Congelado' => 3];
+        uksort($porAmbiente, fn($a, $b) => ($ordenAmb[$a] ?? 9) <=> ($ordenAmb[$b] ?? 9) ?: strcmp($a, $b));
+        foreach ($porAmbiente as &$lista) {
+            usort($lista, function ($a, $b) {
+                $sa = empty($a->ubicacion_codigo); $sb = empty($b->ubicacion_codigo);
+                if ($sa !== $sb) return $sa ? 1 : -1;                 // sin ubicación al final
+                $cmp = FefoEngine::compararRutaFisica($a, $b, 'ubic_pasillo', 'ubic_modulo', 'ubic_nivel', 'ubic_posicion');
+                return $cmp ?: strcmp((string)$a->ubicacion_codigo, (string)$b->ubicacion_codigo);
+            });
+        }
+        unset($lista);
 
         $bloques = '';
-        foreach ($porAuxiliar as $aux => $items) {
+        foreach ($porAmbiente as $aux => $items) {
             $filas = '';
             foreach ($items as $it) {
                 $fv = !empty($it->fecha_vencimiento) ? date('d/m/Y', strtotime($it->fecha_vencimiento)) : '-';
                 $ubicCodigo = $it->ubicacion_codigo;
-                $ubicHtml   = htmlspecialchars($ubicCodigo ?? '');
-                if (!$ubicCodigo) {
-                    $sugerida = $sugerencias[$it->producto_id] ?? null;
-                    $ubicHtml = $sugerida
-                        ? htmlspecialchars($sugerida['ubicacion_codigo'] ?? '') . " <span style='font-weight:400;font-style:italic;color:#64748b;'>(FEFO sugerida)</span>"
-                        : "<span style='color:#b91c1c'>SIN STOCK</span>";
-                }
+                $ubicHtml   = $ubicCodigo
+                    ? htmlspecialchars($ubicCodigo) . (!empty($it->_sugerida) ? " <span style='font-weight:400;font-style:italic;color:#64748b;'>(FEFO sugerida)</span>" : '')
+                    : "<span style='color:#b91c1c'>SIN STOCK</span>";
                 $filas .= "<tr>"
                     . "<td style='white-space:nowrap'>" . htmlspecialchars($it->codigo_interno ?? '') . "</td>"
                     . "<td>" . htmlspecialchars($it->nombre ?? '') . "</td>"
@@ -2247,7 +2275,7 @@ class PickingController extends BaseController
                     . "</tr>";
             }
             $bloques .= "<div class='ambiente-block'>"
-                . "<div class='ambiente-header'>" . htmlspecialchars($aux) . " &mdash; " . count($items) . " referencia(s)</div>"
+                . "<div class='ambiente-header'>AMBIENTE " . htmlspecialchars(strtoupper($aux)) . " &mdash; " . count($items) . " referencia(s) &mdash; orden de ruta</div>"
                 . "<table style='table-layout:fixed;width:100%;'><colgroup>"
                 . "<col style='width:12%;'><col style='width:33%;'><col style='width:15%;'><col style='width:12%;'><col style='width:13%;'><col style='width:15%;'>"
                 . "</colgroup><thead><tr>"
@@ -2268,6 +2296,8 @@ class PickingController extends BaseController
             . "</div>"
             . "<div class='info-grid'>"
             . "  <span class='campo'><span class='lbl'>Sucursal:</span>" . htmlspecialchars($sucursal) . "</span>"
+            . "  <span class='campo'><span class='lbl'>Planilla:</span>" . htmlspecialchars($rows->pluck('planilla_numero')->filter()->unique()->implode(', ') ?: '-') . "</span>"
+            . "  <span class='campo'><span class='lbl'>Ambiente:</span>" . htmlspecialchars(!empty($qp['ambiente']) ? ucfirst(strtolower($qp['ambiente'])) : 'Todos') . "</span>"
             . "  <span class='campo'><span class='lbl'>Auxiliar(es):</span>" . htmlspecialchars($auxNombres) . "</span>"
             . "  <span class='campo'><span class='lbl'>Total referencias:</span>{$rows->count()}</span>"
             . "  <span class='campo'><span class='lbl'>Fecha:</span>{$fechaHoy}</span>"

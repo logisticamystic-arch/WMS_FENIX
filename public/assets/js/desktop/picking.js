@@ -72,70 +72,91 @@ WMS_MODULES.picking = {
   // o el internet fallan, y luego alguien con acceso a escritorio digita el
   // resultado real aquí para que el sistema siga su flujo normal.
   _pkmData: [],
+  _pkmItems: {},      // key planilla|ambiente → líneas consolidadas (mismas que ve la terminal)
+  _pkmCausales: null,
 
+  // ── PICKING MANUAL (2026-10-05) ──────────────────────────────────────────
+  // Contingencia sin terminal, ahora POR PLANILLA CONSOLIDADA Y AMBIENTE (ya no
+  // por pedido) y aplicando EXACTAMENTE los mismos endpoints que el móvil:
+  //   GET  /picking/planilla/{n}               (líneas consolidadas en orden de ruta)
+  //   POST /picking/confirmar-consolidado      (descuento FEFO + kardex + novedad)
+  //   POST /picking/marcar-agotado-consolidado (agotado con causal)
+  //   POST /picking/planilla/{n}/completar     (cierra la planilla)
+  // Así la certificación/remisión/liberación quedan igual que si se hubiera
+  // separado con la terminal (lote, vencimiento y sección de agotados).
   async show_manual() {
     WMS.setBreadcrumb('picking', 'Picking Manual');
     WMS.setToolbar(`
       <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._pkmBuscar()">
         <i class="fa-solid fa-sync"></i> Actualizar
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._pkmImprimir()" title="Imprime solo lo que está filtrado (p.ej. un solo ambiente)">
+        <i class="fa-solid fa-print"></i> Imprimir hoja filtrada
       </button>`);
 
+    const hoy = WMS.getToday();
     WMS.setContent(`
       <div class="px-20 py-16">
         <div class="card" style="padding:14px 16px;margin-bottom:14px;">
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
             <div>
-              <label class="form-label" style="display:block;margin-bottom:3px;">FECHA DESDE</label>
-              <input type="date" id="pkm-f-desde" class="form-control form-control-sm">
+              <label class="form-label">Fecha desde</label>
+              <input type="date" id="pkm-f-desde" class="form-control form-control-sm" value="${hoy}">
             </div>
             <div>
-              <label class="form-label" style="display:block;margin-bottom:3px;">FECHA HASTA</label>
-              <input type="date" id="pkm-f-hasta" class="form-control form-control-sm">
+              <label class="form-label">Fecha hasta</label>
+              <input type="date" id="pkm-f-hasta" class="form-control form-control-sm" value="${hoy}">
             </div>
             <div>
-              <label class="form-label" style="display:block;margin-bottom:3px;">AUXILIAR</label>
+              <label class="form-label">Auxiliar</label>
               <select id="pkm-f-aux" class="form-control form-control-sm" style="min-width:160px;"><option value="">Todos</option></select>
             </div>
             <div>
-              <label class="form-label" style="display:block;margin-bottom:3px;">AMBIENTE</label>
-              <select id="pkm-f-amb" class="form-control form-control-sm">
+              <label class="form-label">Ambiente</label>
+              <select id="pkm-f-amb" class="form-control form-control-sm" onchange="WMS_MODULES.picking._pkmBuscar()">
                 <option value="">Todos</option>
                 <option value="Seco">Seco</option>
                 <option value="Refrigerado">Refrigerado</option>
                 <option value="Congelado">Congelado</option>
               </select>
             </div>
+            <div style="min-width:220px;">
+              <label class="form-label">Sucursal / cliente</label>
+              <input type="text" id="pkm-f-suc" class="form-control form-control-sm" list="pkm-suc-list"
+                     placeholder="Escriba o elija…" autocomplete="off" onchange="WMS_MODULES.picking._pkmBuscar()">
+              <datalist id="pkm-suc-list"></datalist>
+            </div>
             <div>
-              <label class="form-label" style="display:block;margin-bottom:3px;">SUCURSAL / CLIENTE</label>
-              <input type="text" id="pkm-f-suc" class="form-control form-control-sm" placeholder="Buscar...">
+              <label class="form-label">Planilla</label>
+              <input type="text" id="pkm-f-plan" class="form-control form-control-sm" list="pkm-plan-list" placeholder="Todas" autocomplete="off" style="width:150px;"
+                     onchange="WMS_MODULES.picking._pkmBuscar()">
+              <datalist id="pkm-plan-list"></datalist>
             </div>
             <button class="btn btn-primary btn-sm" onclick="WMS_MODULES.picking._pkmBuscar()">
               <i class="fa-solid fa-magnifying-glass"></i> Buscar
             </button>
+            <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._pkmAbrirPestana()" title="Abre la planilla indicada sola, en otra pestaña, para editar y cerrar">
+              <i class="fa-solid fa-up-right-from-square"></i> Abrir planilla en pestaña
+            </button>
           </div>
         </div>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+        <div style="margin-bottom:10px;">
           <span id="pkm-resumen" style="font-size:.8rem;color:var(--muted);font-weight:600;">Use los filtros y pulse Buscar</span>
-          <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._pkmImprimir()">
-            <i class="fa-solid fa-print"></i> Imprimir Hoja (todos los pedidos filtrados)
-          </button>
         </div>
 
-        <!-- Agrupado por PEDIDO — mismo patrón que Picking > Pedidos: una fila
-             resumen por pedido con chevron para desglosar sus líneas, y las
-             acciones (Imprimir / Aplicar Picking) actúan sobre ESE pedido. -->
+        <!-- Una fila por PLANILLA + AMBIENTE (consolidado de todos sus pedidos) -->
         <div class="table-container">
           <table class="erp-table" id="pkm-tabla">
             <thead><tr>
               <th style="width:30px;"></th>
-              <th>Pedido</th>
               <th>Planilla</th>
-              <th>Sucursal / Cliente</th>
+              <th>Ambiente</th>
+              <th>Sucursal(es)</th>
               <th>Auxiliar(es)</th>
+              <th class="text-center">Pedidos</th>
               <th class="text-center">Referencias</th>
-              <th>Ambiente(s)</th>
-              <th style="width:70px;">Imprimir</th>
+              <th>Acciones</th>
             </tr></thead>
             <tbody id="pkm-tbody">
               <tr><td colspan="8" class="table-empty">Use los filtros y pulse Buscar</td></tr>
@@ -145,6 +166,46 @@ WMS_MODULES.picking = {
       </div>`);
 
     await this._pkmPoblarAuxiliares();
+    this._pkmCargarSucursales();
+    // Pestaña exclusiva de UNA planilla (?mod=picking&sub=manual&standalone=1&planilla=…)
+    const foco = new URLSearchParams(location.search).get('planilla');
+    if (foco) {
+      this._pkmFoco = foco;
+      document.getElementById('pkm-f-plan').value = foco;
+      document.getElementById('pkm-f-desde').value = '';   // la planilla puede ser de otro día
+      document.getElementById('pkm-f-hasta').value = '';
+      document.title = `${foco} — Picking manual`;
+      WMS.setToolbar(`
+        <span style="font-weight:700;color:var(--text);margin-right:8px;"><i class="fa-solid fa-file-lines" style="color:var(--accent);"></i> Edición exclusiva: ${WMS.esc(foco)}</span>
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._pkmBuscar()"><i class="fa-solid fa-sync"></i> Actualizar</button>
+        <button class="btn btn-secondary btn-sm" onclick="WMS_MODULES.picking._pkmImprimir()"><i class="fa-solid fa-print"></i> Imprimir hoja</button>
+        <button class="btn btn-success btn-sm" onclick="WMS_MODULES.picking._pkmCerrarPlanilla('${WMS.esc(foco).replace(/'/g, "\'")}')"><i class="fa-solid fa-lock"></i> Cerrar planilla</button>`);
+    }
+    await this._pkmBuscar();
+  },
+
+  /** Abre la planilla SOLA en otra pestaña del navegador (edición y cierre). */
+  _pkmAbrirPestana(planilla) {
+    const p = (planilla || document.getElementById('pkm-f-plan')?.value || '').trim();
+    if (!p) { WMS.toast('warning', 'Escriba o elija una planilla'); return; }
+    window.open(`index.html?mod=picking&sub=manual&standalone=1&planilla=${encodeURIComponent(p)}`, '_blank');
+  },
+
+  /** Cierre explícito de la planilla — mismo endpoint que la terminal. */
+  async _pkmCerrarPlanilla(planilla) {
+    const { isConfirmed } = await Swal.fire({
+      title: `¿Cerrar la planilla ${WMS.esc(planilla)}?`, icon: 'question', showCancelButton: true,
+      text: 'Queda Completada en Picking y lista para certificar. Si aún hay referencias sin separar, el sistema lo indicará.',
+      confirmButtonText: 'Cerrar planilla', cancelButtonText: 'Cancelar',
+    });
+    if (!isConfirmed) return;
+    try {
+      await API.post(`/picking/planilla/${encodeURIComponent(planilla)}/completar`, {});
+      Swal.fire({ icon: 'success', title: `Planilla ${planilla} cerrada`, text: 'Quedó Completada y lista para certificar.' });
+      this._pkmBuscar();
+    } catch (e) {
+      Swal.fire({ icon: 'warning', title: 'No se pudo cerrar', text: e.message });
+    }
   },
 
   async _pkmPoblarAuxiliares() {
@@ -157,175 +218,239 @@ WMS_MODULES.picking = {
     } catch (e) { /* filtro opcional, si falla se sigue sin lista */ }
   },
 
-  _pkmFiltrosQS() {
+  /** Sucursal seleccionable dinámicamente: lista de clientes (+ las que tienen
+   *  pendientes) en un <datalist> — se puede escribir y elegir. */
+  async _pkmCargarSucursales() {
+    try {
+      const r = await API.get('/param/clientes');
+      const list = Array.isArray(r.data) ? r.data : (r.data?.data || []);
+      this._pkmSucMaestro = list.map(c => c.razon_social || c.nombre).filter(Boolean);
+      this._pkmPintarSucursales();
+    } catch (e) { /* opcional */ }
+  },
+
+  _pkmPintarSucursales() {
+    const dl = document.getElementById('pkm-suc-list');
+    if (!dl) return;
+    const pend = [...new Set((this._pkmData || []).map(d => d.sucursal_entrega).filter(Boolean))].sort();
+    const resto = (this._pkmSucMaestro || []).filter(n => !pend.includes(n)).sort();
+    dl.innerHTML = pend.map(n => `<option value="${WMS.esc(n)}">con pendientes</option>`).join('')
+                 + resto.map(n => `<option value="${WMS.esc(n)}"></option>`).join('');
+  },
+
+  _pkmFiltrosQS(extra = {}) {
     const params = new URLSearchParams();
-    const fd  = document.getElementById('pkm-f-desde')?.value;
-    const fh  = document.getElementById('pkm-f-hasta')?.value;
-    const aux = document.getElementById('pkm-f-aux')?.value;
-    const amb = document.getElementById('pkm-f-amb')?.value;
-    const suc = document.getElementById('pkm-f-suc')?.value;
-    if (fd)  params.append('fecha_inicio', fd);
-    if (fh)  params.append('fecha_fin', fh);
-    if (aux) params.append('auxiliar_id', aux);
-    if (amb) params.append('ambiente', amb);
-    if (suc) params.append('sucursal_entrega', suc);
+    const v = id => (document.getElementById(id)?.value || '').trim();
+    if (v('pkm-f-desde')) params.append('fecha_inicio', v('pkm-f-desde'));
+    if (v('pkm-f-hasta')) params.append('fecha_fin', v('pkm-f-hasta'));
+    if (v('pkm-f-aux'))   params.append('auxiliar_id', v('pkm-f-aux'));
+    if (v('pkm-f-amb'))   params.append('ambiente', v('pkm-f-amb'));
+    if (v('pkm-f-suc'))   params.append('sucursal_entrega', v('pkm-f-suc'));
+    if (v('pkm-f-plan'))  params.append('planilla_numero', v('pkm-f-plan'));
+    Object.entries(extra).forEach(([k, val]) => { params.delete(k); if (val) params.append(k, val); });
     return params.toString();
   },
 
   async _pkmBuscar() {
-    // OJO: WMS.spinner() reemplaza TODO #main-content (no solo la tabla) —
-    // usarlo aquí borraría los filtros y el propio #pkm-tbody, dejando la
-    // pantalla en el spinner para siempre porque _pkmRenderTabla() ya no
-    // encontraría dónde pintar los resultados. El indicador de carga va
-    // dentro del tbody, sin tocar el resto del layout.
+    // OJO: WMS.spinner() reemplaza TODO #main-content — el indicador va en el tbody.
     const tbody = document.getElementById('pkm-tbody');
     if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="table-empty"><i class="fa-solid fa-spinner fa-spin"></i> Buscando...</td></tr>';
     try {
       const qs = this._pkmFiltrosQS();
       const r = await API.get('/picking/manual/lineas' + (qs ? '?' + qs : ''));
       this._pkmData = Array.isArray(r.data) ? r.data : (r.data?.data || []);
-      this._pkmRenderPedidos();
+      this._pkmItems = {};
+      this._pkmRenderPlanillas();
+      if (this._pkmFoco) (this._pkmGrupos || []).forEach(g => this._pkmToggle(g.key, true));
+      this._pkmPintarSucursales();
+      const dlp = document.getElementById('pkm-plan-list');
+      if (dlp) dlp.innerHTML = [...new Set(this._pkmData.map(d => d.planilla_numero).filter(Boolean))].sort()
+        .map(n => `<option value="${WMS.esc(n)}"></option>`).join('');
     } catch (e) {
       WMS.toast('error', 'Error al buscar líneas: ' + e.message);
       if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="table-empty">Error al buscar. Intente de nuevo.</td></tr>';
     }
   },
 
-  /** Agrupa las líneas planas del backend por pedido (orden_picking_id) —
-   *  mismo espíritu que _agruparPorPlanilla(), pero la unidad aquí es el
-   *  pedido individual, no la planilla completa. */
-  _pkmAgruparPorPedido(data) {
-    const grupos = {};
-    data.forEach((d, idx) => {
-      const key = 'op-' + d.orden_picking_id;
-      if (!grupos[key]) {
-        grupos[key] = {
-          key,
-          orden_picking_id: d.orden_picking_id,
-          pedido: d.pedido,
-          planilla_numero: d.planilla_numero,
-          sucursal_entrega: d.sucursal_entrega,
-          auxiliares: new Set(),
-          ambientes: new Set(),
-          lineas: [],
-        };
-      }
-      const g = grupos[key];
-      if (d.auxiliar_nombre) g.auxiliares.add(d.auxiliar_nombre);
-      if (d.ambiente) g.ambientes.add(d.ambiente);
-      g.lineas.push({ ...d, _idx: idx });
-    });
-    return Object.values(grupos).sort((a, b) => String(a.pedido || '').localeCompare(String(b.pedido || '')));
+  _pkmNormAmb(a) {
+    const s = String(a || 'Seco').toLowerCase();
+    return s.includes('refri') ? 'Refrigerado' : s.includes('congel') ? 'Congelado' : s.includes('seco') ? 'Seco' : (a || 'Seco');
   },
 
-  _pkmRenderPedidos() {
+  /** Agrupa las líneas pendientes por PLANILLA + AMBIENTE. */
+  _pkmAgruparPorPlanillaAmbiente(data) {
+    const grupos = {};
+    data.forEach(d => {
+      const plan = d.planilla_numero || d.pedido;
+      const amb  = this._pkmNormAmb(d.ambiente);
+      const key  = (plan + '|' + amb).replace(/[^a-zA-Z0-9|]/g, '_');
+      if (!grupos[key]) grupos[key] = { key, planilla: plan, ambiente: amb, sucursales: new Set(), auxiliares: new Set(), pedidos: new Set(), productos: new Set() };
+      const g = grupos[key];
+      if (d.sucursal_entrega) g.sucursales.add(d.sucursal_entrega);
+      if (d.auxiliar_nombre) g.auxiliares.add(d.auxiliar_nombre);
+      g.pedidos.add(d.pedido);
+      g.productos.add(d.producto_id);
+    });
+    const ordAmb = { Seco: 1, Refrigerado: 2, Congelado: 3 };
+    return Object.values(grupos).sort((a, b) => String(a.planilla).localeCompare(String(b.planilla), 'es', { numeric: true }) || (ordAmb[a.ambiente] || 9) - (ordAmb[b.ambiente] || 9));
+  },
+
+  _pkmRenderPlanillas() {
     const tbody   = document.getElementById('pkm-tbody');
     const resumen = document.getElementById('pkm-resumen');
     if (!tbody) return;
-    const data   = this._pkmData || [];
-    const grupos = this._pkmAgruparPorPedido(data);
+    const grupos = this._pkmAgruparPorPlanillaAmbiente(this._pkmData || []);
     this._pkmGrupos = grupos;
-
-    if (resumen) resumen.textContent = data.length
-      ? `${grupos.length} pedido(s) · ${data.length} línea(s) pendiente(s) de separar`
+    if (resumen) resumen.textContent = grupos.length
+      ? `${grupos.length} planilla(s)/ambiente · ${this._pkmData.length} línea(s) de pedido pendientes de separar`
       : 'Sin líneas pendientes para estos filtros';
+    if (!grupos.length) { tbody.innerHTML = '<tr><td colspan="8" class="table-empty">No hay líneas pendientes para estos filtros</td></tr>'; return; }
 
-    if (!grupos.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="table-empty">No hay líneas pendientes para estos filtros</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = grupos.map(g => {
-      const auxTxt = [...g.auxiliares].join(', ') || '-';
-      const ambTxt = [...g.ambientes].join(', ') || '-';
-      return `
-      <tr data-pedido-key="${g.key}">
+    const icoAmb = { Seco: 'fa-sun', Refrigerado: 'fa-snowflake', Congelado: 'fa-icicles' };
+    tbody.innerHTML = grupos.map(g => `
+      <tr data-pkm-key="${g.key}">
         <td style="text-align:center;">
-          <button class="btn btn-xs btn-light" onclick="WMS_MODULES.picking._pkmToggle('${g.key}')" title="Ver detalle">
+          <button class="btn btn-xs btn-light" onclick="WMS_MODULES.picking._pkmToggle('${g.key}')" title="Ver y separar">
             <i class="fa-solid fa-chevron-right" id="pkm-icon-${g.key}" style="transition:.2s"></i>
           </button>
         </td>
-        <td><span class="badge badge-info" style="font-weight:700;">${WMS.esc(g.pedido || '')}</span></td>
-        <td>${WMS.esc(g.planilla_numero || '-')}</td>
-        <td>${WMS.esc(g.sucursal_entrega || '-')}</td>
-        <td style="font-size:.78rem;">${WMS.esc(auxTxt)}</td>
-        <td class="text-center"><b>${g.lineas.length}</b></td>
-        <td style="font-size:.72rem;">${WMS.esc(ambTxt)}</td>
-        <td style="text-align:center;">
-          <button class="btn btn-xs btn-secondary" onclick="WMS_MODULES.picking._pkmImprimirPedido(${g.orden_picking_id})" title="Imprimir hoja de este pedido">
-            <i class="fa-solid fa-print"></i>
+        <td><span class="badge badge-info" style="font-weight:700;cursor:pointer;" onclick="WMS_MODULES.picking._pkmToggle('${g.key}')">#${WMS.esc(g.planilla)}</span></td>
+        <td><i class="fa-solid ${icoAmb[g.ambiente] || 'fa-box'}" style="color:var(--muted);margin-right:4px;"></i>${WMS.esc(g.ambiente)}</td>
+        <td style="font-size:.78rem;">${WMS.esc([...g.sucursales].join(', ') || '-')}</td>
+        <td style="font-size:.78rem;">${WMS.esc([...g.auxiliares].join(', ') || 'Sin asignar')}</td>
+        <td class="text-center">${g.pedidos.size}</td>
+        <td class="text-center"><b>${g.productos.size}</b></td>
+        <td>
+          <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.picking._pkmImprimirGrupo('${g.key}')" title="Hoja de separación de esta planilla y ambiente, en orden de ruta">
+            <i class="fa-solid fa-print"></i> Imprimir hoja
+          </button>
+          <button class="btn btn-sm btn-primary" onclick="WMS_MODULES.picking._pkmToggle('${g.key}', true)">
+            <i class="fa-solid fa-hand"></i> Separar
+          </button>
+          <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.picking._pkmAbrirPestana('${WMS.esc(g.planilla).replace(/'/g, "\'")}')" title="Abrir esta planilla sola en otra pestaña">
+            <i class="fa-solid fa-up-right-from-square"></i> Abrir en pestaña
           </button>
         </td>
       </tr>
       <tr id="pkm-sub-${g.key}" style="display:none;background:var(--table-header-bg);">
-        <td colspan="8" style="padding:10px 12px 14px 42px;">
-          ${this._pkmRenderLineasPedido(g)}
-        </td>
-      </tr>`;
-    }).join('');
+        <td colspan="8" style="padding:10px 12px 14px 42px;" id="pkm-cont-${g.key}"></td>
+      </tr>`).join('');
   },
 
-  _pkmToggle(key) {
+  async _pkmToggle(key, abrir = false) {
     const row  = document.getElementById('pkm-sub-' + key);
     const icon = document.getElementById('pkm-icon-' + key);
     if (!row) return;
-    const isHidden = row.style.display === 'none';
-    row.style.display = isHidden ? 'table-row' : 'none';
-    if (icon) icon.style.transform = isHidden ? 'rotate(90deg)' : '';
+    const mostrar = abrir || row.style.display === 'none';
+    row.style.display = mostrar ? 'table-row' : 'none';
+    if (icon) icon.style.transform = mostrar ? 'rotate(90deg)' : '';
+    if (mostrar) await this._pkmCargarItems(key);
   },
 
-  /** Tabla editable de las líneas de UN pedido, con su propio botón "Aplicar
-   *  Picking" — reemplaza el botón global: la acción ahora es por pedido. */
-  _pkmRenderLineasPedido(g) {
-    const filas = g.lineas.map(d => {
-      const fv = d.fecha_vencimiento ? WMS.formatDate(d.fecha_vencimiento) : '-';
-      // La ubicación nunca queda vacía: si no venía asignada por FEFO, el
-      // backend ya sugirió aquí la ubicación real con stock disponible (ver
-      // ubicacion_sugerida) — se resalta en ámbar para que el auxiliar la
-      // confirme o la corrija si físicamente sacó de otra. Si no hay stock en
-      // ningún lado, el backend no manda código y se avisa "Sin stock".
-      const sinStock = !d.ubicacion_codigo;
-      const ubicStyle = d.ubicacion_sugerida
-        ? 'width:95px;background:var(--warn-bg);border-color:var(--warn);'
-        : 'width:95px;';
-      const ubicTitle = d.ubicacion_sugerida
-        ? 'Sugerida por FEFO (la línea aún no tiene ruta asignada) — verifique o corrija si sacó de otra ubicación'
-        : (sinStock ? 'Sin stock disponible en el sistema para este producto — verifique antes de aplicar' : '');
-      return `<tr data-idx="${d._idx}">
-        <td><input type="checkbox" class="pkm-chk" checked></td>
-        <td>${WMS.esc(d.codigo || '')}</td>
-        <td>${WMS.esc(d.nombre || '')}</td>
-        <td>
-          <input type="text" class="form-control form-control-sm pkm-ubic" value="${WMS.esc(d.ubicacion_codigo || '')}"
-                 style="${ubicStyle}" placeholder="${sinStock ? 'Sin stock' : 'Ubicación'}" title="${WMS.esc(ubicTitle)}">
-          ${d.ubicacion_sugerida ? '<div style="font-size:.62rem;color:var(--warn);font-weight:600;">FEFO sugerida</div>' : ''}
-        </td>
-        <td class="text-center">${d.cantidad_solicitada}</td>
-        <td class="text-center"><input type="number" class="form-control form-control-sm pkm-cajas" value="${d.cantidad_solicitada}" min="0" step="0.01" style="width:75px;"></td>
-        <td class="text-center"><input type="number" class="form-control form-control-sm pkm-saldo" value="0" min="0" step="0.01" style="width:75px;"></td>
-        <td class="text-center" style="white-space:nowrap;">${fv}</td>
-        <td class="pkm-resultado" style="font-size:.72rem;"></td>
+  async _pkmCausalesLista() {
+    if (this._pkmCausales) return this._pkmCausales;
+    try {
+      const r = await API.get('/causales-novedad');
+      const list = Array.isArray(r.data) ? r.data : (r.data?.data || r || []);
+      this._pkmCausales = (Array.isArray(list) ? list : []).filter(c => c.activo !== false && c.activo !== 0);
+    } catch (e) { this._pkmCausales = []; }
+    return this._pkmCausales;
+  },
+
+  /** Carga las líneas CONSOLIDADAS de la planilla (mismo endpoint que la terminal,
+   *  ya en orden de ruta física) y deja solo las del ambiente de la fila. */
+  async _pkmCargarItems(key) {
+    const g = (this._pkmGrupos || []).find(x => x.key === key);
+    const cont = document.getElementById('pkm-cont-' + key);
+    if (!g || !cont) return;
+    cont.innerHTML = '<div style="color:var(--muted);font-size:.8rem;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando líneas consolidadas…</div>';
+    try {
+      const [r] = await Promise.all([
+        API.get(`/picking/planilla/${encodeURIComponent(g.planilla)}?estado=Pendiente,EnProceso`),
+        this._pkmCausalesLista(),
+      ]);
+      const items = (Array.isArray(r.data) ? r.data : (r.data?.data || [])).filter(it => this._pkmNormAmb(it.ambiente) === g.ambiente);
+      this._pkmItems[key] = items;
+      cont.innerHTML = this._pkmRenderItems(g, items);
+      items.forEach((_, i) => this._pkmRecalc(key, i));
+    } catch (e) {
+      cont.innerHTML = `<div style="color:var(--danger);font-size:.8rem;">Error cargando la planilla: ${WMS.esc(e.message)}</div>`;
+    }
+  },
+
+  _pkmUpc(it) { return parseInt(it.unidades_caja) || 1; },
+
+  _pkmRenderItems(g, items) {
+    if (!items.length) return '<div class="table-empty">No quedan líneas pendientes de este ambiente.</div>';
+    const causalesOpts = (this._pkmCausales || []).map(c => `<option value="${c.id}">${WMS.esc(c.nombre)}</option>`).join('');
+    const filas = items.map((it, i) => {
+      const fv = it.fecha_vencimiento ? WMS.formatDate(it.fecha_vencimiento) : '—';
+      const upc = this._pkmUpc(it);
+      const sol = parseFloat(it.cantidad_total) || 0;
+      return `<tr id="pkm-it-${g.key}-${i}">
+        <td style="font-family:monospace;font-weight:700;white-space:nowrap;">${WMS.esc(it.ubicacion_codigo || 'Sin ubicación')}</td>
+        <td style="white-space:nowrap;">${WMS.esc(it.producto_codigo || '')}</td>
+        <td style="min-width:200px;">${WMS.esc(it.producto_nombre || '')}${upc > 1 ? `<div style="font-size:.68rem;color:var(--muted);">${upc} und/caja</div>` : ''}</td>
+        <td style="white-space:nowrap;">${WMS.esc(it.lote || '—')}</td>
+        <td style="white-space:nowrap;">${fv}</td>
+        <td class="text-center"><b>${WMS.formatNum(sol)}</b> cj</td>
+        <td class="text-center"><input type="number" class="form-control form-control-sm pkm-cajas" value="${sol}" min="0" step="1" style="width:72px;margin:auto;" oninput="WMS_MODULES.picking._pkmRecalc('${g.key}',${i})"></td>
+        <td class="text-center"><input type="number" class="form-control form-control-sm pkm-saldo" value="0" min="0" step="1" style="width:72px;margin:auto;" oninput="WMS_MODULES.picking._pkmRecalc('${g.key}',${i})" title="Unidades sueltas"></td>
+        <td class="text-center pkm-dif" style="white-space:nowrap;font-weight:700;"></td>
+        <td><select class="form-control form-control-sm pkm-causal" style="min-width:170px;display:none;"><option value="">Causal *</option>${causalesOpts}</select></td>
+        <td class="pkm-resultado" style="font-size:.72rem;min-width:110px;"></td>
       </tr>`;
     }).join('');
-
     return `
-      <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--surface);">
+      <div style="border:1px solid var(--border);border-radius:6px;background:var(--surface);">
+        <div style="padding:8px 12px;font-size:.78rem;color:var(--muted);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+          <span><b>Planilla #${WMS.esc(g.planilla)} · ${WMS.esc(g.ambiente)}</b> — ${items.length} referencia(s) consolidadas, en orden de ruta (pasillo → módulo → nivel de abajo hacia arriba).</span>
+          <span>Si separa menos o más de lo solicitado debe elegir la causal. Cantidad 0 = agotado.</span>
+        </div>
         <table class="erp-table" style="margin:0;">
           <thead><tr>
-            <th style="width:26px;"></th>
-            <th>Código</th><th>Producto</th><th>Ubicación</th>
-            <th class="text-center">Cajas Sol.</th><th class="text-center">Cajas Tomadas</th>
-            <th class="text-center">Saldo</th><th class="text-center">F. Venc.</th>
-            <th style="width:150px;">Resultado</th>
+            <th>Ubicación</th><th>Código</th><th>Producto</th><th>Lote</th><th>F. Venc.</th>
+            <th class="text-center">Solicitado</th><th class="text-center">Cajas tomadas</th><th class="text-center">Saldo (und)</th>
+            <th class="text-center">Diferencia</th><th>Causal</th><th>Resultado</th>
           </tr></thead>
           <tbody>${filas}</tbody>
         </table>
-        <div style="padding:8px 10px;text-align:right;border-top:1px solid var(--border);background:var(--table-header-bg);">
-          <button id="pkm-btn-aplicar-${g.key}" class="btn btn-sm btn-success"  onclick="WMS_MODULES.picking._pkmAplicarPedido('${g.key}')">
-            <i class="fa-solid fa-check-double"></i> Aplicar Picking de este pedido
+        <div style="padding:8px 10px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border);background:var(--table-header-bg);">
+          <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.picking._pkmImprimirGrupo('${g.key}')"><i class="fa-solid fa-print"></i> Imprimir hoja</button>
+          <button id="pkm-btn-aplicar-${g.key}" class="btn btn-sm btn-success" onclick="WMS_MODULES.picking._pkmAplicarGrupo('${g.key}')">
+            <i class="fa-solid fa-check-double"></i> Aplicar picking (planilla ${WMS.esc(g.planilla)} · ${WMS.esc(g.ambiente)})
           </button>
         </div>
       </div>`;
+  },
+
+  /** Diferencia en vivo vs lo solicitado; muestra/oculta la causal obligatoria. */
+  _pkmRecalc(key, i) {
+    const it = (this._pkmItems[key] || [])[i];
+    const tr = document.getElementById(`pkm-it-${key}-${i}`);
+    if (!it || !tr) return;
+    const upc   = this._pkmUpc(it);
+    const solU  = (parseFloat(it.cantidad_total) || 0) * upc;
+    const cajas = Math.max(0, parseFloat(tr.querySelector('.pkm-cajas').value) || 0);
+    const saldo = Math.max(0, parseFloat(tr.querySelector('.pkm-saldo').value) || 0);
+    const tomU  = cajas * upc + saldo;
+    const dif   = Math.round((tomU - solU) * 1000) / 1000;
+    const celda = tr.querySelector('.pkm-dif');
+    const causal = tr.querySelector('.pkm-causal');
+    const fmt = u => upc > 1 ? `${WMS.formatNum(u)} und (${WMS.formatNum(Math.round(u / upc * 100) / 100)} cj)` : `${WMS.formatNum(u)} und`;
+    if (Math.abs(dif) < 0.0005) {
+      celda.innerHTML = '<span style="color:var(--ok);">Completo</span>';
+      causal.style.display = 'none';
+    } else if (tomU <= 0) {
+      celda.innerHTML = `<span class="badge badge-danger">AGOTADO −${fmt(solU)}</span>`;
+      causal.style.display = '';
+    } else if (dif < 0) {
+      celda.innerHTML = `<span style="color:var(--danger);">Faltante −${fmt(-dif)}</span>`;
+      causal.style.display = '';
+    } else {
+      celda.innerHTML = `<span style="color:var(--info);">Excedente +${fmt(dif)}</span>`;
+      causal.style.display = '';
+    }
   },
 
   _pkmImprimir() {
@@ -333,89 +458,130 @@ WMS_MODULES.picking = {
     this._openPrint(`${API_BASE}/picking/manual/hoja` + (qs ? '?' + qs : ''), 'Picking Manual');
   },
 
-  _pkmImprimirPedido(ordenPickingId) {
-    this._openPrint(`${API_BASE}/picking/manual/hoja?orden_picking_id=${ordenPickingId}`, 'Picking Manual');
+  /** Hoja SOLO de esa planilla y ese ambiente (no todos los ambientes). */
+  _pkmImprimirGrupo(key) {
+    const g = (this._pkmGrupos || []).find(x => x.key === key);
+    if (!g) return;
+    const qs = this._pkmFiltrosQS({ planilla_numero: g.planilla, ambiente: g.ambiente, sucursal_entrega: '' });
+    this._openPrint(`${API_BASE}/picking/manual/hoja?${qs}`, 'Picking Manual');
   },
 
-  async _pkmAplicarPedido(key) {
-    const g   = (this._pkmGrupos || []).find(x => x.key === key);
-    const sub = document.getElementById('pkm-sub-' + key);
-    if (!g || !sub) return;
-
-    const filas = Array.from(sub.querySelectorAll('tr[data-idx]'));
-    if (!filas.length) { WMS.toast('warning', 'No hay líneas para aplicar'); return; }
-
-    const lineas = [];
-    const filasPorLinea = {};
-    filas.forEach(tr => {
-      const idx = parseInt(tr.dataset.idx);
-      const d = this._pkmData[idx];
-      if (!d) return;
-      const chk = tr.querySelector('.pkm-chk');
-      if (!chk?.checked) return;
-      const cajas  = parseFloat(tr.querySelector('.pkm-cajas')?.value || 0);
-      const saldo  = parseFloat(tr.querySelector('.pkm-saldo')?.value || 0);
-      const ubic   = (tr.querySelector('.pkm-ubic')?.value || '').trim();
-      if (cajas <= 0 && saldo <= 0) return;
-      lineas.push({
-        linea_id: d.linea_id,
-        cajas_tomadas: cajas,
-        saldos_tomados: saldo,
-        ubicacion_codigo: ubic,
-      });
-      filasPorLinea[d.linea_id] = tr;
+  async _pkmPedirFecha(producto) {
+    const { value, isConfirmed } = await Swal.fire({
+      title: 'Fecha de vencimiento requerida',
+      html: `<p style="font-size:.85rem;margin-bottom:10px;"><b>${WMS.esc(producto || '')}</b> controla vencimiento y la línea no tiene ubicación asignada. Indique la fecha que despacha.</p>
+             <input id="pkm-fv-manual" type="date" class="swal2-input form-control" style="margin:0;">`,
+      icon: 'warning', showCancelButton: true, confirmButtonText: 'Confirmar', cancelButtonText: 'Omitir esta línea',
+      preConfirm: () => { const v = document.getElementById('pkm-fv-manual')?.value; if (!v) { Swal.showValidationMessage('Ingrese la fecha'); return false; } return v; },
     });
+    return isConfirmed ? value : null;
+  },
 
-    if (!lineas.length) {
-      WMS.toast('warning', 'Marque al menos una línea con cantidad mayor a 0');
-      return;
+  /** Aplica la separación de UNA planilla+ambiente con los mismos endpoints que
+   *  la terminal, y cierra la planilla si ya no le quedan líneas pendientes. */
+  async _pkmAplicarGrupo(key) {
+    const g = (this._pkmGrupos || []).find(x => x.key === key);
+    const items = this._pkmItems[key] || [];
+    if (!g || !items.length) return;
+
+    // Leer y validar todo ANTES de tocar nada
+    const plan = [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]; const tr = document.getElementById(`pkm-it-${key}-${i}`);
+      if (!tr || tr.dataset.aplicado === '1') continue;
+      const upc   = this._pkmUpc(it);
+      const sol   = parseFloat(it.cantidad_total) || 0;
+      const cajas = Math.max(0, parseFloat(tr.querySelector('.pkm-cajas').value) || 0);
+      const saldo = Math.max(0, parseFloat(tr.querySelector('.pkm-saldo').value) || 0);
+      const tomU  = cajas * upc + saldo;
+      const difer = Math.abs(tomU - sol * upc) > 0.0005;
+      const causal = tr.querySelector('.pkm-causal').value;
+      if (difer && !causal) {
+        tr.querySelector('.pkm-causal').focus();
+        WMS.toast('warning', `Elija la causal de ${it.producto_nombre || 'la referencia'} (separado distinto a lo solicitado)`);
+        return;
+      }
+      // Igual que el servidor: las cajas no pueden superar lo solicitado; el excedente va como unidades sueltas
+      const cajasEnv = Math.min(cajas, sol);
+      const saldoEnv = saldo + Math.max(0, cajas - sol) * upc;
+      plan.push({ i, it, tr, tomU, cajasEnv, saldoEnv, causal: difer ? causal : null, agotado: tomU <= 0 });
     }
+    if (!plan.length) { WMS.toast('info', 'No hay líneas por aplicar'); return; }
 
+    const nAg = plan.filter(p => p.agotado).length, nDif = plan.filter(p => p.causal && !p.agotado).length;
     const { isConfirmed } = await Swal.fire({
-      title: `¿Aplicar Picking del pedido ${WMS.esc(g.pedido || '')}?`,
-      text: `Se aplicarán ${lineas.length} línea(s) al sistema — descuenta inventario real, igual que si se hubieran separado desde el móvil.`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: '<i class="fa-solid fa-check-double"></i> Aplicar',
-      cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#059669',
+      title: `¿Aplicar picking — planilla ${WMS.esc(g.planilla)} · ${WMS.esc(g.ambiente)}?`,
+      html: `<div style="text-align:left;font-size:.85rem;">
+        Se registrará igual que si se hubiera separado con la terminal (descuenta inventario, kardex, lote y vencimiento):
+        <ul style="margin:8px 0 0 18px;">
+          <li><b>${plan.length - nAg - nDif}</b> referencia(s) completas</li>
+          <li><b>${nDif}</b> con faltante/excedente (con causal)</li>
+          <li><b>${nAg}</b> agotada(s) (con causal)</li>
+        </ul></div>`,
+      icon: 'warning', showCancelButton: true, confirmButtonText: '<i class="fa-solid fa-check-double"></i> Aplicar', cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#16a34a',
     });
     if (!isConfirmed) return;
 
-    // Mismo motivo que en _pkmBuscar(): WMS.spinner() borraría toda la tabla
-    // (incluidas las filas que acabamos de leer) y filasPorLinea quedarían
-    // huérfanas del DOM. Solo se deshabilita el botón de ESTE pedido.
     const btn = document.getElementById('pkm-btn-aplicar-' + key);
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Aplicando...'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Aplicando…'; }
+    let ok = 0, err = 0;
     try {
-      const r = await API.post('/picking/manual/aplicar', { lineas });
-      const resultados = Array.isArray(r.data) ? r.data : (r.data?.data || []);
-      let nOk = 0, err = 0;
-      resultados.forEach(res => {
-        const tr = filasPorLinea[res.linea_id];
-        const celda = tr?.querySelector('.pkm-resultado');
-        if (!celda) return;
-        if (res.status === 'ok') {
-          nOk++;
-          // ubicacion_fallback: la ubicación indicada no tenía stock y el
-          // sistema tomó de otra parte de la sucursal (mismo mecanismo FEFO
-          // de siempre) — se marca en ámbar, no verde, para que quede visible
-          // que hubo una diferencia, no un error silencioso.
-          celda.innerHTML = res.ubicacion_fallback
-            ? `<span style="color:var(--warn);font-weight:700;" title="${WMS.esc(res.message || '')}"><i class="fa-solid fa-triangle-exclamation"></i> Aplicado (otra ubicación)</span>`
-            : '<span style="color:var(--ok);font-weight:700;"><i class="fa-solid fa-check"></i> Aplicado</span>';
-          tr.style.opacity = '.55';
-          tr.querySelectorAll('input').forEach(inp => inp.disabled = true);
-        } else {
+      // Igual que la terminal: marcar la planilla en proceso (hora de inicio) antes de separar
+      try { await API.post(`/picking/planilla/${encodeURIComponent(g.planilla)}/iniciar`, {}); } catch (e) { /* ya iniciada */ }
+
+      for (const p of plan) {
+        const celda = p.tr.querySelector('.pkm-resultado');
+        try {
+          if (p.agotado) {
+            await API.post('/picking/marcar-agotado-consolidado', {
+              ids: p.it.ids, causal_id: parseInt(p.causal), observacion: 'Agotado en picking manual',
+            });
+          } else {
+            const body = {
+              ids: p.it.ids, cantidad_tomada: p.tomU, cajas_tomadas: p.cajasEnv, saldos_tomados: p.saldoEnv,
+              planilla_numero: g.planilla, novedad_id: p.causal ? parseInt(p.causal) : null, confirma_parcial: true,
+            };
+            let r = await API.post('/picking/confirmar-consolidado', body);
+            if (r && r.status === 'needs_fecha_vencimiento') {
+              const fecha = await this._pkmPedirFecha(r.producto_nombre || p.it.producto_nombre);
+              if (!fecha) { celda.innerHTML = '<span style="color:var(--warn);">Omitida (sin fecha)</span>'; continue; }
+              r = await API.post('/picking/confirmar-consolidado', { ...body, fecha_vencimiento_manual: fecha });
+            }
+          }
+          ok++;
+          p.tr.dataset.aplicado = '1';
+          p.tr.style.opacity = '.55';
+          p.tr.querySelectorAll('input,select').forEach(x => x.disabled = true);
+          celda.innerHTML = `<span style="color:${p.agotado ? 'var(--danger)' : 'var(--ok)'};font-weight:700;"><i class="fa-solid fa-check"></i> ${p.agotado ? 'Agotado registrado' : 'Aplicado'}</span>`;
+        } catch (e) {
           err++;
-          celda.innerHTML = `<span style="color:var(--danger);font-weight:700;" title="${WMS.esc(res.message || '')}"><i class="fa-solid fa-triangle-exclamation"></i> ${WMS.esc(res.message || 'Error')}</span>`;
+          celda.innerHTML = `<span style="color:var(--danger);font-weight:700;" title="${WMS.esc(e.message || '')}"><i class="fa-solid fa-triangle-exclamation"></i> ${WMS.esc(e.message || 'Error')}</span>`;
         }
-      });
-      WMS.toast(err ? 'warning' : 'success', `${nOk} línea(s) aplicadas, ${err} con error`);
-    } catch (e) {
-      WMS.toast('error', 'Error al aplicar picking: ' + e.message);
+      }
+
+      // ¿Quedó la planilla completa (todos los ambientes)? → cerrarla como la terminal
+      let cerrada = false, pendientes = 0;
+      try {
+        const rp = await API.get(`/picking/planilla/${encodeURIComponent(g.planilla)}?estado=Pendiente,EnProceso`);
+        pendientes = (Array.isArray(rp.data) ? rp.data : (rp.data?.data || [])).length;
+        if (!pendientes && !err) {
+          await API.post(`/picking/planilla/${encodeURIComponent(g.planilla)}/completar`, {});
+          cerrada = true;
+        }
+      } catch (e) { WMS.toast('warning', 'Separación aplicada, pero no se pudo cerrar la planilla: ' + e.message); }
+
+      if (cerrada) {
+        Swal.fire({ icon: 'success', title: `Planilla ${g.planilla} cerrada`,
+          html: `${ok} referencia(s) aplicadas. La planilla queda <b>Completada</b> en Picking y lista para certificar.` });
+      } else {
+        WMS.toast(err ? 'warning' : 'success',
+          `${ok} referencia(s) aplicadas${err ? `, ${err} con error` : ''}.` +
+          (pendientes ? ` La planilla se cerrará cuando se separen los ${pendientes} pendiente(s) de otros ambientes.` : ''));
+      }
+      if (!err) setTimeout(() => this._pkmBuscar(), 1200);
     } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check-double"></i> Aplicar Picking de este pedido'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fa-solid fa-check-double"></i> Aplicar picking (planilla ${WMS.esc(g.planilla)} · ${WMS.esc(g.ambiente)})`; }
     }
   },
 
