@@ -1705,6 +1705,7 @@ WMS_MODULES.inventario = {
       this._personalCache = auxR.data || [];
       this._dashV2 = d;
       this._dashV2Id = id;
+      this._inv2RefCache = null;
 
       const { sesion, kpis, consistencia_rondas, necesita_tercer_conteo, ubicaciones_en_cero } = d;
       if (!sesion || !kpis) throw new Error('Respuesta incompleta del servidor');
@@ -2084,6 +2085,8 @@ WMS_MODULES.inventario = {
               .map(l => `<option value="${WMS.esc(l.codigo || '')}">${WMS.esc(l.producto || '')}</option>`).join('')}</datalist>
           </div>
           <small id="inv2-mat-count" style="color:var(--muted);white-space:nowrap;"></small>
+          <button id="inv2-mat-analisis" class="btn btn-sm btn-primary" style="display:none;white-space:nowrap"
+                  onclick="WMS_MODULES.inventario._inv2RefAnalisis(+this.dataset.prod)"><i class="fa-solid fa-chart-column"></i> Análisis de la referencia</button>
           <div style="display:flex;gap:4px;align-items:center;">
              <small style="font-weight:700;color:var(--muted);margin-right:8px;">VER:</small>
              <button class="btn btn-xs btn-outline-secondary" onclick="WMS_MODULES.inventario._filterMatDiff('all')">Todo</button>
@@ -2121,11 +2124,11 @@ WMS_MODULES.inventario = {
                 const difColor = dif === 0 ? 'var(--ok)' : (dif > 0 ? 'var(--info)' : 'var(--danger)');
                 const difTxt   = dif === 0 ? '0' : (dif > 0 ? '+' + dif : dif);
                 return `
-                  <tr data-diff="${has_diff?'1':'0'}" id="linea-row-${l.id}">
+                  <tr data-diff="${has_diff?'1':'0'}" data-prod="${l.producto_id}" id="linea-row-${l.id}">
                     <td><small>${WMS.esc(l.auxiliar||'-')}</small></td>
                     <td><small>${l.hora_conteo ? WMS.formatDate(l.hora_conteo.substring(0,10)) + ' ' + l.hora_conteo.substring(11,16) : '-'}</small></td>
-                    <td>
-                      <div style="font-weight:700;font-size:12px;color:var(--text)">${WMS.esc(l.codigo||'-')}</div>
+                    <td style="cursor:pointer" title="Ver análisis del conteo de esta referencia" onclick="WMS_MODULES.inventario._inv2RefAnalisis(${l.producto_id})">
+                      <div style="font-weight:700;font-size:12px;color:var(--accent)">${WMS.esc(l.codigo||'-')} <i class="fa-solid fa-chart-column" style="font-size:10px"></i></div>
                       <div style="font-size:10px;color:var(--muted);line-height:1.2;margin-top:2px">${WMS.esc(l.producto||'-')}</div>
                     </td>
                     <td><b style="font-size:.8rem;color:var(--text)">${WMS.esc(l.ubicacion||'-')}</b></td>
@@ -2139,7 +2142,7 @@ WMS_MODULES.inventario = {
                     <td class="text-center"><b style="color:${difColor}">${difTxt}</b></td>
                     ${d.sesion.num_conteos > 1 ? `
                       ${Array.from({length: d.sesion.num_conteos}, (_, i) => {
-                        const v = (l.por_ronda || {})[i + 1];
+                        const v = l.ronda === i + 1 ? l.cantidad_contada : (l.por_ronda || {})[i + 1];
                         return `<td class="text-center" style="background:var(--table-header-bg);font-weight:600;${l.ronda === i + 1 ? 'color:var(--accent)' : ''}">${v != null ? parseFloat(v) : '-'}</td>`;
                       }).join('')}
                     ` : ''}
@@ -2478,6 +2481,147 @@ WMS_MODULES.inventario = {
     });
     const c = tableId === 'inv2-mat-table' && document.getElementById('inv2-mat-count');
     if (c) c.textContent = `${n} línea(s)`;
+    const btn = tableId === 'inv2-mat-table' && document.getElementById('inv2-mat-analisis');
+    if (btn) {
+      const prods = new Set([...document.querySelectorAll(`#${tableId} tbody tr`)].filter(r => r.style.display !== 'none').map(r => r.dataset.prod));
+      btn.style.display = words.length && prods.size === 1 ? '' : 'none';
+      btn.dataset.prod = [...prods][0] || '';
+    }
+  },
+
+  /** Análisis del conteo de UNA referencia (2026-10-06, pedido de Camilo): tarjetas,
+   *  matriz del conteo, matriz por vencimiento, unidades por días a vencer y
+   *  cajas/saldos por auxiliar. Una ronda a la vez (sumar rondas contaría doble). */
+  async _inv2RefAnalisis(productoId, ronda) {
+    const id = this._dashV2Id;
+    if (!id || !productoId) return;
+    try {
+      if (this._inv2RefCache?.id !== id) {
+        const r = await API.get(`/v2/inventario/sesiones/${id}/dashboard`, 'ronda=0');
+        this._inv2RefCache = { id, lineas: r.data?.matriz_conteo || [] };
+      }
+    } catch (e) { return WMS.toast('error', 'No se pudo cargar el conteo: ' + e.message); }
+    const todas = this._inv2RefCache.lineas.filter(l => +l.producto_id === +productoId);
+    if (!todas.length) return WMS.toast('warning', 'Esta referencia no tiene conteos en la sesión.');
+    const rondas = [...new Set(todas.map(l => +l.ronda))].sort();
+    ronda = ronda || (rondas.includes(+this._dashV2?.ronda_filtro) ? +this._dashV2.ronda_filtro : rondas[rondas.length - 1]);
+    const L = todas.filter(l => +l.ronda === ronda);
+    const num = v => parseFloat(v) || 0, fmt = v => WMS.formatNum(Math.round(v * 1000) / 1000);
+    const sum = (arr, k) => arr.reduce((a, l) => a + num(l[k]), 0);
+    const p0 = todas[0];
+    const tot = { ubic: new Set(L.map(l => l.ubicacion)).size, cj: sum(L, 'cantidad_cajas'), sl: sum(L, 'saldos'), und: sum(L, 'cantidad_contada'), sis: sum(L, 'cantidad_sistema') };
+    tot.dif = tot.und - tot.sis;
+    const otras = rondas.filter(r => r !== ronda).map(r => ({ r, und: sum(todas.filter(l => +l.ronda === r), 'cantidad_contada') }));
+    const diasCol = d => d == null ? 'var(--muted)' : d <= 15 ? 'var(--danger)' : d <= 30 ? 'var(--warn)' : 'var(--ok)';
+    // por fecha de vencimiento
+    const porFv = {};
+    L.forEach(l => {
+      const k = l.fecha_vencimiento ? String(l.fecha_vencimiento).slice(0, 10) : '';
+      const g = porFv[k] = porFv[k] || { fv: k, dias: l.dias_vida_util, ubic: new Set(), cj: 0, sl: 0, und: 0 };
+      g.ubic.add(l.ubicacion); g.cj += num(l.cantidad_cajas); g.sl += num(l.saldos); g.und += num(l.cantidad_contada);
+    });
+    const fvs = Object.values(porFv).sort((a, b) => (a.fv || '9') < (b.fv || '9') ? -1 : 1);
+    // por auxiliar
+    const porAux = {};
+    L.forEach(l => { const g = porAux[l.auxiliar || '—'] = porAux[l.auxiliar || '—'] || { cj: 0, sl: 0, und: 0 }; g.cj += num(l.cantidad_cajas); g.sl += num(l.saldos); g.und += num(l.cantidad_contada); });
+    const card = (ico, lbl, val, color = 'var(--accent)') => `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;gap:12px;align-items:center">
+        <div style="width:38px;height:38px;border-radius:10px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;color:${color}"><i class="fa-solid ${ico}"></i></div>
+        <div><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px">${lbl}</div>
+        <div style="font-size:1.35rem;font-weight:800;color:var(--text)">${val}</div></div></div>`;
+    const sec = (t, body) => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+        <div style="font-weight:700;margin-bottom:10px;color:var(--text)">${t}</div>${body}</div>`;
+    const html = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <div>
+          <div style="font-size:1.15rem;font-weight:800;color:var(--text)">${WMS.esc(p0.codigo || '')} · ${WMS.esc(p0.producto || '')}</div>
+          <div style="font-size:12px;color:var(--muted)">U/E ${fmt(num(p0.unidades_caja))} · ${otras.map(o => `R${o.r}: <b>${fmt(o.und)}</b> und`).join(' · ') || 'una sola ronda'}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${rondas.map(r => `<button class="btn btn-xs ${r === ronda ? 'btn-primary' : 'btn-outline-secondary'}" style="min-width:34px;font-weight:800"
+              onclick="WMS_MODULES.inventario._inv2RefAnalisis(${productoId},${r})">R${r}</button>`).join('')}
+          <button class="btn btn-sm btn-secondary" onclick="WMS_MODULES.inventario._inv2RefCerrar()"><i class="fa-solid fa-xmark"></i> Cerrar</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px">
+        ${card('fa-location-dot', 'Ubicaciones contadas', fmt(tot.ubic))}
+        ${card('fa-box', 'Total cajas', fmt(tot.cj))}
+        ${card('fa-cubes', 'Total saldos', fmt(tot.sl))}
+        ${card('fa-layer-group', 'Total unidades', fmt(tot.und))}
+        ${card('fa-database', 'Sistema', fmt(tot.sis), 'var(--muted)')}
+        ${card('fa-scale-unbalanced', 'Diferencia', (tot.dif > 0 ? '+' : '') + fmt(tot.dif), tot.dif === 0 ? 'var(--ok)' : tot.dif > 0 ? 'var(--info)' : 'var(--danger)')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px;margin-bottom:14px">
+        ${sec('<i class="fa-solid fa-hourglass-half"></i> Unidades por días a vencer', '<div style="height:240px"><canvas id="inv2-ref-ch-fv"></canvas></div>')}
+        ${sec('<i class="fa-solid fa-user-check"></i> Cajas y saldos por auxiliar', '<div style="height:240px"><canvas id="inv2-ref-ch-aux"></canvas></div>')}
+      </div>
+      ${sec('<i class="fa-solid fa-calendar-days"></i> Total por fecha de vencimiento', `
+        <div style="overflow-x:auto"><table class="erp-table" style="margin:0"><thead><tr>
+          <th>F. VENCIMIENTO</th><th class="text-center">DÍAS POR VENCER</th><th class="text-center">UBICACIONES</th>
+          <th class="text-center">CAJAS</th><th class="text-center">SALDOS</th><th class="text-center">UNIDADES</th><th class="text-center">% DEL TOTAL</th></tr></thead><tbody>
+          ${fvs.map(g => `<tr><td><b>${g.fv ? WMS.formatDate(g.fv) : 'Sin fecha'}</b></td>
+            <td class="text-center"><b style="color:${diasCol(g.dias)}">${g.dias != null ? g.dias + 'd' : '—'}</b></td>
+            <td class="text-center">${g.ubic.size}</td><td class="text-center">${fmt(g.cj)}</td><td class="text-center">${fmt(g.sl)}</td>
+            <td class="text-center"><b>${fmt(g.und)}</b></td><td class="text-center">${tot.und ? (g.und / tot.und * 100).toFixed(1) : '0.0'}%</td></tr>`).join('')}
+          <tr style="background:var(--table-header-bg);font-weight:800"><td>TOTAL</td><td></td><td class="text-center">${fmt(tot.ubic)}</td>
+            <td class="text-center">${fmt(tot.cj)}</td><td class="text-center">${fmt(tot.sl)}</td><td class="text-center">${fmt(tot.und)}</td><td class="text-center">100%</td></tr>
+        </tbody></table></div>`)}
+      <div style="height:12px"></div>
+      ${sec(`<i class="fa-solid fa-table-cells"></i> Matriz del conteo · R${ronda}`, `
+        <div style="overflow-x:auto;max-height:420px;overflow-y:auto"><table class="erp-table" style="margin:0"><thead><tr>
+          <th>UBICACIÓN</th><th>LOTE</th><th>F. VENC.</th><th class="text-center">DÍAS</th><th class="text-center">CAJAS</th><th class="text-center">SALDOS</th>
+          <th class="text-center">UNIDADES</th><th class="text-center">SISTEMA</th><th class="text-center">DIFERENCIA</th>
+          ${rondas.map(r => `<th class="text-center">R${r}</th>`).join('')}<th>AUXILIAR</th><th>HORA</th></tr></thead><tbody>
+          ${[...L].sort((a, b) => String(a.ubicacion).localeCompare(String(b.ubicacion))).map(l => { const dif = num(l.diferencia); return `<tr>
+            <td><b>${WMS.esc(l.ubicacion || '-')}</b></td><td>${WMS.esc(l.lote || '—')}</td><td>${l.fecha_vencimiento ? WMS.formatDate(l.fecha_vencimiento) : '—'}</td>
+            <td class="text-center"><b style="color:${diasCol(l.dias_vida_util)}">${l.dias_vida_util != null ? l.dias_vida_util + 'd' : '—'}</b></td>
+            <td class="text-center">${fmt(num(l.cantidad_cajas))}</td><td class="text-center">${fmt(num(l.saldos))}</td>
+            <td class="text-center"><b style="color:var(--info)">${fmt(num(l.cantidad_contada))}</b></td><td class="text-center" style="color:var(--muted)">${fmt(num(l.cantidad_sistema))}</td>
+            <td class="text-center"><b style="color:${dif === 0 ? 'var(--ok)' : dif > 0 ? 'var(--info)' : 'var(--danger)'}">${dif > 0 ? '+' : ''}${fmt(dif)}</b></td>
+            ${rondas.map(r => { const v = r === ronda ? l.cantidad_contada : (l.por_ronda || {})[r]; return `<td class="text-center" style="background:var(--table-header-bg);font-weight:600;${r === ronda ? 'color:var(--accent)' : ''}">${v != null ? fmt(num(v)) : '-'}</td>`; }).join('')}
+            <td><small>${WMS.esc(l.auxiliar || '-')}</small></td><td><small>${l.hora_conteo ? String(l.hora_conteo).slice(11, 16) : '-'}</small></td></tr>`; }).join('')}
+        </tbody></table></div>`)}`;
+    let ov = document.getElementById('inv2-ref-modal');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'inv2-ref-modal';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:1500;background:var(--overlay);backdrop-filter:blur(4px);display:flex;justify-content:center;align-items:flex-start;padding:24px 16px;overflow-y:auto';
+      ov.innerHTML = '<div id="inv2-ref-body" role="dialog" aria-modal="true" style="background:var(--bg2);border-radius:12px;box-shadow:var(--shadow-modal);width:100%;max-width:1200px;padding:20px"></div>';
+      ov.addEventListener('mousedown', e => { if (e.target === ov) this._inv2RefCerrar(); });
+      document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('inv2-ref-modal')?.style.display !== 'none') this._inv2RefCerrar(); });
+      document.body.appendChild(ov);
+    }
+    ov.style.display = 'flex';
+    document.getElementById('inv2-ref-body').innerHTML = html;
+    (this._inv2RefCharts || []).forEach(c => c.destroy());
+    const C = window.WMS_CHART_COLORS || {};
+    const colDias = d => d == null ? C.gris : d <= 15 ? C.rojo : d <= 30 ? C.ambar : C.verde;
+    this._inv2RefCharts = [
+      new Chart(document.getElementById('inv2-ref-ch-fv'), {
+        type: 'bar',
+        data: { labels: fvs.map(g => g.dias != null ? `${g.dias} días (${WMS.formatDate(g.fv)})` : 'Sin fecha'),
+                datasets: [{ label: 'Unidades', data: fvs.map(g => g.und), backgroundColor: fvs.map(g => colDias(g.dias)), borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false },
+          tooltip: { callbacks: { label: c => ` ${WMS.formatNum(c.parsed.y)} und · ${fmt(fvs[c.dataIndex].cj)} cj + ${fmt(fvs[c.dataIndex].sl)} saldos` } } },
+          scales: { y: { beginAtZero: true, title: { display: true, text: 'Unidades' } }, x: { title: { display: true, text: 'Días por vencer' } } } },
+      }),
+      new Chart(document.getElementById('inv2-ref-ch-aux'), {
+        type: 'bar',
+        data: { labels: Object.keys(porAux),
+                datasets: [{ label: 'Cajas', data: Object.values(porAux).map(g => g.cj), backgroundColor: C.azul, borderRadius: 6 },
+                           { label: 'Saldos', data: Object.values(porAux).map(g => g.sl), backgroundColor: C.naranja, borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' },
+          tooltip: { callbacks: { afterBody: it => `Total: ${fmt(Object.values(porAux)[it[0].dataIndex].und)} und` } } },
+          scales: { y: { beginAtZero: true } } },
+      }),
+    ];
+  },
+
+  _inv2RefCerrar() {
+    const ov = document.getElementById('inv2-ref-modal');
+    if (ov) ov.style.display = 'none';
+    (this._inv2RefCharts || []).forEach(c => c.destroy());
+    this._inv2RefCharts = [];
   },
 
   _filterMatDiff(mode) {
