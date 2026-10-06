@@ -70,9 +70,57 @@ class FefoEngine
     public static function ordenVencimiento($query, string $columna = 'fecha_vencimiento', string $modo = 'FIFO')
     {
         $direccion = (strtoupper($modo) === 'LIFO') ? 'desc' : 'asc';
-        return $query
+        $query
             ->orderByRaw("CASE WHEN {$columna} IS NULL THEN 1 ELSE 0 END ASC")
             ->orderBy($columna, $direccion);
+        // Desempate por RUTA FÍSICA (2026-10-05, pedido de Camilo): con el mismo
+        // vencimiento (mismo lote/fecha en SECO/01-01-01 y SECO/01-01-02) el orden
+        // quedaba al azar de la BD y a veces mandaba primero el nivel más alto.
+        // Ahora: pasillo → módulo → nivel (de ABAJO hacia arriba) → posición.
+        self::desempateRutaFisica($query, $columna);
+        return $query;
+    }
+
+    /** Cache por request: tabla → ¿tiene columna ubicacion_id? */
+    private static array $tablaConUbicacion = [];
+
+    /**
+     * Agrega ORDER BY por ruta física (comparación numérica: "2" = "02") solo
+     * cuando es seguro: PostgreSQL, la tabla base tiene ubicacion_id y la
+     * consulta no agrupa ni usa DISTINCT (ahí un ORDER BY extra no es válido).
+     * En cualquier otro caso no toca la consulta.
+     */
+    private static function desempateRutaFisica($query, string $columna): void
+    {
+        try {
+            if (Capsule::connection()->getDriverName() !== 'pgsql') return;
+            $base = method_exists($query, 'getQuery') ? $query->getQuery() : $query;
+            if (!empty($base->groups) || !empty($base->distinct) || !empty($base->unions)) return;
+            $from = is_string($base->from ?? null) ? $base->from : '';
+            if (!preg_match('/^\s*(\w+)(?:\s+as\s+(\w+))?\s*$/i', $from, $m)) return;
+            $tabla = $m[1];
+            $ref   = $m[2] ?? $m[1];
+            // Si la columna de vencimiento viene calificada con el nombre real de otra
+            // tabla (p.ej. 'inventarios.fecha_vencimiento' sobre un join), usar esa.
+            if (str_contains($columna, '.')) {
+                $pref = explode('.', $columna)[0];
+                if ($pref !== $ref) { $tabla = $pref; $ref = $pref; }
+            }
+            if (!array_key_exists($tabla, self::$tablaConUbicacion)) {
+                self::$tablaConUbicacion[$tabla] = (bool)Capsule::selectOne(
+                    "SELECT 1 AS ok FROM information_schema.columns WHERE table_name = ? AND column_name = 'ubicacion_id' LIMIT 1",
+                    [$tabla]
+                );
+            }
+            if (!self::$tablaConUbicacion[$tabla]) return;
+            foreach (['pasillo', 'modulo', 'nivel', 'posicion'] as $c) {
+                $sub = "(SELECT u_rf.{$c} FROM ubicaciones u_rf WHERE u_rf.id = {$ref}.ubicacion_id)";
+                $query->orderByRaw("NULLIF(regexp_replace(COALESCE({$sub}, ''), '[^0-9]', '', 'g'), '')::numeric ASC NULLS LAST");
+                $query->orderByRaw("{$sub} ASC NULLS LAST");
+            }
+        } catch (\Throwable $e) {
+            // Nunca romper la selección FEFO por el desempate.
+        }
     }
 
     /**
